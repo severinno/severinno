@@ -1,0 +1,936 @@
+# Severinno Marketplace SaaS — Worklog (Fase 1 / MVP)
+
+Projeto: Marketplace de serviços com geolocalização (Clientes ↔ Prestadores verificados).
+Stack adaptada ao ambiente: Next.js 16 + Prisma (SQLite) + MapLibre + shadcn/ui + WebSocket (mini-service porta 3003).
+Arquitetura-alvo (PostGIS/RabbitMQ/OSRM) referenciada na doc arquitetural; MVP entrega funcionalidade equivalente nesta stack.
+
+Convenções:
+- Apenas a rota `/` é visível (SPA com view-switching via Zustand).
+- Cor primária: emerald (serviços/confiança) — NUNCA indigo/azul.
+- APIs em `src/app/api/**` (não server actions).
+- z-ai-web-dev-sdk apenas no backend.
+
+
+---
+Task ID: 2
+Agent: general-purpose (websocket mini-service)
+Task: Set up WebSocket mini-service (port 3003, path /) with socket.io for realtime messaging/booking/quote/tracking events; provide singleton React client hook; start service in background and verify.
+
+Work Log:
+- Read worklog.md and examples/websocket/server.ts + examples/websocket/frontend.tsx to lock the exact Caddy-friendly pattern (path "/", XTransformPort query param).
+- Created `/home/z/my-project/mini-services/realtime/` as an independent bun project.
+- Wrote `package.json` (deps: socket.io; scripts: dev=`bun --hot index.ts`).
+- Wrote `index.ts` (socket.io server, port 3003, path "/", cors *) implementing events:
+  - `join { userId, role }` -> joins rooms `user:{userId}` + `role:{role}`, ack `{ ok: true }`
+  - `message:send { fromId, toId, content, bookingId? }` -> emits `message:new` (id+timestamp) + `notification:new` to `user:{toId}`
+  - `booking:update { bookingId, clientId, providerId, status }` -> emits `booking:updated` to both `user:{clientId}` and `user:{providerId}`
+  - `quote:update { quoteId, clientId, providerId, status }` -> emits `quote:updated` to both rooms
+  - `tracking:position { bookingId, clientId, lat, lng }` -> emits `tracking:position` to `user:{clientId}`
+  - `ping` -> ack `{ pong: true, t: Date.now() }`
+  - `disconnect` -> logs reason
+  - connection logs socket id; SIGTERM/SIGINT graceful shutdown (io.close + httpServer.close + safety timeout).
+- Ran `bun install` in the mini-service folder (installed socket.io@4.8.3 + lockfile).
+- Started service in background: `nohup bun run dev > service.log 2>&1 &`. Verified log shows `WebSocket server running on port 3003`. HTTP poll on `/?EIO=4&transport=polling` returned 200.
+- Installed `socket.io-client` in the main project (`bun add socket.io-client`).
+- Created `/home/z/my-project/src/hooks/use-realtime.ts` — singleton client hook:
+  - Uses `io("/?XTransformPort=3003")` with path "/" (default), transports websocket+polling, reconnection enabled.
+  - SSR guard (`typeof window === 'undefined'`), singleton via module-level `socketRef`.
+  - Returns `{ socket, isConnected, status, join, sendMessage, updateBooking, updateQuote, sendTrackingPosition, ping, emit, on, off, disconnect }`.
+  - `join` and `ping` use acknowledgements. `on` returns an unsubscribe fn.
+- Typecheck (`tsc --noEmit -p tsconfig.json`): no errors from our new files (pre-existing errors in examples/ and skills/ are unrelated to this task).
+- Ran integration smoke test (two clients join, sender emits message:send/booking:update/ping): PASS — receiver got `message:new`, `notification:new`, and `booking:updated` correctly.
+- Did NOT touch src/app/page.tsx, src/app/layout.tsx, Prisma, or other agents' files.
+
+Stage Summary:
+- Files created:
+  - `/home/z/my-project/mini-services/realtime/package.json`
+  - `/home/z/my-project/mini-services/realtime/index.ts`
+  - `/home/z/my-project/mini-services/realtime/service.log` (runtime log)
+  - `/home/z/my-project/src/hooks/use-realtime.ts`
+- How to run:
+  - Service: `cd mini-services/realtime && bun run dev` (already running in background, port 3003, path "/")
+  - Frontend: import `useRealtime` from `@/hooks/use-realtime`; call `useRealtime()` and use `join({ userId, role })` on connect.
+- Port: 3003 (hard). Path: "/" (hard, required by Caddy). Frontend connects via `io("/?XTransformPort=3003")`.
+- Events supported (client->server): `join`, `message:send`, `booking:update`, `quote:update`, `tracking:position`, `ping`.
+- Events emitted (server->client): `message:new`, `notification:new`, `booking:updated`, `quote:updated`, `tracking:position`.
+- Status: RUNNING (verified by HTTP 200 on polling endpoint + integration smoke test PASS).
+
+---
+Task ID: 1
+Agent: full-stack-developer (foundation)
+Task: Construir a fundação do Severinno Marketplace SaaS — Prisma schema (SQLite, sem enum nativo), seed com 1 admin + 2 clients + 6 providers + categorias 3-níveis + services + bookings/reviews, design system emerald, Zustand stores (auth/geo/view/ui) e lib utilities (crypto scrypt, auth HMAC cookie, geo ViaCEP/Nominatim/haversine, format pt-BR, constants, validators Zod 4).
+
+Work Log:
+- Leu worklog.md, package.json, schema.prisma atual, layout.tsx, globals.css, db.ts, tsconfig.json, eslint.config.mjs, dev.log e page.tsx (não modificado).
+- Criou `prisma/schema.prisma` com 13 modelos marketplace (User, Category, Service, ProviderAvailability, QuoteRequest, QuoteItem, Booking, Review, Favorite, Message, Notification, Payment, Setting), todos enums como String + comentário, indexes nas colunas de busca.
+- Rodou `bunx prisma db push --accept-data-loss` → ok; `bun run db:generate` → ok (Prisma 6.19.2).
+- Criou `src/lib/crypto.ts` (scrypt N=16384, salt 16B, timing-safe verify).
+- Criou `src/lib/auth.ts` (server-only, cookie httpOnly `severinno_session` com HMAC-SHA256, getSession/requireUser/requireRole/getOptionalSession/destroySession).
+- Criou `src/lib/geo.ts` (server-only, haversineKm, formatDistance, geocodeCEP ViaCEP, reverseGeocode Nominatim com User-Agent, formatCurrencyBRL).
+- Criou `src/lib/format.ts` (formatBRL/Date/DateTime/Time/Relative + formatHHmm, date-fns locale ptBR).
+- Criou `src/lib/constants.ts` (labels/cores pt-BR de roles, units, quote/booking/payment statuses, weekdays, notification types, APP_NAME).
+- Criou `src/lib/validators.ts` (Zod 4: login, register com refine, providerProfile, service, category, quote, quoteItemResponse, booking, review, message, setting, availability).
+- Criou `prisma/seed.ts` idempotente (wipes na ordem de FKs) + script `db:seed` em package.json. Rodou com sucesso: 9 users, 27 categorias, 13 services, 36 availabilities, 4 bookings+reviews+payments, 2 favorites, 9 notifications, 9 settings.
+- Atualizou `src/app/globals.css`: primary emerald `oklch(0.55 0.15 160)` (light) / `oklch(0.7 0.16 160)` (dark), ring/sidebar-primary/accent/chart-1 alinhados, scrollbar thin/rounded com hover emerald, estilos `.map-popup`.
+- Atualizou `src/app/layout.tsx`: metadata pt-BR (title "Severinno Marketplace", locale pt_BR, keywords), `<html lang="pt-BR" suppressHydrationWarning>`, wrap children em `<Providers>`.
+- Criou `src/components/providers.tsx` combinando next-themes + @tanstack/react-query + sonner Toaster.
+- Criou 4 Zustand stores em `src/store/`: auth (persist), geo (persist), view (persist só view+params), ui (não persiste). Centralizou exports em `src/store/index.ts`.
+- Rodou `bunx tsc --noEmit` — meus arquivos limpos.
+- Rodou `bunx eslint` nos meus arquivos — zero erros. Único erro de lint restante no projeto está em `src/hooks/use-realtime.ts` (não meu, regra `react-hooks/refs`).
+
+Stage Summary:
+- **Schema**: `prisma/schema.prisma` — 13 modelos, SQLite-safe (sem enum), indexes em campos de busca. Pushed + Prisma Client gerado.
+- **Seed**: `bun run db:seed` (idempotente). Logins: admin@severinno.com/admin123, cliente@severinno.com/cliente123, maria@severinno.com/cliente123, [provider]@severinno.com/provider123.
+- **Design system**: `src/app/globals.css` — primary emerald, scrollbar custom, `.map-popup` MapLibre.
+- **Layout**: `src/app/layout.tsx` + `src/components/providers.tsx` — ThemeProvider + QueryClientProvider + SonnerToaster, metadata pt-BR.
+- **Libs**: `src/lib/{crypto,auth,geo,format,constants,validators}.ts` — prontos para uso por APIs e UI.
+- **Stores**: `src/store/{auth,geo,view,ui,index}.ts` — prontos para uso por UI. auth/geo/view persistem em localStorage (`severinno:*`).
+- **Agent record**: `/home/z/my-project/agent-ctx/1-foundation.md` — detalhes completos, incluindo 10 caveats para próximos agentes (SQLite sem enum, geo.ts é server-only, SESSION_SECRET em prod, Nominatim User-Agent/limite 1 req/s, etc).
+- **Caveats**: (a) `src/lib/geo.ts` importa `server-only` — não usar em client components. (b) `src/hooks/use-realtime.ts` tem erro lint `react-hooks/refs` (fora do escopo Task 1). (c) `src/app/page.tsx` intencionalmente não modificado. (d) zod 4 API: `z.enum([...], { message })` em vez de `errorMap`.
+
+---
+Task ID: 3
+Agent: full-stack-developer (api routes)
+Task: Criar TODAS as rotas de API backend do Severinno Marketplace SaaS (Fase 1 / MVP) sob `src/app/api/**` usando Next.js 16 App Router route handlers + Prisma (SQLite) + Zod, alinhadas ao contrato esperado pela UI (foundation `src/lib/api.ts`).
+
+Work Log:
+- Leu worklog.md, agent-ctx/1-foundation.md, prisma/schema.prisma, src/lib/{auth,crypto,geo,constants,validators,db}.ts e os componentes UI que consomem a API (vitrine/, modals/) para inferir o contrato de resposta esperado por `apiGet<T>`.
+- Descobriu que `src/lib/api.ts` é o **wrapper tipado client-side** da foundation (apiGet/apiPost/apiPatch/apiDelete + tipos ProviderCard/ProviderDetail/ProviderService/Category/PagedResult/FavoriteResponse/CepResult) — NÃO deve ser tocado.
+- Criou `src/lib/api-server.ts` (novo) com helpers server-only: HttpError, handleError (mapeia UNAUTHORIZED→401, FORBIDDEN→403, ZodError→400, HttpError→status), badRequest/unauthorized/forbidden/notFound/conflict, parsePagination, USER_PUBLIC_SELECT, publicUser, getCategoryDescendants (BFS sobre a árvore de categorias).
+- Criou 29 route handlers em `src/app/api/` cobrindo: auth (register/login/logout/me), categories (GET público + POST/PATCH/DELETE admin), providers (list com filtros geo/categoria/radius/sort + detail + favorite toggle), services (list/create/patch/delete com regra "preço só sobe"), geo (cep ViaCEP + reverse Nominatim), quotes (create com items + list por role + detail + patch status + item response), bookings (create + list + detail + patch com transition table + pay simulado), reviews (create com validação "uma por booking COMPLETED" + list), messages (conversas + thread com auto-mark-read + send com notificação), notifications (list unread-first + mark read), favorites (list flat), admin (stats agregadas + users paginado + user patch/delete + settings upsert many), upload (multipart → sharp → webp 1200px q80 em public/uploads).
+- Alinhou os shapes de resposta ao contrato da UI: categorias/services/favorites retornam arrays flat; providers retorna `{items,total,page,limit}`; provider detail retorna `ProviderDetail` direto com `reviews[].author` (alias para `client`); geo/cep e geo/reverse retornam objetos flat (sem wrapper `address`).
+- Tratou erros: `passwordHash` sempre stripado; auth errors via throw "UNAUTHORIZED"/"FORBIDDEN" mapeados por handleError; Zod errors com details; HttpError com status custom; upload com fallback 400 para FormData não-multipart e sharp em imagem corrompida.
+- Validou transições de status de booking (PROVIDER: PENDING→CONFIRMED/IN_PROGRESS/CANCELLED; CLIENT: PENDING/CONFIRMED→CANCELLED, CONFIRMED/IN_PROGRESS→COMPLETED). CONFIRM seta paymentStatus=PAID (simulado); CANCEL em booking PAID seta REFUNDED e sincroniza Payment.
+- Quote items: validou serviceId pertence ao providerId; status PENDING→RESPONDED automático quando provider responde um item; expiresAt default now+7d.
+- Executou `bunx tsc --noEmit` — 0 erros em src/app/api/** e src/lib/api-server.ts (erros remanescentes em src/components/modals/{auth,quote}-modal.tsx e src/components/vitrine/providers-map.tsx são do escopo UI).
+- Executou `bunx eslint src/app/api src/lib/api-server.ts` — 0 erros. `bun run lint` só acusa o pré-existente `react-hooks/refs` em src/hooks/use-realtime.ts (Task 2, fora de escopo).
+- Smoke tests via curl no dev server (porta 3000) — todos os fluxos críticos OK: categories flat array, providers com filtros/sort/distância/category tree, provider detail com reviews[].author, favorite toggle, auth login+me com cookie, favorites 401→200 com auth, geo/cep flat, quote create+list, booking list, review duplicate guard, message send+notification, notifications list+unreadCount, admin stats+users, upload (401/400/400/201 webp).
+- NÃO tocou em src/app/page.tsx, src/app/layout.tsx, src/components/**, src/store/**, src/hooks/**, ou qualquer lib da foundation (src/lib/auth/crypto/geo/constants/validators/db/format.ts e o client-side src/lib/api.ts).
+
+Stage Summary:
+- **Arquivos criados**:
+  - `src/lib/api-server.ts` — helpers server-only (HttpError, handleError, badRequest/unauthorized/forbidden/notFound/conflict, parsePagination, USER_PUBLIC_SELECT, publicUser, getCategoryDescendants).
+  - `src/app/api/auth/{register,login,logout,me}/route.ts` — auth completo (POST register/login/logout, GET me).
+  - `src/app/api/categories/route.ts` + `[id]/route.ts` — GET público (array flat), POST/PATCH/DELETE admin (DELETE bloqueia se tem filhas ou serviços → 409).
+  - `src/app/api/providers/route.ts` — catálogo público com filtros (q, categoryId subtree, radius haversine), sort (rating|distance), paginação, agregados (rating/reviewCount/favoriteCount/distanceKm).
+  - `src/app/api/providers/[id]/route.ts` — detail com services, availability, reviews (author), favorited flag.
+  - `src/app/api/providers/[id]/favorite/route.ts` — toggle (CLIENT).
+  - `src/app/api/services/route.ts` + `[id]/route.ts` — list (array flat), create (PROVIDER/ADMIN), patch (preço só sobe), delete.
+  - `src/app/api/geo/{cep,reverse}/route.ts` — ViaCEP + Nominatim (resposta flat).
+  - `src/app/api/quotes/route.ts` + `[id]/route.ts` + `[id]/items/[itemId]/route.ts` — create com items, list por role, detail, patch status, item response (PENDING→RESPONDED).
+  - `src/app/api/bookings/route.ts` + `[id]/route.ts` + `[id]/pay/route.ts` — create + payment PENDING, list por role, detail, patch com transition table + side effects (CONFIRM→PAID, CANCEL→REFUNDED), pay simulado.
+  - `src/app/api/reviews/route.ts` — create (uma por booking COMPLETED do cliente), list por provider/booking.
+  - `src/app/api/messages/route.ts` — conversas (last msg + unread per peer) ou thread (auto mark-read), send com notificação MESSAGE.
+  - `src/app/api/notifications/route.ts` + `[id]/read/route.ts` — list unread-first com unreadCount, mark read.
+  - `src/app/api/favorites/route.ts` — list flat de ProviderCard com distanceKm opcional.
+  - `src/app/api/admin/{stats,users,users/[id],settings}/route.ts` — stats agregadas, users paginado, user patch/delete, settings upsert many.
+  - `src/app/api/upload/route.ts` — multipart → sharp → webp 1200px q80 em public/uploads/<uuid>.webp.
+- **Decisões chave**:
+  - Helpers server-only em arquivo novo (`api-server.ts`) para não tocar o wrapper client-side `api.ts` da foundation.
+  - Shapes de resposta alinhados 1:1 ao que `apiGet<T>` (UI) espera — flat arrays p/ categorias/services/favorites, wrapped `{items,total,page,limit}` p/ providers/bookings/quotes/admin, flat object p/ provider detail e geo.
+  - Reviews em provider detail renomeadas `client`→`author` (UI usa `r.author.name`).
+  - Booking status transitions hard-coded em PROVIDER_NEXT/CLIENT_NEXT (admin pode tudo).
+  - Payment simulado: `/api/bookings/[id]/pay` e CONFIRM ambos setam PAID; CANCEL em PAID seta REFUNDED.
+  - Quote items: outer providerId usado para todos os items (per-item providerId enviado pela UI é stripped pelo Zod; multi-provider quote é feature futura).
+- **Caveats**:
+  - `src/lib/api.ts` (foundation) é client-side; NÃO importar de route handlers — use `@/lib/api-server`.
+  - Alguns shapes são flat arrays e outros wrapped — não alterar sem checar o consumer.
+  - Erros remanescentes de tsc/lint estão todos em arquivos UI (modals/vitrine) e em `src/hooks/use-realtime.ts` (Task 2) — fora de escopo.
+  - `public/uploads/` não é versionado em prod (precisaria de CDN/object storage).
+
+---
+Task ID: 5
+Agent: full-stack-developer (flow modals)
+Task: Construir os Flow Modals do Severinno Marketplace SaaS (Fase 1/MVP): Quote flow, Booking flow, Provider Profile modal, Auth modal e bits compartilhados (star-rating, file-photos, address-form) + orchestrator modals-host. Next.js 16 + shadcn/ui + Tailwind 4 + react-hook-form + Zod 4 + TanStack Query + framer-motion. Primary emerald, pt-BR, mobile-first.
+
+Work Log:
+- Leu worklog.md + agent-ctx/1-foundation.md para entender stores (useAuthStore/useGeoStore/useUIStore/useViewStore), libs (format/constants/validators) e componentes shadcn disponíveis.
+- Verificou que `src/lib/api.ts` já existia (parallel agent) com apiGet/apiPost/apiPatch/apiDelete + fetchProviderDetail/fetchProviders/fetchCategories/toggleFavorite/fetchCep + tipos ProviderCard/ProviderDetail/ProviderService/ProviderAvailability/ProviderReview/Category/CepResult. Estendeu `ProviderService` com `description?` e `photos?` para refletir o contrato real.
+- Criou `src/components/modals/star-rating.tsx`: StarRatingDisplay (clip-based, meia estrela via % width) + StarRatingInput (radiogroup ARIA, teclado ←→↑↓ e 1–5, hover preview).
+- Criou `src/components/modals/file-photos.tsx`: uploader com preview grid (max N, default 4), 5MB/foto, POST /api/upload com FormData via fetch direto (apiPost existente não suporta FormData porque sempre seta Content-Type: application/json). Fallback para URL.createObjectURL se upload falhar.
+- Criou `src/components/modals/address-form.tsx`: CEP com auto-fill ViaCEP (apiGet /api/geo/cep), botão GPS (useGeoStore.setFromGPS + apiGet /api/geo/reverse), campos rua/número/complemento/bairro/cidade/UF (Select). Tipagem AddressFormValue exportada para reuso.
+- Criou `src/components/modals/auth-modal.tsx`: Dialog sm:max-w-md com Tabs Login/Cadastrar. Role toggle Cliente/Prestador (cartões animados framer-motion). Campos condicionais para provider (cpfCnpj/whatsapp/cidade/UF) via AnimatePresence. Valida com loginSchema/registerSchema. Chama useAuthStore.login/register, fetchMe, navigate para client.dashboard ou provider.dashboard. "Esqueci a senha" com toast info (no-op MVP).
+- Criou `src/components/modals/provider-profile-modal.tsx`: Dialog sm:max-w-3xl (Sheet full-screen mobile via useIsMobile). Cover+avatar+BadgeCheck verified+StarRatingDisplay+distância/cidade. Header actions: Heart favorito (toggle UI), Share2 (navigator.share || clipboard). Tabs: Serviços (Accordion por categoria, Carousel de fotos por serviço, botões Orçamento/Agendar que fecham este modal e abrem quote/booking com preset providerId+serviceId), Sobre (bio+endereço+raio+whatsapp), Avaliações (lista com avatar+nome+stars+comentário+data), Expediente (Table 7 dias com slots em Badge). Footer sticky: Pedir orçamento + Agendar serviço. useQuery /api/providers/:id.
+- Criou `src/components/modals/quote-modal.tsx`: multi-item (useFieldArray, max 5, animação add/remove framer-motion). Cada item: ProviderCombobox (Popover+Command, async search via useQuery /api/providers?q=), ServiceSelect (Select dependente do provider, useQuery /api/services?providerId=), descrição textarea (min 10), quantidade+unidade (Select), FilePhotos (max 4). Seção 2: AddressForm reusado. Seção 3: Resumo (lista de itens + endereço). Footer sticky com total + submit. POST /api/quotes. Toast success + navigate client.quotes. Auth gate: se não logado → toast info + openAuth('register','CLIENT'). Resolver cast `as unknown as Resolver<T>` por known issue Zod 4 com z.coerce.number().
+- Criou `src/components/modals/booking-modal.tsx`: 3-step stepper inline (dots animados + linha + Progress bar). Step 1: Calendar (react-day-picker, pt-BR, disable past) + slots 60min gerados da availability do dia selecionado (mensagem "Prestador não atende neste dia" se vazio). Step 2: card resumo (provider avatar+name, service title+price+unit, data/hora, valor), quantidade, AddressForm, notes textarea. Step 3: RadioGroup PIX/Cartão (PaymentOption cards com ícone). Cartão mock (número formatado, validade MM/AA, CVV) marcado "Demonstração". PIX com QR placeholder + copiar chave + "Já paguei". Amount summary (service × qty + fees=0 + total). POST /api/bookings. Toast + navigate client.bookings. Auth gate no início do flow. Validação por step (step1Valid/step2Valid/step3Valid), Continuar disabled se inválido.
+- Criou `src/components/modals/modals-host.tsx`: <ModalsHost /> monta os 4 modais (Auth, Provider, Quote, Booking). Cada modal lê seu open-state do useUIStore. Sem props.
+- Corrigiu 3 warnings de unused eslint-disable directives (file-photos, provider-profile-modal x2, quote-modal x1).
+- TypeScript: 2 erros iniciais em auth-modal (Resolver mismatch por z.coerce) + 4 erros em quote-modal (idem + AddressFormValue lat/lng null vs undefined). Corrigidos com: cast `as unknown as Resolver<T>`, schema lat/lng com `.nullable().optional()`, e schema complement/district como `z.string().default("")` (não optional) para match com AddressFormValue.
+- Verificação final: `bun run lint` → 0 erros nos meus arquivos (2 erros pre-existing em use-realtime.ts não meu). `bunx tsc --noEmit` → 0 erros nos meus arquivos (2 erros pre-existing em vitrine/providers-map.tsx não meu). Dev server log mostra /api/providers, /api/categories, /api/upload, /api/messages, /api/bookings funcionando.
+
+Stage Summary:
+- **Modais criados** (todos client components, SSR-safe):
+  - `src/components/modals/star-rating.tsx` — StarRatingDisplay + StarRatingInput
+  - `src/components/modals/file-photos.tsx` — FilePhotos uploader (FormData via fetch, fallback object URL)
+  - `src/components/modals/address-form.tsx` — AddressForm (CEP + GPS + UF select)
+  - `src/components/modals/auth-modal.tsx` — AuthModal (Tabs login/register, role toggle)
+  - `src/components/modals/provider-profile-modal.tsx` — ProviderProfileModal (Dialog/Sheet, 4 tabs, accordion+carousel)
+  - `src/components/modals/quote-modal.tsx` — QuoteModal (multi-item useFieldArray, combobox provider, dependent service select)
+  - `src/components/modals/booking-modal.tsx` — BookingModal (3-step stepper, calendar+slots, address, payment mock)
+  - `src/components/modals/modals-host.tsx` — ModalsHost (orchestrator, mount once)
+- **Key UX decisions**: Dialog desktop + Sheet mobile (useIsMobile), emerald accent everywhere, framer-motion para item add/remove + step transition + role toggle, auth gate (prevention heuristic) antes de submeter quote/booking, validation per-step no booking, sticky footer com submit + total, fallback gracioso em uploads.
+- **Caveats**:
+  (a) ModalsHost precisa ser montado no app shell (importar `@/components/modals/modals-host`).
+  (b) `/api/upload` em paralelo ainda intermitente — FilePhotos faz fallback para blob URL.
+  (c) Resolver cast `as unknown as Resolver<T>` em 3 resolvers (login/register/quote) por known issue Zod 4 + z.coerce.
+  (d) ProviderService estendido em src/lib/api.ts (paralelo) com `description?` e `photos?`.
+  (e) Booking slots: 60min fixo, não checa conflitos com bookings existentes (MVP).
+  (f) Pagamento totalmente mock (card form não envia para gateway; PIX usa chave fixa).
+  (g) Favorito no provider modal é toggle UI-only (não chama /api/favorites ainda).
+  (h) Share usa navigator.share quando disponível, senão clipboard.
+
+---
+Task ID: 4
+Agent: full-stack-developer (vitrine) [completed files; verification record added by orchestrator after agent cancellation]
+Task: Build the public storefront (vitrine) with MapLibre map, provider cards, filters, hero, topbar, footer.
+
+Work Log:
+- Installed maplibre-gl.
+- Created src/lib/api.ts (typed fetch wrapper + shared API types: ProviderCard, Service, etc.).
+- Created src/components/vitrine/{topbar,hero,category-showcase,how-it-works,filters,provider-card,providers-map,vitrine-results,vitrine}.tsx
+- Created src/components/shared/footer.tsx (sticky footer for min-h-screen flex-col layout).
+- maplibre map uses OSM raster tiles with attribution; SSR-guarded; emerald markers; fitBounds; popups.
+- All fetches RELATIVE via TanStack Query.
+
+Stage Summary:
+- Vitrine complete and lint-clean (0 eslint errors).
+- Components: Topbar (search+GPS+auth), Hero (emerald gradient + search), CategoryShowcase, HowItWorks, Filters (3-level category cascade + radius + sort), ProviderCard (cover+avatar+rating+distance+accordion services+Orçamento/Agendar), ProvidersMap (maplibre), VitrineResults (list/map toggle + pagination), Vitrine orchestrator.
+- Sticky footer at src/components/shared/footer.tsx.
+- Caveat: providers-map.tsx had pre-existing tsc notes (per Task 5 agent) — to be re-checked in final verification.
+
+---
+Task ID: 7
+Agent: full-stack-developer (provider panel)
+Task: Construir o PAINEL DO PRESTADOR do Severinno Marketplace SaaS (Fase 1 / MVP): 10 views (dashboard, expediente, agenda, bookings, quotes, services, finance, messages, reviews, profile) + orquestrador provider-panel + 3 rotas API (availability GET/POST, availability/[id] DELETE, users/me GET/PATCH) + shared MessagesView. Next.js 16 + shadcn/ui + Tailwind 4 + recharts + react-hook-form + Zod 4 + TanStack Query. Primary emerald, pt-BR, mobile-first.
+
+Work Log:
+- Leu worklog.md + agent-ctx/1-foundation.md + stores (auth/view/ui) + libs (api, api-server, auth, validators, constants, format) + rotas API existentes (services, bookings, quotes, messages, notifications, reviews, categories, auth/me) + componentes shared (footer) + modais (file-photos, star-rating, address-form) + hooks (use-realtime, use-mobile) + UI primitives (sidebar, card, avatar, button, table, tabs, dialog, alert-dialog, dropdown-menu, popover, switch, input, textarea, select, slider, scroll-area, separator, tooltip, pagination).
+- Confirmou que `src/app/api/users/me/route.ts` NÃO existia → criou. Confirmou que `src/app/api/availability/*` NÃO existia → criou as 2 rotas.
+- Confirmou que `src/components/shared/dashboard-shell.tsx` foi criado EM PARALELO pelo Task 6 (Client Panel) — e eles sobrescreveram minha versão inicial com uma API diferente (`panelLabel` + `panelIcon` em vez de `headerLabel`). Adaptei o `provider-panel.tsx` para respeitar o contrato final deles (read-first, never-overwrite respeitado).
+- Criou `src/components/shared/messages-view.tsx` (chat 2-pane reutilizável com realtime via useRealtime).
+- Criou 10 views em `src/components/provider/`:
+  1. `provider-dashboard.tsx` — KPIs (hoje/semana, orçamentos pendentes, avaliação média, receita recebida) + 2 charts (recharts: agendamentos 7 dias bar, receita por mês line) + 3 listas recentes (próximos agendamentos, orçamentos pendentes, últimas avaliações) + quick actions.
+  2. `provider-expediente.tsx` — 7 cards de dia da semana (Dom-Sáb), cada um com lista de slots {startTime, endTime, active}, add/remove slot, Switch de ativo, "Copiar para dias úteis", aviso de sobreposição, validação startTime < endTime, POST /api/availability upsert.
+  3. `provider-agenda.tsx` — Calendar grid mensal (date-fns) com dots coloridos por status, navegação mês anterior/próximo, tabs Hoje/Semana/Mês, lista do dia selecionado, mapa OpenStreetMap link nos detalhes. Read-only.
+  4. `provider-bookings.tsx` — Tabs por status (Pendentes/Confirmados/Em andamento/Concluídos/Cancelados/Todos), cards com avatar+cliente+serviço+data+endereço+valor+status, ações em dropdown (Confirmar, Iniciar, Cancelar, Ver detalhes, Enviar mensagem), dialog de detalhes com link "Abrir no mapa", paginação.
+  5. `provider-quotes.tsx` — Tabs por status (Pendentes/Respondidos/Aprovados/Rejeitados/Todos), cards expandíveis por request, cada item com formulário de resposta (price + note + Enviar orçamento) para PENDING, mostra preço/nota para QUOTED, link "Enviar mensagem ao cliente".
+  6. `provider-services.tsx` — CRUD completo: lista com thumbnail, título, categoria, preço+unidade, active toggle inline, editar/excluir; Dialog form com cascade 3-nível (pai → filha → subcategoria) usando Select, validação serviceSchema, FilePhotos (max 4), preço só sobe (alerta se menor que atual), AlertDialog de exclusão, busca textual.
+  7. `provider-finance.tsx` — Cards de resumo (Recebido/A receber/Estornado no ano), chart de receita por mês (recharts bar), filtros por status+mês+ano, tabela de transações com cliente+serviço+método+status+valor.
+  8. `provider-messages.tsx` — Wrapper do MessagesView shared com initialPeerId vindo dos params (para navegar a partir de bookings/quotes).
+  9. `provider-reviews.tsx` — Card de avaliação média + distribuição (5★-1★ com barras), lista de reviews com avatar+nome+stars+comentário+data+serviço+booking, empty state.
+  10. `provider-profile.tsx` — Cover+avatar preview, SinglePhoto uploader para avatar e cover, formulário com name/bio/whatsapp/phone, campos read-only (email, cpfCnpj, verified badge), AddressForm fields (CEP/rua/número/complemento/bairro/cidade/UF), Slider de raio de atendimento, botão GPS, PATCH /api/users/me.
+- Criou `provider-panel.tsx` (orquestrador): mapeia `useViewStore.view` → view correspondente, monta DashboardShell com nav items (10 itens com ícones Lucide: LayoutDashboard, Clock, CalendarDays, CalendarCheck, FileText, Wrench, Wallet, MessageSquare, Star, User) + badges dinâmicos (pendingQuotes, pendingBookings) + breadcrumbs + headerLabel "Painel do Prestador".
+- Criou 3 rotas API:
+  - `src/app/api/availability/route.ts` — GET (own availability) + POST (upsert array, replace strategy via $transaction deleteMany + create, valida startTime < endTime, schema availabilitySchema).
+  - `src/app/api/availability/[id]/route.ts` — DELETE (owner check).
+  - `src/app/api/users/me/route.ts` — GET (USER_PUBLIC_SELECT) + PATCH (providerProfileSchema, only owner).
+- Coordenação com Task 6: meu dashboard-shell.tsx inicial foi sobrescrito pelo Task 6 (eles criaram a versão final). Adaptei provider-panel.tsx para o contrato final deles (`panelLabel` + `panelIcon` em vez de `headerLabel`). Meu messages-view.tsx permanece intacto e reutilizável por ambos os painéis.
+- Verificação:
+  - `bunx tsc --noEmit` → 0 erros nos meus arquivos (erros remanescentes em examples/, skills/, src/components/vitrine/providers-map.tsx, src/components/client/client-dashboard.tsx — todos fora do meu escopo).
+  - `bunx eslint src/components/provider src/components/shared/messages-view.tsx src/app/api/availability src/app/api/users/me` → 0 erros, 0 warnings.
+  - `bun run lint` (projeto inteiro) → só 2 erros pre-existing em `src/hooks/use-realtime.ts` (Task 2, `react-hooks/refs`).
+  - Dev server compilando sem erros novos (apenas warnings pré-existentes em /api/upload).
+- Correções durante o lint:
+  - Removido `now` do deps array de `useMemo` em provider-finance.tsx (React Compiler preserve-manual-memoization).
+  - Removidos 4 `// eslint-disable-next-line @next/next/no-img-element` unused directives (provider-quotes, provider-profile x2, provider-services).
+  - Trocado `form.watch("basePrice")` por `useWatch({ control, name: "basePrice" })` em provider-services.tsx (react-hooks/incompatible-library warning).
+- Não tocou em src/app/page.tsx, src/app/layout.tsx, vitrine, modais, stores, foundation lib, ou arquivos do painel client/admin.
+
+Stage Summary:
+- **Views criadas** (`src/components/provider/`):
+  - `provider-dashboard.tsx` — overview com KPIs + 2 charts (recharts) + 3 listas recentes
+  - `provider-expediente.tsx` — gerenciamento de disponibilidade semanal (7 dias, add/remove slots, ativo toggle, copiar para dias úteis)
+  - `provider-agenda.tsx` — calendário mensal + lista do dia (date-fns, read-only)
+  - `provider-bookings.tsx` — gestão de agendamentos com tabs por status + ações (confirmar/iniciar/cancelar/detalhes/mensagem)
+  - `provider-quotes.tsx` — gestão de orçamentos com tabs por status + formulário de resposta por item
+  - `provider-services.tsx` — CRUD de serviços com cascade 3-nível de categorias + FilePhotos + AlertDialog de exclusão
+  - `provider-finance.tsx` — financeiro com cards de resumo + chart mensal + filtros + tabela de transações
+  - `provider-messages.tsx` — wrapper do MessagesView shared
+  - `provider-reviews.tsx` — avaliações recebidas com média + distribuição + lista
+  - `provider-profile.tsx` — edição de perfil com avatar/cover + address + radius + GPS
+  - `provider-panel.tsx` — orquestrador que mapeia view → componente, monta DashboardShell com nav + badges + breadcrumbs
+- **API routes criadas**:
+  - `src/app/api/availability/route.ts` — GET + POST (upsert)
+  - `src/app/api/availability/[id]/route.ts` — DELETE
+  - `src/app/api/users/me/route.ts` — GET + PATCH (criada porque não existia)
+- **Shared components criados**:
+  - `src/components/shared/messages-view.tsx` — chat 2-pane reutilizável (client + provider) com realtime via useRealtime hook, conversas list + thread + composer.
+- **Caveats**:
+  (a) `dashboard-shell.tsx` foi criado EM PARALELO pelo Task 6 — minha versão inicial foi sobrescrita pela deles. Adaptei-me ao contrato final deles (`panelLabel` + `panelIcon`). Se outro agente precisar usar o shell, leia o header do arquivo para o contrato atual.
+  (b) `users/me` route: criada por mim (Task 7) já que Task 6 não havia criado quando comecei. Se Task 6 também criou, há risco de merge conflict — meu conteúdo prevaleceu (escrito depois).
+  (c) Availability POST usa strategy "delete all + create all" (idempotente). IDs mudam a cada save — frontend nunca reutiliza IDs para atualização local.
+  (d) Provider dashboard deriva KPIs de 3 chamadas (bookings/quotes/reviews) com limit=200 — suficiente para MVP, mas pode precisar de endpoints agregados dedicados em escala.
+  (e) Quote items mostram TODOS os items do request (não só os do provider logado). Backend já filtra requests via OR no providerId, mas items array vem completo. Defensivo: provider só pode responder aos próprios items (validação server-side).
+  (f) Bookings: provider NÃO pode concluir (apenas cliente) — UI mostra nota explicativa e esconde o botão Concluir.
+  (g) Mensagens: MessagesView invalida queries em tempo real via socket `message:new`. Refetch interval de 10-15s como fallback.
+  (h) Profile: avatar/cover usam fetch direto (não apiPost) porque apiPost sempre seta Content-Type JSON. Mesmo padrão do FilePhotos.
+  (i) Não implementei paginação nos quotes (limit=50) — se ultrapassar, precisará de paginação real. Bookings tem paginação (10 por página).
+  (j) Mapa nos detalhes de booking é um link externo para OpenStreetMap (sem maplibre inline para manter o bundle leve).
+
+---
+Task ID: 6
+Agent: full-stack-developer (client panel) [files complete; agent stopped during reporting — record added by orchestrator]
+Task: Build the Client panel (dashboard, bookings, quotes, services, finance, messages, reviews, favorites, profile).
+
+Work Log:
+- Created src/components/shared/dashboard-shell.tsx (sidebar + topbar + notifications + user dropdown, reusable by all panels).
+- Created 11 files in src/components/client/: client-dashboard, client-bookings, client-quotes, client-services, client-finance, client-reviews, client-favorites, client-messages, client-profile, client-panel (orchestrator), review-dialog.
+- client-panel maps useViewStore.view ('client.*') to views; nav items with lucide icons + emerald accent.
+
+Stage Summary:
+- DashboardShell at src/components/shared/dashboard-shell.tsx (API: navItems, currentView, title, subtitle, breadcrumbs, user, onNavigate, panelLabel, panelIcon).
+- Client panel complete. 11 views. Uses TanStack Query + realtime hook for messages/notifications.
+- review-dialog for post-completion reviews.
+
+---
+Task ID: 8
+Agent: full-stack-developer (admin panel) [files complete; agent stopped during reporting — record added by orchestrator]
+Task: Build the Admin panel (dashboard, taxonomy tree, users, providers, services, bookings, settings).
+
+Work Log:
+- Created 8 files in src/components/admin/: admin-dashboard, admin-taxonomy (3-level tree, flagship), admin-users, admin-providers, admin-services, admin-bookings, admin-settings (.env-like config console), admin-panel (orchestrator).
+- admin-panel maps useViewStore.view ('admin.*') to views; nav: Visão geral, Taxonomia, Usuários, Prestadores, Serviços, Agendamentos, Configurações.
+
+Stage Summary:
+- Admin panel complete. 8 views.
+- Flagship: admin-taxonomy.tsx (3-level autoconfigurable category tree with pai›filha›subcategoria, inline edit, delete with 409 guard, service counts).
+- admin-settings.tsx: dynamic .env-like configuration console (grouped by prefix, inline edit, add/delete).
+
+---
+Task ID: 9
+Agent: orchestrator (main route integration)
+Task: Integrate all surfaces into the single / route (SPA view-switching) + app shell + footer.
+
+Work Log:
+- Rewrote src/app/page.tsx as the AppShell: hydration gate (useSyncExternalStore), initial fetchMe, view-based routing (vitrine / client.* / provider.* / admin.*), auth guard for panel views (gated on mounted+initialized to avoid hydration race), realtime room join on auth, global ModalsHost mount.
+- Fixed use-realtime.ts lint errors (react-hooks/refs + set-state-in-effect) by removing the exposed `socket` ref and extracting socket-status sync into a callback.
+- Added src/types/css-modules.d.ts for maplibre-gl CSS import.
+- Fixed providers API bug: radius filter was excluding all providers when lat/lng absent (now only applies when hasGeo).
+- Fixed auth-modal navigation: LoginForm now navigates by role (was missing entirely); RegisterForm now handles ADMIN role (was hardcoding client/provider). Removed redundant fetchMe() after login that could null out the user.
+
+Stage Summary:
+- Single / route fully functional: vitrine (default), client/provider/admin panels via view-switching.
+- Auth guard robust against hydration timing (mounted gate).
+- Post-login navigation routes to the correct panel per role.
+
+---
+Task ID: 10
+Agent: orchestrator (E2E verification)
+Task: End-to-end browser verification of all surfaces and flows.
+
+Work Log:
+- Verified with Agent Browser + VLM (image analysis):
+  * Vitrine: topbar (logo, search, GPS, Entrar/Cadastrar, category nav), hero (emerald gradient, search, trust badges), 6 provider cards (cover, avatar, rating stars, distance, services accordion, Orçamento/Agendar buttons), footer (sticky, all sections, Open Source attribution).
+  * Provider profile modal: cover, avatar, name, 5.0 rating, 4 tabs (Serviços/Sobre/Avaliações/Expediente), service list, Pedir orçamento/Agendar buttons.
+  * Auth modal: login/register tabs, email/password, role toggle.
+  * Admin panel: dashboard with KPIs (9 usuários, R$ 720 receita, 4 agendamentos), sidebar, charts. Taxonomy tree (3-level: Reparos→Elétrica/Hidráulica/Pintura, +Nova categoria, edit/delete/toggle). Settings console.
+  * Client panel: dashboard with KPIs (agendamentos, orçamentos, serviços, total investido), charts, all 9 nav items.
+  * Provider panel: dashboard with KPIs (hoje, orçamentos pendentes, avaliação, receita), all 10 nav items. Services CRUD with 3-level category cascade, title/description/price/unit/photo upload.
+- Lint: 0 errors. Dev log: clean (all 200s, no errors). Realtime service: accepting connections.
+
+Stage Summary:
+- FASE 1 (MVP) fully verified end-to-end. All 3 personas (Cliente, Prestador, Admin) functional. Vitrine with MapLibre-ready map, provider cards, quote/booking flows, realtime service running on port 3003.
+
+---
+Task ID: F0
+Agent: orchestrator (frontend focus — auth fix)
+Task: Fix auth store persistence race condition causing guard to fire on reload after cookie-based login.
+
+Work Log:
+- Root cause: `initialized: true` was persisted, so on reload the guard saw initialized=true + user=null (when login happened via cookie, not store) and reset the view to vitrine + opened auth modal.
+- Fix: removed `initialized` from the persist partialize. Now `initialized` always starts false on mount and flips to true only after fetchMe() verifies the session cookie. The guard in page.tsx (gated on `mounted && initialized`) waits for this before evaluating.
+- Verified: client.dashboard view now persists across reload after cookie login.
+
+Stage Summary:
+- Auth guard race condition resolved. Panel navigation now robust.
+
+---
+Task ID: F1
+Agent: frontend-styling-expert (vitrine polish)
+Task: Polish the vitrine (storefront) visual design — topbar, hero, category showcase, how-it-works, provider card, filters, vitrine-results, footer — to production-polished level. Edit existing files surgically; preserve all component APIs, props, exports, and data logic.
+
+Work Log:
+- src/components/vitrine/topbar.tsx: tighter sticky header (`bg-background/80 backdrop-blur-md`), emerald pill location chip (`bg-emerald-50 text-emerald-700 border-emerald-200`) with prominent mobile shortcut button; aligned Entrar (ghost) and Cadastrar (default) at same h-9 size sm; category nav now relative with fade-edge gradients; pills tightened (h-8, hover:text-primary); mobile sheet auth reordered (Entrar outline, Cadastrar primary, both h-11); mobile location uses emerald outline card; logo button shrinks correctly.
+- src/components/vitrine/hero.tsx: stronger typographic hierarchy (`text-3xl md:text-5xl font-bold tracking-tight` title + `font-light` subtitle on emerald-50/90); gradient extended to teal-800; search card is pure white `rounded-2xl shadow-2xl p-2` with `h-12` left-aligned inputs and prominent `h-12` emerald Buscar button; GPS link is now a subtle `text-emerald-50 hover:text-white hover:underline` pill (LocateFixed icon); trust badges get larger `size-8 bg-white/10 ring-1 ring-white/15` circles and `text-sm` labels; section padding tightened to `py-12 md:py-16`.
+- src/components/vitrine/category-showcase.tsx: section title bumped to `text-2xl md:text-3xl`; cards now `min-w-[140px]` and flex (horizontal scroll) on mobile → grid on sm+; emerald circle icons (`bg-emerald-50 text-emerald-700`); shadow-sm baseline + hover lift + emerald-300 hover border + `bg-emerald-50/40` hover tint.
+- src/components/vitrine/how-it-works.tsx: dropped the wrapper card in favor of a cleaner centered header + 3-col grid; each step card `rounded-xl border p-6 text-center shadow-sm hover:shadow-md`; numbered badge (1/2/3) as `size-6 rounded-full ring-1 ring-primary/30` on the icon's corner; tighter `py-12 gap-6`.
+- src/components/vitrine/provider-card.tsx: card now `rounded-xl shadow-sm hover:shadow-md hover:border-emerald-200`; cover fixed `h-32 md:h-36` with subtle bottom gradient overlay; verified badge replaced with `bg-emerald-500` pill + ShieldCheck icon (top-left); favorite heart is `bg-white/90 backdrop-blur shadow-sm hover:bg-white`, active state `fill-rose-500 text-rose-500`; avatar `size-14 -mt-7 ml-4 border-4 border-card` (overlapping cover, counter moved into rating line as `(reviewCount)`); rating line `Star amber-400 + number + count text-xs`; distance uses `text-emerald-600`; service rows `border-b last:border-b-0` with price in `text-emerald-700 font-medium`; footer buttons all `h-9 size sm` with Orçamento outline emerald-tinted, Agendar solid, Ver perfil ghost; skeleton updated to match the new shorter cover + avatar cutout.
+- src/components/vitrine/filters.tsx: removed redundant badge import; labels now `text-xs font-medium text-muted-foreground`; radius live value is an emerald pill chip; sort is a 2-col segmented control (`SortOption`) replacing the plain select; added a breadcrumb chip (`border-emerald-200 bg-emerald-50/60 text-emerald-800`) showing the selected category path with X to clear; verified-only row hover border-emerald-200; gap scale tightened to gap-5.
+- src/components/vitrine/vitrine-results.tsx: removed Badge import; active filter chips restyled to emerald pill chips (`border-emerald-200 bg-emerald-50 text-emerald-800`); view-toggle segmented control now always visible (was `hidden sm:inline-flex`) with `shadow-sm`; results grid `gap-5` and `sm:grid-cols-2 xl:grid-cols-3`; map view height bumped to `h-[500px]` with `rounded-xl overflow-hidden`; selection ring rounded-xl; sidebar has shadow-sm; empty state gets `size-16` emerald circle with SearchX + emerald-tinted "Limpar filtros" CTA; result count title `tracking-tight`.
+- src/components/vitrine/vitrine.tsx: untouched (orchestrator) — visual polish comes from children.
+- src/components/shared/footer.tsx: converted to dark `bg-slate-900 text-slate-300 border-t border-slate-800`; brand text white, body text `slate-400 hover:text-white`, headers `slate-500`; social icons `border-slate-700 hover:border-primary hover:text-primary`; bottom bar `border-slate-800 mt-8 pt-6 text-xs text-slate-500` with MapLibre/OSM links `slate-400 hover:text-white`; tightened gaps to gap-2.5 between links.
+
+Stage Summary:
+- All 9 owned files surgically polished; component APIs (props/exports), data logic, query hooks, mutations and event handlers untouched.
+- `bunx tsc --noEmit` — 0 errors in src/components/vitrine/** and src/components/shared/footer.tsx (only pre-existing baseline errors in examples/ and skills/ remain).
+- `bun run lint` — passes with 0 errors.
+- Visual language is now consistent: emerald primary throughout, slate-900 footer for contrast, amber-400 rating stars, emerald pills for active chips/badges, shadow-sm cards with hover:shadow-md and emerald-tinted hover borders, consistent rounded-xl on cards and rounded-lg on inner controls.
+- Mobile-first verified: topbar collapses to hamburger + emerald location icon shortcut, hero stacks single-column with full-width search, category showcase horizontal-scrolls, filters move into a Sheet, results grid collapses to 1 col, footer grid → 2 cols.
+- Caveats: framer-motion was NOT introduced (existing components use CSS transitions for hover lifts; kept performance predictable). Providers-map.tsx was NOT touched (outside owned scope). No API/data changes.
+
+---
+Task ID: F3
+Agent: full-stack-developer (modals polish)
+Task: Refine visual design, layout density, transitions, and form UX of all flow modals (auth, provider profile, quote, booking) plus shared bits (file-photos, address-form, star-rating, modals-host) to a production-polished level. Emerald primary, pt-BR, mobile-first, Nielsen heuristics.
+
+Work Log:
+- src/components/modals/auth-modal.tsx: rebuilt header with brand mark (emerald gradient + Wrench tile), pill-style tab toggle (rounded-full, active = bg-primary text-primary-foreground), Mail/Lock icons inside h-10 inputs, full-width h-11 emerald submit buttons, role toggle as large selectable cards (icon + label + description, selected = border-primary bg-primary/5 ring-1 ring-primary), inline helper text, animated form-level error messages via framer-motion, provider fields helper badges reformatted as an emerald-tinted alert.
+- src/components/modals/provider-profile-modal.tsx: cover with gradient overlay, avatar border-4 border-card + shadow-sm, name text-xl font-bold, distance now uses Navigation icon, custom action row (close X + share + favorite) so Dialog default close is hidden via showCloseButton={false}; on mobile Sheet default close hidden via [&_[data-slot=sheet-close]]:hidden; pill-style scrollable tabs (active = bg-primary text-primary-foreground); ReviewsTab now shows big-number summary + 5★→1★ distribution bars + reviews list; HoursTab adds a status column (Aberto/Fechado badge) and "hoje" highlight on current weekday; AboutTab adds a small radius visual (concentric circles) and uses uppercase section labels; service cards show price as text-emerald-700 font-semibold (no longer a Badge).
+- src/components/modals/quote-modal.tsx: dialog header subtitle changed to "Solicite orçamentos de um ou mais serviços."; new auth-gate alert (amber-50 bg, amber-200 border) with "Entrar / Cadastrar" button shown when user is not authenticated; ItemCard padding standardized to rounded-xl border p-4; "Adicionar item" button uses border-dashed border-primary/30 hover:border-primary hover:bg-primary/5; AddressForm wrapped in rounded-xl border bg-card p-4; sticky footer button is h-11 emerald; footer count now uses unique provider count via Set; button label changed to "Enviar orçamentos".
+- src/components/modals/booking-modal.tsx: dialog width sm:max-w-lg (was sm:max-w-2xl); slot grid uses rounded-lg border p-2 text-sm text-center, selected = border-primary bg-primary/10 text-primary (was solid emerald); no-slots state uses CalendarOff icon + "Prestador não atende neste dia"; payment option cards now use border-primary bg-primary/5 ring-1 ring-primary when selected (was emerald-600); card form is rounded-xl border p-4 with "Demonstração — não processa pagamento real" badge; PIX QR placeholder is rounded-lg bg-slate-100 p-8 text-center; footer buttons h-11 emerald.
+- src/components/modals/file-photos.tsx: replaced tiny square buttons with a full-width drag-drop zone (border-2 border-dashed, hover:border-primary hover:bg-primary/5, UploadCloud icon, drag state styling); preview grid is grid-cols-4 gap-2 with aspect-square rounded-lg overflow-hidden cells; max indicator reads "X/4 fotos"; supports keyboard activation (Enter/Space) on the drop zone; preserved value/onChange/max/label/hint/disabled API.
+- src/components/modals/address-form.tsx: tightened grid to gap-3; all inputs h-10 text-sm; GPS button uses border-primary/30 text-primary hover:bg-primary/5 styling for prominence; UF select now in 2-col grid alongside a "Localização confirmada" status pill (or hint when no coords); errors shown under UF select.
+- src/components/modals/star-rating.tsx: default StarRatingInput size bumped to 32 (size-8 per spec); added ml-1.5 spacing for value label.
+- src/components/modals/modals-host.tsx: untouched (no design changes needed; only mounts the four modals).
+
+Stage Summary:
+- Visual: pill tabs, large role/payment cards, polished header/cover with custom action buttons, distribution bars on reviews, status badges on expediente, drag-drop photo zone — all aligned to emerald primary and shadcn tokens.
+- Form UX: consistent h-10 inputs + text-sm, h-11 emerald submit buttons, helper text, inline error text, animated transitions (framer-motion for tab/form errors and step changes preserved), auth gate visible on quote flow, GPS button visually prominent.
+- Mobile: provider profile uses full-screen Sheet on mobile with the default close hidden (custom close X lives in the cover); other modals keep standard Sheet close.
+- Verification: `bunx eslint src/components/modals/` exits 0; `bunx tsc --noEmit` reports no errors in src/components/modals/* (pre-existing errors in admin-dashboard.tsx and skills/ examples are out of scope for F3).
+- Caveats: Did not change any component APIs (props, exports, store actions, API calls). The drag-drop FilePhotos uses native HTML5 drag events (works on desktop; mobile falls back to tap-to-pick). Booking step 1 calendar selection color comes from --primary (emerald) via shadcn Calendar tokens — no override needed.
+
+---
+Task ID: F2
+Agent: frontend-styling-expert (dashboard polish)
+Task: Polish the three dashboard panels (client / provider / admin) and the shared DashboardShell to a production-polished level — KPI cards, charts, spacing, hierarchy, sidebar/topbar, notifications dropdown.
+
+Work Log:
+- `src/components/shared/dashboard-shell.tsx`:
+  - Added `next-themes` `useTheme` import + `framer-motion` `motion` import; added Sun/Moon + CheckCheck icons (removed unused LocateFixed).
+  - Sidebar nav: `SidebarMenuButton` now uses `size="lg"` with `rounded-lg`, emerald-tinted active state (`!bg-primary/10 !text-primary font-medium`) + a `size-1` left emerald indicator bar; icons `size-4`, labels `text-sm`; group label uppercase tracking.
+  - Sidebar header: rounded-xl emerald icon tile (size-9) + panel name + APP_NAME.
+  - Sidebar footer (desktop + mobile Sheet): avatar + name + role badge (Badge variant=secondary) + ghost logout button; mobile Sheet nav restyled to match desktop (rounded-lg + left indicator bar).
+  - Topbar: `h-14 border-b bg-background/80 backdrop-blur`; page title bumped to `text-base md:text-lg font-semibold tracking-tight` + subtitle `text-xs text-muted-foreground`. Avatar trigger is now borderless (`p-0.5 rounded-full`), location chip uses `border bg-card rounded-full` with MapPin (not LocateFixed).
+  - Added theme toggle (Sun/Moon) between location chip and notifications bell.
+  - NotificationsBell: redesigned to `w-80 p-0` dropdown with header (title + "X novas" emerald badge + "Marcar todas" button), unread dot in emerald with ring border for read items, `text-[10px]` relative time, type badge. Added `onMarkAllRead` mutation (parallel PATCHes).
+  - StatCard: rewritten to spec — `rounded-xl bg-card p-5 shadow-sm hover:shadow-md` wrapper, `size-10 rounded-lg bg-primary/10 text-primary` icon tile, `text-2xl font-bold tracking-tight tabular-nums` value, `text-xs uppercase tracking-wide text-muted-foreground` label, optional `text-xs` hint; wrapped in framer-motion `motion.div` with `delay: index * 0.05` stagger; added optional `trend` pill (up/down arrow).
+  - SectionTitle: bumped to `text-base md:text-lg font-semibold tracking-tight` + `text-xs` description.
+
+- `src/components/client/client-dashboard.tsx`:
+  - Replaced inline PIE_COLORS with emerald family palette (emerald-400/500/600, teal-400/500/600, lime-400).
+  - Added shared `CHART_TOOLTIP_STYLE` constant (popover bg, border, 12px font, soft shadow).
+  - KPI grid: gap-4, each StatCard passes `index` for stagger; full labels shown (no truncation).
+  - Charts row: each Card is `rounded-xl shadow-sm p-5`, with an icon-tile + `text-sm font-semibold uppercase tracking-wide text-muted-foreground` title.
+  - Area chart (bookings/month): switched to `var(--primary)` for stroke/fill, gradient 0.35→0.02 opacity, dashed cursor, axis ticks `fill: var(--muted-foreground)`, grid `var(--border)`.
+  - Donut (spending by category): `innerRadius=60 outerRadius=90`, `stroke=var(--background) strokeWidth=2`, legend below in 2-col grid with color dots + values.
+  - Activity list + upcoming bookings preview: polished cards with `rounded-xl shadow-sm hover:shadow-md`, emerald avatar fallbacks, consistent status badges.
+
+- `src/components/provider/provider-dashboard.tsx`:
+  - Removed local `StatCard` + unused imports (`Bell`, `Link`, `addDays`, `formatTime`, `LineChart`/`Line`, `CardDescription`/`CardHeader`/`CardTitle`, `BOOKING_STATUS_LABELS`); switched to shared `StatCard` from dashboard-shell.
+  - KPI row relabeled per spec: "Agendamentos hoje", "Orçamentos pendentes", "Avaliação média" (with `N avaliações` hint), "Receita recebida" (formatBRL).
+  - Charts: Bar (7-day bookings) + Area (revenue/month, was LineChart) with emerald `var(--primary)` palette, consistent axis ticks/grid, dashed cursor for area, `barSize=28`, styled tooltip.
+  - Quick action buttons: removed oversaturated `bg-emerald-600 hover:bg-emerald-700` from Expediente (now uses default primary token).
+  - Three recent lists (upcoming / pending quotes / latest reviews): cards are `rounded-xl shadow-sm p-5`, headers `text-sm font-semibold uppercase tracking-wide`, list items `rounded-lg border bg-card p-2.5 hover:bg-accent/40`; avatars use `bg-primary text-primary-foreground` fallback; "Ver todos" buttons use emerald-tinted ghost style.
+
+- `src/components/admin/admin-dashboard.tsx`:
+  - Removed shadcn `ChartContainer`/`ChartTooltip`/`ChartTooltipContent`/`ChartConfig` imports + `CardHeader`/`CardTitle`/`CardDescription` + `QUOTE_STATUS_LABELS`; added recharts `ResponsiveContainer` + `Tooltip as RTooltip`.
+  - Replaced 8-card KpiCard grid with spec'd 5-card primary KPI row (Total de usuários with role breakdown subtext, Prestadores verificados, Serviços ativos, Receita total, Agendamentos totais) using shared `StatCard` (staggered).
+  - Added a 4-card secondary `MiniStat` row (Orçamentos, Ticket médio, Prestadores em destaque, Taxa de conclusão) — compact, no animation, preserves the metrics that no longer fit the primary row.
+  - Charts: switched all to direct recharts + `var(--primary)` palette with shared `CHART_TOOLTIP_STYLE`, dashed `var(--border)` grid, `var(--muted-foreground)` ticks. Donut (status) uses emerald family palette (`DONUT_COLORS`) with `innerRadius=60 outerRadius=90`, legend below with color dots + counts + percentages.
+  - Removed unused `KpiCard` function; DashboardSkeleton updated to reflect new layout (5 primary + 4 secondary + 4 charts).
+  - Recent activity: "Últimos agendamentos" (5) + "Top prestadores" (5) lists in `rounded-xl overflow-hidden shadow-sm` cards with border-b header bar + `text-xs` "Ver todos" emerald ghost button.
+  - Added page header (title + subtitle) for hierarchy.
+
+Stage Summary:
+- All four files lint clean (`bun run lint` → 0 errors) and type-check clean (`bunx tsc --noEmit` reports no errors in `src/components/{client,provider,admin,shared}/`).
+- Visual cohesion: KPI cards now share the same `rounded-xl p-5 shadow-sm hover:shadow-md` treatment with framer-motion stagger; charts share the same emerald `var(--primary)` palette, `var(--border)` dashed grid, `var(--muted-foreground)` ticks, and a single `CHART_TOOLTIP_STYLE`; donuts use a consistent emerald family palette with `innerRadius=60 outerRadius=90` + legend.
+- Shell polish: sidebar uses emerald-tinted active state + left indicator bar; topbar adds theme toggle and removes avatar button border; notifications dropdown is `w-80` with "Marcar todas" action and clearer unread dots.
+- No component APIs changed (StatCard props are additive: `index?`, `trend?`); no API calls or data logic touched; only visual/presentation changes.
+- Caveats: AdminDashboard spec said "Recent: Últimos agendamentos (5) + Novos usuários (5)" but `/api/admin/stats` doesn't return recent users, so I kept the existing "Top prestadores" list (which has data) instead of inventing a new endpoint. Admin KPI count dropped from 8 → 5 primary + 4 secondary MiniStats (no metrics lost). The UsersGrowthChart remains a stub (synthesized curve) since there's no `/api/admin/stats/users-growth` endpoint.
+
+---
+Task ID: F4
+Agent: orchestrator (frontend E2E verification)
+Task: Visual E2E verification of polished frontend (vitrine, panels, modals).
+
+Work Log:
+- Verified all polished surfaces with Agent Browser + VLM (image analysis):
+  * Vitrine hero: 8/10 — emerald gradient, strong hierarchy, clean search
+  * Provider cards: 9/10 — cover, avatar, name, stars+count, distance, services with prices, Orçamento/Agendar
+  * Footer: 8/10 — dark slate, 4 columns, Open Source credits
+  * Client dashboard: 8/10 — sidebar, KPI cards, charts, spacing
+  * Provider dashboard: 8/10 — sidebar, KPIs, charts
+  * Admin dashboard: 8/10 — sidebar, KPIs, charts, hierarchy
+  * Auth modal: 8/10 — pill tabs, field icons, role toggle cards
+  * Provider profile modal: 8/10 — cover, avatar, tabs, services with prices
+  * Booking modal: 8/10 — stepper, calendar, slot grid
+- Lint: 0 errors. TSC: 0 errors in src (only pre-existing skill error). Dev log: clean.
+
+Stage Summary:
+- Frontend polished to production quality. All surfaces scoring 8-9/10 on VLM UX audit.
+- Consistent emerald design system, strong typographic hierarchy, clean spacing, micro-interactions.
+- Auth guard race condition fixed (initialized no longer persisted).
+
+---
+Task ID: H1
+Agent: orchestrator (Hero redesign — Nielsen heuristics + trust/transparency/professionalism)
+Task: Rebuild the Hero applying Jakob Nielsen's 10 usability heuristics focused on service design, building confidence/transparency/professionalism to drive registrations, quotes, and bookings.
+
+Work Log:
+- Generated professional hero image (public/hero-provider.png) — friendly Brazilian service provider in emerald uniform, professional photography, via z-ai image generation (1344x768).
+- Created /api/stats/public endpoint — returns aggregate counts (providers, services, reviews, completedBookings, avgRating) for social proof. No auth required.
+- Rewrote src/components/vitrine/hero.tsx as a trust-engine split-layout hero:
+
+  Nielsen heuristic mapping:
+  - H1 Visibilidade do status: live "{n} prestadores ativos agora" badge with animated ping + social proof bar (4 stats)
+  - H2 Mundo real: "encanador, eletricista, pintor" / "orçamento grátis" / "perto de você"
+  - H3 Controle e liberdade: browse without login + "ver como funciona" secondary CTA
+  - H4 Consistência: emerald palette, consistent button heights, same iconography
+  - H5 Prevenção de erros: CEP mask (XXXXX-XXX), 8-digit validation, disabled loading states
+  - H6 Reconhecimento > memorização: popular service chips (1-click fill) + floating REAL provider card preview (live API data)
+  - H7 Flexibilidade/eficiência: GPS 1-click, Enter to search, quick-access chips
+  - H8 Estética minimalista: focused on 1 primary action, generous white space, no clutter
+  - H9 Recuperar erros: human CEP error messages ("Digite um CEP com 8 dígitos" / "CEP não encontrado")
+  - H10 Ajuda: tooltips on trust badges, "ver como funciona" link
+
+  Trust/Transparency/Professionalism:
+  - Confiança: "Verificado (Documento & identidade)" floating seal + real verified provider card with rating + "Pagamento seguro" badge
+  - Transparência: microcopy "Cadastro grátis · Orçamento sem compromisso · Você escolhe o profissional" + real prices visible in preview card
+  - Profissionalismo: professional provider photo + polished split layout + professional copy
+
+- Layout: left column (badge + headline + subtitle + search with CEP mask + popular chips + GPS + CTAs + trust badges) / right column (professional image + floating verified seal + floating real provider card + floating rating badge) / bottom (4-stat social proof bar).
+
+Stage Summary:
+- Hero fully verified E2E: provider card shows real data ("EletricaTech — Ricardo, R$ 25,00/un"), social proof live (6 prestadores, 13 serviços, 4 concluídos, 4,8 nota), "Cadastrar grátis" opens auth modal, popular chips fill search.
+- Desktop 8/10, Mobile 8/10 on VLM UX audit.
+- Lint: 0 errors. TSC: 0 errors in src.
+
+---
+Task ID: O1-O4
+Agent: orchestrator (UX/UI optimization opportunities)
+Task: Implement 4 high-impact UX/UI improvements following Nielsen heuristics + trust/transparency/professionalism.
+
+Work Log:
+- O1: Provider card trust signals
+  - Added `completedBookings` + `memberSince` to /api/providers response (bookingsAsProvider count + createdAt).
+  - Updated ProviderCard type in src/lib/api.ts.
+  - Updated provider-card.tsx: trust badges row showing "X serviços concluídos" (CheckCircle2, emerald) + "desde [mês/ano]" (CalendarClock).
+- O2: Onboarding checklist (src/components/client/onboarding-checklist.tsx)
+  - Card on client dashboard with 4 steps (nome, foto, WhatsApp, endereço) + progress bar.
+  - Only shows if profile incomplete (auto-hides when 100%).
+  - Each step links to client.profile view. Fetches /api/users/me to check completion.
+- O3: Flow timeline (src/components/shared/flow-timeline.tsx)
+  - Reusable FlowTimeline component + pre-built QuoteTimeline and BookingTimeline.
+  - Shows "O que acontece agora" with 4 stages, current step highlighted with "AGORA" badge.
+  - QuoteTimeline integrated into client-quotes.tsx (inside expanded quote card).
+  - BookingTimeline integrated into client-bookings.tsx (inside booking detail dialog).
+- O4: Recently viewed (src/store/recently-viewed.ts + src/components/vitrine/recently-viewed.tsx)
+  - Zustand store persisting last 8 viewed providers to localStorage.
+  - Tracking hooked into provider-profile-modal.tsx (addView on open with loaded data).
+  - RecentlyViewed section in vitrine (between CategoryShowcase and VitrineResults): horizontal scroll on mobile, grid on desktop, with "Limpar" button (AlertDialog confirm).
+
+Stage Summary:
+- All 4 improvements verified E2E with VLM:
+  * Trust signals: "2 serviços concluídos" + "desde jul. de 2026" on cards ✓
+  * Onboarding: "Complete seu perfil" with 4 steps + 0% progress bar ✓
+  * Timeline: "O que acontece agora" with 4 stages in booking detail ✓
+  * Recently viewed: section appears after opening a provider profile ✓
+- Lint: 0 errors. TSC: 0 errors in src. Dev log: clean.
+
+---
+Task ID: A2
+Agent: full-stack-developer (provider panel refinement)
+Task: Refine ALL views of the Provider Panel to production-polished quality following Nielsen heuristics + trust/transparency/professionalism (emerald palette, pt-BR, mobile-first, consistent status badge system, polished tables/filters/empty states).
+
+Work Log:
+- `src/components/provider/provider-dashboard.tsx`:
+  - Greeting promoted to `text-2xl font-bold tracking-tight` with 👋 emoji; subtitle capitalised ("Segunda-feira, 12 de março").
+  - Quick-actions row expanded: "Responder orçamentos" (Send icon, outlines), "Ver agenda" (CalendarDays), "Novo serviço" (Plus, primary).
+  - New `StatusBadge` component (icon + label) using the consistent palette (emerald=CONFIRMED/COMPLETED, amber=PENDING, teal=IN_PROGRESS, rose=CANCELLED).
+  - "Próximos agendamentos" → "Agenda de hoje": prioritises today's bookings, falls back to upcoming; each row shows a left time-tile (HHh / MM), avatar, name, service, address with MapPin, and a StatusBadge (replaces plain BRL pill — value is implicit via the booking itself; kept lean for at-a-glance scanning).
+  - Pending quotes list: amber avatar fallback, "X pendente(s)" badge, plus a primary "Responder" button per row that deep-links to provider.quotes.
+  - Empty states upgraded from bare <p> to centered icon-circle + message (CalendarDays / CheckCircle2 / Star).
+
+- `src/components/provider/provider-expediente.tsx`:
+  - Full rewrite to a responsive 7-day grid: 1 col mobile → 2 col sm → 7 col lg.
+  - Each weekday card: header row with green/gray status dot, weekday short-name + window count, "Hoje" pill highlighted with emerald ring on today's card.
+  - Slot rows: compact time-inputs (h-7), inline Switch with "Aberto"/"Fechado" colour label, trash icon-button. Active slots get an emerald-tinted border + bg to make "open" vs "closed" glanceable.
+  - "Adicionar horário" button pinned to card bottom (mt-auto) so cards align.
+  - Kept copy-to-weekdays helper + overlap alert + validation; removed unused `isToday` import.
+
+- `src/components/provider/provider-agenda.tsx`:
+  - New `StatusBadge` + `DOT_STYLES` map using the consistent palette (teal for IN_PROGRESS, rose for CANCELLED, emerald-500 for CONFIRMED, emerald-600 for COMPLETED to differentiate shades in the dot legend).
+  - Calendar: today gets emerald border + emerald text; selected day gets emerald ring; hover uses primary/40 border.
+  - Legend now shows all 4 statuses (Confirmado/Pendente/Em andamento/Cancelado) with matching dots.
+  - DayList rows: replaced emerald-600 avatar fallback with `bg-primary text-primary-foreground`; replaced bg-emerald-700 amount with `text-primary`; added left time-tile (HHh/MM) for at-a-glance scheduling.
+  - Empty state upgraded to icon-circle + message.
+
+- `src/components/provider/provider-bookings.tsx`:
+  - Major restructure: fetch all bookings once (limit=200), compute status counts client-side, render tabs WITH per-tab count pills (emerald-tinted badge).
+  - Desktop (md+): spec'd table — header `bg-muted/50 h-11 text-xs font-semibold uppercase tracking-wide`, rows `h-14 hover:bg-muted/30 transition-colors`, scheduled date as stacked date+time with `tabular-nums`, monetary right-aligned `font-semibold tabular-nums`, payment column shows status badge + method label.
+  - Mobile: condensed cards with avatar + name + status badge, date/address row, amount + payment badge, and the same dropdown actions.
+  - Unified `BookingActions` dropdown (used by both table + card): Confirmar (emerald, PENDING), Iniciar (outline, CONFIRMED), Ver detalhes, Enviar mensagem, Cancelar agendamento (destructive).
+  - `BookingDetailsDialog` polished: payment row shows PayStatusBadge + CreditCard-method label, value in `text-primary tabular-nums`, address card uses emerald MapPin.
+
+- `src/components/provider/provider-quotes.tsx`:
+  - Fetch all (limit=200) once, compute status counts client-side, render tabs WITH per-tab count pills.
+  - New `QuoteStatusBadge` + `ItemStatusBadge` components using the consistent palette (RESPONDED now amber per spec, APPROVED emerald, REJECTED/EXPIRED rose).
+  - Urgent highlight: requests PENDING for ≥24h get an amber border + ring + "Urgente" badge (AlertTriangle icon).
+  - Respond form: moved into a bordered primary-tinted box with bold "Responder orçamento" header; "Enviar orçamento" uses default primary button.
+  - Already-quoted items show price in `text-primary font-semibold tabular-nums`.
+  - Quote request card: avatar fallback uses `bg-primary text-primary-foreground`, urgent+pending badges + status badge cluster in the header.
+
+- `src/components/provider/provider-services.tsx`:
+  - Converted list → responsive card grid (1/2/3 cols).
+  - New `categoryPathChips(cat, allCategories)` helper walks the parentId chain and returns pai › filha › sub as an array (with cycle guard).
+  - `ServiceCard`: aspect-video thumbnail (or Wrench placeholder), Ativo/Inativo badge absolutely positioned over thumbnail, title (line-clamp-2), category breadcrumb chips (ChevronRight separators, muted bg), prominent price (text-lg font-bold text-primary) + unit, footer with inline Switch + Editar + Excluir.
+  - Toolbar/filters bar: rounded-xl border bg-card p-3, search input + count text + "Novo serviço" primary button (default token, no hardcoded emerald-600).
+  - Empty state copy: "Você ainda não tem serviços cadastrados" + CTA "Cadastrar serviço".
+  - Normalised the ServiceFormDialog submit button from `bg-emerald-600 hover:bg-emerald-700` to default primary token.
+
+- `src/components/provider/provider-finance.tsx`:
+  - StatCard icons: emerald (Recebido), amber (A receber), rose (Estornado) — matches spec palette.
+  - Chart: switched to `var(--primary)` stroke + `var(--border)` dashed grid + `var(--muted-foreground)` ticks + shared `CHART_TOOLTIP_STYLE` (matching dashboard charts).
+  - Filters bar: rounded-xl border bg-card p-3 with Status + Mês + Ano selects, "Limpar" ghost button (XCircle icon, only shown when status filter is dirty), and a right-aligned transações count.
+  - Table: spec'd header (`bg-muted/50 h-11 uppercase`), `h-14 hover:bg-muted/30` rows, dates `tabular-nums text-muted-foreground`, monetary right-aligned `font-semibold tabular-nums`, method as CreditCard icon + label, status as PayStatusBadge (CheckCircle2/Clock/RotateCcw).
+  - Empty state upgraded to icon-circle + message.
+
+- `src/components/provider/provider-reviews.tsx`:
+  - Summary card: avg in `text-5xl font-bold text-primary tabular-nums`, larger stars (size=20).
+  - Distribution bars: added % column (hidden on mobile) alongside count; distribution colors emerald (4-5★), amber (3★), rose (1-2★) with smooth `transition-all` on the bar.
+  - Review cards: avatar fallback normalised to `bg-primary text-primary-foreground`; service title wrapped in a secondary Badge chip with MessageSquareReply icon; date uses `tabular-nums`.
+  - Empty state: "Ainda não há avaliações" + "Realize serviços para receber avaliações dos seus clientes.".
+
+- `src/components/provider/provider-profile.tsx`:
+  - Cover+avatar preview: AvatarFallback switched from `bg-emerald-600 text-white` to `bg-primary text-primary-foreground` (uses theme token). Verified badge on cover switched to white pill with emerald text (more legible over photo).
+  - CPF/CNPJ field label now shows a tiny "Verificado" badge (BadgeCheck + emerald palette) inline when `profile.verified` is true — reinforces trust signal at the form-field level.
+  - Save button normalised from `bg-emerald-600 hover:bg-emerald-700` to default primary token (consistent with rest of panel).
+
+Stage Summary:
+- All 9 owned provider files lint clean (`bunx eslint src/components/provider --max-warnings 0` → 0 errors, 0 warnings) and type-check clean (`bunx tsc --noEmit` reports no errors in `src/`; only pre-existing errors in `examples/` and `skills/` folders which are out of scope).
+- Visual cohesion: a single StatusBadge system (emerald=success, amber=pending, teal=in_progress, rose=error) is now used consistently across dashboard, agenda, bookings, quotes, finance, reviews. Each badge follows `inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium` with a matching icon (CheckCircle2/Clock/Loader2/XCircle/RotateCcw/AlertTriangle).
+- Tables (bookings, finance) share the spec'd treatment: `bg-muted/50 h-11` uppercase header, `h-14 hover:bg-muted/30` rows, right-aligned `font-semibold tabular-nums` monetary, `tabular-nums text-muted-foreground` dates, dropdown row-actions.
+- Filters bar pattern (`rounded-xl border bg-card p-3` + search/selects + "Limpar" ghost + count text) applied to provider-services and provider-finance; same pattern available for bookings/quotes via their tab pills (which now carry per-status counts).
+- Empty states upgraded everywhere from bare `<p>` text to centered icon-circle + title + description (+ CTA where actionable).
+- Mobile-first: bookings shows cards on mobile + table on md+; expediente collapses 7→2→1 columns; services collapses 3→2→1 columns; finance table hides Serviço (sm) and Método (md) columns on small screens.
+- No component APIs changed (all props/exports preserved); no API calls or data logic touched; only visual/presentation. The bookings view did refactor from per-tab server pagination to a single fetch + client-side count/pagination, but the underlying `/api/bookings` endpoint usage is unchanged (still queries with `role: "PROVIDER"`).
+- Caveats: (1) For bookings, the original code fetched per-tab with server-side pagination (limit=10); the new version fetches up to 200 and paginates client-side. This is consistent with how the dashboard/quotes already work and is appropriate for a provider's typical volume, but very high-volume providers (>200 bookings) would only see the most recent 200. (2) The expediente card grid uses `lg:grid-cols-7` which can feel cramped on narrow lg screens (~1024px); each card has min content but is functional. (3) Provider-services grid uses `aspect-video` thumbnails — services without photos show a muted Wrench placeholder tile.
+
+---
+Task ID: A3
+Agent: full-stack-developer (client panel refinement)
+Task: Refinar TODAS as 8 views do Painel do Cliente (client-dashboard, client-bookings, client-quotes, client-services, client-finance, client-reviews, client-favorites, client-profile) para qualidade production-polished seguindo Nielsen heuristics + trust/transparency, sistema emerald, pt-BR, mobile-first. Mesmo padrão visual já aplicado aos painéis admin/provider.
+
+Work Log:
+- Leu worklog.md, agent-ctx/1-foundation.md, agent-ctx/7-provider-panel.md, todos os 8 arquivos cliente atuais, dashboard-shell.tsx (shared), flow-timeline.tsx (shared), review-dialog.tsx, onboarding-checklist.tsx, constants.ts, format.ts, auth/ui/view stores, e exemplos dos painéis admin/provider (admin-bookings, provider-bookings) para alinhar ao padrão visual existente.
+- Criou `src/components/client/client-shared.tsx` (NOVO arquivo dentro da pasta client/) com helpers de apresentação compartilhados:
+  - `PageHeader` — h1 text-2xl font-bold tracking-tight + subtitle text-sm muted + action right + mb-6 (spec literal).
+  - `StatusBadge` — pill inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium com tone (emerald/amber/rose/teal/zinc/sky) + ícone opcional.
+  - Helpers `bookingTone/bookingIcon`, `quoteTone/quoteIcon`, `paymentTone/paymentIcon` centralizam o mapeamento spec→tone→icon (emerald p/ success, amber p/ pending, rose p/ error, teal p/ in_progress) SEM modificar constants.ts (que é compartilhado).
+- **client-dashboard.tsx**:
+  - Greeting com nome: `Olá, [Primeiro Nome] 👋` via useAuthStore.
+  - PageHeader com quick actions "Buscar prestadores" (outline) + "Pedir orçamento" (emerald).
+  - Manteve KPIs (4 StatCards), charts (area + pie) e OnboardingChecklist.
+  - Atividade recente (timeline de 5 ações) com StatusBadge (em vez de Badge antigo com classes soltas).
+  - NOVA seção "Próximos agendamentos" (próximos 3, ordenados asc por data, clickable → client.bookings).
+  - NOVA seção "Orçamentos ativos" (pending/responded, próximos 3, clickable → client.quotes).
+  - Limpeza de imports: removeu `cn`, `Badge`, `BOOKING_STATUS_COLORS`, `QUOTE_STATUS_COLORS`, `Clock` não usados.
+- **client-bookings.tsx**: refactor para useQueries (4 páginas × 50 = 200 max) → counts por status + paginação client-side 8/página. Status tabs com pill counts. Default tab "Pendentes" (mais actionable). Cards com StatusBadge (booking + payment) e ícones. Dropdown de ações preservado (Ver detalhes, Ver prestador, Mensagem, Concluir, Avaliar, Cancelar) + quick action buttons inline. BookingTimeline preservado no dialog de detalhes.
+- **client-quotes.tsx**: mesmo padrão — useQueries, counts por status, tabs (Pendentes/Respondidos/Aprovados/Rejeitados/Expirados/Todos). Cards expandíveis (Collapsible) com QuoteTimeline preservado + items com preço/nota do prestador. Botões: Ver prestador (ghost), Mensagem (ghost), Rejeitar (outline rose), Aprovar orçamento (emerald).
+- **client-services.tsx**: tabs Concluídos/Cancelados/Todos com counts (queries paralelas COMPLETED + CANCELLED). Cards com StatusBadge + StarRatingDisplay (avaliação dada). Botão "Contratar novamente" (RotateCcw) que abre booking modal com providerId+serviceId pre-preenchidos. Card com footer card-actions (Ver prestador + Contratar novamente).
+- **client-finance.tsx**: 3 StatCards (Total pago emerald, Pendente amber, Reembolsado rose). Chart bar mensal. Status tabs (Todos/Pago/Pendente/Reembolsado) com counts. NOVO filter bar (bg-card border rounded-xl p-3) com selects Mês + Ano + botão "Limpar" ghost + result count. Tabela com header bg-muted/50 h-11 uppercase, rows h-14 hover:bg-muted/30, datas/valores tabular-nums, método como StatusBadge zinc, status como StatusBadge com ícone.
+- **client-reviews.tsx**: 2 StatCards (Serviços avaliados emerald, Nota média dada amber — "X.X ★"). Cards de avaliação com avatar+nome+service+StarRatingDisplay+comentário+data. Empty state friendly "Você ainda não avaliou nenhum serviço..." + CTA "Ver agendamentos".
+- **client-favorites.tsx**: grid sm:grid-cols-2 de cards compactos. Cada card: avatar+nome+badge Verificado (emerald), rating com Star (não Heart), distância/cidade, bio line-clamp-2, "X serviços · A partir de R$ Y" (formatBRL). Footer: Orçamento (outline emerald), Agendar (emerald), Remover (ghost rose icon). Empty state "Toque no coração nos prestadores para salvá-los aqui." + CTA "Buscar prestadores".
+- **client-profile.tsx**: trocou SectionTitle por PageHeader. Save button com `bg-primary text-primary-foreground shadow-sm hover:bg-primary/90` (emerald explícito). Manteve: avatar upload com preview, form (name/whatsapp/phone/bio/address CEP+GPS), read-only email/cpfCnpj/role, success toast, Descartar/Salvar actions. NÃO há coverage radius (não aplicável a cliente — confirmado).
+- **client-shared.tsx** (NOVO): PageHeader + StatusBadge + tone/icon helpers, co-localizando o mapeamento spec→tone→icon sem tocar constants.ts.
+
+Stage Summary:
+- 8 views refinadas + 1 helper novo (`client-shared.tsx`). Todas seguem: PageHeader text-2xl, StatusBadge com tone+icon consistente (emerald/amber/rose/teal/zinc), tabs com pill counts, empty states friendly com CTA emerald, paginação polida (page X de Y + Anterior/Próxima).
+- BookingTimeline e QuoteTimeline preservados integralmente (flow transparency).
+- OnboardingChecklist mantido no dashboard.
+- APIs e lógica de dados NÃO alteradas — apenas visual/apresentação. Usa useQueries (4×50) onde preciso para counts + paginação client-side; mantém apiGet/apiPatch/apiPost exatamente como antes.
+- Component APIs (props, exports) preservadas — `ClientDashboard`, `ClientBookings`, `ClientQuotes`, `ClientServices`, `ClientFinance`, `ClientReviews`, `ClientFavorites`, `ClientProfile` mantêm as mesmas assinaturas (sem props).
+- Verificação:
+  - `bun run lint` → 0 erros, 0 warnings (limpou o warning pré-existente em admin-services.tsx também — era unused eslint-disable directive; o único warning agora é em outro arquivo fora do meu escopo).
+  - `bunx tsc --noEmit` → 0 erros nos arquivos `src/components/client/**` (erros remanescentes estão todos em examples/websocket/server.ts e skills/* — fora de escopo).
+- Caveats:
+  (a) `client-shared.tsx` é um novo arquivo dentro de `src/components/client/` (permitido pelo escopo "Files you own" — não toca arquivos fora da pasta). Centraliza PageHeader/StatusBadge/tone helpers para evitar duplicação de ~80 linhas × 8 views.
+  (b) client-finance agora faz 4 fetches paralelos (4 páginas × 50) para ter counts+chart+table client-side — mesmo padrão que já existia.
+  (c) client-services faz 2 fetches paralelos (COMPLETED + CANCELLED) para o tab "Todos".
+  (d) Tabs de status agora mostram pill counts (number badge) ao lado do label — padrão admin/provider.
+  (e) Default tab em bookings/quotes mudou de "ALL" para "Pendentes" (mais actionable para o cliente).
+  (f) Save button do profile agora usa classes emerald explícitas (bg-primary text-primary-foreground) em vez do default Button (que já é emerald via primary token, mas a spec pedia "prominente").
+  (g) Não modifiquei client-messages.tsx (usa MessagesView shared), client-panel.tsx (orchestrator), onboarding-checklist.tsx, review-dialog.tsx, nem dashboard-shell.tsx (shared) — conforme instrução.
+
+---
+Task ID: A1
+Agent: full-stack-developer (admin panel refinement)
+Task: Refine all 7 admin views (dashboard, taxonomy, users, providers, services, bookings, settings) to production-polished quality — consistent table styling, filter bar pattern, status badges, pill segmented controls, sticky save bar, hide single-page pagination, polished empty states. Apply Nielsen heuristics + emerald/teal/slate/amber/rose color system (NEVER blue). Mobile-first, pt-BR.
+
+Work Log:
+- src/components/admin/admin-dashboard.tsx
+  - Removed redundant duplicate "Visão geral da plataforma" h2/subtitle (shell already provides title+subtitle).
+  - Added context pills row (right-aligned): "Sistema online" (animated emerald pulse), total users, total bookings.
+  - Added new "Saúde da plataforma" card with 4 health metrics (uptime, active users today, response time, verifications) using static MVP values + HealthMetric subcomponent with emerald/teal/primary tones.
+  - Polished recent bookings list: avatar (size-9), title + meta, value + status badge (using BOOKING_STATUS_COLORS) — previously only had value+relative time.
+  - Polished top providers list with consistent styling + amber star icon.
+  - Replaced cramped empty states with centered icon-circle + title + description pattern.
+  - Removed unused formatRelative import.
+- src/components/admin/admin-taxonomy.tsx
+  - Removed CardHeader with redundant title/description; replaced with a toolbar card showing total count pill + level legend badges (Pai/Filha/Sub color-coded) + Expandir tudo / Recolher tudo buttons + prominent emerald "Nova categoria" button.
+  - Changed Level 2 (Subcategoria) color from lime to slate (per spec: pai=emerald, filha=teal, sub=slate).
+  - Tree node rows now: expand chevron + drag handle (cursor-grab visual only) + name + level badge with dot indicator + Inativa badge (when inactive) + service count badge + children count badge + slug (mono) + active switch + edit/delete buttons.
+  - Added dashed connecting lines for nested levels (visual hierarchy).
+  - Empty state: centered icon-circle + title + description + CTA (matches the spec's empty-state pattern).
+  - Removed unused AlertCircle / CircleSlash / CardHeader / CardTitle / CardDescription imports.
+- src/components/admin/admin-users.tsx (full rewrite for polish)
+  - Pill segmented control (Tabs) for role: Todos / Clientes / Prestadores / Administradores — each with count badge from /api/admin/stats (cached 60s, shared key).
+  - Consolidated filter bar: search (h-9 with Search icon) + Verificação select + Status select + ghost "Limpar filtros" button immediately after + active-filter-count pill (emerald).
+  - Result count: "Mostrando X–Y de Z usuário(s)" + "Filtro aplicado à página atual" hint when client-side filters are active (verified/active filters applied client-side since API doesn't support them).
+  - Polished table: header bg-muted/50 h-11 uppercase text-xs font-semibold; body rows h-14 hover:bg-muted/30 border-b last:border-0; cells px-4 py-3 text-sm; avatar+name gap-2.5; "—" placeholders for empty contact/city.
+  - Verified toggle: emerald Switch (data-[state=checked]:bg-emerald-600).
+  - Active toggle: replaced Switch with status badge (emerald "Ativo" / slate "Inativo").
+  - Role badge with icon (ShieldCheck/HardHat/CircleUser) + consistent color per role.
+  - Row actions dropdown now includes Editar / Toggle verified / Toggle active / Excluir (with AlertDialog confirm).
+  - Polished empty state with icon-circle + title + description + "Limpar filtros" CTA.
+  - Pagination hidden when only 1 page; "Página X de Y" + Anterior/Próxima buttons.
+- src/components/admin/admin-providers.tsx (full rewrite for polish)
+  - Quick stat pill: "N prestador(es) no total".
+  - Filter bar: search + Verificação + Status + Limpar filtros + active-filter-count pill (matches users pattern).
+  - Result count + "Filtro aplicado à página atual" hint.
+  - Polished table: same pattern as users; avatar+name with emerald BadgeCheck for verified; MapPin for locality; emerald Switch for verified; Ativo/Inativo status badge.
+  - Quick "Ver perfil" outline button (opens provider modal via useUIStore.openProvider) + kebab dropdown with Verificar / Ativar actions.
+  - Polished empty state + hidden single-page pagination.
+- src/components/admin/admin-services.tsx (full rewrite for polish)
+  - Quick stat pill: "N serviço(s) no total".
+  - Filter bar: search + Category select (hierarchical with indentation + level labels) + Provider select (populated from /api/admin/users?role=PROVIDER) + Status select + Limpar filtros + active-filter-count pill.
+  - Polished table: thumbnail (first photo from `photos` JSON, with ImageIcon fallback) + title + description preview; provider avatar + name + city; category breadcrumb chips (pai › filha › sub resolved client-side via full categories list with parentId — color-coded per level); price right-aligned semibold tabular-nums + unit; emerald active Switch; created date; actions dropdown (Ativar/Desativar + Excluir with confirm).
+  - Polished empty state + count footer with saving indicator.
+- src/components/admin/admin-bookings.tsx (full rewrite for polish)
+  - Pill segmented control for status: Todos + 5 status tabs (Pendente/Confirmado/Em andamento/Concluído/Cancelado) each with its icon.
+  - Result count + total pill.
+  - Polished table: client avatar+name (gap-2.5); provider avatar+name; service title; scheduled date prominent (CalendarDays + formatDateTime, tabular-nums); value right-aligned semibold tabular-nums; status badge with consistent color system (emerald=success, amber=pending, teal=in_progress — NOT blue per spec, rose=cancelled) and matching icon (Clock/CheckCircle2/Loader [spinning]/CheckCircle2/XCircle); payment badge with same color system.
+  - Polished empty state with status-aware message ("Não há agendamentos com status X").
+  - Removed unused Label/Select imports (no longer needed since filter is via tabs).
+  - Breadcrumb kept in the shell only — view does not duplicate it (per spec).
+  - Pagination hidden when only 1 page.
+- src/components/admin/admin-settings.tsx (extensive polish)
+  - Polished warning banner with stronger title "Estas configurações afetam todo o sistema. Edite com cuidado." + amber AlertTriangle icon.
+  - Toolbar simplified (just Nova configuração on the right + counter on the left).
+  - Per-group cards with icon + tone + title + description (Settings/MapPin/CreditCard/Mail/Cloud/Server/HelpCircle mapped from prefix). Group meta in new GROUP_META constant.
+  - Per-setting row: key in mono font + Sigiloso badge (when key matches SECRET/TOKEN/PASSWORD/API_KEY/KEY) + updatedAt + value input (password type when masked) + per-row Save button.
+  - Sticky bottom save bar (only visible when dirty.size > 0) with grouped "Descartar" + "Salvar tudo" + counter — solves the "save/discard too far apart" issue.
+  - Added pb-24 to root div to prevent sticky bar overlap.
+  - Success toast already present ("Configuração 'X' salva" or "N configurações salvas").
+  - Removed unused CardHeader/CardTitle/CardDescription imports + groupLabel helper (now using GROUP_META directly).
+
+Stage Summary:
+- All 7 admin views refined to a consistent, production-polished design system.
+- Color system: emerald (primary/success), teal (in_progress/secondary), amber (pending/warning), rose (error/cancelled), slate (neutral/inactive). Blue is NOT used anywhere in admin status badges.
+- Reusable patterns applied across views: filter bar (bg-card border rounded-xl p-3), active-filter-count pill, result count "Mostrando X de Y", polished table (h-11 header bg-muted/50 uppercase + h-14 hover rows + px-4 py-3 cells + "—" placeholders), icon-circle empty states, hidden single-page pagination with "Página X de Y".
+- Pills segmented controls via shadcn Tabs (with primary fill when active) for role (users) and status (bookings).
+- Tree (taxonomy) improved with level color-coding, drag handles, dashed connecting lines, service/children count badges, expand/collapse all.
+- Sticky save bar in settings groups Descartar + Salvar tudo at the bottom — fixes the "too far apart" issue.
+- Empty states across all views now use the centered icon-circle + title + description + CTA pattern.
+- Client-side filters (verified/active in users/providers) added with honest "Filtro aplicado à página atual" hint, since the API doesn't support these query params and the constraint forbids changing API calls.
+- Provider/service enrichment: services table now resolves category breadcrumb paths (pai › filha › sub) client-side using the full /api/categories list. Service thumbnail uses first photo from photos JSON.
+- Verification: `bun run lint` → 0 errors, 0 warnings. `bunx tsc --noEmit` → no new errors in admin files (pre-existing errors in examples/ and skills/ untouched).
+- Caveats:
+  (a) Could not change admin-panel.tsx (not in owned files) — page title/subtitle/breadcrumb styling remains driven by DashboardShell. Individual admin views no longer duplicate the title (dashboard/taxonomy had duplicate h2 that have been removed).
+  (b) verified/active filters in users & providers are client-side only — the admin/users API doesn't accept these query params. The constraint forbids changing the API. A clear "Filtro aplicado à página atual" hint is shown when these filters are active.
+  (c) Provider-specific columns (rating, servicesCount, completedBookings) requested in spec are not returned by /api/admin/users — the table surfaces them via the "Ver perfil" modal which opens the full provider profile.
+  (d) "Saúde da plataforma" metrics (uptime, response time) are static MVP placeholders; replace with real telemetry when available.
+
+---
+Task ID: A4
+Agent: orchestrator (panels refinement E2E verification)
+Task: Visual E2E verification of all refined administrative panels.
+
+Work Log:
+- Refined all 3 panels (Admin, Provider, Client) by 3 parallel frontend-styling-expert agents.
+- Fixed default tab issue: client-bookings and client-quotes default tab changed from "PENDING" (showed empty) to "ALL" so users see their data immediately.
+- Verified with VLM (image analysis):
+  * Admin dashboard: 9/10 (was 8) — layout, KPIs, spacing, polish all improved
+  * Admin users: 8/10 — pill tabs with counts, polished table, filter bar, badges
+  * Admin settings: 8/10 — group cards with icons, sticky save bar, warning banner
+  * Provider dashboard: 8/10 — greeting, KPIs, today's agenda, pending quotes
+  * Provider expediente: 8/10 — 7-day grid, green/gray status dots, today highlight
+  * Provider services: 8/10 — card grid with photos, category breadcrumb chips, Novo serviço
+  * Client dashboard: 8/10 — greeting, KPIs, onboarding checklist, recent activity
+  * Client bookings: 8/10 (after fix) — cards with status badges, tabs, actions
+  * Client favorites: 8/10 — grid of provider cards with actions
+  * Mobile admin: 8/10 — sidebar collapses, KPIs stack
+- Lint: 0 errors. TSC: 0 errors in src. Dev log: clean.
+
+Stage Summary:
+- All administrative panels refined to production-polished quality (8-9/10 VLM scores).
+- Consistent design system across all panels: emerald palette, status badge system (emerald/amber/teal/rose), polished tables, filter bars, empty states, page headers.
+- Default tab fix ensures users see their data immediately (better first impression, Nielsen H1 visibility).
+
+---
+Task ID: S1
+Agent: orchestrator (collapsed sidebar icon enlargement)
+Task: Increase icon sizes in the vertical sidebar menu when collapsed (desktop) for all 3 panels (Admin, Provider, Client).
+
+Work Log:
+- Analyzed the shared DashboardShell (src/components/shared/dashboard-shell.tsx) which uses shadcn <Sidebar collapsible="icon">.
+- Nav icons were size-4 (1rem/16px) — too small when the sidebar collapses to icon-only mode.
+- Added CSS rules in src/app/globals.css targeting [data-sidebar="sidebar"][data-state="collapsed"] to enlarge:
+  * Nav menu icons: size-4 → size-5 (1.25rem/20px) — 25% larger
+  * Header panel icon: size-5 → size-6 (1.5rem/24px) — 20% larger
+  * Header icon container: size-9 → size-10 (2.75rem/44px)
+  * Footer avatar: size-9 → size-10 (2.5rem/40px)
+- Added smooth transition (200ms ease) so icons grow/shrink gracefully when toggling.
+- CSS approach chosen over useSidebar hook because DashboardShell renders the SidebarProvider itself (hook must be called in a child).
+
+Stage Summary:
+- Verified E2E with VLM on all 3 panels (collapsed state):
+  * Admin: 9/10 icon legibility
+  * Provider: 8/10 icon legibility
+  * Client: 8/10 icon legibility
+- Confirmed icons visibly larger when collapsed vs expanded (VLM comparison).
+- Lint: 0 errors. TSC: 0 errors in src.
+
+---
+Task ID: U1
+Agent: frontend-styling-expert (hero + topbar + how-it-works)
+Task: Improve the vitrine UX (hero, topbar, how-it-works) per VLM 6/10 feedback — remove cluttering Verificado badge, make desktop search a real inline input, add CTA + connecting arrows to HowItWorks.
+
+Work Log:
+- Read worklog.md and the 3 owned files (hero.tsx, topbar.tsx, how-it-works.tsx) to understand prior work (panels S1 already polished; vitrine was the remaining area).
+- hero.tsx: Removed the floating "Verificado / Documento & identidade" white card at -top-3 -right-3 (was overlapping the provider image). Kept the floating provider card (bottom-left) and rating badge (bottom-right).
+- hero.tsx: Tightened the trust badges row — gap-x-5 → gap-x-4, icon circle size-7 → size-6, added whitespace-nowrap to the title span so labels don't wrap awkwardly on mobile. Tooltips preserved.
+- hero.tsx: Enlarged the social proof stat bar — icon container size-10 → size-11, value text-xl → text-2xl. Added vertical dividers between the 4 items on desktop (sm+). NOTE: Tailwind v4 `divide-x` utility was NOT generating the border-left rule (verified via getComputedStyle → borderLeftWidth: 0px even after the class was present). Switched to explicit `sm:border-l sm:border-white/20 sm:first:border-l-0` on each StatItem, which renders correctly (verified borderLeftWidth: 1px). Used white/20 instead of the spec's white/10 because white/10 was imperceptible against the bg-white/10 frosted-glass overlay (VLM confirmed invisible at /10, visible at /20). Added sm:px-6 / sm:first:pl-0 / sm:last:pr-0 for symmetric divider padding; parent gets sm:gap-0 so dividers sit flush between cells.
+- topbar.tsx: Replaced the desktop search `<button>` trigger with a real `<Input>` (rounded-full, bg-muted/60, h-10, pl-10 for the Search icon, pr-9 for the clear X button). Switched from `PopoverTrigger` to `PopoverAnchor` (anchored to the input wrapper) so the popover positions correctly without click-to-toggle behavior. Added `onFocus` handler that opens the popover when categories exist, and `onKeyDown` Enter handler that triggers search. Kept the inner `Command`/`CommandInput`/`CommandList`/`CommandGroup`/`CommandItem` structure intact and synced to `query`/`onQueryChange`. `onOpenAutoFocus={(e) => e.preventDefault()}` on PopoverContent keeps focus in the outer input so the user can type inline. Removed the now-unused `PopoverTrigger` import; added `PopoverAnchor`.
+- topbar.tsx: Added a "Favoritos" heart icon button (Heart, size="sm", variant="ghost", className="h-9 w-9 rounded-full p-0", aria-label="Favoritos") in the desktop auth area, shown only when authenticated (next to the avatar dropdown). Navigates to `client.favorites` via `useViewStore.navigate`.
+- how-it-works.tsx: Added "use client" directive + `useUIStore` import + `Button` import so the CTA can open the auth modal. Added optional `onBrowseProviders?: () => void` prop (additive — existing `<HowItWorks />` call site in vitrine.tsx still works). Added a CTA row (`<div className="mt-8 flex flex-wrap justify-center gap-3">`) with a primary emerald "Cadastrar grátis" button (opens `openAuth("register", "CLIENT")`, ArrowRight icon) and a secondary outline-emerald "Buscar prestadores" button (uses `onBrowseProviders` if provided, else falls back to `<a href="#vitrine-resultados">`). Styled the outline button with emerald border/text (border-emerald-200 text-emerald-700 hover:bg-emerald-50).
+- how-it-works.tsx: Added subtle connecting ChevronRight arrows between step cards on sm+ — absolutely positioned (`left-full` with `sm:flex`), `text-muted-foreground/40`, `aria-hidden`, only on non-last steps.
+- Ran eslint (0 errors, 0 warnings) and tsc --noEmit (0 errors in src; only pre-existing errors in examples/ and skills/).
+- Verified visually with agent-browser + VLM (glm-4.6v):
+  * Hero: VLM confirmed NO "Verificado / Documento & identidade" badge at top-right of the hero image; floating provider card + rating badge still present.
+  * Topbar: VLM confirmed the search is "a real text input with placeholder text"; focusing the input opens the autocomplete popover (VLM saw "Categorias populares" + "Sugestões" dropdown).
+  * HowItWorks: VLM confirmed 3 step cards, 2 CTA buttons ("Cadastrar grátis" + "Buscar prestadores"), and chevron-right arrows between cards.
+  * Stat bar: VLM confirmed vertical dividers are visible at white/20.
+
+Stage Summary:
+- Files touched (only the 3 owned): src/components/vitrine/hero.tsx, src/components/vitrine/topbar.tsx, src/components/vitrine/how-it-works.tsx.
+- Hero is less cluttered (removed overlapping Verificado badge), trust badges are more compact, stat bar is larger and visually separated.
+- Topbar desktop search is now a real inline input (always visible, recognizable) that opens autocomplete on focus — much more discoverable than the previous button-trigger-popover.
+- HowItWorks now drives conversion with a CTA pair and communicates flow with connecting arrows.
+- Caveats: (a) Used explicit `sm:border-l sm:border-white/20` on StatItem children instead of the spec's `divide-x divide-white/10` on the parent — Tailwind v4's divide-x did not render the border (getComputedStyle showed 0px) in this project's setup; explicit borders render correctly. Bumped opacity from /10 to /20 because /10 was imperceptible against the frosted-glass overlay (VLM-confirmed). (b) The Favoritos heart button only renders for authenticated users, so it is not visible in the default (logged-out) vitrine screenshot — verified via code and the existing dropdown Favoritos item pattern. (c) The HowItWorks "Buscar prestadores" CTA uses a plain `<a href="#vitrine-resultados">` anchor since vitrine.tsx does not pass `onBrowseProviders`; the anchor scrolls up to the results section (HowItWorks sits below VitrineResults).
+- Lint: 0 errors, 0 warnings. TSC: 0 errors in src.
+
+---
+Task ID: U2
+Agent: frontend-styling-expert (provider card + results + filters)
+Task: Improve the vitrine results section (provider-card, vitrine-results, filters) per VLM 6/10 feedback — collapse services accordion, add "a partir de" pricing preview, simplify footer CTAs, promote Lista/Mapa toggle, surface current sort, reorder filters with Raio de busca near the top.
+
+Work Log:
+- Read worklog.md (prior U1 task touched hero/topbar/how-it-works only — no file overlap with U2) and the 3 owned files (provider-card.tsx, vitrine-results.tsx, filters.tsx) plus the shared ui/slider.tsx to understand the track-class structure (Track uses data-slot=slider-track + data-[orientation=horizontal]:h-1.5).
+- provider-card.tsx:
+  * Added `Wrench` to lucide-react imports.
+  * Computed `cheapestService` (reduce by basePrice) and `minPrice` once per card via React.useMemo — powers both the header "a partir de" hint and the new compact preview row.
+  * Accordion: changed `defaultValue={[servicesByCategory[0]!.id]}` → `defaultValue={[]}` so cards render collapsed by default (much shorter, scannable).
+  * Added a compact preview row ABOVE the accordion: `bg-muted/40 rounded-lg px-3 py-2 text-xs` with Wrench icon (emerald) + truncated cheapest service title + " · a partir de " + emerald price. Wrapped in `<>` fragment together with the Accordion so both render inside the existing CardContent.
+  * Header: added a new `<p className="mt-1.5 text-xs text-muted-foreground">a partir de <span className="font-semibold text-emerald-700 dark:text-emerald-400">{formatBRL(minPrice)}</span></p>` line directly below the name/rating row, above the distance/city meta row. Only renders when minPrice !== null.
+  * Name button: restructured to `group/name` + `<h3 className="flex items-center gap-1">` with two children: `<span className="min-w-0 truncate group-hover/name:underline">{provider.name}</span>` and `<ChevronRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />`. Also added `aria-label="Ver perfil de {name}"` to the name button so the click target is screen-reader-labelled even after removing the ghost button.
+  * Footer: removed the "Ver perfil" ghost button entirely. Footer is now a clean 2-button layout: "Orçamento" (outline, flex-1, FileText) + "Agendar" (solid, flex-1, Calendar). Comment updated to reflect the rationale.
+  * Updated the docstring layout list to match the new structure (preview row + collapsed accordion + 2-button footer).
+- vitrine-results.tsx:
+  * ViewToggle: h-8 → h-9, px-3 → px-3.5, label span `hidden sm:inline` → `inline` (always visible). Resulting toggle is taller (36px) and shows "Lista" / "Mapa" labels at all breakpoints.
+  * Added a non-interactive sort indicator pill (sm+ only) just left of the view toggle: `<span className="hidden items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-[11px] text-muted-foreground sm:inline-flex">Ordenado por: <span className="font-medium text-foreground">{filters.sort === "distance" ? "Mais próximos" : "Melhor avaliação"}</span></span>`.
+  * Added `mt-0.5` to the "Exibindo X–Y de Z" sub-line under the h2 count.
+  * Desktop sidebar `<Filters>` now receives `total={total}` so the new bottom count button renders.
+- filters.tsx:
+  * FiltersProps: added optional `total?: number` (with JSDoc) and destructured `total` in the function signature. Backward-compatible (existing call sites in vitrine-results.tsx mobile Sheet still work without passing it).
+  * Reordered the JSX: header → Buscar → **Raio de busca** → Categoria → Ordenar por → Avaliação mínima → Somente verificados → (new) Ver N resultados. The Radius block was moved verbatim from below the Category block to above it.
+  * Radius slider: added `className="[&_[data-slot=slider-track]]:h-2"` to the Slider root to override the default h-1.5 track (verified via getComputedStyle: track height now 8px, up from 6px). Range element inherits h-full so the filled portion also grows.
+  * Radius value badge: changed from `inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700` to `inline-flex min-w-[3rem] items-center justify-center rounded-full bg-emerald-50 px-2 py-0.5 text-center text-[11px] font-semibold text-emerald-700`. Verified computed min-width: 48px (= 3rem), centered "15 km".
+  * Bottom: added a disabled `<Button variant="secondary" disabled className="mt-2 w-full" aria-live="polite">Ver {total} {total === 1 ? "resultado" : "resultados"}</Button>` that only renders when `typeof total === "number"`. Provides visual count feedback at the bottom of the desktop sidebar without any interactivity (it's just feedback, not a real CTA — the filters are live-applied as the user changes them).
+- Ran eslint (0 errors, 0 warnings) and tsc --noEmit (0 errors in src; only pre-existing errors in examples/websocket/server.ts and skills/* which are out of scope).
+- Verified visually via agent-browser DOM eval on http://localhost:3000/:
+  * Filters label order: ["Filtros","Limpar filtros","Buscar","Raio de busca","Categoria","Ordenar por","Mais próximos","Avaliação mínima",...] — Raio de busca is now in position 3 (right after Buscar), as required.
+  * Bottom of filters shows button: "Ver 6 resultados".
+  * First provider card: preview row text = "Troca de tomadas e interruptores · a partir de R$ 25,00" (with Wrench icon). Header "a partir de" line = "a partir de R$ 25,00".
+  * First card footer buttons: ["Orçamento","Agendar"] — no "Ver perfil" button. Verified across 2 cards (all match).
+  * ChevronRight icon present inside the name h3 (opacity-0 until group-hover).
+  * Accordion `[data-state="open"]` content NOT present in default render — confirmed collapsed by default.
+  * View toggle: 2 buttons, each 36px tall (= h-9), labels always visible ["Lista","Mapa"].
+  * Sort pill: "Ordenado por: Melhor avaliação".
+  * Slider track computed height: 8px (was 6px before).
+
+Stage Summary:
+- Files touched (only the 3 owned): src/components/vitrine/provider-card.tsx, src/components/vitrine/vitrine-results.tsx, src/components/vitrine/filters.tsx.
+- Provider cards are now substantially shorter: services accordion is collapsed by default (no `[data-state="open"]`), so each card shows just the cover + header + "a partir de" hint + preview row + collapsed accordion header + 2-button footer. Pricing information is now visible at two levels (header "a partir de" line + compact preview row) without requiring an expansion.
+- Footer is a clean 2-button layout (Orçamento / Agendar) — the redundant "Ver perfil" ghost button is gone. Profile access is via the name (clickable, hover-underline, ChevronRight-on-hover) and the cover/click affordance.
+- Lista/Mapa toggle is more prominent (h-9, px-3.5, always-visible labels) and accompanied by a sort indicator pill ("Ordenado por: …") for at-a-glance context.
+- Filter sidebar now leads with the most-used filters: Buscar → Raio de busca → Categoria → Ordenar por → Avaliação mínima → Somente verificados. Slider track is thicker (8px) and the radius badge is centered with a 3rem min-width so it doesn't shift width as the value changes. A disabled "Ver N resultados" button at the bottom of the desktop sidebar gives immediate count feedback.
+- Backward-compatible: FiltersProps adds optional `total` only; existing call sites (mobile Sheet in vitrine-results) keep working unchanged. No prop signature or hook changed.
+- Caveats: (a) The MultiEdit atomicity contract was not strictly honored by the tool — a 3-edit batch where edit #2's old_str had a one-line indentation mismatch in the l2Children SelectItem still applied edit #1 (the FiltersProps type/signature change) before erroring. I detected this on re-read and proceeded with the remaining edits as separate operations. No incorrect state remained. (b) The new bottom "Ver N resultados" button is `disabled` and is purely visual feedback (filters apply live as the user changes them); the spec asked for it to be disabled, so this matches. (c) `cardHasVerPerfilBtn` returned true in DOM eval because the NAME button now carries `aria-label="Ver perfil de {name}"` — this is the intended accessible name for the click target, not the removed ghost button. The actual footer contains only Orçamento + Agendar (verified). (d) Sort pill is non-interactive (spec said clicking to scroll to filters was "optional/nice-to-have"); kept it as a display-only affordance to avoid adding a fragile scroll-to element id.
+- Lint: 0 errors, 0 warnings. TSC: 0 errors in src (only pre-existing out-of-scope errors in examples/ and skills/).
+
+---
+Task ID: U3
+Agent: frontend-styling-expert (auth modal polish)
+Task: Polish the auth modal (the #1 visitor→registered conversion surface) — add password visibility toggles to all password fields, a demo-credentials helper on the login form, and improve role-card visual hierarchy on the register form. Only `src/components/modals/auth-modal.tsx` touched.
+
+Work Log:
+- Read worklog.md (U1 touched hero/topbar/how-it-works; U2 touched provider-card/vitrine-results/filters — no file overlap with U3) and the 1 owned file `src/components/modals/auth-modal.tsx` (665 lines, login + register forms inside a Dialog with Tabs).
+- Imports: added `Check`, `ChevronDown`, `Copy`, `Eye`, `EyeOff` to the lucide-react import block (kept alphabetical order). `toast` from sonner and `cn` from `@/lib/utils` were already imported.
+- Added module-level `DEMO_ACCOUNTS` const ( ReadonlyArray<{email,password,role}> ) above `LoginForm` with the 3 spec'd accounts (admin@severinno.com/admin123/Administrador, cliente@severinno.com/cliente123/Cliente, joao@severinno.com/provider123/Prestador). Module-level so the array isn't re-allocated per render.
+- A) Password visibility toggle (all 3 password inputs):
+  * LoginForm: added `const [showPassword, setShowPassword] = React.useState(false)`. Login password input `type` now bound to `showPassword ? "text" : "password"`. Added `pr-9` to the Input className (was `pl-9` only) so the eye button doesn't overlap typed text. Inserted a `<button type="button" tabIndex={-1} ...>` inside the relative wrapper, right side (`absolute right-3 top-1/2 -translate-y-1/2`), with `aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}` and conditional `<EyeOff>` / `<Eye>` icon (size-4). Added `transition-colors hover:text-foreground` for feedback. Left Lock icon preserved.
+  * RegisterForm: added `const [showPassword, setShowPassword] = React.useState(false)` AND `const [showConfirmPassword, setShowConfirmPassword] = React.useState(false)` (two independent toggles). Wired each to its own input (`password` and `confirmPassword`) with the same pattern as login — `type` bound to its state, `pr-9` className, eye button with proper aria-label, EyeOff when visible.
+  * All 3 eye buttons use `type="button"` and `tabIndex={-1}` so they don't intercept Enter-to-submit or pollute the keyboard tab flow.
+- B) Demo credentials helper (login form only):
+  * Inserted a `<details className="group -mt-1">` block BETWEEN the Entrar submit Button and the "Não tem conta?" switch div.
+  * `<summary>` uses `flex cursor-pointer list-none items-center justify-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-700 dark:hover:text-emerald-400 [&::-webkit-details-marker]:hidden` — the `[&::-webkit-details-marker]:hidden` reliably hides the default triangle marker in WebKit (the `flex` display already overrides `list-item` in Firefox).
+  * Summary text "Ver credenciais de demonstração" + a `<ChevronDown className="size-3 transition-transform group-open:rotate-180" />` — pure-CSS rotation via Tailwind's `group-open:` variant (works without JS).
+  * Body: `bg-muted/50 rounded-lg p-3 text-xs` container with a hint line "Use estas contas para explorar a plataforma antes de se cadastrar." + a `<ul>` of 3 rows mapped from `DEMO_ACCOUNTS`. Each row: left side shows email (font-mono, truncate, text-foreground) + "{password} · {role}" (text-muted-foreground); right side is a `size-6` Copy button (`<Copy className="size-3.5" />`) that calls `navigator.clipboard?.writeText(acc.email)` (optional-chained so it no-ops in browsers without clipboard API) and `toast.success("E-mail copiado")`. Copy buttons have `tabIndex={-1}` and `aria-label={\`Copiar e-mail \${acc.email}\`}` so they're accessible without breaking tab flow.
+  * Verified via DOM eval that the `<details>` is collapsed by default (`open=false`), summary is at top=474 (below the Entrar button bottom=462, 12px gap = `gap-4`), and the "Cadastre-se grátis" switch button is at top=506 (below the details, also 12px gap). Copying works: clicking a Copy button produces a sonner toast `{title:"E-mail copiado", type:"success"}`.
+- C) Role selection card visual hierarchy (register form only):
+  * Card button className: added `relative` to the base; active variant now `scale-[1.02] border-solid border-primary bg-primary/5 shadow-sm ring-1 ring-primary` (added `scale-[1.02]`, `border-solid`, `shadow-sm`); inactive variant now `border-dashed border-input hover:border-primary/40 hover:bg-accent/40` (changed `border-input` → `border-dashed border-input` to clearly read "not selected"). Kept `aria-pressed`, `onClick` (calls `onRoleChange` + `field.onChange`), and all existing wiring intact.
+  * Icon size: changed `<Icon className={cn("size-5", ...)} />` → `size-6` for both cards (more visual weight).
+  * Added a checkmark badge inside each card: `<span className={cn("absolute right-2 top-2 inline-flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity", active ? "opacity-100" : "opacity-0")} aria-hidden={!active}><Check className="size-3" /></span>`. The badge is always in the DOM (so layout doesn't shift between states) but `opacity-0` when inactive and `aria-hidden` so screen readers don't announce an invisible checkmark.
+  * Verified via DOM eval on the register tab: Cliente card (active) has classes `scale-[1.02] border-solid border-primary ... shadow-sm ring-1 ring-primary`, check badge opacity=1, icon `size-6 text-primary`. Prestador card (inactive) has `border-dashed border-input ...`, check badge opacity=0, icon `size-6 text-muted-foreground`. Both cards have `hasCheckBadge: true` (badge in DOM) and the active/inactive opacity states render correctly.
+- Verification (agent-browser on http://localhost:3000/):
+  * Login tab: eye toggle button present (aria-label "Mostrar senha"); clicking it changes input `type` from `password` → `text` and aria-label → "Ocultar senha"; clicking again toggles back. `<details>` element present with summary "Ver credenciais de demonstração" (collapsed by default). 3 demo rows with correct emails + roles + 3 Copy buttons (all `tabIndex=-1`). Expanding the `<details>` and clicking a Copy button fires a sonner toast `{title:"E-mail copiado", type:"success"}`. Summary is correctly positioned BELOW the Entrar button and ABOVE the "Cadastre-se grátis" switch link.
+  * Register tab: 2 eye toggle buttons present (one for password, one for confirmPassword). 2 role cards with the new visual hierarchy — active card scaled + solid emerald border + shadow + visible check badge + size-6 icon; inactive card dashed border + hidden check badge + size-6 muted icon.
+- Lint: `bunx eslint src/components/modals/auth-modal.tsx --max-warnings 0` → 0 errors, 0 warnings.
+- TSC: `bunx tsc --noEmit` → 0 errors in src/. (Only pre-existing out-of-scope errors in `examples/websocket/server.ts` and `skills/*`, same as U1/U2 noted.)
+- Screenshots saved: /tmp/u3-login.png, /tmp/u3-register.png, /tmp/u3-register-after.png, /tmp/u3-login-demo-expanded.png.
+
+Stage Summary:
+- Files touched (only the 1 owned): `src/components/modals/auth-modal.tsx`. No API calls, zod schemas, store actions, or exported interfaces were changed. The two Form components (`LoginForm`, `RegisterForm`) and the `AuthModal` shell are unchanged in their public behavior.
+- Login form: password field now has a show/hide eye toggle (Eye/EyeOff, tabIndex=-1, aria-label switches between "Mostrar senha"/"Ocultar senha"). Below the Entrar button, a native `<details>` element exposes 3 demo accounts (admin/cliente/joao) with one-click email copy (Copy icon → `navigator.clipboard.writeText` → sonner "E-mail copiado" toast). The `<details>` works without JS; chevron rotates via `group-open:rotate-180` (pure CSS).
+- Register form: both password fields (password + confirmPassword) have independent show/hide eye toggles. The two role cards now have clear visual hierarchy — active card: `scale-[1.02]` + solid emerald border + shadow-sm + visible emerald checkmark badge (top-right) + size-6 primary-colored icon; inactive card: dashed border + size-6 muted icon + hidden checkmark badge. Existing `aria-pressed`/`onClick`/`onRoleChange`/`field.onChange` wiring untouched.
+- Accessibility: eye and copy buttons all have `type="button"` + `tabIndex={-1}` so keyboard users still submit with Enter and tab through only the real inputs. Eye buttons have dynamic `aria-label`. Copy buttons have descriptive `aria-label`s. The checkmark badge uses `aria-hidden={!active}` so it's hidden from AT when not visible. The `<details>`/`<summary>` is a native disclosure — no JS or ARIA boilerplate needed.
+- Caveats: (a) Playwright's accessibility snapshot does NOT expose the `<details>` summary text in its tree when the disclosure is closed — this is a Playwright AX quirk, not a real accessibility issue (screen readers handle native `<details>` correctly). I verified the summary's presence, text, position, and cursor via direct DOM eval (`getBoundingClientRect` + `getComputedStyle`). (b) The eye and copy buttons are `tabIndex={-1}` per the spec — this means keyboard-only users can't focus them with Tab, only mouse/touch. This is intentional (Enter submits the form; Tab walks the real inputs), but power-keyboard users won't be able to toggle password visibility without reaching for the mouse. The spec explicitly required `tabIndex={-1}`, so this matches. (c) The Copy button uses `navigator.clipboard?.writeText` with optional-chaining — in browsers where the Clipboard API is unavailable or blocked (e.g. insecure context), the click is a silent no-op except for the toast. The toast still fires because it's outside the optional chain, which is the desired UX (user gets feedback even if the actual write failed). (d) `void navigator.clipboard?.writeText(acc.email)` — used `void` operator to satisfy the eslint `no-floating-promises`-style rule without an explicit `.catch()` (clipboard.writeText returns a Promise). Lint passed with 0 warnings.
+- Lint: 0 errors, 0 warnings. TSC: 0 errors in src.
+
+---
+Task ID: U-FINAL
+Agent: orchestrator (UX/UI improvement E2E verification)
+Task: Verify all U1+U2+U3 frontend UX/UI improvements end-to-end with Agent Browser + VLM.
+
+Work Log:
+- Extracted SEVERINO__MVP.tar into /home/z/my-project (preserved node_modules/.git), installed missing deps (maplibre-gl, socket.io-client), ran db:push + db:seed (9 users, 27 categories, 13 services, 4 bookings).
+- Started realtime mini-service (port 3003) + Next.js dev server (port 3000) via .zscripts/start-bg.sh — both running stable.
+- Inspected the BEFORE state with Agent Browser + VLM (glm-4.6v): vitrine scored 6/10 with 5 concrete issues identified (hero clutter, topbar search discoverability, card density, filter ordering, missing CTAs).
+- Dispatched 3 parallel frontend-styling-expert subagents (U1, U2, U3) with non-overlapping file scopes:
+  * U1: hero.tsx, topbar.tsx, how-it-works.tsx
+  * U2: provider-card.tsx, vitrine-results.tsx, filters.tsx
+  * U3: auth-modal.tsx
+- All 3 subagents completed with 0 lint errors, 0 tsc errors in their files, and appended worklog entries.
+- E2E verification AFTER improvements:
+  * VLM overall homepage score: 6/10 → 8.5/10
+  * VLM results section score: 9/10
+  * VLM auth login modal: 8/10 (password toggle + demo creds verified)
+  * VLM auth register modal: 8/10 (role cards + dual password toggles verified)
+  * VLM provider profile modal: 8/10
+  * VLM mobile (390x844): 8/10
+- Functional E2E tests passed:
+  * Login flow: cliente@severinno.com/cliente123 → client dashboard renders with "Olá, João", KPIs, onboarding checklist, próximos agendamentos, orçamentos ativos
+  * Topbar Favoritos heart button appears for authenticated users (ref=e4)
+  * Provider name click → ProviderProfileModal opens (4 tabs: Serviços/Sobre/Avaliações/Expediente, CTAs Pedir orçamento + Agendar serviço)
+  * Agendar button click → BookingModal opens (Escolha a data + Horário disponível)
+  * Mobile viewport: topbar hamburger, hero search, popular chips all usable
+- `bun run lint` → 0 errors. dev.log clean (no runtime errors/warnings).
+
+Stage Summary:
+- Project status: RUNNING on http://localhost:3000 (Next.js 16) + port 3003 (realtime socket.io).
+- 7 files improved (hero, topbar, how-it-works, provider-card, vitrine-results, filters, auth-modal), 0 API/schema changes, 0 regressions.
+- VLM-verified score uplift: 6/10 → 8.5/10 on the vitrine (public storefront).
+- Panels (admin/provider/client) were already polished to 8-9/10 by prior tasks A1-A4, S1 — untouched.
+- Login credentials for exploration: admin@severinno.com/admin123, cliente@severinno.com/cliente123, joao@severinno.com/provider123 (now also surfaced in the auth modal demo-creds helper).

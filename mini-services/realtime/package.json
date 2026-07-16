@@ -1,0 +1,14 @@
+{
+  "name": "realtime-mini-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Severinno Marketplace SaaS — WebSocket realtime mini-service (Fase 1 / MVP)",
+  "scripts": {
+    "dev": "bun --hot index.ts",
+    "start": "bun index.ts"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.1"
+  }
+}

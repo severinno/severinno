@@ -1,0 +1,151 @@
+"use client"
+
+import { create } from "zustand"
+import { persist, createJSONStorage } from "zustand/middleware"
+
+export type GeoStatus =
+  | "idle"
+  | "locating"
+  | "geocoding"
+  | "ready"
+  | "error"
+  | "denied"
+
+export type GeoState = {
+  lat: number | null
+  lng: number | null
+  address: string | null
+  cep: string | null
+  district: string | null
+  city: string | null
+  state: string | null
+  status: GeoStatus
+  error: string | null
+
+  setFromGPS: () => Promise<void>
+  setFromCoords: (lat: number, lng: number, address?: string) => void
+  setFromCEP: (cep: string) => Promise<void>
+  clear: () => void
+}
+
+export const useGeoStore = create<GeoState>()(
+  persist(
+    (set) => ({
+      lat: null,
+      lng: null,
+      address: null,
+      cep: null,
+      district: null,
+      city: null,
+      state: null,
+      status: "idle",
+      error: null,
+
+      setFromGPS: async () => {
+        if (typeof navigator === "undefined" || !navigator.geolocation) {
+          set({
+            status: "error",
+            error: "Geolocalização não suportada neste dispositivo.",
+          })
+          return
+        }
+        set({ status: "locating", error: null })
+        return new Promise<void>((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              set({
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                status: "ready",
+                error: null,
+              })
+              resolve()
+            },
+            (err) => {
+              const message =
+                err.code === err.PERMISSION_DENIED
+                  ? "Permissão de localização negada."
+                  : err.code === err.POSITION_UNAVAILABLE
+                    ? "Posição indisponível."
+                    : err.code === err.TIMEOUT
+                      ? "Tempo esgotado ao obter localização."
+                      : "Erro ao obter localização."
+              set({ status: "denied", error: message })
+              resolve()
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+          )
+        })
+      },
+
+      setFromCoords: (lat, lng, address) => {
+        set({
+          lat,
+          lng,
+          address: address ?? null,
+          status: "ready",
+          error: null,
+        })
+      },
+
+      setFromCEP: async (cep) => {
+        set({ status: "geocoding", error: null })
+        try {
+          const clean = cep.replace(/\D/g, "")
+          const res = await fetch(
+            `/api/geo/cep?cep=${encodeURIComponent(clean)}`,
+          )
+          const data = await res.json()
+          if (!res.ok || !data?.cep) {
+            set({
+              status: "error",
+              error: data?.error || "CEP não encontrado.",
+            })
+            return
+          }
+          set({
+            cep: data.cep,
+            address: data.street ? `${data.street}` : null,
+            district: data.district ?? null,
+            city: data.city ?? null,
+            state: data.state ?? null,
+            status: "ready",
+            error: null,
+          })
+        } catch {
+          set({
+            status: "error",
+            error: "Erro de rede ao buscar CEP.",
+          })
+        }
+      },
+
+      clear: () =>
+        set({
+          lat: null,
+          lng: null,
+          address: null,
+          cep: null,
+          district: null,
+          city: null,
+          state: null,
+          status: "idle",
+          error: null,
+        }),
+    }),
+    {
+      name: "severinno:geo",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({
+        lat: s.lat,
+        lng: s.lng,
+        address: s.address,
+        cep: s.cep,
+        district: s.district,
+        city: s.city,
+        state: s.state,
+        status: s.status,
+      }),
+    },
+  ),
+)

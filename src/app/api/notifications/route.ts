@@ -1,0 +1,36 @@
+import { NextResponse } from "next/server"
+import { db } from "@/lib/db"
+import { requireUser } from "@/lib/auth"
+import { handleError, parsePagination } from "@/lib/api-server"
+
+// Authenticated: list user's notifications (unread first, then by date desc)
+export async function GET(request: Request) {
+  try {
+    const session = await requireUser()
+    const { searchParams } = new URL(request.url)
+    const { page, limit, skip, take } = parsePagination(searchParams)
+    const unreadOnly = searchParams.get("unread") === "1"
+
+    const where = {
+      userId: session.userId,
+      ...(unreadOnly ? { read: false } : {}),
+    }
+
+    const [items, total, unreadCount] = await Promise.all([
+      db.notification.findMany({
+        where,
+        orderBy: [{ read: "asc" }, { createdAt: "desc" }],
+        skip,
+        take,
+      }),
+      db.notification.count({ where }),
+      db.notification.count({
+        where: { userId: session.userId, read: false },
+      }),
+    ])
+
+    return NextResponse.json({ items, total, page, limit, unreadCount })
+  } catch (e) {
+    return handleError(e)
+  }
+}
