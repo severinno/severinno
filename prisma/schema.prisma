@@ -1,0 +1,340 @@
+// Severinno Marketplace SaaS — Prisma schema (Fase 1 / MVP)
+// Stack: SQLite + Prisma. SQLite does NOT support native `enum` keyword,
+// so all enum-like fields are `String` with a comment listing allowed values.
+// Validation is enforced at runtime via Zod (see src/lib/validators.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER — base account for CLIENT | PROVIDER | ADMIN
+// ============================================================================
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  // role: "CLIENT" | "PROVIDER" | "ADMIN"
+  role         String   @default("CLIENT")
+  cpfCnpj      String?
+  whatsapp     String?
+  phone        String?
+  avatarUrl    String?
+  bio          String?
+  coverUrl     String?
+  // Geolocation of the provider's operating base (or client home)
+  lat          Float?
+  lng          Float?
+  // Operating radius (km) — providers only; null for clients/admins
+  radiusKm     Float?
+  // Brazilian address fields
+  cep          String?
+  street       String?
+  number       String?
+  complement   String?
+  district     String?
+  city         String?
+  state        String?
+  verified     Boolean  @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  services           Service[]
+  availability       ProviderAvailability[]
+  quotesAsClient     QuoteRequest[]   @relation("QuoteRequestClient")
+  quotesAsProvider   QuoteRequest[]   @relation("QuoteRequestProvider")
+  quoteItems         QuoteItem[]
+  bookingsAsClient   Booking[]        @relation("BookingClient")
+  bookingsAsProvider Booking[]        @relation("BookingProvider")
+  reviewsGiven       Review[]         @relation("ReviewClient")
+  reviewsReceived    Review[]         @relation("ReviewProvider")
+  favorites          Favorite[]       @relation("FavoriteClient")
+  favoritedBy        Favorite[]       @relation("FavoriteProvider")
+  messagesFrom       Message[]        @relation("MessageFrom")
+  messagesTo         Message[]        @relation("MessageTo")
+  notifications      Notification[]
+  settings           Setting[]
+
+  @@index([role])
+  @@index([city])
+  @@index([lat, lng])
+}
+
+// ============================================================================
+// CATEGORY — 3-level tree (pai → filha → subcategoria)
+// ============================================================================
+model Category {
+  id       String   @id @default(cuid())
+  name     String
+  slug     String   @unique
+  parentId String?
+  level    Int      @default(0) // 0=pai, 1=filha, 2=subcategoria
+  icon     String?
+  order    Int      @default(0)
+  active   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  services Service[]
+
+  @@index([parentId])
+  @@index([slug])
+  @@index([level])
+}
+
+// ============================================================================
+// SERVICE — provider's offering under a subcategoria
+// ============================================================================
+model Service {
+  id          String   @id @default(cuid())
+  providerId  String
+  categoryId  String
+  title       String
+  description String
+  basePrice   Float
+  // unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
+  unit        String   @default("UNIDADE")
+  // photos: JSON array of url strings (max 4) — SQLite-safe
+  photos      Json     @default("[]")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  provider  User       @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  category  Category   @relation(fields: [categoryId], references: [id])
+  reviews   Review[]
+  quoteItems QuoteItem[]
+  bookings  Booking[]
+
+  @@index([providerId])
+  @@index([categoryId])
+  @@index([active])
+}
+
+// ============================================================================
+// PROVIDER AVAILABILITY — weekly time windows
+// ============================================================================
+model ProviderAvailability {
+  id         String  @id @default(cuid())
+  providerId String
+  dayOfWeek  Int     // 0=Sunday ... 6=Saturday
+  startTime  String  // "HH:mm"
+  endTime    String  // "HH:mm"
+  active     Boolean @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  provider User @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+  @@index([dayOfWeek])
+}
+
+// ============================================================================
+// QUOTE REQUEST — client asks one or more providers for prices
+// ============================================================================
+model QuoteRequest {
+  id         String   @id @default(cuid())
+  clientId   String
+  providerId String   // primary provider
+  // status: "PENDING" | "RESPONDED" | "APPROVED" | "REJECTED" | "EXPIRED"
+  status     String   @default("PENDING")
+  address    String
+  cep        String
+  lat        Float
+  lng        Float
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  client   User        @relation("QuoteRequestClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider User        @relation("QuoteRequestProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  items    QuoteItem[]
+
+  @@index([clientId])
+  @@index([providerId])
+  @@index([status])
+}
+
+model QuoteItem {
+  id           String   @id @default(cuid())
+  requestId    String
+  providerId   String
+  serviceId    String
+  description  String
+  quantity     Float
+  // unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
+  unit         String   @default("UNIDADE")
+  photos       Json     @default("[]")
+  price        Float?   // provider's offer
+  providerNote String?
+  // status: "PENDING" | "QUOTED" | "ACCEPTED" | "REJECTED"
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now())
+
+  request  QuoteRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider User         @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  service  Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([providerId])
+  @@index([serviceId])
+}
+
+// ============================================================================
+// BOOKING — scheduled service execution
+// ============================================================================
+model Booking {
+  id            String   @id @default(cuid())
+  clientId      String
+  providerId    String
+  serviceId     String
+  scheduledAt   DateTime
+  // status: "PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
+  status        String   @default("PENDING")
+  address       String
+  cep           String
+  lat           Float
+  lng           Float
+  amount        Float
+  // paymentMethod: "CARD" | "PIX"
+  paymentMethod String   @default("PIX")
+  // paymentStatus: "PENDING" | "PAID" | "REFUNDED"
+  paymentStatus String   @default("PENDING")
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  client   User     @relation("BookingClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider User     @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id])
+  reviews  Review[]
+  payment  Payment?
+
+  @@index([clientId])
+  @@index([providerId])
+  @@index([serviceId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+// ============================================================================
+// REVIEW — one per booking, by client about provider
+// ============================================================================
+model Review {
+  id         String   @id @default(cuid())
+  bookingId  String   @unique
+  clientId   String
+  providerId String
+  rating     Int      // 1-5
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  client    User    @relation("ReviewClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider  User    @relation("ReviewProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  service   Service? @relation(fields: [serviceId], references: [id])
+  serviceId String?
+
+  @@index([providerId])
+  @@index([clientId])
+  @@index([rating])
+}
+
+// ============================================================================
+// FAVORITE — client bookmarks provider
+// ============================================================================
+model Favorite {
+  id         String   @id @default(cuid())
+  clientId   String
+  providerId String
+  createdAt  DateTime @default(now())
+
+  client   User @relation("FavoriteClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider User @relation("FavoriteProvider", fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, providerId])
+  @@index([providerId])
+}
+
+// ============================================================================
+// MESSAGE — direct messaging between users (optionally tied to a booking)
+// ============================================================================
+model Message {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+  content   String
+  read      Boolean  @default(false)
+  bookingId String?
+  createdAt DateTime @default(now())
+
+  fromUser User @relation("MessageFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toUser   User @relation("MessageTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@index([fromId])
+  @@index([toId])
+  @@index([bookingId])
+  @@index([read])
+}
+
+// ============================================================================
+// NOTIFICATION — in-app notification center
+// ============================================================================
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // e.g. "BOOKING_CONFIRMED", "QUOTE_RECEIVED", "MESSAGE"
+  title     String
+  body      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+}
+
+// ============================================================================
+// PAYMENT — one per booking
+// ============================================================================
+model Payment {
+  id            String   @id @default(cuid())
+  bookingId     String   @unique
+  amount        Float
+  // method: "CARD" | "PIX"
+  method        String   @default("PIX")
+  // status: "PENDING" | "PAID" | "REFUNDED"
+  status        String   @default("PENDING")
+  transactionId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+// ============================================================================
+// SETTING — admin dynamic config (.env-like editor at runtime)
+// ============================================================================
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  updatedBy String?
+  user      User?    @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+}
