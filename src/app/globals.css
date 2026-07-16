@@ -188,42 +188,50 @@
 }
 
 /* ===========================================================================
-   Collapsed sidebar — bigger icons for better visibility & touch targets
-   (Nielsen H4: consistency · H7: efficiency · H8: aesthetic minimalism)
+   Collapsed sidebar — bigger icons, larger hit targets, prominent tooltips
+   (Nielsen H4: consistency · H6: recognition · H7: efficiency · H8: minimalism)
    Applies to all dashboard panels (Admin, Provider, Client) via the shared
    DashboardShell which uses <Sidebar collapsible="icon">.
+   Bumped: nav icons size-5 → size-6 (1.5rem), header icon → size-7 (1.75rem),
+   containers scaled up, collapsed width 3rem → 3.75rem (set in sidebar.tsx).
    =========================================================================== */
 
 /* When the sidebar is collapsed (icon-only mode), enlarge all nav icons
-   from size-4 (1rem) → size-5 (1.25rem) so they're easier to see and tap. */
-[data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="menu-button"] svg {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-/* Enlarge the panel header icon (e.g. ShieldAlert, HardHat, MapPin) from
-   size-5 (1.25rem) → size-6 (1.5rem) and its container from size-9 → size-10
-   so the brand mark stays prominent when text is hidden. */
-[data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="header"] svg {
+   from size-4 (1rem, default) → size-6 (1.5rem) so they're easy to see/tap. */
+[data-slot="sidebar"][data-state="collapsed"] [data-sidebar="menu-button"] svg {
   width: 1.5rem;
   height: 1.5rem;
 }
 
-[data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="header"] > div > span {
+/* Enlarge the menu button height when collapsed for bigger touch targets. */
+[data-slot="sidebar"][data-state="collapsed"] [data-sidebar="menu-button"] {
+  min-height: 2.75rem;
+}
+
+/* Enlarge the panel header icon (e.g. ShieldAlert, HardHat, MapPin) from
+   size-5 (1.25rem) → size-7 (1.75rem) and its container from size-9 → size-11
+   so the brand mark stays prominent when text is hidden. */
+[data-slot="sidebar"][data-state="collapsed"] [data-sidebar="header"] svg {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+[data-slot="sidebar"][data-state="collapsed"] [data-sidebar="header"] > div > span {
+  width: 3rem;
+  height: 3rem;
+}
+
+/* Enlarge the footer avatar from size-9 → size-11 when collapsed so the
+   user's face stays visible and recognizable. */
+[data-slot="sidebar"][data-state="collapsed"] [data-sidebar="footer"] [class*="size-9"]:first-child {
   width: 2.75rem;
   height: 2.75rem;
 }
 
-/* Enlarge the footer avatar from size-9 → size-10 when collapsed so the
-   user's face stays visible and recognizable. */
-[data-sidebar="sidebar"][data-state="collapsed"] [data-sidebar="footer"] [class*="size-9"]:first-child {
-  width: 2.5rem;
-  height: 2.5rem;
-}
-
 /* Smooth transition so icons grow/shrink gracefully when toggling. */
-[data-sidebar="sidebar"] [data-sidebar="menu-button"] svg,
-[data-sidebar="sidebar"] [data-sidebar="header"] svg,
-[data-sidebar="sidebar"] [data-sidebar="header"] > div > span {
-  transition: width 200ms ease, height 200ms ease;
+[data-slot="sidebar"] [data-sidebar="menu-button"] svg,
+[data-slot="sidebar"] [data-sidebar="menu-button"],
+[data-slot="sidebar"] [data-sidebar="header"] svg,
+[data-slot="sidebar"] [data-sidebar="header"] > div > span {
+  transition: width 200ms ease, height 200ms ease, min-height 200ms ease;
 }

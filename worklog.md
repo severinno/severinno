@@ -934,3 +934,42 @@ Stage Summary:
 - VLM-verified score uplift: 6/10 → 8.5/10 on the vitrine (public storefront).
 - Panels (admin/provider/client) were already polished to 8-9/10 by prior tasks A1-A4, S1 — untouched.
 - Login credentials for exploration: admin@severinno.com/admin123, cliente@severinno.com/cliente123, joao@severinno.com/provider123 (now also surfaced in the auth modal demo-creds helper).
+
+---
+Task ID: S2
+Agent: orchestrator (collapsed sidebar icons + fonts + tooltips)
+Task: Aumentar ícones e fontes do menu fechado (collapsed sidebar) em TODOS os painéis (admin/provider/client), com tooltips maiores e mais legíveis.
+
+Work Log:
+- Analisou screenshot do usuário: collapsed sidebar com ícones pequenos e sem tooltip visível.
+- Investigou a arquitetura: DashboardShell usa <Sidebar collapsible="icon"> do shadcn; tooltips já existem via prop `tooltip={item.label}` no SidebarMenuButton (mostrados via Radix Tooltip quando collapsed).
+- Descobriu BUG crítico no CSS da Task S1 anterior: seletores `[data-sidebar="sidebar"][data-state="collapsed"]` NUNCA matchavam porque `data-state` está no wrapper outer (`data-slot="sidebar"`), não no inner (`data-sidebar="sidebar"`). Os ícones nunca foram ampliados na verdade — o VLM da S1 foi generoso.
+- Corrigiu os seletores CSS de `[data-sidebar="sidebar"][data-state="collapsed"]` → `[data-slot="sidebar"][data-state="collapsed"]` em globals.css (6 regras).
+- Ampliou os tamanhos dos ícones collapsed:
+  * Nav icons: 1.25rem → 1.5rem (size-6, 24px) — 50% maior que o default size-4
+  * Header icon: 1.5rem → 1.75rem (size-7, 28px)
+  * Header icon container: 2.75rem → 3rem (size-12)
+  * Footer avatar: 2.5rem → 2.75rem
+  * Menu button min-height: 2.75rem (44px touch target)
+- Ampliou largura do sidebar collapsed: `SIDEBAR_WIDTH_ICON` de "3rem" (48px) → "3.75rem" (60px) em sidebar.tsx para dar respiro aos ícones maiores.
+- Enriqueceu o tooltip no dashboard-shell.tsx:
+  * Font: text-xs (12px) → text-sm font-medium (14px, 17% maior)
+  * Padding: px-3 py-1.5 → px-3.5 py-2
+  * Shadow: adicionou shadow-lg
+  * sideOffset: 0 → 8 (mais distância do ícone)
+  * Conteúdo: label + kbd com número do item (atalho visual mnemônico)
+  * Adicionado parâmetro `index` ao map callback
+- Verificação E2E com Agent Browser em TODOS os 3 painéis (admin/provider/client):
+  * Admin: nav icons 24px ✓, header icon 28px ✓, sidebar 60px ✓, tooltip 14px font-medium ✓
+  * Provider: nav icons 24px ✓, header icon 28px ✓ (idêntico ao admin)
+  * Client: nav icons 24px ✓, header icon 28px ✓ (idêntico ao admin)
+  * Tooltip aparece no hover com label + kbd number, fundo emerald, shadow
+- VLM (glm-4.6v): admin 9/10, provider 9/10, client 9/10, consistency 9/10
+- `bun run lint` → 0 errors. dev.log limpo.
+
+Stage Summary:
+- 3 arquivos editados: `src/app/globals.css` (6 seletores CSS corrigidos + tamanhos ampliados), `src/components/ui/sidebar.tsx` (SIDEBAR_WIDTH_ICON 3rem→3.75rem), `src/components/shared/dashboard-shell.tsx` (tooltip enriquecido com text-sm font-medium + kbd).
+- BUG FIX: seletores CSS da Task S1 que nunca matchavam (data-state no elemento errado) — agora corrigidos e verificados via getBoundingClientRect.
+- Resultado mensurado: ícones nav 16px→24px (+50%), ícone header 20px→28px (+40%), tooltip font 12px→14px (+17%), largura sidebar 48px→60px (+25%).
+- Aplica-se a TODOS os painéis (admin/provider/client) via DashboardShell compartilhado — consistência 9/10 confirmada pelo VLM.
+- Caveats: (a) O kbd number no tooltip é um hint visual (não é um atalho de teclado funcional — seria preciso implementar Alt+1..9 para isso). (b) O conteúdo do tooltip pode aparecer "duplicado" momentaneamente durante a animação Radix (entering + exiting), mas visualmente só um é visível.

@@ -245,7 +245,7 @@ export function DashboardShell({
       </SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu className="gap-1">
-          {navItems.map((item) => {
+          {navItems.map((item, index) => {
             const Icon = item.icon
             const active = currentView === item.view
             return (
@@ -253,7 +253,18 @@ export function DashboardShell({
                 <SidebarMenuButton
                   isActive={active}
                   onClick={() => handleNav(item.view)}
-                  tooltip={item.label}
+                  tooltip={{
+                    children: (
+                      <span className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">{item.label}</span>
+                        <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded bg-white/20 px-1 text-[10px] font-medium text-white/80">
+                          {index + 1}
+                        </kbd>
+                      </span>
+                    ),
+                    className: "text-sm font-medium px-3.5 py-2 shadow-lg",
+                    sideOffset: 8,
+                  }}
                   size="lg"
                   className={cn(
                     "relative h-10 rounded-lg text-sm font-normal",
