@@ -1,0 +1,813 @@
+     1→"use client"
+     2→
+     3→/**
+     4→ * ClientBookings — list of all bookings for the logged-in client.
+     5→ *
+     6→ * Polish (Nielsen + trust/transparency):
+     7→ *  - Page header with quick action (Buscar prestadores).
+     8→ *  - Status filter tabs with counts (Pendentes, Confirmados, Em andamento,
+     9→ *    Concluídos, Cancelados, Todos).
+    10→ *  - Card list (mobile-first) with: provider avatar+name, service title,
+    11→ *    prominent scheduled date/time, amount, status badge, payment badge.
+    12→ *  - Row actions (dropdown menu): Ver detalhes (opens dialog with
+    13→ *    BookingTimeline preserved), Cancelar, Marcar como concluído, Avaliar
+    14→ *    (opens ReviewDialog), Enviar mensagem, Ver prestador.
+    15→ *  - Inline quick actions (Detalhes / Concluir / Avaliar / Cancelar) for
+    16→ *    discoverability on mobile.
+    17→ *  - Pagination (client-side, 8/page).
+    18→ */
+    19→
+    20→import * as React from "react"
+    21→import {
+    22→  useMutation,
+    23→  useQuery,
+    24→  useQueryClient,
+    25→  useQueries,
+    26→} from "@tanstack/react-query"
+    27→import {
+    28→  CalendarDays,
+    29→  CheckCircle2,
+    30→  ChevronLeft,
+    31→  ChevronRight,
+    32→  Eye,
+    33→  Loader2,
+    34→  MapPin,
+    35→  MessageSquare,
+    36→  MoreHorizontal,
+    37→  Star,
+    38→  XCircle,
+    39→} from "lucide-react"
+    40→import { toast } from "sonner"
+    41→
+    42→import { cn } from "@/lib/utils"
+    43→import { apiGet, apiPatch } from "@/lib/api"
+    44→import {
+    45→  BOOKING_STATUS_LABELS,
+    46→  PAYMENT_METHOD_LABELS,
+    47→  PAYMENT_STATUS_LABELS,
+    48→  SERVICE_UNIT_SHORT,
+    49→  type BookingStatus,
+    50→  type PaymentMethod,
+    51→  type PaymentStatus,
+    52→  type ServiceUnit,
+    53→} from "@/lib/constants"
+    54→import { formatBRL, formatDateTime } from "@/lib/format"
+    55→import { useUIStore, useViewStore } from "@/store"
+    56→
+    57→import { Button } from "@/components/ui/button"
+    58→import { Card, CardContent } from "@/components/ui/card"
+    59→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    60→import {
+    61→  Tabs,
+    62→  TabsList,
+    63→  TabsTrigger,
+    64→} from "@/components/ui/tabs"
+    65→import {
+    66→  DropdownMenu,
+    67→  DropdownMenuContent,
+    68→  DropdownMenuItem,
+    69→  DropdownMenuSeparator,
+    70→  DropdownMenuTrigger,
+    71→} from "@/components/ui/dropdown-menu"
+    72→import {
+    73→  Dialog,
+    74→  DialogContent,
+    75→  DialogDescription,
+    76→  DialogFooter,
+    77→  DialogHeader,
+    78→  DialogTitle,
+    79→} from "@/components/ui/dialog"
+    80→import {
+    81→  EmptyState,
+    82→} from "@/components/shared/dashboard-shell"
+    83→import { ReviewDialog } from "@/components/client/review-dialog"
+    84→import { BookingTimeline } from "@/components/shared/flow-timeline"
+    85→import {
+    86→  PageHeader,
+    87→  StatusBadge,
+    88→  bookingIcon,
+    89→  bookingTone,
+    90→  paymentIcon,
+    91→  paymentTone,
+    92→} from "@/components/client/client-shared"
+    93→
+    94→// ---------------------------------------------------------------------------
+    95→// Types
+    96→// ---------------------------------------------------------------------------
+    97→
+    98→type Booking = {
+    99→  id: string
+   100→  status: BookingStatus
+   101→  scheduledAt: string
+   102→  amount: number
+   103→  paymentMethod: PaymentMethod
+   104→  paymentStatus: PaymentStatus
+   105→  address: string
+   106→  cep: string
+   107→  notes?: string | null
+   108→  service: {
+   109→    id: string
+   110→    title: string
+   111→    basePrice: number
+   112→    unit: ServiceUnit
+   113→    category?: { id: string; name: string } | null
+   114→  }
+   115→  provider: {
+   116→    id: string
+   117→    name: string
+   118→    avatarUrl?: string | null
+   119→    whatsapp?: string | null
+   120→  }
+   121→  reviews?: Array<{
+   122→    id: string
+   123→    rating: number
+   124→    comment?: string | null
+   125→    createdAt: string
+   126→  }>
+   127→}
+   128→
+   129→type BookingsResponse = {
+   130→  items: Booking[]
+   131→  total: number
+   132→  page: number
+   133→  limit: number
+   134→}
+   135→
+   136→// ---------------------------------------------------------------------------
+   137→// Filter tabs (order: pending first, then progressing, then terminal, then all)
+   138→// ---------------------------------------------------------------------------
+   139→
+   140→const TABS: Array<{ key: string; label: string }> = [
+   141→  { key: "PENDING", label: "Pendentes" },
+   142→  { key: "CONFIRMED", label: "Confirmados" },
+   143→  { key: "IN_PROGRESS", label: "Em andamento" },
+   144→  { key: "COMPLETED", label: "Concluídos" },
+   145→  { key: "CANCELLED", label: "Cancelados" },
+   146→  { key: "ALL", label: "Todos" },
+   147→]
+   148→
+   149→const PAGE_SIZE = 8
+   150→
+   151→// ---------------------------------------------------------------------------
+   152→// Helpers
+   153→// ---------------------------------------------------------------------------
+   154→
+   155→function providerInitials(name?: string | null): string {
+   156→  if (!name) return "P"
+   157→  return name
+   158→    .split(" ")
+   159→    .map((p) => p[0])
+   160→    .filter(Boolean)
+   161→    .slice(0, 2)
+   162→    .join("")
+   163→    .toUpperCase()
+   164→}
+   165→
+   166→// ---------------------------------------------------------------------------
+   167→// Component
+   168→// ---------------------------------------------------------------------------
+   169→
+   170→export function ClientBookings() {
+   171→  const qc = useQueryClient()
+   172→  const navigate = useViewStore((s) => s.navigate)
+   173→  const openProvider = useUIStore((s) => s.openProvider)
+   174→
+   175→  const [tab, setTab] = React.useState("ALL")
+   176→  const [page, setPage] = React.useState(1)
+   177→  const [detailsId, setDetailsId] = React.useState<string | null>(null)
+   178→  const [reviewBooking, setReviewBooking] = React.useState<Booking | null>(null)
+   179→  const [cancelBooking, setCancelBooking] = React.useState<Booking | null>(null)
+   180→
+   181→  // Reset page when tab changes
+   182→  React.useEffect(() => {
+   183→    setPage(1)
+   184→  }, [tab])
+   185→
+   186→  // Fetch up to 4 pages of 50 (= 200 max) so we can compute accurate counts
+   187→  // per status and paginate client-side. Mirrors client-finance pattern.
+   188→  const queries = useQueries({
+   189→    queries: [1, 2, 3, 4].map((p) => ({
+   190→      queryKey: ["bookings", "CLIENT", "all", p],
+   191→      queryFn: () =>
+   192→        apiGet<BookingsResponse>("/api/bookings", {
+   193→          role: "CLIENT",
+   194→          page: p,
+   195→          limit: 50,
+   196→        }),
+   197→      staleTime: 30_000,
+   198→    })),
+   199→  })
+   200→
+   201→  const allBookings = React.useMemo(() => {
+   202→    const merged: Booking[] = []
+   203→    for (const q of queries) {
+   204→      if (q.data?.items?.length) merged.push(...q.data.items)
+   205→    }
+   206→    return merged
+   207→  }, [queries])
+   208→
+   209→  const isLoading = queries.some((q) => q.isLoading)
+   210→
+   211→  // Counts per tab (based on all fetched data)
+   212→  const counts = React.useMemo(() => {
+   213→    const map: Record<string, number> = {
+   214→      ALL: allBookings.length,
+   215→      PENDING: 0,
+   216→      CONFIRMED: 0,
+   217→      IN_PROGRESS: 0,
+   218→      COMPLETED: 0,
+   219→      CANCELLED: 0,
+   220→    }
+   221→    for (const b of allBookings) {
+   222→      if (map[b.status] != null) map[b.status]!++
+   223→    }
+   224→    return map
+   225→  }, [allBookings])
+   226→
+   227→  // Filtered + paginated list
+   228→  const visible = React.useMemo(() => {
+   229→    const filtered =
+   230→      tab === "ALL"
+   231→        ? allBookings
+   232→        : allBookings.filter((b) => b.status === tab)
+   233→    // Sort: upcoming first (asc by date) for active statuses, recent first
+   234→    // (desc) for terminal statuses.
+   235→    const isActive = (s: BookingStatus) =>
+   236→      s === "PENDING" || s === "CONFIRMED" || s === "IN_PROGRESS"
+   237→    return [...filtered].sort((a, b) => {
+   238→      const ta = new Date(a.scheduledAt).getTime()
+   239→      const tb = new Date(b.scheduledAt).getTime()
+   240→      const aActive = isActive(a.status)
+   241→      const bActive = isActive(b.status)
+   242→      if (aActive && bActive) return ta - tb
+   243→      if (!aActive && !bActive) return tb - ta
+   244→      return aActive ? -1 : 1
+   245→    })
+   246→  }, [allBookings, tab])
+   247→
+   248→  const total = visible.length
+   249→  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+   250→  const pageItems = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+   251→
+   252→  const cancelMutation = useMutation({
+   253→    mutationFn: (id: string) =>
+   254→      apiPatch(`/api/bookings/${id}`, { status: "CANCELLED" }),
+   255→    onSuccess: () => {
+   256→      toast.success("Agendamento cancelado.")
+   257→      qc.invalidateQueries({ queryKey: ["bookings"] })
+   258→      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+   259→      setCancelBooking(null)
+   260→    },
+   261→    onError: (e: { message?: string }) => {
+   262→      toast.error(e?.message || "Não foi possível cancelar.")
+   263→    },
+   264→  })
+   265→
+   266→  const completeMutation = useMutation({
+   267→    mutationFn: (id: string) =>
+   268→      apiPatch(`/api/bookings/${id}`, { status: "COMPLETED" }),
+   269→    onSuccess: () => {
+   270→      toast.success("Serviço marcado como concluído. Já pode avaliar!")
+   271→      qc.invalidateQueries({ queryKey: ["bookings"] })
+   272→      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+   273→    },
+   274→    onError: (e: { message?: string }) => {
+   275→      toast.error(e?.message || "Não foi possível concluir o agendamento.")
+   276→    },
+   277→  })
+   278→
+   279→  return (
+   280→    <div className="space-y-4">
+   281→      <PageHeader
+   282→        title="Agendamentos"
+   283→        subtitle="Acompanhe e gerencie seus serviços agendados."
+   284→        action={
+   285→          <Button
+   286→            variant="outline"
+   287→            onClick={() => navigate("vitrine")}
+   288→            className="h-10 gap-2"
+   289→          >
+   290→            <MapPin className="size-4" />
+   291→            Buscar prestadores
+   292→          </Button>
+   293→        }
+   294→      />
+   295→
+   296→      {/* Status tabs with counts */}
+   297→      <Tabs value={tab} onValueChange={setTab}>
+   298→        <TabsList className="flex w-full flex-wrap justify-start gap-1 h-auto p-1 sm:w-auto">
+   299→          {TABS.map((t) => {
+   300→            const count = counts[t.key] ?? 0
+   301→            const active = tab === t.key
+   302→            return (
+   303→              <TabsTrigger
+   304→                key={t.key}
+   305→                value={t.key}
+   306→                className="h-8 flex-shrink-0 gap-1.5"
+   307→              >
+   308→                {t.label}
+   309→                <span
+   310→                  className={cn(
+   311→                    "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
+   312→                    active
+   313→                      ? "bg-primary/15 text-primary"
+   314→                      : "bg-muted text-muted-foreground",
+   315→                  )}
+   316→                >
+   317→                  {count}
+   318→                </span>
+   319→              </TabsTrigger>
+   320→            )
+   321→          })}
+   322→        </TabsList>
+   323→      </Tabs>
+   324→
+   325→      {/* Result count */}
+   326→      <p className="text-xs text-muted-foreground">
+   327→        {isLoading
+   328→          ? "Carregando…"
+   329→          : total === 0
+   330→            ? "Nenhum agendamento nesta categoria."
+   331→            : `Mostrando ${pageItems.length} de ${total} agendamento${total !== 1 ? "s" : ""}.`}
+   332→      </p>
+   333→
+   334→      {/* Content */}
+   335→      {isLoading ? (
+   336→        <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+   337→          <Loader2 className="size-5 animate-spin" />
+   338→          Carregando agendamentos…
+   339→        </div>
+   340→      ) : pageItems.length === 0 ? (
+   341→        <EmptyState
+   342→          icon={CalendarDays}
+   343→          title={
+   344→            tab === "ALL"
+   345→              ? "Nenhum agendamento ainda"
+   346→              : "Nenhum agendamento com este status"
+   347→          }
+   348→          description={
+   349→            tab === "ALL"
+   350→              ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço."
+   351→              : "Não há agendamentos com este status no momento. Tente outra categoria."
+   352→          }
+   353→          action={
+   354→            <Button
+   355→              onClick={() => navigate("vitrine")}
+   356→              className="mt-2 gap-2"
+   357→            >
+   358→              <MapPin className="size-4" />
+   359→              Buscar prestadores
+   360→            </Button>
+   361→          }
+   362→        />
+   363→      ) : (
+   364→        <div className="grid gap-3">
+   365→          {pageItems.map((b) => (
+   366→            <BookingCard
+   367→              key={b.id}
+   368→              booking={b}
+   369→              onViewDetails={() => setDetailsId(b.id)}
+   370→              onCancel={() => setCancelBooking(b)}
+   371→              onComplete={() => completeMutation.mutate(b.id)}
+   372→              onReview={() => setReviewBooking(b)}
+   373→              onMessage={() =>
+   374→                navigate("client.messages", { with: b.provider.id })
+   375→              }
+   376→              onViewProvider={() => openProvider(b.provider.id)}
+   377→              isCompleting={completeMutation.isPending}
+   378→            />
+   379→          ))}
+   380→        </div>
+   381→      )}
+   382→
+   383→      {/* Pagination */}
+   384→      {total > PAGE_SIZE ? (
+   385→        <div className="flex flex-col items-center justify-between gap-2 border-t pt-3 sm:flex-row">
+   386→          <p className="text-xs text-muted-foreground tabular-nums">
+   387→            Página {page} de {totalPages} · {total} agendamentos
+   388→          </p>
+   389→          <div className="flex items-center gap-1">
+   390→            <Button
+   391→              variant="outline"
+   392→              size="sm"
+   393→              disabled={page <= 1}
+   394→              onClick={() => setPage((p) => Math.max(1, p - 1))}
+   395→              className="h-9 gap-1"
+   396→            >
+   397→              <ChevronLeft className="size-4" />
+   398→              Anterior
+   399→            </Button>
+   400→            <span className="px-2 text-xs text-muted-foreground tabular-nums">
+   401→              {page} / {totalPages}
+   402→            </span>
+   403→            <Button
+   404→              variant="outline"
+   405→              size="sm"
+   406→              disabled={page >= totalPages}
+   407→              onClick={() => setPage((p) => p + 1)}
+   408→              className="h-9 gap-1"
+   409→            >
+   410→              Próxima
+   411→              <ChevronRight className="size-4" />
+   412→            </Button>
+   413→          </div>
+   414→        </div>
+   415→      ) : null}
+   416→
+   417→      {/* Review dialog */}
+   418→      <ReviewDialog
+   419→        open={!!reviewBooking}
+   420→        onOpenChange={(o) => !o && setReviewBooking(null)}
+   421→        booking={reviewBooking}
+   422→      />
+   423→
+   424→      {/* Cancel confirm */}
+   425→      <Dialog
+   426→        open={!!cancelBooking}
+   427→        onOpenChange={(o) => !o && setCancelBooking(null)}
+   428→      >
+   429→        <DialogContent className="sm:max-w-md">
+   430→          <DialogHeader>
+   431→            <DialogTitle>Cancelar agendamento?</DialogTitle>
+   432→            <DialogDescription>
+   433→              Esta ação não pode ser desfeita.{" "}
+   434→              {cancelBooking?.paymentStatus === "PAID"
+   435→                ? "Como o pagamento já foi confirmado, o valor será estornado."
+   436→                : ""}
+   437→            </DialogDescription>
+   438→          </DialogHeader>
+   439→          <DialogFooter>
+   440→            <Button
+   441→              variant="outline"
+   442→              onClick={() => setCancelBooking(null)}
+   443→              disabled={cancelMutation.isPending}
+   444→            >
+   445→              Manter agendamento
+   446→            </Button>
+   447→            <Button
+   448→              variant="destructive"
+   449→              onClick={() =>
+   450→                cancelBooking && cancelMutation.mutate(cancelBooking.id)
+   451→              }
+   452→              disabled={cancelMutation.isPending}
+   453→              className="gap-2"
+   454→            >
+   455→              {cancelMutation.isPending ? (
+   456→                <Loader2 className="size-4 animate-spin" />
+   457→              ) : (
+   458→                <XCircle className="size-4" />
+   459→              )}
+   460→              Sim, cancelar
+   461→            </Button>
+   462→          </DialogFooter>
+   463→        </DialogContent>
+   464→      </Dialog>
+   465→
+   466→      {/* Details dialog */}
+   467→      <BookingDetailsDialog
+   468→        bookingId={detailsId}
+   469→        onOpenChange={(o) => !o && setDetailsId(null)}
+   470→      />
+   471→    </div>
+   472→  )
+   473→}
+   474→
+   475→// ---------------------------------------------------------------------------
+   476→// BookingCard
+   477→// ---------------------------------------------------------------------------
+   478→
+   479→function BookingCard({
+   480→  booking,
+   481→  onViewDetails,
+   482→  onCancel,
+   483→  onComplete,
+   484→  onReview,
+   485→  onMessage,
+   486→  onViewProvider,
+   487→  isCompleting,
+   488→}: {
+   489→  booking: Booking
+   490→  onViewDetails: () => void
+   491→  onCancel: () => void
+   492→  onComplete: () => void
+   493→  onReview: () => void
+   494→  onMessage: () => void
+   495→  onViewProvider: () => void
+   496→  isCompleting: boolean
+   497→}) {
+   498→  const provider = booking.provider
+   499→  const initials = providerInitials(provider.name)
+   500→
+   501→  const status = booking.status as BookingStatus
+   502→  const canCancel =
+   503→    status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
+   504→  const canComplete = status === "CONFIRMED" || status === "IN_PROGRESS"
+   505→  const hasReview = (booking.reviews?.length ?? 0) > 0
+   506→  const canReview = status === "COMPLETED" && !hasReview
+   507→
+   508→  return (
+   509→    <Card className="overflow-hidden rounded-xl shadow-sm transition-shadow hover:shadow-md">
+   510→      <CardContent className="grid gap-3 py-4">
+   511→        <div className="flex items-start gap-3">
+   512→          <button
+   513→            type="button"
+   514→            onClick={onViewProvider}
+   515→            className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+   516→            aria-label={`Ver perfil de ${provider.name}`}
+   517→          >
+   518→            <Avatar className="size-11 border">
+   519→              {provider.avatarUrl ? (
+   520→                <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+   521→              ) : null}
+   522→              <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+   523→                {initials || "P"}
+   524→              </AvatarFallback>
+   525→            </Avatar>
+   526→          </button>
+   527→
+   528→          <div className="min-w-0 flex-1">
+   529→            <div className="flex flex-wrap items-center gap-2">
+   530→              <button
+   531→                type="button"
+   532→                onClick={onViewProvider}
+   533→                className="truncate text-sm font-semibold hover:text-primary focus-visible:underline"
+   534→              >
+   535→                {provider.name}
+   536→              </button>
+   537→              <StatusBadge
+   538→                tone={bookingTone(status)}
+   539→                icon={bookingIcon(status)}
+   540→              >
+   541→                {BOOKING_STATUS_LABELS[status]}
+   542→              </StatusBadge>
+   543→              {hasReview ? (
+   544→                <StatusBadge tone="amber" icon={Star}>
+   545→                  Avaliado
+   546→                </StatusBadge>
+   547→              ) : null}
+   548→            </div>
+   549→            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+   550→              {booking.service.title}
+   551→              <span className="ml-1 text-xs">
+   552→                ({SERVICE_UNIT_SHORT[booking.service.unit]})
+   553→              </span>
+   554→            </p>
+   555→            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+   556→              <span className="inline-flex items-center gap-1 font-medium text-foreground/80 tabular-nums">
+   557→                <CalendarDays className="size-3.5 text-primary" />
+   558→                {formatDateTime(booking.scheduledAt)}
+   559→              </span>
+   560→              <span className="inline-flex items-center gap-1">
+   561→                <MapPin className="size-3.5" />
+   562→                <span className="max-w-[14rem] truncate">
+   563→                  {booking.address}
+   564→                </span>
+   565→              </span>
+   566→            </div>
+   567→          </div>
+   568→
+   569→          <div className="flex shrink-0 flex-col items-end gap-1">
+   570→            <span className="text-sm font-semibold tabular-nums">
+   571→              {formatBRL(booking.amount)}
+   572→            </span>
+   573→            <StatusBadge
+   574→              tone={paymentTone(booking.paymentStatus as PaymentStatus)}
+   575→              icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
+   576→              className="text-[10px]"
+   577→            >
+   578→              {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]} ·{" "}
+   579→              {PAYMENT_STATUS_LABELS[booking.paymentStatus as PaymentStatus]}
+   580→            </StatusBadge>
+   581→          </div>
+   582→
+   583→          <DropdownMenu>
+   584→            <DropdownMenuTrigger asChild>
+   585→              <Button
+   586→                variant="ghost"
+   587→                size="icon"
+   588→                className="size-9 shrink-0"
+   589→                aria-label="Ações"
+   590→              >
+   591→                <MoreHorizontal className="size-4" />
+   592→              </Button>
+   593→            </DropdownMenuTrigger>
+   594→            <DropdownMenuContent align="end" className="w-56">
+   595→              <DropdownMenuItem onSelect={onViewDetails}>
+   596→                <Eye className="size-4" />
+   597→                Ver detalhes
+   598→              </DropdownMenuItem>
+   599→              <DropdownMenuItem onSelect={onViewProvider}>
+   600→                <MapPin className="size-4" />
+   601→                Ver prestador
+   602→              </DropdownMenuItem>
+   603→              <DropdownMenuItem onSelect={onMessage}>
+   604→                <MessageSquare className="size-4" />
+   605→                Enviar mensagem
+   606→              </DropdownMenuItem>
+   607→              <DropdownMenuSeparator />
+   608→              {canComplete ? (
+   609→                <DropdownMenuItem
+   610→                  onSelect={onComplete}
+   611→                  disabled={isCompleting}
+   612→                >
+   613→                  <CheckCircle2 className="size-4 text-emerald-600" />
+   614→                  Marcar como concluído
+   615→                </DropdownMenuItem>
+   616→              ) : null}
+   617→              {canReview ? (
+   618→                <DropdownMenuItem onSelect={onReview}>
+   619→                  <Star className="size-4 text-amber-500" />
+   620→                  Avaliar serviço
+   621→                </DropdownMenuItem>
+   622→              ) : null}
+   623→              {canCancel ? (
+   624→                <DropdownMenuItem
+   625→                  variant="destructive"
+   626→                  onSelect={onCancel}
+   627→                >
+   628→                  <XCircle className="size-4" />
+   629→                  Cancelar agendamento
+   630→                </DropdownMenuItem>
+   631→              ) : null}
+   632→            </DropdownMenuContent>
+   633→          </DropdownMenu>
+   634→        </div>
+   635→
+   636→        {/* Quick action buttons (visible on mobile too) */}
+   637→        <div className="flex flex-wrap items-center gap-2">
+   638→          <Button
+   639→            variant="outline"
+   640→            size="sm"
+   641→            onClick={onViewDetails}
+   642→            className="h-9 gap-1.5"
+   643→          >
+   644→            <Eye className="size-4" />
+   645→            Detalhes
+   646→          </Button>
+   647→          {canComplete ? (
+   648→            <Button
+   649→              size="sm"
+   650→              onClick={onComplete}
+   651→              disabled={isCompleting}
+   652→              className="h-9 gap-1.5"
+   653→            >
+   654→              {isCompleting ? (
+   655→                <Loader2 className="size-4 animate-spin" />
+   656→              ) : (
+   657→                <CheckCircle2 className="size-4" />
+   658→              )}
+   659→              Concluir
+   660→            </Button>
+   661→          ) : null}
+   662→          {canReview ? (
+   663→            <Button
+   664→              size="sm"
+   665→              onClick={onReview}
+   666→              className="h-9 gap-1.5"
+   667→            >
+   668→              <Star className="size-4" />
+   669→              Avaliar
+   670→            </Button>
+   671→          ) : null}
+   672→          {canCancel ? (
+   673→            <Button
+   674→              variant="ghost"
+   675→              size="sm"
+   676→              onClick={onCancel}
+   677→              className="h-9 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+   678→            >
+   679→              <XCircle className="size-4" />
+   680→              Cancelar
+   681→            </Button>
+   682→          ) : null}
+   683→        </div>
+   684→      </CardContent>
+   685→    </Card>
+   686→  )
+   687→}
+   688→
+   689→// ---------------------------------------------------------------------------
+   690→// BookingDetailsDialog — fetches a single booking and shows full info
+   691→// ---------------------------------------------------------------------------
+   692→
+   693→function BookingDetailsDialog({
+   694→  bookingId,
+   695→  onOpenChange,
+   696→}: {
+   697→  bookingId: string | null
+   698→  onOpenChange: (open: boolean) => void
+   699→}) {
+   700→  const query = useQuery<{
+   701→    booking: Booking & { notes?: string | null }
+   702→  }>({
+   703→    queryKey: ["booking", bookingId],
+   704→    queryFn: () => apiGet(`/api/bookings/${bookingId}`),
+   705→    enabled: !!bookingId,
+   706→  })
+   707→
+   708→  const b = query.data?.booking
+   709→
+   710→  return (
+   711→    <Dialog open={!!bookingId} onOpenChange={onOpenChange}>
+   712→      <DialogContent className="sm:max-w-md">
+   713→        <DialogHeader>
+   714→          <DialogTitle>Detalhes do agendamento</DialogTitle>
+   715→          <DialogDescription>
+   716→            Informações completas sobre este serviço.
+   717→          </DialogDescription>
+   718→        </DialogHeader>
+   719→
+   720→        {query.isLoading ? (
+   721→          <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+   722→            <Loader2 className="size-4 animate-spin" />
+   723→            Carregando…
+   724→          </div>
+   725→        ) : !b ? (
+   726→          <p className="text-sm text-muted-foreground">
+   727→            Agendamento não encontrado.
+   728→          </p>
+   729→        ) : (
+   730→          <div className="space-y-3 text-sm">
+   731→            <Row label="Prestador" value={b.provider.name} />
+   732→            <Row label="Serviço" value={b.service.title} />
+   733→            <Row
+   734→              label="Agendado para"
+   735→              value={
+   736→                <span className="tabular-nums">
+   737→                  {formatDateTime(b.scheduledAt)}
+   738→                </span>
+   739→              }
+   740→            />
+   741→            <Row label="Endereço" value={b.address} />
+   742→            <Row label="CEP" value={<span className="tabular-nums">{b.cep}</span>} />
+   743→            <Row
+   744→              label="Status"
+   745→              value={
+   746→                <StatusBadge
+   747→                  tone={bookingTone(b.status as BookingStatus)}
+   748→                  icon={bookingIcon(b.status as BookingStatus)}
+   749→                >
+   750→                  {BOOKING_STATUS_LABELS[b.status as BookingStatus]}
+   751→                </StatusBadge>
+   752→              }
+   753→            />
+   754→            <Row
+   755→              label="Pagamento"
+   756→              value={
+   757→                <span className="inline-flex flex-wrap items-center gap-1.5">
+   758→                  <span>
+   759→                    {PAYMENT_METHOD_LABELS[b.paymentMethod as PaymentMethod]}
+   760→                  </span>
+   761→                  <span className="text-muted-foreground">·</span>
+   762→                  <StatusBadge
+   763→                    tone={paymentTone(b.paymentStatus as PaymentStatus)}
+   764→                    icon={paymentIcon(b.paymentStatus as PaymentStatus)}
+   765→                    className="text-[10px]"
+   766→                  >
+   767→                    {PAYMENT_STATUS_LABELS[b.paymentStatus as PaymentStatus]}
+   768→                  </StatusBadge>
+   769→                </span>
+   770→              }
+   771→            />
+   772→            <Row
+   773→              label="Valor"
+   774→              value={
+   775→                <span className="font-semibold tabular-nums">
+   776→                  {formatBRL(b.amount)}
+   777→                </span>
+   778→              }
+   779→            />
+   780→            {b.notes ? <Row label="Observações" value={b.notes} /> : null}
+   781→
+   782→            {/* Flow transparency — "what happens now" timeline */}
+   783→            <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
+   784→              <BookingTimeline status={b.status} />
+   785→            </div>
+   786→          </div>
+   787→        )}
+   788→
+   789→        <DialogFooter>
+   790→          <Button variant="outline" onClick={() => onOpenChange(false)}>
+   791→            Fechar
+   792→          </Button>
+   793→        </DialogFooter>
+   794→      </DialogContent>
+   795→    </Dialog>
+   796→  )
+   797→}
+   798→
+   799→function Row({
+   800→  label,
+   801→  value,
+   802→}: {
+   803→  label: string
+   804→  value: React.ReactNode
+   805→}) {
+   806→  return (
+   807→    <div className="grid grid-cols-3 gap-2 border-b pb-2 last:border-b-0 last:pb-0">
+   808→      <span className="text-xs text-muted-foreground">{label}</span>
+   809→      <span className="col-span-2 break-words text-sm">{value}</span>
+   810→    </div>
+   811→  )
+   812→}
+   813→
