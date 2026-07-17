@@ -2309,3 +2309,24 @@ Stage Summary:
 - Duplicate key "Q" React error fixed in how-it-works.tsx
 - Console now shows only info/log/warning messages (no errors)
 - App continues to function correctly on all sections
+
+---
+Task ID: remove-header-categories
+Agent: main
+Task: Remove category navigation bar from header/topbar per user request (with image showing Todas, Alvenaria, Elétrica, etc. pills)
+
+Work Log:
+- Analyzed uploaded image with VLM to identify the element to remove: horizontal category pill bar (Todas, Alvenaria, Elétrica, Hidráulica, Pintura, Pisos, Pós-Obra, Residencial) in the header
+- Removed desktop category nav section (nav with aria-label="Categorias" + CategoryPill components + fade edges)
+- Removed mobile categories section from the sheet (CategoryChipButton components)
+- Removed unused CategoryPill and CategoryChipButton component definitions
+- Removed unused categoryNavRef
+- Kept search popover categories (contextual search suggestions, not standalone nav)
+- Verified with agent-browser: header now shows only logo, search bar, location, theme toggle, auth buttons
+- Verified CategoryShowcase section on page body still works correctly
+- No console errors
+
+Stage Summary:
+- Category navigation bar fully removed from header (desktop + mobile)
+- Header is now cleaner with just logo, search, location, theme, and auth
+- Categories are still accessible via the CategoryShowcase section on the page
