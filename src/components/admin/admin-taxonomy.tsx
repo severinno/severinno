@@ -92,6 +92,8 @@ import {
 
 import {
   PageSectionHeader,
+  EmptyState,
+  ErrorState,
   ConfirmDialog,
   ConfirmToggleDialog,
   StatusBadge,
@@ -135,9 +137,9 @@ type LevelMeta = {
 const LEVEL_META: Record<number, LevelMeta> = {
   0: {
     label: "Pai",
-    tone: "emerald",
-    dot: "bg-emerald-500",
-    rowAccent: "border-l-2 border-emerald-500/60",
+    tone: "sky",
+    dot: "bg-sky-500",
+    rowAccent: "border-l-2 border-sky-500/60",
   },
   1: {
     label: "Filha",
@@ -352,7 +354,7 @@ export function AdminTaxonomy() {
       />
 
       {/* Toolbar — H8 minimalismo, agrupa contagem + ações de árvore */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/50 bg-card p-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">
             <FolderTree className="size-3.5 text-primary" />
@@ -402,38 +404,36 @@ export function AdminTaxonomy() {
 
       {/* H9 — error recovery */}
       {isError ? (
-        <ErrorRetry onRetry={() => refetch()} />
+        <ErrorState
+          title="Não foi possível carregar a árvore de categorias"
+          description="Verifique sua conexão e tente novamente."
+          onRetry={() => refetch()}
+        />
       ) : (
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden rounded-xl border-border/50 shadow-none">
           <CardContent className="p-0">
             {isLoading ? (
               <div className="flex flex-col gap-2 p-4">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-14 w-full" />
+                  <Skeleton key={i} className="h-12 w-full rounded-md" />
                 ))}
               </div>
             ) : tree.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
-                <div className="flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  <FolderTree className="size-7" />
-                </div>
-                <div>
-                  <p className="text-lg font-semibold">
-                    Nenhuma categoria cadastrada
-                  </p>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    Crie a primeira categoria pai para iniciar a taxonomia.
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => setCreateOpen(true)}
-                  className="gap-1.5"
-                >
-                  <Plus className="size-4" />
-                  Criar primeira categoria
-                </Button>
-              </div>
+              <EmptyState
+                icon={FolderTree}
+                title="Nenhuma categoria cadastrada"
+                description="Crie a primeira categoria pai para iniciar a taxonomia."
+                action={
+                  <Button
+                    size="sm"
+                    onClick={() => setCreateOpen(true)}
+                    className="gap-1.5"
+                  >
+                    <Plus className="size-4" />
+                    Criar primeira categoria
+                  </Button>
+                }
+              />
             ) : (
               <ul className="flex flex-col" role="tree">
                 {tree.map((node) => (
@@ -552,18 +552,20 @@ function TreeNode({
     >
       <div
         className={cn(
-          "group relative flex flex-wrap items-center gap-2 border-b px-3 py-2.5 transition-colors hover:bg-muted/30 last:border-0",
+          "group relative flex flex-wrap items-center gap-2 border-b border-border/50 h-12 transition-colors hover:bg-muted/20 last:border-0",
           meta.rowAccent,
           !node.active && "opacity-60",
+          level === 0 && "pl-3",
+          level === 1 && "pl-6",
+          level === 2 && "pl-12",
         )}
-        style={{ paddingLeft: `${12 + level * 22}px` }}
       >
         {/* Connecting line (visual, níveis aninhados) */}
         {level > 0 ? (
           <span
             aria-hidden
-            className="pointer-events-none absolute left-0 top-0 h-full border-l border-dashed border-border"
-            style={{ marginLeft: `${12 + (level - 1) * 22 + 8}px` }}
+            className="pointer-events-none absolute left-0 top-0 h-full border-l border-dashed border-border/50"
+            style={{ marginLeft: `${(level - 1) * 12 + 14}px` }}
           />
         ) : null}
 
@@ -603,7 +605,7 @@ function TreeNode({
                   variant="ghost"
                   size="icon"
                   disabled
-                  className="size-6 text-muted-foreground/40"
+                  className="size-7 text-muted-foreground/40"
                   aria-label="Mover para cima"
                 >
                   <ChevronUp className="size-3.5" />
@@ -622,7 +624,7 @@ function TreeNode({
                   variant="ghost"
                   size="icon"
                   disabled
-                  className="size-6 text-muted-foreground/40"
+                  className="size-7 text-muted-foreground/40"
                   aria-label="Mover para baixo"
                 >
                   <ChevronDown className="size-3.5" />
@@ -697,7 +699,7 @@ function TreeNode({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-7 text-muted-foreground hover:text-primary"
+                className="size-8 text-muted-foreground hover:text-primary"
                 onClick={() => onEdit(node)}
                 aria-label="Editar categoria"
               >
@@ -711,7 +713,7 @@ function TreeNode({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-7 text-muted-foreground hover:text-red-600"
+                className="size-8 text-muted-foreground hover:text-red-600"
                 onClick={() => onDelete(node)}
                 aria-label="Excluir categoria"
               >
@@ -850,11 +852,11 @@ function CategoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-1">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
           {/* Name + slug (H10 — Info tooltip no Slug) */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
@@ -868,6 +870,7 @@ function CategoryDialog({
                 placeholder="Ex.: Reparos"
                 required
                 maxLength={80}
+                className="h-9 rounded-lg border-input/60"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -904,6 +907,7 @@ function CategoryDialog({
                 placeholder="reparos"
                 required
                 maxLength={80}
+                className="h-9 rounded-lg border-input/60"
               />
               <p className="text-[11px] text-muted-foreground">
                 Apenas letras minúsculas, números e hífens.
@@ -916,7 +920,7 @@ function CategoryDialog({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cat-parent">Categoria pai</Label>
               <Select value={parentId} onValueChange={setParentId}>
-                <SelectTrigger id="cat-parent">
+                <SelectTrigger id="cat-parent" className="rounded-lg border-input/60">
                   <SelectValue placeholder="Nenhuma (categoria pai)" />
                 </SelectTrigger>
                 <SelectContent>
@@ -936,12 +940,12 @@ function CategoryDialog({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Nível resultante</Label>
-              <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3">
-                <StatusBadge tone={LEVEL_META[level]?.tone ?? "emerald"}>
+              <div className="flex h-9 items-center gap-2 rounded-lg border border-input/60 bg-muted/40 px-3">
+                <StatusBadge tone={LEVEL_META[level]?.tone ?? "sky"}>
                   <span
                     className={cn(
                       "size-1.5 rounded-full",
-                      LEVEL_META[level]?.dot ?? "bg-emerald-500",
+                      LEVEL_META[level]?.dot ?? "bg-sky-500",
                     )}
                   />
                   {LEVEL_META[level]?.label ?? "Pai"}
@@ -958,7 +962,7 @@ function CategoryDialog({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cat-icon">Ícone (opcional)</Label>
               <div className="flex items-center gap-2">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-muted/40">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-input/60 bg-muted/40">
                   {hasCurrentIcon ? (
                     <CategoryIcon name={currentIconName} className="size-4 text-foreground" />
                   ) : (
@@ -966,7 +970,7 @@ function CategoryDialog({
                   )}
                 </span>
                 <Select value={icon} onValueChange={setIcon}>
-                  <SelectTrigger id="cat-icon" className="flex-1">
+                  <SelectTrigger id="cat-icon" className="flex-1 rounded-lg border-input/60">
                     <SelectValue placeholder="Sem ícone" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1006,6 +1010,7 @@ function CategoryDialog({
                 value={order}
                 onChange={(e) => setOrder(Number(e.target.value))}
                 min={0}
+                className="h-9 rounded-lg border-input/60"
               />
               <p className="text-[11px] text-muted-foreground">
                 Posição relativa entre irmãos (menor = antes).
@@ -1014,7 +1019,7 @@ function CategoryDialog({
           </div>
 
           {/* Active toggle */}
-          <div className="flex items-center justify-between rounded-md border p-3">
+          <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
             <div>
               <Label htmlFor="cat-active" className="text-sm font-medium">
                 Ativa
@@ -1030,7 +1035,7 @@ function CategoryDialog({
             />
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button
               type="button"
               variant="outline"

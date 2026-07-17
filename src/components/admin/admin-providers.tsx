@@ -280,7 +280,7 @@ export function AdminProviders() {
     <button
       type="button"
       onClick={() => toggleSort(sortKey)}
-      className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+      className={cn("inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors hover:text-foreground", sort?.key === sortKey ? "text-foreground" : "text-muted-foreground")}
     >
       {label}
       {sort?.key === sortKey ? (
@@ -366,7 +366,7 @@ export function AdminProviders() {
 
       {/* Honest about client-side filter — H2 */}
       {clientFilterActive ? (
-        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300">
+        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-600/80 dark:text-amber-400/80">
           <ShieldQuestion className="size-3" />
           Filtro de verificação/status aplicado apenas à página atual
         </span>
@@ -401,29 +401,29 @@ export function AdminProviders() {
           }
         />
       ) : (
-        <Card className="overflow-hidden">
+        <Card className="rounded-xl border border-border/50 bg-card overflow-hidden shadow-none">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="h-11 bg-muted/50 hover:bg-muted/50">
+                  <TableRow className="h-10 bg-muted/30 hover:bg-muted/30">
                     <TableHead>{renderSortHeader("Prestador", "name")}</TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground md:table-cell">
+                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:table-cell">
                       Contato
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:table-cell">
+                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:table-cell">
                       Localidade
                     </TableHead>
-                    <TableHead className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Verificação
                     </TableHead>
-                    <TableHead className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Status
                     </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Desde", "createdAt")}
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Ações
                     </TableHead>
                   </TableRow>
@@ -438,15 +438,15 @@ export function AdminProviders() {
                     return (
                       <TableRow
                         key={p.id}
-                        className="h-14 border-b transition-colors last:border-0 hover:bg-muted/30"
+                        className="h-12 border-b border-border/50 transition-colors last:border-0 hover:bg-muted/20"
                       >
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <Avatar className="size-9 shrink-0">
+                            <Avatar className="size-8 shrink-0">
                               {p.avatarUrl ? (
                                 <AvatarImage src={p.avatarUrl} alt={p.name} />
                               ) : null}
-                              <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+                              <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
                                 {initials(p.name)}
                               </AvatarFallback>
                             </Avatar>
@@ -515,7 +515,7 @@ export function AdminProviders() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => openProvider(p.id)}
-                                  className="h-8 gap-1.5"
+                                  className="h-8 gap-1.5 text-xs"
                                 >
                                   <Eye className="size-3.5" />
                                   <span className="hidden sm:inline">

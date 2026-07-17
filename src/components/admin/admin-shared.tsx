@@ -126,13 +126,13 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1 ring-inset ring-current/10",
         TONE_CLASS[tone],
         className,
       )}
     >
       {Icon ? (
-        <Icon className={cn("size-3", spin && "animate-spin")} />
+        <Icon className={cn("size-[13px] shrink-0", spin && "animate-spin")} />
       ) : null}
       {children}
     </span>
@@ -300,7 +300,7 @@ export function PageSectionHeader({
   return (
     <div
       className={cn(
-        "mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between",
+        "mb-6 flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-end sm:justify-between",
         className,
       )}
     >
@@ -309,11 +309,11 @@ export function PageSectionHeader({
           {title}
         </h2>
         {description ? (
-          <p className="text-sm text-muted-foreground">{description}</p>
+          <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {action ? (
-        <div className="flex flex-wrap items-center gap-2">{action}</div>
+        <div className="flex shrink-0 items-center gap-2">{action}</div>
       ) : null}
     </div>
   )
@@ -340,7 +340,7 @@ export function FilterBar({
 }) {
   return (
     <div className={cn("mb-4", className)}>
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 rounded-xl border bg-card/50 p-3 shadow-none sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-wrap items-center gap-2">
           {children}
         </div>
@@ -350,7 +350,7 @@ export function FilterBar({
             variant="ghost"
             size="sm"
             onClick={onClear}
-            className="h-9 shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
+            className="h-8 shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
           >
             <X className="size-3.5" />
             Limpar filtros
@@ -362,7 +362,7 @@ export function FilterBar({
       </div>
       {resultCount != null ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          <span className="font-semibold text-foreground tabular-nums">
+          <span className="font-medium tabular-nums text-foreground">
             {resultCount}
           </span>{" "}
           {resultLabel}
@@ -385,13 +385,13 @@ export function SearchInput({
 }) {
   return (
     <div className={cn("relative", className)}>
-      <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-9 w-full rounded-lg border bg-background pl-8 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+        className="h-9 w-full rounded-lg border border-input/60 bg-background pl-8 pr-3 text-sm outline-none transition-all placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
       />
     </div>
   )
@@ -411,17 +411,17 @@ export function TableSkeleton({
   className?: string
 }) {
   return (
-    <div className={cn("overflow-hidden rounded-xl border", className)}>
-      <div className="border-b bg-muted/50 px-4 py-3">
+    <div className={cn("overflow-hidden rounded-xl border border-border/50", className)}>
+      <div className="border-b border-border/50 bg-muted/30 px-4 py-2.5">
         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
           {Array.from({ length: cols }).map((_, i) => (
             <Skeleton key={i} className="h-3.5 w-20" />
           ))}
         </div>
       </div>
-      <div className="divide-y">
+      <div className="divide-y divide-border/50">
         {Array.from({ length: rows }).map((_, r) => (
-          <div key={r} className="px-4 py-3.5">
+          <div key={r} className="px-4 py-3">
             <div className="grid items-center gap-4" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
               {Array.from({ length: cols }).map((_, c) => (
                 <Skeleton key={c} className={cn("h-4", c === 0 ? "w-32" : c === cols - 1 ? "w-12" : "w-20")} />
@@ -450,12 +450,12 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 py-14 text-center shadow-sm",
+        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-16 text-center",
         className,
       )}
     >
-      <div className="flex size-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300">
-        <Icon className="size-7" />
+      <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/5 ring-1 ring-primary/10 text-primary/60">
+        <Icon className="size-6" />
       </div>
       <h3 className="mt-4 text-base font-semibold tracking-tight">{title}</h3>
       {description ? (
@@ -463,7 +463,7 @@ export function EmptyState({
           {description}
         </p>
       ) : null}
-      {action ? <div className="mt-4">{action}</div> : null}
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   )
 }
@@ -482,12 +482,12 @@ export function ErrorState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-6 py-14 text-center dark:border-rose-900/50 dark:bg-rose-950/30",
+        "flex flex-col items-center justify-center rounded-xl border border-rose-200/60 bg-rose-50/50 px-6 py-16 text-center dark:border-rose-900/30 dark:bg-rose-950/20",
         className,
       )}
     >
-      <div className="flex size-14 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300">
-        <AlertTriangle className="size-7" />
+      <div className="flex size-12 items-center justify-center rounded-2xl bg-rose-100/80 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+        <AlertTriangle className="size-6" />
       </div>
       <h3 className="mt-4 text-base font-semibold tracking-tight">{title}</h3>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
@@ -498,7 +498,7 @@ export function ErrorState({
           variant="outline"
           size="sm"
           onClick={onRetry}
-          className="mt-4 gap-1.5"
+          className="mt-5 gap-1.5 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
         >
           <RotateCcw className="size-3.5" />
           Tentar novamente
@@ -525,26 +525,26 @@ export function Pagination({
 }) {
   if (totalPages <= 1) return null
   return (
-    <div className={cn("mt-6 flex items-center justify-center gap-3", className)}>
+    <div className={cn("mt-4 flex items-center justify-center gap-3", className)}>
       <Button
         variant="outline"
         size="sm"
         onClick={() => onPageChange(Math.max(1, page - 1))}
         disabled={page <= 1}
-        className="h-9 gap-1.5"
+        className="h-8 gap-1.5"
       >
         Anterior
       </Button>
       <span className="text-sm tabular-nums text-muted-foreground">
-        Página <span className="font-semibold text-foreground">{page}</span> de{" "}
-        <span className="font-semibold text-foreground">{totalPages}</span>
+        Página <span className="font-medium text-foreground">{page}</span> de{" "}
+        <span className="font-medium text-foreground">{totalPages}</span>
       </span>
       <Button
         variant="outline"
         size="sm"
         onClick={() => onPageChange(Math.min(totalPages, page + 1))}
         disabled={page >= totalPages}
-        className="h-9 gap-1.5"
+        className="h-8 gap-1.5"
       >
         Próxima
       </Button>
@@ -568,9 +568,9 @@ export function ResultCount({
   return (
     <p className="text-xs text-muted-foreground">
       Exibindo{" "}
-      <span className="font-semibold text-foreground tabular-nums">{from}</span>
-      –<span className="font-semibold text-foreground tabular-nums">{to}</span>{" "}
-      de <span className="font-semibold text-foreground tabular-nums">{total}</span>{" "}
+      <span className="font-medium tabular-nums text-foreground">{from}</span>
+      –<span className="font-medium tabular-nums text-foreground">{to}</span>{" "}
+      de <span className="font-medium tabular-nums text-foreground">{total}</span>{" "}
       {label}
     </p>
   )
@@ -593,7 +593,7 @@ export function SavingPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800",
+        "inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 ring-1 ring-amber-200/80 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800/60",
         className,
       )}
     >
@@ -630,19 +630,19 @@ export function ConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
+          <AlertDialogTitle className="flex items-center gap-3">
             {variant === "destructive" ? (
-              <span className="flex size-8 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300">
-                <Trash2 className="size-4" />
+              <span className="flex size-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300">
+                <Trash2 className="size-5" />
               </span>
             ) : null}
             {title}
           </AlertDialogTitle>
           {description ? (
-            <AlertDialogDescription>{description}</AlertDialogDescription>
+            <AlertDialogDescription className="pt-1">{description}</AlertDialogDescription>
           ) : null}
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="gap-2 pt-2">
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
@@ -685,31 +685,31 @@ export function ConfirmToggleDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
+          <AlertDialogTitle className="flex items-center gap-3">
             <span
               className={cn(
-                "flex size-8 items-center justify-center rounded-full",
+                "flex size-10 items-center justify-center rounded-xl",
                 tone === "amber"
                   ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-300"
                   : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300",
               )}
             >
               {field === "verified" ? (
-                <ShieldX className="size-4" />
+                <ShieldX className="size-5" />
               ) : (
-                <RotateCcw className="size-4" />
+                <RotateCcw className="size-5" />
               )}
             </span>
             {currentValue ? "Remover" : "Conceder"} {fieldLabel}?
           </AlertDialogTitle>
-          <AlertDialogDescription>
+          <AlertDialogDescription className="pt-1">
             Você está prestes a <strong>{action}</strong> de{" "}
             <strong>{fieldLabel}</strong> para{" "}
             <strong>{targetLabel}</strong>. Esta ação pode afetar a experiência
             do usuário na plataforma.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="gap-2 pt-2">
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm}>
             {currentValue ? "Remover" : "Conceder"}
@@ -726,7 +726,7 @@ export function ConfirmToggleDialog({
 
 export function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-border bg-muted px-1 font-mono text-[10px] font-semibold text-muted-foreground">
+    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-border/60 bg-muted/50 px-1 font-mono text-[10px] font-semibold text-muted-foreground">
       {children}
     </kbd>
   )
@@ -747,7 +747,7 @@ export function FreshnessLabel({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 text-xs text-muted-foreground",
+        "inline-flex items-center gap-1 text-xs text-muted-foreground/70",
         className,
       )}
       title={`Atualizado em ${updatedAt.toLocaleString("pt-BR")}`}

@@ -196,10 +196,10 @@ export function AdminBookings() {
           setPage(1)
         }}
       >
-        <TabsList className="h-auto flex-wrap gap-1 bg-card p-1 shadow-sm">
+        <TabsList className="h-auto flex-wrap gap-1 bg-card/50 border border-border/50 shadow-none p-1">
           <TabsTrigger
             value="ALL"
-            className="h-8 gap-1.5 rounded-md px-3 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="h-8 rounded-md px-3 text-xs font-medium gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             Todos
             <CountBadge
@@ -212,7 +212,7 @@ export function AdminBookings() {
             <TabsTrigger
               key={s}
               value={s}
-              className="h-8 gap-1.5 rounded-md px-3 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              className="h-8 rounded-md px-3 text-xs font-medium gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
             >
               {BOOKING_STATUS_LABELS[s]}
               <CountBadge
@@ -244,7 +244,7 @@ export function AdminBookings() {
 
       {/* Honestidade H2 — busca é client-side na página atual */}
       {query ? (
-        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300">
+        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-600/80">
           <ShieldQuestion className="size-3" />
           Busca aplicada apenas à página atual
         </span>
@@ -285,31 +285,31 @@ export function AdminBookings() {
           }
         />
       ) : (
-        <Card className="overflow-hidden">
+        <Card className="rounded-xl border border-border/50 bg-card overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="h-11 bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableRow className="bg-muted/30 h-10">
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Cliente
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Prestador
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground md:table-cell">
+                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:table-cell">
                       Serviço
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:table-cell">
+                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:table-cell">
                       Agendado para
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Valor
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Status
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:table-cell">
+                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:table-cell">
                       Pagamento
                     </TableHead>
                   </TableRow>
@@ -320,11 +320,11 @@ export function AdminBookings() {
                       <TooltipTrigger asChild>
                         <TableRow
                           onClick={() => setDetail(b)}
-                          className="h-14 cursor-pointer border-b transition-colors last:border-0 hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-none"
+                          className="h-12 cursor-pointer border-b border-border/50 hover:bg-muted/20 transition-colors focus-visible:bg-muted/20 focus-visible:outline-none"
                         >
                           <TableCell className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
-                              <Avatar className="size-9 shrink-0">
+                              <Avatar className="size-8 shrink-0">
                                 {b.client?.avatarUrl ? (
                                   <AvatarImage
                                     src={b.client.avatarUrl}
@@ -342,7 +342,7 @@ export function AdminBookings() {
                           </TableCell>
                           <TableCell className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
-                              <Avatar className="size-9 shrink-0">
+                              <Avatar className="size-8 shrink-0">
                                 {b.provider?.avatarUrl ? (
                                   <AvatarImage
                                     src={b.provider.avatarUrl}
@@ -401,7 +401,7 @@ export function AdminBookings() {
             </div>
 
             {/* Result count + Pagination (H1 + H7) */}
-            <div className="flex flex-col items-center justify-between gap-2 border-t px-4 py-3 sm:flex-row">
+            <div className="flex flex-col items-center justify-between gap-2 border-t border-border/50 px-4 py-3 sm:flex-row">
               <ResultCount
                 page={page}
                 limit={limit}
@@ -457,14 +457,14 @@ export function AdminBookings() {
               </div>
 
               {/* Service + value */}
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
                   Serviço
                 </p>
                 <p className="mt-0.5 text-sm font-medium text-foreground">
                   {detail.service?.title ?? "—"}
                 </p>
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="mt-2 text-[11px] uppercase tracking-wider text-muted-foreground">
                   Valor
                 </p>
                 <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
@@ -535,7 +535,7 @@ function CountBadge({
   return (
     <span
       className={cn(
-        "ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+        "ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1.5 text-[10px] font-semibold tabular-nums",
         active
           ? "bg-primary-foreground/20 text-primary-foreground"
           : "bg-muted text-muted-foreground",
@@ -558,7 +558,7 @@ function DetailField({
 }) {
   return (
     <div className="space-y-1">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
         {label}
       </p>
       <div className="flex items-center gap-2">
@@ -589,7 +589,7 @@ function DetailRow({
     <div className="flex items-start gap-2.5">
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
           {label}
         </p>
         <p className="text-sm text-foreground">{value}</p>

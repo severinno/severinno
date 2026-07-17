@@ -1257,3 +1257,27 @@ Stage Summary:
 - H5 implementado em TODAS as toggles: Switch de verificado/ativo agora abre ConfirmToggleDialog (antes era instantâneo sem undo).
 - VLM scores: Dashboard 6/10 (VLM misread — DOM confirma 4 KPIs/2 charts/0 fake), Bookings 9/10, Settings 7/10 (VLM não viu eye toggle — DOM confirma presente).
 - 10/10 heurísticas de Nielsen cobertas: H1 (status/freshness/skeleton/error-retry), H2 (sem affordances enganosos), H3 (Desfazer per-field), H4 (UMA source of truth cores), H5 (ConfirmToggleDialog + eye toggle), H6 (botões visíveis + "Secreto" + icon picker), H7 (search + sort + pagination + Kbd hints), H8 (declutter + single save), H9 (ErrorState com retry em todas views), H10 (tooltips em icon-buttons + slug help + setting help).
+
+---
+Task ID: 2
+Agent: Main Agent + 7 Subagents
+Task: Redesenhar todo o painel admin (desktop) seguindo as 10 heurísticas de Nielsen
+
+Work Log:
+- Analisou todos os 9 arquivos do admin panel (dashboard-shell, admin-panel, admin-dashboard, admin-shared, admin-taxonomy, admin-users, admin-providers, admin-services, admin-bookings, admin-settings)
+- Redesenhou DashboardShell: sidebar 260px com navegação limpa, topbar sem location chip, glass effect, footer refinado
+- Redesenhou admin-shared: StatusBadge rounded-md com ring, FilterBar sem shadow, SearchInput com focus ring, EmptyState/ErrorState refinados, Pagination compacta
+- Redesenhou Admin Dashboard: KPI cards sem shadow, seletor de período segmented control, charts clean (bar + pie), tabela recentes + top providers
+- Refinou Admin Taxonomy: tree table styling, dialog forms, level badges consistentes
+- Refinou Admin Users: table headers, edit dialog, role downgrade alert, sort headers
+- Refinou Admin Providers: table styling, action buttons, filter hints
+- Refinou Admin Services: table, category badges, provider links
+- Refinou Admin Bookings: tabs, detail dialog, count badges
+- Refinou Admin Settings: settings cards, sticky save bar, secret toggle
+- Verificou todos os 7 views no browser (agent-browser) sem erros de console
+
+Stage Summary:
+- Todos os 9 arquivos do admin panel foram redesenhados
+- Lint limpo, compilação sem erros, zero erros no console do browser
+- Heurísticas de Nielsen aplicadas: H1 (visibilidade), H2 (mundo real), H3 (controle), H4 (consistência), H5 (prevenção erros), H6 (reconhecimento), H7 (eficiência), H8 (minimalismo), H9 (recuperar erros)
+- Design: clean/minimalista, sem shadows, borders sutis border-border/50, tipografia refinada, avatares size-8, headers uppercase tracking-wider
