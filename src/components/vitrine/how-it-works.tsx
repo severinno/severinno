@@ -159,7 +159,7 @@ const STEPS: StepDef[] = [
         <div className="rounded-lg border bg-white p-2 shadow-sm dark:bg-slate-800">
           <div className="mb-1 text-center text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Março 2025</div>
           <div className="grid grid-cols-7 gap-0.5 text-center text-[8px] text-muted-foreground">
-            {["S","T","Q","Q","S","S","D"].map(d => <span key={d}>{d}</span>)}
+            {["S","T","Q","Q","S","S","D"].map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
             {Array.from({length: 15}, (_, i) => (
               <span key={i} className={cn(
                 "py-0.5 rounded",
