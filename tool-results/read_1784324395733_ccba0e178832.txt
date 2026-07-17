@@ -1,0 +1,924 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useQuery } from "@tanstack/react-query"
+     5→import {
+     6→  BadgeCheck,
+     7→  Calendar,
+     8→  ChevronRight,
+     9→  Heart,
+    10→  Loader2,
+    11→  MapPin,
+    12→  Navigation,
+    13→  Share2,
+    14→  Star,
+    15→  Wrench,
+    16→  X,
+    17→} from "lucide-react"
+    18→import { toast } from "sonner"
+    19→import { motion } from "framer-motion"
+    20→
+    21→import {
+    22→  Dialog,
+    23→  DialogContent,
+    24→  DialogTitle,
+    25→  DialogDescription,
+    26→} from "@/components/ui/dialog"
+    27→import {
+    28→  Sheet,
+    29→  SheetContent,
+    30→  SheetTitle,
+    31→  SheetDescription,
+    32→} from "@/components/ui/sheet"
+    33→import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+    34→import {
+    35→  Accordion,
+    36→  AccordionItem,
+    37→  AccordionTrigger,
+    38→  AccordionContent,
+    39→} from "@/components/ui/accordion"
+    40→import {
+    41→  Carousel,
+    42→  CarouselContent,
+    43→  CarouselItem,
+    44→  CarouselNext,
+    45→  CarouselPrevious,
+    46→} from "@/components/ui/carousel"
+    47→import {
+    48→  Avatar,
+    49→  AvatarImage,
+    50→  AvatarFallback,
+    51→} from "@/components/ui/avatar"
+    52→import { Button } from "@/components/ui/button"
+    53→import { Badge } from "@/components/ui/badge"
+    54→import { Separator } from "@/components/ui/separator"
+    55→import { Skeleton } from "@/components/ui/skeleton"
+    56→import { ScrollArea } from "@/components/ui/scroll-area"
+    57→import {
+    58→  Table,
+    59→  TableBody,
+    60→  TableCell,
+    61→  TableHead,
+    62→  TableHeader,
+    63→  TableRow,
+    64→} from "@/components/ui/table"
+    65→
+    66→import { useUIStore } from "@/store/ui"
+    67→import { useAuthStore } from "@/store/auth"
+    68→import { useRecentlyViewedStore } from "@/store/recently-viewed"
+    69→import { useIsMobile } from "@/hooks/use-mobile"
+    70→import { apiGet, type ProviderDetail, type ProviderService } from "@/lib/api"
+    71→import { formatBRL } from "@/lib/format"
+    72→import {
+    73→  SERVICE_UNIT_LABELS,
+    74→  WEEKDAYS,
+    75→  WEEKDAYS_SHORT,
+    76→} from "@/lib/constants"
+    77→import { StarRatingDisplay } from "./star-rating"
+    78→import { cn } from "@/lib/utils"
+    79→
+    80→export function ProviderProfileModal() {
+    81→  const open = useUIStore((s) => s.providerModal.open)
+    82→  const providerId = useUIStore((s) => s.providerModal.providerId)
+    83→  const close = useUIStore((s) => s.closeProvider)
+    84→  const openQuote = useUIStore((s) => s.openQuote)
+    85→  const openBooking = useUIStore((s) => s.openBooking)
+    86→  const addRecentlyViewed = useRecentlyViewedStore((s) => s.addView)
+    87→  const isMobile = useIsMobile()
+    88→
+    89→  const query = useQuery({
+    90→    queryKey: ["provider", providerId],
+    91→    queryFn: () => apiGet<ProviderDetail>(`/api/providers/${providerId}`),
+    92→    enabled: open && !!providerId,
+    93→    staleTime: 60 * 1000,
+    94→  })
+    95→
+    96→  const provider = query.data
+    97→  const [favorited, setFavorited] = React.useState(false)
+    98→
+    99→  // Reset favorite state when provider changes.
+   100→  React.useEffect(() => {
+   101→    setFavorited(false)
+   102→  }, [providerId])
+   103→
+   104→  // Track recently viewed (Nielsen H6 — recognition over recall).
+   105→  // Only track once per provider when the modal opens with loaded data.
+   106→  React.useEffect(() => {
+   107→    if (open && provider) {
+   108→      addRecentlyViewed(provider)
+   109→    }
+   110→  }, [open, provider, addRecentlyViewed])
+   111→
+   112→  const handleFavorite = async () => {
+   113→    setFavorited((v) => !v)
+   114→    toast.success(
+   115→      favorited ? "Removido dos favoritos." : "Adicionado aos favoritos!",
+   116→    )
+   117→  }
+   118→
+   119→  const handleShare = async () => {
+   120→    if (!provider) return
+   121→    const url = `${window.location.origin}/?provider=${provider.id}`
+   122→    try {
+   123→      if (navigator.share) {
+   124→        await navigator.share({
+   125→          title: provider.name,
+   126→          text: `Conheça ${provider.name} no Severinno`,
+   127→          url,
+   128→        })
+   129→      } else {
+   130→        await navigator.clipboard.writeText(url)
+   131→        toast.success("Link copiado para a área de transferência.")
+   132→      }
+   133→    } catch {
+   134→      // user dismissed share dialog — silent
+   135→    }
+   136→  }
+   137→
+   138→  const startQuote = (serviceId?: string) => {
+   139→    if (!provider) return
+   140→    close()
+   141→    setTimeout(() => openQuote({ providerId: provider.id, serviceId }), 200)
+   142→  }
+   143→  const startBooking = (serviceId?: string) => {
+   144→    if (!provider) return
+   145→    close()
+   146→    setTimeout(() => openBooking({ providerId: provider.id, serviceId }), 200)
+   147→  }
+   148→
+   149→  const content = (
+   150→    <ProfileBody
+   151→      provider={provider}
+   152→      loading={query.isLoading}
+   153→      favorited={favorited}
+   154→      onFavorite={handleFavorite}
+   155→      onShare={handleShare}
+   156→      onClose={close}
+   157→      onQuote={startQuote}
+   158→      onBooking={startBooking}
+   159→    />
+   160→  )
+   161→
+   162→  if (isMobile) {
+   163→    return (
+   164→      <Sheet open={open} onOpenChange={(o) => !o && close()}>
+   165→        <SheetContent
+   166→          side="bottom"
+   167→          className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col [&_[data-slot=sheet-close]]:hidden"
+   168→        >
+   169→          <SheetTitle className="sr-only">
+   170→            {provider?.name ?? "Perfil do prestador"}
+   171→          </SheetTitle>
+   172→          <SheetDescription className="sr-only">
+   173→            Detalhes do prestador de serviços.
+   174→          </SheetDescription>
+   175→          <div className="flex-1 overflow-hidden">{content}</div>
+   176→        </SheetContent>
+   177→      </Sheet>
+   178→    )
+   179→  }
+   180→
+   181→  return (
+   182→    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+   183→      <DialogContent
+   184→        className="sm:max-w-3xl p-0 gap-0 overflow-hidden"
+   185→        showCloseButton={false}
+   186→      >
+   187→        <DialogTitle className="sr-only">
+   188→          {provider?.name ?? "Perfil do prestador"}
+   189→        </DialogTitle>
+   190→        <DialogDescription className="sr-only">
+   191→          Detalhes do prestador de serviços.
+   192→        </DialogDescription>
+   193→        {content}
+   194→      </DialogContent>
+   195→    </Dialog>
+   196→  )
+   197→}
+   198→
+   199→// ---------------------------------------------------------------------------
+   200→// Body
+   201→// ---------------------------------------------------------------------------
+   202→
+   203→function ProfileBody({
+   204→  provider,
+   205→  loading,
+   206→  favorited,
+   207→  onFavorite,
+   208→  onShare,
+   209→  onClose,
+   210→  onQuote,
+   211→  onBooking,
+   212→}: {
+   213→  provider?: ProviderDetail
+   214→  loading: boolean
+   215→  favorited: boolean
+   216→  onFavorite: () => void
+   217→  onShare: () => void
+   218→  onClose: () => void
+   219→  onQuote: (serviceId?: string) => void
+   220→  onBooking: (serviceId?: string) => void
+   221→}) {
+   222→  return (
+   223→    <div className="flex max-h-[85vh] flex-col sm:max-h-[85vh]">
+   224→      {/* Cover + identity */}
+   225→      <div className="relative shrink-0">
+   226→        <div className="relative h-32 w-full overflow-hidden bg-gradient-to-r from-emerald-700 to-emerald-500 sm:h-40">
+   227→          {provider?.coverUrl && (
+   228→            <img
+   229→              src={provider.coverUrl}
+   230→              alt=""
+   231→              className="size-full object-cover"
+   232→              loading="lazy"
+   233→            />
+   234→          )}
+   235→          {/* Gradient overlay for legible buttons */}
+   236→          <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
+   237→        </div>
+   238→
+   239→        {/* Top-right actions: close, share, favorite */}
+   240→        <div className="absolute top-3 right-3 flex gap-2">
+   241→          <button
+   242→            onClick={onClose}
+   243→            aria-label="Fechar"
+   244→            className="inline-flex size-9 items-center justify-center rounded-full bg-white/90 text-zinc-700 backdrop-blur transition-colors hover:bg-white dark:bg-zinc-900/80 dark:text-zinc-200"
+   245→          >
+   246→            <X className="size-4" />
+   247→          </button>
+   248→          <button
+   249→            onClick={onShare}
+   250→            aria-label="Compartilhar"
+   251→            className="inline-flex size-9 items-center justify-center rounded-full bg-white/90 text-zinc-700 backdrop-blur transition-colors hover:bg-white dark:bg-zinc-900/80 dark:text-zinc-200"
+   252→          >
+   253→            <Share2 className="size-4" />
+   254→          </button>
+   255→          <button
+   256→            onClick={onFavorite}
+   257→            aria-label={favorited ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+   258→            aria-pressed={favorited}
+   259→            className={cn(
+   260→              "inline-flex size-9 items-center justify-center rounded-full backdrop-blur transition-colors",
+   261→              favorited
+   262→                ? "bg-rose-500 text-white hover:bg-rose-600"
+   263→                : "bg-white/90 text-zinc-700 hover:bg-white dark:bg-zinc-900/80 dark:text-zinc-200",
+   264→            )}
+   265→          >
+   266→            <Heart className={cn("size-4", favorited && "fill-current")} />
+   267→          </button>
+   268→        </div>
+   269→
+   270→        {/* Avatar + identity */}
+   271→        <div className="px-4 sm:px-6 -mt-10 sm:-mt-12 relative z-10 flex items-end gap-4">
+   272→          <Avatar className="size-20 sm:size-24 rounded-xl border-4 border-card shadow-sm">
+   273→            {provider?.avatarUrl ? (
+   274→              <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+   275→            ) : null}
+   276→            <AvatarFallback className="rounded-xl bg-emerald-100 text-emerald-700 text-2xl font-semibold dark:bg-emerald-950 dark:text-emerald-300">
+   277→              {provider?.name?.[0]?.toUpperCase() ?? "?"}
+   278→            </AvatarFallback>
+   279→          </Avatar>
+   280→
+   281→          <div className="flex-1 min-w-0 pb-1">
+   282→            {loading ? (
+   283→              <div className="space-y-1.5">
+   284→                <Skeleton className="h-5 w-48" />
+   285→                <Skeleton className="h-4 w-32" />
+   286→              </div>
+   287→            ) : (
+   288→              <>
+   289→                <div className="flex items-center gap-1.5 flex-wrap">
+   290→                  <h2 className="text-xl font-bold leading-tight truncate">
+   291→                    {provider?.name}
+   292→                  </h2>
+   293→                  {provider?.verified && (
+   294→                    <BadgeCheck
+   295→                      className="size-5 shrink-0 text-emerald-600"
+   296→                      aria-label="Prestador verificado"
+   297→                    />
+   298→                  )}
+   299→                </div>
+   300→                <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+   301→                  {provider && (
+   302→                    <StarRatingDisplay
+   303→                      value={provider.rating}
+   304→                      count={provider.reviewCount}
+   305→                      size={14}
+   306→                    />
+   307→                  )}
+   308→                  {provider?.city && (
+   309→                    <span className="inline-flex items-center gap-1">
+   310→                      <MapPin className="size-3" />
+   311→                      {provider.city}
+   312→                      {provider.state ? `/${provider.state}` : ""}
+   313→                    </span>
+   314→                  )}
+   315→                  {provider?.distanceKm != null && (
+   316→                    <span className="inline-flex items-center gap-1">
+   317→                      <Navigation className="size-3" />
+   318→                      {provider.distanceKm < 1
+   319→                        ? `${Math.round(provider.distanceKm * 1000)} m`
+   320→                        : `${provider.distanceKm.toFixed(1)} km`}
+   321→                    </span>
+   322→                  )}
+   323→                </div>
+   324→              </>
+   325→            )}
+   326→          </div>
+   327→        </div>
+   328→      </div>
+   329→
+   330→      {/* Tabs — pill style, scrollable on mobile */}
+   331→      <div className="flex-1 overflow-hidden border-t mt-3">
+   332→        <Tabs defaultValue="services" className="flex h-full flex-col">
+   333→          <div className="px-4 sm:px-6 pt-2 shrink-0">
+   334→            <TabsList className="flex w-full justify-start gap-1 h-auto overflow-x-auto bg-muted/50 p-1 rounded-lg">
+   335→              <TabsTrigger
+   336→                value="services"
+   337→                className="text-xs sm:text-sm rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm flex-1 sm:flex-none"
+   338→              >
+   339→                Serviços
+   340→              </TabsTrigger>
+   341→              <TabsTrigger
+   342→                value="about"
+   343→                className="text-xs sm:text-sm rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm flex-1 sm:flex-none"
+   344→              >
+   345→                Sobre
+   346→              </TabsTrigger>
+   347→              <TabsTrigger
+   348→                value="reviews"
+   349→                className="text-xs sm:text-sm rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm flex-1 sm:flex-none"
+   350→              >
+   351→                Avaliações
+   352→              </TabsTrigger>
+   353→              <TabsTrigger
+   354→                value="hours"
+   355→                className="text-xs sm:text-sm rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm flex-1 sm:flex-none"
+   356→              >
+   357→                Expediente
+   358→              </TabsTrigger>
+   359→            </TabsList>
+   360→          </div>
+   361→
+   362→          <ScrollArea className="flex-1">
+   363→            <TabsContent
+   364→              value="services"
+   365→              className="p-4 sm:p-6 pt-4 m-0 focus-visible:outline-none"
+   366→            >
+   367→              <ServicesTab
+   368→                services={provider?.services ?? []}
+   369→                loading={loading}
+   370→                onQuote={onQuote}
+   371→                onBooking={onBooking}
+   372→              />
+   373→            </TabsContent>
+   374→
+   375→            <TabsContent
+   376→              value="about"
+   377→              className="p-4 sm:p-6 pt-4 m-0 focus-visible:outline-none"
+   378→            >
+   379→              <AboutTab provider={provider} loading={loading} />
+   380→            </TabsContent>
+   381→
+   382→            <TabsContent
+   383→              value="reviews"
+   384→              className="p-4 sm:p-6 pt-4 m-0 focus-visible:outline-none"
+   385→            >
+   386→              <ReviewsTab
+   387→                reviews={provider?.reviews ?? []}
+   388→                rating={provider?.rating}
+   389→                reviewCount={provider?.reviewCount}
+   390→                loading={loading}
+   391→              />
+   392→            </TabsContent>
+   393→
+   394→            <TabsContent
+   395→              value="hours"
+   396→              className="p-4 sm:p-6 pt-4 m-0 focus-visible:outline-none"
+   397→            >
+   398→              <HoursTab
+   399→                availability={provider?.availability ?? []}
+   400→                loading={loading}
+   401→              />
+   402→            </TabsContent>
+   403→          </ScrollArea>
+   404→        </Tabs>
+   405→      </div>
+   406→
+   407→      {/* Sticky footer actions */}
+   408→      <div className="shrink-0 border-t bg-background/95 backdrop-blur px-4 py-3 sm:px-6">
+   409→        <div className="flex gap-2">
+   410→          <Button
+   411→            onClick={() => onQuote()}
+   412→            variant="outline"
+   413→            className="flex-1 border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+   414→          >
+   415→            <Wrench className="size-4" />
+   416→            Pedir orçamento
+   417→          </Button>
+   418→          <Button
+   419→            onClick={() => onBooking()}
+   420→            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+   421→          >
+   422→            <Calendar className="size-4" />
+   423→            Agendar serviço
+   424→          </Button>
+   425→        </div>
+   426→      </div>
+   427→    </div>
+   428→  )
+   429→}
+   430→
+   431→// ---------------------------------------------------------------------------
+   432→// Services tab — grouped by category, accordion
+   433→// ---------------------------------------------------------------------------
+   434→
+   435→function ServicesTab({
+   436→  services,
+   437→  loading,
+   438→  onQuote,
+   439→  onBooking,
+   440→}: {
+   441→  services: ProviderService[]
+   442→  loading: boolean
+   443→  onQuote: (serviceId?: string) => void
+   444→  onBooking: (serviceId?: string) => void
+   445→}) {
+   446→  if (loading) {
+   447→    return (
+   448→      <div className="space-y-3">
+   449→        {Array.from({ length: 3 }).map((_, i) => (
+   450→          <Skeleton key={i} className="h-20 w-full rounded-lg" />
+   451→        ))}
+   452→      </div>
+   453→    )
+   454→  }
+   455→
+   456→  if (services.length === 0) {
+   457→    return (
+   458→      <EmptyState
+   459→        icon={Wrench}
+   460→        title="Nenhum serviço cadastrado"
+   461→        description="Este prestador ainda não publicou serviços."
+   462→      />
+   463→    )
+   464→  }
+   465→
+   466→  // Group by category name
+   467→  const groups = new Map<string, ProviderService[]>()
+   468→  for (const s of services) {
+   469→    const key = s.category?.name ?? "Outros"
+   470→    const arr = groups.get(key) ?? []
+   471→    arr.push(s)
+   472→    groups.set(key, arr)
+   473→  }
+   474→  const groupEntries = Array.from(groups.entries())
+   475→
+   476→  return (
+   477→    <Accordion
+   478→      type="multiple"
+   479→      defaultValue={groupEntries.map(([k]) => k)}
+   480→      className="w-full"
+   481→    >
+   482→      {groupEntries.map(([categoryName, items]) => (
+   483→        <AccordionItem key={categoryName} value={categoryName}>
+   484→          <AccordionTrigger className="hover:no-underline">
+   485→            <div className="flex w-full items-center justify-between pr-2">
+   486→              <span className="font-medium">{categoryName}</span>
+   487→              <Badge variant="secondary" className="mr-1">
+   488→                {items.length}
+   489→              </Badge>
+   490→            </div>
+   491→          </AccordionTrigger>
+   492→          <AccordionContent>
+   493→            <div className="grid gap-3">
+   494→              {items.map((s) => (
+   495→                <ServiceCard
+   496→                  key={s.id}
+   497→                  service={s}
+   498→                  onQuote={() => onQuote(s.id)}
+   499→                  onBooking={() => onBooking(s.id)}
+   500→                />
+   501→              ))}
+   502→            </div>
+   503→          </AccordionContent>
+   504→        </AccordionItem>
+   505→      ))}
+   506→    </Accordion>
+   507→  )
+   508→}
+   509→
+   510→function ServiceCard({
+   511→  service,
+   512→  onQuote,
+   513→  onBooking,
+   514→}: {
+   515→  service: ProviderService
+   516→  onQuote: () => void
+   517→  onBooking: () => void
+   518→}) {
+   519→  const photos = service.photos ?? []
+   520→
+   521→  return (
+   522→    <motion.div
+   523→      initial={{ opacity: 0, y: 4 }}
+   524→      animate={{ opacity: 1, y: 0 }}
+   525→      transition={{ duration: 0.15 }}
+   526→      className="rounded-lg border bg-card overflow-hidden"
+   527→    >
+   528→      <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start">
+   529→        <div className="flex-1 min-w-0">
+   530→          <h4 className="font-medium leading-tight">{service.title}</h4>
+   531→          <p className="mt-0.5 text-sm text-muted-foreground line-clamp-2">
+   532→            {service.description ?? "—"}
+   533→          </p>
+   534→          <p className="mt-2 text-emerald-700 font-semibold dark:text-emerald-400">
+   535→            {formatBRL(service.basePrice)}{" "}
+   536→            <span className="text-xs font-normal text-muted-foreground">
+   537→              / {SERVICE_UNIT_LABELS[service.unit] ?? "un"}
+   538→            </span>
+   539→          </p>
+   540→        </div>
+   541→
+   542→        {photos.length > 0 && (
+   543→          <div className="w-full sm:w-32 shrink-0">
+   544→            <Carousel
+   545→              opts={{ loop: false, dragFree: false }}
+   546→              className="w-full"
+   547→            >
+   548→              <CarouselContent>
+   549→                {photos.map((url, i) => (
+   550→                  <CarouselItem key={i} className="basis-full">
+   551→                    <div className="aspect-video sm:aspect-square w-full overflow-hidden rounded-md bg-muted">
+   552→                      <img
+   553→                        src={url}
+   554→                        alt={`${service.title} — foto ${i + 1}`}
+   555→                        className="size-full object-cover"
+   556→                        loading="lazy"
+   557→                      />
+   558→                    </div>
+   559→                  </CarouselItem>
+   560→                ))}
+   561→              </CarouselContent>
+   562→              {photos.length > 1 && (
+   563→                <>
+   564→                  <CarouselPrevious className="size-7 -left-2" />
+   565→                  <CarouselNext className="size-7 -right-2" />
+   566→                </>
+   567→              )}
+   568→            </Carousel>
+   569→          </div>
+   570→        )}
+   571→      </div>
+   572→
+   573→      <Separator />
+   574→      <div className="grid grid-cols-2 gap-2 p-2">
+   575→        <Button
+   576→          size="sm"
+   577→          variant="ghost"
+   578→          onClick={onQuote}
+   579→          className="text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+   580→        >
+   581→          Orçamento
+   582→          <ChevronRight className="size-3.5" />
+   583→        </Button>
+   584→        <Button
+   585→          size="sm"
+   586→          variant="ghost"
+   587→          onClick={onBooking}
+   588→          className="text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+   589→        >
+   590→          Agendar
+   591→          <ChevronRight className="size-3.5" />
+   592→        </Button>
+   593→      </div>
+   594→    </motion.div>
+   595→  )
+   596→}
+   597→
+   598→// ---------------------------------------------------------------------------
+   599→// About tab
+   600→// ---------------------------------------------------------------------------
+   601→
+   602→function AboutTab({
+   603→  provider,
+   604→  loading,
+   605→}: {
+   606→  provider?: ProviderDetail
+   607→  loading: boolean
+   608→}) {
+   609→  if (loading) {
+   610→    return (
+   611→      <div className="space-y-2">
+   612→        <Skeleton className="h-4 w-3/4" />
+   613→        <Skeleton className="h-4 w-2/3" />
+   614→        <Skeleton className="h-4 w-1/2" />
+   615→      </div>
+   616→    )
+   617→  }
+   618→  const radius = provider?.radiusKm
+   619→  return (
+   620→    <div className="space-y-4">
+   621→      <section>
+   622→        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+   623→          Sobre
+   624→        </h3>
+   625→        <p className="mt-2 text-sm leading-relaxed whitespace-pre-line">
+   626→          {provider?.bio || "Sem descrição cadastrada."}
+   627→        </p>
+   628→      </section>
+   629→      <Separator />
+   630→      <section className="grid gap-3 sm:grid-cols-2">
+   631→        <div>
+   632→          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+   633→            Endereço
+   634→          </h3>
+   635→          <p className="mt-2 flex items-start gap-2 text-sm">
+   636→            <MapPin className="size-4 mt-0.5 shrink-0 text-emerald-600" />
+   637→            <span>
+   638→              {provider?.address ?? "—"}
+   639→              {provider?.district ? `, ${provider.district}` : ""}
+   640→              <br />
+   641→              {provider?.city}
+   642→              {provider?.state ? `/${provider.state}` : ""}
+   643→              {provider?.cep ? ` · CEP ${provider.cep}` : ""}
+   644→            </span>
+   645→          </p>
+   646→        </div>
+   647→        <div>
+   648→          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+   649→            Área de cobertura
+   650→          </h3>
+   651→          <div className="mt-2 flex items-start gap-3 text-sm">
+   652→            <div className="relative mt-0.5 grid size-10 shrink-0 place-items-center rounded-full bg-emerald-50 ring-2 ring-emerald-200 dark:bg-emerald-950/40 dark:ring-emerald-900">
+   653→              <div className="absolute size-3 rounded-full bg-emerald-500" />
+   654→              <div
+   655→                className="absolute rounded-full border border-emerald-400/60 dark:border-emerald-700/60"
+   656→                style={{
+   657→                  width: 32,
+   658→                  height: 32,
+   659→                }}
+   660→              />
+   661→            </div>
+   662→            <span>
+   663→              Atende em um raio de{" "}
+   664→              <strong className="text-emerald-700 dark:text-emerald-400">
+   665→                {radius != null ? `${radius} km` : "—"}
+   666→              </strong>{" "}
+   667→              da sua base.
+   668→            </span>
+   669→          </div>
+   670→        </div>
+   671→      </section>
+   672→      {provider?.whatsapp && (
+   673→        <>
+   674→          <Separator />
+   675→          <section>
+   676→            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+   677→              Contato
+   678→            </h3>
+   679→            <p className="mt-2 text-sm">WhatsApp: {provider.whatsapp}</p>
+   680→          </section>
+   681→        </>
+   682→      )}
+   683→    </div>
+   684→  )
+   685→}
+   686→
+   687→// ---------------------------------------------------------------------------
+   688→// Reviews tab
+   689→// ---------------------------------------------------------------------------
+   690→
+   691→function ReviewsTab({
+   692→  reviews,
+   693→  rating,
+   694→  reviewCount,
+   695→  loading,
+   696→}: {
+   697→  reviews: ProviderDetail["reviews"]
+   698→  rating?: number
+   699→  reviewCount?: number
+   700→  loading: boolean
+   701→}) {
+   702→  if (loading) {
+   703→    return (
+   704→      <div className="space-y-3">
+   705→        <Skeleton className="h-24 w-full rounded-lg" />
+   706→        {Array.from({ length: 3 }).map((_, i) => (
+   707→          <Skeleton key={i} className="h-20 w-full rounded-lg" />
+   708→        ))}
+   709→      </div>
+   710→    )
+   711→  }
+   712→
+   713→  if (!reviews || reviews.length === 0) {
+   714→    return (
+   715→      <EmptyState
+   716→        icon={Star}
+   717→        title="Sem avaliações ainda"
+   718→        description="Quando este prestador concluir serviços, as avaliações dos clientes aparecerão aqui."
+   719→      />
+   720→    )
+   721→  }
+   722→
+   723→  // Distribution: count reviews per star (1..5)
+   724→  const distribution = [5, 4, 3, 2, 1].map((star) => {
+   725→    const count = reviews.filter((r) => Math.round(r.rating) === star).length
+   726→    const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0
+   727→    return { star, count, pct }
+   728→  })
+   729→  const avg = rating ?? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+   730→
+   731→  return (
+   732→    <div className="space-y-4">
+   733→      {/* Summary */}
+   734→      <div className="flex items-center gap-4 rounded-lg border bg-card p-4">
+   735→        <div className="text-center">
+   736→          <p className="text-3xl font-bold leading-none tabular-nums">
+   737→            {avg.toFixed(1)}
+   738→          </p>
+   739→          <StarRatingDisplay
+   740→            value={avg}
+   741→            showCount={false}
+   742→            size={12}
+   743→            className="mt-1.5 justify-center"
+   744→          />
+   745→          <p className="mt-1 text-xs text-muted-foreground">
+   746→            {reviewCount ?? reviews.length}{" "}
+   747→            avaliação{(reviewCount ?? reviews.length) === 1 ? "" : "ões"}
+   748→          </p>
+   749→        </div>
+   750→        <Separator orientation="vertical" className="h-16" />
+   751→        <div className="flex-1 grid gap-1.5">
+   752→          {distribution.map((d) => (
+   753→            <div key={d.star} className="flex items-center gap-2 text-xs">
+   754→              <span className="w-3 text-muted-foreground tabular-nums">{d.star}</span>
+   755→              <Star className="size-3 fill-amber-400 text-amber-400" strokeWidth={0} />
+   756→              <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+   757→                <div
+   758→                  className="absolute inset-y-0 left-0 rounded-full bg-amber-400"
+   759→                  style={{ width: `${d.pct}%` }}
+   760→                />
+   761→              </div>
+   762→              <span className="w-6 text-right text-muted-foreground tabular-nums">
+   763→                {d.count}
+   764→              </span>
+   765→            </div>
+   766→          ))}
+   767→        </div>
+   768→      </div>
+   769→
+   770→      {/* List */}
+   771→      <div className="space-y-3">
+   772→        {reviews.map((r) => (
+   773→          <div key={r.id} className="rounded-lg border bg-card p-3">
+   774→            <div className="flex items-center gap-3">
+   775→              <Avatar className="size-9">
+   776→                {r.author?.avatarUrl ? (
+   777→                  <AvatarImage src={r.author.avatarUrl} alt={r.author.name} />
+   778→                ) : null}
+   779→                <AvatarFallback className="bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+   780→                  {r.author?.name?.[0]?.toUpperCase() ?? "?"}
+   781→                </AvatarFallback>
+   782→              </Avatar>
+   783→              <div className="flex-1 min-w-0">
+   784→                <p className="text-sm font-medium truncate">
+   785→                  {r.author?.name ?? "Cliente"}
+   786→                </p>
+   787→                <div className="flex items-center gap-2">
+   788→                  <StarRatingDisplay value={r.rating} size={12} showCount={false} />
+   789→                  <span className="text-xs text-muted-foreground">
+   790→                    {new Date(r.createdAt).toLocaleDateString("pt-BR")}
+   791→                  </span>
+   792→                </div>
+   793→              </div>
+   794→            </div>
+   795→            {r.comment && (
+   796→              <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+   797→                {r.comment}
+   798→              </p>
+   799→            )}
+   800→          </div>
+   801→        ))}
+   802→      </div>
+   803→    </div>
+   804→  )
+   805→}
+   806→
+   807→// ---------------------------------------------------------------------------
+   808→// Hours tab
+   809→// ---------------------------------------------------------------------------
+   810→
+   811→function HoursTab({
+   812→  availability,
+   813→  loading,
+   814→}: {
+   815→  availability: ProviderDetail["availability"]
+   816→  loading: boolean
+   817→}) {
+   818→  if (loading) {
+   819→    return <Skeleton className="h-32 w-full rounded-lg" />
+   820→  }
+   821→
+   822→  // Build full week, even days without availability.
+   823→  const byDay = new Map<number, { start: string; end: string }[]>()
+   824→  for (const a of availability ?? []) {
+   825→    const arr = byDay.get(a.dayOfWeek) ?? []
+   826→    arr.push({ start: a.startTime, end: a.endTime })
+   827→    byDay.set(a.dayOfWeek, arr)
+   828→  }
+   829→
+   830→  // Today (for highlighting open/closed)
+   831→  const today = new Date().getDay()
+   832→
+   833→  return (
+   834→    <div className="rounded-lg border overflow-hidden">
+   835→      <Table>
+   836→        <TableHeader>
+   837→          <TableRow>
+   838→            <TableHead className="w-1/3">Dia</TableHead>
+   839→            <TableHead>Horários</TableHead>
+   840→            <TableHead className="w-24 text-right">Status</TableHead>
+   841→          </TableRow>
+   842→        </TableHeader>
+   843→        <TableBody>
+   844→          {WEEKDAYS.map((day, i) => {
+   845→            const slots = byDay.get(i) ?? []
+   846→            const open = slots.length > 0
+   847→            const isToday = i === today
+   848→            return (
+   849→              <TableRow key={day} className={isToday ? "bg-emerald-50/40 dark:bg-emerald-950/20" : ""}>
+   850→                <TableCell className="font-medium">
+   851→                  <span className="hidden sm:inline">{day}</span>
+   852→                  <span className="sm:hidden">{WEEKDAYS_SHORT[i]}</span>
+   853→                  {isToday && (
+   854→                    <span className="ml-1.5 text-[10px] font-semibold uppercase text-emerald-700 dark:text-emerald-400">
+   855→                      hoje
+   856→                    </span>
+   857→                  )}
+   858→                </TableCell>
+   859→                <TableCell>
+   860→                  {slots.length === 0 ? (
+   861→                    <span className="text-muted-foreground text-xs">—</span>
+   862→                  ) : (
+   863→                    <div className="flex flex-wrap gap-1.5">
+   864→                      {slots.map((s, idx) => (
+   865→                        <Badge
+   866→                          key={idx}
+   867→                          variant="secondary"
+   868→                          className="font-mono text-xs"
+   869→                        >
+   870→                          {s.start}–{s.end}
+   871→                        </Badge>
+   872→                      ))}
+   873→                    </div>
+   874→                  )}
+   875→                </TableCell>
+   876→                <TableCell className="text-right">
+   877→                  <Badge
+   878→                    variant={open ? "default" : "outline"}
+   879→                    className={cn(
+   880→                      open
+   881→                        ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300"
+   882→                        : "text-muted-foreground",
+   883→                    )}
+   884→                  >
+   885→                    {open ? "Aberto" : "Fechado"}
+   886→                  </Badge>
+   887→                </TableCell>
+   888→              </TableRow>
+   889→            )
+   890→          })}
+   891→        </TableBody>
+   892→      </Table>
+   893→    </div>
+   894→  )
+   895→}
+   896→
+   897→// ---------------------------------------------------------------------------
+   898→// Empty state
+   899→// ---------------------------------------------------------------------------
+   900→
+   901→function EmptyState({
+   902→  icon: Icon,
+   903→  title,
+   904→  description,
+   905→}: {
+   906→  icon: React.ComponentType<{ className?: string }>
+   907→  title: string
+   908→  description: string
+   909→}) {
+   910→  return (
+   911→    <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+   912→      <div className="rounded-full bg-emerald-50 p-3 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+   913→        <Icon className="size-6" />
+   914→      </div>
+   915→      <div>
+   916→        <p className="text-sm font-medium">{title}</p>
+   917→        <p className="mt-1 text-xs text-muted-foreground max-w-xs">
+   918→          {description}
+   919→        </p>
+   920→      </div>
+   921→    </div>
+   922→  )
+   923→}
+   924→
