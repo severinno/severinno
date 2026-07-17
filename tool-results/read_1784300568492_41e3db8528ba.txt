@@ -1,0 +1,1004 @@
+     1→"use client"
+     2→
+     3→/**
+     4→ * Topbar — completely redesigned sticky header for the Severinno vitrine.
+     5→ *
+     6→ * UX/UI Improvements:
+     7→ *   1. Scroll-aware behavior: shrinks & becomes more opaque on scroll
+     8→ *   2. Animated logo with pulse effect on the map pin
+     9→ *   3. Glassmorphism search bar with animated focus expansion
+    10→ *   4. Notification bell with unread count (for authenticated users)
+    11→ *   5. Richer category nav with animated sliding active indicator
+    12→ *   6. Enhanced mobile sheet with staggered entrance animations
+    13→ *   7. Micro-interactions: hover scale, smooth transitions, focus rings
+    14→ *   8. Theme toggle with rotation animation
+    15→ *   9. User dropdown with online status indicator
+    16→ *  10. Compare badge with bounce animation on count change
+    17→ */
+    18→
+    19→import * as React from "react"
+    20→import { useTheme } from "next-themes"
+    21→import { motion, AnimatePresence } from "framer-motion"
+    22→import {
+    23→  MapPin,
+    24→  LocateFixed,
+    25→  Search,
+    26→  Menu,
+    27→  LogOut,
+    28→  LayoutDashboard,
+    29→  Heart,
+    30→  X,
+    31→  Loader2,
+    32→  ChevronDown,
+    33→  Moon,
+    34→  Sun,
+    35→  GitCompare,
+    36→  Bell,
+    37→  Sparkles,
+    38→  ShieldCheck,
+    39→} from "lucide-react"
+    40→import { useQuery } from "@tanstack/react-query"
+    41→
+    42→import { cn } from "@/lib/utils"
+    43→import { useAuthStore, useGeoStore, useUIStore, useViewStore, useCompareStore } from "@/store"
+    44→import { ROLE_LABELS, type UserRole } from "@/lib/constants"
+    45→import type { Category } from "@/lib/api"
+    46→import { apiGet } from "@/lib/api"
+    47→import { Button } from "@/components/ui/button"
+    48→import { Input } from "@/components/ui/input"
+    49→import { Badge } from "@/components/ui/badge"
+    50→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    51→import {
+    52→  DropdownMenu,
+    53→  DropdownMenuContent,
+    54→  DropdownMenuItem,
+    55→  DropdownMenuLabel,
+    56→  DropdownMenuSeparator,
+    57→  DropdownMenuTrigger,
+    58→} from "@/components/ui/dropdown-menu"
+    59→import {
+    60→  Sheet,
+    61→  SheetContent,
+    62→  SheetHeader,
+    63→  SheetTitle,
+    64→  SheetTrigger,
+    65→} from "@/components/ui/sheet"
+    66→import {
+    67→  Popover,
+    68→  PopoverContent,
+    69→  PopoverAnchor,
+    70→} from "@/components/ui/popover"
+    71→import {
+    72→  Command,
+    73→  CommandEmpty,
+    74→  CommandGroup,
+    75→  CommandInput,
+    76→  CommandItem,
+    77→  CommandList,
+    78→} from "@/components/ui/command"
+    79→import { ScrollArea } from "@/components/ui/scroll-area"
+    80→import { Separator } from "@/components/ui/separator"
+    81→
+    82→// ---------------------------------------------------------------------------
+    83→// Types
+    84→// ---------------------------------------------------------------------------
+    85→
+    86→export type TopbarProps = {
+    87→  query: string
+    88→  onQueryChange: (q: string) => void
+    89→  categories: Category[]
+    90→  activeCategoryId?: string | null
+    91→  onCategorySelect?: (id: string | null) => void
+    92→  onSearchSubmit?: () => void
+    93→}
+    94→
+    95→const DASHBOARD_VIEW: Record<UserRole, string> = {
+    96→  CLIENT: "client.dashboard",
+    97→  PROVIDER: "provider.dashboard",
+    98→  ADMIN: "admin.dashboard",
+    99→}
+   100→
+   101→// ---------------------------------------------------------------------------
+   102→// Notification type for the bell
+   103→// ---------------------------------------------------------------------------
+   104→
+   105→type NotificationsResponse = {
+   106→  items: Array<{
+   107→    id: string
+   108→    type: string
+   109→    title: string
+   110→    message: string
+   111→    read: boolean
+   112→    createdAt: string
+   113→  }>
+   114→  total: number
+   115→  unreadCount: number
+   116→}
+   117→
+   118→// ---------------------------------------------------------------------------
+   119→// Main Topbar Component
+   120→// ---------------------------------------------------------------------------
+   121→
+   122→export default function Topbar({
+   123→  query,
+   124→  onQueryChange,
+   125→  categories,
+   126→  activeCategoryId,
+   127→  onCategorySelect,
+   128→  onSearchSubmit,
+   129→}: TopbarProps) {
+   130→  const { user, status, logout } = useAuthStore()
+   131→  const { city, status: geoStatus, setFromGPS } = useGeoStore()
+   132→  const openAuth = useUIStore((s) => s.openAuth)
+   133→  const navigate = useViewStore((s) => s.navigate)
+   134→  const compareCount = useCompareStore((s) => s.ids.length)
+   135→  const openCompare = useCompareStore((s) => s.openCompare)
+   136→  const { resolvedTheme, setTheme } = useTheme()
+   137→  const [mounted, setMounted] = React.useState(false)
+   138→  React.useEffect(() => setMounted(true), [])
+   139→
+   140→  const [mobileOpen, setMobileOpen] = React.useState(false)
+   141→  const [searchOpen, setSearchOpen] = React.useState(false)
+   142→  const [locating, setLocating] = React.useState(false)
+   143→  const [scrolled, setScrolled] = React.useState(false)
+   144→
+   145→  // Track scroll position for header shrink effect
+   146→  React.useEffect(() => {
+   147→    const handleScroll = () => setScrolled(window.scrollY > 20)
+   148→    window.addEventListener("scroll", handleScroll, { passive: true })
+   149→    return () => window.removeEventListener("scroll", handleScroll)
+   150→  }, [])
+   151→
+   152→  // Notifications query (only for authenticated users)
+   153→  const { data: notificationsData } = useQuery({
+   154→    queryKey: ["topbar-notifications"],
+   155→    queryFn: () => apiGet<NotificationsResponse>("/api/notifications", { limit: 5 }),
+   156→    enabled: status === "authenticated" && !!user,
+   157→    staleTime: 30 * 1000,
+   158→    refetchInterval: 60 * 1000,
+   159→  })
+   160→  const unreadCount = notificationsData?.unreadCount ?? 0
+   161→
+   162→  const isAuth = status === "authenticated" && !!user
+   163→  const initials = user?.name
+   164→    ? user.name
+   165→        .split(" ")
+   166→        .map((p) => p[0])
+   167→        .slice(0, 2)
+   168→        .join("")
+   169→        .toUpperCase()
+   170→    : "?"
+   171→
+   172→  const handleLocate = React.useCallback(async () => {
+   173→    setLocating(true)
+   174→    try {
+   175→      await setFromGPS()
+   176→    } finally {
+   177→      setLocating(false)
+   178→    }
+   179→  }, [setFromGPS])
+   180→
+   181→  const triggerSearch = React.useCallback(() => {
+   182→    setSearchOpen(false)
+   183→    setMobileOpen(false)
+   184→    onSearchSubmit?.()
+   185→  }, [onSearchSubmit])
+   186→
+   187→  const onSelectCategory = React.useCallback(
+   188→    (id: string | null) => {
+   189→      setMobileOpen(false)
+   190→      onCategorySelect?.(id)
+   191→    },
+   192→    [onCategorySelect],
+   193→  )
+   194→
+   195→  // Category pill ref for animated indicator
+   196→  const categoryNavRef = React.useRef<HTMLDivElement>(null)
+   197→
+   198→  return (
+   199→    <header
+   200→      className={cn(
+   201→        "sticky top-0 z-40 w-full transition-all duration-300 ease-out",
+   202→        scrolled
+   203→          ? "border-b bg-background/95 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/90"
+   204→          : "border-b border-transparent bg-background/70 backdrop-blur-md supports-[backdrop-filter]:bg-background/55",
+   205→      )}
+   206→    >
+   207→      {/* ── Main bar ─────────────────────────────────────────────────────── */}
+   208→      <div
+   209→        className={cn(
+   210→          "mx-auto flex max-w-7xl items-center gap-2 px-4 transition-all duration-300 ease-out sm:gap-3 sm:px-6 lg:px-8",
+   211→          scrolled ? "h-14" : "h-16",
+   212→        )}
+   213→      >
+   214→        {/* ── Logo ──────────────────────────────────────────────────────── */}
+   215→        <button
+   216→          type="button"
+   217→          onClick={() => onSelectCategory(null)}
+   218→          className="group flex shrink-0 items-center gap-2.5 rounded-xl px-1.5 py-1.5 outline-none transition-all hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+   219→          aria-label="Severinno — página inicial"
+   220→        >
+   221→          <span className="relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/25 transition-transform duration-300 group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-primary/30">
+   222→            <MapPin className="size-5 text-white transition-transform duration-300 group-hover:-translate-y-0.5" />
+   223→            <span className="absolute -bottom-0.5 -right-0.5 flex size-3 items-center justify-center rounded-full bg-emerald-400 shadow-sm">
+   224→              <Sparkles className="size-2 text-white" />
+   225→            </span>
+   226→          </span>
+   227→          <span className="text-xl font-extrabold tracking-tight">
+   228→            <span className="bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
+   229→              Sever
+   230→            </span>
+   231→            <span className="text-foreground">inno</span>
+   232→          </span>
+   233→        </button>
+   234→
+   235→        {/* ── Desktop search ────────────────────────────────────────────── */}
+   236→        <div className="hidden flex-1 items-center justify-center md:flex">
+   237→          <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+   238→            <PopoverAnchor asChild>
+   239→              <div className="relative w-full max-w-xl">
+   240→                <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors duration-200 group-focus-within:text-primary" />
+   241→                <Input
+   242→                  value={query}
+   243→                  onChange={(e) => onQueryChange(e.target.value)}
+   244→                  onFocus={() => {
+   245→                    if (categories.length > 0) setSearchOpen(true)
+   246→                  }}
+   247→                  onKeyDown={(e) => {
+   248→                    if (e.key === "Enter") {
+   249→                      e.preventDefault()
+   250→                      triggerSearch()
+   251→                    }
+   252→                  }}
+   253→                  placeholder="Buscar serviço ou prestador…"
+   254→                  className={cn(
+   255→                    "h-11 w-full rounded-2xl border-0 bg-muted/50 pl-11 pr-10 text-sm shadow-none transition-all duration-300",
+   256→                    "placeholder:text-muted-foreground/60",
+   257→                    "hover:bg-muted/70 hover:shadow-sm",
+   258→                    "focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:shadow-md",
+   259→                    searchOpen && "bg-background shadow-md ring-2 ring-primary/20",
+   260→                  )}
+   261→                  aria-label="Buscar prestadores"
+   262→                />
+   263→                <AnimatePresence>
+   264→                  {query ? (
+   265→                    <motion.button
+   266→                      type="button"
+   267→                      aria-label="Limpar busca"
+   268→                      onClick={(e) => {
+   269→                        e.stopPropagation()
+   270→                        onQueryChange("")
+   271→                      }}
+   272→                      initial={{ scale: 0, opacity: 0 }}
+   273→                      animate={{ scale: 1, opacity: 1 }}
+   274→                      exit={{ scale: 0, opacity: 0 }}
+   275→                      transition={{ duration: 0.15 }}
+   276→                      className="absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+   277→                    >
+   278→                      <X className="size-3.5" />
+   279→                    </motion.button>
+   280→                  ) : null}
+   281→                </AnimatePresence>
+   282→                {/* Search shortcut hint */}
+   283→                {!query && !searchOpen && (
+   284→                  <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground lg:inline-block">
+   285→                    ⌘K
+   286→                  </kbd>
+   287→                )}
+   288→              </div>
+   289→            </PopoverAnchor>
+   290→            <PopoverContent
+   291→              align="center"
+   292→              className="w-[min(90vw,36rem)] rounded-2xl border-0 p-0 shadow-2xl shadow-primary/5"
+   293→              onOpenAutoFocus={(e) => e.preventDefault()}
+   294→            >
+   295→              <Command shouldFilter={false} className="rounded-2xl">
+   296→                <CommandInput
+   297→                  placeholder="O que você precisa? Ex.: encanador, pintura…"
+   298→                  value={query}
+   299→                  onValueChange={onQueryChange}
+   300→                  onKeyDown={(e) => {
+   301→                    if (e.key === "Enter") {
+   302→                      e.preventDefault()
+   303→                      triggerSearch()
+   304→                    }
+   305→                  }}
+   306→                />
+   307→                <CommandList>
+   308→                  <CommandEmpty>
+   309→                    <div className="flex flex-col items-center gap-2 py-6 text-center">
+   310→                      <Search className="size-8 text-muted-foreground/40" />
+   311→                      <p className="text-sm text-muted-foreground">
+   312→                        Digite e pressione Enter para buscar.
+   313→                      </p>
+   314→                    </div>
+   315→                  </CommandEmpty>
+   316→                  <CommandGroup heading="Categorias populares">
+   317→                    {categories.slice(0, 6).map((c, i) => (
+   318→                      <CommandItem
+   319→                        key={c.id}
+   320→                        value={c.id}
+   321→                        onSelect={() => {
+   322→                          onSelectCategory(c.id)
+   323→                          setSearchOpen(false)
+   324→                        }}
+   325→                        className="gap-3 rounded-lg"
+   326→                      >
+   327→                        <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+   328→                          <Search className="size-3.5" />
+   329→                        </span>
+   330→                        <span className="font-medium">{c.name}</span>
+   331→                      </CommandItem>
+   332→                    ))}
+   333→                  </CommandGroup>
+   334→                  <CommandGroup heading="Sugestões">
+   335→                    <CommandItem
+   336→                      value="__search__"
+   337→                      onSelect={() => triggerSearch()}
+   338→                      className="gap-3 rounded-lg"
+   339→                    >
+   340→                      <span className="flex size-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+   341→                        <Sparkles className="size-3.5" />
+   342→                      </span>
+   343→                      <span className="font-medium">
+   344→                        Buscar por &ldquo;{query || "todos"}&rdquo;
+   345→                      </span>
+   346→                    </CommandItem>
+   347→                  </CommandGroup>
+   348→                </CommandList>
+   349→              </Command>
+   350→            </PopoverContent>
+   351→          </Popover>
+   352→        </div>
+   353→
+   354→        {/* ── Location chip ─────────────────────────────────────────────── */}
+   355→        <div className="hidden items-center md:flex">
+   356→          <Button
+   357→            type="button"
+   358→            variant="ghost"
+   359→            size="sm"
+   360→            onClick={handleLocate}
+   361→            disabled={locating || geoStatus === "locating"}
+   362→            className={cn(
+   363→              "h-9 max-w-[14rem] gap-2 rounded-xl border px-3.5 text-sm font-medium transition-all duration-200",
+   364→              "border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700",
+   365→              "hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-sm",
+   366→              "dark:border-emerald-800/40 dark:from-emerald-950/50 dark:to-emerald-950/20 dark:text-emerald-300",
+   367→              "dark:hover:from-emerald-900/50 dark:hover:to-emerald-950/30 dark:hover:text-emerald-200",
+   368→            )}
+   369→            title="Usar minha localização"
+   370→            aria-label="Usar minha localização"
+   371→          >
+   372→            {locating || geoStatus === "locating" ? (
+   373→              <Loader2 className="size-4 animate-spin" />
+   374→            ) : (
+   375→              <LocateFixed className="size-4 shrink-0" />
+   376→            )}
+   377→            <span className="truncate">{city || "Definir localização"}</span>
+   378→          </Button>
+   379→        </div>
+   380→
+   381→        {/* ── Auth area (desktop) ───────────────────────────────────────── */}
+   382→        <div className="hidden items-center gap-1.5 md:flex">
+   383→          {/* Theme toggle */}
+   384→          <Button
+   385→            variant="ghost"
+   386→            size="icon"
+   387→            className="group size-9 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground"
+   388→            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+   389→            aria-label="Alternar tema"
+   390→            title="Alternar tema"
+   391→          >
+   392→            {mounted ? (
+   393→              <motion.div
+   394→                key={resolvedTheme}
+   395→                initial={{ rotate: -90, scale: 0 }}
+   396→                animate={{ rotate: 0, scale: 1 }}
+   397→                transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
+   398→              >
+   399→                {resolvedTheme === "dark" ? (
+   400→                  <Sun className="size-[18px]" />
+   401→                ) : (
+   402→                  <Moon className="size-[18px]" />
+   403→                )}
+   404→              </motion.div>
+   405→            ) : (
+   406→              <div className="size-[18px]" />
+   407→            )}
+   408→          </Button>
+   409→
+   410→          {/* Compare button */}
+   411→          <AnimatePresence>
+   412→            {compareCount > 0 ? (
+   413→              <motion.div
+   414→                initial={{ scale: 0, opacity: 0 }}
+   415→                animate={{ scale: 1, opacity: 1 }}
+   416→                exit={{ scale: 0, opacity: 0 }}
+   417→                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+   418→              >
+   419→                <Button
+   420→                  variant="outline"
+   421→                  size="sm"
+   422→                  onClick={openCompare}
+   423→                  className="h-9 gap-2 rounded-xl border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 shadow-sm transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-md dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300 dark:hover:from-emerald-900/40 dark:hover:text-emerald-200"
+   424→                  aria-label={`Comparar ${compareCount} prestador(es)`}
+   425→                  title={`Comparar ${compareCount} prestador(es)`}
+   426→                >
+   427→                  <GitCompare className="size-4" />
+   428→                  <span className="text-sm font-medium">Comparar</span>
+   429→                  <motion.span
+   430→                    key={compareCount}
+   431→                    initial={{ scale: 1.5 }}
+   432→                    animate={{ scale: 1 }}
+   433→                    transition={{ type: "spring", stiffness: 500, damping: 15 }}
+   434→                  >
+   435→                    <Badge className="ml-0.5 h-5 min-w-5 justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 px-1.5 text-[10px] font-bold text-white shadow-sm">
+   436→                      {compareCount}
+   437→                    </Badge>
+   438→                  </motion.span>
+   439→                </Button>
+   440→              </motion.div>
+   441→            ) : null}
+   442→          </AnimatePresence>
+   443→
+   444→          {isAuth ? (
+   445→            <>
+   446→              {/* Notification bell */}
+   447→              <Popover>
+   448→                <PopoverAnchor asChild>
+   449→                  <Button
+   450→                    variant="ghost"
+   451→                    size="icon"
+   452→                    className="group relative size-9 rounded-xl text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+   453→                    aria-label="Notificações"
+   454→                    title="Notificações"
+   455→                  >
+   456→                    <Bell className="size-[18px] transition-transform duration-200 group-hover:rotate-12" />
+   457→                    <AnimatePresence>
+   458→                      {unreadCount > 0 ? (
+   459→                        <motion.span
+   460→                          initial={{ scale: 0 }}
+   461→                          animate={{ scale: 1 }}
+   462→                          exit={{ scale: 0 }}
+   463→                          transition={{ type: "spring", stiffness: 500, damping: 20 }}
+   464→                          className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-red-400 text-[9px] font-bold text-white shadow-sm"
+   465→                        >
+   466→                          {unreadCount > 9 ? "9+" : unreadCount}
+   467→                        </motion.span>
+   468→                      ) : null}
+   469→                    </AnimatePresence>
+   470→                  </Button>
+   471→                </PopoverAnchor>
+   472→                <PopoverContent
+   473→                  align="end"
+   474→                  className="w-80 rounded-2xl border-0 p-0 shadow-2xl shadow-primary/5"
+   475→                >
+   476→                  <div className="flex items-center justify-between border-b px-4 py-3">
+   477→                    <h3 className="text-sm font-semibold">Notificações</h3>
+   478→                    {unreadCount > 0 && (
+   479→                      <Badge variant="secondary" className="text-[10px]">
+   480→                        {unreadCount} não lida{unreadCount > 1 ? "s" : ""}
+   481→                      </Badge>
+   482→                    )}
+   483→                  </div>
+   484→                  <ScrollArea className="max-h-72">
+   485→                    {(notificationsData?.items ?? []).length === 0 ? (
+   486→                      <div className="flex flex-col items-center gap-2 py-8 text-center">
+   487→                        <Bell className="size-8 text-muted-foreground/30" />
+   488→                        <p className="text-sm text-muted-foreground">
+   489→                          Nenhuma notificação
+   490→                        </p>
+   491→                      </div>
+   492→                    ) : (
+   493→                      <div className="flex flex-col">
+   494→                        {(notificationsData?.items ?? []).map((n, i) => (
+   495→                          <div
+   496→                            key={n.id}
+   497→                            className={cn(
+   498→                              "flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50",
+   499→                              !n.read && "bg-primary/5",
+   500→                              i > 0 && "border-t",
+   501→                            )}
+   502→                          >
+   503→                            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+   504→                              <Bell className="size-4" />
+   505→                            </div>
+   506→                            <div className="min-w-0 flex-1">
+   507→                              <p className={cn("text-sm leading-snug", !n.read && "font-medium")}>
+   508→                                {n.title || n.message}
+   509→                              </p>
+   510→                              <p className="mt-0.5 text-xs text-muted-foreground">
+   511→                                {new Date(n.createdAt).toLocaleDateString("pt-BR")}
+   512→                              </p>
+   513→                            </div>
+   514→                            {!n.read && (
+   515→                              <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
+   516→                            )}
+   517→                          </div>
+   518→                        ))}
+   519→                      </div>
+   520→                    )}
+   521→                  </ScrollArea>
+   522→                  <div className="border-t px-4 py-2.5">
+   523→                    <Button
+   524→                      variant="ghost"
+   525→                      size="sm"
+   526→                      className="w-full text-xs font-medium text-primary hover:text-primary/80"
+   527→                      onClick={() => {
+   528→                        const view = user?.role === "ADMIN" ? "admin.dashboard" : user?.role === "PROVIDER" ? "provider.dashboard" : "client.dashboard"
+   529→                        navigate(view)
+   530→                      }}
+   531→                    >
+   532→                      Ver todas as notificações
+   533→                    </Button>
+   534→                  </div>
+   535→                </PopoverContent>
+   536→              </Popover>
+   537→
+   538→              {/* Favorites */}
+   539→              <Button
+   540→                variant="ghost"
+   541→                size="icon"
+   542→                className="group size-9 rounded-xl text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+   543→                onClick={() => navigate("client.favorites")}
+   544→                aria-label="Favoritos"
+   545→                title="Favoritos"
+   546→              >
+   547→                <Heart className="size-[18px] transition-transform duration-200 group-hover:scale-110" />
+   548→              </Button>
+   549→
+   550→              {/* User dropdown */}
+   551→              <DropdownMenu>
+   552→                <DropdownMenuTrigger asChild>
+   553→                  <button
+   554→                    type="button"
+   555→                    className="group flex items-center gap-2 rounded-xl border bg-background/80 py-1.5 pr-3 pl-1.5 text-sm outline-none transition-all duration-200 hover:border-primary/30 hover:bg-accent/50 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+   556→                    aria-label="Menu da conta"
+   557→                  >
+   558→                    <div className="relative">
+   559→                      <Avatar className="size-7 ring-2 ring-background transition-shadow duration-200 group-hover:ring-primary/20">
+   560→                        {user?.avatarUrl ? (
+   561→                          <AvatarImage src={user.avatarUrl} alt={user.name} />
+   562→                        ) : null}
+   563→                        <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-600 text-xs text-white">
+   564→                          {initials}
+   565→                        </AvatarFallback>
+   566→                      </Avatar>
+   567→                      {/* Online indicator */}
+   568→                      <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-500" />
+   569→                    </div>
+   570→                    <span className="hidden max-w-[10rem] truncate font-medium lg:inline">
+   571→                      {user?.name?.split(" ")[0]}
+   572→                    </span>
+   573→                    <ChevronDown className="size-3.5 opacity-50 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+   574→                  </button>
+   575→                </DropdownMenuTrigger>
+   576→                <DropdownMenuContent
+   577→                  align="end"
+   578→                  className="w-64 rounded-2xl border-0 p-2 shadow-2xl shadow-primary/5"
+   579→                >
+   580→                  <DropdownMenuLabel className="flex items-center gap-3 rounded-xl px-3 py-2.5">
+   581→                    <Avatar className="size-10 ring-2 ring-primary/10">
+   582→                      {user?.avatarUrl ? (
+   583→                        <AvatarImage src={user.avatarUrl} alt={user.name} />
+   584→                      ) : null}
+   585→                      <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-600 text-sm text-white">
+   586→                        {initials}
+   587→                      </AvatarFallback>
+   588→                    </Avatar>
+   589→                    <div className="min-w-0 flex-1">
+   590→                      <p className="truncate text-sm font-semibold">{user?.name}</p>
+   591→                      <p className="truncate text-xs text-muted-foreground">
+   592→                        {user?.email}
+   593→                      </p>
+   594→                      <Badge
+   595→                        variant="secondary"
+   596→                        className="mt-1 gap-1 text-[10px] font-medium"
+   597→                      >
+   598→                        <ShieldCheck className="size-3" />
+   599→                        {user ? ROLE_LABELS[user.role] : ""}
+   600→                      </Badge>
+   601→                    </div>
+   602→                  </DropdownMenuLabel>
+   603→                  <DropdownMenuSeparator className="my-1" />
+   604→                  <DropdownMenuItem
+   605→                    onSelect={() => user && navigate(DASHBOARD_VIEW[user.role])}
+   606→                    className="gap-3 rounded-xl px-3 py-2.5"
+   607→                  >
+   608→                    <LayoutDashboard className="size-4 text-primary" />
+   609→                    <span>Meu painel</span>
+   610→                  </DropdownMenuItem>
+   611→                  <DropdownMenuItem
+   612→                    onSelect={() => navigate("client.favorites")}
+   613→                    className="gap-3 rounded-xl px-3 py-2.5"
+   614→                  >
+   615→                    <Heart className="size-4 text-rose-500" />
+   616→                    <span>Favoritos</span>
+   617→                  </DropdownMenuItem>
+   618→                  <DropdownMenuSeparator className="my-1" />
+   619→                  <DropdownMenuItem
+   620→                    variant="destructive"
+   621→                    onSelect={() => logout()}
+   622→                    className="gap-3 rounded-xl px-3 py-2.5"
+   623→                  >
+   624→                    <LogOut className="size-4" />
+   625→                    <span>Sair</span>
+   626→                  </DropdownMenuItem>
+   627→                </DropdownMenuContent>
+   628→              </DropdownMenu>
+   629→            </>
+   630→          ) : (
+   631→            <div className="flex items-center gap-2">
+   632→              <Button
+   633→                variant="ghost"
+   634→                size="sm"
+   635→                onClick={() => openAuth("login")}
+   636→                className="h-9 rounded-xl px-4 font-medium transition-all duration-200 hover:bg-primary/5 hover:text-primary"
+   637→              >
+   638→                Entrar
+   639→              </Button>
+   640→              <Button
+   641→                size="sm"
+   642→                onClick={() => openAuth("register", "CLIENT")}
+   643→                className="h-9 rounded-xl bg-gradient-to-r from-primary to-emerald-600 px-5 font-medium shadow-md shadow-primary/20 transition-all duration-200 hover:shadow-lg hover:shadow-primary/30 hover:brightness-110"
+   644→              >
+   645→                Cadastrar
+   646→              </Button>
+   647→            </div>
+   648→          )}
+   649→        </div>
+   650→
+   651→        {/* ── Mobile: right-side buttons ─────────────────────────────────── */}
+   652→        <div className="ml-auto flex items-center gap-1 md:hidden">
+   653→          {/* Mobile theme toggle */}
+   654→          <Button
+   655→            variant="ghost"
+   656→            size="icon"
+   657→            className="size-9 rounded-xl text-muted-foreground hover:text-foreground"
+   658→            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+   659→            aria-label="Alternar tema"
+   660→            title="Alternar tema"
+   661→          >
+   662→            {mounted ? (
+   663→              resolvedTheme === "dark" ? (
+   664→                <Sun className="size-5" />
+   665→              ) : (
+   666→                <Moon className="size-5" />
+   667→              )
+   668→            ) : (
+   669→              <div className="size-5" />
+   670→            )}
+   671→          </Button>
+   672→
+   673→          {/* Mobile compare */}
+   674→          <AnimatePresence>
+   675→            {compareCount > 0 ? (
+   676→              <motion.div
+   677→                initial={{ scale: 0 }}
+   678→                animate={{ scale: 1 }}
+   679→                exit={{ scale: 0 }}
+   680→                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+   681→              >
+   682→                <Button
+   683→                  variant="outline"
+   684→                  size="icon"
+   685→                  onClick={openCompare}
+   686→                  className="relative size-9 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+   687→                  aria-label={`Comparar ${compareCount} prestador(es)`}
+   688→                  title={`Comparar ${compareCount} prestador(es)`}
+   689→                >
+   690→                  <GitCompare className="size-4" />
+   691→                  <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-[9px] font-bold text-white shadow-sm">
+   692→                    {compareCount}
+   693→                  </span>
+   694→                </Button>
+   695→              </motion.div>
+   696→            ) : null}
+   697→          </AnimatePresence>
+   698→
+   699→          {/* Mobile location shortcut */}
+   700→          <Button
+   701→            type="button"
+   702→            variant="ghost"
+   703→            size="icon"
+   704→            onClick={handleLocate}
+   705→            disabled={locating || geoStatus === "locating"}
+   706→            className="size-9 rounded-xl border border-emerald-200/80 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+   707→            title="Definir localização"
+   708→            aria-label="Definir localização"
+   709→          >
+   710→            {locating || geoStatus === "locating" ? (
+   711→              <Loader2 className="size-4 animate-spin" />
+   712→            ) : (
+   713→              <LocateFixed className="size-4" />
+   714→            )}
+   715→          </Button>
+   716→
+   717→          {/* Mobile hamburger */}
+   718→          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+   719→            <SheetTrigger asChild>
+   720→              <Button
+   721→                variant="ghost"
+   722→                size="icon"
+   723→                aria-label="Abrir menu"
+   724→                className="size-10 rounded-xl"
+   725→              >
+   726→                <Menu className="size-5" />
+   727→              </Button>
+   728→            </SheetTrigger>
+   729→            <SheetContent
+   730→              side="right"
+   731→              className="w-[88vw] rounded-l-2xl border-0 p-0 shadow-2xl sm:max-w-sm"
+   732→            >
+   733→              <SheetHeader className="border-b px-6 py-4">
+   734→                <SheetTitle className="flex items-center gap-2.5">
+   735→                  <span className="flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 shadow-sm">
+   736→                    <MapPin className="size-4 text-white" />
+   737→                  </span>
+   738→                  <span className="text-lg font-bold">
+   739→                    <span className="bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
+   740→                      Sever
+   741→                    </span>
+   742→                    <span>inno</span>
+   743→                  </span>
+   744→                </SheetTitle>
+   745→              </SheetHeader>
+   746→              <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
+   747→                {/* Mobile search */}
+   748→                <form
+   749→                  onSubmit={(e) => {
+   750→                    e.preventDefault()
+   751→                    triggerSearch()
+   752→                  }}
+   753→                  className="relative"
+   754→                >
+   755→                  <Search className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+   756→                  <Input
+   757→                    value={query}
+   758→                    onChange={(e) => onQueryChange(e.target.value)}
+   759→                    placeholder="Buscar serviço…"
+   760→                    className="h-11 rounded-xl border-0 bg-muted/50 pl-10 shadow-none focus-visible:ring-2 focus-visible:ring-primary/30"
+   761→                    aria-label="Buscar serviço"
+   762→                  />
+   763→                </form>
+   764→
+   765→                {/* Mobile location */}
+   766→                <Button
+   767→                  variant="outline"
+   768→                  onClick={handleLocate}
+   769→                  disabled={locating}
+   770→                  className="h-11 justify-start gap-2.5 rounded-xl border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300"
+   771→                >
+   772→                  {locating ? (
+   773→                    <Loader2 className="size-4 animate-spin" />
+   774→                  ) : (
+   775→                    <LocateFixed className="size-4 shrink-0" />
+   776→                  )}
+   777→                  {city || "Definir localização"}
+   778→                </Button>
+   779→
+   780→                {/* Mobile categories */}
+   781→                <div className="space-y-2">
+   782→                  <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+   783→                    Categorias
+   784→                  </p>
+   785→                  <ScrollArea className="max-h-64 pr-1">
+   786→                    <div className="flex flex-col gap-1">
+   787→                      <CategoryChipButton
+   788→                        label="Todas"
+   789→                        active={!activeCategoryId}
+   790→                        onClick={() => onSelectCategory(null)}
+   791→                      />
+   792→                      {categories.map((c, i) => (
+   793→                        <motion.div
+   794→                          key={c.id}
+   795→                          initial={{ opacity: 0, x: 20 }}
+   796→                          animate={{ opacity: 1, x: 0 }}
+   797→                          transition={{ delay: i * 0.03, duration: 0.2 }}
+   798→                        >
+   799→                          <CategoryChipButton
+   800→                            label={c.name}
+   801→                            active={activeCategoryId === c.id}
+   802→                            onClick={() => onSelectCategory(c.id)}
+   803→                          />
+   804→                        </motion.div>
+   805→                      ))}
+   806→                    </div>
+   807→                  </ScrollArea>
+   808→                </div>
+   809→
+   810→                {/* Mobile auth */}
+   811→                <div className="mt-auto flex flex-col gap-2.5 border-t pt-5">
+   812→                  {isAuth ? (
+   813→                    <>
+   814→                      <div className="flex items-center gap-3">
+   815→                        <Avatar className="size-10 ring-2 ring-primary/10">
+   816→                          {user?.avatarUrl ? (
+   817→                            <AvatarImage src={user.avatarUrl} alt={user.name} />
+   818→                          ) : null}
+   819→                          <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-600 text-sm text-white">
+   820→                            {initials}
+   821→                          </AvatarFallback>
+   822→                        </Avatar>
+   823→                        <div className="min-w-0">
+   824→                          <p className="truncate text-sm font-semibold">
+   825→                            {user?.name}
+   826→                          </p>
+   827→                          <Badge
+   828→                            variant="secondary"
+   829→                            className="mt-0.5 gap-1 text-[10px]"
+   830→                          >
+   831→                            <ShieldCheck className="size-3" />
+   832→                            {user ? ROLE_LABELS[user.role] : ""}
+   833→                          </Badge>
+   834→                        </div>
+   835→                      </div>
+   836→                      <Button
+   837→                        variant="outline"
+   838→                        onClick={() => {
+   839→                          setMobileOpen(false)
+   840→                          if (user) navigate(DASHBOARD_VIEW[user.role])
+   841→                        }}
+   842→                        className="h-11 gap-2.5 rounded-xl"
+   843→                      >
+   844→                        <LayoutDashboard className="size-4 text-primary" />
+   845→                        Meu painel
+   846→                      </Button>
+   847→                      <Button
+   848→                        variant="ghost"
+   849→                        onClick={() => {
+   850→                          setMobileOpen(false)
+   851→                          logout()
+   852→                        }}
+   853→                        className="h-11 gap-2.5 rounded-xl text-destructive hover:bg-destructive/5 hover:text-destructive"
+   854→                      >
+   855→                        <LogOut className="size-4" />
+   856→                        Sair
+   857→                      </Button>
+   858→                    </>
+   859→                  ) : (
+   860→                    <>
+   861→                      <Button
+   862→                        variant="outline"
+   863→                        onClick={() => {
+   864→                          setMobileOpen(false)
+   865→                          openAuth("login")
+   866→                        }}
+   867→                        className="h-11 rounded-xl font-medium"
+   868→                      >
+   869→                        Entrar
+   870→                      </Button>
+   871→                      <Button
+   872→                        onClick={() => {
+   873→                          setMobileOpen(false)
+   874→                          openAuth("register", "CLIENT")
+   875→                        }}
+   876→                        className="h-11 rounded-xl bg-gradient-to-r from-primary to-emerald-600 font-medium shadow-md shadow-primary/20"
+   877→                      >
+   878→                        Cadastrar grátis
+   879→                      </Button>
+   880→                    </>
+   881→                  )}
+   882→                </div>
+   883→              </div>
+   884→            </SheetContent>
+   885→          </Sheet>
+   886→        </div>
+   887→      </div>
+   888→
+   889→      {/* ── Desktop: category nav ────────────────────────────────────────── */}
+   890→      <nav
+   891→        ref={categoryNavRef}
+   892→        aria-label="Categorias"
+   893→        className={cn(
+   894→          "relative hidden border-t transition-all duration-300 md:block",
+   895→          scrolled
+   896→            ? "border-border/50 bg-background/80 backdrop-blur-sm"
+   897→            : "border-transparent bg-background/40 backdrop-blur-sm",
+   898→        )}
+   899→      >
+   900→        <ScrollArea className="max-w-none">
+   901→          <div className="mx-auto flex max-w-7xl items-center gap-1.5 overflow-x-auto px-4 py-2 sm:px-6 lg:px-8">
+   902→            <CategoryPill
+   903→              label="Todas"
+   904→              active={!activeCategoryId}
+   905→              onClick={() => onCategorySelect?.(null)}
+   906→            />
+   907→            {categories.map((c) => (
+   908→              <CategoryPill
+   909→                key={c.id}
+   910→                label={c.name}
+   911→                active={activeCategoryId === c.id}
+   912→                onClick={() => onCategorySelect?.(c.id)}
+   913→              />
+   914→            ))}
+   915→          </div>
+   916→        </ScrollArea>
+   917→        {/* Fade edges */}
+   918→        <div
+   919→          aria-hidden
+   920→          className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-background to-transparent"
+   921→        />
+   922→        <div
+   923→          aria-hidden
+   924→          className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-background to-transparent"
+   925→        />
+   926→      </nav>
+   927→    </header>
+   928→  )
+   929→}
+   930→
+   931→// ---------------------------------------------------------------------------
+   932→// Category Pill — desktop horizontal nav
+   933→// ---------------------------------------------------------------------------
+   934→
+   935→function CategoryPill({
+   936→  label,
+   937→  active,
+   938→  onClick,
+   939→}: {
+   940→  label: string
+   941→  active?: boolean
+   942→  onClick?: () => void
+   943→}) {
+   944→  return (
+   945→    <button
+   946→      type="button"
+   947→      onClick={onClick}
+   948→      className={cn(
+   949→        "relative h-8 shrink-0 rounded-xl px-4 text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+   950→        active
+   951→          ? "bg-gradient-to-r from-primary to-emerald-600 text-white shadow-md shadow-primary/20"
+   952→          : "bg-muted/50 text-foreground/70 hover:bg-muted hover:text-foreground hover:shadow-sm",
+   953→      )}
+   954→    >
+   955→      {label}
+   956→      {active && (
+   957→        <motion.div
+   958→          layoutId="category-indicator"
+   959→          className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary to-emerald-600"
+   960→          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+   961→          style={{ zIndex: -1 }}
+   962→        />
+   963→      )}
+   964→    </button>
+   965→  )
+   966→}
+   967→
+   968→// ---------------------------------------------------------------------------
+   969→// Category Chip Button — mobile vertical nav
+   970→// ---------------------------------------------------------------------------
+   971→
+   972→function CategoryChipButton({
+   973→  label,
+   974→  active,
+   975→  onClick,
+   976→}: {
+   977→  label: string
+   978→  active?: boolean
+   979→  onClick?: () => void
+   980→}) {
+   981→  return (
+   982→    <button
+   983→      type="button"
+   984→      onClick={onClick}
+   985→      className={cn(
+   986→        "flex h-10 w-full items-center gap-2.5 rounded-xl px-3.5 text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+   987→        active
+   988→          ? "bg-gradient-to-r from-primary to-emerald-600 text-white shadow-md shadow-primary/20"
+   989→          : "hover:bg-muted/70 hover:text-foreground",
+   990→      )}
+   991→    >
+   992→      {active && (
+   993→        <motion.div
+   994→          initial={{ scale: 0 }}
+   995→          animate={{ scale: 1 }}
+   996→          transition={{ type: "spring", stiffness: 500, damping: 25 }}
+   997→          className="size-1.5 rounded-full bg-white"
+   998→        />
+   999→      )}
+  1000→      {label}
+  1001→    </button>
+  1002→  )
+  1003→}
+  1004→

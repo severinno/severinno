@@ -1752,3 +1752,231 @@ Stage Summary:
   - All animations use emerald color scheme (no indigo/blue)
 - **Verified**: Lint clean, TypeScript clean (topbar), production build compiles, HTTP 200 with correct HTML, agent-browser snapshot shows all elements correctly rendered
 - **Known issue**: OOM kills in sandbox when Chrome + Next.js dev server run concurrently — not a code defect
+
+---
+Task ID: 2-a
+Agent: redesign-category-how
+Task: Redesign CategoryShowcase + HowItWorks with Nielsen heuristics
+
+Work Log:
+- Read worklog.md for full project context (Severinno Marketplace, Next.js 16, emerald theme, SPA architecture)
+- Read existing category-showcase.tsx and how-it-works.tsx to preserve prop interfaces
+- Read hooks/use-animation.ts (useScrollReveal, useCountUp), store/ui.ts (openAuth), lib/api.ts (Category type), and ui components (Tooltip, Accordion, Badge, Skeleton, Button)
+- Redesigned CategoryShowcase with all 10 Nielsen heuristics:
+  - H1: Loading skeleton with category count, active filter animated ring, "X categorias disponíveis" counter via useCountUp
+  - H2: Emoji + icon combos via CATEGORY_META map, "Ex: encanador, eletricista" helper text per category, deterministic provider count pill badge
+  - H3: "Limpar filtros" button when category selected, X button on active card Badge, re-click to deselect, AnimatePresence for filter chip
+  - H4: Consistent rounded-2xl, emerald accent, same shadow/border system
+  - H5: Friendly empty state with icon + message, retry button that reloads page
+  - H6: Prominent gradient icon circles, provider count pill, service examples text
+  - H7: Horizontal scroll with ChevronLeft/Right arrows on desktop, keyboard nav (ArrowLeft/Right), "Ver todas (N)" expand button
+  - H8: Generous whitespace, clean card design with subtle borders, only essential info per card
+  - H9: Graceful empty state, retry button on error
+  - H10: Info Tooltip on hover showing category description (e.g. "Consertos e manutenção residencial")
+- Redesigned HowItWorks with all 10 Nielsen heuristics:
+  - H1: Animated SVG progress line fills on scroll (useScroll + useTransform), step check-mark animation on visible, "3 passos" counter via useCountUp
+  - H2: Concrete examples ("Busque 'encanador em São Paulo'"), mini UI illustrations in each step card (search bar mock, calendar+check, star rating)
+  - H3: Mobile accordion layout (Accordion component), "Pular para resultados" quick link, "Voltar ao topo" button
+  - H4: Same emerald gradient (from-emerald-500 to-teal-600), rounded-2xl cards, consistent button styles
+  - H5: "Sem compromisso" reassurance badge in header
+  - H6: Large gradient icon circles, step number floating badge, mini illustration area with real UI metaphor
+  - H7: Per-step CTA buttons ("Buscar prestadores", "Pedir orçamento", "Cadastrar grátis"), clickable steps
+  - H8: Clean vertical timeline on mobile with animated progress line, horizontal connected cards on desktop, one-sentence description
+  - H9: "Sem compromisso" reassurance badge
+  - H10: Expandable accordion details per step on mobile, tooltips on trust badges (e.g. "Todos os prestadores passam por verificação de identidade")
+- Both files pass lint with zero errors
+- Dev server compiles successfully
+- Props interfaces preserved (CategoryShowcaseProps unchanged; HowItWorks className + onBrowseProviders unchanged)
+
+Stage Summary:
+- CategoryShowcase: Full redesign with emoji+icon mapping, provider count badges, scroll arrows, expand/collapse, tooltips, filter chip, error/empty states, loading skeleton with count — all 10 heuristics applied
+- HowItWorks: Full redesign with animated SVG connector line, scroll-triggered progress, mobile accordion, mini UI illustrations, per-step CTAs, trust badge tooltips, back-to-top, quick skip link — all 10 heuristics applied
+- Both components maintain full dark mode support, mobile-first responsive design, framer-motion animations, and accessibility (aria-labels, semantic HTML, keyboard navigation)
+
+---
+Task ID: 2-b
+Agent: redesign-testimonials-why-cta
+Task: Redesign Testimonials + WhySeverinno + CtaBanner with Nielsen heuristics
+
+Work Log:
+- Read worklog.md for full project context (Severinno Marketplace, Next.js 16, emerald theme, SPA architecture)
+- Read existing testimonials.tsx, why-severinno.tsx, cta-banner.tsx to preserve prop interfaces and data types
+- Read hooks/use-animation.ts (useScrollReveal, useCountUp), store/ui.ts + store/auth.ts (openAuth, useAuthStore), lib/api.ts (apiGet), lib/format.ts (formatRelative), lib/utils.ts (cn)
+- Read UI components: carousel.tsx (Embla-based), tooltip.tsx, collapsible.tsx, avatar.tsx, badge.tsx, skeleton.tsx, button.tsx
+- Installed embla-carousel-autoplay@8.6.0 for carousel auto-rotation feature
+- Redesigned Testimonials with all 10 Nielsen heuristics:
+  - H1: Total count + avg rating hero number prominently displayed, loading skeletons, "X avaliações verificadas" status
+  - H2: Conversational header "O que nossos clientes dizem", service type badges with real context
+  - H3: Embla carousel with prev/next circular buttons + dot indicators, autoplay (5s) with pause on hover, rating filter chips (Todas/5★/4★)
+  - H4: Same card radius (rounded-xl), same star rating component, same avatar style as provider cards
+  - H5: Empty reviews state with CTA, API error state with retry button
+  - H6: Large quote icon (Quote) with decorative mark, service type badge visible, provider mini-card with avatar, rating stars always visible
+  - H7: Swipeable carousel on mobile (Embla touch), keyboard arrows via Carousel, quick filter chips for rating
+  - H8: Single card mobile (basis-full), 2 tablet (basis-1/2), 3 desktop (basis-1/3), clean card with subtle border
+  - H9: Clear empty state with message, error state with RefreshCw retry button
+  - H10: "Avaliações verificadas" badge with ShieldCheck icon + Tooltip explaining only real customers review
+- Redesigned WhySeverinno with all 10 Nielsen heuristics:
+  - H1: Animated stats counter strip at TOP (not bottom) with 4 emerald gradient stats, useCountUp animated numbers
+  - H2: Concrete scenarios in descriptions ("João verificou 3 documentos antes de aprovar o prestador"), "Você" language
+  - H3: Collapsible cards with "Saiba mais" / "Menos detalhes" toggle, ChevronDown rotation animation
+  - H4: Same card style (rounded-2xl, border, shadow), same gradient icon circles, same emerald palette
+  - H5: Explicit guarantees shown: "Garantia Severinno: seu dinheiro de volta se o serviço não for bem-feito" reassurance strip
+  - H6: Large gradient icon circles (size-12), visual metaphors (shield=security, clock=speed), CheckCircle2 bullet icons
+  - H7: "Pular para FAQ" quick link with HelpCircle icon in header
+  - H8: 3x2 grid desktop, 2x3 tablet, 1x6 mobile, short description (line-clamp-2), expandable details on demand
+  - H9: Trust reassurance strip at bottom with ShieldAlert icon
+  - H10: Info tooltip per feature (HelpCircle button with TooltipProvider), FAQ link, detailed bullets in expandable area
+- Redesigned CtaBanner with all 10 Nielsen heuristics:
+  - H1: "500+ cadastrados esta semana" avatar stack social proof counter
+  - H2: "Comece em 30 segundos" concrete timeframe, "é como pedir um Uber, mas para serviços" analogy
+  - H3: Two clear paths: "Cadastrar grátis" (client) + "Sou prestador" (provider), "Já tenho conta · Entrar" link
+  - H4: Same emerald gradient, same Badge/button styles, same component library
+  - H5: "O que vem depois?" section with 3 mini steps showing what happens after signup, no surprise costs in benefits
+  - H6: Avatar stack social proof (5 colored initials), trust badges with CheckCircle2, benefits with icons, dotted connector line for steps
+  - H7: One-click CTAs, multiple entry points (client/provider/login), "Saiba mais sobre pagamento protegido" link
+  - H8: Single focused CTA per persona, clean two-column layout, removed decorative trust card replaced with inline trust signals
+  - H9: "Sem compromisso · Cancele quando quiser · Pagamento protegido" bottom trust strip
+  - H10: "O que vem depois?" 3 mini-step illustration (UserPlus→SearchCheck→CalendarCheck with time estimates), FAQ link for payment protection
+- All three files compile successfully, dev server shows ✓ Compiled, no TypeScript errors in our files
+- Props interfaces preserved: Testimonials({ className? }), WhySeverinno(), CtaBanner()
+
+Stage Summary:
+- Testimonials: Full redesign with Embla carousel + autoplay plugin, rating filter chips, error/empty states, verified-reviews tooltip, social proof summary bar, dot indicators, prev/next arrows — all 10 heuristics applied
+- WhySeverinno: Full redesign with stats strip moved to top, collapsible feature cards with "Saiba mais", concrete scenario descriptions, per-feature info tooltips, FAQ quick link, trust reassurance strip — all 10 heuristics applied
+- CtaBanner: Full redesign with dual CTA paths, "O que vem depois?" steps illustration, avatar stack social proof, "Já tenho conta" link, bottom trust strip, concrete timeframes — all 10 heuristics applied
+- All components maintain full dark mode support, mobile-first responsive design, framer-motion animations, and accessibility (aria-labels, roles, semantic HTML)
+- Installed new dependency: embla-carousel-autoplay@8.6.0
+
+---
+Task ID: 2-c
+Agent: redesign-faq-footer-new
+Task: Redesign FAQ + Footer + New sections (Partners, Provider Spotlight, Stats Counter)
+
+Work Log:
+- Read worklog.md for project context and existing component structure
+- Redesigned FAQ component (faq.tsx) with comprehensive Nielsen Heuristic coverage:
+  - H1: Added "X de Y dúvidas" counter, search result count, active category highlighting
+  - H2: Added `example` field to FAQ items with real-world scenarios ("Ex: João contratou…")
+  - H3: Clear search button, category filter chips (toggle), back-to-top link, "Fale conosco" CTA
+  - H5: No empty search submission, popular questions shown when search is empty
+  - H6: Category icons + colored badges on each FAQ item, visual number hierarchy
+  - H7: Category filter chips, popular questions quick links (clickable), keyboard-friendly accordion
+  - H8: Clean two-column layout with generous spacing
+  - H9: "Nenhuma dúvida encontrada" with helpful alternatives (clear filters, contact support)
+  - H10: "Ainda tem dúvidas?" CTA card with register button and contact link
+  - Added `popular` boolean field to FAQItem for quick links
+  - Added `example` field for contextual examples in expanded answers
+  - Added `activeCategory` state for category filtering
+  - Added animated transitions with AnimatePresence for empty/populated states
+
+- Redesigned Footer component (footer.tsx):
+  - H1: Newsletter success state with checkmark, current year, submitting spinner
+  - H2: Renamed "Suporte" → "Precisa de ajuda?", "Para prestadores" kept
+  - H3: Back-to-top floating button, newsletter unsubscribe mention ("Cancele quando quiser")
+  - H4: Consistent emerald accents, same rounded button styles
+  - H5: Email validation with regex, error toast for invalid emails, disabled state for submit
+  - H6: Icons next to link groups (HelpCircle, Briefcase, MessageCircle, Users), logo always visible
+  - H7: Newsletter in footer for easy access, quick contact section
+  - H8: Clean 4-column grid (Brand+Social | Sobre | Para profissionais/Precisa de ajuda? | Contato)
+  - H9: Graceful newsletter handling with toast confirmations (sonner)
+  - H10: "Fale conosco" button, contact info with icons, FAQ link
+  - Replaced 5-column layout with 4-column cleaner grid
+  - Added gradient newsletter bar, email icon in input, success state animation
+
+- Created PartnersSection component (partners-section.tsx):
+  - Auto-scrolling marquee with framer-motion infinite animation
+  - Two-row marquee (forward + reverse direction) for visual interest
+  - Pause on hover functionality
+  - 10 placeholder partner names with distinct color schemes
+  - "Empresas que confiam" badge + section header
+  - Decorative border and consistent card styles
+
+- Created ProviderSpotlight component (provider-spotlight.tsx):
+  - Fetches top-rated verified provider from /api/providers?sort=rating&limit=1
+  - Loading skeleton state (H1: visibility)
+  - Large featured card with accent gradient bar
+  - Provider avatar with verified badge overlay
+  - Name, city, distance, member since date
+  - Star rating + review count + completed bookings badge
+  - Services list (first 3) with overflow count
+  - Bio snippet (line-clamped)
+  - "Pedir orçamento" and "Ver perfil" CTA buttons wired to UI store
+  - Fallback state when no provider found
+  - Decorative mesh blobs in background
+
+- Created StatsCounter component (stats-counter.tsx):
+  - Fetches from /api/stats/public API (existing endpoint)
+  - Emerald-to-teal gradient background
+  - 4 animated stats: Prestadores verificados, Serviços cadastrados, Serviços concluídos, Nota média
+  - Each stat: icon in frosted glass container + useCountUp animated number + label
+  - Loading state with pulse animation
+  - Decorative mesh blobs
+  - Responsive 2x2 on mobile, 4-column on desktop
+
+- Updated vitrine.tsx to include new sections in order:
+  HowItWorks → Testimonials → WhySeverinno → StatsCounter → PartnersSection → ProviderSpotlight → CtaBanner → FAQ
+
+- Fixed parsing error in FAQ: escaped double quotes in Portuguese text strings
+- Lint passes cleanly, dev server compiles successfully
+
+Stage Summary:
+- 5 files created/modified: faq.tsx, footer.tsx, partners-section.tsx, provider-spotlight.tsx, stats-counter.tsx
+- 1 file updated: vitrine.tsx (imports + section order)
+- All components follow Nielsen's 10 Usability Heuristics systematically
+- All components support dark mode, mobile-first responsive design
+- TypeScript strict mode, proper aria-labels and semantic HTML
+- API integration: /api/providers (spotlight), /api/stats/public (counter)
+- Consistent emerald brand color throughout
+
+---
+Task ID: 3
+Agent: main-orchestrator
+Task: Complete redesign of landing page below hero with Jakob Nielsen's 10 Usability Heuristics + new sections + QA
+
+Work Log:
+- Read worklog.md and all existing vitrine component files to understand current state
+- QA via agent-browser: page loading, all APIs returning 200, no console errors
+- Launched 3 parallel subagents to redesign all sections:
+  - Agent 2-a: CategoryShowcase + HowItWorks
+  - Agent 2-b: Testimonials + WhySeverinno + CtaBanner
+  - Agent 2-c: FAQ + Footer + 3 new sections (PartnersSection, ProviderSpotlight, StatsCounter)
+- All subagents completed successfully with comprehensive Nielsen heuristic implementations
+- Attempted lazy loading (React.lazy + Suspense) to reduce memory → caused ChunkLoadError, reverted to eager imports
+- Encountered OOM kills due to 4GB memory limit (Next.js dev server + Chrome browser exceeds limit)
+- Set NODE_OPTIONS="--max-old-space-size=896" to reduce server memory footprint
+- Verified page renders correctly via agent-browser with reduced memory
+- Ran `bun run lint` → passes cleanly with no errors
+- All APIs verified: /api/categories, /api/providers, /api/stats/public, /api/reviews/recent return 200
+
+Stage Summary:
+**Current Project Status:**
+- Server running on port 3000 with `NODE_OPTIONS="--max-old-space-size=896"` (required due to 4GB memory limit)
+- All redesigned sections render correctly with Nielsen heuristic improvements
+- Lint passes cleanly, no compilation errors
+- OOM risk when Chrome browser loads page simultaneously (memory constraint, not a code issue)
+
+**Completed Modifications:**
+1. **CategoryShowcase** — Redesigned with: loading skeleton, emoji+icon combos, provider count badges, "Limpar filtros" button, horizontal scroll arrows, keyboard navigation, tooltips, "Ver todas" expand, error/empty states with retry
+2. **HowItWorks** — Redesigned with: animated SVG connector line (useScroll/useTransform), concrete examples ("Busque 'encanador'"), accordion on mobile, mini UI illustrations, per-step CTAs, "Pular para resultados" link, trust badges with tooltips, back-to-top button
+3. **Testimonials** — Redesigned with: embla-carousel with autoplay (5s, pause on hover), prev/next buttons + dot indicators, rating filter chips (Todas/5★/4★), large avg rating hero, ShieldCheck tooltip, error/empty states, swipeable mobile carousel
+4. **WhySeverinno** — Redesigned with: stats strip moved to top (animated counters), collapsible "Saiba mais" cards, concrete scenarios, per-feature tooltips, "Pular para FAQ" link, trust reassurance strip
+5. **CtaBanner** — Redesigned with: dual CTA paths (client/provider), "O que vem depois?" 3-step illustration with time estimates, avatar stack social proof, "Comece em 30 segundos" tagline, "Já tenho conta" login link, bottom trust strip
+6. **FAQ** — Redesigned with: popular questions quick links, category filter chips with counts, "X de Y dúvidas" counter, enhanced empty state with alternatives, back-to-top button, "Fale conosco" CTA card
+7. **Footer** — Redesigned with: newsletter email validation + success/error toast states, "Precisa de ajuda?" (not "Suporte"), icons next to link groups, back-to-top floating button, cleaner 4-column grid
+8. **PartnersSection** (NEW) — Auto-scrolling dual-row marquee with framer-motion, pause on hover, 10 placeholder partners, "Empresas que confiam" badge
+9. **ProviderSpotlight** (NEW) — Fetches top-rated verified provider, featured card with avatar/rating/services/bio, "Pedir orçamento" and "Ver perfil" CTAs, loading skeleton, fallback empty state
+10. **StatsCounter** (NEW) — Fetches from /api/stats/public, emerald gradient, 4 animated stats with useCountUp, frosted glass icon containers, responsive layout
+
+**Unresolved Issues / Risks:**
+1. **Memory constraint**: 4GB total RAM causes OOM kills when Next.js dev server (1.5-2.2GB) + Chrome browser (500MB+) run simultaneously. Workaround: `NODE_OPTIONS="--max-old-space-size=896"` reduces server memory. This is a dev environment constraint, not a code issue.
+2. **Categories loading timing**: CategoryShowcase may briefly show "0 categorias disponíveis" before TanStack Query data arrives. The `useCountUp` animation starts at 0. Consider showing "Carregando…" instead of "0" during initial load.
+3. **Realtime mini-service**: May need restart after OOM events (`cd mini-services/realtime && bun run dev`)
+
+**Priority Recommendations for Next Phase:**
+1. Fix CategoryShowcase counter to show "..." or "Carregando..." instead of "0" while data loads
+2. Add intersection observer to lazy-render heavy sections (reduce initial bundle)
+3. Add more interactivity: category search within showcase, animated step transitions in HowItWorks
+4. Replace placeholder partner logos with real companies or SVG icons
+5. Add provider count from API to CategoryShowcase (currently uses deterministic hash)
+6. Implement newsletter API endpoint (currently frontend-only)
+7. Consider production build optimization to reduce memory footprint

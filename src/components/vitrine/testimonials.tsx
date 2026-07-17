@@ -3,17 +3,34 @@
 /**
  * Testimonials — social proof section showing real reviews from the database.
  *
- * Pulls recent completed bookings with reviews and displays them as
- * testimonial cards with ratings, quotes, and provider attribution.
- *
- * Layout: responsive grid with avatar + star rating + quote + attribution.
- * Falls back to a placeholder when no reviews are available.
+ * Redesigned with Jakob Nielsen's 10 Usability Heuristics:
+ *   H1 – Visibility: total count, avg rating hero number, loading skeletons
+ *   H2 – Match real world: conversational header, service type + context
+ *   H3 – User control: carousel with prev/next + dots, auto-play pause on hover, rating filter
+ *   H4 – Consistency: same card radius, star component, avatar style as provider cards
+ *   H5 – Error prevention: graceful empty state, API error with retry
+ *   H6 – Recognition: large quote icon, service badge, provider mini-card, stars always visible
+ *   H7 – Flexibility: swipeable mobile, keyboard arrows, filter chips
+ *   H8 – Minimalism: 1 card mobile, 3 desktop, clean cards, focus on quote
+ *   H9 – Error recovery: empty state CTA, retry on error
+ *   H10 – Help: "Avaliações verificadas" tooltip
  */
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Star, Quote, MessageSquare, Loader2 } from "lucide-react"
-import { motion } from "framer-motion"
+import Autoplay from "embla-carousel-autoplay"
+import {
+  Star,
+  Quote,
+  MessageSquare,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Info,
+  ShieldCheck,
+} from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/format"
@@ -22,6 +39,19 @@ import { useScrollReveal } from "@/hooks/use-animation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  type CarouselApi,
+} from "@/components/ui/carousel"
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,6 +75,8 @@ type ReviewsResponse = {
   avgRating: number
 }
 
+type RatingFilter = "all" | "5" | "4"
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -54,16 +86,65 @@ export default function Testimonials({
 }: {
   className?: string
 }) {
-  const { data, isLoading } = useQuery<ReviewsResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<ReviewsResponse>({
     queryKey: ["vitrine-testimonials"],
     queryFn: () => apiGet<ReviewsResponse>("/api/reviews/recent?limit=6"),
     staleTime: 5 * 60 * 1000,
+    retry: 2,
   })
 
   const reviews = data?.items ?? []
   const avgRating = data?.avgRating ?? 0
   const total = data?.total ?? 0
   const { ref, visible } = useScrollReveal<HTMLDivElement>()
+
+  // Rating filter
+  const [ratingFilter, setRatingFilter] = React.useState<RatingFilter>("all")
+  const filteredReviews = React.useMemo(() => {
+    if (ratingFilter === "all") return reviews
+    const n = Number(ratingFilter)
+    return reviews.filter((r) => r.rating === n)
+  }, [reviews, ratingFilter])
+
+  // Carousel API
+  const [api, setApi] = React.useState<CarouselApi>()
+  const [current, setCurrent] = React.useState(0)
+  const [count, setCount] = React.useState(0)
+
+  // Autoplay plugin ref
+  const autoplayRef = React.useRef(
+    Autoplay({ delay: 5000, stopOnInteraction: true }),
+  )
+
+  // Pause/resume on hover
+  const [isPaused, setIsPaused] = React.useState(false)
+  const pauseTimerRef = React.useRef<ReturnType<typeof setTimeout>>()
+
+  const handleMouseEnter = React.useCallback(() => {
+    setIsPaused(true)
+    autoplayRef.current.stop()
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current)
+  }, [])
+
+  const handleMouseLeave = React.useCallback(() => {
+    pauseTimerRef.current = setTimeout(() => {
+      setIsPaused(false)
+      autoplayRef.current.play()
+    }, 300)
+  }, [])
+
+  // Sync carousel state
+  React.useEffect(() => {
+    if (!api) return
+    setCount(api.scrollSnapList().length)
+    setCurrent(api.selectedScrollSnap())
+    const onSelect = () => setCurrent(api.selectedScrollSnap())
+    api.on("select", onSelect)
+    api.on("reInit", onSelect)
+    return () => {
+      api.off("select", onSelect)
+    }
+  }, [api])
 
   return (
     <section
@@ -74,21 +155,26 @@ export default function Testimonials({
         className,
       )}
     >
-      {/* Decorative quote icon */}
+      {/* Decorative quote watermark */}
       <div
         aria-hidden
-        className="absolute top-6 left-8 text-emerald-100 dark:text-emerald-950/50"
+        className="pointer-events-none absolute top-6 left-8 text-emerald-100 dark:text-emerald-950/50"
       >
         <Quote className="size-32" />
       </div>
 
-      <div ref={ref} className="relative">
+      <div
+        ref={ref}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        className="relative"
+      >
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: 20 }}
           animate={visible ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5 }}
-          className="mx-auto mb-10 max-w-2xl text-center"
+          className="mx-auto mb-8 max-w-2xl text-center"
         >
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-800/50">
             <Star className="size-3.5 fill-amber-500 text-amber-500" />
@@ -99,65 +185,197 @@ export default function Testimonials({
           </h2>
           <p className="mt-2 text-sm text-muted-foreground sm:text-base">
             {total > 0
-              ? `${total} avaliações de clientes reais — nota média ${avgRating.toFixed(1)} de 5 estrelas.`
+              ? `${total} avaliações verificadas — nota média ${avgRating.toFixed(1)} de 5 estrelas.`
               : "Avaliações de clientes após a conclusão do serviço."}
           </p>
         </motion.header>
 
-        {/* Reviews grid */}
+        {/* Summary stats bar */}
+        {total > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={visible ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.4, delay: 0.1 }}
+            className="mb-8 flex flex-wrap items-center justify-center gap-4 sm:gap-6"
+          >
+            {/* Average rating hero */}
+            <div className="flex items-center gap-3">
+              <span className="text-4xl font-bold tabular-nums tracking-tight">
+                {avgRating.toFixed(1)}
+              </span>
+              <div>
+                <div className="flex items-center gap-0.5">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className={cn(
+                        "size-4",
+                        i < Math.round(avgRating)
+                          ? "fill-amber-400 text-amber-400"
+                          : "fill-muted text-muted-foreground/30",
+                      )}
+                    />
+                  ))}
+                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                        <ShieldCheck className="size-3 text-emerald-500" />
+                        {total} avaliações verificadas
+                        <Info className="size-3 opacity-50" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[240px]">
+                      Avaliações verificadas são feitas apenas por clientes que
+                      completaram o serviço com o prestador. Não aceitamos
+                      avaliações anônimas ou de terceiros.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Rating filter chips */}
+        {reviews.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={visible ? { opacity: 1 } : {}}
+            transition={{ duration: 0.3, delay: 0.15 }}
+            className="mb-6 flex items-center justify-center gap-2"
+          >
+            {(
+              [
+                { key: "all", label: "Todas" },
+                { key: "5", label: "5 estrelas" },
+                { key: "4", label: "4 estrelas" },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setRatingFilter(f.key)}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition-all",
+                  ratingFilter === f.key
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+                )}
+                aria-pressed={ratingFilter === f.key}
+              >
+                {f.label}
+              </button>
+            ))}
+          </motion.div>
+        )}
+
+        {/* Loading state */}
         {isLoading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 4 }).map((_, i) => (
+            {Array.from({ length: 3 }).map((_, i) => (
               <ReviewSkeleton key={i} />
             ))}
           </div>
-        ) : reviews.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {reviews.map((review, idx) => (
-              <motion.div
-                key={review.id}
-                initial={{ opacity: 0, y: 24 }}
-                animate={visible ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.45, delay: idx * 0.08 }}
-              >
-                <ReviewCard review={review} />
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <EmptyTestimonials />
-        )}
+        ) : isError ? (
+          <ErrorState onRetry={() => refetch()} />
+        ) : filteredReviews.length > 0 ? (
+          /* Carousel */
+          <div className="relative">
+            <Carousel
+              setApi={setApi}
+              opts={{
+                align: "start",
+                loop: true,
+              }}
+              plugins={[autoplayRef.current]}
+              className="w-full"
+            >
+              <CarouselContent className="-ml-4">
+                {filteredReviews.map((review, idx) => (
+                  <CarouselItem
+                    key={review.id}
+                    className="pl-4 basis-full sm:basis-1/2 lg:basis-1/3"
+                  >
+                    <motion.div
+                      initial={{ opacity: 0, y: 24 }}
+                      animate={visible ? { opacity: 1, y: 0 } : {}}
+                      transition={{ duration: 0.45, delay: idx * 0.06 }}
+                      className="h-full"
+                    >
+                      <ReviewCard review={review} />
+                    </motion.div>
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
 
-        {/* Summary bar */}
-        {reviews.length > 0 && (
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-6 rounded-2xl border bg-card p-5 shadow-sm">
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-0.5">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star
+              {/* Prev / Next arrows (desktop) */}
+              <div className="pointer-events-none absolute inset-y-0 left-0 hidden items-center lg:flex">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="pointer-events-auto -ml-2 size-10 rounded-full border-border/60 bg-background/80 shadow-md backdrop-blur hover:bg-background"
+                  onClick={() => api?.scrollPrev()}
+                  aria-label="Avaliação anterior"
+                >
+                  <ChevronLeft className="size-5" />
+                </Button>
+              </div>
+              <div className="pointer-events-none absolute inset-y-0 right-0 hidden items-center lg:flex">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="pointer-events-auto -mr-2 size-10 rounded-full border-border/60 bg-background/80 shadow-md backdrop-blur hover:bg-background"
+                  onClick={() => api?.scrollNext()}
+                  aria-label="Próxima avaliação"
+                >
+                  <ChevronRight className="size-5" />
+                </Button>
+              </div>
+            </Carousel>
+
+            {/* Dot indicators */}
+            {count > 1 && (
+              <div
+                className="mt-6 flex items-center justify-center gap-1.5"
+                role="tablist"
+                aria-label="Navegação do carrossel"
+              >
+                {Array.from({ length: count }).map((_, i) => (
+                  <button
                     key={i}
+                    onClick={() => api?.scrollTo(i)}
                     className={cn(
-                      "size-5",
-                      i < Math.round(avgRating)
-                        ? "fill-amber-400 text-amber-400"
-                        : "fill-muted text-muted",
+                      "size-2 rounded-full transition-all",
+                      i === current
+                        ? "bg-emerald-600 w-6"
+                        : "bg-muted-foreground/25 hover:bg-muted-foreground/50",
                     )}
+                    role="tab"
+                    aria-selected={i === current}
+                    aria-label={`Ir para avaliação ${i + 1}`}
                   />
                 ))}
               </div>
-              <span className="text-lg font-bold">{avgRating.toFixed(1)}</span>
-              <span className="text-sm text-muted-foreground">
-                de 5 estrelas
-              </span>
-            </div>
-            <div className="hidden h-6 w-px bg-border sm:block" />
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <MessageSquare className="size-4 text-emerald-500" />
-              <span>
-                Baseado em <strong className="text-foreground">{total}</strong> avaliações verificadas
-              </span>
-            </div>
+            )}
+
+            {/* Pause indicator */}
+            <AnimatePresence>
+              {isPaused && count > 1 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground"
+                >
+                  <span className="size-1.5 rounded-full bg-amber-400" />
+                  Pausado — passe o mouse para pausar
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+        ) : (
+          <EmptyTestimonials />
         )}
       </div>
     </section>
@@ -172,7 +390,7 @@ function ReviewCard({ review }: { review: ReviewItem }) {
   const stars = Array.from({ length: 5 }).map((_, i) => i < review.rating)
 
   return (
-    <div className="group flex flex-col gap-3 rounded-xl border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md dark:hover:border-emerald-800/50">
+    <div className="group flex h-full flex-col gap-3 rounded-xl border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md dark:hover:border-emerald-800/50">
       {/* Star rating */}
       <div className="flex items-center gap-0.5">
         {stars.map((filled, i) => (
@@ -188,18 +406,24 @@ function ReviewCard({ review }: { review: ReviewItem }) {
         ))}
       </div>
 
-      {/* Quote */}
-      {review.comment ? (
-        <p className="line-clamp-3 text-sm leading-relaxed text-foreground/80">
-          &ldquo;{review.comment}&rdquo;
-        </p>
-      ) : (
-        <p className="text-sm italic text-muted-foreground">
-          Sem comentário escrito.
-        </p>
-      )}
+      {/* Quote with large opening mark */}
+      <div className="relative">
+        <Quote
+          aria-hidden
+          className="absolute -top-1 -left-1 size-5 text-emerald-200 dark:text-emerald-800/60"
+        />
+        {review.comment ? (
+          <p className="line-clamp-3 pl-5 text-sm italic leading-relaxed text-foreground/80">
+            {review.comment}
+          </p>
+        ) : (
+          <p className="pl-5 text-sm italic text-muted-foreground">
+            Sem comentário escrito.
+          </p>
+        )}
+      </div>
 
-      {/* Service badge */}
+      {/* Service type badge */}
       <Badge
         variant="secondary"
         className="w-fit bg-emerald-50 text-[11px] text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
@@ -223,9 +447,7 @@ function ReviewCard({ review }: { review: ReviewItem }) {
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold">
-            {review.clientName}
-          </p>
+          <p className="truncate text-xs font-semibold">{review.clientName}</p>
           <p className="text-[11px] text-muted-foreground">
             {formatRelative(new Date(review.createdAt))}
           </p>
@@ -270,6 +492,35 @@ function EmptyTestimonials() {
         Assim que os primeiros serviços forem concluídos, as avaliações dos
         clientes aparecerão aqui.
       </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Error state with retry
+// ---------------------------------------------------------------------------
+
+function ErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <span className="flex size-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/30">
+        <RefreshCw className="size-8 text-red-500" />
+      </span>
+      <h3 className="mt-4 text-base font-semibold">
+        Não foi possível carregar as avaliações
+      </h3>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+        Ocorreu um erro ao buscar as avaliações. Tente novamente.
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onRetry}
+        className="mt-4 gap-2"
+      >
+        <RefreshCw className="size-3.5" />
+        Tentar novamente
+      </Button>
     </div>
   )
 }
