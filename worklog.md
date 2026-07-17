@@ -1977,6 +1977,61 @@ Stage Summary:
 2. Add intersection observer to lazy-render heavy sections (reduce initial bundle)
 3. Add more interactivity: category search within showcase, animated step transitions in HowItWorks
 4. Replace placeholder partner logos with real companies or SVG icons
+
+---
+Task ID: 3
+Agent: Main agent + subagents
+Task: Redesign entire landing page below hero applying Jakob Nielsen's 10 Usability Heuristics
+
+Work Log:
+- Read all vitrine component files to understand current state (Hero, CategoryShowcase, HowItWorks, Testimonials, WhySeverinno, StatsCounter, PartnersSection, ProviderSpotlight, CtaBanner, FAQ)
+- Diagnosed OOM (Out of Memory) issue: 4GB RAM insufficient for Next.js dev server + Chrome simultaneously
+- Reorganized vitrine.tsx: removed StatsCounter and PartnersSection (redundant/placeholder), reordered sections for better narrative flow
+- Delegated 6 component redesigns to specialized subagents in parallel:
+  1. CategoryShowcase — complete redesign with color-coded cards, popular categories bar, mobile chip layout
+  2. HowItWorks — redesign with mini UI mockups, animated connector line, accordion on mobile
+  3. WhySeverinno — merged StatsCounter stats bar into top of section, collapsible feature cards
+  4. Testimonials — added star distribution histogram, gradient prev/next buttons, verified badge, slide counter
+  5. CtaBanner — added floating icons, glassmorphism, client/provider tab toggle, dynamic stats, urgency badge
+  6. ProviderSpotlight — added gradient ring avatar, response time, expandable bio, WhatsApp CTA, social proof
+- Fixed TypeScript errors: framer-motion Variants `ease` type issues, `useRef` missing argument, `Icon` type for style prop
+- Fixed CtaBanner transition type errors (repeatType/ease as const issues → replaced with cubic bezier arrays)
+- All lint checks pass (0 errors)
+- All TypeScript errors in src/components/vitrine/ fixed
+- Verified API routes return 200: /, /api/categories?level=1, /api/providers, /api/stats/public, /api/reviews/recent
+- Server compiles successfully (GET / 200) but OOM killed when Chrome starts (4GB memory limitation)
+
+Stage Summary:
+- **New section order**: Hero → CategoryShowcase → VitrineResults → HowItWorks → Testimonials → WhySeverinno (with merged stats) → ProviderSpotlight → FAQ → CtaBanner
+- **Removed sections**: StatsCounter (merged into WhySeverinno), PartnersSection (was placeholder)
+- **Key design improvements**:
+  - CategoryShowcase: 6 color tint palettes, popular categories quick-access bar, mobile chip layout
+  - HowItWorks: Mini UI mockups in each step card, animated SVG connector, mobile accordion timeline
+  - WhySeverinno: Live API stats bar at top, 2x3 feature grid with collapsible details
+  - Testimonials: Amazon-style star distribution histogram, gradient navigation, verified review badges
+  - CtaBanner: Floating background icons, client/provider tab toggle, dynamic signup counter from API
+  - ProviderSpotlight: Gradient avatar ring, response time estimate, expandable bio, WhatsApp deep link
+- **API enhancement**: Added `totalUsers` and `recentSignups24h` to `/api/stats/public` route
+- **Known issue**: 4GB RAM environment causes OOM when running Next.js + Chrome simultaneously
+
+Current Project Status:
+- All code compiles and serves correctly
+- Lint: ✅ 0 errors
+- TypeScript: ✅ 0 errors in src/components/vitrine/
+- APIs: ✅ All returning 200 with correct data
+- Server: ✅ Compiles and serves pages (GET / 200)
+- Browser verification: ❌ OOM kills server when Chrome starts (4GB RAM limit)
+
+Unresolved Issues:
+1. **OOM in dev environment**: 4GB RAM is insufficient for Next.js webpack dev server (~1.7GB) + Chrome (~500MB). Server compiles and serves correctly, but OOM killer triggers when browser opens.
+2. **Categories "0" display**: CategoryShowcase may briefly show "0 categorias" before API data loads. Should show loading skeleton instead.
+3. **Realtime service**: Needs restart after OOM events
+
+Priority Recommendations for Next Phase:
+1. Test in production build (less memory than dev server)
+2. Add loading skeleton for category count instead of "0"
+3. Add intersection observer for lazy-rendering heavy sections
+4. Consider reducing component complexity to lower memory footprint
 5. Add provider count from API to CategoryShowcase (currently uses deterministic hash)
 6. Implement newsletter API endpoint (currently frontend-only)
 7. Consider production build optimization to reduce memory footprint

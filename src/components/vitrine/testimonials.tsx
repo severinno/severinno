@@ -4,16 +4,16 @@
  * Testimonials — social proof section showing real reviews from the database.
  *
  * Redesigned with Jakob Nielsen's 10 Usability Heuristics:
- *   H1 – Visibility: total count, avg rating hero number, loading skeletons
- *   H2 – Match real world: conversational header, service type + context
- *   H3 – User control: carousel with prev/next + dots, auto-play pause on hover, rating filter
+ *   H1 – Visibility: total count, avg rating hero number, loading skeletons, slide counter
+ *   H2 – Match real world: conversational header, service type + context, star distribution bars
+ *   H3 – User control: carousel with prev/next + dots, auto-play pause on hover, rating filter, slide X of Y
  *   H4 – Consistency: same card radius, star component, avatar style as provider cards
  *   H5 – Error prevention: graceful empty state, API error with retry
- *   H6 – Recognition: large quote icon, service badge, provider mini-card, stars always visible
- *   H7 – Flexibility: swipeable mobile, keyboard arrows, filter chips
- *   H8 – Minimalism: 1 card mobile, 3 desktop, clean cards, focus on quote
+ *   H6 – Recognition: large quote icon with gradient bg, verified badge with shield, service badge, stars with glow
+ *   H7 – Flexibility: swipeable mobile, keyboard arrows, filter chips, compact mobile layout
+ *   H8 – Minimalism: 1 card mobile, 3 desktop, clean cards, focus on quote, gradient accent stripe
  *   H9 – Error recovery: empty state CTA, retry on error
- *   H10 – Help: "Avaliações verificadas" tooltip
+ *   H10 – Help: "Avaliações verificadas" tooltip, verified badge explanation
  */
 
 import * as React from "react"
@@ -98,6 +98,19 @@ export default function Testimonials({
   const total = data?.total ?? 0
   const { ref, visible } = useScrollReveal<HTMLDivElement>()
 
+  // Compute star distribution from reviews
+  const starDistribution = React.useMemo(() => {
+    const dist = [0, 0, 0, 0, 0] // index 0 = 1-star, index 4 = 5-star
+    for (const r of reviews) {
+      if (r.rating >= 1 && r.rating <= 5) {
+        dist[r.rating - 1]++
+      }
+    }
+    return dist
+  }, [reviews])
+
+  const maxDistCount = Math.max(...starDistribution, 1)
+
   // Rating filter
   const [ratingFilter, setRatingFilter] = React.useState<RatingFilter>("all")
   const filteredReviews = React.useMemo(() => {
@@ -118,7 +131,7 @@ export default function Testimonials({
 
   // Pause/resume on hover
   const [isPaused, setIsPaused] = React.useState(false)
-  const pauseTimerRef = React.useRef<ReturnType<typeof setTimeout>>()
+  const pauseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const handleMouseEnter = React.useCallback(() => {
     setIsPaused(true)
@@ -146,6 +159,10 @@ export default function Testimonials({
     }
   }, [api])
 
+  // Current slide index within filteredReviews (for "slide X of Y" counter)
+  const visibleSlideNumber = current + 1
+  const totalSlides = filteredReviews.length
+
   return (
     <section
       aria-label="Avaliações de clientes"
@@ -155,12 +172,24 @@ export default function Testimonials({
         className,
       )}
     >
-      {/* Decorative quote watermark */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute top-6 left-8 text-emerald-100 dark:text-emerald-950/50"
-      >
-        <Quote className="size-32" />
+      {/* Decorative background patterns */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* Large quote watermark */}
+        <div className="absolute top-6 left-8 text-emerald-100 dark:text-emerald-950/50">
+          <Quote className="size-32" />
+        </div>
+        {/* Subtle dot grid pattern */}
+        <div
+          className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, currentColor 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
+          }}
+        />
+        {/* Gradient orb decoration */}
+        <div className="absolute -top-24 -right-24 size-96 rounded-full bg-gradient-to-br from-emerald-100/40 to-teal-50/20 blur-3xl dark:from-emerald-950/30 dark:to-teal-950/20" />
+        <div className="absolute -bottom-16 -left-16 size-72 rounded-full bg-gradient-to-tr from-amber-100/30 to-emerald-50/20 blur-3xl dark:from-amber-950/20 dark:to-emerald-950/10" />
       </div>
 
       <div
@@ -190,28 +219,31 @@ export default function Testimonials({
           </p>
         </motion.header>
 
-        {/* Summary stats bar */}
+        {/* Summary stats + star distribution */}
         {total > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={visible ? { opacity: 1, y: 0 } : {}}
             transition={{ duration: 0.4, delay: 0.1 }}
-            className="mb-8 flex flex-wrap items-center justify-center gap-4 sm:gap-6"
+            className="mb-8 mx-auto max-w-xl"
           >
-            {/* Average rating hero */}
-            <div className="flex items-center gap-3">
-              <span className="text-4xl font-bold tabular-nums tracking-tight">
-                {avgRating.toFixed(1)}
-              </span>
-              <div>
+            <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
+              {/* Average rating hero — large & prominent */}
+              <div className="flex flex-col items-center sm:items-end gap-1 shrink-0">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-5xl font-extrabold tabular-nums tracking-tighter bg-gradient-to-br from-emerald-600 to-teal-600 bg-clip-text text-transparent dark:from-emerald-400 dark:to-teal-400">
+                    {avgRating.toFixed(1)}
+                  </span>
+                  <span className="text-lg font-medium text-muted-foreground">/5</span>
+                </div>
                 <div className="flex items-center gap-0.5">
                   {Array.from({ length: 5 }).map((_, i) => (
                     <Star
                       key={i}
                       className={cn(
-                        "size-4",
+                        "size-5 transition-all",
                         i < Math.round(avgRating)
-                          ? "fill-amber-400 text-amber-400"
+                          ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.4)]"
                           : "fill-muted text-muted-foreground/30",
                       )}
                     />
@@ -220,8 +252,8 @@ export default function Testimonials({
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <button className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-                        <ShieldCheck className="size-3 text-emerald-500" />
+                      <button className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                        <ShieldCheck className="size-3.5 text-emerald-500" />
                         {total} avaliações verificadas
                         <Info className="size-3 opacity-50" />
                       </button>
@@ -233,6 +265,52 @@ export default function Testimonials({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+              </div>
+
+              {/* Star distribution bars (Amazon-style histogram) */}
+              <div className="flex-1 w-full space-y-1">
+                {[5, 4, 3, 2, 1].map((starVal) => {
+                  const count = starDistribution[starVal - 1]
+                  const pct = total > 0 ? (count / total) * 100 : 0
+                  return (
+                    <button
+                      key={starVal}
+                      onClick={() =>
+                        setRatingFilter((prev) =>
+                          prev === String(starVal) ? "all" : (String(starVal) as RatingFilter),
+                        )
+                      }
+                      className={cn(
+                        "group flex items-center gap-2 w-full rounded px-1 py-0.5 transition-colors text-left",
+                        ratingFilter === String(starVal)
+                          ? "bg-emerald-50 dark:bg-emerald-950/30"
+                          : "hover:bg-muted/60",
+                      )}
+                      aria-label={`Filtrar por ${starVal} estrelas: ${count} avaliações`}
+                    >
+                      <span className="text-xs font-medium tabular-nums w-3 text-right shrink-0">
+                        {starVal}
+                      </span>
+                      <Star className="size-3 fill-amber-400 text-amber-400 shrink-0" />
+                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={visible ? { width: `${pct}%` } : { width: 0 }}
+                          transition={{ duration: 0.6, delay: 0.2 + (5 - starVal) * 0.06 }}
+                          className={cn(
+                            "h-full rounded-full",
+                            ratingFilter === String(starVal)
+                              ? "bg-emerald-500"
+                              : "bg-gradient-to-r from-amber-400 to-amber-500",
+                          )}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground tabular-nums w-6 text-right shrink-0">
+                        {count}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           </motion.div>
@@ -309,55 +387,64 @@ export default function Testimonials({
                 ))}
               </CarouselContent>
 
-              {/* Prev / Next arrows (desktop) */}
+              {/* Prev / Next arrows — circular with gradient */}
               <div className="pointer-events-none absolute inset-y-0 left-0 hidden items-center lg:flex">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="pointer-events-auto -ml-2 size-10 rounded-full border-border/60 bg-background/80 shadow-md backdrop-blur hover:bg-background"
+                <button
+                  className="pointer-events-auto -ml-3 size-11 rounded-full flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:scale-110 hover:shadow-xl hover:shadow-emerald-500/30 active:scale-95"
                   onClick={() => api?.scrollPrev()}
                   aria-label="Avaliação anterior"
                 >
                   <ChevronLeft className="size-5" />
-                </Button>
+                </button>
               </div>
               <div className="pointer-events-none absolute inset-y-0 right-0 hidden items-center lg:flex">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="pointer-events-auto -mr-2 size-10 rounded-full border-border/60 bg-background/80 shadow-md backdrop-blur hover:bg-background"
+                <button
+                  className="pointer-events-auto -mr-3 size-11 rounded-full flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200 hover:scale-110 hover:shadow-xl hover:shadow-emerald-500/30 active:scale-95"
                   onClick={() => api?.scrollNext()}
                   aria-label="Próxima avaliação"
                 >
                   <ChevronRight className="size-5" />
-                </Button>
+                </button>
               </div>
             </Carousel>
 
-            {/* Dot indicators */}
-            {count > 1 && (
-              <div
-                className="mt-6 flex items-center justify-center gap-1.5"
-                role="tablist"
-                aria-label="Navegação do carrossel"
-              >
-                {Array.from({ length: count }).map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => api?.scrollTo(i)}
-                    className={cn(
-                      "size-2 rounded-full transition-all",
-                      i === current
-                        ? "bg-emerald-600 w-6"
-                        : "bg-muted-foreground/25 hover:bg-muted-foreground/50",
-                    )}
-                    role="tab"
-                    aria-selected={i === current}
-                    aria-label={`Ir para avaliação ${i + 1}`}
-                  />
-                ))}
-              </div>
-            )}
+            {/* Dot indicators + slide counter */}
+            <div className="mt-6 flex flex-col items-center gap-2">
+              {count > 1 && (
+                <div
+                  className="flex items-center justify-center gap-2"
+                  role="tablist"
+                  aria-label="Navegação do carrossel"
+                >
+                  {Array.from({ length: count }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => api?.scrollTo(i)}
+                      className={cn(
+                        "rounded-full transition-all duration-300",
+                        i === current
+                          ? "bg-emerald-500 h-3 w-6 shadow-sm shadow-emerald-500/30"
+                          : "size-2 bg-muted-foreground/25 hover:bg-muted-foreground/50",
+                      )}
+                      role="tab"
+                      aria-selected={i === current}
+                      aria-label={`Ir para avaliação ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Slide X of Y counter for accessibility */}
+              {totalSlides > 0 && (
+                <p
+                  className="text-[11px] font-medium text-muted-foreground tabular-nums"
+                  aria-live="polite"
+                  aria-atomic
+                >
+                  {visibleSlideNumber} de {totalSlides}
+                </p>
+              )}
+            </div>
 
             {/* Pause indicator */}
             <AnimatePresence>
@@ -368,7 +455,7 @@ export default function Testimonials({
                   exit={{ opacity: 0, y: 4 }}
                   className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground"
                 >
-                  <span className="size-1.5 rounded-full bg-amber-400" />
+                  <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
                   Pausado — passe o mouse para pausar
                 </motion.div>
               )}
@@ -390,85 +477,104 @@ function ReviewCard({ review }: { review: ReviewItem }) {
   const stars = Array.from({ length: 5 }).map((_, i) => i < review.rating)
 
   return (
-    <div className="group flex h-full flex-col gap-3 rounded-xl border bg-card p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md dark:hover:border-emerald-800/50">
-      {/* Star rating */}
-      <div className="flex items-center gap-0.5">
-        {stars.map((filled, i) => (
-          <Star
-            key={i}
-            className={cn(
-              "size-4",
-              filled
-                ? "fill-amber-400 text-amber-400"
-                : "fill-muted text-muted-foreground/30",
-            )}
-          />
-        ))}
-      </div>
+    <div className="group relative flex h-full flex-col gap-3 rounded-xl border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-800/50 overflow-hidden">
+      {/* Left accent stripe — gradient border */}
+      <div
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-emerald-400 via-teal-500 to-emerald-600 transition-all duration-300 group-hover:w-1.5 group-hover:from-emerald-300 group-hover:via-teal-400 group-hover:to-emerald-500"
+      />
 
-      {/* Quote with large opening mark */}
-      <div className="relative">
-        <Quote
-          aria-hidden
-          className="absolute -top-1 -left-1 size-5 text-emerald-200 dark:text-emerald-800/60"
-        />
-        {review.comment ? (
-          <p className="line-clamp-3 pl-5 text-sm italic leading-relaxed text-foreground/80">
-            {review.comment}
-          </p>
-        ) : (
-          <p className="pl-5 text-sm italic text-muted-foreground">
-            Sem comentário escrito.
-          </p>
-        )}
-      </div>
-
-      {/* Service type badge */}
-      <Badge
-        variant="secondary"
-        className="w-fit bg-emerald-50 text-[11px] text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
-      >
-        {review.serviceTitle}
-      </Badge>
-
-      {/* Attribution */}
-      <div className="mt-auto flex items-center gap-2.5 border-t pt-3">
-        <Avatar className="size-8 ring-1 ring-border">
-          {review.clientAvatar ? (
-            <AvatarImage src={review.clientAvatar} alt={review.clientName} />
-          ) : null}
-          <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
-            {review.clientName
-              .split(" ")
-              .map((p) => p[0])
-              .slice(0, 2)
-              .join("")
-              .toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold">{review.clientName}</p>
-          <p className="text-[11px] text-muted-foreground">
-            {formatRelative(new Date(review.createdAt))}
-          </p>
-        </div>
-        {/* Provider mini attribution */}
-        <div className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-          <span>para</span>
-          <Avatar className="size-5">
-            {review.providerAvatar ? (
-              <AvatarImage
-                src={review.providerAvatar}
-                alt={review.providerName}
+      <div className="flex flex-col gap-3 p-5 pl-6 sm:p-5 sm:pl-7">
+        {/* Top row: Stars + Verified badge */}
+        <div className="flex items-center justify-between gap-2">
+          {/* Star rating with glow */}
+          <div className="flex items-center gap-0.5">
+            {stars.map((filled, i) => (
+              <Star
+                key={i}
+                className={cn(
+                  "size-4 transition-all duration-200",
+                  filled
+                    ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.35)] group-hover:drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]"
+                    : "fill-muted text-muted-foreground/30",
+                )}
               />
+            ))}
+          </div>
+
+          {/* Verified review badge */}
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50">
+            <ShieldCheck className="size-3" />
+            <span className="hidden sm:inline">Verificada</span>
+          </span>
+        </div>
+
+        {/* Quote with large opening mark */}
+        <div className="relative">
+          <div
+            aria-hidden
+            className="absolute -top-2 -left-2 flex size-10 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/40 dark:to-teal-900/40"
+          >
+            <Quote className="size-5 text-emerald-500 dark:text-emerald-400" />
+          </div>
+          {review.comment ? (
+            <p className="line-clamp-3 pl-10 text-sm italic leading-relaxed text-foreground/80">
+              {review.comment}
+            </p>
+          ) : (
+            <p className="pl-10 text-sm italic text-muted-foreground">
+              Sem comentário escrito.
+            </p>
+          )}
+        </div>
+
+        {/* Service type badge */}
+        <Badge
+          variant="secondary"
+          className="w-fit bg-emerald-50 text-[11px] text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+        >
+          {review.serviceTitle}
+        </Badge>
+
+        {/* Attribution */}
+        <div className="mt-auto flex items-center gap-2.5 border-t pt-3">
+          <Avatar className="size-8 ring-1 ring-border">
+            {review.clientAvatar ? (
+              <AvatarImage src={review.clientAvatar} alt={review.clientName} />
             ) : null}
-            <AvatarFallback className="size-5 bg-emerald-100 text-[8px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-              {review.providerName.charAt(0)}
+            <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
+              {review.clientName
+                .split(" ")
+                .map((p) => p[0])
+                .slice(0, 2)
+                .join("")
+                .toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <span className="max-w-[6rem] truncate font-medium">
-            {review.providerName}
-          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold">{review.clientName}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {formatRelative(new Date(review.createdAt))}
+            </p>
+          </div>
+          {/* Provider mini attribution */}
+          <div className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span>para</span>
+            <Avatar className="size-5">
+              {review.providerAvatar ? (
+                <AvatarImage
+                  src={review.providerAvatar}
+                  alt={review.providerName}
+                />
+              ) : null}
+              <AvatarFallback className="size-5 bg-emerald-100 text-[8px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                {review.providerName.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="max-w-[6rem] truncate font-medium">
+              {review.providerName}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -531,15 +637,25 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 
 function ReviewSkeleton() {
   return (
-    <div className="flex flex-col gap-3 rounded-xl border bg-card p-5">
-      <div className="flex gap-0.5">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="size-4 rounded-full" />
-        ))}
+    <div className="relative flex flex-col gap-3 rounded-xl border bg-card p-5 pl-7 overflow-hidden">
+      {/* Accent stripe skeleton */}
+      <div className="absolute inset-y-0 left-0 w-1 bg-muted" />
+      <div className="flex items-center justify-between">
+        <div className="flex gap-0.5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="size-4 rounded-full" />
+          ))}
+        </div>
+        <Skeleton className="h-5 w-16 rounded-full" />
       </div>
-      <Skeleton className="h-4 w-full" />
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="mt-1 h-5 w-24 rounded-full" />
+      <div className="flex items-start gap-2">
+        <Skeleton className="size-10 rounded-lg shrink-0" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      </div>
+      <Skeleton className="h-5 w-24 rounded-full" />
       <div className="flex items-center gap-2.5 border-t pt-3">
         <Skeleton className="size-8 rounded-full" />
         <div className="flex-1 space-y-1.5">
