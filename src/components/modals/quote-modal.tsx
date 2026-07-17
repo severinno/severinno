@@ -5,17 +5,17 @@ import { useQuery } from "@tanstack/react-query"
 import { useForm, type Resolver, type UseFormReturn } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { motion, AnimatePresence } from "framer-motion"
 import {
   Check,
   ChevronDown,
-  ChevronRight,
   Clock,
   Loader2,
   LogIn,
   MapPin,
   Pencil,
   Send,
+  ShieldCheck,
+  User,
   Wrench,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -39,8 +39,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -61,6 +59,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import {
   apiGet,
@@ -81,22 +84,30 @@ import { useViewStore } from "@/store/view"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { AddressForm, type AddressFormValue } from "./address-form"
 import { FilePhotos } from "./file-photos"
+import {
+  StepWizard,
+  StepHeader,
+  InfoCard,
+  type StepDef,
+} from "./step-wizard"
 
 // ---------------------------------------------------------------------------
-// Step definitions
+// Step definitions — 5 steps for better UX (Nielsen #8: minimalist design)
+// Each step has ONE clear task
 // ---------------------------------------------------------------------------
 
-const STEPS = [
-  { id: 1, label: "Serviço" },
-  { id: 2, label: "Detalhes" },
-  { id: 3, label: "Endereço" },
-  { id: 4, label: "Revisão" },
-] as const
+const STEPS: StepDef[] = [
+  { id: 1, label: "Prestador", shortLabel: "Prestador", icon: User },
+  { id: 2, label: "Serviço", shortLabel: "Serviço", icon: Wrench },
+  { id: 3, label: "Detalhes", shortLabel: "Detalhes", icon: Pencil },
+  { id: 4, label: "Endereço", shortLabel: "Endereço", icon: MapPin },
+  { id: 5, label: "Revisão", shortLabel: "Revisão", icon: Check },
+]
 
 type Step = (typeof STEPS)[number]["id"]
 
 // ---------------------------------------------------------------------------
-// Form model — extends the API payload with per-item providerId
+// Form model
 // ---------------------------------------------------------------------------
 
 type QuoteItemForm = {
@@ -180,7 +191,6 @@ export function QuoteModal() {
   const close = useUIStore((s) => s.closeQuote)
   const openAuth = useUIStore((s) => s.openAuth)
   const isMobile = useIsMobile()
-
   const navigate = useViewStore((s) => s.navigate)
   const user = useAuthStore((s) => s.user)
 
@@ -193,7 +203,10 @@ export function QuoteModal() {
     mode: "onTouched",
   })
 
-  // Reset preset when modal opens.
+  const [step, setStep] = React.useState<Step>(1)
+  const [submitting, setSubmitting] = React.useState(false)
+
+  // Reset when modal opens
   React.useEffect(() => {
     if (open) {
       form.reset({
@@ -204,8 +217,66 @@ export function QuoteModal() {
     }
   }, [open, providerIdPreset, serviceIdPreset, form])
 
-  const [step, setStep] = React.useState<Step>(1)
-  const [submitting, setSubmitting] = React.useState(false)
+  // ── Step validation map ──
+  const items = form.watch("items")
+  const address = form.watch("address")
+  const errors = form.formState.errors
+  const item0 = items[0]
+  const item0Errors = errors.items?.[0]
+
+  const step1Valid = !!item0?.providerId
+  const step2Valid = !!item0?.serviceId
+  const step3Valid =
+    !!item0?.description && item0.description.length >= 10 && item0?.quantity > 0
+  const step4Valid =
+    !!address.cep && address.cep.replace(/\D/g, "").length >= 8 &&
+    !!address.street && !!address.number && !!address.city && !!address.state
+
+  const validSteps: Record<number, boolean> = {
+    1: step1Valid,
+    2: step2Valid,
+    3: step3Valid,
+    4: step4Valid,
+    5: true,
+  }
+
+  // ── Navigation ──
+  const handleStepClick = (target: Step) => {
+    if (target < step) {
+      setStep(target)
+      return
+    }
+    for (let i = 1; i < target; i++) {
+      if (!validSteps[i as Step]) {
+        toast.error("Complete os passos anteriores primeiro.")
+        return
+      }
+    }
+    setStep(target)
+  }
+
+  const handleNext = () => {
+    if (step === 1 && !step1Valid) {
+      form.trigger("items.0.providerId")
+      return
+    }
+    if (step === 2 && !step2Valid) {
+      form.trigger("items.0.serviceId")
+      return
+    }
+    if (step === 3 && !step3Valid) {
+      form.trigger("items.0.description")
+      form.trigger("items.0.quantity")
+      return
+    }
+    if (step === 4 && !step4Valid) {
+      form.trigger("address")
+      return
+    }
+    setStep((s) => Math.min(5, s + 1) as Step)
+  }
+
+  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step)
 
   const onSubmit = async (values: QuoteFormValues) => {
     if (!user) {
@@ -213,13 +284,11 @@ export function QuoteModal() {
       openAuth("register", "CLIENT")
       return
     }
-
     const primary = values.items[0]
     if (!primary?.providerId) {
-      toast.error("Selecione um prestador no primeiro item.")
+      toast.error("Selecione um prestador.")
       return
     }
-
     setSubmitting(true)
     try {
       await apiPost("/api/quotes", {
@@ -257,14 +326,66 @@ export function QuoteModal() {
     }
   }
 
-  const content = (
-    <WizardBody
-      step={step}
-      setStep={setStep}
-      form={form}
-      submitting={submitting}
+  // ── Step content ──
+  const stepContent = (() => {
+    switch (step) {
+      case 1:
+        return <Step1Provider form={form} />
+      case 2:
+        return <Step2Service form={form} />
+      case 3:
+        return <Step3Details form={form} />
+      case 4:
+        return <Step4Address form={form} />
+      case 5:
+        return <Step5Review form={form} goToStep={setStep} />
+      default:
+        return null
+    }
+  })()
+
+  const wizardBody = (
+    <StepWizard
+      steps={STEPS}
+      currentStep={step}
+      validSteps={validSteps}
+      onStepClick={handleStepClick}
+      onBack={handleBack}
+      onNext={handleNext}
       onSubmit={form.handleSubmit(onSubmit)}
-    />
+      submitting={submitting}
+      currentStepValid={validSteps[step] ?? true}
+      submitLabel={
+        <>
+          <Send className="size-3.5" />
+          Enviar orçamento
+        </>
+      }
+    >
+      {/* Auth gate — Nielsen #5: error prevention (remind user to login) */}
+      {step === 1 && !user && (
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+          <LogIn className="size-5 shrink-0 text-amber-600" />
+          <div className="flex-1">
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              Faça cadastro gratuito para pedir orçamentos
+            </p>
+            <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
+              Seus dados ficam salvos para acompanhar as respostas.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => openAuth("register", "CLIENT")}
+            className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white h-8"
+          >
+            Entrar
+          </Button>
+        </div>
+      )}
+      {stepContent}
+    </StepWizard>
   )
 
   if (isMobile) {
@@ -273,17 +394,18 @@ export function QuoteModal() {
         <SheetContent
           side="bottom"
           className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
+          onInteractOutside={(e) => e.preventDefault()}
         >
           <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
-            <SheetTitle className="flex items-center gap-2">
-              <Wrench className="size-5 text-emerald-600" />
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <Wrench className="size-4 text-emerald-600" />
               Pedir orçamento
             </SheetTitle>
-            <SheetDescription>
+            <SheetDescription className="text-xs">
               Descreva o serviço e receba propostas de prestadores verificados.
             </SheetDescription>
           </SheetHeader>
-          <div className="flex-1 overflow-hidden">{content}</div>
+          <div className="flex-1 overflow-hidden">{wizardBody}</div>
         </SheetContent>
       </Sheet>
     )
@@ -291,270 +413,39 @@ export function QuoteModal() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b">
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <Wrench className="size-5 text-emerald-600" />
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
+        {/* Nielsen #3: User control — prevent accidental close during wizard */}
+        <DialogHeader className="px-5 pt-5 pb-2 shrink-0 border-b">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Wrench className="size-4 text-emerald-600" />
             Pedir orçamento
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs">
             Descreva o serviço e receba propostas de prestadores verificados.
           </DialogDescription>
         </DialogHeader>
-        {content}
+        {wizardBody}
       </DialogContent>
     </Dialog>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Wizard body — stepper + step content + footer nav
+// Step 1 — Prestador (Select Provider)
+// Nielsen #6: Recognition over recall — search with avatars and badges
 // ---------------------------------------------------------------------------
 
-function WizardBody({
-  step,
-  setStep,
-  form,
-  submitting,
-  onSubmit,
-}: {
-  step: Step
-  setStep: React.Dispatch<React.SetStateAction<Step>>
-  form: UseFormReturn<QuoteFormValues>
-  submitting: boolean
-  onSubmit: () => void
-}) {
-  const items = form.watch("items")
-  const address = form.watch("address")
-  const errors = form.formState.errors
-  const user = useAuthStore((s) => s.user)
-  const openAuth = useUIStore((s) => s.openAuth)
-
-  // ── Step validation ───────────────────────────────────────────────────
-  const item0 = items[0]
-  const item0Errors = errors.items?.[0]
-
-  const step1Valid = !!item0?.providerId && !!item0?.serviceId
-  const step2Valid =
-    !!item0?.description && item0.description.length >= 10 && item0?.quantity > 0
-  const step3Valid =
-    !!address.cep && address.cep.replace(/\D/g, "").length >= 8 &&
-    !!address.street && !!address.number && !!address.city && !!address.state
-
-  const stepValidMap: Record<Step, boolean> = {
-    1: step1Valid,
-    2: step2Valid,
-    3: step3Valid,
-    4: true, // review step always valid (shows summary)
-  }
-
-  const progressPct = (step / 4) * 100
-
-  // ── Navigation ────────────────────────────────────────────────────────
-  const handleNext = () => {
-    // Validate current step before advancing
-    if (step === 1 && !step1Valid) {
-      form.trigger("items.0.providerId")
-      form.trigger("items.0.serviceId")
-      return
-    }
-    if (step === 2 && !step2Valid) {
-      form.trigger("items.0.description")
-      form.trigger("items.0.quantity")
-      return
-    }
-    if (step === 3 && !step3Valid) {
-      form.trigger("address")
-      return
-    }
-    setStep((s) => Math.min(4, s + 1) as Step)
-  }
-
-  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step)
-
-  const goToStep = (target: Step) => {
-    // Allow going back to any previous step freely
-    if (target < step) {
-      setStep(target)
-      return
-    }
-    // Going forward requires all intermediate steps to be valid
-    for (let i = 1; i < target; i++) {
-      if (!stepValidMap[i as Step]) {
-        toast.error("Complete os passos anteriores primeiro.")
-        return
-      }
-    }
-    setStep(target)
-  }
-
-  return (
-    <div className="flex h-full flex-col">
-      {/* Stepper */}
-      <div className="shrink-0 border-b px-4 sm:px-6 py-3">
-        <div className="flex items-center justify-between">
-          {STEPS.map((s, i) => {
-            const active = step === s.id
-            const done = step > s.id
-            return (
-              <React.Fragment key={s.id}>
-                <button
-                  type="button"
-                  onClick={() => goToStep(s.id)}
-                  className={cn(
-                    "flex items-center gap-1.5 text-xs sm:text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
-                    active
-                      ? "text-emerald-700 dark:text-emerald-400 font-medium"
-                      : done
-                        ? "text-emerald-600 cursor-pointer"
-                        : "text-muted-foreground",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "inline-flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors",
-                      active && "border-emerald-600 bg-emerald-600 text-white",
-                      done && "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
-                      !active && !done && "border-muted-foreground/30 text-muted-foreground",
-                    )}
-                  >
-                    {done ? <Check className="size-3.5" /> : s.id}
-                  </span>
-                  <span className="hidden sm:inline">{s.label}</span>
-                </button>
-                {i < STEPS.length - 1 && (
-                  <div className="flex-1 h-0.5 bg-muted-foreground/20 mx-1.5 sm:mx-2 relative">
-                    <div
-                      className="absolute inset-0 bg-emerald-600 transition-transform origin-left"
-                      style={{
-                        transform: step > s.id ? "scaleX(1)" : "scaleX(0)",
-                      }}
-                    />
-                  </div>
-                )}
-              </React.Fragment>
-            )
-          })}
-        </div>
-        <Progress
-          value={progressPct}
-          className="mt-2 h-1 bg-emerald-100 dark:bg-emerald-950/40"
-        />
-      </div>
-
-      {/* Auth gate — shown on Step 1 */}
-      {step === 1 && !user && (
-        <div className="shrink-0 px-4 sm:px-6 pt-3">
-          <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
-            <LogIn className="size-5 shrink-0 text-amber-600" />
-            <div className="flex-1">
-              <p className="font-medium text-amber-900 dark:text-amber-200">
-                Faça cadastro gratuito para pedir orçamentos
-              </p>
-              <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
-                Seus dados ficam salvos para acompanhar as respostas dos
-                prestadores.
-              </p>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => openAuth("register", "CLIENT")}
-              className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              Entrar / Cadastrar
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Step content */}
-      <ScrollArea className="flex-1">
-        <div className="px-4 sm:px-6 py-4">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.18 }}
-            >
-              {step === 1 && (
-                <Step1Service form={form} />
-              )}
-              {step === 2 && (
-                <Step2Details form={form} />
-              )}
-              {step === 3 && (
-                <Step3Address form={form} />
-              )}
-              {step === 4 && (
-                <Step4Review
-                  form={form}
-                  goToStep={goToStep}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </ScrollArea>
-
-      {/* Sticky footer nav */}
-      <div className="shrink-0 border-t bg-background/95 backdrop-blur px-4 sm:px-6 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={handleBack}
-            disabled={step === 1 || submitting}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            Voltar
-          </Button>
-          {step < 4 ? (
-            <Button
-              type="button"
-              onClick={handleNext}
-              className="h-11 bg-emerald-600 hover:bg-emerald-700"
-              disabled={!stepValidMap[step]}
-            >
-              Continuar
-              <ChevronRight className="size-4" />
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              onClick={onSubmit}
-              disabled={submitting}
-              className="h-11 bg-emerald-600 hover:bg-emerald-700"
-            >
-              {submitting && <Loader2 className="size-4 animate-spin" />}
-              <Send className="size-4" />
-              Enviar orçamento
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Step 1 — Serviço (Service Selection)
-// ---------------------------------------------------------------------------
-
-function Step1Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+function Step1Provider({ form }: { form: UseFormReturn<QuoteFormValues> }) {
   const item = form.watch("items.0")
   const error = form.formState.errors.items?.[0]
 
   return (
     <div className="grid gap-4">
-      <div>
-        <h3 className="text-sm font-semibold">Qual serviço você precisa?</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Escolha o prestador e o tipo de serviço desejado.
-        </p>
-      </div>
+      <StepHeader
+        icon={User}
+        title="Escolha o prestador"
+        description="Selecione o profissional que deseja orçar. Busque por nome ou serviço."
+      />
 
       <ProviderCombobox
         value={item?.providerId ?? ""}
@@ -566,6 +457,68 @@ function Step1Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
           )
         }
         error={error?.providerId?.message}
+      />
+
+      {/* Selected provider card — Nielsen #1: visibility of system status */}
+      {item?.providerId && <SelectedProviderCard providerId={item.providerId} />}
+    </div>
+  )
+}
+
+function SelectedProviderCard({ providerId }: { providerId: string }) {
+  const { data } = useQuery({
+    queryKey: ["providers-options", ""],
+    queryFn: () =>
+      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
+    staleTime: 30 * 1000,
+  })
+
+  const provider = data?.items?.find((p) => p.id === providerId)
+  if (!provider) return null
+
+  return (
+    <InfoCard variant="emerald">
+      <div className="flex items-center gap-3">
+        <Avatar className="size-10 rounded-md">
+          {provider.avatarUrl ? (
+            <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+          ) : null}
+          <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-sm dark:bg-emerald-950 dark:text-emerald-300">
+            {provider.name?.[0]?.toUpperCase() ?? "?"}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{provider.name}</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {provider.city ?? "—"}
+            {provider.verified && " · Verificado ✓"}
+          </p>
+        </div>
+        {provider.verified && (
+          <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px] shrink-0">
+            Verificado
+          </Badge>
+        )}
+      </div>
+    </InfoCard>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step 2 — Serviço (Select Service)
+// Nielsen #6: Recognition over recall — list with prices visible
+// ---------------------------------------------------------------------------
+
+function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+  const item = form.watch("items.0")
+  const error = form.formState.errors.items?.[0]
+
+  return (
+    <div className="grid gap-4">
+      <StepHeader
+        icon={Wrench}
+        title="Qual serviço você precisa?"
+        description="Escolha o tipo de serviço desejado deste prestador."
       />
 
       <ServiceSelect
@@ -585,13 +538,12 @@ function Step1Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
         error={error?.serviceId?.message}
       />
 
-      {/* Selected service info card */}
-      <ServiceInfoCard providerId={item?.providerId ?? ""} serviceId={item?.serviceId ?? ""} />
+      {/* Selected service info — Nielsen #1: visibility of system status */}
+      {item?.serviceId && <ServiceInfoCard providerId={item.providerId ?? ""} serviceId={item.serviceId} />}
     </div>
   )
 }
 
-/** Compact info card showing selected service details */
 function ServiceInfoCard({ providerId, serviceId }: { providerId: string; serviceId: string }) {
   const { data: services } = useQuery({
     queryKey: ["services-by-provider", providerId],
@@ -602,11 +554,10 @@ function ServiceInfoCard({ providerId, serviceId }: { providerId: string; servic
   })
 
   const selected = services?.find((s) => s.id === serviceId)
-
   if (!selected) return null
 
   return (
-    <div className="rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
+    <InfoCard variant="emerald">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300 truncate">
@@ -626,29 +577,30 @@ function ServiceInfoCard({ providerId, serviceId }: { providerId: string; servic
           /{SERVICE_UNIT_SHORT[selected.unit]}
         </Badge>
       </div>
-    </div>
+    </InfoCard>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Detalhes (Service Details)
+// Step 3 — Detalhes (Service Details)
+// Nielsen #5: Error prevention — character counter, inline validation
+// Nielsen #8: Minimalist — clean form, focused on description
 // ---------------------------------------------------------------------------
 
-function Step2Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
   const item = form.watch("items.0")
   const error = form.formState.errors.items?.[0]
   const descLen = item?.description?.length ?? 0
 
   return (
     <div className="grid gap-4">
-      <div>
-        <h3 className="text-sm font-semibold">Descreva o serviço</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Quanto mais detalhes, mais preciso será o orçamento.
-        </p>
-      </div>
+      <StepHeader
+        icon={Pencil}
+        title="Descreva o serviço"
+        description="Quanto mais detalhes, mais preciso será o orçamento."
+      />
 
-      {/* Description */}
+      {/* Description — Nielsen #5: error prevention with counter */}
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between">
           <Label htmlFor="item-0-desc">Descrição do serviço</Label>
@@ -726,7 +678,7 @@ function Step2Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
         </div>
       </div>
 
-      {/* Photos */}
+      {/* Photos — Nielsen #7: flexibility — optional but helpful */}
       <FilePhotos
         value={item?.photos ?? []}
         onChange={(photos) =>
@@ -734,30 +686,30 @@ function Step2Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
         }
         max={4}
         label="Fotos do serviço"
-        hint="Envie até 4 imagens para ajudar o prestador a entender o serviço (5 MB cada)."
+        hint="Envie até 4 imagens para ajudar o prestador a entender o serviço."
       />
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — Endereço (Service Location)
+// Step 4 — Endereço (Service Location)
+// Nielsen #5: Error prevention — CEP auto-fill, GPS button
 // ---------------------------------------------------------------------------
 
-function Step3Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+function Step4Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
   const address = form.watch("address")
   const errors = form.formState.errors.address
 
   return (
     <div className="grid gap-4">
-      <div>
-        <h3 className="text-sm font-semibold">Onde será o serviço?</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Informe o endereço ou use sua localização para preencher automaticamente.
-        </p>
-      </div>
+      <StepHeader
+        icon={MapPin}
+        title="Onde será o serviço?"
+        description="Informe o endereço ou use sua localização para preencher automaticamente."
+      />
 
-      <div className="rounded-xl border bg-card p-4">
+      <InfoCard>
         <AddressForm
           value={address}
           onChange={(v) => form.setValue("address", v, { shouldDirty: true })}
@@ -769,16 +721,19 @@ function Step3Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
             state: errors?.state?.message,
           }}
         />
-      </div>
+      </InfoCard>
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Step 4 — Revisão (Review & Send)
+// Step 5 — Revisão (Review & Send)
+// Nielsen #3: User control — edit links to go back to any step
+// Nielsen #9: Error recovery — review before submit
+// Nielsen #10: Help & documentation — "what happens next" timeline
 // ---------------------------------------------------------------------------
 
-function Step4Review({
+function Step5Review({
   form,
   goToStep,
 }: {
@@ -788,11 +743,10 @@ function Step4Review({
   const item = form.watch("items.0")
   const address = form.watch("address")
 
-  // Resolve provider and service names
   const { data: providerData } = useQuery({
     queryKey: ["providers-options", ""],
     queryFn: () =>
-      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 20 }),
+      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
   })
 
@@ -808,64 +762,42 @@ function Step4Review({
   const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title ?? "—"
 
   return (
-    <div className="grid gap-5">
-      <div>
-        <h3 className="text-sm font-semibold">Revise seu pedido</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Verifique as informações antes de enviar.
-        </p>
-      </div>
+    <div className="grid gap-4">
+      <StepHeader
+        icon={Check}
+        title="Revise seu pedido"
+        description="Verifique as informações antes de enviar."
+      />
+
+      {/* Provider section */}
+      <ReviewSection
+        label="Prestador"
+        onEdit={() => goToStep(1)}
+      >
+        <p className="text-sm font-medium">{providerName}</p>
+      </ReviewSection>
 
       {/* Service section */}
-      <div className="rounded-lg border p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Serviço
-          </h4>
-          <button
-            type="button"
-            onClick={() => goToStep(1)}
-            className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium"
-          >
-            <Pencil className="size-3" />
-            Editar
-          </button>
-        </div>
-        <p className="text-sm font-medium">{providerName}</p>
-        <p className="text-sm text-muted-foreground">{serviceTitle}</p>
-      </div>
+      <ReviewSection
+        label="Serviço"
+        onEdit={() => goToStep(2)}
+      >
+        <p className="text-sm font-medium">{serviceTitle}</p>
+        <Badge variant="secondary" className="mt-1">
+          {item?.quantity ?? 0} {item?.unit ? SERVICE_UNIT_SHORT[item.unit] : "un"}
+        </Badge>
+      </ReviewSection>
 
       {/* Details section */}
-      <div className="rounded-lg border p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Detalhes
-          </h4>
-          <button
-            type="button"
-            onClick={() => goToStep(2)}
-            className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium"
-          >
-            <Pencil className="size-3" />
-            Editar
-          </button>
-        </div>
+      <ReviewSection
+        label="Detalhes"
+        onEdit={() => goToStep(3)}
+      >
         <p className="text-sm text-muted-foreground line-clamp-3">
           {item?.description || "—"}
         </p>
-        <div className="flex items-center gap-3 mt-2">
-          <Badge variant="secondary">
-            {item?.quantity ?? 0} {item?.unit ? SERVICE_UNIT_SHORT[item.unit] : "un"}
-          </Badge>
-          {item?.photos && item.photos.length > 0 && (
-            <Badge variant="secondary">
-              {item.photos.length} foto(s)
-            </Badge>
-          )}
-        </div>
-        {/* Photo thumbnails */}
         {item?.photos && item.photos.length > 0 && (
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-2 mt-2">
             {item.photos.map((url, i) => (
               <div
                 key={url + i}
@@ -881,23 +813,13 @@ function Step4Review({
             ))}
           </div>
         )}
-      </div>
+      </ReviewSection>
 
       {/* Address section */}
-      <div className="rounded-lg border p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Endereço
-          </h4>
-          <button
-            type="button"
-            onClick={() => goToStep(3)}
-            className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium"
-          >
-            <Pencil className="size-3" />
-            Editar
-          </button>
-        </div>
+      <ReviewSection
+        label="Endereço"
+        onEdit={() => goToStep(4)}
+      >
         <div className="flex items-start gap-2 text-sm">
           <MapPin className="size-4 mt-0.5 shrink-0 text-emerald-600" />
           <span className="text-muted-foreground">
@@ -909,11 +831,12 @@ function Step4Review({
             {address.city ? ` · ${address.city}/${address.state}` : ""}
           </span>
         </div>
-      </div>
+      </ReviewSection>
 
-      {/* "What happens next?" mini-timeline */}
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20 p-4">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3">
+      {/* "What happens next?" — Nielsen #10: help & documentation */}
+      <InfoCard variant="emerald" className="mt-1">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
+          <Clock className="size-3.5" />
           O que acontece agora?
         </h4>
         <div className="grid gap-2.5">
@@ -931,18 +854,59 @@ function Step4Review({
                 <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
                   {step.label}
                 </p>
-                <p className="text-xs text-muted-foreground">{step.desc}</p>
+                <p className="text-[11px] text-muted-foreground">{step.desc}</p>
               </div>
             </div>
           ))}
         </div>
+      </InfoCard>
+
+      {/* Security note */}
+      <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+        <ShieldCheck className="size-3.5 text-emerald-600" />
+        Seus dados estão protegidos
       </div>
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Provider combobox (async search)
+// ReviewSection — Editable review card
+// Nielsen #3: User control & freedom — "Editar" links
+// ---------------------------------------------------------------------------
+
+function ReviewSection({
+  label,
+  onEdit,
+  children,
+}: {
+  label: string
+  onEdit: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </h4>
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium transition-colors"
+        >
+          <Pencil className="size-3" />
+          Editar
+        </button>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Provider combobox — Async search with avatars
+// Nielsen #6: Recognition over recall — searchable list with visual cues
 // ---------------------------------------------------------------------------
 
 function ProviderCombobox({
@@ -981,7 +945,7 @@ function ProviderCombobox({
             role="combobox"
             aria-expanded={open}
             className={cn(
-              "w-full justify-between font-normal",
+              "w-full justify-between font-normal h-10",
               !value && "text-muted-foreground",
               error && "border-destructive",
             )}
@@ -989,6 +953,14 @@ function ProviderCombobox({
             <span className="flex items-center gap-2 truncate">
               {selected ? (
                 <>
+                  <Avatar className="size-6 rounded-sm">
+                    {selected.avatarUrl ? (
+                      <AvatarImage src={selected.avatarUrl} alt={selected.name} />
+                    ) : null}
+                    <AvatarFallback className="rounded-sm bg-emerald-100 text-emerald-700 text-[10px] dark:bg-emerald-950 dark:text-emerald-300">
+                      {selected.name?.[0]?.toUpperCase() ?? "?"}
+                    </AvatarFallback>
+                  </Avatar>
                   <span className="truncate">{selected.name}</span>
                   {selected.verified && (
                     <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px]">
@@ -1023,13 +995,22 @@ function ProviderCombobox({
                       onChange(p.id)
                       setOpen(false)
                     }}
+                    className="flex items-center gap-2"
                   >
                     <Check
                       className={cn(
-                        "size-4",
+                        "size-4 shrink-0",
                         value === p.id ? "opacity-100" : "opacity-0",
                       )}
                     />
+                    <Avatar className="size-7 rounded-sm">
+                      {p.avatarUrl ? (
+                        <AvatarImage src={p.avatarUrl} alt={p.name} />
+                      ) : null}
+                      <AvatarFallback className="rounded-sm bg-emerald-100 text-emerald-700 text-[10px] dark:bg-emerald-950 dark:text-emerald-300">
+                        {p.name?.[0]?.toUpperCase() ?? "?"}
+                      </AvatarFallback>
+                    </Avatar>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm truncate">{p.name}</p>
                       <p className="text-xs text-muted-foreground truncate">
@@ -1042,9 +1023,9 @@ function ProviderCombobox({
                     {p.verified && (
                       <Badge
                         variant="outline"
-                        className="border-emerald-500 text-emerald-700 text-[10px] ml-2"
+                        className="border-emerald-500 text-emerald-700 text-[10px] ml-2 shrink-0"
                       >
-                        Verificado
+                        ✓
                       </Badge>
                     )}
                   </CommandItem>
@@ -1060,7 +1041,7 @@ function ProviderCombobox({
 }
 
 // ---------------------------------------------------------------------------
-// Service select (depends on chosen provider)
+// Service select — Depends on chosen provider
 // ---------------------------------------------------------------------------
 
 function ServiceSelect({
@@ -1096,7 +1077,7 @@ function ServiceSelect({
         }}
         disabled={!providerId}
       >
-        <SelectTrigger className="w-full">
+        <SelectTrigger className={cn("w-full h-10", error && "border-destructive")}>
           <SelectValue
             placeholder={
               !providerId
@@ -1130,7 +1111,7 @@ function ServiceSelect({
         </SelectContent>
       </Select>
       {selected && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground line-clamp-2">
           {selected.description ?? "—"}
         </p>
       )}

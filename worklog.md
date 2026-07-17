@@ -2605,3 +2605,51 @@ Stage Summary:
 - All Nielsen's 10 heuristics systematically applied
 - Consistent stepper pattern across both modals
 - All existing business logic, API calls, and validation preserved
+
+---
+Task ID: 7
+Agent: main
+Task: Redesign entire Quote and Booking flow as step-by-step wizard applying Jakob Nielsen's 10 Usability Heuristics
+
+Work Log:
+- Read and analyzed existing quote-modal.tsx (~1141 lines, 4 steps) and booking-modal.tsx (~1145 lines, 3 steps)
+- Read address-form.tsx, file-photos.tsx, validators.ts, ui.ts, format.ts, constants.ts
+- Created shared `step-wizard.tsx` component for consistency (Nielsen #4: Consistency and Standards)
+  - StepWizard: Visual step indicator + progress bar + animated content + sticky footer
+  - StepHeader: Consistent step title + description pattern
+  - InfoCard: Compact info display card (default + emerald variants)
+  - ValidationHint: Inline field validation feedback
+- Redesigned Quote Modal from 4 steps to 5 steps:
+  1. Prestador — Select provider (combobox with avatars + badges) — Nielsen #6: Recognition over recall
+  2. Serviço — Select service + info card with price — Nielsen #6
+  3. Detalhes — Description, quantity, unit, photos — Nielsen #5: Error prevention (char counter)
+  4. Endereço — Address with CEP auto-fill — Nielsen #5: Error prevention
+  5. Revisão — Full review with edit links + "What happens next" timeline — Nielsen #3, #9, #10
+- Redesigned Booking Modal from 3 steps to 4 steps:
+  1. Agenda — Date picker + time slots — Nielsen #6: Recognition over recall
+  2. Detalhes — Address + quantity + notes — Nielsen #5, #8
+  3. Pagamento — Payment method + card validation — Nielsen #5, #8
+  4. Confirmação — NEW review/confirm step — Nielsen #5: Error prevention
+- Added onInteractOutside prevention to both Dialog/Sheet to prevent accidental modal close during wizard
+- Key Nielsen heuristics applied throughout:
+  #1 Visibility: Step indicators, progress bar, validation feedback, info cards
+  #2 Real world: Portuguese labels, familiar calendar, time slot buttons
+  #3 User control: Back button, clickable completed steps, edit links on review
+  #4 Consistency: Shared StepWizard component for both flows
+  #5 Error prevention: Disabled Continue until valid, CEP auto-fill, review step
+  #6 Recognition: Provider avatars, service info cards, visible time slots
+  #7 Flexibility: Pre-fill from providerId/serviceId, smart defaults
+  #8 Minimalist: One task per step, clean layout, focused content
+  #9 Error recovery: Specific error messages, inline validation
+  #10 Help: Step descriptions, "what happens next" timeline, contextual hints
+- Tested with agent-browser: Quote modal step transitions work correctly
+- Lint passes with zero errors
+
+Stage Summary:
+- Created: /home/z/my-project/src/components/modals/step-wizard.tsx (shared wizard component)
+- Rewritten: /home/z/my-project/src/components/modals/quote-modal.tsx (5-step wizard)
+- Rewritten: /home/z/my-project/src/components/modals/booking-modal.tsx (4-step wizard)
+- Both modals now use consistent StepWizard component with Nielsen's heuristics
+- Booking modal now has a review/confirmation step (was missing before)
+- Quote modal now separates provider selection from service selection (better UX)
+- Agent-browser testing confirmed Quote Modal flow works end-to-end
