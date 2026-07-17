@@ -13,10 +13,12 @@
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Star, Quote, MessageSquare, Loader2 } from "lucide-react"
+import { motion } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/format"
 import { apiGet } from "@/lib/api"
+import { useScrollReveal } from "@/hooks/use-animation"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -61,6 +63,7 @@ export default function Testimonials({
   const reviews = data?.items ?? []
   const avgRating = data?.avgRating ?? 0
   const total = data?.total ?? 0
+  const { ref, visible } = useScrollReveal<HTMLDivElement>()
 
   return (
     <section
@@ -79,9 +82,14 @@ export default function Testimonials({
         <Quote className="size-32" />
       </div>
 
-      <div className="relative">
+      <div ref={ref} className="relative">
         {/* Header */}
-        <header className="mx-auto mb-10 max-w-2xl text-center">
+        <motion.header
+          initial={{ opacity: 0, y: 20 }}
+          animate={visible ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.5 }}
+          className="mx-auto mb-10 max-w-2xl text-center"
+        >
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-800/50">
             <Star className="size-3.5 fill-amber-500 text-amber-500" />
             Avaliações reais
@@ -94,7 +102,7 @@ export default function Testimonials({
               ? `${total} avaliações de clientes reais — nota média ${avgRating.toFixed(1)} de 5 estrelas.`
               : "Avaliações de clientes após a conclusão do serviço."}
           </p>
-        </header>
+        </motion.header>
 
         {/* Reviews grid */}
         {isLoading ? (
@@ -105,8 +113,15 @@ export default function Testimonials({
           </div>
         ) : reviews.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {reviews.map((review) => (
-              <ReviewCard key={review.id} review={review} />
+            {reviews.map((review, idx) => (
+              <motion.div
+                key={review.id}
+                initial={{ opacity: 0, y: 24 }}
+                animate={visible ? { opacity: 1, y: 0 } : {}}
+                transition={{ duration: 0.45, delay: idx * 0.08 }}
+              >
+                <ReviewCard review={review} />
+              </motion.div>
             ))}
           </div>
         ) : (

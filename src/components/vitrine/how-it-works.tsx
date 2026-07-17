@@ -25,8 +25,10 @@ import {
   CheckCircle2,
   GitCompare,
 } from "lucide-react"
+import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useUIStore } from "@/store"
+import { useScrollReveal } from "@/hooks/use-animation"
 import { Button } from "@/components/ui/button"
 
 const STEPS = [
@@ -69,6 +71,7 @@ export default function HowItWorks({
   onBrowseProviders?: () => void
 }) {
   const openAuth = useUIStore((s) => s.openAuth)
+  const { ref, visible } = useScrollReveal<HTMLDivElement>()
 
   return (
     <section
@@ -90,7 +93,13 @@ export default function HowItWorks({
         }}
       />
 
-      <header className="relative mx-auto mb-10 max-w-2xl text-center">
+      <div ref={ref} className="relative">
+      <motion.header
+        initial={{ opacity: 0, y: 20 }}
+        animate={visible ? { opacity: 1, y: 0 } : {}}
+        transition={{ duration: 0.5 }}
+        className="relative mx-auto mb-10 max-w-2xl text-center"
+      >
         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50">
           <MapPin className="size-3.5" />
           Simples e rápido
@@ -101,7 +110,7 @@ export default function HowItWorks({
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           Três passos simples para resolver o que você precisa.
         </p>
-      </header>
+      </motion.header>
 
       {/* Steps grid */}
       <ol className="relative grid grid-cols-1 gap-8 sm:grid-cols-3 sm:gap-6">
@@ -109,8 +118,11 @@ export default function HowItWorks({
           const Icon = step.icon
           const isLast = idx === STEPS.length - 1
           return (
-            <li
+            <motion.li
               key={step.title}
+              initial={{ opacity: 0, y: 30 }}
+              animate={visible ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.5, delay: idx * 0.12 }}
               className="group relative flex flex-col items-center gap-4 rounded-2xl border bg-card p-6 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-lg dark:hover:border-emerald-800/50"
             >
               {/* Step number + icon badge */}
@@ -155,13 +167,18 @@ export default function HowItWorks({
                   </div>
                 </span>
               )}
-            </li>
+            </motion.li>
           )
         })}
       </ol>
 
       {/* Trust badges row */}
-      <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={visible ? { opacity: 1 } : {}}
+        transition={{ duration: 0.5, delay: 0.4 }}
+        className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3"
+      >
         {TRUST_ITEMS.map((item) => {
           const TIcon = item.icon
           return (
@@ -174,10 +191,15 @@ export default function HowItWorks({
             </div>
           )
         })}
-      </div>
+      </motion.div>
 
       {/* CTA — drive conversion */}
-      <div className="mt-8 flex flex-wrap justify-center gap-3">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={visible ? { opacity: 1, y: 0 } : {}}
+        transition={{ duration: 0.5, delay: 0.5 }}
+        className="mt-8 flex flex-wrap justify-center gap-3"
+      >
         <Button
           size="lg"
           onClick={() => openAuth("register", "CLIENT")}
@@ -209,6 +231,7 @@ export default function HowItWorks({
             </a>
           </Button>
         )}
+      </motion.div>
       </div>
     </section>
   )

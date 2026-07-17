@@ -54,6 +54,7 @@ import { SERVICE_UNIT_SHORT } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useCountUp } from "@/hooks/use-animation"
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
@@ -200,13 +201,30 @@ export default function Hero({
           backgroundSize: "22px 22px",
         }}
       />
+      {/* Animated mesh blobs — floating gradient orbs */}
       <div
         aria-hidden
-        className="absolute -top-24 -right-24 size-72 rounded-full bg-emerald-400/30 blur-3xl"
+        className="absolute -top-24 -right-24 size-72 animate-pulse rounded-full bg-emerald-400/30 blur-3xl"
+        style={{ animationDuration: "6s" }}
       />
       <div
         aria-hidden
-        className="absolute -bottom-32 -left-20 size-80 rounded-full bg-teal-300/20 blur-3xl"
+        className="absolute -bottom-32 -left-20 size-80 animate-pulse rounded-full bg-teal-300/20 blur-3xl"
+        style={{ animationDuration: "7s", animationDelay: "1.5s" }}
+      />
+      <div
+        aria-hidden
+        className="absolute top-1/3 right-1/4 size-56 animate-pulse rounded-full bg-emerald-300/15 blur-3xl"
+        style={{ animationDuration: "8s", animationDelay: "0.8s" }}
+      />
+      {/* Floating decorative shapes */}
+      <div
+        aria-hidden
+        className="absolute top-20 right-1/3 hidden size-3 rotate-45 rounded-sm bg-white/20 backdrop-blur md:block"
+      />
+      <div
+        aria-hidden
+        className="absolute bottom-32 right-1/4 hidden size-2 rounded-full bg-emerald-200/40 md:block"
       />
 
       <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8 lg:py-20">
@@ -599,6 +617,13 @@ function StatItem({
   suffix?: string
   accent?: boolean
 }) {
+  // Only animate numeric values
+  const numericValue = typeof value === "number" ? value : 0
+  const isNumeric = typeof value === "number"
+  const { ref, value: animatedValue } = useCountUp(numericValue, {
+    duration: 1800,
+  })
+
   return (
     <div className="flex items-center gap-3 sm:border-l sm:border-white/20 sm:px-6 sm:first:border-l-0 sm:first:pl-0 sm:last:pr-0">
       <span className={cn(
@@ -611,7 +636,13 @@ function StatItem({
       </span>
       <div className="leading-tight">
         <p className="text-2xl font-bold tracking-tight text-white">
-          {typeof value === "number" ? value.toLocaleString("pt-BR") : value}
+          {isNumeric ? (
+            <span ref={ref}>
+              {animatedValue.toLocaleString("pt-BR")}
+            </span>
+          ) : (
+            value
+          )}
           {suffix && (
             <span className="ml-1 text-sm font-normal text-emerald-200">
               {suffix}
