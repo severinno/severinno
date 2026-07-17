@@ -1,0 +1,1141 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useQuery } from "@tanstack/react-query"
+     5→import { useForm, type Resolver, type UseFormReturn } from "react-hook-form"
+     6→import { zodResolver } from "@hookform/resolvers/zod"
+     7→import { z } from "zod"
+     8→import { motion, AnimatePresence } from "framer-motion"
+     9→import {
+    10→  Check,
+    11→  ChevronDown,
+    12→  ChevronRight,
+    13→  Clock,
+    14→  Loader2,
+    15→  LogIn,
+    16→  MapPin,
+    17→  Pencil,
+    18→  Send,
+    19→  Wrench,
+    20→} from "lucide-react"
+    21→import { toast } from "sonner"
+    22→
+    23→import {
+    24→  Dialog,
+    25→  DialogContent,
+    26→  DialogDescription,
+    27→  DialogHeader,
+    28→  DialogTitle,
+    29→} from "@/components/ui/dialog"
+    30→import {
+    31→  Sheet,
+    32→  SheetContent,
+    33→  SheetDescription,
+    34→  SheetHeader,
+    35→  SheetTitle,
+    36→} from "@/components/ui/sheet"
+    37→import { Button } from "@/components/ui/button"
+    38→import { Input } from "@/components/ui/input"
+    39→import { Label } from "@/components/ui/label"
+    40→import { Textarea } from "@/components/ui/textarea"
+    41→import { Badge } from "@/components/ui/badge"
+    42→import { Progress } from "@/components/ui/progress"
+    43→import { ScrollArea } from "@/components/ui/scroll-area"
+    44→import {
+    45→  Select,
+    46→  SelectContent,
+    47→  SelectItem,
+    48→  SelectTrigger,
+    49→  SelectValue,
+    50→} from "@/components/ui/select"
+    51→import {
+    52→  Popover,
+    53→  PopoverContent,
+    54→  PopoverTrigger,
+    55→} from "@/components/ui/popover"
+    56→import {
+    57→  Command,
+    58→  CommandEmpty,
+    59→  CommandGroup,
+    60→  CommandInput,
+    61→  CommandItem,
+    62→  CommandList,
+    63→} from "@/components/ui/command"
+    64→import { cn } from "@/lib/utils"
+    65→import {
+    66→  apiGet,
+    67→  apiPost,
+    68→  type ProviderCard,
+    69→  type ProviderService,
+    70→  type PagedResult,
+    71→  type ServiceUnit,
+    72→} from "@/lib/api"
+    73→import {
+    74→  SERVICE_UNITS,
+    75→  SERVICE_UNIT_LABELS,
+    76→  SERVICE_UNIT_SHORT,
+    77→} from "@/lib/constants"
+    78→import { useUIStore } from "@/store/ui"
+    79→import { useAuthStore } from "@/store/auth"
+    80→import { useViewStore } from "@/store/view"
+    81→import { useIsMobile } from "@/hooks/use-mobile"
+    82→import { AddressForm, type AddressFormValue } from "./address-form"
+    83→import { FilePhotos } from "./file-photos"
+    84→
+    85→// ---------------------------------------------------------------------------
+    86→// Step definitions
+    87→// ---------------------------------------------------------------------------
+    88→
+    89→const STEPS = [
+    90→  { id: 1, label: "Serviço" },
+    91→  { id: 2, label: "Detalhes" },
+    92→  { id: 3, label: "Endereço" },
+    93→  { id: 4, label: "Revisão" },
+    94→] as const
+    95→
+    96→type Step = (typeof STEPS)[number]["id"]
+    97→
+    98→// ---------------------------------------------------------------------------
+    99→// Form model — extends the API payload with per-item providerId
+   100→// ---------------------------------------------------------------------------
+   101→
+   102→type QuoteItemForm = {
+   103→  providerId: string
+   104→  serviceId: string
+   105→  description: string
+   106→  quantity: number
+   107→  unit: ServiceUnit
+   108→  photos: string[]
+   109→}
+   110→
+   111→const quoteFormSchema = z.object({
+   112→  items: z
+   113→    .array(
+   114→      z.object({
+   115→        providerId: z.string().min(1, "Selecione um prestador"),
+   116→        serviceId: z.string().min(1, "Selecione um serviço"),
+   117→        description: z
+   118→          .string()
+   119→          .min(10, "Descreva com ao menos 10 caracteres")
+   120→          .max(400),
+   121→        quantity: z.coerce.number().min(0.01, "Quantidade inválida"),
+   122→        unit: z.enum([
+   123→          "UNIDADE",
+   124→          "METRO_LINEAR",
+   125→          "METRO_QUADRADO",
+   126→          "METRO_CUBICO",
+   127→        ]),
+   128→        photos: z.array(z.string()).max(4).default([]),
+   129→      }),
+   130→    )
+   131→    .min(1, "Adicione ao menos um item"),
+   132→  address: z.object({
+   133→    cep: z.string().min(8, "CEP inválido"),
+   134→    street: z.string().min(3, "Informe a rua"),
+   135→    number: z.string().min(1, "Informe o número"),
+   136→    complement: z.string().default(""),
+   137→    district: z.string().default(""),
+   138→    city: z.string().min(2, "Informe a cidade"),
+   139→    state: z.string().min(2, "UF"),
+   140→    lat: z.number().nullable().optional(),
+   141→    lng: z.number().nullable().optional(),
+   142→  }),
+   143→})
+   144→
+   145→type QuoteFormValues = z.infer<typeof quoteFormSchema>
+   146→
+   147→const emptyItem = (
+   148→  providerId?: string,
+   149→  serviceId?: string,
+   150→  unit: ServiceUnit = "UNIDADE",
+   151→): QuoteItemForm => ({
+   152→  providerId: providerId ?? "",
+   153→  serviceId: serviceId ?? "",
+   154→  description: "",
+   155→  quantity: 1,
+   156→  unit,
+   157→  photos: [],
+   158→})
+   159→
+   160→const emptyAddress: AddressFormValue = {
+   161→  cep: "",
+   162→  street: "",
+   163→  number: "",
+   164→  complement: "",
+   165→  district: "",
+   166→  city: "",
+   167→  state: "",
+   168→  lat: null,
+   169→  lng: null,
+   170→}
+   171→
+   172→// ---------------------------------------------------------------------------
+   173→// Main modal
+   174→// ---------------------------------------------------------------------------
+   175→
+   176→export function QuoteModal() {
+   177→  const open = useUIStore((s) => s.quoteModal.open)
+   178→  const providerIdPreset = useUIStore((s) => s.quoteModal.providerId)
+   179→  const serviceIdPreset = useUIStore((s) => s.quoteModal.serviceId)
+   180→  const close = useUIStore((s) => s.closeQuote)
+   181→  const openAuth = useUIStore((s) => s.openAuth)
+   182→  const isMobile = useIsMobile()
+   183→
+   184→  const navigate = useViewStore((s) => s.navigate)
+   185→  const user = useAuthStore((s) => s.user)
+   186→
+   187→  const form = useForm<QuoteFormValues>({
+   188→    resolver: zodResolver(quoteFormSchema) as unknown as Resolver<QuoteFormValues>,
+   189→    defaultValues: {
+   190→      items: [emptyItem(providerIdPreset, serviceIdPreset)],
+   191→      address: emptyAddress,
+   192→    },
+   193→    mode: "onTouched",
+   194→  })
+   195→
+   196→  // Reset preset when modal opens.
+   197→  React.useEffect(() => {
+   198→    if (open) {
+   199→      form.reset({
+   200→        items: [emptyItem(providerIdPreset, serviceIdPreset)],
+   201→        address: emptyAddress,
+   202→      })
+   203→      setStep(1)
+   204→    }
+   205→  }, [open, providerIdPreset, serviceIdPreset, form])
+   206→
+   207→  const [step, setStep] = React.useState<Step>(1)
+   208→  const [submitting, setSubmitting] = React.useState(false)
+   209→
+   210→  const onSubmit = async (values: QuoteFormValues) => {
+   211→    if (!user) {
+   212→      toast.info("Faça cadastro gratuito para pedir orçamentos.")
+   213→      openAuth("register", "CLIENT")
+   214→      return
+   215→    }
+   216→
+   217→    const primary = values.items[0]
+   218→    if (!primary?.providerId) {
+   219→      toast.error("Selecione um prestador no primeiro item.")
+   220→      return
+   221→    }
+   222→
+   223→    setSubmitting(true)
+   224→    try {
+   225→      await apiPost("/api/quotes", {
+   226→        providerId: primary.providerId,
+   227→        items: values.items.map((it) => ({
+   228→          providerId: it.providerId,
+   229→          serviceId: it.serviceId,
+   230→          description: it.description,
+   231→          quantity: it.quantity,
+   232→          unit: it.unit,
+   233→          photos: it.photos,
+   234→        })),
+   235→        address: [
+   236→          values.address.street,
+   237→          values.address.number,
+   238→          values.address.complement,
+   239→          values.address.district,
+   240→        ]
+   241→          .filter(Boolean)
+   242→          .join(", "),
+   243→        cep: values.address.cep,
+   244→        lat: values.address.lat,
+   245→        lng: values.address.lng,
+   246→      })
+   247→      toast.success("Orçamento enviado! O prestador responderá em breve.")
+   248→      close()
+   249→      navigate("client.quotes")
+   250→    } catch (e) {
+   251→      const msg =
+   252→        (e as { message?: string })?.message ??
+   253→        "Não foi possível enviar o orçamento. Tente novamente."
+   254→      toast.error(msg)
+   255→    } finally {
+   256→      setSubmitting(false)
+   257→    }
+   258→  }
+   259→
+   260→  const content = (
+   261→    <WizardBody
+   262→      step={step}
+   263→      setStep={setStep}
+   264→      form={form}
+   265→      submitting={submitting}
+   266→      onSubmit={form.handleSubmit(onSubmit)}
+   267→    />
+   268→  )
+   269→
+   270→  if (isMobile) {
+   271→    return (
+   272→      <Sheet open={open} onOpenChange={(o) => !o && close()}>
+   273→        <SheetContent
+   274→          side="bottom"
+   275→          className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
+   276→        >
+   277→          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+   278→            <SheetTitle className="flex items-center gap-2">
+   279→              <Wrench className="size-5 text-emerald-600" />
+   280→              Pedir orçamento
+   281→            </SheetTitle>
+   282→            <SheetDescription>
+   283→              Descreva o serviço e receba propostas de prestadores verificados.
+   284→            </SheetDescription>
+   285→          </SheetHeader>
+   286→          <div className="flex-1 overflow-hidden">{content}</div>
+   287→        </SheetContent>
+   288→      </Sheet>
+   289→    )
+   290→  }
+   291→
+   292→  return (
+   293→    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+   294→      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
+   295→        <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b">
+   296→          <DialogTitle className="flex items-center gap-2 text-lg">
+   297→            <Wrench className="size-5 text-emerald-600" />
+   298→            Pedir orçamento
+   299→          </DialogTitle>
+   300→          <DialogDescription>
+   301→            Descreva o serviço e receba propostas de prestadores verificados.
+   302→          </DialogDescription>
+   303→        </DialogHeader>
+   304→        {content}
+   305→      </DialogContent>
+   306→    </Dialog>
+   307→  )
+   308→}
+   309→
+   310→// ---------------------------------------------------------------------------
+   311→// Wizard body — stepper + step content + footer nav
+   312→// ---------------------------------------------------------------------------
+   313→
+   314→function WizardBody({
+   315→  step,
+   316→  setStep,
+   317→  form,
+   318→  submitting,
+   319→  onSubmit,
+   320→}: {
+   321→  step: Step
+   322→  setStep: React.Dispatch<React.SetStateAction<Step>>
+   323→  form: UseFormReturn<QuoteFormValues>
+   324→  submitting: boolean
+   325→  onSubmit: () => void
+   326→}) {
+   327→  const items = form.watch("items")
+   328→  const address = form.watch("address")
+   329→  const errors = form.formState.errors
+   330→  const user = useAuthStore((s) => s.user)
+   331→  const openAuth = useUIStore((s) => s.openAuth)
+   332→
+   333→  // ── Step validation ───────────────────────────────────────────────────
+   334→  const item0 = items[0]
+   335→  const item0Errors = errors.items?.[0]
+   336→
+   337→  const step1Valid = !!item0?.providerId && !!item0?.serviceId
+   338→  const step2Valid =
+   339→    !!item0?.description && item0.description.length >= 10 && item0?.quantity > 0
+   340→  const step3Valid =
+   341→    !!address.cep && address.cep.replace(/\D/g, "").length >= 8 &&
+   342→    !!address.street && !!address.number && !!address.city && !!address.state
+   343→
+   344→  const stepValidMap: Record<Step, boolean> = {
+   345→    1: step1Valid,
+   346→    2: step2Valid,
+   347→    3: step3Valid,
+   348→    4: true, // review step always valid (shows summary)
+   349→  }
+   350→
+   351→  const progressPct = (step / 4) * 100
+   352→
+   353→  // ── Navigation ────────────────────────────────────────────────────────
+   354→  const handleNext = () => {
+   355→    // Validate current step before advancing
+   356→    if (step === 1 && !step1Valid) {
+   357→      form.trigger("items.0.providerId")
+   358→      form.trigger("items.0.serviceId")
+   359→      return
+   360→    }
+   361→    if (step === 2 && !step2Valid) {
+   362→      form.trigger("items.0.description")
+   363→      form.trigger("items.0.quantity")
+   364→      return
+   365→    }
+   366→    if (step === 3 && !step3Valid) {
+   367→      form.trigger("address")
+   368→      return
+   369→    }
+   370→    setStep((s) => Math.min(4, s + 1) as Step)
+   371→  }
+   372→
+   373→  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step)
+   374→
+   375→  const goToStep = (target: Step) => {
+   376→    // Allow going back to any previous step freely
+   377→    if (target < step) {
+   378→      setStep(target)
+   379→      return
+   380→    }
+   381→    // Going forward requires all intermediate steps to be valid
+   382→    for (let i = 1; i < target; i++) {
+   383→      if (!stepValidMap[i as Step]) {
+   384→        toast.error("Complete os passos anteriores primeiro.")
+   385→        return
+   386→      }
+   387→    }
+   388→    setStep(target)
+   389→  }
+   390→
+   391→  return (
+   392→    <div className="flex h-full flex-col">
+   393→      {/* Stepper */}
+   394→      <div className="shrink-0 border-b px-4 sm:px-6 py-3">
+   395→        <div className="flex items-center justify-between">
+   396→          {STEPS.map((s, i) => {
+   397→            const active = step === s.id
+   398→            const done = step > s.id
+   399→            return (
+   400→              <React.Fragment key={s.id}>
+   401→                <button
+   402→                  type="button"
+   403→                  onClick={() => goToStep(s.id)}
+   404→                  className={cn(
+   405→                    "flex items-center gap-1.5 text-xs sm:text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
+   406→                    active
+   407→                      ? "text-emerald-700 dark:text-emerald-400 font-medium"
+   408→                      : done
+   409→                        ? "text-emerald-600 cursor-pointer"
+   410→                        : "text-muted-foreground",
+   411→                  )}
+   412→                >
+   413→                  <span
+   414→                    className={cn(
+   415→                      "inline-flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors",
+   416→                      active && "border-emerald-600 bg-emerald-600 text-white",
+   417→                      done && "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
+   418→                      !active && !done && "border-muted-foreground/30 text-muted-foreground",
+   419→                    )}
+   420→                  >
+   421→                    {done ? <Check className="size-3.5" /> : s.id}
+   422→                  </span>
+   423→                  <span className="hidden sm:inline">{s.label}</span>
+   424→                </button>
+   425→                {i < STEPS.length - 1 && (
+   426→                  <div className="flex-1 h-0.5 bg-muted-foreground/20 mx-1.5 sm:mx-2 relative">
+   427→                    <div
+   428→                      className="absolute inset-0 bg-emerald-600 transition-transform origin-left"
+   429→                      style={{
+   430→                        transform: step > s.id ? "scaleX(1)" : "scaleX(0)",
+   431→                      }}
+   432→                    />
+   433→                  </div>
+   434→                )}
+   435→              </React.Fragment>
+   436→            )
+   437→          })}
+   438→        </div>
+   439→        <Progress
+   440→          value={progressPct}
+   441→          className="mt-2 h-1 bg-emerald-100 dark:bg-emerald-950/40"
+   442→        />
+   443→      </div>
+   444→
+   445→      {/* Auth gate — shown on Step 1 */}
+   446→      {step === 1 && !user && (
+   447→        <div className="shrink-0 px-4 sm:px-6 pt-3">
+   448→          <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+   449→            <LogIn className="size-5 shrink-0 text-amber-600" />
+   450→            <div className="flex-1">
+   451→              <p className="font-medium text-amber-900 dark:text-amber-200">
+   452→                Faça cadastro gratuito para pedir orçamentos
+   453→              </p>
+   454→              <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
+   455→                Seus dados ficam salvos para acompanhar as respostas dos
+   456→                prestadores.
+   457→              </p>
+   458→            </div>
+   459→            <Button
+   460→              type="button"
+   461→              size="sm"
+   462→              onClick={() => openAuth("register", "CLIENT")}
+   463→              className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+   464→            >
+   465→              Entrar / Cadastrar
+   466→            </Button>
+   467→          </div>
+   468→        </div>
+   469→      )}
+   470→
+   471→      {/* Step content */}
+   472→      <ScrollArea className="flex-1">
+   473→        <div className="px-4 sm:px-6 py-4">
+   474→          <AnimatePresence mode="wait">
+   475→            <motion.div
+   476→              key={step}
+   477→              initial={{ opacity: 0, x: 10 }}
+   478→              animate={{ opacity: 1, x: 0 }}
+   479→              exit={{ opacity: 0, x: -10 }}
+   480→              transition={{ duration: 0.18 }}
+   481→            >
+   482→              {step === 1 && (
+   483→                <Step1Service form={form} />
+   484→              )}
+   485→              {step === 2 && (
+   486→                <Step2Details form={form} />
+   487→              )}
+   488→              {step === 3 && (
+   489→                <Step3Address form={form} />
+   490→              )}
+   491→              {step === 4 && (
+   492→                <Step4Review
+   493→                  form={form}
+   494→                  goToStep={goToStep}
+   495→                />
+   496→              )}
+   497→            </motion.div>
+   498→          </AnimatePresence>
+   499→        </div>
+   500→      </ScrollArea>
+   501→
+   502→      {/* Sticky footer nav */}
+   503→      <div className="shrink-0 border-t bg-background/95 backdrop-blur px-4 sm:px-6 py-3">
+   504→        <div className="flex items-center justify-between gap-3">
+   505→          <Button
+   506→            type="button"
+   507→            variant="ghost"
+   508→            onClick={handleBack}
+   509→            disabled={step === 1 || submitting}
+   510→            className="text-muted-foreground hover:text-foreground"
+   511→          >
+   512→            Voltar
+   513→          </Button>
+   514→          {step < 4 ? (
+   515→            <Button
+   516→              type="button"
+   517→              onClick={handleNext}
+   518→              className="h-11 bg-emerald-600 hover:bg-emerald-700"
+   519→              disabled={!stepValidMap[step]}
+   520→            >
+   521→              Continuar
+   522→              <ChevronRight className="size-4" />
+   523→            </Button>
+   524→          ) : (
+   525→            <Button
+   526→              type="button"
+   527→              onClick={onSubmit}
+   528→              disabled={submitting}
+   529→              className="h-11 bg-emerald-600 hover:bg-emerald-700"
+   530→            >
+   531→              {submitting && <Loader2 className="size-4 animate-spin" />}
+   532→              <Send className="size-4" />
+   533→              Enviar orçamento
+   534→            </Button>
+   535→          )}
+   536→        </div>
+   537→      </div>
+   538→    </div>
+   539→  )
+   540→}
+   541→
+   542→// ---------------------------------------------------------------------------
+   543→// Step 1 — Serviço (Service Selection)
+   544→// ---------------------------------------------------------------------------
+   545→
+   546→function Step1Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+   547→  const item = form.watch("items.0")
+   548→  const error = form.formState.errors.items?.[0]
+   549→
+   550→  return (
+   551→    <div className="grid gap-4">
+   552→      <div>
+   553→        <h3 className="text-sm font-semibold">Qual serviço você precisa?</h3>
+   554→        <p className="text-xs text-muted-foreground mt-0.5">
+   555→          Escolha o prestador e o tipo de serviço desejado.
+   556→        </p>
+   557→      </div>
+   558→
+   559→      <ProviderCombobox
+   560→        value={item?.providerId ?? ""}
+   561→        onChange={(providerId) =>
+   562→          form.setValue(
+   563→            "items.0",
+   564→            { ...item, providerId, serviceId: "" },
+   565→            { shouldDirty: true, shouldValidate: true },
+   566→          )
+   567→        }
+   568→        error={error?.providerId?.message}
+   569→      />
+   570→
+   571→      <ServiceSelect
+   572→        providerId={item?.providerId ?? ""}
+   573→        value={item?.serviceId ?? ""}
+   574→        onChange={(service) =>
+   575→          form.setValue(
+   576→            "items.0",
+   577→            {
+   578→              ...item,
+   579→              serviceId: service.id,
+   580→              unit: service.unit,
+   581→            },
+   582→            { shouldDirty: true, shouldValidate: true },
+   583→          )
+   584→        }
+   585→        error={error?.serviceId?.message}
+   586→      />
+   587→
+   588→      {/* Selected service info card */}
+   589→      <ServiceInfoCard providerId={item?.providerId ?? ""} serviceId={item?.serviceId ?? ""} />
+   590→    </div>
+   591→  )
+   592→}
+   593→
+   594→/** Compact info card showing selected service details */
+   595→function ServiceInfoCard({ providerId, serviceId }: { providerId: string; serviceId: string }) {
+   596→  const { data: services } = useQuery({
+   597→    queryKey: ["services-by-provider", providerId],
+   598→    queryFn: () =>
+   599→      apiGet<ProviderService[]>("/api/services", { providerId }),
+   600→    enabled: !!providerId,
+   601→    staleTime: 30 * 1000,
+   602→  })
+   603→
+   604→  const selected = services?.find((s) => s.id === serviceId)
+   605→
+   606→  if (!selected) return null
+   607→
+   608→  return (
+   609→    <div className="rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
+   610→      <div className="flex items-start justify-between gap-2">
+   611→        <div className="min-w-0">
+   612→          <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300 truncate">
+   613→            {selected.title}
+   614→          </p>
+   615→          {selected.description && (
+   616→            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+   617→              {selected.description}
+   618→            </p>
+   619→          )}
+   620→        </div>
+   621→        <Badge variant="outline" className="shrink-0 border-emerald-500 text-emerald-700 text-xs">
+   622→          {selected.basePrice.toLocaleString("pt-BR", {
+   623→            style: "currency",
+   624→            currency: "BRL",
+   625→          })}
+   626→          /{SERVICE_UNIT_SHORT[selected.unit]}
+   627→        </Badge>
+   628→      </div>
+   629→    </div>
+   630→  )
+   631→}
+   632→
+   633→// ---------------------------------------------------------------------------
+   634→// Step 2 — Detalhes (Service Details)
+   635→// ---------------------------------------------------------------------------
+   636→
+   637→function Step2Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+   638→  const item = form.watch("items.0")
+   639→  const error = form.formState.errors.items?.[0]
+   640→  const descLen = item?.description?.length ?? 0
+   641→
+   642→  return (
+   643→    <div className="grid gap-4">
+   644→      <div>
+   645→        <h3 className="text-sm font-semibold">Descreva o serviço</h3>
+   646→        <p className="text-xs text-muted-foreground mt-0.5">
+   647→          Quanto mais detalhes, mais preciso será o orçamento.
+   648→        </p>
+   649→      </div>
+   650→
+   651→      {/* Description */}
+   652→      <div className="grid gap-1.5">
+   653→        <div className="flex items-center justify-between">
+   654→          <Label htmlFor="item-0-desc">Descrição do serviço</Label>
+   655→          <span className={cn(
+   656→            "text-xs tabular-nums",
+   657→            descLen < 10 ? "text-destructive" : "text-muted-foreground",
+   658→          )}>
+   659→            {descLen}/400
+   660→          </span>
+   661→        </div>
+   662→        <Textarea
+   663→          id="item-0-desc"
+   664→          placeholder="Ex.: Instalar tomada na parede da sala, fio visível. Preciso de 3 pontos novos."
+   665→          value={item?.description ?? ""}
+   666→          onChange={(e) =>
+   667→            form.setValue("items.0.description", e.target.value, {
+   668→              shouldDirty: true,
+   669→              shouldValidate: true,
+   670→            })
+   671→          }
+   672→          rows={3}
+   673→          maxLength={400}
+   674→          aria-invalid={!!error?.description}
+   675→        />
+   676→        {error?.description && (
+   677→          <p className="text-xs text-destructive">{error.description.message}</p>
+   678→        )}
+   679→      </div>
+   680→
+   681→      {/* Quantity + unit */}
+   682→      <div className="grid grid-cols-2 gap-3">
+   683→        <div className="grid gap-1.5">
+   684→          <Label htmlFor="item-0-qty">Quantidade</Label>
+   685→          <Input
+   686→            id="item-0-qty"
+   687→            type="number"
+   688→            inputMode="decimal"
+   689→            min={0.01}
+   690→            step={0.01}
+   691→            value={item?.quantity ?? 1}
+   692→            onChange={(e) =>
+   693→              form.setValue("items.0.quantity", Number(e.target.value), {
+   694→                shouldDirty: true,
+   695→                shouldValidate: true,
+   696→              })
+   697→            }
+   698→            aria-invalid={!!error?.quantity}
+   699→          />
+   700→          {error?.quantity && (
+   701→            <p className="text-xs text-destructive">{error.quantity.message}</p>
+   702→          )}
+   703→        </div>
+   704→
+   705→        <div className="grid gap-1.5">
+   706→          <Label>Unidade</Label>
+   707→          <Select
+   708→            value={item?.unit ?? "UNIDADE"}
+   709→            onValueChange={(v) =>
+   710→              form.setValue("items.0.unit", v as ServiceUnit, {
+   711→                shouldDirty: true,
+   712→              })
+   713→            }
+   714→          >
+   715→            <SelectTrigger className="w-full">
+   716→              <SelectValue />
+   717→            </SelectTrigger>
+   718→            <SelectContent>
+   719→              {SERVICE_UNITS.map((u) => (
+   720→                <SelectItem key={u} value={u}>
+   721→                  {SERVICE_UNIT_LABELS[u]}
+   722→                </SelectItem>
+   723→              ))}
+   724→            </SelectContent>
+   725→          </Select>
+   726→        </div>
+   727→      </div>
+   728→
+   729→      {/* Photos */}
+   730→      <FilePhotos
+   731→        value={item?.photos ?? []}
+   732→        onChange={(photos) =>
+   733→          form.setValue("items.0.photos", photos, { shouldDirty: true })
+   734→        }
+   735→        max={4}
+   736→        label="Fotos do serviço"
+   737→        hint="Envie até 4 imagens para ajudar o prestador a entender o serviço (5 MB cada)."
+   738→      />
+   739→    </div>
+   740→  )
+   741→}
+   742→
+   743→// ---------------------------------------------------------------------------
+   744→// Step 3 — Endereço (Service Location)
+   745→// ---------------------------------------------------------------------------
+   746→
+   747→function Step3Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+   748→  const address = form.watch("address")
+   749→  const errors = form.formState.errors.address
+   750→
+   751→  return (
+   752→    <div className="grid gap-4">
+   753→      <div>
+   754→        <h3 className="text-sm font-semibold">Onde será o serviço?</h3>
+   755→        <p className="text-xs text-muted-foreground mt-0.5">
+   756→          Informe o endereço ou use sua localização para preencher automaticamente.
+   757→        </p>
+   758→      </div>
+   759→
+   760→      <div className="rounded-xl border bg-card p-4">
+   761→        <AddressForm
+   762→          value={address}
+   763→          onChange={(v) => form.setValue("address", v, { shouldDirty: true })}
+   764→          errors={{
+   765→            cep: errors?.cep?.message,
+   766→            street: errors?.street?.message,
+   767→            number: errors?.number?.message,
+   768→            city: errors?.city?.message,
+   769→            state: errors?.state?.message,
+   770→          }}
+   771→        />
+   772→      </div>
+   773→    </div>
+   774→  )
+   775→}
+   776→
+   777→// ---------------------------------------------------------------------------
+   778→// Step 4 — Revisão (Review & Send)
+   779→// ---------------------------------------------------------------------------
+   780→
+   781→function Step4Review({
+   782→  form,
+   783→  goToStep,
+   784→}: {
+   785→  form: UseFormReturn<QuoteFormValues>
+   786→  goToStep: (s: Step) => void
+   787→}) {
+   788→  const item = form.watch("items.0")
+   789→  const address = form.watch("address")
+   790→
+   791→  // Resolve provider and service names
+   792→  const { data: providerData } = useQuery({
+   793→    queryKey: ["providers-options", ""],
+   794→    queryFn: () =>
+   795→      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 20 }),
+   796→    staleTime: 30 * 1000,
+   797→  })
+   798→
+   799→  const { data: services } = useQuery({
+   800→    queryKey: ["services-by-provider", item?.providerId],
+   801→    queryFn: () =>
+   802→      apiGet<ProviderService[]>("/api/services", { providerId: item?.providerId }),
+   803→    enabled: !!item?.providerId,
+   804→    staleTime: 30 * 1000,
+   805→  })
+   806→
+   807→  const providerName = providerData?.items?.find((p) => p.id === item?.providerId)?.name ?? "—"
+   808→  const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title ?? "—"
+   809→
+   810→  return (
+   811→    <div className="grid gap-5">
+   812→      <div>
+   813→        <h3 className="text-sm font-semibold">Revise seu pedido</h3>
+   814→        <p className="text-xs text-muted-foreground mt-0.5">
+   815→          Verifique as informações antes de enviar.
+   816→        </p>
+   817→      </div>
+   818→
+   819→      {/* Service section */}
+   820→      <div className="rounded-lg border p-4">
+   821→        <div className="flex items-center justify-between mb-2">
+   822→          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   823→            Serviço
+   824→          </h4>
+   825→          <button
+   826→            type="button"
+   827→            onClick={() => goToStep(1)}
+   828→            className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium"
+   829→          >
+   830→            <Pencil className="size-3" />
+   831→            Editar
+   832→          </button>
+   833→        </div>
+   834→        <p className="text-sm font-medium">{providerName}</p>
+   835→        <p className="text-sm text-muted-foreground">{serviceTitle}</p>
+   836→      </div>
+   837→
+   838→      {/* Details section */}
+   839→      <div className="rounded-lg border p-4">
+   840→        <div className="flex items-center justify-between mb-2">
+   841→          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   842→            Detalhes
+   843→          </h4>
+   844→          <button
+   845→            type="button"
+   846→            onClick={() => goToStep(2)}
+   847→            className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium"
+   848→          >
+   849→            <Pencil className="size-3" />
+   850→            Editar
+   851→          </button>
+   852→        </div>
+   853→        <p className="text-sm text-muted-foreground line-clamp-3">
+   854→          {item?.description || "—"}
+   855→        </p>
+   856→        <div className="flex items-center gap-3 mt-2">
+   857→          <Badge variant="secondary">
+   858→            {item?.quantity ?? 0} {item?.unit ? SERVICE_UNIT_SHORT[item.unit] : "un"}
+   859→          </Badge>
+   860→          {item?.photos && item.photos.length > 0 && (
+   861→            <Badge variant="secondary">
+   862→              {item.photos.length} foto(s)
+   863→            </Badge>
+   864→          )}
+   865→        </div>
+   866→        {/* Photo thumbnails */}
+   867→        {item?.photos && item.photos.length > 0 && (
+   868→          <div className="flex gap-2 mt-3">
+   869→            {item.photos.map((url, i) => (
+   870→              <div
+   871→                key={url + i}
+   872→                className="size-12 overflow-hidden rounded-md border bg-muted"
+   873→              >
+   874→                <img
+   875→                  src={url}
+   876→                  alt={`Foto ${i + 1}`}
+   877→                  className="size-full object-cover"
+   878→                  loading="lazy"
+   879→                />
+   880→              </div>
+   881→            ))}
+   882→          </div>
+   883→        )}
+   884→      </div>
+   885→
+   886→      {/* Address section */}
+   887→      <div className="rounded-lg border p-4">
+   888→        <div className="flex items-center justify-between mb-2">
+   889→          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   890→            Endereço
+   891→          </h4>
+   892→          <button
+   893→            type="button"
+   894→            onClick={() => goToStep(3)}
+   895→            className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium"
+   896→          >
+   897→            <Pencil className="size-3" />
+   898→            Editar
+   899→          </button>
+   900→        </div>
+   901→        <div className="flex items-start gap-2 text-sm">
+   902→          <MapPin className="size-4 mt-0.5 shrink-0 text-emerald-600" />
+   903→          <span className="text-muted-foreground">
+   904→            {address.street
+   905→              ? `${address.street}, ${address.number}${
+   906→                  address.complement ? ` - ${address.complement}` : ""
+   907→                }${address.district ? ` · ${address.district}` : ""}`
+   908→              : "—"}
+   909→            {address.city ? ` · ${address.city}/${address.state}` : ""}
+   910→          </span>
+   911→        </div>
+   912→      </div>
+   913→
+   914→      {/* "What happens next?" mini-timeline */}
+   915→      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/50 dark:bg-emerald-950/20 p-4">
+   916→        <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3">
+   917→          O que acontece agora?
+   918→        </h4>
+   919→        <div className="grid gap-2.5">
+   920→          {[
+   921→            { label: "Enviado", desc: "Seu pedido chega ao prestador" },
+   922→            { label: "Prestador responde", desc: "Ele envia valor e prazo" },
+   923→            { label: "Você aprova", desc: "Aceite a proposta ou negocie" },
+   924→            { label: "Agende", desc: "Combine data e horário" },
+   925→          ].map((step, i) => (
+   926→            <div key={i} className="flex items-start gap-2.5">
+   927→              <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shrink-0 mt-0.5">
+   928→                {i + 1}
+   929→              </span>
+   930→              <div>
+   931→                <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+   932→                  {step.label}
+   933→                </p>
+   934→                <p className="text-xs text-muted-foreground">{step.desc}</p>
+   935→              </div>
+   936→            </div>
+   937→          ))}
+   938→        </div>
+   939→      </div>
+   940→    </div>
+   941→  )
+   942→}
+   943→
+   944→// ---------------------------------------------------------------------------
+   945→// Provider combobox (async search)
+   946→// ---------------------------------------------------------------------------
+   947→
+   948→function ProviderCombobox({
+   949→  value,
+   950→  onChange,
+   951→  error,
+   952→}: {
+   953→  value: string
+   954→  onChange: (providerId: string) => void
+   955→  error?: string
+   956→}) {
+   957→  const [open, setOpen] = React.useState(false)
+   958→  const [query, setQuery] = React.useState("")
+   959→
+   960→  const { data, isLoading } = useQuery({
+   961→    queryKey: ["providers-options", query],
+   962→    queryFn: () =>
+   963→      apiGet<PagedResult<ProviderCard>>("/api/providers", {
+   964→        q: query || undefined,
+   965→        limit: 20,
+   966→      }),
+   967→    staleTime: 30 * 1000,
+   968→  })
+   969→
+   970→  const providers = data?.items ?? []
+   971→  const selected = providers.find((p) => p.id === value)
+   972→
+   973→  return (
+   974→    <div className="grid gap-1.5">
+   975→      <Label>Prestador</Label>
+   976→      <Popover open={open} onOpenChange={setOpen}>
+   977→        <PopoverTrigger asChild>
+   978→          <Button
+   979→            type="button"
+   980→            variant="outline"
+   981→            role="combobox"
+   982→            aria-expanded={open}
+   983→            className={cn(
+   984→              "w-full justify-between font-normal",
+   985→              !value && "text-muted-foreground",
+   986→              error && "border-destructive",
+   987→            )}
+   988→          >
+   989→            <span className="flex items-center gap-2 truncate">
+   990→              {selected ? (
+   991→                <>
+   992→                  <span className="truncate">{selected.name}</span>
+   993→                  {selected.verified && (
+   994→                    <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px]">
+   995→                      Verificado
+   996→                    </Badge>
+   997→                  )}
+   998→                </>
+   999→              ) : (
+  1000→                "Selecionar prestador"
+  1001→              )}
+  1002→            </span>
+  1003→            <ChevronDown className="size-4 opacity-50" />
+  1004→          </Button>
+  1005→        </PopoverTrigger>
+  1006→        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+  1007→          <Command shouldFilter={false}>
+  1008→            <CommandInput
+  1009→              placeholder="Buscar por nome ou serviço..."
+  1010→              value={query}
+  1011→              onValueChange={setQuery}
+  1012→            />
+  1013→            <CommandList>
+  1014→              <CommandEmpty>
+  1015→                {isLoading ? "Buscando..." : "Nenhum prestador encontrado."}
+  1016→              </CommandEmpty>
+  1017→              <CommandGroup>
+  1018→                {providers.map((p) => (
+  1019→                  <CommandItem
+  1020→                    key={p.id}
+  1021→                    value={p.id}
+  1022→                    onSelect={() => {
+  1023→                      onChange(p.id)
+  1024→                      setOpen(false)
+  1025→                    }}
+  1026→                  >
+  1027→                    <Check
+  1028→                      className={cn(
+  1029→                        "size-4",
+  1030→                        value === p.id ? "opacity-100" : "opacity-0",
+  1031→                      )}
+  1032→                    />
+  1033→                    <div className="flex-1 min-w-0">
+  1034→                      <p className="text-sm truncate">{p.name}</p>
+  1035→                      <p className="text-xs text-muted-foreground truncate">
+  1036→                        {p.city ?? "—"}
+  1037→                        {p.services?.[0]?.title
+  1038→                          ? ` · ${p.services[0].title}`
+  1039→                          : ""}
+  1040→                      </p>
+  1041→                    </div>
+  1042→                    {p.verified && (
+  1043→                      <Badge
+  1044→                        variant="outline"
+  1045→                        className="border-emerald-500 text-emerald-700 text-[10px] ml-2"
+  1046→                      >
+  1047→                        Verificado
+  1048→                      </Badge>
+  1049→                    )}
+  1050→                  </CommandItem>
+  1051→                ))}
+  1052→              </CommandGroup>
+  1053→            </CommandList>
+  1054→          </Command>
+  1055→        </PopoverContent>
+  1056→      </Popover>
+  1057→      {error && <p className="text-xs text-destructive">{error}</p>}
+  1058→    </div>
+  1059→  )
+  1060→}
+  1061→
+  1062→// ---------------------------------------------------------------------------
+  1063→// Service select (depends on chosen provider)
+  1064→// ---------------------------------------------------------------------------
+  1065→
+  1066→function ServiceSelect({
+  1067→  providerId,
+  1068→  value,
+  1069→  onChange,
+  1070→  error,
+  1071→}: {
+  1072→  providerId: string
+  1073→  value: string
+  1074→  onChange: (service: ProviderService) => void
+  1075→  error?: string
+  1076→}) {
+  1077→  const { data, isLoading } = useQuery({
+  1078→    queryKey: ["services-by-provider", providerId],
+  1079→    queryFn: () =>
+  1080→      apiGet<ProviderService[]>("/api/services", { providerId }),
+  1081→    enabled: !!providerId,
+  1082→    staleTime: 30 * 1000,
+  1083→  })
+  1084→
+  1085→  const services = data ?? []
+  1086→  const selected = services.find((s) => s.id === value)
+  1087→
+  1088→  return (
+  1089→    <div className="grid gap-1.5">
+  1090→      <Label>Serviço</Label>
+  1091→      <Select
+  1092→        value={value}
+  1093→        onValueChange={(v) => {
+  1094→          const s = services.find((x) => x.id === v)
+  1095→          if (s) onChange(s)
+  1096→        }}
+  1097→        disabled={!providerId}
+  1098→      >
+  1099→        <SelectTrigger className="w-full">
+  1100→          <SelectValue
+  1101→            placeholder={
+  1102→              !providerId
+  1103→                ? "Selecione um prestador primeiro"
+  1104→                : isLoading
+  1105→                  ? "Carregando..."
+  1106→                  : "Selecionar serviço"
+  1107→            }
+  1108→          />
+  1109→        </SelectTrigger>
+  1110→        <SelectContent>
+  1111→          {services.length === 0 && !isLoading && (
+  1112→            <div className="px-2 py-3 text-center text-xs text-muted-foreground">
+  1113→              Nenhum serviço disponível.
+  1114→            </div>
+  1115→          )}
+  1116→          {services.map((s) => (
+  1117→            <SelectItem key={s.id} value={s.id}>
+  1118→              <span className="flex items-center justify-between gap-2 w-full">
+  1119→                <span className="truncate">{s.title}</span>
+  1120→                <span className="text-xs text-muted-foreground tabular-nums">
+  1121→                  {s.basePrice.toLocaleString("pt-BR", {
+  1122→                    style: "currency",
+  1123→                    currency: "BRL",
+  1124→                  })}
+  1125→                  /{SERVICE_UNIT_SHORT[s.unit]}
+  1126→                </span>
+  1127→              </span>
+  1128→            </SelectItem>
+  1129→          ))}
+  1130→        </SelectContent>
+  1131→      </Select>
+  1132→      {selected && (
+  1133→        <p className="text-xs text-muted-foreground">
+  1134→          {selected.description ?? "—"}
+  1135→        </p>
+  1136→      )}
+  1137→      {error && <p className="text-xs text-destructive">{error}</p>}
+  1138→    </div>
+  1139→  )
+  1140→}
+  1141→
