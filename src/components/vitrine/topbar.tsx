@@ -13,6 +13,7 @@
  */
 
 import * as React from "react"
+import { useTheme } from "next-themes"
 import {
   MapPin,
   LocateFixed,
@@ -24,10 +25,13 @@ import {
   X,
   Loader2,
   ChevronDown,
+  Moon,
+  Sun,
+  GitCompare,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { useAuthStore, useGeoStore, useUIStore, useViewStore } from "@/store"
+import { useAuthStore, useGeoStore, useUIStore, useViewStore, useCompareStore } from "@/store"
 import { ROLE_LABELS, type UserRole } from "@/lib/constants"
 import type { Category } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -91,6 +95,11 @@ export default function Topbar({
   const { city, status: geoStatus, setFromGPS } = useGeoStore()
   const openAuth = useUIStore((s) => s.openAuth)
   const navigate = useViewStore((s) => s.navigate)
+  const compareCount = useCompareStore((s) => s.ids.length)
+  const openCompare = useCompareStore((s) => s.openCompare)
+  const { resolvedTheme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
 
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)
@@ -261,6 +270,47 @@ export default function Topbar({
 
         {/* Auth area (desktop) */}
         <div className="hidden items-center gap-1 md:flex">
+          {/* Theme toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent"
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            aria-label="Alternar tema"
+            title="Alternar tema"
+          >
+            {mounted ? (
+              resolvedTheme === "dark" ? (
+                <Sun className="size-5" />
+              ) : (
+                <Moon className="size-5" />
+              )
+            ) : (
+              <div className="size-5" />
+            )}
+          </Button>
+
+          {/* Compare button — visible when at least 1 provider selected */}
+          {compareCount > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openCompare}
+              className="h-9 gap-2 rounded-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+              aria-label={`Comparar ${compareCount} prestador(es)`}
+              title={`Comparar ${compareCount} prestador(es)`}
+            >
+              <GitCompare className="size-4" />
+              <span className="text-sm font-medium">Comparar</span>
+              <Badge
+                variant="secondary"
+                className="ml-0.5 h-5 min-w-5 justify-center rounded-full bg-emerald-600 px-1.5 text-[10px] font-bold text-white"
+              >
+                {compareCount}
+              </Badge>
+            </Button>
+          ) : null}
+
           {isAuth ? (
             <>
               <Button
@@ -352,6 +402,43 @@ export default function Topbar({
 
         {/* Mobile: hamburger */}
         <div className="ml-auto flex items-center gap-1 md:hidden">
+          {/* Mobile theme toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-9 rounded-full text-muted-foreground hover:text-foreground"
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            aria-label="Alternar tema"
+            title="Alternar tema"
+          >
+            {mounted ? (
+              resolvedTheme === "dark" ? (
+                <Sun className="size-5" />
+              ) : (
+                <Moon className="size-5" />
+              )
+            ) : (
+              <div className="size-5" />
+            )}
+          </Button>
+
+          {/* Mobile compare button — compact */}
+          {compareCount > 0 ? (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={openCompare}
+              className="size-9 rounded-full border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-300"
+              aria-label={`Comparar ${compareCount} prestador(es)`}
+              title={`Comparar ${compareCount} prestador(es)`}
+            >
+              <GitCompare className="size-4" />
+              <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-emerald-600 text-[9px] font-bold text-white">
+                {compareCount}
+              </span>
+            </Button>
+          ) : null}
+
           {/* Mobile location shortcut (compact) */}
           <Button
             type="button"

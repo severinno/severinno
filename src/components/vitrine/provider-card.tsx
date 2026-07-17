@@ -28,6 +28,8 @@ import {
   CheckCircle2,
   CalendarClock,
   Wrench,
+  GitCompare,
+  X,
 } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -39,7 +41,7 @@ import {
   type ServiceUnit,
 } from "@/lib/constants"
 import { toggleFavorite, type ProviderCard as ProviderCardType } from "@/lib/api"
-import { useAuthStore, useUIStore } from "@/store"
+import { useAuthStore, useUIStore, useCompareStore, MAX_COMPARE } from "@/store"
 import { toast } from "sonner"
 
 import {
@@ -132,6 +134,26 @@ export default function ProviderCard({
     favMutation.mutate()
   }
 
+  // Compare — visitors can compare without auth (selection is local-only)
+  const compareIds = useCompareStore((s) => s.ids)
+  const toggleCompare = useCompareStore((s) => s.toggle)
+  const isComparing = compareIds.includes(provider.id)
+
+  const handleCompareToggle = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isComparing && compareIds.length >= MAX_COMPARE) {
+      toast.warning(`Você pode comparar no máximo ${MAX_COMPARE} prestadores.`)
+      return
+    }
+    toggleCompare(provider.id)
+    toast.success(
+      isComparing
+        ? `${provider.name} removido da comparação.`
+        : `${provider.name} adicionado à comparação (${!isComparing ? compareIds.length + 1 : compareIds.length - 1}/${MAX_COMPARE}).`,
+    )
+  }
+
   const handleBook = (serviceId?: string) => (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -177,9 +199,13 @@ export default function ProviderCard({
 
   return (
     <Card
+      data-provider-id={provider.id}
+      data-compare-name={provider.name}
+      data-compare-avatar={provider.avatarUrl ?? ""}
       className={cn(
         "group relative gap-0 overflow-hidden rounded-xl border shadow-sm transition-all duration-200 py-0",
         "hover:-translate-y-0.5 hover:border-emerald-200 hover:shadow-md focus-within:shadow-md",
+        isComparing && "ring-2 ring-emerald-500/50",
         className,
       )}
     >
@@ -205,31 +231,61 @@ export default function ProviderCard({
           </span>
         ) : null}
 
-        {/* Favorite heart */}
-        <button
-          type="button"
-          onClick={handleFavorite}
-          disabled={favMutation.isPending}
-          aria-pressed={favorited}
-          aria-label={
-            favorited
-              ? `Remover ${provider.name} dos favoritos`
-              : `Adicionar ${provider.name} aos favoritos`
-          }
-          className={cn(
-            "absolute top-3 right-3 flex size-9 items-center justify-center rounded-full bg-white/90 shadow-sm backdrop-blur transition",
-            "hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            favorited && "text-rose-500",
-          )}
-        >
-          {favMutation.isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Heart
-              className={cn("size-4 transition-colors", favorited && "fill-rose-500 text-rose-500")}
-            />
-          )}
-        </button>
+        {/* Favorite heart + Compare button */}
+        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleCompareToggle}
+            aria-pressed={isComparing}
+            aria-label={
+              isComparing
+                ? `Remover ${provider.name} da comparação`
+                : `Adicionar ${provider.name} à comparação`
+            }
+            title={
+              isComparing
+                ? "Remover da comparação"
+                : `Comparar (${compareIds.length}/${MAX_COMPARE})`
+            }
+            className={cn(
+              "flex size-9 items-center justify-center rounded-full bg-white/90 shadow-sm backdrop-blur transition",
+              "hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isComparing
+                ? "text-emerald-600 ring-2 ring-emerald-500/40"
+                : "text-foreground/70",
+            )}
+          >
+            {isComparing ? (
+              <X className="size-4" />
+            ) : (
+              <GitCompare className="size-4" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={handleFavorite}
+            disabled={favMutation.isPending}
+            aria-pressed={favorited}
+            aria-label={
+              favorited
+                ? `Remover ${provider.name} dos favoritos`
+                : `Adicionar ${provider.name} aos favoritos`
+            }
+            className={cn(
+              "flex size-9 items-center justify-center rounded-full bg-white/90 shadow-sm backdrop-blur transition",
+              "hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              favorited && "text-rose-500",
+            )}
+          >
+            {favMutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Heart
+                className={cn("size-4 transition-colors", favorited && "fill-rose-500 text-rose-500")}
+              />
+            )}
+          </button>
+        </div>
 
         {/* Avatar overlapping cover bottom-left */}
         <div className="absolute -bottom-7 left-4 flex items-end gap-2">

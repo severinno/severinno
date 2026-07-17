@@ -34,6 +34,9 @@ import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
 import HowItWorks from "./how-it-works"
 import { RecentlyViewed } from "./recently-viewed"
+import CompareBar from "./compare-bar"
+import CompareModal from "./compare-modal"
+import BackToTop from "./back-to-top"
 import Footer from "../shared/footer"
 import {
   DEFAULT_FILTERS,
@@ -216,6 +219,13 @@ export default function Vitrine() {
       </main>
 
       <Footer />
+
+      {/* Floating UI — compare bar + back-to-top */}
+      <CompareBar />
+      <BackToTop />
+
+      {/* Compare modal — portal-mounted by Radix */}
+      <CompareModal />
     </div>
   )
 }

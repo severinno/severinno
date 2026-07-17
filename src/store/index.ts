@@ -10,3 +10,4 @@ export {
   type AuthModalRole,
 } from "./ui"
 export { useRecentlyViewedStore } from "./recently-viewed"
+export { useCompareStore, MAX_COMPARE } from "./compare"
