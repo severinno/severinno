@@ -301,9 +301,6 @@ export default function Topbar({
     [onCategorySelect],
   )
 
-  // Category pill ref for animated indicator
-  const categoryNavRef = React.useRef<HTMLDivElement>(null)
-
   return (
     <>
       {/* ── Welcome Toast (H1: system status) ──────────────────────────── */}
@@ -1008,36 +1005,6 @@ export default function Topbar({
                     {city || "Definir localização"}
                   </Button>
 
-                  {/* Mobile categories — staggered entrance animations */}
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                      Categorias
-                    </p>
-                    <ScrollArea className="max-h-64 pr-1">
-                      <div className="flex flex-col gap-1">
-                        <CategoryChipButton
-                          label="Todas"
-                          active={!activeCategoryId}
-                          onClick={() => onSelectCategory(null)}
-                        />
-                        {categories.map((c, i) => (
-                          <motion.div
-                            key={c.id}
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: i * 0.05, duration: 0.25, ease: "easeOut" }}
-                          >
-                            <CategoryChipButton
-                              label={c.name}
-                              active={activeCategoryId === c.id}
-                              onClick={() => onSelectCategory(c.id)}
-                            />
-                          </motion.div>
-                        ))}
-                      </div>
-                    </ScrollArea>
-                  </div>
-
                   {/* Mobile auth */}
                   <div className="mt-auto flex flex-col gap-2.5 border-t pt-5">
                     {isAuth ? (
@@ -1116,120 +1083,7 @@ export default function Topbar({
             </Sheet>
           </div>
         </div>
-
-        {/* ── Desktop: category nav ────────────────────────────────────────── */}
-        <nav
-          ref={categoryNavRef}
-          aria-label="Categorias"
-          className={cn(
-            "relative hidden border-t transition-all duration-300 md:block",
-            scrolled
-              ? "border-border/50 bg-background/80 backdrop-blur-sm"
-              : "border-transparent bg-background/40 backdrop-blur-sm",
-          )}
-        >
-          <ScrollArea className="max-w-none">
-            <div className="mx-auto flex max-w-7xl items-center gap-1.5 overflow-x-auto px-4 py-2 sm:px-6 lg:px-8">
-              <CategoryPill
-                label="Todas"
-                active={!activeCategoryId}
-                onClick={() => onCategorySelect?.(null)}
-              />
-              {categories.map((c) => (
-                <CategoryPill
-                  key={c.id}
-                  label={c.name}
-                  active={activeCategoryId === c.id}
-                  onClick={() => onCategorySelect?.(c.id)}
-                />
-              ))}
-            </div>
-          </ScrollArea>
-          {/* Fade edges */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-background to-transparent"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-background to-transparent"
-          />
-        </nav>
       </header>
     </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Category Pill — desktop horizontal nav
-// ---------------------------------------------------------------------------
-
-function CategoryPill({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active?: boolean
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "relative h-8 shrink-0 rounded-xl px-4 text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-        active
-          ? "bg-gradient-to-r from-primary to-emerald-600 text-white shadow-md shadow-primary/20"
-          : "bg-muted/50 text-foreground/70 hover:bg-muted hover:text-foreground hover:shadow-sm",
-      )}
-    >
-      {label}
-      {active && (
-        <motion.div
-          layoutId="category-indicator"
-          className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary to-emerald-600"
-          transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          style={{ zIndex: -1 }}
-        />
-      )}
-    </button>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Category Chip Button — mobile vertical nav
-// ---------------------------------------------------------------------------
-
-function CategoryChipButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active?: boolean
-  onClick?: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex h-10 w-full items-center gap-2.5 rounded-xl px-3.5 text-sm font-medium transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active
-          ? "bg-gradient-to-r from-primary to-emerald-600 text-white shadow-md shadow-primary/20"
-          : "hover:bg-muted/70 hover:text-foreground",
-      )}
-    >
-      {active && (
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", stiffness: 500, damping: 25 }}
-          className="size-1.5 rounded-full bg-white"
-        />
-      )}
-      {label}
-    </button>
   )
 }
