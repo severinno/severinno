@@ -3,17 +3,17 @@
 /**
  * CtaBanner — conversion-focused call-to-action section.
  *
- * Redesigned with Jakob Nielsen's 10 Usability Heuristics:
- *   H1 – Visibility: Dynamic stats from API, "X novos cadastros nas últimas 24h"
+ * Enhanced with Jakob Nielsen's 10 Usability Heuristics:
+ *   H1 – Visibility: Dynamic stats from API, "X novos cadastros nas últimas 24h", live counter
  *   H2 – Match real world: "Comece em 30 segundos", Uber-like analogy
- *   H3 – User control: Tab toggle (cliente / prestador), "Já tenho conta" link
+ *   H3 – User control: Tab toggle (cliente / prestador) with sliding indicator, "Já tenho conta" link
  *   H4 – Consistency: Same emerald gradient, badge and button components
- *   H5 – Error prevention: Trust badges, no surprise costs
- *   H6 – Recognition: Avatar stack with initials, trust badges, star rating
+ *   H5 – Error prevention: Trust badges, guarantee badges row, no surprise costs
+ *   H6 – Recognition: Avatar stack, trust badges, star rating, handshake illustration
  *   H7 – Flexibility: One-click CTA, multiple entry points
- *   H8 – Minimalism: Single focused CTA per persona, clean layout
+ *   H8 – Minimalism: Single focused CTA per persona, clean split-screen layout
  *   H9 – Error recovery: "Sem compromisso, cancele quando quiser"
- *   H10 – Help: "O que vem depois?" mini-steps, FAQ link
+ *  H10 – Help: "O que vem depois?" mini-steps with animated connector, FAQ link
  */
 
 import * as React from "react"
@@ -32,10 +32,10 @@ import {
   Star,
   Timer,
   Clock,
-  Shield,
   CreditCard,
   XCircle,
-  Users,
+  Quote,
+  Headset,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -93,19 +93,33 @@ const SIGNUP_STEPS = [
   },
 ] as const
 
+const GUARANTEE_BADGES = [
+  { icon: XCircle, label: "Sem compromisso" },
+  { icon: Clock, label: "Cancele quando quiser" },
+  { icon: Headset, label: "Suporte 24h" },
+] as const
+
 const TRUST_SIGNS = [
   { icon: XCircle, label: "Sem compromisso" },
   { icon: Clock, label: "Cancele quando quiser" },
   { icon: CreditCard, label: "Pagamento protegido" },
 ] as const
 
-const FLOATING_ICONS = [
-  { Icon: Wrench, x: "8%", y: "12%", size: 22, delay: 0, duration: 6 },
-  { Icon: Star, x: "88%", y: "8%", size: 18, delay: 1.2, duration: 7 },
-  { Icon: ShieldCheck, x: "75%", y: "75%", size: 20, delay: 0.8, duration: 5.5 },
-  { Icon: Search, x: "15%", y: "80%", size: 16, delay: 2, duration: 6.5 },
-  { Icon: Sparkles, x: "55%", y: "5%", size: 14, delay: 1.5, duration: 8 },
-  { Icon: Users, x: "40%", y: "85%", size: 17, delay: 0.3, duration: 7.5 },
+const TESTIMONIAL = {
+  quote: "Encontrei um encanador em 10 minutos, paguei menos do que esperava e ainda pude avaliar o serviço. Recomendo demais!",
+  author: "Ana P.",
+  role: "Cliente, São Paulo",
+}
+
+const FLOATING_MICRO = [
+  { type: "star" as const, x: "5%", y: "8%", size: 12, delay: 0, duration: 5 },
+  { type: "check" as const, x: "90%", y: "15%", size: 10, delay: 1.5, duration: 6 },
+  { type: "dot" as const, x: "80%", y: "70%", size: 8, delay: 0.8, duration: 4.5 },
+  { type: "star" as const, x: "12%", y: "82%", size: 10, delay: 2, duration: 5.5 },
+  { type: "dot" as const, x: "70%", y: "25%", size: 6, delay: 0.5, duration: 7 },
+  { type: "check" as const, x: "25%", y: "55%", size: 8, delay: 1.2, duration: 6 },
+  { type: "dot" as const, x: "55%", y: "90%", size: 10, delay: 1.8, duration: 5 },
+  { type: "star" as const, x: "45%", y: "5%", size: 8, delay: 0.3, duration: 6.5 },
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -147,18 +161,18 @@ function AvatarStack() {
 }
 
 // ---------------------------------------------------------------------------
-// Animated floating icon
+// Floating micro-elements (stars, checkmarks, dots)
 // ---------------------------------------------------------------------------
 
-function FloatingIcon({
-  Icon,
+function FloatingMicro({
+  type,
   x,
   y,
   size,
   delay,
   duration,
 }: {
-  Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+  type: "star" | "check" | "dot"
   x: string
   y: string
   size: number
@@ -168,14 +182,14 @@ function FloatingIcon({
   return (
     <motion.div
       aria-hidden
-      className="absolute pointer-events-none text-white/[0.08]"
+      className="absolute pointer-events-none"
       style={{ left: x, top: y }}
-      initial={{ opacity: 0, scale: 0.5 }}
+      initial={{ opacity: 0, scale: 0.3 }}
       animate={{
-        opacity: [0, 0.12, 0.06, 0.12],
-        scale: [0.8, 1.1, 0.9, 1.05],
-        y: [0, -12, 4, -8],
-        x: [0, 6, -4, 3],
+        opacity: [0, 0.25, 0.1, 0.2],
+        scale: [0.6, 1.1, 0.8, 1],
+        y: [0, -8, 3, -5],
+        x: [0, 4, -3, 2],
       }}
       transition={{
         duration,
@@ -185,7 +199,18 @@ function FloatingIcon({
         ease: [0.42, 0, 0.58, 1],
       }}
     >
-      <Icon style={{ width: size, height: size }} />
+      {type === "star" && (
+        <Star style={{ width: size, height: size }} className="fill-amber-300/30 text-amber-300/40" />
+      )}
+      {type === "check" && (
+        <CheckCircle2 style={{ width: size, height: size }} className="text-emerald-300/30" />
+      )}
+      {type === "dot" && (
+        <div
+          style={{ width: size, height: size }}
+          className="rounded-full bg-white/20"
+        />
+      )}
     </motion.div>
   )
 }
@@ -235,19 +260,24 @@ function MeshBlobs() {
 }
 
 // ---------------------------------------------------------------------------
-// Pulsing glow wrapper for CTA button
+// Pulsing glow wrapper for CTA button — emerald glow on hover
 // ---------------------------------------------------------------------------
 
 function PulsingGlow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative inline-flex">
-      {/* Glow ring */}
+    <div className="group/glow relative inline-flex">
+      {/* Ambient glow ring */}
+      <motion.div
+        aria-hidden
+        className="absolute inset-0 rounded-lg bg-emerald-400/30 blur-lg opacity-0 transition-opacity duration-300 group-hover/glow:opacity-100"
+      />
+      {/* Pulsing ring */}
       <motion.div
         aria-hidden
         className="absolute inset-0 rounded-lg bg-white/40 blur-md"
         animate={{
-          opacity: [0, 0.5, 0],
-          scale: [1, 1.08, 1],
+          opacity: [0, 0.4, 0],
+          scale: [1, 1.06, 1],
         }}
         transition={{
           duration: 2.5,
@@ -261,10 +291,11 @@ function PulsingGlow({ children }: { children: React.ReactNode }) {
 }
 
 // ---------------------------------------------------------------------------
-// Live counter badge
+// Live counter badge — "X pessoas se cadastraram hoje"
 // ---------------------------------------------------------------------------
 
 function LiveCounter({ count }: { count: number }) {
+  const { ref, value } = useCountUp(count, { duration: 1500 })
   return (
     <motion.span
       initial={{ opacity: 0, scale: 0.8 }}
@@ -275,8 +306,111 @@ function LiveCounter({ count }: { count: number }) {
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
         <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
       </span>
-      Últimas 24h: {count} novos cadastros
+      <span ref={ref}>{value}</span> pessoas se cadastraram hoje
     </motion.span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Right-side abstract illustration — customer + provider handshake
+// ---------------------------------------------------------------------------
+
+function HandshakeIllustration() {
+  return (
+    <div className="relative flex h-full items-center justify-center" aria-hidden>
+      {/* Abstract person 1 — customer */}
+      <motion.div
+        className="absolute left-[15%] top-[25%]"
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 0.4, duration: 0.6 }}
+      >
+        {/* Head */}
+        <div className="size-12 rounded-full bg-gradient-to-br from-emerald-300 to-emerald-400 shadow-lg shadow-emerald-400/30" />
+        {/* Body */}
+        <div className="mx-auto mt-1 h-14 w-10 rounded-t-full bg-gradient-to-b from-emerald-300/80 to-emerald-400/60" />
+        {/* Label */}
+        <span className="mt-1 block text-center text-[9px] font-semibold text-white/80">Cliente</span>
+      </motion.div>
+
+      {/* Abstract person 2 — provider */}
+      <motion.div
+        className="absolute right-[15%] top-[25%]"
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: 0.6, duration: 0.6 }}
+      >
+        {/* Head */}
+        <div className="size-12 rounded-full bg-gradient-to-br from-teal-300 to-teal-400 shadow-lg shadow-teal-400/30" />
+        {/* Body */}
+        <div className="mx-auto mt-1 h-14 w-10 rounded-t-full bg-gradient-to-b from-teal-300/80 to-teal-400/60" />
+        {/* Wrench badge */}
+        <div className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-amber-400 shadow-md">
+          <Wrench className="size-3 text-white" />
+        </div>
+        {/* Label */}
+        <span className="mt-1 block text-center text-[9px] font-semibold text-white/80">Prestador</span>
+      </motion.div>
+
+      {/* Handshake in the middle — two overlapping circles */}
+      <motion.div
+        className="absolute left-1/2 top-[38%] -translate-x-1/2 -translate-y-1/2"
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.8, duration: 0.5, type: "spring" }}
+      >
+        <div className="relative flex size-16 items-center justify-center">
+          <div className="absolute size-14 rounded-full border-2 border-white/20" />
+          <div className="absolute size-10 rounded-full bg-gradient-to-br from-emerald-400/60 to-teal-400/60 backdrop-blur-sm" />
+          <Sparkles className="relative size-6 text-white" />
+        </div>
+      </motion.div>
+
+      {/* Decorative connection lines */}
+      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 300 250" fill="none">
+        <motion.path
+          d="M 80 80 Q 150 60 150 110"
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth="1.5"
+          strokeDasharray="4 3"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ delay: 1, duration: 0.8 }}
+        />
+        <motion.path
+          d="M 220 80 Q 150 60 150 110"
+          stroke="rgba(255,255,255,0.15)"
+          strokeWidth="1.5"
+          strokeDasharray="4 3"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ delay: 1.2, duration: 0.8 }}
+        />
+      </svg>
+
+      {/* Decorative floating elements around illustration */}
+      <motion.div
+        className="absolute left-[8%] bottom-[20%]"
+        animate={{ y: [0, -6, 0], opacity: [0.3, 0.6, 0.3] }}
+        transition={{ duration: 3, repeat: Infinity }}
+      >
+        <Star className="size-4 fill-amber-300/40 text-amber-300/50" />
+      </motion.div>
+      <motion.div
+        className="absolute right-[10%] bottom-[30%]"
+        animate={{ y: [0, -5, 0], opacity: [0.3, 0.5, 0.3] }}
+        transition={{ duration: 4, repeat: Infinity, delay: 1 }}
+      >
+        <CheckCircle2 className="size-4 text-emerald-300/40" />
+      </motion.div>
+      <motion.div
+        className="absolute left-1/2 bottom-[10%] -translate-x-1/2"
+        animate={{ y: [0, -4, 0], opacity: [0.2, 0.4, 0.2] }}
+        transition={{ duration: 3.5, repeat: Infinity, delay: 0.5 }}
+      >
+        <ShieldCheck className="size-5 text-white/20" />
+      </motion.div>
+    </div>
   )
 }
 
@@ -346,7 +480,7 @@ export default function CtaBanner() {
           initial={{ opacity: 0, y: 30, scale: 0.98 }}
           animate={visible ? { opacity: 1, y: 0, scale: 1 } : {}}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 px-6 py-12 text-white shadow-2xl sm:px-12 sm:py-16"
+          className="relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-900 shadow-2xl"
         >
           {/* Animated mesh blobs */}
           <MeshBlobs />
@@ -362,17 +496,18 @@ export default function CtaBanner() {
             }}
           />
 
-          {/* Floating icons with parallax-like movement */}
-          {FLOATING_ICONS.map((item, i) => (
-            <FloatingIcon key={i} {...item} />
+          {/* Floating micro-elements (stars, checkmarks, dots) */}
+          {FLOATING_MICRO.map((item, i) => (
+            <FloatingMicro key={i} {...item} />
           ))}
 
-          <div className="relative grid items-center gap-10 lg:grid-cols-[1.2fr_1fr]">
-            {/* Left: copy + CTA */}
+          {/* ── Split-screen layout ────────────────────────────────── */}
+          <div className="relative grid items-center gap-8 px-6 py-12 sm:px-12 sm:py-16 lg:grid-cols-[1.3fr_1fr] lg:gap-12">
+            {/* LEFT side: CTA text + buttons */}
             <div>
               {/* Top badges */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur ring-1 ring-white/20">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-white backdrop-blur ring-1 ring-white/20">
                   <Sparkles className="size-3.5" />
                   Comece agora mesmo
                 </span>
@@ -381,7 +516,7 @@ export default function CtaBanner() {
                 )}
               </div>
 
-              <h2 className="mt-4 text-balance text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
+              <h2 className="mt-4 text-balance text-3xl font-bold leading-tight tracking-tight text-white sm:text-4xl">
                 {isVisitor &&
                   (visitorTab === "client"
                     ? "Pronto para encontrar o prestador ideal?"
@@ -403,7 +538,7 @@ export default function CtaBanner() {
                   "Cadastre seus serviços, defina sua área de atendimento e comece a receber solicitações de clientes na sua região."}
               </p>
 
-              {/* Visitor tab toggle */}
+              {/* Visitor tab toggle — with sliding indicator */}
               {isVisitor && (
                 <div className="mt-5 inline-flex rounded-lg bg-white/10 p-1 ring-1 ring-white/15 backdrop-blur">
                   <button
@@ -417,7 +552,7 @@ export default function CtaBanner() {
                   >
                     {visitorTab === "client" && (
                       <motion.div
-                        layoutId="visitor-tab"
+                        layoutId="visitor-tab-indicator"
                         className="absolute inset-0 rounded-md bg-white shadow-sm"
                         transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
                       />
@@ -435,7 +570,7 @@ export default function CtaBanner() {
                   >
                     {visitorTab === "provider" && (
                       <motion.div
-                        layoutId="visitor-tab"
+                        layoutId="visitor-tab-indicator"
                         className="absolute inset-0 rounded-md bg-white shadow-sm"
                         transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
                       />
@@ -487,7 +622,7 @@ export default function CtaBanner() {
                               visitorTab === "provider" ? "PROVIDER" : "CLIENT",
                             )
                           }
-                          className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg hover:bg-emerald-50 hover:shadow-xl"
+                          className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg transition-shadow hover:bg-emerald-50 hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-emerald-500/30"
                         >
                           {visitorTab === "client"
                             ? "Cadastrar grátis"
@@ -553,7 +688,7 @@ export default function CtaBanner() {
                               ?.scrollIntoView({ behavior: "smooth" })
                           }
                         }}
-                        className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg hover:bg-emerald-50 hover:shadow-xl"
+                        className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg transition-shadow hover:bg-emerald-50 hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-emerald-500/30"
                       >
                         <Search className="size-4" />
                         Buscar prestadores
@@ -577,7 +712,7 @@ export default function CtaBanner() {
                       <Button
                         size="lg"
                         onClick={() => openAuth("login")}
-                        className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg hover:bg-emerald-50 hover:shadow-xl"
+                        className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg transition-shadow hover:bg-emerald-50 hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-emerald-500/30"
                       >
                         Ir para meu painel
                         <motion.span
@@ -605,7 +740,7 @@ export default function CtaBanner() {
                 </motion.div>
               )}
 
-              {/* "Já tenho conta" link — more prominent */}
+              {/* "Já tenho conta" link */}
               {isVisitor && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -622,7 +757,7 @@ export default function CtaBanner() {
                 </motion.div>
               )}
 
-              {/* Avatar stack social proof — dynamic stats */}
+              {/* Avatar stack social proof */}
               {isVisitor && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -649,7 +784,7 @@ export default function CtaBanner() {
               )}
             </div>
 
-            {/* Right: "O que vem depois?" steps — glassmorphism */}
+            {/* RIGHT side: "O que vem depois?" steps + handshake illustration */}
             <div className="relative hidden lg:block">
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
@@ -665,11 +800,29 @@ export default function CtaBanner() {
                 </p>
 
                 <div className="mt-5 relative">
-                  {/* Vertical dotted connector */}
-                  <div
+                  {/* Connected dots/steps with animated line */}
+                  <svg
                     aria-hidden
-                    className="absolute left-5 top-6 h-[calc(100%-2rem)] w-px border-l-2 border-dashed border-white/20"
-                  />
+                    className="absolute left-5 top-6 h-[calc(100%-2rem)] w-8"
+                    viewBox="0 0 40 200"
+                    preserveAspectRatio="none"
+                  >
+                    <motion.line
+                      x1="20" y1="20" x2="20" y2="180"
+                      stroke="rgba(255,255,255,0.15)"
+                      strokeWidth="2"
+                      strokeDasharray="4 3"
+                    />
+                    <motion.line
+                      x1="20" y1="20" x2="20" y2="180"
+                      stroke="rgba(16,185,129,0.6)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      initial={{ pathLength: 0 }}
+                      animate={visible ? { pathLength: 1 } : {}}
+                      transition={{ duration: 1.5, delay: 0.5, ease: "easeOut" }}
+                    />
+                  </svg>
 
                   <div className="space-y-5">
                     {SIGNUP_STEPS.map((step, i) => {
@@ -681,13 +834,13 @@ export default function CtaBanner() {
                           animate={visible ? { opacity: 1, x: 0 } : {}}
                           transition={{
                             duration: 0.4,
-                            delay: 0.4 + i * 0.12,
+                            delay: 0.4 + i * 0.15,
                           }}
                           className="flex items-start gap-3"
                         >
-                          {/* Step number circle */}
+                          {/* Step number circle with number */}
                           <div className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/30 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)]">
-                            <StepIcon className="size-4 text-white" />
+                            <span className="text-xs font-bold text-white">{i + 1}</span>
                           </div>
                           <div className="pt-1">
                             <p className="text-sm font-medium text-white">
@@ -703,24 +856,70 @@ export default function CtaBanner() {
                   </div>
                 </div>
 
+                {/* Guarantee badges row (H5) */}
+                <div className="mt-5 flex items-center justify-center gap-3 border-t border-white/10 pt-4">
+                  {GUARANTEE_BADGES.map((badge) => {
+                    const BadgeIcon = badge.icon
+                    return (
+                      <span
+                        key={badge.label}
+                        className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-100/70"
+                      >
+                        <BadgeIcon className="size-3 text-emerald-300" />
+                        {badge.label}
+                      </span>
+                    )
+                  })}
+                </div>
+
                 {/* Learn more link */}
                 <a
                   href="#faq"
-                  className="mt-5 inline-flex items-center gap-1 text-xs font-medium text-emerald-200 hover:text-white transition-colors"
+                  className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-emerald-200 hover:text-white transition-colors"
                 >
                   <ShieldCheck className="size-3" />
                   Saiba mais sobre pagamento protegido
                 </a>
               </motion.div>
+
+              {/* Handshake illustration below the steps card */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={visible ? { opacity: 1, y: 0 } : {}}
+                transition={{ duration: 0.6, delay: 0.5 }}
+                className="mt-4 h-48 rounded-2xl bg-white/[0.04] ring-1 ring-white/[0.08] backdrop-blur-sm overflow-hidden"
+              >
+                <HandshakeIllustration />
+              </motion.div>
             </div>
           </div>
 
-          {/* Bottom trust strip — improved with icons */}
+          {/* ── Testimonial quote at the bottom ─────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={visible ? { opacity: 1, y: 0 } : {}}
-            transition={{ delay: 0.8, duration: 0.5 }}
-            className="mt-8 flex flex-wrap items-center justify-center gap-4 border-t border-white/10 pt-6 sm:gap-6"
+            transition={{ delay: 0.9, duration: 0.5 }}
+            className="border-t border-white/10 px-6 py-5 sm:px-12"
+          >
+            <div className="mx-auto flex max-w-2xl items-start gap-3">
+              <Quote className="mt-0.5 size-5 shrink-0 text-emerald-300/50" />
+              <div>
+                <p className="text-sm italic leading-relaxed text-emerald-100/80">
+                  &ldquo;{TESTIMONIAL.quote}&rdquo;
+                </p>
+                <p className="mt-1.5 text-xs font-medium text-emerald-200/60">
+                  — {TESTIMONIAL.author}, {TESTIMONIAL.role}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Bottom trust strip */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={visible ? { opacity: 1, y: 0 } : {}}
+            transition={{ delay: 1, duration: 0.5 }}
+            className="flex flex-wrap items-center justify-center gap-4 border-t border-white/10 px-6 py-4 sm:gap-6 sm:px-12"
           >
             {TRUST_SIGNS.map((sign) => {
               const SignIcon = sign.icon

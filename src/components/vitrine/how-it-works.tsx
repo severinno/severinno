@@ -1,16 +1,16 @@
 "use client"
 
 /**
- * HowItWorks — redesigned with Jakob Nielsen's 10 Usability Heuristics.
+ * HowItWorks — enhanced with Jakob Nielsen's 10 Usability Heuristics.
  *
  * Heuristics applied:
- *   H1 – Animated progress line fills on scroll; prominent step numbers; completion checkmarks
- *   H2 – Concrete examples ("Busque 'encanador em São Paulo'"); realistic mini UI mockups
- *   H3 – Accordion on mobile; "Pular para resultados" quick link; back-to-top
+ *   H1 – Animated progress line fills on scroll; prominent step numbers; completion checkmarks; counter animations
+ *   H2 – Concrete examples; realistic mini UI mockups (search bar, comparison, calendar, stars)
+ *   H3 – Accordion on mobile with AnimatePresence; "Pular para resultados" quick link; back-to-top
  *   H4 – Consistent emerald gradient, card radius, button styles across all steps
  *   H5 – "Sem surpresas" tagline; "Sem compromisso" badge prevents anxiety
- *   H6 – Large gradient step icons; mini UI illustrations inside cards; numbered badges
- *   H7 – Clickable steps with CTAs; keyboard navigation (Enter/Space); quick-skip links
+ *   H6 – Large gradient step icons (size-16); mini UI illustrations inside cards; numbered badges
+ *   H7 – Clickable steps with CTAs; keyboard navigation; quick-skip link at top-right
  *   H8 – One sentence per step; visual metaphors over text; clean whitespace
  *   H9 – "Sem compromisso" reassurance badges on quote step
  *  H10 – Expandable details per step; tooltips on trust badges
@@ -22,7 +22,6 @@ import {
   CalendarCheck,
   Star,
   ArrowRight,
-  MapPin,
   ShieldCheck,
   Clock,
   CheckCircle2,
@@ -36,17 +35,11 @@ import {
   ThumbsUp,
   type LucideIcon,
 } from "lucide-react"
-import { motion, useScroll, useTransform } from "framer-motion"
+import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useUIStore } from "@/store"
 import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
 import { Button } from "@/components/ui/button"
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion"
 import {
   Tooltip,
   TooltipTrigger,
@@ -55,6 +48,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // Step definitions — concrete, real-world examples (H2 + H6)
+// Now with 4 steps: Busca → Compare → Agende → Avalie
 // ---------------------------------------------------------------------------
 
 interface StepDef {
@@ -65,6 +59,7 @@ interface StepDef {
   details: string
   miniIllustration: React.ReactNode
   ctaLabel: string
+  stat: { value: number; suffix: string; label: string }
 }
 
 const STEPS: StepDef[] = [
@@ -74,8 +69,9 @@ const STEPS: StepDef[] = [
     oneLiner: "Encontre prestadores verificados perto de você.",
     example: "Busque 'encanador em São Paulo'",
     details:
-      "Use filtros por categoria, distância e avaliação para encontrar exatamente o que precisa. Compare perfis lado a lado no mapa interativo.",
+      "Use filtros por categoria, distância e avaliação para encontrar exatamente o que precisa. Veja resultados no mapa interativo.",
     ctaLabel: "Buscar prestadores",
+    stat: { value: 50, suffix: "+", label: "categorias" },
     miniIllustration: (
       <div className="flex w-full flex-col gap-1.5">
         {/* Search bar mockup */}
@@ -103,42 +99,77 @@ const STEPS: StepDef[] = [
     ),
   },
   {
-    icon: CalendarCheck,
-    title: "Agende ou peça orçamento",
-    oneLiner: "Solicite um orçamento ou agende diretamente.",
-    example: "Peça orçamento para troca de torneira",
+    icon: GitCompare,
+    title: "Compare orçamentos",
+    oneLiner: "Receba e compare propostas lado a lado.",
+    example: "Compare 3 orçamentos em 24h",
     details:
-      "Receba orçamentos sem compromisso de vários prestadores ou agende diretamente pelo calendário disponível. Confirmação instantânea.",
+      "Receba orçamentos sem compromisso de vários prestadores. Compare preços, avaliações e disponibilidade lado a lado antes de decidir.",
     ctaLabel: "Pedir orçamento",
+    stat: { value: 3, suffix: "", label: "orçamentos em 24h" },
     miniIllustration: (
       <div className="flex w-full flex-col gap-1.5">
-        {/* Quote card mockup */}
-        <div className="rounded-lg border bg-white p-2 shadow-sm dark:bg-slate-800">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold">Orçamento</span>
-            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-              Sem compromisso
-            </span>
-          </div>
-          <div className="mt-1 flex items-center gap-2">
-            <CalendarCheck className="size-4 text-emerald-500" />
-            <div className="flex flex-col">
-              <span className="text-[9px] text-muted-foreground">Disponível</span>
-              <span className="text-[10px] font-medium">Amanhã, 14h</span>
+        {/* Comparison cards mockup */}
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="rounded-md border bg-white p-1.5 shadow-sm dark:bg-slate-800">
+            <div className="flex items-center gap-1">
+              <div className="size-4 rounded-full bg-emerald-100 dark:bg-emerald-900/40" />
+              <span className="text-[8px] font-semibold">João S.</span>
             </div>
-            <span className="ml-auto text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-              R$ 150
-            </span>
+            <div className="mt-1 flex items-center gap-0.5">
+              {[1,2,3,4,5].map(i => (
+                <Star key={i} className={cn("size-2", i <= 4 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30")} />
+              ))}
+            </div>
+            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">R$ 180</span>
+          </div>
+          <div className="rounded-md border border-emerald-300 bg-emerald-50/80 p-1.5 shadow-sm ring-1 ring-emerald-200 dark:border-emerald-700 dark:bg-emerald-950/30 dark:ring-emerald-800">
+            <div className="flex items-center gap-1">
+              <div className="size-4 rounded-full bg-teal-100 dark:bg-teal-900/40" />
+              <span className="text-[8px] font-semibold">Maria L.</span>
+            </div>
+            <div className="mt-1 flex items-center gap-0.5">
+              {[1,2,3,4,5].map(i => (
+                <Star key={i} className={cn("size-2", i <= 5 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30")} />
+              ))}
+            </div>
+            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">R$ 150</span>
+            <span className="mt-0.5 block text-[7px] font-semibold text-emerald-600 dark:text-emerald-400">Melhor avaliação</span>
           </div>
         </div>
-        {/* Action row */}
-        <div className="flex gap-1.5">
-          <div className="flex flex-1 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 py-1 text-[9px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
-            <CheckCircle2 className="mr-1 size-2.5" />
-            Aceitar
+        <div className="flex items-center justify-center gap-1 text-[8px] text-muted-foreground">
+          <GitCompare className="size-2.5" />
+          Compare lado a lado
+        </div>
+      </div>
+    ),
+  },
+  {
+    icon: CalendarCheck,
+    title: "Agende com confiança",
+    oneLiner: "Solicite um orçamento ou agende diretamente.",
+    example: "Agende para amanhã às 14h",
+    details:
+      "Receba orçamentos sem compromisso de vários prestadores ou agende diretamente pelo calendário disponível. Confirmação instantânea.",
+    ctaLabel: "Agendar agora",
+    stat: { value: 24, suffix: "h", label: "para confirmar" },
+    miniIllustration: (
+      <div className="flex w-full flex-col gap-1.5">
+        {/* Calendar mockup */}
+        <div className="rounded-lg border bg-white p-2 shadow-sm dark:bg-slate-800">
+          <div className="mb-1 text-center text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Março 2025</div>
+          <div className="grid grid-cols-7 gap-0.5 text-center text-[8px] text-muted-foreground">
+            {["S","T","Q","Q","S","S","D"].map(d => <span key={d}>{d}</span>)}
+            {Array.from({length: 15}, (_, i) => (
+              <span key={i} className={cn(
+                "py-0.5 rounded",
+                i === 11 ? "bg-emerald-500 text-white font-bold" : ""
+              )}>{i + 1}</span>
+            ))}
           </div>
-          <div className="flex flex-1 items-center justify-center rounded-md border bg-muted/50 py-1 text-[9px] font-medium text-muted-foreground">
-            Comparar
+          <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 dark:border-emerald-800 dark:bg-emerald-950/30">
+            <CheckCircle2 className="size-3 text-emerald-500" />
+            <span className="text-[9px] font-medium text-emerald-700 dark:text-emerald-300">12 Mar, 14:00 — Confirmado</span>
           </div>
         </div>
       </div>
@@ -152,6 +183,7 @@ const STEPS: StepDef[] = [
     details:
       "Após o serviço, avalie o prestador de 1 a 5 estrelas. Comentários verificados ajudam outros usuários. Pagamento seguro garantido.",
     ctaLabel: "Cadastrar grátis",
+    stat: { value: 98, suffix: "%", label: "satisfação" },
     miniIllustration: (
       <div className="flex w-full flex-col gap-1.5">
         {/* Rating mockup */}
@@ -220,13 +252,57 @@ const TRUST_ITEMS = [
 const staggerContainer = {
   hidden: {},
   show: {
-    transition: { staggerChildren: 0.15 },
+    transition: { staggerChildren: 0.12 },
   },
 }
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
+}
+
+// ---------------------------------------------------------------------------
+// Parallax blobs — different scroll speeds for layered depth
+// ---------------------------------------------------------------------------
+
+function ParallaxBlobs({ scrollYProgress }: { scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"] }) {
+  const y1 = useTransform(scrollYProgress, [0, 1], [0, -60])
+  const y2 = useTransform(scrollYProgress, [0, 1], [0, 40])
+  const y3 = useTransform(scrollYProgress, [0, 1], [0, -30])
+
+  return (
+    <>
+      <motion.div
+        aria-hidden
+        className="absolute -top-32 right-0 size-80 rounded-full bg-emerald-200/40 blur-3xl dark:bg-emerald-800/20"
+        style={{ y: y1 }}
+      />
+      <motion.div
+        aria-hidden
+        className="absolute -bottom-24 -left-16 size-96 rounded-full bg-teal-200/30 blur-3xl dark:bg-teal-800/15"
+        style={{ y: y2 }}
+      />
+      <motion.div
+        aria-hidden
+        className="absolute top-1/2 left-1/3 size-64 rounded-full bg-emerald-100/30 blur-3xl dark:bg-emerald-900/10"
+        style={{ y: y3 }}
+      />
+    </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Step stat counter — animates the number inside step description
+// ---------------------------------------------------------------------------
+
+function StepStat({ value, suffix, label }: { value: number; suffix: string; label: string }) {
+  const { ref, value: displayed } = useCountUp(value, { duration: 1200 })
+  return (
+    <span className="inline-flex items-baseline gap-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+      <span ref={ref}>{displayed}</span>{suffix}
+      <span className="ml-0.5 font-normal text-muted-foreground">{label}</span>
+    </span>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -249,11 +325,14 @@ export default function HowItWorks({
     target: sectionRef,
     offset: ["start end", "end start"],
   })
-  const lineProgress = useTransform(scrollYProgress, [0.1, 0.6], [0, 100])
+  const lineProgress = useTransform(scrollYProgress, [0.1, 0.6], [0, 1])
 
-  const { ref: countRef, value: countValue } = useCountUp(3, {
+  const { ref: countRef, value: countValue } = useCountUp(4, {
     duration: 800,
   })
+
+  // Mobile accordion state for AnimatePresence
+  const [expandedStep, setExpandedStep] = React.useState<number>(0)
 
   // Keyboard handler for step cards (H7)
   const handleStepKeyDown = React.useCallback(
@@ -262,7 +341,7 @@ export default function HowItWorks({
         e.preventDefault()
         if (idx === 0 && onBrowseProviders) {
           onBrowseProviders()
-        } else if (idx === 2) {
+        } else if (idx === 3) {
           openAuth("register", "CLIENT")
         } else {
           const el = document.getElementById("vitrine-resultados")
@@ -294,15 +373,27 @@ export default function HowItWorks({
         }}
       />
 
+      {/* Parallax decorative blobs */}
+      <ParallaxBlobs scrollYProgress={scrollYProgress} />
+
       <div ref={ref} className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
-        {/* ── Header ────────────────────────────────────────────────── */}
+        {/* ── Header with quick-skip link (H7) ──────────────────────── */}
         <motion.header
           initial={{ opacity: 0, y: 20 }}
           animate={visible ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5 }}
           className="relative mx-auto mb-14 max-w-2xl text-center sm:mb-16"
         >
-          {/* "3 passos simples" badge (H1) */}
+          {/* "Pular para resultados" quick-skip button at top-right (H7) */}
+          <a
+            href="#vitrine-resultados"
+            className="absolute right-0 top-0 hidden items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/80 px-3 py-1 text-[10px] font-medium text-emerald-700 transition-all hover:bg-emerald-100 hover:shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60 sm:inline-flex"
+          >
+            <MessageSquareQuote className="size-3" />
+            Pular para resultados
+          </a>
+
+          {/* "4 passos simples" badge (H1) */}
           <motion.span
             initial={{ opacity: 0, scale: 0.9 }}
             animate={visible ? { opacity: 1, scale: 1 } : {}}
@@ -328,11 +419,11 @@ export default function HowItWorks({
           </span>
         </motion.header>
 
-        {/* ── Desktop: 3 connected cards with animated line ───────── */}
+        {/* ── Desktop: 4 connected cards with animated line ───────── */}
         <div className="hidden sm:block">
           <div className="relative">
-            {/* Animated SVG connector line between cards (H1) */}
-            <div className="absolute top-24 left-0 z-0 w-full">
+            {/* Animated SVG connector line between cards (H1) — progressive fill */}
+            <div className="absolute top-20 left-0 z-0 w-full">
               <svg
                 aria-hidden
                 className="h-2 w-full"
@@ -342,42 +433,42 @@ export default function HowItWorks({
                 <defs>
                   <linearGradient id="conn-gradient" x1="0" x2="1" y1="0" y2="0">
                     <stop offset="0%" stopColor="rgb(16,185,129)" />
+                    <stop offset="50%" stopColor="rgb(20,184,166)" />
                     <stop offset="100%" stopColor="rgb(13,148,136)" />
                   </linearGradient>
                 </defs>
                 {/* Background dashed line */}
                 <line
-                  x1="170"
+                  x1="125"
                   y1="4"
-                  x2="830"
+                  x2="875"
                   y2="4"
                   stroke="currentColor"
                   className="text-emerald-200 dark:text-emerald-900/60"
                   strokeWidth="2"
                   strokeDasharray="8 6"
                 />
-                {/* Animated progress line */}
+                {/* Animated progress line — fills on scroll */}
                 <motion.line
-                  x1="170"
+                  x1="125"
                   y1="4"
-                  x2="830"
+                  x2="875"
                   y2="4"
                   stroke="url(#conn-gradient)"
                   strokeWidth="3"
                   strokeLinecap="round"
-                  strokeDasharray="8 6"
                   pathLength={1}
                   style={{ pathLength: lineProgress }}
                 />
               </svg>
             </div>
 
-            {/* Step cards grid */}
+            {/* Step cards grid — 4 columns */}
             <motion.div
               variants={staggerContainer}
               initial="hidden"
               animate={visible ? "show" : "hidden"}
-              className="relative z-10 grid grid-cols-3 gap-6 lg:gap-8"
+              className="relative z-10 grid grid-cols-2 gap-6 lg:grid-cols-4 lg:gap-6"
             >
               {STEPS.map((step, idx) => (
                 <StepCardDesktop
@@ -389,7 +480,7 @@ export default function HowItWorks({
                   onCtaClick={() => {
                     if (idx === 0 && onBrowseProviders) {
                       onBrowseProviders()
-                    } else if (idx === 2) {
+                    } else if (idx === 3) {
                       openAuth("register", "CLIENT")
                     } else {
                       const el = document.getElementById("vitrine-resultados")
@@ -402,7 +493,7 @@ export default function HowItWorks({
           </div>
         </div>
 
-        {/* ── Mobile: vertical timeline with accordion (H3) ──────── */}
+        {/* ── Mobile: vertical timeline with AnimatePresence accordion (H3) ──────── */}
         <div className="sm:hidden">
           <div className="relative">
             {/* Vertical timeline track */}
@@ -410,91 +501,117 @@ export default function HowItWorks({
               aria-hidden
               className="absolute top-0 bottom-0 left-7 w-0.5 rounded-full bg-emerald-200 dark:bg-emerald-900/60"
             />
-            {/* Animated progress fill */}
+            {/* Animated progress fill based on expanded step */}
             <motion.div
               aria-hidden
               className="absolute top-0 left-7 w-0.5 rounded-full bg-gradient-to-b from-emerald-500 to-teal-600"
               initial={{ height: 0 }}
-              animate={visible ? { height: "100%" } : {}}
-              transition={{ duration: 1.5, ease: "easeOut" as const }}
+              animate={{ height: `${((expandedStep + 1) / STEPS.length) * 100}%` }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
             />
           </div>
 
-          <Accordion
-            type="single"
-            collapsible
-            defaultValue="step-0"
-            className="space-y-0"
-          >
-            {STEPS.map((step, idx) => (
-              <AccordionItem
-                key={step.title}
-                value={`step-${idx}`}
-                className="border-b-0"
-              >
+          <div className="space-y-0">
+            {STEPS.map((step, idx) => {
+              const Icon = step.icon
+              const isExpanded = expandedStep === idx
+              return (
                 <motion.div
+                  key={step.title}
                   variants={fadeUp}
                   initial="hidden"
                   animate={visible ? "show" : "hidden"}
-                  className="relative flex items-start gap-4 pb-6"
+                  className="relative flex items-start gap-4 pb-5"
                 >
-                  {/* Timeline node */}
-                  <div className="relative z-10 flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25">
-                    <step.icon className="size-6 text-white" />
-                  </div>
+                  {/* Timeline node — size-16 circle with gradient */}
+                  <button
+                    onClick={() => setExpandedStep(isExpanded ? -1 : idx)}
+                    className="relative z-10 flex size-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25 transition-transform active:scale-95"
+                    aria-expanded={isExpanded}
+                    aria-label={`Passo ${idx + 1}: ${step.title}`}
+                  >
+                    <Icon className="size-7 text-white" />
+                  </button>
                   {/* Step number badge */}
-                  <span className="absolute left-10 top-0 z-20 flex size-6 items-center justify-center rounded-full bg-white text-xs font-bold text-emerald-600 shadow-sm ring-2 ring-emerald-200 dark:bg-slate-900 dark:text-emerald-400 dark:ring-emerald-800">
+                  <span className="absolute left-12 top-0 z-20 flex size-6 items-center justify-center rounded-full bg-white text-xs font-bold text-emerald-600 shadow-sm ring-2 ring-emerald-200 dark:bg-slate-900 dark:text-emerald-400 dark:ring-emerald-800">
                     {idx + 1}
                   </span>
 
                   {/* Step content */}
-                  <div className="min-w-0 flex-1 pt-0">
-                    <AccordionTrigger className="py-0 text-left text-sm font-semibold hover:no-underline">
+                  <div className="min-w-0 flex-1 pt-1">
+                    <button
+                      onClick={() => setExpandedStep(isExpanded ? -1 : idx)}
+                      className="flex w-full items-center justify-between text-left text-sm font-semibold"
+                    >
                       {step.title}
-                    </AccordionTrigger>
-                    <AccordionContent className="pb-0 pt-2">
-                      <p className="text-xs text-muted-foreground">
-                        {step.oneLiner}
-                      </p>
-                      <p className="mt-1 text-[10px] italic text-emerald-600 dark:text-emerald-400">
-                        Ex: {step.example}
-                      </p>
-                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                        {step.details}
-                      </p>
-                      {/* Mini illustration (H6) */}
-                      <div className="mt-3 rounded-xl border bg-muted/20 p-3">
-                        {step.miniIllustration}
-                      </div>
-                      {/* "Sem compromisso" badge on quote step (H9) */}
-                      {idx === 1 && (
-                        <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                          <Handshake className="size-3" />
-                          Sem compromisso
-                        </span>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mt-3 h-8 gap-1.5 rounded-lg border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
-                        onClick={() => {
-                          if (idx === 0 && onBrowseProviders) onBrowseProviders()
-                          else if (idx === 2) openAuth("register", "CLIENT")
-                          else {
-                            const el = document.getElementById("vitrine-resultados")
-                            if (el) el.scrollIntoView({ behavior: "smooth" })
-                          }
-                        }}
+                      <motion.span
+                        animate={{ rotate: isExpanded ? 180 : 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="ml-2 text-muted-foreground"
                       >
-                        {step.ctaLabel}
-                        <ChevronRight className="size-3" />
-                      </Button>
-                    </AccordionContent>
+                        <ChevronRight className="size-3.5 -rotate-90" />
+                      </motion.span>
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                          className="overflow-hidden"
+                        >
+                          <div className="pb-2 pt-2">
+                            <p className="text-xs text-muted-foreground">
+                              {step.oneLiner}
+                            </p>
+                            <p className="mt-1 text-[10px] italic text-emerald-600 dark:text-emerald-400">
+                              Ex: {step.example}
+                            </p>
+                            {/* Step stat counter (H1) */}
+                            <div className="mt-1.5">
+                              <StepStat {...step.stat} />
+                            </div>
+                            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                              {step.details}
+                            </p>
+                            {/* Mini illustration (H6) */}
+                            <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+                              {step.miniIllustration}
+                            </div>
+                            {/* "Sem compromisso" badge on compare step (H9) */}
+                            {idx === 1 && (
+                              <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                <Handshake className="size-3" />
+                                Sem compromisso
+                              </span>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mt-3 h-8 gap-1.5 rounded-lg border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                              onClick={() => {
+                                if (idx === 0 && onBrowseProviders) onBrowseProviders()
+                                else if (idx === 3) openAuth("register", "CLIENT")
+                                else {
+                                  const el = document.getElementById("vitrine-resultados")
+                                  if (el) el.scrollIntoView({ behavior: "smooth" })
+                                }
+                              }}
+                            >
+                              {step.ctaLabel}
+                              <ChevronRight className="size-3" />
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </motion.div>
-              </AccordionItem>
-            ))}
-          </Accordion>
+              )
+            })}
+          </div>
         </div>
 
         {/* ── Guarantee strip with trust badges (H10 tooltips) ────── */}
@@ -582,12 +699,12 @@ export default function HowItWorks({
         >
           <a
             href="#vitrine-resultados"
-            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
+            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400 sm:hidden"
           >
             <MessageSquareQuote className="size-3" />
             Pular para resultados
           </a>
-          <span className="text-muted-foreground/30">·</span>
+          <span className="text-muted-foreground/30 sm:hidden">·</span>
           <button
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
@@ -604,7 +721,8 @@ export default function HowItWorks({
 }
 
 // ---------------------------------------------------------------------------
-// Desktop step card — with prominent step number, mini UI mockup, hover lift
+// Desktop step card — with size-16 step number, gradient border on hover,
+// mini UI mockup, counter stat, hover lift
 // ---------------------------------------------------------------------------
 
 function StepCardDesktop({
@@ -625,75 +743,87 @@ function StepCardDesktop({
   return (
     <motion.div
       variants={fadeUp}
-      className="group relative z-10 flex cursor-pointer flex-col items-center rounded-2xl border bg-card p-6 text-center shadow-sm transition-all duration-300 hover:-translate-y-2 hover:border-emerald-300 hover:shadow-xl hover:shadow-emerald-500/10 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/20 dark:hover:border-emerald-700 dark:hover:shadow-emerald-500/5 lg:p-8"
+      className="group relative z-10 cursor-pointer"
       role="button"
       tabIndex={0}
       onKeyDown={onKeyDown}
       onClick={onCtaClick}
     >
-      {/* Large step number badge (H6) */}
-      <div className="absolute -top-4 left-1/2 z-20 -translate-x-1/2">
-        <span className="flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-lg font-extrabold text-white shadow-lg shadow-emerald-500/30 ring-4 ring-white dark:ring-slate-900">
-          {index + 1}
-        </span>
+      {/* Gradient border wrapper — visible on hover */}
+      <div className="rounded-2xl bg-gradient-to-br from-transparent via-transparent to-transparent p-[1.5px] transition-all duration-300 group-hover:from-emerald-400 group-hover:via-teal-400 group-hover:to-emerald-500 group-hover:shadow-xl group-hover:shadow-emerald-500/10">
+        <div className="flex h-full flex-col items-center rounded-2xl border bg-card p-5 text-center shadow-sm transition-colors duration-300 group-hover:border-transparent lg:p-6">
+          {/* Large step number badge — size-16 (H6) */}
+          <div className="absolute -top-5 left-1/2 z-20 -translate-x-1/2">
+            <span className="flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-xl font-extrabold text-white shadow-lg shadow-emerald-500/30 ring-4 ring-white dark:ring-slate-900">
+              {index + 1}
+            </span>
+          </div>
+
+          {/* Icon with gradient background + completion checkmark (H1) */}
+          <div className="relative mt-6">
+            <span className="flex size-18 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 transition-transform duration-300 group-hover:scale-110">
+              <Icon className="size-8" />
+            </span>
+            {/* Completion checkmark */}
+            <motion.span
+              initial={{ scale: 0, opacity: 0 }}
+              animate={visible ? { scale: 1, opacity: 1 } : {}}
+              transition={{ duration: 0.3, delay: 0.6 + index * 0.15, type: "spring", stiffness: 300 }}
+              className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-emerald-500 shadow-md"
+              aria-hidden
+            >
+              <CheckCircle2 className="size-3.5 text-white" />
+            </motion.span>
+          </div>
+
+          {/* Title */}
+          <h3 className="mt-4 text-sm font-bold tracking-tight lg:text-base">
+            {step.title}
+          </h3>
+
+          {/* One-liner description (H8 — minimalism) */}
+          <p className="mt-1 text-xs text-muted-foreground lg:text-sm">
+            {step.oneLiner}
+          </p>
+
+          {/* Step stat counter (H1) */}
+          <div className="mt-2">
+            <StepStat {...step.stat} />
+          </div>
+
+          {/* Mini UI illustration area (H2 + H6) */}
+          <div className="mt-3 flex w-full items-stretch justify-center rounded-xl border bg-muted/20 p-3 transition-colors duration-200 group-hover:border-emerald-200 group-hover:bg-emerald-50/40 dark:group-hover:border-emerald-800/50 dark:group-hover:bg-emerald-950/20">
+            {step.miniIllustration}
+          </div>
+
+          {/* Concrete example (H2) */}
+          <p className="mt-2 text-[9px] italic text-emerald-600 dark:text-emerald-400">
+            Ex: {step.example}
+          </p>
+
+          {/* "Sem compromisso" reassurance on compare step (H5 + H9) */}
+          {index === 1 && (
+            <span className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/60 px-2 py-0.5 text-[9px] font-medium text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+              <Handshake className="size-2.5" />
+              Sem compromisso
+            </span>
+          )}
+
+          {/* Per-step CTA (H7) */}
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-3 h-7 gap-1.5 rounded-lg border-emerald-200 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+            onClick={(e) => {
+              e.stopPropagation()
+              onCtaClick()
+            }}
+          >
+            {step.ctaLabel}
+            <ChevronRight className="size-3" />
+          </Button>
+        </div>
       </div>
-
-      {/* Icon with gradient background + completion checkmark (H1) */}
-      <div className="relative mt-4">
-        <span className="flex size-18 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 transition-transform duration-300 group-hover:scale-110">
-          <Icon className="size-8" />
-        </span>
-        {/* Completion checkmark */}
-        <motion.span
-          initial={{ scale: 0, opacity: 0 }}
-          animate={visible ? { scale: 1, opacity: 1 } : {}}
-          transition={{ duration: 0.3, delay: 0.6 + index * 0.2, type: "spring", stiffness: 300 }}
-          className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-emerald-500 shadow-md"
-          aria-hidden
-        >
-          <CheckCircle2 className="size-3.5 text-white" />
-        </motion.span>
-      </div>
-
-      {/* Title */}
-      <h3 className="mt-5 text-base font-bold tracking-tight lg:text-lg">
-        {step.title}
-      </h3>
-
-      {/* One-liner description (H8 — minimalism) */}
-      <p className="mt-1.5 text-sm text-muted-foreground">{step.oneLiner}</p>
-
-      {/* Mini UI illustration area (H2 + H6) */}
-      <div className="mt-4 flex w-full items-stretch justify-center rounded-xl border bg-muted/20 p-3 transition-colors duration-200 group-hover:border-emerald-200 group-hover:bg-emerald-50/40 dark:group-hover:border-emerald-800/50 dark:group-hover:bg-emerald-950/20">
-        {step.miniIllustration}
-      </div>
-
-      {/* Concrete example (H2) */}
-      <p className="mt-3 text-[10px] italic text-emerald-600 dark:text-emerald-400">
-        Ex: {step.example}
-      </p>
-
-      {/* "Sem compromisso" reassurance on quote step (H5 + H9) */}
-      {index === 1 && (
-        <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/60 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300">
-          <Handshake className="size-2.5" />
-          Sem compromisso
-        </span>
-      )}
-
-      {/* Per-step CTA (H7) */}
-      <Button
-        size="sm"
-        variant="outline"
-        className="mt-4 h-8 gap-1.5 rounded-lg border-emerald-200 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
-        onClick={(e) => {
-          e.stopPropagation()
-          onCtaClick()
-        }}
-      >
-        {step.ctaLabel}
-        <ChevronRight className="size-3" />
-      </Button>
     </motion.div>
   )
 }

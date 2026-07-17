@@ -30,9 +30,12 @@ import {
 
 import Topbar from "./topbar"
 import Hero from "./hero"
+import SocialProofTicker from "./social-proof-ticker"
 import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
 import HowItWorks from "./how-it-works"
+import QuickQuoteCalculator from "./quick-quote-calculator"
+import PartnersTrust from "./partners-trust"
 import Testimonials from "./testimonials"
 import FAQ from "./faq"
 import WhySeverinno from "./why-severinno"
@@ -176,6 +179,7 @@ export default function Vitrine() {
       />
 
       <main className="flex-1">
+        {/* 1. Hero — trust engine, search, CTA */}
         <Hero
           query={filters.q}
           onQueryChange={(q) => setFilters((f) => ({ ...f, q }))}
@@ -189,6 +193,10 @@ export default function Vitrine() {
           }}
         />
 
+        {/* 2. SocialProofTicker — H1/H6: live activity, immediate trust */}
+        <SocialProofTicker />
+
+        {/* 3. CategoryShowcase — browse by category */}
         <CategoryShowcase
           categories={categories}
           activeId={filters.categoryId}
@@ -198,6 +206,7 @@ export default function Vitrine() {
 
         <RecentlyViewed />
 
+        {/* 4. VitrineResults — provider listings */}
         <VitrineResults
           providers={providersQuery.data?.items ?? []}
           total={providersQuery.data?.total ?? 0}
@@ -220,16 +229,28 @@ export default function Vitrine() {
           radiusExpanded={providersQuery.data?.radiusExpanded}
         />
 
+        {/* 5. HowItWorks — process explanation */}
         <HowItWorks />
 
+        {/* 5b. QuickQuoteCalculator — instant price estimate */}
+        <QuickQuoteCalculator />
+
+        {/* 6. PartnersTrust — H6/H9: press logos, trust signals */}
+        <PartnersTrust />
+
+        {/* 7. Testimonials — social proof from real users */}
         <Testimonials />
 
+        {/* 8. WhySeverinno — value proposition */}
         <WhySeverinno />
 
+        {/* 9. ProviderSpotlight — featured provider */}
         <ProviderSpotlight />
 
+        {/* 10. FAQ — common questions */}
         <FAQ />
 
+        {/* 11. CtaBanner — final conversion CTA */}
         <CtaBanner />
       </main>
 
