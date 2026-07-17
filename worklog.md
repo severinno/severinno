@@ -2430,3 +2430,33 @@ Stage Summary:
 - Produced: `/home/z/my-project/src/app/api/stats/activity/route.ts`
 - Endpoint returns JSON with `activities[]`, `browsingNow`, `quotesToday`
 - Ready for consumption by the Hero section's live activity feed
+
+---
+Task ID: 6
+Agent: main-agent
+Task: Redesign provider profile modal to be compact, clean, and minimalist
+
+Work Log:
+- Analyzed user-uploaded reference image using VLM — compact modal design with inline header, stat pills, tab navigation, service cards
+- Read existing provider-profile-modal.tsx (962 lines) — had glassmorphism hero cover, floating decorative orbs, large stat cards, elaborate service cards with carousels
+- Completely rewrote provider-profile-modal.tsx with minimalist design:
+  - **Compact header**: Inline avatar (size-14) + name + verification badge + rating/location metadata, no hero cover
+  - **Inline stat pills**: Small horizontal badges (Serviços, Distância, Membro desde) replacing the large 4-column stat grid
+  - **Removed decorative elements**: No glassmorphism, no floating orbs, no gradient overlays, no "Online" ping indicator
+  - **Cleaner action buttons**: Simple icon buttons in header (share, favorite, close) instead of glassmorphism circles
+  - **Simpler tabs**: Compact tab navigation with emerald underline active state
+  - **Compact service cards**: Horizontal layout with thumbnail, info, and inline action buttons — no carousel, no gradient price tags
+  - **Category grouping**: Custom collapsible sections with chevron icons replacing Accordion component
+  - **Compact reviews**: Smaller rating summary, smaller review cards with minimal padding
+  - **Compact hours**: Simple day rows instead of full table, inline status badges
+  - **Fixed Portuguese grammar bug**: Changed "avaliaçãoões" to "avaliações"
+  - **Fixed React hooks rule**: Moved useEffect before early returns in ServicesTab
+- Verified with agent-browser — all 4 tabs render correctly (Serviços, Sobre, Avaliações, Expediente)
+- Lint passes with zero errors
+
+Stage Summary:
+- Provider profile modal completely redesigned to be compact, clean, and minimalist
+- Reduced from 962 lines to ~570 lines while maintaining all functionality
+- Modal width reduced from sm:max-w-3xl to sm:max-w-2xl
+- All decorative/glassmorphism elements removed for cleaner aesthetic
+- Core interactions preserved: favorite, share, quote, booking buttons all functional

@@ -1,19 +1,17 @@
 "use client"
 
 /**
- * ProviderProfileModal — fully redesigned, modern, interactive profile.
+ * ProviderProfileModal — compact, clean, minimalist redesign.
  *
- * Design goals:
- *   - Feels like a premium app profile, not a boring admin panel
- *   - Hero cover with glassmorphism overlay + floating avatar
- *   - Quick stats bar (completed, rating, response, member since)
- *   - Trust badges (verified, reviews, secure payment)
- *   - Modern tabs with smooth transitions
- *   - Service cards with gradient price tags + hover effects
- *   - Reviews with star distribution + individual comment cards
- *   - Hours with visual open/closed indicators
- *   - Sticky glassmorphism footer CTA
- *   - Live "online" indicator
+ * Design principles:
+ *   - Minimal chrome, maximum content
+ *   - Compact header with inline identity
+ *   - Horizontal stat pills
+ *   - Clean tabs with subtle underline
+ *   - Tight service cards with minimal decoration
+ *   - Simple review cards
+ *   - Compact hours grid
+ *   - Fixed bottom CTA
  */
 
 import * as React from "react"
@@ -21,26 +19,19 @@ import { useQuery } from "@tanstack/react-query"
 import {
   BadgeCheck,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   Clock,
-  ChevronRight,
-  CreditCard,
-  Eye,
   Heart,
   Loader2,
   MapPin,
-  MessageCircle,
   Navigation,
   Phone,
   Quote,
   Share2,
-  ShieldCheck,
   Star,
-  Timer,
-  TrendingUp,
-  UserPlus,
   Wrench,
   X,
-  Zap,
 } from "lucide-react"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
@@ -59,19 +50,6 @@ import {
 } from "@/components/ui/sheet"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion"
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel"
-import {
   Avatar,
   AvatarImage,
   AvatarFallback,
@@ -81,29 +59,13 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 
 import { useUIStore } from "@/store/ui"
-import { useAuthStore } from "@/store/auth"
 import { useRecentlyViewedStore } from "@/store/recently-viewed"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { apiGet, type ProviderDetail, type ProviderService } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import {
-  SERVICE_UNIT_LABELS,
   SERVICE_UNIT_SHORT,
   WEEKDAYS,
   WEEKDAYS_SHORT,
@@ -153,7 +115,7 @@ export function ProviderProfileModal() {
         await navigator.share({ title: provider.name, text: `Conheça ${provider.name} no Severinno`, url })
       } else {
         await navigator.clipboard.writeText(url)
-        toast.success("Link copiado para a área de transferência.")
+        toast.success("Link copiado.")
       }
     } catch { /* user dismissed */ }
   }
@@ -196,7 +158,7 @@ export function ProviderProfileModal() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-3xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
+      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogTitle className="sr-only">{provider?.name ?? "Perfil do prestador"}</DialogTitle>
         <DialogDescription className="sr-only">Detalhes do prestador de serviços.</DialogDescription>
         {content}
@@ -206,7 +168,7 @@ export function ProviderProfileModal() {
 }
 
 // ---------------------------------------------------------------------------
-// Profile Body — the main layout
+// Profile Body — compact layout
 // ---------------------------------------------------------------------------
 
 function ProfileBody({
@@ -229,100 +191,59 @@ function ProfileBody({
   onBooking: (serviceId?: string) => void
 }) {
   return (
-    <div className="flex max-h-[85vh] flex-col sm:max-h-[85vh]">
-      {/* ═══ Hero Cover + Identity ═══ */}
-      <div className="relative shrink-0">
-        {/* Cover image — taller, more immersive */}
-        <div className="relative h-44 w-full overflow-hidden bg-gradient-to-br from-emerald-700 via-emerald-600 to-teal-600 sm:h-52">
-          {provider?.coverUrl ? (
-            <img src={provider.coverUrl} alt="" className="size-full object-cover" loading="lazy" />
-          ) : (
-            /* Decorative pattern when no cover */
-            <div aria-hidden className="absolute inset-0 opacity-20" style={{
-              backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)",
-              backgroundSize: "20px 20px",
-            }} />
-          )}
-          {/* Multi-layer gradient for depth */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/15 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-emerald-900/30 to-transparent" />
-
-          {/* Floating decorative orbs */}
-          <div aria-hidden className="absolute top-6 right-8 size-20 rounded-full bg-emerald-300/15 blur-2xl" />
-          <div aria-hidden className="absolute bottom-4 left-12 size-16 rounded-full bg-teal-200/10 blur-xl" />
-        </div>
-
-        {/* Top-right actions — glassmorphism */}
-        <div className="absolute top-3 right-3 flex gap-2">
-          <button onClick={onClose} aria-label="Fechar" className="inline-flex size-9 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md transition-all hover:bg-black/50 hover:scale-105">
-            <X className="size-4" />
-          </button>
-          <button onClick={onShare} aria-label="Compartilhar" className="inline-flex size-9 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-md transition-all hover:bg-black/50 hover:scale-105">
-            <Share2 className="size-4" />
-          </button>
-          <button onClick={onFavorite} aria-label={favorited ? "Remover dos favoritos" : "Adicionar aos favoritos"} aria-pressed={favorited} className={cn("inline-flex size-9 items-center justify-center rounded-full backdrop-blur-md transition-all hover:scale-105", favorited ? "bg-rose-500 text-white hover:bg-rose-600" : "bg-black/30 text-white hover:bg-black/50")}>
-            <Heart className={cn("size-4", favorited && "fill-current")} />
-          </button>
-        </div>
-
-        {/* "Online" indicator — top left */}
-        {provider?.verified && (
-          <div className="absolute top-3 left-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/80 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-white opacity-75" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-white" />
-              </span>
-              Online
-            </span>
-          </div>
-        )}
-
-        {/* Avatar + identity — overlaps cover */}
-        <div className="px-5 sm:px-6 -mt-14 sm:-mt-16 relative z-10 flex items-end gap-4">
-          <div className="relative">
-            <Avatar className="size-24 sm:size-28 rounded-2xl border-4 border-card shadow-xl ring-1 ring-black/5">
+    <div className="flex max-h-[90vh] flex-col">
+      {/* ── Compact Header ── */}
+      <div className="shrink-0 px-5 pt-4 pb-3 sm:px-6">
+        <div className="flex items-start gap-3">
+          {/* Avatar */}
+          <div className="relative shrink-0">
+            <Avatar className="size-14 rounded-xl border border-border shadow-sm">
               {provider?.avatarUrl ? (
                 <AvatarImage src={provider.avatarUrl} alt={provider.name} />
               ) : null}
-              <AvatarFallback className="rounded-2xl bg-gradient-to-br from-emerald-100 to-emerald-200 text-emerald-700 text-3xl font-bold dark:from-emerald-900 dark:to-emerald-800 dark:text-emerald-200">
+              <AvatarFallback className="rounded-xl bg-emerald-100 text-emerald-700 text-lg font-bold dark:bg-emerald-950 dark:text-emerald-300">
                 {provider?.name?.[0]?.toUpperCase() ?? "?"}
               </AvatarFallback>
             </Avatar>
-            {/* Verified badge pinned to avatar */}
             {provider?.verified && (
-              <span className="absolute -bottom-1 -right-1 flex size-7 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md ring-3 ring-card">
-                <BadgeCheck className="size-4" />
+              <span className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full bg-emerald-500 text-white ring-2 ring-background">
+                <BadgeCheck className="size-3" />
               </span>
             )}
           </div>
 
-          <div className="flex-1 min-w-0 pb-2">
+          {/* Name + meta */}
+          <div className="flex-1 min-w-0">
             {loading ? (
               <div className="space-y-2">
-                <Skeleton className="h-6 w-48 rounded" />
-                <Skeleton className="h-4 w-32 rounded" />
+                <Skeleton className="h-5 w-40 rounded" />
+                <Skeleton className="h-3.5 w-28 rounded" />
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-xl sm:text-2xl font-bold leading-tight truncate">
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-base font-semibold leading-tight truncate">
                     {provider?.name}
                   </h2>
+                  {provider?.verified && (
+                    <Badge className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0 text-[9px] font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800">
+                      <BadgeCheck className="size-2.5" /> Verificado
+                    </Badge>
+                  )}
                 </div>
-                <div className="mt-1.5 flex items-center gap-3 flex-wrap text-sm text-muted-foreground">
+                <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
                   {provider && (
-                    <StarRatingDisplay value={provider.rating} count={provider.reviewCount} size={14} />
+                    <StarRatingDisplay value={provider.rating} count={provider.reviewCount} size={11} />
                   )}
                   {provider?.city && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="size-3.5" />
+                    <span className="inline-flex items-center gap-0.5">
+                      <MapPin className="size-3" />
                       {provider.city}{provider.state ? `/${provider.state}` : ""}
                     </span>
                   )}
                   {provider?.distanceKm != null && (
-                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
-                      <Navigation className="size-3.5" />
+                    <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                      <Navigation className="size-3" />
                       {provider.distanceKm < 1
                         ? `${Math.round(provider.distanceKm * 1000)} m`
                         : `${provider.distanceKm.toFixed(1)} km`}
@@ -332,73 +253,67 @@ function ProfileBody({
               </>
             )}
           </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={onShare} aria-label="Compartilhar" className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+              <Share2 className="size-4" />
+            </button>
+            <button onClick={onFavorite} aria-label={favorited ? "Remover dos favoritos" : "Adicionar aos favoritos"} aria-pressed={favorited} className={cn("inline-flex size-8 items-center justify-center rounded-lg transition-colors", favorited ? "text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+              <Heart className={cn("size-4", favorited && "fill-current")} />
+            </button>
+            <button onClick={onClose} aria-label="Fechar" className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
+
+        {/* ── Inline stat pills ── */}
+        {!loading && provider && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StatPill
+              icon={<Wrench className="size-3" />}
+              value={provider.services.length}
+              label="Serviços"
+            />
+            {provider.distanceKm != null && (
+              <StatPill
+                icon={<Navigation className="size-3" />}
+                value={provider.distanceKm < 1 ? `${Math.round(provider.distanceKm * 1000)} m` : `${provider.distanceKm.toFixed(1)} km`}
+                label="Distância"
+              />
+            )}
+            <StatPill
+              icon={<Calendar className="size-3" />}
+              value={provider.memberSince ? new Date(provider.memberSince).getFullYear().toString() : "—"}
+              label="Membro desde"
+            />
+          </div>
+        )}
       </div>
 
-      {/* ═══ Quick Stats Bar ═══ */}
-      {!loading && provider && (
-        <div className="mx-5 sm:mx-6 mt-3 grid grid-cols-4 gap-2">
-          <QuickStat icon={<Star className="size-3.5" />} value={provider.rating.toFixed(1)} label="Nota" accent />
-          <QuickStat icon={<Zap className="size-3.5" />} value={provider.completedBookings ?? 0} label="Concluídos" />
-          <QuickStat icon={<Timer className="size-3.5" />} value="~2h" label="Resposta" />
-          <QuickStat icon={<UserPlus className="size-3.5" />} value={provider.memberSince ? new Date(provider.memberSince).getFullYear().toString() : "—"} label="Membro" />
-        </div>
-      )}
+      <Separator />
 
-      {/* ═══ Trust Badges ═══ */}
-      {!loading && provider && (
-        <TooltipProvider delayDuration={300}>
-          <div className="mx-5 sm:mx-6 mt-3 flex flex-wrap gap-2">
-            {provider.verified && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800">
-                    <BadgeCheck className="size-3.5" /> Verificado
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Documentos validados e identidade confirmada</TooltipContent>
-              </Tooltip>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-800">
-                  <Star className="size-3.5" /> Avaliações reais
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Avaliações de clientes após a conclusão do serviço</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-800">
-                  <ShieldCheck className="size-3.5" /> Pagamento seguro
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Pagamento só é liberado após você marcar como concluído</TooltipContent>
-            </Tooltip>
-          </div>
-        </TooltipProvider>
-      )}
-
-      {/* ═══ Tabs ═══ */}
-      <div className="flex-1 overflow-hidden mt-4">
+      {/* ── Tabs ── */}
+      <div className="flex-1 overflow-hidden">
         <Tabs defaultValue="services" className="flex h-full flex-col">
           <div className="px-5 sm:px-6 shrink-0">
-            <TabsList className="flex w-full justify-start gap-0.5 h-auto overflow-x-auto bg-transparent p-0 border-b border-border">
-              {["services", "about", "reviews", "hours"].map((tab) => (
+            <TabsList className="flex w-full justify-start gap-0 h-auto bg-transparent p-0 border-b border-border">
+              {(["services", "about", "reviews", "hours"] as const).map((tab) => (
                 <TabsTrigger
                   key={tab}
                   value={tab}
-                  className="relative rounded-none border-b-2 border-transparent px-4 pb-2.5 pt-1 text-sm font-medium text-muted-foreground transition-colors data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:text-foreground"
+                  className="relative rounded-none border-b-2 border-transparent px-3 pb-2 pt-1.5 text-xs font-medium text-muted-foreground transition-colors data-[state=active]:border-emerald-600 data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:text-foreground"
                 >
                   {tab === "services" ? "Serviços" : tab === "about" ? "Sobre" : tab === "reviews" ? "Avaliações" : "Expediente"}
                   {tab === "services" && provider && provider.services.length > 0 && (
-                    <span className="ml-1.5 inline-flex size-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                      {provider.services.length}
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      ({provider.services.length})
                     </span>
                   )}
                   {tab === "reviews" && provider && provider.reviewCount > 0 && (
-                    <span className="ml-1.5 inline-flex size-5 items-center justify-center rounded-full bg-amber-100 text-[10px] font-bold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                      {provider.reviewCount}
+                    <span className="ml-1 text-[10px] text-muted-foreground">
+                      ({provider.reviewCount})
                     </span>
                   )}
                 </TabsTrigger>
@@ -407,38 +322,38 @@ function ProfileBody({
           </div>
 
           <ScrollArea className="flex-1">
-            <TabsContent value="services" className="p-5 sm:p-6 pt-5 m-0 focus-visible:outline-none">
+            <TabsContent value="services" className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none">
               <ServicesTab services={provider?.services ?? []} loading={loading} onQuote={onQuote} onBooking={onBooking} />
             </TabsContent>
-            <TabsContent value="about" className="p-5 sm:p-6 pt-5 m-0 focus-visible:outline-none">
+            <TabsContent value="about" className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none">
               <AboutTab provider={provider} loading={loading} />
             </TabsContent>
-            <TabsContent value="reviews" className="p-5 sm:p-6 pt-5 m-0 focus-visible:outline-none">
+            <TabsContent value="reviews" className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none">
               <ReviewsTab reviews={provider?.reviews ?? []} rating={provider?.rating} reviewCount={provider?.reviewCount} loading={loading} />
             </TabsContent>
-            <TabsContent value="hours" className="p-5 sm:p-6 pt-5 m-0 focus-visible:outline-none">
+            <TabsContent value="hours" className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none">
               <HoursTab availability={provider?.availability ?? []} loading={loading} />
             </TabsContent>
           </ScrollArea>
         </Tabs>
       </div>
 
-      {/* ═══ Sticky Footer CTA — glassmorphism ═══ */}
-      <div className="shrink-0 border-t bg-background/80 backdrop-blur-xl px-5 py-3 sm:px-6">
-        <div className="flex gap-3">
+      {/* ── Sticky Footer CTA ── */}
+      <div className="shrink-0 border-t bg-background px-5 py-2.5 sm:px-6">
+        <div className="flex gap-2">
           <Button
             onClick={() => onQuote()}
             variant="outline"
-            className="flex-1 h-12 rounded-xl border-emerald-500/50 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-500 dark:text-emerald-400 dark:hover:bg-emerald-950/40 text-sm font-semibold transition-all"
+            className="flex-1 h-10 rounded-lg text-xs font-semibold transition-colors"
           >
-            <Quote className="size-4" />
+            <Quote className="size-3.5" />
             Pedir orçamento
           </Button>
           <Button
             onClick={() => onBooking()}
-            className="flex-1 h-12 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-sm font-semibold shadow-lg shadow-emerald-500/20 transition-all"
+            className="flex-1 h-10 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-xs font-semibold transition-colors"
           >
-            <Calendar className="size-4" />
+            <Calendar className="size-3.5" />
             Agendar serviço
           </Button>
         </div>
@@ -448,40 +363,29 @@ function ProfileBody({
 }
 
 // ---------------------------------------------------------------------------
-// Quick Stat — mini metric badge
+// Stat Pill — inline compact metric
 // ---------------------------------------------------------------------------
 
-function QuickStat({
+function StatPill({
   icon,
   value,
   label,
-  accent,
 }: {
   icon: React.ReactNode
   value: string | number
   label: string
-  accent?: boolean
 }) {
   return (
-    <div className={cn(
-      "flex flex-col items-center gap-1 rounded-xl px-2 py-2.5 text-center ring-1",
-      accent
-        ? "bg-emerald-50 ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-800"
-        : "bg-muted/30 ring-border/50",
-    )}>
-      <span className={cn("flex size-7 items-center justify-center rounded-full", accent ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
-        {icon}
-      </span>
-      <span className={cn("text-sm font-bold tabular-nums", accent ? "text-emerald-700 dark:text-emerald-300" : "text-foreground")}>
-        {value}
-      </span>
-      <span className="text-[10px] text-muted-foreground leading-tight">{label}</span>
-    </div>
+    <span className="inline-flex items-center gap-1.5 rounded-md bg-muted/60 px-2.5 py-1 text-[11px] ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="font-semibold text-foreground tabular-nums">{value}</span>
+      <span className="text-muted-foreground">{label}</span>
+    </span>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Services tab — grouped by category, modern cards
+// Services tab — flat list, compact cards grouped by category
 // ---------------------------------------------------------------------------
 
 function ServicesTab({
@@ -495,57 +399,96 @@ function ServicesTab({
   onQuote: (serviceId?: string) => void
   onBooking: (serviceId?: string) => void
 }) {
+  // Group by category
+  const groups = React.useMemo(() => {
+    const g = new Map<string, ProviderService[]>()
+    for (const s of services) {
+      const key = s.category?.name ?? "Outros"
+      const arr = g.get(key) ?? []
+      arr.push(s)
+      g.set(key, arr)
+    }
+    return g
+  }, [services])
+
+  const [expandedCats, setExpandedCats] = React.useState<Set<string>>(() => new Set(groups.keys()))
+
+  // Sync when services change
+  React.useEffect(() => {
+    setExpandedCats(new Set(groups.keys()))
+  }, [groups])
+
   if (loading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-28 w-full rounded-xl" />
+          <Skeleton key={i} className="h-20 w-full rounded-lg" />
         ))}
       </div>
     )
   }
 
   if (services.length === 0) {
-    return <EmptyState icon={Wrench} title="Nenhum serviço cadastrado" description="Este prestador ainda não publicou serviços." />
+    return <EmptyState icon={Wrench} title="Nenhum serviço" description="Este prestador ainda não publicou serviços." />
   }
 
-  // Group by category
-  const groups = new Map<string, ProviderService[]>()
-  for (const s of services) {
-    const key = s.category?.name ?? "Outros"
-    const arr = groups.get(key) ?? []
-    arr.push(s)
-    groups.set(key, arr)
+  const toggleCat = (cat: string) => {
+    setExpandedCats((prev) => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
   }
-  const groupEntries = Array.from(groups.entries())
 
   return (
-    <Accordion type="multiple" defaultValue={groupEntries.map(([k]) => k)} className="w-full space-y-2">
-      {groupEntries.map(([categoryName, items]) => (
-        <AccordionItem key={categoryName} value={categoryName} className="rounded-xl border bg-card overflow-hidden ring-1 ring-black/[0.03]">
-          <AccordionTrigger className="hover:no-underline px-4 py-3 hover:bg-muted/30 transition-colors">
-            <div className="flex w-full items-center justify-between pr-2">
+    <div className="space-y-3">
+      {Array.from(groups.entries()).map(([categoryName, items]) => {
+        const expanded = expandedCats.has(categoryName)
+        return (
+          <div key={categoryName}>
+            {/* Category header */}
+            <button
+              type="button"
+              onClick={() => toggleCat(categoryName)}
+              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left hover:bg-muted/50 transition-colors"
+            >
               <div className="flex items-center gap-2">
-                <span className="flex size-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-                  <Wrench className="size-4" />
+                <span className="flex size-6 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                  <Wrench className="size-3" />
                 </span>
-                <span className="font-semibold text-sm">{categoryName}</span>
+                <span className="text-xs font-semibold">{categoryName}</span>
+                <span className="text-[10px] text-muted-foreground">({items.length})</span>
               </div>
-              <Badge variant="secondary" className="mr-1 text-[10px]">
-                {items.length}
-              </Badge>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-4 pb-3">
-            <div className="grid gap-3">
-              {items.map((s) => (
-                <ServiceCard key={s.id} service={s} onQuote={() => onQuote(s.id)} onBooking={() => onBooking(s.id)} />
-              ))}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-      ))}
-    </Accordion>
+              {expanded ? (
+                <ChevronUp className="size-3.5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="size-3.5 text-muted-foreground" />
+              )}
+            </button>
+
+            {/* Service items */}
+            <AnimatePresence>
+              {expanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-1.5 pb-1">
+                    {items.map((s) => (
+                      <ServiceCard key={s.id} service={s} onQuote={() => onQuote(s.id)} onBooking={() => onBooking(s.id)} />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -561,76 +504,63 @@ function ServiceCard({
   const photos = service.photos ?? []
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="group rounded-xl border bg-background overflow-hidden ring-1 ring-black/[0.03] hover:ring-emerald-200 hover:shadow-md transition-all"
-    >
-      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
+    <div className="group rounded-lg border bg-card overflow-hidden hover:border-emerald-200 dark:hover:border-emerald-800 transition-colors">
+      <div className="flex items-center gap-3 p-3">
+        {/* Photo thumbnail */}
+        {photos.length > 0 ? (
+          <div className="size-12 shrink-0 overflow-hidden rounded-md bg-muted">
+            <img src={photos[0]} alt={service.title} className="size-full object-cover" loading="lazy" />
+          </div>
+        ) : (
+          <div className="size-12 shrink-0 rounded-md bg-muted flex items-center justify-center text-muted-foreground">
+            <Wrench className="size-4" />
+          </div>
+        )}
+
+        {/* Info */}
         <div className="flex-1 min-w-0">
-          <h4 className="font-semibold text-sm leading-tight group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">{service.title}</h4>
-          <p className="mt-1 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
-            {service.description ?? "—"}
-          </p>
-          {/* Price tag — gradient */}
-          <div className="mt-3 inline-flex items-baseline gap-1 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-1.5 ring-1 ring-emerald-200/60 dark:from-emerald-950/40 dark:to-teal-950/30 dark:ring-emerald-800/40">
-            <span className="text-base font-bold text-emerald-700 dark:text-emerald-400">
+          <h4 className="text-xs font-semibold leading-tight truncate group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
+            {service.title}
+          </h4>
+          {service.description && (
+            <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1 leading-relaxed">
+              {service.description}
+            </p>
+          )}
+          <div className="mt-1 inline-flex items-baseline gap-0.5">
+            <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
               {formatBRL(service.basePrice)}
             </span>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground">
               /{SERVICE_UNIT_SHORT[service.unit as keyof typeof SERVICE_UNIT_SHORT] ?? "un"}
             </span>
           </div>
         </div>
 
-        {photos.length > 0 && (
-          <div className="w-full sm:w-28 shrink-0">
-            <Carousel opts={{ loop: false, dragFree: false }} className="w-full">
-              <CarouselContent>
-                {photos.map((url, i) => (
-                  <CarouselItem key={i} className="basis-full">
-                    <div className="aspect-video sm:aspect-square w-full overflow-hidden rounded-lg bg-muted">
-                      <img src={url} alt={`${service.title} — foto ${i + 1}`} className="size-full object-cover" loading="lazy" />
-                    </div>
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-              {photos.length > 1 && (
-                <>
-                  <CarouselPrevious className="size-6 -left-2" />
-                  <CarouselNext className="size-6 -right-2" />
-                </>
-              )}
-            </Carousel>
-          </div>
-        )}
+        {/* Actions */}
+        <div className="flex flex-col gap-1 shrink-0">
+          <Button size="sm" variant="ghost" onClick={onQuote} className="h-7 rounded-md px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40">
+            <Quote className="size-3" /> Orçamento
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onBooking} className="h-7 rounded-md px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40">
+            <Calendar className="size-3" /> Agendar
+          </Button>
+        </div>
       </div>
-
-      <Separator />
-      <div className="grid grid-cols-2 gap-1 p-1.5">
-        <Button size="sm" variant="ghost" onClick={onQuote} className="h-9 rounded-lg text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40 font-medium text-xs">
-          <Quote className="size-3.5" /> Orçamento
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onBooking} className="h-9 rounded-lg text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40 font-medium text-xs">
-          <Calendar className="size-3.5" /> Agendar
-        </Button>
-      </div>
-    </motion.div>
+    </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// About tab — bio, address, coverage, contact
+// About tab — clean info sections
 // ---------------------------------------------------------------------------
 
 function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: boolean }) {
   if (loading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-4 w-3/4 rounded" />
-        <Skeleton className="h-4 w-2/3 rounded" />
-        <Skeleton className="h-4 w-1/2 rounded" />
+      <div className="space-y-2">
+        <Skeleton className="h-3 w-3/4 rounded" />
+        <Skeleton className="h-3 w-2/3 rounded" />
       </div>
     )
   }
@@ -638,74 +568,65 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
   const radius = provider?.radiusKm
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 text-sm">
       {/* Bio */}
-      <section>
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-          <span className="flex size-5 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-            <Eye className="size-3" />
-          </span>
-          Sobre
-        </h3>
-        <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-foreground/90">
-          {provider?.bio || "Sem descrição cadastrada."}
+      {provider?.bio ? (
+        <p className="text-sm leading-relaxed whitespace-pre-line text-foreground/90">
+          {provider.bio}
         </p>
-      </section>
+      ) : (
+        <p className="text-xs text-muted-foreground italic">Sem descrição cadastrada.</p>
+      )}
 
       <Separator />
 
-      {/* Address + Coverage */}
-      <section className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border bg-card p-4 ring-1 ring-black/[0.03]">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Endereço</h3>
-          <div className="flex items-start gap-3 text-sm">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-              <MapPin className="size-4" />
-            </div>
-            <span className="leading-relaxed">
+      {/* Info grid */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {/* Address */}
+        <div className="flex items-start gap-2.5">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            <MapPin className="size-3.5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Endereço</p>
+            <p className="mt-0.5 text-xs leading-relaxed">
               {provider?.address ?? "—"}
               {provider?.district ? `, ${provider.district}` : ""}
               <br />
               {provider?.city}
               {provider?.state ? `/${provider.state}` : ""}
               {provider?.cep ? ` · CEP ${provider.cep}` : ""}
-            </span>
+            </p>
           </div>
         </div>
-        <div className="rounded-xl border bg-card p-4 ring-1 ring-black/[0.03]">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Área de cobertura</h3>
-          <div className="flex items-start gap-3 text-sm">
-            <div className="relative mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-emerald-50 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:ring-emerald-800">
-              <div className="absolute size-2 rounded-full bg-emerald-500" />
-              <div className="absolute rounded-full border border-emerald-400/60 dark:border-emerald-700/60" style={{ width: 24, height: 24 }} />
-            </div>
-            <span className="leading-relaxed">
-              Atende em um raio de{" "}
-              <strong className="text-emerald-700 dark:text-emerald-400">
-                {radius != null ? `${radius} km` : "—"}
-              </strong>{" "}
-              da sua base.
-            </span>
+
+        {/* Coverage */}
+        <div className="flex items-start gap-2.5">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            <Navigation className="size-3.5" />
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Área de cobertura</p>
+            <p className="mt-0.5 text-xs leading-relaxed">
+              Raio de <strong className="text-emerald-700 dark:text-emerald-400">{radius != null ? `${radius} km` : "—"}</strong>
+            </p>
           </div>
         </div>
-      </section>
+      </div>
 
       {/* Contact */}
       {provider?.whatsapp && (
         <>
           <Separator />
-          <section>
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Contato</h3>
-            <div className="flex items-center gap-3">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
-                <Phone className="size-4" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">WhatsApp</p>
-                <p className="text-xs text-muted-foreground">{provider.whatsapp}</p>
-              </div>
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <Phone className="size-3.5" />
             </div>
-          </section>
+            <div>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">WhatsApp</p>
+              <p className="mt-0.5 text-xs">{provider.whatsapp}</p>
+            </div>
+          </div>
         </>
       )}
     </div>
@@ -713,7 +634,7 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
 }
 
 // ---------------------------------------------------------------------------
-// Reviews tab — distribution + individual reviews
+// Reviews tab — compact
 // ---------------------------------------------------------------------------
 
 function ReviewsTab({
@@ -729,17 +650,17 @@ function ReviewsTab({
 }) {
   if (loading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-28 w-full rounded-xl" />
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-20 w-full rounded-xl" />
+      <div className="space-y-3">
+        <Skeleton className="h-16 w-full rounded-lg" />
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Skeleton key={i} className="h-14 w-full rounded-lg" />
         ))}
       </div>
     )
   }
 
   if (!reviews || reviews.length === 0) {
-    return <EmptyState icon={Star} title="Sem avaliações ainda" description="Quando este prestador concluir serviços, as avaliações dos clientes aparecerão aqui." />
+    return <EmptyState icon={Star} title="Sem avaliações" description="As avaliações aparecerão aqui após a conclusão de serviços." />
   }
 
   const distribution = [5, 4, 3, 2, 1].map((star) => {
@@ -750,70 +671,68 @@ function ReviewsTab({
   const avg = rating ?? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
 
   return (
-    <div className="space-y-5">
-      {/* Summary card */}
-      <div className="flex items-center gap-5 rounded-xl border bg-card p-5 ring-1 ring-black/[0.03]">
+    <div className="space-y-4">
+      {/* Summary row */}
+      <div className="flex items-center gap-4">
         <div className="text-center shrink-0">
-          <p className="text-4xl font-bold leading-none tabular-nums text-foreground">
-            {avg.toFixed(1)}
-          </p>
-          <StarRatingDisplay value={avg} showCount={false} size={14} className="mt-2 justify-center" />
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {reviewCount ?? reviews.length}{" "}
-            avaliação{(reviewCount ?? reviews.length) === 1 ? "" : "ões"}
+          <p className="text-2xl font-bold tabular-nums">{avg.toFixed(1)}</p>
+          <StarRatingDisplay value={avg} showCount={false} size={11} className="mt-0.5 justify-center" />
+          <p className="mt-0.5 text-[10px] text-muted-foreground">
+            {reviewCount ?? reviews.length} {(reviewCount ?? reviews.length) === 1 ? "avaliação" : "avaliações"}
           </p>
         </div>
-        <Separator orientation="vertical" className="h-20" />
-        <div className="flex-1 grid gap-2">
+        <div className="flex-1 grid gap-1.5">
           {distribution.map((d) => (
-            <div key={d.star} className="flex items-center gap-2 text-xs">
-              <span className="w-3 text-muted-foreground tabular-nums">{d.star}</span>
-              <Star className="size-3 fill-amber-400 text-amber-400" strokeWidth={0} />
-              <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-muted">
+            <div key={d.star} className="flex items-center gap-1.5 text-[10px]">
+              <span className="w-2 text-muted-foreground tabular-nums">{d.star}</span>
+              <Star className="size-2.5 fill-amber-400 text-amber-400" strokeWidth={0} />
+              <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${d.pct}%` }}
-                  transition={{ duration: 0.6, ease: "easeOut" }}
-                  className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-amber-400 to-amber-300"
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                  className="absolute inset-y-0 left-0 rounded-full bg-amber-400"
                 />
               </div>
-              <span className="w-6 text-right text-muted-foreground tabular-nums">{d.count}</span>
+              <span className="w-4 text-right text-muted-foreground tabular-nums">{d.count}</span>
             </div>
           ))}
         </div>
       </div>
 
+      <Separator />
+
       {/* Review cards */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         {reviews.map((r, idx) => (
           <motion.div
             key={r.id}
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.05, duration: 0.25 }}
-            className="rounded-xl border bg-card p-4 ring-1 ring-black/[0.03] hover:ring-emerald-200 transition-all"
+            transition={{ delay: idx * 0.04, duration: 0.2 }}
+            className="rounded-lg border bg-card p-3"
           >
-            <div className="flex items-center gap-3">
-              <Avatar className="size-10 rounded-xl">
+            <div className="flex items-center gap-2.5">
+              <Avatar className="size-8 rounded-lg">
                 {r.author?.avatarUrl ? (
                   <AvatarImage src={r.author.avatarUrl} alt={r.author.name} />
                 ) : null}
-                <AvatarFallback className="rounded-xl bg-emerald-100 text-emerald-700 text-xs font-semibold dark:bg-emerald-950 dark:text-emerald-300">
+                <AvatarFallback className="rounded-lg bg-muted text-[10px] font-semibold">
                   {r.author?.name?.[0]?.toUpperCase() ?? "?"}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{r.author?.name ?? "Cliente"}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <StarRatingDisplay value={r.rating} size={12} showCount={false} />
-                  <span className="text-[11px] text-muted-foreground">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium truncate">{r.author?.name ?? "Cliente"}</p>
+                  <span className="text-[10px] text-muted-foreground shrink-0">
                     {new Date(r.createdAt).toLocaleDateString("pt-BR")}
                   </span>
                 </div>
+                <StarRatingDisplay value={r.rating} size={10} showCount={false} className="mt-0.5" />
               </div>
             </div>
             {r.comment && (
-              <p className="mt-3 text-sm text-muted-foreground leading-relaxed pl-[52px]">
+              <p className="mt-2 text-xs text-muted-foreground leading-relaxed pl-[42px]">
                 {r.comment}
               </p>
             )}
@@ -825,7 +744,7 @@ function ReviewsTab({
 }
 
 // ---------------------------------------------------------------------------
-// Hours tab — visual calendar-style
+// Hours tab — compact grid
 // ---------------------------------------------------------------------------
 
 function HoursTab({
@@ -835,7 +754,7 @@ function HoursTab({
   availability: ProviderDetail["availability"]
   loading: boolean
 }) {
-  if (loading) return <Skeleton className="h-48 w-full rounded-xl" />
+  if (loading) return <Skeleton className="h-40 w-full rounded-lg" />
 
   const byDay = new Map<number, { start: string; end: string }[]>()
   for (const a of availability ?? []) {
@@ -846,7 +765,7 @@ function HoursTab({
 
   const today = new Date().getDay()
 
-  // Check if currently open
+  // Currently open?
   const now = new Date()
   const todaySlots = byDay.get(today) ?? []
   const currentMinutes = now.getHours() * 60 + now.getMinutes()
@@ -857,78 +776,66 @@ function HoursTab({
   })
 
   return (
-    <div className="space-y-4">
-      {/* Current status indicator */}
+    <div className="space-y-3">
+      {/* Status pill */}
       <div className={cn(
-        "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold",
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold",
         currentlyOpen
-          ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800"
-          : "bg-red-50 text-red-700 ring-1 ring-red-200 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-800",
+          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+          : "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300",
       )}>
-        <span className="relative flex size-2">
-          {currentlyOpen && <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
-          <span className={cn("relative inline-flex size-2 rounded-full", currentlyOpen ? "bg-emerald-500" : "bg-red-500")} />
-        </span>
+        <span className={cn("size-1.5 rounded-full", currentlyOpen ? "bg-emerald-500" : "bg-red-500")} />
         {currentlyOpen ? "Aberto agora" : "Fechado agora"}
       </div>
 
-      {/* Weekly schedule */}
-      <div className="rounded-xl border overflow-hidden ring-1 ring-black/[0.03]">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-1/3">Dia</TableHead>
-              <TableHead>Horários</TableHead>
-              <TableHead className="w-24 text-right">Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {WEEKDAYS.map((day, i) => {
-              const slots = byDay.get(i) ?? []
-              const open = slots.length > 0
-              const isToday = i === today
-              return (
-                <TableRow key={day} className={cn("transition-colors", isToday && "bg-emerald-50/50 dark:bg-emerald-950/20")}>
-                  <TableCell className="font-medium">
-                    <span className="hidden sm:inline">{day}</span>
-                    <span className="sm:hidden">{WEEKDAYS_SHORT[i]}</span>
-                    {isToday && (
-                      <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
-                        hoje
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {slots.length === 0 ? (
-                      <span className="text-muted-foreground text-xs">—</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {slots.map((s, idx) => (
-                          <Badge key={idx} variant="secondary" className="font-mono text-xs rounded-md">
-                            {s.start}–{s.end}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge
-                      variant={open ? "default" : "outline"}
-                      className={cn(
-                        "text-[11px]",
-                        open
-                          ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {open ? "Aberto" : "Fechado"}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
+      {/* Compact day rows */}
+      <div className="rounded-lg border overflow-hidden divide-y">
+        {WEEKDAYS.map((day, i) => {
+          const slots = byDay.get(i) ?? []
+          const open = slots.length > 0
+          const isToday = i === today
+          return (
+            <div
+              key={day}
+              className={cn(
+                "flex items-center justify-between px-3 py-2 text-xs transition-colors",
+                isToday && "bg-emerald-50/50 dark:bg-emerald-950/20",
+              )}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-medium truncate">
+                  <span className="hidden sm:inline">{day}</span>
+                  <span className="sm:hidden">{WEEKDAYS_SHORT[i]}</span>
+                </span>
+                {isToday && (
+                  <Badge className="rounded px-1 py-0 text-[8px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                    hoje
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {slots.length === 0 ? (
+                  <span className="text-muted-foreground text-[11px]">—</span>
+                ) : (
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {slots.map((s) => `${s.start}–${s.end}`).join(", ")}
+                  </span>
+                )}
+                <Badge
+                  variant={open ? "default" : "outline"}
+                  className={cn(
+                    "text-[9px] px-1.5 py-0 rounded",
+                    open
+                      ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {open ? "Aberto" : "Fechado"}
+                </Badge>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -948,13 +855,13 @@ function EmptyState({
   description: string
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-      <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 p-4 text-emerald-600 dark:from-emerald-950/40 dark:to-teal-950/30 dark:text-emerald-400 ring-1 ring-emerald-200/50 dark:ring-emerald-800/50">
-        <Icon className="size-8" />
+    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+      <div className="rounded-xl bg-muted p-3 text-muted-foreground">
+        <Icon className="size-5" />
       </div>
       <div>
-        <p className="text-sm font-semibold">{title}</p>
-        <p className="mt-1 text-xs text-muted-foreground max-w-xs">{description}</p>
+        <p className="text-xs font-semibold">{title}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground max-w-xs">{description}</p>
       </div>
     </div>
   )

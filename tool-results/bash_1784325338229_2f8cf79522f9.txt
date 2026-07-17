@@ -1,0 +1,1144 @@
+- generic
+  - banner
+    - button "Severinno — página inicial" [ref=e3]
+      - generic [ref=e24] focusable [tabindex]
+      - StaticText "Sever"
+      - StaticText "inno"
+      - StaticText "Verificado"
+    - generic
+      - textbox "Buscar prestadores" [ref=e25]
+      - StaticText "⌘K"
+    - button "Usar minha localização" [ref=e4]
+      - StaticText "Definir localização"
+    - button "Alternar tema" [ref=e5]
+    - button "Entrar" [ref=e6]
+    - button "Cadastrar" [ref=e7]
+  - main
+    - generic
+      - StaticText "Marketplace de serviços verificados"
+      - StaticText "6"
+      - StaticText " prestadores ativos agora"
+      - StaticText "25"
+      - StaticText " pessoas buscando"
+      - heading "Prestadores de serviço verificados, perto de você." [level=1, ref=e34]
+        - StaticText "Prestadores de serviço verificados, perto de você."
+      - paragraph
+        - StaticText "Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista, pintor e mais. Você escolhe o profissional."
+      - form
+        - textbox "Serviço buscado" [ref=e183]
+        - textbox "Localização" [ref=e184]
+        - button "Buscar" [ref=e105]
+      - StaticText "Mais buscados:"
+      - button "Encanador" [ref=e35]
+      - button "Eletricista" [ref=e36]
+      - button "Pintor" [ref=e37]
+      - button "Diarista" [ref=e38]
+      - button "Pedreiro" [ref=e39]
+      - button "Jardineiro" [ref=e40]
+      - button "Usar minha localização" [ref=e41]
+      - button "Cadastrar grátis" [ref=e42]
+      - button "Ver como funciona" [ref=e43]
+      - paragraph
+        - StaticText "Cadastro grátis · Orçamento sem compromisso · Você escolhe o profissional"
+      - list
+        - listitem "Documentos validados e identidade confirmada" [level=1, ref=e106]
+          - StaticText "Prestadores verificados"
+        - listitem "Avaliações de clientes após a conclusão do serviço" [level=1, ref=e107]
+          - StaticText "Avaliações reais"
+        - listitem "Pagamento só é liberado após você marcar como concluído" [level=1, ref=e108]
+          - StaticText "Pagamento seguro"
+      - generic
+        - StaticText "Atividade ao vivo"
+        - StaticText "25"
+        - StaticText " online"
+        - generic
+          - generic
+            - image "Maria A."
+            - StaticText "⭐"
+          - paragraph
+            - StaticText "Maria A. avaliou"
+          - paragraph
+            - StaticText "EletricaTech R."
+          - StaticText "13 h"
+          - generic
+            - image "Maria A."
+            - StaticText "📅"
+          - paragraph
+            - StaticText "Maria A. agendou"
+          - paragraph
+            - StaticText "curto-circuito em São Paulo"
+          - StaticText "13 h"
+          - generic
+            - image "João C."
+            - StaticText "⭐"
+          - paragraph
+            - StaticText "João C. avaliou"
+          - paragraph
+            - StaticText "EletricaTech R."
+          - StaticText "13 h"
+          - generic
+            - image "João C."
+            - StaticText "📅"
+          - paragraph
+            - StaticText "João C. agendou"
+          - paragraph
+            - StaticText "tomadas e interruptores em São Paulo"
+          - StaticText "13 h"
+          - generic
+            - image "Maria A."
+            - StaticText "⭐"
+          - paragraph
+            - StaticText "Maria A. avaliou"
+          - paragraph
+            - StaticText "Carlos E."
+          - StaticText "13 h"
+          - generic
+            - image "Maria A."
+            - StaticText "📅"
+          - paragraph
+            - StaticText "Maria A. agendou"
+          - paragraph
+            - StaticText "vazamento em São Paulo"
+          - StaticText "13 h"
+          - generic
+            - image "João C."
+            - StaticText "⭐"
+          - paragraph
+            - StaticText "João C. avaliou"
+          - paragraph
+            - StaticText "Carlos E."
+          - StaticText "13 h"
+        - StaticText "4"
+        - StaticText " concluídos"
+        - generic
+          - paragraph
+            - StaticText "Maria A. avaliou"
+          - paragraph
+            - StaticText "EletricaTech R."
+          - StaticText "13 h"
+        - paragraph
+          - StaticText "4.8"
+        - paragraph
+          - StaticText "4 avaliações"
+      - paragraph
+        - StaticText "5"
+      - paragraph
+        - StaticText "Prestadores verificados"
+      - paragraph
+        - StaticText "12"
+      - paragraph
+        - StaticText "Serviços cadastrados"
+      - paragraph
+        - StaticText "3"
+      - paragraph
+        - StaticText "Serviços concluídos"
+      - paragraph
+        - StaticText "4★"
+      - paragraph
+        - StaticText "Nota média das avaliações"
+    - region "Atividade recente na plataforma" [ref=e8]
+      - StaticText "Atividade recente"
+      - StaticText "Maria contratou um eletricista em São Paulo"
+      - StaticText "João avaliou ★★★★★ o prestador Ricardo"
+      - StaticText "Nova avaliação: 4.9 para Serviços de Pintura"
+      - StaticText "Ana pediu orçamento para encanador"
+      - StaticText "Pedro se cadastrou como prestador verificado"
+      - StaticText "12 orçamentos enviados hoje"
+      - StaticText "Maria contratou um eletricista em São Paulo"
+      - StaticText "João avaliou ★★★★★ o prestador Ricardo"
+      - StaticText "Nova avaliação: 4.9 para Serviços de Pintura"
+      - StaticText "Ana pediu orçamento para encanador"
+      - StaticText "Pedro se cadastrou como prestador verificado"
+      - StaticText "12 orçamentos enviados hoje"
+      - StaticText "Carlos agendou limpeza de quintal em Belo Horizonte"
+      - StaticText "Fernanda avaliou ★★★★★ o prestador José"
+      - StaticText "8 novos prestadores verificados esta semana"
+      - StaticText "Luciana contratou um pintor no Rio de Janeiro"
+      - StaticText "Orçamento aceito: reforma de banheiro em Curitiba"
+      - StaticText "5.200 serviços concluídos este mês"
+      - StaticText "Carlos agendou limpeza de quintal em Belo Horizonte"
+      - StaticText "Fernanda avaliou ★★★★★ o prestador José"
+      - StaticText "8 novos prestadores verificados esta semana"
+      - StaticText "Luciana contratou um pintor no Rio de Janeiro"
+      - StaticText "Orçamento aceito: reforma de banheiro em Curitiba"
+      - StaticText "5.200 serviços concluídos este mês"
+    - region "Categorias de serviços" [ref=e9]
+      - generic
+        - StaticText "Explore categorias"
+        - heading "Encontre o serviço ideal" [level=2, ref=e44]
+        - paragraph
+          - StaticText "Serviços verificados perto de você — 6 categorias disponíveis"
+        - StaticText "Mais buscadas"
+        - LayoutTable
+          - button "Alvenaria — buscar prestadores" [ref=e258]
+            - StaticText "Alvenaria"
+          - button "Elétrica — buscar prestadores" [ref=e259]
+            - StaticText "Elétrica"
+          - button "Hidráulica — buscar prestadores" [ref=e260]
+            - StaticText "Hidráulica"
+          - button "Pintura — buscar prestadores" [ref=e261]
+            - StaticText "Pintura"
+          - button "Pisos — buscar prestadores" [ref=e262]
+            - StaticText "Pisos"
+          - button "Pós-Obra — buscar prestadores" [ref=e263]
+            - StaticText "Pós-Obra"
+          - button "Residencial — buscar prestadores" [ref=e264]
+            - StaticText "Residencial"
+        - group
+          - button "Alvenaria — 18 prestadores" [ref=e109]
+            - StaticText "Alvenaria"
+            - StaticText "18"
+            - StaticText " prestadores"
+            - StaticText "Pedreiro, carpinteiro, azulejista"
+          - button "Elétrica — 37 prestadores" [ref=e110]
+            - StaticText "Elétrica"
+            - StaticText "37"
+            - StaticText " prestadores"
+            - StaticText "Encanador, eletricista, marido de aluguel"
+          - button "Hidráulica — 40 prestadores" [ref=e111]
+            - StaticText "Hidráulica"
+            - StaticText "40"
+            - StaticText " prestadores"
+            - StaticText "Encanador, eletricista, marido de aluguel"
+          - button "Pintura — 47 prestadores" [ref=e112]
+            - StaticText "Pintura"
+            - StaticText "47"
+            - StaticText " prestadores"
+            - StaticText "Encanador, eletricista, marido de aluguel"
+          - button "Pisos — 32 prestadores" [ref=e113]
+            - StaticText "Pisos"
+            - StaticText "32"
+            - StaticText " prestadores"
+            - StaticText "Pedreiro, carpinteiro, azulejista"
+          - button "Pós-Obra — 32 prestadores" [ref=e114]
+            - StaticText "Pós-Obra"
+            - StaticText "32"
+            - StaticText " prestadores"
+            - StaticText "Diarista, limpeza pesada, vidros"
+          - button "Residencial — 17 prestadores" [ref=e115]
+            - StaticText "Residencial"
+            - StaticText "17"
+            - StaticText " prestadores"
+            - StaticText "Diarista, limpeza pesada, vidros"
+    - StaticText "Vistos recentemente"
+    - paragraph
+      - StaticText "1 prestador que você visualizou"
+    - button "Limpar" [expanded=false, ref=e26]
+    - button "EletricaTech — Ricardo EletricaTech — Ricardo 5.0 · 2 aval. São Paulo Instalação de quadro de distribuição R$600,00 Ver perfil" [ref=e27]
+      - image "EletricaTech — Ricardo"
+      - paragraph
+        - StaticText "EletricaTech — Ricardo"
+      - StaticText "5.0"
+      - StaticText "·"
+      - StaticText "2"
+      - StaticText " aval."
+      - StaticText "São Paulo"
+      - StaticText "Instalação de quadro de distribuição"
+      - StaticText "R$600,00"
+      - StaticText "Ver perfil"
+    - region "Resultados da busca" [ref=e10]
+      - sectionheader
+        - heading "Filtros" [level=2, ref=e185]
+        - button "Limpar filtros" [ref=e186]
+      - LabelText
+        - StaticText "Buscar"
+      - textbox "Buscar" [ref=e187]
+      - LabelText
+        - StaticText "Raio de busca"
+      - StaticText "15"
+      - StaticText " km"
+      - generic "Raio de busca em quilômetros"
+        - slider [ref=e188]: 15
+      - StaticText "1 km"
+      - StaticText "50 km"
+      - LabelText
+        - StaticText "Categoria"
+      - combobox [expanded=false, ref=e116]: Todas as categorias
+        - generic [ref=e189] clickable [onclick]
+          - StaticText "Todas as categorias"
+      - LabelText
+        - StaticText "Ordenar por"
+      - radiogroup "Ordenar por"
+        - radio "Melhor avaliação" [checked=true, ref=e190]
+        - radio "Mais próximos" [checked=false, ref=e191]
+      - LabelText
+        - StaticText "Avaliação mínima"
+      - radiogroup [ref=e117] focusable [tabindex]
+        - LabelText [ref=e192] clickable [cursor:pointer]
+          - radio "Todas" [checked=true, ref=e265]
+          - StaticText "Todas"
+        - LabelText [ref=e193] clickable [cursor:pointer]
+          - radio "3+" [checked=false, ref=e266]
+          - StaticText "3+"
+        - LabelText [ref=e194] clickable [cursor:pointer]
+          - radio "4+" [checked=false, ref=e267]
+          - StaticText "4+"
+        - LabelText [ref=e195] clickable [cursor:pointer]
+          - radio "5" [checked=false, ref=e268]
+          - StaticText "5"
+      - LabelText [ref=e118] clickable [cursor:pointer]
+        - StaticText "Somente verificados"
+        - switch "Somente verificados" [checked=false, ref=e196]
+      - button "Ver 6 resultados" [disabled, ref=e119]
+        - StaticText "Ver 6 resultados"
+      - heading "6 prestadores encontrados" [level=2, ref=e28]
+        - StaticText "6 prestadores encontrados"
+      - paragraph
+        - StaticText "Exibindo 1–6 de 6"
+      - StaticText "Ordenado por:"
+      - StaticText "Melhor avaliação"
+      - tablist "Visualização"
+        - tab "Lista" [selected, ref=e45]
+          - StaticText "Lista"
+        - tab "Mapa" [ref=e46]
+          - StaticText "Mapa"
+      - generic
+        - generic
+          - image "Capa de EletricaTech — Ricardo"
+          - StaticText "Verificado"
+          - generic
+            - button "Adicionar EletricaTech — Ricardo à comparação" [ref=e197]
+            - button "Adicionar EletricaTech — Ricardo aos favoritos" [ref=e198]
+          - image "EletricaTech — Ricardo"
+        - button "Ver perfil de EletricaTech — Ricardo" [ref=e47]
+          - heading "EletricaTech — Ricardo" [level=3, ref=e120]
+            - StaticText "EletricaTech — Ricardo"
+        - generic
+          - StaticText "5.0"
+          - StaticText "("
+          - StaticText "2"
+          - StaticText ")"
+        - paragraph
+          - StaticText "a partir de R$25,00"
+        - StaticText "São Paulo"
+        - paragraph
+          - StaticText "Eletricista predial e residencial. Instalações elétricas, troca de quadros, manutenção preventiva e correção de curtos-circuitos. NR-10 atualizada."
+        - generic
+          - StaticText "2 serviços concluídos"
+        - generic
+          - StaticText "desde jul. de 2026"
+        - StaticText "Troca de tomadas e interruptores"
+        - StaticText " · a partir de "
+        - StaticText "R$25,00"
+        - heading "Tomadas e interruptores 1 serviço" [level=3, ref=e48]
+          - button "Tomadas e interruptores 1 serviço" [expanded=false, ref=e121]
+            - paragraph
+              - StaticText "Tomadas e interruptores"
+            - paragraph
+              - StaticText "1 serviço"
+        - heading "Curto-circuito 1 serviço" [level=3, ref=e49]
+          - button "Curto-circuito 1 serviço" [expanded=false, ref=e122]
+            - paragraph
+              - StaticText "Curto-circuito"
+            - paragraph
+              - StaticText "1 serviço"
+        - heading "Quadro elétrico 1 serviço" [level=3, ref=e50]
+          - button "Quadro elétrico 1 serviço" [expanded=false, ref=e123]
+            - paragraph
+              - StaticText "Quadro elétrico"
+            - paragraph
+              - StaticText "1 serviço"
+        - button "Orçamento" [ref=e51]
+        - button "Agendar" [ref=e52]
+      - generic
+        - generic
+          - image "Capa de Carlos Encanador"
+          - StaticText "Verificado"
+          - generic
+            - button "Adicionar Carlos Encanador à comparação" [ref=e199]
+            - button "Adicionar Carlos Encanador aos favoritos" [ref=e200]
+          - image "Carlos Encanador"
+        - button "Ver perfil de Carlos Encanador" [ref=e53]
+          - heading "Carlos Encanador" [level=3, ref=e124]
+            - StaticText "Carlos Encanador"
+        - generic
+          - StaticText "4.5"
+          - StaticText "("
+          - StaticText "2"
+          - StaticText ")"
+        - paragraph
+          - StaticText "a partir de R$120,00"
+        - StaticText "São Paulo"
+        - paragraph
+          - StaticText "Encanador com 15 anos de experiência em reparos hidráulicos, desentupimento e instalação de caixas de descarga. Atendo toda a zona sul de São Paulo."
+        - generic
+          - StaticText "2 serviços concluídos"
+        - generic
+          - StaticText "desde jul. de 2026"
+        - StaticText "Desentupimento de ralo e pia"
+        - StaticText " · a partir de "
+        - StaticText "R$120,00"
+        - heading "Desentupimento 1 serviço" [level=3, ref=e54]
+          - button "Desentupimento 1 serviço" [expanded=false, ref=e125]
+            - paragraph
+              - StaticText "Desentupimento"
+            - paragraph
+              - StaticText "1 serviço"
+        - heading "Vazamento 1 serviço" [level=3, ref=e55]
+          - button "Vazamento 1 serviço" [expanded=false, ref=e126]
+            - paragraph
+              - StaticText "Vazamento"
+            - paragraph
+              - StaticText "1 serviço"
+        - heading "Caixa de descarga 1 serviço" [level=3, ref=e56]
+          - button "Caixa de descarga 1 serviço" [expanded=false, ref=e127]
+            - paragraph
+              - StaticText "Caixa de descarga"
+            - paragraph
+              - StaticText "1 serviço"
+        - button "Orçamento" [ref=e57]
+        - button "Agendar" [ref=e58]
+      - generic
+        - generic
+          - image "Capa de Pinturas Lima"
+          - StaticText "Verificado"
+          - generic
+            - button "Adicionar Pinturas Lima à comparação" [ref=e201]
+            - button "Adicionar Pinturas Lima aos favoritos" [ref=e202]
+          - image "Pinturas Lima"
+        - button "Ver perfil de Pinturas Lima" [ref=e59]
+          - heading "Pinturas Lima" [level=3, ref=e128]
+            - StaticText "Pinturas Lima"
+        - generic
+          - StaticText "—"
+          - StaticText "("
+          - StaticText "0"
+          - StaticText ")"
+        - paragraph
+          - StaticText "a partir de R$35,00"
+        - StaticText "São Paulo"
+        - paragraph
+          - StaticText "Pintor residencial e comercial. Pintura interna e externa, textura, grafiato e preparação de paredes. Orçamento sem compromisso."
+        - generic
+          - StaticText "desde jul. de 2026"
+        - StaticText "Pintura interna de parede"
+        - StaticText " · a partir de "
+        - StaticText "R$35,00"
+        - heading "Pintura interna 1 serviço" [level=3, ref=e60]
+          - button "Pintura interna 1 serviço" [expanded=false, ref=e129]
+            - paragraph
+              - StaticText "Pintura interna"
+            - paragraph
+              - StaticText "1 serviço"
+        - heading "Textura e grafiato 1 serviço" [level=3, ref=e61]
+          - button "Textura e grafiato 1 serviço" [expanded=false, ref=e130]
+            - paragraph
+              - StaticText "Textura e grafiato"
+            - paragraph
+              - StaticText "1 serviço"
+        - button "Orçamento" [ref=e62]
+        - button "Agendar" [ref=e63]
+      - generic
+        - generic
+          - image "Capa de Diarista Fernanda"
+          - StaticText "Verificado"
+          - generic
+            - button "Adicionar Diarista Fernanda à comparação" [ref=e203]
+            - button "Adicionar Diarista Fernanda aos favoritos" [ref=e204]
+          - image "Diarista Fernanda"
+        - button "Ver perfil de Diarista Fernanda" [ref=e64]
+          - heading "Diarista Fernanda" [level=3, ref=e131]
+            - StaticText "Diarista Fernanda"
+        - generic
+          - StaticText "—"
+          - StaticText "("
+          - StaticText "0"
+          - StaticText ")"
+        - paragraph
+          - StaticText "a partir de R$180,00"
+        - StaticText "São Paulo"
+        - paragraph
+          - StaticText "Diarista com referências. Limpeza residencial, pós-obra e organização. Trabalho com produtos próprios. Atendo manhãs e tardes."
+        - generic
+          - StaticText "desde jul. de 2026"
+        - StaticText "Diária de limpeza residencial"
+        - StaticText " · a partir de "
+        - StaticText "R$180,00"
+        - heading "Limpeza geral 1 serviço" [level=3, ref=e65]
+          - button "Limpeza geral 1 serviço" [expanded=false, ref=e132]
+            - paragraph
+              - StaticText "Limpeza geral"
+            - paragraph
+              - StaticText "1 serviço"
+        - heading "Limpeza pós-obra 1 serviço" [level=3, ref=e66]
+          - button "Limpeza pós-obra 1 serviço" [expanded=false, ref=e133]
+            - paragraph
+              - StaticText "Limpeza pós-obra"
+            - paragraph
+              - StaticText "1 serviço"
+        - button "Orçamento" [ref=e67]
+        - button "Agendar" [ref=e68]
+      - generic
+        - generic
+          - image "Capa de Jardins Vida — Pedro"
+          - StaticText "Verificado"
+          - generic
+            - button "Adicionar Jardins Vida — Pedro à comparação" [ref=e205]
+            - button "Adicionar Jardins Vida — Pedro aos favoritos" [ref=e206]
+          - image "Jardins Vida — Pedro"
+        - button "Ver perfil de Jardins Vida — Pedro" [ref=e69]
+          - heading "Jardins Vida — Pedro" [level=3, ref=e134]
+            - StaticText "Jardins Vida — Pedro"
+        - generic
+          - StaticText "—"
+          - StaticText "("
+          - StaticText "0"
+          - StaticText ")"
+        - paragraph
+          - StaticText "a partir de R$150,00"
+        - StaticText "São Paulo"
+        - paragraph
+          - StaticText "Jardineiro especializado em paisagismo, poda de árvores, controle de pragas e manutenção de jardins residenciais e comerciais."
+        - generic
+          - StaticText "desde jul. de 2026"
+        - StaticText "Poda de árvores e arbustos"
+        - StaticText " · a partir de "
+        - StaticText "R$150,00"
+        - heading "Poda de árvores 1 serviço" [level=3, ref=e70]
+          - button "Poda de árvores 1 serviço" [expanded=false, ref=e135]
+            - paragraph
+              - StaticText "Poda de árvores"
+            - paragraph
+              - StaticText "1 serviço"
+        - button "Orçamento" [ref=e71]
+        - button "Agendar" [ref=e72]
+      - generic
+        - generic
+          - image "Capa de Pedreiro Antônio"
+          - StaticText "Verificado"
+          - generic
+            - button "Adicionar Pedreiro Antônio à comparação" [ref=e207]
+            - button "Adicionar Pedreiro Antônio aos favoritos" [ref=e208]
+          - image "Pedreiro Antônio"
+        - button "Ver perfil de Pedreiro Antônio" [ref=e73]
+          - heading "Pedreiro Antônio" [level=3, ref=e136]
+            - StaticText "Pedreiro Antônio"
+        - generic
+          - StaticText "—"
+          - StaticText "("
+          - StaticText "0"
+          - StaticText ")"
+        - paragraph
+          - StaticText "a partir de R$45,00"
+        - StaticText "São Paulo"
+        - paragraph
+          - StaticText "Pedreiro experiente em alvenaria, revestimentos, contrapiso e pequenas reformas. Garantia de serviço e notas fiscais."
+        - generic
+          - StaticText "desde jul. de 2026"
+        - StaticText "Assentamento de piso cerâmico"
+        - StaticText " · a partir de "
+        - StaticText "R$45,00"
+        - heading "Assentamento de piso 1 serviço" [level=3, ref=e74]
+          - button "Assentamento de piso 1 serviço" [expanded=false, ref=e137]
+            - paragraph
+              - StaticText "Assentamento de piso"
+            - paragraph
+              - StaticText "1 serviço"
+        - heading "Contrapiso 1 serviço" [level=3, ref=e75]
+          - button "Contrapiso 1 serviço" [expanded=false, ref=e138]
+            - paragraph
+              - StaticText "Contrapiso"
+            - paragraph
+              - StaticText "1 serviço"
+        - button "Orçamento" [ref=e76]
+        - button "Agendar" [ref=e77]
+    - region "Como funciona" [ref=e11]
+      - generic
+        - sectionheader
+          - link "Pular para resultados" [ref=e139]
+          - generic
+            - StaticText "4"
+            - StaticText "passos simples"
+          - heading "Como funciona" [level=2, ref=e140]
+          - paragraph
+            - StaticText "Sem surpresas — do início ao fim, você tem o controle."
+          - StaticText "Sem compromisso"
+        - generic
+          - generic
+            - button "1 Busque o serviço Encontre prestadores verificados perto de você. 50 + categorias encanador em São Paulo | Verificados < 5 km Mais filtros Ex: Busque 'encanador em São Paulo' Buscar prestadores" [ref=e209]
+              - StaticText "1"
+              - heading "Busque o serviço" [level=3, ref=e269]
+              - paragraph
+                - StaticText "Encontre prestadores verificados perto de você."
+              - generic
+                - StaticText "50"
+                - StaticText "+"
+                - StaticText "categorias"
+              - StaticText "encanador em São Paulo"
+              - StaticText "|"
+              - StaticText "Verificados"
+              - StaticText "< 5 km"
+              - StaticText "Mais filtros"
+              - paragraph
+                - StaticText "Ex: Busque 'encanador em São Paulo'"
+              - button "Buscar prestadores" [ref=e270]
+            - button "2 Compare orçamentos Receba e compare propostas lado a lado. 3 orçamentos em 24h João S. R$ 180 Maria L. R$ 150 Melhor avaliação Compare lado a lado Ex: Compare 3 orçamentos em 24h Sem compromisso Pedir orçamento" [ref=e210]
+              - StaticText "2"
+              - heading "Compare orçamentos" [level=3, ref=e271]
+              - paragraph
+                - StaticText "Receba e compare propostas lado a lado."
+              - generic
+                - StaticText "3"
+                - StaticText "orçamentos em 24h"
+              - StaticText "João S."
+              - StaticText "R$ 180"
+              - StaticText "Maria L."
+              - StaticText "R$ 150"
+              - StaticText "Melhor avaliação"
+              - StaticText "Compare lado a lado"
+              - paragraph
+                - StaticText "Ex: Compare 3 orçamentos em 24h"
+              - StaticText "Sem compromisso"
+              - button "Pedir orçamento" [ref=e272]
+            - button "3 Agende com confiança Solicite um orçamento ou agende diretamente. 24 h para confirmar MARÇO 2025 S T Q Q S S D 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 12 Mar, 14:00 — Confirmado Ex: Agende para amanhã às 14h Agendar agora" [ref=e211]
+              - StaticText "3"
+              - heading "Agende com confiança" [level=3, ref=e273]
+              - paragraph
+                - StaticText "Solicite um orçamento ou agende diretamente."
+              - generic
+                - StaticText "24"
+                - StaticText "h"
+                - StaticText "para confirmar"
+              - StaticText "MARÇO 2025"
+              - StaticText "S"
+              - StaticText "T"
+              - StaticText "Q"
+              - StaticText "Q"
+              - StaticText "S"
+              - StaticText "S"
+              - StaticText "D"
+              - StaticText "1"
+              - StaticText "2"
+              - StaticText "3"
+              - StaticText "4"
+              - StaticText "5"
+              - StaticText "6"
+              - StaticText "7"
+              - StaticText "8"
+              - StaticText "9"
+              - StaticText "10"
+              - StaticText "11"
+              - StaticText "12"
+              - StaticText "13"
+              - StaticText "14"
+              - StaticText "15"
+              - StaticText "12 Mar, 14:00 — Confirmado"
+              - paragraph
+                - StaticText "Ex: Agende para amanhã às 14h"
+              - button "Agendar agora" [ref=e274]
+            - button "4 Avalie o resultado Sua opinião mantém a qualidade da comunidade. 98 % satisfação 4.0 \"Excelente trabalho, recomendo!\" Avaliação verificada Ex: Avalie de 1 a 5 estrelas com comentário Cadastrar grátis" [ref=e212]
+              - StaticText "4"
+              - heading "Avalie o resultado" [level=3, ref=e275]
+              - paragraph
+                - StaticText "Sua opinião mantém a qualidade da comunidade."
+              - generic
+                - StaticText "98"
+                - StaticText "%"
+                - StaticText "satisfação"
+              - StaticText "4.0"
+              - paragraph
+                - StaticText "\"Excelente trabalho, recomendo!\""
+              - StaticText "Avaliação verificada"
+              - paragraph
+                - StaticText "Ex: Avalie de 1 a 5 estrelas com comentário"
+              - button "Cadastrar grátis" [ref=e276]
+        - StaticText "Garantia Severinno"
+        - generic [ref=e78] clickable [onclick]
+          - StaticText "Prestadores verificados"
+        - generic [ref=e79] clickable [onclick]
+          - StaticText "Resposta rápida"
+        - generic [ref=e80] clickable [onclick]
+          - StaticText "Satisfação garantida"
+        - generic [ref=e81] clickable [onclick]
+          - StaticText "Compare antes de contratar"
+        - button "Começar agora" [ref=e82]
+        - link "Buscar prestadores" [ref=e83]
+        - button "Voltar ao topo" [ref=e84]
+    - generic
+      - StaticText "Simulador de preços"
+      - heading "Quanto custa? Simule agora" [level=2, ref=e85]
+        - StaticText "Quanto custa? Simule agora"
+      - paragraph
+        - StaticText "Estime o valor do serviço em 3 passos rápidos. Sem compromisso, sem cadastro."
+      - StaticText "1"
+      - StaticText "2"
+      - StaticText "3"
+      - heading "1. Qual serviço você precisa?" [level=3, ref=e141]
+      - paragraph
+        - StaticText "Selecione a categoria do serviço"
+      - button "Elétrica" [ref=e142]
+        - StaticText "Elétrica"
+      - button "Hidráulica" [ref=e143]
+        - StaticText "Hidráulica"
+      - button "Pintura" [ref=e144]
+        - StaticText "Pintura"
+      - button "Alvenaria" [ref=e145]
+        - StaticText "Alvenaria"
+      - button "Pisos" [ref=e146]
+        - StaticText "Pisos"
+      - button "Pós-obra" [ref=e147]
+        - StaticText "Pós-obra"
+      - button "Residencial" [ref=e148]
+        - StaticText "Residencial"
+    - region "Parceiros e imprensa" [ref=e12]
+      - paragraph
+        - StaticText "REFERÊNCIA NO MERCADO"
+      - StaticText "G1"
+      - StaticText "Folha de S.Paulo"
+      - StaticText "Valor Econômico"
+      - StaticText "Exame"
+      - StaticText "InfoMoney"
+      - StaticText "Startups"
+      - StaticText "Sebrae"
+      - StaticText "ABES"
+      - paragraph
+        - StaticText "+ de 6.000 prestadores confiam no Severinno"
+    - region "Avaliações de clientes" [ref=e13]
+      - generic
+        - sectionheader
+          - StaticText "Avaliações reais"
+          - heading "O que nossos clientes dizem" [level=2, ref=e149]
+          - paragraph
+            - StaticText "4 avaliações verificadas — nota média 4.8 de 5 estrelas."
+        - StaticText "4.8"
+        - StaticText "/5"
+        - button "4 avaliações verificadas" [ref=e86]
+          - StaticText "4 avaliações verificadas"
+        - button "Filtrar por 5 estrelas: 3 avaliações" [ref=e87]
+          - StaticText "5"
+          - StaticText "3"
+        - button "Filtrar por 4 estrelas: 1 avaliações" [ref=e88]
+          - StaticText "4"
+          - StaticText "1"
+        - button "Filtrar por 3 estrelas: 0 avaliações" [ref=e89]
+          - StaticText "3"
+          - StaticText "0"
+        - button "Filtrar por 2 estrelas: 0 avaliações" [ref=e90]
+          - StaticText "2"
+          - StaticText "0"
+        - button "Filtrar por 1 estrelas: 0 avaliações" [ref=e91]
+          - StaticText "1"
+          - StaticText "0"
+        - button "Todas" [ref=e92]
+        - button "5 estrelas" [ref=e93]
+        - button "4 estrelas" [ref=e94]
+        - generic
+          - region
+            - group
+              - StaticText "Verificada"
+              - paragraph
+                - StaticText "Curto-circuito resolvido na hora. Garantia de 90 dias fornecida."
+              - StaticText "Diagnóstico e reparo de curto-circuito"
+              - image "Maria Aparecida"
+              - paragraph
+                - StaticText "Maria Aparecida"
+              - paragraph
+                - StaticText "hoje, 08:48"
+              - StaticText "para"
+              - image "EletricaTech — Ricardo"
+              - StaticText "EletricaTech — Ricardo"
+            - group
+              - StaticText "Verificada"
+              - paragraph
+                - StaticText "Profissional muito atencioso, trocou 4 tomadas em 1 hora. Super recomendado!"
+              - StaticText "Troca de tomadas e interruptores"
+              - image "João Cliente"
+              - paragraph
+                - StaticText "João Cliente"
+              - paragraph
+                - StaticText "hoje, 08:48"
+              - StaticText "para"
+              - image "EletricaTech — Ricardo"
+              - StaticText "EletricaTech — Ricardo"
+            - group
+              - StaticText "Verificada"
+              - paragraph
+                - StaticText "Bom serviço, chegou um pouco atrasado mas resolveu tudo. Recomendo."
+              - StaticText "Localização e reparo de vazamento"
+              - image "Maria Aparecida"
+              - paragraph
+                - StaticText "Maria Aparecida"
+              - paragraph
+                - StaticText "hoje, 08:48"
+              - StaticText "para"
+              - image "Carlos Encanador"
+              - StaticText "Carlos Encanador"
+            - group
+              - StaticText "Verificada"
+              - paragraph
+                - StaticText "Excelente trabalho! Resolveu o vazamento rapidamente e ainda me deu dicas de manutenção."
+              - StaticText "Desentupimento de ralo e pia"
+              - image "João Cliente"
+              - paragraph
+                - StaticText "João Cliente"
+              - paragraph
+                - StaticText "hoje, 08:48"
+              - StaticText "para"
+              - image "Carlos Encanador"
+              - StaticText "Carlos Encanador"
+            - button "Avaliação anterior" [ref=e277]
+            - button "Próxima avaliação" [ref=e278]
+          - tablist "Navegação do carrossel"
+            - tab "Ir para avaliação 1" [selected, ref=e213]
+            - tab "Ir para avaliação 2" [ref=e214]
+            - tab "Ir para avaliação 3" [ref=e215]
+            - tab "Ir para avaliação 4" [ref=e216]
+          - paragraph
+            - StaticText "1 de 4"
+    - generic
+      - StaticText "5"
+      - paragraph
+        - StaticText "Prestadores verificados"
+      - StaticText "11"
+      - paragraph
+        - StaticText "Serviços cadastrados"
+      - StaticText "3"
+      - paragraph
+        - StaticText "Serviços concluídos"
+      - generic
+        - StaticText "4.3/5"
+      - paragraph
+        - StaticText "Nota média"
+      - generic
+        - StaticText "Por que Severinno?"
+        - heading "Confiança em cada agendamento" [level=2, ref=e150]
+          - StaticText "Confiança em cada agendamento"
+        - paragraph
+          - StaticText "Mais que um diretório de serviços — um ecossistema pensado para proteger você e o prestador. Da verificação ao pagamento, cada etapa foi desenhada para a sua tranquilidade."
+        - link "Pular para FAQ" [ref=e217]
+        - generic
+          - button "Saiba mais sobre Prestadores verificados" [ref=e218]
+          - heading "Prestadores verificados" [level=3, ref=e219]
+          - paragraph
+            - StaticText "João verificou 3 documentos antes de aprovar o prestador. Você só vê profissionais validados."
+          - button "Saiba mais" [expanded=false, ref=e220]
+        - generic
+          - button "Saiba mais sobre Pagamento protegido" [ref=e221]
+          - heading "Pagamento protegido" [level=3, ref=e222]
+          - paragraph
+            - StaticText "O valor só é liberado ao prestador após você confirmar que ficou satisfeito com o serviço."
+          - button "Saiba mais" [expanded=false, ref=e223]
+        - generic
+          - button "Saiba mais sobre Resposta rápida" [ref=e224]
+          - heading "Resposta rápida" [level=3, ref=e225]
+          - paragraph
+            - StaticText "Prestadores comprometidos a responder em até 24h. Acompanhe o status em tempo real."
+          - button "Saiba mais" [expanded=false, ref=e226]
+        - generic
+          - button "Saiba mais sobre Avaliações reais" [ref=e227]
+          - heading "Avaliações reais" [level=3, ref=e228]
+          - paragraph
+            - StaticText "Apenas clientes que concluíram o serviço podem avaliar. Sem falsas avaliações."
+          - button "Saiba mais" [expanded=false, ref=e229]
+        - generic
+          - button "Saiba mais sobre Próximo de você" [ref=e230]
+          - heading "Próximo de você" [level=3, ref=e231]
+          - paragraph
+            - StaticText "Geolocalização inteligente mostra os melhores prestadores na sua região."
+          - button "Saiba mais" [expanded=false, ref=e232]
+        - generic
+          - button "Saiba mais sobre Suporte humano" [ref=e233]
+          - heading "Suporte humano" [level=3, ref=e234]
+          - paragraph
+            - StaticText "Equipe disponível para mediar disputas, tirar dúvidas e garantir uma experiência justa."
+          - button "Saiba mais" [expanded=false, ref=e235]
+      - paragraph
+        - StaticText "Garantia Severinno: seu dinheiro de volta se o serviço não for bem-feito."
+      - link "Saiba mais" [ref=e95]
+    - generic
+      - StaticText "Destaque da semana"
+      - heading "Profissional em destaque" [level=2, ref=e96]
+        - StaticText "Profissional em destaque"
+      - paragraph
+        - StaticText "Conheça um dos nossos prestadores mais bem avaliados."
+      - generic
+        - generic
+          - generic
+            - image "EletricaTech — Ricardo"
+            - StaticText "Top"
+          - heading "EletricaTech — Ricardo" [level=3, ref=e236]
+          - StaticText "São Paulo"
+          - StaticText "Membro desde "
+          - StaticText "2026"
+          - StaticText "5.0"
+          - StaticText "("
+          - StaticText "2"
+          - StaticText " "
+          - StaticText "avaliações"
+          - StaticText ")"
+          - StaticText "2"
+          - StaticText " serviços concluídos"
+          - StaticText "Responde em "
+          - StaticText "~30min"
+          - paragraph
+            - StaticText "SERVIÇOS"
+          - StaticText "Troca de tomadas e interruptores"
+          - StaticText "R$25,00"
+          - StaticText "Diagnóstico e reparo de curto-circuito"
+          - StaticText "R$250,00"
+          - StaticText "Instalação de quadro de distribuição"
+          - StaticText "R$600,00"
+          - paragraph
+            - StaticText "Eletricista predial e residencial. Instalações elétricas, troca de quadros, manutenção preventiva e correção de curtos-circuitos. NR-10 atualizada."
+          - button "Ver mais" [ref=e237]
+          - StaticText "M"
+          - StaticText "J"
+          - StaticText "A"
+          - StaticText "Clientes recentes"
+          - button "Pedir orçamento" [ref=e238]
+          - button "Ver perfil completo" [ref=e239]
+          - button "Enviar mensagem" [ref=e279]
+    - generic
+      - StaticText "Perguntas frequentes"
+      - heading "Tire suas dúvidas antes de contratar" [level=2, ref=e151]
+        - StaticText "Tire suas dúvidas antes de contratar"
+      - paragraph
+        - StaticText "Reunimos as perguntas mais comuns sobre como o Severinno funciona — do cadastro ao pagamento."
+      - textbox "Buscar nas perguntas frequentes" [ref=e240]
+      - paragraph
+        - StaticText "FILTRAR POR CATEGORIA"
+      - button "Filtrar por Geral" [ref=e152]
+        - StaticText "Geral"
+        - StaticText "("
+        - StaticText "2"
+        - StaticText ")"
+      - button "Filtrar por Pagamento" [ref=e153]
+        - StaticText "Pagamento"
+        - StaticText "("
+        - StaticText "2"
+        - StaticText ")"
+      - button "Filtrar por Agendamento" [ref=e154]
+        - StaticText "Agendamento"
+        - StaticText "("
+        - StaticText "2"
+        - StaticText ")"
+      - button "Filtrar por Prestadores" [ref=e155]
+        - StaticText "Prestadores"
+        - StaticText "("
+        - StaticText "2"
+        - StaticText ")"
+      - button "Filtrar por Segurança" [ref=e156]
+        - StaticText "Segurança"
+        - StaticText "("
+        - StaticText "2"
+        - StaticText ")"
+      - paragraph
+        - StaticText "PERGUNTAS MAIS FREQUENTES"
+      - list
+        - listitem [level=1]
+          - button "Como funciona o Severinno?" [ref=e280]
+            - StaticText "Como funciona o Severinno?"
+        - listitem [level=1]
+          - button "Preciso pagar para me cadastrar?" [ref=e281]
+            - StaticText "Preciso pagar para me cadastrar?"
+        - listitem [level=1]
+          - button "Como faço para agendar um serviço?" [ref=e282]
+            - StaticText "Como faço para agendar um serviço?"
+        - listitem [level=1]
+          - button "E se o serviço não for bem-feito?" [ref=e283]
+            - StaticText "E se o serviço não for bem-feito?"
+      - paragraph
+        - StaticText "Ainda tem dúvidas?"
+      - paragraph
+        - StaticText "Cadastre-se grátis e converse diretamente com prestadores verificados. Sem compromisso."
+      - button "Cadastrar grátis" [ref=e157]
+      - link "Fale conosco" [ref=e158]
+    - heading "01 Como funciona o Severinno? Geral" [level=3, ref=e159]
+      - button "01 Como funciona o Severinno? Geral" [expanded=true, ref=e241]
+        - StaticText "01"
+        - StaticText "Como funciona o Severinno?"
+        - StaticText "Geral"
+    - region "01 Como funciona o Severinno? Geral" [ref=e160]
+      - paragraph
+        - StaticText "O Severinno conecta você a prestadores de serviço verificados próximos à sua localização. Você busca o serviço, compara avaliações reais de outros clientes, pede orçamento grátis e agenda — tudo pela plataforma. O pagamento só é liberado após você confirmar a conclusão do serviço."
+      - paragraph
+        - StaticText "Ex: Maria precisava de um eletricista. Buscou na plataforma, comparou 3 profissionais e contratou o mais bem avaliado — tudo em 5 minutos."
+    - heading "02 Preciso pagar para me cadastrar? Geral" [level=3, ref=e161]
+      - button "02 Preciso pagar para me cadastrar? Geral" [expanded=false, ref=e242]
+        - StaticText "02"
+        - StaticText "Preciso pagar para me cadastrar?"
+        - StaticText "Geral"
+    - heading "03 Como os prestadores são verificados? Prestadores" [level=3, ref=e162]
+      - button "03 Como os prestadores são verificados? Prestadores" [expanded=false, ref=e243]
+        - StaticText "03"
+        - StaticText "Como os prestadores são verificados?"
+        - StaticText "Prestadores"
+    - heading "04 Posso me tornar um prestador no Severinno? Prestadores" [level=3, ref=e163]
+      - button "04 Posso me tornar um prestador no Severinno? Prestadores" [expanded=false, ref=e244]
+        - StaticText "04"
+        - StaticText "Posso me tornar um prestador no Severinno?"
+        - StaticText "Prestadores"
+    - heading "05 Como faço para agendar um serviço? Agendamento" [level=3, ref=e164]
+      - button "05 Como faço para agendar um serviço? Agendamento" [expanded=false, ref=e245]
+        - StaticText "05"
+        - StaticText "Como faço para agendar um serviço?"
+        - StaticText "Agendamento"
+    - heading "06 Posso remarcar ou cancelar um agendamento? Agendamento" [level=3, ref=e165]
+      - button "06 Posso remarcar ou cancelar um agendamento? Agendamento" [expanded=false, ref=e246]
+        - StaticText "06"
+        - StaticText "Posso remarcar ou cancelar um agendamento?"
+        - StaticText "Agendamento"
+    - heading "07 Como funciona o pagamento? Pagamento" [level=3, ref=e166]
+      - button "07 Como funciona o pagamento? Pagamento" [expanded=false, ref=e247]
+        - StaticText "07"
+        - StaticText "Como funciona o pagamento?"
+        - StaticText "Pagamento"
+    - heading "08 O orçamento tem compromisso? Pagamento" [level=3, ref=e167]
+      - button "08 O orçamento tem compromisso? Pagamento" [expanded=false, ref=e248]
+        - StaticText "08"
+        - StaticText "O orçamento tem compromisso?"
+        - StaticText "Pagamento"
+    - heading "09 E se o serviço não for bem-feito? Segurança" [level=3, ref=e168]
+      - button "09 E se o serviço não for bem-feito? Segurança" [expanded=false, ref=e249]
+        - StaticText "09"
+        - StaticText "E se o serviço não for bem-feito?"
+        - StaticText "Segurança"
+    - heading "10 Meus dados pessoais estão seguros? Segurança" [level=3, ref=e169]
+      - button "10 Meus dados pessoais estão seguros? Segurança" [expanded=false, ref=e250]
+        - StaticText "10"
+        - StaticText "Meus dados pessoais estão seguros?"
+        - StaticText "Segurança"
+    - paragraph
+      - StaticText "10 de 10 dúvidas"
+    - button "Voltar ao topo da seção" [ref=e97]
+      - StaticText "Topo"
+    - generic
+      - generic
+        - StaticText "Comece agora mesmo"
+        - StaticText "8"
+        - StaticText "pessoas se cadastraram hoje"
+        - heading "Pronto para encontrar o prestador ideal?" [level=2, ref=e170]
+        - paragraph
+          - StaticText "Comece em 30 segundos — é como pedir um Uber, mas para serviços. Cadastre-se gratuitamente e tenha acesso a prestadores verificados."
+        - generic
+          - button "Para clientes" [ref=e251]
+            - StaticText "Para clientes"
+          - button "Para prestadores" [ref=e252]
+        - list
+          - listitem [level=1]
+            - StaticText "Cadastro gratuito"
+          - listitem [level=1]
+            - StaticText "Sem taxa de serviço"
+          - listitem [level=1]
+            - StaticText "Orçamento sem compromisso"
+        - generic [ref=e253] focusable [tabindex]
+          - button "Cadastrar grátis" [ref=e284]
+            - StaticText "Cadastrar grátis"
+        - generic [ref=e171] focusable [tabindex]
+          - button "Sou prestador" [ref=e254]
+        - StaticText "Comece em 30 segundos"
+        - button "Já tenho conta · Entrar" [ref=e255]
+        - paragraph
+          - StaticText "8+ cadastrados"
+        - paragraph
+          - StaticText "na plataforma"
+        - StaticText "4.8"
+        - generic
+          - heading "O que vem depois?" [level=3, ref=e256]
+          - paragraph
+            - StaticText "Três passos simples e você estará agendando"
+          - StaticText "1"
+          - paragraph
+            - StaticText "Cadastre-se grátis"
+          - paragraph
+            - StaticText "~30s"
+          - StaticText "2"
+          - paragraph
+            - StaticText "Busque e compare"
+          - paragraph
+            - StaticText "~2 min"
+          - StaticText "3"
+          - paragraph
+            - StaticText "Agende com confiança"
+          - paragraph
+            - StaticText "~5 min"
+          - StaticText "Sem compromisso"
+          - StaticText "Cancele quando quiser"
+          - StaticText "Suporte 24h"
+          - link "Saiba mais sobre pagamento protegido" [ref=e257]
+      - paragraph
+        - StaticText "“Encontrei um encanador em 10 minutos, paguei menos do que esperava e ainda pude avaliar o serviço. Recomendo demais!”"
+      - paragraph
+        - StaticText "— Ana P., Cliente, São Paulo"
+      - StaticText "Sem compromisso"
+      - StaticText "Cancele quando quiser"
+      - StaticText "Pagamento protegido"
+  - contentinfo
+    - paragraph
+      - StaticText "Receba novidades e dicas de serviços"
+    - paragraph
+      - StaticText "Cadastre-se e receba ofertas exclusivas. Cancele quando quiser."
+    - form
+      - textbox "E-mail para newsletter" [ref=e98]
+      - button "Assinar" [disabled, ref=e29]
+    - StaticText "Severinno"
+    - paragraph
+      - StaticText "Marketplace de serviços com geolocalização. Encontre prestadores verificados, próximos e bem avaliados."
+    - list "Redes sociais"
+      - listitem [level=1]
+        - link "GitHub" [ref=e99]
+      - listitem [level=1]
+        - link "Twitter" [ref=e100]
+      - listitem [level=1]
+        - link "Instagram" [ref=e101]
+      - listitem [level=1]
+        - link "LinkedIn" [ref=e102]
+      - listitem [level=1]
+        - link "E-mail" [ref=e103]
+    - navigation "Sobre" [ref=e14]
+      - heading "SOBRE" [level=3, ref=e30]
+      - list
+        - listitem [level=1]
+          - button "Como funciona" [ref=e172]
+        - listitem [level=1]
+          - button "Quem somos" [ref=e173]
+        - listitem [level=1]
+          - button "Termos de uso" [ref=e174]
+        - listitem [level=1]
+          - button "Privacidade" [ref=e175]
+    - navigation "Para profissionais" [ref=e15]
+      - heading "PARA PROFISSIONAIS" [level=3, ref=e31]
+      - list
+        - listitem [level=1]
+          - button "Cadastre-se" [ref=e176]
+        - listitem [level=1]
+          - button "Meu painel" [ref=e177]
+        - listitem [level=1]
+          - button "Central de ajuda" [ref=e178]
+    - navigation "Precisa de ajuda?" [ref=e16]
+      - heading "PRECISA DE AJUDA?" [level=3, ref=e32]
+      - list
+        - listitem [level=1]
+          - button "Perguntas frequentes" [ref=e179]
+        - listitem [level=1]
+          - button "Segurança" [ref=e180]
+        - listitem [level=1]
+          - button "Reportar problema" [ref=e181]
+    - heading "CONTATO" [level=3, ref=e17]
+    - list
+      - listitem [level=1]
+        - link "contato@severinno.com" [ref=e104]
+      - listitem [level=1]
+        - StaticText "São Paulo, Brasil"
+    - button "Fale conosco" [ref=e18]
+    - paragraph
+      - StaticText "© 2026 Severinno Marketplace. Todos os direitos reservados."
+    - StaticText "Feito com"
+    - StaticText "usando tecnologia Open Source ("
+    - link "MapLibre" [ref=e19]
+    - StaticText "·"
+    - link "OpenStreetMap" [ref=e20]
+    - StaticText ")"
+  - button "Abrir assistente virtual" [ref=e1]
+  - paragraph
+    - StaticText "Usamos cookies para melhorar sua experiência"
+  - paragraph
+    - StaticText "Utilizamos cookies essenciais para o funcionamento do site e cookies de análise para melhorar nossos serviços."
+    - button "Política de privacidade" [ref=e33]
+  - button "Recusar" [ref=e21]
+  - button "Aceitar" [ref=e22]
+  - button "Dispensar" [ref=e23]
+  - region "Notifications alt+T" [ref=e2]
+  - button "Open Next.js Dev Tools" [expanded=false, ref=e182]
+    - image
+  - alert
