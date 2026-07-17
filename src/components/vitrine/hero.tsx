@@ -1,36 +1,31 @@
 "use client"
 
 /**
- * Hero — the trust engine of the Severinno Marketplace vitrine.
+ * Hero — Interactive, dynamic live-activity engine for the Severinno Marketplace.
  *
- * Designed applying Jakob Nielsen's 10 usability heuristics, focused on
- * building CONFIDENCE, TRANSPARENCY and PROFESSIONALISM so visitors:
- *   - register for free
- *   - request quotes (orçamentos)
- *   - schedule services (agendamentos)
+ * Redesigned to feel like the visitor is already inside the app:
+ *   - Live activity feed showing real bookings, reviews, signups, quotes
+ *   - Animated notification toasts cycling through recent activities
+ *   - "X pessoas buscando agora" dynamic counter
+ *   - Floating activity cards with staggered animations
+ *   - Interactive search with live indicators
  *
  * Heuristic mapping:
- *   H1  Visibilidade do status  → live "{n} prestadores ativos" + location chip + loading
+ *   H1  Visibilidade do status  → live activity feed + browsing counter + loading
  *   H2  Mundo real              → "encanador, eletricista, pintor" / "orçamento grátis"
  *   H3  Controle e liberdade    → browse sem login · "ver como funciona" · sem caminho forçado
  *   H4  Consistência e padrões  → emerald · mesmas alturas de botão · mesma iconografia
  *   H5  Prevenção de erros      → máscara de CEP · busca não vazia · estados disabled
- *   H6  Reconhecimento > memo   → chips de serviços populares · card de prestador real
+ *   H6  Reconhecimento > memo   → chips de serviços populares · live activity cards
  *   H7  Flexibilidade/eficiência→ GPS 1 clique · Enter · chips de acesso rápido
  *   H8  Estética minimalista    → foco em 1 ação · respiro · sem poluição
  *   H9  Recuperar erros         → mensagens humanas e acionáveis
  *   H10 Ajuda e documentação    → "como funciona" · tooltips nos selos
- *
- * Trust / Transparency / Professionalism:
- *   - Card de prestador VERIFICADO real (reconhecimento, não memorização)
- *   - Prova social ao vivo (X prestadores, Y serviços, Z avaliações)
- *   - Microcopy de transparência ("cadastro grátis · sem compromisso")
- *   - Imagem profissional de um prestador real
- *   - Selos de confiança com ícones + labels
  */
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   Search,
   LocateFixed,
@@ -44,13 +39,17 @@ import {
   Users,
   Wrench,
   CheckCircle2,
-  Quote,
+  Eye,
+  Zap,
+  TrendingUp,
+  MessageCircle,
+  CalendarCheck,
+  UserPlus,
+  FileText,
 } from "lucide-react"
 
 import { useGeoStore, useUIStore } from "@/store"
-import { apiGet, fetchProviders, type ProviderCard } from "@/lib/api"
-import { formatBRL } from "@/lib/format"
-import { SERVICE_UNIT_SHORT } from "@/lib/constants"
+import { apiGet } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -67,6 +66,26 @@ type PublicStats = {
   reviews: number
   completedBookings: number
   avgRating: number
+  totalUsers?: number
+  recentSignups24h?: number
+}
+
+type ActivityItem = {
+  type: "booking" | "review" | "signup" | "quote"
+  userName: string
+  userAvatar?: string | null
+  action: string
+  target: string
+  service?: string | null
+  rating?: number | null
+  timeAgo: string
+  emoji: string
+}
+
+type ActivityResponse = {
+  activities: ActivityItem[]
+  browsingNow: number
+  quotesToday: number
 }
 
 export type HeroProps = {
@@ -77,7 +96,6 @@ export type HeroProps = {
 }
 
 // Popular services — recognition over recall (H6).
-// One click fills the search and scrolls to results.
 const POPULAR_SERVICES = [
   { label: "Encanador", emoji: "🔧" },
   { label: "Eletricista", emoji: "💡" },
@@ -86,6 +104,14 @@ const POPULAR_SERVICES = [
   { label: "Pedreiro", emoji: "🧱" },
   { label: "Jardineiro", emoji: "🌿" },
 ]
+
+// Map activity types to icons and colors
+const ACTIVITY_META: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
+  booking: { icon: CalendarCheck, color: "text-emerald-600", bg: "bg-emerald-50" },
+  review: { icon: Star, color: "text-amber-600", bg: "bg-amber-50" },
+  signup: { icon: UserPlus, color: "text-blue-600", bg: "bg-blue-50" },
+  quote: { icon: FileText, color: "text-violet-600", bg: "bg-violet-50" },
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -103,20 +129,20 @@ export default function Hero({
   const [cepInput, setCepInput] = React.useState("")
   const [cepError, setCepError] = React.useState<string | null>(null)
 
-  // H1 — Visibilidade do status: live social proof numbers
+  // H1 — Live social proof numbers
   const { data: stats } = useQuery<PublicStats>({
     queryKey: ["public-stats"],
     queryFn: () => apiGet<PublicStats>("/api/stats/public"),
     staleTime: 60 * 1000,
   })
 
-  // H6 — Reconhecimento: show a real verified provider card preview
-  const { data: topProviderData, isLoading: providerLoading } = useQuery({
-    queryKey: ["hero-top-provider"],
-    queryFn: () => fetchProviders({ sort: "rating", limit: 1 }),
-    staleTime: 5 * 60 * 1000,
+  // Live activity feed
+  const { data: activityData, isLoading: activityLoading } = useQuery<ActivityResponse>({
+    queryKey: ["hero-activity"],
+    queryFn: () => apiGet<ActivityResponse>("/api/stats/activity"),
+    staleTime: 30 * 1000,
+    refetchInterval: 45 * 1000, // Auto-refresh for live feel
   })
-  const topProvider = topProviderData?.items?.[0]
 
   // ---- Actions -------------------------------------------------------------
 
@@ -151,7 +177,6 @@ export default function Hero({
       e.preventDefault()
       const cep = cepInput.replace(/\D/g, "")
       if (cep.length !== 8) {
-        // H9 — Recuperar erros: human, actionable message
         setCepError("Digite um CEP com 8 dígitos (ex: 01001-000).")
         return
       }
@@ -168,7 +193,6 @@ export default function Hero({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    // H5 — Prevenção: don't submit empty — gently hint instead
     onSearchSubmit?.()
     scrollToResults()
   }
@@ -191,47 +215,26 @@ export default function Hero({
         "text-white",
       )}
     >
-      {/* H8 — Estética minimalista: subtle pattern, no clutter */}
+      {/* Subtle pattern */}
       <div
         aria-hidden
-        className="absolute inset-0 opacity-[0.08]"
+        className="absolute inset-0 opacity-[0.06]"
         style={{
           backgroundImage:
             "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.9) 1px, transparent 0)",
           backgroundSize: "22px 22px",
         }}
       />
-      {/* Animated mesh blobs — floating gradient orbs */}
-      <div
-        aria-hidden
-        className="absolute -top-24 -right-24 size-72 animate-pulse rounded-full bg-emerald-400/30 blur-3xl"
-        style={{ animationDuration: "6s" }}
-      />
-      <div
-        aria-hidden
-        className="absolute -bottom-32 -left-20 size-80 animate-pulse rounded-full bg-teal-300/20 blur-3xl"
-        style={{ animationDuration: "7s", animationDelay: "1.5s" }}
-      />
-      <div
-        aria-hidden
-        className="absolute top-1/3 right-1/4 size-56 animate-pulse rounded-full bg-emerald-300/15 blur-3xl"
-        style={{ animationDuration: "8s", animationDelay: "0.8s" }}
-      />
-      {/* Floating decorative shapes */}
-      <div
-        aria-hidden
-        className="absolute top-20 right-1/3 hidden size-3 rotate-45 rounded-sm bg-white/20 backdrop-blur md:block"
-      />
-      <div
-        aria-hidden
-        className="absolute bottom-32 right-1/4 hidden size-2 rounded-full bg-emerald-200/40 md:block"
-      />
+      {/* Animated mesh blobs */}
+      <div aria-hidden className="absolute -top-24 -right-24 size-72 animate-pulse rounded-full bg-emerald-400/30 blur-3xl" style={{ animationDuration: "6s" }} />
+      <div aria-hidden className="absolute -bottom-32 -left-20 size-80 animate-pulse rounded-full bg-teal-300/20 blur-3xl" style={{ animationDuration: "7s", animationDelay: "1.5s" }} />
+      <div aria-hidden className="absolute top-1/3 right-1/4 size-56 animate-pulse rounded-full bg-emerald-300/15 blur-3xl" style={{ animationDuration: "8s", animationDelay: "0.8s" }} />
 
       <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8 lg:py-20">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
           {/* ============ LEFT: copy + search + CTA ============ */}
           <div className="flex flex-col items-start">
-            {/* H1 — Status badge */}
+            {/* H1 — Status badges */}
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur ring-1 ring-white/20">
                 <BadgeCheck className="size-3.5" />
@@ -246,9 +249,15 @@ export default function Hero({
                   {stats.providers} prestadores ativos agora
                 </span>
               )}
+              {activityData && activityData.browsingNow > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium ring-1 ring-white/15">
+                  <Eye className="size-3" />
+                  {activityData.browsingNow} pessoas buscando
+                </span>
+              )}
             </div>
 
-            {/* H2 — Linguagem do mundo real + H8 hierarquia forte */}
+            {/* H2 — Linguagem do mundo real */}
             <h1 className="mt-5 text-balance text-3xl font-bold leading-[1.1] tracking-tight sm:text-4xl md:text-5xl">
               Prestadores de serviço verificados,{" "}
               <span className="text-emerald-200">perto de você.</span>
@@ -259,7 +268,7 @@ export default function Hero({
               profissional.
             </p>
 
-            {/* H5 — Prevenção de erros + H7 eficiência: search com máscara CEP */}
+            {/* Search bar */}
             <form
               onSubmit={handleSearch}
               className="mt-7 w-full max-w-xl rounded-2xl bg-white p-2 text-foreground shadow-2xl ring-1 ring-black/5"
@@ -306,14 +315,13 @@ export default function Hero({
               </div>
             </form>
 
-            {/* H9 — Recuperar erros: mensagem clara abaixo do CEP */}
             {cepError && (
               <p className="mt-2 text-sm text-amber-200" role="alert">
                 {cepError}
               </p>
             )}
 
-            {/* H6 — Reconhecimento: chips de serviços populares + H7 eficiência */}
+            {/* Popular service chips */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="text-xs font-medium text-emerald-100/80">
                 Mais buscados:
@@ -331,7 +339,7 @@ export default function Hero({
               ))}
             </div>
 
-            {/* H7 — Eficiência: GPS 1 clique */}
+            {/* GPS + CTAs */}
             <button
               type="button"
               onClick={handleLocate}
@@ -346,7 +354,6 @@ export default function Hero({
               Usar minha localização
             </button>
 
-            {/* H3 — Controle: CTAs claros (cadastro grátis + como funciona) */}
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
@@ -365,70 +372,37 @@ export default function Hero({
               </button>
             </div>
 
-            {/* Transparência — microcopy explícita */}
             <p className="mt-3 text-xs text-emerald-100/70">
-              Cadastro grátis · Orçamento sem compromisso · Você escolhe o
-              profissional
+              Cadastro grátis · Orçamento sem compromisso · Você escolhe o profissional
             </p>
 
-            {/* H10 — Ajuda: selos de confiança com tooltips */}
+            {/* Trust badges */}
             <ul className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-emerald-50">
-              <TrustBadge
-                icon={<BadgeCheck className="size-4" />}
-                title="Prestadores verificados"
-                tooltip="Documentos validados e identidade confirmada"
-              />
-              <TrustBadge
-                icon={<Star className="size-4" />}
-                title="Avaliações reais"
-                tooltip="Avaliações de clientes após a conclusão do serviço"
-              />
-              <TrustBadge
-                icon={<ShieldCheck className="size-4" />}
-                title="Pagamento seguro"
-                tooltip="Pagamento só é liberado após você marcar como concluído"
-              />
+              <TrustBadge icon={<BadgeCheck className="size-4" />} title="Prestadores verificados" tooltip="Documentos validados e identidade confirmada" />
+              <TrustBadge icon={<Star className="size-4" />} title="Avaliações reais" tooltip="Avaliações de clientes após a conclusão do serviço" />
+              <TrustBadge icon={<ShieldCheck className="size-4" />} title="Pagamento seguro" tooltip="Pagamento só é liberado após você marcar como concluído" />
             </ul>
           </div>
 
-          {/* ============ RIGHT: profissional + card real flutuante ============ */}
+          {/* ============ RIGHT: Live Activity Feed ============ */}
           <div className="relative hidden lg:block">
-            <HeroVisual
-              provider={topProvider}
-              loading={providerLoading}
+            <LiveActivityPanel
+              activities={activityData?.activities ?? []}
+              browsingNow={activityData?.browsingNow ?? 0}
+              quotesToday={activityData?.quotesToday ?? 0}
               stats={stats}
+              isLoading={activityLoading}
             />
           </div>
         </div>
 
-        {/* ============ Social proof bar (H1 + H6) ============ */}
+        {/* ============ Social proof bar ============ */}
         {stats && (
           <div className="mt-12 grid grid-cols-2 gap-4 rounded-2xl bg-white/10 px-6 py-5 backdrop-blur ring-1 ring-white/15 sm:grid-cols-4 sm:gap-0">
-            <StatItem
-              icon={<Users className="size-5" />}
-              value={stats.providers}
-              label="Prestadores verificados"
-              accent
-            />
-            <StatItem
-              icon={<Wrench className="size-5" />}
-              value={stats.services}
-              label="Serviços cadastrados"
-              accent
-            />
-            <StatItem
-              icon={<CheckCircle2 className="size-5" />}
-              value={stats.completedBookings}
-              label="Serviços concluídos"
-              accent
-            />
-            <StatItem
-              icon={<Star className="size-5" />}
-              value={stats.avgRating || "—"}
-              label="Nota média das avaliações"
-              suffix={stats.avgRating ? "★" : undefined}
-              accent
-            />
+            <StatItem icon={<Users className="size-5" />} value={stats.providers} label="Prestadores verificados" accent />
+            <StatItem icon={<Wrench className="size-5" />} value={stats.services} label="Serviços cadastrados" accent />
+            <StatItem icon={<CheckCircle2 className="size-5" />} value={stats.completedBookings} label="Serviços concluídos" accent />
+            <StatItem icon={<Star className="size-5" />} value={stats.avgRating || "—"} label="Nota média das avaliações" suffix={stats.avgRating ? "★" : undefined} accent />
           </div>
         )}
       </div>
@@ -437,58 +411,145 @@ export default function Hero({
 }
 
 // ---------------------------------------------------------------------------
-// Hero visual — professional image + floating real provider card preview
+// Live Activity Panel — the interactive right side
 // ---------------------------------------------------------------------------
 
-function HeroVisual({
-  provider,
-  loading,
+function LiveActivityPanel({
+  activities,
+  browsingNow,
+  quotesToday,
   stats,
+  isLoading,
 }: {
-  provider?: ProviderCard
-  loading: boolean
+  activities: ActivityItem[]
+  browsingNow: number
+  quotesToday: number
   stats?: PublicStats
+  isLoading: boolean
 }) {
+  // Cycle through toast notifications
+  const [toastIndex, setToastIndex] = React.useState(0)
+  const [visibleActivities, setVisibleActivities] = React.useState<ActivityItem[]>([])
+
+  // Stagger-reveal activities
+  React.useEffect(() => {
+    if (activities.length === 0) return
+    setVisibleActivities([])
+    activities.forEach((_, i) => {
+      setTimeout(() => {
+        setVisibleActivities((prev) => [...prev, activities[i]])
+      }, i * 300)
+    })
+  }, [activities])
+
+  // Cycle toast
+  React.useEffect(() => {
+    if (activities.length === 0) return
+    const interval = setInterval(() => {
+      setToastIndex((prev) => (prev + 1) % activities.length)
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [activities.length])
+
   return (
     <div className="relative">
-      {/* Professional image (transparency + professionalism) */}
-      <div className="relative overflow-hidden rounded-3xl shadow-2xl ring-1 ring-white/20">
-        <img
-          src="/hero-provider.png"
-          alt="Prestador de serviço profissional verificado, em uniforme verde, sorrindo"
-          className="aspect-[4/3] w-full object-cover"
-          loading="eager"
-        />
-        {/* Gradient overlay for text legibility */}
-        <div className="absolute inset-0 bg-gradient-to-t from-emerald-900/40 via-transparent to-transparent" />
-      </div>
-
-      {/* Floating real provider card — bottom left (recognition over recall) */}
-      <div className="absolute -bottom-6 -left-6 w-72 rounded-2xl bg-white p-4 text-slate-900 shadow-2xl ring-1 ring-black/5">
-        {loading ? (
-          <div className="flex items-center gap-3">
-            <Skeleton className="size-12 rounded-full" />
-            <div className="flex-1 space-y-2">
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-3 w-1/2" />
-            </div>
+      {/* ── Main activity feed card ── */}
+      <div className="rounded-3xl bg-white/10 p-5 backdrop-blur-md ring-1 ring-white/20 shadow-2xl">
+        {/* Header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="relative flex size-2.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-emerald-400" />
+            </span>
+            <span className="text-sm font-semibold text-white">Atividade ao vivo</span>
           </div>
-        ) : provider ? (
-          <ProviderPreview provider={provider} />
-        ) : null}
+          {browsingNow > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-100 ring-1 ring-white/10">
+              <Eye className="size-3" />
+              {browsingNow} online
+            </span>
+          )}
+        </div>
+
+        {/* Activity list */}
+        <div className="space-y-2.5 max-h-[400px] overflow-y-auto scrollbar-thin pr-1">
+          {isLoading ? (
+            // Skeleton loading
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
+                <Skeleton className="size-10 shrink-0 rounded-full bg-white/10" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3.5 w-3/4 rounded bg-white/10" />
+                  <Skeleton className="h-3 w-1/2 rounded bg-white/10" />
+                </div>
+              </div>
+            ))
+          ) : visibleActivities.length === 0 ? (
+            // Empty state
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <Zap className="size-8 text-emerald-300/50" />
+              <p className="text-sm text-emerald-200/70">Carregando atividades…</p>
+            </div>
+          ) : (
+            visibleActivities.map((activity, i) => (
+              <ActivityCard key={`${activity.type}-${activity.userName}-${i}`} activity={activity} index={i} />
+            ))
+          )}
+        </div>
+
+        {/* Footer stats */}
+        <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3">
+          {quotesToday > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-200/80">
+              <FileText className="size-3" />
+              {quotesToday} orçamentos hoje
+            </span>
+          )}
+          {stats && stats.completedBookings > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-200/80">
+              <TrendingUp className="size-3" />
+              {stats.completedBookings.toLocaleString("pt-BR")} concluídos
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Floating rating badge — bottom right (social proof) */}
+      {/* ── Floating toast notification ── */}
+      <AnimatePresence mode="wait">
+        {activities.length > 0 && (
+          <motion.div
+            key={`toast-${toastIndex}`}
+            initial={{ opacity: 0, y: 12, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="absolute -bottom-4 -left-4 z-10 flex items-center gap-2.5 rounded-2xl bg-white px-4 py-3 shadow-2xl ring-1 ring-black/5"
+          >
+            <span className="text-lg" aria-hidden>{activities[toastIndex % activities.length].emoji}</span>
+            <div className="leading-tight">
+              <p className="text-xs font-semibold text-slate-900">
+                {activities[toastIndex % activities.length].userName}{" "}
+                {activities[toastIndex % activities.length].action}
+              </p>
+              <p className="text-[11px] text-slate-500">
+                {activities[toastIndex % activities.length].target}
+              </p>
+            </div>
+            <span className="ml-2 text-[10px] text-slate-400 whitespace-nowrap">
+              {activities[toastIndex % activities.length].timeAgo}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Floating rating badge ── */}
       {stats && stats.avgRating > 0 && (
-        <div className="absolute -bottom-3 right-4 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-xl">
+        <div className="absolute -top-3 -right-3 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-black/5">
           <Star className="size-5 fill-amber-400 text-amber-400" />
           <div className="leading-tight">
-            <p className="text-base font-bold text-slate-900">
-              {stats.avgRating}
-            </p>
-            <p className="text-[11px] text-slate-500">
-              {stats.reviews} avaliações
-            </p>
+            <p className="text-base font-bold text-slate-900">{stats.avgRating}</p>
+            <p className="text-[11px] text-slate-500">{stats.reviews} avaliações</p>
           </div>
         </div>
       )}
@@ -496,85 +557,71 @@ function HeroVisual({
   )
 }
 
-function ProviderPreview({ provider }: { provider: ProviderCard }) {
-  const firstService = provider.services?.[0]
+// ---------------------------------------------------------------------------
+// Activity Card — individual activity in the feed
+// ---------------------------------------------------------------------------
+
+function ActivityCard({ activity, index }: { activity: ActivityItem; index: number }) {
+  const meta = ACTIVITY_META[activity.type] ?? ACTIVITY_META.booking
+  const Icon = meta.icon
+
   return (
-    <div>
-      <div className="flex items-center gap-3">
-        <div className="relative">
-          {provider.avatarUrl ? (
-            <img
-              src={provider.avatarUrl}
-              alt={provider.name}
-              className="size-12 rounded-full object-cover ring-2 ring-emerald-500"
-            />
-          ) : (
-            <div className="flex size-12 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">
-              {provider.name.charAt(0)}
-            </div>
-          )}
-          {provider.verified && (
-            <span className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-white">
-              <BadgeCheck className="size-3 text-white" />
-            </span>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold leading-tight">
-            {provider.name}
-          </p>
-          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
-            <Star className="size-3 fill-amber-400 text-amber-400" />
-            <span className="font-medium text-slate-700">
-              {provider.rating.toFixed(1)}
-            </span>
-            <span>·</span>
-            <span>{provider.reviewCount} avaliações</span>
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.08, duration: 0.35, ease: "easeOut" }}
+      className="group flex items-start gap-3 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10"
+    >
+      {/* Avatar or icon */}
+      <div className="relative shrink-0">
+        {activity.userAvatar ? (
+          <img
+            src={activity.userAvatar}
+            alt={activity.userName}
+            className="size-10 rounded-full object-cover ring-2 ring-white/20"
+          />
+        ) : (
+          <div className={cn("flex size-10 items-center justify-center rounded-full ring-1 ring-white/10", meta.bg)}>
+            <Icon className={cn("size-4", meta.color)} />
           </div>
-        </div>
+        )}
+        {/* Activity type badge */}
+        <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-white/20 text-[10px] ring-1 ring-white/10">
+          {activity.emoji}
+        </span>
       </div>
 
-      {firstService && (
-        <div className="mt-3 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium text-slate-700">
-              {firstService.title}
-            </p>
-            <p className="text-[11px] text-slate-400">
-              a partir de
-            </p>
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium leading-snug text-white/90">
+          <span className="font-semibold">{activity.userName}</span>{" "}
+          <span className="text-emerald-200/80">{activity.action}</span>
+        </p>
+        <p className="mt-0.5 truncate text-xs text-emerald-100/60">
+          {activity.target}
+        </p>
+        {activity.rating && (
+          <div className="mt-1 flex items-center gap-0.5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Star
+                key={i}
+                className={cn(
+                  "size-3",
+                  i < (activity.rating ?? 0)
+                    ? "fill-amber-400 text-amber-400"
+                    : "text-white/20",
+                )}
+              />
+            ))}
           </div>
-          <p className="text-sm font-bold text-emerald-700">
-            {formatBRL(firstService.basePrice)}
-            <span className="text-[11px] font-normal text-slate-400">
-              /{SERVICE_UNIT_SHORT[firstService.unit]}
-            </span>
-          </p>
-        </div>
-      )}
-
-      <div className="mt-2 flex items-center gap-1 text-[11px] text-slate-400">
-        <MapPin className="size-3" />
-        <span>{provider.city || "São Paulo, SP"}</span>
-        {provider.distanceKm != null && (
-          <>
-            <span>·</span>
-            <span>{provider.distanceKm.toFixed(1)} km de você</span>
-          </>
         )}
       </div>
 
-      <div className="mt-3 flex items-center gap-1.5">
-        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
-          <Quote className="size-3" />
-          Orçamento grátis
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
-          <Clock className="size-3" />
-          Resposta rápida
-        </span>
-      </div>
-    </div>
+      {/* Time */}
+      <span className="shrink-0 text-[10px] font-medium text-emerald-200/50">
+        {activity.timeAgo}
+      </span>
+    </motion.div>
   )
 }
 
@@ -592,10 +639,7 @@ function TrustBadge({
   tooltip: string
 }) {
   return (
-    <li
-      className="flex items-center gap-2"
-      title={tooltip}
-    >
+    <li className="flex items-center gap-2" title={tooltip}>
       <span className="flex size-6 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15">
         {icon}
       </span>
@@ -617,7 +661,6 @@ function StatItem({
   suffix?: string
   accent?: boolean
 }) {
-  // Only animate numeric values
   const numericValue = typeof value === "number" ? value : 0
   const isNumeric = typeof value === "number"
   const { ref, value: animatedValue } = useCountUp(numericValue, {

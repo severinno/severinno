@@ -2330,3 +2330,74 @@ Stage Summary:
 - Category navigation bar fully removed from header (desktop + mobile)
 - Header is now cleaner with just logo, search, location, theme, and auth
 - Categories are still accessible via the CategoryShowcase section on the page
+
+---
+Task ID: hero-live-activity-1
+Agent: main
+Task: Create /api/stats/activity endpoint for live recent activities
+
+Work Log:
+- Created `/home/z/my-project/src/app/api/stats/activity/route.ts`
+- Endpoint fetches recent bookings, reviews, provider signups, and quotes in parallel
+- Merges and sorts by createdAt, returns top 10 with privacy masking (firstNameInitial)
+- Computes timeAgo in Portuguese, simulated browsingNow counter, real quotesToday count
+- Cache-Control: s-maxage=30 for live feel
+- Error fallback returns empty arrays
+
+Stage Summary:
+- API endpoint working at GET /api/stats/activity
+- Returns real activity data from database (bookings, reviews, signups, quotes)
+- Privacy: names masked (e.g. "Maria A.", "João C.")
+
+---
+Task ID: hero-live-activity-2
+Agent: main
+Task: Redesign Hero with live activity feed, animated toasts, and dynamic indicators
+
+Work Log:
+- Completely rewrote `/home/z/my-project/src/components/vitrine/hero.tsx`
+- Replaced static provider card with LiveActivityPanel showing real-time feed
+- Added animated notification toasts cycling through activities (AnimatePresence)
+- Added "X pessoas buscando" dynamic counter badge
+- Added staggered activity card animations (framer-motion)
+- Added "Atividade ao vivo" header with pulsing green dot and online count
+- Activity cards show user avatars, action text, ratings, timeAgo
+- Footer stats showing quotesToday and completedBookings
+- Floating toast notification at bottom-left cycles every 4 seconds
+- Rating badge at top-right
+- Auto-refresh activity data every 45 seconds (refetchInterval)
+- Added activity type icons (CalendarCheck, Star, UserPlus, FileText) with color coding
+- Verified with agent-browser: no errors, live feed renders correctly
+
+Stage Summary:
+- Hero is now fully interactive and dynamic with live activity feed
+- Shows real data: "Maria A. avaliou", "João C. agendou", "Pedreiro A. se cadastrou como prestador"
+- "25 pessoas buscando" and "25 online" counters visible
+- Animated toasts cycling through activities
+- All existing functionality preserved (search, CTAs, trust badges, stats bar)
+
+---
+Task ID: 1
+Agent: full-stack-developer
+Task: Create /api/stats/activity endpoint
+
+Work Log:
+- Created `/home/z/my-project/src/app/api/stats/activity/route.ts` — public GET endpoint returning recent platform activities
+- Implemented parallel queries for bookings, reviews, provider signups, and quote requests (10 each)
+- Merged all activities, sorted by createdAt descending, limited to top 10
+- Applied privacy helper `firstNameInitial` (e.g. "Maria S.") to all user names
+- Applied `timeAgo` helper with Portuguese locale (agora / X min / X h / X dias)
+- Booking activity: shows category + city as target, service title, 📅 emoji
+- Review activity: shows provider name as target, rating, service title (optional), ⭐ emoji
+- Signup activity: shows verification status as target, ✅/🆕 emoji
+- Quote activity: shows category + city as target (from first quote item), 📋 emoji
+- `browsingNow`: random 18–42 (simulated)
+- `quotesToday`: real count of QuoteRequest created today
+- Error handling: returns empty/default values on failure
+- Set Cache-Control: public, s-maxage=30, stale-while-revalidate=60 for 30s "live" feel
+- Lint passed cleanly
+
+Stage Summary:
+- Produced: `/home/z/my-project/src/app/api/stats/activity/route.ts`
+- Endpoint returns JSON with `activities[]`, `browsingNow`, `quotesToday`
+- Ready for consumption by the Hero section's live activity feed
