@@ -16,6 +16,7 @@ import dynamic from "next/dynamic"
 import {
   List,
   MapIcon,
+  MapPin,
   SlidersHorizontal,
   SearchX,
   X,
@@ -78,6 +79,7 @@ export type VitrineResultsProps = {
   onPageChange?: (page: number) => void
   resultsAnchorId?: string
   className?: string
+  radiusExpanded?: boolean
 }
 
 type ViewMode = "list" | "map"
@@ -102,6 +104,7 @@ export default function VitrineResults({
   onPageChange,
   resultsAnchorId,
   className,
+  radiusExpanded,
 }: VitrineResultsProps) {
   const [view, setView] = React.useState<ViewMode>("list")
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
@@ -276,6 +279,21 @@ export default function VitrineResults({
 
             <Separator className="mt-1" />
           </div>
+
+          {/* Radius expanded notice (Nielsen H9 — help users recover) */}
+          {radiusExpanded && !isLoading && !error && providers.length > 0 ? (
+            <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-amber-900 dark:text-amber-200">
+                  Nenhum prestador encontrado no raio de {filters.radius} km
+                </p>
+                <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                  Mostrando os prestadores mais próximos da sua localização. Aumente o raio na barra de filtros para ver mais opções ou ajuste sua localização.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {/* Content */}
           <div className="mt-4">
