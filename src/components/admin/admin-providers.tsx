@@ -1,43 +1,57 @@
 "use client"
 
 /**
- * AdminProviders — list of providers with admin actions.
+ * AdminProviders — lista de prestadores com ações administrativas.
  *
- * Data source: GET /api/admin/users?role=PROVIDER
- * (this returns full USER_PUBLIC_SELECT shape — verified/active toggles via
- * PATCH /api/admin/users/[id])
+ * Data source: GET  /api/admin/users?role=PROVIDER
+ *              PATCH /api/admin/users/[id] { verified?, active? }
  *
- * Note: rating / servicesCount / completedBookings are not returned by the
- * admin/users endpoint. They are surfaced via the "Ver perfil" modal which
- * opens the full provider profile. The table shows what's available.
+ * Nielsen heuristics covered (design system em admin-shared.tsx):
+ *   H1 — TableSkeleton / ErrorState / SavingPill inline (não flutuante)
+ *   H2 — "Filtro aplicado à página atual" (honestidade sobre filtro client-side)
+ *   H4 — VerifiedBadge / ActiveBadge do admin-shared; tipo AdminUser idêntico
+ *        ao de admin-users.tsx (mantenha os campos sincronizados)
+ *   H5 — Itens do ⋮ (Verificar/Desverificar, Ativar/Desativar) abrem
+ *        ConfirmToggleDialog antes de aplicar (sem toggle instantâneo)
+ *   H6 — Botão "Ver perfil" visível; ⋮ apenas para ações secundárias.
+ *        O item duplicado "Ver perfil público" foi REMOVIDO do ⋮.
+ *   H7 — Ordenação client-side por nome e data de cadastro
+ *   H8 — REMOVIDO o pill redundante "N prestador(es) no total" no topo
+ *        (a ResultCount já mostra essa informação abaixo da tabela)
+ *   H9 — Error banner dismissível + toast.error específico + ErrorState com retry
+ *   H10— Tooltips em todos os botões de ícone (⋮, Ver perfil)
+ *
+ * O tipo `AdminUser` é definido de forma IDÊNTICA em admin-users.tsx (H4).
+ * Se alterar campos aqui, replique lá.
  */
 
 import * as React from "react"
 import {
-  Search,
-  BadgeCheck,
+  AlertTriangle,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
   Eye,
-  Loader2,
-  MoreHorizontal,
   HardHat,
   MapPin,
-  X,
-  UserCheck,
+  MoreHorizontal,
+  Power,
+  SearchX,
+  ShieldCheck,
   ShieldQuestion,
+  ShieldX,
+  X,
 } from "lucide-react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { apiGet, apiPatch } from "@/lib/api"
+import { type UserRole } from "@/lib/constants"
 import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,7 +60,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -54,7 +67,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import {
   Table,
   TableBody,
@@ -63,16 +75,42 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useUIStore } from "@/store"
 
+import {
+  ActiveBadge,
+  ConfirmToggleDialog,
+  EmptyState,
+  ErrorState,
+  errMsg,
+  FilterBar,
+  initials,
+  PageSectionHeader,
+  Pagination,
+  ResultCount,
+  SavingPill,
+  SearchInput,
+  TableSkeleton,
+  VerifiedBadge,
+} from "./admin-shared"
+
+// ---------------------------------------------------------------------------
+// Types — definidos IDÊNTICOS em admin-users.tsx (H4 consistência).
+// ---------------------------------------------------------------------------
 type AdminUser = {
   id: string
   name: string
   email: string
-  role: "CLIENT" | "PROVIDER" | "ADMIN"
+  role: UserRole
   cpfCnpj?: string | null
   whatsapp?: string | null
+  phone?: string | null
   avatarUrl?: string | null
   city?: string | null
   state?: string | null
@@ -92,14 +130,35 @@ type AdminUsersResponse = {
 type VerifiedFilter = "ALL" | "true" | "false"
 type ActiveFilter = "ALL" | "true" | "false"
 
+type SortKey = "name" | "createdAt"
+type SortDir = "asc" | "desc"
+type SortState = { key: SortKey; dir: SortDir } | null
+
+type PendingToggle = {
+  id: string
+  name: string
+  field: "verified" | "active"
+  currentValue: boolean
+} | null
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 export function AdminProviders() {
   const queryClient = useQueryClient()
   const openProvider = useUIStore((s) => s.openProvider)
+
   const [q, setQ] = React.useState("")
   const [debouncedQ, setDebouncedQ] = React.useState("")
   const [verified, setVerified] = React.useState<VerifiedFilter>("ALL")
   const [active, setActive] = React.useState<ActiveFilter>("ALL")
   const [page, setPage] = React.useState(1)
+  const [sort, setSort] = React.useState<SortState>(null)
+
+  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
+  const [patchingId, setPatchingId] = React.useState<string | null>(null)
+  const [errorBanner, setErrorBanner] = React.useState<string | null>(null)
+
   const limit = 12
 
   React.useEffect(() => {
@@ -110,7 +169,7 @@ export function AdminProviders() {
     return () => clearTimeout(t)
   }, [q])
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "providers", { debouncedQ, verified, active, page, limit }],
     queryFn: () =>
       apiGet<AdminUsersResponse>("/api/admin/users", {
@@ -133,13 +192,10 @@ export function AdminProviders() {
       id: string
       patch: { verified?: boolean; active?: boolean }
     }) => apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
-    onSuccess: () => invalidate(),
-    onError: (e: unknown) =>
-      toast.error(errMsg(e, "Falha ao atualizar prestador.")),
   })
 
   const rawItems = data?.items ?? []
-  const items = React.useMemo(() => {
+  const filteredItems = React.useMemo(() => {
     return rawItems.filter((p) => {
       if (verified === "true" && !p.verified) return false
       if (verified === "false" && p.verified) return false
@@ -148,6 +204,18 @@ export function AdminProviders() {
       return true
     })
   }, [rawItems, verified, active])
+
+  const items = React.useMemo(() => {
+    if (!sort) return filteredItems
+    const sorted = [...filteredItems].sort((a, b) => {
+      let cmp = 0
+      if (sort.key === "name") cmp = a.name.localeCompare(b.name, "pt-BR")
+      else if (sort.key === "createdAt")
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      return sort.dir === "asc" ? cmp : -cmp
+    })
+    return sorted
+  }, [filteredItems, sort])
 
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -164,31 +232,104 @@ export function AdminProviders() {
     setDebouncedQ("")
     setVerified("ALL")
     setActive("ALL")
+    setSort(null)
     setPage(1)
   }
 
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: "asc" }
+      if (prev.dir === "asc") return { key, dir: "desc" }
+      return null
+    })
+  }
+
+  const handleToggleConfirm = () => {
+    if (!pendingToggle) return
+    const { id, field, currentValue } = pendingToggle
+    setPatchingId(id)
+    patchMutation.mutate(
+      { id, patch: { [field]: !currentValue } },
+      {
+        onSuccess: () => {
+          invalidate()
+          toast.success(
+            field === "verified"
+              ? currentValue
+                ? "Verificação removida."
+                : "Prestador verificado."
+              : currentValue
+              ? "Prestador desativado."
+              : "Prestador ativado.",
+          )
+          setPendingToggle(null)
+          setPatchingId(null)
+        },
+        onError: (e: unknown) => {
+          const msg = errMsg(e, "Falha ao atualizar prestador.")
+          setErrorBanner(msg)
+          toast.error(msg)
+          setPendingToggle(null)
+          setPatchingId(null)
+        },
+      },
+    )
+  }
+
+  const renderSortHeader = (label: string, sortKey: SortKey) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(sortKey)}
+      className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+    >
+      {label}
+      {sort?.key === sortKey ? (
+        sort.dir === "asc" ? (
+          <ChevronUp className="size-3" />
+        ) : (
+          <ChevronDown className="size-3" />
+        )
+      ) : (
+        <ArrowUpDown className="size-3 opacity-40" />
+      )}
+    </button>
+  )
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Quick stat pill */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
-          <HardHat className="size-3 text-primary" />
-          {total.toLocaleString("pt-BR")} prestador(es) no total
-        </span>
-      </div>
+      <PageSectionHeader
+        title="Prestadores"
+        description="Gerencie prestadores de serviços, verificação e status."
+      />
+
+      {/* Error banner (dismissible) — H9 */}
+      {errorBanner ? (
+        <Alert variant="destructive">
+          <AlertTriangle className="size-4" />
+          <AlertTitle>Erro ao salvar</AlertTitle>
+          <AlertDescription>{errorBanner}</AlertDescription>
+          <button
+            type="button"
+            onClick={() => setErrorBanner(null)}
+            aria-label="Dispensar aviso"
+            className="absolute right-3 top-3 rounded-md p-1 text-current/70 transition-colors hover:text-current"
+          >
+            <X className="size-3.5" />
+          </button>
+        </Alert>
+      ) : null}
+
+      {/* H8 — REMOVIDO o pill "N prestador(es) no total" no topo.
+          A ResultCount abaixo da tabela já mostra essa informação. */}
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-sm">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            id="p-search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nome, e-mail ou cidade"
-            className="h-9 pl-8"
-          />
-        </div>
+      <FilterBar onClear={clearFilters} activeCount={activeFilterCount}>
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Buscar por nome, e-mail ou cidade"
+          className="min-w-[200px] flex-1"
+        />
         <Select
           value={verified}
           onValueChange={(v) => {
@@ -221,69 +362,52 @@ export function AdminProviders() {
             <SelectItem value="false">Apenas inativos</SelectItem>
           </SelectContent>
         </Select>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={clearFilters}
-          disabled={activeFilterCount === 0}
-          className="h-9 gap-1.5 text-muted-foreground"
-        >
-          <X className="size-3.5" />
-          Limpar filtros
-        </Button>
-        {activeFilterCount > 0 ? (
-          <Badge
-            variant="outline"
-            className="gap-1 border-primary/30 bg-primary/5 text-primary"
-          >
-            <span className="size-1.5 rounded-full bg-primary" />
-            {activeFilterCount} filtro(s) ativo(s)
-          </Badge>
-        ) : null}
-      </div>
+      </FilterBar>
 
-      {/* Result count */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {total > 0
-            ? `Mostrando ${(page - 1) * limit + 1}–${Math.min(
-                page * limit,
-                total,
-              )} de ${total.toLocaleString("pt-BR")} prestador(es)`
-            : "Nenhum prestador"}
-        </p>
-        {clientFilterActive ? (
-          <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300">
-            <ShieldQuestion className="size-3" />
-            Filtro aplicado à página atual
-          </span>
-        ) : null}
-      </div>
+      {/* Honest about client-side filter — H2 */}
+      {clientFilterActive ? (
+        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300">
+          <ShieldQuestion className="size-3" />
+          Filtro de verificação/status aplicado apenas à página atual
+        </span>
+      ) : null}
 
-      <Card className="overflow-hidden">
-        <CardContent className="p-0">
-          {isError ? (
-            <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
-              <div className="flex size-14 items-center justify-center rounded-full bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300">
-                <HardHat className="size-6" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">
-                  Não foi possível carregar os prestadores
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Verifique sua conexão e tente novamente.
-                </p>
-              </div>
-            </div>
-          ) : (
+      {/* Table area: error / loading / empty / table */}
+      {isError ? (
+        <ErrorState
+          title="Não foi possível carregar os prestadores"
+          description="Verifique sua conexão e tente novamente."
+          onRetry={() => refetch()}
+        />
+      ) : isLoading ? (
+        <TableSkeleton rows={8} cols={7} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={HardHat}
+          title="Nenhum prestador encontrado"
+          description="Ajuste os filtros de busca ou aguarde novos cadastros."
+          action={
+            activeFilterCount > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearFilters}
+                className="gap-1.5"
+              >
+                <X className="size-3.5" />
+                Limpar filtros
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="h-11 bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Prestador
-                    </TableHead>
+                    <TableHead>{renderSortHeader("Prestador", "name")}</TableHead>
                     <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground md:table-cell">
                       Contato
                     </TableHead>
@@ -291,13 +415,13 @@ export function AdminProviders() {
                       Localidade
                     </TableHead>
                     <TableHead className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Verificado
+                      Verificação
                     </TableHead>
                     <TableHead className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Status
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:table-cell">
-                      Desde
+                    <TableHead className="hidden sm:table-cell">
+                      {renderSortHeader("Desde", "createdAt")}
                     </TableHead>
                     <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Ações
@@ -305,45 +429,13 @@ export function AdminProviders() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isLoading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i} className="h-14">
-                        <TableCell colSpan={7}>
-                          <Skeleton className="h-8 w-full" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : items.length === 0 ? (
-                    <TableRow className="h-14 hover:bg-transparent">
-                      <TableCell colSpan={7} className="py-12">
-                        <div className="flex flex-col items-center gap-3 text-center">
-                          <div className="flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                            <HardHat className="size-7" />
-                          </div>
-                          <div>
-                            <p className="text-base font-semibold">
-                              Nenhum prestador encontrado
-                            </p>
-                            <p className="mt-0.5 text-sm text-muted-foreground">
-                              Ajuste os filtros ou aguarde novos cadastros.
-                            </p>
-                          </div>
-                          {activeFilterCount > 0 ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={clearFilters}
-                              className="gap-1.5"
-                            >
-                              <X className="size-3.5" />
-                              Limpar filtros
-                            </Button>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    items.map((p) => (
+                  {items.map((p) => {
+                    const isPatchingThis =
+                      patchingId === p.id && patchMutation.isPending
+                    const patchingField = isPatchingThis
+                      ? pendingToggle?.field ?? null
+                      : null
+                    return (
                       <TableRow
                         key={p.id}
                         className="h-14 border-b transition-colors last:border-0 hover:bg-muted/30"
@@ -352,21 +444,15 @@ export function AdminProviders() {
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-9 shrink-0">
                               {p.avatarUrl ? (
-                                <AvatarImage
-                                  src={p.avatarUrl}
-                                  alt={p.name}
-                                />
+                                <AvatarImage src={p.avatarUrl} alt={p.name} />
                               ) : null}
                               <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
                                 {initials(p.name)}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                              <p className="truncate text-sm font-medium">
                                 {p.name}
-                                {p.verified ? (
-                                  <BadgeCheck className="size-4 shrink-0 text-emerald-600" />
-                                ) : null}
                               </p>
                               <p className="truncate text-xs text-muted-foreground">
                                 {p.email}
@@ -404,41 +490,17 @@ export function AdminProviders() {
                           )}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
-                          <Switch
-                            checked={p.verified}
-                            onCheckedChange={(v) => {
-                              patchMutation.mutate({
-                                id: p.id,
-                                patch: { verified: v },
-                              })
-                              toast.message(
-                                v
-                                  ? "Prestador verificado."
-                                  : "Verificação removida.",
-                              )
-                            }}
-                            disabled={patchMutation.isPending}
-                            aria-label="Alternar verificação"
-                            className="data-[state=checked]:bg-emerald-600"
-                          />
+                          {patchingField === "verified" ? (
+                            <SavingPill saving label="Salvando…" />
+                          ) : (
+                            <VerifiedBadge verified={p.verified} />
+                          )}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
-                          {p.active ? (
-                            <Badge
-                              variant="outline"
-                              className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300"
-                            >
-                              <span className="size-1.5 rounded-full bg-emerald-500" />
-                              Ativo
-                            </Badge>
+                          {patchingField === "active" ? (
+                            <SavingPill saving label="Salvando…" />
                           ) : (
-                            <Badge
-                              variant="outline"
-                              className="gap-1 border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-300"
-                            >
-                              <span className="size-1.5 rounded-full bg-slate-400" />
-                              Inativo
-                            </Badge>
+                            <ActiveBadge active={p.active} />
                           )}
                         </TableCell>
                         <TableCell className="hidden px-4 py-3 text-xs text-muted-foreground tabular-nums sm:table-cell">
@@ -446,60 +508,78 @@ export function AdminProviders() {
                         </TableCell>
                         <TableCell className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openProvider(p.id)}
-                              className="h-8 gap-1.5"
-                            >
-                              <Eye className="size-3.5" />
-                              <span className="hidden sm:inline">Ver perfil</span>
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
+                            {/* H6 — primary action visible */}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
                                 <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-8"
-                                  aria-label="Ações"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openProvider(p.id)}
+                                  className="h-8 gap-1.5"
                                 >
-                                  <MoreHorizontal className="size-4" />
+                                  <Eye className="size-3.5" />
+                                  <span className="hidden sm:inline">
+                                    Ver perfil
+                                  </span>
                                 </Button>
-                              </DropdownMenuTrigger>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Ver perfil público do prestador
+                              </TooltipContent>
+                            </Tooltip>
+                            {/* H6 — secondary actions in ⋮.
+                                "Ver perfil público" REMOVIDO (já é o botão visível). */}
+                            <DropdownMenu>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-8"
+                                      aria-label="Mais ações"
+                                    >
+                                      <MoreHorizontal className="size-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>Mais ações</TooltipContent>
+                              </Tooltip>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>{p.name}</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => openProvider(p.id)}
-                                  className="gap-2"
-                                >
-                                  <Eye className="size-3.5" />
-                                  Ver perfil público
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
                                   onClick={() =>
-                                    patchMutation.mutate({
+                                    setPendingToggle({
                                       id: p.id,
-                                      patch: { verified: !p.verified },
+                                      name: p.name,
+                                      field: "verified",
+                                      currentValue: p.verified,
                                     })
                                   }
                                   className="gap-2"
                                 >
-                                  <BadgeCheck className="size-3.5" />
+                                  {p.verified ? (
+                                    <ShieldX className="size-3.5" />
+                                  ) : (
+                                    <ShieldCheck className="size-3.5" />
+                                  )}
                                   {p.verified
                                     ? "Remover verificação"
                                     : "Verificar"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() =>
-                                    patchMutation.mutate({
+                                    setPendingToggle({
                                       id: p.id,
-                                      patch: { active: !p.active },
+                                      name: p.name,
+                                      field: "active",
+                                      currentValue: p.active,
                                     })
                                   }
                                   className="gap-2"
                                 >
-                                  <UserCheck className="size-3.5" />
+                                  <Power className="size-3.5" />
                                   {p.active ? "Desativar" : "Ativar"}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
@@ -507,69 +587,41 @@ export function AdminProviders() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
-          )}
+          </CardContent>
+        </Card>
+      )}
 
-          {/* Pagination — hidden when only 1 page */}
-          {totalPages > 1 ? (
-            <div className="flex flex-col items-center justify-between gap-2 border-t px-4 py-3 sm:flex-row">
-              <p className="text-xs text-muted-foreground tabular-nums">
-                Página {page} de {totalPages}
-              </p>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="h-8"
-                >
-                  Anterior
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="h-8"
-                >
-                  Próxima
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      {patchMutation.isPending ? (
-        <div
-          aria-hidden
-          className={cn(
-            "fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full bg-primary px-3 py-1.5 text-xs text-primary-foreground shadow-lg",
-          )}
-        >
-          <Loader2 className="size-3 animate-spin" />
-          Salvando...
+      {/* Result count + pagination — only when there are results */}
+      {!isError && !isLoading && items.length > 0 ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <ResultCount
+            page={page}
+            limit={limit}
+            total={total}
+            label="prestadores"
+          />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </div>
       ) : null}
+
+      {/* Toggle confirmation — H5: ConfirmToggleDialog do admin-shared */}
+      <ConfirmToggleDialog
+        open={!!pendingToggle}
+        onOpenChange={(open) => !open && setPendingToggle(null)}
+        targetLabel={pendingToggle?.name ?? ""}
+        field={pendingToggle?.field ?? "verified"}
+        currentValue={pendingToggle?.currentValue ?? false}
+        onConfirm={handleToggleConfirm}
+      />
     </div>
   )
-}
-
-function initials(name: string): string {
-  if (!name) return "?"
-  const parts = name.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
-function errMsg(e: unknown, fallback: string): string {
-  if (e && typeof e === "object" && "message" in e) {
-    return String((e as { message?: unknown }).message ?? fallback)
-  }
-  return fallback
 }

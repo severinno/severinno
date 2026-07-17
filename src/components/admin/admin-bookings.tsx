@@ -4,45 +4,61 @@
  * AdminBookings — read-only oversight of all bookings (admin).
  *
  * Data source: GET /api/bookings?role=ADMIN&status=&page=
- * (admin sees all bookings — no edit. Oversight only.)
+ *              GET /api/admin/stats  (bookingsByStatus — para contagens nas Tabs)
  *
- * Status filter is a pill segmented control. Pagination hidden when only
- * one page. The breadcrumb is provided by the shell — this view does not
- * duplicate it.
+ * Nielsen heuristics covered (design system em admin-shared.tsx):
+ *   H1 — TableSkeleton / ErrorState com retry / contagens por status nas Tabs
+ *        (mostra "?" enquanto stats carrega) / ResultCount contextual
+ *   H2 — Labels pt-BR no domínio (agendamento, prestador, valor, pagamento)
+ *   H3 — Dialog de detalhe abre no click da linha (liberdade de explorar)
+ *   H4 — CRITICAL FIX: REMOVIDO o STATUS_BADGE_CLS / PAYMENT_BADGE_CLS local
+ *        que divergia de BOOKING_STATUS_COLORS (constants.ts).
+ *        Agora UMA única source of truth: BookingStatusBadge + PaymentStatusBadge
+ *        do admin-shared.tsx — mesma cor em admin-dashboard e admin-bookings.
+ *   H5 — N/A (read-only; sem toggles destrutivos)
+ *   H6 — Linhas CLICÁVEIS abrem Dialog de detalhe (reconhecimento > memorização)
+ *        Cursor pointer + hint visual no hover; ⋮ não é mais a única ação
+ *   H7 — SearchInput filtra por cliente, prestador ou serviço (client-side)
+ *        Hint H2 "Busca aplicada apenas à página atual"
+ *   H8 — Tabs simplificadas (label + count, sem ícone redundante).
+ *        O badge de Status na tabela mantém ícone para varredura visual rápida
+ *   H9 — ErrorState com onRetry=refetch
+ *   H10— Tooltip "Ver detalhes" no hover da linha; Dialog acessível (focus trap)
  */
 
 import * as React from "react"
 import {
   CalendarCheck,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  Loader,
   CalendarDays,
-  type LucideIcon,
+  CreditCard,
+  MapPin,
+  SearchX,
+  ShieldQuestion,
+  X,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"
 import {
   BOOKING_STATUS_LABELS,
-  PAYMENT_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
   type BookingStatus,
-  type PaymentStatus,
   type PaymentMethod,
+  type PaymentStatus,
 } from "@/lib/constants"
 import { formatBRL, formatDateTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -52,8 +68,29 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
+import {
+  BookingStatusBadge,
+  EmptyState,
+  ErrorState,
+  FilterBar,
+  initials,
+  PageSectionHeader,
+  Pagination,
+  PaymentStatusBadge,
+  ResultCount,
+  SearchInput,
+  TableSkeleton,
+} from "./admin-shared"
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 type AdminBooking = {
   id: string
   status: BookingStatus
@@ -75,47 +112,30 @@ type AdminBookingsResponse = {
   limit: number
 }
 
+type StatsResponse = {
+  bookingsByStatus: Record<string, number>
+}
+
 type StatusFilter = "ALL" | BookingStatus
 
 // ---------------------------------------------------------------------------
-// Status badge system — emerald (success) / amber (pending) / rose (error)
-// / slate (neutral) / teal (in_progress). Blue is forbidden.
+// Main component
 // ---------------------------------------------------------------------------
-const STATUS_BADGE_CLS: Record<BookingStatus, string> = {
-  PENDING:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300",
-  CONFIRMED:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300",
-  IN_PROGRESS:
-    "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900/40 dark:bg-teal-950/30 dark:text-teal-300",
-  COMPLETED:
-    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300",
-  CANCELLED:
-    "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300",
-}
-
-const STATUS_ICON: Record<BookingStatus, LucideIcon> = {
-  PENDING: Clock,
-  CONFIRMED: CheckCircle2,
-  IN_PROGRESS: Loader,
-  COMPLETED: CheckCircle2,
-  CANCELLED: XCircle,
-}
-
-const PAYMENT_BADGE_CLS: Record<PaymentStatus, string> = {
-  PENDING:
-    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300",
-  PAID: "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300",
-  REFUNDED:
-    "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300",
-}
-
 export function AdminBookings() {
   const [status, setStatus] = React.useState<StatusFilter>("ALL")
   const [page, setPage] = React.useState(1)
+  const [q, setQ] = React.useState("")
+  const [detail, setDetail] = React.useState<AdminBooking | null>(null)
   const limit = 12
 
-  const { data, isLoading, isError } = useQuery({
+  // Per-status counts (H1) — mesmo cache do dashboard (60s)
+  const { data: stats, isLoading: statsLoading } = useQuery({
+    queryKey: ["admin", "stats"],
+    queryFn: () => apiGet<StatsResponse>("/api/admin/stats"),
+    staleTime: 60_000,
+  })
+
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "bookings", { status, page, limit }],
     queryFn: () =>
       apiGet<AdminBookingsResponse>("/api/bookings", {
@@ -127,13 +147,48 @@ export function AdminBookings() {
     staleTime: 15_000,
   })
 
-  const items = data?.items ?? []
+  const rawItems = data?.items ?? []
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
+  // H7 — busca client-side por cliente, prestador ou serviço
+  const query = q.trim().toLowerCase()
+  const items = React.useMemo(() => {
+    if (!query) return rawItems
+    return rawItems.filter((b) => {
+      const client = b.client?.name?.toLowerCase() ?? ""
+      const provider = b.provider?.name?.toLowerCase() ?? ""
+      const service = b.service?.title?.toLowerCase() ?? ""
+      return (
+        client.includes(query) ||
+        provider.includes(query) ||
+        service.includes(query)
+      )
+    })
+  }, [rawItems, query])
+
+  // H1 — contagens por status vindas do /api/admin/stats
+  const statusCounts = React.useMemo(() => {
+    const by = stats?.bookingsByStatus ?? {}
+    const sum = Object.values(by).reduce((a, b) => a + (b ?? 0), 0)
+    return { ALL: sum, ...by } as Record<StatusFilter, number>
+  }, [stats])
+
+  const activeFilterCount = (status !== "ALL" ? 1 : 0) + (query ? 1 : 0)
+  const clearFilters = () => {
+    setStatus("ALL")
+    setQ("")
+    setPage(1)
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Status tabs — pill segmented control */}
+      <PageSectionHeader
+        title="Agendamentos"
+        description="Acompanhe todos os agendamentos da plataforma (somente leitura)."
+      />
+
+      {/* Status tabs — simplified (label + count, sem ícone redundante — H8) */}
       <Tabs
         value={status}
         onValueChange={(v) => {
@@ -147,56 +202,91 @@ export function AdminBookings() {
             className="h-8 gap-1.5 rounded-md px-3 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             Todos
+            <CountBadge
+              loading={statsLoading}
+              count={statusCounts.ALL}
+              active={status === "ALL"}
+            />
           </TabsTrigger>
-          {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => {
-            const Icon = STATUS_ICON[s]
-            return (
-              <TabsTrigger
-                key={s}
-                value={s}
-                className="h-8 gap-1.5 rounded-md px-3 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-              >
-                <Icon className="size-3.5" />
-                {BOOKING_STATUS_LABELS[s]}
-              </TabsTrigger>
-            )
-          })}
+          {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => (
+            <TabsTrigger
+              key={s}
+              value={s}
+              className="h-8 gap-1.5 rounded-md px-3 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              {BOOKING_STATUS_LABELS[s]}
+              <CountBadge
+                loading={statsLoading}
+                count={statusCounts[s] ?? 0}
+                active={status === s}
+              />
+            </TabsTrigger>
+          ))}
         </TabsList>
       </Tabs>
 
-      {/* Result count */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {total > 0
-            ? `Mostrando ${(page - 1) * limit + 1}–${Math.min(
-                page * limit,
-                total,
-              )} de ${total.toLocaleString("pt-BR")} agendamento(s)`
-            : "Nenhum agendamento"}
-        </p>
-        <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
-          <CalendarCheck className="size-3 text-primary" />
-          {total.toLocaleString("pt-BR")} no total
-        </span>
-      </div>
+      {/* Filter bar (H4 + H7) */}
+      <FilterBar
+        onClear={clearFilters}
+        activeCount={activeFilterCount}
+        resultCount={total}
+        resultLabel={
+          total === 1 ? "agendamento no total" : "agendamentos no total"
+        }
+      >
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Buscar por cliente, prestador ou serviço"
+          className="min-w-[220px] flex-1"
+        />
+      </FilterBar>
 
-      <Card className="overflow-hidden">
-        <CardContent className="p-0">
-          {isError ? (
-            <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
-              <div className="flex size-14 items-center justify-center rounded-full bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300">
-                <CalendarCheck className="size-6" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">
-                  Não foi possível carregar os agendamentos
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Verifique se você está autenticado como administrador.
-                </p>
-              </div>
-            </div>
-          ) : (
+      {/* Honestidade H2 — busca é client-side na página atual */}
+      {query ? (
+        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300">
+          <ShieldQuestion className="size-3" />
+          Busca aplicada apenas à página atual
+        </span>
+      ) : null}
+
+      {/* Table area: error / loading / empty / table */}
+      {isError ? (
+        <ErrorState
+          title="Não foi possível carregar os agendamentos"
+          description="Verifique se você está autenticado como administrador e tente novamente."
+          onRetry={() => refetch()}
+        />
+      ) : isLoading ? (
+        <TableSkeleton rows={8} cols={7} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={SearchX}
+          title="Nenhum agendamento encontrado"
+          description={
+            status !== "ALL"
+              ? `Não há agendamentos com status "${BOOKING_STATUS_LABELS[status as BookingStatus]}".`
+              : query
+                ? "Nenhum agendamento corresponde à busca nesta página."
+                : "Os novos agendamentos aparecerão aqui."
+          }
+          action={
+            activeFilterCount > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearFilters}
+                className="gap-1.5"
+              >
+                <X className="size-3.5" />
+                Limpar filtros
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -225,41 +315,12 @@ export function AdminBookings() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isLoading ? (
-                    Array.from({ length: 6 }).map((_, i) => (
-                      <TableRow key={i} className="h-14">
-                        <TableCell colSpan={7}>
-                          <Skeleton className="h-8 w-full" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : items.length === 0 ? (
-                    <TableRow className="h-14 hover:bg-transparent">
-                      <TableCell colSpan={7} className="py-12">
-                        <div className="flex flex-col items-center gap-3 text-center">
-                          <div className="flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                            <CalendarCheck className="size-7" />
-                          </div>
-                          <div>
-                            <p className="text-base font-semibold">
-                              Nenhum agendamento encontrado
-                            </p>
-                            <p className="mt-0.5 text-sm text-muted-foreground">
-                              {status !== "ALL"
-                                ? `Não há agendamentos com status "${BOOKING_STATUS_LABELS[status as BookingStatus]}".`
-                                : "Os novos agendamentos aparecerão aqui."}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    items.map((b) => {
-                      const StatusIcon = STATUS_ICON[b.status]
-                      return (
+                  {items.map((b) => (
+                    <Tooltip key={b.id}>
+                      <TooltipTrigger asChild>
                         <TableRow
-                          key={b.id}
-                          className="h-14 border-b transition-colors last:border-0 hover:bg-muted/30"
+                          onClick={() => setDetail(b)}
+                          className="h-14 cursor-pointer border-b transition-colors last:border-0 hover:bg-muted/30 focus-visible:bg-muted/30 focus-visible:outline-none"
                         >
                           <TableCell className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
@@ -316,34 +377,12 @@ export function AdminBookings() {
                             </span>
                           </TableCell>
                           <TableCell className="px-4 py-3">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "gap-1 text-[10px] font-medium",
-                                STATUS_BADGE_CLS[b.status],
-                              )}
-                            >
-                              <StatusIcon
-                                className={cn(
-                                  "size-3",
-                                  b.status === "IN_PROGRESS" && "animate-spin",
-                                )}
-                              />
-                              {BOOKING_STATUS_LABELS[b.status] ?? b.status}
-                            </Badge>
+                            {/* H4 — UMA source of truth: BookingStatusBadge */}
+                            <BookingStatusBadge status={b.status} />
                           </TableCell>
                           <TableCell className="hidden px-4 py-3 sm:table-cell">
                             <div className="flex flex-col gap-0.5">
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "w-fit gap-1 text-[10px] font-medium",
-                                  PAYMENT_BADGE_CLS[b.paymentStatus],
-                                )}
-                              >
-                                {PAYMENT_STATUS_LABELS[b.paymentStatus] ??
-                                  b.paymentStatus}
-                              </Badge>
+                              <PaymentStatusBadge status={b.paymentStatus} />
                               <span className="text-[10px] text-muted-foreground">
                                 {PAYMENT_METHOD_LABELS[b.paymentMethod] ??
                                   b.paymentMethod}
@@ -351,53 +390,210 @@ export function AdminBookings() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      )
-                    })
-                  )}
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        Ver detalhes do agendamento
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
                 </TableBody>
               </Table>
             </div>
-          )}
 
-          {/* Pagination — hidden when only 1 page */}
-          {totalPages > 1 ? (
+            {/* Result count + Pagination (H1 + H7) */}
             <div className="flex flex-col items-center justify-between gap-2 border-t px-4 py-3 sm:flex-row">
-              <p className="text-xs text-muted-foreground tabular-nums">
-                Página {page} de {totalPages}
-              </p>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="h-8 gap-1"
-                >
-                  <ChevronLeft className="size-4" />
-                  Anterior
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="h-8 gap-1"
-                >
-                  Próxima
-                  <ChevronRight className="size-4" />
-                </Button>
+              <ResultCount
+                page={page}
+                limit={limit}
+                total={total}
+                label="agendamentos"
+              />
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* H6 — Booking detail dialog */}
+      <Dialog
+        open={!!detail}
+        onOpenChange={(open) => !open && setDetail(null)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarCheck className="size-5 text-primary" />
+              Detalhes do agendamento
+            </DialogTitle>
+            <DialogDescription>
+              Informações completas do agendamento selecionado.
+            </DialogDescription>
+          </DialogHeader>
+
+          {detail ? (
+            <div className="space-y-4">
+              {/* Status + Payment row */}
+              <div className="flex flex-wrap items-center gap-2">
+                <BookingStatusBadge status={detail.status} />
+                <PaymentStatusBadge status={detail.paymentStatus} />
+              </div>
+
+              {/* People */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <DetailField
+                  label="Cliente"
+                  value={detail.client?.name ?? "—"}
+                  avatarUrl={detail.client?.avatarUrl}
+                />
+                <DetailField
+                  label="Prestador"
+                  value={detail.provider?.name ?? "—"}
+                  avatarUrl={detail.provider?.avatarUrl}
+                />
+              </div>
+
+              {/* Service + value */}
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Serviço
+                </p>
+                <p className="mt-0.5 text-sm font-medium text-foreground">
+                  {detail.service?.title ?? "—"}
+                </p>
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Valor
+                </p>
+                <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
+                  {formatBRL(detail.amount)}
+                </p>
+              </div>
+
+              {/* Schedule */}
+              <div className="space-y-2">
+                <DetailRow
+                  icon={CalendarDays}
+                  label="Agendado para"
+                  value={formatDateTime(detail.scheduledAt)}
+                />
+                <DetailRow
+                  icon={CreditCard}
+                  label="Pagamento"
+                  value={
+                    PAYMENT_METHOD_LABELS[detail.paymentMethod] ??
+                    detail.paymentMethod
+                  }
+                />
+                {detail.address ? (
+                  <DetailRow
+                    icon={MapPin}
+                    label="Endereço"
+                    value={detail.address}
+                  />
+                ) : null}
+                <DetailRow
+                  icon={CalendarCheck}
+                  label="Criado em"
+                  value={formatDateTime(detail.createdAt)}
+                />
               </div>
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDetail(null)}
+              className="gap-1.5"
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-function initials(name: string): string {
-  if (!name) return "?"
-  const parts = name.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function CountBadge({
+  loading,
+  count,
+  active,
+}: {
+  loading: boolean
+  count: number
+  active: boolean
+}) {
+  return (
+    <span
+      className={cn(
+        "ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums",
+        active
+          ? "bg-primary-foreground/20 text-primary-foreground"
+          : "bg-muted text-muted-foreground",
+      )}
+      aria-label={loading ? "carregando contagem" : `${count} agendamentos`}
+    >
+      {loading ? "?" : count}
+    </span>
+  )
+}
+
+function DetailField({
+  label,
+  value,
+  avatarUrl,
+}: {
+  label: string
+  value: string
+  avatarUrl?: string | null
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <div className="flex items-center gap-2">
+        <Avatar className="size-7 shrink-0">
+          {avatarUrl ? <AvatarImage src={avatarUrl} alt={value} /> : null}
+          <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
+            {initials(value)}
+          </AvatarFallback>
+        </Avatar>
+        <span className="truncate text-sm font-medium text-foreground">
+          {value}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function DetailRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: string
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </p>
+        <p className="text-sm text-foreground">{value}</p>
+      </div>
+    </div>
+  )
 }
