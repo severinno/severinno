@@ -390,22 +390,26 @@ export default function Hero({
               icon={<Users className="size-5" />}
               value={stats.providers}
               label="Prestadores verificados"
+              accent
             />
             <StatItem
               icon={<Wrench className="size-5" />}
               value={stats.services}
               label="Serviços cadastrados"
+              accent
             />
             <StatItem
               icon={<CheckCircle2 className="size-5" />}
               value={stats.completedBookings}
               label="Serviços concluídos"
+              accent
             />
             <StatItem
               icon={<Star className="size-5" />}
               value={stats.avgRating || "—"}
               label="Nota média das avaliações"
               suffix={stats.avgRating ? "★" : undefined}
+              accent
             />
           </div>
         )}
@@ -587,15 +591,22 @@ function StatItem({
   value,
   label,
   suffix,
+  accent,
 }: {
   icon: React.ReactNode
   value: number | string
   label: string
   suffix?: string
+  accent?: boolean
 }) {
   return (
     <div className="flex items-center gap-3 sm:border-l sm:border-white/20 sm:px-6 sm:first:border-l-0 sm:first:pl-0 sm:last:pr-0">
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
+      <span className={cn(
+        "flex size-11 shrink-0 items-center justify-center rounded-xl ring-1",
+        accent
+          ? "bg-emerald-400/20 ring-emerald-300/30"
+          : "bg-white/10 ring-white/15",
+      )}>
         {icon}
       </span>
       <div className="leading-tight">
