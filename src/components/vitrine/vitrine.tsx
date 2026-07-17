@@ -34,6 +34,9 @@ import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
 import HowItWorks from "./how-it-works"
 import Testimonials from "./testimonials"
+import FAQ from "./faq"
+import WhySeverinno from "./why-severinno"
+import CtaBanner from "./cta-banner"
 import { RecentlyViewed } from "./recently-viewed"
 import CompareBar from "./compare-bar"
 import CompareModal from "./compare-modal"
@@ -219,6 +222,12 @@ export default function Vitrine() {
         <HowItWorks />
 
         <Testimonials />
+
+        <WhySeverinno />
+
+        <CtaBanner />
+
+        <FAQ />
       </main>
 
       <Footer />

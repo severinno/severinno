@@ -30,9 +30,11 @@ import {
   MoreHorizontal,
   type LucideIcon,
 } from "lucide-react"
+import { motion } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 import type { Category } from "@/lib/api"
+import { useScrollReveal } from "@/hooks/use-animation"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -75,6 +77,8 @@ export default function CategoryShowcase({
   isLoading,
   className,
 }: CategoryShowcaseProps) {
+  const { ref, visible } = useScrollReveal<HTMLDivElement>()
+
   return (
     <section
       aria-label="Categorias"
@@ -83,7 +87,13 @@ export default function CategoryShowcase({
         className,
       )}
     >
-      <header className="mb-4 flex items-end justify-between gap-4">
+      <div ref={ref}>
+      <motion.header
+        initial={{ opacity: 0, y: 16 }}
+        animate={visible ? { opacity: 1, y: 0 } : {}}
+        transition={{ duration: 0.45 }}
+        className="mb-4 flex items-end justify-between gap-4"
+      >
         <div>
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Explore por categoria
@@ -93,7 +103,7 @@ export default function CategoryShowcase({
             minutos.
           </p>
         </div>
-      </header>
+      </motion.header>
 
       {isLoading ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -104,12 +114,19 @@ export default function CategoryShowcase({
       ) : categories.length === 0 ? null : (
         <ScrollArea className="w-full pb-2">
           <div className="flex gap-3 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {categories.map((c) => {
+            {categories.map((c, idx) => {
               const Icon = resolveIcon(c)
               const active = activeId === c.id
               return (
-                <button
+                <motion.button
                   key={c.id}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={
+                    visible
+                      ? { opacity: 1, y: 0, scale: 1 }
+                      : {}
+                  }
+                  transition={{ duration: 0.4, delay: idx * 0.05 }}
                   type="button"
                   onClick={() => onSelect?.(active ? null : c.id)}
                   aria-pressed={active}
@@ -123,7 +140,7 @@ export default function CategoryShowcase({
                 >
                   <span
                     className={cn(
-                      "flex size-10 items-center justify-center rounded-lg transition-colors",
+                      "flex size-10 items-center justify-center rounded-lg transition-all group-hover:scale-110",
                       active
                         ? "bg-primary text-primary-foreground shadow-sm"
                         : "bg-emerald-50 text-emerald-700 group-hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:group-hover:bg-emerald-950/60",
@@ -134,12 +151,13 @@ export default function CategoryShowcase({
                   <span className="text-sm font-medium leading-tight">
                     {c.name}
                   </span>
-                </button>
+                </motion.button>
               )
             })}
           </div>
         </ScrollArea>
       )}
+      </div>
     </section>
   )
 }

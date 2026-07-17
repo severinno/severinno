@@ -42,6 +42,7 @@ import {
 } from "@/lib/constants"
 import { toggleFavorite, type ProviderCard as ProviderCardType } from "@/lib/api"
 import { useAuthStore, useUIStore, useCompareStore, MAX_COMPARE } from "@/store"
+import { useTilt } from "@/hooks/use-animation"
 import { toast } from "sonner"
 
 import {
@@ -197,7 +198,14 @@ export default function ProviderCard({
   }, [provider.services])
   const minPrice = cheapestService?.basePrice ?? null
 
+  // 3D tilt effect on hover (respects reduced motion)
+  const tiltProps = useTilt<HTMLDivElement>({ max: 4, scale: 1.005 })
+
   return (
+    <div
+      {...tiltProps}
+      className="[transform-style:preserve-3d] will-change-transform"
+    >
     <Card
       data-provider-id={provider.id}
       data-compare-name={provider.name}
@@ -503,6 +511,7 @@ export default function ProviderCard({
         </Button>
       </CardFooter>
     </Card>
+    </div>
   )
 }
 
