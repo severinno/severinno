@@ -100,14 +100,25 @@ export async function GET(request: Request) {
     // Radius filter (post-fetch, SQLite has no geo functions).
     // Only applies when the user has supplied lat+lng — otherwise a radius
     // without a center point would exclude every provider.
+    // FALLBACK (Nielsen H9 — help users recover): if the radius filter
+    // returns 0 results but providers exist, expand to show all providers
+    // (sorted by distance) with a `radiusExpanded` flag so the frontend
+    // can show a helpful "mostrando os mais próximos" notice.
+    let radiusExpanded = false
     if (
       hasGeo &&
       radiusKm !== null &&
       Number.isFinite(radiusKm)
     ) {
-      enriched = enriched.filter(
+      const withinRadius = enriched.filter(
         (p) => p.distanceKm !== null && p.distanceKm <= radiusKm,
       )
+      if (withinRadius.length === 0 && enriched.length > 0) {
+        // Fallback: no providers within radius, but providers exist — show all
+        radiusExpanded = true
+      } else {
+        enriched = withinRadius
+      }
     }
 
     // Sort
@@ -124,17 +135,26 @@ export async function GET(request: Request) {
           b.rating - a.rating,
       )
     } else {
-      // rating (default)
-      enriched.sort(
-        (a, b) =>
-          b.rating - a.rating || (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity),
-      )
+      // rating (default) — when radius was expanded, prioritize distance
+      // so the user sees the closest providers first.
+      if (radiusExpanded) {
+        enriched.sort(
+          (a, b) =>
+            (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) ||
+            b.rating - a.rating,
+        )
+      } else {
+        enriched.sort(
+          (a, b) =>
+            b.rating - a.rating || (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity),
+        )
+      }
     }
 
     const total = enriched.length
     const items = enriched.slice(skip, skip + take)
 
-    return NextResponse.json({ items, total, page, limit })
+    return NextResponse.json({ items, total, page, limit, radiusExpanded })
   } catch (e) {
     return handleError(e)
   }

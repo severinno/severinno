@@ -87,6 +87,7 @@ export type PagedResult<T> = {
   total: number
   page: number
   limit: number
+  radiusExpanded?: boolean
 }
 
 export type FavoriteResponse = { favorited: boolean }
