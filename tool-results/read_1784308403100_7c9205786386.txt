@@ -1,0 +1,700 @@
+     1→"use client"
+     2→
+     3→/**
+     4→ * HowItWorks — redesigned with Jakob Nielsen's 10 Usability Heuristics.
+     5→ *
+     6→ * Heuristics applied:
+     7→ *   H1 – Animated progress line fills on scroll; prominent step numbers; completion checkmarks
+     8→ *   H2 – Concrete examples ("Busque 'encanador em São Paulo'"); realistic mini UI mockups
+     9→ *   H3 – Accordion on mobile; "Pular para resultados" quick link; back-to-top
+    10→ *   H4 – Consistent emerald gradient, card radius, button styles across all steps
+    11→ *   H5 – "Sem surpresas" tagline; "Sem compromisso" badge prevents anxiety
+    12→ *   H6 – Large gradient step icons; mini UI illustrations inside cards; numbered badges
+    13→ *   H7 – Clickable steps with CTAs; keyboard navigation (Enter/Space); quick-skip links
+    14→ *   H8 – One sentence per step; visual metaphors over text; clean whitespace
+    15→ *   H9 – "Sem compromisso" reassurance badges on quote step
+    16→ *  H10 – Expandable details per step; tooltips on trust badges
+    17→ */
+    18→
+    19→import * as React from "react"
+    20→import {
+    21→  Search,
+    22→  CalendarCheck,
+    23→  Star,
+    24→  ArrowRight,
+    25→  MapPin,
+    26→  ShieldCheck,
+    27→  Clock,
+    28→  CheckCircle2,
+    29→  GitCompare,
+    30→  ChevronRight,
+    31→  Handshake,
+    32→  MessageSquareQuote,
+    33→  Filter,
+    34→  ArrowUp,
+    35→  Sparkles,
+    36→  ThumbsUp,
+    37→  type LucideIcon,
+    38→} from "lucide-react"
+    39→import { motion, useScroll, useTransform } from "framer-motion"
+    40→import { cn } from "@/lib/utils"
+    41→import { useUIStore } from "@/store"
+    42→import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
+    43→import { Button } from "@/components/ui/button"
+    44→import {
+    45→  Accordion,
+    46→  AccordionItem,
+    47→  AccordionTrigger,
+    48→  AccordionContent,
+    49→} from "@/components/ui/accordion"
+    50→import {
+    51→  Tooltip,
+    52→  TooltipTrigger,
+    53→  TooltipContent,
+    54→} from "@/components/ui/tooltip"
+    55→
+    56→// ---------------------------------------------------------------------------
+    57→// Step definitions — concrete, real-world examples (H2 + H6)
+    58→// ---------------------------------------------------------------------------
+    59→
+    60→interface StepDef {
+    61→  icon: LucideIcon
+    62→  title: string
+    63→  oneLiner: string
+    64→  example: string
+    65→  details: string
+    66→  miniIllustration: React.ReactNode
+    67→  ctaLabel: string
+    68→}
+    69→
+    70→const STEPS: StepDef[] = [
+    71→  {
+    72→    icon: Search,
+    73→    title: "Busque o serviço",
+    74→    oneLiner: "Encontre prestadores verificados perto de você.",
+    75→    example: "Busque 'encanador em São Paulo'",
+    76→    details:
+    77→      "Use filtros por categoria, distância e avaliação para encontrar exatamente o que precisa. Compare perfis lado a lado no mapa interativo.",
+    78→    ctaLabel: "Buscar prestadores",
+    79→    miniIllustration: (
+    80→      <div className="flex w-full flex-col gap-1.5">
+    81→        {/* Search bar mockup */}
+    82→        <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 shadow-sm dark:bg-slate-800">
+    83→          <Search className="size-4 text-emerald-500" />
+    84→          <span className="text-[11px] text-muted-foreground">
+    85→            encanador em São Paulo
+    86→          </span>
+    87→          <span className="ml-auto animate-pulse text-[11px] text-emerald-500">|</span>
+    88→        </div>
+    89→        {/* Filter pills */}
+    90→        <div className="flex gap-1.5">
+    91→          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+    92→            Verificados
+    93→          </span>
+    94→          <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+    95→            &lt; 5 km
+    96→          </span>
+    97→          <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+    98→            <Filter className="mr-0.5 inline size-2.5" />
+    99→            Mais filtros
+   100→          </span>
+   101→        </div>
+   102→      </div>
+   103→    ),
+   104→  },
+   105→  {
+   106→    icon: CalendarCheck,
+   107→    title: "Agende ou peça orçamento",
+   108→    oneLiner: "Solicite um orçamento ou agende diretamente.",
+   109→    example: "Peça orçamento para troca de torneira",
+   110→    details:
+   111→      "Receba orçamentos sem compromisso de vários prestadores ou agende diretamente pelo calendário disponível. Confirmação instantânea.",
+   112→    ctaLabel: "Pedir orçamento",
+   113→    miniIllustration: (
+   114→      <div className="flex w-full flex-col gap-1.5">
+   115→        {/* Quote card mockup */}
+   116→        <div className="rounded-lg border bg-white p-2 shadow-sm dark:bg-slate-800">
+   117→          <div className="flex items-center justify-between">
+   118→            <span className="text-[10px] font-semibold">Orçamento</span>
+   119→            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+   120→              Sem compromisso
+   121→            </span>
+   122→          </div>
+   123→          <div className="mt-1 flex items-center gap-2">
+   124→            <CalendarCheck className="size-4 text-emerald-500" />
+   125→            <div className="flex flex-col">
+   126→              <span className="text-[9px] text-muted-foreground">Disponível</span>
+   127→              <span className="text-[10px] font-medium">Amanhã, 14h</span>
+   128→            </div>
+   129→            <span className="ml-auto text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+   130→              R$ 150
+   131→            </span>
+   132→          </div>
+   133→        </div>
+   134→        {/* Action row */}
+   135→        <div className="flex gap-1.5">
+   136→          <div className="flex flex-1 items-center justify-center rounded-md border border-emerald-200 bg-emerald-50 py-1 text-[9px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
+   137→            <CheckCircle2 className="mr-1 size-2.5" />
+   138→            Aceitar
+   139→          </div>
+   140→          <div className="flex flex-1 items-center justify-center rounded-md border bg-muted/50 py-1 text-[9px] font-medium text-muted-foreground">
+   141→            Comparar
+   142→          </div>
+   143→        </div>
+   144→      </div>
+   145→    ),
+   146→  },
+   147→  {
+   148→    icon: Star,
+   149→    title: "Avalie o resultado",
+   150→    oneLiner: "Sua opinião mantém a qualidade da comunidade.",
+   151→    example: "Avalie de 1 a 5 estrelas com comentário",
+   152→    details:
+   153→      "Após o serviço, avalie o prestador de 1 a 5 estrelas. Comentários verificados ajudam outros usuários. Pagamento seguro garantido.",
+   154→    ctaLabel: "Cadastrar grátis",
+   155→    miniIllustration: (
+   156→      <div className="flex w-full flex-col gap-1.5">
+   157→        {/* Rating mockup */}
+   158→        <div className="rounded-lg border bg-white p-2 shadow-sm dark:bg-slate-800">
+   159→          <div className="flex items-center gap-0.5">
+   160→            {[1, 2, 3, 4, 5].map((i) => (
+   161→              <Star
+   162→                key={i}
+   163→                className={cn(
+   164→                  "size-4",
+   165→                  i <= 4
+   166→                    ? "fill-amber-400 text-amber-400"
+   167→                    : "text-muted-foreground/30",
+   168→                )}
+   169→              />
+   170→            ))}
+   171→            <span className="ml-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+   172→              4.0
+   173→            </span>
+   174→          </div>
+   175→          <div className="mt-1.5 h-2 w-full rounded-full bg-muted/50">
+   176→            <div className="h-2 w-4/5 rounded-full bg-gradient-to-r from-amber-400 to-amber-500" />
+   177→          </div>
+   178→          <p className="mt-1 text-[9px] italic text-muted-foreground">
+   179→            "Excelente trabalho, recomendo!"
+   180→          </p>
+   181→        </div>
+   182→        {/* Verified badge */}
+   183→        <div className="flex items-center justify-center gap-1 text-[9px] text-emerald-600 dark:text-emerald-400">
+   184→          <ShieldCheck className="size-3" />
+   185→          Avaliação verificada
+   186→        </div>
+   187→      </div>
+   188→    ),
+   189→  },
+   190→]
+   191→
+   192→// Trust badges with tooltip descriptions (H10)
+   193→const TRUST_ITEMS = [
+   194→  {
+   195→    icon: ShieldCheck,
+   196→    label: "Prestadores verificados",
+   197→    tooltip: "Todos os prestadores passam por verificação de identidade e documentos",
+   198→  },
+   199→  {
+   200→    icon: Clock,
+   201→    label: "Resposta rápida",
+   202→    tooltip: "Prestadores respondem em até 2 horas em média",
+   203→  },
+   204→  {
+   205→    icon: ThumbsUp,
+   206→    label: "Satisfação garantida",
+   207→    tooltip: "Se não ficar satisfeito, ajudamos a resolver ou devolvemos seu dinheiro",
+   208→  },
+   209→  {
+   210→    icon: GitCompare,
+   211→    label: "Compare antes de contratar",
+   212→    tooltip: "Compare até 4 prestadores lado a lado antes de decidir",
+   213→  },
+   214→]
+   215→
+   216→// ---------------------------------------------------------------------------
+   217→// Animation variants
+   218→// ---------------------------------------------------------------------------
+   219→
+   220→const staggerContainer = {
+   221→  hidden: {},
+   222→  show: {
+   223→    transition: { staggerChildren: 0.15 },
+   224→  },
+   225→}
+   226→
+   227→const fadeUp = {
+   228→  hidden: { opacity: 0, y: 24 },
+   229→  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
+   230→}
+   231→
+   232→// ---------------------------------------------------------------------------
+   233→// Component
+   234→// ---------------------------------------------------------------------------
+   235→
+   236→export default function HowItWorks({
+   237→  className,
+   238→  onBrowseProviders,
+   239→}: {
+   240→  className?: string
+   241→  onBrowseProviders?: () => void
+   242→}) {
+   243→  const openAuth = useUIStore((s) => s.openAuth)
+   244→  const { ref, visible } = useScrollReveal<HTMLDivElement>()
+   245→  const sectionRef = React.useRef<HTMLDivElement>(null)
+   246→
+   247→  // Scroll progress for animated connector line (H1)
+   248→  const { scrollYProgress } = useScroll({
+   249→    target: sectionRef,
+   250→    offset: ["start end", "end start"],
+   251→  })
+   252→  const lineProgress = useTransform(scrollYProgress, [0.1, 0.6], [0, 100])
+   253→
+   254→  const { ref: countRef, value: countValue } = useCountUp(3, {
+   255→    duration: 800,
+   256→  })
+   257→
+   258→  // Keyboard handler for step cards (H7)
+   259→  const handleStepKeyDown = React.useCallback(
+   260→    (idx: number, e: React.KeyboardEvent) => {
+   261→      if (e.key === "Enter" || e.key === " ") {
+   262→        e.preventDefault()
+   263→        if (idx === 0 && onBrowseProviders) {
+   264→          onBrowseProviders()
+   265→        } else if (idx === 2) {
+   266→          openAuth("register", "CLIENT")
+   267→        } else {
+   268→          const el = document.getElementById("vitrine-resultados")
+   269→          if (el) el.scrollIntoView({ behavior: "smooth" })
+   270→        }
+   271→      }
+   272→    },
+   273→    [onBrowseProviders, openAuth],
+   274→  )
+   275→
+   276→  return (
+   277→    <section
+   278→      ref={sectionRef}
+   279→      aria-label="Como funciona"
+   280→      className={cn(
+   281→        "relative overflow-hidden",
+   282→        "bg-gradient-to-b from-white via-white to-slate-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900",
+   283→        className,
+   284→      )}
+   285→    >
+   286→      {/* Dotted pattern background decoration */}
+   287→      <div
+   288→        aria-hidden
+   289→        className="absolute inset-0 opacity-[0.035] dark:opacity-[0.05]"
+   290→        style={{
+   291→          backgroundImage:
+   292→            "radial-gradient(circle at 1px 1px, rgba(16,185,129,0.6) 1px, transparent 0)",
+   293→          backgroundSize: "28px 28px",
+   294→        }}
+   295→      />
+   296→
+   297→      <div ref={ref} className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+   298→        {/* ── Header ────────────────────────────────────────────────── */}
+   299→        <motion.header
+   300→          initial={{ opacity: 0, y: 20 }}
+   301→          animate={visible ? { opacity: 1, y: 0 } : {}}
+   302→          transition={{ duration: 0.5 }}
+   303→          className="relative mx-auto mb-14 max-w-2xl text-center sm:mb-16"
+   304→        >
+   305→          {/* "3 passos simples" badge (H1) */}
+   306→          <motion.span
+   307→            initial={{ opacity: 0, scale: 0.9 }}
+   308→            animate={visible ? { opacity: 1, scale: 1 } : {}}
+   309→            transition={{ duration: 0.4, delay: 0.1 }}
+   310→            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
+   311→          >
+   312→            <Sparkles className="size-3.5" />
+   313→            <span ref={countRef}>{countValue}</span> passos simples
+   314→          </motion.span>
+   315→
+   316→          <h2 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
+   317→            Como funciona
+   318→          </h2>
+   319→
+   320→          <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+   321→            Sem surpresas — do início ao fim, você tem o controle.
+   322→          </p>
+   323→
+   324→          {/* "Sem compromisso" reassurance badge (H5 + H9) */}
+   325→          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50/60 px-3 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+   326→            <Handshake className="size-3.5" />
+   327→            Sem compromisso
+   328→          </span>
+   329→        </motion.header>
+   330→
+   331→        {/* ── Desktop: 3 connected cards with animated line ───────── */}
+   332→        <div className="hidden sm:block">
+   333→          <div className="relative">
+   334→            {/* Animated SVG connector line between cards (H1) */}
+   335→            <div className="absolute top-24 left-0 z-0 w-full">
+   336→              <svg
+   337→                aria-hidden
+   338→                className="h-2 w-full"
+   339→                viewBox="0 0 1000 8"
+   340→                preserveAspectRatio="none"
+   341→              >
+   342→                <defs>
+   343→                  <linearGradient id="conn-gradient" x1="0" x2="1" y1="0" y2="0">
+   344→                    <stop offset="0%" stopColor="rgb(16,185,129)" />
+   345→                    <stop offset="100%" stopColor="rgb(13,148,136)" />
+   346→                  </linearGradient>
+   347→                </defs>
+   348→                {/* Background dashed line */}
+   349→                <line
+   350→                  x1="170"
+   351→                  y1="4"
+   352→                  x2="830"
+   353→                  y2="4"
+   354→                  stroke="currentColor"
+   355→                  className="text-emerald-200 dark:text-emerald-900/60"
+   356→                  strokeWidth="2"
+   357→                  strokeDasharray="8 6"
+   358→                />
+   359→                {/* Animated progress line */}
+   360→                <motion.line
+   361→                  x1="170"
+   362→                  y1="4"
+   363→                  x2="830"
+   364→                  y2="4"
+   365→                  stroke="url(#conn-gradient)"
+   366→                  strokeWidth="3"
+   367→                  strokeLinecap="round"
+   368→                  strokeDasharray="8 6"
+   369→                  pathLength={1}
+   370→                  style={{ pathLength: lineProgress }}
+   371→                />
+   372→              </svg>
+   373→            </div>
+   374→
+   375→            {/* Step cards grid */}
+   376→            <motion.div
+   377→              variants={staggerContainer}
+   378→              initial="hidden"
+   379→              animate={visible ? "show" : "hidden"}
+   380→              className="relative z-10 grid grid-cols-3 gap-6 lg:gap-8"
+   381→            >
+   382→              {STEPS.map((step, idx) => (
+   383→                <StepCardDesktop
+   384→                  key={step.title}
+   385→                  step={step}
+   386→                  index={idx}
+   387→                  visible={visible}
+   388→                  onKeyDown={(e) => handleStepKeyDown(idx, e)}
+   389→                  onCtaClick={() => {
+   390→                    if (idx === 0 && onBrowseProviders) {
+   391→                      onBrowseProviders()
+   392→                    } else if (idx === 2) {
+   393→                      openAuth("register", "CLIENT")
+   394→                    } else {
+   395→                      const el = document.getElementById("vitrine-resultados")
+   396→                      if (el) el.scrollIntoView({ behavior: "smooth" })
+   397→                    }
+   398→                  }}
+   399→                />
+   400→              ))}
+   401→            </motion.div>
+   402→          </div>
+   403→        </div>
+   404→
+   405→        {/* ── Mobile: vertical timeline with accordion (H3) ──────── */}
+   406→        <div className="sm:hidden">
+   407→          <div className="relative">
+   408→            {/* Vertical timeline track */}
+   409→            <div
+   410→              aria-hidden
+   411→              className="absolute top-0 bottom-0 left-7 w-0.5 rounded-full bg-emerald-200 dark:bg-emerald-900/60"
+   412→            />
+   413→            {/* Animated progress fill */}
+   414→            <motion.div
+   415→              aria-hidden
+   416→              className="absolute top-0 left-7 w-0.5 rounded-full bg-gradient-to-b from-emerald-500 to-teal-600"
+   417→              initial={{ height: 0 }}
+   418→              animate={visible ? { height: "100%" } : {}}
+   419→              transition={{ duration: 1.5, ease: "easeOut" as const }}
+   420→            />
+   421→          </div>
+   422→
+   423→          <Accordion
+   424→            type="single"
+   425→            collapsible
+   426→            defaultValue="step-0"
+   427→            className="space-y-0"
+   428→          >
+   429→            {STEPS.map((step, idx) => (
+   430→              <AccordionItem
+   431→                key={step.title}
+   432→                value={`step-${idx}`}
+   433→                className="border-b-0"
+   434→              >
+   435→                <motion.div
+   436→                  variants={fadeUp}
+   437→                  initial="hidden"
+   438→                  animate={visible ? "show" : "hidden"}
+   439→                  className="relative flex items-start gap-4 pb-6"
+   440→                >
+   441→                  {/* Timeline node */}
+   442→                  <div className="relative z-10 flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25">
+   443→                    <step.icon className="size-6 text-white" />
+   444→                  </div>
+   445→                  {/* Step number badge */}
+   446→                  <span className="absolute left-10 top-0 z-20 flex size-6 items-center justify-center rounded-full bg-white text-xs font-bold text-emerald-600 shadow-sm ring-2 ring-emerald-200 dark:bg-slate-900 dark:text-emerald-400 dark:ring-emerald-800">
+   447→                    {idx + 1}
+   448→                  </span>
+   449→
+   450→                  {/* Step content */}
+   451→                  <div className="min-w-0 flex-1 pt-0">
+   452→                    <AccordionTrigger className="py-0 text-left text-sm font-semibold hover:no-underline">
+   453→                      {step.title}
+   454→                    </AccordionTrigger>
+   455→                    <AccordionContent className="pb-0 pt-2">
+   456→                      <p className="text-xs text-muted-foreground">
+   457→                        {step.oneLiner}
+   458→                      </p>
+   459→                      <p className="mt-1 text-[10px] italic text-emerald-600 dark:text-emerald-400">
+   460→                        Ex: {step.example}
+   461→                      </p>
+   462→                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+   463→                        {step.details}
+   464→                      </p>
+   465→                      {/* Mini illustration (H6) */}
+   466→                      <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+   467→                        {step.miniIllustration}
+   468→                      </div>
+   469→                      {/* "Sem compromisso" badge on quote step (H9) */}
+   470→                      {idx === 1 && (
+   471→                        <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+   472→                          <Handshake className="size-3" />
+   473→                          Sem compromisso
+   474→                        </span>
+   475→                      )}
+   476→                      <Button
+   477→                        size="sm"
+   478→                        variant="outline"
+   479→                        className="mt-3 h-8 gap-1.5 rounded-lg border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+   480→                        onClick={() => {
+   481→                          if (idx === 0 && onBrowseProviders) onBrowseProviders()
+   482→                          else if (idx === 2) openAuth("register", "CLIENT")
+   483→                          else {
+   484→                            const el = document.getElementById("vitrine-resultados")
+   485→                            if (el) el.scrollIntoView({ behavior: "smooth" })
+   486→                          }
+   487→                        }}
+   488→                      >
+   489→                        {step.ctaLabel}
+   490→                        <ChevronRight className="size-3" />
+   491→                      </Button>
+   492→                    </AccordionContent>
+   493→                  </div>
+   494→                </motion.div>
+   495→              </AccordionItem>
+   496→            ))}
+   497→          </Accordion>
+   498→        </div>
+   499→
+   500→        {/* ── Guarantee strip with trust badges (H10 tooltips) ────── */}
+   501→        <motion.div
+   502→          initial={{ opacity: 0, y: 16 }}
+   503→          animate={visible ? { opacity: 1, y: 0 } : {}}
+   504→          transition={{ duration: 0.5, delay: 0.5 }}
+   505→          className="mt-14 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/60 via-white to-teal-50/60 p-5 dark:border-emerald-900/50 dark:from-emerald-950/20 dark:via-slate-900 dark:to-teal-950/20 sm:mt-16"
+   506→        >
+   507→          <div className="mb-3 flex items-center justify-center gap-2">
+   508→            <ShieldCheck className="size-4 text-emerald-500" />
+   509→            <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+   510→              Garantia Severinno
+   511→            </span>
+   512→          </div>
+   513→          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:gap-x-8">
+   514→            {TRUST_ITEMS.map((item) => {
+   515→              const TIcon = item.icon
+   516→              return (
+   517→                <Tooltip key={item.label}>
+   518→                  <TooltipTrigger asChild>
+   519→                    <div className="flex cursor-default items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400">
+   520→                      <TIcon className="size-4 text-emerald-500" />
+   521→                      <span className="hidden text-xs sm:inline">{item.label}</span>
+   522→                    </div>
+   523→                  </TooltipTrigger>
+   524→                  <TooltipContent
+   525→                    side="bottom"
+   526→                    className="max-w-[220px] text-center text-xs"
+   527→                  >
+   528→                    {item.tooltip}
+   529→                  </TooltipContent>
+   530→                </Tooltip>
+   531→              )
+   532→            })}
+   533→          </div>
+   534→        </motion.div>
+   535→
+   536→        {/* ── CTA — drive conversion ───────────────────────────────── */}
+   537→        <motion.div
+   538→          initial={{ opacity: 0, y: 16 }}
+   539→          animate={visible ? { opacity: 1, y: 0 } : {}}
+   540→          transition={{ duration: 0.5, delay: 0.6 }}
+   541→          className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center"
+   542→        >
+   543→          <Button
+   544→            size="lg"
+   545→            onClick={() => openAuth("register", "CLIENT")}
+   546→            className="h-12 gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-8 text-base font-semibold shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl hover:shadow-emerald-500/30 hover:brightness-110"
+   547→          >
+   548→            Começar agora
+   549→            <ArrowRight className="size-4" />
+   550→          </Button>
+   551→          {onBrowseProviders ? (
+   552→            <Button
+   553→              variant="outline"
+   554→              size="lg"
+   555→              onClick={onBrowseProviders}
+   556→              className="h-12 gap-2 rounded-xl border-emerald-200 px-6 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+   557→            >
+   558→              <Search className="size-4" />
+   559→              Buscar prestadores
+   560→            </Button>
+   561→          ) : (
+   562→            <Button
+   563→              variant="outline"
+   564→              size="lg"
+   565→              asChild
+   566→              className="h-12 gap-2 rounded-xl border-emerald-200 px-6 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+   567→            >
+   568→              <a href="#vitrine-resultados">
+   569→                <Search className="size-4" />
+   570→                Buscar prestadores
+   571→              </a>
+   572→            </Button>
+   573→          )}
+   574→        </motion.div>
+   575→
+   576→        {/* Quick-skip links (H3 + H7) */}
+   577→        <motion.div
+   578→          initial={{ opacity: 0 }}
+   579→          animate={visible ? { opacity: 1 } : {}}
+   580→          transition={{ duration: 0.5, delay: 0.7 }}
+   581→          className="mt-4 flex items-center justify-center gap-4"
+   582→        >
+   583→          <a
+   584→            href="#vitrine-resultados"
+   585→            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
+   586→          >
+   587→            <MessageSquareQuote className="size-3" />
+   588→            Pular para resultados
+   589→          </a>
+   590→          <span className="text-muted-foreground/30">·</span>
+   591→          <button
+   592→            type="button"
+   593→            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+   594→            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
+   595→            aria-label="Voltar ao topo"
+   596→          >
+   597→            <ArrowUp className="size-3" />
+   598→            Voltar ao topo
+   599→          </button>
+   600→        </motion.div>
+   601→      </div>
+   602→    </section>
+   603→  )
+   604→}
+   605→
+   606→// ---------------------------------------------------------------------------
+   607→// Desktop step card — with prominent step number, mini UI mockup, hover lift
+   608→// ---------------------------------------------------------------------------
+   609→
+   610→function StepCardDesktop({
+   611→  step,
+   612→  index,
+   613→  visible,
+   614→  onKeyDown,
+   615→  onCtaClick,
+   616→}: {
+   617→  step: StepDef
+   618→  index: number
+   619→  visible: boolean
+   620→  onKeyDown: (e: React.KeyboardEvent) => void
+   621→  onCtaClick: () => void
+   622→}) {
+   623→  const Icon = step.icon
+   624→
+   625→  return (
+   626→    <motion.div
+   627→      variants={fadeUp}
+   628→      className="group relative z-10 flex cursor-pointer flex-col items-center rounded-2xl border bg-card p-6 text-center shadow-sm transition-all duration-300 hover:-translate-y-2 hover:border-emerald-300 hover:shadow-xl hover:shadow-emerald-500/10 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/20 dark:hover:border-emerald-700 dark:hover:shadow-emerald-500/5 lg:p-8"
+   629→      role="button"
+   630→      tabIndex={0}
+   631→      onKeyDown={onKeyDown}
+   632→      onClick={onCtaClick}
+   633→    >
+   634→      {/* Large step number badge (H6) */}
+   635→      <div className="absolute -top-4 left-1/2 z-20 -translate-x-1/2">
+   636→        <span className="flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-lg font-extrabold text-white shadow-lg shadow-emerald-500/30 ring-4 ring-white dark:ring-slate-900">
+   637→          {index + 1}
+   638→        </span>
+   639→      </div>
+   640→
+   641→      {/* Icon with gradient background + completion checkmark (H1) */}
+   642→      <div className="relative mt-4">
+   643→        <span className="flex size-18 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 transition-transform duration-300 group-hover:scale-110">
+   644→          <Icon className="size-8" />
+   645→        </span>
+   646→        {/* Completion checkmark */}
+   647→        <motion.span
+   648→          initial={{ scale: 0, opacity: 0 }}
+   649→          animate={visible ? { scale: 1, opacity: 1 } : {}}
+   650→          transition={{ duration: 0.3, delay: 0.6 + index * 0.2, type: "spring", stiffness: 300 }}
+   651→          className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-emerald-500 shadow-md"
+   652→          aria-hidden
+   653→        >
+   654→          <CheckCircle2 className="size-3.5 text-white" />
+   655→        </motion.span>
+   656→      </div>
+   657→
+   658→      {/* Title */}
+   659→      <h3 className="mt-5 text-base font-bold tracking-tight lg:text-lg">
+   660→        {step.title}
+   661→      </h3>
+   662→
+   663→      {/* One-liner description (H8 — minimalism) */}
+   664→      <p className="mt-1.5 text-sm text-muted-foreground">{step.oneLiner}</p>
+   665→
+   666→      {/* Mini UI illustration area (H2 + H6) */}
+   667→      <div className="mt-4 flex w-full items-stretch justify-center rounded-xl border bg-muted/20 p-3 transition-colors duration-200 group-hover:border-emerald-200 group-hover:bg-emerald-50/40 dark:group-hover:border-emerald-800/50 dark:group-hover:bg-emerald-950/20">
+   668→        {step.miniIllustration}
+   669→      </div>
+   670→
+   671→      {/* Concrete example (H2) */}
+   672→      <p className="mt-3 text-[10px] italic text-emerald-600 dark:text-emerald-400">
+   673→        Ex: {step.example}
+   674→      </p>
+   675→
+   676→      {/* "Sem compromisso" reassurance on quote step (H5 + H9) */}
+   677→      {index === 1 && (
+   678→        <span className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/60 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+   679→          <Handshake className="size-2.5" />
+   680→          Sem compromisso
+   681→        </span>
+   682→      )}
+   683→
+   684→      {/* Per-step CTA (H7) */}
+   685→      <Button
+   686→        size="sm"
+   687→        variant="outline"
+   688→        className="mt-4 h-8 gap-1.5 rounded-lg border-emerald-200 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+   689→        onClick={(e) => {
+   690→          e.stopPropagation()
+   691→          onCtaClick()
+   692→        }}
+   693→      >
+   694→        {step.ctaLabel}
+   695→        <ChevronRight className="size-3" />
+   696→      </Button>
+   697→    </motion.div>
+   698→  )
+   699→}
+   700→
