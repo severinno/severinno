@@ -37,8 +37,6 @@ import Testimonials from "./testimonials"
 import FAQ from "./faq"
 import WhySeverinno from "./why-severinno"
 import CtaBanner from "./cta-banner"
-import StatsCounter from "./stats-counter"
-import PartnersSection from "./partners-section"
 import ProviderSpotlight from "./provider-spotlight"
 import { RecentlyViewed } from "./recently-viewed"
 import CompareBar from "./compare-bar"
@@ -228,15 +226,11 @@ export default function Vitrine() {
 
         <WhySeverinno />
 
-        <StatsCounter />
-
-        <PartnersSection />
-
         <ProviderSpotlight />
 
-        <CtaBanner />
-
         <FAQ />
+
+        <CtaBanner />
       </main>
 
       <Footer />
