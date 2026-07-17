@@ -3,51 +3,60 @@
 /**
  * AdminUsers — manage all personas (Clients, Providers, Admins).
  *
- * Data source: GET /api/admin/users?role=&q=&page=
+ * Data source: GET  /api/admin/users?role=&q=&page=
  *              PATCH /api/admin/users/[id] { verified?, active?, role?, name?, ... }
  *              DELETE /api/admin/users/[id]
  *
- * Note: the `verified` and `active` filters are applied client-side on the
- * current page's items (the API does not yet support them as query params).
- * A small "Filtro aplicado à página atual" hint is shown when active.
+ * Nielsen heuristics covered (design system em admin-shared.tsx):
+ *   H1 — TableSkeleton / ErrorState / SavingPill inline (visibilidade de status)
+ *   H2 — "Filtro aplicado à página atual" (honestidade sobre filtro client-side)
+ *   H4 — RoleBadge / ActiveBadge / VerifiedBadge vindos do admin-shared
+ *   H5 — Switch + itens do ⋮ abrem ConfirmToggleDialog antes de aplicar
+ *   H5 — EditUserDialog mostra Alert amber ao rebaixar ADMIN (ação destrutiva)
+ *   H6 — Botão "Editar" visível na linha; ⋮ apenas para ações secundárias/destrutivas
+ *   H7 — Ordenação client-side por nome e data de cadastro
+ *   H8 — EmptyState / TableSkeleton / layout limpo sem poluição
+ *   H9 — Error banner dismissível + toast.error específico + ErrorState com retry
+ *   H10— Tooltips em todos os botões de ícone (⋮, Editar, Switch)
+ *
+ * Note: os filtros `verified` e `active` são aplicados client-side na página
+ * atual (a API ainda não suporta esses query params). Um hint amber "Filtro
+ * aplicado à página atual" é exibido quando ativo (H2 — honestidade).
+ *
+ * O tipo `AdminUser` é definido de forma IDÊNTICA em admin-providers.tsx (H4).
+ * Se alterar campos aqui, replique lá.
  */
 
 import * as React from "react"
 import {
-  Search,
+  AlertTriangle,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
+  CircleUser,
+  HardHat,
+  Loader2,
   MoreHorizontal,
   Pencil,
-  Trash2,
-  BadgeCheck,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-  ShieldAlert,
-  X,
-  Users,
-  User,
-  HardHat,
+  Power,
+  SearchX,
   ShieldCheck,
   ShieldQuestion,
-  CircleUser,
+  ShieldX,
+  Trash2,
+  Users,
+  X,
 } from "lucide-react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { apiGet, apiPatch, apiDelete } from "@/lib/api"
-import {
-  ROLE_LABELS,
-  type UserRole,
-} from "@/lib/constants"
+import { apiDelete, apiGet, apiPatch } from "@/lib/api"
+import { type UserRole } from "@/lib/constants"
 import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -56,16 +65,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -93,10 +92,33 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+
+import {
+  ActiveBadge,
+  ConfirmDialog,
+  ConfirmToggleDialog,
+  EmptyState,
+  ErrorState,
+  errMsg,
+  FilterBar,
+  initials,
+  PageSectionHeader,
+  Pagination,
+  ResultCount,
+  RoleBadge,
+  SavingPill,
+  SearchInput,
+  TableSkeleton,
+} from "./admin-shared"
 
 // ---------------------------------------------------------------------------
-// Types
+// Types — definidos IDÊNTICOS em admin-providers.tsx (H4 consistência).
 // ---------------------------------------------------------------------------
 type AdminUser = {
   id: string
@@ -109,6 +131,7 @@ type AdminUser = {
   avatarUrl?: string | null
   city?: string | null
   state?: string | null
+  bio?: string | null
   verified: boolean
   active: boolean
   createdAt: string
@@ -121,13 +144,24 @@ type AdminUsersResponse = {
   limit: number
 }
 
+type StatsResponse = {
+  usersByRole: Record<string, number>
+}
+
 type RoleFilter = "ALL" | UserRole
 type VerifiedFilter = "ALL" | "true" | "false"
 type ActiveFilter = "ALL" | "true" | "false"
 
-type StatsResponse = {
-  usersByRole: Record<string, number>
-}
+type SortKey = "name" | "createdAt"
+type SortDir = "asc" | "desc"
+type SortState = { key: SortKey; dir: SortDir } | null
+
+type PendingToggle = {
+  id: string
+  name: string
+  field: "verified" | "active"
+  currentValue: boolean
+} | null
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -140,9 +174,13 @@ export function AdminUsers() {
   const [verified, setVerified] = React.useState<VerifiedFilter>("ALL")
   const [active, setActive] = React.useState<ActiveFilter>("ALL")
   const [page, setPage] = React.useState(1)
+  const [sort, setSort] = React.useState<SortState>(null)
 
   const [editTarget, setEditTarget] = React.useState<AdminUser | null>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<AdminUser | null>(null)
+  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
+  const [patchingId, setPatchingId] = React.useState<string | null>(null)
+  const [errorBanner, setErrorBanner] = React.useState<string | null>(null)
 
   const limit = 10
 
@@ -155,14 +193,14 @@ export function AdminUsers() {
     return () => clearTimeout(t)
   }, [q])
 
-  // Lightweight role counts for the pill tabs (cached 60s, shared with dashboard)
+  // Role counts (cached 60s, compartilhado com dashboard)
   const { data: stats } = useQuery({
     queryKey: ["admin", "stats"],
     queryFn: () => apiGet<StatsResponse>("/api/admin/stats"),
     staleTime: 60_000,
   })
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "users", { role, debouncedQ, verified, active, page, limit }],
     queryFn: () =>
       apiGet<AdminUsersResponse>("/api/admin/users", {
@@ -185,29 +223,15 @@ export function AdminUsers() {
       id: string
       patch: Partial<AdminUser>
     }) => apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
-    onSuccess: () => {
-      invalidate()
-    },
-    onError: (e: unknown) => {
-      toast.error(errMsg(e, "Falha ao atualizar usuário."))
-    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/api/admin/users/${id}`),
-    onSuccess: () => {
-      toast.success("Usuário excluído.")
-      invalidate()
-      setDeleteTarget(null)
-    },
-    onError: (e: unknown) => {
-      toast.error(errMsg(e, "Não foi possível excluir o usuário."))
-    },
   })
 
-  // Client-side filter for verified/active (API does not support these yet)
+  // Client-side filter for verified/active (API does not support these yet — H2)
   const rawItems = data?.items ?? []
-  const items = React.useMemo(() => {
+  const filteredItems = React.useMemo(() => {
     return rawItems.filter((u) => {
       if (verified === "true" && !u.verified) return false
       if (verified === "false" && u.verified) return false
@@ -216,6 +240,18 @@ export function AdminUsers() {
       return true
     })
   }, [rawItems, verified, active])
+
+  const items = React.useMemo(() => {
+    if (!sort) return filteredItems
+    const sorted = [...filteredItems].sort((a, b) => {
+      let cmp = 0
+      if (sort.key === "name") cmp = a.name.localeCompare(b.name, "pt-BR")
+      else if (sort.key === "createdAt")
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      return sort.dir === "asc" ? cmp : -cmp
+    })
+    return sorted
+  }, [filteredItems, sort])
 
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / limit))
@@ -234,7 +270,16 @@ export function AdminUsers() {
     setDebouncedQ("")
     setVerified("ALL")
     setActive("ALL")
+    setSort(null)
     setPage(1)
+  }
+
+  const toggleSort = (key: SortKey) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: "asc" }
+      if (prev.dir === "asc") return { key, dir: "desc" }
+      return null
+    })
   }
 
   const roleCounts = React.useMemo(() => {
@@ -248,9 +293,103 @@ export function AdminUsers() {
     }
   }, [stats])
 
+  // ---- Mutation handlers ---------------------------------------------------
+
+  const handleToggleConfirm = () => {
+    if (!pendingToggle) return
+    const { id, field, currentValue } = pendingToggle
+    setPatchingId(id)
+    patchMutation.mutate(
+      { id, patch: { [field]: !currentValue } as Partial<AdminUser> },
+      {
+        onSuccess: () => {
+          invalidate()
+          toast.success(
+            field === "verified"
+              ? currentValue
+                ? "Verificação removida."
+                : "Usuário marcado como verificado."
+              : currentValue
+              ? "Usuário desativado."
+              : "Usuário ativado.",
+          )
+          setPendingToggle(null)
+          setPatchingId(null)
+        },
+        onError: (e: unknown) => {
+          const msg = errMsg(e, "Falha ao atualizar usuário.")
+          setErrorBanner(msg)
+          toast.error(msg)
+          setPendingToggle(null)
+          setPatchingId(null)
+        },
+      },
+    )
+  }
+
+  const handleEditSubmit = (patch: Partial<AdminUser>) => {
+    if (!editTarget) return
+    patchMutation.mutate(
+      { id: editTarget.id, patch },
+      {
+        onSuccess: () => {
+          invalidate()
+          toast.success("Usuário atualizado.")
+          setEditTarget(null)
+        },
+        onError: (e: unknown) => {
+          const msg = errMsg(e, "Falha ao atualizar usuário.")
+          setErrorBanner(msg)
+          toast.error(msg)
+        },
+      },
+    )
+  }
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return
+    deleteMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast.success("Usuário excluído.")
+        invalidate()
+        setDeleteTarget(null)
+      },
+      onError: (e: unknown) => {
+        const msg = errMsg(e, "Não foi possível excluir o usuário.")
+        setErrorBanner(msg)
+        toast.error(msg)
+        setDeleteTarget(null)
+      },
+    })
+  }
+
+  const renderSortHeader = (label: string, sortKey: SortKey) => (
+    <button
+      type="button"
+      onClick={() => toggleSort(sortKey)}
+      className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+    >
+      {label}
+      {sort?.key === sortKey ? (
+        sort.dir === "asc" ? (
+          <ChevronUp className="size-3" />
+        ) : (
+          <ChevronDown className="size-3" />
+        )
+      ) : (
+        <ArrowUpDown className="size-3 opacity-40" />
+      )}
+    </button>
+  )
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Pill segmented control — role tabs with counts */}
+      <PageSectionHeader
+        title="Usuários"
+        description="Gerencie clientes, prestadores e administradores da plataforma."
+      />
+
+      {/* Role tabs with counts */}
       <Tabs
         value={role}
         onValueChange={(v) => {
@@ -289,18 +428,34 @@ export function AdminUsers() {
         </TabsList>
       </Tabs>
 
+      {/* Error banner (dismissible) — H9 */}
+      {errorBanner ? (
+        <Alert variant="destructive">
+          <AlertTriangle className="size-4" />
+          <AlertTitle>Erro ao salvar</AlertTitle>
+          <AlertDescription>{errorBanner}</AlertDescription>
+          <button
+            type="button"
+            onClick={() => setErrorBanner(null)}
+            aria-label="Dispensar aviso"
+            className="absolute right-3 top-3 rounded-md p-1 text-current/70 transition-colors hover:text-current"
+          >
+            <X className="size-3.5" />
+          </button>
+        </Alert>
+      ) : null}
+
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-sm">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            id="u-search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por nome, e-mail ou cidade"
-            className="h-9 pl-8"
-          />
-        </div>
+      <FilterBar
+        onClear={clearFilters}
+        activeCount={activeFilterCount}
+      >
+        <SearchInput
+          value={q}
+          onChange={setQ}
+          placeholder="Buscar por nome, e-mail ou cidade"
+          className="min-w-[200px] flex-1"
+        />
         <Select
           value={verified}
           onValueChange={(v) => {
@@ -333,70 +488,52 @@ export function AdminUsers() {
             <SelectItem value="false">Apenas inativos</SelectItem>
           </SelectContent>
         </Select>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={clearFilters}
-          disabled={activeFilterCount === 0}
-          className="h-9 gap-1.5 text-muted-foreground"
-        >
-          <X className="size-3.5" />
-          Limpar filtros
-        </Button>
-        {activeFilterCount > 0 ? (
-          <Badge
-            variant="outline"
-            className="gap-1 border-primary/30 bg-primary/5 text-primary"
-          >
-            <span className="size-1.5 rounded-full bg-primary" />
-            {activeFilterCount} filtro(s) ativo(s)
-          </Badge>
-        ) : null}
-      </div>
+      </FilterBar>
 
-      {/* Result count */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
-          {total > 0
-            ? `Mostrando ${(page - 1) * limit + 1}–${Math.min(
-                page * limit,
-                total,
-              )} de ${total.toLocaleString("pt-BR")} usuário(s)`
-            : "Nenhum usuário"}
-        </p>
-        {clientFilterActive ? (
-          <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300">
-            <ShieldQuestion className="size-3" />
-            Filtro aplicado à página atual
-          </span>
-        ) : null}
-      </div>
+      {/* Honest about client-side filter — H2 */}
+      {clientFilterActive ? (
+        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300">
+          <ShieldQuestion className="size-3" />
+          Filtro de verificação/status aplicado apenas à página atual
+        </span>
+      ) : null}
 
-      {/* Table */}
-      <Card className="overflow-hidden">
-        <CardContent className="p-0">
-          {isError ? (
-            <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
-              <div className="flex size-14 items-center justify-center rounded-full bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300">
-                <ShieldAlert className="size-6" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">
-                  Não foi possível carregar os usuários
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Verifique sua conexão e tente novamente.
-                </p>
-              </div>
-            </div>
-          ) : (
+      {/* Table area: error / loading / empty / table */}
+      {isError ? (
+        <ErrorState
+          title="Não foi possível carregar os usuários"
+          description="Verifique sua conexão e tente novamente."
+          onRetry={() => refetch()}
+        />
+      ) : isLoading ? (
+        <TableSkeleton rows={8} cols={7} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={SearchX}
+          title="Nenhum usuário encontrado"
+          description="Ajuste os filtros de busca ou cadastre um novo usuário."
+          action={
+            activeFilterCount > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearFilters}
+                className="gap-1.5"
+              >
+                <X className="size-3.5" />
+                Limpar filtros
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <Card className="overflow-hidden">
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="h-11 bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Usuário
-                    </TableHead>
+                    <TableHead>{renderSortHeader("Usuário", "name")}</TableHead>
                     <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Perfil
                     </TableHead>
@@ -412,8 +549,8 @@ export function AdminUsers() {
                     <TableHead className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Status
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:table-cell">
-                      Criado em
+                    <TableHead className="hidden sm:table-cell">
+                      {renderSortHeader("Criado em", "createdAt")}
                     </TableHead>
                     <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       Ações
@@ -421,45 +558,13 @@ export function AdminUsers() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {isLoading ? (
-                    Array.from({ length: 5 }).map((_, i) => (
-                      <TableRow key={i} className="h-14">
-                        <TableCell colSpan={8}>
-                          <Skeleton className="h-8 w-full" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : items.length === 0 ? (
-                    <TableRow className="h-14 hover:bg-transparent">
-                      <TableCell colSpan={8} className="py-12">
-                        <div className="flex flex-col items-center gap-3 text-center">
-                          <div className="flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                            <User className="size-7" />
-                          </div>
-                          <div>
-                            <p className="text-base font-semibold">
-                              Nenhum usuário encontrado
-                            </p>
-                            <p className="mt-0.5 text-sm text-muted-foreground">
-                              Ajuste os filtros ou cadastre um novo usuário.
-                            </p>
-                          </div>
-                          {activeFilterCount > 0 ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={clearFilters}
-                              className="gap-1.5"
-                            >
-                              <X className="size-3.5" />
-                              Limpar filtros
-                            </Button>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    items.map((u) => (
+                  {items.map((u) => {
+                    const isPatchingThis =
+                      patchingId === u.id && patchMutation.isPending
+                    const patchingField = isPatchingThis
+                      ? pendingToggle?.field ?? null
+                      : null
+                    return (
                       <TableRow
                         key={u.id}
                         className="h-14 border-b transition-colors last:border-0 hover:bg-muted/30"
@@ -468,10 +573,7 @@ export function AdminUsers() {
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-9 shrink-0">
                               {u.avatarUrl ? (
-                                <AvatarImage
-                                  src={u.avatarUrl}
-                                  alt={u.name}
-                                />
+                                <AvatarImage src={u.avatarUrl} alt={u.name} />
                               ) : null}
                               <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
                                 {initials(u.name)}
@@ -519,241 +621,192 @@ export function AdminUsers() {
                           )}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
-                          <Switch
-                            checked={u.verified}
-                            onCheckedChange={(v) => {
-                              patchMutation.mutate({
-                                id: u.id,
-                                patch: { verified: v },
-                              })
-                              toast.message(
-                                v
-                                  ? "Usuário marcado como verificado."
-                                  : "Verificação removida.",
-                              )
-                            }}
-                            disabled={patchMutation.isPending}
-                            aria-label="Alternar verificação"
-                            className="data-[state=checked]:bg-emerald-600"
-                          />
+                          {patchingField === "verified" ? (
+                            <SavingPill saving label="Salvando…" />
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Switch
+                                  checked={u.verified}
+                                  onCheckedChange={() =>
+                                    setPendingToggle({
+                                      id: u.id,
+                                      name: u.name,
+                                      field: "verified",
+                                      currentValue: u.verified,
+                                    })
+                                  }
+                                  disabled={patchMutation.isPending}
+                                  aria-label={`Alternar verificação de ${u.name}`}
+                                  className="data-[state=checked]:bg-emerald-600"
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {u.verified
+                                  ? "Remover verificação (com confirmação)"
+                                  : "Marcar como verificado (com confirmação)"}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
-                          {u.active ? (
-                            <Badge
-                              variant="outline"
-                              className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300"
-                            >
-                              <span className="size-1.5 rounded-full bg-emerald-500" />
-                              Ativo
-                            </Badge>
+                          {patchingField === "active" ? (
+                            <SavingPill saving label="Salvando…" />
                           ) : (
-                            <Badge
-                              variant="outline"
-                              className="gap-1 border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-300"
-                            >
-                              <span className="size-1.5 rounded-full bg-slate-400" />
-                              Inativo
-                            </Badge>
+                            <ActiveBadge active={u.active} />
                           )}
                         </TableCell>
                         <TableCell className="hidden px-4 py-3 text-xs text-muted-foreground tabular-nums sm:table-cell">
                           {formatDate(u.createdAt)}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="size-8"
-                                aria-label="Ações"
-                              >
-                                <MoreHorizontal className="size-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>{u.name}</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => setEditTarget(u)}
-                                className="gap-2"
-                              >
-                                <Pencil className="size-3.5" />
-                                Editar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  patchMutation.mutate({
-                                    id: u.id,
-                                    patch: { verified: !u.verified },
-                                  })
-                                }
-                                className="gap-2"
-                              >
-                                <BadgeCheck className="size-3.5" />
-                                {u.verified
-                                  ? "Remover verificação"
-                                  : "Marcar verificado"}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  patchMutation.mutate({
-                                    id: u.id,
-                                    patch: { active: !u.active },
-                                  })
-                                }
-                                className="gap-2"
-                              >
-                                <User className="size-3.5" />
-                                {u.active ? "Desativar" : "Ativar"}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => setDeleteTarget(u)}
-                                className="gap-2 text-red-600 focus:text-red-700"
-                              >
-                                <Trash2 className="size-3.5" />
-                                Excluir
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* H6 — primary action visible */}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setEditTarget(u)}
+                                  className="h-8 gap-1.5"
+                                >
+                                  <Pencil className="size-3.5" />
+                                  <span className="hidden sm:inline">Editar</span>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Editar usuário</TooltipContent>
+                            </Tooltip>
+                            {/* H6 — secondary/destructive actions in ⋮ */}
+                            <DropdownMenu>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-8"
+                                      aria-label="Mais ações"
+                                    >
+                                      <MoreHorizontal className="size-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                </TooltipTrigger>
+                                <TooltipContent>Mais ações</TooltipContent>
+                              </Tooltip>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>{u.name}</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setPendingToggle({
+                                      id: u.id,
+                                      name: u.name,
+                                      field: "verified",
+                                      currentValue: u.verified,
+                                    })
+                                  }
+                                  className="gap-2"
+                                >
+                                  {u.verified ? (
+                                    <ShieldX className="size-3.5" />
+                                  ) : (
+                                    <ShieldCheck className="size-3.5" />
+                                  )}
+                                  {u.verified
+                                    ? "Remover verificação"
+                                    : "Marcar verificado"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setPendingToggle({
+                                      id: u.id,
+                                      name: u.name,
+                                      field: "active",
+                                      currentValue: u.active,
+                                    })
+                                  }
+                                  className="gap-2"
+                                >
+                                  <Power className="size-3.5" />
+                                  {u.active ? "Desativar" : "Ativar"}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => setDeleteTarget(u)}
+                                  className="gap-2 text-rose-600 focus:text-rose-700"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
-          )}
+          </CardContent>
+        </Card>
+      )}
 
-          {/* Pagination — hidden when only 1 page */}
-          {totalPages > 1 ? (
-            <div className="flex flex-col items-center justify-between gap-2 border-t px-4 py-3 sm:flex-row">
-              <p className="text-xs text-muted-foreground tabular-nums">
-                Página {page} de {totalPages}
-              </p>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="h-8 gap-1"
-                >
-                  <ChevronLeft className="size-4" />
-                  Anterior
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="h-8 gap-1"
-                >
-                  Próxima
-                  <ChevronRight className="size-4" />
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+      {/* Result count + pagination — only when there are results */}
+      {!isError && !isLoading && items.length > 0 ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <ResultCount page={page} limit={limit} total={total} label="usuários" />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
+        </div>
+      ) : null}
 
-      {/* Edit dialog */}
+      {/* Edit dialog — H5: Alert amber ao rebaixar ADMIN */}
       <EditUserDialog
         user={editTarget}
         onOpenChange={(open) => !open && setEditTarget(null)}
-        submitting={patchMutation.isPending}
-        onSubmit={(patch) => {
-          if (!editTarget) return
-          patchMutation.mutate(
-            { id: editTarget.id, patch },
-            {
-              onSuccess: () => {
-                toast.success("Usuário atualizado.")
-                setEditTarget(null)
-              },
-              onError: (e: unknown) =>
-                toast.error(errMsg(e, "Falha ao atualizar.")),
-            },
-          )
-        }}
+        submitting={patchMutation.isPending && !!editTarget}
+        onSubmit={handleEditSubmit}
       />
 
-      {/* Delete confirmation */}
-      <AlertDialog
+      {/* Delete confirmation — H5: ConfirmDialog do admin-shared */}
+      <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você está prestes a excluir{" "}
-              <strong className="text-foreground">
-                {deleteTarget?.name}
-              </strong>{" "}
-              ({deleteTarget?.email}). Esta ação removerá todos os dados
-              relacionados (serviços, agendamentos, mensagens, avaliações) e
-              não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteMutation.isPending}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() =>
-                deleteTarget && deleteMutation.mutate(deleteTarget.id)
-              }
-              disabled={deleteMutation.isPending}
-              className="gap-1.5 bg-red-600 hover:bg-red-700 focus-visible:ring-red-600"
-            >
-              {deleteMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Excluir usuário?"
+        description={
+          <>
+            Você está prestes a excluir{" "}
+            <strong className="text-foreground">{deleteTarget?.name}</strong> (
+            {deleteTarget?.email}). Esta ação removerá todos os dados
+            relacionados (serviços, agendamentos, mensagens, avaliações) e não
+            pode ser desfeita.
+          </>
+        }
+        confirmLabel="Excluir"
+        variant="destructive"
+        onConfirm={handleDeleteConfirm}
+      />
+
+      {/* Toggle confirmation — H5: ConfirmToggleDialog do admin-shared */}
+      <ConfirmToggleDialog
+        open={!!pendingToggle}
+        onOpenChange={(open) => !open && setPendingToggle(null)}
+        targetLabel={pendingToggle?.name ?? ""}
+        field={pendingToggle?.field ?? "verified"}
+        currentValue={pendingToggle?.currentValue ?? false}
+        onConfirm={handleToggleConfirm}
+      />
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// EditUserDialog — H5: Alert amber ao rebaixar ADMIN (ação destrutiva)
 // ---------------------------------------------------------------------------
-
-const ROLE_BADGE_CLS: Record<UserRole, string> = {
-  CLIENT:
-    "bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-200",
-  PROVIDER:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  ADMIN: "bg-primary text-primary-foreground",
-}
-
-function RoleBadge({ role }: { role: UserRole }) {
-  const cls = ROLE_BADGE_CLS[role]
-  return (
-    <Badge
-      variant="secondary"
-      className={cn("gap-1 text-[10px] font-medium uppercase tracking-wide", cls)}
-    >
-      {role === "ADMIN" ? (
-        <ShieldCheck className="size-3" />
-      ) : role === "PROVIDER" ? (
-        <HardHat className="size-3" />
-      ) : (
-        <CircleUser className="size-3" />
-      )}
-      {ROLE_LABELS[role]}
-    </Badge>
-  )
-}
-
 function EditUserDialog({
   user,
   onOpenChange,
@@ -781,13 +834,16 @@ function EditUserDialog({
     }
   }, [user])
 
+  // H5: warning when demoting from ADMIN
+  const demotingFromAdmin = user?.role === "ADMIN" && role !== "ADMIN"
+
   return (
     <Dialog open={!!user} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Editar usuário</DialogTitle>
           <DialogDescription>
-            Edição administrativa limitada aos campos abaixo. Para alterar
+            Edição administrativa limitada aos campos abaixo. Para alterar a
             senha, o usuário deve usar o fluxo de recuperação.
           </DialogDescription>
         </DialogHeader>
@@ -822,6 +878,19 @@ function EditUserDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* H5 — Destructive action warning */}
+          {demotingFromAdmin ? (
+            <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+              <AlertTriangle className="size-4" />
+              <AlertTitle>Remover privilégios de administrador?</AlertTitle>
+              <AlertDescription>
+                Este usuário perderá acesso ao painel admin. Ação destrutiva —
+                confirme antes de salvar.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="u-whats">WhatsApp</Label>
@@ -873,21 +942,4 @@ function EditUserDialog({
       </DialogContent>
     </Dialog>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function initials(name: string): string {
-  if (!name) return "?"
-  const parts = name.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
-function errMsg(e: unknown, fallback: string): string {
-  if (e && typeof e === "object" && "message" in e) {
-    return String((e as { message?: unknown }).message ?? fallback)
-  }
-  return fallback
 }

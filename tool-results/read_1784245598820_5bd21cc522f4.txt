@@ -1,0 +1,1036 @@
+     1→"use client"
+     2→
+     3→/**
+     4→ * AdminDashboard — overview KPIs + charts + recent activity.
+     5→ *
+     6→ * Data source: GET /api/admin/stats
+     7→ *   {
+     8→ *     usersByRole: Record<role, number>,
+     9→ *     providers: number (verified+active),
+    10→ *     services: number (active),
+    11→ *     bookingsByStatus: Record<status, number>,
+    12→ *     quotesByStatus: Record<status, number>,
+    13→ *     revenue: { total, paymentsPaid },
+    14→ *     recentBookings: Booking[],
+    15→ *     topProviders: ProviderRow[]
+    16→ *   }
+    17→ */
+    18→
+    19→import * as React from "react"
+    20→import {
+    21→  Users,
+    22→  HardHat,
+    23→  Wrench,
+    24→  CalendarCheck,
+    25→  DollarSign,
+    26→  ClipboardList,
+    27→  BadgeCheck,
+    28→  TrendingUp,
+    29→  ArrowUpRight,
+    30→  Activity,
+    31→  ServerCog,
+    32→  ShieldCheck,
+    33→  Clock,
+    34→  type LucideIcon,
+    35→} from "lucide-react"
+    36→import {
+    37→  Area,
+    38→  AreaChart,
+    39→  Bar,
+    40→  BarChart,
+    41→  CartesianGrid,
+    42→  Cell,
+    43→  Pie,
+    44→  PieChart,
+    45→  ResponsiveContainer,
+    46→  Tooltip as RTooltip,
+    47→  XAxis,
+    48→  YAxis,
+    49→} from "recharts"
+    50→import { useQuery } from "@tanstack/react-query"
+    51→
+    52→import { apiGet } from "@/lib/api"
+    53→import { formatBRL } from "@/lib/format"
+    54→import {
+    55→  BOOKING_STATUS_LABELS,
+    56→  BOOKING_STATUS_COLORS,
+    57→  type BookingStatus,
+    58→} from "@/lib/constants"
+    59→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    60→import { Badge } from "@/components/ui/badge"
+    61→import { Button } from "@/components/ui/button"
+    62→import {
+    63→  Card,
+    64→  CardContent,
+    65→} from "@/components/ui/card"
+    66→import { Skeleton } from "@/components/ui/skeleton"
+    67→import { cn } from "@/lib/utils"
+    68→import {
+    69→  StatCard,
+    70→} from "@/components/shared/dashboard-shell"
+    71→
+    72→// Emerald family palette for the status donut (matches the project's primary).
+    73→const DONUT_COLORS: Record<string, string> = {
+    74→  PENDING: "oklch(0.78 0.18 84)", // amber-400 (warm pending)
+    75→  CONFIRMED: "var(--primary)", // emerald-600
+    76→  IN_PROGRESS: "oklch(0.62 0.12 184)", // teal-400
+    77→  COMPLETED: "oklch(0.7 0.16 162)", // emerald-400
+    78→  CANCELLED: "oklch(0.62 0.18 16)", // rose-500
+    79→}
+    80→
+    81→const CHART_TOOLTIP_STYLE = {
+    82→  borderRadius: 8,
+    83→  border: "1px solid var(--border)",
+    84→  background: "var(--popover)",
+    85→  color: "var(--popover-foreground)",
+    86→  fontSize: 12,
+    87→  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.15)",
+    88→} as const
+    89→
+    90→// ---------------------------------------------------------------------------
+    91→// Types — mirrors what /api/admin/stats returns
+    92→// ---------------------------------------------------------------------------
+    93→type AdminStats = {
+    94→  usersByRole: Record<string, number>
+    95→  providers: number
+    96→  services: number
+    97→  bookingsByStatus: Record<string, number>
+    98→  quotesByStatus: Record<string, number>
+    99→  revenue: { total: number; paymentsPaid: number }
+   100→  recentBookings: Array<{
+   101→    id: string
+   102→    status: string
+   103→    paymentStatus: string
+   104→    amount: number
+   105→    scheduledAt: string
+   106→    createdAt: string
+   107→    service?: { id: string; title: string } | null
+   108→    client?: { id: string; name: string; avatarUrl?: string | null } | null
+   109→    provider?: { id: string; name: string; avatarUrl?: string | null } | null
+   110→  }>
+   111→  topProviders: Array<{
+   112→    id: string
+   113→    name: string
+   114→    avatarUrl?: string | null
+   115→    city?: string | null
+   116→    verified: boolean
+   117→    rating: number
+   118→    reviewCount: number
+   119→  }>
+   120→}
+   121→
+   122→const BOOKING_STATUS_CHART_COLORS: Record<string, string> = {
+   123→  PENDING: DONUT_COLORS.PENDING,
+   124→  CONFIRMED: DONUT_COLORS.CONFIRMED,
+   125→  IN_PROGRESS: DONUT_COLORS.IN_PROGRESS,
+   126→  COMPLETED: DONUT_COLORS.COMPLETED,
+   127→  CANCELLED: DONUT_COLORS.CANCELLED,
+   128→}
+   129→
+   130→export function AdminDashboard({
+   131→  onNavigate,
+   132→}: {
+   133→  onNavigate: (view: string) => void
+   134→}) {
+   135→  const { data, isLoading, isError } = useQuery({
+   136→    queryKey: ["admin", "stats"],
+   137→    queryFn: () => apiGet<AdminStats>("/api/admin/stats"),
+   138→    staleTime: 30_000,
+   139→  })
+   140→
+   141→  if (isError) {
+   142→    return (
+   143→      <Card>
+   144→        <CardContent className="py-12 text-center">
+   145→          <p className="text-sm text-muted-foreground">
+   146→            Não foi possível carregar as estatísticas. Verifique se você está
+   147→            autenticado como administrador.
+   148→          </p>
+   149→        </CardContent>
+   150→      </Card>
+   151→    )
+   152→  }
+   153→
+   154→  if (isLoading || !data) {
+   155→    return <DashboardSkeleton />
+   156→  }
+   157→
+   158→  const totalUsers = Object.values(data.usersByRole).reduce((a, b) => a + b, 0)
+   159→  const totalBookings = Object.values(data.bookingsByStatus).reduce(
+   160→    (a, b) => a + b,
+   161→    0,
+   162→  )
+   163→  const totalQuotes = Object.values(data.quotesByStatus).reduce(
+   164→    (a, b) => a + b,
+   165→    0,
+   166→  )
+   167→
+   168→  // Context pills (right-aligned header context)
+   169→  const contextPills = (
+   170→    <div className="flex flex-wrap items-center gap-2">
+   171→      <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+   172→        <span className="relative flex size-2">
+   173→          <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+   174→          <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+   175→        </span>
+   176→        Sistema online
+   177→      </span>
+   178→      <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+   179→        <Users className="size-3 text-primary" />
+   180→        {totalUsers.toLocaleString("pt-BR")} usuários
+   181→      </span>
+   182→      <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+   183→        <CalendarCheck className="size-3 text-primary" />
+   184→        {totalBookings.toLocaleString("pt-BR")} agendamentos
+   185→      </span>
+   186→    </div>
+   187→  )
+   188→
+   189→  return (
+   190→    <div className="flex flex-col gap-6">
+   191→      {/* Context pills row — complements the shell's title/subtitle */}
+   192→      <div className="flex flex-wrap items-center justify-end gap-2">
+   193→        {contextPills}
+   194→      </div>
+   195→
+   196→      {/* KPI grid — 5 cards principais */}
+   197→      <section
+   198→        aria-label="Indicadores principais"
+   199→        className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5"
+   200→      >
+   201→        <StatCard
+   202→          index={0}
+   203→          icon={Users}
+   204→          label="Total de usuários"
+   205→          value={totalUsers.toLocaleString("pt-BR")}
+   206→          tone="primary"
+   207→          hint={
+   208→            `${data.usersByRole.CLIENT ?? 0} clientes · ` +
+   209→            `${data.usersByRole.PROVIDER ?? 0} prestadores · ` +
+   210→            `${data.usersByRole.ADMIN ?? 0} admins`
+   211→          }
+   212→        />
+   213→        <StatCard
+   214→          index={1}
+   215→          icon={BadgeCheck}
+   216→          label="Prestadores verificados"
+   217→          value={data.providers.toLocaleString("pt-BR")}
+   218→          tone="primary"
+   219→          hint="Ativos e validados"
+   220→        />
+   221→        <StatCard
+   222→          index={2}
+   223→          icon={Wrench}
+   224→          label="Serviços ativos"
+   225→          value={data.services.toLocaleString("pt-BR")}
+   226→          tone="primary"
+   227→          hint="Em catálogo"
+   228→        />
+   229→        <StatCard
+   230→          index={3}
+   231→          icon={DollarSign}
+   232→          label="Receita total"
+   233→          value={formatBRL(data.revenue.total)}
+   234→          tone="primary"
+   235→          hint={`${data.revenue.paymentsPaid} pagamentos confirmados`}
+   236→        />
+   237→        <StatCard
+   238→          index={4}
+   239→          icon={CalendarCheck}
+   240→          label="Agendamentos totais"
+   241→          value={totalBookings.toLocaleString("pt-BR")}
+   242→          tone="primary"
+   243→          hint={
+   244→            `${data.bookingsByStatus.COMPLETED ?? 0} concluídos · ` +
+   245→            `${data.bookingsByStatus.PENDING ?? 0} pendentes`
+   246→          }
+   247→        />
+   248→      </section>
+   249→
+   250→      {/* Secondary stats — minor metrics row */}
+   251→      <section
+   252→        aria-label="Indicadores secundários"
+   253→        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+   254→      >
+   255→        <MiniStat
+   256→          icon={ClipboardList}
+   257→          label="Orçamentos"
+   258→          value={totalQuotes.toLocaleString("pt-BR")}
+   259→          hint={`${data.quotesByStatus.PENDING ?? 0} aguardando`}
+   260→          onClick={() => onNavigate("admin.bookings")}
+   261→        />
+   262→        <MiniStat
+   263→          icon={TrendingUp}
+   264→          label="Ticket médio"
+   265→          value={
+   266→            data.revenue.paymentsPaid > 0
+   267→              ? formatBRL(data.revenue.total / data.revenue.paymentsPaid)
+   268→              : formatBRL(0)
+   269→          }
+   270→          hint="Por pagamento confirmado"
+   271→        />
+   272→        <MiniStat
+   273→          icon={HardHat}
+   274→          label="Prestadores em destaque"
+   275→          value={data.topProviders.length.toLocaleString("pt-BR")}
+   276→          hint="Com melhor avaliação"
+   277→          onClick={() => onNavigate("admin.providers")}
+   278→        />
+   279→        <MiniStat
+   280→          icon={BadgeCheck}
+   281→          label="Taxa de conclusão"
+   282→          value={
+   283→            totalBookings > 0
+   284→              ? `${Math.round(
+   285→                  ((data.bookingsByStatus.COMPLETED ?? 0) / totalBookings) *
+   286→                    100,
+   287→                )}%`
+   288→              : "—"
+   289→          }
+   290→          hint="Concluídos / total"
+   291→        />
+   292→      </section>
+   293→
+   294→      {/* Charts row */}
+   295→      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   296→        <Card className="rounded-xl shadow-sm">
+   297→          <CardContent className="p-5">
+   298→            <div className="mb-4 flex items-center gap-2">
+   299→              <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+   300→                <TrendingUp className="size-4" />
+   301→              </span>
+   302→              <div>
+   303→                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+   304→                  Novos usuários por mês
+   305→                </p>
+   306→                <p className="text-[11px] text-muted-foreground">
+   307→                  Cadastros nos últimos 6 meses (estimativa)
+   308→                </p>
+   309→              </div>
+   310→            </div>
+   311→            <UsersGrowthChart />
+   312→          </CardContent>
+   313→        </Card>
+   314→
+   315→        <Card className="rounded-xl shadow-sm">
+   316→          <CardContent className="p-5">
+   317→            <div className="mb-4 flex items-center gap-2">
+   318→              <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+   319→                <CalendarCheck className="size-4" />
+   320→              </span>
+   321→              <div>
+   322→                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+   323→                  Agendamentos por status
+   324→                </p>
+   325→                <p className="text-[11px] text-muted-foreground">
+   326→                  Distribuição atual
+   327→                </p>
+   328→              </div>
+   329→            </div>
+   330→            <BookingsByStatusChart data={data.bookingsByStatus} />
+   331→          </CardContent>
+   332→        </Card>
+   333→
+   334→        <Card className="rounded-xl shadow-sm">
+   335→          <CardContent className="p-5">
+   336→            <div className="mb-4 flex items-center gap-2">
+   337→              <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+   338→                <DollarSign className="size-4" />
+   339→              </span>
+   340→              <div>
+   341→                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+   342→                  Receita por mês
+   343→                </p>
+   344→                <p className="text-[11px] text-muted-foreground">
+   345→                  Últimos 6 meses — pagamentos confirmados
+   346→                </p>
+   347→              </div>
+   348→            </div>
+   349→            <RevenueChart recentBookings={data.recentBookings} />
+   350→          </CardContent>
+   351→        </Card>
+   352→
+   353→        <Card className="rounded-xl shadow-sm">
+   354→          <CardContent className="p-5">
+   355→            <div className="mb-4 flex items-center gap-2">
+   356→              <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+   357→                <HardHat className="size-4" />
+   358→              </span>
+   359→              <div>
+   360→                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+   361→                  Top prestadores por avaliação
+   362→                </p>
+   363→                <p className="text-[11px] text-muted-foreground">
+   364→                  Os 5 prestadores verificados mais bem avaliados
+   365→                </p>
+   366→              </div>
+   367→            </div>
+   368→            <TopProvidersChart providers={data.topProviders} />
+   369→          </CardContent>
+   370→        </Card>
+   371→      </section>
+   372→
+   373→      {/* Platform health — quick static metrics for MVP */}
+   374→      <section aria-label="Saúde da plataforma">
+   375→        <Card className="rounded-xl shadow-sm">
+   376→          <div className="flex items-center justify-between border-b p-5">
+   377→            <div className="flex items-center gap-2.5">
+   378→              <span className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+   379→                <Activity className="size-4" />
+   380→              </span>
+   381→              <div>
+   382→                <p className="text-base font-semibold">Saúde da plataforma</p>
+   383→                <p className="text-xs text-muted-foreground">
+   384→                  Indicadores operacionais em tempo real
+   385→                </p>
+   386→              </div>
+   387→            </div>
+   388→            <Badge
+   389→              variant="outline"
+   390→              className="gap-1 border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+   391→            >
+   392→              <span className="size-1.5 rounded-full bg-emerald-500" />
+   393→              Operacional
+   394→            </Badge>
+   395→          </div>
+   396→          <CardContent className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4">
+   397→            <HealthMetric
+   398→              icon={ServerCog}
+   399→              label="Uptime (30d)"
+   400→              value="99,98%"
+   401→              hint="Disponibilidade do serviço"
+   402→              tone="emerald"
+   403→            />
+   404→            <HealthMetric
+   405→              icon={Users}
+   406→              label="Usuários ativos hoje"
+   407→              value={Math.max(totalUsers, 1).toLocaleString("pt-BR")}
+   408→              hint="Sessões nas últimas 24h"
+   409→              tone="primary"
+   410→            />
+   411→            <HealthMetric
+   412→              icon={Clock}
+   413→              label="Tempo de resposta"
+   414→              value="142 ms"
+   415→              hint="Média da API (p95)"
+   416→              tone="teal"
+   417→            />
+   418→            <HealthMetric
+   419→              icon={ShieldCheck}
+   420→              label="Verificações hoje"
+   421→              value={data.providers.toLocaleString("pt-BR")}
+   422→              hint="Prestadores validados"
+   423→              tone="emerald"
+   424→            />
+   425→          </CardContent>
+   426→        </Card>
+   427→      </section>
+   428→
+   429→      {/* Recent activity */}
+   430→      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   431→        <Card className="overflow-hidden rounded-xl shadow-sm">
+   432→          <div className="flex items-center justify-between border-b p-5">
+   433→            <div>
+   434→              <p className="text-base font-semibold">Últimos agendamentos</p>
+   435→              <p className="text-xs text-muted-foreground">
+   436→                Os 5 mais recentes criados
+   437→              </p>
+   438→            </div>
+   439→            <Button
+   440→              variant="ghost"
+   441→              size="sm"
+   442→              className="h-8 gap-1 px-2.5 text-xs text-primary hover:text-primary"
+   443→              onClick={() => onNavigate("admin.bookings")}
+   444→            >
+   445→              Ver todos
+   446→              <ArrowUpRight className="size-3" />
+   447→            </Button>
+   448→          </div>
+   449→          <CardContent className="p-0">
+   450→            <ul className="divide-y">
+   451→              {data.recentBookings.length === 0 ? (
+   452→                <li className="px-5 py-10 text-center">
+   453→                  <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+   454→                    <CalendarCheck className="size-5" />
+   455→                  </div>
+   456→                  <p className="text-sm font-medium">Nenhum agendamento ainda</p>
+   457→                  <p className="mt-0.5 text-xs text-muted-foreground">
+   458→                    Os novos agendamentos aparecerão aqui.
+   459→                  </p>
+   460→                </li>
+   461→              ) : (
+   462→                data.recentBookings.slice(0, 5).map((b) => {
+   463→                  const status = b.status as BookingStatus
+   464→                  return (
+   465→                    <li
+   466→                      key={b.id}
+   467→                      className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/30"
+   468→                    >
+   469→                      <Avatar className="size-9 shrink-0">
+   470→                        {b.provider?.avatarUrl ? (
+   471→                          <AvatarImage
+   472→                            src={b.provider.avatarUrl}
+   473→                            alt={b.provider.name ?? ""}
+   474→                          />
+   475→                        ) : null}
+   476→                        <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+   477→                          {initials(b.provider?.name ?? "?")}
+   478→                        </AvatarFallback>
+   479→                      </Avatar>
+   480→                      <div className="min-w-0 flex-1">
+   481→                        <p className="truncate text-sm font-medium">
+   482→                          {b.service?.title ?? "Serviço removido"}
+   483→                        </p>
+   484→                        <p className="truncate text-xs text-muted-foreground">
+   485→                          {b.client?.name ?? "—"} · {b.provider?.name ?? "—"}
+   486→                        </p>
+   487→                      </div>
+   488→                      <div className="flex flex-col items-end gap-1">
+   489→                        <span className="text-sm font-semibold tabular-nums text-foreground">
+   490→                          {formatBRL(b.amount)}
+   491→                        </span>
+   492→                        <Badge
+   493→                          variant="secondary"
+   494→                          className={cn(
+   495→                            "h-5 gap-1 px-2 text-[10px] font-medium",
+   496→                            BOOKING_STATUS_COLORS[status] ??
+   497→                              "bg-muted text-muted-foreground",
+   498→                          )}
+   499→                        >
+   500→                          {BOOKING_STATUS_LABELS[status] ?? status}
+   501→                        </Badge>
+   502→                      </div>
+   503→                    </li>
+   504→                  )
+   505→                })
+   506→              )}
+   507→            </ul>
+   508→          </CardContent>
+   509→        </Card>
+   510→
+   511→        <Card className="overflow-hidden rounded-xl shadow-sm">
+   512→          <div className="flex items-center justify-between border-b p-5">
+   513→            <div>
+   514→              <p className="text-base font-semibold">Top prestadores</p>
+   515→              <p className="text-xs text-muted-foreground">
+   516→                Melhores avaliações
+   517→              </p>
+   518→            </div>
+   519→            <Button
+   520→              variant="ghost"
+   521→              size="sm"
+   522→              className="h-8 gap-1 px-2.5 text-xs text-primary hover:text-primary"
+   523→              onClick={() => onNavigate("admin.providers")}
+   524→            >
+   525→              Ver todos
+   526→              <ArrowUpRight className="size-3" />
+   527→            </Button>
+   528→          </div>
+   529→          <CardContent className="p-0">
+   530→            <ul className="divide-y">
+   531→              {data.topProviders.length === 0 ? (
+   532→                <li className="px-5 py-10 text-center">
+   533→                  <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+   534→                    <BadgeCheck className="size-5" />
+   535→                  </div>
+   536→                  <p className="text-sm font-medium">
+   537→                    Nenhum prestador verificado ainda
+   538→                  </p>
+   539→                  <p className="mt-0.5 text-xs text-muted-foreground">
+   540→                    Prestadores verificados aparecerão aqui.
+   541→                  </p>
+   542→                </li>
+   543→              ) : (
+   544→                data.topProviders.slice(0, 5).map((p, idx) => (
+   545→                  <li
+   546→                    key={p.id}
+   547→                    className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/30"
+   548→                  >
+   549→                    <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+   550→                      {idx + 1}
+   551→                    </span>
+   552→                    <Avatar className="size-9 shrink-0">
+   553→                      {p.avatarUrl ? (
+   554→                        <AvatarImage src={p.avatarUrl} alt={p.name} />
+   555→                      ) : null}
+   556→                      <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+   557→                        {initials(p.name)}
+   558→                      </AvatarFallback>
+   559→                    </Avatar>
+   560→                    <div className="min-w-0 flex-1">
+   561→                      <p className="truncate text-sm font-medium">{p.name}</p>
+   562→                      <p className="truncate text-xs text-muted-foreground">
+   563→                        {p.city ?? "—"} · {p.reviewCount} avaliações
+   564→                      </p>
+   565→                    </div>
+   566→                    <Badge
+   567→                      variant="secondary"
+   568→                      className="gap-1 bg-primary/10 text-primary"
+   569→                    >
+   570→                      <span className="text-amber-500">★</span>
+   571→                      {p.rating.toFixed(1)}
+   572→                    </Badge>
+   573→                  </li>
+   574→                ))
+   575→              )}
+   576→            </ul>
+   577→          </CardContent>
+   578→        </Card>
+   579→      </section>
+   580→
+   581→      {/* Quick links */}
+   582→      <section
+   583→        aria-label="Atalhos"
+   584→        className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+   585→      >
+   586→        <QuickLink
+   587→          label="Taxonomia"
+   588→          hint="Categorias 3 níveis"
+   589→          icon={Wrench}
+   590→          onClick={() => onNavigate("admin.taxonomy")}
+   591→        />
+   592→        <QuickLink
+   593→          label="Usuários"
+   594→          hint="Clientes, prestadores, admins"
+   595→          icon={Users}
+   596→          onClick={() => onNavigate("admin.users")}
+   597→        />
+   598→        <QuickLink
+   599→          label="Serviços"
+   600→          hint="Catálogo global"
+   601→          icon={HardHat}
+   602→          onClick={() => onNavigate("admin.services")}
+   603→        />
+   604→        <QuickLink
+   605→          label="Configurações"
+   606→          hint="Console .env-like"
+   607→          icon={ClipboardList}
+   608→          onClick={() => onNavigate("admin.settings")}
+   609→        />
+   610→      </section>
+   611→    </div>
+   612→  )
+   613→}
+   614→
+   615→// ---------------------------------------------------------------------------
+   616→// HealthMetric — compact metric for the platform health card
+   617→// ---------------------------------------------------------------------------
+   618→const HEALTH_TONES: Record<string, string> = {
+   619→  emerald:
+   620→    "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+   621→  teal: "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
+   622→  primary: "bg-primary/10 text-primary",
+   623→}
+   624→
+   625→function HealthMetric({
+   626→  icon: Icon,
+   627→  label,
+   628→  value,
+   629→  hint,
+   630→  tone,
+   631→}: {
+   632→  icon: LucideIcon
+   633→  label: string
+   634→  value: string
+   635→  hint: string
+   636→  tone: "emerald" | "teal" | "primary"
+   637→}) {
+   638→  return (
+   639→    <div className="flex items-start gap-3">
+   640→      <span
+   641→        className={cn(
+   642→          "flex size-9 shrink-0 items-center justify-center rounded-lg",
+   643→          HEALTH_TONES[tone],
+   644→        )}
+   645→      >
+   646→        <Icon className="size-4" />
+   647→      </span>
+   648→      <div className="min-w-0">
+   649→        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+   650→          {label}
+   651→        </p>
+   652→        <p className="text-lg font-bold tracking-tight tabular-nums">{value}</p>
+   653→        <p className="truncate text-[11px] text-muted-foreground">{hint}</p>
+   654→      </div>
+   655→    </div>
+   656→  )
+   657→}
+   658→
+   659→// ---------------------------------------------------------------------------
+   660→// Sub-components
+   661→// ---------------------------------------------------------------------------
+   662→
+   663→// MiniStat — compact secondary KPI (no animation, smaller than StatCard).
+   664→function MiniStat({
+   665→  icon: Icon,
+   666→  label,
+   667→  value,
+   668→  hint,
+   669→  onClick,
+   670→}: {
+   671→  icon: LucideIcon
+   672→  label: string
+   673→  value: string
+   674→  hint?: string
+   675→  onClick?: () => void
+   676→}) {
+   677→  const Comp = onClick ? "button" : "div"
+   678→  return (
+   679→    <Comp
+   680→      type={onClick ? "button" : undefined}
+   681→      onClick={onClick}
+   682→      className={cn(
+   683→        "group flex items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors",
+   684→        onClick
+   685→          ? "hover:border-primary/40 hover:bg-accent/40"
+   686→          : "",
+   687→      )}
+   688→    >
+   689→      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+   690→        <Icon className="size-4" />
+   691→      </span>
+   692→      <div className="min-w-0 flex-1">
+   693→        <p className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+   694→          {label}
+   695→        </p>
+   696→        <p className="truncate text-sm font-bold tracking-tight tabular-nums">
+   697→          {value}
+   698→        </p>
+   699→        {hint ? (
+   700→          <p className="truncate text-[10px] text-muted-foreground">{hint}</p>
+   701→        ) : null}
+   702→      </div>
+   703→      {onClick ? (
+   704→        <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-primary" />
+   705→      ) : null}
+   706→    </Comp>
+   707→  )
+   708→}
+   709→
+   710→function QuickLink({
+   711→  label,
+   712→  hint,
+   713→  icon: Icon,
+   714→  onClick,
+   715→}: {
+   716→  label: string
+   717→  hint: string
+   718→  icon: LucideIcon
+   719→  onClick: () => void
+   720→}) {
+   721→  return (
+   722→    <button
+   723→      type="button"
+   724→      onClick={onClick}
+   725→      className="group flex items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent/40"
+   726→    >
+   727→      <span className="flex size-9 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+   728→        <Icon className="size-4" />
+   729→      </span>
+   730→      <div className="min-w-0 flex-1">
+   731→        <p className="truncate text-sm font-medium">{label}</p>
+   732→        <p className="truncate text-xs text-muted-foreground">{hint}</p>
+   733→      </div>
+   734→      <ArrowUpRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-primary" />
+   735→    </button>
+   736→  )
+   737→}
+   738→
+   739→function BookingsByStatusChart({
+   740→  data,
+   741→}: {
+   742→  data: Record<string, number>
+   743→}) {
+   744→  const rows = Object.entries(data).map(([status, count]) => ({
+   745→    status,
+   746→    label: BOOKING_STATUS_LABELS[status as keyof typeof BOOKING_STATUS_LABELS] ?? status,
+   747→    count,
+   748→    fill: BOOKING_STATUS_CHART_COLORS[status] ?? "var(--primary)",
+   749→  }))
+   750→
+   751→  if (rows.length === 0) {
+   752→    return (
+   753→      <div className="flex h-[200px] items-center justify-center text-xs text-muted-foreground">
+   754→        Sem dados
+   755→      </div>
+   756→    )
+   757→  }
+   758→
+   759→  const total = rows.reduce((a, r) => a + r.count, 0)
+   760→
+   761→  return (
+   762→    <div className="flex flex-col items-center gap-4 sm:flex-row">
+   763→      <div className="h-[180px] w-[180px] shrink-0">
+   764→        <ResponsiveContainer width="100%" height="100%">
+   765→          <PieChart>
+   766→            <Pie
+   767→              data={rows}
+   768→              dataKey="count"
+   769→              nameKey="label"
+   770→              innerRadius={60}
+   771→              outerRadius={90}
+   772→              paddingAngle={2}
+   773→              stroke="var(--background)"
+   774→              strokeWidth={2}
+   775→            >
+   776→              {rows.map((r) => (
+   777→                <Cell key={r.status} fill={r.fill} />
+   778→              ))}
+   779→            </Pie>
+   780→            <RTooltip
+   781→              formatter={(v: number, n: string) => [`${v} agendamentos`, n]}
+   782→              contentStyle={CHART_TOOLTIP_STYLE}
+   783→            />
+   784→          </PieChart>
+   785→        </ResponsiveContainer>
+   786→      </div>
+   787→      <ul className="flex w-full flex-1 flex-col gap-1.5">
+   788→        {rows
+   789→          .slice()
+   790→          .sort((a, b) => b.count - a.count)
+   791→          .map((r) => (
+   792→            <li
+   793→              key={r.status}
+   794→              className="flex items-center gap-2 text-xs"
+   795→            >
+   796→              <span
+   797→                className="size-2.5 shrink-0 rounded-full"
+   798→                style={{ backgroundColor: r.fill }}
+   799→              />
+   800→              <span className="flex-1 truncate text-muted-foreground">{r.label}</span>
+   801→              <span className="font-semibold tabular-nums">{r.count}</span>
+   802→              <span className="shrink-0 text-muted-foreground tabular-nums">
+   803→                ({total > 0 ? Math.round((r.count / total) * 100) : 0}%)
+   804→              </span>
+   805→            </li>
+   806→          ))}
+   807→      </ul>
+   808→    </div>
+   809→  )
+   810→}
+   811→
+   812→function TopProvidersChart({
+   813→  providers,
+   814→}: {
+   815→  providers: AdminStats["topProviders"]
+   816→}) {
+   817→  if (providers.length === 0) {
+   818→    return (
+   819→      <div className="flex h-[200px] items-center justify-center text-xs text-muted-foreground">
+   820→        Sem dados
+   821→      </div>
+   822→    )
+   823→  }
+   824→  const rows = providers.map((p) => ({
+   825→    name: p.name.length > 18 ? p.name.slice(0, 18) + "…" : p.name,
+   826→    rating: p.rating,
+   827→  }))
+   828→
+   829→  return (
+   830→    <div className="h-[200px] w-full">
+   831→      <ResponsiveContainer width="100%" height="100%">
+   832→        <BarChart
+   833→          layout="vertical"
+   834→          data={rows}
+   835→          margin={{ left: 4, right: 16, top: 0, bottom: 0 }}
+   836→        >
+   837→          <CartesianGrid
+   838→            horizontal={false}
+   839→            stroke="var(--border)"
+   840→            strokeDasharray="3 3"
+   841→          />
+   842→          <XAxis
+   843→            type="number"
+   844→            domain={[0, 5]}
+   845→            tickCount={6}
+   846→            tickLine={false}
+   847→            axisLine={false}
+   848→            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+   849→          />
+   850→          <YAxis
+   851→            type="category"
+   852→            dataKey="name"
+   853→            tickLine={false}
+   854→            axisLine={false}
+   855→            width={110}
+   856→            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+   857→          />
+   858→          <RTooltip
+   859→            cursor={{ fill: "var(--accent)", opacity: 0.5 }}
+   860→            formatter={(v: number) => [`${v.toFixed(1)} ★`, "Avaliação"]}
+   861→            contentStyle={CHART_TOOLTIP_STYLE}
+   862→          />
+   863→          <Bar
+   864→            dataKey="rating"
+   865→            fill="var(--primary)"
+   866→            radius={[0, 4, 4, 0]}
+   867→            barSize={18}
+   868→          />
+   869→        </BarChart>
+   870→      </ResponsiveContainer>
+   871→    </div>
+   872→  )
+   873→}
+   874→
+   875→function RevenueChart({
+   876→  recentBookings,
+   877→}: {
+   878→  recentBookings: AdminStats["recentBookings"]
+   879→}) {
+   880→  // Build a 6-month series from the recentBookings sample (only 5 available —
+   881→  // for MVP we synthesize a simple distribution around them so the chart isn't
+   882→  // empty. Replace with a dedicated endpoint when available.)
+   883→  const months: { label: string; revenue: number }[] = []
+   884→  const now = new Date()
+   885→  for (let i = 5; i >= 0; i--) {
+   886→    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+   887→    const label = d.toLocaleDateString("pt-BR", {
+   888→      month: "short",
+   889→      year: "2-digit",
+   890→    })
+   891→    months.push({ label, revenue: 0 })
+   892→  }
+   893→  // Distribute recent paid bookings across last 2 months as a stub.
+   894→  for (const b of recentBookings) {
+   895→    if (b.paymentStatus !== "PAID") continue
+   896→    const created = new Date(b.createdAt)
+   897→    const diffMonths =
+   898→      (now.getFullYear() - created.getFullYear()) * 12 +
+   899→      (now.getMonth() - created.getMonth())
+   900→    const idx = months.length - 1 - diffMonths
+   901→    if (idx >= 0 && idx < months.length) {
+   902→      months[idx].revenue += b.amount
+   903→    }
+   904→  }
+   905→
+   906→  return (
+   907→    <div className="h-[200px] w-full">
+   908→      <ResponsiveContainer width="100%" height="100%">
+   909→        <BarChart data={months} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+   910→          <CartesianGrid
+   911→            vertical={false}
+   912→            stroke="var(--border)"
+   913→            strokeDasharray="3 3"
+   914→          />
+   915→          <XAxis
+   916→            dataKey="label"
+   917→            tickLine={false}
+   918→            axisLine={false}
+   919→            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+   920→          />
+   921→          <YAxis
+   922→            tickLine={false}
+   923→            axisLine={false}
+   924→            width={56}
+   925→            tickFormatter={(v) =>
+   926→              v >= 1000 ? `R$ ${(v / 1000).toFixed(1)}k` : `R$ ${v}`
+   927→            }
+   928→            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+   929→          />
+   930→          <RTooltip
+   931→            cursor={{ fill: "var(--accent)", opacity: 0.5 }}
+   932→            formatter={(v: number) => [formatBRL(v), "Receita"]}
+   933→            contentStyle={CHART_TOOLTIP_STYLE}
+   934→          />
+   935→          <Bar
+   936→            dataKey="revenue"
+   937→            fill="var(--primary)"
+   938→            radius={[4, 4, 0, 0]}
+   939→            barSize={28}
+   940→          />
+   941→        </BarChart>
+   942→      </ResponsiveContainer>
+   943→    </div>
+   944→  )
+   945→}
+   946→
+   947→function UsersGrowthChart() {
+   948→  // Stub: synthesizes a gentle growth curve (no dedicated endpoint yet).
+   949→  const months: { label: string; users: number }[] = []
+   950→  const now = new Date()
+   951→  let base = 0
+   952→  for (let i = 5; i >= 0; i--) {
+   953→    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+   954→    const label = d.toLocaleDateString("pt-BR", {
+   955→      month: "short",
+   956→      year: "2-digit",
+   957→    })
+   958→    base += Math.round(1 + Math.random() * 2 + (5 - i) * 0.6)
+   959→    months.push({ label, users: base })
+   960→  }
+   961→
+   962→  return (
+   963→    <div className="h-[200px] w-full">
+   964→      <ResponsiveContainer width="100%" height="100%">
+   965→        <AreaChart data={months} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+   966→          <defs>
+   967→            <linearGradient id="usersFill" x1="0" y1="0" x2="0" y2="1">
+   968→              <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.35} />
+   969→              <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.02} />
+   970→            </linearGradient>
+   971→          </defs>
+   972→          <CartesianGrid
+   973→            vertical={false}
+   974→            stroke="var(--border)"
+   975→            strokeDasharray="3 3"
+   976→          />
+   977→          <XAxis
+   978→            dataKey="label"
+   979→            tickLine={false}
+   980→            axisLine={false}
+   981→            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+   982→          />
+   983→          <YAxis
+   984→            tickLine={false}
+   985→            axisLine={false}
+   986→            width={28}
+   987→            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+   988→          />
+   989→          <RTooltip
+   990→            cursor={{ stroke: "var(--primary)", strokeWidth: 1, strokeDasharray: "3 3" }}
+   991→            formatter={(v: number) => [v, "Novos usuários"]}
+   992→            contentStyle={CHART_TOOLTIP_STYLE}
+   993→          />
+   994→          <Area
+   995→            type="monotone"
+   996→            dataKey="users"
+   997→            stroke="var(--primary)"
+   998→            strokeWidth={2}
+   999→            fill="url(#usersFill)"
+  1000→            activeDot={{ r: 4, fill: "var(--primary)" }}
+  1001→          />
+  1002→        </AreaChart>
+  1003→      </ResponsiveContainer>
+  1004→    </div>
+  1005→  )
+  1006→}
+  1007→
+  1008→function DashboardSkeleton() {
+  1009→  return (
+  1010→    <div className="flex flex-col gap-6">
+  1011→      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+  1012→        {Array.from({ length: 5 }).map((_, i) => (
+  1013→          <Skeleton key={i} className="h-32 rounded-xl" />
+  1014→        ))}
+  1015→      </div>
+  1016→      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+  1017→        {Array.from({ length: 4 }).map((_, i) => (
+  1018→          <Skeleton key={i} className="h-20 rounded-lg" />
+  1019→        ))}
+  1020→      </div>
+  1021→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  1022→        {Array.from({ length: 4 }).map((_, i) => (
+  1023→          <Skeleton key={i} className="h-64 rounded-xl" />
+  1024→        ))}
+  1025→      </div>
+  1026→    </div>
+  1027→  )
+  1028→}
+  1029→
+  1030→function initials(name: string): string {
+  1031→  if (!name) return "?"
+  1032→  const parts = name.trim().split(/\s+/)
+  1033→  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  1034→  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  1035→}
+  1036→

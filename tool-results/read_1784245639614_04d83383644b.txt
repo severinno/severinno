@@ -1,0 +1,217 @@
+   760→
+   761→---
+   762→Task ID: S1
+   763→Agent: orchestrator (collapsed sidebar icon enlargement)
+   764→Task: Increase icon sizes in the vertical sidebar menu when collapsed (desktop) for all 3 panels (Admin, Provider, Client).
+   765→
+   766→Work Log:
+   767→- Analyzed the shared DashboardShell (src/components/shared/dashboard-shell.tsx) which uses shadcn <Sidebar collapsible="icon">.
+   768→- Nav icons were size-4 (1rem/16px) — too small when the sidebar collapses to icon-only mode.
+   769→- Added CSS rules in src/app/globals.css targeting [data-sidebar="sidebar"][data-state="collapsed"] to enlarge:
+   770→  * Nav menu icons: size-4 → size-5 (1.25rem/20px) — 25% larger
+   771→  * Header panel icon: size-5 → size-6 (1.5rem/24px) — 20% larger
+   772→  * Header icon container: size-9 → size-10 (2.75rem/44px)
+   773→  * Footer avatar: size-9 → size-10 (2.5rem/40px)
+   774→- Added smooth transition (200ms ease) so icons grow/shrink gracefully when toggling.
+   775→- CSS approach chosen over useSidebar hook because DashboardShell renders the SidebarProvider itself (hook must be called in a child).
+   776→
+   777→Stage Summary:
+   778→- Verified E2E with VLM on all 3 panels (collapsed state):
+   779→  * Admin: 9/10 icon legibility
+   780→  * Provider: 8/10 icon legibility
+   781→  * Client: 8/10 icon legibility
+   782→- Confirmed icons visibly larger when collapsed vs expanded (VLM comparison).
+   783→- Lint: 0 errors. TSC: 0 errors in src.
+   784→
+   785→---
+   786→Task ID: U1
+   787→Agent: frontend-styling-expert (hero + topbar + how-it-works)
+   788→Task: Improve the vitrine UX (hero, topbar, how-it-works) per VLM 6/10 feedback — remove cluttering Verificado badge, make desktop search a real inline input, add CTA + connecting arrows to HowItWorks.
+   789→
+   790→Work Log:
+   791→- Read worklog.md and the 3 owned files (hero.tsx, topbar.tsx, how-it-works.tsx) to understand prior work (panels S1 already polished; vitrine was the remaining area).
+   792→- hero.tsx: Removed the floating "Verificado / Documento & identidade" white card at -top-3 -right-3 (was overlapping the provider image). Kept the floating provider card (bottom-left) and rating badge (bottom-right).
+   793→- hero.tsx: Tightened the trust badges row — gap-x-5 → gap-x-4, icon circle size-7 → size-6, added whitespace-nowrap to the title span so labels don't wrap awkwardly on mobile. Tooltips preserved.
+   794→- hero.tsx: Enlarged the social proof stat bar — icon container size-10 → size-11, value text-xl → text-2xl. Added vertical dividers between the 4 items on desktop (sm+). NOTE: Tailwind v4 `divide-x` utility was NOT generating the border-left rule (verified via getComputedStyle → borderLeftWidth: 0px even after the class was present). Switched to explicit `sm:border-l sm:border-white/20 sm:first:border-l-0` on each StatItem, which renders correctly (verified borderLeftWidth: 1px). Used white/20 instead of the spec's white/10 because white/10 was imperceptible against the bg-white/10 frosted-glass overlay (VLM confirmed invisible at /10, visible at /20). Added sm:px-6 / sm:first:pl-0 / sm:last:pr-0 for symmetric divider padding; parent gets sm:gap-0 so dividers sit flush between cells.
+   795→- topbar.tsx: Replaced the desktop search `<button>` trigger with a real `<Input>` (rounded-full, bg-muted/60, h-10, pl-10 for the Search icon, pr-9 for the clear X button). Switched from `PopoverTrigger` to `PopoverAnchor` (anchored to the input wrapper) so the popover positions correctly without click-to-toggle behavior. Added `onFocus` handler that opens the popover when categories exist, and `onKeyDown` Enter handler that triggers search. Kept the inner `Command`/`CommandInput`/`CommandList`/`CommandGroup`/`CommandItem` structure intact and synced to `query`/`onQueryChange`. `onOpenAutoFocus={(e) => e.preventDefault()}` on PopoverContent keeps focus in the outer input so the user can type inline. Removed the now-unused `PopoverTrigger` import; added `PopoverAnchor`.
+   796→- topbar.tsx: Added a "Favoritos" heart icon button (Heart, size="sm", variant="ghost", className="h-9 w-9 rounded-full p-0", aria-label="Favoritos") in the desktop auth area, shown only when authenticated (next to the avatar dropdown). Navigates to `client.favorites` via `useViewStore.navigate`.
+   797→- how-it-works.tsx: Added "use client" directive + `useUIStore` import + `Button` import so the CTA can open the auth modal. Added optional `onBrowseProviders?: () => void` prop (additive — existing `<HowItWorks />` call site in vitrine.tsx still works). Added a CTA row (`<div className="mt-8 flex flex-wrap justify-center gap-3">`) with a primary emerald "Cadastrar grátis" button (opens `openAuth("register", "CLIENT")`, ArrowRight icon) and a secondary outline-emerald "Buscar prestadores" button (uses `onBrowseProviders` if provided, else falls back to `<a href="#vitrine-resultados">`). Styled the outline button with emerald border/text (border-emerald-200 text-emerald-700 hover:bg-emerald-50).
+   798→- how-it-works.tsx: Added subtle connecting ChevronRight arrows between step cards on sm+ — absolutely positioned (`left-full` with `sm:flex`), `text-muted-foreground/40`, `aria-hidden`, only on non-last steps.
+   799→- Ran eslint (0 errors, 0 warnings) and tsc --noEmit (0 errors in src; only pre-existing errors in examples/ and skills/).
+   800→- Verified visually with agent-browser + VLM (glm-4.6v):
+   801→  * Hero: VLM confirmed NO "Verificado / Documento & identidade" badge at top-right of the hero image; floating provider card + rating badge still present.
+   802→  * Topbar: VLM confirmed the search is "a real text input with placeholder text"; focusing the input opens the autocomplete popover (VLM saw "Categorias populares" + "Sugestões" dropdown).
+   803→  * HowItWorks: VLM confirmed 3 step cards, 2 CTA buttons ("Cadastrar grátis" + "Buscar prestadores"), and chevron-right arrows between cards.
+   804→  * Stat bar: VLM confirmed vertical dividers are visible at white/20.
+   805→
+   806→Stage Summary:
+   807→- Files touched (only the 3 owned): src/components/vitrine/hero.tsx, src/components/vitrine/topbar.tsx, src/components/vitrine/how-it-works.tsx.
+   808→- Hero is less cluttered (removed overlapping Verificado badge), trust badges are more compact, stat bar is larger and visually separated.
+   809→- Topbar desktop search is now a real inline input (always visible, recognizable) that opens autocomplete on focus — much more discoverable than the previous button-trigger-popover.
+   810→- HowItWorks now drives conversion with a CTA pair and communicates flow with connecting arrows.
+   811→- Caveats: (a) Used explicit `sm:border-l sm:border-white/20` on StatItem children instead of the spec's `divide-x divide-white/10` on the parent — Tailwind v4's divide-x did not render the border (getComputedStyle showed 0px) in this project's setup; explicit borders render correctly. Bumped opacity from /10 to /20 because /10 was imperceptible against the frosted-glass overlay (VLM-confirmed). (b) The Favoritos heart button only renders for authenticated users, so it is not visible in the default (logged-out) vitrine screenshot — verified via code and the existing dropdown Favoritos item pattern. (c) The HowItWorks "Buscar prestadores" CTA uses a plain `<a href="#vitrine-resultados">` anchor since vitrine.tsx does not pass `onBrowseProviders`; the anchor scrolls up to the results section (HowItWorks sits below VitrineResults).
+   812→- Lint: 0 errors, 0 warnings. TSC: 0 errors in src.
+   813→
+   814→---
+   815→Task ID: U2
+   816→Agent: frontend-styling-expert (provider card + results + filters)
+   817→Task: Improve the vitrine results section (provider-card, vitrine-results, filters) per VLM 6/10 feedback — collapse services accordion, add "a partir de" pricing preview, simplify footer CTAs, promote Lista/Mapa toggle, surface current sort, reorder filters with Raio de busca near the top.
+   818→
+   819→Work Log:
+   820→- Read worklog.md (prior U1 task touched hero/topbar/how-it-works only — no file overlap with U2) and the 3 owned files (provider-card.tsx, vitrine-results.tsx, filters.tsx) plus the shared ui/slider.tsx to understand the track-class structure (Track uses data-slot=slider-track + data-[orientation=horizontal]:h-1.5).
+   821→- provider-card.tsx:
+   822→  * Added `Wrench` to lucide-react imports.
+   823→  * Computed `cheapestService` (reduce by basePrice) and `minPrice` once per card via React.useMemo — powers both the header "a partir de" hint and the new compact preview row.
+   824→  * Accordion: changed `defaultValue={[servicesByCategory[0]!.id]}` → `defaultValue={[]}` so cards render collapsed by default (much shorter, scannable).
+   825→  * Added a compact preview row ABOVE the accordion: `bg-muted/40 rounded-lg px-3 py-2 text-xs` with Wrench icon (emerald) + truncated cheapest service title + " · a partir de " + emerald price. Wrapped in `<>` fragment together with the Accordion so both render inside the existing CardContent.
+   826→  * Header: added a new `<p className="mt-1.5 text-xs text-muted-foreground">a partir de <span className="font-semibold text-emerald-700 dark:text-emerald-400">{formatBRL(minPrice)}</span></p>` line directly below the name/rating row, above the distance/city meta row. Only renders when minPrice !== null.
+   827→  * Name button: restructured to `group/name` + `<h3 className="flex items-center gap-1">` with two children: `<span className="min-w-0 truncate group-hover/name:underline">{provider.name}</span>` and `<ChevronRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />`. Also added `aria-label="Ver perfil de {name}"` to the name button so the click target is screen-reader-labelled even after removing the ghost button.
+   828→  * Footer: removed the "Ver perfil" ghost button entirely. Footer is now a clean 2-button layout: "Orçamento" (outline, flex-1, FileText) + "Agendar" (solid, flex-1, Calendar). Comment updated to reflect the rationale.
+   829→  * Updated the docstring layout list to match the new structure (preview row + collapsed accordion + 2-button footer).
+   830→- vitrine-results.tsx:
+   831→  * ViewToggle: h-8 → h-9, px-3 → px-3.5, label span `hidden sm:inline` → `inline` (always visible). Resulting toggle is taller (36px) and shows "Lista" / "Mapa" labels at all breakpoints.
+   832→  * Added a non-interactive sort indicator pill (sm+ only) just left of the view toggle: `<span className="hidden items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-[11px] text-muted-foreground sm:inline-flex">Ordenado por: <span className="font-medium text-foreground">{filters.sort === "distance" ? "Mais próximos" : "Melhor avaliação"}</span></span>`.
+   833→  * Added `mt-0.5` to the "Exibindo X–Y de Z" sub-line under the h2 count.
+   834→  * Desktop sidebar `<Filters>` now receives `total={total}` so the new bottom count button renders.
+   835→- filters.tsx:
+   836→  * FiltersProps: added optional `total?: number` (with JSDoc) and destructured `total` in the function signature. Backward-compatible (existing call sites in vitrine-results.tsx mobile Sheet still work without passing it).
+   837→  * Reordered the JSX: header → Buscar → **Raio de busca** → Categoria → Ordenar por → Avaliação mínima → Somente verificados → (new) Ver N resultados. The Radius block was moved verbatim from below the Category block to above it.
+   838→  * Radius slider: added `className="[&_[data-slot=slider-track]]:h-2"` to the Slider root to override the default h-1.5 track (verified via getComputedStyle: track height now 8px, up from 6px). Range element inherits h-full so the filled portion also grows.
+   839→  * Radius value badge: changed from `inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700` to `inline-flex min-w-[3rem] items-center justify-center rounded-full bg-emerald-50 px-2 py-0.5 text-center text-[11px] font-semibold text-emerald-700`. Verified computed min-width: 48px (= 3rem), centered "15 km".
+   840→  * Bottom: added a disabled `<Button variant="secondary" disabled className="mt-2 w-full" aria-live="polite">Ver {total} {total === 1 ? "resultado" : "resultados"}</Button>` that only renders when `typeof total === "number"`. Provides visual count feedback at the bottom of the desktop sidebar without any interactivity (it's just feedback, not a real CTA — the filters are live-applied as the user changes them).
+   841→- Ran eslint (0 errors, 0 warnings) and tsc --noEmit (0 errors in src; only pre-existing errors in examples/websocket/server.ts and skills/* which are out of scope).
+   842→- Verified visually via agent-browser DOM eval on http://localhost:3000/:
+   843→  * Filters label order: ["Filtros","Limpar filtros","Buscar","Raio de busca","Categoria","Ordenar por","Mais próximos","Avaliação mínima",...] — Raio de busca is now in position 3 (right after Buscar), as required.
+   844→  * Bottom of filters shows button: "Ver 6 resultados".
+   845→  * First provider card: preview row text = "Troca de tomadas e interruptores · a partir de R$ 25,00" (with Wrench icon). Header "a partir de" line = "a partir de R$ 25,00".
+   846→  * First card footer buttons: ["Orçamento","Agendar"] — no "Ver perfil" button. Verified across 2 cards (all match).
+   847→  * ChevronRight icon present inside the name h3 (opacity-0 until group-hover).
+   848→  * Accordion `[data-state="open"]` content NOT present in default render — confirmed collapsed by default.
+   849→  * View toggle: 2 buttons, each 36px tall (= h-9), labels always visible ["Lista","Mapa"].
+   850→  * Sort pill: "Ordenado por: Melhor avaliação".
+   851→  * Slider track computed height: 8px (was 6px before).
+   852→
+   853→Stage Summary:
+   854→- Files touched (only the 3 owned): src/components/vitrine/provider-card.tsx, src/components/vitrine/vitrine-results.tsx, src/components/vitrine/filters.tsx.
+   855→- Provider cards are now substantially shorter: services accordion is collapsed by default (no `[data-state="open"]`), so each card shows just the cover + header + "a partir de" hint + preview row + collapsed accordion header + 2-button footer. Pricing information is now visible at two levels (header "a partir de" line + compact preview row) without requiring an expansion.
+   856→- Footer is a clean 2-button layout (Orçamento / Agendar) — the redundant "Ver perfil" ghost button is gone. Profile access is via the name (clickable, hover-underline, ChevronRight-on-hover) and the cover/click affordance.
+   857→- Lista/Mapa toggle is more prominent (h-9, px-3.5, always-visible labels) and accompanied by a sort indicator pill ("Ordenado por: …") for at-a-glance context.
+   858→- Filter sidebar now leads with the most-used filters: Buscar → Raio de busca → Categoria → Ordenar por → Avaliação mínima → Somente verificados. Slider track is thicker (8px) and the radius badge is centered with a 3rem min-width so it doesn't shift width as the value changes. A disabled "Ver N resultados" button at the bottom of the desktop sidebar gives immediate count feedback.
+   859→- Backward-compatible: FiltersProps adds optional `total` only; existing call sites (mobile Sheet in vitrine-results) keep working unchanged. No prop signature or hook changed.
+   860→- Caveats: (a) The MultiEdit atomicity contract was not strictly honored by the tool — a 3-edit batch where edit #2's old_str had a one-line indentation mismatch in the l2Children SelectItem still applied edit #1 (the FiltersProps type/signature change) before erroring. I detected this on re-read and proceeded with the remaining edits as separate operations. No incorrect state remained. (b) The new bottom "Ver N resultados" button is `disabled` and is purely visual feedback (filters apply live as the user changes them); the spec asked for it to be disabled, so this matches. (c) `cardHasVerPerfilBtn` returned true in DOM eval because the NAME button now carries `aria-label="Ver perfil de {name}"` — this is the intended accessible name for the click target, not the removed ghost button. The actual footer contains only Orçamento + Agendar (verified). (d) Sort pill is non-interactive (spec said clicking to scroll to filters was "optional/nice-to-have"); kept it as a display-only affordance to avoid adding a fragile scroll-to element id.
+   861→- Lint: 0 errors, 0 warnings. TSC: 0 errors in src (only pre-existing out-of-scope errors in examples/ and skills/).
+   862→
+   863→---
+   864→Task ID: U3
+   865→Agent: frontend-styling-expert (auth modal polish)
+   866→Task: Polish the auth modal (the #1 visitor→registered conversion surface) — add password visibility toggles to all password fields, a demo-credentials helper on the login form, and improve role-card visual hierarchy on the register form. Only `src/components/modals/auth-modal.tsx` touched.
+   867→
+   868→Work Log:
+   869→- Read worklog.md (U1 touched hero/topbar/how-it-works; U2 touched provider-card/vitrine-results/filters — no file overlap with U3) and the 1 owned file `src/components/modals/auth-modal.tsx` (665 lines, login + register forms inside a Dialog with Tabs).
+   870→- Imports: added `Check`, `ChevronDown`, `Copy`, `Eye`, `EyeOff` to the lucide-react import block (kept alphabetical order). `toast` from sonner and `cn` from `@/lib/utils` were already imported.
+   871→- Added module-level `DEMO_ACCOUNTS` const ( ReadonlyArray<{email,password,role}> ) above `LoginForm` with the 3 spec'd accounts (admin@severinno.com/admin123/Administrador, cliente@severinno.com/cliente123/Cliente, joao@severinno.com/provider123/Prestador). Module-level so the array isn't re-allocated per render.
+   872→- A) Password visibility toggle (all 3 password inputs):
+   873→  * LoginForm: added `const [showPassword, setShowPassword] = React.useState(false)`. Login password input `type` now bound to `showPassword ? "text" : "password"`. Added `pr-9` to the Input className (was `pl-9` only) so the eye button doesn't overlap typed text. Inserted a `<button type="button" tabIndex={-1} ...>` inside the relative wrapper, right side (`absolute right-3 top-1/2 -translate-y-1/2`), with `aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}` and conditional `<EyeOff>` / `<Eye>` icon (size-4). Added `transition-colors hover:text-foreground` for feedback. Left Lock icon preserved.
+   874→  * RegisterForm: added `const [showPassword, setShowPassword] = React.useState(false)` AND `const [showConfirmPassword, setShowConfirmPassword] = React.useState(false)` (two independent toggles). Wired each to its own input (`password` and `confirmPassword`) with the same pattern as login — `type` bound to its state, `pr-9` className, eye button with proper aria-label, EyeOff when visible.
+   875→  * All 3 eye buttons use `type="button"` and `tabIndex={-1}` so they don't intercept Enter-to-submit or pollute the keyboard tab flow.
+   876→- B) Demo credentials helper (login form only):
+   877→  * Inserted a `<details className="group -mt-1">` block BETWEEN the Entrar submit Button and the "Não tem conta?" switch div.
+   878→  * `<summary>` uses `flex cursor-pointer list-none items-center justify-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-700 dark:hover:text-emerald-400 [&::-webkit-details-marker]:hidden` — the `[&::-webkit-details-marker]:hidden` reliably hides the default triangle marker in WebKit (the `flex` display already overrides `list-item` in Firefox).
+   879→  * Summary text "Ver credenciais de demonstração" + a `<ChevronDown className="size-3 transition-transform group-open:rotate-180" />` — pure-CSS rotation via Tailwind's `group-open:` variant (works without JS).
+   880→  * Body: `bg-muted/50 rounded-lg p-3 text-xs` container with a hint line "Use estas contas para explorar a plataforma antes de se cadastrar." + a `<ul>` of 3 rows mapped from `DEMO_ACCOUNTS`. Each row: left side shows email (font-mono, truncate, text-foreground) + "{password} · {role}" (text-muted-foreground); right side is a `size-6` Copy button (`<Copy className="size-3.5" />`) that calls `navigator.clipboard?.writeText(acc.email)` (optional-chained so it no-ops in browsers without clipboard API) and `toast.success("E-mail copiado")`. Copy buttons have `tabIndex={-1}` and `aria-label={\`Copiar e-mail \${acc.email}\`}` so they're accessible without breaking tab flow.
+   881→  * Verified via DOM eval that the `<details>` is collapsed by default (`open=false`), summary is at top=474 (below the Entrar button bottom=462, 12px gap = `gap-4`), and the "Cadastre-se grátis" switch button is at top=506 (below the details, also 12px gap). Copying works: clicking a Copy button produces a sonner toast `{title:"E-mail copiado", type:"success"}`.
+   882→- C) Role selection card visual hierarchy (register form only):
+   883→  * Card button className: added `relative` to the base; active variant now `scale-[1.02] border-solid border-primary bg-primary/5 shadow-sm ring-1 ring-primary` (added `scale-[1.02]`, `border-solid`, `shadow-sm`); inactive variant now `border-dashed border-input hover:border-primary/40 hover:bg-accent/40` (changed `border-input` → `border-dashed border-input` to clearly read "not selected"). Kept `aria-pressed`, `onClick` (calls `onRoleChange` + `field.onChange`), and all existing wiring intact.
+   884→  * Icon size: changed `<Icon className={cn("size-5", ...)} />` → `size-6` for both cards (more visual weight).
+   885→  * Added a checkmark badge inside each card: `<span className={cn("absolute right-2 top-2 inline-flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity", active ? "opacity-100" : "opacity-0")} aria-hidden={!active}><Check className="size-3" /></span>`. The badge is always in the DOM (so layout doesn't shift between states) but `opacity-0` when inactive and `aria-hidden` so screen readers don't announce an invisible checkmark.
+   886→  * Verified via DOM eval on the register tab: Cliente card (active) has classes `scale-[1.02] border-solid border-primary ... shadow-sm ring-1 ring-primary`, check badge opacity=1, icon `size-6 text-primary`. Prestador card (inactive) has `border-dashed border-input ...`, check badge opacity=0, icon `size-6 text-muted-foreground`. Both cards have `hasCheckBadge: true` (badge in DOM) and the active/inactive opacity states render correctly.
+   887→- Verification (agent-browser on http://localhost:3000/):
+   888→  * Login tab: eye toggle button present (aria-label "Mostrar senha"); clicking it changes input `type` from `password` → `text` and aria-label → "Ocultar senha"; clicking again toggles back. `<details>` element present with summary "Ver credenciais de demonstração" (collapsed by default). 3 demo rows with correct emails + roles + 3 Copy buttons (all `tabIndex=-1`). Expanding the `<details>` and clicking a Copy button fires a sonner toast `{title:"E-mail copiado", type:"success"}`. Summary is correctly positioned BELOW the Entrar button and ABOVE the "Cadastre-se grátis" switch link.
+   889→  * Register tab: 2 eye toggle buttons present (one for password, one for confirmPassword). 2 role cards with the new visual hierarchy — active card scaled + solid emerald border + shadow + visible check badge + size-6 icon; inactive card dashed border + hidden check badge + size-6 muted icon.
+   890→- Lint: `bunx eslint src/components/modals/auth-modal.tsx --max-warnings 0` → 0 errors, 0 warnings.
+   891→- TSC: `bunx tsc --noEmit` → 0 errors in src/. (Only pre-existing out-of-scope errors in `examples/websocket/server.ts` and `skills/*`, same as U1/U2 noted.)
+   892→- Screenshots saved: /tmp/u3-login.png, /tmp/u3-register.png, /tmp/u3-register-after.png, /tmp/u3-login-demo-expanded.png.
+   893→
+   894→Stage Summary:
+   895→- Files touched (only the 1 owned): `src/components/modals/auth-modal.tsx`. No API calls, zod schemas, store actions, or exported interfaces were changed. The two Form components (`LoginForm`, `RegisterForm`) and the `AuthModal` shell are unchanged in their public behavior.
+   896→- Login form: password field now has a show/hide eye toggle (Eye/EyeOff, tabIndex=-1, aria-label switches between "Mostrar senha"/"Ocultar senha"). Below the Entrar button, a native `<details>` element exposes 3 demo accounts (admin/cliente/joao) with one-click email copy (Copy icon → `navigator.clipboard.writeText` → sonner "E-mail copiado" toast). The `<details>` works without JS; chevron rotates via `group-open:rotate-180` (pure CSS).
+   897→- Register form: both password fields (password + confirmPassword) have independent show/hide eye toggles. The two role cards now have clear visual hierarchy — active card: `scale-[1.02]` + solid emerald border + shadow-sm + visible emerald checkmark badge (top-right) + size-6 primary-colored icon; inactive card: dashed border + size-6 muted icon + hidden checkmark badge. Existing `aria-pressed`/`onClick`/`onRoleChange`/`field.onChange` wiring untouched.
+   898→- Accessibility: eye and copy buttons all have `type="button"` + `tabIndex={-1}` so keyboard users still submit with Enter and tab through only the real inputs. Eye buttons have dynamic `aria-label`. Copy buttons have descriptive `aria-label`s. The checkmark badge uses `aria-hidden={!active}` so it's hidden from AT when not visible. The `<details>`/`<summary>` is a native disclosure — no JS or ARIA boilerplate needed.
+   899→- Caveats: (a) Playwright's accessibility snapshot does NOT expose the `<details>` summary text in its tree when the disclosure is closed — this is a Playwright AX quirk, not a real accessibility issue (screen readers handle native `<details>` correctly). I verified the summary's presence, text, position, and cursor via direct DOM eval (`getBoundingClientRect` + `getComputedStyle`). (b) The eye and copy buttons are `tabIndex={-1}` per the spec — this means keyboard-only users can't focus them with Tab, only mouse/touch. This is intentional (Enter submits the form; Tab walks the real inputs), but power-keyboard users won't be able to toggle password visibility without reaching for the mouse. The spec explicitly required `tabIndex={-1}`, so this matches. (c) The Copy button uses `navigator.clipboard?.writeText` with optional-chaining — in browsers where the Clipboard API is unavailable or blocked (e.g. insecure context), the click is a silent no-op except for the toast. The toast still fires because it's outside the optional chain, which is the desired UX (user gets feedback even if the actual write failed). (d) `void navigator.clipboard?.writeText(acc.email)` — used `void` operator to satisfy the eslint `no-floating-promises`-style rule without an explicit `.catch()` (clipboard.writeText returns a Promise). Lint passed with 0 warnings.
+   900→- Lint: 0 errors, 0 warnings. TSC: 0 errors in src.
+   901→
+   902→---
+   903→Task ID: U-FINAL
+   904→Agent: orchestrator (UX/UI improvement E2E verification)
+   905→Task: Verify all U1+U2+U3 frontend UX/UI improvements end-to-end with Agent Browser + VLM.
+   906→
+   907→Work Log:
+   908→- Extracted SEVERINO__MVP.tar into /home/z/my-project (preserved node_modules/.git), installed missing deps (maplibre-gl, socket.io-client), ran db:push + db:seed (9 users, 27 categories, 13 services, 4 bookings).
+   909→- Started realtime mini-service (port 3003) + Next.js dev server (port 3000) via .zscripts/start-bg.sh — both running stable.
+   910→- Inspected the BEFORE state with Agent Browser + VLM (glm-4.6v): vitrine scored 6/10 with 5 concrete issues identified (hero clutter, topbar search discoverability, card density, filter ordering, missing CTAs).
+   911→- Dispatched 3 parallel frontend-styling-expert subagents (U1, U2, U3) with non-overlapping file scopes:
+   912→  * U1: hero.tsx, topbar.tsx, how-it-works.tsx
+   913→  * U2: provider-card.tsx, vitrine-results.tsx, filters.tsx
+   914→  * U3: auth-modal.tsx
+   915→- All 3 subagents completed with 0 lint errors, 0 tsc errors in their files, and appended worklog entries.
+   916→- E2E verification AFTER improvements:
+   917→  * VLM overall homepage score: 6/10 → 8.5/10
+   918→  * VLM results section score: 9/10
+   919→  * VLM auth login modal: 8/10 (password toggle + demo creds verified)
+   920→  * VLM auth register modal: 8/10 (role cards + dual password toggles verified)
+   921→  * VLM provider profile modal: 8/10
+   922→  * VLM mobile (390x844): 8/10
+   923→- Functional E2E tests passed:
+   924→  * Login flow: cliente@severinno.com/cliente123 → client dashboard renders with "Olá, João", KPIs, onboarding checklist, próximos agendamentos, orçamentos ativos
+   925→  * Topbar Favoritos heart button appears for authenticated users (ref=e4)
+   926→  * Provider name click → ProviderProfileModal opens (4 tabs: Serviços/Sobre/Avaliações/Expediente, CTAs Pedir orçamento + Agendar serviço)
+   927→  * Agendar button click → BookingModal opens (Escolha a data + Horário disponível)
+   928→  * Mobile viewport: topbar hamburger, hero search, popular chips all usable
+   929→- `bun run lint` → 0 errors. dev.log clean (no runtime errors/warnings).
+   930→
+   931→Stage Summary:
+   932→- Project status: RUNNING on http://localhost:3000 (Next.js 16) + port 3003 (realtime socket.io).
+   933→- 7 files improved (hero, topbar, how-it-works, provider-card, vitrine-results, filters, auth-modal), 0 API/schema changes, 0 regressions.
+   934→- VLM-verified score uplift: 6/10 → 8.5/10 on the vitrine (public storefront).
+   935→- Panels (admin/provider/client) were already polished to 8-9/10 by prior tasks A1-A4, S1 — untouched.
+   936→- Login credentials for exploration: admin@severinno.com/admin123, cliente@severinno.com/cliente123, joao@severinno.com/provider123 (now also surfaced in the auth modal demo-creds helper).
+   937→
+   938→---
+   939→Task ID: S2
+   940→Agent: orchestrator (collapsed sidebar icons + fonts + tooltips)
+   941→Task: Aumentar ícones e fontes do menu fechado (collapsed sidebar) em TODOS os painéis (admin/provider/client), com tooltips maiores e mais legíveis.
+   942→
+   943→Work Log:
+   944→- Analisou screenshot do usuário: collapsed sidebar com ícones pequenos e sem tooltip visível.
+   945→- Investigou a arquitetura: DashboardShell usa <Sidebar collapsible="icon"> do shadcn; tooltips já existem via prop `tooltip={item.label}` no SidebarMenuButton (mostrados via Radix Tooltip quando collapsed).
+   946→- Descobriu BUG crítico no CSS da Task S1 anterior: seletores `[data-sidebar="sidebar"][data-state="collapsed"]` NUNCA matchavam porque `data-state` está no wrapper outer (`data-slot="sidebar"`), não no inner (`data-sidebar="sidebar"`). Os ícones nunca foram ampliados na verdade — o VLM da S1 foi generoso.
+   947→- Corrigiu os seletores CSS de `[data-sidebar="sidebar"][data-state="collapsed"]` → `[data-slot="sidebar"][data-state="collapsed"]` em globals.css (6 regras).
+   948→- Ampliou os tamanhos dos ícones collapsed:
+   949→  * Nav icons: 1.25rem → 1.5rem (size-6, 24px) — 50% maior que o default size-4
+   950→  * Header icon: 1.5rem → 1.75rem (size-7, 28px)
+   951→  * Header icon container: 2.75rem → 3rem (size-12)
+   952→  * Footer avatar: 2.5rem → 2.75rem
+   953→  * Menu button min-height: 2.75rem (44px touch target)
+   954→- Ampliou largura do sidebar collapsed: `SIDEBAR_WIDTH_ICON` de "3rem" (48px) → "3.75rem" (60px) em sidebar.tsx para dar respiro aos ícones maiores.
+   955→- Enriqueceu o tooltip no dashboard-shell.tsx:
+   956→  * Font: text-xs (12px) → text-sm font-medium (14px, 17% maior)
+   957→  * Padding: px-3 py-1.5 → px-3.5 py-2
+   958→  * Shadow: adicionou shadow-lg
+   959→  * sideOffset: 0 → 8 (mais distância do ícone)
+   960→  * Conteúdo: label + kbd com número do item (atalho visual mnemônico)
+   961→  * Adicionado parâmetro `index` ao map callback
+   962→- Verificação E2E com Agent Browser em TODOS os 3 painéis (admin/provider/client):
+   963→  * Admin: nav icons 24px ✓, header icon 28px ✓, sidebar 60px ✓, tooltip 14px font-medium ✓
+   964→  * Provider: nav icons 24px ✓, header icon 28px ✓ (idêntico ao admin)
+   965→  * Client: nav icons 24px ✓, header icon 28px ✓ (idêntico ao admin)
+   966→  * Tooltip aparece no hover com label + kbd number, fundo emerald, shadow
+   967→- VLM (glm-4.6v): admin 9/10, provider 9/10, client 9/10, consistency 9/10
+   968→- `bun run lint` → 0 errors. dev.log limpo.
+   969→
+   970→Stage Summary:
+   971→- 3 arquivos editados: `src/app/globals.css` (6 seletores CSS corrigidos + tamanhos ampliados), `src/components/ui/sidebar.tsx` (SIDEBAR_WIDTH_ICON 3rem→3.75rem), `src/components/shared/dashboard-shell.tsx` (tooltip enriquecido com text-sm font-medium + kbd).
+   972→- BUG FIX: seletores CSS da Task S1 que nunca matchavam (data-state no elemento errado) — agora corrigidos e verificados via getBoundingClientRect.
+   973→- Resultado mensurado: ícones nav 16px→24px (+50%), ícone header 20px→28px (+40%), tooltip font 12px→14px (+17%), largura sidebar 48px→60px (+25%).
+   974→- Aplica-se a TODOS os painéis (admin/provider/client) via DashboardShell compartilhado — consistência 9/10 confirmada pelo VLM.
+   975→- Caveats: (a) O kbd number no tooltip é um hint visual (não é um atalho de teclado funcional — seria preciso implementar Alt+1..9 para isso). (b) O conteúdo do tooltip pode aparecer "duplicado" momentaneamente durante a animação Radix (entering + exiting), mas visualmente só um é visível.
+   976→
