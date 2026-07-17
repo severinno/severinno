@@ -1,0 +1,772 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useQuery, useQueryClient } from "@tanstack/react-query"
+     5→import { toast } from "sonner"
+     6→import {
+     7→  CalendarCheck,
+     8→  CheckCircle2,
+     9→  Clock,
+    10→  CreditCard,
+    11→  Loader2,
+    12→  MapPin,
+    13→  MessageSquare,
+    14→  MoreVertical,
+    15→  Play,
+    16→  X,
+    17→  Info,
+    18→} from "lucide-react"
+    19→
+    20→import { apiGet, apiPatch } from "@/lib/api"
+    21→import {
+    22→  BOOKING_STATUS_LABELS,
+    23→  PAYMENT_METHOD_LABELS,
+    24→  PAYMENT_STATUS_LABELS,
+    25→  type BookingStatus,
+    26→  type PaymentMethod,
+    27→  type PaymentStatus,
+    28→} from "@/lib/constants"
+    29→import { formatBRL, formatDate, formatDateTime, formatTime } from "@/lib/format"
+    30→
+    31→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    32→import { Badge } from "@/components/ui/badge"
+    33→import { Button } from "@/components/ui/button"
+    34→import {
+    35→  Dialog,
+    36→  DialogContent,
+    37→  DialogDescription,
+    38→  DialogFooter,
+    39→  DialogHeader,
+    40→  DialogTitle,
+    41→} from "@/components/ui/dialog"
+    42→import {
+    43→  DropdownMenu,
+    44→  DropdownMenuContent,
+    45→  DropdownMenuItem,
+    46→  DropdownMenuSeparator,
+    47→  DropdownMenuTrigger,
+    48→} from "@/components/ui/dropdown-menu"
+    49→import {
+    50→  Pagination,
+    51→  PaginationContent,
+    52→  PaginationItem,
+    53→  PaginationNext,
+    54→  PaginationPrevious,
+    55→} from "@/components/ui/pagination"
+    56→import {
+    57→  Table,
+    58→  TableBody,
+    59→  TableCell,
+    60→  TableHead,
+    61→  TableHeader,
+    62→  TableRow,
+    63→} from "@/components/ui/table"
+    64→import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+    65→import { useViewStore } from "@/store/view"
+    66→import { cn } from "@/lib/utils"
+    67→
+    68→// ---------------------------------------------------------------------------
+    69→// Types
+    70→// ---------------------------------------------------------------------------
+    71→
+    72→type Booking = {
+    73→  id: string
+    74→  clientId: string
+    75→  providerId: string
+    76→  serviceId: string
+    77→  scheduledAt: string
+    78→  status: BookingStatus
+    79→  address: string
+    80→  cep: string
+    81→  lat: number
+    82→  lng: number
+    83→  amount: number
+    84→  paymentMethod: PaymentMethod
+    85→  paymentStatus: PaymentStatus
+    86→  notes?: string | null
+    87→  createdAt: string
+    88→  updatedAt: string
+    89→  service: {
+    90→    id: string
+    91→    title: string
+    92→    basePrice: number
+    93→    unit: string
+    94→  }
+    95→  client: {
+    96→    id: string
+    97→    name: string
+    98→    avatarUrl?: string | null
+    99→  }
+   100→  payment?: {
+   101→    id: string
+   102→    amount: number
+   103→    method: string
+   104→    status: string
+   105→  } | null
+   106→}
+   107→
+   108→type Tab = BookingStatus | "all"
+   109→
+   110→const STATUS_TABS: Array<{ value: Tab; label: string }> = [
+   111→  { value: "PENDING", label: "Pendentes" },
+   112→  { value: "CONFIRMED", label: "Confirmados" },
+   113→  { value: "IN_PROGRESS", label: "Em andamento" },
+   114→  { value: "COMPLETED", label: "Concluídos" },
+   115→  { value: "CANCELLED", label: "Cancelados" },
+   116→  { value: "all", label: "Todos" },
+   117→]
+   118→
+   119→// ---------------------------------------------------------------------------
+   120→// Helpers
+   121→// ---------------------------------------------------------------------------
+   122→
+   123→const BADGE_STYLES: Record<BookingStatus, string> = {
+   124→  PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+   125→  CONFIRMED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+   126→  IN_PROGRESS: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
+   127→  COMPLETED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+   128→  CANCELLED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
+   129→}
+   130→
+   131→const PAY_BADGE_STYLES: Record<PaymentStatus, string> = {
+   132→  PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+   133→  PAID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+   134→  REFUNDED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
+   135→}
+   136→
+   137→function initials(name?: string) {
+   138→  if (!name) return "?"
+   139→  return name
+   140→    .split(" ")
+   141→    .slice(0, 2)
+   142→    .map((s) => s[0]?.toUpperCase() ?? "")
+   143→    .join("")
+   144→}
+   145→
+   146→function StatusBadge({ status }: { status: BookingStatus }) {
+   147→  const Icon =
+   148→    status === "CONFIRMED" || status === "COMPLETED"
+   149→      ? CheckCircle2
+   150→      : status === "PENDING"
+   151→        ? Clock
+   152→        : status === "IN_PROGRESS"
+   153→          ? Loader2
+   154→          : X
+   155→  return (
+   156→    <Badge
+   157→      className={cn(
+   158→        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+   159→        BADGE_STYLES[status],
+   160→      )}
+   161→    >
+   162→      <Icon className="size-3" />
+   163→      {BOOKING_STATUS_LABELS[status]}
+   164→    </Badge>
+   165→  )
+   166→}
+   167→
+   168→// ---------------------------------------------------------------------------
+   169→// Detail dialog
+   170→// ---------------------------------------------------------------------------
+   171→
+   172→function BookingDetailsDialog({
+   173→  booking,
+   174→  open,
+   175→  onOpenChange,
+   176→  onMessage,
+   177→}: {
+   178→  booking: Booking | null
+   179→  open: boolean
+   180→  onOpenChange: (v: boolean) => void
+   181→  onMessage: (clientId: string) => void
+   182→}) {
+   183→  if (!booking) return null
+   184→  const mapsUrl = `https://www.openstreetmap.org/?mlat=${booking.lat}&mlon=${booking.lng}#map=16/${booking.lat}/${booking.lng}`
+   185→  return (
+   186→    <Dialog open={open} onOpenChange={onOpenChange}>
+   187→      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+   188→        <DialogHeader>
+   189→          <DialogTitle>Detalhes do agendamento</DialogTitle>
+   190→          <DialogDescription className="tabular-nums">
+   191→            {formatDateTime(booking.scheduledAt)}
+   192→          </DialogDescription>
+   193→        </DialogHeader>
+   194→        <div className="grid gap-4 py-2">
+   195→          <div className="flex items-center gap-3">
+   196→            <Avatar className="size-10 border">
+   197→              {booking.client.avatarUrl ? (
+   198→                <AvatarImage
+   199→                  src={booking.client.avatarUrl}
+   200→                  alt={booking.client.name}
+   201→                />
+   202→              ) : null}
+   203→              <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+   204→                {initials(booking.client.name)}
+   205→              </AvatarFallback>
+   206→            </Avatar>
+   207→            <div>
+   208→              <p className="text-sm font-semibold">{booking.client.name}</p>
+   209→              <p className="text-xs text-muted-foreground">Cliente</p>
+   210→            </div>
+   211→          </div>
+   212→
+   213→          <div className="grid gap-2 rounded-lg border p-3 text-sm">
+   214→            <div className="flex justify-between">
+   215→              <span className="text-muted-foreground">Serviço</span>
+   216→              <span className="font-medium">{booking.service.title}</span>
+   217→            </div>
+   218→            <div className="flex items-center justify-between">
+   219→              <span className="text-muted-foreground">Status</span>
+   220→              <StatusBadge status={booking.status} />
+   221→            </div>
+   222→            <div className="flex items-center justify-between">
+   223→              <span className="text-muted-foreground">Pagamento</span>
+   224→              <div className="flex items-center gap-1.5">
+   225→                <Badge
+   226→                  className={cn(
+   227→                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+   228→                    PAY_BADGE_STYLES[booking.paymentStatus],
+   229→                  )}
+   230→                >
+   231→                  {PAYMENT_STATUS_LABELS[booking.paymentStatus]}
+   232→                </Badge>
+   233→                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+   234→                  <CreditCard className="size-3" />
+   235→                  {PAYMENT_METHOD_LABELS[booking.paymentMethod]}
+   236→                </span>
+   237→              </div>
+   238→            </div>
+   239→            <div className="flex justify-between">
+   240→              <span className="text-muted-foreground">Valor</span>
+   241→              <span className="font-semibold tabular-nums text-primary">
+   242→                {formatBRL(booking.amount)}
+   243→              </span>
+   244→            </div>
+   245→            <div className="flex justify-between">
+   246→              <span className="text-muted-foreground">Data</span>
+   247→              <span className="font-medium tabular-nums">
+   248→                {formatDate(booking.scheduledAt)} às{" "}
+   249→                {formatTime(booking.scheduledAt)}
+   250→              </span>
+   251→            </div>
+   252→          </div>
+   253→
+   254→          <div className="grid gap-2 rounded-lg border p-3 text-sm">
+   255→            <div className="flex items-start gap-2">
+   256→              <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+   257→              <div>
+   258→                <p className="text-xs text-muted-foreground">Endereço</p>
+   259→                <p className="font-medium">{booking.address}</p>
+   260→                <p className="text-xs text-muted-foreground">
+   261→                  CEP: {booking.cep}
+   262→                </p>
+   263→                <a
+   264→                  href={mapsUrl}
+   265→                  target="_blank"
+   266→                  rel="noreferrer noopener"
+   267→                  className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+   268→                >
+   269→                  <MapPin className="size-3" /> Abrir no mapa
+   270→                </a>
+   271→              </div>
+   272→            </div>
+   273→          </div>
+   274→
+   275→          {booking.notes && (
+   276→            <div className="grid gap-1 rounded-lg border p-3 text-sm">
+   277→              <p className="text-xs text-muted-foreground">
+   278→                Observações do cliente
+   279→              </p>
+   280→              <p className="text-foreground">{booking.notes}</p>
+   281→            </div>
+   282→          )}
+   283→
+   284→          {booking.status === "CONFIRMED" && (
+   285→            <p className="text-xs text-muted-foreground">
+   286→              Apenas o cliente pode concluir o agendamento após a execução do
+   287→              serviço.
+   288→            </p>
+   289→          )}
+   290→        </div>
+   291→        <DialogFooter>
+   292→          <Button
+   293→            variant="outline"
+   294→            onClick={() => onMessage(booking.clientId)}
+   295→            className="gap-1.5"
+   296→          >
+   297→            <MessageSquare className="size-4" /> Enviar mensagem
+   298→          </Button>
+   299→          <Button onClick={() => onOpenChange(false)}>Fechar</Button>
+   300→        </DialogFooter>
+   301→      </DialogContent>
+   302→    </Dialog>
+   303→  )
+   304→}
+   305→
+   306→// ---------------------------------------------------------------------------
+   307→// Main view
+   308→// ---------------------------------------------------------------------------
+   309→
+   310→export function ProviderBookings() {
+   311→  const qc = useQueryClient()
+   312→  const navigate = useViewStore((s) => s.navigate)
+   313→  const [tab, setTab] = React.useState<string>("PENDING")
+   314→  const [page, setPage] = React.useState(1)
+   315→  const [detail, setDetail] = React.useState<Booking | null>(null)
+   316→  const [detailOpen, setDetailOpen] = React.useState(false)
+   317→  const [actioningId, setActioningId] = React.useState<string | null>(null)
+   318→
+   319→  // Fetch all bookings once for tab counts + table data
+   320→  const allQuery = useQuery<{ items: Booking[]; total: number }>({
+   321→    queryKey: ["provider", "bookings", "all"],
+   322→    queryFn: async () =>
+   323→      apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
+   324→  })
+   325→
+   326→  const allBookings = allQuery.data?.items ?? []
+   327→
+   328→  const counts = React.useMemo(() => {
+   329→    const c: Record<string, number> = {
+   330→      PENDING: 0,
+   331→      CONFIRMED: 0,
+   332→      IN_PROGRESS: 0,
+   333→      COMPLETED: 0,
+   334→      CANCELLED: 0,
+   335→      all: allBookings.length,
+   336→    }
+   337→    for (const b of allBookings) {
+   338→      c[b.status] = (c[b.status] ?? 0) + 1
+   339→    }
+   340→    return c
+   341→  }, [allBookings])
+   342→
+   343→  const filtered = React.useMemo(() => {
+   344→    const list =
+   345→      tab === "all" ? allBookings : allBookings.filter((b) => b.status === tab)
+   346→    return [...list].sort(
+   347→      (a, b) =>
+   348→        new Date(b.scheduledAt).getTime() -
+   349→        new Date(a.scheduledAt).getTime(),
+   350→    )
+   351→  }, [allBookings, tab])
+   352→
+   353→  const pageSize = 10
+   354→  const total = filtered.length
+   355→  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+   356→  const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize)
+   357→
+   358→  React.useEffect(() => {
+   359→    setPage(1)
+   360→  }, [tab])
+   361→
+   362→  const updateStatus = async (
+   363→    booking: Booking,
+   364→    next: BookingStatus,
+   365→    label: string,
+   366→  ) => {
+   367→    setActioningId(booking.id)
+   368→    try {
+   369→      await apiPatch(`/api/bookings/${booking.id}`, { status: next })
+   370→      toast.success(`Agendamento ${label.toLowerCase()}.`)
+   371→      qc.invalidateQueries({ queryKey: ["provider", "bookings"] })
+   372→      qc.invalidateQueries({ queryKey: ["provider", "dashboard"] })
+   373→    } catch (e) {
+   374→      const err = e as { message?: string }
+   375→      toast.error(err?.message ?? "Erro ao atualizar agendamento.")
+   376→    } finally {
+   377→      setActioningId(null)
+   378→    }
+   379→  }
+   380→
+   381→  const openDetail = (b: Booking) => {
+   382→    setDetail(b)
+   383→    setDetailOpen(true)
+   384→  }
+   385→
+   386→  const messageClient = (clientId: string) => {
+   387→    setDetailOpen(false)
+   388→    navigate("provider.messages", { peerId: clientId })
+   389→  }
+   390→
+   391→  return (
+   392→    <div className="grid gap-6">
+   393→      <Tabs value={tab} onValueChange={setTab}>
+   394→        <TabsList className="w-full overflow-x-auto sm:w-auto">
+   395→          {STATUS_TABS.map((t) => (
+   396→            <TabsTrigger
+   397→              key={t.value}
+   398→              value={t.value}
+   399→              className="flex-1 gap-1.5 sm:flex-none"
+   400→            >
+   401→              {t.label}
+   402→              {counts[t.value] > 0 && (
+   403→                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-semibold text-primary tabular-nums">
+   404→                  {counts[t.value]}
+   405→                </span>
+   406→              )}
+   407→            </TabsTrigger>
+   408→          ))}
+   409→        </TabsList>
+   410→      </Tabs>
+   411→
+   412→      {allQuery.isLoading ? (
+   413→        <div className="grid gap-3">
+   414→          {[1, 2, 3].map((i) => (
+   415→            <div
+   416→              key={i}
+   417→              className="h-14 animate-pulse rounded-xl border bg-muted/30"
+   418→            />
+   419→          ))}
+   420→        </div>
+   421→      ) : pageItems.length === 0 ? (
+   422→        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
+   423→          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+   424→            <CalendarCheck className="size-6" />
+   425→          </div>
+   426→          <div>
+   427→            <p className="text-sm font-semibold">Nenhum agendamento aqui</p>
+   428→            <p className="mt-1 text-xs text-muted-foreground">
+   429→              Quando um cliente agendar, ele aparecerá nesta lista.
+   430→            </p>
+   431→          </div>
+   432→        </div>
+   433→      ) : (
+   434→        <>
+   435→          {/* Desktop: table */}
+   436→          <div className="hidden overflow-hidden rounded-xl border md:block">
+   437→            <Table>
+   438→              <TableHeader>
+   439→                <TableRow className="bg-muted/50 h-11 hover:bg-muted/50">
+   440→                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   441→                    Cliente
+   442→                  </TableHead>
+   443→                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   444→                    Serviço
+   445→                  </TableHead>
+   446→                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   447→                    Agendado para
+   448→                  </TableHead>
+   449→                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   450→                    Status
+   451→                  </TableHead>
+   452→                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   453→                    Pagamento
+   454→                  </TableHead>
+   455→                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   456→                    Valor
+   457→                  </TableHead>
+   458→                  <TableHead className="w-12" />
+   459→                </TableRow>
+   460→              </TableHeader>
+   461→              <TableBody>
+   462→                {pageItems.map((b) => (
+   463→                  <TableRow
+   464→                    key={b.id}
+   465→                    className="h-14 transition-colors hover:bg-muted/30"
+   466→                  >
+   467→                    <TableCell>
+   468→                      <div className="flex items-center gap-2">
+   469→                        <Avatar className="size-8 border">
+   470→                          {b.client.avatarUrl ? (
+   471→                            <AvatarImage
+   472→                              src={b.client.avatarUrl}
+   473→                              alt={b.client.name}
+   474→                            />
+   475→                          ) : null}
+   476→                          <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">
+   477→                            {initials(b.client.name)}
+   478→                          </AvatarFallback>
+   479→                        </Avatar>
+   480→                        <span className="truncate text-sm font-medium">
+   481→                          {b.client.name}
+   482→                        </span>
+   483→                      </div>
+   484→                    </TableCell>
+   485→                    <TableCell className="max-w-[200px] truncate text-sm">
+   486→                      {b.service.title}
+   487→                    </TableCell>
+   488→                    <TableCell>
+   489→                      <div className="flex flex-col">
+   490→                        <span className="text-sm font-medium tabular-nums">
+   491→                          {formatDate(b.scheduledAt)}
+   492→                        </span>
+   493→                        <span className="text-xs text-muted-foreground tabular-nums">
+   494→                          às {formatTime(b.scheduledAt)}
+   495→                        </span>
+   496→                      </div>
+   497→                    </TableCell>
+   498→                    <TableCell>
+   499→                      <StatusBadge status={b.status} />
+   500→                    </TableCell>
+   501→                    <TableCell>
+   502→                      <div className="flex flex-col gap-0.5">
+   503→                        <Badge
+   504→                          className={cn(
+   505→                            "inline-flex w-fit items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+   506→                            PAY_BADGE_STYLES[b.paymentStatus],
+   507→                          )}
+   508→                        >
+   509→                          {PAYMENT_STATUS_LABELS[b.paymentStatus]}
+   510→                        </Badge>
+   511→                        <span className="text-[10px] text-muted-foreground">
+   512→                          {PAYMENT_METHOD_LABELS[b.paymentMethod]}
+   513→                        </span>
+   514→                      </div>
+   515→                    </TableCell>
+   516→                    <TableCell className="text-right text-sm font-semibold tabular-nums">
+   517→                      {formatBRL(b.amount)}
+   518→                    </TableCell>
+   519→                    <TableCell>
+   520→                      <BookingActions
+   521→                        booking={b}
+   522→                        actioning={actioningId === b.id}
+   523→                        onDetail={() => openDetail(b)}
+   524→                        onMessage={() => messageClient(b.clientId)}
+   525→                        onConfirm={() =>
+   526→                          updateStatus(b, "CONFIRMED", "Confirmado")
+   527→                        }
+   528→                        onStart={() =>
+   529→                          updateStatus(b, "IN_PROGRESS", "Iniciado")
+   530→                        }
+   531→                        onCancel={() =>
+   532→                          updateStatus(b, "CANCELLED", "Cancelado")
+   533→                        }
+   534→                      />
+   535→                    </TableCell>
+   536→                  </TableRow>
+   537→                ))}
+   538→              </TableBody>
+   539→            </Table>
+   540→          </div>
+   541→
+   542→          {/* Mobile: cards */}
+   543→          <div className="grid gap-3 md:hidden">
+   544→            {pageItems.map((b) => (
+   545→              <BookingCard
+   546→                key={b.id}
+   547→                booking={b}
+   548→                actioning={actioningId === b.id}
+   549→                onDetail={() => openDetail(b)}
+   550→                onMessage={() => messageClient(b.clientId)}
+   551→                onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
+   552→                onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
+   553→                onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
+   554→              />
+   555→            ))}
+   556→          </div>
+   557→        </>
+   558→      )}
+   559→
+   560→      {pageCount > 1 && (
+   561→        <Pagination>
+   562→          <PaginationContent>
+   563→            <PaginationItem>
+   564→              <PaginationPrevious
+   565→                onClick={() => setPage((p) => Math.max(1, p - 1))}
+   566→                aria-disabled={page === 1}
+   567→                className={cn(page === 1 && "pointer-events-none opacity-50")}
+   568→              />
+   569→            </PaginationItem>
+   570→            <PaginationItem className="px-3 text-sm tabular-nums">
+   571→              {page} / {pageCount}
+   572→            </PaginationItem>
+   573→            <PaginationItem>
+   574→              <PaginationNext
+   575→                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+   576→                aria-disabled={page === pageCount}
+   577→                className={cn(
+   578→                  page === pageCount && "pointer-events-none opacity-50",
+   579→                )}
+   580→              />
+   581→            </PaginationItem>
+   582→          </PaginationContent>
+   583→        </Pagination>
+   584→      )}
+   585→
+   586→      <BookingDetailsDialog
+   587→        booking={detail}
+   588→        open={detailOpen}
+   589→        onOpenChange={setDetailOpen}
+   590→        onMessage={messageClient}
+   591→      />
+   592→    </div>
+   593→  )
+   594→}
+   595→
+   596→// ---------------------------------------------------------------------------
+   597→// Booking actions dropdown
+   598→// ---------------------------------------------------------------------------
+   599→
+   600→function BookingActions({
+   601→  booking,
+   602→  actioning,
+   603→  onDetail,
+   604→  onMessage,
+   605→  onConfirm,
+   606→  onStart,
+   607→  onCancel,
+   608→}: {
+   609→  booking: Booking
+   610→  actioning: boolean
+   611→  onDetail: () => void
+   612→  onMessage: () => void
+   613→  onConfirm: () => void
+   614→  onStart: () => void
+   615→  onCancel: () => void
+   616→}) {
+   617→  return (
+   618→    <div className="flex items-center justify-end gap-1.5">
+   619→      {actioning && <Loader2 className="size-4 animate-spin" />}
+   620→      {booking.status === "PENDING" && (
+   621→        <Button
+   622→          size="sm"
+   623→          onClick={onConfirm}
+   624→          disabled={actioning}
+   625→          className="h-8 gap-1.5 px-2.5 text-xs"
+   626→        >
+   627→          <CheckCircle2 className="size-3.5" /> Confirmar
+   628→        </Button>
+   629→      )}
+   630→      {booking.status === "CONFIRMED" && (
+   631→        <Button
+   632→          size="sm"
+   633→          variant="outline"
+   634→          onClick={onStart}
+   635→          disabled={actioning}
+   636→          className="h-8 gap-1.5 px-2.5 text-xs"
+   637→        >
+   638→          <Play className="size-3.5" /> Iniciar
+   639→        </Button>
+   640→      )}
+   641→      <DropdownMenu>
+   642→        <DropdownMenuTrigger asChild>
+   643→          <Button
+   644→            variant="ghost"
+   645→            size="icon"
+   646→            className="size-8"
+   647→            aria-label="Mais ações"
+   648→          >
+   649→            <MoreVertical className="size-4" />
+   650→          </Button>
+   651→        </DropdownMenuTrigger>
+   652→        <DropdownMenuContent align="end">
+   653→          <DropdownMenuItem onClick={onDetail}>
+   654→            <Info className="mr-2 size-4" /> Ver detalhes
+   655→          </DropdownMenuItem>
+   656→          <DropdownMenuItem onClick={onMessage}>
+   657→            <MessageSquare className="mr-2 size-4" /> Enviar mensagem
+   658→          </DropdownMenuItem>
+   659→          {booking.status === "PENDING" && (
+   660→            <DropdownMenuItem onClick={onConfirm}>
+   661→              <CheckCircle2 className="mr-2 size-4" /> Confirmar
+   662→            </DropdownMenuItem>
+   663→          )}
+   664→          {booking.status === "CONFIRMED" && (
+   665→            <DropdownMenuItem onClick={onStart}>
+   666→              <Play className="mr-2 size-4" /> Iniciar atendimento
+   667→            </DropdownMenuItem>
+   668→          )}
+   669→          {(booking.status === "PENDING" ||
+   670→            booking.status === "CONFIRMED" ||
+   671→            booking.status === "IN_PROGRESS") && (
+   672→            <>
+   673→              <DropdownMenuSeparator />
+   674→              <DropdownMenuItem
+   675→                onClick={onCancel}
+   676→                className="text-destructive focus:text-destructive"
+   677→              >
+   678→                <X className="mr-2 size-4" /> Cancelar agendamento
+   679→              </DropdownMenuItem>
+   680→            </>
+   681→          )}
+   682→        </DropdownMenuContent>
+   683→      </DropdownMenu>
+   684→    </div>
+   685→  )
+   686→}
+   687→
+   688→// ---------------------------------------------------------------------------
+   689→// Mobile booking card
+   690→// ---------------------------------------------------------------------------
+   691→
+   692→function BookingCard({
+   693→  booking,
+   694→  actioning,
+   695→  onDetail,
+   696→  onMessage,
+   697→  onConfirm,
+   698→  onStart,
+   699→  onCancel,
+   700→}: {
+   701→  booking: Booking
+   702→  actioning: boolean
+   703→  onDetail: () => void
+   704→  onMessage: () => void
+   705→  onConfirm: () => void
+   706→  onStart: () => void
+   707→  onCancel: () => void
+   708→}) {
+   709→  return (
+   710→    <div className="flex flex-col gap-3 rounded-xl border p-4">
+   711→      <div className="flex items-center gap-3">
+   712→        <Avatar className="size-10 border">
+   713→          {booking.client.avatarUrl ? (
+   714→            <AvatarImage
+   715→              src={booking.client.avatarUrl}
+   716→              alt={booking.client.name}
+   717→            />
+   718→          ) : null}
+   719→          <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+   720→            {initials(booking.client.name)}
+   721→          </AvatarFallback>
+   722→        </Avatar>
+   723→        <div className="min-w-0 flex-1">
+   724→          <p className="font-medium leading-tight">{booking.client.name}</p>
+   725→          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+   726→            {booking.service.title}
+   727→          </p>
+   728→        </div>
+   729→        <StatusBadge status={booking.status} />
+   730→      </div>
+   731→
+   732→      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+   733→        <span className="flex items-center gap-1 tabular-nums">
+   734→          <Clock className="size-3" />
+   735→          {formatDate(booking.scheduledAt)} às {formatTime(booking.scheduledAt)}
+   736→        </span>
+   737→        <span className="flex items-center gap-1">
+   738→          <MapPin className="size-3" />
+   739→          <span className="truncate">{booking.address}</span>
+   740→        </span>
+   741→      </div>
+   742→
+   743→      <div className="flex items-center justify-between gap-2">
+   744→        <div className="flex items-center gap-2">
+   745→          <span className="text-sm font-semibold tabular-nums text-primary">
+   746→            {formatBRL(booking.amount)}
+   747→          </span>
+   748→          <Badge
+   749→            className={cn(
+   750→              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+   751→              PAY_BADGE_STYLES[booking.paymentStatus],
+   752→            )}
+   753→          >
+   754→            {PAYMENT_STATUS_LABELS[booking.paymentStatus]}
+   755→          </Badge>
+   756→        </div>
+   757→        <BookingActions
+   758→          booking={booking}
+   759→          actioning={actioning}
+   760→          onDetail={onDetail}
+   761→          onMessage={onMessage}
+   762→          onConfirm={onConfirm}
+   763→          onStart={onStart}
+   764→          onCancel={onCancel}
+   765→        />
+   766→      </div>
+   767→    </div>
+   768→  )
+   769→}
+   770→
+   771→export default ProviderBookings
+   772→

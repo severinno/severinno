@@ -1,0 +1,889 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useQuery } from "@tanstack/react-query"
+     5→import { useFieldArray, useForm, type Resolver, type UseFormReturn } from "react-hook-form"
+     6→import { zodResolver } from "@hookform/resolvers/zod"
+     7→import { z } from "zod"
+     8→import { motion, AnimatePresence } from "framer-motion"
+     9→import {
+    10→  Check,
+    11→  ChevronDown,
+    12→  Loader2,
+    13→  LogIn,
+    14→  MapPin,
+    15→  Plus,
+    16→  Trash2,
+    17→  Wrench,
+    18→} from "lucide-react"
+    19→import { toast } from "sonner"
+    20→
+    21→import {
+    22→  Dialog,
+    23→  DialogContent,
+    24→  DialogDescription,
+    25→  DialogHeader,
+    26→  DialogTitle,
+    27→} from "@/components/ui/dialog"
+    28→import {
+    29→  Sheet,
+    30→  SheetContent,
+    31→  SheetDescription,
+    32→  SheetHeader,
+    33→  SheetTitle,
+    34→} from "@/components/ui/sheet"
+    35→import { Button } from "@/components/ui/button"
+    36→import { Input } from "@/components/ui/input"
+    37→import { Label } from "@/components/ui/label"
+    38→import { Textarea } from "@/components/ui/textarea"
+    39→import { Badge } from "@/components/ui/badge"
+    40→import { Separator } from "@/components/ui/separator"
+    41→import { ScrollArea } from "@/components/ui/scroll-area"
+    42→import {
+    43→  Select,
+    44→  SelectContent,
+    45→  SelectItem,
+    46→  SelectTrigger,
+    47→  SelectValue,
+    48→} from "@/components/ui/select"
+    49→import {
+    50→  Popover,
+    51→  PopoverContent,
+    52→  PopoverTrigger,
+    53→} from "@/components/ui/popover"
+    54→import {
+    55→  Command,
+    56→  CommandEmpty,
+    57→  CommandGroup,
+    58→  CommandInput,
+    59→  CommandItem,
+    60→  CommandList,
+    61→} from "@/components/ui/command"
+    62→import { cn } from "@/lib/utils"
+    63→import {
+    64→  apiGet,
+    65→  apiPost,
+    66→  type ProviderCard,
+    67→  type ProviderService,
+    68→  type PagedResult,
+    69→  type ServiceUnit,
+    70→} from "@/lib/api"
+    71→import {
+    72→  SERVICE_UNITS,
+    73→  SERVICE_UNIT_LABELS,
+    74→  SERVICE_UNIT_SHORT,
+    75→} from "@/lib/constants"
+    76→import { useUIStore } from "@/store/ui"
+    77→import { useAuthStore } from "@/store/auth"
+    78→import { useViewStore } from "@/store/view"
+    79→import { useIsMobile } from "@/hooks/use-mobile"
+    80→import { AddressForm, type AddressFormValue } from "./address-form"
+    81→import { FilePhotos } from "./file-photos"
+    82→
+    83→// ---------------------------------------------------------------------------
+    84→// Form model — extends the API payload with per-item providerId
+    85→// (the API needs providerId per item, plus an outer providerId for the
+    86→//  primary provider — we mirror this by sending the first item's provider
+    87→//  as the outer providerId).
+    88→// ---------------------------------------------------------------------------
+    89→
+    90→type QuoteItemForm = {
+    91→  providerId: string
+    92→  serviceId: string
+    93→  description: string
+    94→  quantity: number
+    95→  unit: ServiceUnit
+    96→  photos: string[]
+    97→}
+    98→
+    99→const quoteFormSchema = z.object({
+   100→  items: z
+   101→    .array(
+   102→      z.object({
+   103→        providerId: z.string().min(1, "Selecione um prestador"),
+   104→        serviceId: z.string().min(1, "Selecione um serviço"),
+   105→        description: z
+   106→          .string()
+   107→          .min(10, "Descreva com ao menos 10 caracteres")
+   108→          .max(400),
+   109→        quantity: z.coerce.number().min(0.01, "Quantidade inválida"),
+   110→        unit: z.enum([
+   111→          "UNIDADE",
+   112→          "METRO_LINEAR",
+   113→          "METRO_QUADRADO",
+   114→          "METRO_CUBICO",
+   115→        ]),
+   116→        photos: z.array(z.string()).max(4).default([]),
+   117→      }),
+   118→    )
+   119→    .min(1, "Adicione ao menos um item"),
+   120→  address: z.object({
+   121→    cep: z.string().min(8, "CEP inválido"),
+   122→    street: z.string().min(3, "Informe a rua"),
+   123→    number: z.string().min(1, "Informe o número"),
+   124→    complement: z.string().default(""),
+   125→    district: z.string().default(""),
+   126→    city: z.string().min(2, "Informe a cidade"),
+   127→    state: z.string().min(2, "UF"),
+   128→    lat: z.number().nullable().optional(),
+   129→    lng: z.number().nullable().optional(),
+   130→  }),
+   131→})
+   132→
+   133→type QuoteFormValues = z.infer<typeof quoteFormSchema>
+   134→
+   135→const emptyItem = (
+   136→  providerId?: string,
+   137→  serviceId?: string,
+   138→  unit: ServiceUnit = "UNIDADE",
+   139→): QuoteItemForm => ({
+   140→  providerId: providerId ?? "",
+   141→  serviceId: serviceId ?? "",
+   142→  description: "",
+   143→  quantity: 1,
+   144→  unit,
+   145→  photos: [],
+   146→})
+   147→
+   148→const emptyAddress: AddressFormValue = {
+   149→  cep: "",
+   150→  street: "",
+   151→  number: "",
+   152→  complement: "",
+   153→  district: "",
+   154→  city: "",
+   155→  state: "",
+   156→  lat: null,
+   157→  lng: null,
+   158→}
+   159→
+   160→export function QuoteModal() {
+   161→  const open = useUIStore((s) => s.quoteModal.open)
+   162→  const providerIdPreset = useUIStore((s) => s.quoteModal.providerId)
+   163→  const serviceIdPreset = useUIStore((s) => s.quoteModal.serviceId)
+   164→  const close = useUIStore((s) => s.closeQuote)
+   165→  const openAuth = useUIStore((s) => s.openAuth)
+   166→  const isMobile = useIsMobile()
+   167→
+   168→  const navigate = useViewStore((s) => s.navigate)
+   169→  const user = useAuthStore((s) => s.user)
+   170→
+   171→  const form = useForm<QuoteFormValues>({
+   172→    // Cast around Zod 4's `z.coerce.number().optional()` typing (widens
+   173→    // input to `unknown`, breaks Resolver inference).
+   174→    resolver: zodResolver(quoteFormSchema) as unknown as Resolver<QuoteFormValues>,
+   175→    defaultValues: {
+   176→      items: [emptyItem(providerIdPreset, serviceIdPreset)],
+   177→      address: emptyAddress,
+   178→    },
+   179→    mode: "onTouched",
+   180→  })
+   181→
+   182→  const { fields, append, remove } = useFieldArray({
+   183→    control: form.control,
+   184→    name: "items",
+   185→  })
+   186→
+   187→  // Reset preset when modal opens.
+   188→  React.useEffect(() => {
+   189→    if (open) {
+   190→      form.reset({
+   191→        items: [emptyItem(providerIdPreset, serviceIdPreset)],
+   192→        address: emptyAddress,
+   193→      })
+   194→    }
+   195→  }, [open, providerIdPreset, serviceIdPreset, form])
+   196→
+   197→  const [submitting, setSubmitting] = React.useState(false)
+   198→
+   199→  const onSubmit = async (values: QuoteFormValues) => {
+   200→    // Prevention heuristic — must be authenticated.
+   201→    if (!user) {
+   202→      toast.info("Faça cadastro gratuito para pedir orçamentos.")
+   203→      openAuth("register", "CLIENT")
+   204→      return
+   205→    }
+   206→
+   207→    // First item's provider = outer providerId (legacy API contract).
+   208→    const primary = values.items[0]
+   209→    if (!primary?.providerId) {
+   210→      toast.error("Selecione um prestador no primeiro item.")
+   211→      return
+   212→    }
+   213→
+   214→    setSubmitting(true)
+   215→    try {
+   216→      await apiPost("/api/quotes", {
+   217→        providerId: primary.providerId,
+   218→        items: values.items.map((it) => ({
+   219→          providerId: it.providerId,
+   220→          serviceId: it.serviceId,
+   221→          description: it.description,
+   222→          quantity: it.quantity,
+   223→          unit: it.unit,
+   224→          photos: it.photos,
+   225→        })),
+   226→        address: [
+   227→          values.address.street,
+   228→          values.address.number,
+   229→          values.address.complement,
+   230→          values.address.district,
+   231→        ]
+   232→          .filter(Boolean)
+   233→          .join(", "),
+   234→        cep: values.address.cep,
+   235→        lat: values.address.lat,
+   236→        lng: values.address.lng,
+   237→      })
+   238→      toast.success("Orçamento enviado! O prestador responderá em breve.")
+   239→      close()
+   240→      navigate("client.quotes")
+   241→    } catch (e) {
+   242→      const msg =
+   243→        (e as { message?: string })?.message ??
+   244→        "Não foi possível enviar o orçamento. Tente novamente."
+   245→      toast.error(msg)
+   246→    } finally {
+   247→      setSubmitting(false)
+   248→    }
+   249→  }
+   250→
+   251→  const content = (
+   252→    <FormBody
+   253→      form={form}
+   254→      fields={fields}
+   255→      append={append}
+   256→      remove={remove}
+   257→      submitting={submitting}
+   258→      onSubmit={form.handleSubmit(onSubmit)}
+   259→    />
+   260→  )
+   261→
+   262→  if (isMobile) {
+   263→    return (
+   264→      <Sheet open={open} onOpenChange={(o) => !o && close()}>
+   265→        <SheetContent
+   266→          side="bottom"
+   267→          className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
+   268→        >
+   269→          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+   270→            <SheetTitle className="flex items-center gap-2">
+   271→              <Wrench className="size-5 text-emerald-600" />
+   272→              Pedir orçamento
+   273→            </SheetTitle>
+   274→            <SheetDescription>
+   275→              Descreva o serviço e receba propostas de prestadores verificados.
+   276→            </SheetDescription>
+   277→          </SheetHeader>
+   278→          <div className="flex-1 overflow-hidden">{content}</div>
+   279→        </SheetContent>
+   280→      </Sheet>
+   281→    )
+   282→  }
+   283→
+   284→  return (
+   285→    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+   286→      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden">
+   287→        <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b">
+   288→          <DialogTitle className="flex items-center gap-2 text-lg">
+   289→            <Wrench className="size-5 text-emerald-600" />
+   290→            Pedir orçamento
+   291→          </DialogTitle>
+   292→          <DialogDescription>
+   293→            Solicite orçamentos de um ou mais serviços.
+   294→          </DialogDescription>
+   295→        </DialogHeader>
+   296→        {content}
+   297→      </DialogContent>
+   298→    </Dialog>
+   299→  )
+   300→}
+   301→
+   302→// ---------------------------------------------------------------------------
+   303→// Body
+   304→// ---------------------------------------------------------------------------
+   305→
+   306→function FormBody({
+   307→  form,
+   308→  fields,
+   309→  append,
+   310→  remove,
+   311→  submitting,
+   312→  onSubmit,
+   313→}: {
+   314→  form: UseFormReturn<QuoteFormValues>
+   315→  fields: Record<"id", string>[]
+   316→  append: (v: QuoteItemForm) => void
+   317→  remove: (i: number) => void
+   318→  submitting: boolean
+   319→  onSubmit: () => void
+   320→}) {
+   321→  const items = form.watch("items")
+   322→  const address = form.watch("address")
+   323→  const errors = form.formState.errors
+   324→  const user = useAuthStore((s) => s.user)
+   325→  const openAuth = useUIStore((s) => s.openAuth)
+   326→
+   327→  const canAddItem = items.length < 5
+   328→
+   329→  return (
+   330→    <div className="flex h-full flex-col">
+   331→      <ScrollArea className="flex-1">
+   332→        <form
+   333→          id="quote-form"
+   334→          onSubmit={onSubmit}
+   335→          className="grid gap-5 px-4 sm:px-6 py-4"
+   336→        >
+   337→          {/* Auth gate */}
+   338→          {!user && (
+   339→            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+   340→              <LogIn className="size-5 shrink-0 text-amber-600" />
+   341→              <div className="flex-1">
+   342→                <p className="font-medium text-amber-900 dark:text-amber-200">
+   343→                  Faça cadastro gratuito para pedir orçamentos
+   344→                </p>
+   345→                <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
+   346→                  Seus dados ficam salvos para acompanhar as respostas dos
+   347→                  prestadores.
+   348→                </p>
+   349→              </div>
+   350→              <Button
+   351→                type="button"
+   352→                size="sm"
+   353→                onClick={() => openAuth("register", "CLIENT")}
+   354→                className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white"
+   355→              >
+   356→                Entrar / Cadastrar
+   357→              </Button>
+   358→            </div>
+   359→          )}
+   360→
+   361→          {/* Section 1 — items */}
+   362→          <section className="grid gap-3">
+   363→            <div className="flex items-center justify-between">
+   364→              <div>
+   365→                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+   366→                  <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+   367→                    1
+   368→                  </span>
+   369→                  Itens do orçamento
+   370→                </h3>
+   371→                <p className="text-xs text-muted-foreground mt-0.5">
+   372→                  Adicione um ou mais serviços para cotar.
+   373→                </p>
+   374→              </div>
+   375→              <Badge variant="secondary">{items.length} item(s)</Badge>
+   376→            </div>
+   377→
+   378→            <AnimatePresence initial={false}>
+   379→              {fields.map((field, index) => (
+   380→                <motion.div
+   381→                  key={field.id}
+   382→                  initial={{ opacity: 0, height: 0 }}
+   383→                  animate={{ opacity: 1, height: "auto" }}
+   384→                  exit={{ opacity: 0, height: 0 }}
+   385→                  transition={{ duration: 0.18 }}
+   386→                  className="overflow-hidden"
+   387→                >
+   388→                  <ItemCard
+   389→                    index={index}
+   390→                    form={form}
+   391→                    onRemove={() => remove(index)}
+   392→                    canRemove={items.length > 1}
+   393→                  />
+   394→                </motion.div>
+   395→              ))}
+   396→            </AnimatePresence>
+   397→
+   398→            {errors.items?.message && (
+   399→              <p className="text-xs text-destructive">{errors.items.message}</p>
+   400→            )}
+   401→
+   402→            {canAddItem && (
+   403→              <Button
+   404→                type="button"
+   405→                variant="outline"
+   406→                onClick={() =>
+   407→                  append(emptyItem(items[items.length - 1]?.providerId))
+   408→                }
+   409→                className="border-dashed border-primary/30 text-primary hover:border-primary hover:bg-primary/5"
+   410→              >
+   411→                <Plus className="size-4" />
+   412→                Adicionar item
+   413→              </Button>
+   414→            )}
+   415→          </section>
+   416→
+   417→          <Separator />
+   418→
+   419→          {/* Section 2 — address */}
+   420→          <section className="grid gap-3">
+   421→            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+   422→              <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+   423→                2
+   424→              </span>
+   425→              Endereço do serviço
+   426→            </h3>
+   427→            <div className="rounded-xl border bg-card p-4">
+   428→              <AddressForm
+   429→                value={address}
+   430→                onChange={(v) => form.setValue("address", v, { shouldDirty: true })}
+   431→                errors={{
+   432→                  cep: errors.address?.cep?.message,
+   433→                  street: errors.address?.street?.message,
+   434→                  number: errors.address?.number?.message,
+   435→                  city: errors.address?.city?.message,
+   436→                  state: errors.address?.state?.message,
+   437→                }}
+   438→              />
+   439→            </div>
+   440→          </section>
+   441→
+   442→          <Separator />
+   443→
+   444→          {/* Section 3 — summary */}
+   445→          <section className="grid gap-3">
+   446→            <h3 className="text-sm font-semibold flex items-center gap-1.5">
+   447→              <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+   448→                3
+   449→              </span>
+   450→              Resumo
+   451→            </h3>
+   452→            <SummaryList items={items} address={address} />
+   453→          </section>
+   454→
+   455→          {/* hidden submit for enter-key support */}
+   456→          <button type="submit" className="hidden" aria-hidden />
+   457→        </form>
+   458→      </ScrollArea>
+   459→
+   460→      {/* Sticky footer */}
+   461→      <div className="shrink-0 border-t bg-background/95 backdrop-blur px-4 sm:px-6 py-3">
+   462→        <div className="flex items-center justify-between gap-3">
+   463→          <p className="text-xs text-muted-foreground">
+   464→            {items.length} item(s) ·{" "}
+   465→            {new Set(items.map((i) => i.providerId).filter(Boolean)).size}{" "}
+   466→            prestador(es)
+   467→          </p>
+   468→          <Button
+   469→            type="button"
+   470→            onClick={onSubmit}
+   471→            disabled={submitting}
+   472→            className="h-11 bg-emerald-600 hover:bg-emerald-700"
+   473→          >
+   474→            {submitting && <Loader2 className="size-4 animate-spin" />}
+   475→            Enviar orçamentos
+   476→          </Button>
+   477→        </div>
+   478→      </div>
+   479→    </div>
+   480→  )
+   481→}
+   482→
+   483→// ---------------------------------------------------------------------------
+   484→// Per-item card
+   485→// ---------------------------------------------------------------------------
+   486→
+   487→function ItemCard({
+   488→  index,
+   489→  form,
+   490→  onRemove,
+   491→  canRemove,
+   492→}: {
+   493→  index: number
+   494→  form: UseFormReturn<QuoteFormValues>
+   495→  onRemove: () => void
+   496→  canRemove: boolean
+   497→}) {
+   498→  const item = form.watch(`items.${index}`)
+   499→  const error = form.formState.errors.items?.[index]
+   500→
+   501→  return (
+   502→    <div className="rounded-xl border bg-card p-4">
+   503→      <div className="mb-3 flex items-center justify-between">
+   504→        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+   505→          Item {index + 1}
+   506→        </span>
+   507→        {canRemove && (
+   508→          <button
+   509→            type="button"
+   510→            onClick={onRemove}
+   511→            className="inline-flex items-center gap-1 text-xs text-destructive hover:underline"
+   512→          >
+   513→            <Trash2 className="size-3.5" />
+   514→            Remover
+   515→          </button>
+   516→        )}
+   517→      </div>
+   518→
+   519→      <div className="grid gap-3">
+   520→        {/* Provider combobox */}
+   521→        <ProviderCombobox
+   522→          value={item.providerId}
+   523→          onChange={(providerId) =>
+   524→            form.setValue(
+   525→              `items.${index}`,
+   526→              { ...item, providerId, serviceId: "" },
+   527→              { shouldDirty: true, shouldValidate: true },
+   528→            )
+   529→          }
+   530→          error={error?.providerId?.message}
+   531→        />
+   532→
+   533→        {/* Service select (depends on provider) */}
+   534→        <ServiceSelect
+   535→          providerId={item.providerId}
+   536→          value={item.serviceId}
+   537→          onChange={(service) =>
+   538→            form.setValue(
+   539→              `items.${index}`,
+   540→              {
+   541→                ...item,
+   542→                serviceId: service.id,
+   543→                unit: service.unit,
+   544→              },
+   545→              { shouldDirty: true, shouldValidate: true },
+   546→            )
+   547→          }
+   548→          error={error?.serviceId?.message}
+   549→        />
+   550→
+   551→        {/* Description */}
+   552→        <div className="grid gap-1.5">
+   553→          <Label htmlFor={`item-${index}-desc`}>Descrição do serviço</Label>
+   554→          <Textarea
+   555→            id={`item-${index}-desc`}
+   556→            placeholder="Ex.: Instalar tomada na parede da sala, fio visível."
+   557→            value={item.description}
+   558→            onChange={(e) =>
+   559→              form.setValue(`items.${index}.description`, e.target.value, {
+   560→                shouldDirty: true,
+   561→                shouldValidate: true,
+   562→              })
+   563→            }
+   564→            rows={3}
+   565→            aria-invalid={!!error?.description}
+   566→          />
+   567→          {error?.description && (
+   568→            <p className="text-xs text-destructive">
+   569→              {error.description.message}
+   570→            </p>
+   571→          )}
+   572→        </div>
+   573→
+   574→        {/* Quantity + unit */}
+   575→        <div className="grid grid-cols-2 gap-3">
+   576→          <div className="grid gap-1.5">
+   577→            <Label htmlFor={`item-${index}-qty`}>Quantidade</Label>
+   578→            <Input
+   579→              id={`item-${index}-qty`}
+   580→              type="number"
+   581→              inputMode="decimal"
+   582→              min={0.01}
+   583→              step={0.01}
+   584→              value={item.quantity}
+   585→              onChange={(e) =>
+   586→                form.setValue(
+   587→                  `items.${index}.quantity`,
+   588→                  Number(e.target.value),
+   589→                  { shouldDirty: true, shouldValidate: true },
+   590→                )
+   591→              }
+   592→              aria-invalid={!!error?.quantity}
+   593→            />
+   594→            {error?.quantity && (
+   595→              <p className="text-xs text-destructive">
+   596→                {error.quantity.message}
+   597→              </p>
+   598→            )}
+   599→          </div>
+   600→
+   601→          <div className="grid gap-1.5">
+   602→            <Label>Unidade</Label>
+   603→            <Select
+   604→              value={item.unit}
+   605→              onValueChange={(v) =>
+   606→                form.setValue(`items.${index}.unit`, v as ServiceUnit, {
+   607→                  shouldDirty: true,
+   608→                })
+   609→              }
+   610→            >
+   611→              <SelectTrigger className="w-full">
+   612→                <SelectValue />
+   613→              </SelectTrigger>
+   614→              <SelectContent>
+   615→                {SERVICE_UNITS.map((u) => (
+   616→                  <SelectItem key={u} value={u}>
+   617→                    {SERVICE_UNIT_LABELS[u]}
+   618→                  </SelectItem>
+   619→                ))}
+   620→              </SelectContent>
+   621→            </Select>
+   622→          </div>
+   623→        </div>
+   624→
+   625→        {/* Photos */}
+   626→        <FilePhotos
+   627→          value={item.photos}
+   628→          onChange={(photos) =>
+   629→            form.setValue(`items.${index}.photos`, photos, {
+   630→              shouldDirty: true,
+   631→            })
+   632→          }
+   633→          max={4}
+   634→          label="Fotos do serviço"
+   635→          hint="Você pode enviar até 4 imagens (5 MB cada)."
+   636→        />
+   637→      </div>
+   638→    </div>
+   639→  )
+   640→}
+   641→
+   642→// ---------------------------------------------------------------------------
+   643→// Provider combobox (async search)
+   644→// ---------------------------------------------------------------------------
+   645→
+   646→function ProviderCombobox({
+   647→  value,
+   648→  onChange,
+   649→  error,
+   650→}: {
+   651→  value: string
+   652→  onChange: (providerId: string) => void
+   653→  error?: string
+   654→}) {
+   655→  const [open, setOpen] = React.useState(false)
+   656→  const [query, setQuery] = React.useState("")
+   657→
+   658→  const { data, isLoading } = useQuery({
+   659→    queryKey: ["providers-options", query],
+   660→    queryFn: () =>
+   661→      apiGet<PagedResult<ProviderCard>>("/api/providers", {
+   662→        q: query || undefined,
+   663→        limit: 20,
+   664→      }),
+   665→    staleTime: 30 * 1000,
+   666→  })
+   667→
+   668→  const providers = data?.items ?? []
+   669→  const selected = providers.find((p) => p.id === value)
+   670→
+   671→  return (
+   672→    <div className="grid gap-1.5">
+   673→      <Label>Prestador</Label>
+   674→      <Popover open={open} onOpenChange={setOpen}>
+   675→        <PopoverTrigger asChild>
+   676→          <Button
+   677→            type="button"
+   678→            variant="outline"
+   679→            role="combobox"
+   680→            aria-expanded={open}
+   681→            className={cn(
+   682→              "w-full justify-between font-normal",
+   683→              !value && "text-muted-foreground",
+   684→              error && "border-destructive",
+   685→            )}
+   686→          >
+   687→            <span className="flex items-center gap-2 truncate">
+   688→              {selected ? (
+   689→                <>
+   690→                  <span className="truncate">{selected.name}</span>
+   691→                  {selected.verified && (
+   692→                    <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px]">
+   693→                      Verificado
+   694→                    </Badge>
+   695→                  )}
+   696→                </>
+   697→              ) : (
+   698→                "Selecionar prestador"
+   699→              )}
+   700→            </span>
+   701→            <ChevronDown className="size-4 opacity-50" />
+   702→          </Button>
+   703→        </PopoverTrigger>
+   704→        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+   705→          <Command shouldFilter={false}>
+   706→            <CommandInput
+   707→              placeholder="Buscar por nome ou serviço..."
+   708→              value={query}
+   709→              onValueChange={setQuery}
+   710→            />
+   711→            <CommandList>
+   712→              <CommandEmpty>
+   713→                {isLoading ? "Buscando..." : "Nenhum prestador encontrado."}
+   714→              </CommandEmpty>
+   715→              <CommandGroup>
+   716→                {providers.map((p) => (
+   717→                  <CommandItem
+   718→                    key={p.id}
+   719→                    value={p.id}
+   720→                    onSelect={() => {
+   721→                      onChange(p.id)
+   722→                      setOpen(false)
+   723→                    }}
+   724→                  >
+   725→                    <Check
+   726→                      className={cn(
+   727→                        "size-4",
+   728→                        value === p.id ? "opacity-100" : "opacity-0",
+   729→                      )}
+   730→                    />
+   731→                    <div className="flex-1 min-w-0">
+   732→                      <p className="text-sm truncate">{p.name}</p>
+   733→                      <p className="text-xs text-muted-foreground truncate">
+   734→                        {p.city ?? "—"}
+   735→                        {p.services?.[0]?.title
+   736→                          ? ` · ${p.services[0].title}`
+   737→                          : ""}
+   738→                      </p>
+   739→                    </div>
+   740→                    {p.verified && (
+   741→                      <Badge
+   742→                        variant="outline"
+   743→                        className="border-emerald-500 text-emerald-700 text-[10px] ml-2"
+   744→                      >
+   745→                        Verificado
+   746→                      </Badge>
+   747→                    )}
+   748→                  </CommandItem>
+   749→                ))}
+   750→              </CommandGroup>
+   751→            </CommandList>
+   752→          </Command>
+   753→        </PopoverContent>
+   754→      </Popover>
+   755→      {error && <p className="text-xs text-destructive">{error}</p>}
+   756→    </div>
+   757→  )
+   758→}
+   759→
+   760→// ---------------------------------------------------------------------------
+   761→// Service select (depends on chosen provider)
+   762→// ---------------------------------------------------------------------------
+   763→
+   764→function ServiceSelect({
+   765→  providerId,
+   766→  value,
+   767→  onChange,
+   768→  error,
+   769→}: {
+   770→  providerId: string
+   771→  value: string
+   772→  onChange: (service: ProviderService) => void
+   773→  error?: string
+   774→}) {
+   775→  const { data, isLoading } = useQuery({
+   776→    queryKey: ["services-by-provider", providerId],
+   777→    queryFn: () =>
+   778→      apiGet<ProviderService[]>("/api/services", { providerId }),
+   779→    enabled: !!providerId,
+   780→    staleTime: 30 * 1000,
+   781→  })
+   782→
+   783→  const services = data ?? []
+   784→  const selected = services.find((s) => s.id === value)
+   785→
+   786→  return (
+   787→    <div className="grid gap-1.5">
+   788→      <Label>Serviço</Label>
+   789→      <Select
+   790→        value={value}
+   791→        onValueChange={(v) => {
+   792→          const s = services.find((x) => x.id === v)
+   793→          if (s) onChange(s)
+   794→        }}
+   795→        disabled={!providerId}
+   796→      >
+   797→        <SelectTrigger className="w-full">
+   798→          <SelectValue
+   799→            placeholder={
+   800→              !providerId
+   801→                ? "Selecione um prestador primeiro"
+   802→                : isLoading
+   803→                  ? "Carregando..."
+   804→                  : "Selecionar serviço"
+   805→            }
+   806→          />
+   807→        </SelectTrigger>
+   808→        <SelectContent>
+   809→          {services.length === 0 && !isLoading && (
+   810→            <div className="px-2 py-3 text-center text-xs text-muted-foreground">
+   811→              Nenhum serviço disponível.
+   812→            </div>
+   813→          )}
+   814→          {services.map((s) => (
+   815→            <SelectItem key={s.id} value={s.id}>
+   816→              <span className="flex items-center justify-between gap-2 w-full">
+   817→                <span className="truncate">{s.title}</span>
+   818→                <span className="text-xs text-muted-foreground tabular-nums">
+   819→                  {s.basePrice.toLocaleString("pt-BR", {
+   820→                    style: "currency",
+   821→                    currency: "BRL",
+   822→                  })}
+   823→                  /{SERVICE_UNIT_SHORT[s.unit]}
+   824→                </span>
+   825→              </span>
+   826→            </SelectItem>
+   827→          ))}
+   828→        </SelectContent>
+   829→      </Select>
+   830→      {selected && (
+   831→        <p className="text-xs text-muted-foreground">
+   832→          {selected.description ?? "—"}
+   833→        </p>
+   834→      )}
+   835→      {error && <p className="text-xs text-destructive">{error}</p>}
+   836→    </div>
+   837→  )
+   838→}
+   839→
+   840→// ---------------------------------------------------------------------------
+   841→// Summary
+   842→// ---------------------------------------------------------------------------
+   843→
+   844→function SummaryList({
+   845→  items,
+   846→  address,
+   847→}: {
+   848→  items: QuoteItemForm[]
+   849→  address: AddressFormValue
+   850→}) {
+   851→  return (
+   852→    <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 text-sm">
+   853→      <div className="grid gap-1.5">
+   854→        {items.map((it, i) => (
+   855→          <div
+   856→            key={i}
+   857→            className="flex items-start justify-between gap-3 border-b last:border-b-0 pb-1.5 last:pb-0"
+   858→          >
+   859→            <div className="min-w-0">
+   860→              <p className="font-medium truncate">
+   861→                {it.description
+   862→                  ? it.description.slice(0, 60) +
+   863→                    (it.description.length > 60 ? "…" : "")
+   864→                  : `Item ${i + 1}`}
+   865→              </p>
+   866→              <p className="text-xs text-muted-foreground">
+   867→                {it.quantity} {SERVICE_UNIT_SHORT[it.unit]}
+   868→                {it.photos.length > 0 && ` · ${it.photos.length} foto(s)`}
+   869→              </p>
+   870→            </div>
+   871→          </div>
+   872→        ))}
+   873→      </div>
+   874→      <Separator />
+   875→      <div className="flex items-start gap-2 text-xs text-muted-foreground">
+   876→        <MapPin className="size-3.5 mt-0.5 shrink-0 text-emerald-600" />
+   877→        <span>
+   878→          {address.street
+   879→            ? `${address.street}, ${address.number}${
+   880→                address.district ? ` - ${address.district}` : ""
+   881→              }`
+   882→            : "Endereço não informado"}
+   883→          {address.city ? ` · ${address.city}/${address.state}` : ""}
+   884→        </span>
+   885→      </div>
+   886→    </div>
+   887→  )
+   888→}
+   889→
