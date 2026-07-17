@@ -284,7 +284,7 @@ export function DashboardShell({
                 >
                   <Icon
                     className={cn(
-                      "size-[18px] shrink-0 transition-colors duration-150",
+                      "!size-[18px] shrink-0 transition-colors duration-150",
                       active ? NAV_ICON_ACTIVE : NAV_ICON_INACTIVE,
                     )}
                   />
@@ -361,7 +361,7 @@ export function DashboardShell({
       >
         <Icon
           className={cn(
-            "size-[18px] shrink-0 transition-colors duration-150",
+            "!size-[18px] shrink-0 transition-colors duration-150",
             active ? "text-primary" : "text-muted-foreground",
           )}
         />
