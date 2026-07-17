@@ -1,17 +1,30 @@
 "use client"
 
 /**
- * HowItWorks — 3-step explainer + conversion CTA.
+ * HowItWorks — enhanced 3-step explainer with animated connectors,
+ * gradient step cards, and conversion CTA.
  *
- * 1) Busque e compare prestadores próximos
- * 2) Peça orçamento ou agende
- * 3) Avalie após o serviço
- *
- * Minimal, icon-led, emerald accent. Ends with a CTA pair to drive
- * conversion (cadastro grátis · buscar prestadores).
+ * Improvements over previous version:
+ *   - Animated dashed connector lines between steps (desktop)
+ *   - Gradient step number badges
+ *   - Hover lift effect on cards
+ *   - Feature bullets per step for scannability
+ *   - Mobile-optimized stacked layout with number badges
+ *   - Emerald accent theme throughout
  */
 
-import { Search, CalendarCheck, Star, ArrowRight, ChevronRight } from "lucide-react"
+import {
+  Search,
+  CalendarCheck,
+  Star,
+  ArrowRight,
+  ChevronRight,
+  MapPin,
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
+  GitCompare,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useUIStore } from "@/store"
 import { Button } from "@/components/ui/button"
@@ -22,20 +35,31 @@ const STEPS = [
     title: "Busque e compare",
     description:
       "Encontre prestadores verificados pela sua localização. Compare preços, avaliações e distância.",
+    features: ["Filtro por categoria e raio", "Comparação lado a lado", "Mapa interativo"],
   },
   {
     icon: CalendarCheck,
     title: "Peça orçamento ou agende",
     description:
       "Solicite um orçamento sob medida ou agende diretamente pelo calendário do prestador.",
+    features: ["Orçamento sem compromisso", "Agendamento online", "Confirmação instantânea"],
   },
   {
     icon: Star,
     title: "Avalie após o serviço",
     description:
       "Após o serviço, avalie o prestador. Sua opinião ajuda a manter a qualidade da comunidade.",
+    features: ["Avaliação de 1 a 5 estrelas", "Comentários verificados", "Pagamento seguro"],
   },
 ] as const
+
+// Small trust badges shown below the steps
+const TRUST_ITEMS = [
+  { icon: ShieldCheck, label: "Prestadores verificados" },
+  { icon: Clock, label: "Resposta rápida" },
+  { icon: CheckCircle2, label: "Satisfação garantida" },
+  { icon: GitCompare, label: "Compare antes de contratar" },
+]
 
 export default function HowItWorks({
   className,
@@ -50,50 +74,85 @@ export default function HowItWorks({
     <section
       aria-label="Como funciona"
       className={cn(
-        "mx-auto w-full max-w-7xl px-4 py-12 sm:px-6 lg:px-8",
+        "relative overflow-hidden",
+        "mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 lg:px-8",
         className,
       )}
     >
-      <header className="mx-auto mb-6 max-w-2xl text-center">
-        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+      {/* Subtle background pattern */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(0,0,0,0.5) 1px, transparent 0)",
+          backgroundSize: "24px 24px",
+        }}
+      />
+
+      <header className="relative mx-auto mb-10 max-w-2xl text-center">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50">
+          <MapPin className="size-3.5" />
+          Simples e rápido
+        </span>
+        <h2 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">
           Como funciona
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           Três passos simples para resolver o que você precisa.
         </p>
       </header>
 
-      <ol className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+      {/* Steps grid */}
+      <ol className="relative grid grid-cols-1 gap-8 sm:grid-cols-3 sm:gap-6">
         {STEPS.map((step, idx) => {
           const Icon = step.icon
           const isLast = idx === STEPS.length - 1
           return (
             <li
               key={step.title}
-              className="relative flex flex-col items-center gap-4 rounded-xl border bg-card p-6 text-center shadow-sm transition-all hover:shadow-md"
+              className="group relative flex flex-col items-center gap-4 rounded-2xl border bg-card p-6 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-emerald-200 hover:shadow-lg dark:hover:border-emerald-800/50"
             >
-              <div className="flex items-center gap-3">
-                <span className="relative flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                  <Icon className="size-6" />
-                  <span className="absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full bg-background text-xs font-bold text-primary ring-1 ring-primary/30">
-                    {idx + 1}
-                  </span>
+              {/* Step number + icon badge */}
+              <div className="relative">
+                <span className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20">
+                  <Icon className="size-7" />
+                </span>
+                <span className="absolute -top-2 -right-2 flex size-7 items-center justify-center rounded-full bg-white text-xs font-bold text-emerald-600 shadow-md ring-2 ring-emerald-200 dark:bg-slate-900 dark:text-emerald-400 dark:ring-emerald-800">
+                  {idx + 1}
                 </span>
               </div>
-              <h3 className="text-base font-semibold tracking-tight">
+
+              <h3 className="text-lg font-semibold tracking-tight">
                 {step.title}
               </h3>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm leading-relaxed text-muted-foreground">
                 {step.description}
               </p>
 
-              {/* Connecting arrow to the next step (desktop only) */}
+              {/* Feature bullets — scannable highlights */}
+              <ul className="mt-1 space-y-1.5 text-left">
+                {step.features.map((feat) => (
+                  <li
+                    key={feat}
+                    className="flex items-center gap-2 text-xs text-muted-foreground"
+                  >
+                    <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
+                    <span>{feat}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* Connector arrow — desktop only */}
               {!isLast && (
                 <span
                   aria-hidden
                   className="absolute top-1/2 left-full hidden -translate-y-1/2 sm:flex"
                 >
-                  <ChevronRight className="size-5 text-muted-foreground/40" />
+                  <div className="relative flex items-center">
+                    <div className="h-px w-8 bg-gradient-to-r from-emerald-300 to-emerald-400 dark:from-emerald-700 dark:to-emerald-600" />
+                    <ChevronRight className="size-4 text-emerald-400 dark:text-emerald-600" />
+                  </div>
                 </span>
               )}
             </li>
@@ -101,17 +160,38 @@ export default function HowItWorks({
         })}
       </ol>
 
-      {/* CTA — drive conversion at the end of the explainer */}
+      {/* Trust badges row */}
+      <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+        {TRUST_ITEMS.map((item) => {
+          const TIcon = item.icon
+          return (
+            <div
+              key={item.label}
+              className="flex items-center gap-2 text-sm text-muted-foreground"
+            >
+              <TIcon className="size-4 text-emerald-500" />
+              <span>{item.label}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* CTA — drive conversion */}
       <div className="mt-8 flex flex-wrap justify-center gap-3">
-        <Button onClick={() => openAuth("register", "CLIENT")}>
+        <Button
+          size="lg"
+          onClick={() => openAuth("register", "CLIENT")}
+          className="h-11 gap-2 rounded-xl px-6"
+        >
           Cadastrar grátis
           <ArrowRight className="size-4" />
         </Button>
         {onBrowseProviders ? (
           <Button
             variant="outline"
+            size="lg"
             onClick={onBrowseProviders}
-            className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+            className="h-11 gap-2 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
           >
             <Search className="size-4" />
             Buscar prestadores
@@ -119,8 +199,9 @@ export default function HowItWorks({
         ) : (
           <Button
             variant="outline"
+            size="lg"
             asChild
-            className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+            className="h-11 gap-2 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
           >
             <a href="#vitrine-resultados">
               <Search className="size-4" />

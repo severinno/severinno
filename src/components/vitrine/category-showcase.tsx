@@ -116,6 +116,7 @@ export default function CategoryShowcase({
                   className={cn(
                     "group flex min-w-[140px] flex-col items-start gap-3 rounded-xl border bg-card p-4 text-left shadow-sm transition-all sm:min-w-0",
                     "hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "dark:hover:border-emerald-700 dark:hover:bg-emerald-950/20",
                     active &&
                       "border-primary bg-primary/5 ring-1 ring-primary",
                   )}
@@ -124,8 +125,8 @@ export default function CategoryShowcase({
                     className={cn(
                       "flex size-10 items-center justify-center rounded-lg transition-colors",
                       active
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-emerald-50 text-emerald-700 group-hover:bg-emerald-100",
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-emerald-50 text-emerald-700 group-hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:group-hover:bg-emerald-950/60",
                     )}
                   >
                     <Icon className="size-5" />

@@ -33,6 +33,7 @@ import Hero from "./hero"
 import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
 import HowItWorks from "./how-it-works"
+import Testimonials from "./testimonials"
 import { RecentlyViewed } from "./recently-viewed"
 import CompareBar from "./compare-bar"
 import CompareModal from "./compare-modal"
@@ -216,6 +217,8 @@ export default function Vitrine() {
         />
 
         <HowItWorks />
+
+        <Testimonials />
       </main>
 
       <Footer />

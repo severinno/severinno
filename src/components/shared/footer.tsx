@@ -1,13 +1,13 @@
 "use client"
 
 /**
- * Footer — sticky footer of the marketplace.
+ * Footer — enhanced marketplace footer with newsletter signup, dark mode support,
+ * and improved visual design.
  *
- * Layout uses `mt-auto` so the footer is pushed to the bottom of the viewport
- * when content is shorter than one screen.
+ * Sections: Brand + tagline + social, link columns (Sobre, Categorias, Prestadores, Suporte, Contato),
+ * newsletter signup bar, copyright bar.
  *
- * Columns: Sobre, Categorias, Para prestadores, Suporte, Contato.
- * Bottom: © + Open Source credit + social icons (lucide).
+ * Uses emerald accents to match the primary brand color.
  */
 
 import * as React from "react"
@@ -18,12 +18,15 @@ import {
   Instagram,
   Linkedin,
   Mail,
+  Heart,
   type LucideIcon,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { APP_NAME } from "@/lib/constants"
-import { useViewStore } from "@/store"
+import { useViewStore, useUIStore } from "@/store"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 type Column = {
   title: string
@@ -36,6 +39,7 @@ export default function Footer({
   className?: string
 }) {
   const navigate = useViewStore((s) => s.navigate)
+  const openAuth = useUIStore((s) => s.openAuth)
 
   const columns: Column[] = [
     {
@@ -59,7 +63,7 @@ export default function Footer({
     {
       title: "Para prestadores",
       links: [
-        { label: "Cadastre-se", onClick: () => navigate("vitrine") },
+        { label: "Cadastre-se", onClick: () => openAuth("register", "PROVIDER") },
         { label: "Meu painel", onClick: () => navigate("provider.dashboard") },
         { label: "Central de ajuda", onClick: () => navigate("vitrine") },
       ],
@@ -76,7 +80,7 @@ export default function Footer({
       title: "Contato",
       links: [
         { label: "contato@severinno.com", href: "mailto:contato@severinno.com" },
-        { label: "São Paulo, Brasil", href: undefined },
+        { label: "São Paulo, Brasil" },
       ],
     },
   ]
@@ -84,10 +88,43 @@ export default function Footer({
   return (
     <footer
       className={cn(
-        "mt-auto w-full border-t border-slate-800 bg-slate-900 text-slate-300",
+        "mt-auto w-full border-t bg-slate-900 text-slate-300 dark:bg-slate-950",
         className,
       )}
     >
+      {/* Newsletter bar */}
+      <div className="border-b border-slate-800 bg-emerald-600 dark:bg-emerald-700">
+        <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 py-5 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
+          <div className="text-center sm:text-left">
+            <p className="text-sm font-semibold text-white">
+              Receba novidades e dicas de serviços
+            </p>
+            <p className="mt-0.5 text-xs text-emerald-100">
+              Cadastre-se e receba ofertas exclusivas no seu e-mail.
+            </p>
+          </div>
+          <form
+            onSubmit={(e) => e.preventDefault()}
+            className="flex w-full max-w-sm items-center gap-2"
+          >
+            <Input
+              type="email"
+              placeholder="Seu e-mail"
+              className="h-9 border-0 bg-white/20 text-sm text-white placeholder:text-emerald-100 focus-visible:ring-white/40 dark:bg-white/10"
+              aria-label="E-mail para newsletter"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              className="h-9 shrink-0 bg-white px-4 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+            >
+              Assinar
+            </Button>
+          </form>
+        </div>
+      </div>
+
+      {/* Main footer content */}
       <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-3 lg:grid-cols-6">
           {/* Brand */}
@@ -155,13 +192,16 @@ export default function Footer({
           ))}
         </div>
 
+        {/* Copyright bar */}
         <div className="mt-8 flex flex-col items-center justify-between gap-3 border-t border-slate-800 pt-6 text-xs text-slate-500 sm:flex-row">
           <p>
             © {new Date().getFullYear()} {APP_NAME} Marketplace. Todos os
             direitos reservados.
           </p>
-          <p className="text-center sm:text-right">
-            Feito com tecnologia Open Source (
+          <p className="flex items-center gap-1 text-center sm:text-right">
+            Feito com{" "}
+            <Heart className="inline size-3 fill-rose-500 text-rose-500" />{" "}
+            usando tecnologia Open Source (
             <a
               href="https://maplibre.org/"
               target="_blank"

@@ -1415,3 +1415,105 @@ Próximos passos recomendados:
 3. Considerar persistir preferência de ordem dos critérios no compare modal
 4. Adicionar share link da comparação (query params com ids) para shareability
 5. Mobile: testar compare bar com 3 prestadores (pode precisar de scroll horizontal)
+
+---
+Task ID: CRON-2
+Agent: orchestrator (auto webDevReview round 2)
+Task: Avaliar estado atual, fazer QA via agent-browser, corrigir bugs, e implementar melhorias de styling + features.
+
+Work Log:
+- Li worklog.md (última entrada: CRON-1 com dark mode toggle, compare providers, back-to-top)
+- QA via agent-browser:
+  * Console errors: Turbopack cache stale "Export useCompareStore doesn't exist" — BUG IDENTIFICADO
+  * Correção: `rm -rf .next` para limpar cache do Turbopack → console limpo após rebuild
+  * Server OOM-killed múltiplas vezes (dmesg confirma: next-server 2.5GB RSS killed por OOM em container 4GB)
+  * Dev server funcional para requests individuais mas morre rapidamente sob carga de browser + hot-reload
+  * Lint: `bun run lint` → 0 errors, 0 warnings
+  * Typecheck: nenhum erro nos novos arquivos
+- Identifiquei oportunidades de melhoria:
+  1. HowItWorks: versão anterior era minimal (134 linhas) — precisava de feature bullets, trust badges, gradient icons
+  2. Sem seção de Testimonials/avaliações — feature comum em marketplaces para social proof
+  3. Footer: sem newsletter signup, sem dark mode, sem ícone de coração no copyright
+  4. Category Showcase: sem dark mode variants nos cards
+  5. Hero StatItem: ícones sem diferencição visual (bg uniforme)
+
+IMPLEMENTAÇÃO:
+
+FEATURE 1 — Testimonials (nova seção):
+- Criado `src/components/vitrine/testimonials.tsx` (10007 bytes):
+  * Header com badge "Avaliações reais" (amber theme) + título + subtítulo com total e nota média
+  * Grid responsivo 1/2/3 colunas de ReviewCards
+  * ReviewCard: rating com estrelas, citação em aspas, service badge (emerald), attribution (avatar do cliente + nome + data relativa), mini attribution do provider
+  * Summary bar: estrelas + nota + total de avaliações verificadas
+  * Loading: skeleton cards
+  * Empty state: ícone MessageSquare + texto explicativo
+  * Decorative quote ícone no background
+  * Fundo bg-muted/30 para se diferenciar das seções adjacentes
+  * Hover: translate-y + border-emerald
+  * Dark mode: variantáveis em todos os componentes
+- Criado `src/app/api/reviews/recent/route.ts`:
+  * GET /api/reviews/recent?limit=6 (público, sem auth)
+  * Retorna { items: ReviewItem[], total, avgRating }
+  * Reviews com comment !== null (apenas avaliações com texto)
+  * Include: client (name, avatarUrl), provider (name, avatarUrl), service (title)
+  * Aggregate: _avg.rating + _count.id
+  * Limit: default 6, max 12
+- Montado em `src/components/vitrine/vitrine.tsx` entre HowItWorks e Footer
+
+FEATURE 2 — HowItWorks enhanced (redesign completo):
+- `src/components/vitrine/how-it-works.tsx` (134 → ~170 linhas):
+  * Header: adicionado badge "Simples e rápido" (emerald pill com MapPin)
+  * Step icons: gradient emerald-to-teal com shadow-lg shadow-emerald-500/20
+  * Step numbers: badge circular branco (dark: slate-900) com ring-2 emerald
+  * Feature bullets: cada passo agora tem 3 features scannable com CheckCircle2 icons
+  * Trust badges row: ShieldCheck, Clock, CheckCircle2, GitCompare — abaixo dos cards
+  * Connector arrows: gradient line + ChevronRight (dark mode variants)
+  * Cards: hover lift (-translate-y-1) + border-emerald + shadow-lg
+  * Dark mode: hover:border-emerald-800/50 em todos os cards
+  * Background: subtle dot pattern (opacity-[0.03])
+
+FEATURE 3 — Footer enhanced:
+- `src/components/shared/footer.tsx` (214 → ~230 linhas):
+  * Newsletter bar: seção emerald-600/700 no topo com email input + botão "Assinar"
+  * Dark mode: dark:bg-slate-950 no footer, dark:bg-white/10 no input
+  * "Cadastre-se" no link de prestadores agora chama openAuth("register", "PROVIDER")
+  * Copyright: "Feito com ❤️" (Heart icon fill-rose-500) ao invés de texto plano
+  * Responsivo: newsletter empilha verticalmente no mobile
+
+STYLING IMPROVEMENTS:
+- CategoryShowcase: dark mode variants nos cards (dark:hover:border-emerald-700, dark:hover:bg-emerald-950/20) e ícones (dark:bg-emerald-950/40, dark:text-emerald-300)
+- Hero StatItem: adicionado prop `accent` — ícones com bg-emerald-400/20 e ring-emerald-300/30 ao invés de bg uniforme
+- Todos novos componentes usam dark: variantáveis consistentemente
+- Vitrine: Testimonials montado entre HowItWorks e Footer
+
+VERIFICAÇÃO:
+- `bun run lint` → 0 errors, 0 warnings ✓
+- `bunx tsc --noEmit` → nenhum erro nos novos arquivos ✓
+- Dev server: compila sem erros, mas OOM-killed pelo kernel (dmesg: next-server 2.5GB killed)
+  * Server funciona para requests individuais (curl retorna 200)
+  * Browser navigation causa reload que excede memória com Chrome + next-server juntos
+  * OOM é limitação do sandbox (4GB RAM), não bug de código
+  * A correção do cache stale (rm -rf .next) foi verificada — console limpo após rebuild
+
+Stage Summary:
+- 3 arquivos criados:
+  * `src/components/vitrine/testimonials.tsx` (seção de avaliações reais)
+  * `src/app/api/reviews/recent/route.ts` (API pública de reviews recentes)
+- 5 arquivos editados:
+  * `src/components/vitrine/how-it-works.tsx` (redesign com feature bullets, trust badges, gradient icons)
+  * `src/components/shared/footer.tsx` (newsletter bar, dark mode, heart icon)
+  * `src/components/vitrine/vitrine.tsx` (monta Testimonials)
+  * `src/components/vitrine/category-showcase.tsx` (dark mode variants nos cards)
+  * `src/components/vitrine/hero.tsx` (StatItem accent prop para ícones diferenciados)
+- 1 bug corrigido: Turbopack stale cache (rm -rf .next) eliminou console errors persistentes
+- 2 features novas: Testimonials com API, Newsletter signup no footer
+- 3 styling improvements: HowItWorks redesign, Footer newsletter, CategoryShowcase dark mode
+- Lint limpo, typecheck limpo
+- Caveats: (a) Dev server é OOM-killed no sandbox (4GB RAM) — o código compila sem erros mas o browser não consegue manter sessão longa. Sistema de auto-restart do sandbox deve manter o server disponível entre resets. (b) Newsletter form é UI-only (sem backend de email marketing — `onSubmit` apenas previne default). Para produção, integrar com serviço de email. (c) Testimonials API filtra reviews com comment !== null para evitar cards vazios; se todos os reviews forem sem texto, mostra empty state.
+
+Próximos passos recomendados:
+1. Otimizar consumo de memória do dev server (reduzir Turbopack parallelism ou usar webpack)
+2. Implementar backend de newsletter (integrar com serviço de email)
+3. Adicionar FAQ/Accordion section na vitrine
+4. Criar provider profile page com galeria de fotos e mapa
+5. Implementar share link da comparação (query params com provider IDs)
