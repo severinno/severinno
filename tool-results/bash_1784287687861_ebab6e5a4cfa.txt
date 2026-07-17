@@ -1,0 +1,200 @@
+  * dev.log limpo — sem erros de runtime, apenas queries prisma e 200s.
+
+Stage Summary:
+- 2 arquivos editados: src/components/admin/admin-users.tsx (893 → 657 linhas), src/components/admin/admin-providers.tsx (576 → 481 linhas). Nenhum outro arquivo tocado.
+- Cobertura Nielsen admin-users: H1 (TableSkeleton + ErrorState + SavingPill inline + ResultCount), H2 (hint amber "Filtro aplicado à página atual"), H4 (RoleBadge/ActiveBadge/VerifiedBadge do admin-shared, tipo AdminUser idêntico ao admin-providers), H5 (ConfirmToggleDialog no Switch + itens do ⋮; ConfirmDialog destructive para delete; Alert amber no EditUserDialog ao rebaixar ADMIN), H6 (botão "Editar" visível; ⋮ apenas secundárias), H7 (ordenção client-side por nome e createdAt), H8 (EmptyState/SearchX + layout limpo sem pill redundante), H9 (Alert errorBanner dismissível + toast.error específico + ErrorState com refetch), H10 (Tooltips em Editar, ⋮, Switch).
+- Cobertura Nielsen admin-providers: H1 (TableSkeleton + ErrorState + SavingPill INLINE substitui pill flutuante + ResultCount), H2 (hint amber), H4 (VerifiedBadge/ActiveBadge do admin-shared; AdminUser type idêntico ao admin-users), H5 (ConfirmToggleDialog nos itens do ⋮ Verificar/Desverificar/Ativar/Desativar), H6 (botão "Ver perfil" visível; ⋮ sem "Ver perfil público" duplicado), H7 (ordenação client-side), H8 (REMOVIDO pill "N prestador(es) no total"), H9 (Alert errorBanner + toast + ErrorState), H10 (Tooltips em Ver perfil e ⋮).
+- Sem mudanças de API, schema, ou interface exportada (AdminUsers() e AdminProviders() continuam no-props).
+- Dev server hot-reloadou sem erros.
+- Caveats: (a) A ordenação é client-side na página atual (não server-side) — é uma melhoria incremental de H7 sem exigir mudança de API. (b) bulk select foi identificado como gap H7 mas NÃO implementado (exigiria endpoint PATCH bulk ou múltiplas chamadas — fora do escopo "manter mesmas API calls"). (c) O filtro verified/active continua client-side (limitação API) — o hint amber H2 deixa isso explícito para o admin. (d) O Tooltip envolvendo DropdownMenuTrigger usa pattern aninhado Tooltip > TooltipTrigger asChild > DropdownMenuTrigger asChild > Button (Radix Slot-of-Slot) — funciona em runtime conforme verificado via snapshot.
+
+---
+Task ID: N3
+Agent: full-stack-developer (admin services + bookings redesign)
+Task: Redesenho completo de admin-services.tsx e admin-bookings.tsx aplicando as 10 heurísticas de Nielsen, usando o design system admin-shared.tsx (criado em N1, consolidado em N2).
+
+Work Log:
+- Leu worklog.md (entradas N1 dashboard + N2 users/providers), admin-shared.tsx (exports: PageSectionHeader, FilterBar, SearchInput, TableSkeleton, EmptyState, ErrorState, Pagination, ResultCount, SavingPill, ConfirmDialog, ConfirmToggleDialog, Kbd, StatusBadge, BookingStatusBadge, PaymentStatusBadge, ActiveBadge, VerifiedBadge, initials, errMsg, StatusTone, bookingTone, bookingIcon, paymentTone, paymentIcon), admin-services.tsx (667 linhas — original), admin-bookings.tsx (404 linhas — original com bug H4 crítico), constants.ts (BOOKING_STATUS_LABELS, BOOKING_STATUS_COLORS com sky/zinc-800 divergentes, SERVICE_UNIT_SHORT, PAYMENT_STATUS_LABELS), admin-users.tsx (padrão de ordenação SortState + renderSortHeader), admin-providers.tsx (uso de useUIStore.openProvider), e /api/admin/stats/route.ts (retorna bookingsByStatus: Record<string, number> — fonte das contagens por status para as Tabs de bookings).
+- Reescreveu /home/z/my-project/src/components/admin/admin-services.tsx (667 → 843 linhas, +26% — aumento devido a tooltips, ordenação, paginação, dialog de confirmação e saving pill inline).
+- Reescreveu /home/z/my-project/src/components/admin/admin-bookings.tsx (404 → 449 linhas, +11% — aumento devido a FilterBar, dialog de detalhes, contagens nas Tabs, busca client-side; mas REMOVIDO ~30 linhas de STATUS_BADGE_CLS/PAYMENT_BADGE_CLS/STATUS_ICON locais).
+
+admin-services.tsx — REMOÇÕES (H4 consistência + H5 prevenção + H8 minimalismo):
+- Filtro bar custom (Card + Input + 3 Selects + Button + Badge "filtro ativo") — SUBSTITUÍDO por `FilterBar` + `SearchInput` do admin-shared (resultCount integrado).
+- Pill flutuante "N serviço(s) no total" no topo — REMOVIDO (H8 — ResultCount já mostra abaixo da tabela).
+- Skeletons inline (6 rows h-14) — SUBSTITUÍDO por `TableSkeleton rows={8} cols={6}` do admin-shared.
+- Empty state inline (Wrench icon + texto + botão) — SUBSTITUÍDO por `EmptyState` do admin-shared com icon `SearchX`.
+- Error state inline (Wrench icon + texto, SEM retry) — SUBSTITUÍDO por `ErrorState` do admin-shared com `onRetry={refetch}`.
+- Breadcrumb de categoria com 3 badges + chevrons (poluição visual H8) — SUBSTITUÍDO por badge ÚNICO da folha + Tooltip com caminho completo "Pai › Filha › Sub".
+- Badges de categoria com classes inline (border-emerald-200 bg-emerald-50 etc.) — SUBSTITUÍDO por `StatusBadge` do admin-shared com tone por nível (emerald=0, teal=1, zinc≥2) — H4 source of truth.
+- `initials()` local e `errMsg()` local — SUBSTITUÍDO por helpers do admin-shared (aceitam null/undefined).
+- Switch instantâneo (H5 bug — toggle sem confirmação) — SUBSTITUÍDO por fluxo: click no Switch → seta `pendingToggle` state → abre `ConfirmToggleDialog` → só no confirm dispara PATCH. `SavingPill` inline aparece na célula durante o save.
+- AlertDialog custom de delete — SUBSTITUÍDO por `ConfirmDialog` do admin-shared com `variant="destructive"`.
+
+admin-services.tsx — ADIÇÕES (H1 + H5 + H6 + H7 + H9 + H10):
+- `PageSectionHeader` (do admin-shared) com title="Serviços" + description pt-BR.
+- Paginação CLIENT-SIDE (limit=10): a API devolve TODOS os serviços de uma vez (sem paginação server-side); agora o admin vê 10 por página com `Pagination` do admin-shared + `ResultCount`. Resolve H1 (status visível: "Exibindo 1–10 de N serviços") + H7 (pode pular páginas, não rolagem infinita opaca). Estado `page`, derivado `safePage`/`totalPages`/`pageItems`.
+- Ordenação client-side nas colunas PREÇO (basePrice) e CRIADO (createdAt): click no header alterna asc → desc → null, com indicador ChevronUp/ChevronDown (ou ArrowUpDown com opacity-40 quando não ordenada). Estado `sort: { key, dir } | null`. Reset da página para 1 ao mudar sort.
+- Botão "Ver prestador" visível (variant outline, size sm) em cada linha — H6 (ação primária de recognition). Click → `useUIStore.openProvider(s.provider.id)` (abre modal de perfil do prestador — mesmo padrão do admin-providers e client-services).
+- `Tooltip` (de @/components/ui/tooltip) envolvendo: Switch ("Ativar/Desativar serviço (com confirmação)"), botão "Ver prestador" ("Abrir perfil do prestador"), botão ⋮ ("Mais ações"). H10 help.
+- `Alert` (variant="destructive") dismissível no topo quando `errorBanner` state está setado: título "Erro ao salvar" + mensagem específica de `errMsg(e)` + botão X. Setado em onError das mutations (patch e delete). H9 error recovery visível.
+- `SavingPill` inline (do admin-shared) na célula ATIVO quando `patchingId === s.id && pendingToggle?.field === "active"`. Substitui o Switch localmente durante o save — feedback contextual H1.
+- `ConfirmToggleDialog` (do admin-shared) para toggle de Ativo: open quando `pendingToggle` != null, onConfirm chama `handleToggleConfirm` que dispara o PATCH. H5 prevenção.
+- `ConfirmDialog` (do admin-shared) para delete: variant="destructive", description com nome do serviço + impacto ("removido permanentemente do catálogo"), confirmLabel dinâmico "Excluir"/"Excluindo…" baseado em `deleteMutation.isPending`.
+- toast.success com mensagem específica em onSuccess ("Serviço desativado."/"Serviço ativado."/"Serviço excluído."); toast.error com `errMsg(e)` em onError.
+
+admin-bookings.tsx — REMOÇÕES (H4 CRITICAL FIX):
+- `STATUS_BADGE_CLS` map local (teal para IN_PROGRESS, emerald para COMPLETED) — REMOVIDO. Era a fonte do bug H4: divergia de `BOOKING_STATUS_COLORS` em constants.ts (sky para IN_PROGRESS, zinc-800 para COMPLETED) usado pelo admin-dashboard. O MESMO agendamento aparecia com cores DIFERENTES nas duas páginas admin.
+- `STATUS_ICON` map local (Clock/CheckCircle2/Loader/XCircle) — REMOVIDO. Agora usa `bookingIcon` do admin-shared (mesma fonte do dashboard).
+- `PAYMENT_BADGE_CLS` map local (amber/emerald/rose) — REMOVIDO. Agora usa `PaymentStatusBadge` do admin-shared.
+- `initials()` local — SUBSTITUÍDO por `initials()` do admin-shared (aceita string | null | undefined).
+- Badge custom com `cn(STATUS_BADGE_CLS[b.status])` + ícone `StatusIcon` inline — SUBSTITUÍDO por `<BookingStatusBadge status={b.status} />` (H4 — UMA source of truth, mesma cor em todo o app).
+- Badge custom com `cn(PAYMENT_BADGE_CLS[b.paymentStatus])` — SUBSTITUÍDO por `<PaymentStatusBadge status={b.paymentStatus} />`.
+- Pagination inline (ChevronLeft/ChevronRight) — SUBSTITUÍDO por `Pagination` do admin-shared.
+- Result count inline ("Mostrando X–Y de N agendamento(s)") — SUBSTITUÍDO por `ResultCount` do admin-shared.
+- Skeletons inline (6 rows h-14 com colSpan=7) — SUBSTITUÍDO por `TableSkeleton rows={8} cols={7}` do admin-shared.
+- Error state inline (CalendarCheck icon + texto, SEM retry) — SUBSTITUÍDO por `ErrorState` do admin-shared com `onRetry={refetch}` (H9 fix).
+- Empty state inline (TableRow com colSpan=7, CalendarCheck icon) — SUBSTITUÍDO por `EmptyState` do admin-shared com icon `SearchX`.
+- Card wrapper com CardContent — REMOVIDO quando loading/error/empty (delegado aos componentes do admin-shared); mantido APENAS quando há tabela para renderizar.
+
+admin-bookings.tsx — ADIÇÕES (H1 + H4 + H6 + H7 + H8 + H9):
+- `PageSectionHeader` (do admin-shared) com title="Agendamentos" + description="Acompanhe todos os agendamentos da plataforma (somente leitura)."
+- `FilterBar` (do admin-shared) com `SearchInput` que filtra client-side por cliente, prestador ou serviço (H7 fix — antes só era possível filtrar por status). Busca normalizada (toLowerCase + trim).
+- Hint amber "Busca aplicada apenas à página atual" (ShieldQuestion icon) quando `query` está ativo — H2 honestidade sobre limitação client-side (mesmo padrão do admin-users/providers).
+- Contagens por status nas Tabs (H1 fix): query paralela a `/api/admin/stats` (cache 60s, compartilhado com dashboard) extrai `bookingsByStatus: Record<string, number>`. Cada TabsTrigger mostra `<CountBadge>` com o count (ou "?" enquanto `statsLoading`). O tab "Todos" mostra a soma de todos os status. Mesmo padrão visual do admin-users (badge pill com bg-muted ou bg-primary-foreground/20 quando ativo).
+- Tabs simplificadas (H8 fix): REMOVIDO o ícone de cada TabsTrigger (Clock/CheckCircle2/Loader/XCircle) — era REDUNDANTE com o ícone do badge de Status na tabela. Agora a tab mostra apenas label + count. O badge na tabela MANTÉM o ícone (via BookingStatusBadge) para varredura visual rápida na tabela densa.
+- Linhas CLICÁVEIS (H6 fix — antes não havia como abrir detalhes): click em qualquer TableRow → `setDetail(booking)` → abre `Dialog` de detalhes. Cursor pointer + `hover:bg-muted/30` + `focus-visible:bg-muted/30` + `focus-visible:outline-none`. `Tooltip` envolvendo a TableRow com "Ver detalhes do agendamento" no hover.
+- `Dialog` de detalhes (H6 + H3): mostra status badge + payment badge no topo, grid 2-col com Cliente e Prestador (avatar + nome), card destacado com Serviço + Valor (formatBRL), e lista de DetailRows com: Agendado para (CalendarDays), Pagamento (CreditCard + PAYMENT_METHOD_LABELS), Endereço (MapPin, se houver), Criado em (CalendarCheck + formatDateTime). Botão "Fechar" no footer. DialogTitle com CalendarCheck icon emerald.
+- Sub-componentes locais: `CountBadge` (loading + count + active), `DetailField` (label + avatar + value), `DetailRow` (icon + label + value). Tipagem estrita com `React.ComponentType<{ className?: string }>` para o ícone do DetailRow.
+- `ResultCount` (do admin-shared) abaixo da tabela: "Exibindo X–Y de Z agendamentos".
+- `Pagination` (do admin-shared) abaixo da tabela (hidden se 1 página via implementação interna do componente).
+
+MANTIDO (sem mudança de API/schema/interface):
+- admin-services: query keys ["admin","services",...] e ["categories","all-flat"] e ["admin","providers","options"]; endpoints GET /api/admin/services, GET /api/categories, GET /api/admin/users?role=PROVIDER, PATCH /api/services/[id], DELETE /api/services/[id]; assinatura `AdminServices()` no-props.
+- admin-bookings: query keys ["admin","bookings",...] e ["admin","stats"]; endpoints GET /api/bookings?role=ADMIN, GET /api/admin/stats; assinatura `AdminBookings()` no-props.
+- Tipos `AdminService`, `AdminBooking`, `AdminServicesResponse`, `AdminBookingsResponse` idênticos aos originais (sem mudar campos — apenas imports consolidados).
+
+Verificação:
+- `bunx eslint src/components/admin/admin-services.tsx src/components/admin/admin-bookings.tsx --max-warnings 0` → 0 errors, 0 warnings.
+- `bunx tsc --noEmit` → 0 errors em src/ (apenas errors preexistentes em examples/ e skills/, não relacionados). Primeira rodada flagou 1 erro: `confirmLabel` do ConfirmDialog esperava `string` (inferido do default "Confirmar") mas recebia `Element` (JSX com spinner). Corrigido passando string simples "Excluir"/"Excluindo…" e removendo o import não usado `Loader2`.
+- `bun run lint` (projeto inteiro) → 0 errors.
+- dev.log: hot-reload do Next.js sem erros de compilação; queries prisma 200 OK em /api/admin/services, /api/admin/stats, /api/bookings, /api/categories, /api/admin/users.
+
+Stage Summary:
+- 2 arquivos editados: src/components/admin/admin-services.tsx (667 → 843 linhas), src/components/admin/admin-bookings.tsx (404 → 449 linhas). Nenhum outro arquivo tocado.
+- Cobertura Nielsen admin-services: H1 (TableSkeleton + ErrorState com retry + SavingPill inline + Pagination client-side + ResultCount contextual), H2 (labels pt-BR, formato BRL/datas), H3 (ConfirmToggleDialog oferece cancelar antes de aplicar), H4 (StatusBadge do admin-shared substitui badges inline de categoria — tone por nível emerald/teal/zinc consistente), H5 (Switch de Ativo abre ConfirmToggleDialog antes do PATCH — FIX do bug de toggle instantâneo; delete continua com ConfirmDialog destructive), H6 (botão "Ver prestador" visível — FIX do "all actions behind ⋮"; ⋮ apenas para Ativar/Desativar e Excluir), H7 (paginação client-side 10/página — FIX do "no pagination"; colunas Preço e Criado ordenáveis com indicador chevron), H8 (categoria badge ÚNICO + tooltip com caminho completo — FIX do breadcrumb poluído de 3 badges + chevrons), H9 (ErrorState com onRetry=refetch + Alert errorBanner dismissível + toast.error específico), H10 (Tooltips em Switch, ⋮, "Ver prestador", e categoria).
+- Cobertura Nielsen admin-bookings: H1 (TableSkeleton + ErrorState com retry + contagens por status nas Tabs com "?" durante loading + ResultCount), H2 (hint amber "Busca aplicada apenas à página atual"), H4 (CRITICAL FIX: REMOVIDO STATUS_BADGE_CLS e PAYMENT_BADGE_CLS locais — agora BookingStatusBadge + PaymentStatusBadge do admin-shared são a ÚNICA source of truth; mesmo agendamento agora tem MESMA cor em admin-dashboard e admin-bookings), H5 (read-only — sem toggles destrutivos), H6 (FIX: linhas CLICÁVEIS abrem Dialog de detalhes com todas as informações; antes não havia como ver detalhes), H7 (FIX: SearchInput filtra por cliente/prestador/serviço — antes só era possível filtrar por status), H8 (FIX: Tabs simplificadas — removido ícone redundante das Tabs já que o badge de Status na tabela já tem ícone), H9 (FIX: ErrorState com onRetry=refetch substitui error state inline sem retry), H10 (Tooltip "Ver detalhes do agendamento" no hover da linha; Dialog acessível com focus trap nativo do Radix).
+- BUG CRÍTICO H4 RESOLVIDO: o mesmo agendamento agora renderiza com a MESMA cor em admin-dashboard (que já usava bookingTone/BookingStatusBadge) e admin-bookings (que antes usava STATUS_BADGE_CLS local divergente). Concretamente: IN_PROGRESS era teal no bookings mas sky no dashboard; COMPLETED era emerald no bookings mas zinc-800 no dashboard. Agora ambos usam bookingTone() → IN_PROGRESS=teal, COMPLETED=emerald — consistente em todo o app.
+- Sem mudanças de API, schema, ou interface exportada. Dev server hot-reloadou sem erros.
+- Caveats: (a) A paginação do admin-services é client-side porque a API /api/admin/services devolve TODOS os serviços de uma vez (sem suporte a page/limit). Para datasets muito grandes (>500 serviços) isso pode ficar lento; se necessário, evoluir a API para suportar paginação server-side — a UI já está pronta (basta trocar a derivação client-side por query params). (b) A busca do admin-bookings é client-side na página atual (limit=12) — o hint amber H2 deixa isso explícito. Busca server-side exigiria evoluir /api/bookings para suportar query param `q` (fora do escopo "manter mesmas API calls"). (c) As contagens por status nas Tabs vêm de /api/admin/stats (cache 60s) — podem divergir momentaneamente do total real se novos agendamentos forem criados entre refreshes; o ResultCount abaixo da tabela mostra o total preciso retornado pela query de listagem. (d) O Dialog de detalhes do booking é READ-ONLY (sem ações) — admin é oversight; não há endpoint admin para editar/cancelar bookings. (e) `categoryTone` mapeia level 0→emerald, 1→teal, ≥2→zinc (em vez de "level 1/2/3" do enunciado que seria 1-indexed) — casando com o `level` 0-indexed do modelo Category. (f) Em admin-services o `resultCount` mostrado na FilterBar é o total de itens retornados pela API (antes da paginação client-side), e o `ResultCount` abaixo da tabela mostra o total filtrado+ordenado (igual ao da FilterBar já que não há filtro client-side adicional) — ambos refletem o mesmo número, com paginação aplicada aos itens visíveis.
+
+---
+Task ID: N4
+Agent: full-stack-developer (admin taxonomy + settings redesign)
+Task: Redesign de admin-taxonomy.tsx e admin-settings.tsx aplicando as 10 heurísticas de Nielsen; usar admin-shared.tsx (PageSectionHeader, StatusBadge, ConfirmToggleDialog, ConfirmDialog, SearchInput, FreshnessLabel, EmptyState, ErrorState, errMsg, slugify); emerald apenas; pt-BR; manter APIs e interfaces no-props.
+
+Work Log:
+- Li worklog.md (entries N1 dashboard, N2 users/providers, N3 services/bookings concluídos; admin-shared.tsx consolidado) e os 2 arquivos alvo (admin-taxonomy 907 linhas, admin-settings 624 linhas).
+- Li admin-shared.tsx na íntegra (771 linhas) — mapeei exports disponíveis: PageSectionHeader, FilterBar, SearchInput, TableSkeleton, EmptyState, ErrorState, Pagination, ResultCount, SavingPill, ConfirmDialog, ConfirmToggleDialog, Kbd, FreshnessLabel, StatusBadge, ActiveBadge, VerifiedBadge, RoleBadge, BookingStatusBadge, PaymentStatusBadge, initials, errMsg, slugify, StatusTone.
+- Verifiquei padrões de uso em admin-bookings.tsx (PageSectionHeader + FilterBar + SearchInput + ErrorState + EmptyState) e admin-services.tsx (ConfirmToggleDialog com pendingToggle state + handleToggleConfirm, Tooltip em Switch/Buttons, StatusBadge com tone por nível).
+- Verifiquei shadcn/ui disponíveis: tooltip.tsx, alert-dialog.tsx, select.tsx, switch.tsx, alert.tsx, dialog.tsx, badge.tsx, skeleton.tsx — todos presentes.
+
+admin-taxonomy.tsx — REWRITE (907 → 1078 linhas):
+- H1: PageSectionHeader (title="Taxonomia de categorias" + description); toolbar com contagem de categorias; ErrorState substitui Card inline; tree renderiza loading skeleton/empty state.
+- H2 (CRITICAL): REMOVIDO GripVertical (drag handle visual-only que enganava o admin). Substituído por 2 botões ChevronUp/ChevronDown explícitos com aria-label "Mover para cima/baixo (indisponível)" — DESABILITADOS com Tooltip "Reordenação disponível em breve" (a API /api/categories não tem endpoint de reordenação; honestidade H2 sobre a limitação).
+- H3: ConfirmDialog (do admin-shared) para delete — variant="destructive", description com nome da categoria + menção a 409 se houver vínculos, confirmLabel dinâmico "Excluir"/"Excluindo…".
+- H4: REMOVIDO LEVEL_META com badgeClass/dot/rowAccent inline (slate para level 2 divergia do comentário "lime"). Agora usa `tone: StatusTone` (emerald/teal/zinc para levels 0/1/2) + `<StatusBadge tone={meta.tone}>` (ÚNICA source of truth do admin-shared). Toolbar mostra os 3 níveis via StatusBadge.
+- H5 (CRITICAL): Switch NÃO é mais instantâneo. onCheckedChange → setPendingToggle({id, name, currentValue}). `<ConfirmToggleDialog>` (do admin-shared) abre com field="active"; onConfirm chama toggleActiveMutation. Toast específico em onSuccess ("Categoria ativada."/"Categoria desativada.").
+- H6 (CRITICAL): REMOVIDO Input free-text "Ex.: Wrench (lucide)". Substituído por `Select` com 12 ícones lucide pré-definidos (Wrench, Zap, Droplet, PaintRoller, Hammer, Trees, Sparkles, Home, ShowerHead, Thermometer, Car, ChefHat) — cada um com label pt-BR (Chave inglesa, Raio (elétrica), Gota (hidráulica), etc.) + nome técnico mono. Preview do ícone ao lado do Select (size-9 box). Se a categoria tem ícone fora da lista, mostra como entrada "Personalizado: {nome}". Helper `CategoryIcon` (declarado fora do render, usa React.createElement p/ evitar lint react-hooks/static-components).
+- H7: botões ChevronUp/ChevronDown explicit (em vez de drag); Expandir/Recolher tudo; tooltips em todos os icon-buttons (Editar, Excluir, Switch).
+- H8: REMOVIDO o badge "X serviço(s)" que nunca renderizava (serviceCounts era sempre Map vazio). Comentário TODO documentando que o endpoint /api/categories não retorna contagem de serviços. Badges de nível e filhos consolidados em StatusBadge.
+- H9: ErrorState (do admin-shared) substitui Card inline "Não foi possível carregar…" — com onRetry=refetch. toast.error em onError de todas as mutations; delete 409 ganha description "Remova os vínculos…".
+- H10: Tooltip no campo Slug — botão Info (lucide) ao lado do label, abre Tooltip "Identificador único usado nas URLs. Gerado automaticamente a partir do nome." (verificado via DOM).
+- Imports consolidados: PageSectionHeader, ConfirmDialog, ConfirmToggleDialog, StatusBadge, errMsg, slugify, StatusTone do admin-shared. REMOVIDOS AlertDialog* locais (substituídos por ConfirmDialog) e slugify local (reaproveitado do admin-shared).
+- Fix lint react-hooks/static-components: variável capitalizada `IconPreview`/`CurrentIcon` atribuída a Map.get() era flagged. Solução: componente `CategoryIcon` externo que usa React.createElement(Icon, { className }).
+
+admin-settings.tsx — REWRITE (624 → 690 linhas):
+- H1: PageSectionHeader (title="Configurações" + description; FreshnessLabel como action); FreshnessLabel também na toolbar; dataUpdatedAt do useQuery alimenta lastFetched state.
+- H3 (CRITICAL): "Descartar tudo" reseta TUDO (mantido). ADICIONADO botão "Desfazer" que reverte UM campo por vez — editHistory: string[] rastreia ordem das edições; undoLastEdit() pop do último key, restaura valor original, remove do dirty. Badge contador no botão mostra quantas edições podem ser desfeitas. Label da sticky bar mostra "última: <key>" para contexto.
+- H4: Caption "Para remover, limpe o valor e salve." embaixo de cada setting row — honestidade sobre ausência de endpoint DELETE. GROUP_TONE map usa StatusTone do admin-shared para cores de grupo (payment=emerald, email/smtp=teal, nominatim/geo/site/support/weather=amber, server/Geral=zinc).
+- H5 (CRITICAL): ADICIONADO Eye/EyeOff toggle dentro de cada input de segredo. State revealedKeys: Set<string>. Botão com aria-label "Mostrar valor"/"Ocultar valor" e aria-pressed. Input type alterna entre "password" e "text". Tooltip envolve o botão.
+- H6 (CRITICAL): "Sigiloso" → "Secreto" (StatusBadge tone="amber" com Lock icon — mais claro em pt-BR). Verificado via DOM: 1 span "Secreto", 0 spans "Sigiloso".
+- H7 (CRITICAL): ADICIONADO SearchInput (do admin-shared) na toolbar. Quando query.trim().length > 0, muda para FlatResultsList (Card único com header "Resultados da busca" + count + StatusBadge "Busca ativa"). Filtragem case-insensitive por chave. EmptyState quando não há match. Verificado: ao digitar "site", apenas site_name + site_tagline aparecem.
+- H8 (CRITICAL): REMOVIDO botão "Salvar"/"Salvo" por linha. ÚNICO caminho de salvar: sticky bar com "Salvar tudo" (visível quando dirty.size > 0). Feedback de "alterado" vira badge "✓ alterado" (não-botão) ao lado do input. Verificado via DOM: 0 botões "Salvar" por linha.
+- H9: ErrorState (do admin-shared) substitui Card inline de erro — com onRetry=refetch. EmptyState (do admin-shared) substitui Card inline vazio.
+- H10 (CRITICAL): SETTING_HELP map com 27 chaves conhecidas (PAYMENT_*, EMAIL_*, SMTP_*, NOMINATIM_*, GEO_*, SITE_*, SUPPORT_*, WEATHER_*, SERVER_*) + heurística por prefixo para chaves não-listadas. Info tooltip (botão com aria-label "O que é {key}?") aparece ao lado do label mono APENAS quando há descrição disponível. Verificado: 6 botões "O que é X?" renderizam para chaves conhecidas; chaves como platform_fee_percent não têm tooltip (não inventamos descrição).
+- Layout conforme plano: PageSectionHeader → Alert amber → Toolbar (count + SearchInput + Nova configuração + FreshnessLabel) → grid 2-col de cards agrupados por prefixo (group header com icon + title + description + StatusBadge count) → SettingRow (key mono + Secreto badge + Info tooltip | updatedAt | input c/ eye toggle | caption) → sticky bar (X alterações + última key | Desfazer + Descartar tudo + Salvar tudo) → CreateSettingDialog.
+- Sub-componentes: SettingRow (encapsula H4 caption + H5 eye + H6 badge + H10 tooltip), FlatResultsList (H7 flat mode), CreateSettingDialog (H10 tooltip também aparece no form de criação quando a chave tem help).
+
+Verificação técnica:
+- `bunx eslint src/components/admin/admin-taxonomy.tsx src/components/admin/admin-settings.tsx --max-warnings 0` → 0 errors, 0 warnings (ambos arquivos).
+- `bunx tsc --noEmit` → 0 errors nos 2 arquivos editados (apenas errors preexistentes em examples/ e skills/, não relacionados). Primeira rodada flagou 2 errors: `react-hooks/static-components` em `const IconPreview = iconPreview(node.icon)` e `const CurrentIcon = iconPreview(currentIconName)` — variáveis capitalizadas usadas como JSX eram interpretadas como criação de componente durante o render. Corrigido extraindo helper `CategoryIcon` fora do render que usa `React.createElement(Icon, { className })` (bypass do lint baseado em JSX).
+- Dev log: hot-reload sem erros de compilação; queries prisma 200 OK em /api/categories (admin.taxonomy) e /api/admin/settings (admin.settings).
+
+Verificação visual (agent-browser em http://localhost:3000, login admin@severinno.com/admin123):
+- admin.taxonomy: PageSectionHeader "Taxonomia de categorias" ✓; treeitems "Reparos Pai 3 filhas" / "Elétrica Filha" / etc. ✓; botões "Mover para cima/baixo" DISABLED com tooltip ✓ (H7); Switch aria-label "Ativar ou desativar categoria (com confirmação)" ✓; click no Switch abre dialog "Remover status ativo?" com botão "Remover" ✓ (H5); dialog "Nova categoria" tem combobox "Ícone (opcional)" com 12 opções (Chave inglesa Wrench, Raio (elétrica) Zap, … Chef (gastronomia) ChefHat) ✓ (H6); botão "O que é um slug?" abre tooltip "Identificador único usado nas URLs. Gerado automaticamente a partir do nome." ✓ (H10); nenhuma menção a GripVertical ou "service(s)" badge ✓ (H1+H8).
+- admin.settings: PageSectionHeader "Configurações" + FreshnessLabel ✓ (H1); SearchInput "Buscar por chave (ex.: PAYMENT_)" ✓ (H7); alert amber "Estas configurações afetam todo o sistema" ✓ (H5); cards agrupados (Pagamentos, Geolocalização, Site, Suporte, etc.) ✓; setting rows: key mono + "Secreto" badge (StatusBadge amber c/ Lock icon) + Info tooltip ("O que é payment_pix_key?") ✓ (H6+H10); input type=password em payment_pix_key + botão "Mostrar valor" → toggle → "Ocultar valor" ✓ (H5); caption "Para remover, limpe o valor e salve." em todas as 9 rows ✓ (H4); NENHUM botão "Salvar" por linha (verificado via DOM: 0 ocorrências) ✓ (H8); sticky bar aparece quando há dirty (testado editando um campo); busca "site" filtra para site_name+site_tagline em flat list com header "Resultados da busca" ✓ (H7).
+- Screenshots: /tmp/n4-taxonomy.png (126KB) e /tmp/n4-settings.png (170KB) salvos.
+
+Stage Summary:
+- 2 arquivos editados: src/components/admin/admin-taxonomy.tsx (907 → 1078 linhas) e src/components/admin/admin-settings.tsx (624 → 690 linhas). Nenhum outro arquivo tocado. Nenhuma API endpoint ou interface exportada alterada (AdminTaxonomy() e AdminSettings() continuam no-props).
+- Cobertura Nielsen admin-taxonomy: H1 (PageSectionHeader + ErrorState com retry + Skeleton durante loading + contagem de categorias + TODO comment sobre service count), H2 (CRITICAL: removido GripVisual visual-only; botões Mover p/ cima/baixo disabled c/ tooltip honesto "Reordenação disponível em breve"), H3 (ConfirmDialog destructive para delete; Cancelar disponível), H4 (CRITICAL: REMOVIDO slate do nível 2 — agora StatusBadge ÚNICA source of truth emerald/teal/zinc p/ levels 0/1/2), H5 (CRITICAL: Switch não é mais instantâneo — abre ConfirmToggleDialog antes do PATCH), H6 (CRITICAL: REMOVIDO free-text ícone — Select c/ 12 lucide icons + preview), H7 (botões Mover explícitos + tooltips em todos os icon-buttons), H8 (REMOVIDO badge "serviço(s)" sempre vazio), H9 (ErrorState com onRetry substitui Card inline; toast 409 com description específica), H10 (Info tooltip no campo Slug explicando o que é).
+- Cobertura Nielsen admin-settings: H1 (PageSectionHeader + FreshnessLabel duplo — header + toolbar), H3 (CRITICAL: Undo por campo via editHistory stack + Descartar tudo mantido), H4 (Caption "Para remover, limpe o valor e salve." em todas as rows; GROUP_TONE centralizado), H5 (CRITICAL: Eye/EyeOff toggle em inputs de segredo), H6 (CRITICAL: "Sigiloso" → "Secreto" com Lock icon), H7 (CRITICAL: SearchInput com flat list quando buscando), H8 (CRITICAL: REMOVIDO botão "Salvar" por linha — único caminho é sticky bar "Salvar tudo"), H9 (ErrorState + EmptyState do admin-shared substituem Cards inline), H10 (CRITICAL: SETTING_HELP map com 27 chaves + heurística por prefixo; Info tooltip condicional).
+- Imports consolidados: em admin-taxonomy REMOVIDOS AlertDialog* locais + slugify local + errMsg local (todos do admin-shared); em admin-settings REMOVIDOS Badge, errMsg local (usamos StatusBadge e errMsg do admin-shared).
+- Sem mudanças de API, schema Prisma, ou interface exportada. Dev server hot-reloadou sem erros de compilação.
+- Caveats: (a) Botões Mover p/ cima/baixo estão disabled porque /api/categories não tem endpoint PATCH /reorder ou similar — quando a API evoluir, basta habilitar e chamar PATCH /api/categories/[id] com { order: newOrder }. (b) Service count por categoria continua não implementado (TODO no código) — /api/categories não retorna contagem; adicionar quando /api/services?categoryId=X bulk-count existir. (c) SETTING_HELP cobre as 27 chaves mais comuns; chaves não mapeadas (ex.: platform_fee_percent, viacep_enabled, default_search_radius_km, quote_default_expiry_hours) não mostram Info tooltip — não inventamos descrições para chaves desconhecidas (H10 honestidade); adicionar ao map quando houver documentação oficial. (d) A busca de settings é client-side em todas as chaves carregadas (a API devolve tudo em /api/admin/settings) — funciona bem para o volume atual (~9 chaves). (e) Undo é por campo (LIFO) — desfaz a edição mais recente primeiro; o badge contador no botão "Desfazer" mostra quantas edições restam na pilha. (f) O sticky bar aparece apenas quando há dirty fields (dirty.size > 0) — quando não há, o admin vê os valores atuais sem distrações.
+
+---
+Task ID: N-FINAL
+Agent: orchestrator (admin panel Nielsen redesign E2E verification)
+Task: Verificar E2E todos os 7 painéis admin redesenhados com as 10 heurísticas de Nielsen.
+
+Work Log:
+- Criou `src/components/admin/admin-shared.tsx` (design system compartilhado, ~500 linhas) com: PageSectionHeader, FilterBar, SearchInput, TableSkeleton, EmptyState, ErrorState, Pagination, ResultCount, SavingPill, ConfirmDialog, ConfirmToggleDialog, Kbd, FreshnessLabel, StatusBadge, BookingStatusBadge, PaymentStatusBadge, RoleBadge, ActiveBadge, VerifiedBadge, initials, errMsg, slugify, bookingTone, bookingIcon, paymentTone, paymentIcon — UMA source of truth para tons/cores de status (H4).
+- Despachou 4 subagentes full-stack-developer em paralelo (N1-N4), cada com escopo não-sobreposto:
+  * N1: admin-dashboard.tsx (1035→799 linhas, −23%)
+  * N2: admin-users.tsx (893→657) + admin-providers.tsx (576→481)
+  * N3: admin-services.tsx (667→843) + admin-bookings.tsx (404→449)
+  * N4: admin-taxonomy.tsx (907→1078) + admin-settings.tsx (624→690)
+- Verificação E2E com Agent Browser (login admin@severinno.com → 7 views) + VLM + DOM:
+  * Dashboard: 4 KPIs (não 5+4), 2 charts (não 4), SEM "Saúde da plataforma" fake, FreshnessLabel ✓, period Select ✓, refresh btn ✓, ErrorState com retry ✓ (H1, H4, H5, H7, H8, H9)
+  * Taxonomy: SEM GripVertical drag handle (H2/H7), "Mover para cima/baixo" buttons ✓, icon Select com preview ✓, slug Info tooltip ✓, ConfirmToggleDialog no Switch ✓ (H4, H5, H6, H7, H10)
+  * Users: "Editar" visível (H6), ⋮ com secundárias, 27 tooltips (H10), RoleBadge/ActiveBadge do shared (H4), tabs com counts (H1), ConfirmToggleDialog (H5)
+  * Providers: SEM pill "N total" redundante (H8), "Ver perfil" visível SEM duplicar no ⋮ (H6), VerifiedBadge/ActiveBadge do shared (H4), ConfirmToggleDialog (H5), SavingPill inline (H1)
+  * Services: paginação 10/página (H1/H7), "Ver prestador" visível (H6), category badge único com tooltip (H8), sortable columns (H7), ConfirmToggleDialog (H5)
+  * Bookings: search box ✓ (H7), tabs com counts (H1), BookingStatusBadge do shared = MESMA cor do dashboard (H4 CRITICAL fix), rows clicáveis → dialog detalhes (H6), ErrorState com retry (H9)
+  * Settings: SEM per-row Save (H8), eye toggle em secrets (H5), "Secreto" não "Sigiloso" (H6), search por chave (H7), FreshnessLabel (H1), "Desfazer" per-field (H3), help tooltips (H10), "limpe o valor" caption (H4)
+- `bun run lint` → 0 errors. dev.log limpo.
+
+Stage Summary:
+- 8 arquivos editados: admin-shared.tsx (NOVO) + 7 views redesenhadas.
+- Total: 5330 → ~5500 linhas (admin-shared adicionou ~500 linhas compartilhadas; views reduziram duplicação).
+- BUG CRITICAL H4 corrigido: admin-bookings usava teal/emerald para IN_PROGRESS/COMPLETED; constants.ts + admin-dashboard usavam sky/zinc-800. Agora ambos usam BookingStatusBadge do admin-shared (emerald=completed, amber=pending, teal=in_progress, rose=cancelled).
+- BUG H1 corrigido: "Saúde da plataforma" com valores hardcoded ("99,98%", "142 ms") REMOVIDO do dashboard.
+- BUG H2/H7 corrigido: GripVertical drag handle visual-only (misleading affordance) REMOVIDO do taxonomy.
+- H5 implementado em TODAS as toggles: Switch de verificado/ativo agora abre ConfirmToggleDialog (antes era instantâneo sem undo).
+- VLM scores: Dashboard 6/10 (VLM misread — DOM confirma 4 KPIs/2 charts/0 fake), Bookings 9/10, Settings 7/10 (VLM não viu eye toggle — DOM confirma presente).
+- 10/10 heurísticas de Nielsen cobertas: H1 (status/freshness/skeleton/error-retry), H2 (sem affordances enganosos), H3 (Desfazer per-field), H4 (UMA source of truth cores), H5 (ConfirmToggleDialog + eye toggle), H6 (botões visíveis + "Secreto" + icon picker), H7 (search + sort + pagination + Kbd hints), H8 (declutter + single save), H9 (ErrorState com retry em todas views), H10 (tooltips em icon-buttons + slug help + setting help).
+
+---
+Task ID: 2
+Agent: Main Agent + 7 Subagents
+Task: Redesenhar todo o painel admin (desktop) seguindo as 10 heurísticas de Nielsen
+
+Work Log:
+- Analisou todos os 9 arquivos do admin panel (dashboard-shell, admin-panel, admin-dashboard, admin-shared, admin-taxonomy, admin-users, admin-providers, admin-services, admin-bookings, admin-settings)
+- Redesenhou DashboardShell: sidebar 260px com navegação limpa, topbar sem location chip, glass effect, footer refinado
+- Redesenhou admin-shared: StatusBadge rounded-md com ring, FilterBar sem shadow, SearchInput com focus ring, EmptyState/ErrorState refinados, Pagination compacta
+- Redesenhou Admin Dashboard: KPI cards sem shadow, seletor de período segmented control, charts clean (bar + pie), tabela recentes + top providers
+- Refinou Admin Taxonomy: tree table styling, dialog forms, level badges consistentes
+- Refinou Admin Users: table headers, edit dialog, role downgrade alert, sort headers
+- Refinou Admin Providers: table styling, action buttons, filter hints
+- Refinou Admin Services: table, category badges, provider links
+- Refinou Admin Bookings: tabs, detail dialog, count badges
+- Refinou Admin Settings: settings cards, sticky save bar, secret toggle
+- Verificou todos os 7 views no browser (agent-browser) sem erros de console
+
+Stage Summary:
+- Todos os 9 arquivos do admin panel foram redesenhados
+- Lint limpo, compilação sem erros, zero erros no console do browser
+- Heurísticas de Nielsen aplicadas: H1 (visibilidade), H2 (mundo real), H3 (controle), H4 (consistência), H5 (prevenção erros), H6 (reconhecimento), H7 (eficiência), H8 (minimalismo), H9 (recuperar erros)
+- Design: clean/minimalista, sem shadows, borders sutis border-border/50, tipografia refinada, avatares size-8, headers uppercase tracking-wider
