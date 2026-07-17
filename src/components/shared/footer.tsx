@@ -125,14 +125,38 @@ export default function Footer({
     }
 
     setSubmitting(true)
-    // Simulate API call — in production, this would call /api/newsletter
-    await new Promise((resolve) => setTimeout(resolve, 800))
-    setSubmitting(false)
-    setSubscribed(true)
-    setEmail("")
-    toast.success("Inscrição confirmada!", {
-      description: "Você receberá novidades e dicas no seu e-mail.",
-    })
+    try {
+      const res = await fetch("/api/newsletter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error("Erro ao inscrever", {
+          description: data.error || "Tente novamente mais tarde.",
+        })
+        return
+      }
+
+      setSubscribed(true)
+      setEmail("")
+      toast.success(
+        data.alreadySubscribed ? "E-mail já inscrito!" : "Inscrição confirmada!",
+        {
+          description: data.alreadySubscribed
+            ? "Você já receberá novidades e dicas no seu e-mail."
+            : "Você receberá novidades e dicas no seu e-mail.",
+        },
+      )
+    } catch {
+      toast.error("Erro de conexão", {
+        description: "Verifique sua internet e tente novamente.",
+      })
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const currentYear = new Date().getFullYear()

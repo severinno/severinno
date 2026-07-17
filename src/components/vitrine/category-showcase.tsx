@@ -622,9 +622,9 @@ export default function CategoryShowcase({
             <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">
               Serviços verificados perto de você —{" "}
               <span ref={countRef} className="font-semibold text-emerald-600 dark:text-emerald-400">
-                {countValue}
+                {isLoading ? "…" : countValue}
               </span>{" "}
-              categorias disponíveis
+              {isLoading ? "carregando categorias" : "categorias disponíveis"}
             </p>
           </div>
 

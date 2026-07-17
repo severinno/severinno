@@ -46,6 +46,8 @@ import CompareBar from "./compare-bar"
 import CompareModal from "./compare-modal"
 import BackToTop from "./back-to-top"
 import Footer from "../shared/footer"
+import AIChatWidget from "../shared/ai-chat-widget"
+import CookieConsent from "../shared/cookie-consent"
 import {
   DEFAULT_FILTERS,
   type FiltersState,
@@ -256,12 +258,16 @@ export default function Vitrine() {
 
       <Footer />
 
-      {/* Floating UI — compare bar + back-to-top */}
+      {/* Floating UI — compare bar + back-to-top + AI chat */}
       <CompareBar />
       <BackToTop />
+      <AIChatWidget />
 
       {/* Compare modal — portal-mounted by Radix */}
       <CompareModal />
+
+      {/* Cookie consent banner — LGPD compliance */}
+      <CookieConsent />
     </div>
   )
 }
