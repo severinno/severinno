@@ -1698,3 +1698,57 @@ Próximos passos recomendados:
 6. Implementar newsletter backend (integrar com serviço de email)
 7. Otimizar imagens com next/image (lazy loading + responsive)
 8. Adicionar schema.org JSON-LD para SEO (LocalBusiness, Service, Review)
+
+---
+Task ID: 8
+Agent: main (orchestrator + direct coding)
+Task: REDESENHAR TODO CABEÇALHO COM MELHORIAS E OTIMIZAÇÕES UX UI — Complete redesign of the Severinno vitrine Topbar header.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` to understand prior progress (Tasks 1-7: foundation, websocket, API routes, vitrine, modals, styling improvements)
+- Analyzed the existing topbar component (`src/components/vitrine/topbar.tsx`) — identified 10+ areas for UX/UI improvement
+- Read related files: vitrine.tsx, dashboard-shell.tsx, globals.css, store/index.ts, api.ts, constants.ts
+- **Completely rewrote** `src/components/vitrine/topbar.tsx` with major improvements:
+  1. **Scroll-aware header**: Shrinks from h-16 → h-14 on scroll, increases opacity/backdrop-blur, adds shadow-sm
+  2. **Animated logo**: Gradient text ("Sever" in emerald gradient + "inno" in foreground), MapPin icon with sparkle badge, hover scale + shadow effects, group hover animations
+  3. **Enhanced search bar**: Rounded-2xl glassmorphism input with focus expansion animation, animated clear button (AnimatePresence + motion), ⌘K keyboard shortcut hint, search glow animation on focus, richer autocomplete popover with icon badges and rounded-2xl shadow-2xl
+  4. **Notification bell**: New Popover-based notification center with unread count badge (spring animation), notification list with unread indicators, "Ver todas" link to dashboard, 30s staleTime + 60s refetchInterval
+  5. **Richer category nav**: Animated CategoryPill with layoutId "category-indicator" (framer-motion spring transition), gradient active state (from-primary to-emerald-600), scroll-aware background opacity
+  6. **Enhanced mobile sheet**: Rounded-l-2xl with shadow-2xl, staggered entrance animations for category items (delay i*0.03), gradient CTA button, better section spacing
+  7. **Micro-interactions**: Theme toggle with rotation animation (spring stiffness 200), compare badge with spring scale animation (stiffness 500 damping 15), notification badge with spring entrance, online status indicator (emerald dot with pulse animation), ChevronDown rotation on dropdown open
+  8. **User dropdown**: Richer card with gradient avatar fallback, ShieldCheck icon in role badge, online indicator dot, rounded-2xl shadow-2xl popover
+  9. **Auth buttons**: "Entrar" with hover:bg-primary/5 hover:text-primary, "Cadastrar" with gradient (from-primary to-emerald-600) + shadow-md + hover:brightness-110
+  10. **Location chip**: Gradient background (from-emerald-50 to-emerald-50/50), dark mode support, hover shadow-sm
+- Added CSS animations in `globals.css`:
+  - `topbar-sparkle-pulse`: Subtle pulse for logo sparkle badge
+  - `search-glow`: Emerald glow effect on search input focus
+  - `bell-swing`: Realistic bell swing animation on hover
+  - `pill-slide-in`: Category pill indicator animation
+  - `dot-pulse`: Unread notification dot pulse
+  - `online-pulse`: Online status indicator pulse with emerald ring
+  - Header transition and backdrop rules
+  - Command popover rounded corners override
+  - Custom backdrop blur for mobile sheet
+- Added new imports: `Bell`, `Sparkles`, `ShieldCheck` from lucide-react, `AnimatePresence` + `motion` from framer-motion, `useQuery` from @tanstack/react-query, `apiGet` from api.ts, `Separator` from ui/separator
+- Added `NotificationsResponse` type for notification bell data
+- Ran `bun run lint` — 0 errors
+- Ran `npx tsc --noEmit` — 0 errors in topbar.tsx (pre-existing errors only in prisma/populate.ts and examples/)
+- Built production server successfully with `next build`
+- Verified production server returns 200 OK with correct HTML via curl
+- Verified with agent-browser snapshot that the redesigned header renders correctly (logo, search, categories, auth buttons, etc.)
+- **Memory constraint issue**: The sandbox (4GB RAM) experiences OOM kills when both Chrome (agent-browser) and the Next.js dev server run concurrently. This is a sandbox limitation, not a code bug. The production build works correctly when accessed via curl.
+
+Stage Summary:
+- **Files modified**:
+  - `src/components/vitrine/topbar.tsx` — Complete rewrite with 10 major UX/UI improvements
+  - `src/app/globals.css` — Added 7 CSS keyframe animations and styling rules for the header
+- **Key design decisions**:
+  - Scroll-aware header with shrink/blur transitions
+  - Framer Motion for all micro-interactions (spring physics, AnimatePresence)
+  - Notification bell with live query (30s stale, 60s refetch)
+  - Gradient active state for category pills with layoutId animation
+  - Glassmorphism search with animated clear button and ⌘K hint
+  - Online status indicator with pulse animation
+  - All animations use emerald color scheme (no indigo/blue)
+- **Verified**: Lint clean, TypeScript clean (topbar), production build compiles, HTTP 200 with correct HTML, agent-browser snapshot shows all elements correctly rendered
+- **Known issue**: OOM kills in sandbox when Chrome + Next.js dev server run concurrently — not a code defect
