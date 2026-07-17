@@ -2294,3 +2294,18 @@ Stage Summary:
 2. Add dark mode toggle improvements
 3. Add more provider detail page features
 4. Consider adding image generation for provider avatars
+
+---
+Task ID: fix-duplicate-key-Q
+Agent: main
+Task: Fix React duplicate key "Q" console error in how-it-works.tsx
+
+Work Log:
+- Diagnosed the issue: `["S","T","Q","Q","S","S","D"].map(d => <span key={d}>{d}</span>)` at line 162 of how-it-works.tsx had two "Q" characters (Quarta/Quinta) using identical keys
+- Fixed by changing `key={d}` to `key={${d}-${i}}` using the index to ensure uniqueness
+- Verified with agent-browser: no more console errors, calendar renders correctly with "S T Q Q S S D"
+
+Stage Summary:
+- Duplicate key "Q" React error fixed in how-it-works.tsx
+- Console now shows only info/log/warning messages (no errors)
+- App continues to function correctly on all sections
