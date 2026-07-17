@@ -367,7 +367,10 @@ export function AdminUsers() {
     <button
       type="button"
       onClick={() => toggleSort(sortKey)}
-      className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+      className={cn(
+        "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground",
+        sort?.key === sortKey && "text-foreground",
+      )}
     >
       {label}
       {sort?.key === sortKey ? (
@@ -397,7 +400,7 @@ export function AdminUsers() {
           setPage(1)
         }}
       >
-        <TabsList className="h-auto flex-wrap gap-1 bg-card p-1 shadow-sm">
+        <TabsList className="h-auto flex-wrap gap-1 bg-card p-1">
           {(
             [
               { value: "ALL", label: "Todos", icon: Users },
@@ -492,7 +495,7 @@ export function AdminUsers() {
 
       {/* Honest about client-side filter — H2 */}
       {clientFilterActive ? (
-        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300">
+        <span className="-mt-2 inline-flex items-center gap-1 text-[11px] text-amber-600/80 dark:text-amber-400/80">
           <ShieldQuestion className="size-3" />
           Filtro de verificação/status aplicado apenas à página atual
         </span>
@@ -527,32 +530,32 @@ export function AdminUsers() {
           }
         />
       ) : (
-        <Card className="overflow-hidden">
+        <Card className="rounded-xl border border-border/50 bg-card overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="h-11 bg-muted/50 hover:bg-muted/50">
+                  <TableRow className="bg-muted/30 h-10 hover:bg-muted/30">
                     <TableHead>{renderSortHeader("Usuário", "name")}</TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Perfil
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground md:table-cell">
+                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:table-cell">
                       Contato
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:table-cell">
+                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:table-cell">
                       Cidade
                     </TableHead>
-                    <TableHead className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Verificado
                     </TableHead>
-                    <TableHead className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Status
                     </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Criado em", "createdAt")}
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Ações
                     </TableHead>
                   </TableRow>
@@ -567,15 +570,15 @@ export function AdminUsers() {
                     return (
                       <TableRow
                         key={u.id}
-                        className="h-14 border-b transition-colors last:border-0 hover:bg-muted/30"
+                        className="h-12 border-b border-border/50 transition-colors last:border-0 hover:bg-muted/20"
                       >
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <Avatar className="size-9 shrink-0">
+                            <Avatar className="size-8 shrink-0">
                               {u.avatarUrl ? (
                                 <AvatarImage src={u.avatarUrl} alt={u.name} />
                               ) : null}
-                              <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+                              <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
                                 {initials(u.name)}
                               </AvatarFallback>
                             </Avatar>
@@ -733,7 +736,7 @@ export function AdminUsers() {
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() => setDeleteTarget(u)}
-                                  className="gap-2 text-rose-600 focus:text-rose-700"
+                                  className="gap-2 text-rose-600"
                                 >
                                   <Trash2 className="size-3.5" />
                                   Excluir
@@ -839,9 +842,9 @@ function EditUserDialog({
 
   return (
     <Dialog open={!!user} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Editar usuário</DialogTitle>
+          <DialogTitle className="text-lg font-semibold">Editar usuário</DialogTitle>
           <DialogDescription>
             Edição administrativa limitada aos campos abaixo. Para alterar a
             senha, o usuário deve usar o fluxo de recuperação.
@@ -853,7 +856,7 @@ function EditUserDialog({
             e.preventDefault()
             onSubmit({ name, role, whatsapp, city, state })
           }}
-          className="flex flex-col gap-3 py-1"
+          className="flex flex-col gap-4 py-1"
         >
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="u-name">Nome</Label>
@@ -863,12 +866,13 @@ function EditUserDialog({
               onChange={(e) => setName(e.target.value)}
               required
               minLength={2}
+              className="h-9 rounded-lg border-input/60"
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="u-role">Perfil</Label>
             <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
-              <SelectTrigger id="u-role">
+              <SelectTrigger id="u-role" className="h-9 rounded-lg border-input/60">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -881,7 +885,7 @@ function EditUserDialog({
 
           {/* H5 — Destructive action warning */}
           {demotingFromAdmin ? (
-            <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            <Alert className="border-amber-200/60 bg-amber-50/50 text-amber-800 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
               <AlertTriangle className="size-4" />
               <AlertTitle>Remover privilégios de administrador?</AlertTitle>
               <AlertDescription>
@@ -899,6 +903,7 @@ function EditUserDialog({
                 value={whatsapp}
                 onChange={(e) => setWhatsapp(e.target.value)}
                 placeholder="(11) 99999-9999"
+                className="h-9 rounded-lg border-input/60"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -909,6 +914,7 @@ function EditUserDialog({
                 onChange={(e) => setState(e.target.value.toUpperCase().slice(0, 2))}
                 maxLength={2}
                 placeholder="SP"
+                className="h-9 rounded-lg border-input/60"
               />
             </div>
           </div>
@@ -919,10 +925,11 @@ function EditUserDialog({
               value={city}
               onChange={(e) => setCity(e.target.value)}
               placeholder="São Paulo"
+              className="h-9 rounded-lg border-input/60"
             />
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button
               type="button"
               variant="outline"

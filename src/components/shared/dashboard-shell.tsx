@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils"
 import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
 import { formatRelative } from "@/lib/format"
 import { apiGet, apiPatch } from "@/lib/api"
-import { useAuthStore, useGeoStore, useViewStore } from "@/store"
+import { useAuthStore, useViewStore } from "@/store"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -80,6 +80,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -168,6 +169,20 @@ const cardMotion = {
 } as const
 
 // ---------------------------------------------------------------------------
+// Shared nav item styles — used by both desktop SidebarMenuButton and mobile Sheet
+// ---------------------------------------------------------------------------
+
+const NAV_ITEM_ACTIVE =
+  "!bg-primary/5 !text-foreground font-medium hover:!bg-primary/8"
+
+const NAV_ITEM_INACTIVE =
+  "!text-muted-foreground hover:!bg-accent/60 hover:!text-foreground"
+
+const NAV_ICON_ACTIVE = "!text-primary"
+
+const NAV_ICON_INACTIVE = "!text-muted-foreground"
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -188,8 +203,6 @@ export function DashboardShell({
   const logout = useAuthStore((s) => s.logout)
   const navigate = useViewStore((s) => s.navigate)
   const { resolvedTheme, setTheme } = useTheme()
-  const { city, status: geoStatus, setFromGPS } = useGeoStore()
-  const [locating, setLocating] = React.useState(false)
   const [mobileOpen, setMobileOpen] = React.useState(false)
 
   // ---- Notifications query (auto-refresh 30s) -------------------------------
@@ -221,31 +234,40 @@ export function DashboardShell({
   const unreadCount = notificationsQuery.data?.unreadCount ?? 0
   const notifItems = notificationsQuery.data?.items ?? []
 
-  const handleLocate = React.useCallback(async () => {
-    setLocating(true)
-    try {
-      await setFromGPS()
-    } finally {
-      setLocating(false)
-    }
-  }, [setFromGPS])
-
   const handleNav = (view: string) => {
     setMobileOpen(false)
     onNavigate(view)
   }
 
-  // ---- Sidebar nav (shared between desktop Sidebar and mobile Sheet) -------
-  // Note: SidebarMenuButton's default active styles are overridden with `!` to
-  // use the emerald-tinted active treatment spec'd for this dashboard.
+  // ---- Sidebar header -------------------------------------------------------
+  const sidebarHeader = (
+    <SidebarHeader className="pb-0">
+      <div className="flex items-center gap-3 px-3 pt-3 pb-4">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <PanelIcon className="size-[18px]" />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold tracking-tight text-foreground">
+            {APP_NAME}
+          </p>
+          <p className="truncate text-[11px] font-medium text-muted-foreground/70">
+            {panelLabel}
+          </p>
+        </div>
+      </div>
+      <SidebarSeparator className="mx-3 w-auto" />
+    </SidebarHeader>
+  )
+
+  // ---- Sidebar nav (desktop) -----------------------------------------------
   const navList = (
     <SidebarGroup>
-      <SidebarGroupLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {panelLabel}
+      <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground/70 px-3 h-7">
+        Navegação
       </SidebarGroupLabel>
       <SidebarGroupContent>
-        <SidebarMenu className="gap-1">
-          {navItems.map((item, index) => {
+        <SidebarMenu className="gap-px px-2">
+          {navItems.map((item) => {
             const Icon = item.icon
             const active = currentView === item.view
             return (
@@ -253,38 +275,24 @@ export function DashboardShell({
                 <SidebarMenuButton
                   isActive={active}
                   onClick={() => handleNav(item.view)}
-                  tooltip={{
-                    children: (
-                      <span className="flex items-center gap-2">
-                        <span className="text-sm font-semibold">{item.label}</span>
-                        <kbd className="inline-flex h-4 min-w-4 items-center justify-center rounded bg-white/20 px-1 text-[10px] font-medium text-white/80">
-                          {index + 1}
-                        </kbd>
-                      </span>
-                    ),
-                    className: "text-sm font-medium px-3.5 py-2 shadow-lg",
-                    sideOffset: 8,
-                  }}
+                  tooltip={item.label}
                   size="lg"
                   className={cn(
-                    "relative h-10 rounded-lg text-sm font-normal",
-                    active
-                      ? "!bg-primary/10 !text-primary font-medium hover:!bg-primary/15 hover:!text-primary"
-                      : "hover:bg-accent hover:text-accent-foreground",
+                    "relative h-10 rounded-lg text-sm font-normal transition-colors duration-150",
+                    active ? NAV_ITEM_ACTIVE : NAV_ITEM_INACTIVE,
                   )}
                 >
-                  <Icon className="size-4 shrink-0" />
-                  <span className="truncate">{item.label}</span>
+                  <Icon
+                    className={cn(
+                      "size-[18px] shrink-0 transition-colors duration-150",
+                      active ? NAV_ICON_ACTIVE : NAV_ICON_INACTIVE,
+                    )}
+                  />
+                  <span className="truncate text-[14px]">{item.label}</span>
                   {item.badge != null && item.badge !== 0 ? (
                     <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
                       {item.badge}
                     </span>
-                  ) : null}
-                  {active ? (
-                    <span
-                      aria-hidden
-                      className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
-                    />
                   ) : null}
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -295,43 +303,27 @@ export function DashboardShell({
     </SidebarGroup>
   )
 
-  const sidebarHeader = (
-    <SidebarHeader>
-      <div className="flex items-center gap-2.5 px-2 py-2">
-        <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <PanelIcon className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">
-            {panelLabel}
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {APP_NAME}
-          </p>
-        </div>
-      </div>
-    </SidebarHeader>
-  )
-
+  // ---- Sidebar footer -------------------------------------------------------
   const sidebarFooter = (
-    <SidebarFooter>
-      <div className="flex items-center gap-2.5 rounded-lg border bg-muted/30 p-2">
-        <Avatar className="size-9">
+    <SidebarFooter className="mt-auto">
+      <SidebarSeparator className="mx-3 w-auto" />
+      <div className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5">
+        <Avatar className="size-8 shrink-0">
           {user?.avatarUrl ? (
             <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
           ) : null}
-          <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+          <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
             {initials(user?.name)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium leading-tight">
+          <p className="truncate text-[13px] font-medium leading-tight text-foreground">
             {user?.name ?? "Visitante"}
           </p>
           {user?.role ? (
             <Badge
               variant="secondary"
-              className="mt-0.5 h-4 px-1.5 text-[10px] font-medium"
+              className="mt-1 h-4 px-1.5 text-[10px] font-medium"
             >
               {ROLE_LABELS[user.role]}
             </Badge>
@@ -340,7 +332,7 @@ export function DashboardShell({
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+          className="size-8 shrink-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
           onClick={() => logout()}
           aria-label="Sair"
           title="Sair"
@@ -351,8 +343,83 @@ export function DashboardShell({
     </SidebarFooter>
   )
 
+  // ---- Mobile nav items (shared styling) ------------------------------------
+  const mobileNavItems = navItems.map((item) => {
+    const Icon = item.icon
+    const active = currentView === item.view
+    return (
+      <button
+        key={item.view}
+        type="button"
+        onClick={() => handleNav(item.view)}
+        className={cn(
+          "flex h-10 w-full min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-normal outline-none transition-colors duration-150",
+          active
+            ? "bg-primary/5 text-foreground font-medium"
+            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+        )}
+      >
+        <Icon
+          className={cn(
+            "size-[18px] shrink-0 transition-colors duration-150",
+            active ? "text-primary" : "text-muted-foreground",
+          )}
+        />
+        <span className="truncate text-[14px]">{item.label}</span>
+        {item.badge != null && item.badge !== 0 ? (
+          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+            {item.badge}
+          </span>
+        ) : null}
+      </button>
+    )
+  })
+
+  // ---- Mobile sidebar user footer -------------------------------------------
+  const mobileFooter = (
+    <div className="border-t">
+      <div className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5">
+        <Avatar className="size-8 shrink-0">
+          {user?.avatarUrl ? (
+            <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
+          ) : null}
+          <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
+            {initials(user?.name)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium leading-tight text-foreground">
+            {user?.name ?? "Visitante"}
+          </p>
+          {user?.role ? (
+            <Badge
+              variant="secondary"
+              className="mt-1 h-4 px-1.5 text-[10px] font-medium"
+            >
+              {ROLE_LABELS[user.role]}
+            </Badge>
+          ) : null}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8 shrink-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+          onClick={() => {
+            setMobileOpen(false)
+            logout()
+          }}
+          aria-label="Sair"
+        >
+          <LogOut className="size-4" />
+        </Button>
+      </div>
+    </div>
+  )
+
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      style={{ "--sidebar-width": "16.25rem" } as React.CSSProperties}
+    >
       <div
         className={cn(
           "flex min-h-svh w-full flex-col bg-background",
@@ -361,7 +428,7 @@ export function DashboardShell({
       >
         <div className="flex flex-1">
           {/* Desktop sidebar */}
-          <Sidebar collapsible="icon" className="border-r">
+          <Sidebar collapsible="icon" className="border-r border-border/50">
             {sidebarHeader}
             <SidebarContent>{navList}</SidebarContent>
             {sidebarFooter}
@@ -369,97 +436,39 @@ export function DashboardShell({
 
           {/* Mobile sidebar (Sheet) */}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetContent side="left" className="w-[80vw] border-r p-0 sm:max-w-sm">
+            <SheetContent
+              side="left"
+              className="w-[80vw] border-r border-border/50 p-0 sm:max-w-sm"
+            >
               <SheetHeader className="sr-only">
                 <SheetTitle>{panelLabel}</SheetTitle>
               </SheetHeader>
               <div className="flex h-full flex-col">
-                <div className="flex items-center gap-2.5 border-b p-3">
-                  <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-                    <PanelIcon className="size-5" />
+                {/* Mobile header — same design as desktop */}
+                <div className="flex items-center gap-3 border-b border-border/50 px-4 py-4">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                    <PanelIcon className="size-[18px]" />
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{panelLabel}</p>
-                    <p className="truncate text-xs text-muted-foreground">
+                    <p className="truncate text-sm font-bold tracking-tight text-foreground">
                       {APP_NAME}
+                    </p>
+                    <p className="truncate text-[11px] font-medium text-muted-foreground/70">
+                      {panelLabel}
                     </p>
                   </div>
                 </div>
+                {/* Mobile nav */}
                 <ScrollArea className="flex-1">
-                  <nav className="flex flex-col gap-1 p-2">
-                    {navItems.map((item) => {
-                      const Icon = item.icon
-                      const active = currentView === item.view
-                      return (
-                        <button
-                          key={item.view}
-                          type="button"
-                          onClick={() => handleNav(item.view)}
-                          className={cn(
-                            "relative flex h-10 min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-medium outline-none transition-colors",
-                            active
-                              ? "bg-primary/10 text-primary hover:bg-primary/15"
-                              : "text-foreground hover:bg-accent hover:text-accent-foreground",
-                          )}
-                        >
-                          {active ? (
-                            <span
-                              aria-hidden
-                              className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-primary"
-                            />
-                          ) : null}
-                          <Icon className="size-4 shrink-0" />
-                          <span className="truncate">{item.label}</span>
-                          {item.badge != null && item.badge !== 0 ? (
-                            <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
-                              {item.badge}
-                            </span>
-                          ) : null}
-                        </button>
-                      )
-                    })}
-                  </nav>
-                </ScrollArea>
-                <div className="border-t p-3">
-                  <div className="flex items-center gap-2.5 rounded-lg border bg-muted/30 p-2">
-                    <Avatar className="size-9">
-                      {user?.avatarUrl ? (
-                        <AvatarImage
-                          src={user.avatarUrl}
-                          alt={user.name ?? ""}
-                        />
-                      ) : null}
-                      <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
-                        {initials(user?.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium leading-tight">
-                        {user?.name ?? "Visitante"}
-                      </p>
-                      {user?.role ? (
-                        <Badge
-                          variant="secondary"
-                          className="mt-0.5 h-4 px-1.5 text-[10px] font-medium"
-                        >
-                          {ROLE_LABELS[user.role]}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        setMobileOpen(false)
-                        logout()
-                      }}
-                      aria-label="Sair"
-                    >
-                      <LogOut className="size-4" />
-                    </Button>
+                  <div className="flex flex-col gap-px p-3">
+                    <p className="mb-2 px-3 text-[11px] uppercase tracking-wider font-medium text-muted-foreground/70">
+                      Navegação
+                    </p>
+                    {mobileNavItems}
                   </div>
-                </div>
+                </ScrollArea>
+                {/* Mobile footer */}
+                <div className="p-3">{mobileFooter}</div>
               </div>
             </SheetContent>
           </Sheet>
@@ -467,173 +476,166 @@ export function DashboardShell({
           {/* Main inset */}
           <SidebarInset>
             {/* Topbar */}
-            <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/80 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/65 md:px-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 md:hidden"
-                onClick={() => setMobileOpen(true)}
-                aria-label="Abrir menu"
-              >
-                <Menu className="size-5" />
-              </Button>
-              <SidebarTrigger className="hidden size-9 md:flex" />
+            <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border/50 bg-background/80 backdrop-blur-md px-4 supports-[backdrop-filter]:bg-background/60 lg:px-6">
+              {/* Left section */}
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                {/* Mobile menu button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 text-muted-foreground hover:text-foreground lg:hidden"
+                  onClick={() => setMobileOpen(true)}
+                  aria-label="Abrir menu"
+                >
+                  <Menu className="size-5" />
+                </Button>
 
-              <div className="min-w-0 flex-1">
-                {breadcrumbs && breadcrumbs.length > 0 ? (
-                  <nav
-                    aria-label="Trilha de navegação"
-                    className="flex items-center gap-1 text-xs text-muted-foreground"
-                  >
-                    {breadcrumbs.map((b, i) => (
-                      <React.Fragment key={i}>
-                        {b.onClick ? (
-                          <button
-                            type="button"
-                            onClick={b.onClick}
-                            className="outline-none hover:text-primary focus-visible:underline"
-                          >
-                            {b.label}
-                          </button>
-                        ) : (
-                          <span>{b.label}</span>
-                        )}
-                        {i < breadcrumbs.length - 1 ? (
-                          <ChevronRight className="size-3" />
-                        ) : null}
-                      </React.Fragment>
-                    ))}
-                  </nav>
-                ) : null}
-                <h1 className="truncate text-base font-semibold tracking-tight text-foreground md:text-lg">
-                  {title}
-                </h1>
-                {subtitle ? (
-                  <p className="hidden truncate text-xs text-muted-foreground sm:block">
-                    {subtitle}
-                  </p>
-                ) : null}
+                {/* Desktop sidebar trigger */}
+                <SidebarTrigger className="hidden size-9 text-muted-foreground hover:text-foreground lg:flex" />
+
+                {/* Title block */}
+                <div className="min-w-0">
+                  {breadcrumbs && breadcrumbs.length > 0 ? (
+                    <nav
+                      aria-label="Trilha de navegação"
+                      className="flex items-center gap-1 text-xs text-muted-foreground"
+                    >
+                      {breadcrumbs.map((b, i) => (
+                        <React.Fragment key={i}>
+                          {b.onClick ? (
+                            <button
+                              type="button"
+                              onClick={b.onClick}
+                              className="outline-none transition-colors hover:text-foreground focus-visible:underline"
+                            >
+                              {b.label}
+                            </button>
+                          ) : (
+                            <span>{b.label}</span>
+                          )}
+                          {i < breadcrumbs.length - 1 ? (
+                            <ChevronRight className="size-3 text-muted-foreground/50" />
+                          ) : null}
+                        </React.Fragment>
+                      ))}
+                    </nav>
+                  ) : null}
+                  <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+                    {title}
+                  </h1>
+                  {subtitle ? (
+                    <p className="hidden truncate text-sm text-muted-foreground md:block">
+                      {subtitle}
+                    </p>
+                  ) : null}
+                </div>
               </div>
 
-              {/* Location chip */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLocate}
-                disabled={locating || geoStatus === "locating"}
-                className="hidden h-9 max-w-[14rem] gap-2 rounded-full border bg-card px-3 sm:flex"
-                aria-label="Usar minha localização"
-                title="Usar minha localização"
-              >
-                {locating || geoStatus === "locating" ? (
-                  <Loader2 className="size-4 animate-spin text-primary" />
-                ) : (
-                  <MapPin className="size-4 text-primary" />
-                )}
-                <span className="truncate text-xs font-medium">
-                  {city || "Definir localização"}
-                </span>
-              </Button>
+              {/* Right section */}
+              <div className="flex items-center gap-0.5">
+                {/* Theme toggle */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 text-muted-foreground hover:text-foreground"
+                  onClick={() =>
+                    setTheme(resolvedTheme === "dark" ? "light" : "dark")
+                  }
+                  aria-label="Alternar tema"
+                  title="Alternar tema"
+                >
+                  <Sun className="size-[18px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                  <Moon className="absolute size-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                </Button>
 
-              {/* Theme toggle */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 text-muted-foreground hover:text-foreground"
-                onClick={() =>
-                  setTheme(resolvedTheme === "dark" ? "light" : "dark")
-                }
-                aria-label="Alternar tema"
-                title="Alternar tema"
-              >
-                <Sun className="size-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                <Moon className="absolute size-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              </Button>
+                {/* Notifications */}
+                <NotificationsBell
+                  items={notifItems}
+                  unreadCount={unreadCount}
+                  isLoading={notificationsQuery.isLoading}
+                  onMarkRead={(id) => markReadMutation.mutate(id)}
+                  onMarkAllRead={(ids) => markAllReadMutation.mutate(ids)}
+                  markingAll={markAllReadMutation.isPending}
+                />
 
-              {/* Notifications */}
-              <NotificationsBell
-                items={notifItems}
-                unreadCount={unreadCount}
-                isLoading={notificationsQuery.isLoading}
-                onMarkRead={(id) => markReadMutation.mutate(id)}
-                onMarkAllRead={(ids) => markAllReadMutation.mutate(ids)}
-                markingAll={markAllReadMutation.isPending}
-              />
+                {/* Divider before user avatar */}
+                <Separator orientation="vertical" className="mx-1.5 h-5 bg-border/50" />
 
-              {/* User dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-full p-0.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label="Menu da conta"
-                  >
-                    <Avatar className="size-9">
-                      {user?.avatarUrl ? (
-                        <AvatarImage
-                          src={user.avatarUrl}
-                          alt={user.name ?? ""}
-                        />
+                {/* User dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 rounded-full p-0.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                      aria-label="Menu da conta"
+                    >
+                      <Avatar className="size-8">
+                        {user?.avatarUrl ? (
+                          <AvatarImage
+                            src={user.avatarUrl}
+                            alt={user.name ?? ""}
+                          />
+                        ) : null}
+                        <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
+                          {initials(user?.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-60">
+                    <DropdownMenuLabel className="flex flex-col gap-1">
+                      <span className="truncate">{user?.name}</span>
+                      <span className="truncate text-xs font-normal text-muted-foreground">
+                        {user?.email}
+                      </span>
+                      {user?.role ? (
+                        <Badge
+                          variant="secondary"
+                          className="mt-1 w-fit text-[10px]"
+                        >
+                          {ROLE_LABELS[user.role]}
+                        </Badge>
                       ) : null}
-                      <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
-                        {initials(user?.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-60">
-                  <DropdownMenuLabel className="flex flex-col gap-1">
-                    <span className="truncate">{user?.name}</span>
-                    <span className="truncate text-xs font-normal text-muted-foreground">
-                      {user?.email}
-                    </span>
-                    {user?.role ? (
-                      <Badge
-                        variant="secondary"
-                        className="mt-1 w-fit text-[10px]"
-                      >
-                        {ROLE_LABELS[user.role]}
-                      </Badge>
-                    ) : null}
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      if (user?.role) navigate(DASHBOARD_VIEW[user.role])
-                    }}
-                  >
-                    <LayoutDashboard className="size-4" />
-                    Meu painel
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      navigate("vitrine")
-                    }}
-                  >
-                    <MapPin className="size-4" />
-                    Voltar à vitrine
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => logout()}
-                  >
-                    <LogOut className="size-4" />
-                    Sair
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        if (user?.role) navigate(DASHBOARD_VIEW[user.role])
+                      }}
+                    >
+                      <LayoutDashboard className="size-4" />
+                      Meu painel
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        navigate("vitrine")
+                      }}
+                    >
+                      <MapPin className="size-4" />
+                      Voltar à vitrine
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() => logout()}
+                    >
+                      <LogOut className="size-4" />
+                      Sair
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </header>
 
             {/* Main scroll area */}
             <main className="flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">
                 {children}
               </div>
 
               {/* Thin copyright bar */}
-              <footer className="mt-auto border-t bg-card/50">
-                <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-1 px-4 py-3 text-xs text-muted-foreground sm:flex-row md:px-6">
+              <footer className="mt-auto border-t border-border/50">
+                <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-1 px-6 py-3 text-xs text-muted-foreground sm:flex-row">
                   <p>
                     © {new Date().getFullYear()} {APP_NAME}. Todos os direitos
                     reservados.
@@ -686,7 +688,7 @@ function NotificationsBell({
             unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""
           }`}
         >
-          <Bell className="size-5" />
+          <Bell className="size-[18px]" />
           {unreadCount > 0 ? (
             <span
               className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground ring-2 ring-background"

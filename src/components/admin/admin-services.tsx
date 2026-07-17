@@ -360,7 +360,7 @@ export function AdminServices() {
       type="button"
       onClick={() => toggleSort(sortKey)}
       className={cn(
-        "inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground",
+        "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground",
         align === "right" && "flex-row-reverse",
       )}
     >
@@ -519,31 +519,31 @@ export function AdminServices() {
           }
         />
       ) : (
-        <Card className="overflow-hidden">
+        <Card className="rounded-xl border border-border/50 bg-card overflow-hidden">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="h-11 bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableRow className="bg-muted/30 h-10">
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Serviço
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Prestador
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground md:table-cell">
+                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:table-cell">
                       Categoria
                     </TableHead>
                     <TableHead className="text-right">
                       {renderSortHeader("Preço", "basePrice", "right")}
                     </TableHead>
-                    <TableHead className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Ativo
                     </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Criado", "createdAt")}
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Ações
                     </TableHead>
                   </TableRow>
@@ -560,7 +560,7 @@ export function AdminServices() {
                       <TableRow
                         key={s.id}
                         className={cn(
-                          "h-14 border-b transition-colors last:border-0 hover:bg-muted/30",
+                          "h-12 border-b border-border/50 transition-colors last:border-0 hover:bg-muted/20",
                           !s.active && "opacity-70",
                         )}
                       >
@@ -590,7 +590,7 @@ export function AdminServices() {
                         </TableCell>
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <Avatar className="size-7 shrink-0">
+                            <Avatar className="size-8 shrink-0">
                               {s.provider.avatarUrl ? (
                                 <AvatarImage
                                   src={s.provider.avatarUrl}
@@ -602,7 +602,7 @@ export function AdminServices() {
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-xs font-medium">
+                              <p className="truncate text-xs font-medium hover:text-primary transition-colors">
                                 {s.provider.name}
                               </p>
                               <p className="truncate text-[10px] text-muted-foreground">
@@ -757,7 +757,7 @@ export function AdminServices() {
             </div>
 
             {/* Result count + Pagination — H1 + H7 */}
-            <div className="flex flex-col items-center justify-between gap-2 border-t px-4 py-3 sm:flex-row">
+            <div className="flex flex-col items-center justify-between gap-2 border-t border-border/50 px-4 py-3 sm:flex-row">
               <ResultCount
                 page={safePage}
                 limit={limit}

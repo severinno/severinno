@@ -345,7 +345,7 @@ export function AdminSettings() {
       </Alert>
 
       {/* Toolbar — H7 busca + contagem + H1 freshness + nova */}
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-3 rounded-xl border border-border/50 bg-card p-3 shadow-none sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             {isLoading
@@ -433,8 +433,8 @@ export function AdminSettings() {
             const meta = GROUP_META[group] ?? GROUP_META.default
             const GroupIcon = meta.icon
             return (
-              <Card key={group} className="overflow-hidden">
-                <div className="flex items-center justify-between border-b p-5">
+              <Card key={group} className="rounded-xl border border-border/50 bg-card shadow-none overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border/50 p-5">
                   <div className="flex items-center gap-3">
                     <span
                       className={cn(
@@ -446,7 +446,7 @@ export function AdminSettings() {
                     </span>
                     <div>
                       <p className="text-base font-semibold">{meta.label}</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[11px] text-muted-foreground/70">
                         {meta.description}
                       </p>
                     </div>
@@ -477,7 +477,7 @@ export function AdminSettings() {
 
       {/* H8 — UM único caminho de salvar: sticky bar (sem botão por linha) */}
       {dirty.size > 0 ? (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/50 bg-background/95 backdrop-blur-sm">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground tabular-nums">
@@ -584,7 +584,7 @@ function SettingRow({
         "flex flex-col gap-1.5 rounded-lg border p-3 transition-colors",
         isDirty
           ? "border-primary/40 bg-primary/5"
-          : "border-border bg-card",
+          : "border-border/50 bg-card",
       )}
     >
       {/* Linha 1 — chave + badges + updatedAt + Info tooltip (H10) */}
@@ -592,7 +592,7 @@ function SettingRow({
         <div className="flex min-w-0 items-center gap-1.5">
           <Label
             htmlFor={`set-${setting.key}`}
-            className="truncate font-mono text-[11px] font-medium tracking-tight text-foreground"
+            className="truncate font-mono text-xs font-medium tracking-tight text-foreground"
           >
             {setting.key}
           </Label>
@@ -607,7 +607,7 @@ function SettingRow({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="text-muted-foreground transition-colors hover:text-foreground"
+                  className="text-muted-foreground/60 transition-colors hover:text-foreground"
                   aria-label={`O que é ${setting.key}?`}
                 >
                   <Info className="size-3.5" />
@@ -637,7 +637,7 @@ function SettingRow({
             value={draftValue}
             onChange={(e) => onValueChange(setting.key, e.target.value)}
             type={isSecret && !isRevealed ? "password" : "text"}
-            className="h-9 pr-9 font-mono text-xs"
+            className="h-8 pr-9 font-mono text-sm border-input/60 rounded-lg"
             spellCheck={false}
             autoComplete="off"
           />
@@ -647,7 +647,7 @@ function SettingRow({
                 <button
                   type="button"
                   onClick={() => onToggleReveal(setting.key)}
-                  className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
                   aria-label={isRevealed ? "Ocultar valor" : "Mostrar valor"}
                   aria-pressed={isRevealed}
                 >
@@ -709,15 +709,15 @@ function FlatResultsList({
     )
   }
   return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center justify-between border-b p-5">
+    <Card className="rounded-xl border border-border/50 bg-card shadow-none overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border/50 p-5">
         <div className="flex items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <SettingsIcon className="size-4" />
           </span>
           <div>
             <p className="text-base font-semibold">Resultados da busca</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground/70">
               {items.length}{" "}
               {items.length === 1 ? "configuração encontrada" : "configurações encontradas"}
             </p>

@@ -1,0 +1,981 @@
+     1→"use client"
+     2→
+     3→/**
+     4→ * AdminSettings — editor dinâmico de configurações (console tipo .env).
+     5→ *
+     6→ * Heurísticas de Nielsen aplicadas neste redesign:
+     7→ *   H1  Visibilidade do status  → FreshnessLabel + SavingPill no sticky bar
+     8→ *   H3  Controle e liberdade    → Undo por campo (pilha de edições) + Descartar tudo
+     9→ *   H4  Consistência            → UMA cor por grupo; StatusBadge p/ "Secreto"
+    10→ *   H5  Prevenção de erros      → Eye/EyeOff p/ revelar segredos; warning banner
+    11→ *   H6  Reconhecimento          → "Secreto" (claro) em vez de "Sigiloso"; Info tooltip por chave
+    12→ *   H7  Eficiência              → SearchInput filtra por chave; flat list quando buscando
+    13→ *   H8  Minimalismo             → UM botão Salvar (sticky "Salvar tudo"); sem botão por linha
+    14→ *   H9  Recuperar erros         → ErrorState c/ retry; toast p/ cada mutation
+    15→ *   H10 Ajuda e documentação    → SETTING_HELP map (tooltips p/ prefixos conhecidos);
+    16→ *        caption "Para remover, limpe o valor e salve."
+    17→ *
+    18→ * Data source: GET /api/admin/settings    → { items: Setting[], total }
+    19→ *              POST /api/admin/settings   { settings: [{ key, value }] } (upsert)
+    20→ * (NÃO há endpoint DELETE no MVP — admin limpa o valor para desativar.)
+    21→ */
+    22→
+    23→import * as React from "react"
+    24→import {
+    25→  Save,
+    26→  Plus,
+    27→  Loader2,
+    28→  Settings as SettingsIcon,
+    29→  AlertTriangle,
+    30→  Check,
+    31→  Undo2,
+    32→  Trash2,
+    33→  MapPin,
+    34→  CreditCard,
+    35→  Mail,
+    36→  Cloud,
+    37→  Server,
+    38→  HelpCircle,
+    39→  Info,
+    40→  Eye,
+    41→  EyeOff,
+    42→  Lock,
+    43→  type LucideIcon,
+    44→} from "lucide-react"
+    45→import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+    46→import { toast } from "sonner"
+    47→
+    48→import { apiGet, apiPost } from "@/lib/api"
+    49→import { cn } from "@/lib/utils"
+    50→import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+    51→import { Button } from "@/components/ui/button"
+    52→import {
+    53→  Card,
+    54→  CardContent,
+    55→} from "@/components/ui/card"
+    56→import {
+    57→  Dialog,
+    58→  DialogContent,
+    59→  DialogDescription,
+    60→  DialogFooter,
+    61→  DialogHeader,
+    62→  DialogTitle,
+    63→} from "@/components/ui/dialog"
+    64→import { Input } from "@/components/ui/input"
+    65→import { Label } from "@/components/ui/label"
+    66→import { Skeleton } from "@/components/ui/skeleton"
+    67→import {
+    68→  Tooltip,
+    69→  TooltipContent,
+    70→  TooltipTrigger,
+    71→} from "@/components/ui/tooltip"
+    72→import { formatDate } from "@/lib/format"
+    73→
+    74→import {
+    75→  PageSectionHeader,
+    76→  SearchInput,
+    77→  StatusBadge,
+    78→  FreshnessLabel,
+    79→  ErrorState,
+    80→  EmptyState,
+    81→  errMsg,
+    82→  type StatusTone,
+    83→} from "@/components/admin/admin-shared"
+    84→
+    85→// ---------------------------------------------------------------------------
+    86→// Types
+    87→// ---------------------------------------------------------------------------
+    88→type Setting = {
+    89→  id?: string
+    90→  key: string
+    91→  value: string
+    92→  updatedAt?: string
+    93→}
+    94→
+    95→type SettingsResponse = {
+    96→  items: Setting[]
+    97→  total: number
+    98→}
+    99→
+   100→// ---------------------------------------------------------------------------
+   101→// SETTING_HELP — H10: descrições curtas p/ chaves com prefixo conhecido.
+   102→// Caso a chave não esteja mapeada, omitimos o tooltip (não inventamos).
+   103→// ---------------------------------------------------------------------------
+   104→const SETTING_HELP: Record<string, string> = {
+   105→  // Pagamentos
+   106→  PAYMENT_API_KEY: "Chave de API do gateway de pagamento.",
+   107→  PAYMENT_SECRET_KEY: "Chave secreta do gateway de pagamento.",
+   108→  PAYMENT_PUBLIC_KEY: "Chave pública do gateway (cliente).",
+   109→  PAYMENT_WEBHOOK_SECRET: "Segredo para validar webhooks do gateway.",
+   110→  PAYMENT_PIX_KEY: "Chave Pix usada para recebimentos.",
+   111→  PAYMENT_WEBHOOK_URL: "URL pública que recebe notificações do gateway.",
+   112→  PAYMENT_SUCCESS_URL: "URL de redirecionamento após pagamento aprovado.",
+   113→  PAYMENT_CANCEL_URL: "URL de redirecionamento após pagamento cancelado.",
+   114→  // E-mail / SMTP
+   115→  EMAIL_FROM: "Endereço de e-mail usado como remetente do sistema.",
+   116→  EMAIL_FROM_NAME: "Nome amigável exibido no remetente.",
+   117→  EMAIL_PROVIDER: "Provedor de envio (ex.: smtp, resend, ses).",
+   118→  SMTP_HOST: "Servidor SMTP de envio de e-mail.",
+   119→  SMTP_PORT: "Porta do servidor SMTP (comum: 587, 465, 25).",
+   120→  SMTP_USER: "Usuário (login) do servidor SMTP.",
+   121→  SMTP_PASSWORD: "Senha do servidor SMTP.",
+   122→  SMTP_SECURE: "Use 'true' para TLS (porta 465); 'false' caso contrário.",
+   123→  // Geolocalização
+   124→  NOMINATIM_BASE_URL: "URL base da API Nominatim (busca de endereço por CEP).",
+   125→  NOMINATIM_USER_AGENT: "User-Agent enviado à API Nominatim (identificação).",
+   126→  NOMINATIM_EMAIL: "E-mail de contato enviado à API Nominatim (boa prática).",
+   127→  GEO_DEFAULT_LAT: "Latitude padrão do mapa (quando sem geolocalização).",
+   128→  GEO_DEFAULT_LNG: "Longitude padrão do mapa (quando sem geolocalização).",
+   129→  GEO_DEFAULT_ZOOM: "Zoom inicial do mapa (0–20).",
+   130→  // Site / Suporte / Clima / Servidor
+   131→  SITE_NAME: "Nome do marketplace exibido no header e e-mails.",
+   132→  SITE_URL: "URL pública do site (usada em links de e-mail).",
+   133→  SITE_LOGO_URL: "URL do logotipo principal.",
+   134→  SUPPORT_EMAIL: "E-mail de suporte ao cliente.",
+   135→  SUPPORT_WHATSAPP: "WhatsApp de suporte (com DDI, ex.: 5511999999999).",
+   136→  WEATHER_API_KEY: "Chave de API do serviço de previsão do tempo.",
+   137→  WEATHER_API_URL: "URL base da API de clima.",
+   138→  SERVER_PORT: "Porta em que o servidor Next.js escuta.",
+   139→  SERVER_NODE_ENV: "Ambiente (development, production, test).",
+   140→}
+   141→
+   142→function lookupHelp(key: string): string | null {
+   143→  if (SETTING_HELP[key]) return SETTING_HELP[key]
+   144→  const upper = key.toUpperCase()
+   145→  // Heurísticas por prefixo
+   146→  if (upper.startsWith("PAYMENT_"))
+   147→    return "Configuração relacionada ao gateway de pagamento."
+   148→  if (upper.startsWith("SMTP_"))
+   149→    return "Configuração do servidor de envio de e-mails (SMTP)."
+   150→  if (upper.startsWith("EMAIL_"))
+   151→    return "Configuração de remetente e provedor de e-mail."
+   152→  if (upper.startsWith("NOMINATIM_") || upper.startsWith("GEO_"))
+   153→    return "Configuração de geolocalização (endereço, CEP, mapa)."
+   154→  if (upper.startsWith("SITE_"))
+   155→    return "Configuração geral do site (branding, URL, nome)."
+   156→  if (upper.startsWith("SUPPORT_"))
+   157→    return "Canal de atendimento/suporte ao cliente."
+   158→  if (upper.startsWith("WEATHER_"))
+   159→    return "Integração com serviço de previsão do tempo."
+   160→  return null
+   161→}
+   162→
+   163→// ---------------------------------------------------------------------------
+   164→// Main
+   165→// ---------------------------------------------------------------------------
+   166→export function AdminSettings() {
+   167→  const queryClient = useQueryClient()
+   168→  const [createOpen, setCreateOpen] = React.useState(false)
+   169→  const [draft, setDraft] = React.useState<Record<string, string>>({})
+   170→  const [dirty, setDirty] = React.useState<Set<string>>(new Set())
+   171→  // H3 — pilha de edições (para "Desfazer" reversível por campo)
+   172→  const [editHistory, setEditHistory] = React.useState<string[]>([])
+   173→  // H5 — chaves reveladas (segredos)
+   174→  const [revealedKeys, setRevealedKeys] = React.useState<Set<string>>(new Set())
+   175→  // H7 — busca por chave
+   176→  const [query, setQuery] = React.useState("")
+   177→  // H1 — última atualização
+   178→  const [lastFetched, setLastFetched] = React.useState<Date | null>(null)
+   179→
+   180→  const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
+   181→    queryKey: ["admin", "settings"],
+   182→    queryFn: () => apiGet<SettingsResponse>("/api/admin/settings"),
+   183→    staleTime: 30_000,
+   184→  })
+   185→
+   186→  // H1 — sincroniza freshness label
+   187→  React.useEffect(() => {
+   188→    if (dataUpdatedAt) setLastFetched(new Date(dataUpdatedAt))
+   189→  }, [dataUpdatedAt])
+   190→
+   191→  const items = data?.items ?? []
+   192→
+   193→  // Group by prefix (first segment before "_"); fallback to "Geral"
+   194→  const groups = React.useMemo(() => {
+   195→    const map = new Map<string, Setting[]>()
+   196→    for (const s of items) {
+   197→      const idx = s.key.indexOf("_")
+   198→      const group = idx > 0 ? s.key.slice(0, idx) : "Geral"
+   199→      const arr = map.get(group) ?? []
+   200→      arr.push(s)
+   201→      map.set(group, arr)
+   202→    }
+   203→    // Sort groups alphabetically, but keep "Geral" last
+   204→    return Array.from(map.entries()).sort((a, b) => {
+   205→      if (a[0] === "Geral") return 1
+   206→      if (b[0] === "Geral") return -1
+   207→      return a[0].localeCompare(b[0])
+   208→    })
+   209→  }, [items])
+   210→
+   211→  // H7 — quando buscando, lista flat filtrada por chave (case-insensitive)
+   212→  const flatFiltered = React.useMemo(() => {
+   213→    const q = query.trim().toLowerCase()
+   214→    if (!q) return null
+   215→    return items.filter((s) => s.key.toLowerCase().includes(q))
+   216→  }, [items, query])
+   217→
+   218→  // Initialize draft when items arrive
+   219→  React.useEffect(() => {
+   220→    if (items.length === 0) return
+   221→    setDraft((prev) => {
+   222→      const next: Record<string, string> = { ...prev }
+   223→      for (const s of items) {
+   224→        if (!(s.key in next)) next[s.key] = s.value
+   225→      }
+   226→      return next
+   227→    })
+   228→  }, [items])
+   229→
+   230→  const upsertMutation = useMutation({
+   231→    mutationFn: (settings: Array<{ key: string; value: string }>) =>
+   232→      apiPost<{ items: Setting[] }>("/api/admin/settings", { settings }),
+   233→    onSuccess: (_data, vars) => {
+   234→      toast.success(
+   235→        vars.length === 1
+   236→          ? `Configuração "${vars[0].key}" salva.`
+   237→          : `${vars.length} configurações salvas.`,
+   238→      )
+   239→      setDirty(new Set())
+   240→      setEditHistory([])
+   241→      queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
+   242→    },
+   243→    onError: (e: unknown) =>
+   244→      toast.error(errMsg(e, "Não foi possível salvar as configurações.")),
+   245→  })
+   246→
+   247→  const createMutation = useMutation({
+   248→    mutationFn: (setting: { key: string; value: string }) =>
+   249→      apiPost<{ items: Setting[] }>("/api/admin/settings", {
+   250→        settings: [setting],
+   251→      }),
+   252→    onSuccess: (_d, vars) => {
+   253→      toast.success(`Configuração "${vars.key}" criada.`)
+   254→      queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
+   255→      setCreateOpen(false)
+   256→    },
+   257→    onError: (e: unknown) =>
+   258→      toast.error(errMsg(e, "Não foi possível criar a configuração.")),
+   259→  })
+   260→
+   261→  // H3 — change tracking registra ordem das edições p/ undo por campo
+   262→  const handleValueChange = (key: string, value: string) => {
+   263→    setDraft((prev) => ({ ...prev, [key]: value }))
+   264→    setDirty((prev) => {
+   265→      const next = new Set(prev)
+   266→      const original = items.find((s) => s.key === key)?.value
+   267→      if (original !== value) next.add(key)
+   268→      else next.delete(key)
+   269→      return next
+   270→    })
+   271→    setEditHistory((prev) => {
+   272→      // move key to end (most recent)
+   273→      const next = prev.filter((k) => k !== key)
+   274→      next.push(key)
+   275→      return next
+   276→    })
+   277→  }
+   278→
+   279→  const saveAll = () => {
+   280→    if (dirty.size === 0) return
+   281→    const pairs = Array.from(dirty).map((key) => ({
+   282→      key,
+   283→      value: draft[key] ?? "",
+   284→    }))
+   285→    upsertMutation.mutate(pairs)
+   286→  }
+   287→
+   288→  // H3 — desfaz apenas a última edição (mais controle que "Descartar tudo")
+   289→  const undoLastEdit = () => {
+   290→    if (editHistory.length === 0) return
+   291→    const lastKey = editHistory[editHistory.length - 1]
+   292→    const original = items.find((s) => s.key === lastKey)?.value ?? ""
+   293→    setDraft((prev) => ({ ...prev, [lastKey]: original }))
+   294→    setDirty((prev) => {
+   295→      const next = new Set(prev)
+   296→      next.delete(lastKey)
+   297→      return next
+   298→    })
+   299→    setEditHistory((prev) => prev.slice(0, -1))
+   300→    toast.success(`Alteração em "${lastKey}" desfeita.`)
+   301→  }
+   302→
+   303→  // H3 — descarta TODAS as alterações
+   304→  const resetAll = () => {
+   305→    const next: Record<string, string> = {}
+   306→    for (const s of items) next[s.key] = s.value
+   307→    setDraft(next)
+   308→    setDirty(new Set())
+   309→    setEditHistory([])
+   310→    toast.success("Todas as alterações foram descartadas.")
+   311→  }
+   312→
+   313→  // H5 — toggle de revelar segredo
+   314→  const toggleReveal = (key: string) => {
+   315→    setRevealedKeys((prev) => {
+   316→      const next = new Set(prev)
+   317→      if (next.has(key)) next.delete(key)
+   318→      else next.add(key)
+   319→      return next
+   320→    })
+   321→  }
+   322→
+   323→  return (
+   324→    <div className="flex flex-col gap-4 pb-24">
+   325→      <PageSectionHeader
+   326→        title="Configurações"
+   327→        description="Chaves dinâmicas (estilo .env) que controlam pagamentos, e-mail, geolocalização e mais."
+   328→        action={
+   329→          lastFetched ? (
+   330→            <FreshnessLabel updatedAt={lastFetched} />
+   331→          ) : null
+   332→        }
+   333→      />
+   334→
+   335→      {/* Warning banner — H5 prevenção */}
+   336→      <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100">
+   337→        <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+   338→        <AlertTitle className="text-sm font-semibold">
+   339→          Estas configurações afetam todo o sistema. Edite com cuidado.
+   340→        </AlertTitle>
+   341→        <AlertDescription className="text-xs">
+   342→          Alterações são salvas no banco e aplicadas instantaneamente. Erros
+   343→          podem afetar pagamentos, e-mails e geolocalização.
+   344→        </AlertDescription>
+   345→      </Alert>
+   346→
+   347→      {/* Toolbar — H7 busca + contagem + H1 freshness + nova */}
+   348→      <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex-row sm:items-center">
+   349→        <div className="flex flex-1 flex-wrap items-center gap-2">
+   350→          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+   351→            {isLoading
+   352→              ? "Carregando configurações..."
+   353→              : `${items.length} configuração(ões) em ${groups.length} grupo(s)`}
+   354→            {dirty.size > 0 ? (
+   355→              <span className="ml-1 inline-flex items-center gap-1 font-medium text-primary">
+   356→                · {dirty.size} pendente(s)
+   357→              </span>
+   358→            ) : null}
+   359→          </span>
+   360→          <SearchInput
+   361→            value={query}
+   362→            onChange={setQuery}
+   363→            placeholder="Buscar por chave (ex.: PAYMENT_)"
+   364→            className="min-w-[200px] flex-1"
+   365→          />
+   366→        </div>
+   367→        <div className="flex shrink-0 items-center gap-2">
+   368→          {lastFetched ? (
+   369→            <span className="hidden sm:inline-flex">
+   370→              <FreshnessLabel updatedAt={lastFetched} />
+   371→            </span>
+   372→          ) : null}
+   373→          <Button
+   374→            variant="outline"
+   375→            size="sm"
+   376→            onClick={() => setCreateOpen(true)}
+   377→            className="gap-1.5"
+   378→          >
+   379→            <Plus className="size-3.5" />
+   380→            Nova configuração
+   381→          </Button>
+   382→        </div>
+   383→      </div>
+   384→
+   385→      {/* Body — error / loading / empty / list */}
+   386→      {isError ? (
+   387→        <ErrorState
+   388→          title="Não foi possível carregar as configurações"
+   389→          description="Verifique sua conexão e tente novamente."
+   390→          onRetry={() => refetch()}
+   391→        />
+   392→      ) : isLoading ? (
+   393→        <div className="flex flex-col gap-3">
+   394→          {Array.from({ length: 3 }).map((_, i) => (
+   395→            <Skeleton key={i} className="h-40 w-full" />
+   396→          ))}
+   397→        </div>
+   398→      ) : items.length === 0 ? (
+   399→        <EmptyState
+   400→          icon={SettingsIcon}
+   401→          title="Nenhuma configuração"
+   402→          description="Crie a primeira configuração para começar."
+   403→          action={
+   404→            <Button
+   405→              size="sm"
+   406→              onClick={() => setCreateOpen(true)}
+   407→              className="gap-1.5"
+   408→            >
+   409→              <Plus className="size-4" />
+   410→              Nova configuração
+   411→            </Button>
+   412→          }
+   413→        />
+   414→      ) : flatFiltered ? (
+   415→        // H7 — modo busca: flat list
+   416→        <FlatResultsList
+   417→          items={flatFiltered}
+   418→          draft={draft}
+   419→          dirty={dirty}
+   420→          revealedKeys={revealedKeys}
+   421→          onValueChange={handleValueChange}
+   422→          onToggleReveal={toggleReveal}
+   423→        />
+   424→      ) : groups.length === 0 ? (
+   425→        <EmptyState
+   426→          icon={SettingsIcon}
+   427→          title="Nenhum grupo encontrado"
+   428→          description="Ajuste a busca ou crie uma nova configuração."
+   429→        />
+   430→      ) : (
+   431→        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   432→          {groups.map(([group, groupItems]) => {
+   433→            const meta = GROUP_META[group] ?? GROUP_META.default
+   434→            const GroupIcon = meta.icon
+   435→            return (
+   436→              <Card key={group} className="overflow-hidden">
+   437→                <div className="flex items-center justify-between border-b p-5">
+   438→                  <div className="flex items-center gap-3">
+   439→                    <span
+   440→                      className={cn(
+   441→                        "flex size-9 shrink-0 items-center justify-center rounded-lg",
+   442→                        meta.tone,
+   443→                      )}
+   444→                    >
+   445→                      <GroupIcon className="size-4" />
+   446→                    </span>
+   447→                    <div>
+   448→                      <p className="text-base font-semibold">{meta.label}</p>
+   449→                      <p className="text-xs text-muted-foreground">
+   450→                        {meta.description}
+   451→                      </p>
+   452→                    </div>
+   453→                  </div>
+   454→                  <StatusBadge tone="zinc">
+   455→                    {groupItems.length}{" "}
+   456→                    {groupItems.length === 1 ? "chave" : "chaves"}
+   457→                  </StatusBadge>
+   458→                </div>
+   459→                <CardContent className="flex flex-col gap-2.5 p-4">
+   460→                  {groupItems.map((s) => (
+   461→                    <SettingRow
+   462→                      key={s.key}
+   463→                      setting={s}
+   464→                      draftValue={draft[s.key] ?? ""}
+   465→                      isDirty={dirty.has(s.key)}
+   466→                      isRevealed={revealedKeys.has(s.key)}
+   467→                      onValueChange={handleValueChange}
+   468→                      onToggleReveal={toggleReveal}
+   469→                    />
+   470→                  ))}
+   471→                </CardContent>
+   472→              </Card>
+   473→            )
+   474→          })}
+   475→        </div>
+   476→      )}
+   477→
+   478→      {/* H8 — UM único caminho de salvar: sticky bar (sem botão por linha) */}
+   479→      {dirty.size > 0 ? (
+   480→        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+   481→          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
+   482→            <p className="text-sm text-muted-foreground">
+   483→              <span className="font-medium text-foreground tabular-nums">
+   484→                {dirty.size}
+   485→              </span>{" "}
+   486→              alteração(ões) não salva(s)
+   487→              {editHistory.length > 0 ? (
+   488→                <span className="ml-1 text-xs text-muted-foreground">
+   489→                  · última:{" "}
+   490→                  <code className="font-mono">{editHistory[editHistory.length - 1]}</code>
+   491→                </span>
+   492→              ) : null}
+   493→            </p>
+   494→            <div className="flex flex-wrap items-center gap-2">
+   495→              {upsertMutation.isPending ? (
+   496→                <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+   497→                  <Loader2 className="size-3.5 animate-spin" />
+   498→                  Salvando…
+   499→                </span>
+   500→              ) : null}
+   501→              <Button
+   502→                variant="outline"
+   503→                size="sm"
+   504→                onClick={undoLastEdit}
+   505→                disabled={
+   506→                  upsertMutation.isPending || editHistory.length === 0
+   507→                }
+   508→                className="gap-1.5"
+   509→              >
+   510→                <Undo2 className="size-3.5" />
+   511→                Desfazer
+   512→                {editHistory.length > 0 ? (
+   513→                  <span className="ml-0.5 rounded bg-muted px-1 text-[10px] tabular-nums">
+   514→                    {editHistory.length}
+   515→                  </span>
+   516→                ) : null}
+   517→              </Button>
+   518→              <Button
+   519→                variant="outline"
+   520→                size="sm"
+   521→                onClick={resetAll}
+   522→                disabled={upsertMutation.isPending}
+   523→                className="gap-1.5 text-muted-foreground hover:text-foreground"
+   524→              >
+   525→                <Trash2 className="size-3.5" />
+   526→                Descartar tudo
+   527→              </Button>
+   528→              <Button
+   529→                size="sm"
+   530→                onClick={saveAll}
+   531→                disabled={upsertMutation.isPending}
+   532→                className="gap-1.5"
+   533→              >
+   534→                {upsertMutation.isPending ? (
+   535→                  <Loader2 className="size-3.5 animate-spin" />
+   536→                ) : (
+   537→                  <Save className="size-3.5" />
+   538→                )}
+   539→                Salvar tudo
+   540→              </Button>
+   541→            </div>
+   542→          </div>
+   543→        </div>
+   544→      ) : null}
+   545→
+   546→      {/* Create dialog */}
+   547→      <CreateSettingDialog
+   548→        open={createOpen}
+   549→        onOpenChange={setCreateOpen}
+   550→        existingKeys={items.map((s) => s.key)}
+   551→        submitting={createMutation.isPending}
+   552→        onSubmit={(p) => createMutation.mutate(p)}
+   553→      />
+   554→    </div>
+   555→  )
+   556→}
+   557→
+   558→// ---------------------------------------------------------------------------
+   559→// SettingRow — uma linha por configuração
+   560→// H5: eye toggle para segredos · H6: badge "Secreto" · H10: Info tooltip
+   561→// H4: caption "Para remover, limpe o valor e salve."
+   562→// ---------------------------------------------------------------------------
+   563→function SettingRow({
+   564→  setting,
+   565→  draftValue,
+   566→  isDirty,
+   567→  isRevealed,
+   568→  onValueChange,
+   569→  onToggleReveal,
+   570→}: {
+   571→  setting: Setting
+   572→  draftValue: string
+   573→  isDirty: boolean
+   574→  isRevealed: boolean
+   575→  onValueChange: (key: string, value: string) => void
+   576→  onToggleReveal: (key: string) => void
+   577→}) {
+   578→  const isSecret = isSecretKey(setting.key)
+   579→  const help = lookupHelp(setting.key)
+   580→
+   581→  return (
+   582→    <div
+   583→      className={cn(
+   584→        "flex flex-col gap-1.5 rounded-lg border p-3 transition-colors",
+   585→        isDirty
+   586→          ? "border-primary/40 bg-primary/5"
+   587→          : "border-border bg-card",
+   588→      )}
+   589→    >
+   590→      {/* Linha 1 — chave + badges + updatedAt + Info tooltip (H10) */}
+   591→      <div className="flex items-center justify-between gap-2">
+   592→        <div className="flex min-w-0 items-center gap-1.5">
+   593→          <Label
+   594→            htmlFor={`set-${setting.key}`}
+   595→            className="truncate font-mono text-[11px] font-medium tracking-tight text-foreground"
+   596→          >
+   597→            {setting.key}
+   598→          </Label>
+   599→          {isSecret ? (
+   600→            <StatusBadge tone="amber">
+   601→              <Lock className="size-3" />
+   602→              Secreto
+   603→            </StatusBadge>
+   604→          ) : null}
+   605→          {help ? (
+   606→            <Tooltip>
+   607→              <TooltipTrigger asChild>
+   608→                <button
+   609→                  type="button"
+   610→                  className="text-muted-foreground transition-colors hover:text-foreground"
+   611→                  aria-label={`O que é ${setting.key}?`}
+   612→                >
+   613→                  <Info className="size-3.5" />
+   614→                </button>
+   615→              </TooltipTrigger>
+   616→              <TooltipContent
+   617→                side="top"
+   618→                className="max-w-xs text-xs leading-relaxed"
+   619→              >
+   620→                {help}
+   621→              </TooltipContent>
+   622→            </Tooltip>
+   623→          ) : null}
+   624→        </div>
+   625→        {setting.updatedAt ? (
+   626→          <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+   627→            {formatDate(setting.updatedAt)}
+   628→          </span>
+   629→        ) : null}
+   630→      </div>
+   631→
+   632→      {/* Linha 2 — input + eye toggle (H5). Sem botão Salvar (H8). */}
+   633→      <div className="flex items-center gap-1.5">
+   634→        <div className="relative flex-1">
+   635→          <Input
+   636→            id={`set-${setting.key}`}
+   637→            value={draftValue}
+   638→            onChange={(e) => onValueChange(setting.key, e.target.value)}
+   639→            type={isSecret && !isRevealed ? "password" : "text"}
+   640→            className="h-9 pr-9 font-mono text-xs"
+   641→            spellCheck={false}
+   642→            autoComplete="off"
+   643→          />
+   644→          {isSecret ? (
+   645→            <Tooltip>
+   646→              <TooltipTrigger asChild>
+   647→                <button
+   648→                  type="button"
+   649→                  onClick={() => onToggleReveal(setting.key)}
+   650→                  className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+   651→                  aria-label={isRevealed ? "Ocultar valor" : "Mostrar valor"}
+   652→                  aria-pressed={isRevealed}
+   653→                >
+   654→                  {isRevealed ? (
+   655→                    <EyeOff className="size-3.5" />
+   656→                  ) : (
+   657→                    <Eye className="size-3.5" />
+   658→                  )}
+   659→                </button>
+   660→              </TooltipTrigger>
+   661→              <TooltipContent>
+   662→                {isRevealed ? "Ocultar valor" : "Mostrar valor"}
+   663→              </TooltipContent>
+   664→            </Tooltip>
+   665→          ) : null}
+   666→        </div>
+   667→        {/* H8 — feedback sutil de "salvo/vazio" sem virar um botão competidor */}
+   668→        {isDirty ? (
+   669→          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/10 px-1.5 py-1 text-[10px] font-medium text-primary">
+   670→            <Check className="size-3" />
+   671→            alterado
+   672→          </span>
+   673→        ) : null}
+   674→      </div>
+   675→
+   676→      {/* H4 — caption honesto sobre a ausência de endpoint DELETE */}
+   677→      <p className="text-[10px] text-muted-foreground">
+   678→        Para remover, limpe o valor e salve.
+   679→      </p>
+   680→    </div>
+   681→  )
+   682→}
+   683→
+   684→// ---------------------------------------------------------------------------
+   685→// FlatResultsList — H7: lista filtrada quando há busca
+   686→// ---------------------------------------------------------------------------
+   687→function FlatResultsList({
+   688→  items,
+   689→  draft,
+   690→  dirty,
+   691→  revealedKeys,
+   692→  onValueChange,
+   693→  onToggleReveal,
+   694→}: {
+   695→  items: Setting[]
+   696→  draft: Record<string, string>
+   697→  dirty: Set<string>
+   698→  revealedKeys: Set<string>
+   699→  onValueChange: (key: string, value: string) => void
+   700→  onToggleReveal: (key: string) => void
+   701→}) {
+   702→  if (items.length === 0) {
+   703→    return (
+   704→      <EmptyState
+   705→        icon={HelpCircle}
+   706→        title="Nenhuma configuração corresponde à busca"
+   707→        description="Ajuste o termo ou crie uma nova configuração."
+   708→      />
+   709→    )
+   710→  }
+   711→  return (
+   712→    <Card className="overflow-hidden">
+   713→      <div className="flex items-center justify-between border-b p-5">
+   714→        <div className="flex items-center gap-3">
+   715→          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+   716→            <SettingsIcon className="size-4" />
+   717→          </span>
+   718→          <div>
+   719→            <p className="text-base font-semibold">Resultados da busca</p>
+   720→            <p className="text-xs text-muted-foreground">
+   721→              {items.length}{" "}
+   722→              {items.length === 1 ? "configuração encontrada" : "configurações encontradas"}
+   723→            </p>
+   724→          </div>
+   725→        </div>
+   726→        <StatusBadge tone="emerald">
+   727→          <Check className="size-3" />
+   728→          Busca ativa
+   729→        </StatusBadge>
+   730→      </div>
+   731→      <CardContent className="flex flex-col gap-2.5 p-4">
+   732→        {items.map((s) => (
+   733→          <SettingRow
+   734→            key={s.key}
+   735→            setting={s}
+   736→            draftValue={draft[s.key] ?? ""}
+   737→            isDirty={dirty.has(s.key)}
+   738→            isRevealed={revealedKeys.has(s.key)}
+   739→            onValueChange={onValueChange}
+   740→            onToggleReveal={onToggleReveal}
+   741→          />
+   742→        ))}
+   743→      </CardContent>
+   744→    </Card>
+   745→  )
+   746→}
+   747→
+   748→// ---------------------------------------------------------------------------
+   749→// CreateSettingDialog
+   750→// ---------------------------------------------------------------------------
+   751→function CreateSettingDialog({
+   752→  open,
+   753→  onOpenChange,
+   754→  existingKeys,
+   755→  submitting,
+   756→  onSubmit,
+   757→}: {
+   758→  open: boolean
+   759→  onOpenChange: (open: boolean) => void
+   760→  existingKeys: string[]
+   761→  submitting: boolean
+   762→  onSubmit: (payload: { key: string; value: string }) => void
+   763→}) {
+   764→  const [key, setKey] = React.useState("")
+   765→  const [value, setValue] = React.useState("")
+   766→
+   767→  React.useEffect(() => {
+   768→    if (open) {
+   769→      setKey("")
+   770→      setValue("")
+   771→    }
+   772→  }, [open])
+   773→
+   774→  const keyValid = /^[A-Z0-9_]+$/.test(key) && key.length >= 1
+   775→  const dupe = existingKeys.includes(key.toUpperCase())
+   776→  const help = keyValid && !dupe ? lookupHelp(key.toUpperCase()) : null
+   777→
+   778→  const canSubmit = keyValid && !dupe && !submitting
+   779→
+   780→  return (
+   781→    <Dialog open={open} onOpenChange={onOpenChange}>
+   782→      <DialogContent className="sm:max-w-md">
+   783→        <DialogHeader>
+   784→          <DialogTitle>Nova configuração</DialogTitle>
+   785→          <DialogDescription>
+   786→            Adicione um novo par chave/valor. A chave deve ter apenas letras
+   787→            maiúsculas, números e underline.
+   788→          </DialogDescription>
+   789→        </DialogHeader>
+   790→
+   791→        <form
+   792→          onSubmit={(e) => {
+   793→            e.preventDefault()
+   794→            if (!canSubmit) return
+   795→            onSubmit({ key: key.toUpperCase(), value })
+   796→          }}
+   797→          className="flex flex-col gap-3 py-1"
+   798→        >
+   799→          <div className="flex flex-col gap-1.5">
+   800→            <Label htmlFor="set-key">Chave</Label>
+   801→            <Input
+   802→              id="set-key"
+   803→              value={key}
+   804→              onChange={(e) =>
+   805→                setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))
+   806→              }
+   807→              placeholder="EX.: PAYMENT_API_KEY"
+   808→              className="font-mono"
+   809→              autoFocus
+   810→            />
+   811→            {dupe ? (
+   812→              <p className="text-[11px] text-red-600">
+   813→                Esta chave já existe.
+   814→              </p>
+   815→            ) : help ? (
+   816→              <p className="flex items-start gap-1 text-[11px] text-muted-foreground">
+   817→                <Info className="mt-0.5 size-3 shrink-0" />
+   818→                {help}
+   819→              </p>
+   820→            ) : (
+   821→              <p className="text-[11px] text-muted-foreground">
+   822→                Convenção: <code>GRUPO_NOME</code> (ex.:{" "}
+   823→                <code>PAYMENT_PIX_KEY</code>).
+   824→              </p>
+   825→            )}
+   826→          </div>
+   827→          <div className="flex flex-col gap-1.5">
+   828→            <Label htmlFor="set-value">Valor</Label>
+   829→            <Input
+   830→              id="set-value"
+   831→              value={value}
+   832→              onChange={(e) => setValue(e.target.value)}
+   833→              placeholder="Valor da configuração"
+   834→              className="font-mono text-xs"
+   835→            />
+   836→          </div>
+   837→          <DialogFooter>
+   838→            <Button
+   839→              type="button"
+   840→              variant="outline"
+   841→              onClick={() => onOpenChange(false)}
+   842→              disabled={submitting}
+   843→            >
+   844→              Cancelar
+   845→            </Button>
+   846→            <Button type="submit" disabled={!canSubmit} className="gap-1.5">
+   847→              {submitting ? (
+   848→                <Loader2 className="size-4 animate-spin" />
+   849→              ) : (
+   850→                <Plus className="size-4" />
+   851→              )}
+   852→              Criar
+   853→            </Button>
+   854→          </DialogFooter>
+   855→        </form>
+   856→      </DialogContent>
+   857→    </Dialog>
+   858→  )
+   859→}
+   860→
+   861→// ---------------------------------------------------------------------------
+   862→// Group metadata — icon, tone (H4 — UMA cor por grupo, sempre tom quente),
+   863→// description per prefix.
+   864→// ---------------------------------------------------------------------------
+   865→type GroupMeta = {
+   866→  label: string
+   867→  description: string
+   868→  icon: LucideIcon
+   869→  tone: string
+   870→}
+   871→
+   872→const GROUP_TONE: Record<string, StatusTone> = {
+   873→  payment: "emerald",
+   874→  email: "teal",
+   875→  smtp: "teal",
+   876→  nominatim: "amber",
+   877→  geo: "amber",
+   878→  site: "emerald",
+   879→  support: "amber",
+   880→  weather: "amber",
+   881→  server: "zinc",
+   882→  Geral: "zinc",
+   883→}
+   884→
+   885→function toneToClass(tone: StatusTone): string {
+   886→  const map: Record<StatusTone, string> = {
+   887→    emerald:
+   888→      "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+   889→    amber:
+   890→      "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+   891→    rose: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+   892→    teal: "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
+   893→    zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
+   894→    sky: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
+   895→  }
+   896→  return map[tone]
+   897→}
+   898→
+   899→const GROUP_META: Record<string, GroupMeta> = {
+   900→  payment: {
+   901→    label: "Pagamentos",
+   902→    description: "Chaves de API, tokens e configurações de gateway",
+   903→    icon: CreditCard,
+   904→    tone: toneToClass("emerald"),
+   905→  },
+   906→  email: {
+   907→    label: "E-mail",
+   908→    description: "Remetente, provedor e templates de e-mail",
+   909→    icon: Mail,
+   910→    tone: toneToClass("teal"),
+   911→  },
+   912→  smtp: {
+   913→    label: "SMTP",
+   914→    description: "Servidor e credenciais de envio de e-mail",
+   915→    icon: Mail,
+   916→    tone: toneToClass("teal"),
+   917→  },
+   918→  nominatim: {
+   919→    label: "Geolocalização",
+   920→    description: "Endereço, CEP e busca por coordenadas",
+   921→    icon: MapPin,
+   922→    tone: toneToClass("amber"),
+   923→  },
+   924→  geo: {
+   925→    label: "Geolocalização",
+   926→    description: "Endereço, CEP e busca por coordenadas",
+   927→    icon: MapPin,
+   928→    tone: toneToClass("amber"),
+   929→  },
+   930→  site: {
+   931→    label: "Site",
+   932→    description: "Configurações gerais do site e branding",
+   933→    icon: SettingsIcon,
+   934→    tone: toneToClass("emerald"),
+   935→  },
+   936→  support: {
+   937→    label: "Suporte",
+   938→    description: "Canais de atendimento e contato",
+   939→    icon: HelpCircle,
+   940→    tone: toneToClass("amber"),
+   941→  },
+   942→  weather: {
+   943→    label: "Clima",
+   944→    description: "Integração com serviço de previsão do tempo",
+   945→    icon: Cloud,
+   946→    tone: toneToClass("amber"),
+   947→  },
+   948→  server: {
+   949→    label: "Servidor",
+   950→    description: "Configurações de infraestrutura e runtime",
+   951→    icon: Server,
+   952→    tone: toneToClass("zinc"),
+   953→  },
+   954→  Geral: {
+   955→    label: "Geral",
+   956→    description: "Configurações gerais sem prefixo específico",
+   957→    icon: SettingsIcon,
+   958→    tone: toneToClass("zinc"),
+   959→  },
+   960→  default: {
+   961→    label: "Outros",
+   962→    description: "Configurações diversas",
+   963→    icon: SettingsIcon,
+   964→    tone: toneToClass("zinc"),
+   965→  },
+   966→}
+   967→
+   968→// ---------------------------------------------------------------------------
+   969→// Helpers
+   970→// ---------------------------------------------------------------------------
+   971→function isSecretKey(key: string): boolean {
+   972→  const k = key.toUpperCase()
+   973→  return (
+   974→    k.includes("SECRET") ||
+   975→    k.includes("TOKEN") ||
+   976→    k.includes("PASSWORD") ||
+   977→    k.includes("API_KEY") ||
+   978→    k.includes("KEY")
+   979→  )
+   980→}
+   981→

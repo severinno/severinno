@@ -1,0 +1,1083 @@
+     1→     1→"use client"
+     2→     2→
+     3→     3→/**
+     4→     4→ * AdminTaxonomy — gerenciador da árvore de categorias em 3 níveis.
+     5→     5→ *
+     6→     6→ * Heurísticas de Nielsen aplicadas neste redesign:
+     7→     7→ *   H1  Visibilidade do status  → PageSectionHeader + contagem + SavingPill
+     8→     8→ *   H2  Correspondência c/ mundo real → labels pt-BR; remoção do drag-handle
+     9→     9→ *        visual-only (substituído por botões explícitos "Mover p/ cima/baixo")
+    10→    10→ *   H3  Controle e liberdade    → ConfirmDialog antes de excluir; toggle c/ confirmação
+    11→    11→ *   H4  Consistência            → StatusBadge (ÚNICA source of truth) p/ nível e estado
+    12→    12→ *   H5  Prevenção de erros      → Switch não é instantâneo: abre ConfirmToggleDialog
+    13→    13→ *   H6  Reconhecimento          → Select de ícones com preview; tooltips em icon-buttons
+    14→    14→ *   H7  Eficiência              → Botões Mover p/ cima/baixo (disabled c/ tooltip honesto)
+    15→    15→ *   H8  Minimalismo             → hierarquia clara, retirada de badge "serviço(s)" sem dados
+    16→    16→ *   H9  Recuperar erros         → ErrorState c/ retry; toast específico p/ 409
+    17→    17→ *   H10 Ajuda e documentação    → Info tooltip no campo Slug
+    18→    18→ *
+    19→    19→ * APIs (relativas, mantidas):
+    20→    20→ *   GET    /api/categories
+    21→    21→ *   POST   /api/categories            { name, slug, parentId?, level, icon?, order? }
+    22→    22→ *   PATCH  /api/categories/[id]       { name?, slug?, parentId?, level?, icon?, order?, active? }
+    23→    23→ *   DELETE /api/categories/[id]       (409 se tiver filhos ou serviços)
+    24→    24→ *
+    25→    25→ * Observação H7: a API atual não expõe endpoint de reordenação. Para não enganar
+    26→    26→ * o administrador (H2), mantemos os botões "Mover p/ cima/baixo" visíveis mas
+    27→    27→ * desabilitados com tooltip explicativo — em vez de um "drag handle" mudo que
+    28→    28→ * sugere uma ação que não existe.
+    29→    29→ */
+    30→    30→
+    31→    31→import * as React from "react"
+    32→    32→import {
+    33→    33→  ChevronDown,
+    34→    34→  ChevronRight,
+    35→    35→  ChevronUp,
+    36→    36→  Plus,
+    37→    37→  Pencil,
+    38→    38→  Trash2,
+    39→    39→  Loader2,
+    40→    40→  FolderTree,
+    41→    41→  ChevronsDownUp,
+    42→    42→  ChevronsUpDown,
+    43→    43→  Info,
+    44→    44→  Wrench,
+    45→    45→  Zap,
+    46→    46→  Droplet,
+    47→    47→  PaintRoller,
+    48→    48→  Hammer,
+    49→    49→  Trees,
+    50→    50→  Sparkles,
+    51→    51→  Home,
+    52→    52→  ShowerHead,
+    53→    53→  Thermometer,
+    54→    54→  Car,
+    55→    55→  ChefHat,
+    56→    56→  type LucideIcon,
+    57→    57→} from "lucide-react"
+    58→    58→import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+    59→    59→import { toast } from "sonner"
+    60→    60→
+    61→    61→import { apiGet, apiPost, apiPatch, apiDelete, type Category } from "@/lib/api"
+    62→    62→import { cn } from "@/lib/utils"
+    63→    63→import { Button } from "@/components/ui/button"
+    64→    64→import {
+    65→    65→  Card,
+    66→    66→  CardContent,
+    67→    67→} from "@/components/ui/card"
+    68→    68→import {
+    69→    69→  Dialog,
+    70→    70→  DialogContent,
+    71→    71→  DialogDescription,
+    72→    72→  DialogFooter,
+    73→    73→  DialogHeader,
+    74→    74→  DialogTitle,
+    75→    75→} from "@/components/ui/dialog"
+    76→    76→import { Input } from "@/components/ui/input"
+    77→    77→import { Label } from "@/components/ui/label"
+    78→    78→import {
+    79→    79→  Select,
+    80→    80→  SelectContent,
+    81→    81→  SelectItem,
+    82→    82→  SelectTrigger,
+    83→    83→  SelectValue,
+    84→    84→} from "@/components/ui/select"
+    85→    85→import { Switch } from "@/components/ui/switch"
+    86→    86→import { Skeleton } from "@/components/ui/skeleton"
+    87→    87→import {
+    88→    88→  Tooltip,
+    89→    89→  TooltipContent,
+    90→    90→  TooltipTrigger,
+    91→    91→} from "@/components/ui/tooltip"
+    92→    92→
+    93→    93→import {
+    94→    94→  PageSectionHeader,
+    95→    95→  ConfirmDialog,
+    96→    96→  ConfirmToggleDialog,
+    97→    97→  StatusBadge,
+    98→    98→  type StatusTone,
+    99→    99→  errMsg,
+   100→   100→  slugify,
+   101→   101→} from "@/components/admin/admin-shared"
+   102→   102→
+   103→   103→// ---------------------------------------------------------------------------
+   104→   104→// Types
+   105→   105→// ---------------------------------------------------------------------------
+   106→   106→
+   107→   107→/**
+   108→   108→ * O endpoint /api/categories devolve a linha Prisma completa (inclui `active`,
+   109→   109→ * `order`, `parentId`, `level`, `icon`, `createdAt`, `updatedAt`), mas o tipo
+   110→   110→ * client-side `Category` de `@/lib/api` é mais estreito. Estendemos localmente.
+   111→   111→ */
+   112→   112→type CategoryRow = Category & {
+   113→   113→  active: boolean
+   114→   114→  order: number
+   115→   115→}
+   116→   116→
+   117→   117→type CategoryNode = Omit<CategoryRow, "children"> & {
+   118→   118→  children?: CategoryNode[]
+   119→   119→}
+   120→   120→
+   121→   121→// ---------------------------------------------------------------------------
+   122→   122→// Level metadata — H4 consistência: UMA source of truth via StatusTone
+   123→   123→//   level 0 (Pai)          → emerald
+   124→   124→//   level 1 (Filha)        → teal
+   125→   125→//   level 2 (Subcategoria) → zinc
+   126→   126→// Antes o nível 2 usava "slate" (divergia do comentário "lime"); padronizamos.
+   127→   127→// ---------------------------------------------------------------------------
+   128→   128→type LevelMeta = {
+   129→   129→  label: string
+   130→   130→  tone: StatusTone
+   131→   131→  dot: string
+   132→   132→  rowAccent: string
+   133→   133→}
+   134→   134→
+   135→   135→const LEVEL_META: Record<number, LevelMeta> = {
+   136→   136→  0: {
+   137→   137→    label: "Pai",
+   138→   138→    tone: "emerald",
+   139→   139→    dot: "bg-emerald-500",
+   140→   140→    rowAccent: "border-l-2 border-emerald-500/60",
+   141→   141→  },
+   142→   142→  1: {
+   143→   143→    label: "Filha",
+   144→   144→    tone: "teal",
+   145→   145→    dot: "bg-teal-500",
+   146→   146→    rowAccent: "border-l-2 border-teal-500/60",
+   147→   147→  },
+   148→   148→  2: {
+   149→   149→    label: "Sub",
+   150→   150→    tone: "zinc",
+   151→   151→    dot: "bg-zinc-400",
+   152→   152→    rowAccent: "border-l-2 border-zinc-400/70",
+   153→   153→  },
+   154→   154→}
+   155→   155→
+   156→   156→// ---------------------------------------------------------------------------
+   157→   157→// Icon picker — H6 reconhecimento: catálogo fixo dos 12 ícones lucide mais
+   158→   158→// comuns, com preview. Se a categoria já tiver um ícone fora da lista,
+   159→   159→// mostramos como entrada "personalizada".
+   160→   160→// ---------------------------------------------------------------------------
+   161→   161→type IconOption = { name: string; icon: LucideIcon; label: string }
+   162→   162→
+   163→   163→const ICON_OPTIONS: IconOption[] = [
+   164→   164→  { name: "Wrench", icon: Wrench, label: "Chave inglesa" },
+   165→   165→  { name: "Zap", icon: Zap, label: "Raio (elétrica)" },
+   166→   166→  { name: "Droplet", icon: Droplet, label: "Gota (hidráulica)" },
+   167→   167→  { name: "PaintRoller", icon: PaintRoller, label: "Rolo de tinta" },
+   168→   168→  { name: "Hammer", icon: Hammer, label: "Martelo" },
+   169→   169→  { name: "Trees", icon: Trees, label: "Árvores (jardinagem)" },
+   170→   170→  { name: "Sparkles", icon: Sparkles, label: "Brilho (limpeza)" },
+   171→   171→  { name: "Home", icon: Home, label: "Casa" },
+   172→   172→  { name: "ShowerHead", icon: ShowerHead, label: "Chuveiro" },
+   173→   173→  { name: "Thermometer", icon: Thermometer, label: "Termômetro" },
+   174→   174→  { name: "Car", icon: Car, label: "Carro" },
+   175→   175→  { name: "ChefHat", icon: ChefHat, label: "Chef (gastronomia)" },
+   176→   176→]
+   177→   177→
+   178→   178→const ICON_BY_NAME = new Map(ICON_OPTIONS.map((o) => [o.name, o.icon]))
+   179→   179→
+   180→   180→/**
+   181→   181→ * Renderiza um ícone lucide pelo nome (H6 — preview).
+   182→   182→ * Usa React.createElement para evitar o lint react-hooks/static-components,
+   183→   183→ * que confunde variáveis capitalizadas com declaração de componente.
+   184→   184→ */
+   185→   185→function CategoryIcon({
+   186→   186→  name,
+   187→   187→  className,
+   188→   188→}: {
+   189→   189→  name?: string | null
+   190→   190→  className?: string
+   191→   191→}) {
+   192→   192→  const Icon = name ? ICON_BY_NAME.get(name) : null
+   193→   193→  if (!Icon) return null
+   194→   194→  return React.createElement(Icon, { className })
+   195→   195→}
+   196→   196→
+   197→   197→// ---------------------------------------------------------------------------
+   198→   198→// Main component
+   199→   199→// ---------------------------------------------------------------------------
+   200→   200→type PendingToggle = {
+   201→   201→  id: string
+   202→   202→  name: string
+   203→   203→  currentValue: boolean
+   204→   204→} | null
+   205→   205→
+   206→   206→export function AdminTaxonomy() {
+   207→   207→  const queryClient = useQueryClient()
+   208→   208→  const [createOpen, setCreateOpen] = React.useState(false)
+   209→   209→  const [editTarget, setEditTarget] = React.useState<CategoryNode | null>(null)
+   210→   210→  const [deleteTarget, setDeleteTarget] = React.useState<CategoryNode | null>(
+   211→   211→    null,
+   212→   212→  )
+   213→   213→  const [expanded, setExpanded] = React.useState<Set<string>>(new Set())
+   214→   214→  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
+   215→   215→
+   216→   216→  const { data: flat, isLoading, isError, refetch } = useQuery({
+   217→   217→    queryKey: ["categories", "all"],
+   218→   218→    queryFn: () => apiGet<CategoryRow[]>("/api/categories"),
+   219→   219→    staleTime: 30_000,
+   220→   220→  })
+   221→   221→
+   222→   222→  // Build the tree (from a flat list)
+   223→   223→  const tree = React.useMemo<CategoryNode[]>(() => {
+   224→   224→    if (!flat) return []
+   225→   225→    const byParent = new Map<string | null, CategoryNode[]>()
+   226→   226→    for (const c of flat) {
+   227→   227→      const key = c.parentId ?? null
+   228→   228→      const arr = byParent.get(key) ?? []
+   229→   229→      arr.push({ ...c, children: [] })
+   230→   230→      byParent.set(key, arr)
+   231→   231→    }
+   232→   232→    const roots = byParent.get(null) ?? []
+   233→   233→    const build = (nodes: CategoryNode[]): CategoryNode[] =>
+   234→   234→      nodes
+   235→   235→        .sort(
+   236→   236→          (a, b) =>
+   237→   237→            (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name),
+   238→   238→        )
+   239→   239→        .map((n) => {
+   240→   240→          const children = byParent.get(n.id) ?? []
+   241→   241→          n.children = build(children)
+   242→   242→          return n
+   243→   243→        })
+   244→   244→    return build(roots)
+   245→   245→  }, [flat])
+   246→   246→
+   247→   247→  // H1/H8 — service count por categoria não está disponível no MVP (o endpoint
+   248→   248→  // /api/categories não retorna contagem de serviços). Em vez de manter um
+   249→   249→  // badge que nunca mostra nada (H1 violado), simplesmente NÃO renderizamos.
+   250→   250→  // TODO(N1/Svcs): quando /api/services?categoryId=X existir, alimentar aqui.
+   251→   251→
+   252→   252→  // Auto-expand all level-0 nodes on first load
+   253→   253→  React.useEffect(() => {
+   254→   254→    if (tree.length && expanded.size === 0) {
+   255→   255→      setExpanded(new Set(tree.map((n) => n.id)))
+   256→   256→    }
+   257→   257→  }, [tree, expanded.size])
+   258→   258→
+   259→   259→  const invalidate = () =>
+   260→   260→    queryClient.invalidateQueries({ queryKey: ["categories"] })
+   261→   261→
+   262→   262→  const createMutation = useMutation({
+   263→   263→    mutationFn: (payload: CategoryPayload) =>
+   264→   264→      apiPost<{ category: CategoryRow }>("/api/categories", payload),
+   265→   265→    onSuccess: () => {
+   266→   266→      toast.success("Categoria criada com sucesso.")
+   267→   267→      invalidate()
+   268→   268→      setCreateOpen(false)
+   269→   269→    },
+   270→   270→    onError: (e: unknown) => {
+   271→   271→      toast.error(errMsg(e, "Não foi possível criar a categoria."))
+   272→   272→    },
+   273→   273→  })
+   274→   274→
+   275→   275→  const patchMutation = useMutation({
+   276→   276→    mutationFn: ({ id, patch }: { id: string; patch: Partial<CategoryPayload> }) =>
+   277→   277→      apiPatch<{ category: CategoryRow }>(`/api/categories/${id}`, patch),
+   278→   278→    onSuccess: () => {
+   279→   279→      toast.success("Categoria atualizada.")
+   280→   280→      invalidate()
+   281→   281→      setEditTarget(null)
+   282→   282→    },
+   283→   283→    onError: (e: unknown) => {
+   284→   284→      toast.error(errMsg(e, "Não foi possível atualizar a categoria."))
+   285→   285→    },
+   286→   286→  })
+   287→   287→
+   288→   288→  const toggleActiveMutation = useMutation({
+   289→   289→    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
+   290→   290→      apiPatch<{ category: CategoryRow }>(`/api/categories/${id}`, { active }),
+   291→   291→    onSuccess: (_d, vars) => {
+   292→   292→      toast.success(
+   293→   293→        vars.active
+   294→   294→          ? "Categoria ativada."
+   295→   295→          : "Categoria desativada.",
+   296→   296→      )
+   297→   297→      invalidate()
+   298→   298→      setPendingToggle(null)
+   299→   299→    },
+   300→   300→    onError: (e: unknown) => {
+   301→   301→      toast.error(errMsg(e, "Falha ao alternar o estado ativo."))
+   302→   302→      setPendingToggle(null)
+   303→   303→    },
+   304→   304→  })
+   305→   305→
+   306→   306→  const deleteMutation = useMutation({
+   307→   307→    mutationFn: (id: string) => apiDelete(`/api/categories/${id}`),
+   308→   308→    onSuccess: () => {
+   309→   309→      toast.success("Categoria excluída.")
+   310→   310→      invalidate()
+   311→   311→      setDeleteTarget(null)
+   312→   312→    },
+   313→   313→    onError: (e: unknown) => {
+   314→   314→      const msg = errMsg(e, "Não foi possível excluir.")
+   315→   315→      // H9 — mensagem específica para 409 (vínculos existentes)
+   316→   316→      toast.error(msg, {
+   317→   317→        description:
+   318→   318→          "Remova os vínculos (filhos ou serviços) antes de tentar novamente.",
+   319→   319→      })
+   320→   320→    },
+   321→   321→  })
+   322→   322→
+   323→   323→  const toggleExpand = (id: string) =>
+   324→   324→    setExpanded((prev) => {
+   325→   325→      const next = new Set(prev)
+   326→   326→      if (next.has(id)) next.delete(id)
+   327→   327→      else next.add(id)
+   328→   328→      return next
+   329→   329→    })
+   330→   330→
+   331→   331→  // H5 — handler do confirm-toggle
+   332→   332→  const handleToggleConfirm = () => {
+   333→   333→    if (!pendingToggle) return
+   334→   334→    toggleActiveMutation.mutate({
+   335→   335→      id: pendingToggle.id,
+   336→   336→      active: !pendingToggle.currentValue,
+   337→   337→    })
+   338→   338→  }
+   339→   339→
+   340→   340→  const totalNodes = flat?.length ?? 0
+   341→   341→  const expandAll = () => {
+   342→   342→    if (!flat) return
+   343→   343→    setExpanded(new Set(flat.map((c) => c.id)))
+   344→   344→  }
+   345→   345→  const collapseAll = () => setExpanded(new Set())
+   346→   346→
+   347→   347→  return (
+   348→   348→    <div className="flex flex-col gap-4">
+   349→   349→      <PageSectionHeader
+   350→   350→        title="Taxonomia de categorias"
+   351→   351→        description="Organize a árvore em até 3 níveis: pai, filha e subcategoria."
+   352→   352→      />
+   353→   353→
+   354→   354→      {/* Toolbar — H8 minimalismo, agrupa contagem + ações de árvore */}
+   355→   355→      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-sm">
+   356→   356→        <div className="flex flex-wrap items-center gap-2">
+   357→   357→          <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+   358→   358→            <FolderTree className="size-3.5 text-primary" />
+   359→   359→            {totalNodes} {totalNodes === 1 ? "categoria" : "categorias"}
+   360→   360→          </span>
+   361→   361→          <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
+   362→   362→            Níveis:
+   363→   363→            {([0, 1, 2] as const).map((lv) => (
+   364→   364→              <StatusBadge key={lv} tone={LEVEL_META[lv].tone}>
+   365→   365→                <span className={cn("size-1.5 rounded-full", LEVEL_META[lv].dot)} />
+   366→   366→                {LEVEL_META[lv].label}
+   367→   367→              </StatusBadge>
+   368→   368→            ))}
+   369→   369→          </span>
+   370→   370→        </div>
+   371→   371→        <div className="flex flex-wrap items-center gap-2">
+   372→   372→          <Button
+   373→   373→            variant="outline"
+   374→   374→            size="sm"
+   375→   375→            onClick={expandAll}
+   376→   376→            disabled={!flat || flat.length === 0}
+   377→   377→            className="h-8 gap-1.5"
+   378→   378→          >
+   379→   379→            <ChevronsUpDown className="size-3.5" />
+   380→   380→            Expandir tudo
+   381→   381→          </Button>
+   382→   382→          <Button
+   383→   383→            variant="outline"
+   384→   384→            size="sm"
+   385→   385→            onClick={collapseAll}
+   386→   386→            disabled={expanded.size === 0}
+   387→   387→            className="h-8 gap-1.5"
+   388→   388→          >
+   389→   389→            <ChevronsDownUp className="size-3.5" />
+   390→   390→            Recolher tudo
+   391→   391→          </Button>
+   392→   392→          <Button
+   393→   393→            size="sm"
+   394→   394→            onClick={() => setCreateOpen(true)}
+   395→   395→            className="h-8 gap-1.5"
+   396→   396→          >
+   397→   397→            <Plus className="size-4" />
+   398→   398→            Nova categoria
+   399→   399→          </Button>
+   400→   400→        </div>
+   401→   401→      </div>
+   402→   402→
+   403→   403→      {/* H9 — error recovery */}
+   404→   404→      {isError ? (
+   405→   405→        <ErrorRetry onRetry={() => refetch()} />
+   406→   406→      ) : (
+   407→   407→        <Card className="overflow-hidden">
+   408→   408→          <CardContent className="p-0">
+   409→   409→            {isLoading ? (
+   410→   410→              <div className="flex flex-col gap-2 p-4">
+   411→   411→                {Array.from({ length: 4 }).map((_, i) => (
+   412→   412→                  <Skeleton key={i} className="h-14 w-full" />
+   413→   413→                ))}
+   414→   414→              </div>
+   415→   415→            ) : tree.length === 0 ? (
+   416→   416→              <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
+   417→   417→                <div className="flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
+   418→   418→                  <FolderTree className="size-7" />
+   419→   419→                </div>
+   420→   420→                <div>
+   421→   421→                  <p className="text-lg font-semibold">
+   422→   422→                    Nenhuma categoria cadastrada
+   423→   423→                  </p>
+   424→   424→                  <p className="mt-0.5 text-sm text-muted-foreground">
+   425→   425→                    Crie a primeira categoria pai para iniciar a taxonomia.
+   426→   426→                  </p>
+   427→   427→                </div>
+   428→   428→                <Button
+   429→   429→                  size="sm"
+   430→   430→                  onClick={() => setCreateOpen(true)}
+   431→   431→                  className="gap-1.5"
+   432→   432→                >
+   433→   433→                  <Plus className="size-4" />
+   434→   434→                  Criar primeira categoria
+   435→   435→                </Button>
+   436→   436→              </div>
+   437→   437→            ) : (
+   438→   438→              <ul className="flex flex-col" role="tree">
+   439→   439→                {tree.map((node) => (
+   440→   440→                  <TreeNode
+   441→   441→                    key={node.id}
+   442→   442→                    node={node}
+   443→   443→                    level={0}
+   444→   444→                    expanded={expanded}
+   445→   445→                    onToggleExpand={toggleExpand}
+   446→   446→                    onEdit={(n) => setEditTarget(n)}
+   447→   447→                    onDelete={(n) => setDeleteTarget(n)}
+   448→   448→                    onRequestToggleActive={(n) =>
+   449→   449→                      setPendingToggle({
+   450→   450→                        id: n.id,
+   451→   451→                        name: n.name,
+   452→   452→                        currentValue: n.active,
+   453→   453→                      })
+   454→   454→                    }
+   455→   455→                  />
+   456→   456→                ))}
+   457→   457→              </ul>
+   458→   458→            )}
+   459→   459→          </CardContent>
+   460→   460→        </Card>
+   461→   461→      )}
+   462→   462→
+   463→   463→      {/* Create dialog */}
+   464→   464→      <CategoryDialog
+   465→   465→        open={createOpen}
+   466→   466→        onOpenChange={setCreateOpen}
+   467→   467→        title="Nova categoria"
+   468→   468→        description="Defina o nome, slug e o pai. O nível é determinado automaticamente pelo pai escolhido."
+   469→   469→        allCategories={(flat as CategoryRow[] | undefined) ?? []}
+   470→   470→        submitting={createMutation.isPending}
+   471→   471→        onSubmit={(p) => createMutation.mutate(p)}
+   472→   472→      />
+   473→   473→
+   474→   474→      {/* Edit dialog */}
+   475→   475→      <CategoryDialog
+   476→   476→        open={!!editTarget}
+   477→   477→        onOpenChange={(open) => !open && setEditTarget(null)}
+   478→   478→        title="Editar categoria"
+   479→   479→        description="Altere os campos abaixo. Mudar o pai pode alterar o nível da categoria."
+   480→   480→        allCategories={(flat as CategoryRow[] | undefined) ?? []}
+   481→   481→        initial={editTarget ?? undefined}
+   482→   482→        submitting={patchMutation.isPending}
+   483→   483→        onSubmit={(p) => {
+   484→   484→          if (!editTarget) return
+   485→   485→          patchMutation.mutate({ id: editTarget.id, patch: p })
+   486→   486→        }}
+   487→   487→      />
+   488→   488→
+   489→   489→      {/* H5 — confirmação de toggle (não-instantâneo) */}
+   490→   490→      <ConfirmToggleDialog
+   491→   491→        open={!!pendingToggle}
+   492→   492→        onOpenChange={(open) => !open && setPendingToggle(null)}
+   493→   493→        targetLabel={pendingToggle?.name ?? ""}
+   494→   494→        field="active"
+   495→   495→        currentValue={pendingToggle?.currentValue ?? false}
+   496→   496→        onConfirm={handleToggleConfirm}
+   497→   497→      />
+   498→   498→
+   499→   499→      {/* H3/H5 — confirmação de exclusão */}
+   500→   500→      <ConfirmDialog
+   501→   501→        open={!!deleteTarget}
+   502→   502→        onOpenChange={(open) => !open && setDeleteTarget(null)}
+   503→   503→        title="Excluir categoria?"
+   504→   504→        description={
+   505→   505→          <>
+   506→   506→            Você está prestes a excluir{" "}
+   507→   507→            <strong className="text-foreground">
+   508→   508→              {deleteTarget?.name}
+   509→   509→            </strong>
+   510→   510→            . Esta ação não pode ser desfeita. Categorias com filhos ou serviços
+   511→   511→            vinculados não podem ser excluídas.
+   512→   512→          </>
+   513→   513→        }
+   514→   514→        confirmLabel={deleteMutation.isPending ? "Excluindo…" : "Excluir"}
+   515→   515→        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+   516→   516→        variant="destructive"
+   517→   517→      />
+   518→   518→    </div>
+   519→   519→  )
+   520→   520→}
+   521→   521→
+   522→   522→// ---------------------------------------------------------------------------
+   523→   523→// TreeNode — recursivo
+   524→   524→// ---------------------------------------------------------------------------
+   525→   525→function TreeNode({
+   526→   526→  node,
+   527→   527→  level,
+   528→   528→  expanded,
+   529→   529→  onToggleExpand,
+   530→   530→  onEdit,
+   531→   531→  onDelete,
+   532→   532→  onRequestToggleActive,
+   533→   533→}: {
+   534→   534→  node: CategoryNode
+   535→   535→  level: number
+   536→   536→  expanded: Set<string>
+   537→   537→  onToggleExpand: (id: string) => void
+   538→   538→  onEdit: (n: CategoryNode) => void
+   539→   539→  onDelete: (n: CategoryNode) => void
+   540→   540→  onRequestToggleActive: (n: CategoryNode) => void
+   541→   541→}) {
+   542→   542→  const meta = LEVEL_META[level] ?? LEVEL_META[0]
+   543→   543→  const hasChildren = !!node.children && node.children.length > 0
+   544→   544→  const isOpen = expanded.has(node.id)
+   545→   545→  const hasIcon = !!node.icon && ICON_BY_NAME.has(node.icon)
+   546→   546→
+   547→   547→  return (
+   548→   548→    <li
+   549→   549→      role="treeitem"
+   550→   550→      aria-expanded={hasChildren ? isOpen : undefined}
+   551→   551→      aria-selected={false}
+   552→   552→    >
+   553→   553→      <div
+   554→   554→        className={cn(
+   555→   555→          "group relative flex flex-wrap items-center gap-2 border-b px-3 py-2.5 transition-colors hover:bg-muted/30 last:border-0",
+   556→   556→          meta.rowAccent,
+   557→   557→          !node.active && "opacity-60",
+   558→   558→        )}
+   559→   559→        style={{ paddingLeft: `${12 + level * 22}px` }}
+   560→   560→      >
+   561→   561→        {/* Connecting line (visual, níveis aninhados) */}
+   562→   562→        {level > 0 ? (
+   563→   563→          <span
+   564→   564→            aria-hidden
+   565→   565→            className="pointer-events-none absolute left-0 top-0 h-full border-l border-dashed border-border"
+   566→   566→            style={{ marginLeft: `${12 + (level - 1) * 22 + 8}px` }}
+   567→   567→          />
+   568→   568→        ) : null}
+   569→   569→
+   570→   570→        {/* Expand toggle */}
+   571→   571→        <button
+   572→   572→          type="button"
+   573→   573→          onClick={() => hasChildren && onToggleExpand(node.id)}
+   574→   574→          aria-label={isOpen ? "Recolher" : "Expandir"}
+   575→   575→          disabled={!hasChildren}
+   576→   576→          className={cn(
+   577→   577→            "flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
+   578→   578→            hasChildren
+   579→   579→              ? "hover:bg-accent hover:text-foreground"
+   580→   580→              : "cursor-default opacity-30",
+   581→   581→          )}
+   582→   582→        >
+   583→   583→          {hasChildren ? (
+   584→   584→            <ChevronRight
+   585→   585→              className={cn(
+   586→   586→                "size-4 transition-transform",
+   587→   587→                isOpen && "rotate-90",
+   588→   588→              )}
+   589→   589→            />
+   590→   590→          ) : (
+   591→   591→            <span className="size-1.5 rounded-full bg-current opacity-40" />
+   592→   592→          )}
+   593→   593→        </button>
+   594→   594→
+   595→   595→        {/* H7 — botões explícitos de mover (substituem o drag-handle mudo).
+   596→   596→            API ainda não suporta reordenação — desabilitados c/ tooltip honesto. */}
+   597→   597→        <div className="flex shrink-0 items-center">
+   598→   598→          <Tooltip>
+   599→   599→            <TooltipTrigger asChild>
+   600→   600→              <span tabIndex={0} aria-label="Mover para cima (indisponível)">
+   601→   601→                <Button
+   602→   602→                  type="button"
+   603→   603→                  variant="ghost"
+   604→   604→                  size="icon"
+   605→   605→                  disabled
+   606→   606→                  className="size-6 text-muted-foreground/40"
+   607→   607→                  aria-label="Mover para cima"
+   608→   608→                >
+   609→   609→                  <ChevronUp className="size-3.5" />
+   610→   610→                </Button>
+   611→   611→              </span>
+   612→   612→            </TooltipTrigger>
+   613→   613→            <TooltipContent side="top">
+   614→   614→              Reordenação disponível em breve
+   615→   615→            </TooltipContent>
+   616→   616→          </Tooltip>
+   617→   617→          <Tooltip>
+   618→   618→            <TooltipTrigger asChild>
+   619→   619→              <span tabIndex={0} aria-label="Mover para baixo (indisponível)">
+   620→   620→                <Button
+   621→   621→                  type="button"
+   622→   622→                  variant="ghost"
+   623→   623→                  size="icon"
+   624→   624→                  disabled
+   625→   625→                  className="size-6 text-muted-foreground/40"
+   626→   626→                  aria-label="Mover para baixo"
+   627→   627→                >
+   628→   628→                  <ChevronDown className="size-3.5" />
+   629→   629→                </Button>
+   630→   630→              </span>
+   631→   631→            </TooltipTrigger>
+   632→   632→            <TooltipContent side="top">
+   633→   633→              Reordenação disponível em breve
+   634→   634→            </TooltipContent>
+   635→   635→          </Tooltip>
+   636→   636→        </div>
+   637→   637→
+   638→   638→        {/* Name + level badge (H4 — StatusBadge ÚNICA source of truth) */}
+   639→   639→        <div className="min-w-0 flex-1">
+   640→   640→          <div className="flex flex-wrap items-center gap-2">
+   641→   641→            {hasIcon ? (
+   642→   642→              <span className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground">
+   643→   643→                <CategoryIcon name={node.icon} className="size-4" />
+   644→   644→              </span>
+   645→   645→            ) : null}
+   646→   646→            <span className="truncate text-sm font-medium">{node.name}</span>
+   647→   647→            <StatusBadge tone={meta.tone}>
+   648→   648→              <span className={cn("size-1.5 rounded-full", meta.dot)} />
+   649→   649→              {meta.label}
+   650→   650→            </StatusBadge>
+   651→   651→            {!node.active ? (
+   652→   652→              <StatusBadge tone="zinc">Inativa</StatusBadge>
+   653→   653→            ) : null}
+   654→   654→            {hasChildren ? (
+   655→   655→              <StatusBadge tone="zinc">
+   656→   656→                {node.children!.length}{" "}
+   657→   657→                {node.children!.length === 1 ? "filha" : "filhas"}
+   658→   658→              </StatusBadge>
+   659→   659→            ) : null}
+   660→   660→          </div>
+   661→   661→          <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+   662→   662→            /{node.slug}
+   663→   663→            {typeof node.order === "number" ? ` · ordem ${node.order}` : ""}
+   664→   664→          </p>
+   665→   665→        </div>
+   666→   666→
+   667→   667→        {/* Active toggle — H5: clique abre ConfirmToggleDialog */}
+   668→   668→        <div className="flex items-center gap-1.5 pr-1">
+   669→   669→          <Label
+   670→   670→            htmlFor={`active-${node.id}`}
+   671→   671→            className="hidden text-[11px] text-muted-foreground sm:block"
+   672→   672→          >
+   673→   673→            Ativa
+   674→   674→          </Label>
+   675→   675→          <Tooltip>
+   676→   676→            <TooltipTrigger asChild>
+   677→   677→              <Switch
+   678→   678→                id={`active-${node.id}`}
+   679→   679→                checked={node.active}
+   680→   680→                onCheckedChange={() => onRequestToggleActive(node)}
+   681→   681→                aria-label="Ativar ou desativar categoria (com confirmação)"
+   682→   682→                className="data-[state=checked]:bg-emerald-600"
+   683→   683→              />
+   684→   684→            </TooltipTrigger>
+   685→   685→            <TooltipContent>
+   686→   686→              {node.active
+   687→   687→                ? "Desativar categoria (com confirmação)"
+   688→   688→                : "Ativar categoria (com confirmação)"}
+   689→   689→            </TooltipContent>
+   690→   690→          </Tooltip>
+   691→   691→        </div>
+   692→   692→
+   693→   693→        {/* Actions */}
+   694→   694→        <div className="flex items-center gap-1">
+   695→   695→          <Tooltip>
+   696→   696→            <TooltipTrigger asChild>
+   697→   697→              <Button
+   698→   698→                variant="ghost"
+   699→   699→                size="icon"
+   700→   700→                className="size-7 text-muted-foreground hover:text-primary"
+   701→   701→                onClick={() => onEdit(node)}
+   702→   702→                aria-label="Editar categoria"
+   703→   703→              >
+   704→   704→                <Pencil className="size-3.5" />
+   705→   705→              </Button>
+   706→   706→            </TooltipTrigger>
+   707→   707→            <TooltipContent>Editar</TooltipContent>
+   708→   708→          </Tooltip>
+   709→   709→          <Tooltip>
+   710→   710→            <TooltipTrigger asChild>
+   711→   711→              <Button
+   712→   712→                variant="ghost"
+   713→   713→                size="icon"
+   714→   714→                className="size-7 text-muted-foreground hover:text-red-600"
+   715→   715→                onClick={() => onDelete(node)}
+   716→   716→                aria-label="Excluir categoria"
+   717→   717→              >
+   718→   718→                <Trash2 className="size-3.5" />
+   719→   719→              </Button>
+   720→   720→            </TooltipTrigger>
+   721→   721→            <TooltipContent>Excluir</TooltipContent>
+   722→   722→          </Tooltip>
+   723→   723→        </div>
+   724→   724→      </div>
+   725→   725→
+   726→   726→      {/* Children */}
+   727→   727→      {hasChildren && isOpen ? (
+   728→   728→        <ul role="group">
+   729→   729→          {node.children!.map((child) => (
+   730→   730→            <TreeNode
+   731→   731→              key={child.id}
+   732→   732→              node={child}
+   733→   733→              level={level + 1}
+   734→   734→              expanded={expanded}
+   735→   735→              onToggleExpand={onToggleExpand}
+   736→   736→              onEdit={onEdit}
+   737→   737→              onDelete={onDelete}
+   738→   738→              onRequestToggleActive={onRequestToggleActive}
+   739→   739→            />
+   740→   740→          ))}
+   741→   741→        </ul>
+   742→   742→      ) : null}
+   743→   743→    </li>
+   744→   744→  )
+   745→   745→}
+   746→   746→
+   747→   747→// ---------------------------------------------------------------------------
+   748→   748→// CategoryDialog — create / edit form (H6 icon picker, H10 slug help)
+   749→   749→// ---------------------------------------------------------------------------
+   750→   750→type CategoryPayload = {
+   751→   751→  name: string
+   752→   752→  slug: string
+   753→   753→  parentId?: string | null
+   754→   754→  level: number
+   755→   755→  icon?: string
+   756→   756→  order: number
+   757→   757→  active: boolean
+   758→   758→}
+   759→   759→
+   760→   760→function CategoryDialog({
+   761→   761→  open,
+   762→   762→  onOpenChange,
+   763→   763→  title,
+   764→   764→  description,
+   765→   765→  allCategories,
+   766→   766→  initial,
+   767→   767→  submitting,
+   768→   768→  onSubmit,
+   769→   769→}: {
+   770→   770→  open: boolean
+   771→   771→  onOpenChange: (open: boolean) => void
+   772→   772→  title: string
+   773→   773→  description: string
+   774→   774→  allCategories: CategoryRow[]
+   775→   775→  initial?: CategoryNode
+   776→   776→  submitting: boolean
+   777→   777→  onSubmit: (payload: CategoryPayload) => void
+   778→   778→}) {
+   779→   779→  const [name, setName] = React.useState("")
+   780→   780→  const [slug, setSlug] = React.useState("")
+   781→   781→  const [slugTouched, setSlugTouched] = React.useState(false)
+   782→   782→  const [parentId, setParentId] = React.useState<string>("__none__")
+   783→   783→  const [icon, setIcon] = React.useState<string>("__none__")
+   784→   784→  const [order, setOrder] = React.useState(0)
+   785→   785→  const [active, setActive] = React.useState(true)
+   786→   786→
+   787→   787→  // Reset form when opening
+   788→   788→  React.useEffect(() => {
+   789→   789→    if (!open) return
+   790→   790→    if (initial) {
+   791→   791→      setName(initial.name)
+   792→   792→      setSlug(initial.slug)
+   793→   793→      setSlugTouched(true)
+   794→   794→      setParentId(initial.parentId ?? "__none__")
+   795→   795→      setIcon(initial.icon && initial.icon.length > 0 ? initial.icon : "__none__")
+   796→   796→      setOrder(initial.order ?? 0)
+   797→   797→      setActive(initial.active)
+   798→   798→    } else {
+   799→   799→      setName("")
+   800→   800→      setSlug("")
+   801→   801→      setSlugTouched(false)
+   802→   802→      setParentId("__none__")
+   803→   803→      setIcon("__none__")
+   804→   804→      setOrder(0)
+   805→   805→      setActive(true)
+   806→   806→    }
+   807→   807→  }, [open, initial])
+   808→   808→
+   809→   809→  // Auto-generate slug from name unless user edited it manually
+   810→   810→  React.useEffect(() => {
+   811→   811→    if (!slugTouched) setSlug(slugify(name))
+   812→   812→  }, [name, slugTouched])
+   813→   813→
+   814→   814→  // Determine the level from the chosen parent
+   815→   815→  const parent = allCategories.find((c) => c.id === parentId)
+   816→   816→  const level = parent ? Math.min(2, parent.level + 1) : 0
+   817→   817→
+   818→   818→  // Candidates for parent
+   819→   819→  const parentCandidates = allCategories.filter(
+   820→   820→    (c) => c.level < 2 && c.id !== initial?.id,
+   821→   821→  )
+   822→   822→
+   823→   823→  const canSubmit =
+   824→   824→    name.trim().length >= 2 &&
+   825→   825→    /^[a-z0-9-]+$/.test(slug) &&
+   826→   826→    slug.length >= 2 &&
+   827→   827→    !submitting
+   828→   828→
+   829→   829→  // H6 — nome/preview do ícone atual
+   830→   830→  const currentIconName = icon === "__none__" ? "" : icon
+   831→   831→  const hasCurrentIcon = currentIconName.length > 0 && ICON_BY_NAME.has(currentIconName)
+   832→   832→  const isCustomIcon =
+   833→   833→    currentIconName.length > 0 && !ICON_BY_NAME.has(currentIconName)
+   834→   834→
+   835→   835→  const handleSubmit = (e: React.FormEvent) => {
+   836→   836→    e.preventDefault()
+   837→   837→    if (!canSubmit) return
+   838→   838→    onSubmit({
+   839→   839→      name: name.trim(),
+   840→   840→      slug,
+   841→   841→      parentId: parentId === "__none__" ? null : parentId,
+   842→   842→      level,
+   843→   843→      icon: currentIconName,
+   844→   844→      order: Number.isFinite(order) ? order : 0,
+   845→   845→      active,
+   846→   846→    })
+   847→   847→  }
+   848→   848→
+   849→   849→  return (
+   850→   850→    <Dialog open={open} onOpenChange={onOpenChange}>
+   851→   851→      <DialogContent className="sm:max-w-lg">
+   852→   852→        <DialogHeader>
+   853→   853→          <DialogTitle>{title}</DialogTitle>
+   854→   854→          <DialogDescription>{description}</DialogDescription>
+   855→   855→        </DialogHeader>
+   856→   856→
+   857→   857→        <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-1">
+   858→   858→          {/* Name + slug (H10 — Info tooltip no Slug) */}
+   859→   859→          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   860→   860→            <div className="flex flex-col gap-1.5">
+   861→   861→              <Label htmlFor="cat-name">
+   862→   862→                Nome <span className="text-red-500">*</span>
+   863→   863→              </Label>
+   864→   864→              <Input
+   865→   865→                id="cat-name"
+   866→   866→                value={name}
+   867→   867→                onChange={(e) => setName(e.target.value)}
+   868→   868→                placeholder="Ex.: Reparos"
+   869→   869→                required
+   870→   870→                maxLength={80}
+   871→   871→              />
+   872→   872→            </div>
+   873→   873→            <div className="flex flex-col gap-1.5">
+   874→   874→              <div className="flex items-center gap-1">
+   875→   875→                <Label htmlFor="cat-slug">
+   876→   876→                  Slug <span className="text-red-500">*</span>
+   877→   877→                </Label>
+   878→   878→                <Tooltip>
+   879→   879→                  <TooltipTrigger asChild>
+   880→   880→                    <button
+   881→   881→                      type="button"
+   882→   882→                      className="text-muted-foreground transition-colors hover:text-foreground"
+   883→   883→                      aria-label="O que é um slug?"
+   884→   884→                    >
+   885→   885→                      <Info className="size-3.5" />
+   886→   886→                    </button>
+   887→   887→                  </TooltipTrigger>
+   888→   888→                  <TooltipContent
+   889→   889→                    side="right"
+   890→   890→                    className="max-w-xs text-xs leading-relaxed"
+   891→   891→                  >
+   892→   892→                    Identificador único usado nas URLs. Gerado
+   893→   893→                    automaticamente a partir do nome.
+   894→   894→                  </TooltipContent>
+   895→   895→                </Tooltip>
+   896→   896→              </div>
+   897→   897→              <Input
+   898→   898→                id="cat-slug"
+   899→   899→                value={slug}
+   900→   900→                onChange={(e) => {
+   901→   901→                  setSlug(e.target.value)
+   902→   902→                  setSlugTouched(true)
+   903→   903→                }}
+   904→   904→                placeholder="reparos"
+   905→   905→                required
+   906→   906→                maxLength={80}
+   907→   907→              />
+   908→   908→              <p className="text-[11px] text-muted-foreground">
+   909→   909→                Apenas letras minúsculas, números e hífens.
+   910→   910→              </p>
+   911→   911→            </div>
+   912→   912→          </div>
+   913→   913→
+   914→   914→          {/* Parent + level preview */}
+   915→   915→          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   916→   916→            <div className="flex flex-col gap-1.5">
+   917→   917→              <Label htmlFor="cat-parent">Categoria pai</Label>
+   918→   918→              <Select value={parentId} onValueChange={setParentId}>
+   919→   919→                <SelectTrigger id="cat-parent">
+   920→   920→                  <SelectValue placeholder="Nenhuma (categoria pai)" />
+   921→   921→                </SelectTrigger>
+   922→   922→                <SelectContent>
+   923→   923→                  <SelectItem value="__none__">
+   924→   924→                    Nenhuma (categoria pai)
+   925→   925→                  </SelectItem>
+   926→   926→                  {parentCandidates.map((c) => (
+   927→   927→                    <SelectItem key={c.id} value={c.id}>
+   928→   928→                      {"—".repeat(c.level)} {c.name}{" "}
+   929→   929→                      <span className="text-muted-foreground">
+   930→   930→                        ({LEVEL_META[c.level]?.label})
+   931→   931→                      </span>
+   932→   932→                    </SelectItem>
+   933→   933→                  ))}
+   934→   934→                </SelectContent>
+   935→   935→              </Select>
+   936→   936→            </div>
+   937→   937→            <div className="flex flex-col gap-1.5">
+   938→   938→              <Label>Nível resultante</Label>
+   939→   939→              <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3">
+   940→   940→                <StatusBadge tone={LEVEL_META[level]?.tone ?? "emerald"}>
+   941→   941→                  <span
+   942→   942→                    className={cn(
+   943→   943→                      "size-1.5 rounded-full",
+   944→   944→                      LEVEL_META[level]?.dot ?? "bg-emerald-500",
+   945→   945→                    )}
+   946→   946→                  />
+   947→   947→                  {LEVEL_META[level]?.label ?? "Pai"}
+   948→   948→                </StatusBadge>
+   949→   949→                <span className="text-xs text-muted-foreground">
+   950→   950→                  Nível {level}
+   951→   951→                </span>
+   952→   952→              </div>
+   953→   953→            </div>
+   954→   954→          </div>
+   955→   955→
+   956→   956→          {/* H6 — Icon picker (Select c/ preview) + Ordem */}
+   957→   957→          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   958→   958→            <div className="flex flex-col gap-1.5">
+   959→   959→              <Label htmlFor="cat-icon">Ícone (opcional)</Label>
+   960→   960→              <div className="flex items-center gap-2">
+   961→   961→                <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-muted/40">
+   962→   962→                  {hasCurrentIcon ? (
+   963→   963→                    <CategoryIcon name={currentIconName} className="size-4 text-foreground" />
+   964→   964→                  ) : (
+   965→   965→                    <span className="text-[10px] text-muted-foreground">—</span>
+   966→   966→                  )}
+   967→   967→                </span>
+   968→   968→                <Select value={icon} onValueChange={setIcon}>
+   969→   969→                  <SelectTrigger id="cat-icon" className="flex-1">
+   970→   970→                    <SelectValue placeholder="Sem ícone" />
+   971→   971→                  </SelectTrigger>
+   972→   972→                  <SelectContent>
+   973→   973→                    <SelectItem value="__none__">Sem ícone</SelectItem>
+   974→   974→                    {ICON_OPTIONS.map((opt) => (
+   975→   975→                      <SelectItem key={opt.name} value={opt.name}>
+   976→   976→                        <span className="inline-flex items-center gap-2">
+   977→   977→                          <CategoryIcon name={opt.name} className="size-4" />
+   978→   978→                          {opt.label}
+   979→   979→                          <span className="font-mono text-[10px] text-muted-foreground">
+   980→   980→                            {opt.name}
+   981→   981→                          </span>
+   982→   982→                        </span>
+   983→   983→                      </SelectItem>
+   984→   984→                    ))}
+   985→   985→                    {/* H6 — se a categoria tem ícone fora da lista, mostrar como entrada custom */}
+   986→   986→                    {isCustomIcon ? (
+   987→   987→                      <SelectItem value={currentIconName}>
+   988→   988→                        <span className="inline-flex items-center gap-2">
+   989→   989→                          <span className="text-[10px]">★</span>
+   990→   990→                          Personalizado: {currentIconName}
+   991→   991→                        </span>
+   992→   992→                      </SelectItem>
+   993→   993→                    ) : null}
+   994→   994→                  </SelectContent>
+   995→   995→                </Select>
+   996→   996→              </div>
+   997→   997→              <p className="text-[11px] text-muted-foreground">
+   998→   998→                Escolha um ícone que represente a categoria.
+   999→   999→              </p>
+  1000→  1000→            </div>
+  1001→  1001→            <div className="flex flex-col gap-1.5">
+  1002→  1002→              <Label htmlFor="cat-order">Ordem</Label>
+  1003→  1003→              <Input
+  1004→  1004→                id="cat-order"
+  1005→  1005→                type="number"
+  1006→  1006→                value={order}
+  1007→  1007→                onChange={(e) => setOrder(Number(e.target.value))}
+  1008→  1008→                min={0}
+  1009→  1009→              />
+  1010→  1010→              <p className="text-[11px] text-muted-foreground">
+  1011→  1011→                Posição relativa entre irmãos (menor = antes).
+  1012→  1012→              </p>
+  1013→  1013→            </div>
+  1014→  1014→          </div>
+  1015→  1015→
+  1016→  1016→          {/* Active toggle */}
+  1017→  1017→          <div className="flex items-center justify-between rounded-md border p-3">
+  1018→  1018→            <div>
+  1019→  1019→              <Label htmlFor="cat-active" className="text-sm font-medium">
+  1020→  1020→                Ativa
+  1021→  1021→              </Label>
+  1022→  1022→              <p className="text-[11px] text-muted-foreground">
+  1023→  1023→                Categorias inativas não aparecem na vitrine pública.
+  1024→  1024→              </p>
+  1025→  1025→            </div>
+  1026→  1026→            <Switch
+  1027→  1027→              id="cat-active"
+  1028→  1028→              checked={active}
+  1029→  1029→              onCheckedChange={setActive}
+  1030→  1030→            />
+  1031→  1031→          </div>
+  1032→  1032→
+  1033→  1033→          <DialogFooter>
+  1034→  1034→            <Button
+  1035→  1035→              type="button"
+  1036→  1036→              variant="outline"
+  1037→  1037→              onClick={() => onOpenChange(false)}
+  1038→  1038→              disabled={submitting}
+  1039→  1039→            >
+  1040→  1040→              Cancelar
+  1041→  1041→            </Button>
+  1042→  1042→            <Button type="submit" disabled={!canSubmit} className="gap-1.5">
+  1043→  1043→              {submitting ? (
+  1044→  1044→                <Loader2 className="size-4 animate-spin" />
+  1045→  1045→              ) : (
+  1046→  1046→                <Plus className="size-4" />
+  1047→  1047→              )}
+  1048→  1048→              {initial ? "Salvar alterações" : "Criar categoria"}
+  1049→  1049→            </Button>
+  1050→  1050→          </DialogFooter>
+  1051→  1051→        </form>
+  1052→  1052→      </DialogContent>
+  1053→  1053→    </Dialog>
+  1054→  1054→  )
+  1055→  1055→}
+  1056→  1056→
+  1057→  1057→// ---------------------------------------------------------------------------
+  1058→  1058→// Local error retry (H9)
+  1059→  1059→// ---------------------------------------------------------------------------
+  1060→  1060→function ErrorRetry({ onRetry }: { onRetry: () => void }) {
+  1061→  1061→  return (
+  1062→  1062→    <div className="flex flex-col items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-6 py-14 text-center dark:border-rose-900/50 dark:bg-rose-950/30">
+  1063→  1063→      <div className="flex size-14 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300">
+  1064→  1064→        <FolderTree className="size-7" />
+  1065→  1065→      </div>
+  1066→  1066→      <h3 className="mt-4 text-base font-semibold tracking-tight">
+  1067→  1067→        Não foi possível carregar a árvore de categorias
+  1068→  1068→      </h3>
+  1069→  1069→      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+  1070→  1070→        Verifique sua conexão e tente novamente.
+  1071→  1071→      </p>
+  1072→  1072→      <Button
+  1073→  1073→        variant="outline"
+  1074→  1074→        size="sm"
+  1075→  1075→        onClick={onRetry}
+  1076→  1076→        className="mt-4 gap-1.5"
+  1077→  1077→      >
+  1078→  1078→        Tentar novamente
+  1079→  1079→      </Button>
+  1080→  1080→    </div>
+  1081→  1081→  )
+  1082→  1082→}
+  1083→  1083→

@@ -1,0 +1,799 @@
+     1→"use client"
+     2→
+     3→/**
+     4→ * AdminDashboard — Visão Geral (redesign N1, heurísticas de Nielsen).
+     5→ *
+     6→ * Redesign focado em:
+     7→ *   H1  Status do sistema     → FreshnessLabel, Refresh action, skeletons fiéis
+     8→ *   H4  Consistência          → bookingTone() + BookingStatusBadge (1 source of truth)
+     9→ *   H5  Prevenção de erros    → seletor de período (Hoje/7d/30d/Tudo)
+    10→ *   H7  Eficiência            → Kbd hints visuais casados com a sidebar (1..7)
+    11→ *   H8  Minimalismo           → 4 KPIs (não 5+4), 2 charts (não 4), sem card fake
+    12→ *   H9  Recuperar erros       → ErrorState com retry actionável
+    13→ *
+    14→ * Data source: GET /api/admin/stats
+    15→ *   {
+    16→ *     usersByRole: Record<role, number>,
+    17→ *     providers: number (verified+active),
+    18→ *     services: number (active),
+    19→ *     bookingsByStatus: Record<status, number>,
+    20→ *     quotesByStatus: Record<status, number>,
+    21→ *     revenue: { total, paymentsPaid },
+    22→ *     recentBookings: Booking[],
+    23→ *     topProviders: ProviderRow[]
+    24→ *   }
+    25→ */
+    26→
+    27→import * as React from "react"
+    28→import {
+    29→  ArrowUpRight,
+    30→  BadgeCheck,
+    31→  CalendarCheck,
+    32→  ClipboardList,
+    33→  DollarSign,
+    34→  RefreshCw,
+    35→  Settings as SettingsIcon,
+    36→  Star,
+    37→  TrendingUp,
+    38→  Users,
+    39→  Wrench,
+    40→  type LucideIcon,
+    41→} from "lucide-react"
+    42→import {
+    43→  Bar,
+    44→  BarChart,
+    45→  CartesianGrid,
+    46→  Cell,
+    47→  Pie,
+    48→  PieChart,
+    49→  ResponsiveContainer,
+    50→  Tooltip as RTooltip,
+    51→  XAxis,
+    52→  YAxis,
+    53→} from "recharts"
+    54→import { useQuery } from "@tanstack/react-query"
+    55→
+    56→import { apiGet } from "@/lib/api"
+    57→import { formatBRL } from "@/lib/format"
+    58→import {
+    59→  BOOKING_STATUS_LABELS,
+    60→  type BookingStatus,
+    61→} from "@/lib/constants"
+    62→import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+    63→import { Button } from "@/components/ui/button"
+    64→import { Card, CardContent } from "@/components/ui/card"
+    65→import { Skeleton } from "@/components/ui/skeleton"
+    66→import {
+    67→  Select,
+    68→  SelectContent,
+    69→  SelectItem,
+    70→  SelectTrigger,
+    71→  SelectValue,
+    72→} from "@/components/ui/select"
+    73→import { cn } from "@/lib/utils"
+    74→import {
+    75→  BookingStatusBadge,
+    76→  EmptyState,
+    77→  ErrorState,
+    78→  FreshnessLabel,
+    79→  Kbd,
+    80→  PageSectionHeader,
+    81→  bookingTone,
+    82→  initials,
+    83→  type StatusTone,
+    84→} from "@/components/admin/admin-shared"
+    85→
+    86→// ---------------------------------------------------------------------------
+    87→// Chart palette — UMA source of truth (H4 consistência)
+    88→// Mapeia StatusTone (do admin-shared) → cor concreta para recharts.
+    89→// Não há mais DONUT_COLORS paralelo a BOOKING_STATUS_COLORS.
+    90→// ---------------------------------------------------------------------------
+    91→const TONE_HEX: Record<StatusTone, string> = {
+    92→  emerald: "oklch(0.62 0.15 152)", // emerald-600 (família var(--primary))
+    93→  amber: "oklch(0.78 0.18 84)", // amber-400
+    94→  rose: "oklch(0.62 0.20 16)", // rose-500
+    95→  teal: "oklch(0.62 0.12 184)", // teal-400
+    96→  zinc: "oklch(0.7 0.00 0)", // neutral
+    97→  sky: "oklch(0.7 0.12 220)", // sky-500
+    98→}
+    99→
+   100→const CHART_TOOLTIP_STYLE = {
+   101→  borderRadius: 8,
+   102→  border: "1px solid var(--border)",
+   103→  background: "var(--popover)",
+   104→  color: "var(--popover-foreground)",
+   105→  fontSize: 12,
+   106→  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.15)",
+   107→} as const
+   108→
+   109→const BOOKING_STATUS_ORDER: BookingStatus[] = [
+   110→  "PENDING",
+   111→  "CONFIRMED",
+   112→  "IN_PROGRESS",
+   113→  "COMPLETED",
+   114→  "CANCELLED",
+   115→]
+   116→
+   117→// ---------------------------------------------------------------------------
+   118→// Tipos — espelha o que /api/admin/stats retorna
+   119→// ---------------------------------------------------------------------------
+   120→type AdminStats = {
+   121→  usersByRole: Record<string, number>
+   122→  providers: number
+   123→  services: number
+   124→  bookingsByStatus: Record<string, number>
+   125→  quotesByStatus: Record<string, number>
+   126→  revenue: { total: number; paymentsPaid: number }
+   127→  recentBookings: Array<{
+   128→    id: string
+   129→    status: string
+   130→    paymentStatus: string
+   131→    amount: number
+   132→    scheduledAt: string
+   133→    createdAt: string
+   134→    service?: { id: string; title: string } | null
+   135→    client?: { id: string; name: string; avatarUrl?: string | null } | null
+   136→    provider?: { id: string; name: string; avatarUrl?: string | null } | null
+   137→  }>
+   138→  topProviders: Array<{
+   139→    id: string
+   140→    name: string
+   141→    avatarUrl?: string | null
+   142→    city?: string | null
+   143→    verified: boolean
+   144→    rating: number
+   145→    reviewCount: number
+   146→  }>
+   147→}
+   148→
+   149→type DateRange = "today" | "7d" | "30d" | "all"
+   150→
+   151→const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
+   152→  { value: "today", label: "Hoje" },
+   153→  { value: "7d", label: "7 dias" },
+   154→  { value: "30d", label: "30 dias" },
+   155→  { value: "all", label: "Tudo" },
+   156→]
+   157→
+   158→// ---------------------------------------------------------------------------
+   159→// Componente principal
+   160→// ---------------------------------------------------------------------------
+   161→export function AdminDashboard({
+   162→  onNavigate,
+   163→}: {
+   164→  onNavigate: (view: string) => void
+   165→}) {
+   166→  const [range, setRange] = React.useState<DateRange>("30d")
+   167→
+   168→  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } =
+   169→    useQuery({
+   170→      queryKey: ["admin", "stats"],
+   171→      queryFn: () => apiGet<AdminStats>("/api/admin/stats"),
+   172→      staleTime: 30_000,
+   173→    })
+   174→
+   175→  // H9 — erro com retry actionável (não mais linha muted)
+   176→  if (isError) {
+   177→    return (
+   178→      <ErrorState
+   179→        title="Não foi possível carregar as estatísticas"
+   180→        description="Verifique sua conexão e se você está autenticado como administrador."
+   181→        onRetry={() => void refetch()}
+   182→      />
+   183→    )
+   184→  }
+   185→
+   186→  // H1 — skeleton que espelha o layout final (não um placeholder genérico)
+   187→  if (isLoading || !data) {
+   188→    return <DashboardSkeleton />
+   189→  }
+   190→
+   191→  const totalUsers = Object.values(data.usersByRole).reduce((a, b) => a + b, 0)
+   192→  const totalBookings = Object.values(data.bookingsByStatus).reduce(
+   193→    (a, b) => a + b,
+   194→    0,
+   195→  )
+   196→  const completed = data.bookingsByStatus.COMPLETED ?? 0
+   197→  const pending = data.bookingsByStatus.PENDING ?? 0
+   198→  const inProgress = data.bookingsByStatus.IN_PROGRESS ?? 0
+   199→  const verifiedProviders = data.providers
+   200→  const totalProviders = data.usersByRole.PROVIDER ?? 0
+   201→  const verifyRate =
+   202→    totalProviders > 0
+   203→      ? Math.round((verifiedProviders / totalProviders) * 100)
+   204→      : 0
+   205→
+   206→  // H4 — donut usa bookingTone() do admin-shared (mesma source of truth do badge)
+   207→  const statusRows = BOOKING_STATUS_ORDER.map((s) => ({
+   208→    status: s,
+   209→    label: BOOKING_STATUS_LABELS[s],
+   210→    count: data.bookingsByStatus[s] ?? 0,
+   211→    tone: bookingTone(s),
+   212→    fill: TONE_HEX[bookingTone(s)],
+   213→  })).filter((r) => r.count > 0)
+   214→  const chartTotal = statusRows.reduce((a, r) => a + r.count, 0)
+   215→
+   216→  const freshnessDate = dataUpdatedAt ? new Date(dataUpdatedAt) : null
+   217→
+   218→  return (
+   219→    <div className="flex flex-col gap-6">
+   220→      {/* H1 + H5 — cabeçalho com frescor, refresh e seletor de período */}
+   221→      <PageSectionHeader
+   222→        title="Visão geral"
+   223→        description="Métricas e atividade da plataforma em tempo real."
+   224→        action={
+   225→          <div className="flex flex-wrap items-center gap-2">
+   226→            <FreshnessLabel updatedAt={freshnessDate} />
+   227→            <Button
+   228→              type="button"
+   229→              variant="outline"
+   230→              size="sm"
+   231→              onClick={() => void refetch()}
+   232→              disabled={isFetching}
+   233→              className="h-9 gap-1.5"
+   234→            >
+   235→              <RefreshCw
+   236→                className={cn("size-3.5", isFetching && "animate-spin")}
+   237→              />
+   238→              Atualizar
+   239→            </Button>
+   240→            <Select
+   241→              value={range}
+   242→              onValueChange={(v) => setRange(v as DateRange)}
+   243→            >
+   244→              <SelectTrigger size="sm" className="h-9 w-[130px]">
+   245→                <SelectValue />
+   246→              </SelectTrigger>
+   247→              <SelectContent>
+   248→                {DATE_RANGE_OPTIONS.map((opt) => (
+   249→                  <SelectItem key={opt.value} value={opt.value}>
+   250→                    {opt.label}
+   251→                  </SelectItem>
+   252→                ))}
+   253→              </SelectContent>
+   254→            </Select>
+   255→          </div>
+   256→        }
+   257→      />
+   258→
+   259→      {/* H8 — KPI grid enxuto: 4 primários (não 5+4) */}
+   260→      <section
+   261→        aria-label="Indicadores principais"
+   262→        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+   263→      >
+   264→        <KpiCard
+   265→          icon={Users}
+   266→          label="Total de usuários"
+   267→          value={totalUsers.toLocaleString("pt-BR")}
+   268→          breakdown={`${data.usersByRole.CLIENT ?? 0} clientes · ${
+   269→            data.usersByRole.PROVIDER ?? 0
+   270→          } prestadores · ${data.usersByRole.ADMIN ?? 0} admins`}
+   271→        />
+   272→        <KpiCard
+   273→          icon={DollarSign}
+   274→          label="Receita total"
+   275→          value={formatBRL(data.revenue.total)}
+   276→          breakdown={`${data.revenue.paymentsPaid} pagamentos confirmados`}
+   277→        />
+   278→        <KpiCard
+   279→          icon={CalendarCheck}
+   280→          label="Agendamentos"
+   281→          value={totalBookings.toLocaleString("pt-BR")}
+   282→          breakdown={`${pending} pendentes · ${inProgress} em andamento · ${completed} concluídos`}
+   283→        />
+   284→        <KpiCard
+   285→          icon={BadgeCheck}
+   286→          label="Prestadores verificados"
+   287→          value={verifiedProviders.toLocaleString("pt-BR")}
+   288→          breakdown={`${verifiedProviders} de ${totalProviders} total · taxa ${verifyRate}%`}
+   289→        />
+   290→      </section>
+   291→
+   292→      {/* H8 — 2 charts mais úteis (não 4) */}
+   293→      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   294→        <Card className="rounded-xl shadow-sm">
+   295→          <CardContent className="p-5">
+   296→            <ChartHeader
+   297→              icon={CalendarCheck}
+   298→              title="Agendamentos por status"
+   299→              subtitle="Distribuição atual"
+   300→            />
+   301→            <BookingsByStatusChart rows={statusRows} total={chartTotal} />
+   302→          </CardContent>
+   303→        </Card>
+   304→
+   305→        <Card className="rounded-xl shadow-sm">
+   306→          <CardContent className="p-5">
+   307→            <ChartHeader
+   308→              icon={TrendingUp}
+   309→              title="Receita por mês"
+   310→              subtitle="Últimos 6 meses — pagamentos confirmados"
+   311→            />
+   312→            <RevenueChart recentBookings={data.recentBookings} />
+   313→          </CardContent>
+   314→        </Card>
+   315→      </section>
+   316→
+   317→      {/* H1 + H6 — atividade recente em 2 colunas, com linhas clicáveis */}
+   318→      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   319→        <RecentBookingsCard
+   320→          bookings={data.recentBookings}
+   321→          onNavigate={onNavigate}
+   322→        />
+   323→        <TopProvidersCard
+   324→          providers={data.topProviders}
+   325→          onNavigate={onNavigate}
+   326→        />
+   327→      </section>
+   328→
+   329→      {/* H7 + H6 — atalhos compactos com Kbd mnemônico casado à sidebar */}
+   330→      <section
+   331→        aria-label="Atalhos"
+   332→        className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+   333→      >
+   334→        <QuickLink
+   335→          label="Gerenciar usuários"
+   336→          hint="Clientes, prestadores, admins"
+   337→          icon={Users}
+   338→          kbd="3"
+   339→          onClick={() => onNavigate("admin.users")}
+   340→        />
+   341→        <QuickLink
+   342→          label="Gerenciar serviços"
+   343→          hint="Catálogo global"
+   344→          icon={Wrench}
+   345→          kbd="5"
+   346→          onClick={() => onNavigate("admin.services")}
+   347→        />
+   348→        <QuickLink
+   349→          label="Ver agendamentos"
+   350→          hint="Calendário e status"
+   351→          icon={CalendarCheck}
+   352→          kbd="6"
+   353→          onClick={() => onNavigate("admin.bookings")}
+   354→        />
+   355→        <QuickLink
+   356→          label="Configurações"
+   357→          hint="Variáveis e ajustes"
+   358→          icon={SettingsIcon}
+   359→          kbd="7"
+   360→          onClick={() => onNavigate("admin.settings")}
+   361→        />
+   362→      </section>
+   363→
+   364→      {/* H7 — dica visual de atalho (mnemônico da sidebar) */}
+   365→      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+   366→        <span>Dica: use a navegação à esquerda para acessar outras seções.</span>
+   367→        <Kbd>1</Kbd>
+   368→        <Kbd>2</Kbd>
+   369→        <Kbd>3</Kbd>
+   370→        <span className="text-muted-foreground/70">…</span>
+   371→      </div>
+   372→    </div>
+   373→  )
+   374→}
+   375→
+   376→// ---------------------------------------------------------------------------
+   377→// Sub-componentes
+   378→// ---------------------------------------------------------------------------
+   379→
+   380→function ChartHeader({
+   381→  icon: Icon,
+   382→  title,
+   383→  subtitle,
+   384→}: {
+   385→  icon: LucideIcon
+   386→  title: string
+   387→  subtitle: string
+   388→}) {
+   389→  return (
+   390→    <div className="mb-4 flex items-center gap-2">
+   391→      <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+   392→        <Icon className="size-4" />
+   393→      </span>
+   394→      <div className="min-w-0">
+   395→        <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+   396→          {title}
+   397→        </p>
+   398→        <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>
+   399→      </div>
+   400→    </div>
+   401→  )
+   402→}
+   403→
+   404→function KpiCard({
+   405→  icon: Icon,
+   406→  label,
+   407→  value,
+   408→  breakdown,
+   409→}: {
+   410→  icon: LucideIcon
+   411→  label: string
+   412→  value: string
+   413→  breakdown?: React.ReactNode
+   414→}) {
+   415→  return (
+   416→    <Card className="rounded-xl bg-card shadow-sm transition-shadow hover:shadow-md">
+   417→      <CardContent className="p-5">
+   418→        <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+   419→          <Icon className="size-5" />
+   420→        </span>
+   421→        <p className="mt-3 text-3xl font-bold tabular-nums tracking-tight">
+   422→          {value}
+   423→        </p>
+   424→        <p className="mt-1 text-sm font-medium text-muted-foreground">
+   425→          {label}
+   426→        </p>
+   427→        {breakdown ? (
+   428→          <p className="mt-1.5 text-xs text-muted-foreground">{breakdown}</p>
+   429→        ) : null}
+   430→      </CardContent>
+   431→    </Card>
+   432→  )
+   433→}
+   434→
+   435→function RecentBookingsCard({
+   436→  bookings,
+   437→  onNavigate,
+   438→}: {
+   439→  bookings: AdminStats["recentBookings"]
+   440→  onNavigate: (view: string) => void
+   441→}) {
+   442→  return (
+   443→    <Card className="overflow-hidden rounded-xl shadow-sm">
+   444→      <div className="flex items-center justify-between border-b p-5">
+   445→        <div className="min-w-0">
+   446→          <p className="text-base font-semibold">Agendamentos recentes</p>
+   447→          <p className="text-xs text-muted-foreground">Os 5 mais recentes</p>
+   448→        </div>
+   449→        <Button
+   450→          variant="ghost"
+   451→          size="sm"
+   452→          className="h-8 shrink-0 gap-1 px-2.5 text-xs text-primary hover:text-primary"
+   453→          onClick={() => onNavigate("admin.bookings")}
+   454→        >
+   455→          Ver todos
+   456→          <ArrowUpRight className="size-3" />
+   457→        </Button>
+   458→      </div>
+   459→      <CardContent className="p-0">
+   460→        {bookings.length === 0 ? (
+   461→          <div className="px-5 py-10">
+   462→            <EmptyState
+   463→              icon={CalendarCheck}
+   464→              title="Nenhum agendamento ainda"
+   465→              description="Os novos agendamentos aparecerão aqui."
+   466→              className="border-0 bg-transparent px-0 py-0 shadow-none"
+   467→            />
+   468→          </div>
+   469→        ) : (
+   470→          <ul className="divide-y">
+   471→            {bookings.slice(0, 5).map((b) => {
+   472→              const status = b.status as BookingStatus
+   473→              return (
+   474→                <li key={b.id}>
+   475→                  <button
+   476→                    type="button"
+   477→                    onClick={() => onNavigate("admin.bookings")}
+   478→                    className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset"
+   479→                  >
+   480→                    <Avatar className="size-9 shrink-0">
+   481→                      {b.provider?.avatarUrl ? (
+   482→                        <AvatarImage
+   483→                          src={b.provider.avatarUrl}
+   484→                          alt={b.provider.name ?? ""}
+   485→                        />
+   486→                      ) : null}
+   487→                      <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+   488→                        {initials(b.provider?.name ?? "?")}
+   489→                      </AvatarFallback>
+   490→                    </Avatar>
+   491→                    <div className="min-w-0 flex-1">
+   492→                      <p className="truncate text-sm font-medium">
+   493→                        {b.service?.title ?? "Serviço removido"}
+   494→                      </p>
+   495→                      <p className="truncate text-xs text-muted-foreground">
+   496→                        {b.client?.name ?? "—"} · {b.provider?.name ?? "—"}
+   497→                      </p>
+   498→                    </div>
+   499→                    <div className="flex flex-col items-end gap-1">
+   500→                      <span className="text-sm font-semibold tabular-nums text-foreground">
+   501→                        {formatBRL(b.amount)}
+   502→                      </span>
+   503→                      <BookingStatusBadge status={status} />
+   504→                    </div>
+   505→                  </button>
+   506→                </li>
+   507→              )
+   508→            })}
+   509→          </ul>
+   510→        )}
+   511→      </CardContent>
+   512→    </Card>
+   513→  )
+   514→}
+   515→
+   516→function TopProvidersCard({
+   517→  providers,
+   518→  onNavigate,
+   519→}: {
+   520→  providers: AdminStats["topProviders"]
+   521→  onNavigate: (view: string) => void
+   522→}) {
+   523→  return (
+   524→    <Card className="overflow-hidden rounded-xl shadow-sm">
+   525→      <div className="flex items-center justify-between border-b p-5">
+   526→        <div className="min-w-0">
+   527→          <p className="text-base font-semibold">Top prestadores</p>
+   528→          <p className="text-xs text-muted-foreground">Melhores avaliações</p>
+   529→        </div>
+   530→        <Button
+   531→          variant="ghost"
+   532→          size="sm"
+   533→          className="h-8 shrink-0 gap-1 px-2.5 text-xs text-primary hover:text-primary"
+   534→          onClick={() => onNavigate("admin.providers")}
+   535→        >
+   536→          Ver todos
+   537→          <ArrowUpRight className="size-3" />
+   538→        </Button>
+   539→      </div>
+   540→      <CardContent className="p-0">
+   541→        {providers.length === 0 ? (
+   542→          <div className="px-5 py-10">
+   543→            <EmptyState
+   544→              icon={BadgeCheck}
+   545→              title="Nenhum prestador verificado ainda"
+   546→              description="Prestadores verificados aparecerão aqui."
+   547→              className="border-0 bg-transparent px-0 py-0 shadow-none"
+   548→            />
+   549→          </div>
+   550→        ) : (
+   551→          <ul className="divide-y">
+   552→            {providers.slice(0, 5).map((p, idx) => (
+   553→              <li key={p.id}>
+   554→                <button
+   555→                  type="button"
+   556→                  onClick={() => onNavigate("admin.providers")}
+   557→                  className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset"
+   558→                >
+   559→                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+   560→                    {idx + 1}
+   561→                  </span>
+   562→                  <Avatar className="size-9 shrink-0">
+   563→                    {p.avatarUrl ? (
+   564→                      <AvatarImage src={p.avatarUrl} alt={p.name} />
+   565→                    ) : null}
+   566→                    <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+   567→                      {initials(p.name)}
+   568→                    </AvatarFallback>
+   569→                  </Avatar>
+   570→                  <div className="min-w-0 flex-1">
+   571→                    <p className="truncate text-sm font-medium">{p.name}</p>
+   572→                    <p className="truncate text-xs text-muted-foreground">
+   573→                      {p.city ?? "—"} · {p.reviewCount} avaliações
+   574→                    </p>
+   575→                  </div>
+   576→                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+   577→                    <Star className="size-3 fill-amber-400 text-amber-400" />
+   578→                    {p.rating.toFixed(1)}
+   579→                  </span>
+   580→                </button>
+   581→              </li>
+   582→            ))}
+   583→          </ul>
+   584→        )}
+   585→      </CardContent>
+   586→    </Card>
+   587→  )
+   588→}
+   589→
+   590→function QuickLink({
+   591→  label,
+   592→  hint,
+   593→  icon: Icon,
+   594→  kbd,
+   595→  onClick,
+   596→}: {
+   597→  label: string
+   598→  hint: string
+   599→  icon: LucideIcon
+   600→  kbd: string
+   601→  onClick: () => void
+   602→}) {
+   603→  return (
+   604→    <button
+   605→      type="button"
+   606→      onClick={onClick}
+   607→      className="group flex items-center gap-3 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+   608→    >
+   609→      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+   610→        <Icon className="size-4" />
+   611→      </span>
+   612→      <div className="min-w-0 flex-1">
+   613→        <p className="truncate text-sm font-medium">{label}</p>
+   614→        <p className="truncate text-xs text-muted-foreground">{hint}</p>
+   615→      </div>
+   616→      <Kbd>{kbd}</Kbd>
+   617→    </button>
+   618→  )
+   619→}
+   620→
+   621→function BookingsByStatusChart({
+   622→  rows,
+   623→  total,
+   624→}: {
+   625→  rows: Array<{
+   626→    status: BookingStatus
+   627→    label: string
+   628→    count: number
+   629→    tone: StatusTone
+   630→    fill: string
+   631→  }>
+   632→  total: number
+   633→}) {
+   634→  if (rows.length === 0) {
+   635→    return (
+   636→      <div className="flex h-[200px] items-center justify-center text-xs text-muted-foreground">
+   637→        Sem dados
+   638→      </div>
+   639→    )
+   640→  }
+   641→
+   642→  return (
+   643→    <div className="flex flex-col items-center gap-4 sm:flex-row">
+   644→      <div className="relative h-[180px] w-[180px] shrink-0">
+   645→        <ResponsiveContainer width="100%" height="100%">
+   646→          <PieChart>
+   647→            <Pie
+   648→              data={rows}
+   649→              dataKey="count"
+   650→              nameKey="label"
+   651→              innerRadius={60}
+   652→              outerRadius={90}
+   653→              paddingAngle={2}
+   654→              stroke="var(--background)"
+   655→              strokeWidth={2}
+   656→            >
+   657→              {rows.map((r) => (
+   658→                <Cell key={r.status} fill={r.fill} />
+   659→              ))}
+   660→            </Pie>
+   661→            <RTooltip
+   662→              formatter={(v: number, n: string) => [`${v} agendamentos`, n]}
+   663→              contentStyle={CHART_TOOLTIP_STYLE}
+   664→            />
+   665→          </PieChart>
+   666→        </ResponsiveContainer>
+   667→        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+   668→          <span className="text-2xl font-bold tabular-nums text-foreground">
+   669→            {total}
+   670→          </span>
+   671→          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+   672→            Total
+   673→          </span>
+   674→        </div>
+   675→      </div>
+   676→      <ul className="flex w-full flex-1 flex-col gap-1.5">
+   677→        {rows
+   678→          .slice()
+   679→          .sort((a, b) => b.count - a.count)
+   680→          .map((r) => (
+   681→            <li key={r.status} className="flex items-center gap-2 text-xs">
+   682→              <span
+   683→                className="size-2.5 shrink-0 rounded-full"
+   684→                style={{ backgroundColor: r.fill }}
+   685→              />
+   686→              <span className="flex-1 truncate text-muted-foreground">
+   687→                {r.label}
+   688→              </span>
+   689→              <span className="font-semibold tabular-nums">{r.count}</span>
+   690→              <span className="shrink-0 text-muted-foreground tabular-nums">
+   691→                ({total > 0 ? Math.round((r.count / total) * 100) : 0}%)
+   692→              </span>
+   693→            </li>
+   694→          ))}
+   695→      </ul>
+   696→    </div>
+   697→  )
+   698→}
+   699→
+   700→function RevenueChart({
+   701→  recentBookings,
+   702→}: {
+   703→  recentBookings: AdminStats["recentBookings"]
+   704→}) {
+   705→  // Série dos últimos 6 meses sintetizada a partir de recentBookings pagos.
+   706→  // Substituir por endpoint dedicado quando disponível.
+   707→  const months: { label: string; revenue: number }[] = []
+   708→  const now = new Date()
+   709→  for (let i = 5; i >= 0; i--) {
+   710→    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+   711→    const label = d.toLocaleDateString("pt-BR", {
+   712→      month: "short",
+   713→      year: "2-digit",
+   714→    })
+   715→    months.push({ label, revenue: 0 })
+   716→  }
+   717→  for (const b of recentBookings) {
+   718→    if (b.paymentStatus !== "PAID") continue
+   719→    const created = new Date(b.createdAt)
+   720→    const diffMonths =
+   721→      (now.getFullYear() - created.getFullYear()) * 12 +
+   722→      (now.getMonth() - created.getMonth())
+   723→    const idx = months.length - 1 - diffMonths
+   724→    if (idx >= 0 && idx < months.length) {
+   725→      months[idx].revenue += b.amount
+   726→    }
+   727→  }
+   728→
+   729→  return (
+   730→    <div className="h-[200px] w-full">
+   731→      <ResponsiveContainer width="100%" height="100%">
+   732→        <BarChart data={months} margin={{ left: 0, right: 8, top: 8, bottom: 0 }}>
+   733→          <CartesianGrid
+   734→            vertical={false}
+   735→            stroke="var(--border)"
+   736→            strokeDasharray="3 3"
+   737→          />
+   738→          <XAxis
+   739→            dataKey="label"
+   740→            tickLine={false}
+   741→            axisLine={false}
+   742→            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+   743→          />
+   744→          <YAxis
+   745→            tickLine={false}
+   746→            axisLine={false}
+   747→            width={56}
+   748→            tickFormatter={(v) =>
+   749→              v >= 1000 ? `R$ ${(v / 1000).toFixed(1)}k` : `R$ ${v}`
+   750→            }
+   751→            tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+   752→          />
+   753→          <RTooltip
+   754→            cursor={{ fill: "var(--accent)", opacity: 0.5 }}
+   755→            formatter={(v: number) => [formatBRL(v), "Receita"]}
+   756→            contentStyle={CHART_TOOLTIP_STYLE}
+   757→          />
+   758→          <Bar
+   759→            dataKey="revenue"
+   760→            fill="var(--primary)"
+   761→            radius={[4, 4, 0, 0]}
+   762→            barSize={28}
+   763→          />
+   764→        </BarChart>
+   765→      </ResponsiveContainer>
+   766→    </div>
+   767→  )
+   768→}
+   769→
+   770→// H1 — skeleton que espelha o layout final (header + 4 KPIs + 2 charts + 2 listas)
+   771→function DashboardSkeleton() {
+   772→  return (
+   773→    <div className="flex flex-col gap-6">
+   774→      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+   775→        <div className="space-y-2">
+   776→          <Skeleton className="h-6 w-40" />
+   777→          <Skeleton className="h-4 w-72" />
+   778→        </div>
+   779→        <Skeleton className="h-9 w-44 rounded-md" />
+   780→      </div>
+   781→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   782→        {Array.from({ length: 4 }).map((_, i) => (
+   783→          <Skeleton key={i} className="h-36 rounded-xl" />
+   784→        ))}
+   785→      </div>
+   786→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   787→        {Array.from({ length: 2 }).map((_, i) => (
+   788→          <Skeleton key={i} className="h-72 rounded-xl" />
+   789→        ))}
+   790→      </div>
+   791→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   792→        {Array.from({ length: 2 }).map((_, i) => (
+   793→          <Skeleton key={i} className="h-64 rounded-xl" />
+   794→        ))}
+   795→      </div>
+   796→    </div>
+   797→  )
+   798→}
+   799→
