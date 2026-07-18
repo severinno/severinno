@@ -71,7 +71,7 @@ export function StepWizard({
   const progressPct = (completedCount / steps.length) * 100
 
   return (
-    <div className={cn("flex h-full flex-col", className)}>
+    <div className={cn("flex flex-col min-h-0", className)}>
       {/* ── Step Indicator Bar ── */}
       <div className="shrink-0 border-b px-4 sm:px-5 py-3">
         {/* Step circles + labels */}
@@ -149,7 +149,7 @@ export function StepWizard({
       </div>
 
       {/* ── Step Content ── */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="px-4 sm:px-5 py-4">
           <AnimatePresence mode="wait">
             <motion.div
@@ -166,7 +166,7 @@ export function StepWizard({
       </ScrollArea>
 
       {/* ── Sticky Footer — Nielsen #3: user control & freedom ── */}
-      <div className="shrink-0 border-t bg-background/95 backdrop-blur px-4 sm:px-5 py-2.5">
+      <div className="shrink-0 sticky bottom-0 border-t bg-background/95 backdrop-blur px-4 sm:px-5 py-2.5">
         <div className="flex items-center justify-between gap-2">
           {/* Back button */}
           {!isFirst ? (
