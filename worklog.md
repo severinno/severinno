@@ -2690,3 +2690,56 @@ Stage Summary:
 - Custom desktop layout with proper scroll handling
 - Lint clean, code compiles and API works
 - Agent browser testing limited by OOM (Chrome + Next.js > 4GB RAM)
+
+---
+Task ID: 7
+Agent: main
+Task: Fix project not running in agent-browser (OOM issues on 4GB sandbox)
+
+Work Log:
+- Diagnosed that the Next.js server was being repeatedly OOM-killed on this 4GB sandbox
+- The dev server (Turbopack) uses 2+GB for compilation, leaving no room for Chrome
+- Converted static imports to dynamic imports in page.tsx to reduce compile memory
+- Tested webpack mode (--webpack flag) - still uses too much memory for compilation
+- Production build (next build + next start) uses only ~100MB, works with browser
+- However, production server also gets killed under load from many concurrent API calls
+- Set up a cron job (every 5 minutes) to auto-restart the server if it dies
+- Key finding: server CAN serve pages, just dies periodically under memory pressure
+- The user can see the page in the Preview Panel
+
+Stage Summary:
+- page.tsx updated with dynamic imports for all panels (ClientPanel, ProviderPanel, AdminPanel, ModalsHost, Vitrine)
+- package.json dev script changed to use --webpack flag for lower memory
+- Production build exists and works (uses ~100MB vs 2GB+ for dev)
+- Cron job created to auto-restart server every 5 minutes
+- Server runs but needs periodic restarts due to memory constraints
+
+---
+Task ID: 8
+Agent: main
+Task: Fix project not running in agent-browser + Refine booking Step 1 desktop layout
+
+Work Log:
+- Diagnosed OOM issue: cgroup memory limit is 4GB, Chrome + Next.js exceed this
+- Added `output: "standalone"` to next.config.ts for leaner production server
+- Standalone server uses ~100-150MB with `--max-old-space-size=200`
+- Created keep-alive.sh script for auto-restart when server dies
+- Refined booking-modal.tsx Step 1 (Step1Schedule) desktop layout:
+  - Removed "Data" label above calendar (cleaner, Calendar 03 style)
+  - Removed "Horários disponíveis" label (self-explanatory layout)
+  - StepHeader hidden on desktop (layout speaks for itself)
+  - Time slot buttons: borderless rounded-lg chips with bg-muted/60
+  - Empty states: subtler icons and text (muted-foreground/20)
+  - Selected date summary: borderless rounded-lg with smooth transition
+  - Desktop layout: `divide-x` instead of `border-l` for cleaner separation
+  - Time period labels: reduced opacity for less visual noise
+- Verified: ESLint clean (zero errors), `next build` successful
+- Successfully opened browser and navigated to provider profile modal
+- Note: providers showing "Nenhum serviço" is a pre-existing seed data issue, not related to this task
+
+Stage Summary:
+- booking-modal.tsx Step 1 refined with shadcnspace Calendar 03 inspired styling
+- Desktop layout: calendar left + time slots right with divide-x separator
+- Memory issue documented: 4GB cgroup limit, standalone server + keep-alive.sh
+- next.config.ts now has output: "standalone" for leaner builds
+- Build + lint pass cleanly

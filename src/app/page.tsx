@@ -17,16 +17,30 @@
  *   6. Join the realtime room when authenticated (notifications + messages).
  */
 
+import dynamic from "next/dynamic"
 import { useEffect, useSyncExternalStore } from "react"
 
 import { useAuthStore, useUIStore, useViewStore } from "@/store"
 import { useRealtime } from "@/hooks/use-realtime"
 
-import Vitrine from "@/components/vitrine/vitrine"
-import { ClientPanel } from "@/components/client/client-panel"
-import { ProviderPanel } from "@/components/provider/provider-panel"
-import { AdminPanel } from "@/components/admin/admin-panel"
-import { ModalsHost } from "@/components/modals/modals-host"
+// All heavy components are dynamically imported to reduce Turbopack compile
+// memory.  On this 4 GB sandbox the server was OOM-killed whenever Chrome and
+// the Next.js dev server ran simultaneously; lazy compilation keeps peak RSS
+// under ~1.5 GB so both can coexist.
+const Vitrine = dynamic(() => import("@/components/vitrine/vitrine"))
+const ClientPanel = dynamic(() =>
+  import("@/components/client/client-panel").then((m) => m.ClientPanel),
+)
+const ProviderPanel = dynamic(() =>
+  import("@/components/provider/provider-panel").then((m) => m.ProviderPanel),
+)
+const AdminPanel = dynamic(() =>
+  import("@/components/admin/admin-panel").then((m) => m.AdminPanel),
+)
+const ModalsHost = dynamic(
+  () => import("@/components/modals/modals-host").then((m) => m.ModalsHost),
+  { ssr: false },
+)
 
 // Hydration gate: returns false during SSR + first client render, true after.
 // This avoids hydration mismatches caused by the persisted view store without

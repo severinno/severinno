@@ -699,52 +699,44 @@ function Step1Schedule({
     </InfoCard>
   ) : null
 
-  // ── Calendar section ──
+  // ── Calendar section (clean, no label — Calendar 03 style) ──
   const calendarSection = (
-    <div className="flex flex-col">
-      <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
-        <CalendarDays className="size-3.5 text-emerald-600" />
-        Data
-      </p>
-      <Calendar
-        mode="single"
-        locale={ptBR}
-        selected={state.date}
-        onSelect={(d) => {
-          set("date", d)
-          set("time", undefined)
-        }}
-        disabled={(d) => d < today}
-        className="rounded-lg border shadow-sm [--cell-size:--spacing(7)]"
-      />
-    </div>
+    <Calendar
+      mode="single"
+      locale={ptBR}
+      selected={state.date}
+      onSelect={(d) => {
+        set("date", d)
+        set("time", undefined)
+      }}
+      disabled={(d) => d < today}
+      className="rounded-lg border shadow-sm [--cell-size:--spacing(7)]"
+    />
   )
 
-  // ── Time slots section ──
+  // ── Time slots section (Calendar 03 style — borderless chips) ──
   const timeSlotsSection = (
     <div className="flex flex-col h-full">
-      <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
-        <Clock className="size-3.5 text-emerald-600" />
-        Horários disponíveis
-      </p>
-
       {!state.date ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center py-8">
-            <CalendarDays className="mx-auto size-8 text-muted-foreground/30 mb-2" />
+            <CalendarDays className="mx-auto size-8 text-muted-foreground/20 mb-2" />
             <p className="text-xs text-muted-foreground">
-              Selecione uma data para ver os horários
+              Selecione uma data
+            </p>
+            <p className="text-[11px] text-muted-foreground/50 mt-0.5">
+              para ver os horários disponíveis
             </p>
           </div>
         </div>
       ) : slots.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="rounded-lg border border-dashed bg-muted/30 p-6 text-center">
-            <CalendarOff className="mx-auto size-7 text-muted-foreground/40 mb-2" />
-            <p className="text-xs font-medium">
+          <div className="rounded-lg border border-dashed bg-muted/20 px-6 py-5 text-center">
+            <CalendarOff className="mx-auto size-6 text-muted-foreground/30 mb-1.5" />
+            <p className="text-xs font-medium text-muted-foreground">
               Sem horários neste dia
             </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-[11px] text-muted-foreground/50 mt-0.5">
               {WEEKDAYS_SHORT[state.date.getDay()]} — fora do expediente
             </p>
           </div>
@@ -757,15 +749,15 @@ function Step1Schedule({
               return (
                 <div key={group.key}>
                   <div className="flex items-center gap-1.5 mb-1.5">
-                    <PeriodIcon className="size-3 text-muted-foreground" />
-                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                    <PeriodIcon className="size-3 text-muted-foreground/50" />
+                    <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
                       {group.label}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/60">
-                      ({group.slots.length})
+                    <span className="text-[10px] text-muted-foreground/40">
+                      {group.slots.length}
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1">
+                  <div className="grid grid-cols-3 gap-1.5">
                     {group.slots.map((s) => {
                       const active = state.time === s.value
                       return (
@@ -774,11 +766,11 @@ function Step1Schedule({
                           type="button"
                           onClick={() => set("time", s.value)}
                           className={cn(
-                            "rounded-md border px-1.5 py-1.5 text-xs text-center font-medium transition-all duration-150",
+                            "rounded-lg px-2 py-2 text-xs text-center font-medium transition-all duration-150",
                             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1",
                             active
-                              ? "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 scale-[1.02]"
-                              : "border-border hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20",
+                              ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
+                              : "bg-muted/60 text-muted-foreground hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300",
                           )}
                         >
                           {s.label}
@@ -795,13 +787,13 @@ function Step1Schedule({
     </div>
   )
 
-  // ── Selected date summary (desktop, shown below calendar) ──
+  // ── Selected date summary (below calendar, both layouts) ──
   const selectedDateSummary = state.date && (
     <div className={cn(
-      "mt-2 rounded-md border px-2.5 py-1.5 text-center",
+      "mt-2 rounded-lg px-3 py-2 text-center transition-colors duration-200",
       state.time
-        ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20"
-        : "border-dashed border-muted-foreground/20 bg-muted/20"
+        ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+        : "bg-muted/40 text-muted-foreground"
     )}>
       <p className="text-xs font-semibold">
         {format(state.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
@@ -812,8 +804,8 @@ function Step1Schedule({
           {formatHHmm(state.time)}
         </p>
       ) : (
-        <p className="text-[11px] text-muted-foreground mt-0.5">
-          Agora escolha o horário →
+        <p className="text-[11px] mt-0.5 opacity-60">
+          Escolha o horário →
         </p>
       )}
     </div>
@@ -821,30 +813,33 @@ function Step1Schedule({
 
   return (
     <div>
-      <StepHeader
-        icon={CalendarDays}
-        title="Escolha a data e horário"
-        description="Selecione o melhor dia e horário para o serviço."
-      />
+      {/* StepHeader only on mobile — desktop layout is self-explanatory */}
+      {!isDesktop && (
+        <StepHeader
+          icon={CalendarDays}
+          title="Escolha a data e horário"
+          description="Selecione o melhor dia e horário para o serviço."
+        />
+      )}
 
       {serviceBanner}
 
-      {/* ── Desktop: Side-by-side layout ── */}
+      {/* ── Desktop: Side-by-side (shadcnspace Calendar 03 style) ── */}
       {isDesktop ? (
-        <div className="grid grid-cols-[auto_1fr] gap-4">
-          {/* LEFT: Calendar + selected date summary */}
-          <div className="flex flex-col">
+        <div className="grid grid-cols-[auto_1fr] divide-x">
+          {/* LEFT: Calendar + date summary */}
+          <div className="flex flex-col pr-4">
             {calendarSection}
             {selectedDateSummary}
           </div>
 
           {/* RIGHT: Time slots */}
-          <div className="flex flex-col min-h-0 border-l pl-4">
+          <div className="flex flex-col min-h-0 pl-4">
             {timeSlotsSection}
           </div>
         </div>
       ) : (
-        /* ── Mobile: Stacked layout ── */
+        /* ── Mobile: Stacked ── */
         <div className="grid gap-4">
           {calendarSection}
           {selectedDateSummary}

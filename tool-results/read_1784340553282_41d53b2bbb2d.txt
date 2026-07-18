@@ -1,0 +1,1122 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useQuery } from "@tanstack/react-query"
+     5→import { useForm, type Resolver, type UseFormReturn } from "react-hook-form"
+     6→import { zodResolver } from "@hookform/resolvers/zod"
+     7→import { z } from "zod"
+     8→import {
+     9→  Check,
+    10→  ChevronDown,
+    11→  Clock,
+    12→  Loader2,
+    13→  LogIn,
+    14→  MapPin,
+    15→  Pencil,
+    16→  Send,
+    17→  ShieldCheck,
+    18→  User,
+    19→  Wrench,
+    20→} from "lucide-react"
+    21→import { toast } from "sonner"
+    22→
+    23→import {
+    24→  Dialog,
+    25→  DialogContent,
+    26→  DialogDescription,
+    27→  DialogHeader,
+    28→  DialogTitle,
+    29→} from "@/components/ui/dialog"
+    30→import {
+    31→  Sheet,
+    32→  SheetContent,
+    33→  SheetDescription,
+    34→  SheetHeader,
+    35→  SheetTitle,
+    36→} from "@/components/ui/sheet"
+    37→import { Button } from "@/components/ui/button"
+    38→import { Input } from "@/components/ui/input"
+    39→import { Label } from "@/components/ui/label"
+    40→import { Textarea } from "@/components/ui/textarea"
+    41→import { Badge } from "@/components/ui/badge"
+    42→import {
+    43→  Select,
+    44→  SelectContent,
+    45→  SelectItem,
+    46→  SelectTrigger,
+    47→  SelectValue,
+    48→} from "@/components/ui/select"
+    49→import {
+    50→  Popover,
+    51→  PopoverContent,
+    52→  PopoverTrigger,
+    53→} from "@/components/ui/popover"
+    54→import {
+    55→  Command,
+    56→  CommandEmpty,
+    57→  CommandGroup,
+    58→  CommandInput,
+    59→  CommandItem,
+    60→  CommandList,
+    61→} from "@/components/ui/command"
+    62→import {
+    63→  Avatar,
+    64→  AvatarFallback,
+    65→  AvatarImage,
+    66→} from "@/components/ui/avatar"
+    67→import { cn } from "@/lib/utils"
+    68→import {
+    69→  apiGet,
+    70→  apiPost,
+    71→  type ProviderCard,
+    72→  type ProviderService,
+    73→  type PagedResult,
+    74→  type ServiceUnit,
+    75→} from "@/lib/api"
+    76→import {
+    77→  SERVICE_UNITS,
+    78→  SERVICE_UNIT_LABELS,
+    79→  SERVICE_UNIT_SHORT,
+    80→} from "@/lib/constants"
+    81→import { useUIStore } from "@/store/ui"
+    82→import { useAuthStore } from "@/store/auth"
+    83→import { useViewStore } from "@/store/view"
+    84→import { useIsMobile } from "@/hooks/use-mobile"
+    85→import { AddressForm, type AddressFormValue } from "./address-form"
+    86→import { FilePhotos } from "./file-photos"
+    87→import {
+    88→  StepWizard,
+    89→  StepHeader,
+    90→  InfoCard,
+    91→  type StepDef,
+    92→} from "./step-wizard"
+    93→
+    94→// ---------------------------------------------------------------------------
+    95→// Step definitions — 5 steps for better UX (Nielsen #8: minimalist design)
+    96→// Each step has ONE clear task
+    97→// ---------------------------------------------------------------------------
+    98→
+    99→const STEPS: StepDef[] = [
+   100→  { id: 1, label: "Prestador", shortLabel: "Prestador", icon: User },
+   101→  { id: 2, label: "Serviço", shortLabel: "Serviço", icon: Wrench },
+   102→  { id: 3, label: "Detalhes", shortLabel: "Detalhes", icon: Pencil },
+   103→  { id: 4, label: "Endereço", shortLabel: "Endereço", icon: MapPin },
+   104→  { id: 5, label: "Revisão", shortLabel: "Revisão", icon: Check },
+   105→]
+   106→
+   107→type Step = (typeof STEPS)[number]["id"]
+   108→
+   109→// ---------------------------------------------------------------------------
+   110→// Form model
+   111→// ---------------------------------------------------------------------------
+   112→
+   113→type QuoteItemForm = {
+   114→  providerId: string
+   115→  serviceId: string
+   116→  description: string
+   117→  quantity: number
+   118→  unit: ServiceUnit
+   119→  photos: string[]
+   120→}
+   121→
+   122→const quoteFormSchema = z.object({
+   123→  items: z
+   124→    .array(
+   125→      z.object({
+   126→        providerId: z.string().min(1, "Selecione um prestador"),
+   127→        serviceId: z.string().min(1, "Selecione um serviço"),
+   128→        description: z
+   129→          .string()
+   130→          .min(10, "Descreva com ao menos 10 caracteres")
+   131→          .max(400),
+   132→        quantity: z.coerce.number().min(0.01, "Quantidade inválida"),
+   133→        unit: z.enum([
+   134→          "UNIDADE",
+   135→          "METRO_LINEAR",
+   136→          "METRO_QUADRADO",
+   137→          "METRO_CUBICO",
+   138→        ]),
+   139→        photos: z.array(z.string()).max(4).default([]),
+   140→      }),
+   141→    )
+   142→    .min(1, "Adicione ao menos um item"),
+   143→  address: z.object({
+   144→    cep: z.string().min(8, "CEP inválido"),
+   145→    street: z.string().min(3, "Informe a rua"),
+   146→    number: z.string().min(1, "Informe o número"),
+   147→    complement: z.string().default(""),
+   148→    district: z.string().default(""),
+   149→    city: z.string().min(2, "Informe a cidade"),
+   150→    state: z.string().min(2, "UF"),
+   151→    lat: z.number().nullable().optional(),
+   152→    lng: z.number().nullable().optional(),
+   153→  }),
+   154→})
+   155→
+   156→type QuoteFormValues = z.infer<typeof quoteFormSchema>
+   157→
+   158→const emptyItem = (
+   159→  providerId?: string,
+   160→  serviceId?: string,
+   161→  unit: ServiceUnit = "UNIDADE",
+   162→): QuoteItemForm => ({
+   163→  providerId: providerId ?? "",
+   164→  serviceId: serviceId ?? "",
+   165→  description: "",
+   166→  quantity: 1,
+   167→  unit,
+   168→  photos: [],
+   169→})
+   170→
+   171→const emptyAddress: AddressFormValue = {
+   172→  cep: "",
+   173→  street: "",
+   174→  number: "",
+   175→  complement: "",
+   176→  district: "",
+   177→  city: "",
+   178→  state: "",
+   179→  lat: null,
+   180→  lng: null,
+   181→}
+   182→
+   183→// ---------------------------------------------------------------------------
+   184→// Main modal
+   185→// ---------------------------------------------------------------------------
+   186→
+   187→export function QuoteModal() {
+   188→  const open = useUIStore((s) => s.quoteModal.open)
+   189→  const providerIdPreset = useUIStore((s) => s.quoteModal.providerId)
+   190→  const serviceIdPreset = useUIStore((s) => s.quoteModal.serviceId)
+   191→  const close = useUIStore((s) => s.closeQuote)
+   192→  const openAuth = useUIStore((s) => s.openAuth)
+   193→  const isMobile = useIsMobile()
+   194→  const navigate = useViewStore((s) => s.navigate)
+   195→  const user = useAuthStore((s) => s.user)
+   196→
+   197→  const form = useForm<QuoteFormValues>({
+   198→    resolver: zodResolver(quoteFormSchema) as unknown as Resolver<QuoteFormValues>,
+   199→    defaultValues: {
+   200→      items: [emptyItem(providerIdPreset, serviceIdPreset)],
+   201→      address: emptyAddress,
+   202→    },
+   203→    mode: "onTouched",
+   204→  })
+   205→
+   206→  const [step, setStep] = React.useState<Step>(1)
+   207→  const [submitting, setSubmitting] = React.useState(false)
+   208→
+   209→  // Reset when modal opens
+   210→  React.useEffect(() => {
+   211→    if (open) {
+   212→      form.reset({
+   213→        items: [emptyItem(providerIdPreset, serviceIdPreset)],
+   214→        address: emptyAddress,
+   215→      })
+   216→      setStep(1)
+   217→    }
+   218→  }, [open, providerIdPreset, serviceIdPreset, form])
+   219→
+   220→  // ── Step validation map ──
+   221→  const items = form.watch("items")
+   222→  const address = form.watch("address")
+   223→  const errors = form.formState.errors
+   224→  const item0 = items[0]
+   225→  const item0Errors = errors.items?.[0]
+   226→
+   227→  const step1Valid = !!item0?.providerId
+   228→  const step2Valid = !!item0?.serviceId
+   229→  const step3Valid =
+   230→    !!item0?.description && item0.description.length >= 10 && item0?.quantity > 0
+   231→  const step4Valid =
+   232→    !!address.cep && address.cep.replace(/\D/g, "").length >= 8 &&
+   233→    !!address.street && !!address.number && !!address.city && !!address.state
+   234→
+   235→  const validSteps: Record<number, boolean> = {
+   236→    1: step1Valid,
+   237→    2: step2Valid,
+   238→    3: step3Valid,
+   239→    4: step4Valid,
+   240→    5: true,
+   241→  }
+   242→
+   243→  // ── Navigation ──
+   244→  const handleStepClick = (target: Step) => {
+   245→    if (target < step) {
+   246→      setStep(target)
+   247→      return
+   248→    }
+   249→    for (let i = 1; i < target; i++) {
+   250→      if (!validSteps[i as Step]) {
+   251→        toast.error("Complete os passos anteriores primeiro.")
+   252→        return
+   253→      }
+   254→    }
+   255→    setStep(target)
+   256→  }
+   257→
+   258→  const handleNext = () => {
+   259→    if (step === 1 && !step1Valid) {
+   260→      form.trigger("items.0.providerId")
+   261→      return
+   262→    }
+   263→    if (step === 2 && !step2Valid) {
+   264→      form.trigger("items.0.serviceId")
+   265→      return
+   266→    }
+   267→    if (step === 3 && !step3Valid) {
+   268→      form.trigger("items.0.description")
+   269→      form.trigger("items.0.quantity")
+   270→      return
+   271→    }
+   272→    if (step === 4 && !step4Valid) {
+   273→      form.trigger("address")
+   274→      return
+   275→    }
+   276→    setStep((s) => Math.min(5, s + 1) as Step)
+   277→  }
+   278→
+   279→  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step)
+   280→
+   281→  const onSubmit = async (values: QuoteFormValues) => {
+   282→    if (!user) {
+   283→      toast.info("Faça cadastro gratuito para pedir orçamentos.")
+   284→      openAuth("register", "CLIENT")
+   285→      return
+   286→    }
+   287→    const primary = values.items[0]
+   288→    if (!primary?.providerId) {
+   289→      toast.error("Selecione um prestador.")
+   290→      return
+   291→    }
+   292→    setSubmitting(true)
+   293→    try {
+   294→      await apiPost("/api/quotes", {
+   295→        providerId: primary.providerId,
+   296→        items: values.items.map((it) => ({
+   297→          providerId: it.providerId,
+   298→          serviceId: it.serviceId,
+   299→          description: it.description,
+   300→          quantity: it.quantity,
+   301→          unit: it.unit,
+   302→          photos: it.photos,
+   303→        })),
+   304→        address: [
+   305→          values.address.street,
+   306→          values.address.number,
+   307→          values.address.complement,
+   308→          values.address.district,
+   309→        ]
+   310→          .filter(Boolean)
+   311→          .join(", "),
+   312→        cep: values.address.cep,
+   313→        lat: values.address.lat,
+   314→        lng: values.address.lng,
+   315→      })
+   316→      toast.success("Orçamento enviado! O prestador responderá em breve.")
+   317→      close()
+   318→      navigate("client.quotes")
+   319→    } catch (e) {
+   320→      const msg =
+   321→        (e as { message?: string })?.message ??
+   322→        "Não foi possível enviar o orçamento. Tente novamente."
+   323→      toast.error(msg)
+   324→    } finally {
+   325→      setSubmitting(false)
+   326→    }
+   327→  }
+   328→
+   329→  // ── Step content ──
+   330→  const stepContent = (() => {
+   331→    switch (step) {
+   332→      case 1:
+   333→        return <Step1Provider form={form} />
+   334→      case 2:
+   335→        return <Step2Service form={form} />
+   336→      case 3:
+   337→        return <Step3Details form={form} />
+   338→      case 4:
+   339→        return <Step4Address form={form} />
+   340→      case 5:
+   341→        return <Step5Review form={form} goToStep={setStep} />
+   342→      default:
+   343→        return null
+   344→    }
+   345→  })()
+   346→
+   347→  const wizardBody = (
+   348→    <StepWizard
+   349→      steps={STEPS}
+   350→      currentStep={step}
+   351→      validSteps={validSteps}
+   352→      onStepClick={handleStepClick}
+   353→      onBack={handleBack}
+   354→      onNext={handleNext}
+   355→      onSubmit={form.handleSubmit(onSubmit)}
+   356→      submitting={submitting}
+   357→      currentStepValid={validSteps[step] ?? true}
+   358→      submitLabel={
+   359→        <>
+   360→          <Send className="size-3.5" />
+   361→          Enviar orçamento
+   362→        </>
+   363→      }
+   364→    >
+   365→      {/* Auth gate — Nielsen #5: error prevention (remind user to login) */}
+   366→      {step === 1 && !user && (
+   367→        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+   368→          <LogIn className="size-5 shrink-0 text-amber-600" />
+   369→          <div className="flex-1">
+   370→            <p className="font-medium text-amber-900 dark:text-amber-200">
+   371→              Faça cadastro gratuito para pedir orçamentos
+   372→            </p>
+   373→            <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">
+   374→              Seus dados ficam salvos para acompanhar as respostas.
+   375→            </p>
+   376→          </div>
+   377→          <Button
+   378→            type="button"
+   379→            size="sm"
+   380→            onClick={() => openAuth("register", "CLIENT")}
+   381→            className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white h-8"
+   382→          >
+   383→            Entrar
+   384→          </Button>
+   385→        </div>
+   386→      )}
+   387→      {stepContent}
+   388→    </StepWizard>
+   389→  )
+   390→
+   391→  if (isMobile) {
+   392→    return (
+   393→      <Sheet open={open} onOpenChange={(o) => !o && close()}>
+   394→        <SheetContent
+   395→          side="bottom"
+   396→          className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
+   397→          onInteractOutside={(e) => e.preventDefault()}
+   398→        >
+   399→          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+   400→            <SheetTitle className="flex items-center gap-2 text-base">
+   401→              <Wrench className="size-4 text-emerald-600" />
+   402→              Pedir orçamento
+   403→            </SheetTitle>
+   404→            <SheetDescription className="text-xs">
+   405→              Descreva o serviço e receba propostas de prestadores verificados.
+   406→            </SheetDescription>
+   407→          </SheetHeader>
+   408→          <div className="flex-1 overflow-hidden">{wizardBody}</div>
+   409→        </SheetContent>
+   410→      </Sheet>
+   411→    )
+   412→  }
+   413→
+   414→  return (
+   415→    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+   416→      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
+   417→        {/* Nielsen #3: User control — prevent accidental close during wizard */}
+   418→        <DialogHeader className="px-5 pt-5 pb-2 shrink-0 border-b">
+   419→          <DialogTitle className="flex items-center gap-2 text-base">
+   420→            <Wrench className="size-4 text-emerald-600" />
+   421→            Pedir orçamento
+   422→          </DialogTitle>
+   423→          <DialogDescription className="text-xs">
+   424→            Descreva o serviço e receba propostas de prestadores verificados.
+   425→          </DialogDescription>
+   426→        </DialogHeader>
+   427→        {wizardBody}
+   428→      </DialogContent>
+   429→    </Dialog>
+   430→  )
+   431→}
+   432→
+   433→// ---------------------------------------------------------------------------
+   434→// Step 1 — Prestador (Select Provider)
+   435→// Nielsen #6: Recognition over recall — search with avatars and badges
+   436→// ---------------------------------------------------------------------------
+   437→
+   438→function Step1Provider({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+   439→  const item = form.watch("items.0")
+   440→  const error = form.formState.errors.items?.[0]
+   441→
+   442→  return (
+   443→    <div className="grid gap-4">
+   444→      <StepHeader
+   445→        icon={User}
+   446→        title="Escolha o prestador"
+   447→        description="Selecione o profissional que deseja orçar. Busque por nome ou serviço."
+   448→      />
+   449→
+   450→      <ProviderCombobox
+   451→        value={item?.providerId ?? ""}
+   452→        onChange={(providerId) =>
+   453→          form.setValue(
+   454→            "items.0",
+   455→            { ...item, providerId, serviceId: "" },
+   456→            { shouldDirty: true, shouldValidate: true },
+   457→          )
+   458→        }
+   459→        error={error?.providerId?.message}
+   460→      />
+   461→
+   462→      {/* Selected provider card — Nielsen #1: visibility of system status */}
+   463→      {item?.providerId && <SelectedProviderCard providerId={item.providerId} />}
+   464→    </div>
+   465→  )
+   466→}
+   467→
+   468→function SelectedProviderCard({ providerId }: { providerId: string }) {
+   469→  const { data } = useQuery({
+   470→    queryKey: ["providers-options", ""],
+   471→    queryFn: () =>
+   472→      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
+   473→    staleTime: 30 * 1000,
+   474→  })
+   475→
+   476→  const provider = data?.items?.find((p) => p.id === providerId)
+   477→  if (!provider) return null
+   478→
+   479→  return (
+   480→    <InfoCard variant="emerald">
+   481→      <div className="flex items-center gap-3">
+   482→        <Avatar className="size-10 rounded-md">
+   483→          {provider.avatarUrl ? (
+   484→            <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+   485→          ) : null}
+   486→          <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-sm dark:bg-emerald-950 dark:text-emerald-300">
+   487→            {provider.name?.[0]?.toUpperCase() ?? "?"}
+   488→          </AvatarFallback>
+   489→        </Avatar>
+   490→        <div className="flex-1 min-w-0">
+   491→          <p className="text-sm font-medium truncate">{provider.name}</p>
+   492→          <p className="text-xs text-muted-foreground truncate">
+   493→            {provider.city ?? "—"}
+   494→            {provider.verified && " · Verificado ✓"}
+   495→          </p>
+   496→        </div>
+   497→        {provider.verified && (
+   498→          <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px] shrink-0">
+   499→            Verificado
+   500→          </Badge>
+   501→        )}
+   502→      </div>
+   503→    </InfoCard>
+   504→  )
+   505→}
+   506→
+   507→// ---------------------------------------------------------------------------
+   508→// Step 2 — Serviço (Select Service)
+   509→// Nielsen #6: Recognition over recall — list with prices visible
+   510→// ---------------------------------------------------------------------------
+   511→
+   512→function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+   513→  const item = form.watch("items.0")
+   514→  const error = form.formState.errors.items?.[0]
+   515→
+   516→  return (
+   517→    <div className="grid gap-4">
+   518→      <StepHeader
+   519→        icon={Wrench}
+   520→        title="Qual serviço você precisa?"
+   521→        description="Escolha o tipo de serviço desejado deste prestador."
+   522→      />
+   523→
+   524→      <ServiceSelect
+   525→        providerId={item?.providerId ?? ""}
+   526→        value={item?.serviceId ?? ""}
+   527→        onChange={(service) =>
+   528→          form.setValue(
+   529→            "items.0",
+   530→            {
+   531→              ...item,
+   532→              serviceId: service.id,
+   533→              unit: service.unit,
+   534→            },
+   535→            { shouldDirty: true, shouldValidate: true },
+   536→          )
+   537→        }
+   538→        error={error?.serviceId?.message}
+   539→      />
+   540→
+   541→      {/* Selected service info — Nielsen #1: visibility of system status */}
+   542→      {item?.serviceId && <ServiceInfoCard providerId={item.providerId ?? ""} serviceId={item.serviceId} />}
+   543→    </div>
+   544→  )
+   545→}
+   546→
+   547→function ServiceInfoCard({ providerId, serviceId }: { providerId: string; serviceId: string }) {
+   548→  const { data: services } = useQuery({
+   549→    queryKey: ["services-by-provider", providerId],
+   550→    queryFn: () =>
+   551→      apiGet<ProviderService[]>("/api/services", { providerId }),
+   552→    enabled: !!providerId,
+   553→    staleTime: 30 * 1000,
+   554→  })
+   555→
+   556→  const selected = services?.find((s) => s.id === serviceId)
+   557→  if (!selected) return null
+   558→
+   559→  return (
+   560→    <InfoCard variant="emerald">
+   561→      <div className="flex items-start justify-between gap-2">
+   562→        <div className="min-w-0">
+   563→          <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300 truncate">
+   564→            {selected.title}
+   565→          </p>
+   566→          {selected.description && (
+   567→            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+   568→              {selected.description}
+   569→            </p>
+   570→          )}
+   571→        </div>
+   572→        <Badge variant="outline" className="shrink-0 border-emerald-500 text-emerald-700 text-xs">
+   573→          {selected.basePrice.toLocaleString("pt-BR", {
+   574→            style: "currency",
+   575→            currency: "BRL",
+   576→          })}
+   577→          /{SERVICE_UNIT_SHORT[selected.unit]}
+   578→        </Badge>
+   579→      </div>
+   580→    </InfoCard>
+   581→  )
+   582→}
+   583→
+   584→// ---------------------------------------------------------------------------
+   585→// Step 3 — Detalhes (Service Details)
+   586→// Nielsen #5: Error prevention — character counter, inline validation
+   587→// Nielsen #8: Minimalist — clean form, focused on description
+   588→// ---------------------------------------------------------------------------
+   589→
+   590→function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+   591→  const item = form.watch("items.0")
+   592→  const error = form.formState.errors.items?.[0]
+   593→  const descLen = item?.description?.length ?? 0
+   594→
+   595→  return (
+   596→    <div className="grid gap-4">
+   597→      <StepHeader
+   598→        icon={Pencil}
+   599→        title="Descreva o serviço"
+   600→        description="Quanto mais detalhes, mais preciso será o orçamento."
+   601→      />
+   602→
+   603→      {/* Description — Nielsen #5: error prevention with counter */}
+   604→      <div className="grid gap-1.5">
+   605→        <div className="flex items-center justify-between">
+   606→          <Label htmlFor="item-0-desc">Descrição do serviço</Label>
+   607→          <span className={cn(
+   608→            "text-xs tabular-nums",
+   609→            descLen < 10 ? "text-destructive" : "text-muted-foreground",
+   610→          )}>
+   611→            {descLen}/400
+   612→          </span>
+   613→        </div>
+   614→        <Textarea
+   615→          id="item-0-desc"
+   616→          placeholder="Ex.: Instalar tomada na parede da sala, fio visível. Preciso de 3 pontos novos."
+   617→          value={item?.description ?? ""}
+   618→          onChange={(e) =>
+   619→            form.setValue("items.0.description", e.target.value, {
+   620→              shouldDirty: true,
+   621→              shouldValidate: true,
+   622→            })
+   623→          }
+   624→          rows={3}
+   625→          maxLength={400}
+   626→          aria-invalid={!!error?.description}
+   627→        />
+   628→        {error?.description && (
+   629→          <p className="text-xs text-destructive">{error.description.message}</p>
+   630→        )}
+   631→      </div>
+   632→
+   633→      {/* Quantity + unit */}
+   634→      <div className="grid grid-cols-2 gap-3">
+   635→        <div className="grid gap-1.5">
+   636→          <Label htmlFor="item-0-qty">Quantidade</Label>
+   637→          <Input
+   638→            id="item-0-qty"
+   639→            type="number"
+   640→            inputMode="decimal"
+   641→            min={0.01}
+   642→            step={0.01}
+   643→            value={item?.quantity ?? 1}
+   644→            onChange={(e) =>
+   645→              form.setValue("items.0.quantity", Number(e.target.value), {
+   646→                shouldDirty: true,
+   647→                shouldValidate: true,
+   648→              })
+   649→            }
+   650→            aria-invalid={!!error?.quantity}
+   651→          />
+   652→          {error?.quantity && (
+   653→            <p className="text-xs text-destructive">{error.quantity.message}</p>
+   654→          )}
+   655→        </div>
+   656→
+   657→        <div className="grid gap-1.5">
+   658→          <Label>Unidade</Label>
+   659→          <Select
+   660→            value={item?.unit ?? "UNIDADE"}
+   661→            onValueChange={(v) =>
+   662→              form.setValue("items.0.unit", v as ServiceUnit, {
+   663→                shouldDirty: true,
+   664→              })
+   665→            }
+   666→          >
+   667→            <SelectTrigger className="w-full">
+   668→              <SelectValue />
+   669→            </SelectTrigger>
+   670→            <SelectContent>
+   671→              {SERVICE_UNITS.map((u) => (
+   672→                <SelectItem key={u} value={u}>
+   673→                  {SERVICE_UNIT_LABELS[u]}
+   674→                </SelectItem>
+   675→              ))}
+   676→            </SelectContent>
+   677→          </Select>
+   678→        </div>
+   679→      </div>
+   680→
+   681→      {/* Photos — Nielsen #7: flexibility — optional but helpful */}
+   682→      <FilePhotos
+   683→        value={item?.photos ?? []}
+   684→        onChange={(photos) =>
+   685→          form.setValue("items.0.photos", photos, { shouldDirty: true })
+   686→        }
+   687→        max={4}
+   688→        label="Fotos do serviço"
+   689→        hint="Envie até 4 imagens para ajudar o prestador a entender o serviço."
+   690→      />
+   691→    </div>
+   692→  )
+   693→}
+   694→
+   695→// ---------------------------------------------------------------------------
+   696→// Step 4 — Endereço (Service Location)
+   697→// Nielsen #5: Error prevention — CEP auto-fill, GPS button
+   698→// ---------------------------------------------------------------------------
+   699→
+   700→function Step4Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
+   701→  const address = form.watch("address")
+   702→  const errors = form.formState.errors.address
+   703→
+   704→  return (
+   705→    <div className="grid gap-4">
+   706→      <StepHeader
+   707→        icon={MapPin}
+   708→        title="Onde será o serviço?"
+   709→        description="Informe o endereço ou use sua localização para preencher automaticamente."
+   710→      />
+   711→
+   712→      <InfoCard>
+   713→        <AddressForm
+   714→          value={address}
+   715→          onChange={(v) => form.setValue("address", v, { shouldDirty: true })}
+   716→          errors={{
+   717→            cep: errors?.cep?.message,
+   718→            street: errors?.street?.message,
+   719→            number: errors?.number?.message,
+   720→            city: errors?.city?.message,
+   721→            state: errors?.state?.message,
+   722→          }}
+   723→        />
+   724→      </InfoCard>
+   725→    </div>
+   726→  )
+   727→}
+   728→
+   729→// ---------------------------------------------------------------------------
+   730→// Step 5 — Revisão (Review & Send)
+   731→// Nielsen #3: User control — edit links to go back to any step
+   732→// Nielsen #9: Error recovery — review before submit
+   733→// Nielsen #10: Help & documentation — "what happens next" timeline
+   734→// ---------------------------------------------------------------------------
+   735→
+   736→function Step5Review({
+   737→  form,
+   738→  goToStep,
+   739→}: {
+   740→  form: UseFormReturn<QuoteFormValues>
+   741→  goToStep: (s: Step) => void
+   742→}) {
+   743→  const item = form.watch("items.0")
+   744→  const address = form.watch("address")
+   745→
+   746→  const { data: providerData } = useQuery({
+   747→    queryKey: ["providers-options", ""],
+   748→    queryFn: () =>
+   749→      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
+   750→    staleTime: 30 * 1000,
+   751→  })
+   752→
+   753→  const { data: services } = useQuery({
+   754→    queryKey: ["services-by-provider", item?.providerId],
+   755→    queryFn: () =>
+   756→      apiGet<ProviderService[]>("/api/services", { providerId: item?.providerId }),
+   757→    enabled: !!item?.providerId,
+   758→    staleTime: 30 * 1000,
+   759→  })
+   760→
+   761→  const providerName = providerData?.items?.find((p) => p.id === item?.providerId)?.name ?? "—"
+   762→  const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title ?? "—"
+   763→
+   764→  return (
+   765→    <div className="grid gap-4">
+   766→      <StepHeader
+   767→        icon={Check}
+   768→        title="Revise seu pedido"
+   769→        description="Verifique as informações antes de enviar."
+   770→      />
+   771→
+   772→      {/* Provider section */}
+   773→      <ReviewSection
+   774→        label="Prestador"
+   775→        onEdit={() => goToStep(1)}
+   776→      >
+   777→        <p className="text-sm font-medium">{providerName}</p>
+   778→      </ReviewSection>
+   779→
+   780→      {/* Service section */}
+   781→      <ReviewSection
+   782→        label="Serviço"
+   783→        onEdit={() => goToStep(2)}
+   784→      >
+   785→        <p className="text-sm font-medium">{serviceTitle}</p>
+   786→        <Badge variant="secondary" className="mt-1">
+   787→          {item?.quantity ?? 0} {item?.unit ? SERVICE_UNIT_SHORT[item.unit] : "un"}
+   788→        </Badge>
+   789→      </ReviewSection>
+   790→
+   791→      {/* Details section */}
+   792→      <ReviewSection
+   793→        label="Detalhes"
+   794→        onEdit={() => goToStep(3)}
+   795→      >
+   796→        <p className="text-sm text-muted-foreground line-clamp-3">
+   797→          {item?.description || "—"}
+   798→        </p>
+   799→        {item?.photos && item.photos.length > 0 && (
+   800→          <div className="flex gap-2 mt-2">
+   801→            {item.photos.map((url, i) => (
+   802→              <div
+   803→                key={url + i}
+   804→                className="size-12 overflow-hidden rounded-md border bg-muted"
+   805→              >
+   806→                <img
+   807→                  src={url}
+   808→                  alt={`Foto ${i + 1}`}
+   809→                  className="size-full object-cover"
+   810→                  loading="lazy"
+   811→                />
+   812→              </div>
+   813→            ))}
+   814→          </div>
+   815→        )}
+   816→      </ReviewSection>
+   817→
+   818→      {/* Address section */}
+   819→      <ReviewSection
+   820→        label="Endereço"
+   821→        onEdit={() => goToStep(4)}
+   822→      >
+   823→        <div className="flex items-start gap-2 text-sm">
+   824→          <MapPin className="size-4 mt-0.5 shrink-0 text-emerald-600" />
+   825→          <span className="text-muted-foreground">
+   826→            {address.street
+   827→              ? `${address.street}, ${address.number}${
+   828→                  address.complement ? ` - ${address.complement}` : ""
+   829→                }${address.district ? ` · ${address.district}` : ""}`
+   830→              : "—"}
+   831→            {address.city ? ` · ${address.city}/${address.state}` : ""}
+   832→          </span>
+   833→        </div>
+   834→      </ReviewSection>
+   835→
+   836→      {/* "What happens next?" — Nielsen #10: help & documentation */}
+   837→      <InfoCard variant="emerald" className="mt-1">
+   838→        <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
+   839→          <Clock className="size-3.5" />
+   840→          O que acontece agora?
+   841→        </h4>
+   842→        <div className="grid gap-2.5">
+   843→          {[
+   844→            { label: "Enviado", desc: "Seu pedido chega ao prestador" },
+   845→            { label: "Prestador responde", desc: "Ele envia valor e prazo" },
+   846→            { label: "Você aprova", desc: "Aceite a proposta ou negocie" },
+   847→            { label: "Agende", desc: "Combine data e horário" },
+   848→          ].map((step, i) => (
+   849→            <div key={i} className="flex items-start gap-2.5">
+   850→              <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shrink-0 mt-0.5">
+   851→                {i + 1}
+   852→              </span>
+   853→              <div>
+   854→                <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+   855→                  {step.label}
+   856→                </p>
+   857→                <p className="text-[11px] text-muted-foreground">{step.desc}</p>
+   858→              </div>
+   859→            </div>
+   860→          ))}
+   861→        </div>
+   862→      </InfoCard>
+   863→
+   864→      {/* Security note */}
+   865→      <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+   866→        <ShieldCheck className="size-3.5 text-emerald-600" />
+   867→        Seus dados estão protegidos
+   868→      </div>
+   869→    </div>
+   870→  )
+   871→}
+   872→
+   873→// ---------------------------------------------------------------------------
+   874→// ReviewSection — Editable review card
+   875→// Nielsen #3: User control & freedom — "Editar" links
+   876→// ---------------------------------------------------------------------------
+   877→
+   878→function ReviewSection({
+   879→  label,
+   880→  onEdit,
+   881→  children,
+   882→}: {
+   883→  label: string
+   884→  onEdit: () => void
+   885→  children: React.ReactNode
+   886→}) {
+   887→  return (
+   888→    <div className="rounded-lg border p-3">
+   889→      <div className="flex items-center justify-between mb-1.5">
+   890→        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   891→          {label}
+   892→        </h4>
+   893→        <button
+   894→          type="button"
+   895→          onClick={onEdit}
+   896→          className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium transition-colors"
+   897→        >
+   898→          <Pencil className="size-3" />
+   899→          Editar
+   900→        </button>
+   901→      </div>
+   902→      {children}
+   903→    </div>
+   904→  )
+   905→}
+   906→
+   907→// ---------------------------------------------------------------------------
+   908→// Provider combobox — Async search with avatars
+   909→// Nielsen #6: Recognition over recall — searchable list with visual cues
+   910→// ---------------------------------------------------------------------------
+   911→
+   912→function ProviderCombobox({
+   913→  value,
+   914→  onChange,
+   915→  error,
+   916→}: {
+   917→  value: string
+   918→  onChange: (providerId: string) => void
+   919→  error?: string
+   920→}) {
+   921→  const [open, setOpen] = React.useState(false)
+   922→  const [query, setQuery] = React.useState("")
+   923→
+   924→  const { data, isLoading } = useQuery({
+   925→    queryKey: ["providers-options", query],
+   926→    queryFn: () =>
+   927→      apiGet<PagedResult<ProviderCard>>("/api/providers", {
+   928→        q: query || undefined,
+   929→        limit: 20,
+   930→      }),
+   931→    staleTime: 30 * 1000,
+   932→  })
+   933→
+   934→  const providers = data?.items ?? []
+   935→  const selected = providers.find((p) => p.id === value)
+   936→
+   937→  return (
+   938→    <div className="grid gap-1.5">
+   939→      <Label>Prestador</Label>
+   940→      <Popover open={open} onOpenChange={setOpen}>
+   941→        <PopoverTrigger asChild>
+   942→          <Button
+   943→            type="button"
+   944→            variant="outline"
+   945→            role="combobox"
+   946→            aria-expanded={open}
+   947→            className={cn(
+   948→              "w-full justify-between font-normal h-10",
+   949→              !value && "text-muted-foreground",
+   950→              error && "border-destructive",
+   951→            )}
+   952→          >
+   953→            <span className="flex items-center gap-2 truncate">
+   954→              {selected ? (
+   955→                <>
+   956→                  <Avatar className="size-6 rounded-sm">
+   957→                    {selected.avatarUrl ? (
+   958→                      <AvatarImage src={selected.avatarUrl} alt={selected.name} />
+   959→                    ) : null}
+   960→                    <AvatarFallback className="rounded-sm bg-emerald-100 text-emerald-700 text-[10px] dark:bg-emerald-950 dark:text-emerald-300">
+   961→                      {selected.name?.[0]?.toUpperCase() ?? "?"}
+   962→                    </AvatarFallback>
+   963→                  </Avatar>
+   964→                  <span className="truncate">{selected.name}</span>
+   965→                  {selected.verified && (
+   966→                    <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px]">
+   967→                      Verificado
+   968→                    </Badge>
+   969→                  )}
+   970→                </>
+   971→              ) : (
+   972→                "Selecionar prestador"
+   973→              )}
+   974→            </span>
+   975→            <ChevronDown className="size-4 opacity-50" />
+   976→          </Button>
+   977→        </PopoverTrigger>
+   978→        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+   979→          <Command shouldFilter={false}>
+   980→            <CommandInput
+   981→              placeholder="Buscar por nome ou serviço..."
+   982→              value={query}
+   983→              onValueChange={setQuery}
+   984→            />
+   985→            <CommandList>
+   986→              <CommandEmpty>
+   987→                {isLoading ? "Buscando..." : "Nenhum prestador encontrado."}
+   988→              </CommandEmpty>
+   989→              <CommandGroup>
+   990→                {providers.map((p) => (
+   991→                  <CommandItem
+   992→                    key={p.id}
+   993→                    value={p.id}
+   994→                    onSelect={() => {
+   995→                      onChange(p.id)
+   996→                      setOpen(false)
+   997→                    }}
+   998→                    className="flex items-center gap-2"
+   999→                  >
+  1000→                    <Check
+  1001→                      className={cn(
+  1002→                        "size-4 shrink-0",
+  1003→                        value === p.id ? "opacity-100" : "opacity-0",
+  1004→                      )}
+  1005→                    />
+  1006→                    <Avatar className="size-7 rounded-sm">
+  1007→                      {p.avatarUrl ? (
+  1008→                        <AvatarImage src={p.avatarUrl} alt={p.name} />
+  1009→                      ) : null}
+  1010→                      <AvatarFallback className="rounded-sm bg-emerald-100 text-emerald-700 text-[10px] dark:bg-emerald-950 dark:text-emerald-300">
+  1011→                        {p.name?.[0]?.toUpperCase() ?? "?"}
+  1012→                      </AvatarFallback>
+  1013→                    </Avatar>
+  1014→                    <div className="flex-1 min-w-0">
+  1015→                      <p className="text-sm truncate">{p.name}</p>
+  1016→                      <p className="text-xs text-muted-foreground truncate">
+  1017→                        {p.city ?? "—"}
+  1018→                        {p.services?.[0]?.title
+  1019→                          ? ` · ${p.services[0].title}`
+  1020→                          : ""}
+  1021→                      </p>
+  1022→                    </div>
+  1023→                    {p.verified && (
+  1024→                      <Badge
+  1025→                        variant="outline"
+  1026→                        className="border-emerald-500 text-emerald-700 text-[10px] ml-2 shrink-0"
+  1027→                      >
+  1028→                        ✓
+  1029→                      </Badge>
+  1030→                    )}
+  1031→                  </CommandItem>
+  1032→                ))}
+  1033→              </CommandGroup>
+  1034→            </CommandList>
+  1035→          </Command>
+  1036→        </PopoverContent>
+  1037→      </Popover>
+  1038→      {error && <p className="text-xs text-destructive">{error}</p>}
+  1039→    </div>
+  1040→  )
+  1041→}
+  1042→
+  1043→// ---------------------------------------------------------------------------
+  1044→// Service select — Depends on chosen provider
+  1045→// ---------------------------------------------------------------------------
+  1046→
+  1047→function ServiceSelect({
+  1048→  providerId,
+  1049→  value,
+  1050→  onChange,
+  1051→  error,
+  1052→}: {
+  1053→  providerId: string
+  1054→  value: string
+  1055→  onChange: (service: ProviderService) => void
+  1056→  error?: string
+  1057→}) {
+  1058→  const { data, isLoading } = useQuery({
+  1059→    queryKey: ["services-by-provider", providerId],
+  1060→    queryFn: () =>
+  1061→      apiGet<ProviderService[]>("/api/services", { providerId }),
+  1062→    enabled: !!providerId,
+  1063→    staleTime: 30 * 1000,
+  1064→  })
+  1065→
+  1066→  const services = data ?? []
+  1067→  const selected = services.find((s) => s.id === value)
+  1068→
+  1069→  return (
+  1070→    <div className="grid gap-1.5">
+  1071→      <Label>Serviço</Label>
+  1072→      <Select
+  1073→        value={value}
+  1074→        onValueChange={(v) => {
+  1075→          const s = services.find((x) => x.id === v)
+  1076→          if (s) onChange(s)
+  1077→        }}
+  1078→        disabled={!providerId}
+  1079→      >
+  1080→        <SelectTrigger className={cn("w-full h-10", error && "border-destructive")}>
+  1081→          <SelectValue
+  1082→            placeholder={
+  1083→              !providerId
+  1084→                ? "Selecione um prestador primeiro"
+  1085→                : isLoading
+  1086→                  ? "Carregando..."
+  1087→                  : "Selecionar serviço"
+  1088→            }
+  1089→          />
+  1090→        </SelectTrigger>
+  1091→        <SelectContent>
+  1092→          {services.length === 0 && !isLoading && (
+  1093→            <div className="px-2 py-3 text-center text-xs text-muted-foreground">
+  1094→              Nenhum serviço disponível.
+  1095→            </div>
+  1096→          )}
+  1097→          {services.map((s) => (
+  1098→            <SelectItem key={s.id} value={s.id}>
+  1099→              <span className="flex items-center justify-between gap-2 w-full">
+  1100→                <span className="truncate">{s.title}</span>
+  1101→                <span className="text-xs text-muted-foreground tabular-nums">
+  1102→                  {s.basePrice.toLocaleString("pt-BR", {
+  1103→                    style: "currency",
+  1104→                    currency: "BRL",
+  1105→                  })}
+  1106→                  /{SERVICE_UNIT_SHORT[s.unit]}
+  1107→                </span>
+  1108→              </span>
+  1109→            </SelectItem>
+  1110→          ))}
+  1111→        </SelectContent>
+  1112→      </Select>
+  1113→      {selected && (
+  1114→        <p className="text-xs text-muted-foreground line-clamp-2">
+  1115→          {selected.description ?? "—"}
+  1116→        </p>
+  1117→      )}
+  1118→      {error && <p className="text-xs text-destructive">{error}</p>}
+  1119→    </div>
+  1120→  )
+  1121→}
+  1122→
