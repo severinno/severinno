@@ -1,0 +1,1460 @@
+     1→     1→"use client"
+     2→     2→
+     3→     3→import * as React from "react"
+     4→     4→import { useQuery } from "@tanstack/react-query"
+     5→     5→import {
+     6→     6→  CalendarDays,
+     7→     7→  CalendarOff,
+     8→     8→  Check,
+     9→     9→  CheckCircle2,
+    10→    10→  ChevronLeft,
+    11→    11→  ChevronRight,
+    12→    12→  Clock,
+    13→    13→  CreditCard,
+    14→    14→  Loader2,
+    15→    15→  MapPin,
+    16→    16→  Moon,
+    17→    17→  Pencil,
+    18→    18→  QrCode,
+    19→    19→  Send,
+    20→    20→  ShieldCheck,
+    21→    21→  Sun,
+    22→    22→  Wallet,
+    23→    23→} from "lucide-react"
+    24→    24→import { toast } from "sonner"
+    25→    25→import { ptBR } from "date-fns/locale"
+    26→    26→import { format } from "date-fns"
+    27→    27→import { motion, AnimatePresence } from "framer-motion"
+    28→    28→
+    29→    29→import {
+    30→    30→  Dialog,
+    31→    31→  DialogContent,
+    32→    32→  DialogDescription,
+    33→    33→  DialogHeader,
+    34→    34→  DialogTitle,
+    35→    35→} from "@/components/ui/dialog"
+    36→    36→import {
+    37→    37→  Sheet,
+    38→    38→  SheetContent,
+    39→    39→  SheetDescription,
+    40→    40→  SheetHeader,
+    41→    41→  SheetTitle,
+    42→    42→} from "@/components/ui/sheet"
+    43→    43→import { Button } from "@/components/ui/button"
+    44→    44→import { Input } from "@/components/ui/input"
+    45→    45→import { Label } from "@/components/ui/label"
+    46→    46→import { Textarea } from "@/components/ui/textarea"
+    47→    47→import { Badge } from "@/components/ui/badge"
+    48→    48→import { Separator } from "@/components/ui/separator"
+    49→    49→import { Calendar } from "@/components/ui/calendar"
+    50→    50→import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+    51→    51→import {
+    52→    52→  Avatar,
+    53→    53→  AvatarFallback,
+    54→    54→  AvatarImage,
+    55→    55→} from "@/components/ui/avatar"
+    56→    56→import { ScrollArea } from "@/components/ui/scroll-area"
+    57→    57→import { cn } from "@/lib/utils"
+    58→    58→import {
+    59→    59→  apiGet,
+    60→    60→  apiPost,
+    61→    61→  type ProviderDetail,
+    62→    62→  type ProviderService,
+    63→    63→} from "@/lib/api"
+    64→    64→import {
+    65→    65→  SERVICE_UNIT_LABELS,
+    66→    66→  SERVICE_UNIT_SHORT,
+    67→    67→  WEEKDAYS_SHORT,
+    68→    68→} from "@/lib/constants"
+    69→    69→import { formatBRL, formatDate, formatHHmm } from "@/lib/format"
+    70→    70→import { useUIStore } from "@/store/ui"
+    71→    71→import { useAuthStore } from "@/store/auth"
+    72→    72→import { useViewStore } from "@/store/view"
+    73→    73→import { useIsMobile } from "@/hooks/use-mobile"
+    74→    74→import { AddressForm, type AddressFormValue } from "./address-form"
+    75→    75→import {
+    76→    76→  StepWizard,
+    77→    77→  StepHeader,
+    78→    78→  InfoCard,
+    79→    79→  type StepDef,
+    80→    80→} from "./step-wizard"
+    81→    81→
+    82→    82→// ---------------------------------------------------------------------------
+    83→    83→// Step definitions — 4 steps
+    84→    84→// Nielsen #8: Minimalist — each step has ONE focused task
+    85→    85→// ---------------------------------------------------------------------------
+    86→    86→
+    87→    87→const STEPS: StepDef[] = [
+    88→    88→  { id: 1, label: "Agenda", shortLabel: "Agenda", icon: CalendarDays },
+    89→    89→  { id: 2, label: "Detalhes", shortLabel: "Detalhes", icon: MapPin },
+    90→    90→  { id: 3, label: "Pagamento", shortLabel: "Pagamento", icon: Wallet },
+    91→    91→  { id: 4, label: "Confirmação", shortLabel: "Confirmar", icon: Check },
+    92→    92→]
+    93→    93→
+    94→    94→type Step = (typeof STEPS)[number]["id"]
+    95→    95→
+    96→    96→// ---------------------------------------------------------------------------
+    97→    97→// Form state
+    98→    98→// ---------------------------------------------------------------------------
+    99→    99→
+   100→   100→type BookingFormState = {
+   101→   101→  date: Date | undefined
+   102→   102→  time: string | undefined
+   103→   103→  quantity: number
+   104→   104→  notes: string
+   105→   105→  address: AddressFormValue
+   106→   106→  paymentMethod: "CARD" | "PIX"
+   107→   107→  cardName: string
+   108→   108→  cardNumber: string
+   109→   109→  cardExpiry: string
+   110→   110→  cardCvv: string
+   111→   111→}
+   112→   112→
+   113→   113→const emptyAddress: AddressFormValue = {
+   114→   114→  cep: "",
+   115→   115→  street: "",
+   116→   116→  number: "",
+   117→   117→  complement: "",
+   118→   118→  district: "",
+   119→   119→  city: "",
+   120→   120→  state: "",
+   121→   121→  lat: null,
+   122→   122→  lng: null,
+   123→   123→}
+   124→   124→
+   125→   125→const initialState = (quantity = 1): BookingFormState => ({
+   126→   126→  date: undefined,
+   127→   127→  time: undefined,
+   128→   128→  quantity,
+   129→   129→  notes: "",
+   130→   130→  address: emptyAddress,
+   131→   131→  paymentMethod: "PIX",
+   132→   132→  cardName: "",
+   133→   133→  cardNumber: "",
+   134→   134→  cardExpiry: "",
+   135→   135→  cardCvv: "",
+   136→   136→})
+   137→   137→
+   138→   138→// ---------------------------------------------------------------------------
+   139→   139→// Validation helpers
+   140→   140→// ---------------------------------------------------------------------------
+   141→   141→
+   142→   142→function cardNameValid(v: string) { return v.trim().length >= 3 }
+   143→   143→function cardNumberValid(v: string) { return v.replace(/\s/g, "").length >= 13 }
+   144→   144→function cardExpiryValid(v: string) { return /^\d{2}\/\d{2}$/.test(v) }
+   145→   145→function cardCvvValid(v: string) { return /^\d{3,4}$/.test(v) }
+   146→   146→
+   147→   147→// ---------------------------------------------------------------------------
+   148→   148→// Time slot period grouping
+   149→   149→// Nielsen #6: Recognition over recall — group slots by time of day
+   150→   150→// ---------------------------------------------------------------------------
+   151→   151→
+   152→   152→type TimePeriod = {
+   153→   153→  key: string
+   154→   154→  label: string
+   155→   155→  icon: React.ComponentType<{ className?: string }>
+   156→   156→  range: [number, number] // start hour, end hour (exclusive)
+   157→   157→}
+   158→   158→
+   159→   159→const TIME_PERIODS: TimePeriod[] = [
+   160→   160→  { key: "morning", label: "Manhã", icon: Sun, range: [6, 12] },
+   161→   161→  { key: "afternoon", label: "Tarde", icon: Clock, range: [12, 18] },
+   162→   162→  { key: "evening", label: "Noite", icon: Moon, range: [18, 24] },
+   163→   163→]
+   164→   164→
+   165→   165→// ---------------------------------------------------------------------------
+   166→   166→// Main modal
+   167→   167→// ---------------------------------------------------------------------------
+   168→   168→
+   169→   169→export function BookingModal() {
+   170→   170→  const open = useUIStore((s) => s.bookingModal.open)
+   171→   171→  const providerIdPreset = useUIStore((s) => s.bookingModal.providerId)
+   172→   172→  const serviceIdPreset = useUIStore((s) => s.bookingModal.serviceId)
+   173→   173→  const close = useUIStore((s) => s.closeBooking)
+   174→   174→  const openAuth = useUIStore((s) => s.openAuth)
+   175→   175→  const isMobile = useIsMobile()
+   176→   176→  const navigate = useViewStore((s) => s.navigate)
+   177→   177→  const user = useAuthStore((s) => s.user)
+   178→   178→
+   179→   179→  const [step, setStep] = React.useState<Step>(1)
+   180→   180→  const [state, setState] = React.useState<BookingFormState>(initialState())
+   181→   181→  const [submitting, setSubmitting] = React.useState(false)
+   182→   182→  const [touched, setTouched] = React.useState<Set<string>>(new Set())
+   183→   183→
+   184→   184→  // Reset when modal opens
+   185→   185→  React.useEffect(() => {
+   186→   186→    if (open) {
+   187→   187→      setStep(1)
+   188→   188→      setState(initialState())
+   189→   189→      setTouched(new Set())
+   190→   190→    }
+   191→   191→  }, [open])
+   192→   192→
+   193→   193→  // Fetch provider + services
+   194→   194→  const providerQuery = useQuery({
+   195→   195→    queryKey: ["provider", providerIdPreset],
+   196→   196→    queryFn: () =>
+   197→   197→      apiGet<ProviderDetail>(`/api/providers/${providerIdPreset}`),
+   198→   198→    enabled: open && !!providerIdPreset,
+   199→   199→    staleTime: 60 * 1000,
+   200→   200→  })
+   201→   201→
+   202→   202→  const servicesQuery = useQuery({
+   203→   203→    queryKey: ["services-by-provider", providerIdPreset],
+   204→   204→    queryFn: () =>
+   205→   205→      apiGet<ProviderService[]>("/api/services", { providerId: providerIdPreset }),
+   206→   206→    enabled: open && !!providerIdPreset,
+   207→   207→    staleTime: 60 * 1000,
+   208→   208→  })
+   209→   209→
+   210→   210→  const provider = providerQuery.data
+   211→   211→  const services = servicesQuery.data ?? []
+   212→   212→  const selectedService =
+   213→   213→    services.find((s) => s.id === serviceIdPreset) ?? services[0]
+   214→   214→
+   215→   215→  React.useEffect(() => {
+   216→   216→    if (open && selectedService) {
+   217→   217→      setState((s) => ({ ...s, quantity: 1 }))
+   218→   218→    }
+   219→   219→  }, [open, selectedService])
+   220→   220→
+   221→   221→  const set = <K extends keyof BookingFormState>(
+   222→   222→    key: K,
+   223→   223→    value: BookingFormState[K],
+   224→   224→  ) => setState((s) => ({ ...s, [key]: value }))
+   225→   225→
+   226→   226→  const markTouched = (field: string) =>
+   227→   227→    setTouched((prev) => new Set(prev).add(field))
+   228→   228→
+   229→   229→  // ── Step validation ──
+   230→   230→  const step1Valid = !!state.date && !!state.time
+   231→   231→  const step2Valid =
+   232→   232→    !!state.address.cep &&
+   233→   233→    state.address.cep.replace(/\D/g, "").length === 8 &&
+   234→   234→    !!state.address.street &&
+   235→   235→    !!state.address.number &&
+   236→   236→    !!state.address.city &&
+   237→   237→    !!state.address.state
+   238→   238→  const step3Valid =
+   239→   239→    state.paymentMethod === "PIX" ||
+   240→   240→    (state.paymentMethod === "CARD" &&
+   241→   241→      cardNameValid(state.cardName) &&
+   242→   242→      cardNumberValid(state.cardNumber) &&
+   243→   243→      cardExpiryValid(state.cardExpiry) &&
+   244→   244→      cardCvvValid(state.cardCvv))
+   245→   245→  // Step 4 is always valid (it's a review)
+   246→   246→
+   247→   247→  const validSteps: Record<number, boolean> = {
+   248→   248→    1: step1Valid,
+   249→   249→    2: step2Valid,
+   250→   250→    3: step3Valid,
+   251→   251→    4: true,
+   252→   252→  }
+   253→   253→
+   254→   254→  // ── Navigation ──
+   255→   255→  const handleStepClick = (target: Step) => {
+   256→   256→    if (target < step) {
+   257→   257→      setStep(target)
+   258→   258→      return
+   259→   259→    }
+   260→   260→    for (let i = 1; i < target; i++) {
+   261→   261→      if (!validSteps[i as Step]) {
+   262→   262→        toast.error("Complete os passos anteriores primeiro.")
+   263→   263→        return
+   264→   264→      }
+   265→   265→    }
+   266→   266→    setStep(target)
+   267→   267→  }
+   268→   268→
+   269→   269→  const handleNext = () => {
+   270→   270→    if (step === 1 && !step1Valid) {
+   271→   271→      toast.error("Selecione data e horário para continuar.")
+   272→   272→      return
+   273→   273→    }
+   274→   274→    if (step === 2 && !step2Valid) {
+   275→   275→      toast.error("Preencha o endereço completo.")
+   276→   276→      return
+   277→   277→    }
+   278→   278→    if (step === 3 && !step3Valid) {
+   279→   279→      toast.error("Verifique os dados de pagamento.")
+   280→   280→      return
+   281→   281→    }
+   282→   282→    setStep((s) => Math.min(4, s + 1) as Step)
+   283→   283→  }
+   284→   284→
+   285→   285→  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step)
+   286→   286→
+   287→   287→  const handleSubmit = async () => {
+   288→   288→    if (!user) {
+   289→   289→      toast.info("Faça cadastro gratuito para agendar serviços.")
+   290→   290→      openAuth("register", "CLIENT")
+   291→   291→      return
+   292→   292→    }
+   293→   293→    if (!provider || !selectedService || !state.date || !state.time) {
+   294→   294→      toast.error("Dados incompletos. Revise o agendamento.")
+   295→   295→      return
+   296→   296→    }
+   297→   297→
+   298→   298→    const [h, m] = state.time.split(":").map(Number)
+   299→   299→    const scheduledAt = new Date(state.date)
+   300→   300→    scheduledAt.setHours(h ?? 0, m ?? 0, 0, 0)
+   301→   301→    const amount = (selectedService.basePrice || 0) * (state.quantity || 1)
+   302→   302→
+   303→   303→    setSubmitting(true)
+   304→   304→    try {
+   305→   305→      await apiPost("/api/bookings", {
+   306→   306→        providerId: provider.id,
+   307→   307→        serviceId: selectedService.id,
+   308→   308→        scheduledAt: scheduledAt.toISOString(),
+   309→   309→        address: [
+   310→   310→          state.address.street,
+   311→   311→          state.address.number,
+   312→   312→          state.address.complement,
+   313→   313→          state.address.district,
+   314→   314→        ]
+   315→   315→          .filter(Boolean)
+   316→   316→          .join(", "),
+   317→   317→        cep: state.address.cep,
+   318→   318→        lat: state.address.lat,
+   319→   319→        lng: state.address.lng,
+   320→   320→        amount,
+   321→   321→        paymentMethod: state.paymentMethod,
+   322→   322→        notes: state.notes,
+   323→   323→        quantity: state.quantity,
+   324→   324→        unit: selectedService.unit,
+   325→   325→      })
+   326→   326→      toast.success("Agendamento confirmado! Acompanhe em seus agendamentos.")
+   327→   327→      close()
+   328→   328→      navigate("client.bookings")
+   329→   329→    } catch (e) {
+   330→   330→      const msg =
+   331→   331→        (e as { message?: string })?.message ??
+   332→   332→        "Não foi possível concluir o agendamento. Tente novamente."
+   333→   333→      toast.error(msg)
+   334→   334→    } finally {
+   335→   335→      setSubmitting(false)
+   336→   336→    }
+   337→   337→  }
+   338→   338→
+   339→   339→  // ── Step content ──
+   340→   340→  const stepContent = (() => {
+   341→   341→    switch (step) {
+   342→   342→      case 1:
+   343→   343→        return (
+   344→   344→          <Step1Schedule
+   345→   345→            state={state}
+   346→   346→            set={set}
+   347→   347→            availability={provider?.availability ?? []}
+   348→   348→            selectedService={selectedService}
+   349→   349→            provider={provider}
+   350→   350→            loading={providerQuery.isLoading || servicesQuery.isLoading}
+   351→   351→            isDesktop={!isMobile}
+   352→   352→          />
+   353→   353→        )
+   354→   354→      case 2:
+   355→   355→        return (
+   356→   356→          <Step2Details
+   357→   357→            state={state}
+   358→   358→            set={set}
+   359→   359→            provider={provider}
+   360→   360→            selectedService={selectedService}
+   361→   361→          />
+   362→   362→        )
+   363→   363→      case 3:
+   364→   364→        return (
+   365→   365→          <Step3Payment
+   366→   366→            state={state}
+   367→   367→            set={set}
+   368→   368→            markTouched={markTouched}
+   369→   369→            touched={touched}
+   370→   370→            selectedService={selectedService}
+   371→   371→          />
+   372→   372→        )
+   373→   373→      case 4:
+   374→   374→        return (
+   375→   375→          <Step4Confirmation
+   376→   376→            state={state}
+   377→   377→            provider={provider}
+   378→   378→            selectedService={selectedService}
+   379→   379→            goToStep={setStep}
+   380→   380→          />
+   381→   381→        )
+   382→   382→      default:
+   383→   383→        return null
+   384→   384→    }
+   385→   385→  })()
+   386→   386→
+   387→   387→  // Dynamic dialog sizing: wider on Step 1 for side-by-side calendar layout
+   388→   388→  const dialogSizeClass = step === 1
+   389→   389→    ? "sm:max-w-2xl"
+   390→   390→    : "sm:max-w-lg"
+   391→   391→
+   392→   392→  // ── Step indicator (reused for desktop custom layout) ──
+   393→   393→  const stepIndicator = (
+   394→   394→    <div className="border-b px-4 sm:px-5 py-3">
+   395→   395→      <div className="flex items-center justify-between">
+   396→   396→        {STEPS.map((s, i) => {
+   397→   397→          const active = step === s.id
+   398→   398→          const done = validSteps[s.id] && step > s.id
+   399→   399→          const Icon = s.icon
+   400→   400→          return (
+   401→   401→            <React.Fragment key={s.id}>
+   402→   402→              <button
+   403→   403→                type="button"
+   404→   404→                onClick={() => handleStepClick(s.id)}
+   405→   405→                disabled={!done && s.id > step}
+   406→   406→                className={cn(
+   407→   407→                  "flex items-center gap-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-1 py-0.5",
+   408→   408→                  active
+   409→   409→                    ? "text-emerald-700 dark:text-emerald-400 font-semibold"
+   410→   410→                    : done
+   411→   411→                      ? "text-emerald-600 cursor-pointer hover:text-emerald-700"
+   412→   412→                      : "text-muted-foreground cursor-default",
+   413→   413→                )}
+   414→   414→              >
+   415→   415→                <span
+   416→   416→                  className={cn(
+   417→   417→                    "inline-flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-all",
+   418→   418→                    active &&
+   419→   419→                      "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25",
+   420→   420→                    done &&
+   421→   421→                      "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
+   422→   422→                    !active &&
+   423→   423→                      !done &&
+   424→   424→                      "border-muted-foreground/20 text-muted-foreground",
+   425→   425→                  )}
+   426→   426→                >
+   427→   427→                  {done ? (
+   428→   428→                    <Check className="size-3.5" />
+   429→   429→                  ) : Icon ? (
+   430→   430→                    <Icon className="size-3.5" />
+   431→   431→                  ) : (
+   432→   432→                    s.id
+   433→   433→                  )}
+   434→   434→                </span>
+   435→   435→                <span className="hidden sm:inline">
+   436→   436→                  {s.shortLabel ?? s.label}
+   437→   437→                </span>
+   438→   438→              </button>
+   439→   439→              {i < STEPS.length - 1 && (
+   440→   440→                <div className="flex-1 h-px bg-muted-foreground/15 mx-1 sm:mx-2 relative">
+   441→   441→                  <div
+   442→   442→                    className="absolute inset-0 bg-emerald-500 transition-transform origin-left duration-300"
+   443→   443→                    style={{
+   444→   444→                      transform:
+   445→   445→                        validSteps[STEPS[i + 1]?.id] || step > s.id
+   446→   446→                          ? "scaleX(1)"
+   447→   447→                          : step === s.id && validSteps[s.id]
+   448→   448→                            ? "scaleX(0.5)"
+   449→   449→                            : "scaleX(0)",
+   450→   450→                    }}
+   451→   451→                  />
+   452→   452→                </div>
+   453→   453→              )}
+   454→   454→            </React.Fragment>
+   455→   455→          )
+   456→   456→        })}
+   457→   457→      </div>
+   458→   458→    </div>
+   459→   459→  )
+   460→   460→
+   461→   461→  // ── Footer buttons ──
+   462→   462→  const footerButtons = (
+   463→   463→    <div className="border-t bg-background/95 backdrop-blur px-4 sm:px-5 py-2.5 sticky bottom-0">
+   464→   464→      <div className="flex items-center justify-between gap-2">
+   465→   465→        {step > 1 ? (
+   466→   466→          <Button
+   467→   467→            type="button"
+   468→   468→            variant="ghost"
+   469→   469→            size="sm"
+   470→   470→            onClick={handleBack}
+   471→   471→            disabled={submitting}
+   472→   472→            className="text-muted-foreground hover:text-foreground h-9 gap-1"
+   473→   473→          >
+   474→   474→            <ChevronLeft className="size-4" />
+   475→   475→            Voltar
+   476→   476→          </Button>
+   477→   477→        ) : (
+   478→   478→          <div />
+   479→   479→        )}
+   480→   480→        {step < 4 ? (
+   481→   481→          <Button
+   482→   482→            type="button"
+   483→   483→            size="sm"
+   484→   484→            onClick={handleNext}
+   485→   485→            disabled={!validSteps[step]}
+   486→   486→            className="h-9 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+   487→   487→          >
+   488→   488→            Continuar
+   489→   489→            <ChevronRight className="size-4" />
+   490→   490→          </Button>
+   491→   491→        ) : (
+   492→   492→          <Button
+   493→   493→            type="button"
+   494→   494→            size="sm"
+   495→   495→            onClick={handleSubmit}
+   496→   496→            disabled={submitting || !validSteps[step]}
+   497→   497→            className="h-9 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+   498→   498→          >
+   499→   499→            {submitting && <Loader2 className="size-3.5 animate-spin" />}
+   500→   500→            <Send className="size-3.5" />
+   501→   501→            Confirmar agendamento
+   502→   502→          </Button>
+   503→   503→        )}
+   504→   504→      </div>
+   505→   505→    </div>
+   506→   506→  )
+   507→   507→
+   508→   508→  const wizardBody = (
+   509→   509→    <StepWizard
+   510→   510→      steps={STEPS}
+   511→   511→      currentStep={step}
+   512→   512→      validSteps={validSteps}
+   513→   513→      onStepClick={handleStepClick}
+   514→   514→      onBack={handleBack}
+   515→   515→      onNext={handleNext}
+   516→   516→      onSubmit={handleSubmit}
+   517→   517→      submitting={submitting}
+   518→   518→      currentStepValid={validSteps[step] ?? true}
+   519→   519→      submitLabel={
+   520→   520→        <>
+   521→   521→          <Send className="size-3.5" />
+   522→   522→          Confirmar agendamento
+   523→   523→        </>
+   524→   524→      }
+   525→   525→    >
+   526→   526→      {stepContent}
+   527→   527→    </StepWizard>
+   528→   528→  )
+   529→   529→
+   530→   530→  if (isMobile) {
+   531→   531→    return (
+   532→   532→      <Sheet open={open} onOpenChange={(o) => !o && close()}>
+   533→   533→        <SheetContent
+   534→   534→          side="bottom"
+   535→   535→          className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
+   536→   536→          onInteractOutside={(e) => e.preventDefault()}
+   537→   537→        >
+   538→   538→          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+   539→   539→            <SheetTitle className="flex items-center gap-2 text-base">
+   540→   540→              <CalendarDays className="size-4 text-emerald-600" />
+   541→   541→              Agendar serviço
+   542→   542→            </SheetTitle>
+   543→   543→            <SheetDescription className="text-xs">
+   544→   544→              Escolha data, detalhes e pagamento
+   545→   545→            </SheetDescription>
+   546→   546→          </SheetHeader>
+   547→   547→          <div className="flex-1 overflow-hidden">{wizardBody}</div>
+   548→   548→        </SheetContent>
+   549→   549→      </Sheet>
+   550→   550→    )
+   551→   551→  }
+   552→   552→
+   553→   553→  // ── Desktop: Custom layout with proper scrolling ──
+   554→   554→  return (
+   555→   555→    <Dialog open={open} onOpenChange={(o) => !o && close()}>
+   556→   556→      <DialogContent
+   557→   557→        className={cn(
+   558→   558→          "p-0 gap-0 flex flex-col max-h-[90vh] transition-[max-width] duration-300",
+   559→   559→          dialogSizeClass,
+   560→   560→        )}
+   561→   561→        onInteractOutside={(e) => e.preventDefault()}
+   562→   562→      >
+   563→   563→        {/* Header — Nielsen #3: User control */}
+   564→   564→        <DialogHeader className="px-5 pt-4 pb-2 border-b shrink-0">
+   565→   565→          <DialogTitle className="flex items-center gap-2 text-base">
+   566→   566→            <CalendarDays className="size-4 text-emerald-600" />
+   567→   567→            Agendar serviço
+   568→   568→          </DialogTitle>
+   569→   569→          <DialogDescription className="text-xs">
+   570→   570→            Escolha data, detalhes e pagamento
+   571→   571→          </DialogDescription>
+   572→   572→        </DialogHeader>
+   573→   573→
+   574→   574→        {/* Step indicator — always visible */}
+   575→   575→        {stepIndicator}
+   576→   576→
+   577→   577→        {/* Step content — scrollable */}
+   578→   578→        <div className="flex-1 overflow-y-auto min-h-0 px-4 sm:px-5 py-4">
+   579→   579→          <AnimatePresence mode="wait">
+   580→   580→            <motion.div
+   581→   581→              key={step}
+   582→   582→              initial={{ opacity: 0, x: 12 }}
+   583→   583→              animate={{ opacity: 1, x: 0 }}
+   584→   584→              exit={{ opacity: 0, x: -12 }}
+   585→   585→              transition={{ duration: 0.18 }}
+   586→   586→            >
+   587→   587→              {stepContent}
+   588→   588→            </motion.div>
+   589→   589→          </AnimatePresence>
+   590→   590→        </div>
+   591→   591→
+   592→   592→        {/* Footer — always visible at bottom */}
+   593→   593→        {footerButtons}
+   594→   594→      </DialogContent>
+   595→   595→    </Dialog>
+   596→   596→  )
+   597→   597→}
+   598→   598→
+   599→   599→// ---------------------------------------------------------------------------
+   600→   600→// Step 1 — Agenda (Date & Time) — REDESIGNED
+   601→   601→// Desktop: Calendar LEFT + Time slots RIGHT (side-by-side)
+   602→   602→// Mobile: Calendar TOP + Time slots BOTTOM (stacked)
+   603→   603→// Nielsen #1: Visibility of system status — selected date/time highlighted
+   604→   604→// Nielsen #6: Recognition over recall — visible calendar, time slot buttons
+   605→   605→// Nielsen #8: Minimalist — clean two-column layout
+   606→   606→// Reference: shadcnspace.com Calendar 03 - Time Calendar
+   607→   607→// ---------------------------------------------------------------------------
+   608→   608→
+   609→   609→function Step1Schedule({
+   610→   610→  state,
+   611→   611→  set,
+   612→   612→  availability,
+   613→   613→  selectedService,
+   614→   614→  provider,
+   615→   615→  loading,
+   616→   616→  isDesktop,
+   617→   617→}: {
+   618→   618→  state: BookingFormState
+   619→   619→  set: <K extends keyof BookingFormState>(
+   620→   620→    key: K,
+   621→   621→    value: BookingFormState[K],
+   622→   622→  ) => void
+   623→   623→  availability: ProviderDetail["availability"]
+   624→   624→  selectedService?: ProviderService
+   625→   625→  provider?: ProviderDetail
+   626→   626→  loading: boolean
+   627→   627→  isDesktop: boolean
+   628→   628→}) {
+   629→   629→  // Generate slot list for selected date
+   630→   630→  const slots = React.useMemo(() => {
+   631→   631→    if (!state.date) return [] as { label: string; value: string }[]
+   632→   632→    const dow = state.date.getDay()
+   633→   633→    const dayBlocks = (availability ?? [])
+   634→   634→      .filter((a) => a.dayOfWeek === dow)
+   635→   635→      .sort((a, b) => a.startTime.localeCompare(b.startTime))
+   636→   636→    if (dayBlocks.length === 0) return []
+   637→   637→    const out: { label: string; value: string }[] = []
+   638→   638→    for (const block of dayBlocks) {
+   639→   639→      const [sh, sm] = block.startTime.split(":").map(Number)
+   640→   640→      const [eh, em] = block.endTime.split(":").map(Number)
+   641→   641→      let cur = sh * 60 + sm
+   642→   642→      const end = eh * 60 + em
+   643→   643→      while (cur + 60 <= end) {
+   644→   644→        const h = Math.floor(cur / 60)
+   645→   645→        const m = cur % 60
+   646→   646→        const hhmm = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+   647→   647→        out.push({ label: formatHHmm(hhmm), value: hhmm })
+   648→   648→        cur += 60
+   649→   649→      }
+   650→   650→    }
+   651→   651→    return out
+   652→   652→  }, [state.date, availability])
+   653→   653→
+   654→   654→  // Group slots by time period — Nielsen #6: recognition over recall
+   655→   655→  const groupedSlots = React.useMemo(() => {
+   656→   656→    return TIME_PERIODS.map((period) => ({
+   657→   657→      ...period,
+   658→   658→      slots: slots.filter((s) => {
+   659→   659→        const h = parseInt(s.value.split(":")[0], 10)
+   660→   660→        return h >= period.range[0] && h < period.range[1]
+   661→   661→      }),
+   662→   662→    })).filter((g) => g.slots.length > 0)
+   663→   663→  }, [slots])
+   664→   664→
+   665→   665→  const today = new Date()
+   666→   666→  today.setHours(0, 0, 0, 0)
+   667→   667→
+   668→   668→  if (loading) {
+   669→   669→    return (
+   670→   670→      <div className="flex items-center justify-center py-10">
+   671→   671→        <Loader2 className="size-5 animate-spin text-emerald-600" />
+   672→   672→      </div>
+   673→   673→    )
+   674→   674→  }
+   675→   675→
+   676→   676→  // ── Service info banner (compact, always visible) ──
+   677→   677→  const serviceBanner = selectedService ? (
+   678→   678→    <InfoCard variant="emerald" className="mb-4">
+   679→   679→      <div className="flex items-center gap-3">
+   680→   680→        <Avatar className="size-9 rounded-md">
+   681→   681→          {provider?.avatarUrl ? (
+   682→   682→            <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+   683→   683→          ) : null}
+   684→   684→          <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+   685→   685→            {provider?.name?.[0]?.toUpperCase() ?? "?"}
+   686→   686→          </AvatarFallback>
+   687→   687→        </Avatar>
+   688→   688→        <div className="flex-1 min-w-0">
+   689→   689→          <p className="text-sm font-medium truncate">{selectedService.title}</p>
+   690→   690→          <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+   691→   691→            {formatBRL(selectedService.basePrice)} /{" "}
+   692→   692→            {SERVICE_UNIT_LABELS[selectedService.unit] ?? "un"}
+   693→   693→          </p>
+   694→   694→        </div>
+   695→   695→        {state.date && state.time && (
+   696→   696→          <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+   697→   697→        )}
+   698→   698→      </div>
+   699→   699→    </InfoCard>
+   700→   700→  ) : null
+   701→   701→
+   702→   702→  // ── Calendar section ──
+   703→   703→  const calendarSection = (
+   704→   704→    <div className="flex flex-col">
+   705→   705→      <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
+   706→   706→        <CalendarDays className="size-3.5 text-emerald-600" />
+   707→   707→        Data
+   708→   708→      </p>
+   709→   709→      <Calendar
+   710→   710→        mode="single"
+   711→   711→        locale={ptBR}
+   712→   712→        selected={state.date}
+   713→   713→        onSelect={(d) => {
+   714→   714→          set("date", d)
+   715→   715→          set("time", undefined)
+   716→   716→        }}
+   717→   717→        disabled={(d) => d < today}
+   718→   718→        className="rounded-lg border shadow-sm [--cell-size:--spacing(7)]"
+   719→   719→      />
+   720→   720→    </div>
+   721→   721→  )
+   722→   722→
+   723→   723→  // ── Time slots section ──
+   724→   724→  const timeSlotsSection = (
+   725→   725→    <div className="flex flex-col h-full">
+   726→   726→      <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+   727→   727→        <Clock className="size-3.5 text-emerald-600" />
+   728→   728→        Horários disponíveis
+   729→   729→      </p>
+   730→   730→
+   731→   731→      {!state.date ? (
+   732→   732→        <div className="flex-1 flex items-center justify-center">
+   733→   733→          <div className="text-center py-8">
+   734→   734→            <CalendarDays className="mx-auto size-8 text-muted-foreground/30 mb-2" />
+   735→   735→            <p className="text-xs text-muted-foreground">
+   736→   736→              Selecione uma data para ver os horários
+   737→   737→            </p>
+   738→   738→          </div>
+   739→   739→        </div>
+   740→   740→      ) : slots.length === 0 ? (
+   741→   741→        <div className="flex-1 flex items-center justify-center">
+   742→   742→          <div className="rounded-lg border border-dashed bg-muted/30 p-6 text-center">
+   743→   743→            <CalendarOff className="mx-auto size-7 text-muted-foreground/40 mb-2" />
+   744→   744→            <p className="text-xs font-medium">
+   745→   745→              Sem horários neste dia
+   746→   746→            </p>
+   747→   747→            <p className="text-[11px] text-muted-foreground mt-0.5">
+   748→   748→              {WEEKDAYS_SHORT[state.date.getDay()]} — fora do expediente
+   749→   749→            </p>
+   750→   750→          </div>
+   751→   751→        </div>
+   752→   752→      ) : (
+   753→   753→        <ScrollArea className="flex-1 -mx-1 px-1">
+   754→   754→          <div className="grid gap-3">
+   755→   755→            {groupedSlots.map((group) => {
+   756→   756→              const PeriodIcon = group.icon
+   757→   757→              return (
+   758→   758→                <div key={group.key}>
+   759→   759→                  <div className="flex items-center gap-1.5 mb-1.5">
+   760→   760→                    <PeriodIcon className="size-3 text-muted-foreground" />
+   761→   761→                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+   762→   762→                      {group.label}
+   763→   763→                    </span>
+   764→   764→                    <span className="text-[10px] text-muted-foreground/60">
+   765→   765→                      ({group.slots.length})
+   766→   766→                    </span>
+   767→   767→                  </div>
+   768→   768→                  <div className="grid grid-cols-3 gap-1">
+   769→   769→                    {group.slots.map((s) => {
+   770→   770→                      const active = state.time === s.value
+   771→   771→                      return (
+   772→   772→                        <button
+   773→   773→                          key={s.value}
+   774→   774→                          type="button"
+   775→   775→                          onClick={() => set("time", s.value)}
+   776→   776→                          className={cn(
+   777→   777→                            "rounded-md border px-1.5 py-1.5 text-xs text-center font-medium transition-all duration-150",
+   778→   778→                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1",
+   779→   779→                            active
+   780→   780→                              ? "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 scale-[1.02]"
+   781→   781→                              : "border-border hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20",
+   782→   782→                          )}
+   783→   783→                        >
+   784→   784→                          {s.label}
+   785→   785→                        </button>
+   786→   786→                      )
+   787→   787→                    })}
+   788→   788→                  </div>
+   789→   789→                </div>
+   790→   790→              )
+   791→   791→            })}
+   792→   792→          </div>
+   793→   793→        </ScrollArea>
+   794→   794→      )}
+   795→   795→    </div>
+   796→   796→  )
+   797→   797→
+   798→   798→  // ── Selected date summary (desktop, shown below calendar) ──
+   799→   799→  const selectedDateSummary = state.date && (
+   800→   800→    <div className={cn(
+   801→   801→      "mt-2 rounded-md border px-2.5 py-1.5 text-center",
+   802→   802→      state.time
+   803→   803→        ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20"
+   804→   804→        : "border-dashed border-muted-foreground/20 bg-muted/20"
+   805→   805→    )}>
+   806→   806→      <p className="text-xs font-semibold">
+   807→   807→        {format(state.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
+   808→   808→      </p>
+   809→   809→      {state.time ? (
+   810→   810→        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5 flex items-center justify-center gap-1">
+   811→   811→          <Clock className="size-3" />
+   812→   812→          {formatHHmm(state.time)}
+   813→   813→        </p>
+   814→   814→      ) : (
+   815→   815→        <p className="text-[11px] text-muted-foreground mt-0.5">
+   816→   816→          Agora escolha o horário →
+   817→   817→        </p>
+   818→   818→      )}
+   819→   819→    </div>
+   820→   820→  )
+   821→   821→
+   822→   822→  return (
+   823→   823→    <div>
+   824→   824→      <StepHeader
+   825→   825→        icon={CalendarDays}
+   826→   826→        title="Escolha a data e horário"
+   827→   827→        description="Selecione o melhor dia e horário para o serviço."
+   828→   828→      />
+   829→   829→
+   830→   830→      {serviceBanner}
+   831→   831→
+   832→   832→      {/* ── Desktop: Side-by-side layout ── */}
+   833→   833→      {isDesktop ? (
+   834→   834→        <div className="grid grid-cols-[auto_1fr] gap-4">
+   835→   835→          {/* LEFT: Calendar + selected date summary */}
+   836→   836→          <div className="flex flex-col">
+   837→   837→            {calendarSection}
+   838→   838→            {selectedDateSummary}
+   839→   839→          </div>
+   840→   840→
+   841→   841→          {/* RIGHT: Time slots */}
+   842→   842→          <div className="flex flex-col min-h-0 border-l pl-4">
+   843→   843→            {timeSlotsSection}
+   844→   844→          </div>
+   845→   845→        </div>
+   846→   846→      ) : (
+   847→   847→        /* ── Mobile: Stacked layout ── */
+   848→   848→        <div className="grid gap-4">
+   849→   849→          {calendarSection}
+   850→   850→          {selectedDateSummary}
+   851→   851→          {timeSlotsSection}
+   852→   852→        </div>
+   853→   853→      )}
+   854→   854→    </div>
+   855→   855→  )
+   856→   856→}
+   857→   857→
+   858→   858→// ---------------------------------------------------------------------------
+   859→   859→// Step 2 — Detalhes (Address + Quantity + Notes)
+   860→   860→// Nielsen #5: Error prevention — CEP auto-fill, GPS
+   861→   861→// Nielsen #8: Minimalist — clean form layout
+   862→   862→// ---------------------------------------------------------------------------
+   863→   863→
+   864→   864→function Step2Details({
+   865→   865→  state,
+   866→   866→  set,
+   867→   867→  provider,
+   868→   868→  selectedService,
+   869→   869→}: {
+   870→   870→  state: BookingFormState
+   871→   871→  set: <K extends keyof BookingFormState>(
+   872→   872→    key: K,
+   873→   873→    value: BookingFormState[K],
+   874→   874→  ) => void
+   875→   875→  provider?: ProviderDetail
+   876→   876→  selectedService?: ProviderService
+   877→   877→}) {
+   878→   878→  const scheduledAt =
+   879→   879→    state.date && state.time
+   880→   880→      ? (() => {
+   881→   881→          const d = new Date(state.date)
+   882→   882→          const [h, m] = state.time.split(":").map(Number)
+   883→   883→          d.setHours(h ?? 0, m ?? 0, 0, 0)
+   884→   884→          return d
+   885→   885→        })()
+   886→   886→      : null
+   887→   887→
+   888→   888→  const estimatedTotal = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
+   889→   889→
+   890→   890→  return (
+   891→   891→    <div className="grid gap-4">
+   892→   892→      <StepHeader
+   893→   893→        icon={MapPin}
+   894→   894→        title="Detalhes do agendamento"
+   895→   895→        description="Informe a quantidade, endereço e observações."
+   896→   896→      />
+   897→   897→
+   898→   898→      {/* Compact summary card — Nielsen #1: visibility */}
+   899→   899→      <InfoCard variant="emerald">
+   900→   900→        <div className="flex items-center gap-3">
+   901→   901→          <Avatar className="size-8 rounded-md">
+   902→   902→            {provider?.avatarUrl ? (
+   903→   903→              <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+   904→   904→            ) : null}
+   905→   905→            <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+   906→   906→              {provider?.name?.[0]?.toUpperCase() ?? "?"}
+   907→   907→            </AvatarFallback>
+   908→   908→          </Avatar>
+   909→   909→          <div className="flex-1 min-w-0">
+   910→   910→            <p className="text-sm font-medium truncate">{provider?.name}</p>
+   911→   911→            <p className="text-[11px] text-muted-foreground truncate">
+   912→   912→              {selectedService?.title}
+   913→   913→            </p>
+   914→   914→          </div>
+   915→   915→          <div className="text-right shrink-0">
+   916→   916→            <p className="text-[11px] text-muted-foreground">
+   917→   917→              {scheduledAt ? formatDate(scheduledAt) : "—"}
+   918→   918→            </p>
+   919→   919→            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+   920→   920→              {scheduledAt ? formatHHmm(state.time!) : "—"}
+   921→   921→            </p>
+   922→   922→          </div>
+   923→   923→        </div>
+   924→   924→      </InfoCard>
+   925→   925→
+   926→   926→      {/* Quantity + estimated total */}
+   927→   927→      {selectedService && (
+   928→   928→        <div className="flex items-end gap-3">
+   929→   929→          <div className="flex-1 grid gap-1">
+   930→   930→            <Label htmlFor="qty" className="text-xs">
+   931→   931→              Quantidade ({SERVICE_UNIT_SHORT[selectedService.unit]})
+   932→   932→            </Label>
+   933→   933→            <Input
+   934→   934→              id="qty"
+   935→   935→              type="number"
+   936→   936→              min={1}
+   937→   937→              step={1}
+   938→   938→              value={state.quantity}
+   939→   939→              onChange={(e) => set("quantity", Number(e.target.value) || 1)}
+   940→   940→              className="h-9 text-sm"
+   941→   941→            />
+   942→   942→          </div>
+   943→   943→          <div className="pb-0.5">
+   944→   944→            <p className="text-[11px] text-muted-foreground">Total estimado</p>
+   945→   945→            <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">
+   946→   946→              {formatBRL(estimatedTotal)}
+   947→   947→            </p>
+   948→   948→          </div>
+   949→   949→        </div>
+   950→   950→      )}
+   951→   951→
+   952→   952→      <Separator />
+   953→   953→
+   954→   954→      {/* Address */}
+   955→   955→      <div>
+   956→   956→        <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+   957→   957→          <MapPin className="size-3.5 text-emerald-600" />
+   958→   958→          Endereço do serviço
+   959→   959→        </p>
+   960→   960→        <AddressForm
+   961→   961→          value={state.address}
+   962→   962→          onChange={(v) => set("address", v)}
+   963→   963→        />
+   964→   964→      </div>
+   965→   965→
+   966→   966→      <Separator />
+   967→   967→
+   968→   968→      {/* Notes */}
+   969→   969→      <div className="grid gap-1">
+   970→   970→        <Label htmlFor="notes" className="text-xs">
+   971→   971→          Observações (opcional)
+   972→   972→        </Label>
+   973→   973→        <Textarea
+   974→   974→          id="notes"
+   975→   975→          placeholder="Detalhes para o prestador: portão, vaga, problemas específicos..."
+   976→   976→          rows={2}
+   977→   977→          value={state.notes}
+   978→   978→          onChange={(e) => set("notes", e.target.value)}
+   979→   979→          className="text-sm resize-none"
+   980→   980→        />
+   981→   981→      </div>
+   982→   982→    </div>
+   983→   983→  )
+   984→   984→}
+   985→   985→
+   986→   986→// ---------------------------------------------------------------------------
+   987→   987→// Step 3 — Pagamento (Payment Method)
+   988→   988→// Nielsen #5: Error prevention — inline card validation
+   989→   989→// Nielsen #8: Minimalist — clean payment selection
+   990→   990→// ---------------------------------------------------------------------------
+   991→   991→
+   992→   992→function Step3Payment({
+   993→   993→  state,
+   994→   994→  set,
+   995→   995→  markTouched,
+   996→   996→  touched,
+   997→   997→  selectedService,
+   998→   998→}: {
+   999→   999→  state: BookingFormState
+  1000→  1000→  set: <K extends keyof BookingFormState>(
+  1001→  1001→    key: K,
+  1002→  1002→    value: BookingFormState[K],
+  1003→  1003→  ) => void
+  1004→  1004→  markTouched: (field: string) => void
+  1005→  1005→  touched: Set<string>
+  1006→  1006→  selectedService?: ProviderService
+  1007→  1007→}) {
+  1008→  1008→  const amount = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
+  1009→  1009→  const fees = 0
+  1010→  1010→  const total = amount + fees
+  1011→  1011→  const [paid, setPaid] = React.useState(false)
+  1012→  1012→
+  1013→  1013→  const fieldOk = (field: string, valid: boolean) => {
+  1014→  1014→    if (!touched.has(field)) return null
+  1015→  1015→    return valid
+  1016→  1016→  }
+  1017→  1017→
+  1018→  1018→  return (
+  1019→  1019→    <div className="grid gap-4">
+  1020→  1020→      <StepHeader
+  1021→  1021→        icon={Wallet}
+  1022→  1022→        title="Forma de pagamento"
+  1023→  1023→        description="Escolha como pagar pelo serviço."
+  1024→  1024→      />
+  1025→  1025→
+  1026→  1026→      {/* Amount summary — Nielsen #1: visibility of system status */}
+  1027→  1027→      <InfoCard>
+  1028→  1028→        <div className="flex items-center justify-between text-xs">
+  1029→  1029→          <span className="text-muted-foreground">
+  1030→  1030→            {selectedService?.title} × {state.quantity}
+  1031→  1031→          </span>
+  1032→  1032→          <span className="font-medium">{formatBRL(amount)}</span>
+  1033→  1033→        </div>
+  1034→  1034→        <div className="mt-0.5 flex items-center justify-between text-xs">
+  1035→  1035→          <span className="text-muted-foreground">Taxa de serviço</span>
+  1036→  1036→          <span className="font-medium">{formatBRL(fees)}</span>
+  1037→  1037→        </div>
+  1038→  1038→        <Separator className="my-1.5" />
+  1039→  1039→        <div className="flex items-center justify-between">
+  1040→  1040→          <span className="text-sm font-medium">Total</span>
+  1041→  1041→          <span className="text-base font-bold text-emerald-700 dark:text-emerald-400">
+  1042→  1042→            {formatBRL(total)}
+  1043→  1043→          </span>
+  1044→  1044→        </div>
+  1045→  1045→      </InfoCard>
+  1046→  1046→
+  1047→  1047→      {/* Payment method selection */}
+  1048→  1048→      <div>
+  1049→  1049→        <p className="text-xs font-medium text-muted-foreground mb-1.5">
+  1050→  1050→          Forma de pagamento
+  1051→  1051→        </p>
+  1052→  1052→        <RadioGroup
+  1053→  1053→          value={state.paymentMethod}
+  1054→  1054→          onValueChange={(v) => set("paymentMethod", v as "CARD" | "PIX")}
+  1055→  1055→          className="grid grid-cols-2 gap-2"
+  1056→  1056→        >
+  1057→  1057→          <PaymentOption
+  1058→  1058→            value="PIX"
+  1059→  1059→            title="PIX"
+  1060→  1060→            description="Aprovação imediata"
+  1061→  1061→            icon={QrCode}
+  1062→  1062→            selected={state.paymentMethod === "PIX"}
+  1063→  1063→          />
+  1064→  1064→          <PaymentOption
+  1065→  1065→            value="CARD"
+  1066→  1066→            title="Cartão"
+  1067→  1067→            description="Crédito"
+  1068→  1068→            icon={CreditCard}
+  1069→  1069→            selected={state.paymentMethod === "CARD"}
+  1070→  1070→          />
+  1071→  1071→        </RadioGroup>
+  1072→  1072→      </div>
+  1073→  1073→
+  1074→  1074→      {/* Card details — Nielsen #5: error prevention with inline validation */}
+  1075→  1075→      {state.paymentMethod === "CARD" ? (
+  1076→  1076→        <div className="grid gap-2.5 rounded-lg border bg-card px-3 py-3">
+  1077→  1077→          <div className="flex items-center justify-between">
+  1078→  1078→            <p className="text-xs font-medium">Dados do cartão</p>
+  1079→  1079→            <Badge
+  1080→  1080→              variant="outline"
+  1081→  1081→              className="border-amber-400 text-amber-700 text-[10px] px-1.5 py-0 h-5 dark:border-amber-600 dark:text-amber-400"
+  1082→  1082→            >
+  1083→  1083→              Demonstração
+  1084→  1084→            </Badge>
+  1085→  1085→          </div>
+  1086→  1086→
+  1087→  1087→          <div className="grid gap-0.5">
+  1088→  1088→            <Label htmlFor="cardName" className="text-xs">Nome impresso</Label>
+  1089→  1089→            <div className="relative">
+  1090→  1090→              <Input
+  1091→  1091→                id="cardName"
+  1092→  1092→                placeholder="NOME NO CARTÃO"
+  1093→  1093→                value={state.cardName}
+  1094→  1094→                onChange={(e) => set("cardName", e.target.value.toUpperCase())}
+  1095→  1095→                onBlur={() => markTouched("cardName")}
+  1096→  1096→                className={cn(
+  1097→  1097→                  "h-8 text-sm pr-7",
+  1098→  1098→                  fieldOk("cardName", cardNameValid(state.cardName)) === false && "border-destructive",
+  1099→  1099→                )}
+  1100→  1100→              />
+  1101→  1101→              {fieldOk("cardName", cardNameValid(state.cardName)) && (
+  1102→  1102→                <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-emerald-600" />
+  1103→  1103→              )}
+  1104→  1104→            </div>
+  1105→  1105→          </div>
+  1106→  1106→
+  1107→  1107→          <div className="grid gap-0.5">
+  1108→  1108→            <Label htmlFor="cardNumber" className="text-xs">Número</Label>
+  1109→  1109→            <div className="relative">
+  1110→  1110→              <Input
+  1111→  1111→                id="cardNumber"
+  1112→  1112→                inputMode="numeric"
+  1113→  1113→                placeholder="0000 0000 0000 0000"
+  1114→  1114→                value={state.cardNumber}
+  1115→  1115→                onChange={(e) => {
+  1116→  1116→                  const digits = e.target.value.replace(/\D/g, "").slice(0, 16)
+  1117→  1117→                  const parts = digits.match(/.{1,4}/g)
+  1118→  1118→                  set("cardNumber", parts ? parts.join(" ") : "")
+  1119→  1119→                }}
+  1120→  1120→                onBlur={() => markTouched("cardNumber")}
+  1121→  1121→                className={cn(
+  1122→  1122→                  "h-8 text-sm pr-7",
+  1123→  1123→                  fieldOk("cardNumber", cardNumberValid(state.cardNumber)) === false && "border-destructive",
+  1124→  1124→                )}
+  1125→  1125→              />
+  1126→  1126→              {fieldOk("cardNumber", cardNumberValid(state.cardNumber)) && (
+  1127→  1127→                <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-emerald-600" />
+  1128→  1128→              )}
+  1129→  1129→            </div>
+  1130→  1130→          </div>
+  1131→  1131→
+  1132→  1132→          <div className="grid grid-cols-2 gap-2">
+  1133→  1133→            <div className="grid gap-0.5">
+  1134→  1134→              <Label htmlFor="cardExpiry" className="text-xs">Validade</Label>
+  1135→  1135→              <div className="relative">
+  1136→  1136→                <Input
+  1137→  1137→                  id="cardExpiry"
+  1138→  1138→                  inputMode="numeric"
+  1139→  1139→                  placeholder="MM/AA"
+  1140→  1140→                  maxLength={5}
+  1141→  1141→                  value={state.cardExpiry}
+  1142→  1142→                  onChange={(e) => {
+  1143→  1143→                    let v = e.target.value.replace(/\D/g, "").slice(0, 4)
+  1144→  1144→                    if (v.length >= 3) v = `${v.slice(0, 2)}/${v.slice(2)}`
+  1145→  1145→                    set("cardExpiry", v)
+  1146→  1146→                  }}
+  1147→  1147→                  onBlur={() => markTouched("cardExpiry")}
+  1148→  1148→                  className={cn(
+  1149→  1149→                    "h-8 text-sm pr-7",
+  1150→  1150→                    fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) === false && "border-destructive",
+  1151→  1151→                  )}
+  1152→  1152→                />
+  1153→  1153→                {fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) && (
+  1154→  1154→                  <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-emerald-600" />
+  1155→  1155→                )}
+  1156→  1156→              </div>
+  1157→  1157→            </div>
+  1158→  1158→            <div className="grid gap-0.5">
+  1159→  1159→              <Label htmlFor="cardCvv" className="text-xs">CVV</Label>
+  1160→  1160→              <div className="relative">
+  1161→  1161→                <Input
+  1162→  1162→                  id="cardCvv"
+  1163→  1163→                  inputMode="numeric"
+  1164→  1164→                  placeholder="123"
+  1165→  1165→                  maxLength={4}
+  1166→  1166→                  value={state.cardCvv}
+  1167→  1167→                  onChange={(e) =>
+  1168→  1168→                    set("cardCvv", e.target.value.replace(/\D/g, "").slice(0, 4))
+  1169→  1169→                  }
+  1170→  1170→                  onBlur={() => markTouched("cardCvv")}
+  1171→  1171→                  className={cn(
+  1172→  1172→                    "h-8 text-sm pr-7",
+  1173→  1173→                    fieldOk("cardCvv", cardCvvValid(state.cardCvv)) === false && "border-destructive",
+  1174→  1174→                  )}
+  1175→  1175→                />
+  1176→  1176→                {fieldOk("cardCvv", cardCvvValid(state.cardCvv)) && (
+  1177→  1177→                  <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-emerald-600" />
+  1178→  1178→                )}
+  1179→  1179→              </div>
+  1180→  1180→            </div>
+  1181→  1181→          </div>
+  1182→  1182→
+  1183→  1183→          <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+  1184→  1184→            <ShieldCheck className="size-3 mt-0.5 text-emerald-600 shrink-0" />
+  1185→  1185→            Ambiente de demonstração — não use dados reais.
+  1186→  1186→          </p>
+  1187→  1187→        </div>
+  1188→  1188→      ) : (
+  1189→  1189→        /* PIX payment */
+  1190→  1190→        <div className="grid gap-2.5 rounded-lg border bg-card px-3 py-3">
+  1191→  1191→          <p className="text-xs font-medium">Pague com PIX</p>
+  1192→  1192→          <div className="flex flex-col items-center gap-2 py-2">
+  1193→  1193→            <div className="rounded-lg bg-slate-100 p-5 text-center dark:bg-slate-800/50">
+  1194→  1194→              <QrCode className="size-16 text-slate-500 dark:text-slate-300" />
+  1195→  1195→            </div>
+  1196→  1196→            <p className="text-[11px] text-muted-foreground text-center max-w-xs">
+  1197→  1197→              Escaneie o QR code ou copie a chave para pagar
+  1198→  1198→            </p>
+  1199→  1199→            <Button
+  1200→  1200→              type="button"
+  1201→  1201→              variant="outline"
+  1202→  1202→              size="sm"
+  1203→  1203→              className="h-7 text-xs"
+  1204→  1204→              onClick={() => {
+  1205→  1205→                navigator.clipboard
+  1206→  1206→                  .writeText("severinno@exemplo.com")
+  1207→  1207→                  .catch(() => {})
+  1208→  1208→                toast.success("Chave PIX copiada!")
+  1209→  1209→              }}
+  1210→  1210→            >
+  1211→  1211→              Copiar chave PIX
+  1212→  1212→            </Button>
+  1213→  1213→          </div>
+  1214→  1214→          <Button
+  1215→  1215→            type="button"
+  1216→  1216→            variant="outline"
+  1217→  1217→            size="sm"
+  1218→  1218→            className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40 h-8"
+  1219→  1219→            onClick={() => {
+  1220→  1220→              setPaid(true)
+  1221→  1221→              toast.success("Pagamento confirmado. Conclua o agendamento.")
+  1222→  1222→            }}
+  1223→  1223→            disabled={paid}
+  1224→  1224→          >
+  1225→  1225→            {paid ? (
+  1226→  1226→              <>
+  1227→  1227→                <Check className="size-3.5" /> Pagamento confirmado
+  1228→  1228→              </>
+  1229→  1229→            ) : (
+  1230→  1230→              "Já paguei"
+  1231→  1231→            )}
+  1232→  1232→          </Button>
+  1233→  1233→        </div>
+  1234→  1234→      )}
+  1235→  1235→    </div>
+  1236→  1236→  )
+  1237→  1237→}
+  1238→  1238→
+  1239→  1239→// ---------------------------------------------------------------------------
+  1240→  1240→// Step 4 — Confirmação (Review + Confirm)
+  1241→  1241→// Nielsen #5: error prevention (review before commit)
+  1242→  1242→// Nielsen #3: user control — edit links
+  1243→  1243→// Nielsen #10: help — "what happens next" timeline
+  1244→  1244→// ---------------------------------------------------------------------------
+  1245→  1245→
+  1246→  1246→function Step4Confirmation({
+  1247→  1247→  state,
+  1248→  1248→  provider,
+  1249→  1249→  selectedService,
+  1250→  1250→  goToStep,
+  1251→  1251→}: {
+  1252→  1252→  state: BookingFormState
+  1253→  1253→  provider?: ProviderDetail
+  1254→  1254→  selectedService?: ProviderService
+  1255→  1255→  goToStep: (s: Step) => void
+  1256→  1256→}) {
+  1257→  1257→  const amount = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
+  1258→  1258→  const scheduledAt =
+  1259→  1259→    state.date && state.time
+  1260→  1260→      ? (() => {
+  1261→  1261→          const d = new Date(state.date)
+  1262→  1262→          const [h, m] = state.time.split(":").map(Number)
+  1263→  1263→          d.setHours(h ?? 0, m ?? 0, 0, 0)
+  1264→  1264→          return d
+  1265→  1265→        })()
+  1266→  1266→      : null
+  1267→  1267→
+  1268→  1268→  return (
+  1269→  1269→    <div className="grid gap-4">
+  1270→  1270→      <StepHeader
+  1271→  1271→        icon={Check}
+  1272→  1272→        title="Confirme o agendamento"
+  1273→  1273→        description="Revise os detalhes antes de confirmar."
+  1274→  1274→      />
+  1275→  1275→
+  1276→  1276→      {/* Provider + Service */}
+  1277→  1277→      <ReviewSection label="Prestador" onEdit={() => goToStep(1)}>
+  1278→  1278→        <div className="flex items-center gap-2.5">
+  1279→  1279→          <Avatar className="size-8 rounded-md">
+  1280→  1280→            {provider?.avatarUrl ? (
+  1281→  1281→              <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+  1282→  1282→            ) : null}
+  1283→  1283→            <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+  1284→  1284→              {provider?.name?.[0]?.toUpperCase() ?? "?"}
+  1285→  1285→            </AvatarFallback>
+  1286→  1286→          </Avatar>
+  1287→  1287→          <div className="min-w-0">
+  1288→  1288→            <p className="text-sm font-medium truncate">{provider?.name}</p>
+  1289→  1289→            <p className="text-xs text-muted-foreground truncate">{selectedService?.title}</p>
+  1290→  1290→          </div>
+  1291→  1291→        </div>
+  1292→  1292→      </ReviewSection>
+  1293→  1293→
+  1294→  1294→      {/* Date/Time */}
+  1295→  1295→      <ReviewSection label="Data e horário" onEdit={() => goToStep(1)}>
+  1296→  1296→        <div className="flex items-center gap-2">
+  1297→  1297→          <CalendarDays className="size-4 text-emerald-600" />
+  1298→  1298→          <span className="text-sm">
+  1299→  1299→            {scheduledAt ? formatDate(scheduledAt) : "—"} às{" "}
+  1300→  1300→            {state.time ? formatHHmm(state.time) : "—"}
+  1301→  1301→          </span>
+  1302→  1302→        </div>
+  1303→  1303→      </ReviewSection>
+  1304→  1304→
+  1305→  1305→      {/* Address */}
+  1306→  1306→      <ReviewSection label="Endereço" onEdit={() => goToStep(2)}>
+  1307→  1307→        <div className="flex items-start gap-2 text-sm">
+  1308→  1308→          <MapPin className="size-4 mt-0.5 shrink-0 text-emerald-600" />
+  1309→  1309→          <span className="text-muted-foreground">
+  1310→  1310→            {state.address.street
+  1311→  1311→              ? `${state.address.street}, ${state.address.number}${
+  1312→  1312→                  state.address.complement ? ` - ${state.address.complement}` : ""
+  1313→  1313→                }${state.address.district ? ` · ${state.address.district}` : ""}`
+  1314→  1314→              : "—"}
+  1315→  1315→            {state.address.city ? ` · ${state.address.city}/${state.address.state}` : ""}
+  1316→  1316→          </span>
+  1317→  1317→        </div>
+  1318→  1318→      </ReviewSection>
+  1319→  1319→
+  1320→  1320→      {/* Payment */}
+  1321→  1321→      <ReviewSection label="Pagamento" onEdit={() => goToStep(3)}>
+  1322→  1322→        <div className="flex items-center justify-between">
+  1323→  1323→          <div className="flex items-center gap-2 text-sm">
+  1324→  1324→            {state.paymentMethod === "PIX" ? (
+  1325→  1325→              <QrCode className="size-4 text-emerald-600" />
+  1326→  1326→            ) : (
+  1327→  1327→              <CreditCard className="size-4 text-emerald-600" />
+  1328→  1328→            )}
+  1329→  1329→            <span>{state.paymentMethod === "PIX" ? "PIX" : "Cartão de crédito"}</span>
+  1330→  1330→          </div>
+  1331→  1331→          <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+  1332→  1332→            {formatBRL(amount)}
+  1333→  1333→          </span>
+  1334→  1334→        </div>
+  1335→  1335→        {state.notes && (
+  1336→  1336→          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
+  1337→  1337→            📝 {state.notes}
+  1338→  1338→          </p>
+  1339→  1339→        )}
+  1340→  1340→      </ReviewSection>
+  1341→  1341→
+  1342→  1342→      {/* What happens next — Nielsen #10: help & documentation */}
+  1343→  1343→      <InfoCard variant="emerald" className="mt-1">
+  1344→  1344→        <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
+  1345→  1345→          <Clock className="size-3.5" />
+  1346→  1346→          O que acontece agora?
+  1347→  1347→        </h4>
+  1348→  1348→        <div className="grid gap-2.5">
+  1349→  1349→          {[
+  1350→  1350→            { icon: CalendarDays, label: "Agendado", desc: "Seu pedido é registrado" },
+  1351→  1351→            { icon: CheckCircle2, label: "Prestador confirma", desc: "Aceita ou ajusta o horário" },
+  1352→  1352→            { icon: Clock, label: "Em andamento", desc: "Serviço sendo realizado" },
+  1353→  1353→            { icon: Check, label: "Concluído", desc: "Você avalia o serviço" },
+  1354→  1354→          ].map((item, i) => {
+  1355→  1355→            const Icon = item.icon
+  1356→  1356→            return (
+  1357→  1357→              <div key={i} className="flex items-start gap-2.5">
+  1358→  1358→                <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shrink-0 mt-0.5">
+  1359→  1359→                  {i + 1}
+  1360→  1360→                </span>
+  1361→  1361→                <div className="flex-1 min-w-0">
+  1362→  1362→                  <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+  1363→  1363→                    {item.label}
+  1364→  1364→                  </p>
+  1365→  1365→                  <p className="text-[11px] text-muted-foreground">{item.desc}</p>
+  1366→  1366→                </div>
+  1367→  1367→              </div>
+  1368→  1368→            )
+  1369→  1369→          })}
+  1370→  1370→        </div>
+  1371→  1371→      </InfoCard>
+  1372→  1372→
+  1373→  1373→      {/* Security note */}
+  1374→  1374→      <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+  1375→  1375→        <ShieldCheck className="size-3.5 text-emerald-600" />
+  1376→  1376→        Ambiente de demonstração — nenhum pagamento será efetivado
+  1377→  1377→      </div>
+  1378→  1378→    </div>
+  1379→  1379→  )
+  1380→  1380→}
+  1381→  1381→
+  1382→  1382→// ---------------------------------------------------------------------------
+  1383→  1383→// ReviewSection — Editable review card
+  1384→  1384→// Nielsen #3: user control — "Editar" links
+  1385→  1385→// ---------------------------------------------------------------------------
+  1386→  1386→
+  1387→  1387→function ReviewSection({
+  1388→  1388→  label,
+  1389→  1389→  onEdit,
+  1390→  1390→  children,
+  1391→  1391→}: {
+  1392→  1392→  label: string
+  1393→  1393→  onEdit: () => void
+  1394→  1394→  children: React.ReactNode
+  1395→  1395→}) {
+  1396→  1396→  return (
+  1397→  1397→    <div className="rounded-lg border p-3">
+  1398→  1398→      <div className="flex items-center justify-between mb-1.5">
+  1399→  1399→        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+  1400→  1400→          {label}
+  1401→  1401→        </h4>
+  1402→  1402→        <button
+  1403→  1403→          type="button"
+  1404→  1404→          onClick={onEdit}
+  1405→  1405→          className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium transition-colors"
+  1406→  1406→        >
+  1407→  1407→          <Pencil className="size-3" />
+  1408→  1408→          Editar
+  1409→  1409→        </button>
+  1410→  1410→      </div>
+  1411→  1411→      {children}
+  1412→  1412→    </div>
+  1413→  1413→  )
+  1414→  1414→}
+  1415→  1415→
+  1416→  1416→// ---------------------------------------------------------------------------
+  1417→  1417→// PaymentOption card
+  1418→  1418→// ---------------------------------------------------------------------------
+  1419→  1419→
+  1420→  1420→function PaymentOption({
+  1421→  1421→  value,
+  1422→  1422→  title,
+  1423→  1423→  description,
+  1424→  1424→  icon: Icon,
+  1425→  1425→  selected,
+  1426→  1426→}: {
+  1427→  1427→  value: string
+  1428→  1428→  title: string
+  1429→  1429→  description: string
+  1430→  1430→  icon: React.ComponentType<{ className?: string }>
+  1431→  1431→  selected: boolean
+  1432→  1432→}) {
+  1433→  1433→  return (
+  1434→  1434→    <Label
+  1435→  1435→      htmlFor={`pay-${value}`}
+  1436→  1436→      className={cn(
+  1437→  1437→        "flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 transition-all",
+  1438→  1438→        selected
+  1439→  1439→          ? "border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600 dark:bg-emerald-950/30"
+  1440→  1440→          : "hover:border-emerald-400/50 hover:bg-accent/40",
+  1441→  1441→      )}
+  1442→  1442→    >
+  1443→  1443→      <RadioGroupItem value={value} id={`pay-${value}`} className="sr-only" />
+  1444→  1444→      <Icon
+  1445→  1445→        className={cn(
+  1446→  1446→          "size-4",
+  1447→  1447→          selected ? "text-emerald-600" : "text-muted-foreground",
+  1448→  1448→        )}
+  1449→  1449→      />
+  1450→  1450→      <div className="flex-1 min-w-0">
+  1451→  1451→        <p className="text-xs font-medium leading-tight">{title}</p>
+  1452→  1452→        <p className="text-[10px] text-muted-foreground leading-tight">
+  1453→  1453→          {description}
+  1454→  1454→        </p>
+  1455→  1455→      </div>
+  1456→  1456→      {selected && <Check className="size-3.5 text-emerald-600 shrink-0" />}
+  1457→  1457→    </Label>
+  1458→  1458→  )
+  1459→  1459→}
+  1460→  1460→
