@@ -2653,3 +2653,40 @@ Stage Summary:
 - Booking modal now has a review/confirmation step (was missing before)
 - Quote modal now separates provider selection from service selection (better UX)
 - Agent-browser testing confirmed Quote Modal flow works end-to-end
+
+---
+Task ID: 7
+Agent: main
+Task: Redesign booking modal Step 1 (Agenda) - Calendar LEFT + Time slots RIGHT for desktop
+
+Work Log:
+- Analyzed reference image (shadcnspace.com Calendar 03 - Time Calendar) using VLM
+- Read existing booking-modal.tsx (1188 lines, 4-step wizard with Step1Schedule)
+- Read step-wizard.tsx, calendar.tsx (shadcn/ui with react-day-picker)
+- Redesigned Step1Schedule with:
+  - Desktop: grid grid-cols-[auto_1fr] gap-4 — Calendar LEFT, Time slots RIGHT
+  - Mobile: Stacked layout (Calendar TOP, Time slots BOTTOM)
+  - Time slots grouped by period: Manhã (Sun icon), Tarde (Clock icon), Noite (Moon icon)
+  - Selected date summary below calendar (shows date + time when selected)
+  - Compact calendar cell size [--cell-size:--spacing(7)]
+  - Compact time slot buttons (px-1.5 py-1.5)
+- Changed dialog width dynamically: sm:max-w-2xl on Step 1, sm:max-w-lg on other steps
+- Added framer-motion AnimatePresence for step transitions
+- Built custom desktop layout bypassing StepWizard for proper scroll:
+  - Custom step indicator rendered inline
+  - Custom footer with sticky bottom positioning
+  - Scrollable content area with overflow-y-auto
+- Added ChevronLeft, ChevronRight imports for footer buttons
+- Updated StepWizard: flex flex-col min-h-0 (removed h-full), min-h-0 on ScrollArea, sticky bottom footer
+- Lint passes with zero errors
+- Tested with agent-browser: side-by-side layout confirmed working via VLM
+- OOM issue: Chrome (agent-browser) + Next.js exceed 4GB RAM, causing OOM kills
+
+Stage Summary:
+- booking-modal.tsx redesigned with Calendar Left + Time Slots Right desktop layout
+- Time slots grouped by Manhã/Tarde/Noite with icons
+- Selected date summary below calendar
+- Dynamic dialog width (wider on Step 1)
+- Custom desktop layout with proper scroll handling
+- Lint clean, code compiles and API works
+- Agent browser testing limited by OOM (Chrome + Next.js > 4GB RAM)

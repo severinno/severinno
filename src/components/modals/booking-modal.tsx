@@ -7,18 +7,24 @@ import {
   CalendarOff,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   CreditCard,
   Loader2,
   MapPin,
+  Moon,
   Pencil,
   QrCode,
   Send,
   ShieldCheck,
+  Sun,
   Wallet,
 } from "lucide-react"
 import { toast } from "sonner"
 import { ptBR } from "date-fns/locale"
+import { format } from "date-fns"
+import { motion, AnimatePresence } from "framer-motion"
 
 import {
   Dialog,
@@ -47,6 +53,7 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import {
   apiGet,
@@ -136,6 +143,24 @@ function cardNameValid(v: string) { return v.trim().length >= 3 }
 function cardNumberValid(v: string) { return v.replace(/\s/g, "").length >= 13 }
 function cardExpiryValid(v: string) { return /^\d{2}\/\d{2}$/.test(v) }
 function cardCvvValid(v: string) { return /^\d{3,4}$/.test(v) }
+
+// ---------------------------------------------------------------------------
+// Time slot period grouping
+// Nielsen #6: Recognition over recall — group slots by time of day
+// ---------------------------------------------------------------------------
+
+type TimePeriod = {
+  key: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  range: [number, number] // start hour, end hour (exclusive)
+}
+
+const TIME_PERIODS: TimePeriod[] = [
+  { key: "morning", label: "Manhã", icon: Sun, range: [6, 12] },
+  { key: "afternoon", label: "Tarde", icon: Clock, range: [12, 18] },
+  { key: "evening", label: "Noite", icon: Moon, range: [18, 24] },
+]
 
 // ---------------------------------------------------------------------------
 // Main modal
@@ -323,6 +348,7 @@ export function BookingModal() {
             selectedService={selectedService}
             provider={provider}
             loading={providerQuery.isLoading || servicesQuery.isLoading}
+            isDesktop={!isMobile}
           />
         )
       case 2:
@@ -357,6 +383,127 @@ export function BookingModal() {
         return null
     }
   })()
+
+  // Dynamic dialog sizing: wider on Step 1 for side-by-side calendar layout
+  const dialogSizeClass = step === 1
+    ? "sm:max-w-2xl"
+    : "sm:max-w-lg"
+
+  // ── Step indicator (reused for desktop custom layout) ──
+  const stepIndicator = (
+    <div className="border-b px-4 sm:px-5 py-3">
+      <div className="flex items-center justify-between">
+        {STEPS.map((s, i) => {
+          const active = step === s.id
+          const done = validSteps[s.id] && step > s.id
+          const Icon = s.icon
+          return (
+            <React.Fragment key={s.id}>
+              <button
+                type="button"
+                onClick={() => handleStepClick(s.id)}
+                disabled={!done && s.id > step}
+                className={cn(
+                  "flex items-center gap-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-1 py-0.5",
+                  active
+                    ? "text-emerald-700 dark:text-emerald-400 font-semibold"
+                    : done
+                      ? "text-emerald-600 cursor-pointer hover:text-emerald-700"
+                      : "text-muted-foreground cursor-default",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-all",
+                    active &&
+                      "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25",
+                    done &&
+                      "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
+                    !active &&
+                      !done &&
+                      "border-muted-foreground/20 text-muted-foreground",
+                  )}
+                >
+                  {done ? (
+                    <Check className="size-3.5" />
+                  ) : Icon ? (
+                    <Icon className="size-3.5" />
+                  ) : (
+                    s.id
+                  )}
+                </span>
+                <span className="hidden sm:inline">
+                  {s.shortLabel ?? s.label}
+                </span>
+              </button>
+              {i < STEPS.length - 1 && (
+                <div className="flex-1 h-px bg-muted-foreground/15 mx-1 sm:mx-2 relative">
+                  <div
+                    className="absolute inset-0 bg-emerald-500 transition-transform origin-left duration-300"
+                    style={{
+                      transform:
+                        validSteps[STEPS[i + 1]?.id] || step > s.id
+                          ? "scaleX(1)"
+                          : step === s.id && validSteps[s.id]
+                            ? "scaleX(0.5)"
+                            : "scaleX(0)",
+                    }}
+                  />
+                </div>
+              )}
+            </React.Fragment>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  // ── Footer buttons ──
+  const footerButtons = (
+    <div className="border-t bg-background/95 backdrop-blur px-4 sm:px-5 py-2.5 sticky bottom-0">
+      <div className="flex items-center justify-between gap-2">
+        {step > 1 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleBack}
+            disabled={submitting}
+            className="text-muted-foreground hover:text-foreground h-9 gap-1"
+          >
+            <ChevronLeft className="size-4" />
+            Voltar
+          </Button>
+        ) : (
+          <div />
+        )}
+        {step < 4 ? (
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleNext}
+            disabled={!validSteps[step]}
+            className="h-9 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+          >
+            Continuar
+            <ChevronRight className="size-4" />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={submitting || !validSteps[step]}
+            className="h-9 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+          >
+            {submitting && <Loader2 className="size-3.5 animate-spin" />}
+            <Send className="size-3.5" />
+            Confirmar agendamento
+          </Button>
+        )}
+      </div>
+    </div>
+  )
 
   const wizardBody = (
     <StepWizard
@@ -403,11 +550,18 @@ export function BookingModal() {
     )
   }
 
+  // ── Desktop: Custom layout with proper scrolling ──
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
-        {/* Nielsen #3: User control — prevent accidental close during wizard */}
-        <DialogHeader className="px-5 pt-5 pb-2 shrink-0 border-b">
+      <DialogContent
+        className={cn(
+          "p-0 gap-0 flex flex-col max-h-[90vh] transition-[max-width] duration-300",
+          dialogSizeClass,
+        )}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        {/* Header — Nielsen #3: User control */}
+        <DialogHeader className="px-5 pt-4 pb-2 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2 text-base">
             <CalendarDays className="size-4 text-emerald-600" />
             Agendar serviço
@@ -416,15 +570,40 @@ export function BookingModal() {
             Escolha data, detalhes e pagamento
           </DialogDescription>
         </DialogHeader>
-        {wizardBody}
+
+        {/* Step indicator — always visible */}
+        {stepIndicator}
+
+        {/* Step content — scrollable */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 sm:px-5 py-4">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, x: 12 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -12 }}
+              transition={{ duration: 0.18 }}
+            >
+              {stepContent}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Footer — always visible at bottom */}
+        {footerButtons}
       </DialogContent>
     </Dialog>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — Agenda (Date & Time)
+// Step 1 — Agenda (Date & Time) — REDESIGNED
+// Desktop: Calendar LEFT + Time slots RIGHT (side-by-side)
+// Mobile: Calendar TOP + Time slots BOTTOM (stacked)
+// Nielsen #1: Visibility of system status — selected date/time highlighted
 // Nielsen #6: Recognition over recall — visible calendar, time slot buttons
+// Nielsen #8: Minimalist — clean two-column layout
+// Reference: shadcnspace.com Calendar 03 - Time Calendar
 // ---------------------------------------------------------------------------
 
 function Step1Schedule({
@@ -434,6 +613,7 @@ function Step1Schedule({
   selectedService,
   provider,
   loading,
+  isDesktop,
 }: {
   state: BookingFormState
   set: <K extends keyof BookingFormState>(
@@ -444,6 +624,7 @@ function Step1Schedule({
   selectedService?: ProviderService
   provider?: ProviderDetail
   loading: boolean
+  isDesktop: boolean
 }) {
   // Generate slot list for selected date
   const slots = React.useMemo(() => {
@@ -470,6 +651,17 @@ function Step1Schedule({
     return out
   }, [state.date, availability])
 
+  // Group slots by time period — Nielsen #6: recognition over recall
+  const groupedSlots = React.useMemo(() => {
+    return TIME_PERIODS.map((period) => ({
+      ...period,
+      slots: slots.filter((s) => {
+        const h = parseInt(s.value.split(":")[0], 10)
+        return h >= period.range[0] && h < period.range[1]
+      }),
+    })).filter((g) => g.slots.length > 0)
+  }, [slots])
+
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
@@ -481,104 +673,184 @@ function Step1Schedule({
     )
   }
 
+  // ── Service info banner (compact, always visible) ──
+  const serviceBanner = selectedService ? (
+    <InfoCard variant="emerald" className="mb-4">
+      <div className="flex items-center gap-3">
+        <Avatar className="size-9 rounded-md">
+          {provider?.avatarUrl ? (
+            <AvatarImage src={provider.avatarUrl} alt={provider.name} />
+          ) : null}
+          <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+            {provider?.name?.[0]?.toUpperCase() ?? "?"}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{selectedService.title}</p>
+          <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+            {formatBRL(selectedService.basePrice)} /{" "}
+            {SERVICE_UNIT_LABELS[selectedService.unit] ?? "un"}
+          </p>
+        </div>
+        {state.date && state.time && (
+          <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+        )}
+      </div>
+    </InfoCard>
+  ) : null
+
+  // ── Calendar section ──
+  const calendarSection = (
+    <div className="flex flex-col">
+      <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1.5">
+        <CalendarDays className="size-3.5 text-emerald-600" />
+        Data
+      </p>
+      <Calendar
+        mode="single"
+        locale={ptBR}
+        selected={state.date}
+        onSelect={(d) => {
+          set("date", d)
+          set("time", undefined)
+        }}
+        disabled={(d) => d < today}
+        className="rounded-lg border shadow-sm [--cell-size:--spacing(7)]"
+      />
+    </div>
+  )
+
+  // ── Time slots section ──
+  const timeSlotsSection = (
+    <div className="flex flex-col h-full">
+      <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Clock className="size-3.5 text-emerald-600" />
+        Horários disponíveis
+      </p>
+
+      {!state.date ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center py-8">
+            <CalendarDays className="mx-auto size-8 text-muted-foreground/30 mb-2" />
+            <p className="text-xs text-muted-foreground">
+              Selecione uma data para ver os horários
+            </p>
+          </div>
+        </div>
+      ) : slots.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="rounded-lg border border-dashed bg-muted/30 p-6 text-center">
+            <CalendarOff className="mx-auto size-7 text-muted-foreground/40 mb-2" />
+            <p className="text-xs font-medium">
+              Sem horários neste dia
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {WEEKDAYS_SHORT[state.date.getDay()]} — fora do expediente
+            </p>
+          </div>
+        </div>
+      ) : (
+        <ScrollArea className="flex-1 -mx-1 px-1">
+          <div className="grid gap-3">
+            {groupedSlots.map((group) => {
+              const PeriodIcon = group.icon
+              return (
+                <div key={group.key}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <PeriodIcon className="size-3 text-muted-foreground" />
+                    <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                      {group.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60">
+                      ({group.slots.length})
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {group.slots.map((s) => {
+                      const active = state.time === s.value
+                      return (
+                        <button
+                          key={s.value}
+                          type="button"
+                          onClick={() => set("time", s.value)}
+                          className={cn(
+                            "rounded-md border px-1.5 py-1.5 text-xs text-center font-medium transition-all duration-150",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1",
+                            active
+                              ? "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 scale-[1.02]"
+                              : "border-border hover:border-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20",
+                          )}
+                        >
+                          {s.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </ScrollArea>
+      )}
+    </div>
+  )
+
+  // ── Selected date summary (desktop, shown below calendar) ──
+  const selectedDateSummary = state.date && (
+    <div className={cn(
+      "mt-2 rounded-md border px-2.5 py-1.5 text-center",
+      state.time
+        ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/20"
+        : "border-dashed border-muted-foreground/20 bg-muted/20"
+    )}>
+      <p className="text-xs font-semibold">
+        {format(state.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
+      </p>
+      {state.time ? (
+        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5 flex items-center justify-center gap-1">
+          <Clock className="size-3" />
+          {formatHHmm(state.time)}
+        </p>
+      ) : (
+        <p className="text-[11px] text-muted-foreground mt-0.5">
+          Agora escolha o horário →
+        </p>
+      )}
+    </div>
+  )
+
   return (
-    <div className="grid gap-4">
+    <div>
       <StepHeader
         icon={CalendarDays}
         title="Escolha a data e horário"
         description="Selecione o melhor dia e horário para o serviço."
       />
 
-      {/* Service + provider info banner — Nielsen #1: visibility */}
-      {selectedService && (
-        <InfoCard variant="emerald">
-          <div className="flex items-center gap-3">
-            <Avatar className="size-9 rounded-md">
-              {provider?.avatarUrl ? (
-                <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-              ) : null}
-              <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
-                {provider?.name?.[0]?.toUpperCase() ?? "?"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{selectedService.title}</p>
-              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-                {formatBRL(selectedService.basePrice)} /{" "}
-                {SERVICE_UNIT_LABELS[selectedService.unit] ?? "un"}
-              </p>
-            </div>
-            {state.date && state.time && (
-              <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-            )}
-          </div>
-        </InfoCard>
-      )}
+      {serviceBanner}
 
-      {/* Calendar */}
-      <div>
-        <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
-          <CalendarDays className="size-3.5 text-emerald-600" />
-          Data
-        </p>
-        <div className="flex justify-center">
-          <Calendar
-            mode="single"
-            locale={ptBR}
-            selected={state.date}
-            onSelect={(d) => {
-              set("date", d)
-              set("time", undefined)
-            }}
-            disabled={(d) => d < today}
-            className="rounded-md border"
-          />
+      {/* ── Desktop: Side-by-side layout ── */}
+      {isDesktop ? (
+        <div className="grid grid-cols-[auto_1fr] gap-4">
+          {/* LEFT: Calendar + selected date summary */}
+          <div className="flex flex-col">
+            {calendarSection}
+            {selectedDateSummary}
+          </div>
+
+          {/* RIGHT: Time slots */}
+          <div className="flex flex-col min-h-0 border-l pl-4">
+            {timeSlotsSection}
+          </div>
         </div>
-      </div>
-
-      {/* Time slots — Nielsen #6: recognition over recall */}
-      <div>
-        <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
-          <Clock className="size-3.5 text-emerald-600" />
-          Horários disponíveis
-        </p>
-        {!state.date ? (
-          <p className="text-xs text-muted-foreground py-4 text-center">
-            Selecione uma data para ver os horários
-          </p>
-        ) : slots.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-muted/30 p-4 text-center">
-            <CalendarOff className="mx-auto size-6 text-muted-foreground/50" />
-            <p className="mt-1.5 text-xs font-medium">
-              Sem horários neste dia
-            </p>
-            <p className="text-[11px] text-muted-foreground">
-              {WEEKDAYS_SHORT[state.date.getDay()]} — fora do expediente
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5">
-            {slots.map((s) => {
-              const active = state.time === s.value
-              return (
-                <button
-                  key={s.value}
-                  type="button"
-                  onClick={() => set("time", s.value)}
-                  className={cn(
-                    "rounded-md border px-1 py-1.5 text-xs text-center font-medium transition-all",
-                    active
-                      ? "border-emerald-600 bg-emerald-600 text-white shadow-sm"
-                      : "hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30",
-                  )}
-                >
-                  {s.label}
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
+      ) : (
+        /* ── Mobile: Stacked layout ── */
+        <div className="grid gap-4">
+          {calendarSection}
+          {selectedDateSummary}
+          {timeSlotsSection}
+        </div>
+      )}
     </div>
   )
 }
@@ -966,7 +1238,7 @@ function Step3Payment({
 
 // ---------------------------------------------------------------------------
 // Step 4 — Confirmação (Review + Confirm)
-// NEW step — Nielsen #5: error prevention (review before commit)
+// Nielsen #5: error prevention (review before commit)
 // Nielsen #3: user control — edit links
 // Nielsen #10: help — "what happens next" timeline
 // ---------------------------------------------------------------------------
