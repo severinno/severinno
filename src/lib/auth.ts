@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { createHmac, timingSafeEqual } from "crypto"
 import { db } from "@/lib/db"
+import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 
 /**
  * Lightweight HMAC-signed session cookie (no JWT lib).
@@ -9,13 +10,12 @@ import { db } from "@/lib/db"
 
 const COOKIE_NAME = "severinno_session"
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30 // 30 days
+const ROTATION_THRESHOLD_SECONDS = COOKIE_MAX_AGE_SECONDS / 2 // 15 days
 
 function getSecret(): string {
-  return (
-    process.env.SESSION_SECRET ||
-    // dev fallback — must NOT be used in production
-    "dev-only-secret-please-set-SESSION_SECRET-in-env"
-  )
+  const secret = process.env.SESSION_SECRET
+  if (!secret) throw new Error("SESSION_SECRET environment variable is not set")
+  return secret
 }
 
 function sign(payload: string): string {
@@ -49,7 +49,16 @@ export async function createSession(userId: string, role: SessionPayload["role"]
 }
 
 /**
+ * Reissue the session cookie with a new expiry (sliding extension).
+ * Used when the session is past the rotation threshold.
+ */
+async function reissueSession(userId: string, role: SessionPayload["role"]) {
+  await createSession(userId, role)
+}
+
+/**
  * Read & verify the session cookie. Returns the session payload or null.
+ * Automatically rotates (reissues) the cookie if past the rotation threshold.
  */
 export async function getSession(): Promise<SessionPayload | null> {
   try {
@@ -65,7 +74,6 @@ export async function getSession(): Promise<SessionPayload | null> {
     const payload = `${userId}.${role}.${expiresAtStr}`
     const expected = sign(payload)
 
-    // timing-safe compare
     const a = Buffer.from(signature, "hex")
     const b = Buffer.from(expected, "hex")
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null
@@ -73,6 +81,11 @@ export async function getSession(): Promise<SessionPayload | null> {
     const expiresAt = Number(expiresAtStr)
     if (!Number.isFinite(expiresAt)) return null
     if (expiresAt * 1000 < Date.now()) return null
+
+    const remaining = expiresAt - Math.floor(Date.now() / 1000)
+    if (remaining < ROTATION_THRESHOLD_SECONDS) {
+      await reissueSession(userId, role as SessionPayload["role"])
+    }
 
     return {
       userId,
@@ -93,21 +106,41 @@ export async function destroySession() {
 
 /**
  * Require an authenticated user. Throws a Next.js-friendly error if absent.
+ * Uses Redis cache (5min TTL) to avoid hitting PostgreSQL on every request.
  */
 export async function requireUser(): Promise<SessionPayload> {
   const session = await getSession()
   if (!session) {
     throw new Error("UNAUTHORIZED")
   }
-  // Verify the user still exists & is active
+
+  const cacheKey = `user:active:${session.userId}`
+  const cached = await cacheGet<{ active: boolean; role: string }>(cacheKey)
+
+  if (cached !== null) {
+    if (!cached.active) throw new Error("UNAUTHORIZED")
+    return session
+  }
+
+  // Cache miss — verify in DB
   const user = await db.user.findUnique({
     where: { id: session.userId },
     select: { id: true, role: true, active: true },
   })
   if (!user || !user.active) {
+    await cacheSet(cacheKey, { active: false, role: "" }, 300)
     throw new Error("UNAUTHORIZED")
   }
+
+  await cacheSet(cacheKey, { active: true, role: user.role }, 300)
   return session
+}
+
+/**
+ * Invalidate cached user status (call after user update/deactivation).
+ */
+export async function invalidateUserCache(userId: string): Promise<void> {
+  await cacheInvalidate(`user:active:${userId}`)
 }
 
 /**

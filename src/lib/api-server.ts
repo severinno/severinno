@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { db } from "@/lib/db"
+import { withCache, cacheInvalidate } from "@/lib/redis"
+import logger from "./logger"
 
 /**
  * Server-side helpers for API route handlers.
@@ -32,6 +34,7 @@ export const USER_PUBLIC_SELECT = {
   district: true,
   city: true,
   state: true,
+  slug: true,
   verified: true,
   active: true,
   createdAt: true,
@@ -85,7 +88,7 @@ export function handleError(e: unknown) {
       return NextResponse.json({ error: "Acesso proibido" }, { status: 403 })
     }
   }
-  console.error("[api] unhandled error:", e)
+  logger.error({ err: e }, "unhandled api error")
   return NextResponse.json(
     { error: "Erro interno do servidor" },
     { status: 500 },
@@ -107,30 +110,45 @@ export function parsePagination(searchParams: URLSearchParams) {
 // ---------------------------------------------------------------------------
 // Category tree — return all descendant ids (including the given one).
 // Used by provider/service filters that need to match the whole sub-tree.
+// Cached in Redis (10min TTL) since the category tree rarely changes.
 // ---------------------------------------------------------------------------
 export async function getCategoryDescendants(
   categoryId: string,
 ): Promise<string[]> {
-  const all = await db.category.findMany({
-    select: { id: true, parentId: true },
-  })
-  const childrenOf = new Map<string, string[]>()
-  for (const c of all) {
-    if (c.parentId) {
-      const arr = childrenOf.get(c.parentId) ?? []
-      arr.push(c.id)
-      childrenOf.set(c.parentId, arr)
-    }
-  }
-  const result: string[] = [categoryId]
-  const queue = [categoryId]
-  while (queue.length) {
-    const current = queue.shift()!
-    const children = childrenOf.get(current) ?? []
-    for (const child of children) {
-      result.push(child)
-      queue.push(child)
-    }
-  }
-  return result
+  return withCache(
+    `cat:desc:${categoryId}`,
+    async () => {
+      const all = await db.category.findMany({
+        select: { id: true, parentId: true },
+      })
+      const childrenOf = new Map<string, string[]>()
+      for (const c of all) {
+        if (c.parentId) {
+          const arr = childrenOf.get(c.parentId) ?? []
+          arr.push(c.id)
+          childrenOf.set(c.parentId, arr)
+        }
+      }
+      const result: string[] = [categoryId]
+      const queue = [categoryId]
+      while (queue.length) {
+        const current = queue.shift()!
+        const children = childrenOf.get(current) ?? []
+        for (const child of children) {
+          result.push(child)
+          queue.push(child)
+        }
+      }
+      return result
+    },
+    600, // 10 min
+  )
 }
+
+/**
+ * Invalidate category descendant cache (call after category CRUD).
+ */
+export async function invalidateCategoryCache(): Promise<void> {
+  await cacheInvalidate("cat:desc:*")
+}
+

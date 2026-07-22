@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { requireRole } from "@/lib/auth"
+import { requireRole, invalidateUserCache } from "@/lib/auth"
 import {
   badRequest,
   handleError,
@@ -50,6 +50,7 @@ export async function PATCH(request: Request, { params }: Params) {
       },
       select: USER_PUBLIC_SELECT,
     })
+    await invalidateUserCache(id)
     return NextResponse.json({ user: updated })
   } catch (e) {
     return handleError(e)
@@ -69,6 +70,7 @@ export async function DELETE(_request: Request, { params }: Params) {
     if (!user) throw notFound("Usuário não encontrado")
 
     await db.user.delete({ where: { id } })
+    await invalidateUserCache(id)
     return NextResponse.json({ ok: true })
   } catch (e) {
     return handleError(e)

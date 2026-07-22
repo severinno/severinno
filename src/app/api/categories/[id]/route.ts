@@ -6,8 +6,10 @@ import {
   badRequest,
   conflict,
   handleError,
+  invalidateCategoryCache,
   notFound,
 } from "@/lib/api-server"
+import { cacheInvalidate } from "@/lib/redis"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -58,6 +60,7 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(data.active !== undefined ? { active: data.active } : {}),
       },
     })
+    await Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()])
     return NextResponse.json({ category: updated })
   } catch (e) {
     return handleError(e)
@@ -83,6 +86,7 @@ export async function DELETE(_request: Request, { params }: Params) {
     }
 
     await db.category.delete({ where: { id } })
+    await Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()])
     return NextResponse.json({ ok: true })
   } catch (e) {
     return handleError(e)
