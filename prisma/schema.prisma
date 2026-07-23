@@ -41,8 +41,10 @@ model User {
   district     String?
   city         String?
   state        String?
+  slug         String?  @unique
   verified     Boolean  @default(false)
   active       Boolean  @default(true)
+  deletedAt    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -107,6 +109,7 @@ model Service {
   // photos: JSON array of url strings (max 4) — SQLite-safe
   photos      Json     @default("[]")
   active      Boolean  @default(true)
+  deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -212,6 +215,7 @@ model Booking {
   // paymentStatus: "PENDING" | "PAID" | "REFUNDED"
   paymentStatus String   @default("PENDING")
   notes         String?
+  deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
