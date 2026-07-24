@@ -1,0 +1,155 @@
+# =============================================================================
+# GitHub Actions CI/CD — Severinno Marketplace
+#
+# Pipeline:
+#   lint    → ESLint
+#   typecheck → tsc --noEmit
+#   test    → vitest run
+#   build   → next build (Docker or standalone)
+#   deploy  → (VPS / Docker Hub / SSH deploy)
+# =============================================================================
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
+  REDIS_URL: redis://localhost:6379
+  SESSION_SECRET: ci-session-secret-at-least-32-characters-long
+
+jobs:
+  # ── Lint ──────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+
+  # ── TypeScript check ─────────────────────────────────────────────────────
+  typecheck:
+    name: TypeCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+      - run: bun run db:generate
+      - run: bunx tsc --noEmit
+
+  # ── Tests ─────────────────────────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: severinno_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+      - run: bun run test:run
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
+
+  # ── Build ─────────────────────────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, test]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+      - run: bun run db:generate
+      - run: bun run build
+        env:
+          SKIP_TYPESCRIPT_CHECK: "true"
+
+      # Archive the standalone build for deployment
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standalone-build
+          path: .next/standalone/
+          retention-days: 3
+
+  # ── Deploy (manual trigger or on push to main) ────────────────────────────
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: standalone-build
+          path: .next/standalone/
+
+      # Example: SSH deploy to VPS
+      # Uncomment and configure secrets for your server:
+      #
+      # - name: Deploy via SSH
+      #   uses: appleboy/scp-action@v0.1.7
+      #   with:
+      #     host: ${{ secrets.DEPLOY_HOST }}
+      #     username: ${{ secrets.DEPLOY_USER }}
+      #     key: ${{ secrets.DEPLOY_KEY }}
+      #     source: ".next/standalone/*"
+      #     target: "/opt/severinno/"
+      #     strip_components: 2
+      #
+      # - name: Restart server
+      #   uses: appleboy/ssh-action@v1.2.0
+      #   with:
+      #     host: ${{ secrets.DEPLOY_HOST }}
+      #     username: ${{ secrets.DEPLOY_USER }}
+      #     key: ${{ secrets.DEPLOY_KEY }}
+      #     script: |
+      #       cd /opt/severinno
+      #       docker compose pull
+      #       docker compose up -d --force-recreate
+
+      - run: echo "✅ Build ready for deployment"

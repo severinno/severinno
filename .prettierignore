@@ -1,0 +1,10 @@
+node_modules
+.next
+public
+coverage
+.git
+*.lock
+*.svg
+*.png
+*.jpg
+*.webp

@@ -16,17 +16,19 @@
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  User,
-  MapPin,
-  Phone,
+  ArrowRight,
   Camera,
   CheckCircle2,
-  ArrowRight,
+  MapPin,
+  Phone,
   Sparkles,
+  User,
 } from "lucide-react"
 
-import { useAuthStore, useViewStore } from "@/store"
-import { apiGet, apiPatch } from "@/lib/api"
+import { useAuthStore } from "@/store/auth"
+import { useViewStore } from "@/store/view"
+import { apiGet } from "@/lib/api"
+import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -128,7 +130,11 @@ export function OnboardingChecklist() {
             {pct}%
           </span>
         </div>
-        <Progress value={pct} className="mt-2 h-2 [&>div]:bg-emerald-600" />
+        <Progress
+          value={pct}
+          className="mt-2 h-2 [&>div]:bg-emerald-600"
+          aria-label={`${pct}% concluído`}
+        />
       </CardHeader>
       <CardContent className="space-y-2 pt-0">
         <p className="mb-2 text-xs text-muted-foreground">
@@ -179,6 +185,14 @@ export function OnboardingChecklist() {
             )}
           </button>
         ))}
+
+        {/* Sound & vibration preferences */}
+        <div className="mt-4 space-y-2 border-t pt-4">
+          <p className="text-xs font-medium text-muted-foreground">
+            Preferências
+          </p>
+          <PreferenceToggles variant="compact" />
+        </div>
       </CardContent>
     </Card>
   )

@@ -10,11 +10,20 @@ import {
   ImagePlus,
   Loader2,
   LocateFixed,
+  Play,
   Save,
+  Smartphone,
+  Volume2,
   X,
 } from "lucide-react"
 
 import { apiGet, apiPatch } from "@/lib/api"
+import {
+  playCoinSound,
+  playCompletionSound,
+  playReviewSound,
+  tryVibrate,
+} from "@/lib/sounds"
 import {
   providerProfileSchema,
   type ProviderProfileInput,
@@ -24,6 +33,7 @@ import { useAuthStore } from "@/store/auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import {
   Card,
   CardContent,
@@ -202,6 +212,8 @@ export function ProviderProfile() {
       lng?: number | null
       radiusKm?: number | null
       verified: boolean
+      soundEnabled?: boolean
+      vibrateEnabled?: boolean
     }
   }>({
     queryKey: ["provider", "profile", user?.id],
@@ -236,6 +248,8 @@ export function ProviderProfile() {
   // Hydrate
   React.useEffect(() => {
     if (profile) {
+      setSoundEnabled(profile.soundEnabled ?? true)
+      setVibrateEnabled(profile.vibrateEnabled ?? true)
       form.reset({
         name: profile.name ?? "",
         bio: profile.bio ?? "",
@@ -257,6 +271,8 @@ export function ProviderProfile() {
     }
   }, [profile, form])
 
+  const [soundEnabled, setSoundEnabled] = React.useState(true)
+  const [vibrateEnabled, setVibrateEnabled] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
 
   const useGPS = async () => {
@@ -660,6 +676,97 @@ export function ProviderProfile() {
                 {form.watch("lng")?.toFixed(5)}
               </p>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Sound preference */}
+        <Card className="py-0">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <Volume2 className="mt-0.5 size-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Sons do painel</p>
+                  <p className="text-xs text-muted-foreground">
+                    Toque um som quando novas transações ou confirmações
+                    chegarem.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"                    onClick={() => {
+                      playCoinSound()
+                      setTimeout(playCompletionSound, 300)
+                      setTimeout(playReviewSound, 750)
+                    }}
+                  className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  title="Prévia dos sons (moeda → sino → estrela)"
+                  aria-label="Ouvir prévia dos sons do painel"
+                >
+                  <Play className="size-3.5" />
+                </button>
+                <Switch
+                  checked={soundEnabled}
+                  onCheckedChange={(v) => {
+                    setSoundEnabled(v)
+                    apiPatch("/api/users/me", { soundEnabled: v })
+                      .then(() => {
+                        qc.invalidateQueries({ queryKey: ["provider", "profile", user?.id] })
+                      })
+                      .catch(() => {
+                        setSoundEnabled(!v)
+                      })
+                  }}
+                  aria-label="Ativar sons do painel"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Vibration preference */}
+        <Card className="py-0">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-3">
+                <Smartphone className="mt-0.5 size-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Vibração</p>
+                  <p className="text-xs text-muted-foreground">
+                    Vibração sutil em dispositivos móveis quando notificações
+                    chegarem.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    tryVibrate([30, 50, 30, 50, 30])
+                  }}
+                  className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  title="Prévia da vibração"
+                  aria-label="Ouvir prévia da vibração"
+                >
+                  <Play className="size-3.5" />
+                </button>
+                <Switch
+                  checked={vibrateEnabled}
+                  onCheckedChange={(v) => {
+                    setVibrateEnabled(v)
+                    apiPatch("/api/users/me", { vibrateEnabled: v })
+                      .then(() => {
+                        qc.invalidateQueries({ queryKey: ["provider", "profile", user?.id] })
+                      })
+                      .catch(() => {
+                        setVibrateEnabled(!v)
+                      })
+                  }}
+                  aria-label="Ativar vibração"
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
 

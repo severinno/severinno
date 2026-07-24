@@ -8,10 +8,12 @@ import {
   handleError,
   notFound,
 } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // Public: list reviews (filter by providerId or bookingId)
 export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.reviews)
     const { searchParams } = new URL(request.url)
     const providerId = searchParams.get("providerId") || undefined
     const bookingId = searchParams.get("bookingId") || undefined
@@ -37,6 +39,7 @@ export async function GET(request: Request) {
 // CLIENT: create a review for a completed booking (one per booking)
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.reviews)
     const session = await requireUser()
     if (session.role !== "CLIENT") {
       throw forbidden("Apenas clientes podem avaliar")

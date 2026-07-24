@@ -1,0 +1,191 @@
+# ============================================================================
+# Severinno Marketplace SaaS — Development Docker Compose
+# ============================================================================
+# Start:   docker compose -f docker-compose.dev.yml up -d
+# Logs:    docker compose -f docker-compose.dev.yml logs -f
+# Stop:    docker compose -f docker-compose.dev.yml down
+# Rebuild: docker compose -f docker-compose.dev.yml up -d --build
+# ============================================================================
+
+services:
+
+  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────
+  postgis:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: severinno
+      POSTGRES_USER: severinno
+      POSTGRES_PASSWORD: severinno
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U severinno -d severinno"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Valkey (100% FOSS, in-memory cache & rate-limit) ───────────────────
+  redis:
+    image: valkey/valkey:7.2-alpine
+    ports:
+      - "127.0.0.1:6380:6379"  # 6380 host → 6379 container (porta 6379 pode estar reservada pelo Hyper-V)
+    volumes:
+      - redis_data_dev:/data
+    command: valkey-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── RabbitMQ ───────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: severinno
+      RABBITMQ_DEFAULT_PASS: severinno
+    volumes:
+      - rabbitmq_data_dev:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics ping >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # ── Realtime WebSocket (Socket.io) ─────────────────────────────────────
+  realtime:
+    build:
+      context: ./mini-services/realtime
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3003"
+    volumes:
+      - ./mini-services/realtime:/app
+      - /app/node_modules
+    command: bun --hot index.ts
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── OpenSearch (Full-text search — Apache 2.0) ──────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:2.19
+    environment:
+      discovery.type: single-node
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      plugins.security.disabled: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - opensearch_data_dev:/usr/share/opensearch/data
+      - ./scripts/synonyms.txt:/usr/share/opensearch/config/analysis/synonyms.txt:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── GlitchTip (Error Monitoring — 100% FOSS, MIT) ─────────────────────
+  glitchtip:
+    image: glitchtip/glitchtip:v4.1
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      DATABASE_URL: postgresql://severinno:severinno@postgis:5432/severinno_errors
+      SECRET_KEY: dev-glitchtip-secret-not-for-prod
+      PORT: 8000
+      CELERY_BROKER_URL: redis://redis:6379/1
+      DEFAULT_FROM_EMAIL: errors@severinno.com.br
+      DJANGO_ALLOWED_HOSTS: glitchtip,localhost
+      CSRF_TRUSTED_ORIGINS: http://glitchtip:8000,http://localhost:8000
+      DEBUG: "true"
+    volumes:
+      - glitchtip_uploads_dev:/code/uploads
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/_health/"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  glitchtip-worker:
+    image: glitchtip/glitchtip:v4.1
+    command: ./bin/run-celery-with-beat.sh
+    environment:
+      DATABASE_URL: postgresql://severinno:severinno@postgis:5432/severinno_errors
+      SECRET_KEY: dev-glitchtip-secret-not-for-prod
+      PORT: 8000
+      CELERY_BROKER_URL: redis://redis:6379/1
+      DEFAULT_FROM_EMAIL: errors@severinno.com.br
+    depends_on:
+      glitchtip:
+        condition: service_started
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── MinIO (S3-compatible Object Storage — 100% FOSS) ───────────────────
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: severinno
+      MINIO_ROOT_PASSWORD: severinno_minio_dev
+    volumes:
+      - minio_data_dev:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── MinIO Bucket Setup (one-shot init) ─────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set minio http://minio:9000 severinno severinno_minio_dev &&
+      /usr/bin/mc mb minio/severinno --ignore-existing &&
+      /usr/bin/mc policy set public minio/severinno &&
+      echo 'MinIO bucket criado com sucesso!'
+      "
+
+  # ── OSRM Routing (Optional) ────────────────────────────────────────────
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:latest
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm-data:/data
+    command: osrm-routed --algorithm mld /data/governador-valadares.osrm
+    profiles:
+      - routing
+
+volumes:
+  pgdata_dev:
+  redis_data_dev:
+  rabbitmq_data_dev:
+  opensearch_data_dev:
+  minio_data_dev:
+  glitchtip_uploads_dev:

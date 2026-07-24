@@ -53,9 +53,12 @@ export function publicUser<T extends { passwordHash?: string }>(
 // ---------------------------------------------------------------------------
 export class HttpError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** Optional custom response headers (e.g. RateLimit headers). */
+  headers?: Record<string, string>
+  constructor(status: number, message: string, headers?: Record<string, string>) {
     super(message)
     this.status = status
+    this.headers = headers
   }
 }
 export const badRequest = (msg = "Requisição inválida") => new HttpError(400, msg)
@@ -72,7 +75,10 @@ export const conflict = (msg = "Conflito de estado") => new HttpError(409, msg)
  */
 export function handleError(e: unknown) {
   if (e instanceof HttpError) {
-    return NextResponse.json({ error: e.message }, { status: e.status })
+    return NextResponse.json(
+      { error: e.message },
+      { status: e.status, headers: e.headers },
+    )
   }
   if (e instanceof ZodError) {
     return NextResponse.json(

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import logger from "@/lib/logger"
+import { handleError, badRequest } from "@/lib/api-server"
 
 /**
  * POST /api/newsletter
@@ -13,21 +15,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const email = (body.email as string | undefined)?.trim().toLowerCase()
 
-    if (!email) {
-      return NextResponse.json(
-        { error: "E-mail é obrigatório." },
-        { status: 400 },
-      )
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: "E-mail inválido." },
-        { status: 400 },
-      )
-    }
+    if (!email) throw badRequest("E-mail é obrigatório.")
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw badRequest("E-mail inválido.")
 
     // Check if already subscribed (using Setting as a KV store)
     const key = `newsletter:${email}`
@@ -57,11 +46,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       message: "Inscrição confirmada!",
     })
-  } catch (err) {
-    console.error("[newsletter] POST error:", err)
-    return NextResponse.json(
-      { error: "Erro interno. Tente novamente." },
-      { status: 500 },
-    )
+  } catch (e) {
+    return handleError(e)
   }
 }

@@ -7,6 +7,7 @@ import {
   handleError,
   notFound,
 } from "@/lib/api-server"
+import { notifyQuoteResponse } from "@/lib/notifications"
 
 type Params = { params: Promise<{ id: string; itemId: string }> }
 
@@ -42,11 +43,31 @@ export async function PATCH(request: Request, { params }: Params) {
     })
 
     // Update parent request status to RESPONDED (if still PENDING)
-    if (item.request.status === "PENDING") {
+    const wasPending = item.request.status === "PENDING"
+    if (wasPending) {
       await db.quoteRequest.update({
         where: { id },
         data: { status: "RESPONDED" },
       })
+    }
+
+    // Notificar cliente sobre resposta (best-effort)
+    if (wasPending && data.price) {
+      const quote = await db.quoteRequest.findUnique({
+        where: { id },
+        select: {
+          clientId: true,
+          provider: { select: { name: true } },
+        },
+      })
+      if (quote) {
+        notifyQuoteResponse(
+          quote.clientId,
+          id,
+          quote.provider?.name ?? "Prestador",
+          data.price,
+        ).catch(() => {})
+      }
     }
 
     return NextResponse.json({ item: updated })

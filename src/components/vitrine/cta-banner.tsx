@@ -40,7 +40,8 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
-import { useAuthStore, useUIStore } from "@/store"
+import { useAuthStore } from "@/store/auth"
+import { useUIStore } from "@/store/ui"
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------

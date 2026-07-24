@@ -13,8 +13,10 @@
 
 import * as React from "react"
 import { Star, MapPin, X, History, ArrowRight } from "lucide-react"
+import Image from "next/image"
 
-import { useRecentlyViewedStore, useUIStore } from "@/store"
+import { useRecentlyViewedStore } from "@/store/recently-viewed"
+import { useUIStore } from "@/store/ui"
 import { formatBRL } from "@/lib/format"
 import { SERVICE_UNIT_SHORT } from "@/lib/constants"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -98,9 +100,11 @@ export function RecentlyViewed() {
                   {/* Header: avatar + name + rating */}
                   <div className="flex items-center gap-2.5">
                     {p.avatarUrl ? (
-                      <img
+                      <Image
                         src={p.avatarUrl}
                         alt={p.name}
+                        width={40}
+                        height={40}
                         className="size-10 rounded-full object-cover ring-2 ring-emerald-500/20"
                       />
                     ) : (

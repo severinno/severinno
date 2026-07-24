@@ -166,3 +166,9 @@ export const APP_TAGLINE = "Marketplace de serviços com geolocalização"
 
 // Default search radius when none provided (km)
 export const DEFAULT_SEARCH_RADIUS_KM = 15
+
+// ---------------------------------------------------------------------------
+// FINANCE / COMMISSION
+// ---------------------------------------------------------------------------
+// Platform commission rate (15% of each booking)
+export const FEE_RATE = 0.15

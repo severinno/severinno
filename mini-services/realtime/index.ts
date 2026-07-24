@@ -8,13 +8,37 @@ import { Server, Socket } from 'socket.io'
 
 const PORT = 3003
 
+// Allowed CORS origins — restrict to known domains
+const ALLOWED_ORIGINS = [
+  // Development
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3000',
+  // Production (exact and subdomains)
+  'https://severinno.com.br',
+  'https://www.severinno.com.br',
+]
+
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return false
+  if (ALLOWED_ORIGINS.includes(origin)) return true
+  // Wildcard subdomain check: *.severinno.com.br
+  if (/^https:\/\/[a-zA-Z0-9-]+\.severinno\.com\.br$/.test(origin)) return true
+  return false
+}
+
 const httpServer = createServer()
 const io = new Server(httpServer, {
   // DO NOT change the path, it is used by Caddy to forward the request to the correct port
   path: '/',
   cors: {
-    origin: '*',
+    // Socket.io v4 uses the cors package internally, which expects the
+    // (origin, callback) signature — NOT a synchronous boolean return.
+    origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+      callback(null, isOriginAllowed(origin))
+    },
     methods: ['GET', 'POST'],
+    credentials: true,
   },
   pingTimeout: 60000,
   pingInterval: 25000,

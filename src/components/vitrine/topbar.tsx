@@ -216,8 +216,12 @@ export default function Topbar({
   const compareCount = useCompareStore((s) => s.ids.length)
   const openCompare = useCompareStore((s) => s.openCompare)
   const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
+  // Track hydration: true on client, false on server (avoids hydration mismatch)
+  const mounted = React.useSyncExternalStore(
+    () => () => {}, // subscribe (no-op — value never changes after mount)
+    () => true,     // getSnapshot (client: always mounted)
+    () => false,    // getServerSnapshot (server: not mounted)
+  )
 
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const [searchOpen, setSearchOpen] = React.useState(false)

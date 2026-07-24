@@ -39,9 +39,7 @@ export async function GET(request: Request, { params }: Params) {
             },
           },
         },
-        // also include a flat `author` alias for the UI's ProviderReview type
-        // (mapped below to `author`)
-        _count: { select: { favoritedBy: true, reviewsReceived: true } },
+        // Use denormalized counts instead of _count to avoid extra subqueries
       },
     })
     if (!provider) throw notFound("Prestador não encontrado")
@@ -58,11 +56,10 @@ export async function GET(request: Request, { params }: Params) {
       favorited = Boolean(fav)
     }
 
-    // Aggregates
-    const ratings = provider.reviewsReceived.map((r) => r.rating)
-    const rating = ratings.length
-      ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-      : 0
+    // Use denormalized avgRating + reviewCount (already computed via trigger)
+    const rating = provider.avgRating
+    const reviewCount = provider.reviewCount
+    const favoriteCount = provider.favoriteCount
 
     const latNum = lat ? Number(lat) : null
     const lngNum = lng ? Number(lng) : null
@@ -77,7 +74,7 @@ export async function GET(request: Request, { params }: Params) {
           10
         : null
 
-    const { passwordHash: _ignored, _count, reviewsReceived, ...safe } =
+    const { passwordHash: _ignored, avgRating: _r, reviewCount: _rc, favoriteCount: _fc, reviewsReceived, ...safe } =
       provider
 
     // Map reviews to the UI's `ProviderReview` shape: each review has an
@@ -95,8 +92,8 @@ export async function GET(request: Request, { params }: Params) {
       availability: safe.availability,
       reviews,
       rating: Math.round(rating * 10) / 10,
-      reviewCount: _count.reviewsReceived,
-      favoriteCount: _count.favoritedBy,
+      reviewCount,
+      favoriteCount,
       distanceKm,
       favorited,
     })

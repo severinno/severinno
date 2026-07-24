@@ -13,7 +13,7 @@ import { GitCompare, X, Trash2, ArrowRight } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 import { cn } from "@/lib/utils"
-import { useCompareStore, MAX_COMPARE } from "@/store"
+import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"

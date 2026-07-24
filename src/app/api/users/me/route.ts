@@ -6,6 +6,7 @@ import {
   forbidden,
   handleError,
   USER_PUBLIC_SELECT,
+  syncProviderSearch,
 } from "@/lib/api-server"
 
 // GET: current authenticated user (full public profile)
@@ -68,9 +69,26 @@ export async function PATCH(request: Request) {
         ...(data.lat !== undefined ? { lat: data.lat } : {}),
         ...(data.lng !== undefined ? { lng: data.lng } : {}),
         ...(data.radiusKm !== undefined ? { radiusKm: data.radiusKm } : {}),
+        ...(data.soundEnabled !== undefined
+          ? { soundEnabled: data.soundEnabled }
+          : {}),
+        ...(data.vibrateEnabled !== undefined
+          ? { vibrateEnabled: data.vibrateEnabled }
+          : {}),
       },
       select: USER_PUBLIC_SELECT,
     })
+
+    if (existing.role === "PROVIDER") {
+      syncProviderSearch({
+        id: updated.id,
+        name: updated.name,
+        bio: updated.bio,
+        city: updated.city,
+        lat: updated.lat,
+        lng: updated.lng,
+      })
+    }
 
     return NextResponse.json({ user: updated })
   } catch (e) {

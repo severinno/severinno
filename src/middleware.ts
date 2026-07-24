@@ -2,6 +2,46 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 // ---------------------------------------------------------------------------
+// Rate limiting — simple in-memory token bucket for the Edge Runtime.
+// Tracks request counts per IP in a global Map (resets on deployment).
+// In production, replace with Upstash Redis or similar for persistence.
+// ---------------------------------------------------------------------------
+
+const RATE_LIMIT_WINDOW_MS = 60 * 1000 // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 60      // max requests per window
+
+// Global rate-limit store (Edge Runtime: shared across requests on the same worker)
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
+
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetIn: number } {
+  const now = Date.now()
+  const entry = rateLimitStore.get(ip)
+
+  if (!entry || now > entry.resetAt) {
+    // New window
+    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1, resetIn: RATE_LIMIT_WINDOW_MS }
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return { allowed: false, remaining: 0, resetIn: entry.resetAt - now }
+  }
+
+  entry.count++
+  return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - entry.count, resetIn: entry.resetAt - now }
+}
+
+// Periodically clean up stale entries (every 5 minutes)
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const now = Date.now()
+    for (const [key, val] of rateLimitStore) {
+      if (now > val.resetAt) rateLimitStore.delete(key)
+    }
+  }, 5 * 60 * 1000)
+}
+
+// ---------------------------------------------------------------------------
 // Cookie-based session verification for Edge Runtime.
 // Mirrors the HMAC logic in src/lib/auth.ts but uses Web Crypto API.
 // ---------------------------------------------------------------------------
@@ -101,6 +141,32 @@ export async function middleware(request: NextRequest) {
   response.headers.set("X-DNS-Prefetch-Control", "on")
   response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
+
+  // --- Rate limiting (API routes only) ---
+  if (pathname.startsWith("/api/") && !pathname.startsWith("/api/cron/")) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+            ?? request.headers.get("x-real-ip")
+            ?? "127.0.0.1"
+    const { allowed, remaining, resetIn } = checkRateLimit(ip)
+
+    // Always include rate-limit headers
+    response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_MAX_REQUESTS))
+    response.headers.set("X-RateLimit-Remaining", String(remaining))
+    response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetIn / 1000)))
+
+    if (!allowed) {
+      return new NextResponse(
+        JSON.stringify({ error: "Muitas requisições. Tente novamente em alguns segundos." }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": String(Math.ceil(resetIn / 1000)),
+          },
+        },
+      )
+    }
+  }
 
   // --- Skip non-API, non-protected pages ---
   const isApi = pathname.startsWith("/api/")

@@ -4,9 +4,11 @@ import { hashPassword } from "@/lib/crypto"
 import { createSession } from "@/lib/auth"
 import { registerSchema } from "@/lib/validators"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.register)
     const body = await request.json()
     const data = registerSchema.parse(body)
 

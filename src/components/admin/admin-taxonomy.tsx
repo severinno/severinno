@@ -114,6 +114,7 @@ import {
 type CategoryRow = Category & {
   active: boolean
   order: number
+  serviceCount?: number
 }
 
 type CategoryNode = Omit<CategoryRow, "children"> & {
@@ -217,7 +218,7 @@ export function AdminTaxonomy() {
 
   const { data: flat, isLoading, isError, refetch } = useQuery({
     queryKey: ["categories", "all"],
-    queryFn: () => apiGet<CategoryRow[]>("/api/categories"),
+    queryFn: () => apiGet<CategoryRow[]>("/api/categories", { includeCount: "true" }),
     staleTime: 30_000,
   })
 
@@ -246,10 +247,7 @@ export function AdminTaxonomy() {
     return build(roots)
   }, [flat])
 
-  // H1/H8 — service count por categoria não está disponível no MVP (o endpoint
-  // /api/categories não retorna contagem de serviços). Em vez de manter um
-  // badge que nunca mostra nada (H1 violado), simplesmente NÃO renderizamos.
-  // TODO(N1/Svcs): quando /api/services?categoryId=X existir, alimentar aqui.
+  // Service count por categoria — enriquecido via includeCount=true no backend
 
   // Auto-expand all level-0 nodes on first load
   React.useEffect(() => {
@@ -657,6 +655,12 @@ function TreeNode({
               <StatusBadge tone="zinc">
                 {node.children!.length}{" "}
                 {node.children!.length === 1 ? "filha" : "filhas"}
+              </StatusBadge>
+            ) : null}
+            {typeof node.serviceCount === "number" ? (
+              <StatusBadge tone="purple">
+                {node.serviceCount}{" "}
+                {node.serviceCount === 1 ? "serviço" : "serviços"}
               </StatusBadge>
             ) : null}
           </div>

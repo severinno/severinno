@@ -3,6 +3,7 @@
 		query XTransformPort=*
 	}
 
+	# ── App (Next.js) ─────────────────────────────────────────────────
 	handle @transform_port_query {
 		reverse_proxy localhost:{query.XTransformPort} {
 			header_up Host {host}
@@ -12,6 +13,35 @@
 		}
 	}
 
+	# ── GlitchTip (Sentry-compatible error monitoring) ────────────────
+	@glitchtip {
+		host glitchtip.severinno.com.br
+	}
+
+	handle @glitchtip {
+		reverse_proxy localhost:8000 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# ── GlitchTip MinIO Console ────────────────────────────────────────
+	@glitchtip_minio {
+		host minio.severinno.com.br
+	}
+
+	handle @glitchtip_minio {
+		reverse_proxy localhost:9003 {
+			header_up Host {host}
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# ── Default: App (Next.js) ─────────────────────────────────────────
 	handle {
 		reverse_proxy localhost:3000 {
 			header_up Host {host}

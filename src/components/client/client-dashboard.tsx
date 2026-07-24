@@ -47,7 +47,9 @@ import {
   type ServiceUnit,
 } from "@/lib/constants"
 import { formatBRL, formatDateTime, formatRelative } from "@/lib/format"
-import { useAuthStore, useUIStore, useViewStore } from "@/store"
+import { useAuthStore } from "@/store/auth"
+import { useUIStore } from "@/store/ui"
+import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -58,6 +60,7 @@ import {
   StatCard,
 } from "@/components/shared/dashboard-shell"
 import { OnboardingChecklist } from "@/components/client/onboarding-checklist"
+import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import {
   PageHeader,
   StatusBadge,
@@ -336,6 +339,12 @@ export function ClientDashboard() {
           hint="Soma de pagamentos confirmados"
         />
       </div>
+
+      {/* Sound & vibration preferences */}
+      <PreferenceToggles
+        soundEnabled={user?.soundEnabled ?? true}
+        vibrateEnabled={user?.vibrateEnabled ?? true}
+      />
 
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-5">

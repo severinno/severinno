@@ -4,9 +4,11 @@ import { verifyPassword } from "@/lib/crypto"
 import { createSession } from "@/lib/auth"
 import { loginSchema } from "@/lib/validators"
 import { handleError, unauthorized } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.login)
     const body = await request.json()
     const data = loginSchema.parse(body)
 

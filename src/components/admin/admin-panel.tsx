@@ -20,12 +20,14 @@
 
 import * as React from "react"
 import {
+  Banknote,
   LayoutDashboard,
   Network,
   Users,
   HardHat,
   Wrench,
   CalendarCheck,
+  Handshake,
   Settings as SettingsIcon,
   ShieldAlert,
 } from "lucide-react"
@@ -48,6 +50,8 @@ import { AdminUsers } from "./admin-users"
 import { AdminProviders } from "./admin-providers"
 import { AdminServices } from "./admin-services"
 import { AdminBookings } from "./admin-bookings"
+import { AdminFinanceDashboard } from "./admin-finance"
+import { AdminSettlements } from "./admin-settlements"
 import { AdminSettings } from "./admin-settings"
 
 // ---------------------------------------------------------------------------
@@ -78,6 +82,16 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.services",
     label: "Serviços",
     icon: Wrench,
+  },
+  {
+    view: "admin.finance",
+    label: "Financeiro",
+    icon: Banknote,
+  },
+  {
+    view: "admin.settlements",
+    label: "Repasses",
+    icon: Handshake,
   },
   {
     view: "admin.bookings",
@@ -120,6 +134,24 @@ const VIEW_META: Record<
     title: "Serviços",
     subtitle: "Catálogo global de serviços. Ative/desative ou exclua.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Serviços" }],
+  },
+  "admin.finance": {
+    title: "Financeiro",
+    subtitle:
+      "Resumo de transações, faturamento mensal e extrato por período.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Financeiro" },
+    ],
+  },
+  "admin.settlements": {
+    title: "Repasses",
+    subtitle:
+      "Períodos de repasse automáticos — gere, finalize e marque como pago.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Repasses" },
+    ],
   },
   "admin.bookings": {
     title: "Agendamentos",
@@ -215,6 +247,10 @@ function AdminView({
       return <AdminProviders />
     case "admin.services":
       return <AdminServices />
+    case "admin.finance":
+      return <AdminFinanceDashboard />
+    case "admin.settlements":
+      return <AdminSettlements />
     case "admin.bookings":
       return <AdminBookings />
     case "admin.settings":

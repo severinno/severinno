@@ -6,9 +6,12 @@
  * SSR-safe: MapLibre is imported lazily inside a `useEffect` (so the component
  * itself can be statically imported, e.g. by `next/dynamic`). Tiles are
  * OpenStreetMap raster tiles (attribution required).
+ *
+ * When there are > 20 providers, clusters them via MapLibre's built-in
+ * GeoJSON clustering for performance.
  */
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
@@ -27,8 +30,10 @@ const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
 
-// Default center: São Paulo (used when no markers and no user location)
 const SP_DEFAULT: [number, number] = [-46.6333, -23.5505]
+
+const CLUSTER_MAX_ZOOM = 14
+const CLUSTER_RADIUS = 50
 
 type MapInstance = InstanceType<typeof import("maplibre-gl").Map>
 type MarkerInstance = InstanceType<typeof import("maplibre-gl").Marker>
@@ -44,9 +49,33 @@ export default function ProvidersMap({
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<MapInstance | null>(null)
-  // Mutable marker/popup registry — kept outside React state for perf
   const markersRef = useRef<Record<string, { marker: MarkerInstance; popup: PopupInstance }>>({})
   const userMarkerRef = useRef<MarkerInstance | null>(null)
+  const clusterSourceAdded = useRef(false)
+  const maplibreglRef = useRef<typeof import("maplibre-gl") | null>(null)
+
+  const selectRef = useRef(onSelectProvider)
+  selectRef.current = onSelectProvider
+
+  const clusterClickHandler = useCallback((e: any) => {
+    const map = mapRef.current
+    if (!map || !e.features?.length) return
+    const features = map.queryRenderedFeatures(e.point, { layers: ["clusters"] })
+    if (!features.length) return
+    const clusterId = features[0].properties?.cluster_id
+    const source = map.getSource("providers") as any
+    source.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+      if (err) return
+      const geometry = features[0].geometry as any
+      map.easeTo({ center: geometry.coordinates, zoom })
+    })
+  }, [])
+
+  const clusterMouseHandler = useCallback((e: any) => {
+    const map = mapRef.current
+    if (!map) return
+    map.getCanvas().style.cursor = e.features?.length ? "pointer" : ""
+  }, [])
 
   // ---- Initialize map once -------------------------------------------------
   useEffect(() => {
@@ -58,6 +87,7 @@ export default function ProvidersMap({
       const maplibregl = await import("maplibre-gl")
       await import("maplibre-gl/dist/maplibre-gl.css")
       if (cancelled || !containerRef.current) return
+      maplibreglRef.current = maplibregl
 
       const map = new maplibregl.Map({
         container: containerRef.current,
@@ -92,18 +122,21 @@ export default function ProvidersMap({
       )
       map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left")
 
-      mapRef.current = map
+      map.on("load", () => {
+        fitToBounds(map, providers, userLat, userLng)
+      })
+      window.setTimeout(() => {
+        if (mapRef.current) fitToBounds(mapRef.current, providers, userLat, userLng)
+      }, 50)
 
-      const onIdle = () => fitToBounds(map, providers, userLat, userLng)
-      map.on("load", onIdle)
-      // Also fit when markers change before "load" fired
-      window.setTimeout(() => fitToBounds(map, providers, userLat, userLng), 50)
+      mapRef.current = map
 
       cleanup = () => {
         map.remove()
         mapRef.current = null
         markersRef.current = {}
         userMarkerRef.current = null
+        clusterSourceAdded.current = false
       }
     })().catch((err) => {
       console.error("Erro ao inicializar o mapa:", err)
@@ -115,49 +148,59 @@ export default function ProvidersMap({
     }
   }, [])
 
-  // ---- Sync providers → markers -------------------------------------------
+  // ---- Cluster click/mouse handlers ---------------------------------------
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
+    map.on("click", "clusters", clusterClickHandler)
+    map.on("mouseenter", "clusters", clusterMouseHandler)
+    map.on("mouseleave", "clusters", () => { map.getCanvas().style.cursor = "" })
+    map.on("click", "unclustered-point", (e: any) => {
+      if (!e.features?.length) return
+      const id = e.features[0].properties?.id
+      if (id) selectRef.current?.(id)
+    })
+    return () => {
+      map.off("click", "clusters", clusterClickHandler)
+      map.off("mouseenter", "clusters", clusterMouseHandler)
+      map.off("mouseleave", "clusters", () => { map.getCanvas().style.cursor = "" })
+      map.off("click", "unclustered-point")
+    }
+  }, [clusterClickHandler, clusterMouseHandler])
+
+  // ---- Sync providers → markers or clustered source -----------------------
+  useEffect(() => {
+    const map = mapRef.current
+    const maplibregl = maplibreglRef.current
+    if (!map || !maplibregl) return
     let cancelled = false
     ;(async () => {
-      const maplibregl = await import("maplibre-gl")
-      if (cancelled || map !== mapRef.current) return
-      syncProviderMarkers({
-        map,
-        maplibregl,
-        providers,
-        selectedId,
-        onSelectProvider,
-        markersRef,
-      })
+      if (cancelled) return
+      const useClustering = providers.length > 20
+      if (useClustering) {
+        syncClusterSource(map, maplibregl, providers, onSelectProvider, markersRef)
+      } else {
+        removeClusterSource(map)
+        syncProviderMarkers({
+          map, maplibregl, providers, selectedId, onSelectProvider, markersRef,
+        })
+      }
       fitToBounds(map, providers, userLat, userLng)
     })()
-
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [providers, selectedId])
 
   // ---- Sync user location marker ------------------------------------------
   useEffect(() => {
     const map = mapRef.current
-    if (!map) return
+    const maplibregl = maplibreglRef.current
+    if (!map || !maplibregl) return
     let cancelled = false
     ;(async () => {
-      const maplibregl = await import("maplibre-gl")
-      if (cancelled || map !== mapRef.current) return
-      syncUserMarker({
-        map,
-        maplibregl,
-        lat: userLat,
-        lng: userLng,
-        userMarkerRef,
-      })
+      if (cancelled) return
+      syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
     })()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [userLat, userLng])
 
   return (
@@ -176,7 +219,117 @@ export default function ProvidersMap({
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// GeoJSON helpers
+// ---------------------------------------------------------------------------
+
+function buildGeoJSON(providers: ProviderCard[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: providers
+      .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
+      .map((p) => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
+        properties: { id: p.id },
+      })),
+  }
+}
+
+function syncClusterSource(
+  map: MapInstance,
+  maplibregl: typeof import("maplibre-gl"),
+  providers: ProviderCard[],
+  onSelectProvider: ((id: string) => void) | undefined,
+  markersRef: React.RefObject<Record<string, MarkerRef>>,
+) {
+  // Remove existing HTML markers
+  const registry = markersRef.current ?? {}
+  for (const ref of Object.values(registry)) ref.marker.remove()
+  markersRef.current = {}
+
+  const source = map.getSource("providers") as any
+  const geojson = buildGeoJSON(providers)
+
+  if (source) {
+    source.setData(geojson)
+    return
+  }
+
+  map.addSource("providers", {
+    type: "geojson",
+    data: geojson,
+    cluster: true,
+    clusterMaxZoom: CLUSTER_MAX_ZOOM,
+    clusterRadius: CLUSTER_RADIUS,
+  })
+
+  map.addLayer({
+    id: "clusters",
+    type: "circle",
+    source: "providers",
+    filter: ["has", "point_count"],
+    paint: {
+      "circle-color": [
+        "step", ["get", "point_count"],
+        "rgba(16, 185, 129, 0.85)",  // emerald/500 - <10
+        10, "rgba(5, 150, 105, 0.9)",  // emerald/600 - 10-50
+        50, "rgba(4, 120, 87, 0.95)",  // emerald/700 - 50+
+      ],
+      "circle-radius": [
+        "step", ["get", "point_count"],
+        22,  // <10 providers
+        10, 30,
+        50, 38,
+      ],
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+    },
+  })
+
+  map.addLayer({
+    id: "cluster-count",
+    type: "symbol",
+    source: "providers",
+    filter: ["has", "point_count"],
+    layout: {
+      "text-field": ["get", "point_count_abbreviated"],
+      "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+      "text-size": 13,
+    },
+    paint: {
+      "text-color": "#fff",
+    },
+  })
+
+  map.addLayer({
+    id: "unclustered-point",
+    type: "circle",
+    source: "providers",
+    filter: ["!", ["has", "point_count"]],
+    paint: {
+      "circle-color": "rgba(16, 185, 129, 0.9)",
+      "circle-radius": 8,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+    },
+  })
+
+  clusterSourceAdded.current = true
+}
+
+function removeClusterSource(map: MapInstance) {
+  if (!clusterSourceAdded.current) return
+  try {
+    if (map.getLayer("unclustered-point")) map.removeLayer("unclustered-point")
+    if (map.getLayer("cluster-count")) map.removeLayer("cluster-count")
+    if (map.getLayer("clusters")) map.removeLayer("clusters")
+    if (map.getSource("providers")) map.removeSource("providers")
+  } catch { /* ignore */ }
+  clusterSourceAdded.current = false
+}
+
+// ---------------------------------------------------------------------------
+// HTML marker helpers (used when < 20 providers)
 // ---------------------------------------------------------------------------
 
 function fitToBounds(
@@ -200,7 +353,6 @@ function fitToBounds(
     map.setZoom(14)
     return
   }
-  // [minX, minY, maxX, maxY] = [west, south, east, north]
   let west = points[0][0]
   let south = points[0][1]
   let east = points[0][0]
@@ -211,16 +363,14 @@ function fitToBounds(
     if (lng > east) east = lng
     if (lat > north) north = lat
   }
-  const pad = 0.005 // ~500m
+  const pad = 0.005
   const bounds: [[number, number], [number, number]] = [
     [west - pad, south - pad],
     [east + pad, north + pad],
   ]
   try {
     map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 600 })
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
 }
 
 type MarkerRef = { marker: MarkerInstance; popup: PopupInstance }
@@ -236,7 +386,6 @@ function syncProviderMarkers(opts: {
   const { map, maplibregl, providers, selectedId, onSelectProvider, markersRef } = opts
   const registry = markersRef.current ?? {}
 
-  // Remove markers for providers no longer in the list
   for (const [id, ref] of Object.entries(registry)) {
     if (!providers.some((p) => p.id === id)) {
       ref.marker.remove()
@@ -245,20 +394,15 @@ function syncProviderMarkers(opts: {
   }
 
   for (const provider of providers) {
-    if (typeof provider.lat !== "number" || typeof provider.lng !== "number") {
-      continue
-    }
+    if (typeof provider.lat !== "number" || typeof provider.lng !== "number") continue
     const existing = registry[provider.id]
     const isSelected = selectedId === provider.id
 
     if (existing) {
-      // Update selected state styling only
-      const el = existing.marker.getElement()
-      el.dataset.selected = isSelected ? "true" : "false"
+      existing.marker.getElement().dataset.selected = isSelected ? "true" : "false"
       continue
     }
 
-    // Build a custom HTML marker
     const el = document.createElement("button")
     el.type = "button"
     el.className = "vitrine-map-marker"
@@ -285,8 +429,7 @@ function syncProviderMarkers(opts: {
     el.appendChild(star)
 
     const rating = document.createElement("span")
-    rating.textContent =
-      provider.rating > 0 ? `${provider.rating.toFixed(1)}` : "Novo"
+    rating.textContent = provider.rating > 0 ? `${provider.rating.toFixed(1)}` : "Novo"
     el.appendChild(rating)
 
     const sep = document.createElement("span")
@@ -296,39 +439,25 @@ function syncProviderMarkers(opts: {
 
     const price = document.createElement("span")
     const min = provider.services?.[0]?.basePrice
-    price.textContent =
-      typeof min === "number" ? `a partir de ${formatBRL(min)}` : "Ver"
+    price.textContent = typeof min === "number" ? `a partir de ${formatBRL(min)}` : "Ver"
     el.appendChild(price)
 
     el.addEventListener("click", (e) => {
       e.stopPropagation()
       onSelectProvider?.(provider.id)
     })
-
-    el.addEventListener("mouseenter", () => {
-      el.style.transform = "translate(-50%, -100%) scale(1.06)"
-    })
-    el.addEventListener("mouseleave", () => {
-      el.style.transform = "translate(-50%, -100%) scale(1)"
-    })
+    el.addEventListener("mouseenter", () => { el.style.transform = "translate(-50%, -100%) scale(1.06)" })
+    el.addEventListener("mouseleave", () => { el.style.transform = "translate(-50%, -100%) scale(1)" })
 
     const popup = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 18,
-      className: "map-popup",
-      maxWidth: "260px",
+      closeButton: false, closeOnClick: false, offset: 18, className: "map-popup", maxWidth: "260px",
     }).setHTML(
       `<div class="p-3 text-sm">
         <div class="font-semibold leading-tight">${escapeHtml(provider.name)}</div>
         <div class="mt-1 flex items-center gap-2 text-muted-foreground text-xs">
           <span>★ ${provider.rating.toFixed(1)} (${provider.reviewCount})</span>
-          ${provider.city ? `<span>·</span><span>${escapeHtml(provider.city ?? "")}</span>` : ""}
-          ${
-            typeof provider.distanceKm === "number"
-              ? `<span>·</span><span>${formatDistance(provider.distanceKm)}</span>`
-              : ""
-          }
+          ${provider.city ? `<span>·</span><span>${escapeHtml(provider.city)}</span>` : ""}
+          ${typeof provider.distanceKm === "number" ? `<span>·</span><span>${formatDistance(provider.distanceKm)}</span>` : ""}
         </div>
         ${provider.verified ? `<div class="mt-1 text-[11px] font-medium text-primary">✓ Verificado</div>` : ""}
       </div>`,
@@ -356,11 +485,7 @@ function syncUserMarker(opts: {
   userMarkerRef: React.RefObject<MarkerInstance | null>
 }) {
   const { map, maplibregl, lat, lng, userMarkerRef } = opts
-  // Remove existing marker
-  if (userMarkerRef.current) {
-    userMarkerRef.current.remove()
-    userMarkerRef.current = null
-  }
+  if (userMarkerRef.current) { userMarkerRef.current.remove(); userMarkerRef.current = null }
   if (typeof lat !== "number" || typeof lng !== "number") return
 
   const el = document.createElement("div")
@@ -370,14 +495,14 @@ function syncUserMarker(opts: {
     border-radius: 9999px;
     background: #2563eb;
     border: 3px solid white;
-    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.25), 0 2px 8px rgba(0,0,0,0.25);
+    box-shadow: 0 0 0 4px rgba(37,99,235,0.25), 0 2px 8px rgba(0,0,0,0.25);
     position: relative;
   `
   const pulse = document.createElement("span")
   pulse.style.cssText = `
     position: absolute; inset: -6px;
     border-radius: 9999px;
-    border: 2px solid rgba(37, 99, 235, 0.55);
+    border: 2px solid rgba(37,99,235,0.55);
     animation: vitrine-map-pulse 1.6s ease-out infinite;
   `
   el.appendChild(pulse)
@@ -389,15 +514,9 @@ function syncUserMarker(opts: {
 }
 
 function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
 }
 
-// Inject keyframes for the user pulse + selected marker (once, on module load)
 if (typeof document !== "undefined") {
   const id = "vitrine-map-pulse-keyframes"
   if (!document.getElementById(id)) {
@@ -410,8 +529,7 @@ if (typeof document !== "undefined") {
       }
       .vitrine-map-marker[data-selected="true"] {
         z-index: 10 !important;
-        box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 35%, transparent),
-                    0 6px 18px -2px rgba(0,0,0,0.35) !important;
+        box-shadow: 0 0 0 4px color-mix(in oklch, var(--primary) 35%, transparent), 0 6px 18px -2px rgba(0,0,0,0.35) !important;
         transform: translate(-50%, -100%) scale(1.08) !important;
       }
       .vitrine-map-marker[data-verified="false"] {

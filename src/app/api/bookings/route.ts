@@ -9,10 +9,13 @@ import {
   notFound,
   parsePagination,
 } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { notifyNewBooking } from "@/lib/notifications"
 
 // CLIENT: create a booking + a PENDING payment record
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     if (session.role !== "CLIENT") {
       throw forbidden("Apenas clientes podem agendar serviços")
@@ -70,6 +73,16 @@ export async function POST(request: Request) {
       },
     })
 
+    // Notificar provider via WhatsApp + in-app (best-effort)
+    notifyNewBooking(
+      session.userId,
+      data.providerId,
+      booking.id,
+      service.title,
+      data.scheduledAt,
+      booking.client?.name ?? "Cliente",
+    ).catch(() => {})
+
     return NextResponse.json({ booking }, { status: 201 })
   } catch (e) {
     return handleError(e)
@@ -79,6 +92,7 @@ export async function POST(request: Request) {
 // Any user: list bookings relevant to them
 export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { searchParams } = new URL(request.url)
     const role = (searchParams.get("role") || session.role) as

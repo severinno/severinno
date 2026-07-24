@@ -29,7 +29,8 @@ import {
   Wrench,
 } from "lucide-react"
 
-import { useAuthStore, useViewStore } from "@/store"
+import { useAuthStore } from "@/store/auth"
+import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"

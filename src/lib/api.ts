@@ -85,8 +85,9 @@ export type Category = {
 export type PagedResult<T> = {
   items: T[]
   total: number
-  page: number
   limit: number
+  nextCursor: string | null
+  hasMore: boolean
   radiusExpanded?: boolean
 }
 
@@ -143,7 +144,7 @@ async function request<T>(
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
-    cache: "no-store",
+    cache: "no-store", // dynamic data; public endpoints use per-route caching via apiGet calls
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   }
 
@@ -209,7 +210,7 @@ export type ProvidersQuery = {
   categoryId?: string
   radius?: number
   sort?: "rating" | "distance"
-  page?: number
+  cursor?: string | null
   limit?: number
   verified?: boolean
   minRating?: number
@@ -223,7 +224,7 @@ export function fetchProviders(query: ProvidersQuery) {
     categoryId: query.categoryId,
     radius: query.radius,
     sort: query.sort,
-    page: query.page,
+    cursor: query.cursor,
     limit: query.limit,
     verified: query.verified,
     minRating: query.minRating,

@@ -31,6 +31,7 @@ import { ProviderFinance } from "./provider-finance"
 import { ProviderMessages } from "./provider-messages"
 import { ProviderReviews } from "./provider-reviews"
 import { ProviderProfile } from "./provider-profile"
+import { ProviderOnboarding } from "./provider-onboarding"
 
 // ---------------------------------------------------------------------------
 // View metadata
@@ -144,6 +145,20 @@ function useBadges() {
     refetchInterval: 60_000,
   })
 
+  // Unread WALLET_CREDITED notifications → badge na aba Financeiro
+  const walletNotifQuery = useQuery<{ unreadCount: number }>({
+    queryKey: ["provider", "panel", "wallet-badges"],
+    queryFn: () =>
+      apiGet("/api/notifications", {
+        unread: "1",
+        type: "WALLET_CREDITED",
+        page: 1,
+        limit: 1,
+      }),
+    enabled: !!user,
+    refetchInterval: 30_000,
+  })
+
   const pendingQuotes = React.useMemo(() => {
     const items = quotesQuery.data?.items ?? []
     return items.reduce(
@@ -154,8 +169,9 @@ function useBadges() {
   }, [quotesQuery.data])
 
   const pendingBookings = bookingsQuery.data?.items?.length ?? 0
+  const walletBadge = walletNotifQuery.data?.unreadCount ?? 0
 
-  return { pendingQuotes, pendingBookings }
+  return { pendingQuotes, pendingBookings, walletBadge }
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +182,28 @@ export function ProviderPanel() {
   const navigate = useViewStore((s) => s.navigate)
   const view = useViewStore((s) => s.view)
   const user = useAuthStore((s) => s.user)
-  const { pendingQuotes, pendingBookings } = useBadges()
+  const { pendingQuotes, pendingBookings, walletBadge } = useBadges()
+
+  // ── Onboarding check ───────────────────────────────────────────────
+  const onboardingQuery = useQuery<{ step: number; done: boolean }>({
+    queryKey: ["onboarding-progress", user?.id],
+    queryFn: () => apiGet("/api/provider/onboarding"),
+    enabled: !!user,
+    staleTime: 30_000,
+  })
+
+  const onboardingDone = onboardingQuery.data?.done ?? false
+
+  // Show onboarding only after query resolved successfully
+  if (onboardingQuery.isSuccess && !onboardingDone && user?.role === "PROVIDER") {
+    return (
+      <ProviderOnboarding
+        onComplete={() => {
+          navigate("provider.dashboard")
+        }}
+      />
+    )
+  }
 
   const meta = VIEW_MAP[view] ?? VIEWS[0]
 
@@ -179,7 +216,9 @@ export function ProviderPanel() {
         ? pendingQuotes
         : v.view === "provider.bookings"
           ? pendingBookings
-          : undefined,
+          : v.view === "provider.finance"
+            ? walletBadge
+            : undefined,
   }))
 
   const breadcrumbs = [

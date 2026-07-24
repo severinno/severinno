@@ -1199,7 +1199,9 @@ function Step3Payment({
               onClick={() => {
                 navigator.clipboard
                   .writeText("severinno@exemplo.com")
-                  .catch(() => {})
+                  .catch((err) => {
+                    console.warn("[booking-modal] clipboard copy failed:", err)
+                  })
                 toast.success("Chave PIX copiada!")
               }}
             >

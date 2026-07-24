@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
+import logger from "@/lib/logger"
+import { handleError, badRequest } from "@/lib/api-server"
 
 /**
  * POST /api/chat
@@ -18,12 +20,7 @@ export async function POST(req: NextRequest) {
       | Array<{ role: string; content: string }>
       | undefined
 
-    if (!message?.trim()) {
-      return NextResponse.json(
-        { error: "Mensagem é obrigatória." },
-        { status: 400 },
-      )
-    }
+    if (!message?.trim()) throw badRequest("Mensagem é obrigatória.")
 
     // Limit history to last 10 messages to keep context manageable
     const trimmedHistory = (history ?? []).slice(-10)
@@ -74,11 +71,7 @@ Serviços populares: Encanador, Eletricista, Pintor, Diarista, Pedreiro, Jardine
     }
 
     return NextResponse.json({ response })
-  } catch (err) {
-    console.error("[chat] POST error:", err)
-    return NextResponse.json(
-      { error: "Erro interno. Tente novamente." },
-      { status: 500 },
-    )
+  } catch (e) {
+    return handleError(e)
   }
 }

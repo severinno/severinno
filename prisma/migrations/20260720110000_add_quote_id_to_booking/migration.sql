@@ -1,0 +1,1 @@
+ALTER TABLE "Booking" ADD COLUMN "quoteId" TEXT UNIQUE REFERENCES "QuoteRequest"("id") ON DELETE SET NULL;

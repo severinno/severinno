@@ -16,6 +16,7 @@
  */
 
 import * as React from "react"
+import Image from "next/image"
 import {
   Star,
   MapPin,
@@ -41,7 +42,9 @@ import {
   type ServiceUnit,
 } from "@/lib/constants"
 import { toggleFavorite, type ProviderCard as ProviderCardType } from "@/lib/api"
-import { useAuthStore, useUIStore, useCompareStore, MAX_COMPARE } from "@/store"
+import { useAuthStore } from "@/store/auth"
+import { useUIStore } from "@/store/ui"
+import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 import { useTilt } from "@/hooks/use-animation"
 import { toast } from "sonner"
 
@@ -219,11 +222,13 @@ export default function ProviderCard({
     >
       {/* Cover */}
       <div className="relative h-32 w-full overflow-hidden bg-muted md:h-36">
-        <img
+        <Image
           src={coverUrl}
           alt={`Capa de ${provider.name}`}
+          fill
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
           loading="lazy"
-          className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
         {/* Bottom gradient for legibility */}
         <div

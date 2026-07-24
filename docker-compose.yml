@@ -1,0 +1,108 @@
+# =============================================================================
+# docker-compose.yml — Severinno Marketplace (Development)
+#
+# Spins up PostgreSQL 16 + Redis 7 + the Next.js app for local development.
+# For production, use Dockerfile directly (multi-stage build) or a proper
+# orchestration setup (Kubernetes, Nomad, docker compose with replicas).
+# =============================================================================
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-severinno}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-severinno_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-severinno}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-severinno} -d ${POSTGRES_DB:-severinno}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO (S3-compatible storage for dev) ───────────────────────────────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Next.js (development mode) ──────────────────────────────────────────
+  app:
+    build:
+      context: .
+      target: runner
+    image: severinno:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: "0.0.0.0"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD:-severinno_dev}@postgres:5432/${POSTGRES_DB:-severinno}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-severinno-uploads}
+      SESSION_SECRET: ${SESSION_SECRET}
+      CRON_SECRET: ${CRON_SECRET:-dev-cron-secret}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:3001}
+      # RABBITMQ_URL is not set by default — add when RabbitMQ service is available
+    # Health check defined in Dockerfile
+    # Add --cap-add SYS_PTRACE if you need debugging tools
+
+# ── GlitchTip (Sentry-compatible error monitoring) ────────────────────
+# Start separately with:
+#   docker compose -f docker-compose.glitchtip.yml --env-file .env.glitchtip up -d
+#
+# Or merge into this stack:
+#   docker compose -f docker-compose.yml -f docker-compose.glitchtip.yml up -d
+#
+# See docker-compose.glitchtip.yml and .env.glitchtip.example for details.
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { cacheControlPublic } from "@/lib/api-server"
+import logger from "@/lib/logger"
 
 /**
  * Public platform stats — used by the vitrine hero for social proof.
@@ -37,7 +39,7 @@ export async function GET() {
       ? Math.round(ratingAgg._avg.rating * 10) / 10
       : 0
 
-    return NextResponse.json({
+    return cacheControlPublic(NextResponse.json({
       providers,
       services,
       reviews,
@@ -45,8 +47,9 @@ export async function GET() {
       avgRating,
       totalUsers,
       recentSignups24h,
-    })
-  } catch {
+    }), 30, 120)
+  } catch (e) {
+    logger.error({ err: e }, "stats/public failed — returning zeros")
     return NextResponse.json(
       {
         providers: 0,

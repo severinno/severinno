@@ -21,6 +21,8 @@ export type GeoState = {
   state: string | null
   status: GeoStatus
   error: string | null
+  /** ISO-8601 timestamp of when the location was last updated. */
+  updatedAt: string | null
 
   setFromGPS: () => Promise<void>
   setFromCoords: (lat: number, lng: number, address?: string) => void
@@ -49,7 +51,7 @@ export const useGeoStore = create<GeoState>()(
           })
           return
         }
-        set({ status: "locating", error: null })
+        set({ status: "locating", error: null, updatedAt: new Date().toISOString() })
         return new Promise<void>((resolve) => {
           navigator.geolocation.getCurrentPosition(
             (pos) => {
@@ -58,6 +60,7 @@ export const useGeoStore = create<GeoState>()(
                 lng: pos.coords.longitude,
                 status: "ready",
                 error: null,
+                updatedAt: new Date().toISOString(),
               })
               resolve()
             },
@@ -85,6 +88,7 @@ export const useGeoStore = create<GeoState>()(
           address: address ?? null,
           status: "ready",
           error: null,
+          updatedAt: new Date().toISOString(),
         })
       },
 
@@ -111,6 +115,7 @@ export const useGeoStore = create<GeoState>()(
             state: data.state ?? null,
             status: "ready",
             error: null,
+            updatedAt: new Date().toISOString(),
           })
         } catch {
           set({
@@ -131,6 +136,7 @@ export const useGeoStore = create<GeoState>()(
           state: null,
           status: "idle",
           error: null,
+          updatedAt: null,
         }),
     }),
     {
@@ -145,6 +151,7 @@ export const useGeoStore = create<GeoState>()(
         city: s.city,
         state: s.state,
         status: s.status,
+        updatedAt: s.updatedAt,
       }),
     },
   ),

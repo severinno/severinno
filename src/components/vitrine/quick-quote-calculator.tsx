@@ -42,7 +42,7 @@ import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { useUIStore } from "@/store"
+import { useUIStore } from "@/store/ui"
 
 // ---------------------------------------------------------------------------
 // Price data (hardcoded)

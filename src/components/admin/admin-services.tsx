@@ -81,7 +81,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { useUIStore } from "@/store"
+import { useUIStore } from "@/store/ui"
 
 import {
   ConfirmDialog,

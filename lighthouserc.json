@@ -1,0 +1,30 @@
+{
+  "ci": {
+    "collect": {
+      "url": [
+        "http://localhost:3000/",
+        "http://localhost:3000/categoria/limpeza",
+        "http://localhost:3000/u/maria-limpeza"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "preset": "desktop",
+        "chromeFlags": "--no-sandbox --headless"
+      }
+    },
+    "assert": {
+      "preset": "lighthouse:no-pwa",
+      "assertions": {
+        "first-contentful-paint": ["warn", { "maxNumericValue": 3000 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 4500 }],
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.25 }],
+        "speed-index": ["warn", { "maxNumericValue": 5000 }],
+        "total-blocking-time": ["warn", { "maxNumericValue": 500 }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "./lhci-reports"
+    }
+  }
+}
