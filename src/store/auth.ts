@@ -2,6 +2,7 @@
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
+import { apiPost, apiGet } from "@/lib/api"
 
 export type UserRole = "CLIENT" | "PROVIDER" | "ADMIN"
 
@@ -11,6 +12,8 @@ export type AuthUser = {
   email: string
   role: UserRole
   avatarUrl?: string | null
+  soundEnabled?: boolean
+  vibrateEnabled?: boolean
 }
 
 type AuthStatus = "idle" | "loading" | "authenticated" | "unauthenticated"
@@ -55,15 +58,12 @@ export const useAuthStore = create<AuthState>()(
       login: async ({ email, password }) => {
         set({ status: "loading", error: null })
         try {
-          const res = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
+          const data = await apiPost<{ user: AuthUser }>("/api/auth/login", {
+            email,
+            password,
           })
-          const data = await res.json()
-          if (!res.ok || !data?.user) {
-            const msg =
-              data?.error || "Não foi possível entrar. Verifique seus dados."
+          if (!data?.user) {
+            const msg = "Não foi possível entrar. Verifique seus dados."
             set({ status: "unauthenticated", error: msg })
             return { ok: false, error: msg }
           }
@@ -74,8 +74,11 @@ export const useAuthStore = create<AuthState>()(
             initialized: true,
           })
           return { ok: true }
-        } catch (e) {
-          const msg = "Erro de rede ao entrar. Tente novamente."
+        } catch (e: unknown) {
+          const msg =
+            (e && typeof e === "object" && "message" in e
+              ? String((e as { message: string }).message)
+              : null) ?? "Erro de rede ao entrar. Tente novamente."
           set({ status: "unauthenticated", error: msg })
           return { ok: false, error: msg }
         }
@@ -84,14 +87,12 @@ export const useAuthStore = create<AuthState>()(
       register: async (payload) => {
         set({ status: "loading", error: null })
         try {
-          const res = await fetch("/api/auth/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          })
-          const data = await res.json()
-          if (!res.ok || !data?.user) {
-            const msg = data?.error || "Não foi possível criar a conta."
+          const data = await apiPost<{ user: AuthUser }>(
+            "/api/auth/register",
+            payload,
+          )
+          if (!data?.user) {
+            const msg = "Não foi possível criar a conta."
             set({ status: "unauthenticated", error: msg })
             return { ok: false, error: msg }
           }
@@ -102,8 +103,11 @@ export const useAuthStore = create<AuthState>()(
             initialized: true,
           })
           return { ok: true }
-        } catch (e) {
-          const msg = "Erro de rede ao criar conta. Tente novamente."
+        } catch (e: unknown) {
+          const msg =
+            (e && typeof e === "object" && "message" in e
+              ? String((e as { message: string }).message)
+              : null) ?? "Erro de rede ao criar conta. Tente novamente."
           set({ status: "unauthenticated", error: msg })
           return { ok: false, error: msg }
         }
@@ -111,7 +115,7 @@ export const useAuthStore = create<AuthState>()(
 
       logout: async () => {
         try {
-          await fetch("/api/auth/logout", { method: "POST" })
+          await apiPost("/api/auth/logout")
         } catch {
           // ignore network errors on logout
         } finally {
@@ -121,16 +125,7 @@ export const useAuthStore = create<AuthState>()(
 
       fetchMe: async () => {
         try {
-          const res = await fetch("/api/auth/me", { cache: "no-store" })
-          if (!res.ok) {
-            set({
-              user: null,
-              status: "unauthenticated",
-              initialized: true,
-            })
-            return
-          }
-          const data = await res.json()
+          const data = await apiGet<{ user: AuthUser }>("/api/auth/me")
           if (data?.user) {
             set({
               user: data.user as AuthUser,

@@ -43,7 +43,14 @@ import { cn } from "@/lib/utils"
 import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
 import { formatRelative } from "@/lib/format"
 import { apiGet, apiPatch } from "@/lib/api"
-import { useAuthStore, useViewStore } from "@/store"
+import {
+  useTransactionNotificationSound,
+  useWelcomeSound,
+} from "@/lib/use-coin-sound"
+import { useAuthStore } from "@/store/auth"
+import { useViewStore } from "@/store/view"
+import { MuteIndicator } from "@/components/shared/mute-indicator"
+import { VibrationIndicator } from "@/components/shared/vibration-indicator"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -233,6 +240,12 @@ export function DashboardShell({
 
   const unreadCount = notificationsQuery.data?.unreadCount ?? 0
   const notifItems = notificationsQuery.data?.items ?? []
+
+  // ---- Coin sound on new transaction notifications (auto-detected) ----------
+  useTransactionNotificationSound(notifItems, user?.role)
+
+  // ---- Welcome sound on first panel entry (once per browser) ---------------
+  useWelcomeSound()
 
   const handleNav = (view: string) => {
     setMobileOpen(false)
@@ -467,6 +480,12 @@ export function DashboardShell({
                     {mobileNavItems}
                   </div>
                 </ScrollArea>
+                {/* Mobile wallet balance — provider only */}
+                {user?.role === "PROVIDER" ? (
+                  <div className="border-t px-3 py-3">
+                    <WalletBalancePill />
+                  </div>
+                ) : null}
                 {/* Mobile footer */}
                 <div className="p-3">{mobileFooter}</div>
               </div>
@@ -533,6 +552,15 @@ export function DashboardShell({
 
               {/* Right section */}
               <div className="flex items-center gap-0.5">
+                {/* Wallet balance — provider only */}
+                {user?.role === "PROVIDER" ? <WalletBalancePill /> : null}
+
+                {/* Sound indicator */}
+                <MuteIndicator />
+
+                {/* Vibration indicator */}
+                <VibrationIndicator />
+
                 {/* Theme toggle */}
                 <Button
                   variant="ghost"
@@ -654,6 +682,7 @@ export function DashboardShell({
   )
 }
 
+import { WalletBalancePill } from "@/components/shared/wallet-balance-pill"
 // ---------------------------------------------------------------------------
 // NotificationsBell — dropdown list of recent notifications
 // ---------------------------------------------------------------------------

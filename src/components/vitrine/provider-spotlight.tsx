@@ -14,6 +14,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
+import Image from "next/image"
 import {
   Star,
   BadgeCheck,
@@ -33,7 +34,7 @@ import { motion, AnimatePresence } from "framer-motion"
 
 import { fetchProviders, type ProviderCard, type ProviderService } from "@/lib/api"
 import { useScrollReveal } from "@/hooks/use-animation"
-import { useUIStore } from "@/store"
+import { useUIStore } from "@/store/ui"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -227,9 +228,11 @@ function SpotlightCard({
               <div className="absolute -inset-1.5 rounded-full bg-gradient-to-br from-emerald-400 via-teal-400 to-emerald-500 opacity-60 blur-[2px] transition-opacity group-hover:opacity-80" />
               <div className="relative flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 sm:size-28 dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-400 ring-4 ring-background">
                 {provider.avatarUrl ? (
-                  <img
+                  <Image
                     src={provider.avatarUrl}
                     alt={provider.name}
+                    width={112}
+                    height={112}
                     className="size-full rounded-full object-cover"
                   />
                 ) : (

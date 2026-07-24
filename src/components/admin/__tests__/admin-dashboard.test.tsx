@@ -1,0 +1,169 @@
+/**
+ * Tests for AdminDashboard — preference toggles (sound & vibration).
+ *
+ * Verifies that:
+ *  - Sound and vibration toggles render in the preferences card
+ *  - Preview buttons render
+ *  - Toggling a switch calls apiPatch with the correct preference
+ */
+
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { axe } from "vitest-axe"
+
+// ---- Hoisted shared state (avoids vi.mock hoisting TDZ) --------------------
+const { mockApiPatch, mockPlayCoinSound, mockTryVibrate } = vi.hoisted(() => {
+  const apiPatch = vi.fn().mockResolvedValue({})
+  const playCoinSound = vi.fn()
+  const tryVibrate = vi.fn()
+  return { mockApiPatch: apiPatch, mockPlayCoinSound: playCoinSound, mockTryVibrate: tryVibrate }
+})
+
+vi.mock("@/store/auth", () => ({
+  useAuthStore: vi.fn(
+    (selector?: (s: { user: { id: string; name: string; soundEnabled?: boolean; vibrateEnabled?: boolean } | null }) => unknown) => {
+      const state = {
+        user: { id: "admin-1", name: "Admin", soundEnabled: true, vibrateEnabled: true },
+      }
+      return selector ? selector(state) : state
+    },
+  ),
+}))
+
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: vi.fn(() => ({
+    data: {
+      usersByRole: { CLIENT: 10, PROVIDER: 5, ADMIN: 1 },
+      providers: 5,
+      services: 20,
+      bookingsByStatus: { PENDING: 3, CONFIRMED: 5, IN_PROGRESS: 2, COMPLETED: 10, CANCELLED: 1 },
+      quotesByStatus: { PENDING: 4, ACCEPTED: 6, REJECTED: 2 },
+      revenue: { total: 50000, paymentsPaid: 35000 },
+      recentBookings: [],
+      topProviders: [],
+    },
+    isLoading: false,
+    isError: false,
+    isFetching: false,
+    refetch: vi.fn(),
+    dataUpdatedAt: Date.now(),
+  })),
+  useQueryClient: vi.fn(() => ({
+    invalidateQueries: vi.fn(),
+  })),
+}))
+
+vi.mock("@/lib/api", () => ({
+  apiGet: vi.fn().mockResolvedValue({}),
+  apiPatch: mockApiPatch,
+}))
+
+vi.mock("@/lib/sounds", () => ({
+  playCoinSound: mockPlayCoinSound,
+  tryVibrate: mockTryVibrate,
+}))
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
+
+vi.mock("@/components/ui/skeleton", () => ({
+  Skeleton: ({ className }: { className?: string }) => (
+    <div data-testid="skeleton" className={className} />
+  ),
+}))
+
+// ---- Recharts needs ResizeObserver -----------------------------------------
+vi.stubGlobal(
+  "ResizeObserver",
+  vi.fn().mockImplementation(() => ({
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+  })),
+)
+
+// ---- SUT import (must be after vi.mock) ------------------------------------
+import { AdminDashboard } from "../admin-dashboard"
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+afterEach(cleanup)
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Accessibility (axe-core)
+// ---------------------------------------------------------------------------
+
+describe("AdminDashboard — accessibility", () => {
+  it("has no axe violations", async () => {
+    const { container } = render(<AdminDashboard onNavigate={vi.fn()} />)
+    const results = await axe(container)
+    expect(results.violations).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Preference toggles
+// ---------------------------------------------------------------------------
+
+describe("AdminDashboard — preference toggles", () => {
+  it("renders sound preference toggle with label", () => {
+    render(<AdminDashboard onNavigate={vi.fn()} />)
+    expect(screen.getByText("Sons do painel")).toBeDefined()
+    expect(screen.getByLabelText("Ativar sons do painel")).toBeDefined()
+  })
+
+  it("renders vibration preference toggle with label", () => {
+    render(<AdminDashboard onNavigate={vi.fn()} />)
+    expect(screen.getByText("Vibração")).toBeDefined()
+    expect(screen.getByLabelText("Ativar vibração")).toBeDefined()
+  })
+
+  it("renders preview buttons for sound and vibration", () => {
+    render(<AdminDashboard onNavigate={vi.fn()} />)
+    expect(screen.getByTitle("Prévia do som")).toBeDefined()
+    expect(screen.getByTitle("Prévia da vibração")).toBeDefined()
+  })
+
+  it("calls playCoinSound when clicking sound preview button", () => {
+    render(<AdminDashboard onNavigate={vi.fn()} />)
+    const previewBtn = screen.getByTitle("Prévia do som")
+    fireEvent.click(previewBtn)
+    expect(mockPlayCoinSound).toHaveBeenCalledTimes(1)
+  })
+
+  it("calls tryVibrate when clicking vibration preview button", () => {
+    render(<AdminDashboard onNavigate={vi.fn()} />)
+    const previewBtn = screen.getByTitle("Prévia da vibração")
+    fireEvent.click(previewBtn)
+    expect(mockTryVibrate).toHaveBeenCalledTimes(1)
+  })
+
+  it("calls apiPatch with soundEnabled=false when toggling sound off", () => {
+    render(<AdminDashboard onNavigate={vi.fn()} />)
+
+    const soundSwitch = screen.getByLabelText("Ativar sons do painel")
+    fireEvent.click(soundSwitch)
+
+    expect(mockApiPatch).toHaveBeenCalledWith("/api/users/me", {
+      soundEnabled: false,
+    })
+  })
+
+  it("calls apiPatch with vibrateEnabled=false when toggling vibration off", () => {
+    render(<AdminDashboard onNavigate={vi.fn()} />)
+
+    const vibrateSwitch = screen.getByLabelText("Ativar vibração")
+    fireEvent.click(vibrateSwitch)
+
+    expect(mockApiPatch).toHaveBeenCalledWith("/api/users/me", {
+      vibrateEnabled: false,
+    })
+  })
+})

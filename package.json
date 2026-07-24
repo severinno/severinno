@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "NODE_ENV=production bun .next/standalone/server.js",
+    "start": "NODE_ENV=production node .next/standalone/server.js",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
@@ -26,6 +26,10 @@
     "db:search:refresh": "bun scripts/search-index.ts --refresh",
     "docs:generate": "bun scripts/generate-openapi.ts",
     "analyze": "ANALYZE=true bun run build",
+    "docker:build": "docker build -t severinno:latest .",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "health": "curl -f http://localhost:3000/api/health",
     "prepare": "husky"
   },
   "prisma": {
@@ -33,6 +37,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
+    "@aws-sdk/s3-request-presigner": "^3.1095.0",
     "@hookform/resolvers": "^5.1.1",
     "@mdxeditor/editor": "^3.39.1",
     "@opensearch-project/opensearch": "^3.6.0",

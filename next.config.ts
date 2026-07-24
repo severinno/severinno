@@ -1,21 +1,8 @@
 import type { NextConfig } from "next";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 
-const csp = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https: http:",
-  "font-src 'self' data:",
-  "connect-src 'self' https: http: ws: wss:",
-  "frame-src 'self'",
-  "worker-src 'self' blob:",
-  "media-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "upgrade-insecure-requests",
-].join("; ")
+// CSP is set dynamically in middleware.ts with per-request nonces.
+// Only static security headers remain here for pre-rendered responses.
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -30,7 +17,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: process.env.SKIP_TYPESCRIPT_CHECK === "true",
   },
 
-  // Security headers
+  // Static security headers (CSP is handled by middleware)
   async headers() {
     return [
       {
@@ -39,7 +26,6 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Content-Security-Policy", value: csp },
         ],
       },
     ];
@@ -61,6 +47,10 @@ const nextConfig: NextConfig = {
       // Gravatar / UI avatars (fallback)
       { protocol: "https", hostname: "*.gravatar.com" },
       { protocol: "https", hostname: "ui-avatars.com" },
+      // Picsum photos (cover fallback)
+      { protocol: "https", hostname: "picsum.photos" },
+      // Pravatar (avatar fallback)
+      { protocol: "https", hostname: "i.pravatar.cc" },
     ],
   },
 

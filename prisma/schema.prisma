@@ -45,6 +45,10 @@ model User {
   verified     Boolean  @default(false)
   active       Boolean  @default(true)
   deletedAt    DateTime?
+  // Denormalized fields for performance (see migration SQL for sync triggers)
+  avgRating    Float    @default(0)
+  reviewCount  Int      @default(0)
+  favoriteCount Int     @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -65,7 +69,7 @@ model User {
   notifications      Notification[]
   settings           Setting[]
 
-  @@index([role])
+  @@index([role, active, verified])
   @@index([city])
   @@index([lat, lng])
 }
@@ -322,11 +326,79 @@ model Payment {
   // status: "PENDING" | "PAID" | "REFUNDED"
   status        String   @default("PENDING")
   transactionId String?
+  // Lytex Pagamentos integration fields
+  lytexId       String?  @unique // ID da cobrança no Lytex
+  lytexStatus   String?          // Status no Lytex (pending|waitingPayment|paid|canceled|refunded|expired|failed)
+  qrCode        String?          // PIX QR Code copia-e-cola
+  qrCodeImage   String?          // PIX QR Code image URL
+  cardLastDigits String?         // Últimos 4 dígitos do cartão
+  cardBrand     String?          // Bandeira do cartão
+  installments  Int?             // Número de parcelas
+  paidAt        DateTime?        // Data do pagamento efetivo
+  lytexRawResponse Json?         // Raw response do Lytex (para debug)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
+  @@index([status])
+  @@index([lytexId])
+  @@index([lytexStatus])
+}
+
+// ============================================================================
+// SETTLEMENT PERIOD — automatic settlement cycles (weekly/monthly)
+// ============================================================================
+model SettlementPeriod {
+  id              String   @id @default(cuid())
+  // type: "WEEKLY" | "MONTHLY"
+  type            String   @default("WEEKLY")
+  // status: "PENDING" | "FINALIZED"
+  status          String   @default("PENDING")
+  startDate       DateTime
+  endDate         DateTime
+  totalCommission Float    @default(0)
+  totalNet        Float    @default(0)
+  totalAmount     Float    @default(0)
+  providerCount   Int      @default(0)
+  transactionCount Int     @default(0)
+  notes           String?
+  finalizedAt     DateTime?
+  finalizedBy     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  providers ProviderSettlement[]
+
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+// ============================================================================
+// PROVIDER SETTLEMENT — per-provider amounts within a settlement period
+// ============================================================================
+model ProviderSettlement {
+  id              String   @id @default(cuid())
+  periodId        String
+  providerId      String
+  // status: "PENDING" | "PAID"
+  status          String   @default("PENDING")
+  totalAmount     Float    @default(0)
+  commission      Float    @default(0)
+  netAmount       Float    @default(0)
+  transactionCount Int     @default(0)
+  paidAt          DateTime?
+  paidBy          String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  period   SettlementPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  provider User             @relation(fields: [providerId], references: [id])
+
+  @@unique([periodId, providerId])
+  @@index([periodId])
+  @@index([providerId])
   @@index([status])
 }
 

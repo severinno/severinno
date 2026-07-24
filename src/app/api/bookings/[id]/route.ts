@@ -7,6 +7,8 @@ import {
   handleError,
   notFound,
 } from "@/lib/api-server"
+import { refundCharge, getCharge, lytexLogger } from "@/lib/lytex"
+import { notifyBookingStatus } from "@/lib/notifications"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -92,21 +94,48 @@ export async function PATCH(request: Request, { params }: Params) {
       )
     }
 
-    // Side effects on CONFIRM / COMPLETED / CANCELLED
+    // Side effects on CONFIRM / CANCELLED
     const patch: {
       status: string
       paymentStatus?: string
     } = { status: next }
 
+    // Se provider CONFIRMA sem pagamento ainda, cria cobrança PIX automática
+    // (fluxo alternativo: provider "cobra na confirmação")
     if (next === "CONFIRMED" && booking.paymentStatus !== "PAID") {
-      // Simulate payment capture on confirm
-      patch.paymentStatus = "PAID"
+      // Mantém o fluxo original: agenda sem cobrança prévia
+      // O pagamento será feito via POST /api/bookings/[id]/pay
     }
-    if (next === "CANCELLED") {
-      // Refund if it was paid
-      if (booking.paymentStatus === "PAID") {
-        patch.paymentStatus = "REFUNDED"
+
+    if (next === "CANCELLED" && booking.paymentStatus === "PAID") {
+      // Tentar estornar no Lytex
+      const payment = await db.payment.findUnique({
+        where: { bookingId: id },
+        select: { lytexId: true, status: true, method: true },
+      })
+
+      if (payment?.lytexId) {
+        try {
+          // Primeiro consulta o status atual no Lytex
+          const charge = await getCharge(payment.lytexId)
+
+          if (charge.status === "paid") {
+            await refundCharge(payment.lytexId)
+            lytexLogger.info(
+              { bookingId: id, lytexId: payment.lytexId },
+              "Cancel: reembolso solicitado no Lytex",
+            )
+          }
+        } catch (e) {
+          lytexLogger.error(
+            { err: e, bookingId: id },
+            "Cancel: erro ao estornar no Lytex",
+          )
+          // Se falhou, ainda atualiza o status local (reembolso manual pode ser necessário)
+        }
       }
+
+      patch.paymentStatus = "REFUNDED"
     }
 
     const updated = await db.booking.update({
@@ -121,12 +150,37 @@ export async function PATCH(request: Request, { params }: Params) {
       },
     })
 
-    // Sync payment record if needed
+    // Sync payment record if needed — now includes lytexStatus update
     if (patch.paymentStatus && updated.payment) {
       await db.payment.update({
         where: { bookingId: id },
-        data: { status: patch.paymentStatus },
+        data: {
+          status: patch.paymentStatus,
+          ...(patch.paymentStatus === "REFUNDED" ? { lytexStatus: "refunded" } : {}),
+        },
       })
+    }
+
+    // Notificar as partes sobre a mudança de status (best-effort)
+    const newStatus = next
+    const serviceName = updated.service?.title ?? "Serviço"
+
+    // Notificar o cliente
+    notifyBookingStatus(
+      updated.clientId,
+      id,
+      newStatus,
+      serviceName,
+    ).catch(() => {})
+
+    // Notificar o provider (se não for o mesmo que o cliente)
+    if (updated.clientId !== updated.providerId) {
+      notifyBookingStatus(
+        updated.providerId,
+        id,
+        newStatus,
+        serviceName,
+      ).catch(() => {})
     }
 
     return NextResponse.json({ booking: updated })

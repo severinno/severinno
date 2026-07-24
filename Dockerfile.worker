@@ -1,0 +1,60 @@
+# ============================================================================
+# Severinno Marketplace SaaS — Lightweight Worker Dockerfile
+# Only includes runtime deps for RabbitMQ consumers (no Next.js build).
+# Usage: docker compose --profile workers up -d
+# ============================================================================
+
+# ── Stage 1: Dependencies ──────────────────────────────────────────────────
+FROM oven/bun:1 AS deps
+WORKDIR /app
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+
+# ── Stage 2: Build ─────────────────────────────────────────────────────────
+FROM oven/bun:1 AS builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY prisma ./prisma
+
+# Generate Prisma client (needs devDeps which we dodge by copying from deps)
+RUN bunx prisma generate
+
+# ── Stage 3: Runner ────────────────────────────────────────────────────────
+FROM oven/bun:1 AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN groupadd --gid 1001 appuser && \
+    useradd --uid 1001 --gid 1001 appuser
+
+RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends \
+    libvips \
+    && rm -rf /var/lib/apt/lists/*
+
+# Prisma client + schema + migrations
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/prisma ./prisma
+
+# Runtime node_modules (production only)
+COPY --from=deps /app/node_modules ./node_modules
+
+# Worker source code
+COPY src/queue ./src/queue
+COPY src/lib ./src/lib
+COPY package.json ./
+
+RUN chown -R appuser:appuser /app
+USER appuser
+
+COPY --chown=appuser:appuser scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD bun --eval "process.exit(0)" || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]

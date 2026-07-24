@@ -82,6 +82,8 @@ export const providerProfileSchema = z.object({
   lat: z.coerce.number().optional(),
   lng: z.coerce.number().optional(),
   radiusKm: z.coerce.number().min(1).max(200).optional(),
+  soundEnabled: z.boolean().optional(),
+  vibrateEnabled: z.boolean().optional(),
 })
 export type ProviderProfileInput = z.infer<typeof providerProfileSchema>
 
@@ -227,3 +229,32 @@ export const availabilitySchema = z.object({
   active: z.boolean().default(true),
 })
 export type AvailabilityInput = z.infer<typeof availabilitySchema>
+
+// ---------------------------------------------------------------------------
+// DATE BLOCK (provider blocks specific dates, e.g. vacations)
+// ---------------------------------------------------------------------------
+export const dateBlockSchema = z.object({
+  date: z.coerce.date(),
+  allDay: z.boolean().default(false),
+  startTime: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/, "Formato HH:mm")
+    .optional()
+    .or(z.literal("")),
+  endTime: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/, "Formato HH:mm")
+    .optional()
+    .or(z.literal("")),
+  reason: z.string().max(500).optional().or(z.literal("")),
+})
+export type DateBlockInput = z.infer<typeof dateBlockSchema>
+
+// ---------------------------------------------------------------------------
+// SLUG
+// ---------------------------------------------------------------------------
+export const slugSchema = z
+  .string()
+  .min(2)
+  .max(80)
+  .regex(/^[a-z0-9-]+$/, "Slug deve ter apenas letras, números e hífens")

@@ -56,6 +56,35 @@ import {
 const RESULTS_ANCHOR_ID = "vitrine-resultados"
 const PAGE_LIMIT = 9
 
+// ── Combined state (filters + debouncedQ + page) via reducer ─────────────
+// Using useReducer so that filter changes atomically reset the page,
+// avoiding the need for a separate sync effect (which would trigger
+// the react-hooks/set-state-in-effect lint rule).
+
+type VitrineState = {
+  filters: FiltersState
+  page: number
+  debouncedQ: string
+}
+
+type VitrineAction =
+  | { type: 'SET_FILTERS'; filters: FiltersState }
+  | { type: 'SET_CATEGORY'; id: string | null }
+  | { type: 'SET_PAGE'; page: number }
+  | { type: 'DEBOUNCE_Q'; q: string }
+
+function vitrineReducer(state: VitrineState, action: VitrineAction): VitrineState {
+  switch (action.type) {        case 'SET_FILTERS':
+      return { ...state, filters: action.filters, page: 1 }
+    case 'SET_CATEGORY':
+      return { ...state, filters: { ...state.filters, categoryId: action.id }, page: 1 }
+    case 'SET_PAGE':
+      return { ...state, page: action.page }
+    case 'DEBOUNCE_Q':
+      return { ...state, debouncedQ: action.q }
+  }
+}
+
 export default function Vitrine() {
   const { status: authStatus } = useAuthStore()
   const { lat, lng } = useGeoStore()
@@ -64,27 +93,18 @@ export default function Vitrine() {
   const openProvider = useUIStore((s) => s.openProvider)
 
   // ---------------------------------------------------------------- state --
-  const [filters, setFilters] = React.useState<FiltersState>(DEFAULT_FILTERS)
-  const [page, setPage] = React.useState(1)
+  const [{ filters, page, debouncedQ }, dispatch] = React.useReducer(
+    vitrineReducer,
+    { filters: DEFAULT_FILTERS, page: 1, debouncedQ: '' },
+  )
 
   // Debounce the free-text query so we don't fire one request per keystroke.
-  const [debouncedQ, setDebouncedQ] = React.useState(filters.q)
+  // Note: the reducer does NOT reset page on debounce because SET_FILTERS
+  // already reset it when the user typed (q is part of filters).
   React.useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedQ(filters.q), 350)
+    const t = window.setTimeout(() => dispatch({ type: 'DEBOUNCE_Q', q: filters.q }), 350)
     return () => window.clearTimeout(t)
   }, [filters.q])
-
-  // Reset pagination when the user-facing filters change.
-  React.useEffect(() => {
-    setPage(1)
-  }, [
-    debouncedQ,
-    filters.categoryId,
-    filters.radius,
-    filters.sort,
-    filters.verifiedOnly,
-    filters.minRating,
-  ])
 
   // ----------------------------------------------------------- categories --
   const categoriesQuery = useQuery({
@@ -158,7 +178,7 @@ export default function Vitrine() {
   // ---------------------------------------------------- category handlers --
   const handleCategorySelect = React.useCallback(
     (id: string | null) => {
-      setFilters((f) => ({ ...f, categoryId: id }))
+      dispatch({ type: 'SET_CATEGORY', id })
     },
     [],
   )
@@ -167,12 +187,12 @@ export default function Vitrine() {
     <div className="flex min-h-screen flex-col bg-background">
       <Topbar
         query={filters.q}
-        onQueryChange={(q) => setFilters((f) => ({ ...f, q }))}
+        onQueryChange={(q) => dispatch({ type: 'SET_FILTERS', filters: { ...filters, q } })}
         categories={categories}
         activeCategoryId={filters.categoryId}
         onCategorySelect={handleCategorySelect}
         onSearchSubmit={() => {
-          setDebouncedQ(filters.q)
+          dispatch({ type: 'DEBOUNCE_Q', q: filters.q })
           if (typeof window !== "undefined") {
             const el = document.getElementById(RESULTS_ANCHOR_ID)
             if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -184,10 +204,10 @@ export default function Vitrine() {
         {/* 1. Hero — trust engine, search, CTA */}
         <Hero
           query={filters.q}
-          onQueryChange={(q) => setFilters((f) => ({ ...f, q }))}
+          onQueryChange={(q) => dispatch({ type: 'SET_FILTERS', filters: { ...filters, q } })}
           resultsAnchorId={RESULTS_ANCHOR_ID}
           onSearchSubmit={() => {
-            setDebouncedQ(filters.q)
+            dispatch({ type: 'DEBOUNCE_Q', q: filters.q })
             if (typeof window !== "undefined") {
               const el = document.getElementById(RESULTS_ANCHOR_ID)
               if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -218,7 +238,7 @@ export default function Vitrine() {
           isFetching={providersQuery.isFetching}
           error={providersQuery.error}
           filters={filters}
-          onFiltersChange={setFilters}
+          onFiltersChange={(next) => dispatch({ type: 'SET_FILTERS', filters: next })}
           categories={categories}
           favorites={favorites}
           userLat={lat}
@@ -226,7 +246,7 @@ export default function Vitrine() {
           onQuote={handleQuote}
           onBook={handleBook}
           onView={handleView}
-          onPageChange={setPage}
+          onPageChange={(p) => dispatch({ type: 'SET_PAGE', page: p })}
           resultsAnchorId={RESULTS_ANCHOR_ID}
           radiusExpanded={providersQuery.data?.radiusExpanded}
         />

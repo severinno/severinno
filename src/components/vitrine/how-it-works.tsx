@@ -37,8 +37,9 @@ import {
 } from "lucide-react"
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { useUIStore } from "@/store"
+import { useUIStore } from "@/store/ui"
 import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
+
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,

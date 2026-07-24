@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    ".agents/rules/core-protocol.md",
+    ".agents/rules/universal-rules.md",
+    ".agents/rules/request-routing.md"
+  ],
+  "mcp": {
+    "skillspector": {
+      "type": "local",
+      "command": ["skillspector", "mcp"],
+      "enabled": true
+    }
+  }
+}

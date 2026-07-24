@@ -38,6 +38,8 @@ import {
 import { formatBRL, formatDate } from "@/lib/format"
 import { useAuthStore } from "@/store/auth"
 
+import { ProviderWallet } from "./provider-wallet"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -247,7 +249,19 @@ export function ProviderFinance() {
   }, [allBookings])
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-8">
+      {/* Wallet */}
+      <ProviderWallet />
+
+      {/* Yearly summary heading */}
+      <div className="-mb-2 flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Resumo do ano
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
       {/* Summary */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <FinanceStatCard

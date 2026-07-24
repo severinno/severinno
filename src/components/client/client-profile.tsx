@@ -21,14 +21,24 @@ import {
   IdCard,
   Loader2,
   Phone,
+  Play,
   Save,
+  Smartphone,
+  Speaker,
   User as UserIcon,
+  Volume2,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiGet, apiPatch } from "@/lib/api"
+import {
+  playCoinSound,
+  playCompletionSound,
+  playReviewSound,
+  tryVibrate,
+} from "@/lib/sounds"
 import { ROLE_LABELS, type UserRole } from "@/lib/constants"
-import { useAuthStore } from "@/store"
+import { useAuthStore } from "@/store/auth"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -37,6 +47,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Switch } from "@/components/ui/switch"
 import {
   AddressForm,
   type AddressFormValue,
@@ -70,6 +81,8 @@ type MeResponse = {
     lat?: number | null
     lng?: number | null
     verified?: boolean
+    soundEnabled?: boolean
+    vibrateEnabled?: boolean
   }
 }
 
@@ -103,6 +116,8 @@ export function ClientProfile() {
     lat: null,
     lng: null,
   })
+  const [soundEnabled, setSoundEnabled] = React.useState(true)
+  const [vibrateEnabled, setVibrateEnabled] = React.useState(true)
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false)
   const initialized = React.useRef(false)
 
@@ -115,6 +130,8 @@ export function ClientProfile() {
       setPhone(u.phone ?? "")
       setBio(u.bio ?? "")
       setAvatarUrl(u.avatarUrl ?? "")
+      setSoundEnabled(u.soundEnabled ?? true)
+      setVibrateEnabled(u.vibrateEnabled ?? true)
       setAddress({
         cep: u.cep ?? "",
         street: u.street ?? "",
@@ -138,6 +155,8 @@ export function ClientProfile() {
         phone,
         bio,
         avatarUrl,
+        soundEnabled,
+        vibrateEnabled,
         cep: address.cep,
         street: address.street,
         number: address.number,
@@ -389,7 +408,103 @@ export function ClientProfile() {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 border-t pt-3">
+              {/* Sound preference */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start gap-3">
+                  <Volume2 className="mt-0.5 size-5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Sons do painel</p>
+                    <p className="text-xs text-muted-foreground">
+                      Toque um som quando novas transações ou confirmações
+                      chegarem.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playCoinSound()
+                      setTimeout(playCompletionSound, 300)
+                      setTimeout(playReviewSound, 750)
+                    }}
+                    className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                    title="Prévia dos sons (moeda → sino → estrela)"
+                    aria-label="Ouvir prévia dos sons do painel"
+                  >
+                    <Play className="size-3.5" />
+                  </button>
+                  <Switch
+                    checked={soundEnabled}
+                    onCheckedChange={(v) => {
+                      setSoundEnabled(v)
+                      // Auto-save the preference
+                      apiPatch("/api/users/me", { soundEnabled: v }).then(
+                        () => {
+                          qc.invalidateQueries({ queryKey: ["users", "me"] })
+                          if (authUser) {
+                            setUser({ ...authUser, soundEnabled: v })
+                          }
+                        },
+                      )
+                    }}
+                    aria-label="Ativar sons do painel"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Vibration preference */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start gap-3">
+                  <Smartphone className="mt-0.5 size-5 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Vibração</p>
+                    <p className="text-xs text-muted-foreground">
+                      Vibração sutil em dispositivos móveis quando notificações
+                      chegarem.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      tryVibrate([30, 50, 30, 50, 30])
+                    }}
+                    className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                    title="Prévia da vibração"
+                    aria-label="Ouvir prévia da vibração"
+                  >
+                    <Play className="size-3.5" />
+                  </button>
+                  <Switch
+                    checked={vibrateEnabled}
+                    onCheckedChange={(v) => {
+                      setVibrateEnabled(v)
+                      // Auto-save the preference
+                      apiPatch("/api/users/me", { vibrateEnabled: v }).then(
+                        () => {
+                          qc.invalidateQueries({ queryKey: ["users", "me"] })
+                          if (authUser) {
+                            setUser({ ...authUser, vibrateEnabled: v })
+                          }
+                        },
+                      )
+                    }}
+                    aria-label="Ativar vibração"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex items-center justify-end gap-2 border-t pt-3">
                 <Button
                   type="button"
                   variant="outline"

@@ -1,3 +1,4 @@
+/// <reference types="vitest/globals" />
 import "@testing-library/jest-dom/vitest"
 
 // ── Mock ResizeObserver for framer-motion (used by error.tsx) ─────────────
@@ -26,15 +27,15 @@ process.env.REDIS_URL = "redis://localhost:6379"
 process.env.RABBITMQ_URL = "amqp://localhost:5672"
 
 // ── Mock @prisma/client globally ─────────────────────────────────────────
-// db.ts now calls client.$use() for soft-delete middleware.
-// Tests that don't mock @/lib/db themselves need PrismaClient to at least
-// expose $use as a callable function.
+// db.ts now uses $extends (Prisma v6) for soft-delete, not $use.
+// The mock provides a minimal PrismaClient that can be chained with $extends.
+// Tests that need specific mocking can override with vi.mock('@prisma/client', ...).
 vi.mock("@prisma/client", () => ({
   PrismaClient: vi.fn().mockImplementation(() => ({
-    $use: vi.fn(),
     $connect: vi.fn(),
     $disconnect: vi.fn(),
     $transaction: vi.fn(),
+    $extends: vi.fn().mockReturnThis(),
     user: {},
     service: {},
     booking: {},

@@ -26,6 +26,7 @@
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import { motion, AnimatePresence } from "framer-motion"
+import Image from "next/image"
 import {
   Search,
   LocateFixed,
@@ -34,7 +35,6 @@ import {
   Star,
   ShieldCheck,
   MapPin,
-  Clock,
   ArrowRight,
   Users,
   Wrench,
@@ -42,13 +42,13 @@ import {
   Eye,
   Zap,
   TrendingUp,
-  MessageCircle,
   CalendarCheck,
   UserPlus,
   FileText,
 } from "lucide-react"
 
-import { useGeoStore, useUIStore } from "@/store"
+import { useGeoStore } from "@/store/geo"
+import { useUIStore } from "@/store/ui"
 import { apiGet } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -575,9 +575,11 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
       {/* Avatar or icon */}
       <div className="relative shrink-0">
         {activity.userAvatar ? (
-          <img
+          <Image
             src={activity.userAvatar}
             alt={activity.userName}
+            width={40}
+            height={40}
             className="size-10 rounded-full object-cover ring-2 ring-white/20"
           />
         ) : (

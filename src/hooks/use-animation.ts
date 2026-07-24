@@ -26,24 +26,20 @@ export function useCountUp(
   },
 ) {
   const { duration = 1500, startOnView = true, decimals = 0 } = options ?? {}
-  const [value, setValue] = React.useState(0)
+  // If reduced-motion is preferred, skip animation and show final value
+  // immediately. This is computed during render, not in an effect, so the
+  // lint rule about setState-in-effect is satisfied.
+  const prefersReduced =
+    typeof window !== "undefined"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false
+  const initialValue = prefersReduced || target <= 0 ? target : 0
+  const [value, setValue] = React.useState(initialValue)
   const ref = React.useRef<HTMLSpanElement>(null)
   const startedRef = React.useRef(false)
 
   React.useEffect(() => {
-    if (target <= 0) {
-      setValue(0)
-      return
-    }
-
-    // Respect prefers-reduced-motion — skip animation, show final value
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      setValue(target)
-      return
-    }
+    if (target <= 0 || prefersReduced) return
 
     const startAnimation = () => {
       if (startedRef.current) return
@@ -99,7 +95,7 @@ export function useCountUp(
       observer.disconnect()
       window.clearTimeout(fallback)
     }
-  }, [target, duration, startOnView, decimals])
+  }, [target, duration, startOnView, decimals, prefersReduced])
 
   return { ref, value }
 }
@@ -118,20 +114,20 @@ export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(
   const { threshold = 0.15, rootMargin = "0px 0px -50px 0px", once = true } =
     options ?? {}
   const ref = React.useRef<T>(null)
-  const [visible, setVisible] = React.useState(false)
+  // Initialise based on reduced-motion *during render* (not in an effect)
+  const prefersReduced =
+    typeof window !== "undefined"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false
+  const [visible, setVisible] = React.useState(prefersReduced)
 
   React.useEffect(() => {
     const el = ref.current
     if (!el) return
 
-    // Respect reduced motion — show immediately
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      setVisible(true)
-      return
-    }
+    // If reduced motion is preferred, we already initialised visible=true
+    // during render, so there's nothing to observe.
+    if (prefersReduced) return
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -148,7 +144,7 @@ export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [threshold, rootMargin, once])
+  }, [threshold, rootMargin, once, prefersReduced])
 
   return { ref, visible }
 }

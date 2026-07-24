@@ -116,7 +116,7 @@ export async function DELETE(_request: Request, { params }: Params) {
       throw forbidden("Você não tem permissão para excluir este serviço")
     }
 
-    await db.service.delete({ where: { id } })
+    await db.service.update({ where: { id }, data: { deletedAt: new Date() } })
     return NextResponse.json({ ok: true })
   } catch (e) {
     return handleError(e)

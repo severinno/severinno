@@ -105,6 +105,26 @@ export async function destroySession() {
 }
 
 /**
+ * Check whether a user is active, using Redis cache to avoid DB lookups.
+ * Returns true if active, false otherwise. Caches the result for 5 minutes.
+ */
+async function verifyUserActive(userId: string): Promise<boolean> {
+  const cacheKey = `user:active:${userId}`
+  const cached = await cacheGet<{ active: boolean; role: string }>(cacheKey)
+
+  if (cached !== null) return cached.active
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, active: true },
+  })
+
+  const active = !!user?.active
+  await cacheSet(cacheKey, { active, role: user?.role ?? "" }, 300)
+  return active
+}
+
+/**
  * Require an authenticated user. Throws a Next.js-friendly error if absent.
  * Uses Redis cache (5min TTL) to avoid hitting PostgreSQL on every request.
  */
@@ -114,25 +134,9 @@ export async function requireUser(): Promise<SessionPayload> {
     throw new Error("UNAUTHORIZED")
   }
 
-  const cacheKey = `user:active:${session.userId}`
-  const cached = await cacheGet<{ active: boolean; role: string }>(cacheKey)
+  const active = await verifyUserActive(session.userId)
+  if (!active) throw new Error("UNAUTHORIZED")
 
-  if (cached !== null) {
-    if (!cached.active) throw new Error("UNAUTHORIZED")
-    return session
-  }
-
-  // Cache miss — verify in DB
-  const user = await db.user.findUnique({
-    where: { id: session.userId },
-    select: { id: true, role: true, active: true },
-  })
-  if (!user || !user.active) {
-    await cacheSet(cacheKey, { active: false, role: "" }, 300)
-    throw new Error("UNAUTHORIZED")
-  }
-
-  await cacheSet(cacheKey, { active: true, role: user.role }, 300)
   return session
 }
 
@@ -157,16 +161,14 @@ export async function requireRole(role: SessionPayload["role"]): Promise<Session
 /**
  * Soft variant: returns the session or null (no throw). Useful for SSR
  * pages that show different content for guests.
+ * Uses the same Redis cache as requireUser to avoid redundant DB hits.
  */
 export async function getOptionalSession(): Promise<SessionPayload | null> {
   const session = await getSession()
   if (!session) return null
   try {
-    const user = await db.user.findUnique({
-      where: { id: session.userId },
-      select: { id: true, role: true, active: true },
-    })
-    if (!user || !user.active) return null
+    const active = await verifyUserActive(session.userId)
+    if (!active) return null
     return session
   } catch {
     return null

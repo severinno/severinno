@@ -397,9 +397,9 @@ function BarChartSection({
         />
         <RTooltip
           cursor={{ fill: "hsl(var(--accent) / 0.4)" }}
-          formatter={(v: number, _name: string, props: { payload: { label: string } }) => [
+          formatter={(v: number, _name: string, props: { payload?: { label?: string } }) => [
             `${v} agendamentos`,
-            props.payload.label,
+            props.payload?.label ?? _name,
           ]}
           contentStyle={TOOLTIP_STYLE}
         />

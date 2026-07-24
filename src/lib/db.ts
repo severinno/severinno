@@ -1,74 +1,83 @@
 import { PrismaClient } from '@prisma/client'
+import { SOFT_DELETE_MODELS } from './soft-delete'
 
-// Models that support soft delete (have a `deletedAt` column)
-const SOFT_DELETE_MODELS = ['User', 'Service', 'Booking'] as const
-type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number]
+// ── Type helper for $extends query interceptor args ───────────────────────
+type QueryArgs = { args: Record<string, unknown>; query: (args: Record<string, unknown>) => Promise<unknown> }
 
-function isSoftDeleteModel(model: string): model is SoftDeleteModel {
-  return (SOFT_DELETE_MODELS as readonly string[]).includes(model)
+// Prisma model names in the JS API are camelCase (user, service, booking)
+const SOFT_DELETE_MODEL_KEYS = SOFT_DELETE_MODELS.map(
+  (m) => m.charAt(0).toLowerCase() + m.slice(1),
+)
+
+// Only operations that accept arbitrary WHERE clauses.
+// findUnique / findUniqueOrThrow are excluded because Prisma does not allow
+// non-unique fields (like deletedAt) in their `where` — those ops use unique
+// constraints and would throw "Unknown arg `deletedAt`" at runtime.
+const READ_OPS = [
+  'findMany', 'findFirst', 'findFirstOrThrow',
+  'count', 'aggregate', 'groupBy',
+]
+
+/**
+ * Build per-model query extensions for soft-delete.
+ *
+ * Prisma v6 removed `$use`. Using `$extends` instead:
+ *   - READ ops: add `deletedAt: null` to WHERE (unless caller explicitly queries deletedAt)
+ *   - DELETE ops: throw a clear error guiding devs to use `update()` with `deletedAt`
+ */
+function buildSoftDeleteQueries() {
+  const queries: Record<string, Record<string, (opts: QueryArgs) => Promise<unknown>>> = {}
+
+  for (const model of SOFT_DELETE_MODEL_KEYS) {
+    queries[model] = {}
+    const modelName = model.charAt(0).toUpperCase() + model.slice(1)
+
+    // Read operations: auto-filter deleted rows
+    for (const op of READ_OPS) {
+      queries[model][op] = async ({ args, query }: QueryArgs) => {
+        if (!(args.where as Record<string, unknown> | undefined)?.deletedAt) {
+          args.where = { ...(args.where as Record<string, unknown> ?? {}), deletedAt: null }
+        }
+        return query(args)
+      }
+    }
+
+    // Block hard-delete with helpful message
+    queries[model].delete = async ({ args: _a, query: _q }: QueryArgs) => {
+      throw new Error(
+        `[soft-delete] Cannot hard-delete a '${modelName}' record. ` +
+        `Use db.${model}.update({ where, data: { deletedAt: new Date() } }) instead.`,
+      )
+    }
+    queries[model].deleteMany = async ({ args: _a, query: _q }: QueryArgs) => {
+      throw new Error(
+        `[soft-delete] Cannot hard-delete '${modelName}' records. ` +
+        `Use db.${model}.updateMany({ where, data: { deletedAt: new Date() } }) instead.`,
+      )
+    }
+  }
+
+  return queries
 }
 
+// ── Create the extended Prisma client ──────────────────────────────────────
+
+/** Extended client type — compatible with `PrismaClient` in usage */
+type ExtendedPrismaClient = ReturnType<typeof createPrismaClient>
+
 function createPrismaClient() {
-  const client = new PrismaClient({
+  const base = new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query'] : [],
   })
 
-  // ── Soft-delete middleware ──────────────────────────────────────────────
-  // 1. findMany / findFirst / findFirstOrThrow / findUnique / findUniqueOrThrow / count / aggregate / groupBy
-  //    → automatically add `deletedAt: null` filter (skip if caller explicitly queries deletedAt)
-  // 2. delete → rewrite to update with deletedAt = now()
-  // 3. deleteMany → rewrite to updateMany with deletedAt = now()
-
-  // READ filter: exclude soft-deleted rows by default
-  client.$use(async (params, next) => {
-    if (!params.model || !isSoftDeleteModel(params.model)) return next(params)
-
-    const readActions = [
-      'findFirst',
-      'findFirstOrThrow',
-      'findUnique',
-      'findUniqueOrThrow',
-      'findMany',
-      'count',
-      'aggregate',
-      'groupBy',
-    ]
-
-    if (readActions.includes(params.action)) {
-      // Don't override if caller explicitly filters by deletedAt
-      const where = params.args?.where
-      if (where && 'deletedAt' in where) return next(params)
-
-      params.args = params.args ?? {}
-      params.args.where = { ...params.args.where, deletedAt: null }
-    }
-
-    return next(params)
+  return base.$extends({
+    name: 'soft-delete',
+    query: buildSoftDeleteQueries() as any,
   })
-
-  // WRITE intercept: convert delete → soft-delete update
-  client.$use(async (params, next) => {
-    if (!params.model || !isSoftDeleteModel(params.model)) return next(params)
-
-    if (params.action === 'delete') {
-      params.action = 'update'
-      params.args.data = { deletedAt: new Date() }
-    }
-
-    if (params.action === 'deleteMany') {
-      params.action = 'updateMany'
-      params.args = params.args ?? {}
-      params.args.data = { ...params.args.data, deletedAt: new Date() }
-    }
-
-    return next(params)
-  })
-
-  return client
 }
 
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
+  prisma: ExtendedPrismaClient | undefined
 }
 
 export const db = globalForPrisma.prisma ?? createPrismaClient()

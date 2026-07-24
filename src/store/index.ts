@@ -1,5 +1,6 @@
 /**
- * Central export for all Zustand stores used by the Severinno Marketplace SPA.
+ * Barrel file — maintained for convenience, but prefer direct imports
+ * (e.g. `import { useAuthStore } from "@/store/auth"`) for better tree-shaking.
  */
 export { useAuthStore, type AuthUser, type UserRole } from "./auth"
 export { useGeoStore, type GeoStatus } from "./geo"

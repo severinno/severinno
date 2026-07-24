@@ -34,6 +34,7 @@ import {
   MapPin,
   MessageSquare,
   MoreHorizontal,
+  Navigation,
   Star,
   XCircle,
 } from "lucide-react"
@@ -52,7 +53,8 @@ import {
   type ServiceUnit,
 } from "@/lib/constants"
 import { formatBRL, formatDateTime } from "@/lib/format"
-import { useUIStore, useViewStore } from "@/store"
+import { useUIStore } from "@/store/ui"
+import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -374,6 +376,9 @@ export function ClientBookings() {
                 navigate("client.messages", { with: b.provider.id })
               }
               onViewProvider={() => openProvider(b.provider.id)}
+              onTrack={() =>
+                window.open(`/tracking/${b.id}`, "_blank")
+              }
               isCompleting={completeMutation.isPending}
             />
           ))}
@@ -484,6 +489,7 @@ function BookingCard({
   onReview,
   onMessage,
   onViewProvider,
+  onTrack,
   isCompleting,
 }: {
   booking: Booking
@@ -493,6 +499,7 @@ function BookingCard({
   onReview: () => void
   onMessage: () => void
   onViewProvider: () => void
+  onTrack?: () => void
   isCompleting: boolean
 }) {
   const provider = booking.provider
@@ -502,6 +509,7 @@ function BookingCard({
   const canCancel =
     status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
   const canComplete = status === "CONFIRMED" || status === "IN_PROGRESS"
+  const canTrack = status === "IN_PROGRESS"
   const hasReview = (booking.reviews?.length ?? 0) > 0
   const canReview = status === "COMPLETED" && !hasReview
 
@@ -600,6 +608,12 @@ function BookingCard({
                 <MapPin className="size-4" />
                 Ver prestador
               </DropdownMenuItem>
+              {canTrack ? (
+                <DropdownMenuItem onSelect={onTrack}>
+                  <Navigation className="size-4 text-emerald-600" />
+                  Rastrear ao vivo
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem onSelect={onMessage}>
                 <MessageSquare className="size-4" />
                 Enviar mensagem
@@ -631,9 +645,7 @@ function BookingCard({
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-
-        {/* Quick action buttons (visible on mobile too) */}
+        </div>          {/* Quick action buttons (visible on mobile too) */}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
@@ -644,6 +656,17 @@ function BookingCard({
             <Eye className="size-4" />
             Detalhes
           </Button>
+          {canTrack ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onTrack}
+              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+            >
+              <Navigation className="size-4" />
+              Rastrear
+            </Button>
+          ) : null}
           {canComplete ? (
             <Button
               size="sm"

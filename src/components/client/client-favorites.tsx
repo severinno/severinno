@@ -32,7 +32,8 @@ import {
   type ProviderCard as ProviderCardType,
 } from "@/lib/api"
 import { formatDistance } from "@/lib/geo-client"
-import { useUIStore, useViewStore } from "@/store"
+import { useUIStore } from "@/store/ui"
+import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"

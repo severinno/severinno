@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -202,7 +203,8 @@ export async function GET() {
         },
       },
     )
-  } catch {
+  } catch (e) {
+    logger.error({ err: e }, "stats/activity failed — returning empty")
     return NextResponse.json({
       activities: [],
       browsingNow: 0,

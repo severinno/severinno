@@ -23,7 +23,8 @@ import {
 
 import { apiGet } from "@/lib/api"
 import { formatDate } from "@/lib/format"
-import { useUIStore, useViewStore } from "@/store"
+import { useUIStore } from "@/store/ui"
+import { useViewStore } from "@/store/view"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"

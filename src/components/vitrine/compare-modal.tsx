@@ -49,7 +49,8 @@ import {
   fetchProviderDetail,
   type ProviderDetail,
 } from "@/lib/api"
-import { useCompareStore, useUIStore, MAX_COMPARE } from "@/store"
+import { useCompareStore, MAX_COMPARE } from "@/store/compare"
+import { useUIStore } from "@/store/ui"
 import { toast } from "sonner"
 
 import {

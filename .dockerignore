@@ -1,0 +1,56 @@
+# ── Dependencies ───────────────────────────────────────────────────────────
+node_modules/
+.next/
+.git/
+
+# ── Environment ────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.*.local
+
+# ── Build artifacts ────────────────────────────────────────────────────────
+dist/
+build/
+.next/
+out/
+.turbo/
+
+# ── Generated files ────────────────────────────────────────────────────────
+prisma/generated/
+*.generated.ts
+
+# ── Logs ───────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── OS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Docker ─────────────────────────────────────────────────────────────────
+.docker/
+
+# ── Test artifacts ─────────────────────────────────────────────────────────
+coverage/
+test-results/
+playwright-report/
+
+# ── Misc project files (not needed in image) ───────────────────────────────
+*.png
+*.jpg
+*.svg
+*.md
+tool-results/
+agent-ctx/
+download/
+upload/
+mini-services/.gitkeep

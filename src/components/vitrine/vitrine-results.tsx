@@ -110,6 +110,13 @@ export default function VitrineResults({
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false)
 
+  // Derive valid selection — automatically clears if the selected provider
+  // is no longer in the current results (e.g. after pagination or filter change).
+  const activeSelectedId = React.useMemo(() => {
+    if (selectedId && !providers.some((p) => p.id === selectedId)) return null
+    return selectedId
+  }, [selectedId, providers])
+
   const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)))
   const showingFrom = total === 0 ? 0 : (page - 1) * limit + 1
   const showingTo = Math.min(total, page * limit)
@@ -126,13 +133,6 @@ export default function VitrineResults({
     else if (key === "minRating") next.minRating = 0
     onFiltersChange(next)
   }
-
-  // Reset selection when providers change
-  React.useEffect(() => {
-    if (selectedId && !providers.some((p) => p.id === selectedId)) {
-      setSelectedId(null)
-    }
-  }, [providers, selectedId])
 
   return (
     <section
@@ -333,7 +333,7 @@ export default function VitrineResults({
                 favorites={favorites}
                 userLat={userLat}
                 userLng={userLng}
-                selectedId={selectedId}
+                selectedId={activeSelectedId}
                 onSelect={setSelectedId}
                 onQuote={onQuote}
                 onBook={onBook}

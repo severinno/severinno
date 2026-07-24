@@ -10,10 +10,12 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const { page, limit, skip, take } = parsePagination(searchParams)
     const unreadOnly = searchParams.get("unread") === "1"
+    const typeFilter = searchParams.get("type")
 
     const where = {
       userId: session.userId,
       ...(unreadOnly ? { read: false } : {}),
+      ...(typeFilter ? { type: typeFilter } : {}),
     }
 
     const [items, total, unreadCount] = await Promise.all([

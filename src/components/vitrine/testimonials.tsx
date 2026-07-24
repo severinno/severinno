@@ -109,7 +109,7 @@ export default function Testimonials({
     return dist
   }, [reviews])
 
-  const maxDistCount = Math.max(...starDistribution, 1)
+  // maxDistCount was unused — removed to avoid lint warning.
 
   // Rating filter
   const [ratingFilter, setRatingFilter] = React.useState<RatingFilter>("all")
@@ -124,9 +124,10 @@ export default function Testimonials({
   const [current, setCurrent] = React.useState(0)
   const [count, setCount] = React.useState(0)
 
-  // Autoplay plugin ref
-  const autoplayRef = React.useRef(
-    Autoplay({ delay: 5000, stopOnInteraction: true }),
+  // Autoplay plugin — stable reference across renders
+  const autoplayPlugin = React.useMemo(
+    () => Autoplay({ delay: 5000, stopOnInteraction: true }),
+    [],
   )
 
   // Pause/resume on hover
@@ -135,18 +136,19 @@ export default function Testimonials({
 
   const handleMouseEnter = React.useCallback(() => {
     setIsPaused(true)
-    autoplayRef.current.stop()
+    autoplayPlugin.stop()
     if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current)
-  }, [])
+  }, [autoplayPlugin])
 
   const handleMouseLeave = React.useCallback(() => {
     pauseTimerRef.current = setTimeout(() => {
       setIsPaused(false)
-      autoplayRef.current.play()
+      autoplayPlugin.play()
     }, 300)
-  }, [])
+  }, [autoplayPlugin])
 
-  // Sync carousel state
+  // Carousel state sync — setState is called inside async event handlers,
+  // NOT synchronously within the effect body.
   React.useEffect(() => {
     if (!api) return
     setCount(api.scrollSnapList().length)
@@ -366,7 +368,7 @@ export default function Testimonials({
                 align: "start",
                 loop: true,
               }}
-              plugins={[autoplayRef.current]}
+              plugins={[autoplayPlugin]}
               className="w-full"
             >
               <CarouselContent className="-ml-4">

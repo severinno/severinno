@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     }
 
     // Validate every item
-    const parsed = rawItems.map((it: unknown) => availabilitySchema.parse(it))
+    const parsed = rawItems.map((it: Record<string, unknown>) => availabilitySchema.parse(it)) as Array<{ dayOfWeek: number; startTime: string; endTime: string; active: boolean }>
 
     // Validate startTime < endTime for each
     for (const it of parsed) {
