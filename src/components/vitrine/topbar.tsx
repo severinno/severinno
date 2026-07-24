@@ -282,6 +282,23 @@ export default function Topbar({
     setLocating(true)
     try {
       await setFromGPS()
+      // Try to reverse geocode to populate the city name
+      const geo = useGeoStore.getState()
+      if (geo.lat != null && geo.lng != null && !geo.city) {
+        try {
+          await fetch(
+            `/api/geo/reverse?lat=${geo.lat}&lng=${geo.lng}`,
+          )
+            .then((r) => r.json())
+            .then((data) => {
+              if (data?.city) {
+                useGeoStore.setState({ city: data.city, state: data.state ?? null })
+              }
+            })
+        } catch {
+          // Reverse geocode is optional — silently fail
+        }
+      }
     } finally {
       setLocating(false)
     }

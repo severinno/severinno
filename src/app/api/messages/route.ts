@@ -7,12 +7,14 @@ import {
   handleError,
   notFound,
 } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // Authenticated: list messages
 // - If `with` is provided → return conversation between current user and that user
 // - Otherwise → return list of conversations (last message per peer)
 export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.messages)
     const session = await requireUser()
     const { searchParams } = new URL(request.url)
     const withUserId = searchParams.get("with") || undefined
@@ -123,6 +125,7 @@ export async function GET(request: Request) {
 // Authenticated: send a message
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.messages)
     const session = await requireUser()
     const body = await request.json()
     const data = messageSchema.parse(body)

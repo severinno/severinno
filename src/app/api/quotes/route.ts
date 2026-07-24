@@ -9,10 +9,13 @@ import {
   notFound,
   parsePagination,
 } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { notifyNewQuote } from "@/lib/notifications"
 
 // CLIENT: create a quote request with N items
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.quotes)
     const session = await requireUser()
     if (session.role !== "CLIENT") {
       throw forbidden("Apenas clientes podem solicitar orçamentos")
@@ -81,6 +84,15 @@ export async function POST(request: Request) {
       },
     })
 
+    // Notificar provider sobre novo orçamento (best-effort)
+    notifyNewQuote(
+      session.userId,
+      data.providerId,
+      quote.id,
+      data.items.length,
+      quote.client?.name ?? "Cliente",
+    ).catch(() => {})
+
     return NextResponse.json({ quote }, { status: 201 })
   } catch (e) {
     return handleError(e)
@@ -90,6 +102,7 @@ export async function POST(request: Request) {
 // Any user: list quote requests relevant to them
 export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.quotes)
     const session = await requireUser()
     const { searchParams } = new URL(request.url)
     const role = (searchParams.get("role") || session.role) as
