@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { categorySchema } from "@/lib/validators"
-import { handleError, notFound, cacheControlPublic, syncCategorySearch } from "@/lib/api-server"
+import { handleError, notFound, cacheControlPublic, syncCategorySearch, invalidateCategoryCache } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
 
 type CategoryWithCount = Awaited<ReturnType<typeof db.category.findMany>>[number] & {
