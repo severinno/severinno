@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { NextResponse } from "next/server"
 import {
   HttpError,
   badRequest,
@@ -10,6 +11,9 @@ import {
   parsePagination,
   publicUser,
   USER_PUBLIC_SELECT,
+  cacheControlPublic,
+  syncCategorySearch,
+  syncServiceSearch,
 } from "../api-server"
 
 // Mock logger to avoid noisy output
@@ -17,6 +21,14 @@ vi.mock("../logger", () => ({
   default: { error: vi.fn() },
   logger: { error: vi.fn() },
 }))
+
+const { mockDb } = vi.hoisted(() => ({
+  mockDb: {
+    $queryRawUnsafe: vi.fn().mockResolvedValue([]),
+  },
+}))
+
+vi.mock("../db", () => ({ db: mockDb }))
 
 describe("HttpError", () => {
   it("creates error with status and message", () => {
@@ -173,5 +185,80 @@ describe("USER_PUBLIC_SELECT", () => {
     expect(USER_PUBLIC_SELECT).toHaveProperty("name")
     expect(USER_PUBLIC_SELECT).toHaveProperty("role")
     expect(USER_PUBLIC_SELECT).not.toHaveProperty("passwordHash")
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// cacheControlPublic
+// ---------------------------------------------------------------------------
+describe("cacheControlPublic", () => {
+  it("sets Cache-Control header with max-age and s-maxage", () => {
+    const res = new Response()
+    const result = cacheControlPublic(res as unknown as NextResponse, 120, 600)
+    expect(result.headers.get("Cache-Control")).toBe("public, max-age=120, s-maxage=600")
+    expect(result).toBe(res) // returns same response object
+  })
+
+  it("defaults s-maxage to max-age when staleWhileRevalidate is omitted", () => {
+    const res = new Response()
+    const result = cacheControlPublic(res as unknown as NextResponse, 60)
+    expect(result.headers.get("Cache-Control")).toBe("public, max-age=60, s-maxage=60")
+  })
+
+  it("handles zero max-age", () => {
+    const res = new Response()
+    const result = cacheControlPublic(res as unknown as NextResponse, 0)
+    expect(result.headers.get("Cache-Control")).toBe("public, max-age=0, s-maxage=0")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// syncCategorySearch
+// ---------------------------------------------------------------------------
+describe("syncCategorySearch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("inserts a category reindex job into search_reindex_queue", async () => {
+    await syncCategorySearch({ id: "cat-123" })
+    expect(mockDb.$queryRawUnsafe).toHaveBeenCalledTimes(1)
+    const sql = mockDb.$queryRawUnsafe.mock.calls[0][0] as string
+    expect(sql).toContain("INSERT INTO")
+    expect(sql).toContain("search_reindex_queue")
+    expect(mockDb.$queryRawUnsafe.mock.calls[0][1]).toBe("category")
+    expect(mockDb.$queryRawUnsafe.mock.calls[0][2]).toBe("cat-123")
+    expect(mockDb.$queryRawUnsafe.mock.calls[0][3]).toBe("upsert")
+  })
+
+  it("resolves to undefined on success", async () => {
+    mockDb.$queryRawUnsafe.mockResolvedValue([])
+    await expect(syncCategorySearch({ id: "cat-1" })).resolves.toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// syncServiceSearch
+// ---------------------------------------------------------------------------
+describe("syncServiceSearch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("inserts a service reindex job into search_reindex_queue", async () => {
+    await syncServiceSearch({ id: "svc-456" })
+    expect(mockDb.$queryRawUnsafe).toHaveBeenCalledTimes(1)
+    const sql = mockDb.$queryRawUnsafe.mock.calls[0][0] as string
+    expect(sql).toContain("INSERT INTO")
+    expect(sql).toContain("search_reindex_queue")
+    expect(mockDb.$queryRawUnsafe.mock.calls[0][1]).toBe("service")
+    expect(mockDb.$queryRawUnsafe.mock.calls[0][2]).toBe("svc-456")
+    expect(mockDb.$queryRawUnsafe.mock.calls[0][3]).toBe("upsert")
+  })
+
+  it("resolves to undefined on success", async () => {
+    mockDb.$queryRawUnsafe.mockResolvedValue([])
+    await expect(syncServiceSearch({ id: "svc-1" })).resolves.toBeUndefined()
   })
 })
