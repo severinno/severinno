@@ -1,86 +1,32 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { SESSION_COOKIE_NAME, signPayload, parseCookieValue, constantTimeEqual } from "@/lib/crypto-session"
+import {
+  checkEdgeRateLimit,
+  pickRateLimitForPath,
+  edgeRateLimitHeaders,
+} from "@/lib/edge-rate-limit"
 
 // ---------------------------------------------------------------------------
-// Rate limiting — simple in-memory token bucket for the Edge Runtime.
-// Tracks request counts per IP in a global Map (resets on deployment).
-// In production, replace with Upstash Redis or similar for persistence.
+// Session verification — HMAC logic lives in @/lib/crypto-session
 // ---------------------------------------------------------------------------
 
-const RATE_LIMIT_WINDOW_MS = 60 * 1000 // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 60      // max requests per window
-
-// Global rate-limit store (Edge Runtime: shared across requests on the same worker)
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
-
-function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetIn: number } {
-  const now = Date.now()
-  const entry = rateLimitStore.get(ip)
-
-  if (!entry || now > entry.resetAt) {
-    // New window
-    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
-    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1, resetIn: RATE_LIMIT_WINDOW_MS }
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
-    return { allowed: false, remaining: 0, resetIn: entry.resetAt - now }
-  }
-
-  entry.count++
-  return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - entry.count, resetIn: entry.resetAt - now }
-}
-
-// Periodically clean up stale entries (every 5 minutes)
-if (typeof setInterval !== "undefined") {
-  setInterval(() => {
-    const now = Date.now()
-    for (const [key, val] of rateLimitStore) {
-      if (now > val.resetAt) rateLimitStore.delete(key)
-    }
-  }, 5 * 60 * 1000)
-}
-
-// ---------------------------------------------------------------------------
-// Cookie-based session verification for Edge Runtime.
-// Mirrors the HMAC logic in src/lib/auth.ts but uses Web Crypto API.
-// ---------------------------------------------------------------------------
-
-const COOKIE_NAME = "severinno_session"
+const COOKIE_NAME = SESSION_COOKIE_NAME
 
 async function verifySession(
   cookieValue: string,
-  secret: string,
 ): Promise<{ userId: string; role: string } | null> {
-  const parts = cookieValue.split(".")
-  if (parts.length !== 4) return null
-  const [userId, role, expiresAtStr, signature] = parts
-  if (!userId || !role || !expiresAtStr || !signature) return null
+  const parsed = parseCookieValue(cookieValue)
+  if (!parsed) return null
 
-  const expiresAt = Number(expiresAtStr)
-  if (!Number.isFinite(expiresAt) || expiresAt * 1000 < Date.now()) return null
+  const { userId, role, expiresAt, signature } = parsed
 
-  const payload = `${userId}.${role}.${expiresAtStr}`
-  const encoder = new TextEncoder()
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  )
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payload))
-  const expected = Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
+  if (expiresAt * 1000 < Date.now()) return null
 
-  if (expected.length !== signature.length) return null
-  // Constant-time-ish compare (Edge doesn't have timingSafeEqual)
-  let mismatch = 0
-  for (let i = 0; i < expected.length; i++) {
-    mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i)
-  }
-  if (mismatch !== 0) return null
+  const payload = `${userId}.${role}.${expiresAt}`
+  const expected = await signPayload(payload)
+
+  if (!constantTimeEqual(signature, expected)) return null
 
   return { userId, role }
 }
@@ -144,24 +90,24 @@ export async function middleware(request: NextRequest) {
 
   // --- Rate limiting (API routes only) ---
   if (pathname.startsWith("/api/") && !pathname.startsWith("/api/cron/")) {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-            ?? request.headers.get("x-real-ip")
-            ?? "127.0.0.1"
-    const { allowed, remaining, resetIn } = checkRateLimit(ip)
+    const options = pickRateLimitForPath(pathname)
+    const result = await checkEdgeRateLimit(request, options)
 
     // Always include rate-limit headers
-    response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_MAX_REQUESTS))
-    response.headers.set("X-RateLimit-Remaining", String(remaining))
-    response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetIn / 1000)))
+    const headers = edgeRateLimitHeaders(result)
+    response.headers.set("X-RateLimit-Limit", headers["X-RateLimit-Limit"])
+    response.headers.set("X-RateLimit-Remaining", headers["X-RateLimit-Remaining"])
+    response.headers.set("X-RateLimit-Reset", headers["X-RateLimit-Reset"])
 
-    if (!allowed) {
+    if (!result.allowed) {
       return new NextResponse(
         JSON.stringify({ error: "Muitas requisições. Tente novamente em alguns segundos." }),
         {
           status: 429,
           headers: {
             "Content-Type": "application/json",
-            "Retry-After": String(Math.ceil(resetIn / 1000)),
+            "Retry-After": headers["Retry-After"],
+            ...headers,
           },
         },
       )
@@ -186,9 +132,6 @@ export async function middleware(request: NextRequest) {
   }
 
   // --- Verify session cookie ---
-  const sessionSecret = process.env.SESSION_SECRET
-  if (!sessionSecret) return response // fail open in dev if misconfigured
-
   const cookie = request.cookies.get(COOKIE_NAME)?.value
   if (!cookie) {
     if (isProtectedPage) {
@@ -197,7 +140,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
   }
 
-  const session = await verifySession(cookie, sessionSecret)
+  const session = await verifySession(cookie)
   if (!session) {
     if (isProtectedPage) {
       return NextResponse.redirect(new URL("/", request.url))

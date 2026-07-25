@@ -1,17 +1,16 @@
 "use client"
 
-import { CheckCircle2, Clock, AlertCircle, XCircle, ArrowRight, MapPin, Calendar, DollarSign, Navigation } from "lucide-react"
+import { CheckCircle2, Clock, AlertCircle, XCircle, ArrowRight, MapPin, Calendar, DollarSign } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { formatBRL, formatDate } from "@/lib/format"
 import { useEffect, useState } from "react"
-import Map, { Marker, Source, Layer, NavigationControl } from "react-map-gl/maplibre"
+import { TrackingMap } from "./tracking-map"
 import { useRealtime, TrackingPositionEvent } from "@/hooks/use-realtime"
 import { apiGet, apiPost } from "@/lib/api"
 import { toast } from "sonner"
-import "maplibre-gl/dist/maplibre-gl.css"
 
 const STATUS_FLOW = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED"]
 
@@ -197,78 +196,15 @@ export function TrackingPageClient({ booking }: { booking: BookingData }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="h-80 w-full relative bg-muted/20">
-                {/* Visual Proximity Alert Banner */}
-                {etaInfo && (etaInfo.distanceKm < 0.5 || etaInfo.durationMin < 3) && (
-                  <div className="absolute top-3 left-3 right-12 z-20 bg-emerald-600 text-white rounded-lg px-3 py-2 text-xs font-semibold shadow-lg flex items-center gap-2 animate-bounce">
-                    <Navigation className="size-4 rotate-45" />
-                    <span>O prestador está muito próximo!</span>
-                  </div>
-                )}
-                <Map
-                  initialViewState={{
-                    latitude: booking.lat,
-                    longitude: booking.lng,
-                    zoom: 13,
-                  }}
-                  mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-                  style={{ width: "100%", height: "100%" }}
-                >
-                  <NavigationControl position="top-right" visualizePitch={false} />
-
-                  {/* Client Destination Marker */}
-                  <Marker latitude={booking.lat} longitude={booking.lng}>
-                    <div className="flex flex-col items-center">
-                      <div className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg border-2 border-background">
-                        <MapPin className="size-4" />
-                      </div>
-                      <span className="text-[10px] font-semibold bg-background px-1.5 py-0.5 rounded shadow mt-0.5 max-w-[80px] truncate">
-                        Você
-                      </span>
-                    </div>
-                  </Marker>
-
-                  {/* Provider Live Location Marker */}
-                  {providerLocation && (
-                    <Marker latitude={providerLocation[1]} longitude={providerLocation[0]}>
-                      <div className="flex flex-col items-center">
-                        <div className="flex size-8 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg border-2 border-background animate-pulse">
-                          <Navigation className="size-4 rotate-45" />
-                        </div>
-                        <span className="text-[10px] font-semibold bg-background px-1.5 py-0.5 rounded shadow mt-0.5 max-w-[80px] truncate">
-                          {booking.provider.name}
-                        </span>
-                      </div>
-                    </Marker>
-                  )}
-
-                  {/* OSRM Route Line */}
-                  {routeCoords && (
-                    <Source
-                      id="tracking-route"
-                      type="geojson"
-                      data={{
-                        type: "Feature",
-                        properties: {},
-                        geometry: {
-                          type: "LineString",
-                          coordinates: routeCoords,
-                        },
-                      }}
-                    >
-                      <Layer
-                        id="tracking-route-layer"
-                        type="line"
-                        layout={{ "line-join": "round", "line-cap": "round" }}
-                        paint={{
-                          "line-color": "#059669",
-                          "line-width": 4,
-                        }}
-                      />
-                    </Source>
-                  )}
-                </Map>
-              </div>
+              <TrackingMap
+                lat={booking.lat}
+                lng={booking.lng}
+                providerName={booking.provider.name}
+                providerLocation={providerLocation}
+                routeCoords={routeCoords}
+                etaInfo={etaInfo}
+                proximityAlerted={proximityAlerted}
+              />
             </CardContent>
           </Card>
         )}

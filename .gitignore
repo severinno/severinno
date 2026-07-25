@@ -48,6 +48,7 @@ dev.log
 dev.out.log
 test
 prompt
+lighthouse-reports/
 
 server.log
 # Skills directory

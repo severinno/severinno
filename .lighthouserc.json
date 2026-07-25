@@ -1,0 +1,48 @@
+{
+  "ci": {
+    "collect": {
+      "settings": {
+        "preset": "desktop",
+        "onlyCategories": [
+          "performance",
+          "accessibility",
+          "best-practices",
+          "seo"
+        ],
+        "skipAudits": [
+          "uses-http2"
+        ],
+        "throttlingMethod": "devtools"
+      },
+      "url": [
+        "http://localhost:3000/",
+        "http://localhost:3000/busca?q=encanador",
+        "http://localhost:3000/categoria/reparos"
+      ],
+      "numberOfRuns": 3,
+      "puppeteerScript": "",
+      "startServerCommand": "NODE_ENV=production node .next/standalone/server.js",
+      "startServerReadyPattern": "Listening on",
+      "startServerTimeout": 30000
+    },
+    "assert": {
+      "preset": "lighthouse:recommended",
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.7 }],
+        "categories:accessibility": ["error", { "minScore": 0.9 }],
+        "categories:best-practices": ["error", { "minScore": 0.8 }],
+        "categories:seo": ["error", { "minScore": 0.9 }],
+        "first-contentful-paint": ["warn", { "maxNumericValue": 3000 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 4000 }],
+        "interactive": ["warn", { "maxNumericValue": 5000 }],
+        "total-blocking-time": ["warn", { "maxNumericValue": 300 }],
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }],
+        "speed-index": ["warn", { "maxNumericValue": 4000 }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "./lighthouse-reports"
+    }
+  }
+}

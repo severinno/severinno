@@ -160,7 +160,7 @@ export async function invalidateCategoryCache(): Promise<void> {
 
 
 // ---------------------------------------------------------------------------
-// Cache-Control helpers — set public Cache-Control headers on responses
+// Cache-Control helpers â€” set public Cache-Control headers on responses
 // ---------------------------------------------------------------------------
 
 /**
@@ -184,7 +184,7 @@ export function cacheControlPublic(
 }
 
 // ---------------------------------------------------------------------------
-// Search reindex helpers — queue entities for the search-index consumer
+// Search reindex helpers â€” queue entities for the search-index consumer
 // ---------------------------------------------------------------------------
 
 /**
@@ -213,6 +213,26 @@ export async function syncServiceSearch(service: {
      VALUES ($1, $2, $3, NOW())`,
     "service",
     service.id,
+    "upsert",
+  )
+}
+
+/**
+ * Queue a provider for search reindexing.
+ */
+export async function syncProviderSearch(provider: {
+  id: string
+  name: string | null
+  bio: string | null
+  city: string | null
+  lat: number | null
+  lng: number | null
+}): Promise<void> {
+  await db.$queryRawUnsafe(
+    `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
+     VALUES ($1, $2, $3, NOW())`,
+    "provider",
+    provider.id,
     "upsert",
   )
 }

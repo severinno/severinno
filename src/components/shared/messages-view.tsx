@@ -171,7 +171,7 @@ export function MessagesView({
         queryKey: ["messages", "thread", selectedPeerId],
       })
       qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
-    } catch (e) {
+    } catch {
       toast.error("Não foi possível enviar a mensagem. Tente novamente.")
     } finally {
       setSending(false)

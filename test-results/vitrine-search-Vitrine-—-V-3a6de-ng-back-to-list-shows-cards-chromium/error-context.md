@@ -1,0 +1,1196 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: vitrine-search.spec.ts >> Vitrine — View Toggle >> switching back to list shows cards
+- Location: e2e\vitrine-search.spec.ts:165:7
+
+# Error details
+
+```
+Test timeout of 30000ms exceeded.
+```
+
+```
+Error: page.waitForFunction: Test timeout of 30000ms exceeded.
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e5]:
+        - button "Severinno — página inicial" [ref=e6]:
+          - generic [ref=e7]:
+            - img [ref=e9]
+            - img [ref=e13]
+          - generic [ref=e15]: Severinno
+          - generic [ref=e16]:
+            - img [ref=e17]
+            - generic [ref=e20]: Verificado
+        - generic [ref=e23]:
+          - img
+          - textbox "Buscar prestadores" [ref=e24]:
+            - /placeholder: Buscar serviço ou prestador…
+          - generic: ⌘K
+        - button "Usar minha localização" [ref=e26]:
+          - img
+          - generic [ref=e27]: Definir localização
+        - generic [ref=e28]:
+          - button "Alternar tema" [ref=e29]:
+            - generic [ref=e30]:
+              - img
+          - generic [ref=e31]:
+            - button "Entrar" [ref=e32]
+            - button "Cadastrar" [ref=e33]
+    - main [ref=e34]:
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - generic [ref=e44]:
+            - img [ref=e45]
+            - text: Marketplace de serviços verificados
+          - heading "Prestadores de serviço verificados, perto de você." [level=1] [ref=e48]
+          - paragraph [ref=e49]: Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista, pintor e mais. Você escolhe o profissional.
+          - generic [ref=e51]:
+            - generic [ref=e52]:
+              - img [ref=e53]
+              - textbox "Serviço buscado" [ref=e56]:
+                - /placeholder: "O que você precisa? Ex.: encanador, pintura…"
+            - generic [ref=e57]:
+              - img [ref=e58]
+              - textbox "Localização" [ref=e61]:
+                - /placeholder: CEP ou cidade
+            - button "Buscar" [ref=e62]:
+              - img
+              - text: Buscar
+          - generic [ref=e63]:
+            - generic [ref=e64]: "Mais buscados:"
+            - button "Encanador" [ref=e65]:
+              - generic [ref=e66]: 🔧
+              - text: Encanador
+            - button "Eletricista" [ref=e67]:
+              - generic [ref=e68]: 💡
+              - text: Eletricista
+            - button "Pintor" [ref=e69]:
+              - generic [ref=e70]: 🎨
+              - text: Pintor
+            - button "Diarista" [ref=e71]:
+              - generic [ref=e72]: 🧹
+              - text: Diarista
+            - button "Pedreiro" [ref=e73]:
+              - generic [ref=e74]: 🧱
+              - text: Pedreiro
+            - button "Jardineiro" [ref=e75]:
+              - generic [ref=e76]: 🌿
+              - text: Jardineiro
+          - button "Usar minha localização" [ref=e77]:
+            - img [ref=e78]
+            - text: Usar minha localização
+          - generic [ref=e81]:
+            - button "Cadastrar grátis" [ref=e82]:
+              - text: Cadastrar grátis
+              - img
+            - button "Ver como funciona" [ref=e83]
+          - paragraph [ref=e84]: Cadastro grátis · Orçamento sem compromisso · Você escolhe o profissional
+          - list [ref=e85]:
+            - listitem "Documentos validados e identidade confirmada" [ref=e86]:
+              - img [ref=e88]
+              - generic [ref=e91]: Prestadores verificados
+            - listitem "Avaliações de clientes após a conclusão do serviço" [ref=e92]:
+              - img [ref=e94]
+              - generic [ref=e96]: Avaliações reais
+            - listitem "Pagamento só é liberado após você marcar como concluído" [ref=e97]:
+              - img [ref=e99]
+              - generic [ref=e102]: Pagamento seguro
+        - generic [ref=e111]: Atividade ao vivo
+      - region "Atividade recente na plataforma" [ref=e139]:
+        - generic [ref=e140]:
+          - generic [ref=e142]: Atividade recente
+          - generic [ref=e146]:
+            - generic [ref=e148]:
+              - generic [ref=e149]:
+                - generic [ref=e150]: ⚡
+                - text: Maria contratou um eletricista em São Paulo
+              - generic [ref=e152]:
+                - generic [ref=e153]: ⭐
+                - text: João avaliou ★★★★★ o prestador Ricardo
+              - generic [ref=e155]:
+                - generic [ref=e156]: 🎨
+                - text: "Nova avaliação: 4.9 para Serviços de Pintura"
+              - generic [ref=e158]:
+                - generic [ref=e159]: 🔧
+                - text: Ana pediu orçamento para encanador
+              - generic [ref=e161]:
+                - generic [ref=e162]: ✅
+                - text: Pedro se cadastrou como prestador verificado
+              - generic [ref=e164]:
+                - generic [ref=e165]: 📋
+                - text: 12 orçamentos enviados hoje
+              - generic [ref=e167]:
+                - generic [ref=e168]: ⚡
+                - text: Maria contratou um eletricista em São Paulo
+              - generic [ref=e170]:
+                - generic [ref=e171]: ⭐
+                - text: João avaliou ★★★★★ o prestador Ricardo
+              - generic [ref=e173]:
+                - generic [ref=e174]: 🎨
+                - text: "Nova avaliação: 4.9 para Serviços de Pintura"
+              - generic [ref=e176]:
+                - generic [ref=e177]: 🔧
+                - text: Ana pediu orçamento para encanador
+              - generic [ref=e179]:
+                - generic [ref=e180]: ✅
+                - text: Pedro se cadastrou como prestador verificado
+              - generic [ref=e182]:
+                - generic [ref=e183]: 📋
+                - text: 12 orçamentos enviados hoje
+            - generic [ref=e187]:
+              - generic [ref=e188]:
+                - generic [ref=e189]: 🧹
+                - text: Carlos agendou limpeza de quintal em Belo Horizonte
+              - generic [ref=e191]:
+                - generic [ref=e192]: ⭐
+                - text: Fernanda avaliou ★★★★★ o prestador José
+              - generic [ref=e194]:
+                - generic [ref=e195]: 🛡️
+                - text: 8 novos prestadores verificados esta semana
+              - generic [ref=e197]:
+                - generic [ref=e198]: 🎨
+                - text: Luciana contratou um pintor no Rio de Janeiro
+              - generic [ref=e200]:
+                - generic [ref=e201]: 🚿
+                - text: "Orçamento aceito: reforma de banheiro em Curitiba"
+              - generic [ref=e203]:
+                - generic [ref=e204]: 🏆
+                - text: 5.200 serviços concluídos este mês
+              - generic [ref=e206]:
+                - generic [ref=e207]: 🧹
+                - text: Carlos agendou limpeza de quintal em Belo Horizonte
+              - generic [ref=e209]:
+                - generic [ref=e210]: ⭐
+                - text: Fernanda avaliou ★★★★★ o prestador José
+              - generic [ref=e212]:
+                - generic [ref=e213]: 🛡️
+                - text: 8 novos prestadores verificados esta semana
+              - generic [ref=e215]:
+                - generic [ref=e216]: 🎨
+                - text: Luciana contratou um pintor no Rio de Janeiro
+              - generic [ref=e218]:
+                - generic [ref=e219]: 🚿
+                - text: "Orçamento aceito: reforma de banheiro em Curitiba"
+              - generic [ref=e221]:
+                - generic [ref=e222]: 🏆
+                - text: 5.200 serviços concluídos este mês
+      - region "Categorias de serviços" [ref=e224]:
+        - generic [ref=e225]:
+          - generic:
+            - img
+          - generic [ref=e227]:
+            - generic [ref=e228]:
+              - img [ref=e229]
+              - text: Explore categorias
+            - heading "Encontre o serviço ideal" [level=2] [ref=e232]
+            - paragraph [ref=e233]: Serviços verificados perto de você — … carregando categorias
+          - generic "Carregando categorias" [ref=e234]
+      - region "Resultados da busca" [ref=e275]:
+        - generic [ref=e276]:
+          - complementary [ref=e277]:
+            - generic [ref=e279]:
+              - generic [ref=e280]:
+                - heading "Filtros" [level=2] [ref=e281]:
+                  - img [ref=e282]
+                  - text: Filtros
+                - button "Limpar filtros" [ref=e283]
+              - generic [ref=e284]:
+                - generic [ref=e285]: Buscar
+                - generic [ref=e286]:
+                  - img [ref=e287]
+                  - textbox "Buscar" [ref=e290]:
+                    - /placeholder: Serviço, prestador…
+              - generic [ref=e291]:
+                - generic [ref=e292]:
+                  - generic [ref=e293]: Raio de busca
+                  - generic [ref=e294]: 15 km
+                - generic "Raio de busca em quilômetros" [ref=e295]:
+                  - slider [ref=e299]
+                - generic [ref=e300]:
+                  - generic [ref=e301]: 1 km
+                  - generic [ref=e302]: 50 km
+              - generic [ref=e303]:
+                - generic [ref=e304]: Categoria
+                - combobox [ref=e305]:
+                  - generic: Todas as categorias
+                  - img
+              - generic [ref=e306]:
+                - generic [ref=e307]: Ordenar por
+                - radiogroup "Ordenar por" [ref=e308]:
+                  - radio "Melhor avaliação" [checked] [ref=e309]
+                  - radio "Mais próximos" [ref=e310]
+              - generic [ref=e311]:
+                - generic [ref=e312]: Avaliação mínima
+                - radiogroup [ref=e313]:
+                  - generic [ref=e314] [cursor=pointer]:
+                    - radio "Todas" [checked] [ref=e315]:
+                      - img [ref=e316]
+                    - generic [ref=e318]: Todas
+                  - generic [ref=e319] [cursor=pointer]:
+                    - radio "3+" [ref=e320]
+                    - generic [ref=e321]: 3+
+                  - generic [ref=e322] [cursor=pointer]:
+                    - radio "4+" [ref=e323]
+                    - generic [ref=e324]: 4+
+                  - generic [ref=e325] [cursor=pointer]:
+                    - radio "5" [ref=e326]
+                    - generic [ref=e327]: "5"
+              - generic [ref=e328] [cursor=pointer]:
+                - generic [ref=e329]:
+                  - img [ref=e330]
+                  - generic [ref=e332]: Somente verificados
+                - switch "Somente verificados" [ref=e333]
+              - button "Ver 0 resultados" [disabled]
+          - generic [ref=e336]:
+            - generic [ref=e337]:
+              - heading [level=2] [ref=e338]
+              - paragraph [ref=e340]: Exibindo 0–0 de 0
+            - generic [ref=e341]:
+              - generic [ref=e342]:
+                - text: "Ordenado por:"
+                - generic [ref=e343]: Melhor avaliação
+              - tablist "Visualização" [ref=e344]:
+                - tab "Lista" [selected] [ref=e345]:
+                  - img [ref=e346]
+                  - generic [ref=e347]: Lista
+                - tab "Mapa" [ref=e348]:
+                  - img [ref=e349]
+                  - generic [ref=e351]: Mapa
+      - region "Como funciona" [ref=e438]:
+        - generic [ref=e443]:
+          - generic [ref=e444]:
+            - link "Pular para resultados" [ref=e445] [cursor=pointer]:
+              - /url: "#vitrine-resultados"
+              - img [ref=e446]
+              - text: Pular para resultados
+            - generic [ref=e450]:
+              - img [ref=e451]
+              - generic [ref=e453]: "4"
+              - text: passos simples
+            - heading "Como funciona" [level=2] [ref=e454]
+            - paragraph [ref=e455]: Sem surpresas — do início ao fim, você tem o controle.
+            - generic [ref=e456]:
+              - img [ref=e457]
+              - text: Sem compromisso
+          - generic [ref=e463]:
+            - img [ref=e465]
+            - generic [ref=e466]:
+              - 'button "1 Busque o serviço Encontre prestadores verificados perto de você. 50 + categorias encanador em São Paulo | Verificados < 5 km Mais filtros Ex: Busque ''encanador em São Paulo'' Buscar prestadores" [ref=e467] [cursor=pointer]':
+                - generic [ref=e469]:
+                  - generic [ref=e471]: "1"
+                  - img [ref=e474]
+                  - heading "Busque o serviço" [level=3] [ref=e477]
+                  - paragraph [ref=e478]: Encontre prestadores verificados perto de você.
+                  - generic [ref=e480]:
+                    - generic [ref=e481]: "50"
+                    - text: +
+                    - generic [ref=e482]: categorias
+                  - generic [ref=e484]:
+                    - generic [ref=e485]:
+                      - img [ref=e486]
+                      - generic [ref=e489]: encanador em São Paulo
+                      - generic [ref=e490]: "|"
+                    - generic [ref=e491]:
+                      - generic [ref=e492]: Verificados
+                      - generic [ref=e493]: < 5 km
+                      - generic [ref=e494]:
+                        - img [ref=e495]
+                        - text: Mais filtros
+                  - paragraph [ref=e497]: "Ex: Busque 'encanador em São Paulo'"
+                  - button "Buscar prestadores" [ref=e498]:
+                    - text: Buscar prestadores
+                    - img
+              - 'button "2 Compare orçamentos Receba e compare propostas lado a lado. 3 orçamentos em 24h João S. R$ 180 Maria L. R$ 150 Melhor avaliação Compare lado a lado Ex: Compare 3 orçamentos em 24h Sem compromisso Pedir orçamento" [ref=e499] [cursor=pointer]':
+                - generic [ref=e501]:
+                  - generic [ref=e503]: "2"
+                  - img [ref=e506]
+                  - heading "Compare orçamentos" [level=3] [ref=e511]
+                  - paragraph [ref=e512]: Receba e compare propostas lado a lado.
+                  - generic [ref=e514]:
+                    - generic [ref=e515]: "3"
+                    - generic [ref=e516]: orçamentos em 24h
+                  - generic [ref=e518]:
+                    - generic [ref=e519]:
+                      - generic [ref=e520]:
+                        - generic [ref=e523]: João S.
+                        - generic [ref=e524]:
+                          - img [ref=e525]
+                          - img [ref=e527]
+                          - img [ref=e529]
+                          - img [ref=e531]
+                          - img [ref=e533]
+                        - generic [ref=e535]: R$ 180
+                      - generic [ref=e536]:
+                        - generic [ref=e539]: Maria L.
+                        - generic [ref=e540]:
+                          - img [ref=e541]
+                          - img [ref=e543]
+                          - img [ref=e545]
+                          - img [ref=e547]
+                          - img [ref=e549]
+                        - generic [ref=e551]: R$ 150
+                        - generic [ref=e552]: Melhor avaliação
+                    - generic [ref=e553]:
+                      - img [ref=e554]
+                      - text: Compare lado a lado
+                  - paragraph [ref=e559]: "Ex: Compare 3 orçamentos em 24h"
+                  - generic [ref=e560]:
+                    - img [ref=e561]
+                    - text: Sem compromisso
+                  - button "Pedir orçamento" [ref=e566]:
+                    - text: Pedir orçamento
+                    - img
+              - 'button "3 Agende com confiança Solicite um orçamento ou agende diretamente. 24 h para confirmar Março 2025 S T Q Q S S D 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 12 Mar, 14:00 — Confirmado Ex: Agende para amanhã às 14h Agendar agora" [ref=e567] [cursor=pointer]':
+                - generic [ref=e569]:
+                  - generic [ref=e571]: "3"
+                  - img [ref=e574]
+                  - heading "Agende com confiança" [level=3] [ref=e577]
+                  - paragraph [ref=e578]: Solicite um orçamento ou agende diretamente.
+                  - generic [ref=e580]:
+                    - generic [ref=e581]: "24"
+                    - text: h
+                    - generic [ref=e582]: para confirmar
+                  - generic [ref=e585]:
+                    - generic [ref=e586]: Março 2025
+                    - generic [ref=e587]:
+                      - generic [ref=e588]: S
+                      - generic [ref=e589]: T
+                      - generic [ref=e590]: Q
+                      - generic [ref=e591]: Q
+                      - generic [ref=e592]: S
+                      - generic [ref=e593]: S
+                      - generic [ref=e594]: D
+                      - generic [ref=e595]: "1"
+                      - generic [ref=e596]: "2"
+                      - generic [ref=e597]: "3"
+                      - generic [ref=e598]: "4"
+                      - generic [ref=e599]: "5"
+                      - generic [ref=e600]: "6"
+                      - generic [ref=e601]: "7"
+                      - generic [ref=e602]: "8"
+                      - generic [ref=e603]: "9"
+                      - generic [ref=e604]: "10"
+                      - generic [ref=e605]: "11"
+                      - generic [ref=e606]: "12"
+                      - generic [ref=e607]: "13"
+                      - generic [ref=e608]: "14"
+                      - generic [ref=e609]: "15"
+                    - generic [ref=e610]:
+                      - img [ref=e611]
+                      - generic [ref=e614]: 12 Mar, 14:00 — Confirmado
+                  - paragraph [ref=e615]: "Ex: Agende para amanhã às 14h"
+                  - button "Agendar agora" [ref=e616]:
+                    - text: Agendar agora
+                    - img
+              - 'button "4 Avalie o resultado Sua opinião mantém a qualidade da comunidade. 98 % satisfação 4.0 \"Excelente trabalho, recomendo!\" Avaliação verificada Ex: Avalie de 1 a 5 estrelas com comentário Cadastrar grátis" [ref=e617] [cursor=pointer]':
+                - generic [ref=e619]:
+                  - generic [ref=e621]: "4"
+                  - img [ref=e624]
+                  - heading "Avalie o resultado" [level=3] [ref=e626]
+                  - paragraph [ref=e627]: Sua opinião mantém a qualidade da comunidade.
+                  - generic [ref=e629]:
+                    - generic [ref=e630]: "98"
+                    - text: "%"
+                    - generic [ref=e631]: satisfação
+                  - generic [ref=e633]:
+                    - generic [ref=e634]:
+                      - generic [ref=e635]:
+                        - img [ref=e636]
+                        - img [ref=e638]
+                        - img [ref=e640]
+                        - img [ref=e642]
+                        - img [ref=e644]
+                        - generic [ref=e646]: "4.0"
+                      - paragraph [ref=e649]: "\"Excelente trabalho, recomendo!\""
+                    - generic [ref=e650]:
+                      - img [ref=e651]
+                      - text: Avaliação verificada
+                  - paragraph [ref=e654]: "Ex: Avalie de 1 a 5 estrelas com comentário"
+                  - button "Cadastrar grátis" [ref=e655]:
+                    - text: Cadastrar grátis
+                    - img
+          - generic [ref=e656]:
+            - generic [ref=e657]:
+              - img [ref=e658]
+              - generic [ref=e661]: Garantia Severinno
+            - generic [ref=e662]:
+              - generic [ref=e663]:
+                - img [ref=e664]
+                - generic [ref=e667]: Prestadores verificados
+              - generic [ref=e668]:
+                - img [ref=e669]
+                - generic [ref=e672]: Resposta rápida
+              - generic [ref=e673]:
+                - img [ref=e674]
+                - generic [ref=e676]: Satisfação garantida
+              - generic [ref=e677]:
+                - img [ref=e678]
+                - generic [ref=e683]: Compare antes de contratar
+          - generic [ref=e684]:
+            - button "Começar agora" [ref=e685]:
+              - text: Começar agora
+              - img
+            - link "Buscar prestadores" [ref=e686] [cursor=pointer]:
+              - /url: "#vitrine-resultados"
+              - img
+              - text: Buscar prestadores
+          - button "Voltar ao topo" [ref=e688]:
+            - img [ref=e689]
+            - text: Voltar ao topo
+      - generic [ref=e692]:
+        - generic [ref=e693]:
+          - generic [ref=e694]:
+            - img
+            - text: Simulador de preços
+          - heading "Quanto custa? Simule agora" [level=2] [ref=e695]
+          - paragraph [ref=e696]: Estime o valor do serviço em 3 passos rápidos. Sem compromisso, sem cadastro.
+        - generic [ref=e697]:
+          - generic [ref=e698]: "1"
+          - generic [ref=e700]: "2"
+          - generic [ref=e702]: "3"
+        - generic [ref=e705]:
+          - heading "1. Qual serviço você precisa?" [level=3] [ref=e706]
+          - paragraph [ref=e707]: Selecione a categoria do serviço
+          - generic [ref=e708]:
+            - button "Elétrica" [ref=e709]:
+              - img [ref=e711]
+              - generic [ref=e713]: Elétrica
+            - button "Hidráulica" [ref=e714]:
+              - img [ref=e716]
+              - generic [ref=e719]: Hidráulica
+            - button "Pintura" [ref=e720]:
+              - img [ref=e722]
+              - generic [ref=e726]: Pintura
+            - button "Alvenaria" [ref=e727]:
+              - img [ref=e729]
+              - generic [ref=e731]: Alvenaria
+            - button "Pisos" [ref=e732]:
+              - img [ref=e734]
+              - generic [ref=e736]: Pisos
+            - button "Pós-obra" [ref=e737]:
+              - img [ref=e739]
+              - generic [ref=e744]: Pós-obra
+            - button "Residencial" [ref=e745]:
+              - img [ref=e747]
+              - generic [ref=e750]: Residencial
+      - region "Parceiros e imprensa" [ref=e751]:
+        - generic [ref=e752]:
+          - paragraph [ref=e754]: Referência no mercado
+          - generic [ref=e756]:
+            - generic [ref=e759]: G1
+            - generic [ref=e762]: Folha de S.Paulo
+            - generic [ref=e765]: Valor Econômico
+            - generic [ref=e768]: Exame
+            - generic [ref=e771]: InfoMoney
+            - generic [ref=e774]: Startups
+            - generic [ref=e777]: Sebrae
+            - generic [ref=e780]: ABES
+          - paragraph [ref=e781]: + de 6.000 prestadores confiam no Severinno
+      - region "Avaliações de clientes" [ref=e782]:
+        - generic:
+          - generic:
+            - img
+        - generic [ref=e784]:
+          - generic [ref=e785]:
+            - img [ref=e786]
+            - text: Avaliações reais
+          - heading "O que nossos clientes dizem" [level=2] [ref=e788]
+          - paragraph [ref=e789]: Avaliações de clientes após a conclusão do serviço.
+      - generic [ref=e854]:
+        - generic [ref=e857]:
+          - generic [ref=e858]:
+            - img [ref=e860]
+            - paragraph [ref=e867]: Prestadores verificados
+          - generic [ref=e868]:
+            - img [ref=e870]
+            - paragraph [ref=e874]: Serviços cadastrados
+          - generic [ref=e875]:
+            - img [ref=e877]
+            - paragraph [ref=e882]: Serviços concluídos
+          - generic [ref=e883]:
+            - img [ref=e885]
+            - paragraph [ref=e889]: Nota média
+        - generic [ref=e891]:
+          - generic [ref=e892]:
+            - generic [ref=e893]:
+              - img [ref=e894]
+              - text: Por que Severinno?
+            - heading "Confiança em cada agendamento" [level=2] [ref=e897]
+            - paragraph [ref=e898]: Mais que um diretório de serviços — um ecossistema pensado para proteger você e o prestador. Da verificação ao pagamento, cada etapa foi desenhada para a sua tranquilidade.
+            - link "Pular para FAQ" [ref=e900] [cursor=pointer]:
+              - /url: "#faq"
+              - img [ref=e901]
+              - text: Pular para FAQ
+          - generic [ref=e904]:
+            - generic [ref=e907]:
+              - generic [ref=e908]:
+                - img [ref=e910]
+                - button "Saiba mais sobre Prestadores verificados" [ref=e913]:
+                  - img [ref=e914]
+              - heading "Prestadores verificados" [level=3] [ref=e917]
+              - paragraph [ref=e918]: João verificou 3 documentos antes de aprovar o prestador. Você só vê profissionais validados.
+              - button "Saiba mais" [ref=e919]:
+                - text: Saiba mais
+                - img [ref=e920]
+            - generic [ref=e924]:
+              - generic [ref=e925]:
+                - img [ref=e927]
+                - button "Saiba mais sobre Pagamento protegido" [ref=e930]:
+                  - img [ref=e931]
+              - heading "Pagamento protegido" [level=3] [ref=e934]
+              - paragraph [ref=e935]: O valor só é liberado ao prestador após você confirmar que ficou satisfeito com o serviço.
+              - button "Saiba mais" [ref=e936]:
+                - text: Saiba mais
+                - img [ref=e937]
+            - generic [ref=e941]:
+              - generic [ref=e942]:
+                - img [ref=e944]
+                - button "Saiba mais sobre Resposta rápida" [ref=e947]:
+                  - img [ref=e948]
+              - heading "Resposta rápida" [level=3] [ref=e951]
+              - paragraph [ref=e952]: Prestadores comprometidos a responder em até 24h. Acompanhe o status em tempo real.
+              - button "Saiba mais" [ref=e953]:
+                - text: Saiba mais
+                - img [ref=e954]
+            - generic [ref=e958]:
+              - generic [ref=e959]:
+                - img [ref=e961]
+                - button "Saiba mais sobre Avaliações reais" [ref=e963]:
+                  - img [ref=e964]
+              - heading "Avaliações reais" [level=3] [ref=e967]
+              - paragraph [ref=e968]: Apenas clientes que concluíram o serviço podem avaliar. Sem falsas avaliações.
+              - button "Saiba mais" [ref=e969]:
+                - text: Saiba mais
+                - img [ref=e970]
+            - generic [ref=e974]:
+              - generic [ref=e975]:
+                - img [ref=e977]
+                - button "Saiba mais sobre Próximo de você" [ref=e980]:
+                  - img [ref=e981]
+              - heading "Próximo de você" [level=3] [ref=e984]
+              - paragraph [ref=e985]: Geolocalização inteligente mostra os melhores prestadores na sua região.
+              - button "Saiba mais" [ref=e986]:
+                - text: Saiba mais
+                - img [ref=e987]
+            - generic [ref=e991]:
+              - generic [ref=e992]:
+                - img [ref=e994]
+                - button "Saiba mais sobre Suporte humano" [ref=e996]:
+                  - img [ref=e997]
+              - heading "Suporte humano" [level=3] [ref=e1000]
+              - paragraph [ref=e1001]: Equipe disponível para mediar disputas, tirar dúvidas e garantir uma experiência justa.
+              - button "Saiba mais" [ref=e1002]:
+                - text: Saiba mais
+                - img [ref=e1003]
+        - generic [ref=e1006]:
+          - img [ref=e1007]
+          - paragraph [ref=e1009]: "Garantia Severinno: seu dinheiro de volta se o serviço não for bem-feito."
+          - link "Saiba mais" [ref=e1010] [cursor=pointer]:
+            - /url: "#faq"
+            - text: Saiba mais
+            - img [ref=e1011]
+      - generic [ref=e1015]:
+        - generic [ref=e1016]:
+          - img [ref=e1017]
+          - text: Destaque da semana
+        - heading "Profissional em destaque" [level=2] [ref=e1023]
+        - paragraph [ref=e1024]: Conheça um dos nossos prestadores mais bem avaliados.
+      - generic [ref=e1057]:
+        - generic [ref=e1058]:
+          - generic [ref=e1059]:
+            - generic [ref=e1060]:
+              - img [ref=e1061]
+              - text: Perguntas frequentes
+            - heading "Tire suas dúvidas antes de contratar" [level=2] [ref=e1064]
+            - paragraph [ref=e1065]: Reunimos as perguntas mais comuns sobre como o Severinno funciona — do cadastro ao pagamento.
+          - generic [ref=e1066]:
+            - img [ref=e1067]
+            - textbox "Buscar nas perguntas frequentes" [ref=e1070]:
+              - /placeholder: Buscar nas dúvidas…
+          - generic [ref=e1071]:
+            - paragraph [ref=e1072]: Filtrar por categoria
+            - generic [ref=e1073]:
+              - button "Filtrar por Geral" [ref=e1074]:
+                - img [ref=e1075]
+                - text: Geral
+                - generic [ref=e1078]: (2)
+              - button "Filtrar por Pagamento" [ref=e1079]:
+                - img [ref=e1080]
+                - text: Pagamento
+                - generic [ref=e1082]: (2)
+              - button "Filtrar por Agendamento" [ref=e1083]:
+                - img [ref=e1084]
+                - text: Agendamento
+                - generic [ref=e1086]: (2)
+              - button "Filtrar por Prestadores" [ref=e1087]:
+                - img [ref=e1088]
+                - text: Prestadores
+                - generic [ref=e1092]: (2)
+              - button "Filtrar por Segurança" [ref=e1093]:
+                - img [ref=e1094]
+                - text: Segurança
+                - generic [ref=e1097]: (2)
+          - generic [ref=e1098]:
+            - paragraph [ref=e1099]: Perguntas mais frequentes
+            - list [ref=e1100]:
+              - listitem [ref=e1101]:
+                - button "Como funciona o Severinno?" [ref=e1102]:
+                  - img [ref=e1103]
+                  - generic [ref=e1105]: Como funciona o Severinno?
+              - listitem [ref=e1106]:
+                - button "Preciso pagar para me cadastrar?" [ref=e1107]:
+                  - img [ref=e1108]
+                  - generic [ref=e1110]: Preciso pagar para me cadastrar?
+              - listitem [ref=e1111]:
+                - button "Como faço para agendar um serviço?" [ref=e1112]:
+                  - img [ref=e1113]
+                  - generic [ref=e1115]: Como faço para agendar um serviço?
+              - listitem [ref=e1116]:
+                - button "E se o serviço não for bem-feito?" [ref=e1117]:
+                  - img [ref=e1118]
+                  - generic [ref=e1120]: E se o serviço não for bem-feito?
+          - generic [ref=e1122]:
+            - img [ref=e1124]
+            - generic [ref=e1126]:
+              - paragraph [ref=e1127]: Ainda tem dúvidas?
+              - paragraph [ref=e1128]: Cadastre-se grátis e converse diretamente com prestadores verificados. Sem compromisso.
+              - generic [ref=e1129]:
+                - button "Cadastrar grátis" [ref=e1130]
+                - link "Fale conosco" [ref=e1131] [cursor=pointer]:
+                  - /url: "#faq"
+                  - img
+                  - text: Fale conosco
+        - generic [ref=e1132]:
+          - generic [ref=e1134]:
+            - generic [ref=e1136]:
+              - heading "01 Como funciona o Severinno? Geral" [level=3] [ref=e1137]:
+                - button "01 Como funciona o Severinno? Geral" [expanded] [ref=e1138]:
+                  - generic [ref=e1139]:
+                    - generic [ref=e1140]: "01"
+                    - generic [ref=e1141]: Como funciona o Severinno?
+                    - generic [ref=e1142]:
+                      - img
+                      - text: Geral
+                  - img
+              - region "01 Como funciona o Severinno? Geral" [ref=e1143]:
+                - generic [ref=e1145]:
+                  - paragraph [ref=e1146]: O Severinno conecta você a prestadores de serviço verificados próximos à sua localização. Você busca o serviço, compara avaliações reais de outros clientes, pede orçamento grátis e agenda — tudo pela plataforma. O pagamento só é liberado após você confirmar a conclusão do serviço.
+                  - paragraph [ref=e1147]: "Ex: Maria precisava de um eletricista. Buscou na plataforma, comparou 3 profissionais e contratou o mais bem avaliado — tudo em 5 minutos."
+            - heading "02 Preciso pagar para me cadastrar? Geral" [level=3] [ref=e1150]:
+              - button "02 Preciso pagar para me cadastrar? Geral" [ref=e1151]:
+                - generic [ref=e1152]:
+                  - generic [ref=e1153]: "02"
+                  - generic [ref=e1154]: Preciso pagar para me cadastrar?
+                  - generic [ref=e1155]:
+                    - img
+                    - text: Geral
+                - img
+            - heading "03 Como os prestadores são verificados? Prestadores" [level=3] [ref=e1158]:
+              - button "03 Como os prestadores são verificados? Prestadores" [ref=e1159]:
+                - generic [ref=e1160]:
+                  - generic [ref=e1161]: "03"
+                  - generic [ref=e1162]: Como os prestadores são verificados?
+                  - generic [ref=e1163]:
+                    - img
+                    - text: Prestadores
+                - img
+            - heading "04 Posso me tornar um prestador no Severinno? Prestadores" [level=3] [ref=e1166]:
+              - button "04 Posso me tornar um prestador no Severinno? Prestadores" [ref=e1167]:
+                - generic [ref=e1168]:
+                  - generic [ref=e1169]: "04"
+                  - generic [ref=e1170]: Posso me tornar um prestador no Severinno?
+                  - generic [ref=e1171]:
+                    - img
+                    - text: Prestadores
+                - img
+            - heading "05 Como faço para agendar um serviço? Agendamento" [level=3] [ref=e1174]:
+              - button "05 Como faço para agendar um serviço? Agendamento" [ref=e1175]:
+                - generic [ref=e1176]:
+                  - generic [ref=e1177]: "05"
+                  - generic [ref=e1178]: Como faço para agendar um serviço?
+                  - generic [ref=e1179]:
+                    - img
+                    - text: Agendamento
+                - img
+            - heading "06 Posso remarcar ou cancelar um agendamento? Agendamento" [level=3] [ref=e1182]:
+              - button "06 Posso remarcar ou cancelar um agendamento? Agendamento" [ref=e1183]:
+                - generic [ref=e1184]:
+                  - generic [ref=e1185]: "06"
+                  - generic [ref=e1186]: Posso remarcar ou cancelar um agendamento?
+                  - generic [ref=e1187]:
+                    - img
+                    - text: Agendamento
+                - img
+            - heading "07 Como funciona o pagamento? Pagamento" [level=3] [ref=e1190]:
+              - button "07 Como funciona o pagamento? Pagamento" [ref=e1191]:
+                - generic [ref=e1192]:
+                  - generic [ref=e1193]: "07"
+                  - generic [ref=e1194]: Como funciona o pagamento?
+                  - generic [ref=e1195]:
+                    - img
+                    - text: Pagamento
+                - img
+            - heading "08 O orçamento tem compromisso? Pagamento" [level=3] [ref=e1198]:
+              - button "08 O orçamento tem compromisso? Pagamento" [ref=e1199]:
+                - generic [ref=e1200]:
+                  - generic [ref=e1201]: "08"
+                  - generic [ref=e1202]: O orçamento tem compromisso?
+                  - generic [ref=e1203]:
+                    - img
+                    - text: Pagamento
+                - img
+            - heading "09 E se o serviço não for bem-feito? Segurança" [level=3] [ref=e1206]:
+              - button "09 E se o serviço não for bem-feito? Segurança" [ref=e1207]:
+                - generic [ref=e1208]:
+                  - generic [ref=e1209]: "09"
+                  - generic [ref=e1210]: E se o serviço não for bem-feito?
+                  - generic [ref=e1211]:
+                    - img
+                    - text: Segurança
+                - img
+            - heading "10 Meus dados pessoais estão seguros? Segurança" [level=3] [ref=e1214]:
+              - button "10 Meus dados pessoais estão seguros? Segurança" [ref=e1215]:
+                - generic [ref=e1216]:
+                  - generic [ref=e1217]: "10"
+                  - generic [ref=e1218]: Meus dados pessoais estão seguros?
+                  - generic [ref=e1219]:
+                    - img
+                    - text: Segurança
+                - img
+          - generic [ref=e1220]:
+            - paragraph [ref=e1221]: 10 de 10 dúvidas
+            - button "Voltar ao topo da seção" [ref=e1222]:
+              - img [ref=e1223]
+              - text: Topo
+      - generic [ref=e1227]:
+        - generic:
+          - img
+        - generic:
+          - img
+        - generic:
+          - img
+        - generic:
+          - img
+        - generic:
+          - img
+        - generic [ref=e1232]:
+          - generic [ref=e1233]:
+            - generic [ref=e1235]:
+              - img [ref=e1236]
+              - text: Comece agora mesmo
+            - heading "Pronto para encontrar o prestador ideal?" [level=2] [ref=e1238]
+            - paragraph [ref=e1239]: Comece em 30 segundos — é como pedir um Uber, mas para serviços. Cadastre-se gratuitamente e tenha acesso a prestadores verificados.
+            - generic [ref=e1240]:
+              - button "Para clientes" [ref=e1241]: Para clientes
+              - button "Para prestadores" [ref=e1243]
+            - list [ref=e1244]:
+              - generic [ref=e1245]:
+                - listitem [ref=e1246]:
+                  - img [ref=e1247]
+                  - text: Cadastro gratuito
+                - listitem [ref=e1250]:
+                  - img [ref=e1251]
+                  - text: Sem taxa de serviço
+                - listitem [ref=e1254]:
+                  - img [ref=e1255]
+                  - text: Orçamento sem compromisso
+            - generic [ref=e1258]:
+              - button "Cadastrar grátis" [ref=e1263]:
+                - text: Cadastrar grátis
+                - generic [ref=e1264]:
+                  - img
+              - button "Sou prestador" [ref=e1266]:
+                - img
+                - text: Sou prestador
+            - generic [ref=e1267]:
+              - img [ref=e1268]
+              - text: Comece em 30 segundos
+            - button "Já tenho conta · Entrar" [ref=e1272]:
+              - img [ref=e1273]
+              - text: Já tenho conta · Entrar
+            - generic [ref=e1276]:
+              - generic [ref=e1277]:
+                - generic [ref=e1278]: AL
+                - generic [ref=e1279]: RM
+                - generic [ref=e1280]: JS
+                - generic [ref=e1281]: PF
+                - generic [ref=e1282]: CM
+                - generic [ref=e1283]: "+5"
+              - generic [ref=e1284]:
+                - paragraph [ref=e1285]: 527+ cadastrados
+                - paragraph [ref=e1286]: na plataforma
+          - generic [ref=e1287]:
+            - generic [ref=e1288]:
+              - heading "O que vem depois?" [level=3] [ref=e1289]
+              - paragraph [ref=e1290]: Três passos simples e você estará agendando
+              - generic [ref=e1291]:
+                - img [ref=e1292]
+                - generic [ref=e1293]:
+                  - generic [ref=e1294]:
+                    - generic [ref=e1296]: "1"
+                    - generic [ref=e1297]:
+                      - paragraph [ref=e1298]: Cadastre-se grátis
+                      - paragraph [ref=e1299]: ~30s
+                  - generic [ref=e1300]:
+                    - generic [ref=e1302]: "2"
+                    - generic [ref=e1303]:
+                      - paragraph [ref=e1304]: Busque e compare
+                      - paragraph [ref=e1305]: ~2 min
+                  - generic [ref=e1306]:
+                    - generic [ref=e1308]: "3"
+                    - generic [ref=e1309]:
+                      - paragraph [ref=e1310]: Agende com confiança
+                      - paragraph [ref=e1311]: ~5 min
+              - generic [ref=e1312]:
+                - generic [ref=e1313]:
+                  - img [ref=e1314]
+                  - text: Sem compromisso
+                - generic [ref=e1318]:
+                  - img [ref=e1319]
+                  - text: Cancele quando quiser
+                - generic [ref=e1322]:
+                  - img [ref=e1323]
+                  - text: Suporte 24h
+              - link "Saiba mais sobre pagamento protegido" [ref=e1326] [cursor=pointer]:
+                - /url: "#faq"
+                - img [ref=e1327]
+                - text: Saiba mais sobre pagamento protegido
+            - generic [ref=e1331]:
+              - generic [ref=e1335]: Cliente
+              - generic [ref=e1336]:
+                - img [ref=e1340]
+                - generic [ref=e1342]: Prestador
+              - img [ref=e1347]
+              - img [ref=e1349]
+              - img [ref=e1353]
+              - img [ref=e1356]
+              - img [ref=e1360]
+        - generic [ref=e1364]:
+          - img [ref=e1365]
+          - generic [ref=e1368]:
+            - paragraph [ref=e1369]: “Encontrei um encanador em 10 minutos, paguei menos do que esperava e ainda pude avaliar o serviço. Recomendo demais!”
+            - paragraph [ref=e1370]: — Ana P., Cliente, São Paulo
+        - generic [ref=e1371]:
+          - generic [ref=e1372]:
+            - img [ref=e1373]
+            - text: Sem compromisso
+          - generic [ref=e1377]:
+            - img [ref=e1378]
+            - text: Cancele quando quiser
+          - generic [ref=e1381]:
+            - img [ref=e1382]
+            - text: Pagamento protegido
+    - contentinfo [ref=e1384]:
+      - generic [ref=e1386]:
+        - generic [ref=e1387]:
+          - paragraph [ref=e1388]: Receba novidades e dicas de serviços
+          - paragraph [ref=e1389]: Cadastre-se e receba ofertas exclusivas. Cancele quando quiser.
+        - generic [ref=e1390]:
+          - generic [ref=e1391]:
+            - img [ref=e1392]
+            - textbox "E-mail para newsletter" [ref=e1395]:
+              - /placeholder: Seu e-mail
+          - button "Assinar" [disabled]:
+            - img
+            - text: Assinar
+      - generic [ref=e1396]:
+        - generic [ref=e1397]:
+          - generic [ref=e1398]:
+            - generic [ref=e1399]:
+              - img [ref=e1401]
+              - generic [ref=e1404]: Severinno
+            - paragraph [ref=e1405]: Marketplace de serviços com geolocalização. Encontre prestadores verificados, próximos e bem avaliados.
+            - list "Redes sociais" [ref=e1406]:
+              - listitem [ref=e1407]:
+                - link "GitHub" [ref=e1408] [cursor=pointer]:
+                  - /url: https://github.com
+                  - img [ref=e1409]
+              - listitem [ref=e1412]:
+                - link "Twitter" [ref=e1413] [cursor=pointer]:
+                  - /url: https://twitter.com
+                  - img [ref=e1414]
+              - listitem [ref=e1416]:
+                - link "Instagram" [ref=e1417] [cursor=pointer]:
+                  - /url: https://instagram.com
+                  - img [ref=e1418]
+              - listitem [ref=e1421]:
+                - link "LinkedIn" [ref=e1422] [cursor=pointer]:
+                  - /url: https://linkedin.com
+                  - img [ref=e1423]
+              - listitem [ref=e1427]:
+                - link "E-mail" [ref=e1428] [cursor=pointer]:
+                  - /url: mailto:contato@severinno.com
+                  - img [ref=e1429]
+          - navigation "Sobre" [ref=e1432]:
+            - heading "Sobre" [level=3] [ref=e1433]:
+              - img [ref=e1434]
+              - text: Sobre
+            - list [ref=e1437]:
+              - listitem [ref=e1438]:
+                - button "Como funciona" [ref=e1439]
+              - listitem [ref=e1440]:
+                - button "Quem somos" [ref=e1441]
+              - listitem [ref=e1442]:
+                - button "Termos de uso" [ref=e1443]
+              - listitem [ref=e1444]:
+                - button "Privacidade" [ref=e1445]
+          - navigation "Para profissionais" [ref=e1446]:
+            - heading "Para profissionais" [level=3] [ref=e1447]:
+              - img [ref=e1448]
+              - text: Para profissionais
+            - list [ref=e1451]:
+              - listitem [ref=e1452]:
+                - button "Cadastre-se" [ref=e1453]
+              - listitem [ref=e1454]:
+                - button "Meu painel" [ref=e1455]
+              - listitem [ref=e1456]:
+                - button "Central de ajuda" [ref=e1457]
+          - navigation "Precisa de ajuda?" [ref=e1458]:
+            - heading "Precisa de ajuda?" [level=3] [ref=e1459]:
+              - img [ref=e1460]
+              - text: Precisa de ajuda?
+            - list [ref=e1462]:
+              - listitem [ref=e1463]:
+                - button "Perguntas frequentes" [ref=e1464]
+              - listitem [ref=e1465]:
+                - button "Segurança" [ref=e1466]
+              - listitem [ref=e1467]:
+                - button "Reportar problema" [ref=e1468]
+          - generic [ref=e1469]:
+            - heading "Contato" [level=3] [ref=e1470]:
+              - img [ref=e1471]
+              - text: Contato
+            - list [ref=e1476]:
+              - listitem [ref=e1477]:
+                - img [ref=e1478]
+                - link "contato@severinno.com" [ref=e1481] [cursor=pointer]:
+                  - /url: mailto:contato@severinno.com
+              - listitem [ref=e1482]:
+                - img [ref=e1483]
+                - text: São Paulo, Brasil
+            - button "Fale conosco" [ref=e1486]:
+              - img
+              - text: Fale conosco
+        - generic [ref=e1487]:
+          - paragraph [ref=e1488]: © 2026 Severinno Marketplace. Todos os direitos reservados.
+          - paragraph [ref=e1489]:
+            - text: Feito com
+            - img [ref=e1490]
+            - text: usando tecnologia Open Source (
+            - link "MapLibre" [ref=e1492] [cursor=pointer]:
+              - /url: https://maplibre.org/
+            - text: ·
+            - link "OpenStreetMap" [ref=e1493] [cursor=pointer]:
+              - /url: https://www.openstreetmap.org/copyright
+            - text: )
+    - button "Abrir assistente virtual" [ref=e1494]:
+      - img [ref=e1495]
+    - generic [ref=e1499]:
+      - generic [ref=e1500]:
+        - img [ref=e1502]
+        - generic [ref=e1504]:
+          - paragraph [ref=e1505]: Usamos cookies para melhorar sua experiência
+          - paragraph [ref=e1506]:
+            - text: Utilizamos cookies essenciais para o funcionamento do site e cookies de análise para melhorar nossos serviços.
+            - button "Política de privacidade" [ref=e1507]
+      - generic [ref=e1508]:
+        - button "Recusar" [ref=e1509]
+        - button "Aceitar" [ref=e1510]:
+          - img
+          - text: Aceitar
+        - button "Dispensar" [ref=e1511]:
+          - img [ref=e1512]
+  - region "Notifications alt+T"
+  - generic [active]:
+    - generic [ref=e1517]:
+      - generic [ref=e1518]:
+        - generic [ref=e1519]:
+          - navigation [ref=e1520]:
+            - button "previous" [disabled] [ref=e1521]:
+              - img "previous" [ref=e1522]
+            - generic [ref=e1524]:
+              - generic [ref=e1525]: 1/
+              - text: "1"
+            - button "next" [disabled] [ref=e1526]:
+              - img "next" [ref=e1527]
+          - img
+        - generic [ref=e1529]:
+          - link "Next.js 16.1.3 (stale) Turbopack" [ref=e1530] [cursor=pointer]:
+            - /url: https://nextjs.org/docs/messages/version-staleness
+            - img [ref=e1531]
+            - generic "There is a newer version (16.2.11) available, upgrade recommended!" [ref=e1533]: Next.js 16.1.3 (stale)
+            - generic [ref=e1534]: Turbopack
+          - img
+      - dialog "Build Error" [ref=e1536]:
+        - generic [ref=e1539]:
+          - generic [ref=e1540]:
+            - generic [ref=e1541]:
+              - generic [ref=e1543]: Build Error
+              - generic [ref=e1544]:
+                - button "Copy Error Info" [ref=e1545] [cursor=pointer]:
+                  - img [ref=e1546]
+                - button "No related documentation found" [disabled] [ref=e1548]:
+                  - img [ref=e1549]
+                - button "Attach Node.js inspector" [ref=e1551] [cursor=pointer]:
+                  - img [ref=e1552]
+            - generic [ref=e1561]: Reading source code for parsing failed
+          - generic [ref=e1563]:
+            - generic [ref=e1565]:
+              - img [ref=e1567]
+              - generic [ref=e1571]: ./.freebuff/worktrees/thmrzp9vv9y86o/src/lib/api-server.ts
+              - button "Open in editor" [ref=e1572] [cursor=pointer]:
+                - img [ref=e1574]
+            - generic [ref=e1578]: "Reading source code for parsing failed An unexpected error happened while trying to read the source code to parse: failed to convert rope into string Caused by: - invalid utf-8 sequence of 1 bytes from index 5415 Import trace: App Route: ./.freebuff/worktrees/thmrzp9vv9y86o/src/lib/api-server.ts ./.freebuff/worktrees/thmrzp9vv9y86o/src/app/api/auth/me/route.ts"
+        - generic [ref=e1579]: "1"
+        - generic [ref=e1580]: "2"
+    - generic [ref=e1585] [cursor=pointer]:
+      - button "Open Next.js Dev Tools" [ref=e1586]:
+        - img [ref=e1587]
+      - button "Open issues overlay" [ref=e1591]:
+        - generic [ref=e1592]:
+          - generic [ref=e1593]: "0"
+          - generic [ref=e1594]: "1"
+        - generic [ref=e1595]: Issue
+  - alert [ref=e1596]
+```
+
+# Test source
+
+```ts
+  1   | /**
+  2   |  * Vitrine — Integration Tests: Search → Filters → Pagination
+  3   |  *
+  4   |  * Tests the main user flow on the vitrine (marketplace landing page):
+  5   |  * 1. Page loads and shows provider cards or empty state
+  6   |  * 2. Category filter chips can be toggled
+  7   |  * 3. "Carregar mais" pagination works (if enough results)
+  8   |  * 4. View toggle (Lista/Mapa) switches content
+  9   |  *
+  10  |  * Run:  npx playwright test e2e/vitrine-search.spec.ts
+  11  |  * UI:   npx playwright test --ui
+  12  |  */
+  13  | 
+  14  | import { test, expect } from "@playwright/test"
+  15  | 
+  16  | const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000"
+  17  | 
+  18  | // ── Helpers ─────────────────────────────────────────────────────────────────
+  19  | 
+  20  | async function waitForResults(page: import("@playwright/test").Page) {
+  21  |   // Wait for either provider cards or the empty state to render
+> 22  |   await page.waitForFunction(() => {
+      |              ^ Error: page.waitForFunction: Test timeout of 30000ms exceeded.
+  23  |     const grid = document.querySelector('[aria-label="Resultados da busca"]')
+  24  |     if (!grid) return false
+  25  |     // At least one card or the empty state message
+  26  |     return (
+  27  |       grid.querySelector('[data-provider-id]') !== null ||
+  28  |       grid.textContent?.includes("Nenhum prestador") ||
+  29  |       grid.textContent?.includes("prestador encontrado")
+  30  |     )
+  31  |   }, { timeout: 15_000 })
+  32  | }
+  33  | 
+  34  | // ── Tests ───────────────────────────────────────────────────────────────────
+  35  | 
+  36  | test.describe("Vitrine — Search & Filter", () => {
+  37  | 
+  38  |   test("page loads and displays results header", async ({ page }) => {
+  39  |     await page.goto(BASE_URL)
+  40  | 
+  41  |     // Title
+  42  |     await expect(page.locator("h1")).toBeVisible()
+  43  | 
+  44  |     // Results section loads
+  45  |     await waitForResults(page)
+  46  | 
+  47  |     // Either shows results count or empty state
+  48  |     const heading = page.locator("section[aria-label='Resultados da busca'] h2")
+  49  |     await expect(heading).toBeVisible()
+  50  |   })
+  51  | 
+  52  |   test("category filter chips appear and can be removed", async ({ page }) => {
+  53  |     await page.goto(BASE_URL)
+  54  |     await waitForResults(page)
+  55  | 
+  56  |     // Try clicking a category filter (if categories are rendered)
+  57  |     const filterSection = page.locator("aside").first()
+  58  |     const firstCategory = filterSection.locator("label, button").first()
+  59  | 
+  60  |     // If filters exist, click one and verify the chip appears
+  61  |     const categoryExists = await firstCategory.isVisible().catch(() => false)
+  62  |     if (!categoryExists) {
+  63  |       test.skip() // No filters rendered — skipping
+  64  |       return
+  65  |     }
+  66  | 
+  67  |     await firstCategory.click()
+  68  |     await page.waitForTimeout(500)
+  69  | 
+  70  |     // A chip should appear in the active filters area
+  71  |     // (may not — skip gracefully)
+  72  |     test.skip() // Filter chip interaction is view-dependent
+  73  |   })
+  74  | 
+  75  |   test("name search input filters results", async ({ page }) => {
+  76  |     await page.goto(BASE_URL)
+  77  |     await waitForResults(page)
+  78  | 
+  79  |     const searchInput = page.locator('input[type="search"], input[placeholder*="buscar" i], input[placeholder*="Search" i]')
+  80  |     const inputVisible = await searchInput.isVisible().catch(() => false)
+  81  | 
+  82  |     test.skip(!inputVisible, "No visible search input on this layout")
+  83  | 
+  84  |     // Type part of a name and press Enter
+  85  |     await searchInput.fill("encanador")
+  86  |     await searchInput.press("Enter")
+  87  |     await page.waitForTimeout(1000)
+  88  | 
+  89  |     // Results should update
+  90  |     await waitForResults(page)
+  91  |   })
+  92  | })
+  93  | 
+  94  | test.describe("Vitrine — Pagination", () => {
+  95  | 
+  96  |   test('"Carregar mais" loads more results', async ({ page }) => {
+  97  |     await page.goto(BASE_URL)
+  98  |     await waitForResults(page)
+  99  | 
+  100 |     const loadMore = page.getByRole("button", { name: /carregar mais/i })
+  101 |     const buttonVisible = await loadMore.isVisible().catch(() => false)
+  102 | 
+  103 |     test.skip(!buttonVisible, "No 'Carregar mais' button — results fit on one page")
+  104 | 
+  105 |     // Count current cards
+  106 |     const cardSelector = "[data-provider-id]"
+  107 |     const initialCount = await page.locator(cardSelector).count()
+  108 | 
+  109 |     // Click load more
+  110 |     await loadMore.click()
+  111 | 
+  112 |     // Wait for more cards to appear
+  113 |     await page.waitForFunction(
+  114 |       (sel) => document.querySelectorAll(sel).length > 0,
+  115 |       cardSelector,
+  116 |       { timeout: 10_000 },
+  117 |     )
+  118 |     await page.waitForTimeout(500)
+  119 | 
+  120 |     const newCount = await page.locator(cardSelector).count()
+  121 |     expect(newCount).toBeGreaterThan(initialCount)
+  122 |   })
+```

@@ -38,6 +38,9 @@ type AuthState = {
   clearError: () => void
 }
 
+// Current version — bump when persisted shape changes
+const STORAGE_VERSION = 1
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -150,6 +153,18 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "severinno:auth",
+      version: STORAGE_VERSION,
+      // Migrate from older stored shapes if shape changes in future
+      migrate: (persisted) => {
+        // V0 → V1: ensure versioned fields exist
+        const state = persisted as Partial<AuthState>
+        return {
+          user: state.user ?? null,
+          status: state.status ?? "idle",
+          error: state.error ?? null,
+          initialized: state.initialized ?? false,
+        } as AuthState
+      },
       storage: createJSONStorage(() => localStorage),
       // Persist only the user + status so a refresh restores the session
       // without falsely reporting `initialized` before fetchMe() has

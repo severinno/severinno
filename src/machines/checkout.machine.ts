@@ -1,4 +1,4 @@
-import { setup } from "xstate"
+import { setup, assign } from "xstate"
 
 export type CheckoutContext = {
   providerId: string | null
@@ -59,57 +59,60 @@ export const checkoutMachine = setup({
     },
   },
   actions: {
-    clearError: ({ context }) => {
-      context.error = null
-    },
-    setError: ({ context, event }) => {
-      if (event.type === "ERROR") {
-        context.error = event.data.error
+    clearError: assign({ error: null }),
+
+    setError: assign(({ event }) => {
+      if (event.type !== "ERROR") return {}
+      return { error: event.data.error }
+    }),
+
+    setAddress: assign(({ event }) => {
+      if (event.type !== "SET_ADDRESS") return {}
+      return {
+        address: event.data.address,
+        cep: event.data.cep,
+        lat: event.data.lat,
+        lng: event.data.lng,
       }
-    },
-    setAddress: ({ context, event }) => {
-      if (event.type === "SET_ADDRESS") {
-        context.address = event.data.address
-        context.cep = event.data.cep
-        context.lat = event.data.lat
-        context.lng = event.data.lng
+    }),
+
+    setPayment: assign(({ event }) => {
+      if (event.type !== "SET_PAYMENT") return {}
+      return { paymentMethod: event.data.paymentMethod }
+    }),
+
+    setService: assign(({ event }) => {
+      if (event.type !== "SET_SERVICE") return {}
+      return {
+        providerId: event.data.providerId,
+        serviceId: event.data.serviceId,
+        amount: event.data.amount,
       }
-    },
-    setPayment: ({ context, event }) => {
-      if (event.type === "SET_PAYMENT") {
-        context.paymentMethod = event.data.paymentMethod
-      }
-    },
-    setService: ({ context, event }) => {
-      if (event.type === "SET_SERVICE") {
-        context.providerId = event.data.providerId
-        context.serviceId = event.data.serviceId
-        context.amount = event.data.amount
-      }
-    },
-    setSchedule: ({ context, event }) => {
-      if (event.type === "SET_SCHEDULE") {
-        context.scheduledAt = event.data.scheduledAt
-      }
-    },
-    setNotes: ({ context, event }) => {
-      if (event.type === "SET_NOTES") {
-        context.notes = event.data.notes
-      }
-    },
-    resetContext: ({ context }) => {
-      context.providerId = null
-      context.serviceId = null
-      context.scheduledAt = null
-      context.address = null
-      context.cep = null
-      context.lat = null
-      context.lng = null
-      context.paymentMethod = null
-      context.amount = null
-      context.notes = null
-      context.error = null
-    },
+    }),
+
+    setSchedule: assign(({ event }) => {
+      if (event.type !== "SET_SCHEDULE") return {}
+      return { scheduledAt: event.data.scheduledAt }
+    }),
+
+    setNotes: assign(({ event }) => {
+      if (event.type !== "SET_NOTES") return {}
+      return { notes: event.data.notes }
+    }),
+
+    resetContext: assign({
+      providerId: null,
+      serviceId: null,
+      scheduledAt: null,
+      address: null,
+      cep: null,
+      lat: null,
+      lng: null,
+      paymentMethod: null,
+      amount: null,
+      notes: null,
+      error: null,
+    }),
   },
 }).createMachine({
   id: "checkout",
@@ -132,43 +135,43 @@ export const checkoutMachine = setup({
       on: {
         SET_SERVICE: {
           target: "address",
-          actions: "setService" as any,
+          actions: "setService",
         },
       },
     },
     address: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
         SET_ADDRESS: {
           target: "payment",
-          actions: "setAddress" as any,
+          actions: "setAddress",
           guard: "hasAddress",
         },
         SET_SCHEDULE: {
-          actions: "setSchedule" as any,
+          actions: "setSchedule",
         },
         BACK: { target: "cart" },
       },
     },
     payment: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
         SET_PAYMENT: {
           target: "review",
-          actions: "setPayment" as any,
+          actions: "setPayment",
           guard: "hasPayment",
         },
         SET_ADDRESS: {
-          actions: "setAddress" as any,
+          actions: "setAddress",
           guard: "hasAddress",
         },
         BACK: { target: "address" },
       },
     },
     review: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
-        SET_NOTES: { actions: "setNotes" as any },
+        SET_NOTES: { actions: "setNotes" },
         SUBMIT: {
           target: "submitting",
           guard: "hasService",
@@ -178,7 +181,7 @@ export const checkoutMachine = setup({
     },
     submitting: {
       on: {
-        ERROR: { target: "error", actions: "setError" as any },
+        ERROR: { target: "error", actions: "setError" },
       },
       after: {
         "5000": { target: "confirmed" },
@@ -187,14 +190,14 @@ export const checkoutMachine = setup({
     confirmed: {
       type: "final",
       on: {
-        RESET: { target: "cart", actions: "resetContext" as any },
+        RESET: { target: "cart", actions: "resetContext" },
       },
     },
     error: {
       on: {
-        RETRY: { target: "submitting", actions: "clearError" as any },
-        BACK: { target: "review", actions: "clearError" as any },
-        RESET: { target: "cart", actions: "resetContext" as any },
+        RETRY: { target: "submitting", actions: "clearError" },
+        BACK: { target: "review", actions: "clearError" },
+        RESET: { target: "cart", actions: "resetContext" },
       },
     },
   },

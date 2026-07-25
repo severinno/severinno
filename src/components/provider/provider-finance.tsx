@@ -1,16 +1,8 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { useQuery } from "@tanstack/react-query"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip as RTooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
 import {
   eachMonthOfInterval,
   format,
@@ -60,6 +52,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+
+const ProviderRevenueChart = dynamic(() => import("@/components/provider/provider-finance-charts").then((m) => m.ProviderRevenueChart), { ssr: false })
 
 // ---------------------------------------------------------------------------
 // Types
@@ -116,14 +110,7 @@ function PayStatusBadge({ status }: { status: PaymentStatus }) {
   )
 }
 
-const CHART_TOOLTIP_STYLE = {
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  background: "var(--popover)",
-  color: "var(--popover-foreground)",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.15)",
-} as const
+
 
 // ---------------------------------------------------------------------------
 // Stat card
@@ -292,45 +279,7 @@ export function ProviderFinance() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-3">
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
-              >
-                <CartesianGrid
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
-                  tickFormatter={(v) =>
-                    v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
-                  }
-                />
-                <RTooltip
-                  cursor={{ fill: "var(--accent)", opacity: 0.5 }}
-                  contentStyle={CHART_TOOLTIP_STYLE}
-                  formatter={(v: number) => [formatBRL(v), "Receita"]}
-                />
-                <Bar
-                  dataKey="receita"
-                  fill="var(--primary)"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <ProviderRevenueChart data={chartData} />
         </CardContent>
       </Card>
 

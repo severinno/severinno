@@ -1,3 +1,15 @@
+# =============================================================================
+# GitHub Actions PR Check — Severinno Marketplace
+#
+# Runs on every pull request to main:
+#   - Lint (ESLint)
+#   - TypeScript check (tsc --noEmit)
+#   - Unit tests (Vitest, ~2 min without external services)
+#
+# Serves as the "pre-CI" gate — faster than the full CI/CD pipeline
+# and runs on merge_group events for merge queues.
+# =============================================================================
+
 name: PR Check
 
 on:
@@ -11,38 +23,111 @@ concurrency:
 
 env:
   NODE_ENV: test
-  DATABASE_URL: postgresql://localhost:5432/test
-  REDIS_URL: redis://localhost:6379
-  RABBITMQ_URL: amqp://localhost:5672
+  SESSION_SECRET: pr-check-secret-at-least-32-chars-long
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  check:
+  lint:
+    name: 📋 Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - name: Cache node_modules
+      - name: Cache bun dependencies
         uses: actions/cache@v4
+        id: bun-cache
         with:
-          path: node_modules
+          path: |
+            ~/.bun/install/cache
+            node_modules
           key: bun-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-
+          restore-keys: |
+            bun-
 
-      - name: Install deps
+      - name: Install dependencies
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+  typecheck:
+    name: 🔍 TypeCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        id: bun-cache
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        if: steps.bun-cache.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
 
       - name: Generate Prisma client
         run: bunx prisma generate
 
-      - name: Lint
-        run: bun run lint
-
-      - name: Type check
+      - name: TypeScript check
         run: bunx tsc --noEmit
 
-      - name: Unit tests
-        run: bun run test:unit
+  tests:
+    name: 🧪 Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        id: bun-cache
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Run tests
+        run: bun run test:run

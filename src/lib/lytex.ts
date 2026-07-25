@@ -430,6 +430,45 @@ export function verifyWebhookSignature(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Wallet / Splits (recipient)
+// ---------------------------------------------------------------------------
+
+export type LytexWallet = {
+  balance: number
+  pendingBalance: number
+  totalReceived: number
+}
+
+export type LytexSplit = {
+  _id: string
+  _invoiceId: string
+  value: number
+  status: string
+  createdAt: string
+}
+
+/**
+ * Obter saldo da carteira de um recebedor (recipient).
+ */
+export async function getLytexWallet(
+  recipientId: string,
+): Promise<LytexWallet> {
+  return lytexRequest<LytexWallet>("GET", `/recipients/${recipientId}/wallet`)
+}
+
+/**
+ * Obter lista de splits/repasses de um recebedor.
+ */
+export async function listLytexSplits(
+  recipientId: string,
+): Promise<LytexSplit[]> {
+  return lytexRequest<LytexSplit[]>(
+    "GET",
+    `/recipients/${recipientId}/splits`,
+  )
+}
+
 /**
  * Extrair o ID externo (booking.id) de um webhook.
  * O externalReference deve seguir o formato: "booking:{bookingId}"

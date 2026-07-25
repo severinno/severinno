@@ -30,7 +30,6 @@ import { useViewStore } from "@/store/view"
 import { apiGet } from "@/lib/api"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 

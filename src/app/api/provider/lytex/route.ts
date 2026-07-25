@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { getWallet, listSplits } from "@/lib/lytex"
+import { getLytexWallet, listLytexSplits } from "@/lib/lytex"
 import { handleError } from "@/lib/api-server"
 
 function isLytexConfigured(): boolean {
@@ -64,8 +64,8 @@ export async function GET() {
     }
 
     const [wallet, splits] = await Promise.all([
-      getWallet(user.lytexRecipientId).catch(() => null),
-      listSplits(user.lytexRecipientId).catch(() => []),
+      getLytexWallet(user.lytexRecipientId).catch(() => null),
+      listLytexSplits(user.lytexRecipientId).catch(() => []),
     ])
 
     return NextResponse.json({ wallet, splits })

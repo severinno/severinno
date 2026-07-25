@@ -46,10 +46,10 @@ async function indexProviders(): Promise<number> {
     },
   })
 
-  const docs = providers.map((p) => {
-    const ratings = p.reviewsReceived.map((r) => r.rating)
+  const docs = providers.map((p: typeof providers[number]) => {
+    const ratings: number[] = p.reviewsReceived.map((r: { rating: number }) => r.rating)
     const rating = ratings.length
-      ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10
+      ? Math.round((ratings.reduce((a: number, b: number) => a + b, 0) / ratings.length) * 10) / 10
       : 0
 
     return {
@@ -69,8 +69,8 @@ async function indexProviders(): Promise<number> {
         rating,
         reviewCount: ratings.length,
         completedBookings: p.bookingsAsProvider.length,
-        serviceTitles: p.services.map((s) => s.title),
-        serviceCategories: p.services.map((s) => s.category?.id ?? "").filter(Boolean),
+        serviceTitles: p.services.map((s: { title: string }) => s.title),
+        serviceCategories: p.services.map((s: { category?: { id: string } | null }) => s.category?.id ?? "").filter(Boolean),
         createdAt: p.createdAt.toISOString(),
       },
     }

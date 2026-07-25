@@ -20,11 +20,9 @@ import {
   Camera,
   IdCard,
   Loader2,
-  Phone,
   Play,
   Save,
   Smartphone,
-  Speaker,
   User as UserIcon,
   Volume2,
 } from "lucide-react"

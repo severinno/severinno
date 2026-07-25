@@ -133,7 +133,7 @@ function expectNoErrors(
  * Print a readable summary of violations to the Playwright output.
  */
 function printViolations(result: A11yResult, raw: import("axe-core").AxeResults, pageName: string) {
-  // eslint-disable-next-line no-console
+   
   console.log(`
 ╔══════════════════════════════════════════════════╗
 ║  Accessibility Audit — ${pageName.padEnd(27)}║
@@ -148,15 +148,15 @@ function printViolations(result: A11yResult, raw: import("axe-core").AxeResults,
 
   // Print details for each violation
   for (const v of raw.violations) {
-    // eslint-disable-next-line no-console
+     
     console.log(`  [${v.impact?.toUpperCase() ?? "N/A"}] ${v.id}: ${v.help}`)
-    // eslint-disable-next-line no-console
+     
     console.log(`         Tags: ${v.tags.join(", ")}`)
-    // eslint-disable-next-line no-console
+     
     console.log(`         Help: ${v.helpUrl}`)
-    // eslint-disable-next-line no-console
+     
     console.log(`         Elements: ${v.nodes.map((n) => n.target.join(", ")).join(" | ")}`)
-    // eslint-disable-next-line no-console
+     
     console.log("")
   }
 }
@@ -252,7 +252,7 @@ test.describe("WCAG Compliance Report", () => {
     }
 
     // Print a consolidated WCAG compliance report
-    // eslint-disable-next-line no-console
+     
     console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║  WCAG Compliance Report                                 ║
@@ -261,24 +261,24 @@ test.describe("WCAG Compliance Report", () => {
 ╚══════════════════════════════════════════════════════════╝
 `)
     for (const [pageName, violations] of Object.entries(allViolations)) {
-      // eslint-disable-next-line no-console
+       
       console.log(`\n── ${pageName} ──`)
       if (violations.length === 0) {
-        // eslint-disable-next-line no-console
+         
         console.log("  ✅ No WCAG violations found.")
       } else {
         for (const v of violations) {
-          // eslint-disable-next-line no-console
+           
           console.log(`  [${v.impact?.toUpperCase() ?? "N/A"}] ${v.id}: ${v.help}`)
         }
       }
     }
 
     if (allErrors.length > 0) {
-      // eslint-disable-next-line no-console
+       
       console.log(`\n── Console Errors / Failed Requests ──`)
       for (const { page: pageName, errors: pageErrors } of allErrors) {
-        // eslint-disable-next-line no-console
+         
         console.log(`  ${pageName}: ${pageErrors.join(", ")}`)
       }
     }

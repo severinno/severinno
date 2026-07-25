@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const parentId = searchParams.get("parentId")
     const includeCount = searchParams.get("includeCount") === "true"
 
-    // Build a deterministic cache key from params (omit includeCount â€” it
+    // Build a deterministic cache key from params (omit includeCount; it
     // changes the shape, so we include it for correctness)
     const cacheKey = `categories:l=${level ?? "all"}:p=${parentId ?? "none"}:c=${includeCount}`
 
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
       cacheInvalidate("categories:*"),
       invalidateCategoryCache(),
     ]).catch(() => {})
-    // Queue search reindex (non-critical — don't fail the request)
+    // Queue search reindex (non-critical, don't fail the request)
     syncCategorySearch(created).catch(() => {})
     return NextResponse.json({ category: created }, { status: 201 })
   } catch (e) {

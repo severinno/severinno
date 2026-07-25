@@ -337,7 +337,7 @@ async function fetchProvidersData(
 
   // Compute distance via PostGIS (if available) or Haversine fallback
   // For PostGIS: fetch distances for all provider IDs in one query
-  let distanceMap = new Map<string, number | null>()
+  const distanceMap = new Map<string, number | null>()
   if (centerGeo) {
     try {
       const distRows = await db.$queryRawUnsafe<

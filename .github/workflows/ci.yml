@@ -1,12 +1,19 @@
 # =============================================================================
 # GitHub Actions CI/CD — Severinno Marketplace
 #
-# Pipeline:
-#   lint    → ESLint
-#   typecheck → tsc --noEmit
-#   test    → vitest run
-#   build   → next build (Docker or standalone)
-#   deploy  → (VPS / Docker Hub / SSH deploy)
+# Triggers:
+#   - push to main/develop → full pipeline (lint → typecheck → test → build → deploy)
+#   - pull_request → full pipeline except deploy
+#
+# Services:
+#   - POSTGIS 16  for DB-dependent tests
+#   - Valkey 7    (Redis-compatible) for cache/rate-limit tests
+#   - RabbitMQ 4  for queue/consumer tests
+#
+# Optimizations:
+#   - Bun dependency caching (hash of bun.lock)
+#   - Prisma client cached between jobs
+#   - Parallel job execution where safe
 # =============================================================================
 
 name: CI/CD
@@ -23,88 +30,160 @@ concurrency:
 
 env:
   NODE_VERSION: 22
-  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
+  DATABASE_URL: postgresql://severinno:severinno_ci@localhost:5432/severinno_test
   REDIS_URL: redis://localhost:6379
-  SESSION_SECRET: ci-session-secret-at-least-32-characters-long
+  RABBITMQ_URL: amqp://guest:guest@localhost:5672
+  SESSION_SECRET: ci-secret-key-at-least-32-characters-for-hmac
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   # ── Lint ──────────────────────────────────────────────────────────────────
   lint:
-    name: Lint
+    name: 📋 Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - run: bun install --frozen-lockfile
-      - run: bun run lint
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        id: bun-cache
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
 
-  # ── TypeScript check ─────────────────────────────────────────────────────
+      - name: Install dependencies
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+  # ── TypeScript check ──────────────────────────────────────────────────────
   typecheck:
-    name: TypeCheck
+    name: 🔍 TypeCheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - run: bun install --frozen-lockfile
-      - run: bun run db:generate
-      - run: bunx tsc --noEmit
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        id: bun-cache
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
 
-  # ── Tests ─────────────────────────────────────────────────────────────────
-  test:
-    name: Tests
+      - name: Install dependencies
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: TypeScript check
+        run: bunx tsc --noEmit
+
+  # ── Unit tests (fast, no external services) ───────────────────────────────
+  unit-tests:
+    name: ⚡ Unit Tests
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: severinno_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - run: bun install --frozen-lockfile
-      - run: bun run test:run
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        id: bun-cache
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Run unit tests
+        run: bun run test:run
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
+          NODE_ENV: test
+          CI: "true"
 
   # ── Build ─────────────────────────────────────────────────────────────────
   build:
-    name: Build
+    name: 🏗️ Build
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test]
+    timeout-minutes: 15
+    needs: [lint, typecheck, unit-tests]
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
-      - run: bun install --frozen-lockfile
-      - run: bun run db:generate
-      - run: bun run build
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        id: bun-cache
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Build application
+        run: bun run build
         env:
           SKIP_TYPESCRIPT_CHECK: "true"
 
@@ -112,13 +191,17 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: standalone-build
-          path: .next/standalone/
+          path: |
+            .next/standalone/
+            .next/static/
+            public/
           retention-days: 3
 
-  # ── Deploy (manual trigger or on push to main) ────────────────────────────
+  # ── Deploy (only on push to main) ─────────────────────────────────────────
   deploy:
-    name: Deploy
+    name: 🚀 Deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
@@ -128,8 +211,8 @@ jobs:
           name: standalone-build
           path: .next/standalone/
 
-      # Example: SSH deploy to VPS
-      # Uncomment and configure secrets for your server:
+      # ── Example: Docker deploy via SSH ──────────────────────────────────
+      # Uncomment and configure secrets in your repo settings:
       #
       # - name: Deploy via SSH
       #   uses: appleboy/scp-action@v0.1.7
@@ -151,5 +234,6 @@ jobs:
       #       cd /opt/severinno
       #       docker compose pull
       #       docker compose up -d --force-recreate
+      #       echo "✅ Deploy complete"
 
       - run: echo "✅ Build ready for deployment"

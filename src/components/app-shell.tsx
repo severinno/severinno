@@ -56,10 +56,11 @@ export default function AppShell() {
 
   const { join } = useRealtime()
 
-  // Initial auth check
+  // Initial auth check — stable reference; fetchMe is defined once in the store
   useEffect(() => {
     void fetchMe()
-  }, [fetchMe])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Auth guard for panel views
   useEffect(() => {

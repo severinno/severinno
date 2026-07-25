@@ -30,6 +30,9 @@ export type GeoState = {
   clear: () => void
 }
 
+// Current version — bump when persisted shape changes
+const STORAGE_VERSION = 1
+
 export const useGeoStore = create<GeoState>()(
   persist(
     (set) => ({
@@ -42,6 +45,7 @@ export const useGeoStore = create<GeoState>()(
       state: null,
       status: "idle",
       error: null,
+      updatedAt: null,
 
       setFromGPS: async () => {
         if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -141,6 +145,21 @@ export const useGeoStore = create<GeoState>()(
     }),
     {
       name: "severinno:geo",
+      version: STORAGE_VERSION,
+      migrate: (persisted) => {
+        const state = persisted as Partial<GeoState>
+        return {
+          lat: state.lat ?? null,
+          lng: state.lng ?? null,
+          address: state.address ?? null,
+          cep: state.cep ?? null,
+          district: state.district ?? null,
+          city: state.city ?? null,
+          state: state.state ?? null,
+          status: state.status ?? "idle",
+          error: state.error ?? null,
+        } as GeoState
+      },
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({
         lat: s.lat,

@@ -1,11 +1,7 @@
 /**
  * Severinno Marketplace SaaS — Realtime client hook (Fase 1 / MVP)
  *
- * Singleton Socket.io client that connects to the realtime mini-service
- * (port 3003) through the Caddy gateway. The gateway selects the upstream
- * service by the `?XTransformPort=3003` query string and forwards to path `/`.
- *
- *   io("/?XTransformPort=3003")   <- NEVER put the port in the URL.
+ * Wraps the singleton Socket.io client (`socketClient`) in a React hook.
  *
  * Usage:
  *   const { isConnected, join, sendMessage, ... } = useRealtime();
@@ -17,44 +13,10 @@
 
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { io, Socket } from 'socket.io-client'
+import { useEffect, useState, useCallback } from 'react'
+import socketClient, { type ConnectionStatus, type JoinPayload, type MessageSendPayload, type BookingUpdatePayload, type QuoteUpdatePayload, type TrackingPositionPayload, type EventHandler } from '@/lib/socket-client'
 
-// ---------- Types ----------
-export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error'
-
-export interface JoinPayload {
-  userId: string
-  role: string
-}
-
-export interface MessageSendPayload {
-  fromId: string
-  toId: string
-  content: string
-  bookingId?: string
-}
-
-export interface BookingUpdatePayload {
-  bookingId: string
-  clientId: string
-  providerId: string
-  status: string
-}
-
-export interface QuoteUpdatePayload {
-  quoteId: string
-  clientId: string
-  providerId: string
-  status: string
-}
-
-export interface TrackingPositionPayload {
-  bookingId: string
-  clientId: string
-  lat: number
-  lng: number
-}
+export type { ConnectionStatus, JoinPayload, MessageSendPayload, BookingUpdatePayload, QuoteUpdatePayload, TrackingPositionPayload }
 
 export interface RealtimeMessage {
   id: string
@@ -100,193 +62,90 @@ export interface TrackingPositionEvent {
   timestamp: string
 }
 
-// ---------- Singleton socket ----------
-// Only build it in the browser. SSR returns null.
-let socketRef: Socket | null = null
-
-function getSocket(): Socket | null {
-  if (typeof window === 'undefined') return null
-  if (socketRef) return socketRef
-
-  // Caddy gateway picks the upstream port from the `XTransformPort` query param.
-  // The path MUST be "/" (see Caddyfile + examples/websocket/*).
-  socketRef = io('/?XTransformPort=3003', {
-    transports: ['websocket', 'polling'],
-    forceNew: true,
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 10000,
-  })
-  return socketRef
-}
-
-// ---------- Hook ----------
 export interface UseRealtimeResult {
   isConnected: boolean
   status: ConnectionStatus
-  // helpers
   join: (payload: JoinPayload) => Promise<boolean>
   sendMessage: (payload: MessageSendPayload) => void
   updateBooking: (payload: BookingUpdatePayload) => void
   updateQuote: (payload: QuoteUpdatePayload) => void
   sendTrackingPosition: (payload: TrackingPositionPayload) => void
   ping: () => Promise<{ pong: boolean; t: number } | null>
-  // generic emit + listener helpers
   emit: <T = unknown>(event: string, data?: T) => void
-  on: <T = unknown>(event: string, handler: (data: T) => void) => () => void
+  on: <T = unknown>(event: string, handler: EventHandler<T>) => () => void
   off: (event: string, handler?: (...args: unknown[]) => void) => void
   disconnect: () => void
 }
 
 export function useRealtime(): UseRealtimeResult {
-  const [isConnected, setIsConnected] = useState(false)
-  const [status, setStatus] = useState<ConnectionStatus>('connecting')
+  const [isConnected, setIsConnected] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return socketClient.connected
+  })
+  const [status, setStatus] = useState<ConnectionStatus>(() => {
+    if (typeof window === 'undefined') return 'connecting'
+    return socketClient.status
+  })
 
   useEffect(() => {
-    const s = getSocket()
-    if (!s) return // SSR guard
+    if (typeof window === 'undefined') return
 
-    const onConnect = () => {
-      setIsConnected(true)
-      setStatus('connected')
-    }
-    const onDisconnect = () => {
-      setIsConnected(false)
-      setStatus('disconnected')
-    }
-    const onConnectError = () => {
-      setIsConnected(false)
-      setStatus('error')
-    }
-    const onReconnectAttempt = () => {
-      setStatus('reconnecting')
-    }
-    const onReconnect = () => {
-      setIsConnected(true)
-      setStatus('connected')
-    }
-    // Sync component state with the singleton socket's current status
-    // (e.g. when reused across mounts / hot reload). Wrapped in a function so
-    // the sync isn't a direct setState call in the effect body.
-    const syncFromSocket = () => {
-      if (s.connected) {
-        setIsConnected(true)
-        setStatus('connected')
-      } else if (!s.active) {
-        setStatus('connecting')
-      }
-    }
+    // Connect on mount
+    socketClient.connect()
 
-    s.on('connect', onConnect)
-    s.on('disconnect', onDisconnect)
-    s.on('connect_error', onConnectError)
-    s.on('reconnect_attempt', onReconnectAttempt)
-    s.on('reconnect', onReconnect)
-
-    syncFromSocket()
+    // Listen for status changes
+    const unsub = socketClient.onStatusChange((newStatus) => {
+      setStatus(newStatus)
+      setIsConnected(newStatus === 'connected')
+    })
 
     return () => {
-      s.off('connect', onConnect)
-      s.off('disconnect', onDisconnect)
-      s.off('connect_error', onConnectError)
-      s.off('reconnect_attempt', onReconnectAttempt)
-      s.off('reconnect', onReconnect)
+      unsub()
+      // Don't disconnect on unmount — singleton survives
     }
   }, [])
 
-  // ---------- Helpers ----------
-  const join = useMemo<UseRealtimeResult['join']>(
-    () =>
-      (payload: JoinPayload) =>
-        new Promise<boolean>((resolve) => {
-          const s = socketRef
-          if (!s || !s.connected) return resolve(false)
-          s.emit('join', payload, (res: { ok: boolean }) => resolve(!!res?.ok))
-        }),
-    []
-  )
+  const join = useCallback((payload: JoinPayload) => {
+    return socketClient.join(payload)
+  }, [])
 
-  const sendMessage = useMemo<UseRealtimeResult['sendMessage']>(
-    () => (payload: MessageSendPayload) => {
-      socketRef?.emit('message:send', payload)
-    },
-    []
-  )
+  const sendMessage = useCallback((payload: MessageSendPayload) => {
+    socketClient.sendMessage(payload)
+  }, [])
 
-  const updateBooking = useMemo<UseRealtimeResult['updateBooking']>(
-    () => (payload: BookingUpdatePayload) => {
-      socketRef?.emit('booking:update', payload)
-    },
-    []
-  )
+  const updateBooking = useCallback((payload: BookingUpdatePayload) => {
+    socketClient.updateBooking(payload)
+  }, [])
 
-  const updateQuote = useMemo<UseRealtimeResult['updateQuote']>(
-    () => (payload: QuoteUpdatePayload) => {
-      socketRef?.emit('quote:update', payload)
-    },
-    []
-  )
+  const updateQuote = useCallback((payload: QuoteUpdatePayload) => {
+    socketClient.updateQuote(payload)
+  }, [])
 
-  const sendTrackingPosition = useMemo<UseRealtimeResult['sendTrackingPosition']>(
-    () => (payload: TrackingPositionPayload) => {
-      socketRef?.emit('tracking:position', payload)
-    },
-    []
-  )
+  const sendTrackingPosition = useCallback((payload: TrackingPositionPayload) => {
+    socketClient.sendTrackingPosition(payload)
+  }, [])
 
-  const ping = useMemo<UseRealtimeResult['ping']>(
-    () =>
-      () =>
-        new Promise<{ pong: boolean; t: number } | null>((resolve) => {
-          const s = socketRef
-          if (!s || !s.connected) return resolve(null)
-          s.emit('ping', (res: { pong: boolean; t: number }) => resolve(res ?? null))
-        }),
-    []
-  )
+  const ping = useCallback(() => {
+    return socketClient.ping()
+  }, [])
 
-  const emit = useMemo<UseRealtimeResult['emit']>(
-    () => (event: string, data?: unknown) => {
-      socketRef?.emit(event, data as any)
-    },
-    []
-  )
+  const emit = useCallback(<T = unknown>(event: string, data?: T) => {
+    socketClient.emit(event, data)
+  }, [])
 
-  const on = useMemo<UseRealtimeResult['on']>(
-    () => <T,>(event: string, handler: (data: T) => void) => {
-      const s = socketRef
-      if (!s) return () => {}
-      const wrapped = (data: T) => handler(data)
-      s.on(event, wrapped as any)
-      return () => {
-        s.off(event, wrapped as any)
-      }
-    },
-    []
-  )
+  const on = useCallback(<T = unknown>(event: string, handler: EventHandler<T>) => {
+    return socketClient.on(event, handler)
+  }, [])
 
-  const off = useMemo<UseRealtimeResult['off']>(
-    () => (event: string, handler?: (...args: unknown[]) => void) => {
-      if (handler) socketRef?.off(event, handler as any)
-      else socketRef?.off(event)
-    },
-    []
-  )
+  const off = useCallback((event: string, handler?: (...args: unknown[]) => void) => {
+    socketClient.off(event, handler)
+  }, [])
 
-  const disconnect = useMemo<UseRealtimeResult['disconnect']>(
-    () => () => {
-      const s = socketRef
-      if (s) {
-        s.disconnect()
-        socketRef = null
-        setIsConnected(false)
-        setStatus('disconnected')
-      }
-    },
-    []
-  )
+  const disconnect = useCallback(() => {
+    socketClient.disconnect()
+    setIsConnected(false)
+    setStatus('disconnected')
+  }, [])
 
   return {
     isConnected,

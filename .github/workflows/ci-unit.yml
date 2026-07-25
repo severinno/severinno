@@ -1,0 +1,66 @@
+# =============================================================================
+# CI — Quick Unit Tests — Severinno Marketplace
+#
+# Runs on every push to ANY branch. Provides fast feedback (~1 min)
+# without needing external services (PostGIS, Redis, RabbitMQ).
+#
+# Excludes component/integration tests that require a browser or DB.
+# Use `bun run test:unit` (vitest.config.unit.ts) which skips:
+#   - Component tests (src/components/**/*.test.*)
+#   - E2E tests (e2e/)
+# =============================================================================
+
+name: CI — Unit Tests
+
+on:
+  push:
+    branches-ignore: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: unit-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV: test
+  SESSION_SECRET: unit-test-secret-at-least-32-chars
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit-tests:
+    name: ⚡ Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        id: bun-cache
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-
+
+      - name: Install dependencies
+        if: steps.bun-cache.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Run unit tests (no external services needed)
+        run: bun run test:unit

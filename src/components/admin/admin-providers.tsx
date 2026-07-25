@@ -36,7 +36,6 @@ import {
   MapPin,
   MoreHorizontal,
   Power,
-  SearchX,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,

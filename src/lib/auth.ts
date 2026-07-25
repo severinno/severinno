@@ -1,31 +1,18 @@
 import { cookies } from "next/headers"
-import { createHmac, timingSafeEqual } from "crypto"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
+import {
+  signPayload,
+  parseCookieValue,
+  constantTimeEqual,
+  SESSION_COOKIE_NAME as COOKIE_NAME,
+  SESSION_MAX_AGE as COOKIE_MAX_AGE_SECONDS,
+  ROTATION_THRESHOLD as ROTATION_THRESHOLD_SECONDS,
+  type SessionPayload,
+} from "@/lib/crypto-session"
 
-/**
- * Lightweight HMAC-signed session cookie (no JWT lib).
- * Cookie format: `${userId}.${role}.${expiresAt}.${signatureHex}`
- */
-
-const COOKIE_NAME = "severinno_session"
-const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30 // 30 days
-const ROTATION_THRESHOLD_SECONDS = COOKIE_MAX_AGE_SECONDS / 2 // 15 days
-
-function getSecret(): string {
-  const secret = process.env.SESSION_SECRET
-  if (!secret) throw new Error("SESSION_SECRET environment variable is not set")
-  return secret
-}
-
-function sign(payload: string): string {
-  return createHmac("sha256", getSecret()).update(payload).digest("hex")
-}
-
-export type SessionPayload = {
-  userId: string
-  role: "CLIENT" | "PROVIDER" | "ADMIN"
-}
+export type { SessionPayload }
+export { SESSION_COOKIE_NAME } from "@/lib/crypto-session"
 
 /**
  * Create a signed session cookie and set it on the response.
@@ -33,7 +20,7 @@ export type SessionPayload = {
 export async function createSession(userId: string, role: SessionPayload["role"]) {
   const expiresAt = Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE_SECONDS
   const payload = `${userId}.${role}.${expiresAt}`
-  const signature = sign(payload)
+  const signature = await signPayload(payload)
   const value = `${payload}.${signature}`
 
   const store = await cookies()
@@ -66,20 +53,16 @@ export async function getSession(): Promise<SessionPayload | null> {
     const cookie = store.get(COOKIE_NAME)
     if (!cookie?.value) return null
 
-    const parts = cookie.value.split(".")
-    if (parts.length !== 4) return null
-    const [userId, role, expiresAtStr, signature] = parts
-    if (!userId || !role || !expiresAtStr || !signature) return null
+    const parsed = parseCookieValue(cookie.value)
+    if (!parsed) return null
 
-    const payload = `${userId}.${role}.${expiresAtStr}`
-    const expected = sign(payload)
+    const { userId, role, expiresAt, signature } = parsed
 
-    const a = Buffer.from(signature, "hex")
-    const b = Buffer.from(expected, "hex")
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null
+    const payload = `${userId}.${role}.${expiresAt}`
+    const expected = await signPayload(payload)
 
-    const expiresAt = Number(expiresAtStr)
-    if (!Number.isFinite(expiresAt)) return null
+    if (!constantTimeEqual(signature, expected)) return null
+
     if (expiresAt * 1000 < Date.now()) return null
 
     const remaining = expiresAt - Math.floor(Date.now() / 1000)
@@ -174,5 +157,3 @@ export async function getOptionalSession(): Promise<SessionPayload | null> {
     return null
   }
 }
-
-export const SESSION_COOKIE_NAME = COOKIE_NAME

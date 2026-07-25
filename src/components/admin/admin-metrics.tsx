@@ -7,7 +7,6 @@ import {
   CalendarCheck,
   FileText,
   Star,
-  DollarSign,
   TrendingUp,
   RotateCw,
 } from "lucide-react"

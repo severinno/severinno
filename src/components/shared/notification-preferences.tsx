@@ -14,12 +14,11 @@
 
 import * as React from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Bell, BellOff, Loader2, Volume2, Mail, Smartphone, MessageSquare } from "lucide-react"
+import { Bell, Volume2, Mail, MessageSquare } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiGet, apiPatch } from "@/lib/api"
 import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 

@@ -9,14 +9,12 @@ import {
   Trash2,
   Plus,
   Loader2,
-  Sun,
   Umbrella,
 } from "lucide-react"
 import { format, isSameDay } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
 import { apiGet, apiPost } from "@/lib/api"
-import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"

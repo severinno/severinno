@@ -64,8 +64,32 @@ const nextConfig: NextConfig = {
       "framer-motion",
       "zod",
       "sonner",
+      "@radix-ui/react-accordion",
+      "@radix-ui/react-select",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-popover",
+      "@radix-ui/react-tabs",
+      "@radix-ui/react-tooltip",
+      "embla-carousel-react",
+      "embla-carousel-autoplay",
+      "react-markdown",
+      "cmdk",
+      "input-otp",
+      "vaul",
     ],
   },
+
+  // Turbopack root to silence lockfile warning in monorepo
+  turbopack: {
+    root: process.cwd(),
+  },
+
+  // Optimize server references for smaller bundles
+  serverExternalPackages: ["sharp", "pino"],
+
+  // @sentry/nextjs runs in DSN-only mode (no withSentryConfig wrapper needed
+  // for self-hosted GlitchTip). No build-time plugins to configure here.
 };
 
 const withBundleAnalyzerFn = withBundleAnalyzer({

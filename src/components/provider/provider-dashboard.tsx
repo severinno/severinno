@@ -36,7 +36,6 @@ import {
   endOfWeek,
   format,
   isSameDay,
-  startOfMonth,
   startOfWeek,
   startOfYear,
   subDays,
