@@ -90,7 +90,8 @@ export async function POST(request: Request) {
       cacheInvalidate("categories:*"),
       invalidateCategoryCache(),
     ]).catch(() => {})
-    syncCategorySearch(created)
+    // Queue search reindex (non-critical — don't fail the request)
+    syncCategorySearch(created).catch(() => {})
     return NextResponse.json({ category: created }, { status: 201 })
   } catch (e) {
     return handleError(e)
