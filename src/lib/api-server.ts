@@ -160,7 +160,7 @@ export async function invalidateCategoryCache(): Promise<void> {
 
 
 // ---------------------------------------------------------------------------
-// Cache-Control helpers — set public Cache-Control headers on responses
+// Cache-Control helpers - set public Cache-Control headers on responses
 // ---------------------------------------------------------------------------
 
 /**
@@ -184,7 +184,7 @@ export function cacheControlPublic(
 }
 
 // ---------------------------------------------------------------------------
-// Search reindex helpers — queue entities for the search-index consumer
+// Search reindex helpers - queue entities for the search-index consumer
 // ---------------------------------------------------------------------------
 
 /**

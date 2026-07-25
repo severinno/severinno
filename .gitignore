@@ -52,3 +52,9 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Test results
+/tests/test-results.xml
+
+# Temp files created by setup.sh / check-health.sh
+.tmp/

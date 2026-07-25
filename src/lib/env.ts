@@ -14,8 +14,8 @@ const envSchema = z.object({
   // Cache
   REDIS_URL: z.string().min(1),
 
-  // Queue
-  RABBITMQ_URL: z.string().min(1),
+  // Queue (opcional em dev — necessário apenas para workers de email/notificação)
+  RABBITMQ_URL: z.string().min(1).optional(),
 
   // Storage
   S3_ENDPOINT: z.string().optional(),

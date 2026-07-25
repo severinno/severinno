@@ -68,6 +68,7 @@ model User {
   messagesTo         Message[]        @relation("MessageTo")
   notifications      Notification[]
   settings           Setting[]
+  providerSettlements ProviderSettlement[] @relation("ProviderSettlementProvider")
 
   @@index([role, active, verified])
   @@index([city])
@@ -394,7 +395,7 @@ model ProviderSettlement {
   updatedAt       DateTime @updatedAt
 
   period   SettlementPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  provider User             @relation(fields: [providerId], references: [id])
+  provider User             @relation("ProviderSettlementProvider", fields: [providerId], references: [id])
 
   @@unique([periodId, providerId])
   @@index([periodId])
