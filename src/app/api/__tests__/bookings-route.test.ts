@@ -8,8 +8,8 @@ vi.mock("@/lib/with-rate-limit", () => ({
 }))
 
 vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
 }))
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
@@ -39,6 +39,9 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/lytex", () => ({
   createPixCharge: vi.fn(),
   createCardCharge: vi.fn(),
+  pollChargeStatus: vi.fn().mockResolvedValue({ status: "paid", paidAt: new Date().toISOString() }),
+  lytexLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
+  LytexError: class LytexError extends Error { constructor(m: string) { super(m); this.name = "LytexError" } },
 }))
 
 vi.mock("@/lib/notification-queue", () => ({
@@ -369,6 +372,14 @@ describe("POST /api/bookings/[id]/pay", () => {
     amount: 200,
     paymentMethod: "PIX",
     providerId: "prov-1",
+    client: {
+      id: "client-1",
+      name: "Test Client",
+      email: "test@test.com",
+      cpfCnpj: "12345678900",
+      whatsapp: "11999999999",
+    },
+    payment: null,
   }
 
   it("simulates PIX payment when lytex is not configured", async () => {

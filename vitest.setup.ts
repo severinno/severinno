@@ -1,6 +1,26 @@
 /// <reference types="vitest/globals" />
 import "@testing-library/jest-dom/vitest"
 
+// ── Mock ioredis globally (prevents "Unhandled error event" in tests) ─────
+// Rate-limit and Redis modules may try to connect to a real Redis instance
+// during tests. This mock prevents unhandled error events.
+vi.mock("ioredis", () => {
+  const MockRedis = vi.fn().mockImplementation(() => ({
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue("OK"),
+    setex: vi.fn().mockResolvedValue("OK"),
+    incr: vi.fn().mockResolvedValue(1),
+    pexpire: vi.fn().mockResolvedValue(1),
+    keys: vi.fn().mockResolvedValue([]),
+    del: vi.fn().mockResolvedValue(1),
+    ping: vi.fn().mockResolvedValue("PONG"),
+    on: vi.fn(),
+    disconnect: vi.fn(),
+    quit: vi.fn(),
+  }))
+  return { default: MockRedis, Redis: MockRedis }
+})
+
 // ── Mock ResizeObserver for framer-motion (used by error.tsx) ─────────────
 globalThis.ResizeObserver = class ResizeObserver {
   observe() {}
@@ -13,8 +33,6 @@ globalThis.ResizeObserver = class ResizeObserver {
 HTMLCanvasElement.prototype.getContext = function () {
   return null
 }
-
-
 
 // ── Mock server-only globally (used by @/lib/env and others) ──────────────
 // Must be before any imports that use it.

@@ -73,7 +73,7 @@ describe("GET /api/geo/reverse", () => {
     const res = await GET(req)
     const parsed = await parseResponse(res)
 
-    expect(parsed.status).toBe(500)
+    expect(parsed.status).toBe(502)
     expect(parsed.body).toHaveProperty("error")
   })
 })

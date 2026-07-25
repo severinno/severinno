@@ -43,7 +43,7 @@ const mockDb = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }))
 vi.mock("@/lib/validators", () => ({ quoteSchema: { parse: vi.fn() }, quoteItemResponseSchema: { parse: vi.fn() } }))
-vi.mock("@/lib/logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+vi.mock("@/lib/logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() } }))
 
 import { requireUser } from "@/lib/auth"
 import { quoteSchema, quoteItemResponseSchema } from "@/lib/validators"

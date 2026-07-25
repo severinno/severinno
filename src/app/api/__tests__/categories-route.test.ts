@@ -3,6 +3,20 @@ import { GET } from "../categories/route"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
 // Mock the db module
+vi.mock("@/lib/redis", () => ({
+  withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+  cacheInvalidate: vi.fn(),
+}))
+
+vi.mock("@/lib/api-server", async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    cacheControlPublic: vi.fn((response: Response) => response),
+    syncCategorySearch: vi.fn(),
+  }
+})
+
 vi.mock("@/lib/db", () => ({
   db: {
     category: {

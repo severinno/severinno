@@ -8,7 +8,7 @@ const { mockConsume, mockClose, mockSetupGracefulShutdown, mockSendMail } = vi.h
 }))
 
 vi.mock("../../lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
 }))
 
 vi.mock("../../lib/queue", () => ({

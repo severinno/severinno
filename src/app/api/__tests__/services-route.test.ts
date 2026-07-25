@@ -47,10 +47,24 @@ const mockDb = vi.hoisted(() => ({
   service: { findMany: vi.fn(), findUnique: vi.fn() },
 }))
 
+vi.mock("@/lib/redis", () => ({
+  withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+  cacheInvalidate: vi.fn(),
+}))
+
+vi.mock("@/lib/api-server", async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    cacheControlPublic: vi.fn((response: Response) => response),
+    syncServiceSearch: vi.fn(),
+  }
+})
+
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }))
 vi.mock("@/lib/validators", () => ({ serviceSchema: { parse: vi.fn() } }))
-vi.mock("@/lib/logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+vi.mock("@/lib/logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() } }))
 
 beforeEach(() => {
   vi.clearAllMocks()
