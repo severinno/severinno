@@ -85,7 +85,8 @@ export async function POST(request: Request) {
       },
       include: { category: true },
     })
-    syncServiceSearch(created)
+    // Queue search reindex (non-critical — don't fail the request)
+    syncServiceSearch(created).catch(() => {})
 
     // Invalidate service list cache so new services appear immediately
     cacheInvalidate("services:*").catch(() => {})

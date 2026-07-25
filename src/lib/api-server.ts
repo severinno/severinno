@@ -158,3 +158,61 @@ export async function invalidateCategoryCache(): Promise<void> {
   await cacheInvalidate("cat:desc:*")
 }
 
+
+// ---------------------------------------------------------------------------
+// Cache-Control helpers — set public Cache-Control headers on responses
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply public Cache-Control headers to a NextResponse.
+ *
+ * @param response  The response to modify.
+ * @param maxAge    Max age in seconds (e.g. 30, 60, 120).
+ * @param staleWhileRevalidate  Stale-while-revalidate in seconds (defaults to maxAge).
+ */
+export function cacheControlPublic(
+  response: NextResponse,
+  maxAge: number,
+  staleWhileRevalidate?: number,
+): NextResponse {
+  const swr = staleWhileRevalidate ?? maxAge
+  response.headers.set(
+    "Cache-Control",
+    `public, max-age=${maxAge}, s-maxage=${swr}`,
+  )
+  return response
+}
+
+// ---------------------------------------------------------------------------
+// Search reindex helpers — queue entities for the search-index consumer
+// ---------------------------------------------------------------------------
+
+/**
+ * Queue a category for search reindexing.
+ */
+export async function syncCategorySearch(category: {
+  id: string
+}): Promise<void> {
+  await db.$queryRawUnsafe(
+    `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
+     VALUES ($1, $2, $3, NOW())`,
+    "category",
+    category.id,
+    "upsert",
+  )
+}
+
+/**
+ * Queue a service for search reindexing.
+ */
+export async function syncServiceSearch(service: {
+  id: string
+}): Promise<void> {
+  await db.$queryRawUnsafe(
+    `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
+     VALUES ($1, $2, $3, NOW())`,
+    "service",
+    service.id,
+    "upsert",
+  )
+}
