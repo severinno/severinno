@@ -1,15 +1,15 @@
-import { z } from "zod"
+import { z } from "zod";
 
 // ---------------------------------------------------------------------------
 // AUTH
 // ---------------------------------------------------------------------------
-const cpfCnpjRegex = /^[\d.\-/]+$/
+const cpfCnpjRegex = /^[\d.\-/]+$/;
 
 export const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
   password: z.string().min(6, "Senha deve ter ao menos 6 caracteres"),
-})
-export type LoginInput = z.infer<typeof loginSchema>
+});
+export type LoginInput = z.infer<typeof loginSchema>;
 
 export const registerSchema = z
   .object({
@@ -27,11 +27,7 @@ export const registerSchema = z
       .regex(cpfCnpjRegex, "CPF/CNPJ inválido")
       .optional()
       .or(z.literal("")),
-    whatsapp: z
-      .string()
-      .min(10, "WhatsApp inválido")
-      .optional()
-      .or(z.literal("")),
+    whatsapp: z.string().min(10, "WhatsApp inválido").optional().or(z.literal("")),
     phone: z.string().optional().or(z.literal("")),
     cep: z.string().optional().or(z.literal("")),
     street: z.string().optional().or(z.literal("")),
@@ -51,16 +47,13 @@ export const registerSchema = z
     path: ["confirmPassword"],
   })
   .refine(
-    (d) =>
-      d.role !== "PROVIDER" ||
-      (Boolean(d.cpfCnpj) && Boolean(d.whatsapp) && Boolean(d.city)),
+    (d) => d.role !== "PROVIDER" || (Boolean(d.cpfCnpj) && Boolean(d.whatsapp) && Boolean(d.city)),
     {
-      message:
-        "Prestadores devem informar CPF/CNPJ, WhatsApp e cidade",
+      message: "Prestadores devem informar CPF/CNPJ, WhatsApp e cidade",
       path: ["role"],
     },
-  )
-export type RegisterInput = z.infer<typeof registerSchema>
+  );
+export type RegisterInput = z.infer<typeof registerSchema>;
 
 // ---------------------------------------------------------------------------
 // PROFILE (provider update)
@@ -82,8 +75,8 @@ export const providerProfileSchema = z.object({
   lat: z.coerce.number().optional(),
   lng: z.coerce.number().optional(),
   radiusKm: z.coerce.number().min(1).max(200).optional(),
-})
-export type ProviderProfileInput = z.infer<typeof providerProfileSchema>
+});
+export type ProviderProfileInput = z.infer<typeof providerProfileSchema>;
 
 // ---------------------------------------------------------------------------
 // SERVICE
@@ -93,24 +86,18 @@ export const serviceUnitEnum = z.enum([
   "METRO_LINEAR",
   "METRO_QUADRADO",
   "METRO_CUBICO",
-])
+]);
 
 export const serviceSchema = z.object({
   title: z.string().min(3, "Título muito curto").max(80),
   description: z.string().min(10, "Descreva melhor o serviço").max(1200),
   categoryId: z.string().min(1, "Selecione uma subcategoria"),
-  basePrice: z.coerce
-    .number()
-    .min(0, "Preço deve ser positivo")
-    .max(1_000_000),
+  basePrice: z.coerce.number().min(0, "Preço deve ser positivo").max(1_000_000),
   unit: serviceUnitEnum.default("UNIDADE"),
-  photos: z
-    .array(z.string().url())
-    .max(4, "Máximo de 4 fotos")
-    .default([]),
+  photos: z.array(z.string().url()).max(4, "Máximo de 4 fotos").default([]),
   active: z.boolean().default(true),
-})
-export type ServiceInput = z.infer<typeof serviceSchema>
+});
+export type ServiceInput = z.infer<typeof serviceSchema>;
 
 // ---------------------------------------------------------------------------
 // CATEGORY
@@ -127,8 +114,8 @@ export const categorySchema = z.object({
   icon: z.string().optional().or(z.literal("")),
   order: z.number().int().default(0),
   active: z.boolean().default(true),
-})
-export type CategoryInput = z.infer<typeof categorySchema>
+});
+export type CategoryInput = z.infer<typeof categorySchema>;
 
 // ---------------------------------------------------------------------------
 // QUOTE REQUEST
@@ -139,8 +126,8 @@ export const quoteItemInputSchema = z.object({
   quantity: z.coerce.number().min(0.01).max(100000),
   unit: serviceUnitEnum,
   photos: z.array(z.string().url()).max(4).default([]),
-})
-export type QuoteItemInput = z.infer<typeof quoteItemInputSchema>
+});
+export type QuoteItemInput = z.infer<typeof quoteItemInputSchema>;
 
 export const quoteSchema = z.object({
   providerId: z.string().min(1),
@@ -149,19 +136,17 @@ export const quoteSchema = z.object({
   lat: z.coerce.number(),
   lng: z.coerce.number(),
   expiresAt: z.coerce.date().optional(),
-  items: z
-    .array(quoteItemInputSchema)
-    .min(1, "Adicione ao menos um item ao orçamento"),
-})
-export type QuoteInput = z.infer<typeof quoteSchema>
+  items: z.array(quoteItemInputSchema).min(1, "Adicione ao menos um item ao orçamento"),
+});
+export type QuoteInput = z.infer<typeof quoteSchema>;
 
 // Quote item response from provider
 export const quoteItemResponseSchema = z.object({
   price: z.coerce.number().min(0),
   providerNote: z.string().max(500).optional().or(z.literal("")),
   status: z.enum(["QUOTED", "REJECTED"]).default("QUOTED"),
-})
-export type QuoteItemResponse = z.infer<typeof quoteItemResponseSchema>
+});
+export type QuoteItemResponse = z.infer<typeof quoteItemResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // BOOKING
@@ -177,8 +162,8 @@ export const bookingSchema = z.object({
   amount: z.coerce.number().min(0),
   paymentMethod: z.enum(["CARD", "PIX"]).default("PIX"),
   notes: z.string().max(1000).optional().or(z.literal("")),
-})
-export type BookingInput = z.infer<typeof bookingSchema>
+});
+export type BookingInput = z.infer<typeof bookingSchema>;
 
 // ---------------------------------------------------------------------------
 // REVIEW
@@ -187,8 +172,8 @@ export const reviewSchema = z.object({
   bookingId: z.string().min(1),
   rating: z.coerce.number().int().min(1).max(5),
   comment: z.string().max(1000).optional().or(z.literal("")),
-})
-export type ReviewInput = z.infer<typeof reviewSchema>
+});
+export type ReviewInput = z.infer<typeof reviewSchema>;
 
 // ---------------------------------------------------------------------------
 // MESSAGE
@@ -197,8 +182,8 @@ export const messageSchema = z.object({
   toId: z.string().min(1),
   content: z.string().min(1).max(2000),
   bookingId: z.string().optional().or(z.literal("")),
-})
-export type MessageInput = z.infer<typeof messageSchema>
+});
+export type MessageInput = z.infer<typeof messageSchema>;
 
 // ---------------------------------------------------------------------------
 // SETTING (admin)
@@ -210,20 +195,16 @@ export const settingSchema = z.object({
     .max(80)
     .regex(/^[A-Z0-9_]+$/, "Chave deve ter letras maiúsculas, números e _"),
   value: z.string().max(4000),
-})
-export type SettingInput = z.infer<typeof settingSchema>
+});
+export type SettingInput = z.infer<typeof settingSchema>;
 
 // ---------------------------------------------------------------------------
 // AVAILABILITY
 // ---------------------------------------------------------------------------
 export const availabilitySchema = z.object({
   dayOfWeek: z.number().int().min(0).max(6),
-  startTime: z
-    .string()
-    .regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
-  endTime: z
-    .string()
-    .regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
   active: z.boolean().default(true),
-})
-export type AvailabilityInput = z.infer<typeof availabilitySchema>
+});
+export type AvailabilityInput = z.infer<typeof availabilitySchema>;

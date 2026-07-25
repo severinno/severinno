@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * Hero — Interactive, dynamic live-activity engine for the Severinno Marketplace.
@@ -23,9 +23,9 @@
  *   H10 Ajuda e documentação    → "como funciona" · tooltips nos selos
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import { motion, AnimatePresence } from "framer-motion"
+import * as React from "react";
+import Image from "next/image";
+import { useQuery } from "@tanstack/react-query";
 import {
   Search,
   LocateFixed,
@@ -34,7 +34,6 @@ import {
   Star,
   ShieldCheck,
   MapPin,
-  Clock,
   ArrowRight,
   Users,
   Wrench,
@@ -42,58 +41,57 @@ import {
   Eye,
   Zap,
   TrendingUp,
-  MessageCircle,
   CalendarCheck,
   UserPlus,
   FileText,
-} from "lucide-react"
+} from "lucide-react";
 
-import { useGeoStore, useUIStore } from "@/store"
-import { apiGet } from "@/lib/api"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
-import { useCountUp } from "@/hooks/use-animation"
-import { cn } from "@/lib/utils"
+import { useGeoStore, useUIStore } from "@/store";
+import { apiGet } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCountUp } from "@/hooks/use-animation";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type PublicStats = {
-  providers: number
-  services: number
-  reviews: number
-  completedBookings: number
-  avgRating: number
-  totalUsers?: number
-  recentSignups24h?: number
-}
+  providers: number;
+  services: number;
+  reviews: number;
+  completedBookings: number;
+  avgRating: number;
+  totalUsers?: number;
+  recentSignups24h?: number;
+};
 
 type ActivityItem = {
-  type: "booking" | "review" | "signup" | "quote"
-  userName: string
-  userAvatar?: string | null
-  action: string
-  target: string
-  service?: string | null
-  rating?: number | null
-  timeAgo: string
-  emoji: string
-}
+  type: "booking" | "review" | "signup" | "quote";
+  userName: string;
+  userAvatar?: string | null;
+  action: string;
+  target: string;
+  service?: string | null;
+  rating?: number | null;
+  timeAgo: string;
+  emoji: string;
+};
 
 type ActivityResponse = {
-  activities: ActivityItem[]
-  browsingNow: number
-  quotesToday: number
-}
+  activities: ActivityItem[];
+  browsingNow: number;
+  quotesToday: number;
+};
 
 export type HeroProps = {
-  query: string
-  onQueryChange: (q: string) => void
-  onSearchSubmit?: () => void
-  resultsAnchorId?: string
-}
+  query: string;
+  onQueryChange: (q: string) => void;
+  onSearchSubmit?: () => void;
+  resultsAnchorId?: string;
+};
 
 // Popular services — recognition over recall (H6).
 const POPULAR_SERVICES = [
@@ -103,7 +101,7 @@ const POPULAR_SERVICES = [
   { label: "Diarista", emoji: "🧹" },
   { label: "Pedreiro", emoji: "🧱" },
   { label: "Jardineiro", emoji: "🌿" },
-]
+];
 
 // Map activity types to icons and colors
 const ACTIVITY_META: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
@@ -111,30 +109,25 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; color: string; bg
   review: { icon: Star, color: "text-amber-600", bg: "bg-amber-50" },
   signup: { icon: UserPlus, color: "text-blue-600", bg: "bg-blue-50" },
   quote: { icon: FileText, color: "text-violet-600", bg: "bg-violet-50" },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export default function Hero({
-  query,
-  onQueryChange,
-  onSearchSubmit,
-  resultsAnchorId,
-}: HeroProps) {
-  const { city, status, setFromGPS, setFromCEP } = useGeoStore()
-  const openAuth = useUIStore((s) => s.openAuth)
-  const [locating, setLocating] = React.useState(false)
-  const [cepInput, setCepInput] = React.useState("")
-  const [cepError, setCepError] = React.useState<string | null>(null)
+export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnchorId }: HeroProps) {
+  const { city, status, setFromGPS, setFromCEP } = useGeoStore();
+  const openAuth = useUIStore((s) => s.openAuth);
+  const [locating, setLocating] = React.useState(false);
+  const [cepInput, setCepInput] = React.useState("");
+  const [cepError, setCepError] = React.useState<string | null>(null);
 
   // H1 — Live social proof numbers
   const { data: stats } = useQuery<PublicStats>({
     queryKey: ["public-stats"],
     queryFn: () => apiGet<PublicStats>("/api/stats/public"),
     staleTime: 60 * 1000,
-  })
+  });
 
   // Live activity feed
   const { data: activityData, isLoading: activityLoading } = useQuery<ActivityResponse>({
@@ -142,68 +135,68 @@ export default function Hero({
     queryFn: () => apiGet<ActivityResponse>("/api/stats/activity"),
     staleTime: 30 * 1000,
     refetchInterval: 45 * 1000, // Auto-refresh for live feel
-  })
+  });
 
   // ---- Actions -------------------------------------------------------------
 
   const scrollToResults = React.useCallback(() => {
-    if (!resultsAnchorId || typeof window === "undefined") return
+    if (!resultsAnchorId || typeof window === "undefined") return;
     window.setTimeout(() => {
       document
         .getElementById(resultsAnchorId)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" })
-    }, 80)
-  }, [resultsAnchorId])
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 80);
+  }, [resultsAnchorId]);
 
   const handleLocate = React.useCallback(async () => {
-    setLocating(true)
+    setLocating(true);
     try {
-      await setFromGPS()
+      await setFromGPS();
     } finally {
-      setLocating(false)
+      setLocating(false);
     }
-    scrollToResults()
-  }, [setFromGPS, scrollToResults])
+    scrollToResults();
+  }, [setFromGPS, scrollToResults]);
 
   // H5 — Prevenção de erros: CEP mask (XXXXX-XXX)
   const maskCep = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 8)
-    if (digits.length <= 5) return digits
-    return `${digits.slice(0, 5)}-${digits.slice(5)}`
-  }
+    const digits = raw.replace(/\D/g, "").slice(0, 8);
+    if (digits.length <= 5) return digits;
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  };
 
   const handleCep = React.useCallback(
     async (e: React.FormEvent) => {
-      e.preventDefault()
-      const cep = cepInput.replace(/\D/g, "")
+      e.preventDefault();
+      const cep = cepInput.replace(/\D/g, "");
       if (cep.length !== 8) {
-        setCepError("Digite um CEP com 8 dígitos (ex: 01001-000).")
-        return
+        setCepError("Digite um CEP com 8 dígitos (ex: 01001-000).");
+        return;
       }
-      setCepError(null)
+      setCepError(null);
       try {
-        await setFromCEP(cepInput)
-        scrollToResults()
+        await setFromCEP(cepInput);
+        scrollToResults();
       } catch {
-        setCepError("CEP não encontrado. Verifique e tente novamente.")
+        setCepError("CEP não encontrado. Verifique e tente novamente.");
       }
     },
     [cepInput, setFromCEP, scrollToResults],
-  )
+  );
 
   const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    onSearchSubmit?.()
-    scrollToResults()
-  }
+    e.preventDefault();
+    onSearchSubmit?.();
+    scrollToResults();
+  };
 
   const handlePopularClick = (label: string) => {
-    onQueryChange(label)
-    onSearchSubmit?.()
-    scrollToResults()
-  }
+    onQueryChange(label);
+    onSearchSubmit?.();
+    scrollToResults();
+  };
 
-  const isLocating = locating || status === "locating" || status === "geocoding"
+  const isLocating = locating || status === "locating" || status === "geocoding";
 
   // ---- Render --------------------------------------------------------------
 
@@ -226,9 +219,21 @@ export default function Hero({
         }}
       />
       {/* Animated mesh blobs */}
-      <div aria-hidden className="absolute -top-24 -right-24 size-72 animate-pulse rounded-full bg-emerald-400/30 blur-3xl" style={{ animationDuration: "6s" }} />
-      <div aria-hidden className="absolute -bottom-32 -left-20 size-80 animate-pulse rounded-full bg-teal-300/20 blur-3xl" style={{ animationDuration: "7s", animationDelay: "1.5s" }} />
-      <div aria-hidden className="absolute top-1/3 right-1/4 size-56 animate-pulse rounded-full bg-emerald-300/15 blur-3xl" style={{ animationDuration: "8s", animationDelay: "0.8s" }} />
+      <div
+        aria-hidden
+        className="absolute -top-24 -right-24 size-72 animate-pulse rounded-full bg-emerald-400/30 blur-3xl"
+        style={{ animationDuration: "6s" }}
+      />
+      <div
+        aria-hidden
+        className="absolute -bottom-32 -left-20 size-80 animate-pulse rounded-full bg-teal-300/20 blur-3xl"
+        style={{ animationDuration: "7s", animationDelay: "1.5s" }}
+      />
+      <div
+        aria-hidden
+        className="absolute top-1/3 right-1/4 size-56 animate-pulse rounded-full bg-emerald-300/15 blur-3xl"
+        style={{ animationDuration: "8s", animationDelay: "0.8s" }}
+      />
 
       <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8 lg:py-20">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
@@ -263,9 +268,8 @@ export default function Hero({
               <span className="text-emerald-200">perto de você.</span>
             </h1>
             <p className="mt-4 max-w-xl text-pretty text-sm font-light text-emerald-50/90 sm:text-base md:text-lg">
-              Compare avaliações reais, peça orçamento grátis e agende —
-              encanador, eletricista, pintor e mais. Você escolhe o
-              profissional.
+              Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista,
+              pintor e mais. Você escolhe o profissional.
             </p>
 
             {/* Search bar */}
@@ -289,8 +293,8 @@ export default function Hero({
                   <Input
                     value={cepInput}
                     onChange={(e) => {
-                      setCepInput(maskCep(e.target.value))
-                      setCepError(null)
+                      setCepInput(maskCep(e.target.value));
+                      setCepError(null);
                     }}
                     placeholder={city ? city : "CEP ou cidade"}
                     className="h-12 border-0 bg-transparent pl-10 text-left shadow-none focus-visible:ring-0"
@@ -298,8 +302,8 @@ export default function Hero({
                     inputMode="numeric"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        e.preventDefault()
-                        void handleCep(e as unknown as React.FormEvent)
+                        e.preventDefault();
+                        void handleCep(e as unknown as React.FormEvent);
                       }
                     }}
                   />
@@ -323,9 +327,7 @@ export default function Hero({
 
             {/* Popular service chips */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-emerald-100/80">
-                Mais buscados:
-              </span>
+              <span className="text-xs font-medium text-emerald-100/80">Mais buscados:</span>
               {POPULAR_SERVICES.map((s) => (
                 <button
                   key={s.label}
@@ -378,9 +380,21 @@ export default function Hero({
 
             {/* Trust badges */}
             <ul className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-emerald-50">
-              <TrustBadge icon={<BadgeCheck className="size-4" />} title="Prestadores verificados" tooltip="Documentos validados e identidade confirmada" />
-              <TrustBadge icon={<Star className="size-4" />} title="Avaliações reais" tooltip="Avaliações de clientes após a conclusão do serviço" />
-              <TrustBadge icon={<ShieldCheck className="size-4" />} title="Pagamento seguro" tooltip="Pagamento só é liberado após você marcar como concluído" />
+              <TrustBadge
+                icon={<BadgeCheck className="size-4" />}
+                title="Prestadores verificados"
+                tooltip="Documentos validados e identidade confirmada"
+              />
+              <TrustBadge
+                icon={<Star className="size-4" />}
+                title="Avaliações reais"
+                tooltip="Avaliações de clientes após a conclusão do serviço"
+              />
+              <TrustBadge
+                icon={<ShieldCheck className="size-4" />}
+                title="Pagamento seguro"
+                tooltip="Pagamento só é liberado após você marcar como concluído"
+              />
             </ul>
           </div>
 
@@ -399,15 +413,36 @@ export default function Hero({
         {/* ============ Social proof bar ============ */}
         {stats && (
           <div className="mt-12 grid grid-cols-2 gap-4 rounded-2xl bg-white/10 px-6 py-5 backdrop-blur ring-1 ring-white/15 sm:grid-cols-4 sm:gap-0">
-            <StatItem icon={<Users className="size-5" />} value={stats.providers} label="Prestadores verificados" accent />
-            <StatItem icon={<Wrench className="size-5" />} value={stats.services} label="Serviços cadastrados" accent />
-            <StatItem icon={<CheckCircle2 className="size-5" />} value={stats.completedBookings} label="Serviços concluídos" accent />
-            <StatItem icon={<Star className="size-5" />} value={stats.avgRating || "—"} label="Nota média das avaliações" suffix={stats.avgRating ? "★" : undefined} accent />
+            <StatItem
+              icon={<Users className="size-5" />}
+              value={stats.providers}
+              label="Prestadores verificados"
+              accent
+            />
+            <StatItem
+              icon={<Wrench className="size-5" />}
+              value={stats.services}
+              label="Serviços cadastrados"
+              accent
+            />
+            <StatItem
+              icon={<CheckCircle2 className="size-5" />}
+              value={stats.completedBookings}
+              label="Serviços concluídos"
+              accent
+            />
+            <StatItem
+              icon={<Star className="size-5" />}
+              value={stats.avgRating || "—"}
+              label="Nota média das avaliações"
+              suffix={stats.avgRating ? "★" : undefined}
+              accent
+            />
           </div>
         )}
       </div>
     </section>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -421,35 +456,35 @@ function LiveActivityPanel({
   stats,
   isLoading,
 }: {
-  activities: ActivityItem[]
-  browsingNow: number
-  quotesToday: number
-  stats?: PublicStats
-  isLoading: boolean
+  activities: ActivityItem[];
+  browsingNow: number;
+  quotesToday: number;
+  stats?: PublicStats;
+  isLoading: boolean;
 }) {
   // Cycle through toast notifications
-  const [toastIndex, setToastIndex] = React.useState(0)
-  const [visibleActivities, setVisibleActivities] = React.useState<ActivityItem[]>([])
+  const [toastIndex, setToastIndex] = React.useState(0);
+  const [visibleActivities, setVisibleActivities] = React.useState<ActivityItem[]>([]);
 
   // Stagger-reveal activities
   React.useEffect(() => {
-    if (activities.length === 0) return
-    setVisibleActivities([])
+    if (activities.length === 0) return;
+    setVisibleActivities([]);
     activities.forEach((_, i) => {
       setTimeout(() => {
-        setVisibleActivities((prev) => [...prev, activities[i]])
-      }, i * 300)
-    })
-  }, [activities])
+        setVisibleActivities((prev) => [...prev, activities[i]]);
+      }, i * 300);
+    });
+  }, [activities]);
 
   // Cycle toast
   React.useEffect(() => {
-    if (activities.length === 0) return
+    if (activities.length === 0) return;
     const interval = setInterval(() => {
-      setToastIndex((prev) => (prev + 1) % activities.length)
-    }, 4000)
-    return () => clearInterval(interval)
-  }, [activities.length])
+      setToastIndex((prev) => (prev + 1) % activities.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [activities.length]);
 
   return (
     <div className="relative">
@@ -493,7 +528,11 @@ function LiveActivityPanel({
             </div>
           ) : (
             visibleActivities.map((activity, i) => (
-              <ActivityCard key={`${activity.type}-${activity.userName}-${i}`} activity={activity} index={i} />
+              <ActivityCard
+                key={`${activity.type}-${activity.userName}-${i}`}
+                activity={activity}
+                index={i}
+              />
             ))
           )}
         </div>
@@ -515,18 +554,15 @@ function LiveActivityPanel({
         </div>
       </div>
 
-      {/* ── Floating toast notification ── */}
-      <AnimatePresence mode="wait">
-        {activities.length > 0 && (
-          <motion.div
-            key={`toast-${toastIndex}`}
-            initial={{ opacity: 0, y: 12, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.95 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="absolute -bottom-4 -left-4 z-10 flex items-center gap-2.5 rounded-2xl bg-white px-4 py-3 shadow-2xl ring-1 ring-black/5"
-          >
-            <span className="text-lg" aria-hidden>{activities[toastIndex % activities.length].emoji}</span>
+      {/* ── Floating toast notification (CSS fade-in/out) ── */}
+      {activities.length > 0 && (
+        <div
+          key={`toast-${toastIndex}`}
+          className="animate-fade-slide-up absolute -bottom-4 -left-4 z-10 flex items-center gap-2.5 rounded-2xl bg-white px-4 py-3 shadow-2xl ring-1 ring-black/5"
+        >
+            <span className="text-lg" aria-hidden>
+              {activities[toastIndex % activities.length].emoji}
+            </span>
             <div className="leading-tight">
               <p className="text-xs font-semibold text-slate-900">
                 {activities[toastIndex % activities.length].userName}{" "}
@@ -539,9 +575,8 @@ function LiveActivityPanel({
             <span className="ml-2 text-[10px] text-slate-400 whitespace-nowrap">
               {activities[toastIndex % activities.length].timeAgo}
             </span>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
 
       {/* ── Floating rating badge ── */}
       {stats && stats.avgRating > 0 && (
@@ -554,7 +589,7 @@ function LiveActivityPanel({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -562,26 +597,31 @@ function LiveActivityPanel({
 // ---------------------------------------------------------------------------
 
 function ActivityCard({ activity, index }: { activity: ActivityItem; index: number }) {
-  const meta = ACTIVITY_META[activity.type] ?? ACTIVITY_META.booking
-  const Icon = meta.icon
+  const meta = ACTIVITY_META[activity.type] ?? ACTIVITY_META.booking;
+  const Icon = meta.icon;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.08, duration: 0.35, ease: "easeOut" }}
-      className="group flex items-start gap-3 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10"
+    <div
+      className="group flex items-start gap-3 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10 slide-in-right"
+      style={{ animationDelay: `${index * 0.08}s` }}
     >
       {/* Avatar or icon */}
       <div className="relative shrink-0">
         {activity.userAvatar ? (
-          <img
+          <Image
             src={activity.userAvatar}
             alt={activity.userName}
-            className="size-10 rounded-full object-cover ring-2 ring-white/20"
+            width={40}
+            height={40}
+            className="rounded-full object-cover ring-2 ring-white/20"
           />
         ) : (
-          <div className={cn("flex size-10 items-center justify-center rounded-full ring-1 ring-white/10", meta.bg)}>
+          <div
+            className={cn(
+              "flex size-10 items-center justify-center rounded-full ring-1 ring-white/10",
+              meta.bg,
+            )}
+          >
             <Icon className={cn("size-4", meta.color)} />
           </div>
         )}
@@ -597,9 +637,7 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
           <span className="font-semibold">{activity.userName}</span>{" "}
           <span className="text-emerald-200/80">{activity.action}</span>
         </p>
-        <p className="mt-0.5 truncate text-xs text-emerald-100/60">
-          {activity.target}
-        </p>
+        <p className="mt-0.5 truncate text-xs text-emerald-100/60">{activity.target}</p>
         {activity.rating && (
           <div className="mt-1 flex items-center gap-0.5">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -607,9 +645,7 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
                 key={i}
                 className={cn(
                   "size-3",
-                  i < (activity.rating ?? 0)
-                    ? "fill-amber-400 text-amber-400"
-                    : "text-white/20",
+                  i < (activity.rating ?? 0) ? "fill-amber-400 text-amber-400" : "text-white/20",
                 )}
               />
             ))}
@@ -621,8 +657,8 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
       <span className="shrink-0 text-[10px] font-medium text-emerald-200/50">
         {activity.timeAgo}
       </span>
-    </motion.div>
-  )
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -634,9 +670,9 @@ function TrustBadge({
   title,
   tooltip,
 }: {
-  icon: React.ReactNode
-  title: string
-  tooltip: string
+  icon: React.ReactNode;
+  title: string;
+  tooltip: string;
 }) {
   return (
     <li className="flex items-center gap-2" title={tooltip}>
@@ -645,7 +681,7 @@ function TrustBadge({
       </span>
       <span className="whitespace-nowrap font-medium">{title}</span>
     </li>
-  )
+  );
 }
 
 function StatItem({
@@ -655,45 +691,35 @@ function StatItem({
   suffix,
   accent,
 }: {
-  icon: React.ReactNode
-  value: number | string
-  label: string
-  suffix?: string
-  accent?: boolean
+  icon: React.ReactNode;
+  value: number | string;
+  label: string;
+  suffix?: string;
+  accent?: boolean;
 }) {
-  const numericValue = typeof value === "number" ? value : 0
-  const isNumeric = typeof value === "number"
+  const numericValue = typeof value === "number" ? value : 0;
+  const isNumeric = typeof value === "number";
   const { ref, value: animatedValue } = useCountUp(numericValue, {
     duration: 1800,
-  })
+  });
 
   return (
     <div className="flex items-center gap-3 sm:border-l sm:border-white/20 sm:px-6 sm:first:border-l-0 sm:first:pl-0 sm:last:pr-0">
-      <span className={cn(
-        "flex size-11 shrink-0 items-center justify-center rounded-xl ring-1",
-        accent
-          ? "bg-emerald-400/20 ring-emerald-300/30"
-          : "bg-white/10 ring-white/15",
-      )}>
+      <span
+        className={cn(
+          "flex size-11 shrink-0 items-center justify-center rounded-xl ring-1",
+          accent ? "bg-emerald-400/20 ring-emerald-300/30" : "bg-white/10 ring-white/15",
+        )}
+      >
         {icon}
       </span>
       <div className="leading-tight">
         <p className="text-2xl font-bold tracking-tight text-white">
-          {isNumeric ? (
-            <span ref={ref}>
-              {animatedValue.toLocaleString("pt-BR")}
-            </span>
-          ) : (
-            value
-          )}
-          {suffix && (
-            <span className="ml-1 text-sm font-normal text-emerald-200">
-              {suffix}
-            </span>
-          )}
+          {isNumeric ? <span ref={ref}>{animatedValue.toLocaleString("pt-BR")}</span> : value}
+          {suffix && <span className="ml-1 text-sm font-normal text-emerald-200">{suffix}</span>}
         </p>
         <p className="text-xs text-emerald-100/80">{label}</p>
       </div>
     </div>
-  )
+  );
 }

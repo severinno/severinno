@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ProviderProfileModal — compact, clean, minimalist redesign.
@@ -14,16 +14,15 @@
  *   - Fixed bottom CTA
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import Image from "next/image";
+import { useQuery } from "@tanstack/react-query";
 import {
   BadgeCheck,
   Calendar,
   ChevronDown,
   ChevronUp,
-  Clock,
   Heart,
-  Loader2,
   MapPin,
   Navigation,
   Phone,
@@ -32,104 +31,99 @@ import {
   Star,
   Wrench,
   X,
-} from "lucide-react"
-import { toast } from "sonner"
-import { motion, AnimatePresence } from "framer-motion"
+} from "lucide-react";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import {
-  Avatar,
-  AvatarImage,
-  AvatarFallback,
-} from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-import { useUIStore } from "@/store/ui"
-import { useRecentlyViewedStore } from "@/store/recently-viewed"
-import { useIsMobile } from "@/hooks/use-mobile"
-import { apiGet, type ProviderDetail, type ProviderService } from "@/lib/api"
-import { formatBRL } from "@/lib/format"
-import {
-  SERVICE_UNIT_SHORT,
-  WEEKDAYS,
-  WEEKDAYS_SHORT,
-} from "@/lib/constants"
-import { StarRatingDisplay } from "./star-rating"
-import { cn } from "@/lib/utils"
+import { useUIStore } from "@/store/ui";
+import { useRecentlyViewedStore } from "@/store/recently-viewed";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { apiGet, type ProviderDetail, type ProviderService } from "@/lib/api";
+import { formatBRL } from "@/lib/format";
+import { SERVICE_UNIT_SHORT, WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/constants";
+import { StarRatingDisplay } from "./star-rating";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Main modal wrapper
 // ---------------------------------------------------------------------------
 
 export function ProviderProfileModal() {
-  const open = useUIStore((s) => s.providerModal.open)
-  const providerId = useUIStore((s) => s.providerModal.providerId)
-  const close = useUIStore((s) => s.closeProvider)
-  const openQuote = useUIStore((s) => s.openQuote)
-  const openBooking = useUIStore((s) => s.openBooking)
-  const addRecentlyViewed = useRecentlyViewedStore((s) => s.addView)
-  const isMobile = useIsMobile()
+  const open = useUIStore((s) => s.providerModal.open);
+  const providerId = useUIStore((s) => s.providerModal.providerId);
+  const close = useUIStore((s) => s.closeProvider);
+  const openQuote = useUIStore((s) => s.openQuote);
+  const openBooking = useUIStore((s) => s.openBooking);
+  const addRecentlyViewed = useRecentlyViewedStore((s) => s.addView);
+  const isMobile = useIsMobile();
 
   const query = useQuery({
     queryKey: ["provider", providerId],
     queryFn: () => apiGet<ProviderDetail>(`/api/providers/${providerId}`),
     enabled: open && !!providerId,
     staleTime: 60 * 1000,
-  })
+  });
 
-  const provider = query.data
-  const [favorited, setFavorited] = React.useState(false)
+  const provider = query.data;
+  const [favorited, setFavorited] = React.useState(false);
 
-  React.useEffect(() => { setFavorited(false) }, [providerId])
+  // Reset favorited when providerId changes
+  const prevFavProviderId = React.useRef(providerId);
+  React.useEffect(() => {
+    if (providerId !== prevFavProviderId.current) {
+      prevFavProviderId.current = providerId;
+      setFavorited(false);
+    }
+  }, [providerId]);
 
   React.useEffect(() => {
-    if (open && provider) addRecentlyViewed(provider)
-  }, [open, provider, addRecentlyViewed])
+    if (open && provider) addRecentlyViewed(provider);
+  }, [open, provider, addRecentlyViewed]);
 
   const handleFavorite = async () => {
-    setFavorited((v) => !v)
-    toast.success(favorited ? "Removido dos favoritos." : "Adicionado aos favoritos!")
-  }
+    setFavorited((v) => !v);
+    toast.success(favorited ? "Removido dos favoritos." : "Adicionado aos favoritos!");
+  };
 
   const handleShare = async () => {
-    if (!provider) return
-    const url = `${window.location.origin}/?provider=${provider.id}`
+    if (!provider) return;
+    const url = `${window.location.origin}/?provider=${provider.id}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: provider.name, text: `Conheça ${provider.name} no Severinno`, url })
+        await navigator.share({
+          title: provider.name,
+          text: `Conheça ${provider.name} no Severinno`,
+          url,
+        });
       } else {
-        await navigator.clipboard.writeText(url)
-        toast.success("Link copiado.")
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copiado.");
       }
-    } catch { /* user dismissed */ }
-  }
+    } catch {
+      /* user dismissed */
+    }
+  };
 
   const startQuote = (serviceId?: string) => {
-    if (!provider) return
-    close()
-    setTimeout(() => openQuote({ providerId: provider.id, serviceId }), 200)
-  }
+    if (!provider) return;
+    close();
+    setTimeout(() => openQuote({ providerId: provider.id, serviceId }), 200);
+  };
   const startBooking = (serviceId?: string) => {
-    if (!provider) return
-    close()
-    setTimeout(() => openBooking({ providerId: provider.id, serviceId }), 200)
-  }
+    if (!provider) return;
+    close();
+    setTimeout(() => openBooking({ providerId: provider.id, serviceId }), 200);
+  };
 
   const content = (
     <ProfileBody
@@ -142,29 +136,36 @@ export function ProviderProfileModal() {
       onQuote={startQuote}
       onBooking={startBooking}
     />
-  )
+  );
 
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={(o) => !o && close()}>
-        <SheetContent side="bottom" className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col [&_[data-slot=sheet-close]]:hidden">
+        <SheetContent
+          side="bottom"
+          className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col [&_[data-slot=sheet-close]]:hidden"
+        >
           <SheetTitle className="sr-only">{provider?.name ?? "Perfil do prestador"}</SheetTitle>
-          <SheetDescription className="sr-only">Detalhes do prestador de serviços.</SheetDescription>
+          <SheetDescription className="sr-only">
+            Detalhes do prestador de serviços.
+          </SheetDescription>
           <div className="flex-1 overflow-hidden">{content}</div>
         </SheetContent>
       </Sheet>
-    )
+    );
   }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogTitle className="sr-only">{provider?.name ?? "Perfil do prestador"}</DialogTitle>
-        <DialogDescription className="sr-only">Detalhes do prestador de serviços.</DialogDescription>
+        <DialogDescription className="sr-only">
+          Detalhes do prestador de serviços.
+        </DialogDescription>
         {content}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -181,14 +182,14 @@ function ProfileBody({
   onQuote,
   onBooking,
 }: {
-  provider?: ProviderDetail
-  loading: boolean
-  favorited: boolean
-  onFavorite: () => void
-  onShare: () => void
-  onClose: () => void
-  onQuote: (serviceId?: string) => void
-  onBooking: (serviceId?: string) => void
+  provider?: ProviderDetail;
+  loading: boolean;
+  favorited: boolean;
+  onFavorite: () => void;
+  onShare: () => void;
+  onClose: () => void;
+  onQuote: (serviceId?: string) => void;
+  onBooking: (serviceId?: string) => void;
 }) {
   return (
     <div className="flex max-h-[90vh] flex-col">
@@ -233,12 +234,17 @@ function ProfileBody({
                 </div>
                 <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
                   {provider && (
-                    <StarRatingDisplay value={provider.rating} count={provider.reviewCount} size={11} />
+                    <StarRatingDisplay
+                      value={provider.rating}
+                      count={provider.reviewCount}
+                      size={11}
+                    />
                   )}
                   {provider?.city && (
                     <span className="inline-flex items-center gap-0.5">
                       <MapPin className="size-3" />
-                      {provider.city}{provider.state ? `/${provider.state}` : ""}
+                      {provider.city}
+                      {provider.state ? `/${provider.state}` : ""}
                     </span>
                   )}
                   {provider?.distanceKm != null && (
@@ -256,13 +262,31 @@ function ProfileBody({
 
           {/* Action buttons */}
           <div className="flex items-center gap-1 shrink-0">
-            <button onClick={onShare} aria-label="Compartilhar" className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            <button
+              onClick={onShare}
+              aria-label="Compartilhar"
+              className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
               <Share2 className="size-4" />
             </button>
-            <button onClick={onFavorite} aria-label={favorited ? "Remover dos favoritos" : "Adicionar aos favoritos"} aria-pressed={favorited} className={cn("inline-flex size-8 items-center justify-center rounded-lg transition-colors", favorited ? "text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+            <button
+              onClick={onFavorite}
+              aria-label={favorited ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+              aria-pressed={favorited}
+              className={cn(
+                "inline-flex size-8 items-center justify-center rounded-lg transition-colors",
+                favorited
+                  ? "text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
               <Heart className={cn("size-4", favorited && "fill-current")} />
             </button>
-            <button onClick={onClose} aria-label="Fechar" className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            <button
+              onClick={onClose}
+              aria-label="Fechar"
+              className="inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
               <X className="size-4" />
             </button>
           </div>
@@ -279,13 +303,19 @@ function ProfileBody({
             {provider.distanceKm != null && (
               <StatPill
                 icon={<Navigation className="size-3" />}
-                value={provider.distanceKm < 1 ? `${Math.round(provider.distanceKm * 1000)} m` : `${provider.distanceKm.toFixed(1)} km`}
+                value={
+                  provider.distanceKm < 1
+                    ? `${Math.round(provider.distanceKm * 1000)} m`
+                    : `${provider.distanceKm.toFixed(1)} km`
+                }
                 label="Distância"
               />
             )}
             <StatPill
               icon={<Calendar className="size-3" />}
-              value={provider.memberSince ? new Date(provider.memberSince).getFullYear().toString() : "—"}
+              value={
+                provider.memberSince ? new Date(provider.memberSince).getFullYear().toString() : "—"
+              }
               label="Membro desde"
             />
           </div>
@@ -305,7 +335,13 @@ function ProfileBody({
                   value={tab}
                   className="relative rounded-none border-b-2 border-transparent px-3 pb-2 pt-1.5 text-xs font-medium text-muted-foreground transition-colors data-[state=active]:border-emerald-600 data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:text-foreground"
                 >
-                  {tab === "services" ? "Serviços" : tab === "about" ? "Sobre" : tab === "reviews" ? "Avaliações" : "Expediente"}
+                  {tab === "services"
+                    ? "Serviços"
+                    : tab === "about"
+                      ? "Sobre"
+                      : tab === "reviews"
+                        ? "Avaliações"
+                        : "Expediente"}
                   {tab === "services" && provider && provider.services.length > 0 && (
                     <span className="ml-1 text-[10px] text-muted-foreground">
                       ({provider.services.length})
@@ -322,14 +358,30 @@ function ProfileBody({
           </div>
 
           <ScrollArea className="flex-1">
-            <TabsContent value="services" className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none">
-              <ServicesTab services={provider?.services ?? []} loading={loading} onQuote={onQuote} onBooking={onBooking} />
+            <TabsContent
+              value="services"
+              className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none"
+            >
+              <ServicesTab
+                services={provider?.services ?? []}
+                loading={loading}
+                onQuote={onQuote}
+                onBooking={onBooking}
+              />
             </TabsContent>
             <TabsContent value="about" className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none">
               <AboutTab provider={provider} loading={loading} />
             </TabsContent>
-            <TabsContent value="reviews" className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none">
-              <ReviewsTab reviews={provider?.reviews ?? []} rating={provider?.rating} reviewCount={provider?.reviewCount} loading={loading} />
+            <TabsContent
+              value="reviews"
+              className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none"
+            >
+              <ReviewsTab
+                reviews={provider?.reviews ?? []}
+                rating={provider?.rating}
+                reviewCount={provider?.reviewCount}
+                loading={loading}
+              />
             </TabsContent>
             <TabsContent value="hours" className="px-5 py-4 sm:px-6 m-0 focus-visible:outline-none">
               <HoursTab availability={provider?.availability ?? []} loading={loading} />
@@ -359,7 +411,7 @@ function ProfileBody({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -371,9 +423,9 @@ function StatPill({
   value,
   label,
 }: {
-  icon: React.ReactNode
-  value: string | number
-  label: string
+  icon: React.ReactNode;
+  value: string | number;
+  label: string;
 }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md bg-muted/60 px-2.5 py-1 text-[11px] ring-1 ring-black/[0.04] dark:ring-white/[0.06]">
@@ -381,7 +433,7 @@ function StatPill({
       <span className="font-semibold text-foreground tabular-nums">{value}</span>
       <span className="text-muted-foreground">{label}</span>
     </span>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -394,29 +446,29 @@ function ServicesTab({
   onQuote,
   onBooking,
 }: {
-  services: ProviderService[]
-  loading: boolean
-  onQuote: (serviceId?: string) => void
-  onBooking: (serviceId?: string) => void
+  services: ProviderService[];
+  loading: boolean;
+  onQuote: (serviceId?: string) => void;
+  onBooking: (serviceId?: string) => void;
 }) {
   // Group by category
   const groups = React.useMemo(() => {
-    const g = new Map<string, ProviderService[]>()
+    const g = new Map<string, ProviderService[]>();
     for (const s of services) {
-      const key = s.category?.name ?? "Outros"
-      const arr = g.get(key) ?? []
-      arr.push(s)
-      g.set(key, arr)
+      const key = s.category?.name ?? "Outros";
+      const arr = g.get(key) ?? [];
+      arr.push(s);
+      g.set(key, arr);
     }
-    return g
-  }, [services])
+    return g;
+  }, [services]);
 
-  const [expandedCats, setExpandedCats] = React.useState<Set<string>>(() => new Set(groups.keys()))
+  const [expandedCats, setExpandedCats] = React.useState<Set<string>>(() => new Set(groups.keys()));
 
-  // Sync when services change
+  // Sync expanded categories when service groups change
   React.useEffect(() => {
-    setExpandedCats(new Set(groups.keys()))
-  }, [groups])
+    setExpandedCats(new Set(groups.keys()));
+  }, [groups]);
 
   if (loading) {
     return (
@@ -425,26 +477,32 @@ function ServicesTab({
           <Skeleton key={i} className="h-20 w-full rounded-lg" />
         ))}
       </div>
-    )
+    );
   }
 
   if (services.length === 0) {
-    return <EmptyState icon={Wrench} title="Nenhum serviço" description="Este prestador ainda não publicou serviços." />
+    return (
+      <EmptyState
+        icon={Wrench}
+        title="Nenhum serviço"
+        description="Este prestador ainda não publicou serviços."
+      />
+    );
   }
 
   const toggleCat = (cat: string) => {
     setExpandedCats((prev) => {
-      const next = new Set(prev)
-      if (next.has(cat)) next.delete(cat)
-      else next.add(cat)
-      return next
-    })
-  }
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-3">
       {Array.from(groups.entries()).map(([categoryName, items]) => {
-        const expanded = expandedCats.has(categoryName)
+        const expanded = expandedCats.has(categoryName);
         return (
           <div key={categoryName}>
             {/* Category header */}
@@ -479,17 +537,22 @@ function ServicesTab({
                 >
                   <div className="space-y-1.5 pb-1">
                     {items.map((s) => (
-                      <ServiceCard key={s.id} service={s} onQuote={() => onQuote(s.id)} onBooking={() => onBooking(s.id)} />
+                      <ServiceCard
+                        key={s.id}
+                        service={s}
+                        onQuote={() => onQuote(s.id)}
+                        onBooking={() => onBooking(s.id)}
+                      />
                     ))}
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 function ServiceCard({
@@ -497,11 +560,11 @@ function ServiceCard({
   onQuote,
   onBooking,
 }: {
-  service: ProviderService
-  onQuote: () => void
-  onBooking: () => void
+  service: ProviderService;
+  onQuote: () => void;
+  onBooking: () => void;
 }) {
-  const photos = service.photos ?? []
+  const photos = service.photos ?? [];
 
   return (
     <div className="group rounded-lg border bg-card overflow-hidden hover:border-emerald-200 dark:hover:border-emerald-800 transition-colors">
@@ -509,7 +572,13 @@ function ServiceCard({
         {/* Photo thumbnail */}
         {photos.length > 0 ? (
           <div className="size-12 shrink-0 overflow-hidden rounded-md bg-muted">
-            <img src={photos[0]} alt={service.title} className="size-full object-cover" loading="lazy" />
+            <Image
+              src={photos[0]}
+              alt={service.title}
+              width={48}
+              height={48}
+              className="size-full object-cover"
+            />
           </div>
         ) : (
           <div className="size-12 shrink-0 rounded-md bg-muted flex items-center justify-center text-muted-foreground">
@@ -539,16 +608,26 @@ function ServiceCard({
 
         {/* Actions */}
         <div className="flex flex-col gap-1 shrink-0">
-          <Button size="sm" variant="ghost" onClick={onQuote} className="h-7 rounded-md px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onQuote}
+            className="h-7 rounded-md px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+          >
             <Quote className="size-3" /> Orçamento
           </Button>
-          <Button size="sm" variant="ghost" onClick={onBooking} className="h-7 rounded-md px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onBooking}
+            className="h-7 rounded-md px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+          >
             <Calendar className="size-3" /> Agendar
           </Button>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -562,10 +641,10 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
         <Skeleton className="h-3 w-3/4 rounded" />
         <Skeleton className="h-3 w-2/3 rounded" />
       </div>
-    )
+    );
   }
 
-  const radius = provider?.radiusKm
+  const radius = provider?.radiusKm;
 
   return (
     <div className="space-y-4 text-sm">
@@ -588,7 +667,9 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
             <MapPin className="size-3.5" />
           </div>
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Endereço</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Endereço
+            </p>
             <p className="mt-0.5 text-xs leading-relaxed">
               {provider?.address ?? "—"}
               {provider?.district ? `, ${provider.district}` : ""}
@@ -606,9 +687,14 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
             <Navigation className="size-3.5" />
           </div>
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Área de cobertura</p>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Área de cobertura
+            </p>
             <p className="mt-0.5 text-xs leading-relaxed">
-              Raio de <strong className="text-emerald-700 dark:text-emerald-400">{radius != null ? `${radius} km` : "—"}</strong>
+              Raio de{" "}
+              <strong className="text-emerald-700 dark:text-emerald-400">
+                {radius != null ? `${radius} km` : "—"}
+              </strong>
             </p>
           </div>
         </div>
@@ -623,14 +709,16 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
               <Phone className="size-3.5" />
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">WhatsApp</p>
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                WhatsApp
+              </p>
               <p className="mt-0.5 text-xs">{provider.whatsapp}</p>
             </div>
           </div>
         </>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -643,10 +731,10 @@ function ReviewsTab({
   reviewCount,
   loading,
 }: {
-  reviews: ProviderDetail["reviews"]
-  rating?: number
-  reviewCount?: number
-  loading: boolean
+  reviews: ProviderDetail["reviews"];
+  rating?: number;
+  reviewCount?: number;
+  loading: boolean;
 }) {
   if (loading) {
     return (
@@ -656,19 +744,25 @@ function ReviewsTab({
           <Skeleton key={i} className="h-14 w-full rounded-lg" />
         ))}
       </div>
-    )
+    );
   }
 
   if (!reviews || reviews.length === 0) {
-    return <EmptyState icon={Star} title="Sem avaliações" description="As avaliações aparecerão aqui após a conclusão de serviços." />
+    return (
+      <EmptyState
+        icon={Star}
+        title="Sem avaliações"
+        description="As avaliações aparecerão aqui após a conclusão de serviços."
+      />
+    );
   }
 
   const distribution = [5, 4, 3, 2, 1].map((star) => {
-    const count = reviews.filter((r) => Math.round(r.rating) === star).length
-    const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0
-    return { star, count, pct }
-  })
-  const avg = rating ?? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+    const count = reviews.filter((r) => Math.round(r.rating) === star).length;
+    const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0;
+    return { star, count, pct };
+  });
+  const avg = rating ?? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length;
 
   return (
     <div className="space-y-4">
@@ -676,9 +770,15 @@ function ReviewsTab({
       <div className="flex items-center gap-4">
         <div className="text-center shrink-0">
           <p className="text-2xl font-bold tabular-nums">{avg.toFixed(1)}</p>
-          <StarRatingDisplay value={avg} showCount={false} size={11} className="mt-0.5 justify-center" />
+          <StarRatingDisplay
+            value={avg}
+            showCount={false}
+            size={11}
+            className="mt-0.5 justify-center"
+          />
           <p className="mt-0.5 text-[10px] text-muted-foreground">
-            {reviewCount ?? reviews.length} {(reviewCount ?? reviews.length) === 1 ? "avaliação" : "avaliações"}
+            {reviewCount ?? reviews.length}{" "}
+            {(reviewCount ?? reviews.length) === 1 ? "avaliação" : "avaliações"}
           </p>
         </div>
         <div className="flex-1 grid gap-1.5">
@@ -728,7 +828,12 @@ function ReviewsTab({
                     {new Date(r.createdAt).toLocaleDateString("pt-BR")}
                   </span>
                 </div>
-                <StarRatingDisplay value={r.rating} size={10} showCount={false} className="mt-0.5" />
+                <StarRatingDisplay
+                  value={r.rating}
+                  size={10}
+                  showCount={false}
+                  className="mt-0.5"
+                />
               </div>
             </div>
             {r.comment && (
@@ -740,7 +845,7 @@ function ReviewsTab({
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -751,49 +856,53 @@ function HoursTab({
   availability,
   loading,
 }: {
-  availability: ProviderDetail["availability"]
-  loading: boolean
+  availability: ProviderDetail["availability"];
+  loading: boolean;
 }) {
-  if (loading) return <Skeleton className="h-40 w-full rounded-lg" />
+  if (loading) return <Skeleton className="h-40 w-full rounded-lg" />;
 
-  const byDay = new Map<number, { start: string; end: string }[]>()
+  const byDay = new Map<number, { start: string; end: string }[]>();
   for (const a of availability ?? []) {
-    const arr = byDay.get(a.dayOfWeek) ?? []
-    arr.push({ start: a.startTime, end: a.endTime })
-    byDay.set(a.dayOfWeek, arr)
+    const arr = byDay.get(a.dayOfWeek) ?? [];
+    arr.push({ start: a.startTime, end: a.endTime });
+    byDay.set(a.dayOfWeek, arr);
   }
 
-  const today = new Date().getDay()
+  const today = new Date().getDay();
 
   // Currently open?
-  const now = new Date()
-  const todaySlots = byDay.get(today) ?? []
-  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const now = new Date();
+  const todaySlots = byDay.get(today) ?? [];
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const currentlyOpen = todaySlots.some((s) => {
-    const [sh, sm] = s.start.split(":").map(Number)
-    const [eh, em] = s.end.split(":").map(Number)
-    return currentMinutes >= sh * 60 + sm && currentMinutes <= eh * 60 + em
-  })
+    const [sh, sm] = s.start.split(":").map(Number);
+    const [eh, em] = s.end.split(":").map(Number);
+    return currentMinutes >= sh * 60 + sm && currentMinutes <= eh * 60 + em;
+  });
 
   return (
     <div className="space-y-3">
       {/* Status pill */}
-      <div className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold",
-        currentlyOpen
-          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-          : "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300",
-      )}>
-        <span className={cn("size-1.5 rounded-full", currentlyOpen ? "bg-emerald-500" : "bg-red-500")} />
+      <div
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-semibold",
+          currentlyOpen
+            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+            : "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300",
+        )}
+      >
+        <span
+          className={cn("size-1.5 rounded-full", currentlyOpen ? "bg-emerald-500" : "bg-red-500")}
+        />
         {currentlyOpen ? "Aberto agora" : "Fechado agora"}
       </div>
 
       {/* Compact day rows */}
       <div className="rounded-lg border overflow-hidden divide-y">
         {WEEKDAYS.map((day, i) => {
-          const slots = byDay.get(i) ?? []
-          const open = slots.length > 0
-          const isToday = i === today
+          const slots = byDay.get(i) ?? [];
+          const open = slots.length > 0;
+          const isToday = i === today;
           return (
             <div
               key={day}
@@ -834,11 +943,11 @@ function HoursTab({
                 </Badge>
               </div>
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -850,9 +959,9 @@ function EmptyState({
   title,
   description,
 }: {
-  icon: React.ComponentType<{ className?: string }>
-  title: string
-  description: string
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
@@ -864,5 +973,5 @@ function EmptyState({
         <p className="mt-0.5 text-[11px] text-muted-foreground max-w-xs">{description}</p>
       </div>
     </div>
-  )
+  );
 }

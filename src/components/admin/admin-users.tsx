@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AdminUsers — manage all personas (Clients, Providers, Admins).
@@ -27,7 +27,7 @@
  * Se alterar campos aqui, replique lá.
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -46,17 +46,17 @@ import {
   Trash2,
   Users,
   X,
-} from "lucide-react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+} from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-import { apiDelete, apiGet, apiPatch } from "@/lib/api"
-import { type UserRole } from "@/lib/constants"
-import { formatDate } from "@/lib/format"
-import { cn } from "@/lib/utils"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { apiDelete, apiGet, apiPatch } from "@/lib/api";
+import { type UserRole } from "@/lib/constants";
+import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -64,7 +64,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,17 +72,17 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -90,14 +90,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+} from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import {
   ActiveBadge,
@@ -115,90 +111,90 @@ import {
   SavingPill,
   SearchInput,
   TableSkeleton,
-} from "./admin-shared"
+} from "./admin-shared";
 
 // ---------------------------------------------------------------------------
 // Types — definidos IDÊNTICOS em admin-providers.tsx (H4 consistência).
 // ---------------------------------------------------------------------------
 type AdminUser = {
-  id: string
-  name: string
-  email: string
-  role: UserRole
-  cpfCnpj?: string | null
-  whatsapp?: string | null
-  phone?: string | null
-  avatarUrl?: string | null
-  city?: string | null
-  state?: string | null
-  bio?: string | null
-  verified: boolean
-  active: boolean
-  createdAt: string
-}
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  cpfCnpj?: string | null;
+  whatsapp?: string | null;
+  phone?: string | null;
+  avatarUrl?: string | null;
+  city?: string | null;
+  state?: string | null;
+  bio?: string | null;
+  verified: boolean;
+  active: boolean;
+  createdAt: string;
+};
 
 type AdminUsersResponse = {
-  items: AdminUser[]
-  total: number
-  page: number
-  limit: number
-}
+  items: AdminUser[];
+  total: number;
+  page: number;
+  limit: number;
+};
 
 type StatsResponse = {
-  usersByRole: Record<string, number>
-}
+  usersByRole: Record<string, number>;
+};
 
-type RoleFilter = "ALL" | UserRole
-type VerifiedFilter = "ALL" | "true" | "false"
-type ActiveFilter = "ALL" | "true" | "false"
+type RoleFilter = "ALL" | UserRole;
+type VerifiedFilter = "ALL" | "true" | "false";
+type ActiveFilter = "ALL" | "true" | "false";
 
-type SortKey = "name" | "createdAt"
-type SortDir = "asc" | "desc"
-type SortState = { key: SortKey; dir: SortDir } | null
+type SortKey = "name" | "createdAt";
+type SortDir = "asc" | "desc";
+type SortState = { key: SortKey; dir: SortDir } | null;
 
 type PendingToggle = {
-  id: string
-  name: string
-  field: "verified" | "active"
-  currentValue: boolean
-} | null
+  id: string;
+  name: string;
+  field: "verified" | "active";
+  currentValue: boolean;
+} | null;
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminUsers() {
-  const queryClient = useQueryClient()
-  const [role, setRole] = React.useState<RoleFilter>("ALL")
-  const [q, setQ] = React.useState("")
-  const [debouncedQ, setDebouncedQ] = React.useState("")
-  const [verified, setVerified] = React.useState<VerifiedFilter>("ALL")
-  const [active, setActive] = React.useState<ActiveFilter>("ALL")
-  const [page, setPage] = React.useState(1)
-  const [sort, setSort] = React.useState<SortState>(null)
+  const queryClient = useQueryClient();
+  const [role, setRole] = React.useState<RoleFilter>("ALL");
+  const [q, setQ] = React.useState("");
+  const [debouncedQ, setDebouncedQ] = React.useState("");
+  const [verified, setVerified] = React.useState<VerifiedFilter>("ALL");
+  const [active, setActive] = React.useState<ActiveFilter>("ALL");
+  const [page, setPage] = React.useState(1);
+  const [sort, setSort] = React.useState<SortState>(null);
 
-  const [editTarget, setEditTarget] = React.useState<AdminUser | null>(null)
-  const [deleteTarget, setDeleteTarget] = React.useState<AdminUser | null>(null)
-  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
-  const [patchingId, setPatchingId] = React.useState<string | null>(null)
-  const [errorBanner, setErrorBanner] = React.useState<string | null>(null)
+  const [editTarget, setEditTarget] = React.useState<AdminUser | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<AdminUser | null>(null);
+  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null);
+  const [patchingId, setPatchingId] = React.useState<string | null>(null);
+  const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
 
-  const limit = 10
+  const limit = 10;
 
   // Debounce search
   React.useEffect(() => {
     const t = setTimeout(() => {
-      setDebouncedQ(q.trim())
-      setPage(1)
-    }, 350)
-    return () => clearTimeout(t)
-  }, [q])
+      setDebouncedQ(q.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
 
   // Role counts (cached 60s, compartilhado com dashboard)
   const { data: stats } = useQuery({
     queryKey: ["admin", "stats"],
     queryFn: () => apiGet<StatsResponse>("/api/admin/stats"),
     staleTime: 60_000,
-  })
+  });
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "users", { role, debouncedQ, verified, active, page, limit }],
@@ -210,158 +206,151 @@ export function AdminUsers() {
         limit,
       }),
     staleTime: 15_000,
-  })
+  });
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
 
   const patchMutation = useMutation({
-    mutationFn: ({
-      id,
-      patch,
-    }: {
-      id: string
-      patch: Partial<AdminUser>
-    }) => apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
-  })
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<AdminUser> }) =>
+      apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
+  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/api/admin/users/${id}`),
-  })
+  });
 
   // Client-side filter for verified/active (API does not support these yet — H2)
-  const rawItems = data?.items ?? []
+  const rawItems = React.useMemo(() => data?.items ?? [], [data]);
   const filteredItems = React.useMemo(() => {
     return rawItems.filter((u) => {
-      if (verified === "true" && !u.verified) return false
-      if (verified === "false" && u.verified) return false
-      if (active === "true" && !u.active) return false
-      if (active === "false" && u.active) return false
-      return true
-    })
-  }, [rawItems, verified, active])
+      if (verified === "true" && !u.verified) return false;
+      if (verified === "false" && u.verified) return false;
+      if (active === "true" && !u.active) return false;
+      if (active === "false" && u.active) return false;
+      return true;
+    });
+  }, [rawItems, verified, active]);
 
   const items = React.useMemo(() => {
-    if (!sort) return filteredItems
+    if (!sort) return filteredItems;
     const sorted = [...filteredItems].sort((a, b) => {
-      let cmp = 0
-      if (sort.key === "name") cmp = a.name.localeCompare(b.name, "pt-BR")
+      let cmp = 0;
+      if (sort.key === "name") cmp = a.name.localeCompare(b.name, "pt-BR");
       else if (sort.key === "createdAt")
-        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      return sort.dir === "asc" ? cmp : -cmp
-    })
-    return sorted
-  }, [filteredItems, sort])
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return sort.dir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [filteredItems, sort]);
 
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / limit))
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  const clientFilterActive = verified !== "ALL" || active !== "ALL"
+  const clientFilterActive = verified !== "ALL" || active !== "ALL";
 
   const activeFilterCount =
     (role !== "ALL" ? 1 : 0) +
     (debouncedQ ? 1 : 0) +
     (verified !== "ALL" ? 1 : 0) +
-    (active !== "ALL" ? 1 : 0)
+    (active !== "ALL" ? 1 : 0);
 
   const clearFilters = () => {
-    setRole("ALL")
-    setQ("")
-    setDebouncedQ("")
-    setVerified("ALL")
-    setActive("ALL")
-    setSort(null)
-    setPage(1)
-  }
+    setRole("ALL");
+    setQ("");
+    setDebouncedQ("");
+    setVerified("ALL");
+    setActive("ALL");
+    setSort(null);
+    setPage(1);
+  };
 
   const toggleSort = (key: SortKey) => {
     setSort((prev) => {
-      if (!prev || prev.key !== key) return { key, dir: "asc" }
-      if (prev.dir === "asc") return { key, dir: "desc" }
-      return null
-    })
-  }
+      if (!prev || prev.key !== key) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
+  };
 
   const roleCounts = React.useMemo(() => {
-    const byRole = stats?.usersByRole ?? {}
+    const byRole = stats?.usersByRole ?? {};
     return {
-      ALL:
-        (byRole.CLIENT ?? 0) + (byRole.PROVIDER ?? 0) + (byRole.ADMIN ?? 0),
+      ALL: (byRole.CLIENT ?? 0) + (byRole.PROVIDER ?? 0) + (byRole.ADMIN ?? 0),
       CLIENT: byRole.CLIENT ?? 0,
       PROVIDER: byRole.PROVIDER ?? 0,
       ADMIN: byRole.ADMIN ?? 0,
-    }
-  }, [stats])
+    };
+  }, [stats]);
 
   // ---- Mutation handlers ---------------------------------------------------
 
   const handleToggleConfirm = () => {
-    if (!pendingToggle) return
-    const { id, field, currentValue } = pendingToggle
-    setPatchingId(id)
+    if (!pendingToggle) return;
+    const { id, field, currentValue } = pendingToggle;
+    setPatchingId(id);
     patchMutation.mutate(
       { id, patch: { [field]: !currentValue } as Partial<AdminUser> },
       {
         onSuccess: () => {
-          invalidate()
+          invalidate();
           toast.success(
             field === "verified"
               ? currentValue
                 ? "Verificação removida."
                 : "Usuário marcado como verificado."
               : currentValue
-              ? "Usuário desativado."
-              : "Usuário ativado.",
-          )
-          setPendingToggle(null)
-          setPatchingId(null)
+                ? "Usuário desativado."
+                : "Usuário ativado.",
+          );
+          setPendingToggle(null);
+          setPatchingId(null);
         },
         onError: (e: unknown) => {
-          const msg = errMsg(e, "Falha ao atualizar usuário.")
-          setErrorBanner(msg)
-          toast.error(msg)
-          setPendingToggle(null)
-          setPatchingId(null)
+          const msg = errMsg(e, "Falha ao atualizar usuário.");
+          setErrorBanner(msg);
+          toast.error(msg);
+          setPendingToggle(null);
+          setPatchingId(null);
         },
       },
-    )
-  }
+    );
+  };
 
   const handleEditSubmit = (patch: Partial<AdminUser>) => {
-    if (!editTarget) return
+    if (!editTarget) return;
     patchMutation.mutate(
       { id: editTarget.id, patch },
       {
         onSuccess: () => {
-          invalidate()
-          toast.success("Usuário atualizado.")
-          setEditTarget(null)
+          invalidate();
+          toast.success("Usuário atualizado.");
+          setEditTarget(null);
         },
         onError: (e: unknown) => {
-          const msg = errMsg(e, "Falha ao atualizar usuário.")
-          setErrorBanner(msg)
-          toast.error(msg)
+          const msg = errMsg(e, "Falha ao atualizar usuário.");
+          setErrorBanner(msg);
+          toast.error(msg);
         },
       },
-    )
-  }
+    );
+  };
 
   const handleDeleteConfirm = () => {
-    if (!deleteTarget) return
+    if (!deleteTarget) return;
     deleteMutation.mutate(deleteTarget.id, {
       onSuccess: () => {
-        toast.success("Usuário excluído.")
-        invalidate()
-        setDeleteTarget(null)
+        toast.success("Usuário excluído.");
+        invalidate();
+        setDeleteTarget(null);
       },
       onError: (e: unknown) => {
-        const msg = errMsg(e, "Não foi possível excluir o usuário.")
-        setErrorBanner(msg)
-        toast.error(msg)
-        setDeleteTarget(null)
+        const msg = errMsg(e, "Não foi possível excluir o usuário.");
+        setErrorBanner(msg);
+        toast.error(msg);
+        setDeleteTarget(null);
       },
-    })
-  }
+    });
+  };
 
   const renderSortHeader = (label: string, sortKey: SortKey) => (
     <button
@@ -383,7 +372,7 @@ export function AdminUsers() {
         <ArrowUpDown className="size-3 opacity-40" />
       )}
     </button>
-  )
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -396,8 +385,8 @@ export function AdminUsers() {
       <Tabs
         value={role}
         onValueChange={(v) => {
-          setRole(v as RoleFilter)
-          setPage(1)
+          setRole(v as RoleFilter);
+          setPage(1);
         }}
       >
         <TabsList className="h-auto flex-wrap gap-1 bg-card p-1">
@@ -449,10 +438,7 @@ export function AdminUsers() {
       ) : null}
 
       {/* Filter bar */}
-      <FilterBar
-        onClear={clearFilters}
-        activeCount={activeFilterCount}
-      >
+      <FilterBar onClear={clearFilters} activeCount={activeFilterCount}>
         <SearchInput
           value={q}
           onChange={setQ}
@@ -462,8 +448,8 @@ export function AdminUsers() {
         <Select
           value={verified}
           onValueChange={(v) => {
-            setVerified(v as VerifiedFilter)
-            setPage(1)
+            setVerified(v as VerifiedFilter);
+            setPage(1);
           }}
         >
           <SelectTrigger className="h-9 w-auto min-w-[150px]">
@@ -478,8 +464,8 @@ export function AdminUsers() {
         <Select
           value={active}
           onValueChange={(v) => {
-            setActive(v as ActiveFilter)
-            setPage(1)
+            setActive(v as ActiveFilter);
+            setPage(1);
           }}
         >
           <SelectTrigger className="h-9 w-auto min-w-[140px]">
@@ -517,12 +503,7 @@ export function AdminUsers() {
           description="Ajuste os filtros de busca ou cadastre um novo usuário."
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -562,11 +543,8 @@ export function AdminUsers() {
                 </TableHeader>
                 <TableBody>
                   {items.map((u) => {
-                    const isPatchingThis =
-                      patchingId === u.id && patchMutation.isPending
-                    const patchingField = isPatchingThis
-                      ? pendingToggle?.field ?? null
-                      : null
+                    const isPatchingThis = patchingId === u.id && patchMutation.isPending;
+                    const patchingField = isPatchingThis ? (pendingToggle?.field ?? null) : null;
                     return (
                       <TableRow
                         key={u.id}
@@ -575,20 +553,14 @@ export function AdminUsers() {
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-8 shrink-0">
-                              {u.avatarUrl ? (
-                                <AvatarImage src={u.avatarUrl} alt={u.name} />
-                              ) : null}
+                              {u.avatarUrl ? <AvatarImage src={u.avatarUrl} alt={u.name} /> : null}
                               <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
                                 {initials(u.name)}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {u.name}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {u.email}
-                              </p>
+                              <p className="truncate text-sm font-medium">{u.name}</p>
+                              <p className="truncate text-xs text-muted-foreground">{u.email}</p>
                             </div>
                           </div>
                         </TableCell>
@@ -598,16 +570,12 @@ export function AdminUsers() {
                         <TableCell className="hidden px-4 py-3 md:table-cell">
                           <div className="flex flex-col text-xs">
                             {u.whatsapp ? (
-                              <span className="text-foreground/80">
-                                {u.whatsapp}
-                              </span>
+                              <span className="text-foreground/80">{u.whatsapp}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
                             {u.cpfCnpj ? (
-                              <span className="font-mono text-muted-foreground">
-                                {u.cpfCnpj}
-                              </span>
+                              <span className="font-mono text-muted-foreground">{u.cpfCnpj}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
@@ -715,9 +683,7 @@ export function AdminUsers() {
                                   ) : (
                                     <ShieldCheck className="size-3.5" />
                                   )}
-                                  {u.verified
-                                    ? "Remover verificação"
-                                    : "Marcar verificado"}
+                                  {u.verified ? "Remover verificação" : "Marcar verificado"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() =>
@@ -746,7 +712,7 @@ export function AdminUsers() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    )
+                    );
                   })}
                 </TableBody>
               </Table>
@@ -759,11 +725,7 @@ export function AdminUsers() {
       {!isError && !isLoading && items.length > 0 ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <ResultCount page={page} limit={limit} total={total} label="usuários" />
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-          />
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       ) : null}
 
@@ -783,10 +745,9 @@ export function AdminUsers() {
         description={
           <>
             Você está prestes a excluir{" "}
-            <strong className="text-foreground">{deleteTarget?.name}</strong> (
-            {deleteTarget?.email}). Esta ação removerá todos os dados
-            relacionados (serviços, agendamentos, mensagens, avaliações) e não
-            pode ser desfeita.
+            <strong className="text-foreground">{deleteTarget?.name}</strong> ({deleteTarget?.email}
+            ). Esta ação removerá todos os dados relacionados (serviços, agendamentos, mensagens,
+            avaliações) e não pode ser desfeita.
           </>
         }
         confirmLabel="Excluir"
@@ -804,7 +765,7 @@ export function AdminUsers() {
         onConfirm={handleToggleConfirm}
       />
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -816,29 +777,29 @@ function EditUserDialog({
   submitting,
   onSubmit,
 }: {
-  user: AdminUser | null
-  onOpenChange: (open: boolean) => void
-  submitting: boolean
-  onSubmit: (patch: Partial<AdminUser>) => void
+  user: AdminUser | null;
+  onOpenChange: (open: boolean) => void;
+  submitting: boolean;
+  onSubmit: (patch: Partial<AdminUser>) => void;
 }) {
-  const [name, setName] = React.useState("")
-  const [role, setRole] = React.useState<UserRole>("CLIENT")
-  const [whatsapp, setWhatsapp] = React.useState("")
-  const [city, setCity] = React.useState("")
-  const [state, setState] = React.useState("")
+  const [name, setName] = React.useState("");
+  const [role, setRole] = React.useState<UserRole>("CLIENT");
+  const [whatsapp, setWhatsapp] = React.useState("");
+  const [city, setCity] = React.useState("");
+  const [state, setState] = React.useState("");
 
   React.useEffect(() => {
     if (user) {
-      setName(user.name)
-      setRole(user.role)
-      setWhatsapp(user.whatsapp ?? "")
-      setCity(user.city ?? "")
-      setState(user.state ?? "")
+      setName(user.name);
+      setRole(user.role);
+      setWhatsapp(user.whatsapp ?? "");
+      setCity(user.city ?? "");
+      setState(user.state ?? "");
     }
-  }, [user])
+  }, [user]);
 
   // H5: warning when demoting from ADMIN
-  const demotingFromAdmin = user?.role === "ADMIN" && role !== "ADMIN"
+  const demotingFromAdmin = user?.role === "ADMIN" && role !== "ADMIN";
 
   return (
     <Dialog open={!!user} onOpenChange={onOpenChange}>
@@ -846,15 +807,15 @@ function EditUserDialog({
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">Editar usuário</DialogTitle>
           <DialogDescription>
-            Edição administrativa limitada aos campos abaixo. Para alterar a
-            senha, o usuário deve usar o fluxo de recuperação.
+            Edição administrativa limitada aos campos abaixo. Para alterar a senha, o usuário deve
+            usar o fluxo de recuperação.
           </DialogDescription>
         </DialogHeader>
 
         <form
           onSubmit={(e) => {
-            e.preventDefault()
-            onSubmit({ name, role, whatsapp, city, state })
+            e.preventDefault();
+            onSubmit({ name, role, whatsapp, city, state });
           }}
           className="flex flex-col gap-4 py-1"
         >
@@ -889,8 +850,8 @@ function EditUserDialog({
               <AlertTriangle className="size-4" />
               <AlertTitle>Remover privilégios de administrador?</AlertTitle>
               <AlertDescription>
-                Este usuário perderá acesso ao painel admin. Ação destrutiva —
-                confirme antes de salvar.
+                Este usuário perderá acesso ao painel admin. Ação destrutiva — confirme antes de
+                salvar.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -939,14 +900,12 @@ function EditUserDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={submitting} className="gap-1.5">
-              {submitting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
+              {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
               Salvar
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

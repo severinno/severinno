@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ClientFinance — payments overview for the client.
@@ -19,38 +19,23 @@
  * Derived from bookings (Booking carries paymentMethod/paymentStatus/amount).
  */
 
-import * as React from "react"
-import { useQueries } from "@tanstack/react-query"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
-import {
-  CreditCard,
-  Loader2,
-  PiggyBank,
-  Receipt,
-  RotateCcw,
-  Wallet,
-} from "lucide-react"
+import * as React from "react";
+import { useQueries } from "@tanstack/react-query";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CreditCard, Loader2, PiggyBank, Receipt, RotateCcw, Wallet } from "lucide-react";
 
-import { cn } from "@/lib/utils"
-import { apiGet } from "@/lib/api"
+import { cn } from "@/lib/utils";
+import { apiGet } from "@/lib/api";
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
   type PaymentMethod,
   type PaymentStatus,
-} from "@/lib/constants"
-import { formatBRL, formatDate } from "@/lib/format"
+} from "@/lib/constants";
+import { formatBRL, formatDate } from "@/lib/format";
 
-import { Card, CardContent } from "@/components/ui/card"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Card, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Table,
   TableBody,
@@ -58,52 +43,45 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
+} from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Button } from "@/components/ui/button"
-import {
-  EmptyState,
-  StatCard,
-} from "@/components/shared/dashboard-shell"
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { EmptyState, StatCard } from "@/components/shared/dashboard-shell";
 import {
   PageHeader,
   StatusBadge,
   paymentIcon,
   paymentTone,
-} from "@/components/client/client-shared"
+} from "@/components/client/client-shared";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Booking = {
-  id: string
-  status: string
-  scheduledAt: string
-  amount: number
-  paymentMethod: PaymentMethod
-  paymentStatus: PaymentStatus
-  service: { id: string; title: string }
-  provider: { id: string; name: string; avatarUrl?: string | null }
-}
+  id: string;
+  status: string;
+  scheduledAt: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  service: { id: string; title: string };
+  provider: { id: string; name: string; avatarUrl?: string | null };
+};
 
 type BookingsResponse = {
-  items: Booking[]
-  total: number
-  page: number
-  limit: number
-}
+  items: Booking[];
+  total: number;
+  page: number;
+  limit: number;
+};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -114,17 +92,37 @@ const TABS: Array<{ key: string; label: string }> = [
   { key: "PAID", label: "Pago" },
   { key: "PENDING", label: "Pendente" },
   { key: "REFUNDED", label: "Reembolsado" },
-]
+];
 
 const MONTH_LABELS = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
-]
+  "Jan",
+  "Fev",
+  "Mar",
+  "Abr",
+  "Mai",
+  "Jun",
+  "Jul",
+  "Ago",
+  "Set",
+  "Out",
+  "Nov",
+  "Dez",
+];
 
 const MONTH_FULL = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-]
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -133,21 +131,21 @@ const CHART_TOOLTIP_STYLE = {
   color: "var(--popover-foreground)",
   fontSize: 12,
   boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.15)",
-} as const
+} as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function providerInitials(name?: string | null): string {
-  if (!name) return "P"
+  if (!name) return "P";
   return name
     .split(" ")
     .map((p) => p[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -155,10 +153,10 @@ function providerInitials(name?: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function ClientFinance() {
-  const now = new Date()
-  const [tab, setTab] = React.useState("ALL")
-  const [year, setYear] = React.useState<string>(String(now.getFullYear()))
-  const [month, setMonth] = React.useState<string>("ALL") // "ALL" or 0..11
+  const now = React.useMemo(() => new Date(), []);
+  const [tab, setTab] = React.useState("ALL");
+  const [year, setYear] = React.useState<string>(String(now.getFullYear()));
+  const [month, setMonth] = React.useState<string>("ALL"); // "ALL" or 0..11
 
   // Fetch up to 4 pages of 50 (= 200 max) so we can compute summary + chart
   // + filter client-side. Mirrors the existing approach.
@@ -173,27 +171,27 @@ export function ClientFinance() {
         }),
       staleTime: 30_000,
     })),
-  })
+  });
 
   const allBookings = React.useMemo(() => {
-    const merged: Booking[] = []
+    const merged: Booking[] = [];
     for (const q of queries) {
-      if (q.data?.items?.length) merged.push(...q.data.items)
+      if (q.data?.items?.length) merged.push(...q.data.items);
     }
-    return merged
-  }, [queries])
+    return merged;
+  }, [queries]);
 
-  const isLoading = queries.some((q) => q.isLoading)
+  const isLoading = queries.some((q) => q.isLoading);
 
   // Years available in the data
   const yearsAvailable = React.useMemo(() => {
-    const set = new Set<number>()
-    set.add(now.getFullYear())
+    const set = new Set<number>();
+    set.add(now.getFullYear());
     for (const b of allBookings) {
-      set.add(new Date(b.scheduledAt).getFullYear())
+      set.add(new Date(b.scheduledAt).getFullYear());
     }
-    return Array.from(set).sort((a, b) => b - a)
-  }, [allBookings, now])
+    return Array.from(set).sort((a, b) => b - a);
+  }, [allBookings, now]);
 
   // Counts per payment status
   const counts = React.useMemo(() => {
@@ -202,68 +200,67 @@ export function ClientFinance() {
       PAID: 0,
       PENDING: 0,
       REFUNDED: 0,
-    }
+    };
     for (const b of allBookings) {
-      if (map[b.paymentStatus] != null) map[b.paymentStatus]!++
+      if (map[b.paymentStatus] != null) map[b.paymentStatus] = (map[b.paymentStatus] ?? 0) + 1;
     }
-    return map
-  }, [allBookings])
+    return map;
+  }, [allBookings]);
 
   // Filter by status + year + month
   const filtered = React.useMemo(() => {
-    const yNum = Number(year)
-    const mNum = month === "ALL" ? null : Number(month)
+    const yNum = Number(year);
+    const mNum = month === "ALL" ? null : Number(month);
     return allBookings.filter((b) => {
-      const d = new Date(b.scheduledAt)
-      if (d.getFullYear() !== yNum) return false
-      if (mNum != null && d.getMonth() !== mNum) return false
-      if (tab !== "ALL" && b.paymentStatus !== tab) return false
-      return true
-    })
-  }, [allBookings, year, month, tab])
+      const d = new Date(b.scheduledAt);
+      if (d.getFullYear() !== yNum) return false;
+      if (mNum != null && d.getMonth() !== mNum) return false;
+      if (tab !== "ALL" && b.paymentStatus !== tab) return false;
+      return true;
+    });
+  }, [allBookings, year, month, tab]);
 
   // Summary across all years (not filtered by year/month) — gives a true
   // lifetime total so the user always sees their real financial position.
   const summary = React.useMemo(() => {
-    let paid = 0
-    let pending = 0
-    let refunded = 0
+    let paid = 0;
+    let pending = 0;
+    let refunded = 0;
     for (const b of allBookings) {
-      if (b.paymentStatus === "PAID") paid += b.amount
-      else if (b.paymentStatus === "PENDING") pending += b.amount
-      else if (b.paymentStatus === "REFUNDED") refunded += b.amount
+      if (b.paymentStatus === "PAID") paid += b.amount;
+      else if (b.paymentStatus === "PENDING") pending += b.amount;
+      else if (b.paymentStatus === "REFUNDED") refunded += b.amount;
     }
-    return { paid, pending, refunded }
-  }, [allBookings])
+    return { paid, pending, refunded };
+  }, [allBookings]);
 
   // Monthly chart for selected year (paid only) — month filter doesn't
   // shrink the chart; user sees the full year so they can compare.
   const monthlyData = React.useMemo(() => {
-    const arr = MONTH_LABELS.map((m) => ({ month: m, total: 0 }))
-    const yNum = Number(year)
+    const arr = MONTH_LABELS.map((m) => ({ month: m, total: 0 }));
+    const yNum = Number(year);
     for (const b of allBookings) {
-      const d = new Date(b.scheduledAt)
-      if (d.getFullYear() !== yNum) continue
-      if (b.paymentStatus !== "PAID") continue
-      arr[d.getMonth()]!.total += b.amount
+      const d = new Date(b.scheduledAt);
+      if (d.getFullYear() !== yNum) continue;
+      if (b.paymentStatus !== "PAID") continue;
+      // arr[d.getMonth()] is always non-null since arr is prebuilt from MONTH_LABELS
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      arr[d.getMonth()]!.total += b.amount;
     }
-    return arr
-  }, [allBookings, year])
+    return arr;
+  }, [allBookings, year]);
 
-  const hasFilters = tab !== "ALL" || month !== "ALL" || year !== String(now.getFullYear())
+  const hasFilters = tab !== "ALL" || month !== "ALL" || year !== String(now.getFullYear());
 
   const clearFilters = () => {
-    setTab("ALL")
-    setMonth("ALL")
-    setYear(String(now.getFullYear()))
-  }
+    setTab("ALL");
+    setMonth("ALL");
+    setYear(String(now.getFullYear()));
+  };
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Financeiro"
-        subtitle="Acompanhe seus pagamentos e gastos com serviços."
-      />
+      <PageHeader title="Financeiro" subtitle="Acompanhe seus pagamentos e gastos com serviços." />
 
       {/* Summary cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -304,11 +301,7 @@ export function ClientFinance() {
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--border)"
-                  vertical={false}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis
                   dataKey="month"
                   tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
@@ -346,27 +339,21 @@ export function ClientFinance() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex w-full flex-wrap justify-start gap-1 h-auto p-1 sm:w-auto">
           {TABS.map((t) => {
-            const count = counts[t.key] ?? 0
-            const active = tab === t.key
+            const count = counts[t.key] ?? 0;
+            const active = tab === t.key;
             return (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="h-8 flex-shrink-0 gap-1.5"
-              >
+              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
                 {t.label}
                 <span
                   className={cn(
                     "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground",
+                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
                 </span>
               </TabsTrigger>
-            )
+            );
           })}
         </TabsList>
       </Tabs>
@@ -472,12 +459,9 @@ export function ClientFinance() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((b) => {
-                    const initials = providerInitials(b.provider.name)
+                    const initials = providerInitials(b.provider.name);
                     return (
-                      <TableRow
-                        key={b.id}
-                        className="h-14 transition-colors hover:bg-muted/30"
-                      >
+                      <TableRow key={b.id} className="h-14 transition-colors hover:bg-muted/30">
                         <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
                           {formatDate(b.scheduledAt)}
                         </TableCell>
@@ -489,9 +473,7 @@ export function ClientFinance() {
                                 {initials || "P"}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="truncate text-sm font-medium">
-                              {b.provider.name}
-                            </span>
+                            <span className="truncate text-sm font-medium">{b.provider.name}</span>
                           </div>
                         </TableCell>
                         <TableCell className="hidden max-w-[16rem] truncate text-xs text-muted-foreground md:table-cell">
@@ -514,7 +496,7 @@ export function ClientFinance() {
                           </StatusBadge>
                         </TableCell>
                       </TableRow>
-                    )
+                    );
                   })}
                 </TableBody>
               </Table>
@@ -523,5 +505,5 @@ export function ClientFinance() {
         </Card>
       )}
     </div>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AdminProviders — lista de prestadores com ações administrativas.
@@ -25,7 +25,7 @@
  * Se alterar campos aqui, replique lá.
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -36,22 +36,21 @@ import {
   MapPin,
   MoreHorizontal,
   Power,
-  SearchX,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,
   X,
-} from "lucide-react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+} from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-import { apiGet, apiPatch } from "@/lib/api"
-import { type UserRole } from "@/lib/constants"
-import { formatDate } from "@/lib/format"
-import { cn } from "@/lib/utils"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { apiGet, apiPatch } from "@/lib/api";
+import { type UserRole } from "@/lib/constants";
+import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,14 +58,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -74,14 +73,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { useUIStore } from "@/store"
+} from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useUIStore } from "@/store";
 
 import {
   ActiveBadge,
@@ -98,76 +93,76 @@ import {
   SearchInput,
   TableSkeleton,
   VerifiedBadge,
-} from "./admin-shared"
+} from "./admin-shared";
 
 // ---------------------------------------------------------------------------
 // Types — definidos IDÊNTICOS em admin-users.tsx (H4 consistência).
 // ---------------------------------------------------------------------------
 type AdminUser = {
-  id: string
-  name: string
-  email: string
-  role: UserRole
-  cpfCnpj?: string | null
-  whatsapp?: string | null
-  phone?: string | null
-  avatarUrl?: string | null
-  city?: string | null
-  state?: string | null
-  bio?: string | null
-  verified: boolean
-  active: boolean
-  createdAt: string
-}
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  cpfCnpj?: string | null;
+  whatsapp?: string | null;
+  phone?: string | null;
+  avatarUrl?: string | null;
+  city?: string | null;
+  state?: string | null;
+  bio?: string | null;
+  verified: boolean;
+  active: boolean;
+  createdAt: string;
+};
 
 type AdminUsersResponse = {
-  items: AdminUser[]
-  total: number
-  page: number
-  limit: number
-}
+  items: AdminUser[];
+  total: number;
+  page: number;
+  limit: number;
+};
 
-type VerifiedFilter = "ALL" | "true" | "false"
-type ActiveFilter = "ALL" | "true" | "false"
+type VerifiedFilter = "ALL" | "true" | "false";
+type ActiveFilter = "ALL" | "true" | "false";
 
-type SortKey = "name" | "createdAt"
-type SortDir = "asc" | "desc"
-type SortState = { key: SortKey; dir: SortDir } | null
+type SortKey = "name" | "createdAt";
+type SortDir = "asc" | "desc";
+type SortState = { key: SortKey; dir: SortDir } | null;
 
 type PendingToggle = {
-  id: string
-  name: string
-  field: "verified" | "active"
-  currentValue: boolean
-} | null
+  id: string;
+  name: string;
+  field: "verified" | "active";
+  currentValue: boolean;
+} | null;
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminProviders() {
-  const queryClient = useQueryClient()
-  const openProvider = useUIStore((s) => s.openProvider)
+  const queryClient = useQueryClient();
+  const openProvider = useUIStore((s) => s.openProvider);
 
-  const [q, setQ] = React.useState("")
-  const [debouncedQ, setDebouncedQ] = React.useState("")
-  const [verified, setVerified] = React.useState<VerifiedFilter>("ALL")
-  const [active, setActive] = React.useState<ActiveFilter>("ALL")
-  const [page, setPage] = React.useState(1)
-  const [sort, setSort] = React.useState<SortState>(null)
+  const [q, setQ] = React.useState("");
+  const [debouncedQ, setDebouncedQ] = React.useState("");
+  const [verified, setVerified] = React.useState<VerifiedFilter>("ALL");
+  const [active, setActive] = React.useState<ActiveFilter>("ALL");
+  const [page, setPage] = React.useState(1);
+  const [sort, setSort] = React.useState<SortState>(null);
 
-  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
-  const [patchingId, setPatchingId] = React.useState<string | null>(null)
-  const [errorBanner, setErrorBanner] = React.useState<string | null>(null)
+  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null);
+  const [patchingId, setPatchingId] = React.useState<string | null>(null);
+  const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
 
-  const limit = 12
+  const limit = 12;
 
   React.useEffect(() => {
     const t = setTimeout(() => {
-      setDebouncedQ(q.trim())
-      setPage(1)
-    }, 350)
-    return () => clearTimeout(t)
-  }, [q])
+      setDebouncedQ(q.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "providers", { debouncedQ, verified, active, page, limit }],
@@ -179,108 +174,103 @@ export function AdminProviders() {
         limit,
       }),
     staleTime: 15_000,
-  })
+  });
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["admin", "providers"] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "providers"] });
 
   const patchMutation = useMutation({
-    mutationFn: ({
-      id,
-      patch,
-    }: {
-      id: string
-      patch: { verified?: boolean; active?: boolean }
-    }) => apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
-  })
+    mutationFn: ({ id, patch }: { id: string; patch: { verified?: boolean; active?: boolean } }) =>
+      apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
+  });
 
-  const rawItems = data?.items ?? []
+  const rawItems = React.useMemo(() => data?.items ?? [], [data]);
   const filteredItems = React.useMemo(() => {
     return rawItems.filter((p) => {
-      if (verified === "true" && !p.verified) return false
-      if (verified === "false" && p.verified) return false
-      if (active === "true" && !p.active) return false
-      if (active === "false" && p.active) return false
-      return true
-    })
-  }, [rawItems, verified, active])
+      if (verified === "true" && !p.verified) return false;
+      if (verified === "false" && p.verified) return false;
+      if (active === "true" && !p.active) return false;
+      if (active === "false" && p.active) return false;
+      return true;
+    });
+  }, [rawItems, verified, active]);
 
   const items = React.useMemo(() => {
-    if (!sort) return filteredItems
+    if (!sort) return filteredItems;
     const sorted = [...filteredItems].sort((a, b) => {
-      let cmp = 0
-      if (sort.key === "name") cmp = a.name.localeCompare(b.name, "pt-BR")
+      let cmp = 0;
+      if (sort.key === "name") cmp = a.name.localeCompare(b.name, "pt-BR");
       else if (sort.key === "createdAt")
-        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      return sort.dir === "asc" ? cmp : -cmp
-    })
-    return sorted
-  }, [filteredItems, sort])
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return sort.dir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [filteredItems, sort]);
 
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / limit))
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  const clientFilterActive = verified !== "ALL" || active !== "ALL"
+  const clientFilterActive = verified !== "ALL" || active !== "ALL";
 
   const activeFilterCount =
-    (debouncedQ ? 1 : 0) +
-    (verified !== "ALL" ? 1 : 0) +
-    (active !== "ALL" ? 1 : 0)
+    (debouncedQ ? 1 : 0) + (verified !== "ALL" ? 1 : 0) + (active !== "ALL" ? 1 : 0);
 
   const clearFilters = () => {
-    setQ("")
-    setDebouncedQ("")
-    setVerified("ALL")
-    setActive("ALL")
-    setSort(null)
-    setPage(1)
-  }
+    setQ("");
+    setDebouncedQ("");
+    setVerified("ALL");
+    setActive("ALL");
+    setSort(null);
+    setPage(1);
+  };
 
   const toggleSort = (key: SortKey) => {
     setSort((prev) => {
-      if (!prev || prev.key !== key) return { key, dir: "asc" }
-      if (prev.dir === "asc") return { key, dir: "desc" }
-      return null
-    })
-  }
+      if (!prev || prev.key !== key) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
+  };
 
   const handleToggleConfirm = () => {
-    if (!pendingToggle) return
-    const { id, field, currentValue } = pendingToggle
-    setPatchingId(id)
+    if (!pendingToggle) return;
+    const { id, field, currentValue } = pendingToggle;
+    setPatchingId(id);
     patchMutation.mutate(
       { id, patch: { [field]: !currentValue } },
       {
         onSuccess: () => {
-          invalidate()
+          invalidate();
           toast.success(
             field === "verified"
               ? currentValue
                 ? "Verificação removida."
                 : "Prestador verificado."
               : currentValue
-              ? "Prestador desativado."
-              : "Prestador ativado.",
-          )
-          setPendingToggle(null)
-          setPatchingId(null)
+                ? "Prestador desativado."
+                : "Prestador ativado.",
+          );
+          setPendingToggle(null);
+          setPatchingId(null);
         },
         onError: (e: unknown) => {
-          const msg = errMsg(e, "Falha ao atualizar prestador.")
-          setErrorBanner(msg)
-          toast.error(msg)
-          setPendingToggle(null)
-          setPatchingId(null)
+          const msg = errMsg(e, "Falha ao atualizar prestador.");
+          setErrorBanner(msg);
+          toast.error(msg);
+          setPendingToggle(null);
+          setPatchingId(null);
         },
       },
-    )
-  }
+    );
+  };
 
   const renderSortHeader = (label: string, sortKey: SortKey) => (
     <button
       type="button"
       onClick={() => toggleSort(sortKey)}
-      className={cn("inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors hover:text-foreground", sort?.key === sortKey ? "text-foreground" : "text-muted-foreground")}
+      className={cn(
+        "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors hover:text-foreground",
+        sort?.key === sortKey ? "text-foreground" : "text-muted-foreground",
+      )}
     >
       {label}
       {sort?.key === sortKey ? (
@@ -293,7 +283,7 @@ export function AdminProviders() {
         <ArrowUpDown className="size-3 opacity-40" />
       )}
     </button>
-  )
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -333,8 +323,8 @@ export function AdminProviders() {
         <Select
           value={verified}
           onValueChange={(v) => {
-            setVerified(v as VerifiedFilter)
-            setPage(1)
+            setVerified(v as VerifiedFilter);
+            setPage(1);
           }}
         >
           <SelectTrigger className="h-9 w-auto min-w-[150px]">
@@ -349,8 +339,8 @@ export function AdminProviders() {
         <Select
           value={active}
           onValueChange={(v) => {
-            setActive(v as ActiveFilter)
-            setPage(1)
+            setActive(v as ActiveFilter);
+            setPage(1);
           }}
         >
           <SelectTrigger className="h-9 w-auto min-w-[140px]">
@@ -388,12 +378,7 @@ export function AdminProviders() {
           description="Ajuste os filtros de busca ou aguarde novos cadastros."
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -430,11 +415,8 @@ export function AdminProviders() {
                 </TableHeader>
                 <TableBody>
                   {items.map((p) => {
-                    const isPatchingThis =
-                      patchingId === p.id && patchMutation.isPending
-                    const patchingField = isPatchingThis
-                      ? pendingToggle?.field ?? null
-                      : null
+                    const isPatchingThis = patchingId === p.id && patchMutation.isPending;
+                    const patchingField = isPatchingThis ? (pendingToggle?.field ?? null) : null;
                     return (
                       <TableRow
                         key={p.id}
@@ -443,36 +425,26 @@ export function AdminProviders() {
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-8 shrink-0">
-                              {p.avatarUrl ? (
-                                <AvatarImage src={p.avatarUrl} alt={p.name} />
-                              ) : null}
+                              {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
                               <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
                                 {initials(p.name)}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {p.name}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {p.email}
-                              </p>
+                              <p className="truncate text-sm font-medium">{p.name}</p>
+                              <p className="truncate text-xs text-muted-foreground">{p.email}</p>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className="hidden px-4 py-3 md:table-cell">
                           <div className="flex flex-col text-xs">
                             {p.whatsapp ? (
-                              <span className="text-foreground/80">
-                                {p.whatsapp}
-                              </span>
+                              <span className="text-foreground/80">{p.whatsapp}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
                             {p.cpfCnpj ? (
-                              <span className="font-mono text-muted-foreground">
-                                {p.cpfCnpj}
-                              </span>
+                              <span className="font-mono text-muted-foreground">{p.cpfCnpj}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
@@ -518,14 +490,10 @@ export function AdminProviders() {
                                   className="h-8 gap-1.5 text-xs"
                                 >
                                   <Eye className="size-3.5" />
-                                  <span className="hidden sm:inline">
-                                    Ver perfil
-                                  </span>
+                                  <span className="hidden sm:inline">Ver perfil</span>
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>
-                                Ver perfil público do prestador
-                              </TooltipContent>
+                              <TooltipContent>Ver perfil público do prestador</TooltipContent>
                             </Tooltip>
                             {/* H6 — secondary actions in ⋮.
                                 "Ver perfil público" REMOVIDO (já é o botão visível). */}
@@ -564,9 +532,7 @@ export function AdminProviders() {
                                   ) : (
                                     <ShieldCheck className="size-3.5" />
                                   )}
-                                  {p.verified
-                                    ? "Remover verificação"
-                                    : "Verificar"}
+                                  {p.verified ? "Remover verificação" : "Verificar"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() =>
@@ -587,7 +553,7 @@ export function AdminProviders() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    )
+                    );
                   })}
                 </TableBody>
               </Table>
@@ -599,17 +565,8 @@ export function AdminProviders() {
       {/* Result count + pagination — only when there are results */}
       {!isError && !isLoading && items.length > 0 ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <ResultCount
-            page={page}
-            limit={limit}
-            total={total}
-            label="prestadores"
-          />
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-          />
+          <ResultCount page={page} limit={limit} total={total} label="prestadores" />
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       ) : null}
 
@@ -623,5 +580,5 @@ export function AdminProviders() {
         onConfirm={handleToggleConfirm}
       />
     </div>
-  )
+  );
 }

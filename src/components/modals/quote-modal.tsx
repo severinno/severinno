@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import { useForm, type Resolver, type UseFormReturn } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
+import * as React from "react";
+import Image from "next/image";
+import { useQuery } from "@tanstack/react-query";
+import { useForm, type Resolver, type UseFormReturn } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   Check,
   ChevronDown,
   Clock,
-  Loader2,
   LogIn,
   MapPin,
   Pencil,
@@ -17,8 +17,8 @@ import {
   ShieldCheck,
   User,
   Wrench,
-} from "lucide-react"
-import { toast } from "sonner"
+} from "lucide-react";
+import { toast } from "sonner";
 
 import {
   Dialog,
@@ -26,31 +26,27 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+} from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
   CommandEmpty,
@@ -58,13 +54,9 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/command";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 import {
   apiGet,
   apiPost,
@@ -72,24 +64,15 @@ import {
   type ProviderService,
   type PagedResult,
   type ServiceUnit,
-} from "@/lib/api"
-import {
-  SERVICE_UNITS,
-  SERVICE_UNIT_LABELS,
-  SERVICE_UNIT_SHORT,
-} from "@/lib/constants"
-import { useUIStore } from "@/store/ui"
-import { useAuthStore } from "@/store/auth"
-import { useViewStore } from "@/store/view"
-import { useIsMobile } from "@/hooks/use-mobile"
-import { AddressForm, type AddressFormValue } from "./address-form"
-import { FilePhotos } from "./file-photos"
-import {
-  StepWizard,
-  StepHeader,
-  InfoCard,
-  type StepDef,
-} from "./step-wizard"
+} from "@/lib/api";
+import { SERVICE_UNITS, SERVICE_UNIT_LABELS, SERVICE_UNIT_SHORT } from "@/lib/constants";
+import { useUIStore } from "@/store/ui";
+import { useAuthStore } from "@/store/auth";
+import { useViewStore } from "@/store/view";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { AddressForm, type AddressFormValue } from "./address-form";
+import { FilePhotos } from "./file-photos";
+import { StepWizard, StepHeader, InfoCard, type StepDef } from "./step-wizard";
 
 // ---------------------------------------------------------------------------
 // Step definitions — 5 steps for better UX (Nielsen #8: minimalist design)
@@ -102,22 +85,22 @@ const STEPS: StepDef[] = [
   { id: 3, label: "Detalhes", shortLabel: "Detalhes", icon: Pencil },
   { id: 4, label: "Endereço", shortLabel: "Endereço", icon: MapPin },
   { id: 5, label: "Revisão", shortLabel: "Revisão", icon: Check },
-]
+];
 
-type Step = (typeof STEPS)[number]["id"]
+type Step = (typeof STEPS)[number]["id"];
 
 // ---------------------------------------------------------------------------
 // Form model
 // ---------------------------------------------------------------------------
 
 type QuoteItemForm = {
-  providerId: string
-  serviceId: string
-  description: string
-  quantity: number
-  unit: ServiceUnit
-  photos: string[]
-}
+  providerId: string;
+  serviceId: string;
+  description: string;
+  quantity: number;
+  unit: ServiceUnit;
+  photos: string[];
+};
 
 const quoteFormSchema = z.object({
   items: z
@@ -125,17 +108,9 @@ const quoteFormSchema = z.object({
       z.object({
         providerId: z.string().min(1, "Selecione um prestador"),
         serviceId: z.string().min(1, "Selecione um serviço"),
-        description: z
-          .string()
-          .min(10, "Descreva com ao menos 10 caracteres")
-          .max(400),
+        description: z.string().min(10, "Descreva com ao menos 10 caracteres").max(400),
         quantity: z.coerce.number().min(0.01, "Quantidade inválida"),
-        unit: z.enum([
-          "UNIDADE",
-          "METRO_LINEAR",
-          "METRO_QUADRADO",
-          "METRO_CUBICO",
-        ]),
+        unit: z.enum(["UNIDADE", "METRO_LINEAR", "METRO_QUADRADO", "METRO_CUBICO"]),
         photos: z.array(z.string()).max(4).default([]),
       }),
     )
@@ -151,9 +126,9 @@ const quoteFormSchema = z.object({
     lat: z.number().nullable().optional(),
     lng: z.number().nullable().optional(),
   }),
-})
+});
 
-type QuoteFormValues = z.infer<typeof quoteFormSchema>
+type QuoteFormValues = z.infer<typeof quoteFormSchema>;
 
 const emptyItem = (
   providerId?: string,
@@ -166,7 +141,7 @@ const emptyItem = (
   quantity: 1,
   unit,
   photos: [],
-})
+});
 
 const emptyAddress: AddressFormValue = {
   cep: "",
@@ -178,21 +153,21 @@ const emptyAddress: AddressFormValue = {
   state: "",
   lat: null,
   lng: null,
-}
+};
 
 // ---------------------------------------------------------------------------
 // Main modal
 // ---------------------------------------------------------------------------
 
 export function QuoteModal() {
-  const open = useUIStore((s) => s.quoteModal.open)
-  const providerIdPreset = useUIStore((s) => s.quoteModal.providerId)
-  const serviceIdPreset = useUIStore((s) => s.quoteModal.serviceId)
-  const close = useUIStore((s) => s.closeQuote)
-  const openAuth = useUIStore((s) => s.openAuth)
-  const isMobile = useIsMobile()
-  const navigate = useViewStore((s) => s.navigate)
-  const user = useAuthStore((s) => s.user)
+  const open = useUIStore((s) => s.quoteModal.open);
+  const providerIdPreset = useUIStore((s) => s.quoteModal.providerId);
+  const serviceIdPreset = useUIStore((s) => s.quoteModal.serviceId);
+  const close = useUIStore((s) => s.closeQuote);
+  const openAuth = useUIStore((s) => s.openAuth);
+  const isMobile = useIsMobile();
+  const navigate = useViewStore((s) => s.navigate);
+  const user = useAuthStore((s) => s.user);
 
   const form = useForm<QuoteFormValues>({
     resolver: zodResolver(quoteFormSchema) as unknown as Resolver<QuoteFormValues>,
@@ -201,36 +176,28 @@ export function QuoteModal() {
       address: emptyAddress,
     },
     mode: "onTouched",
-  })
+  });
 
-  const [step, setStep] = React.useState<Step>(1)
-  const [submitting, setSubmitting] = React.useState(false)
+  const [step, setStep] = React.useState<Step>(1);
+  const [submitting, setSubmitting] = React.useState(false);
 
-  // Reset when modal opens
-  React.useEffect(() => {
-    if (open) {
-      form.reset({
-        items: [emptyItem(providerIdPreset, serviceIdPreset)],
-        address: emptyAddress,
-      })
-      setStep(1)
-    }
-  }, [open, providerIdPreset, serviceIdPreset, form])
+  // Reset: key={String(open)} in <Sheet> forces remount + clean form
 
   // ── Step validation map ──
-  const items = form.watch("items")
-  const address = form.watch("address")
-  const errors = form.formState.errors
-  const item0 = items[0]
-  const item0Errors = errors.items?.[0]
+  const items = form.watch("items");
+  const address = form.watch("address");
+  const item0 = items[0];
 
-  const step1Valid = !!item0?.providerId
-  const step2Valid = !!item0?.serviceId
-  const step3Valid =
-    !!item0?.description && item0.description.length >= 10 && item0?.quantity > 0
+  const step1Valid = !!item0?.providerId;
+  const step2Valid = !!item0?.serviceId;
+  const step3Valid = !!item0?.description && item0.description.length >= 10 && item0?.quantity > 0;
   const step4Valid =
-    !!address.cep && address.cep.replace(/\D/g, "").length >= 8 &&
-    !!address.street && !!address.number && !!address.city && !!address.state
+    !!address.cep &&
+    address.cep.replace(/\D/g, "").length >= 8 &&
+    !!address.street &&
+    !!address.number &&
+    !!address.city &&
+    !!address.state;
 
   const validSteps: Record<number, boolean> = {
     1: step1Valid,
@@ -238,58 +205,58 @@ export function QuoteModal() {
     3: step3Valid,
     4: step4Valid,
     5: true,
-  }
+  };
 
   // ── Navigation ──
   const handleStepClick = (target: Step) => {
     if (target < step) {
-      setStep(target)
-      return
+      setStep(target);
+      return;
     }
     for (let i = 1; i < target; i++) {
       if (!validSteps[i as Step]) {
-        toast.error("Complete os passos anteriores primeiro.")
-        return
+        toast.error("Complete os passos anteriores primeiro.");
+        return;
       }
     }
-    setStep(target)
-  }
+    setStep(target);
+  };
 
   const handleNext = () => {
     if (step === 1 && !step1Valid) {
-      form.trigger("items.0.providerId")
-      return
+      form.trigger("items.0.providerId");
+      return;
     }
     if (step === 2 && !step2Valid) {
-      form.trigger("items.0.serviceId")
-      return
+      form.trigger("items.0.serviceId");
+      return;
     }
     if (step === 3 && !step3Valid) {
-      form.trigger("items.0.description")
-      form.trigger("items.0.quantity")
-      return
+      form.trigger("items.0.description");
+      form.trigger("items.0.quantity");
+      return;
     }
     if (step === 4 && !step4Valid) {
-      form.trigger("address")
-      return
+      form.trigger("address");
+      return;
     }
-    setStep((s) => Math.min(5, s + 1) as Step)
-  }
+    setStep((s) => Math.min(5, s + 1) as Step);
+  };
 
-  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step)
+  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step);
 
   const onSubmit = async (values: QuoteFormValues) => {
     if (!user) {
-      toast.info("Faça cadastro gratuito para pedir orçamentos.")
-      openAuth("register", "CLIENT")
-      return
+      toast.info("Faça cadastro gratuito para pedir orçamentos.");
+      openAuth("register", "CLIENT");
+      return;
     }
-    const primary = values.items[0]
+    const primary = values.items[0];
     if (!primary?.providerId) {
-      toast.error("Selecione um prestador.")
-      return
+      toast.error("Selecione um prestador.");
+      return;
     }
-    setSubmitting(true)
+    setSubmitting(true);
     try {
       await apiPost("/api/quotes", {
         providerId: primary.providerId,
@@ -312,37 +279,37 @@ export function QuoteModal() {
         cep: values.address.cep,
         lat: values.address.lat,
         lng: values.address.lng,
-      })
-      toast.success("Orçamento enviado! O prestador responderá em breve.")
-      close()
-      navigate("client.quotes")
+      });
+      toast.success("Orçamento enviado! O prestador responderá em breve.");
+      close();
+      navigate("client.quotes");
     } catch (e) {
       const msg =
         (e as { message?: string })?.message ??
-        "Não foi possível enviar o orçamento. Tente novamente."
-      toast.error(msg)
+        "Não foi possível enviar o orçamento. Tente novamente.";
+      toast.error(msg);
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
   // ── Step content ──
   const stepContent = (() => {
     switch (step) {
       case 1:
-        return <Step1Provider form={form} />
+        return <Step1Provider form={form} />;
       case 2:
-        return <Step2Service form={form} />
+        return <Step2Service form={form} />;
       case 3:
-        return <Step3Details form={form} />
+        return <Step3Details form={form} />;
       case 4:
-        return <Step4Address form={form} />
+        return <Step4Address form={form} />;
       case 5:
-        return <Step5Review form={form} goToStep={setStep} />
+        return <Step5Review form={form} goToStep={setStep} />;
       default:
-        return null
+        return null;
     }
-  })()
+  })();
 
   const wizardBody = (
     <StepWizard
@@ -386,11 +353,11 @@ export function QuoteModal() {
       )}
       {stepContent}
     </StepWizard>
-  )
+  );
 
   if (isMobile) {
     return (
-      <Sheet open={open} onOpenChange={(o) => !o && close()}>
+      <Sheet key={String(open)} open={open} onOpenChange={(o) => !o && close()}>
         <SheetContent
           side="bottom"
           className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
@@ -408,12 +375,15 @@ export function QuoteModal() {
           <div className="flex-1 overflow-hidden">{wizardBody}</div>
         </SheetContent>
       </Sheet>
-    )
+    );
   }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent
+        className="sm:max-w-2xl p-0 gap-0 overflow-hidden"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         {/* Nielsen #3: User control — prevent accidental close during wizard */}
         <DialogHeader className="px-5 pt-5 pb-2 shrink-0 border-b">
           <DialogTitle className="flex items-center gap-2 text-base">
@@ -427,7 +397,7 @@ export function QuoteModal() {
         {wizardBody}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -436,8 +406,8 @@ export function QuoteModal() {
 // ---------------------------------------------------------------------------
 
 function Step1Provider({ form }: { form: UseFormReturn<QuoteFormValues> }) {
-  const item = form.watch("items.0")
-  const error = form.formState.errors.items?.[0]
+  const item = form.watch("items.0");
+  const error = form.formState.errors.items?.[0];
 
   return (
     <div className="grid gap-4">
@@ -462,27 +432,24 @@ function Step1Provider({ form }: { form: UseFormReturn<QuoteFormValues> }) {
       {/* Selected provider card — Nielsen #1: visibility of system status */}
       {item?.providerId && <SelectedProviderCard providerId={item.providerId} />}
     </div>
-  )
+  );
 }
 
 function SelectedProviderCard({ providerId }: { providerId: string }) {
   const { data } = useQuery({
     queryKey: ["providers-options", ""],
-    queryFn: () =>
-      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
+    queryFn: () => apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
-  })
+  });
 
-  const provider = data?.items?.find((p) => p.id === providerId)
-  if (!provider) return null
+  const provider = data?.items?.find((p) => p.id === providerId);
+  if (!provider) return null;
 
   return (
     <InfoCard variant="emerald">
       <div className="flex items-center gap-3">
         <Avatar className="size-10 rounded-md">
-          {provider.avatarUrl ? (
-            <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-          ) : null}
+          {provider.avatarUrl ? <AvatarImage src={provider.avatarUrl} alt={provider.name} /> : null}
           <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-sm dark:bg-emerald-950 dark:text-emerald-300">
             {provider.name?.[0]?.toUpperCase() ?? "?"}
           </AvatarFallback>
@@ -495,13 +462,16 @@ function SelectedProviderCard({ providerId }: { providerId: string }) {
           </p>
         </div>
         {provider.verified && (
-          <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px] shrink-0">
+          <Badge
+            variant="outline"
+            className="border-emerald-500 text-emerald-700 text-[10px] shrink-0"
+          >
             Verificado
           </Badge>
         )}
       </div>
     </InfoCard>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -510,8 +480,8 @@ function SelectedProviderCard({ providerId }: { providerId: string }) {
 // ---------------------------------------------------------------------------
 
 function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
-  const item = form.watch("items.0")
-  const error = form.formState.errors.items?.[0]
+  const item = form.watch("items.0");
+  const error = form.formState.errors.items?.[0];
 
   return (
     <div className="grid gap-4">
@@ -539,22 +509,23 @@ function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
       />
 
       {/* Selected service info — Nielsen #1: visibility of system status */}
-      {item?.serviceId && <ServiceInfoCard providerId={item.providerId ?? ""} serviceId={item.serviceId} />}
+      {item?.serviceId && (
+        <ServiceInfoCard providerId={item.providerId ?? ""} serviceId={item.serviceId} />
+      )}
     </div>
-  )
+  );
 }
 
 function ServiceInfoCard({ providerId, serviceId }: { providerId: string; serviceId: string }) {
   const { data: services } = useQuery({
     queryKey: ["services-by-provider", providerId],
-    queryFn: () =>
-      apiGet<ProviderService[]>("/api/services", { providerId }),
+    queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId }),
     enabled: !!providerId,
     staleTime: 30 * 1000,
-  })
+  });
 
-  const selected = services?.find((s) => s.id === serviceId)
-  if (!selected) return null
+  const selected = services?.find((s) => s.id === serviceId);
+  if (!selected) return null;
 
   return (
     <InfoCard variant="emerald">
@@ -578,7 +549,7 @@ function ServiceInfoCard({ providerId, serviceId }: { providerId: string; servic
         </Badge>
       </div>
     </InfoCard>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -588,9 +559,9 @@ function ServiceInfoCard({ providerId, serviceId }: { providerId: string; servic
 // ---------------------------------------------------------------------------
 
 function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
-  const item = form.watch("items.0")
-  const error = form.formState.errors.items?.[0]
-  const descLen = item?.description?.length ?? 0
+  const item = form.watch("items.0");
+  const error = form.formState.errors.items?.[0];
+  const descLen = item?.description?.length ?? 0;
 
   return (
     <div className="grid gap-4">
@@ -604,10 +575,12 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between">
           <Label htmlFor="item-0-desc">Descrição do serviço</Label>
-          <span className={cn(
-            "text-xs tabular-nums",
-            descLen < 10 ? "text-destructive" : "text-muted-foreground",
-          )}>
+          <span
+            className={cn(
+              "text-xs tabular-nums",
+              descLen < 10 ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
             {descLen}/400
           </span>
         </div>
@@ -649,9 +622,7 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
             }
             aria-invalid={!!error?.quantity}
           />
-          {error?.quantity && (
-            <p className="text-xs text-destructive">{error.quantity.message}</p>
-          )}
+          {error?.quantity && <p className="text-xs text-destructive">{error.quantity.message}</p>}
         </div>
 
         <div className="grid gap-1.5">
@@ -681,15 +652,13 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
       {/* Photos — Nielsen #7: flexibility — optional but helpful */}
       <FilePhotos
         value={item?.photos ?? []}
-        onChange={(photos) =>
-          form.setValue("items.0.photos", photos, { shouldDirty: true })
-        }
+        onChange={(photos) => form.setValue("items.0.photos", photos, { shouldDirty: true })}
         max={4}
         label="Fotos do serviço"
         hint="Envie até 4 imagens para ajudar o prestador a entender o serviço."
       />
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -698,8 +667,8 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
 // ---------------------------------------------------------------------------
 
 function Step4Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
-  const address = form.watch("address")
-  const errors = form.formState.errors.address
+  const address = form.watch("address");
+  const errors = form.formState.errors.address;
 
   return (
     <div className="grid gap-4">
@@ -723,7 +692,7 @@ function Step4Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
         />
       </InfoCard>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -737,29 +706,27 @@ function Step5Review({
   form,
   goToStep,
 }: {
-  form: UseFormReturn<QuoteFormValues>
-  goToStep: (s: Step) => void
+  form: UseFormReturn<QuoteFormValues>;
+  goToStep: (s: Step) => void;
 }) {
-  const item = form.watch("items.0")
-  const address = form.watch("address")
+  const item = form.watch("items.0");
+  const address = form.watch("address");
 
   const { data: providerData } = useQuery({
     queryKey: ["providers-options", ""],
-    queryFn: () =>
-      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
+    queryFn: () => apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
-  })
+  });
 
   const { data: services } = useQuery({
     queryKey: ["services-by-provider", item?.providerId],
-    queryFn: () =>
-      apiGet<ProviderService[]>("/api/services", { providerId: item?.providerId }),
+    queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId: item?.providerId }),
     enabled: !!item?.providerId,
     staleTime: 30 * 1000,
-  })
+  });
 
-  const providerName = providerData?.items?.find((p) => p.id === item?.providerId)?.name ?? "—"
-  const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title ?? "—"
+  const providerName = providerData?.items?.find((p) => p.id === item?.providerId)?.name ?? "—";
+  const serviceTitle = services?.find((s) => s.id === item?.serviceId)?.title ?? "—";
 
   return (
     <div className="grid gap-4">
@@ -770,18 +737,12 @@ function Step5Review({
       />
 
       {/* Provider section */}
-      <ReviewSection
-        label="Prestador"
-        onEdit={() => goToStep(1)}
-      >
+      <ReviewSection label="Prestador" onEdit={() => goToStep(1)}>
         <p className="text-sm font-medium">{providerName}</p>
       </ReviewSection>
 
       {/* Service section */}
-      <ReviewSection
-        label="Serviço"
-        onEdit={() => goToStep(2)}
-      >
+      <ReviewSection label="Serviço" onEdit={() => goToStep(2)}>
         <p className="text-sm font-medium">{serviceTitle}</p>
         <Badge variant="secondary" className="mt-1">
           {item?.quantity ?? 0} {item?.unit ? SERVICE_UNIT_SHORT[item.unit] : "un"}
@@ -789,25 +750,18 @@ function Step5Review({
       </ReviewSection>
 
       {/* Details section */}
-      <ReviewSection
-        label="Detalhes"
-        onEdit={() => goToStep(3)}
-      >
-        <p className="text-sm text-muted-foreground line-clamp-3">
-          {item?.description || "—"}
-        </p>
+      <ReviewSection label="Detalhes" onEdit={() => goToStep(3)}>
+        <p className="text-sm text-muted-foreground line-clamp-3">{item?.description || "—"}</p>
         {item?.photos && item.photos.length > 0 && (
           <div className="flex gap-2 mt-2">
             {item.photos.map((url, i) => (
-              <div
-                key={url + i}
-                className="size-12 overflow-hidden rounded-md border bg-muted"
-              >
-                <img
+              <div key={url + i} className="size-12 overflow-hidden rounded-md border bg-muted">
+                <Image
                   src={url}
                   alt={`Foto ${i + 1}`}
+                  width={48}
+                  height={48}
                   className="size-full object-cover"
-                  loading="lazy"
                 />
               </div>
             ))}
@@ -816,10 +770,7 @@ function Step5Review({
       </ReviewSection>
 
       {/* Address section */}
-      <ReviewSection
-        label="Endereço"
-        onEdit={() => goToStep(4)}
-      >
+      <ReviewSection label="Endereço" onEdit={() => goToStep(4)}>
         <div className="flex items-start gap-2 text-sm">
           <MapPin className="size-4 mt-0.5 shrink-0 text-emerald-600" />
           <span className="text-muted-foreground">
@@ -836,8 +787,7 @@ function Step5Review({
       {/* "What happens next?" — Nielsen #10: help & documentation */}
       <InfoCard variant="emerald" className="mt-1">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
-          <Clock className="size-3.5" />
-          O que acontece agora?
+          <Clock className="size-3.5" />O que acontece agora?
         </h4>
         <div className="grid gap-2.5">
           {[
@@ -867,7 +817,7 @@ function Step5Review({
         Seus dados estão protegidos
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -880,9 +830,9 @@ function ReviewSection({
   onEdit,
   children,
 }: {
-  label: string
-  onEdit: () => void
-  children: React.ReactNode
+  label: string;
+  onEdit: () => void;
+  children: React.ReactNode;
 }) {
   return (
     <div className="rounded-lg border p-3">
@@ -901,7 +851,7 @@ function ReviewSection({
       </div>
       {children}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -914,12 +864,12 @@ function ProviderCombobox({
   onChange,
   error,
 }: {
-  value: string
-  onChange: (providerId: string) => void
-  error?: string
+  value: string;
+  onChange: (providerId: string) => void;
+  error?: string;
 }) {
-  const [open, setOpen] = React.useState(false)
-  const [query, setQuery] = React.useState("")
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["providers-options", query],
@@ -929,10 +879,10 @@ function ProviderCombobox({
         limit: 20,
       }),
     staleTime: 30 * 1000,
-  })
+  });
 
-  const providers = data?.items ?? []
-  const selected = providers.find((p) => p.id === value)
+  const providers = data?.items ?? [];
+  const selected = providers.find((p) => p.id === value);
 
   return (
     <div className="grid gap-1.5">
@@ -963,7 +913,10 @@ function ProviderCombobox({
                   </Avatar>
                   <span className="truncate">{selected.name}</span>
                   {selected.verified && (
-                    <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px]">
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-500 text-emerald-700 text-[10px]"
+                    >
                       Verificado
                     </Badge>
                   )}
@@ -992,8 +945,8 @@ function ProviderCombobox({
                     key={p.id}
                     value={p.id}
                     onSelect={() => {
-                      onChange(p.id)
-                      setOpen(false)
+                      onChange(p.id);
+                      setOpen(false);
                     }}
                     className="flex items-center gap-2"
                   >
@@ -1004,9 +957,7 @@ function ProviderCombobox({
                       )}
                     />
                     <Avatar className="size-7 rounded-sm">
-                      {p.avatarUrl ? (
-                        <AvatarImage src={p.avatarUrl} alt={p.name} />
-                      ) : null}
+                      {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
                       <AvatarFallback className="rounded-sm bg-emerald-100 text-emerald-700 text-[10px] dark:bg-emerald-950 dark:text-emerald-300">
                         {p.name?.[0]?.toUpperCase() ?? "?"}
                       </AvatarFallback>
@@ -1015,9 +966,7 @@ function ProviderCombobox({
                       <p className="text-sm truncate">{p.name}</p>
                       <p className="text-xs text-muted-foreground truncate">
                         {p.city ?? "—"}
-                        {p.services?.[0]?.title
-                          ? ` · ${p.services[0].title}`
-                          : ""}
+                        {p.services?.[0]?.title ? ` · ${p.services[0].title}` : ""}
                       </p>
                     </div>
                     {p.verified && (
@@ -1037,7 +986,7 @@ function ProviderCombobox({
       </Popover>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1050,21 +999,20 @@ function ServiceSelect({
   onChange,
   error,
 }: {
-  providerId: string
-  value: string
-  onChange: (service: ProviderService) => void
-  error?: string
+  providerId: string;
+  value: string;
+  onChange: (service: ProviderService) => void;
+  error?: string;
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["services-by-provider", providerId],
-    queryFn: () =>
-      apiGet<ProviderService[]>("/api/services", { providerId }),
+    queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId }),
     enabled: !!providerId,
     staleTime: 30 * 1000,
-  })
+  });
 
-  const services = data ?? []
-  const selected = services.find((s) => s.id === value)
+  const services = data ?? [];
+  const selected = services.find((s) => s.id === value);
 
   return (
     <div className="grid gap-1.5">
@@ -1072,8 +1020,8 @@ function ServiceSelect({
       <Select
         value={value}
         onValueChange={(v) => {
-          const s = services.find((x) => x.id === v)
-          if (s) onChange(s)
+          const s = services.find((x) => x.id === v);
+          if (s) onChange(s);
         }}
         disabled={!providerId}
       >
@@ -1111,11 +1059,9 @@ function ServiceSelect({
         </SelectContent>
       </Select>
       {selected && (
-        <p className="text-xs text-muted-foreground line-clamp-2">
-          {selected.description ?? "—"}
-        </p>
+        <p className="text-xs text-muted-foreground line-clamp-2">{selected.description ?? "—"}</p>
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
-  )
+  );
 }

@@ -1,44 +1,44 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type StepDef = {
-  id: number
-  label: string
-  shortLabel?: string
-  icon?: React.ComponentType<{ className?: string }>
-}
+  id: number;
+  label: string;
+  shortLabel?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+};
 
 export type StepWizardProps = {
-  steps: StepDef[]
-  currentStep: number
+  steps: StepDef[];
+  currentStep: number;
   /** Steps that are completed (show green check) */
-  validSteps: Record<number, boolean>
-  onStepClick: (stepId: number) => void
+  validSteps: Record<number, boolean>;
+  onStepClick: (stepId: number) => void;
   /** Show "Back" button — auto-hidden on step 1 */
-  onBack?: () => void
+  onBack?: () => void;
   /** Primary CTA label for non-final steps */
-  nextLabel?: string
+  nextLabel?: string;
   /** Final step CTA */
-  submitLabel?: React.ReactNode
+  submitLabel?: React.ReactNode;
   /** Whether the current step is valid (enables Next button) */
-  currentStepValid?: boolean
-  onSubmit?: () => void
-  onNext?: () => void
-  submitting?: boolean
+  currentStepValid?: boolean;
+  onSubmit?: () => void;
+  onNext?: () => void;
+  submitting?: boolean;
   /** Step content — keyed by step id */
-  children: React.ReactNode
-  className?: string
-}
+  children: React.ReactNode;
+  className?: string;
+};
 
 // ---------------------------------------------------------------------------
 // StepWizard — Shared step-by-step wizard layout
@@ -65,10 +65,10 @@ export function StepWizard({
   children,
   className,
 }: StepWizardProps) {
-  const isFirst = currentStep === steps[0]?.id
-  const isLast = currentStep === steps[steps.length - 1]?.id
-  const completedCount = steps.filter((s) => validSteps[s.id]).length
-  const progressPct = (completedCount / steps.length) * 100
+  const isFirst = currentStep === steps[0]?.id;
+  const isLast = currentStep === steps[steps.length - 1]?.id;
+  const completedCount = steps.filter((s) => validSteps[s.id]).length;
+  const progressPct = (completedCount / steps.length) * 100;
 
   return (
     <div className={cn("flex flex-col min-h-0", className)}>
@@ -77,9 +77,9 @@ export function StepWizard({
         {/* Step circles + labels */}
         <div className="flex items-center justify-between">
           {steps.map((s, i) => {
-            const active = currentStep === s.id
-            const done = validSteps[s.id] && currentStep > s.id
-            const Icon = s.icon
+            const active = currentStep === s.id;
+            const done = validSteps[s.id] && currentStep > s.id;
+            const Icon = s.icon;
             return (
               <React.Fragment key={s.id}>
                 <button
@@ -100,11 +100,8 @@ export function StepWizard({
                       "inline-flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-all",
                       active &&
                         "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25",
-                      done &&
-                        "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
-                      !active &&
-                        !done &&
-                        "border-muted-foreground/20 text-muted-foreground",
+                      done && "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
+                      !active && !done && "border-muted-foreground/20 text-muted-foreground",
                     )}
                   >
                     {done ? (
@@ -115,9 +112,7 @@ export function StepWizard({
                       s.id
                     )}
                   </span>
-                  <span className="hidden sm:inline">
-                    {s.shortLabel ?? s.label}
-                  </span>
+                  <span className="hidden sm:inline">{s.shortLabel ?? s.label}</span>
                 </button>
                 {i < steps.length - 1 && (
                   <div className="flex-1 h-px bg-muted-foreground/15 mx-1 sm:mx-2 relative">
@@ -135,7 +130,7 @@ export function StepWizard({
                   </div>
                 )}
               </React.Fragment>
-            )
+            );
           })}
         </div>
 
@@ -212,7 +207,7 @@ export function StepWizard({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -225,10 +220,10 @@ export function StepHeader({
   icon: Icon,
   className,
 }: {
-  title: string
-  description?: string
-  icon?: React.ComponentType<{ className?: string }>
-  className?: string
+  title: string;
+  description?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  className?: string;
 }) {
   return (
     <div className={cn("mb-4", className)}>
@@ -236,11 +231,9 @@ export function StepHeader({
         {Icon && <Icon className="size-4 text-emerald-600" />}
         {title}
       </h3>
-      {description && (
-        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-      )}
+      {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -253,18 +246,22 @@ export function ValidationHint({
   error,
   touched,
 }: {
-  ok?: boolean
-  error?: string
-  touched?: boolean
+  ok?: boolean;
+  error?: string;
+  touched?: boolean;
 }) {
-  if (!touched) return null
+  if (!touched) return null;
   if (error) {
-    return <p className="text-xs text-destructive mt-1">{error}</p>
+    return <p className="text-xs text-destructive mt-1">{error}</p>;
   }
   if (ok) {
-    return <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1"><Check className="size-3" /> OK</p>
+    return (
+      <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+        <Check className="size-3" /> OK
+      </p>
+    );
   }
-  return null
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,9 +273,9 @@ export function InfoCard({
   className,
   variant = "default",
 }: {
-  children: React.ReactNode
-  className?: string
-  variant?: "default" | "emerald"
+  children: React.ReactNode;
+  className?: string;
+  variant?: "default" | "emerald";
 }) {
   return (
     <div
@@ -292,5 +289,5 @@ export function InfoCard({
     >
       {children}
     </div>
-  )
+  );
 }

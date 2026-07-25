@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ClientBookings — list of all bookings for the logged-in client.
@@ -17,13 +17,8 @@
  *  - Pagination (client-side, 8/page).
  */
 
-import * as React from "react"
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  useQueries,
-} from "@tanstack/react-query"
+import * as React from "react";
+import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import {
   CalendarDays,
   CheckCircle2,
@@ -36,11 +31,11 @@ import {
   MoreHorizontal,
   Star,
   XCircle,
-} from "lucide-react"
-import { toast } from "sonner"
+} from "lucide-react";
+import { toast } from "sonner";
 
-import { cn } from "@/lib/utils"
-import { apiGet, apiPatch } from "@/lib/api"
+import { cn } from "@/lib/utils";
+import { apiGet, apiPatch } from "@/lib/api";
 import {
   BOOKING_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -50,25 +45,21 @@ import {
   type PaymentMethod,
   type PaymentStatus,
   type ServiceUnit,
-} from "@/lib/constants"
-import { formatBRL, formatDateTime } from "@/lib/format"
-import { useUIStore, useViewStore } from "@/store"
+} from "@/lib/constants";
+import { formatBRL, formatDateTime } from "@/lib/format";
+import { useUIStore, useViewStore } from "@/store";
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -76,12 +67,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  EmptyState,
-} from "@/components/shared/dashboard-shell"
-import { ReviewDialog } from "@/components/client/review-dialog"
-import { BookingTimeline } from "@/components/shared/flow-timeline"
+} from "@/components/ui/dialog";
+import { EmptyState } from "@/components/shared/dashboard-shell";
+import { ReviewDialog } from "@/components/client/review-dialog";
+import { BookingTimeline } from "@/components/shared/flow-timeline";
 import {
   PageHeader,
   StatusBadge,
@@ -89,49 +78,49 @@ import {
   bookingTone,
   paymentIcon,
   paymentTone,
-} from "@/components/client/client-shared"
+} from "@/components/client/client-shared";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Booking = {
-  id: string
-  status: BookingStatus
-  scheduledAt: string
-  amount: number
-  paymentMethod: PaymentMethod
-  paymentStatus: PaymentStatus
-  address: string
-  cep: string
-  notes?: string | null
+  id: string;
+  status: BookingStatus;
+  scheduledAt: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  address: string;
+  cep: string;
+  notes?: string | null;
   service: {
-    id: string
-    title: string
-    basePrice: number
-    unit: ServiceUnit
-    category?: { id: string; name: string } | null
-  }
+    id: string;
+    title: string;
+    basePrice: number;
+    unit: ServiceUnit;
+    category?: { id: string; name: string } | null;
+  };
   provider: {
-    id: string
-    name: string
-    avatarUrl?: string | null
-    whatsapp?: string | null
-  }
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    whatsapp?: string | null;
+  };
   reviews?: Array<{
-    id: string
-    rating: number
-    comment?: string | null
-    createdAt: string
-  }>
-}
+    id: string;
+    rating: number;
+    comment?: string | null;
+    createdAt: string;
+  }>;
+};
 
 type BookingsResponse = {
-  items: Booking[]
-  total: number
-  page: number
-  limit: number
-}
+  items: Booking[];
+  total: number;
+  page: number;
+  limit: number;
+};
 
 // ---------------------------------------------------------------------------
 // Filter tabs (order: pending first, then progressing, then terminal, then all)
@@ -144,23 +133,23 @@ const TABS: Array<{ key: string; label: string }> = [
   { key: "COMPLETED", label: "Concluídos" },
   { key: "CANCELLED", label: "Cancelados" },
   { key: "ALL", label: "Todos" },
-]
+];
 
-const PAGE_SIZE = 8
+const PAGE_SIZE = 8;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function providerInitials(name?: string | null): string {
-  if (!name) return "P"
+  if (!name) return "P";
   return name
     .split(" ")
     .map((p) => p[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -168,21 +157,22 @@ function providerInitials(name?: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function ClientBookings() {
-  const qc = useQueryClient()
-  const navigate = useViewStore((s) => s.navigate)
-  const openProvider = useUIStore((s) => s.openProvider)
+  const qc = useQueryClient();
+  const navigate = useViewStore((s) => s.navigate);
+  const openProvider = useUIStore((s) => s.openProvider);
 
-  const [tab, setTab] = React.useState("ALL")
-  const [page, setPage] = React.useState(1)
-  const [detailsId, setDetailsId] = React.useState<string | null>(null)
-  const [reviewBooking, setReviewBooking] = React.useState<Booking | null>(null)
-  const [cancelBooking, setCancelBooking] = React.useState<Booking | null>(null)
+  const [tab, setTab] = React.useState("ALL");
+  const [page, setPage] = React.useState(1);
+  // Reset page when tab changes
+  const handleTabChange = React.useCallback((newTab: string) => {
+    setTab(newTab);
+    setPage(1);
+  }, []);
+  const [detailsId, setDetailsId] = React.useState<string | null>(null);
+  const [reviewBooking, setReviewBooking] = React.useState<Booking | null>(null);
+  const [cancelBooking, setCancelBooking] = React.useState<Booking | null>(null);
 
   // Reset page when tab changes
-  React.useEffect(() => {
-    setPage(1)
-  }, [tab])
-
   // Fetch up to 4 pages of 50 (= 200 max) so we can compute accurate counts
   // per status and paginate client-side. Mirrors client-finance pattern.
   const queries = useQueries({
@@ -196,17 +186,17 @@ export function ClientBookings() {
         }),
       staleTime: 30_000,
     })),
-  })
+  });
 
   const allBookings = React.useMemo(() => {
-    const merged: Booking[] = []
+    const merged: Booking[] = [];
     for (const q of queries) {
-      if (q.data?.items?.length) merged.push(...q.data.items)
+      if (q.data?.items?.length) merged.push(...q.data.items);
     }
-    return merged
-  }, [queries])
+    return merged;
+  }, [queries]);
 
-  const isLoading = queries.some((q) => q.isLoading)
+  const isLoading = queries.some((q) => q.isLoading);
 
   // Counts per tab (based on all fetched data)
   const counts = React.useMemo(() => {
@@ -217,64 +207,60 @@ export function ClientBookings() {
       IN_PROGRESS: 0,
       COMPLETED: 0,
       CANCELLED: 0,
-    }
+    };
     for (const b of allBookings) {
-      if (map[b.status] != null) map[b.status]!++
+      if (map[b.status] != null)
+        (map as Record<string, number>)[b.status] = (map[b.status] ?? 0) + 1;
     }
-    return map
-  }, [allBookings])
+    return map;
+  }, [allBookings]);
 
   // Filtered + paginated list
   const visible = React.useMemo(() => {
-    const filtered =
-      tab === "ALL"
-        ? allBookings
-        : allBookings.filter((b) => b.status === tab)
+    const filtered = tab === "ALL" ? allBookings : allBookings.filter((b) => b.status === tab);
     // Sort: upcoming first (asc by date) for active statuses, recent first
     // (desc) for terminal statuses.
     const isActive = (s: BookingStatus) =>
-      s === "PENDING" || s === "CONFIRMED" || s === "IN_PROGRESS"
+      s === "PENDING" || s === "CONFIRMED" || s === "IN_PROGRESS";
     return [...filtered].sort((a, b) => {
-      const ta = new Date(a.scheduledAt).getTime()
-      const tb = new Date(b.scheduledAt).getTime()
-      const aActive = isActive(a.status)
-      const bActive = isActive(b.status)
-      if (aActive && bActive) return ta - tb
-      if (!aActive && !bActive) return tb - ta
-      return aActive ? -1 : 1
-    })
-  }, [allBookings, tab])
+      const ta = new Date(a.scheduledAt).getTime();
+      const tb = new Date(b.scheduledAt).getTime();
+      const aActive = isActive(a.status);
+      const bActive = isActive(b.status);
+      if (aActive && bActive) return ta - tb;
+      if (!aActive && !bActive) return tb - ta;
+      return aActive ? -1 : 1;
+    });
+  }, [allBookings, tab]);
 
-  const total = visible.length
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
-  const pageItems = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const total = visible.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageItems = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const cancelMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiPatch(`/api/bookings/${id}`, { status: "CANCELLED" }),
+    mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "CANCELLED" }),
     onSuccess: () => {
-      toast.success("Agendamento cancelado.")
-      qc.invalidateQueries({ queryKey: ["bookings"] })
-      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
-      setCancelBooking(null)
+      toast.success("Agendamento cancelado.");
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] });
+      setCancelBooking(null);
     },
     onError: (e: { message?: string }) => {
-      toast.error(e?.message || "Não foi possível cancelar.")
+      toast.error(e?.message || "Não foi possível cancelar.");
     },
-  })
+  });
 
   const completeMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiPatch(`/api/bookings/${id}`, { status: "COMPLETED" }),
+    mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "COMPLETED" }),
     onSuccess: () => {
-      toast.success("Serviço marcado como concluído. Já pode avaliar!")
-      qc.invalidateQueries({ queryKey: ["bookings"] })
-      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+      toast.success("Serviço marcado como concluído. Já pode avaliar!");
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] });
     },
     onError: (e: { message?: string }) => {
-      toast.error(e?.message || "Não foi possível concluir o agendamento.")
+      toast.error(e?.message || "Não foi possível concluir o agendamento.");
     },
-  })
+  });
 
   return (
     <div className="space-y-4">
@@ -282,11 +268,7 @@ export function ClientBookings() {
         title="Agendamentos"
         subtitle="Acompanhe e gerencie seus serviços agendados."
         action={
-          <Button
-            variant="outline"
-            onClick={() => navigate("vitrine")}
-            className="h-10 gap-2"
-          >
+          <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
             <MapPin className="size-4" />
             Buscar prestadores
           </Button>
@@ -294,30 +276,24 @@ export function ClientBookings() {
       />
 
       {/* Status tabs with counts */}
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList className="flex w-full flex-wrap justify-start gap-1 h-auto p-1 sm:w-auto">
           {TABS.map((t) => {
-            const count = counts[t.key] ?? 0
-            const active = tab === t.key
+            const count = counts[t.key] ?? 0;
+            const active = tab === t.key;
             return (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="h-8 flex-shrink-0 gap-1.5"
-              >
+              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
                 {t.label}
                 <span
                   className={cn(
                     "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground",
+                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
                 </span>
               </TabsTrigger>
-            )
+            );
           })}
         </TabsList>
       </Tabs>
@@ -340,21 +316,14 @@ export function ClientBookings() {
       ) : pageItems.length === 0 ? (
         <EmptyState
           icon={CalendarDays}
-          title={
-            tab === "ALL"
-              ? "Nenhum agendamento ainda"
-              : "Nenhum agendamento com este status"
-          }
+          title={tab === "ALL" ? "Nenhum agendamento ainda" : "Nenhum agendamento com este status"}
           description={
             tab === "ALL"
               ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço."
               : "Não há agendamentos com este status no momento. Tente outra categoria."
           }
           action={
-            <Button
-              onClick={() => navigate("vitrine")}
-              className="mt-2 gap-2"
-            >
+            <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
               <MapPin className="size-4" />
               Buscar prestadores
             </Button>
@@ -370,9 +339,7 @@ export function ClientBookings() {
               onCancel={() => setCancelBooking(b)}
               onComplete={() => completeMutation.mutate(b.id)}
               onReview={() => setReviewBooking(b)}
-              onMessage={() =>
-                navigate("client.messages", { with: b.provider.id })
-              }
+              onMessage={() => navigate("client.messages", { with: b.provider.id })}
               onViewProvider={() => openProvider(b.provider.id)}
               isCompleting={completeMutation.isPending}
             />
@@ -422,10 +389,7 @@ export function ClientBookings() {
       />
 
       {/* Cancel confirm */}
-      <Dialog
-        open={!!cancelBooking}
-        onOpenChange={(o) => !o && setCancelBooking(null)}
-      >
+      <Dialog open={!!cancelBooking} onOpenChange={(o) => !o && setCancelBooking(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Cancelar agendamento?</DialogTitle>
@@ -446,9 +410,7 @@ export function ClientBookings() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() =>
-                cancelBooking && cancelMutation.mutate(cancelBooking.id)
-              }
+              onClick={() => cancelBooking && cancelMutation.mutate(cancelBooking.id)}
               disabled={cancelMutation.isPending}
               className="gap-2"
             >
@@ -464,12 +426,9 @@ export function ClientBookings() {
       </Dialog>
 
       {/* Details dialog */}
-      <BookingDetailsDialog
-        bookingId={detailsId}
-        onOpenChange={(o) => !o && setDetailsId(null)}
-      />
+      <BookingDetailsDialog bookingId={detailsId} onOpenChange={(o) => !o && setDetailsId(null)} />
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -486,24 +445,23 @@ function BookingCard({
   onViewProvider,
   isCompleting,
 }: {
-  booking: Booking
-  onViewDetails: () => void
-  onCancel: () => void
-  onComplete: () => void
-  onReview: () => void
-  onMessage: () => void
-  onViewProvider: () => void
-  isCompleting: boolean
+  booking: Booking;
+  onViewDetails: () => void;
+  onCancel: () => void;
+  onComplete: () => void;
+  onReview: () => void;
+  onMessage: () => void;
+  onViewProvider: () => void;
+  isCompleting: boolean;
 }) {
-  const provider = booking.provider
-  const initials = providerInitials(provider.name)
+  const provider = booking.provider;
+  const initials = providerInitials(provider.name);
 
-  const status = booking.status as BookingStatus
-  const canCancel =
-    status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
-  const canComplete = status === "CONFIRMED" || status === "IN_PROGRESS"
-  const hasReview = (booking.reviews?.length ?? 0) > 0
-  const canReview = status === "COMPLETED" && !hasReview
+  const status = booking.status as BookingStatus;
+  const canCancel = status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS";
+  const canComplete = status === "CONFIRMED" || status === "IN_PROGRESS";
+  const hasReview = (booking.reviews?.length ?? 0) > 0;
+  const canReview = status === "COMPLETED" && !hasReview;
 
   return (
     <Card className="overflow-hidden rounded-xl shadow-sm transition-shadow hover:shadow-md">
@@ -534,10 +492,7 @@ function BookingCard({
               >
                 {provider.name}
               </button>
-              <StatusBadge
-                tone={bookingTone(status)}
-                icon={bookingIcon(status)}
-              >
+              <StatusBadge tone={bookingTone(status)} icon={bookingIcon(status)}>
                 {BOOKING_STATUS_LABELS[status]}
               </StatusBadge>
               {hasReview ? (
@@ -548,9 +503,7 @@ function BookingCard({
             </div>
             <p className="mt-0.5 truncate text-sm text-muted-foreground">
               {booking.service.title}
-              <span className="ml-1 text-xs">
-                ({SERVICE_UNIT_SHORT[booking.service.unit]})
-              </span>
+              <span className="ml-1 text-xs">({SERVICE_UNIT_SHORT[booking.service.unit]})</span>
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1 font-medium text-foreground/80 tabular-nums">
@@ -559,17 +512,13 @@ function BookingCard({
               </span>
               <span className="inline-flex items-center gap-1">
                 <MapPin className="size-3.5" />
-                <span className="max-w-[14rem] truncate">
-                  {booking.address}
-                </span>
+                <span className="max-w-[14rem] truncate">{booking.address}</span>
               </span>
             </div>
           </div>
 
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <span className="text-sm font-semibold tabular-nums">
-              {formatBRL(booking.amount)}
-            </span>
+            <span className="text-sm font-semibold tabular-nums">{formatBRL(booking.amount)}</span>
             <StatusBadge
               tone={paymentTone(booking.paymentStatus as PaymentStatus)}
               icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
@@ -582,12 +531,7 @@ function BookingCard({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 shrink-0"
-                aria-label="Ações"
-              >
+              <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="Ações">
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -606,10 +550,7 @@ function BookingCard({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {canComplete ? (
-                <DropdownMenuItem
-                  onSelect={onComplete}
-                  disabled={isCompleting}
-                >
+                <DropdownMenuItem onSelect={onComplete} disabled={isCompleting}>
                   <CheckCircle2 className="size-4 text-emerald-600" />
                   Marcar como concluído
                 </DropdownMenuItem>
@@ -621,10 +562,7 @@ function BookingCard({
                 </DropdownMenuItem>
               ) : null}
               {canCancel ? (
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={onCancel}
-                >
+                <DropdownMenuItem variant="destructive" onSelect={onCancel}>
                   <XCircle className="size-4" />
                   Cancelar agendamento
                 </DropdownMenuItem>
@@ -635,22 +573,12 @@ function BookingCard({
 
         {/* Quick action buttons (visible on mobile too) */}
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onViewDetails}
-            className="h-9 gap-1.5"
-          >
+          <Button variant="outline" size="sm" onClick={onViewDetails} className="h-9 gap-1.5">
             <Eye className="size-4" />
             Detalhes
           </Button>
           {canComplete ? (
-            <Button
-              size="sm"
-              onClick={onComplete}
-              disabled={isCompleting}
-              className="h-9 gap-1.5"
-            >
+            <Button size="sm" onClick={onComplete} disabled={isCompleting} className="h-9 gap-1.5">
               {isCompleting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
@@ -660,11 +588,7 @@ function BookingCard({
             </Button>
           ) : null}
           {canReview ? (
-            <Button
-              size="sm"
-              onClick={onReview}
-              className="h-9 gap-1.5"
-            >
+            <Button size="sm" onClick={onReview} className="h-9 gap-1.5">
               <Star className="size-4" />
               Avaliar
             </Button>
@@ -683,7 +607,7 @@ function BookingCard({
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -694,27 +618,25 @@ function BookingDetailsDialog({
   bookingId,
   onOpenChange,
 }: {
-  bookingId: string | null
-  onOpenChange: (open: boolean) => void
+  bookingId: string | null;
+  onOpenChange: (open: boolean) => void;
 }) {
   const query = useQuery<{
-    booking: Booking & { notes?: string | null }
+    booking: Booking & { notes?: string | null };
   }>({
     queryKey: ["booking", bookingId],
     queryFn: () => apiGet(`/api/bookings/${bookingId}`),
     enabled: !!bookingId,
-  })
+  });
 
-  const b = query.data?.booking
+  const b = query.data?.booking;
 
   return (
     <Dialog open={!!bookingId} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Detalhes do agendamento</DialogTitle>
-          <DialogDescription>
-            Informações completas sobre este serviço.
-          </DialogDescription>
+          <DialogDescription>Informações completas sobre este serviço.</DialogDescription>
         </DialogHeader>
 
         {query.isLoading ? (
@@ -723,20 +645,14 @@ function BookingDetailsDialog({
             Carregando…
           </div>
         ) : !b ? (
-          <p className="text-sm text-muted-foreground">
-            Agendamento não encontrado.
-          </p>
+          <p className="text-sm text-muted-foreground">Agendamento não encontrado.</p>
         ) : (
           <div className="space-y-3 text-sm">
             <Row label="Prestador" value={b.provider.name} />
             <Row label="Serviço" value={b.service.title} />
             <Row
               label="Agendado para"
-              value={
-                <span className="tabular-nums">
-                  {formatDateTime(b.scheduledAt)}
-                </span>
-              }
+              value={<span className="tabular-nums">{formatDateTime(b.scheduledAt)}</span>}
             />
             <Row label="Endereço" value={b.address} />
             <Row label="CEP" value={<span className="tabular-nums">{b.cep}</span>} />
@@ -755,9 +671,7 @@ function BookingDetailsDialog({
               label="Pagamento"
               value={
                 <span className="inline-flex flex-wrap items-center gap-1.5">
-                  <span>
-                    {PAYMENT_METHOD_LABELS[b.paymentMethod as PaymentMethod]}
-                  </span>
+                  <span>{PAYMENT_METHOD_LABELS[b.paymentMethod as PaymentMethod]}</span>
                   <span className="text-muted-foreground">·</span>
                   <StatusBadge
                     tone={paymentTone(b.paymentStatus as PaymentStatus)}
@@ -771,11 +685,7 @@ function BookingDetailsDialog({
             />
             <Row
               label="Valor"
-              value={
-                <span className="font-semibold tabular-nums">
-                  {formatBRL(b.amount)}
-                </span>
-              }
+              value={<span className="font-semibold tabular-nums">{formatBRL(b.amount)}</span>}
             />
             {b.notes ? <Row label="Observações" value={b.notes} /> : null}
 
@@ -793,20 +703,14 @@ function BookingDetailsDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
-function Row({
-  label,
-  value,
-}: {
-  label: string
-  value: React.ReactNode
-}) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="grid grid-cols-3 gap-2 border-b pb-2 last:border-b-0 last:pb-0">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="col-span-2 break-words text-sm">{value}</span>
     </div>
-  )
+  );
 }

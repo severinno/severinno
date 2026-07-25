@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * PartnersTrust — "Trusted by" / "As seen in" section with press/media logos.
@@ -13,20 +13,20 @@
  *   H9  Help users recover from errors→ Trust signals reduce anxiety and hesitation
  */
 
-import * as React from "react"
-import { motion } from "framer-motion"
-import { useScrollReveal } from "@/hooks/use-animation"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { motion } from "framer-motion";
+import { useScrollReveal } from "@/hooks/use-animation";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Partner / press logo data — text-based logos (no images needed)
 // ---------------------------------------------------------------------------
 
 type PressLogo = {
-  name: string
+  name: string;
   /** Shorter display label for mobile */
-  short?: string
-}
+  short?: string;
+};
 
 const PRESS_LOGOS: PressLogo[] = [
   { name: "G1" },
@@ -37,7 +37,7 @@ const PRESS_LOGOS: PressLogo[] = [
   { name: "Startups" },
   { name: "Sebrae" },
   { name: "ABES" },
-]
+];
 
 // ---------------------------------------------------------------------------
 // Logo card — grayscale by default, emerald tint + slight scale on hover
@@ -60,14 +60,10 @@ function LogoCard({ logo }: { logo: PressLogo }) {
       style={{ minWidth: 120 }}
     >
       {/* Desktop: full name; Mobile: short name if available */}
-      <span className="hidden text-sm font-bold tracking-tight sm:inline">
-        {logo.name}
-      </span>
-      <span className="text-sm font-bold tracking-tight sm:hidden">
-        {logo.short ?? logo.name}
-      </span>
+      <span className="hidden text-sm font-bold tracking-tight sm:inline">{logo.name}</span>
+      <span className="text-sm font-bold tracking-tight sm:hidden">{logo.short ?? logo.name}</span>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -75,7 +71,7 @@ function LogoCard({ logo }: { logo: PressLogo }) {
 // ---------------------------------------------------------------------------
 
 export default function PartnersTrust() {
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
 
   return (
     <section
@@ -130,13 +126,10 @@ export default function PartnersTrust() {
           transition={{ duration: 0.5, delay: 0.4 }}
           className="mt-8 text-center text-sm text-muted-foreground"
         >
-          + de{" "}
-          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-            6.000
-          </span>{" "}
+          + de <span className="font-semibold text-emerald-600 dark:text-emerald-400">6.000</span>{" "}
           prestadores confiam no Severinno
         </motion.p>
       </div>
     </section>
-  )
+  );
 }

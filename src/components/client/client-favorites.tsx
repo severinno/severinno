@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ClientFavorites — grid of favorited providers.
@@ -15,50 +15,35 @@
  *    nos prestadores para salvá-los aqui." + "Buscar prestadores" CTA.
  */
 
-import * as React from "react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import {
-  BadgeCheck,
-  Heart,
-  Loader2,
-  MapPin,
-  Star,
-} from "lucide-react"
-import { toast } from "sonner"
+import * as React from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { BadgeCheck, Heart, Loader2, MapPin, Star } from "lucide-react";
+import { toast } from "sonner";
 
-import {
-  fetchFavorites,
-  toggleFavorite,
-  type ProviderCard as ProviderCardType,
-} from "@/lib/api"
-import { formatDistance } from "@/lib/geo-client"
-import { useUIStore, useViewStore } from "@/store"
+import { fetchFavorites, toggleFavorite, type ProviderCard as ProviderCardType } from "@/lib/api";
+import { formatDistance } from "@/lib/geo-client";
+import { useUIStore, useViewStore } from "@/store";
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  EmptyState,
-} from "@/components/shared/dashboard-shell"
-import {
-  PageHeader,
-  StatusBadge,
-} from "@/components/client/client-shared"
-import { formatBRL } from "@/lib/format"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { EmptyState } from "@/components/shared/dashboard-shell";
+import { PageHeader, StatusBadge } from "@/components/client/client-shared";
+import { formatBRL } from "@/lib/format";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function providerInitials(name?: string | null): string {
-  if (!name) return "P"
+  if (!name) return "P";
   return name
     .split(" ")
     .map((p) => p[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -66,34 +51,29 @@ function providerInitials(name?: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function ClientFavorites() {
-  const qc = useQueryClient()
-  const navigate = useViewStore((s) => s.navigate)
-  const openQuote = useUIStore((s) => s.openQuote)
-  const openBooking = useUIStore((s) => s.openBooking)
-  const openProvider = useUIStore((s) => s.openProvider)
+  const qc = useQueryClient();
+  const navigate = useViewStore((s) => s.navigate);
+  const openQuote = useUIStore((s) => s.openQuote);
+  const openBooking = useUIStore((s) => s.openBooking);
+  const openProvider = useUIStore((s) => s.openProvider);
 
   const query = useQuery<ProviderCardType[]>({
     queryKey: ["favorites"],
     queryFn: fetchFavorites,
-  })
+  });
 
   const removeMutation = useMutation({
     mutationFn: (providerId: string) => toggleFavorite(providerId),
     onSuccess: (data, providerId) => {
-      toast.success(
-        data.favorited
-          ? "Adicionado aos favoritos."
-          : "Removido dos favoritos.",
-      )
-      qc.invalidateQueries({ queryKey: ["favorites"] })
+      toast.success(data.favorited ? "Adicionado aos favoritos." : "Removido dos favoritos.");
+      qc.invalidateQueries({ queryKey: ["favorites"] });
       // providers/[id] caches the `favorited` flag too
-      qc.invalidateQueries({ queryKey: ["provider", providerId] })
+      qc.invalidateQueries({ queryKey: ["provider", providerId] });
     },
-    onError: () =>
-      toast.error("Não foi possível atualizar favoritos. Tente novamente."),
-  })
+    onError: () => toast.error("Não foi possível atualizar favoritos. Tente novamente."),
+  });
 
-  const items = query.data ?? []
+  const items = query.data ?? [];
 
   return (
     <div className="space-y-4">
@@ -101,11 +81,7 @@ export function ClientFavorites() {
         title="Favoritos"
         subtitle="Prestadores que você salvou para contratar depois."
         action={
-          <Button
-            variant="outline"
-            onClick={() => navigate("vitrine")}
-            className="h-10 gap-2"
-          >
+          <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
             <MapPin className="size-4" />
             Buscar prestadores
           </Button>
@@ -123,10 +99,7 @@ export function ClientFavorites() {
           title="Você ainda não tem favoritos"
           description="Toque no coração nos prestadores para salvá-los aqui e contratá-los depois com facilidade."
           action={
-            <Button
-              onClick={() => navigate("vitrine")}
-              className="mt-2 gap-2"
-            >
+            <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
               <MapPin className="size-4" />
               Buscar prestadores
             </Button>
@@ -139,9 +112,7 @@ export function ClientFavorites() {
               key={p.id}
               provider={p}
               onQuote={() => openQuote({ providerId: p.id })}
-              onBook={(serviceId) =>
-                openBooking({ providerId: p.id, serviceId })
-              }
+              onBook={(serviceId) => openBooking({ providerId: p.id, serviceId })}
               onView={() => openProvider(p.id)}
               onRemove={() => removeMutation.mutate(p.id)}
               isRemoving={removeMutation.isPending}
@@ -151,7 +122,7 @@ export function ClientFavorites() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -167,20 +138,20 @@ function FavoriteCard({
   isRemoving,
   removingId,
 }: {
-  provider: ProviderCardType
-  onQuote: () => void
-  onBook: (serviceId?: string) => void
-  onView: () => void
-  onRemove: () => void
-  isRemoving: boolean
-  removingId: string | null
+  provider: ProviderCardType;
+  onQuote: () => void;
+  onBook: (serviceId?: string) => void;
+  onView: () => void;
+  onRemove: () => void;
+  isRemoving: boolean;
+  removingId: string | null;
 }) {
-  const initials = providerInitials(provider.name)
-  const servicesCount = provider.services?.length ?? 0
+  const initials = providerInitials(provider.name);
+  const servicesCount = provider.services?.length ?? 0;
   const minPrice = provider.services?.length
     ? Math.min(...provider.services.map((s) => s.basePrice))
-    : null
-  const isThisRemoving = isRemoving && removingId === provider.id
+    : null;
+  const isThisRemoving = isRemoving && removingId === provider.id;
 
   return (
     <Card className="flex flex-col overflow-hidden rounded-xl shadow-sm transition-shadow hover:shadow-md">
@@ -240,9 +211,7 @@ function FavoriteCard({
             </div>
 
             {provider.bio ? (
-              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                {provider.bio}
-              </p>
+              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{provider.bio}</p>
             ) : null}
 
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -268,11 +237,7 @@ function FavoriteCard({
         >
           Orçamento
         </Button>
-        <Button
-          size="sm"
-          onClick={() => onBook(undefined)}
-          className="h-9 flex-1 gap-1.5"
-        >
+        <Button size="sm" onClick={() => onBook(undefined)} className="h-9 flex-1 gap-1.5">
           Agendar
         </Button>
         <Button
@@ -292,5 +257,5 @@ function FavoriteCard({
         </Button>
       </CardFooter>
     </Card>
-  )
+  );
 }

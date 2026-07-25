@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * QuickQuoteCalculator — interactive price estimate section.
@@ -19,8 +19,8 @@
  *   H10 — Disclaimer explains the estimate nature
  */
 
-import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import * as React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Zap,
   Droplets,
@@ -29,26 +29,25 @@ import {
   Square,
   SprayCan,
   Home,
-  ChevronRight,
   ChevronLeft,
   Calculator,
   AlertTriangle,
   ArrowRight,
-} from "lucide-react"
-import type { LucideIcon } from "lucide-react"
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-import { cn } from "@/lib/utils"
-import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { useUIStore } from "@/store"
+import { cn } from "@/lib/utils";
+import { useScrollReveal, useCountUp } from "@/hooks/use-animation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useUIStore } from "@/store";
 
 // ---------------------------------------------------------------------------
 // Price data (hardcoded)
 // ---------------------------------------------------------------------------
 
-type ScopeKey = "small" | "medium" | "large"
+type ScopeKey = "small" | "medium" | "large";
 
 const PRICE_DATA: Record<string, Record<ScopeKey, [number, number]>> = {
   eletrica: { small: [80, 150], medium: [200, 450], large: [500, 1200] },
@@ -58,18 +57,18 @@ const PRICE_DATA: Record<string, Record<ScopeKey, [number, number]>> = {
   pisos: { small: [200, 400], medium: [500, 1000], large: [1200, 3000] },
   "pos-obra": { small: [150, 300], medium: [350, 700], large: [800, 1800] },
   residencial: { small: [100, 200], medium: [250, 500], large: [600, 1500] },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Category config
 // ---------------------------------------------------------------------------
 
 type CategoryConfig = {
-  key: string
-  label: string
-  icon: LucideIcon
-  color: string // Tailwind color name
-}
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  color: string; // Tailwind color name
+};
 
 const CATEGORIES: CategoryConfig[] = [
   { key: "eletrica", label: "Elétrica", icon: Zap, color: "amber" },
@@ -79,39 +78,39 @@ const CATEGORIES: CategoryConfig[] = [
   { key: "pisos", label: "Pisos", icon: Square, color: "violet" },
   { key: "pos-obra", label: "Pós-obra", icon: SprayCan, color: "teal" },
   { key: "residencial", label: "Residencial", icon: Home, color: "emerald" },
-]
+];
 
 // ---------------------------------------------------------------------------
 // Scope config
 // ---------------------------------------------------------------------------
 
 type ScopeConfig = {
-  key: ScopeKey
-  label: string
-  description: string
-  emoji: string
-}
+  key: ScopeKey;
+  label: string;
+  description: string;
+  emoji: string;
+};
 
 const SCOPES: ScopeConfig[] = [
   { key: "small", label: "Pequeno", description: "Ex.: 1 tomada, 1 ponto", emoji: "🔹" },
   { key: "medium", label: "Médio", description: "Ex.: 3–5 tomadas, 1 cômodo", emoji: "🔸" },
   { key: "large", label: "Grande", description: "Ex.: Casa inteira, obra completa", emoji: "🔶" },
-]
+];
 
 // ---------------------------------------------------------------------------
 // CSS-only bar chart for price comparison
 // ---------------------------------------------------------------------------
 
 function PriceBarChart({ categoryKey }: { categoryKey: string }) {
-  const data = PRICE_DATA[categoryKey]
-  if (!data) return null
+  const data = PRICE_DATA[categoryKey];
+  if (!data) return null;
 
-  const maxPrice = Math.max(...Object.values(data).flat())
+  const maxPrice = Math.max(...Object.values(data).flat());
   const barColors = {
     small: "from-emerald-400 to-emerald-500",
     medium: "from-teal-400 to-teal-500",
     large: "from-emerald-600 to-emerald-700",
-  }
+  };
 
   return (
     <div className="mt-6 space-y-3">
@@ -120,10 +119,10 @@ function PriceBarChart({ categoryKey }: { categoryKey: string }) {
       </p>
       <div className="space-y-2.5">
         {(["small", "medium", "large"] as ScopeKey[]).map((scope) => {
-          const [min, max] = data[scope]
-          const widthMin = (min / maxPrice) * 100
-          const widthMax = (max / maxPrice) * 100
-          const scopeLabel = SCOPES.find((s) => s.key === scope)?.label ?? scope
+          const [min, max] = data[scope];
+          const widthMin = (min / maxPrice) * 100;
+          const widthMax = (max / maxPrice) * 100;
+          const scopeLabel = SCOPES.find((s) => s.key === scope)?.label ?? scope;
 
           return (
             <div key={scope} className="space-y-1">
@@ -152,11 +151,11 @@ function PriceBarChart({ categoryKey }: { categoryKey: string }) {
                 />
               </div>
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +166,7 @@ function AnimatedPrice({ value, label }: { value: number; label: string }) {
   const { ref, value: animated } = useCountUp(value, {
     duration: 1200,
     decimals: 0,
-  })
+  });
 
   return (
     <div className="text-center">
@@ -176,20 +175,14 @@ function AnimatedPrice({ value, label }: { value: number; label: string }) {
       </span>
       <p className="mt-1 text-xs text-muted-foreground">{label}</p>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Step indicator
 // ---------------------------------------------------------------------------
 
-function StepIndicator({
-  currentStep,
-  totalSteps,
-}: {
-  currentStep: number
-  totalSteps: number
-}) {
+function StepIndicator({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
   return (
     <div className="flex items-center justify-center gap-2">
       {Array.from({ length: totalSteps }, (_, i) => (
@@ -217,7 +210,7 @@ function StepIndicator({
         </React.Fragment>
       ))}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -228,53 +221,53 @@ export default function QuickQuoteCalculator() {
   const { ref: sectionRef, visible } = useScrollReveal<HTMLElement>({
     threshold: 0.1,
     once: true,
-  })
+  });
 
-  const [step, setStep] = React.useState(0) // 0, 1, 2
-  const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null)
-  const [selectedScope, setSelectedScope] = React.useState<ScopeKey | null>(null)
-  const [priceKey, setPriceKey] = React.useState(0) // for re-triggering count animation
+  const [step, setStep] = React.useState(0); // 0, 1, 2
+  const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
+  const [selectedScope, setSelectedScope] = React.useState<ScopeKey | null>(null);
+  const [priceKey, setPriceKey] = React.useState(0); // for re-triggering count animation
 
-  const openQuote = useUIStore((s) => s.openQuote)
+  const openQuote = useUIStore((s) => s.openQuote);
 
   // Calculate price when both category and scope are selected
   const priceRange = React.useMemo(() => {
-    if (!selectedCategory || !selectedScope) return null
-    return PRICE_DATA[selectedCategory]?.[selectedScope] ?? null
-  }, [selectedCategory, selectedScope])
+    if (!selectedCategory || !selectedScope) return null;
+    return PRICE_DATA[selectedCategory]?.[selectedScope] ?? null;
+  }, [selectedCategory, selectedScope]);
 
   const handleCategorySelect = React.useCallback((key: string) => {
-    setSelectedCategory(key)
-    setStep(1)
-  }, [])
+    setSelectedCategory(key);
+    setStep(1);
+  }, []);
 
   const handleScopeSelect = React.useCallback((scope: ScopeKey) => {
-    setSelectedScope(scope)
-    setPriceKey((k) => k + 1)
-    setStep(2)
-  }, [])
+    setSelectedScope(scope);
+    setPriceKey((k) => k + 1);
+    setStep(2);
+  }, []);
 
   const handleBack = React.useCallback(() => {
     if (step === 1) {
-      setSelectedCategory(null)
-      setStep(0)
+      setSelectedCategory(null);
+      setStep(0);
     } else if (step === 2) {
-      setSelectedScope(null)
-      setStep(1)
+      setSelectedScope(null);
+      setStep(1);
     }
-  }, [step])
+  }, [step]);
 
   const handleReset = React.useCallback(() => {
-    setSelectedCategory(null)
-    setSelectedScope(null)
-    setStep(0)
-  }, [])
+    setSelectedCategory(null);
+    setSelectedScope(null);
+    setStep(0);
+  }, []);
 
   const handleRequestQuote = React.useCallback(() => {
-    openQuote({ providerId: "" }) // Opens quote modal flow
-  }, [openQuote])
+    openQuote({ providerId: "" }); // Opens quote modal flow
+  }, [openQuote]);
 
-  const selectedCategoryConfig = CATEGORIES.find((c) => c.key === selectedCategory)
+  const selectedCategoryConfig = CATEGORIES.find((c) => c.key === selectedCategory);
 
   return (
     <section
@@ -335,16 +328,14 @@ export default function QuickQuoteCalculator() {
                   transition={{ duration: 0.3, ease: "easeInOut" }}
                   className="p-6 sm:p-8"
                 >
-                  <h3 className="mb-1 text-lg font-bold">
-                    1. Qual serviço você precisa?
-                  </h3>
+                  <h3 className="mb-1 text-lg font-bold">1. Qual serviço você precisa?</h3>
                   <p className="mb-6 text-sm text-muted-foreground">
                     Selecione a categoria do serviço
                   </p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {CATEGORIES.map((cat) => {
-                      const Icon = cat.icon
-                      const isActive = selectedCategory === cat.key
+                      const Icon = cat.icon;
+                      const isActive = selectedCategory === cat.key;
                       return (
                         <motion.button
                           key={cat.key}
@@ -370,20 +361,24 @@ export default function QuickQuoteCalculator() {
                             <Icon
                               className={cn(
                                 "size-6 transition-colors",
-                                isActive ? "text-white" : "text-muted-foreground group-hover:text-primary",
+                                isActive
+                                  ? "text-white"
+                                  : "text-muted-foreground group-hover:text-primary",
                               )}
                             />
                           </span>
                           <span
                             className={cn(
                               "text-sm font-semibold transition-colors",
-                              isActive ? "text-primary" : "text-foreground/70 group-hover:text-foreground",
+                              isActive
+                                ? "text-primary"
+                                : "text-foreground/70 group-hover:text-foreground",
                             )}
                           >
                             {cat.label}
                           </span>
                         </motion.button>
-                      )
+                      );
                     })}
                   </div>
                 </motion.div>
@@ -411,9 +406,7 @@ export default function QuickQuoteCalculator() {
                       Voltar
                     </Button>
                   </div>
-                  <h3 className="mb-1 text-lg font-bold">
-                    2. Qual o tamanho do serviço?
-                  </h3>
+                  <h3 className="mb-1 text-lg font-bold">2. Qual o tamanho do serviço?</h3>
                   <p className="mb-6 text-sm text-muted-foreground">
                     <span className="font-medium text-primary">
                       {selectedCategoryConfig?.label}
@@ -422,7 +415,7 @@ export default function QuickQuoteCalculator() {
                   </p>
                   <div className="grid gap-4 sm:grid-cols-3">
                     {SCOPES.map((scope) => {
-                      const isActive = selectedScope === scope.key
+                      const isActive = selectedScope === scope.key;
                       return (
                         <motion.button
                           key={scope.key}
@@ -441,14 +434,14 @@ export default function QuickQuoteCalculator() {
                           <span
                             className={cn(
                               "text-base font-bold transition-colors",
-                              isActive ? "text-primary" : "text-foreground/80 group-hover:text-foreground",
+                              isActive
+                                ? "text-primary"
+                                : "text-foreground/80 group-hover:text-foreground",
                             )}
                           >
                             {scope.label}
                           </span>
-                          <span className="text-xs text-muted-foreground">
-                            {scope.description}
-                          </span>
+                          <span className="text-xs text-muted-foreground">{scope.description}</span>
                           {isActive && (
                             <motion.div
                               layoutId="scope-indicator"
@@ -457,7 +450,7 @@ export default function QuickQuoteCalculator() {
                             />
                           )}
                         </motion.button>
-                      )
+                      );
                     })}
                   </div>
                 </motion.div>
@@ -485,9 +478,7 @@ export default function QuickQuoteCalculator() {
                       Voltar
                     </Button>
                   </div>
-                  <h3 className="mb-1 text-lg font-bold">
-                    3. Estimativa de preço
-                  </h3>
+                  <h3 className="mb-1 text-lg font-bold">3. Estimativa de preço</h3>
                   <p className="mb-6 text-sm text-muted-foreground">
                     <span className="font-medium text-primary">
                       {selectedCategoryConfig?.label}
@@ -550,5 +541,5 @@ export default function QuickQuoteCalculator() {
         </Card>
       </div>
     </section>
-  )
+  );
 }

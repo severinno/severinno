@@ -1,25 +1,25 @@
-import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-  if (seconds < 60) return "agora"
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} h`
-  const days = Math.floor(hours / 24)
-  return `${days} dia${days > 1 ? "s" : ""}`
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return "agora";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `${days} dia${days > 1 ? "s" : ""}`;
 }
 
 function firstNameInitial(name: string): string {
-  const parts = name.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0]
-  return `${parts[0]} ${parts[parts.length - 1].charAt(0)}.`
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1].charAt(0)}.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -27,16 +27,16 @@ function firstNameInitial(name: string): string {
 // ---------------------------------------------------------------------------
 
 interface RawActivity {
-  type: "booking" | "review" | "signup" | "quote"
-  userName: string
-  userAvatar: string | null
-  action: string
-  target: string
-  service?: string
-  rating?: number
-  timeAgo: string
-  emoji: string
-  createdAt: Date
+  type: "booking" | "review" | "signup" | "quote";
+  userName: string;
+  userAvatar: string | null;
+  action: string;
+  target: string;
+  service?: string;
+  rating?: number;
+  timeAgo: string;
+  emoji: string;
+  createdAt: Date;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,14 +102,14 @@ export async function GET() {
           },
         },
       }),
-    ])
+    ]);
 
-    const activities: RawActivity[] = []
+    const activities: RawActivity[] = [];
 
     // 2a. Bookings → "agendou"
     for (const b of bookings) {
-      const categoryName = b.service.category?.name ?? ""
-      const location = b.client.city ? ` em ${b.client.city}` : ""
+      const categoryName = b.service.category?.name ?? "";
+      const location = b.client.city ? ` em ${b.client.city}` : "";
       activities.push({
         type: "booking",
         userName: firstNameInitial(b.client.name),
@@ -122,7 +122,7 @@ export async function GET() {
         timeAgo: timeAgo(b.createdAt),
         emoji: "📅",
         createdAt: b.createdAt,
-      })
+      });
     }
 
     // 2b. Reviews → "avaliou"
@@ -138,7 +138,7 @@ export async function GET() {
         timeAgo: timeAgo(r.createdAt),
         emoji: "⭐",
         createdAt: r.createdAt,
-      })
+      });
     }
 
     // 2c. Provider signups → "se cadastrou como prestador"
@@ -152,14 +152,14 @@ export async function GET() {
         timeAgo: timeAgo(s.createdAt),
         emoji: s.verified ? "✅" : "🆕",
         createdAt: s.createdAt,
-      })
+      });
     }
 
     // 2d. Quote requests → "pediu orçamento para"
     for (const q of quotes) {
-      const firstItem = q.items[0]
-      const categoryName = firstItem?.service?.category?.name ?? ""
-      const location = q.client.city ? ` em ${q.client.city}` : ""
+      const firstItem = q.items[0];
+      const categoryName = firstItem?.service?.category?.name ?? "";
+      const location = q.client.city ? ` em ${q.client.city}` : "";
       activities.push({
         type: "quote",
         userName: firstNameInitial(q.client.name),
@@ -171,27 +171,25 @@ export async function GET() {
         timeAgo: timeAgo(q.createdAt),
         emoji: "📋",
         createdAt: q.createdAt,
-      })
+      });
     }
 
     // 3. Sort all by createdAt descending, take top 10
-    activities.sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-    )
+    activities.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     const topActivities = activities.slice(0, 10).map(
       // Strip the internal createdAt field from the public response
-      ({ createdAt: _ct, ...rest }) => rest,
-    )
+      ({ ...rest }) => rest,
+    );
 
     // 4. Count quotes created today
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     const quotesToday = await db.quoteRequest.count({
       where: { createdAt: { gte: todayStart } },
-    })
+    });
 
     // 5. Simulated "browsing now" (18–42)
-    const browsingNow = Math.floor(Math.random() * 25) + 18
+    const browsingNow = Math.floor(Math.random() * 25) + 18;
 
     return NextResponse.json(
       { activities: topActivities, browsingNow, quotesToday },
@@ -201,12 +199,12 @@ export async function GET() {
           "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
         },
       },
-    )
+    );
   } catch {
     return NextResponse.json({
       activities: [],
       browsingNow: 0,
       quotesToday: 0,
-    })
+    });
   }
 }

@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bar,
   BarChart,
@@ -10,45 +10,32 @@ import {
   Tooltip as RTooltip,
   XAxis,
   YAxis,
-} from "recharts"
-import {
-  eachMonthOfInterval,
-  format,
-  isSameMonth,
-  startOfYear,
-  endOfMonth,
-} from "date-fns"
-import { ptBR } from "date-fns/locale"
-import {
-  CheckCircle2,
-  Clock,
-  CreditCard,
-  RotateCcw,
-  Wallet,
-  XCircle,
-} from "lucide-react"
+} from "recharts";
+import { eachMonthOfInterval, format, isSameMonth, startOfYear, endOfMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { CheckCircle2, Clock, CreditCard, RotateCcw, Wallet, XCircle } from "lucide-react";
 
-import { apiGet } from "@/lib/api"
+import { apiGet } from "@/lib/api";
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
   type PaymentMethod,
   type PaymentStatus,
-} from "@/lib/constants"
-import { formatBRL, formatDate } from "@/lib/format"
-import { useAuthStore } from "@/store/auth"
+} from "@/lib/constants";
+import { formatBRL, formatDate } from "@/lib/format";
+import { useAuthStore } from "@/store/auth";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -56,51 +43,46 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Booking = {
-  id: string
-  scheduledAt: string
-  status: string
-  amount: number
-  paymentMethod: PaymentMethod
-  paymentStatus: PaymentStatus
-  service: { id: string; title: string }
-  client: { id: string; name: string; avatarUrl?: string | null }
-  payment?: { id: string; status: string; method: string } | null
-}
+  id: string;
+  scheduledAt: string;
+  status: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  service: { id: string; title: string };
+  client: { id: string; name: string; avatarUrl?: string | null };
+  payment?: { id: string; status: string; method: string } | null;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function initials(name?: string) {
-  if (!name) return "?"
+  if (!name) return "?";
   return name
     .split(" ")
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("")
+    .join("");
 }
 
 const PAY_BADGE_STYLES: Record<PaymentStatus, string> = {
   PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   PAID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
   REFUNDED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
-}
+};
 
 function PayStatusBadge({ status }: { status: PaymentStatus }) {
-  const Icon =
-    status === "PAID"
-      ? CheckCircle2
-      : status === "PENDING"
-        ? Clock
-        : RotateCcw
+  const Icon = status === "PAID" ? CheckCircle2 : status === "PENDING" ? Clock : RotateCcw;
   return (
     <Badge
       className={cn(
@@ -111,7 +93,7 @@ function PayStatusBadge({ status }: { status: PaymentStatus }) {
       <Icon className="size-3" />
       {PAYMENT_STATUS_LABELS[status]}
     </Badge>
-  )
+  );
 }
 
 const CHART_TOOLTIP_STYLE = {
@@ -121,7 +103,7 @@ const CHART_TOOLTIP_STYLE = {
   color: "var(--popover-foreground)",
   fontSize: 12,
   boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.15)",
-} as const
+} as const;
 
 // ---------------------------------------------------------------------------
 // Stat card
@@ -133,10 +115,10 @@ function FinanceStatCard({
   icon: Icon,
   accent,
 }: {
-  label: string
-  value: string
-  icon: typeof Wallet
-  accent: "emerald" | "amber" | "rose"
+  label: string;
+  value: string;
+  icon: typeof Wallet;
+  accent: "emerald" | "amber" | "rose";
 }) {
   return (
     <Card className="rounded-xl shadow-sm">
@@ -154,14 +136,12 @@ function FinanceStatCard({
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            {label}
-          </p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
           <p className="truncate text-xl font-bold tabular-nums">{value}</p>
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -169,82 +149,77 @@ function FinanceStatCard({
 // ---------------------------------------------------------------------------
 
 export function ProviderFinance() {
-  const user = useAuthStore((s) => s.user)
-  const now = new Date()
-  const [statusFilter, setStatusFilter] = React.useState<string>("all")
-  const [month, setMonth] = React.useState<string>(String(now.getMonth()))
-  const [year, setYear] = React.useState<string>(String(now.getFullYear()))
+  const user = useAuthStore((s) => s.user);
+  const now = new Date();
+  const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const [month, setMonth] = React.useState<string>(String(now.getMonth()));
+  const [year, setYear] = React.useState<string>(String(now.getFullYear()));
 
   const query = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "finance", user?.id],
-    queryFn: async () =>
-      apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
-  })
+    queryFn: async () => apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
+  });
 
-  const allBookings = query.data?.items ?? []
+  const allBookings = React.useMemo(() => query.data?.items ?? [], [query.data]);
 
   const filtered = React.useMemo(() => {
-    const m = Number(month)
-    const y = Number(year)
+    const m = Number(month);
+    const y = Number(year);
     return allBookings.filter((b) => {
-      const d = new Date(b.scheduledAt)
-      if (d.getMonth() !== m) return false
-      if (d.getFullYear() !== y) return false
-      if (statusFilter !== "all" && b.paymentStatus !== statusFilter) return false
-      return true
-    })
-  }, [allBookings, month, year, statusFilter])
+      const d = new Date(b.scheduledAt);
+      if (d.getMonth() !== m) return false;
+      if (d.getFullYear() !== y) return false;
+      if (statusFilter !== "all" && b.paymentStatus !== statusFilter) return false;
+      return true;
+    });
+  }, [allBookings, month, year, statusFilter]);
 
-  const isDirty = statusFilter !== "all"
+  const isDirty = statusFilter !== "all";
 
   const clearFilters = () => {
-    setStatusFilter("all")
-  }
+    setStatusFilter("all");
+  };
 
   // Summary across all bookings (not filtered) — for the year
-  const yearStart = startOfYear(now)
+  const yearStart = startOfYear(now);
   const yearBookings = allBookings.filter((b) => {
-    const d = new Date(b.scheduledAt)
-    return d >= yearStart
-  })
+    const d = new Date(b.scheduledAt);
+    return d >= yearStart;
+  });
 
   const received = yearBookings
     .filter((b) => b.paymentStatus === "PAID")
-    .reduce((acc, b) => acc + b.amount, 0)
+    .reduce((acc, b) => acc + b.amount, 0);
   const pending = yearBookings
     .filter((b) => b.paymentStatus === "PENDING")
-    .reduce((acc, b) => acc + b.amount, 0)
+    .reduce((acc, b) => acc + b.amount, 0);
   const refunded = yearBookings
     .filter((b) => b.paymentStatus === "REFUNDED")
-    .reduce((acc, b) => acc + b.amount, 0)
+    .reduce((acc, b) => acc + b.amount, 0);
 
   // Chart: revenue per month (current year)
   const yearMonths = eachMonthOfInterval({
     start: yearStart,
     end: endOfMonth(now),
-  })
+  });
   const chartData = yearMonths.map((m) => {
     const total = allBookings
-      .filter(
-        (b) =>
-          isSameMonth(new Date(b.scheduledAt), m) &&
-          b.paymentStatus === "PAID",
-      )
-      .reduce((acc, b) => acc + b.amount, 0)
+      .filter((b) => isSameMonth(new Date(b.scheduledAt), m) && b.paymentStatus === "PAID")
+      .reduce((acc, b) => acc + b.amount, 0);
     return {
       month: format(m, "MMM", { locale: ptBR }),
       receita: total,
-    }
-  })
+    };
+  });
 
   const years = React.useMemo(() => {
-    const set = new Set<number>()
-    set.add(new Date().getFullYear())
+    const set = new Set<number>();
+    set.add(new Date().getFullYear());
     for (const b of allBookings) {
-      set.add(new Date(b.scheduledAt).getFullYear())
+      set.add(new Date(b.scheduledAt).getFullYear());
     }
-    return Array.from(set).sort((a, b) => b - a)
-  }, [allBookings])
+    return Array.from(set).sort((a, b) => b - a);
+  }, [allBookings]);
 
   return (
     <div className="grid gap-6">
@@ -273,22 +248,13 @@ export function ProviderFinance() {
       {/* Chart */}
       <Card className="rounded-xl shadow-sm">
         <CardHeader className="border-b py-3">
-          <CardTitle className="text-sm">
-            Receita por mês ({now.getFullYear()})
-          </CardTitle>
+          <CardTitle className="text-sm">Receita por mês ({now.getFullYear()})</CardTitle>
         </CardHeader>
         <CardContent className="p-3">
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
-              >
-                <CartesianGrid
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
+              <BarChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="month"
                   tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
@@ -300,20 +266,14 @@ export function ProviderFinance() {
                   axisLine={false}
                   tickLine={false}
                   width={48}
-                  tickFormatter={(v) =>
-                    v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
-                  }
+                  tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
                 />
                 <RTooltip
                   cursor={{ fill: "var(--accent)", opacity: 0.5 }}
                   contentStyle={CHART_TOOLTIP_STYLE}
                   formatter={(v: number) => [formatBRL(v), "Receita"]}
                 />
-                <Bar
-                  dataKey="receita"
-                  fill="var(--primary)"
-                  radius={[4, 4, 0, 0]}
-                />
+                <Bar dataKey="receita" fill="var(--primary)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -358,12 +318,7 @@ export function ProviderFinance() {
           </SelectContent>
         </Select>
         {isDirty && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearFilters}
-            className="h-9 gap-1.5 text-xs"
-          >
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 gap-1.5 text-xs">
             <XCircle className="size-3.5" /> Limpar
           </Button>
         )}
@@ -375,9 +330,7 @@ export function ProviderFinance() {
       {/* Table */}
       <Card className="rounded-xl shadow-sm">
         <CardHeader className="border-b py-3">
-          <CardTitle className="text-sm">
-            Transações ({filtered.length})
-          </CardTitle>
+          <CardTitle className="text-sm">Transações ({filtered.length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {filtered.length === 0 ? (
@@ -385,9 +338,7 @@ export function ProviderFinance() {
               <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <Wallet className="size-5" />
               </div>
-              <p className="text-sm text-muted-foreground">
-                Nenhuma transação neste período.
-              </p>
+              <p className="text-sm text-muted-foreground">Nenhuma transação neste período.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -416,10 +367,7 @@ export function ProviderFinance() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((b) => (
-                    <TableRow
-                      key={b.id}
-                      className="h-14 transition-colors hover:bg-muted/30"
-                    >
+                    <TableRow key={b.id} className="h-14 transition-colors hover:bg-muted/30">
                       <TableCell className="text-xs tabular-nums text-muted-foreground">
                         {formatDate(b.scheduledAt)}
                       </TableCell>
@@ -427,18 +375,13 @@ export function ProviderFinance() {
                         <div className="flex items-center gap-2">
                           <Avatar className="size-7 border">
                             {b.client.avatarUrl ? (
-                              <AvatarImage
-                                src={b.client.avatarUrl}
-                                alt={b.client.name}
-                              />
+                              <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
                             ) : null}
                             <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">
                               {initials(b.client.name)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="truncate text-sm">
-                            {b.client.name}
-                          </span>
+                          <span className="truncate text-sm">{b.client.name}</span>
                         </div>
                       </TableCell>
                       <TableCell className="hidden max-w-[200px] truncate text-sm sm:table-cell">
@@ -465,7 +408,7 @@ export function ProviderFinance() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
 
-export default ProviderFinance
+export default ProviderFinance;

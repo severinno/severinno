@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ClientDashboard — overview dashboard for the logged-in client.
@@ -11,8 +11,8 @@
  *  - Quick actions: "Pedir orçamento" / "Buscar prestadores"
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Area,
   AreaChart,
@@ -24,7 +24,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-} from "recharts"
+} from "recharts";
 import {
   CalendarDays,
   CheckCircle2,
@@ -36,28 +36,24 @@ import {
   Search,
   TrendingUp,
   Wallet,
-} from "lucide-react"
+} from "lucide-react";
 
-import { apiGet } from "@/lib/api"
+import { apiGet } from "@/lib/api";
 import {
   BOOKING_STATUS_LABELS,
   QUOTE_STATUS_LABELS,
   type BookingStatus,
   type QuoteStatus,
   type ServiceUnit,
-} from "@/lib/constants"
-import { formatBRL, formatDateTime, formatRelative } from "@/lib/format"
-import { useAuthStore, useUIStore, useViewStore } from "@/store"
+} from "@/lib/constants";
+import { formatBRL, formatDateTime, formatRelative } from "@/lib/format";
+import { useAuthStore, useUIStore, useViewStore } from "@/store";
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  EmptyState,
-  SectionTitle,
-  StatCard,
-} from "@/components/shared/dashboard-shell"
-import { OnboardingChecklist } from "@/components/client/onboarding-checklist"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { EmptyState, SectionTitle, StatCard } from "@/components/shared/dashboard-shell";
+import { OnboardingChecklist } from "@/components/client/onboarding-checklist";
 import {
   PageHeader,
   StatusBadge,
@@ -65,7 +61,7 @@ import {
   bookingTone,
   quoteIcon,
   quoteTone,
-} from "@/components/client/client-shared"
+} from "@/components/client/client-shared";
 
 // Emerald family palette for the category donut.
 const PIE_COLORS = [
@@ -77,7 +73,7 @@ const PIE_COLORS = [
   "oklch(0.65 0.15 145)", // emerald-500
   "oklch(0.55 0.13 175)", // teal-600
   "oklch(0.72 0.14 150)", // emerald-300
-] as const
+] as const;
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -86,71 +82,79 @@ const CHART_TOOLTIP_STYLE = {
   color: "var(--popover-foreground)",
   fontSize: 12,
   boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.15)",
-} as const
+} as const;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Booking = {
-  id: string
-  status: BookingStatus
-  scheduledAt: string
-  amount: number
-  paymentStatus: string
+  id: string;
+  status: BookingStatus;
+  scheduledAt: string;
+  amount: number;
+  paymentStatus: string;
   service: {
-    id: string
-    title: string
-    basePrice: number
-    unit: ServiceUnit
-    category?: { id: string; name: string } | null
-  }
-  provider: { id: string; name: string; avatarUrl?: string | null }
-}
+    id: string;
+    title: string;
+    basePrice: number;
+    unit: ServiceUnit;
+    category?: { id: string; name: string } | null;
+  };
+  provider: { id: string; name: string; avatarUrl?: string | null };
+};
 
 type Quote = {
-  id: string
-  status: QuoteStatus
-  createdAt: string
-  expiresAt: string
-  provider: { id: string; name: string; avatarUrl?: string | null }
-  items: Array<{ id: string; service: { id: string; title: string } }>
-}
+  id: string;
+  status: QuoteStatus;
+  createdAt: string;
+  expiresAt: string;
+  provider: { id: string; name: string; avatarUrl?: string | null };
+  items: Array<{ id: string; service: { id: string; title: string } }>;
+};
 
 type BookingsResponse = {
-  items: Booking[]
-  total: number
-  page: number
-  limit: number
-}
+  items: Booking[];
+  total: number;
+  page: number;
+  limit: number;
+};
 type QuotesResponse = {
-  items: Quote[]
-  total: number
-  page: number
-  limit: number
-}
+  items: Quote[];
+  total: number;
+  page: number;
+  limit: number;
+};
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const MONTH_LABELS = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
-]
+  "Jan",
+  "Fev",
+  "Mar",
+  "Abr",
+  "Mai",
+  "Jun",
+  "Jul",
+  "Ago",
+  "Set",
+  "Out",
+  "Nov",
+  "Dez",
+];
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function ClientDashboard() {
-  const navigate = useViewStore((s) => s.navigate)
-  const openQuote = useUIStore((s) => s.openQuote)
-  const user = useAuthStore((s) => s.user)
+  const navigate = useViewStore((s) => s.navigate);
+  const openQuote = useUIStore((s) => s.openQuote);
+  const user = useAuthStore((s) => s.user);
 
-  const firstName = (user?.name ?? "")
-    .trim()
-    .split(/\s+/)[0]
+  const firstName = (user?.name ?? "").trim().split(/\s+/)[0];
 
   // Pull all bookings + quotes for stats. Server paginates at 50 max.
   const bookingsQuery = useQuery<BookingsResponse>({
@@ -161,7 +165,7 @@ export function ClientDashboard() {
         page: 1,
         limit: 50,
       }),
-  })
+  });
   const quotesQuery = useQuery<QuotesResponse>({
     queryKey: ["quotes", "CLIENT", "dashboard"],
     queryFn: () =>
@@ -170,63 +174,61 @@ export function ClientDashboard() {
         page: 1,
         limit: 50,
       }),
-  })
+  });
 
-  const bookings = bookingsQuery.data?.items ?? []
-  const quotes = quotesQuery.data?.items ?? []
+  const bookings = bookingsQuery.data?.items ?? [];
+  const quotes = quotesQuery.data?.items ?? [];
 
   // ---- Derived stats ---------------------------------------------------------
   const upcomingCount = bookings.filter((b) =>
     ["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(b.status),
-  ).length
+  ).length;
 
   const activeQuotesCount = quotes.filter((q) =>
     ["PENDING", "RESPONDED"].includes(q.status),
-  ).length
+  ).length;
 
-  const completedCount = bookings.filter(
-    (b) => b.status === "COMPLETED",
-  ).length
+  const completedCount = bookings.filter((b) => b.status === "COMPLETED").length;
 
   const totalInvested = bookings
     .filter((b) => b.paymentStatus === "PAID")
-    .reduce((acc, b) => acc + b.amount, 0)
+    .reduce((acc, b) => acc + b.amount, 0);
 
   // ---- Monthly bookings chart (last 6 months) --------------------------------
   // Note: computed without useMemo so the React Compiler can manage memoization.
   const monthlyData = (() => {
-    const now = new Date()
-    const baseMonths: Array<{ key: string; label: string; total: number }> = []
+    const now = new Date();
+    const baseMonths: Array<{ key: string; label: string; total: number }> = [];
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       baseMonths.push({
         key: `${d.getFullYear()}-${d.getMonth()}`,
-        label: MONTH_LABELS[d.getMonth()]!,
+        label: MONTH_LABELS[d.getMonth()] ?? "",
         total: 0,
-      })
+      });
     }
     const counts = bookings.reduce<Record<string, number>>((acc, b) => {
-      const d = new Date(b.scheduledAt)
-      const key = `${d.getFullYear()}-${d.getMonth()}`
-      acc[key] = (acc[key] ?? 0) + 1
-      return acc
-    }, {})
-    return baseMonths.map((m) => ({ ...m, total: counts[m.key] ?? 0 }))
-  })()
+      const d = new Date(b.scheduledAt);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    return baseMonths.map((m) => ({ ...m, total: counts[m.key] ?? 0 }));
+  })();
 
   // ---- Spending per category pie --------------------------------------------
   const spendingByCategory = (() => {
     const map = bookings
       .filter((b) => b.paymentStatus === "PAID")
       .reduce<Record<string, number>>((acc, b) => {
-        const cat = b.service.category?.name ?? "Outros"
-        acc[cat] = (acc[cat] ?? 0) + b.amount
-        return acc
-      }, {})
+        const cat = b.service.category?.name ?? "Outros";
+        acc[cat] = (acc[cat] ?? 0) + b.amount;
+        return acc;
+      }, {});
     return Object.entries(map)
       .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-  })()
+      .sort((a, b) => b.value - a.value);
+  })();
 
   // ---- Recent activity (latest 5 bookings + 5 quotes, merged by date) --------
   const recentActivity = (() => {
@@ -238,7 +240,7 @@ export function ClientDashboard() {
       status: b.status,
       provider: b.provider,
       amount: b.amount,
-    }))
+    }));
     const fromQuotes = quotes.slice(0, 8).map((q) => ({
       type: "quote" as const,
       id: q.id,
@@ -246,30 +248,21 @@ export function ClientDashboard() {
       title: q.items[0]?.service?.title ?? "Orçamento",
       status: q.status,
       provider: q.provider,
-    }))
+    }));
     return [...fromBookings, ...fromQuotes]
-      .sort(
-        (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
-      )
-      .slice(0, 5)
-  })()
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .slice(0, 5);
+  })();
 
   const upcomingBookings = bookings
     .filter((b) => ["PENDING", "CONFIRMED", "IN_PROGRESS"].includes(b.status))
-    .sort(
-      (a, b) =>
-        new Date(a.scheduledAt).getTime() -
-        new Date(b.scheduledAt).getTime(),
-    )
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
 
   const activeQuotes = quotes
     .filter((q) => ["PENDING", "RESPONDED"].includes(q.status))
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const isLoading = bookingsQuery.isLoading || quotesQuery.isLoading
+  const isLoading = bookingsQuery.isLoading || quotesQuery.isLoading;
 
   return (
     <div className="space-y-6">
@@ -279,18 +272,11 @@ export function ClientDashboard() {
         subtitle="Acompanhe seus agendamentos, orçamentos e gastos em um só lugar."
         action={
           <>
-            <Button
-              variant="outline"
-              onClick={() => navigate("vitrine")}
-              className="h-10 gap-2"
-            >
+            <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
               <Search className="size-4" />
               Buscar prestadores
             </Button>
-            <Button
-              onClick={() => openQuote()}
-              className="h-10 gap-2"
-            >
+            <Button onClick={() => openQuote()} className="h-10 gap-2">
               <Plus className="size-4" />
               Pedir orçamento
             </Button>
@@ -356,30 +342,12 @@ export function ClientDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={monthlyData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
                   <defs>
-                    <linearGradient
-                      id="grad-bookings"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop
-                        offset="5%"
-                        stopColor="var(--primary)"
-                        stopOpacity={0.35}
-                      />
-                      <stop
-                        offset="95%"
-                        stopColor="var(--primary)"
-                        stopOpacity={0.02}
-                      />
+                    <linearGradient id="grad-bookings" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid
-                    stroke="var(--border)"
-                    strokeDasharray="3 3"
-                    vertical={false}
-                  />
+                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="label"
                     tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
@@ -394,10 +362,7 @@ export function ClientDashboard() {
                     allowDecimals={false}
                   />
                   <Tooltip
-                    formatter={(v: number) => [
-                      `${v} agendamento${v !== 1 ? "s" : ""}`,
-                      "Total",
-                    ]}
+                    formatter={(v: number) => [`${v} agendamento${v !== 1 ? "s" : ""}`, "Total"]}
                     cursor={{ stroke: "var(--primary)", strokeWidth: 1, strokeDasharray: "3 3" }}
                     contentStyle={CHART_TOOLTIP_STYLE}
                   />
@@ -433,9 +398,7 @@ export function ClientDashboard() {
                 <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
                   <Wallet className="size-5" />
                 </span>
-                <p className="text-sm text-muted-foreground">
-                  Sem gastos confirmados ainda.
-                </p>
+                <p className="text-sm text-muted-foreground">Sem gastos confirmados ainda.</p>
               </div>
             ) : (
               <div className="h-48 w-full">
@@ -452,17 +415,11 @@ export function ClientDashboard() {
                       strokeWidth={2}
                     >
                       {spendingByCategory.map((_, i) => (
-                        <Cell
-                          key={i}
-                          fill={PIE_COLORS[i % PIE_COLORS.length]}
-                        />
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(v: number, n: string) => [
-                        formatBRL(v),
-                        n,
-                      ]}
+                      formatter={(v: number, n: string) => [formatBRL(v), n]}
                       contentStyle={CHART_TOOLTIP_STYLE}
                     />
                   </PieChart>
@@ -472,10 +429,7 @@ export function ClientDashboard() {
             {spendingByCategory.length > 0 ? (
               <ul className="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {spendingByCategory.slice(0, 6).map((c, i) => (
-                  <li
-                    key={c.name}
-                    className="flex items-center gap-2 text-xs"
-                  >
+                  <li key={c.name} className="flex items-center gap-2 text-xs">
                     <span
                       className="size-2.5 shrink-0 rounded-full"
                       style={{
@@ -523,10 +477,7 @@ export function ClientDashboard() {
             title="Nenhuma atividade ainda"
             description="Quando você começar a agendar ou solicitar orçamentos, suas atividades recentes aparecerão aqui."
             action={
-              <Button
-                onClick={() => navigate("vitrine")}
-                className="mt-2 gap-2"
-              >
+              <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
                 <MapPin className="size-4" />
                 Buscar prestadores
               </Button>
@@ -536,42 +487,35 @@ export function ClientDashboard() {
           <Card className="overflow-hidden rounded-xl shadow-sm">
             <CardContent className="divide-y p-0">
               {recentActivity.map((a) => {
-                const provider = a.provider
+                const provider = a.provider;
                 const initials = (provider.name ?? "")
                   .split(" ")
                   .map((p) => p[0])
                   .filter(Boolean)
                   .slice(0, 2)
                   .join("")
-                  .toUpperCase()
-                const isBooking = a.type === "booking"
-                const status = a.status as BookingStatus | QuoteStatus
+                  .toUpperCase();
+                const isBooking = a.type === "booking";
+                const status = a.status as BookingStatus | QuoteStatus;
                 const tone = isBooking
                   ? bookingTone(status as BookingStatus)
-                  : quoteTone(status as QuoteStatus)
+                  : quoteTone(status as QuoteStatus);
                 const Icon = isBooking
                   ? bookingIcon(status as BookingStatus)
-                  : quoteIcon(status as QuoteStatus)
+                  : quoteIcon(status as QuoteStatus);
                 const label = isBooking
                   ? BOOKING_STATUS_LABELS[status as BookingStatus]
-                  : QUOTE_STATUS_LABELS[status as QuoteStatus]
+                  : QUOTE_STATUS_LABELS[status as QuoteStatus];
                 return (
                   <button
                     key={`${a.type}-${a.id}`}
                     type="button"
-                    onClick={() =>
-                      navigate(
-                        isBooking ? "client.bookings" : "client.quotes",
-                      )
-                    }
+                    onClick={() => navigate(isBooking ? "client.bookings" : "client.quotes")}
                     className="flex w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-accent/40 focus-visible:bg-accent/40"
                   >
                     <Avatar className="size-9 shrink-0">
                       {provider.avatarUrl ? (
-                        <AvatarImage
-                          src={provider.avatarUrl}
-                          alt={provider.name}
-                        />
+                        <AvatarImage src={provider.avatarUrl} alt={provider.name} />
                       ) : null}
                       <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
                         {initials || "P"}
@@ -580,8 +524,8 @@ export function ClientDashboard() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{a.title}</p>
                       <p className="truncate text-xs text-muted-foreground tabular-nums">
-                        {isBooking ? "Agendamento" : "Orçamento"} ·{" "}
-                        {provider.name} · {formatRelative(a.at)}
+                        {isBooking ? "Agendamento" : "Orçamento"} · {provider.name} ·{" "}
+                        {formatRelative(a.at)}
                       </p>
                     </div>
                     {isBooking && a.type === "booking" ? (
@@ -593,7 +537,7 @@ export function ClientDashboard() {
                       {label}
                     </StatusBadge>
                   </button>
-                )
+                );
               })}
             </CardContent>
           </Card>
@@ -630,10 +574,7 @@ export function ClientDashboard() {
               title="Nenhum agendamento próximo"
               description="Que tal agendar seu primeiro serviço? Explore prestadores verificados perto de você."
               action={
-                <Button
-                  onClick={() => navigate("vitrine")}
-                  className="mt-2 gap-2"
-                >
+                <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
                   <MapPin className="size-4" />
                   Buscar prestadores
                 </Button>
@@ -648,7 +589,7 @@ export function ClientDashboard() {
                   .filter(Boolean)
                   .slice(0, 2)
                   .join("")
-                  .toUpperCase()
+                  .toUpperCase();
                 return (
                   <button
                     key={b.id}
@@ -658,19 +599,14 @@ export function ClientDashboard() {
                   >
                     <Avatar className="size-10 shrink-0">
                       {b.provider.avatarUrl ? (
-                        <AvatarImage
-                          src={b.provider.avatarUrl}
-                          alt={b.provider.name}
-                        />
+                        <AvatarImage src={b.provider.avatarUrl} alt={b.provider.name} />
                       ) : null}
                       <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
                         {initials || "P"}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">
-                        {b.service.title}
-                      </p>
+                      <p className="truncate text-sm font-medium">{b.service.title}</p>
                       <p className="truncate text-xs text-muted-foreground tabular-nums">
                         {formatDateTime(b.scheduledAt)} · {b.provider.name}
                       </p>
@@ -682,7 +618,7 @@ export function ClientDashboard() {
                       {BOOKING_STATUS_LABELS[b.status as BookingStatus]}
                     </StatusBadge>
                   </button>
-                )
+                );
               })}
             </div>
           )}
@@ -716,10 +652,7 @@ export function ClientDashboard() {
               title="Nenhum orçamento ativo"
               description="Solicite um orçamento e acompanhe a resposta dos prestadores aqui."
               action={
-                <Button
-                  onClick={() => openQuote()}
-                  className="mt-2 gap-2"
-                >
+                <Button onClick={() => openQuote()} className="mt-2 gap-2">
                   <Plus className="size-4" />
                   Pedir orçamento
                 </Button>
@@ -734,7 +667,7 @@ export function ClientDashboard() {
                   .filter(Boolean)
                   .slice(0, 2)
                   .join("")
-                  .toUpperCase()
+                  .toUpperCase();
                 return (
                   <button
                     key={q.id}
@@ -744,10 +677,7 @@ export function ClientDashboard() {
                   >
                     <Avatar className="size-10 shrink-0">
                       {q.provider.avatarUrl ? (
-                        <AvatarImage
-                          src={q.provider.avatarUrl}
-                          alt={q.provider.name}
-                        />
+                        <AvatarImage src={q.provider.avatarUrl} alt={q.provider.name} />
                       ) : null}
                       <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
                         {initials || "P"}
@@ -768,12 +698,12 @@ export function ClientDashboard() {
                       {QUOTE_STATUS_LABELS[q.status as QuoteStatus]}
                     </StatusBadge>
                   </button>
-                )
+                );
               })}
             </div>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }

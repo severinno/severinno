@@ -1,13 +1,9 @@
-"use client"
+"use client";
 
-import { ThemeProvider } from "next-themes"
-import {
-  QueryClient,
-  QueryClientProvider,
-  type QueryClientConfig,
-} from "@tanstack/react-query"
-import { Toaster as SonnerToaster } from "@/components/ui/sonner"
-import { useState, type ReactNode } from "react"
+import { ThemeProvider } from "next-themes";
+import { QueryClient, QueryClientProvider, type QueryClientConfig } from "@tanstack/react-query";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { useState, type ReactNode } from "react";
 
 const queryConfig: QueryClientConfig = {
   defaultOptions: {
@@ -17,7 +13,7 @@ const queryConfig: QueryClientConfig = {
       refetchOnWindowFocus: false,
     },
   },
-}
+};
 
 /**
  * Combined providers for the Severinno Marketplace SPA.
@@ -31,19 +27,14 @@ export function Providers({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: queryConfig.defaultOptions,
       }),
-  )
+  );
 
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="light"
-      enableSystem
-      disableTransitionOnChange
-    >
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={client}>
         {children}
         <SonnerToaster position="top-right" richColors closeButton />
       </QueryClientProvider>
     </ThemeProvider>
-  )
+  );
 }

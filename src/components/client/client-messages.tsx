@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ClientMessages — chat interface.
@@ -22,89 +22,77 @@
  *  - POST /api/messages { toId, content }
  */
 
-import * as React from "react"
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query"
-import {
-  ArrowLeft,
-  Loader2,
-  MessageSquare,
-  Send,
-} from "lucide-react"
-import { toast } from "sonner"
+import * as React from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Loader2, MessageSquare, Send } from "lucide-react";
+import { toast } from "sonner";
 
-import { cn } from "@/lib/utils"
-import { apiGet, apiPost } from "@/lib/api"
-import { formatDateTime, formatRelative } from "@/lib/format"
-import { useRealtime } from "@/hooks/use-realtime"
-import { useAuthStore, useViewStore } from "@/store"
+import { cn } from "@/lib/utils";
+import { apiGet, apiPost } from "@/lib/api";
+import { formatDateTime, formatRelative } from "@/lib/format";
+import { useRealtime } from "@/hooks/use-realtime";
+import { useAuthStore, useViewStore } from "@/store";
 
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
-import {
-  EmptyState,
-  SectionTitle,
-} from "@/components/shared/dashboard-shell"
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { SectionTitle } from "@/components/shared/dashboard-shell";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Conversation = {
-  peerId: string
-  lastMessage: string
-  lastAt: string
-  unreadCount: number
+  peerId: string;
+  lastMessage: string;
+  lastAt: string;
+  unreadCount: number;
   peer: {
-    id: string
-    name: string
-    avatarUrl?: string | null
-    role?: string
-  } | null
-}
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    role?: string;
+  } | null;
+};
 
-type ConversationsResponse = { items: Conversation[] }
+type ConversationsResponse = { items: Conversation[] };
 
 type Message = {
-  id: string
-  fromId: string
-  toId: string
-  content: string
-  read: boolean
-  createdAt: string
-  bookingId?: string | null
-}
+  id: string;
+  fromId: string;
+  toId: string;
+  content: string;
+  read: boolean;
+  createdAt: string;
+  bookingId?: string | null;
+};
 
 type ThreadResponse = {
   peer: {
-    id: string
-    name: string
-    avatarUrl?: string | null
-    role?: string
-  }
-  items: Message[]
-}
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    role?: string;
+  };
+  items: Message[];
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function initials(name?: string | null): string {
-  if (!name) return "?"
+  if (!name) return "?";
   return name
     .split(" ")
     .map((p) => p[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -112,110 +100,93 @@ function initials(name?: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function ClientMessages() {
-  const { user } = useAuthStore()
-  const params = useViewStore((s) => s.params) as { with?: string }
-  const qc = useQueryClient()
+  const { user } = useAuthStore();
+  const params = useViewStore((s) => s.params) as { with?: string };
+  const qc = useQueryClient();
 
-  const [selectedPeerId, setSelectedPeerId] = React.useState<string | null>(
-    params.with ?? null,
-  )
-  const [mobileThreadOpen, setMobileThreadOpen] = React.useState(
-    !!params.with,
-  )
+  const [selectedPeerId, setSelectedPeerId] = React.useState<string | null>(params.with ?? null);
+  const [mobileThreadOpen, setMobileThreadOpen] = React.useState(!!params.with);
 
   // Conversations list
   const conversationsQuery = useQuery<ConversationsResponse>({
     queryKey: ["messages", "conversations"],
     queryFn: () => apiGet<ConversationsResponse>("/api/messages"),
     refetchInterval: 20_000,
-  })
+  });
 
   // Active thread
   const threadQuery = useQuery<ThreadResponse>({
     queryKey: ["messages", "thread", selectedPeerId],
-    queryFn: () =>
-      apiGet<ThreadResponse>("/api/messages", { with: selectedPeerId }),
+    queryFn: () => apiGet<ThreadResponse>("/api/messages", { with: selectedPeerId }),
     enabled: !!selectedPeerId,
     refetchInterval: 15_000,
-  })
+  });
 
   // ---- Realtime ----------------------------------------------------------------
-  const { on, isConnected } = useRealtime()
+  const { on, isConnected } = useRealtime();
   React.useEffect(() => {
-    if (!user?.id) return
-    const off1 = on<{ fromId: string; toId: string; content: string }>(
-      "message:new",
-      (data) => {
-        // Invalidate the conversations list so ordering/unread update.
-        qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
-        if (data?.fromId && data.fromId === selectedPeerId) {
-          // Active thread — invalidate the thread (server marks read on GET).
-          qc.invalidateQueries({
-            queryKey: ["messages", "thread", selectedPeerId],
-          })
-        } else if (data?.fromId && data.toId === user.id) {
-          // Other conversation — toast + invalidate its thread if cached.
-          toast.info("Nova mensagem recebida.", {
-            description: data.content?.slice(0, 80),
-          })
-        }
-      },
-    )
+    if (!user?.id) return;
+    const off1 = on<{ fromId: string; toId: string; content: string }>("message:new", (data) => {
+      // Invalidate the conversations list so ordering/unread update.
+      qc.invalidateQueries({ queryKey: ["messages", "conversations"] });
+      if (data?.fromId && data.fromId === selectedPeerId) {
+        // Active thread — invalidate the thread (server marks read on GET).
+        qc.invalidateQueries({
+          queryKey: ["messages", "thread", selectedPeerId],
+        });
+      } else if (data?.fromId && data.toId === user.id) {
+        // Other conversation — toast + invalidate its thread if cached.
+        toast.info("Nova mensagem recebida.", {
+          description: data.content?.slice(0, 80),
+        });
+      }
+    });
     return () => {
-      off1()
-    }
-  }, [on, qc, selectedPeerId, user?.id])
+      off1();
+    };
+  }, [on, qc, selectedPeerId, user?.id]);
 
   // ---- Send message ------------------------------------------------------------
-  const [draft, setDraft] = React.useState("")
+  const [draft, setDraft] = React.useState("");
   const sendMutation = useMutation({
-    mutationFn: (vars: { toId: string; content: string }) =>
-      apiPost("/api/messages", vars),
+    mutationFn: (vars: { toId: string; content: string }) => apiPost("/api/messages", vars),
     onSuccess: () => {
-      setDraft("")
+      setDraft("");
       qc.invalidateQueries({
         queryKey: ["messages", "thread", selectedPeerId],
-      })
-      qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
+      });
+      qc.invalidateQueries({ queryKey: ["messages", "conversations"] });
     },
     onError: (e: { message?: string }) =>
       toast.error(e?.message || "Não foi possível enviar a mensagem."),
-  })
+  });
 
   const handleSend = () => {
-    const content = draft.trim()
-    if (!content || !selectedPeerId) return
-    sendMutation.mutate({ toId: selectedPeerId, content })
-  }
+    const content = draft.trim();
+    if (!content || !selectedPeerId) return;
+    sendMutation.mutate({ toId: selectedPeerId, content });
+  };
 
   const handleSelectPeer = (peerId: string) => {
-    setSelectedPeerId(peerId)
-    setMobileThreadOpen(true)
-  }
+    setSelectedPeerId(peerId);
+    setMobileThreadOpen(true);
+  };
 
   const handleBackToList = () => {
-    setMobileThreadOpen(false)
-  }
+    setMobileThreadOpen(false);
+  };
 
-  const conversations = conversationsQuery.data?.items ?? []
-  const peer = threadQuery.data?.peer ?? null
-  const messages = threadQuery.data?.items ?? []
+  const conversations = conversationsQuery.data?.items ?? [];
+  const peer = threadQuery.data?.peer ?? null;
+  const messages = threadQuery.data?.items ?? [];
 
   return (
     <div className="space-y-4">
-      <SectionTitle
-        title="Mensagens"
-        description="Converse com seus prestadores."
-      />
+      <SectionTitle title="Mensagens" description="Converse com seus prestadores." />
 
       <Card className="grid h-[70vh] grid-cols-1 overflow-hidden py-0 md:grid-cols-[20rem_1fr]">
         {/* Conversation list */}
-        <div
-          className={cn(
-            "flex flex-col border-r",
-            mobileThreadOpen && "hidden md:flex",
-          )}
-        >
+        <div className={cn("flex flex-col border-r", mobileThreadOpen && "hidden md:flex")}>
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
             <p className="text-sm font-semibold">Conversas</p>
             <Badge
@@ -245,14 +216,13 @@ export function ClientMessages() {
               <div className="flex flex-col items-center gap-2 p-6 text-center">
                 <MessageSquare className="size-6 text-muted-foreground/60" />
                 <p className="text-xs text-muted-foreground">
-                  Nenhuma conversa ainda. Inicie uma conversa a partir do
-                  perfil de um prestador.
+                  Nenhuma conversa ainda. Inicie uma conversa a partir do perfil de um prestador.
                 </p>
               </div>
             ) : (
               <ul className="divide-y">
                 {conversations.map((c) => {
-                  const active = c.peerId === selectedPeerId
+                  const active = c.peerId === selectedPeerId;
                   return (
                     <li key={c.peerId}>
                       <button
@@ -260,17 +230,12 @@ export function ClientMessages() {
                         onClick={() => handleSelectPeer(c.peerId)}
                         className={cn(
                           "flex w-full items-center gap-3 px-3 py-2.5 text-left outline-none transition-colors",
-                          active
-                            ? "bg-primary/10"
-                            : "hover:bg-accent/50",
+                          active ? "bg-primary/10" : "hover:bg-accent/50",
                         )}
                       >
                         <Avatar className="size-9 shrink-0">
                           {c.peer?.avatarUrl ? (
-                            <AvatarImage
-                              src={c.peer.avatarUrl}
-                              alt={c.peer.name}
-                            />
+                            <AvatarImage src={c.peer.avatarUrl} alt={c.peer.name} />
                           ) : null}
                           <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
                             {initials(c.peer?.name)}
@@ -285,9 +250,7 @@ export function ClientMessages() {
                               {formatRelative(c.lastAt)}
                             </span>
                           </div>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {c.lastMessage}
-                          </p>
+                          <p className="truncate text-xs text-muted-foreground">{c.lastMessage}</p>
                         </div>
                         {c.unreadCount > 0 ? (
                           <span className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
@@ -296,7 +259,7 @@ export function ClientMessages() {
                         ) : null}
                       </button>
                     </li>
-                  )
+                  );
                 })}
               </ul>
             )}
@@ -304,19 +267,12 @@ export function ClientMessages() {
         </div>
 
         {/* Thread */}
-        <div
-          className={cn(
-            "flex flex-col",
-            !mobileThreadOpen && "hidden md:flex",
-          )}
-        >
+        <div className={cn("flex flex-col", !mobileThreadOpen && "hidden md:flex")}>
           {!selectedPeerId || !peer ? (
             <div className="flex flex-1 items-center justify-center p-6 text-center">
               <div className="space-y-2">
                 <MessageSquare className="mx-auto size-10 text-muted-foreground/60" />
-                <p className="text-sm font-medium">
-                  Selecione uma conversa
-                </p>
+                <p className="text-sm font-medium">Selecione uma conversa</p>
                 <p className="mx-auto max-w-xs text-xs text-muted-foreground">
                   Escolha um prestador na lista ao lado para ver as mensagens.
                 </p>
@@ -336,9 +292,7 @@ export function ClientMessages() {
                   <ArrowLeft className="size-4" />
                 </Button>
                 <Avatar className="size-9">
-                  {peer.avatarUrl ? (
-                    <AvatarImage src={peer.avatarUrl} alt={peer.name} />
-                  ) : null}
+                  {peer.avatarUrl ? <AvatarImage src={peer.avatarUrl} alt={peer.name} /> : null}
                   <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
                     {initials(peer.name)}
                   </AvatarFallback>
@@ -365,14 +319,11 @@ export function ClientMessages() {
                     </div>
                   ) : (
                     messages.map((m) => {
-                      const mine = m.fromId === user?.id
+                      const mine = m.fromId === user?.id;
                       return (
                         <div
                           key={m.id}
-                          className={cn(
-                            "flex",
-                            mine ? "justify-end" : "justify-start",
-                          )}
+                          className={cn("flex", mine ? "justify-end" : "justify-start")}
                         >
                           <div
                             className={cn(
@@ -382,22 +333,18 @@ export function ClientMessages() {
                                 : "rounded-bl-sm border bg-card text-card-foreground",
                             )}
                           >
-                            <p className="whitespace-pre-line break-words">
-                              {m.content}
-                            </p>
+                            <p className="whitespace-pre-line break-words">{m.content}</p>
                             <p
                               className={cn(
                                 "mt-1 text-right text-[10px] tabular-nums",
-                                mine
-                                  ? "text-primary-foreground/70"
-                                  : "text-muted-foreground",
+                                mine ? "text-primary-foreground/70" : "text-muted-foreground",
                               )}
                             >
                               {formatDateTime(m.createdAt)}
                             </p>
                           </div>
                         </div>
-                      )
+                      );
                     })
                   )}
                 </div>
@@ -407,8 +354,8 @@ export function ClientMessages() {
               <div className="border-t p-3">
                 <form
                   onSubmit={(e) => {
-                    e.preventDefault()
-                    handleSend()
+                    e.preventDefault();
+                    handleSend();
                   }}
                   className="flex items-center gap-2"
                 >
@@ -440,5 +387,5 @@ export function ClientMessages() {
         </div>
       </Card>
     </div>
-  )
+  );
 }

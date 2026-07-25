@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Area,
   AreaChart,
@@ -12,7 +12,7 @@ import {
   Tooltip as RTooltip,
   XAxis,
   YAxis,
-} from "recharts"
+} from "recharts";
 import {
   CalendarCheck,
   CalendarDays,
@@ -27,7 +27,7 @@ import {
   Wallet,
   ArrowRight,
   XCircle,
-} from "lucide-react"
+} from "lucide-react";
 import {
   eachDayOfInterval,
   eachMonthOfInterval,
@@ -35,33 +35,24 @@ import {
   endOfWeek,
   format,
   isSameDay,
-  startOfMonth,
   startOfWeek,
   startOfYear,
   subDays,
-} from "date-fns"
-import { ptBR } from "date-fns/locale"
+} from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-import { apiGet } from "@/lib/api"
-import {
-  BOOKING_STATUS_LABELS,
-  type BookingStatus,
-} from "@/lib/constants"
-import { formatBRL, formatDateTime, formatTime } from "@/lib/format"
-import { useAuthStore } from "@/store/auth"
-import { useViewStore } from "@/store/view"
+import { apiGet } from "@/lib/api";
+import { BOOKING_STATUS_LABELS, type BookingStatus } from "@/lib/constants";
+import { formatBRL, formatDateTime, formatTime } from "@/lib/format";
+import { useAuthStore } from "@/store/auth";
+import { useViewStore } from "@/store/view";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
-import { StarRatingDisplay } from "@/components/modals/star-rating"
-import {
-  StatCard,
-} from "@/components/shared/dashboard-shell"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { StarRatingDisplay } from "@/components/modals/star-rating";
+import { StatCard } from "@/components/shared/dashboard-shell";
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -70,55 +61,55 @@ const CHART_TOOLTIP_STYLE = {
   color: "var(--popover-foreground)",
   fontSize: 12,
   boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.15)",
-} as const
+} as const;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Booking = {
-  id: string
-  scheduledAt: string
-  status: BookingStatus
-  amount: number
-  address: string
-  service: { id: string; title: string }
+  id: string;
+  scheduledAt: string;
+  status: BookingStatus;
+  amount: number;
+  address: string;
+  service: { id: string; title: string };
   client: {
-    id: string
-    name: string
-    avatarUrl?: string | null
-  }
-}
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+  };
+};
 
 type QuoteRequest = {
-  id: string
-  createdAt: string
-  status: string
-  items: Array<{ id: string; status: string }>
-  client: { id: string; name: string; avatarUrl?: string | null }
-}
+  id: string;
+  createdAt: string;
+  status: string;
+  items: Array<{ id: string; status: string }>;
+  client: { id: string; name: string; avatarUrl?: string | null };
+};
 
 type Review = {
-  id: string
-  rating: number
-  comment?: string | null
-  createdAt: string
-  client: { id: string; name: string; avatarUrl?: string | null }
-  service?: { id: string; title: string } | null
-  booking?: { id: string; serviceId: string } | null
-}
+  id: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  client: { id: string; name: string; avatarUrl?: string | null };
+  service?: { id: string; title: string } | null;
+  booking?: { id: string; serviceId: string } | null;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function initials(name?: string) {
-  if (!name) return "?"
+  if (!name) return "?";
   return name
     .split(" ")
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("")
+    .join("");
 }
 
 const BADGE_STYLES: Record<BookingStatus, string> = {
@@ -127,7 +118,7 @@ const BADGE_STYLES: Record<BookingStatus, string> = {
   IN_PROGRESS: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
   COMPLETED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
   CANCELLED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
-}
+};
 
 function StatusBadge({ status }: { status: BookingStatus }) {
   const Icon =
@@ -137,7 +128,7 @@ function StatusBadge({ status }: { status: BookingStatus }) {
         ? Clock
         : status === "IN_PROGRESS"
           ? Loader2
-          : XCircle
+          : XCircle;
   return (
     <Badge
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${BADGE_STYLES[status]}`}
@@ -145,7 +136,7 @@ function StatusBadge({ status }: { status: BookingStatus }) {
       <Icon className="size-3" />
       {BOOKING_STATUS_LABELS[status]}
     </Badge>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -153,123 +144,101 @@ function StatusBadge({ status }: { status: BookingStatus }) {
 // ---------------------------------------------------------------------------
 
 export function ProviderDashboard() {
-  const user = useAuthStore((s) => s.user)
-  const navigate = useViewStore((s) => s.navigate)
+  const user = useAuthStore((s) => s.user);
+  const navigate = useViewStore((s) => s.navigate);
 
   const bookingsQuery = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "dashboard", "bookings", user?.id],
-    queryFn: async () =>
-      apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
-  })
+    queryFn: async () => apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
+  });
 
   const quotesQuery = useQuery<{ items: QuoteRequest[]; total: number }>({
     queryKey: ["provider", "dashboard", "quotes", user?.id],
-    queryFn: async () =>
-      apiGet("/api/quotes", { role: "PROVIDER", page: 1, limit: 200 }),
-  })
+    queryFn: async () => apiGet("/api/quotes", { role: "PROVIDER", page: 1, limit: 200 }),
+  });
 
   const reviewsQuery = useQuery<{ items: Review[]; total: number }>({
     queryKey: ["provider", "dashboard", "reviews", user?.id],
     queryFn: async () => {
-      if (!user) return { items: [], total: 0 }
-      return apiGet("/api/reviews", { providerId: user.id })
+      if (!user) return { items: [], total: 0 };
+      return apiGet("/api/reviews", { providerId: user.id });
     },
     enabled: !!user,
-  })
+  });
 
-  const bookings = bookingsQuery.data?.items ?? []
-  const quotes = quotesQuery.data?.items ?? []
-  const reviews = reviewsQuery.data?.items ?? []
+  const bookings = bookingsQuery.data?.items ?? [];
+  const quotes = quotesQuery.data?.items ?? [];
+  const reviews = reviewsQuery.data?.items ?? [];
 
   // KPIs
-  const today = new Date()
-  const weekStart = startOfWeek(today, { weekStartsOn: 0 })
-  const weekEnd = endOfWeek(today, { weekStartsOn: 0 })
+  const today = new Date();
+  const weekStart = startOfWeek(today, { weekStartsOn: 0 });
+  const weekEnd = endOfWeek(today, { weekStartsOn: 0 });
 
-  const bookingsToday = bookings.filter((b) =>
-    isSameDay(new Date(b.scheduledAt), today),
-  )
+  const bookingsToday = bookings.filter((b) => isSameDay(new Date(b.scheduledAt), today));
   const bookingsThisWeek = bookings.filter((b) => {
-    const d = new Date(b.scheduledAt)
-    return d >= weekStart && d <= weekEnd
-  })
+    const d = new Date(b.scheduledAt);
+    return d >= weekStart && d <= weekEnd;
+  });
 
   // Pending quote items (PENDING status, awaiting provider response)
   const pendingQuoteItems = quotes.reduce(
-    (acc, q) =>
-      acc + q.items.filter((i) => i.status === "PENDING").length,
+    (acc, q) => acc + q.items.filter((i) => i.status === "PENDING").length,
     0,
-  )
+  );
 
   // Reviews aggregation
   const avgRating =
-    reviews.length > 0
-      ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
-      : 0
+    reviews.length > 0 ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length : 0;
 
   // Revenue: sum of bookings with paymentStatus PAID (confirmed/completed)
   const revenuePaid = bookings
     .filter(
-      (b) =>
-        b.status === "CONFIRMED" ||
-        b.status === "IN_PROGRESS" ||
-        b.status === "COMPLETED",
+      (b) => b.status === "CONFIRMED" || b.status === "IN_PROGRESS" || b.status === "COMPLETED",
     )
-    .reduce((acc, b) => acc + b.amount, 0)
+    .reduce((acc, b) => acc + b.amount, 0);
 
   // Chart: bookings per day (last 7 days)
   const last7Days = eachDayOfInterval({
     start: subDays(today, 6),
     end: today,
-  })
+  });
   const bookingsPerDay = last7Days.map((d) => {
-    const count = bookings.filter((b) =>
-      isSameDay(new Date(b.scheduledAt), d),
-    ).length
+    const count = bookings.filter((b) => isSameDay(new Date(b.scheduledAt), d)).length;
     return {
       day: format(d, "EEE", { locale: ptBR }),
       agendamentos: count,
-    }
-  })
+    };
+  });
 
   // Chart: revenue per month (this year)
-  const yearStart = startOfYear(today)
+  const yearStart = startOfYear(today);
   const yearMonths = eachMonthOfInterval({
     start: yearStart,
     end: endOfMonth(today),
-  })
+  });
   const revenuePerMonth = yearMonths.map((m) => {
     const total = bookings
       .filter((b) => {
-        const d = new Date(b.scheduledAt)
+        const d = new Date(b.scheduledAt);
         return (
           d.getMonth() === m.getMonth() &&
           d.getFullYear() === m.getFullYear() &&
-          (b.status === "CONFIRMED" ||
-            b.status === "IN_PROGRESS" ||
-            b.status === "COMPLETED")
-        )
+          (b.status === "CONFIRMED" || b.status === "IN_PROGRESS" || b.status === "COMPLETED")
+        );
       })
-      .reduce((acc, b) => acc + b.amount, 0)
+      .reduce((acc, b) => acc + b.amount, 0);
     return {
       month: format(m, "MMM", { locale: ptBR }),
       receita: total,
-    }
-  })
+    };
+  });
 
   // Today's agenda: bookings for today (any non-cancelled status).
   // Falls back to next upcoming bookings when there are none today.
   const todays = bookings
-    .filter(
-      (b) =>
-        isSameDay(new Date(b.scheduledAt), today) &&
-        b.status !== "CANCELLED",
-    )
-    .sort(
-      (a, b) =>
-        new Date(a.scheduledAt).getTime() -
-        new Date(b.scheduledAt).getTime(),
-    )
+    .filter((b) => isSameDay(new Date(b.scheduledAt), today) && b.status !== "CANCELLED")
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   const upcoming = bookings
     .filter(
       (b) =>
@@ -278,28 +247,20 @@ export function ProviderDashboard() {
         b.status !== "COMPLETED" &&
         !isSameDay(new Date(b.scheduledAt), today),
     )
-    .sort(
-      (a, b) =>
-        new Date(a.scheduledAt).getTime() -
-        new Date(b.scheduledAt).getTime(),
-    )
-    .slice(0, 5)
-  const agendaBookings = todays.length > 0 ? todays : upcoming
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+    .slice(0, 5);
+  const agendaBookings = todays.length > 0 ? todays : upcoming;
 
   // Pending quotes (top 5)
   const pendingQuotes = quotes
     .filter((q) => q.items.some((i) => i.status === "PENDING"))
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
-    .slice(0, 5)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5);
 
   // Latest reviews (top 3)
-  const latestReviews = reviews.slice(0, 3)
+  const latestReviews = reviews.slice(0, 3);
 
-  const loading =
-    bookingsQuery.isLoading || quotesQuery.isLoading || reviewsQuery.isLoading
+  const loading = bookingsQuery.isLoading || quotesQuery.isLoading || reviewsQuery.isLoading;
 
   return (
     <div className="space-y-6">
@@ -307,8 +268,7 @@ export function ProviderDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">
-            Olá, {user?.name?.split(" ")[0] ?? "Prestador"}{" "}
-            <span className="ml-0.5">👋</span>
+            Olá, {user?.name?.split(" ")[0] ?? "Prestador"} <span className="ml-0.5">👋</span>
           </h2>
           <p className="text-sm capitalize text-muted-foreground">
             {format(today, "EEEE, dd 'de' MMMM", { locale: ptBR })}
@@ -331,11 +291,7 @@ export function ProviderDashboard() {
           >
             <CalendarDays className="size-3.5" /> Ver agenda
           </Button>
-          <Button
-            size="sm"
-            onClick={() => navigate("provider.services")}
-            className="h-9 gap-1.5"
-          >
+          <Button size="sm" onClick={() => navigate("provider.services")} className="h-9 gap-1.5">
             <Plus className="size-3.5" /> Novo serviço
           </Button>
         </div>
@@ -476,12 +432,14 @@ export function ProviderDashboard() {
                         axisLine={false}
                         tickLine={false}
                         width={48}
-                        tickFormatter={(v) =>
-                          v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
-                        }
+                        tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
                       />
                       <RTooltip
-                        cursor={{ stroke: "var(--primary)", strokeWidth: 1, strokeDasharray: "3 3" }}
+                        cursor={{
+                          stroke: "var(--primary)",
+                          strokeWidth: 1,
+                          strokeDasharray: "3 3",
+                        }}
                         contentStyle={CHART_TOOLTIP_STYLE}
                         formatter={(v: number) => [formatBRL(v), "Receita"]}
                       />
@@ -508,9 +466,7 @@ export function ProviderDashboard() {
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                      {todays.length > 0
-                        ? "Agenda de hoje"
-                        : "Próximos agendamentos"}
+                      {todays.length > 0 ? "Agenda de hoje" : "Próximos agendamentos"}
                     </p>
                     {todays.length > 0 && (
                       <p className="text-xs text-muted-foreground">
@@ -533,9 +489,7 @@ export function ProviderDashboard() {
                     <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
                       <CalendarDays className="size-5" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Sem agendamentos para hoje.
-                    </p>
+                    <p className="text-sm text-muted-foreground">Sem agendamentos para hoje.</p>
                   </div>
                 ) : (
                   <ul className="grid gap-2">
@@ -554,19 +508,14 @@ export function ProviderDashboard() {
                         </div>
                         <Avatar className="size-9 shrink-0 border">
                           {b.client.avatarUrl ? (
-                            <AvatarImage
-                              src={b.client.avatarUrl}
-                              alt={b.client.name}
-                            />
+                            <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
                           ) : null}
                           <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
                             {initials(b.client.name)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {b.client.name}
-                          </p>
+                          <p className="truncate text-sm font-medium">{b.client.name}</p>
                           <p className="truncate text-xs text-muted-foreground">
                             {b.service.title}
                           </p>
@@ -613,9 +562,7 @@ export function ProviderDashboard() {
                 ) : (
                   <ul className="grid gap-2">
                     {pendingQuotes.map((q) => {
-                      const pending = q.items.filter(
-                        (i) => i.status === "PENDING",
-                      ).length
+                      const pending = q.items.filter((i) => i.status === "PENDING").length;
                       return (
                         <li
                           key={q.id}
@@ -623,19 +570,14 @@ export function ProviderDashboard() {
                         >
                           <Avatar className="size-9 shrink-0 border">
                             {q.client.avatarUrl ? (
-                              <AvatarImage
-                                src={q.client.avatarUrl}
-                                alt={q.client.name}
-                              />
+                              <AvatarImage src={q.client.avatarUrl} alt={q.client.name} />
                             ) : null}
                             <AvatarFallback className="bg-amber-500 text-[10px] font-semibold text-white">
                               {initials(q.client.name)}
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">
-                              {q.client.name}
-                            </p>
+                            <p className="truncate text-sm font-medium">{q.client.name}</p>
                             <p className="text-[10px] text-muted-foreground">
                               {formatDateTime(q.createdAt)}
                             </p>
@@ -652,7 +594,7 @@ export function ProviderDashboard() {
                             <Send className="size-3" /> Responder
                           </Button>
                         </li>
-                      )
+                      );
                     })}
                   </ul>
                 )}
@@ -680,24 +622,16 @@ export function ProviderDashboard() {
                     <div className="flex size-10 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                       <Star className="size-5" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Sem avaliações ainda.
-                    </p>
+                    <p className="text-sm text-muted-foreground">Sem avaliações ainda.</p>
                   </div>
                 ) : (
                   <ul className="grid gap-2">
                     {latestReviews.map((r) => (
-                      <li
-                        key={r.id}
-                        className="rounded-lg border bg-card p-2.5"
-                      >
+                      <li key={r.id} className="rounded-lg border bg-card p-2.5">
                         <div className="flex items-center gap-2">
                           <Avatar className="size-7 shrink-0 border">
                             {r.client.avatarUrl ? (
-                              <AvatarImage
-                                src={r.client.avatarUrl}
-                                alt={r.client.name}
-                              />
+                              <AvatarImage src={r.client.avatarUrl} alt={r.client.name} />
                             ) : null}
                             <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
                               {initials(r.client.name)}
@@ -706,11 +640,7 @@ export function ProviderDashboard() {
                           <p className="min-w-0 flex-1 truncate text-sm font-medium">
                             {r.client.name}
                           </p>
-                          <StarRatingDisplay
-                            value={r.rating}
-                            size={12}
-                            showCount={false}
-                          />
+                          <StarRatingDisplay value={r.rating} size={12} showCount={false} />
                         </div>
                         {r.comment && (
                           <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
@@ -727,7 +657,7 @@ export function ProviderDashboard() {
         </>
       )}
     </div>
-  )
+  );
 }
 
-export default ProviderDashboard
+export default ProviderDashboard;

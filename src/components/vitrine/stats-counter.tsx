@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * StatsCounter — Animated platform statistics counter section.
@@ -12,40 +12,33 @@
  *   H8  Aesthetic minimalism         → Clean 4-column layout
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import {
-  Users,
-  Wrench,
-  CheckCircle2,
-  Star,
-  type LucideIcon,
-} from "lucide-react"
-import { motion } from "framer-motion"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Users, Wrench, CheckCircle2, Star, type LucideIcon } from "lucide-react";
+import { motion } from "framer-motion";
 
-import { apiGet } from "@/lib/api"
-import { useCountUp, useScrollReveal } from "@/hooks/use-animation"
-import { cn } from "@/lib/utils"
+import { apiGet } from "@/lib/api";
+import { useCountUp, useScrollReveal } from "@/hooks/use-animation";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type PublicStats = {
-  providers: number
-  services: number
-  reviews: number
-  completedBookings: number
-  avgRating: number
-}
+  providers: number;
+  services: number;
+  reviews: number;
+  completedBookings: number;
+  avgRating: number;
+};
 
 type StatItem = {
-  icon: LucideIcon
-  label: string
-  value: number
-  decimals?: number
-  suffix?: string
-}
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  decimals?: number;
+  suffix?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Animated number component — H7: auto-animated on scroll
@@ -56,18 +49,18 @@ function AnimatedNumber({
   decimals = 0,
   suffix = "",
 }: {
-  target: number
-  decimals?: number
-  suffix?: string
+  target: number;
+  decimals?: number;
+  suffix?: string;
 }) {
-  const { ref, value } = useCountUp(target, { decimals, duration: 2000 })
+  const { ref, value } = useCountUp(target, { decimals, duration: 2000 });
 
   return (
     <span ref={ref} className="tabular-nums">
       {decimals > 0 ? value.toFixed(decimals) : value.toLocaleString("pt-BR")}
       {suffix}
     </span>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -75,16 +68,16 @@ function AnimatedNumber({
 // ---------------------------------------------------------------------------
 
 export default function StatsCounter() {
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
 
   // Fetch stats from API
   const statsQuery = useQuery({
     queryKey: ["stats", "public"],
     queryFn: () => apiGet<PublicStats>("/api/stats/public"),
     staleTime: 5 * 60 * 1000,
-  })
+  });
 
-  const stats = statsQuery.data
+  const stats = statsQuery.data;
 
   const items: StatItem[] = React.useMemo(
     () => [
@@ -112,7 +105,7 @@ export default function StatsCounter() {
       },
     ],
     [stats],
-  )
+  );
 
   return (
     <section className="relative overflow-hidden bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 dark:from-emerald-700 dark:via-emerald-800 dark:to-teal-900">
@@ -122,13 +115,10 @@ export default function StatsCounter() {
         <div className="absolute bottom-0 right-1/4 size-56 rounded-full bg-teal-400/10 blur-3xl" />
       </div>
 
-      <div
-        ref={ref}
-        className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8"
-      >
+      <div ref={ref} className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
         <div className="grid grid-cols-2 gap-6 sm:gap-8 lg:grid-cols-4">
           {items.map((item, idx) => {
-            const Icon = item.icon
+            const Icon = item.icon;
             return (
               <motion.div
                 key={item.label}
@@ -151,14 +141,12 @@ export default function StatsCounter() {
                     />
                   )}
                 </div>
-                <p className="text-xs font-medium text-emerald-100 sm:text-sm">
-                  {item.label}
-                </p>
+                <p className="text-xs font-medium text-emerald-100 sm:text-sm">{item.label}</p>
               </motion.div>
-            )
+            );
           })}
         </div>
       </div>
     </section>
-  )
+  );
 }

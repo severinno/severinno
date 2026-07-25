@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * CompareBar — sticky bottom bar shown when ≥1 provider is selected for
@@ -8,53 +8,51 @@
  * (only on the vitrine route). Clicking "Comparar" opens the CompareModal.
  */
 
-import * as React from "react"
-import { GitCompare, X, Trash2, ArrowRight } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import * as React from "react";
+import { GitCompare, X, Trash2, ArrowRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
-import { cn } from "@/lib/utils"
-import { useCompareStore, MAX_COMPARE } from "@/store"
+import { cn } from "@/lib/utils";
+import { useCompareStore, MAX_COMPARE } from "@/store";
 
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function CompareBar() {
-  const ids = useCompareStore((s) => s.ids)
-  const clear = useCompareStore((s) => s.clear)
-  const remove = useCompareStore((s) => s.remove)
-  const openCompare = useCompareStore((s) => s.openCompare)
+  const ids = useCompareStore((s) => s.ids);
+  const clear = useCompareStore((s) => s.clear);
+  const remove = useCompareStore((s) => s.remove);
+  const openCompare = useCompareStore((s) => s.openCompare);
 
   // Resolve names/avatars from the DOM via data-attributes on cards.
   // Each ProviderCard sets `data-compare-name` and `data-compare-avatar`
   // on the card root, so the bar can show provider chips without fetching.
   const [providerInfo, setProviderInfo] = React.useState<
     { id: string; name: string; avatarUrl?: string | null }[]
-  >([])
+  >([]);
 
   React.useEffect(() => {
     if (ids.length === 0) {
-      setProviderInfo([])
-      return
+      setProviderInfo([]);
+      return;
     }
-    const found: { id: string; name: string; avatarUrl?: string | null }[] = []
+    const found: { id: string; name: string; avatarUrl?: string | null }[] = [];
     for (const id of ids) {
-      const el = document.querySelector<HTMLElement>(
-        `[data-provider-id="${id}"]`,
-      )
+      const el = document.querySelector<HTMLElement>(`[data-provider-id="${id}"]`);
       if (el) {
         found.push({
           id,
           name: el.dataset.compareName || "Prestador",
           avatarUrl: el.dataset.compareAvatar || null,
-        })
+        });
       } else {
-        found.push({ id, name: "Prestador", avatarUrl: null })
+        found.push({ id, name: "Prestador", avatarUrl: null });
       }
     }
-    setProviderInfo(found)
-  }, [ids])
+    setProviderInfo(found);
+  }, [ids]);
 
-  const canCompare = ids.length >= 2
+  const canCompare = ids.length >= 2;
 
   return (
     <AnimatePresence>
@@ -79,9 +77,7 @@ export default function CompareBar() {
                 <GitCompare className="size-5" />
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-semibold leading-tight">
-                  Comparar prestadores
-                </p>
+                <p className="text-sm font-semibold leading-tight">Comparar prestadores</p>
                 <p className="text-xs text-muted-foreground">
                   {ids.length} de {MAX_COMPARE} selecionado(s)
                   {!canCompare ? " · selecione mais 1" : ""}
@@ -97,9 +93,7 @@ export default function CompareBar() {
                   className="group flex shrink-0 items-center gap-1.5 rounded-full border bg-muted/40 py-1 pr-1 pl-1.5"
                 >
                   <Avatar className="size-6">
-                    {p.avatarUrl ? (
-                      <AvatarImage src={p.avatarUrl} alt={p.name} />
-                    ) : null}
+                    {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
                     <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
                       {p.name
                         .split(" ")
@@ -109,9 +103,7 @@ export default function CompareBar() {
                         .toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="max-w-[8rem] truncate text-xs font-medium">
-                    {p.name}
-                  </span>
+                  <span className="max-w-[8rem] truncate text-xs font-medium">{p.name}</span>
                   <button
                     type="button"
                     onClick={() => remove(p.id)}
@@ -150,5 +142,5 @@ export default function CompareBar() {
         </motion.div>
       ) : null}
     </AnimatePresence>
-  )
+  );
 }

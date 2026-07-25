@@ -1,32 +1,26 @@
-"use client"
+"use client";
 
-import { create } from "zustand"
-import { persist, createJSONStorage } from "zustand/middleware"
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 
-export type GeoStatus =
-  | "idle"
-  | "locating"
-  | "geocoding"
-  | "ready"
-  | "error"
-  | "denied"
+export type GeoStatus = "idle" | "locating" | "geocoding" | "ready" | "error" | "denied";
 
 export type GeoState = {
-  lat: number | null
-  lng: number | null
-  address: string | null
-  cep: string | null
-  district: string | null
-  city: string | null
-  state: string | null
-  status: GeoStatus
-  error: string | null
+  lat: number | null;
+  lng: number | null;
+  address: string | null;
+  cep: string | null;
+  district: string | null;
+  city: string | null;
+  state: string | null;
+  status: GeoStatus;
+  error: string | null;
 
-  setFromGPS: () => Promise<void>
-  setFromCoords: (lat: number, lng: number, address?: string) => void
-  setFromCEP: (cep: string) => Promise<void>
-  clear: () => void
-}
+  setFromGPS: () => Promise<void>;
+  setFromCoords: (lat: number, lng: number, address?: string) => void;
+  setFromCEP: (cep: string) => Promise<void>;
+  clear: () => void;
+};
 
 export const useGeoStore = create<GeoState>()(
   persist(
@@ -46,10 +40,10 @@ export const useGeoStore = create<GeoState>()(
           set({
             status: "error",
             error: "Geolocalização não suportada neste dispositivo.",
-          })
-          return
+          });
+          return;
         }
-        set({ status: "locating", error: null })
+        set({ status: "locating", error: null });
         return new Promise<void>((resolve) => {
           navigator.geolocation.getCurrentPosition(
             (pos) => {
@@ -58,8 +52,8 @@ export const useGeoStore = create<GeoState>()(
                 lng: pos.coords.longitude,
                 status: "ready",
                 error: null,
-              })
-              resolve()
+              });
+              resolve();
             },
             (err) => {
               const message =
@@ -69,13 +63,13 @@ export const useGeoStore = create<GeoState>()(
                     ? "Posição indisponível."
                     : err.code === err.TIMEOUT
                       ? "Tempo esgotado ao obter localização."
-                      : "Erro ao obter localização."
-              set({ status: "denied", error: message })
-              resolve()
+                      : "Erro ao obter localização.";
+              set({ status: "denied", error: message });
+              resolve();
             },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
-          )
-        })
+          );
+        });
       },
 
       setFromCoords: (lat, lng, address) => {
@@ -85,23 +79,21 @@ export const useGeoStore = create<GeoState>()(
           address: address ?? null,
           status: "ready",
           error: null,
-        })
+        });
       },
 
       setFromCEP: async (cep) => {
-        set({ status: "geocoding", error: null })
+        set({ status: "geocoding", error: null });
         try {
-          const clean = cep.replace(/\D/g, "")
-          const res = await fetch(
-            `/api/geo/cep?cep=${encodeURIComponent(clean)}`,
-          )
-          const data = await res.json()
+          const clean = cep.replace(/\D/g, "");
+          const res = await fetch(`/api/geo/cep?cep=${encodeURIComponent(clean)}`);
+          const data = await res.json();
           if (!res.ok || !data?.cep) {
             set({
               status: "error",
               error: data?.error || "CEP não encontrado.",
-            })
-            return
+            });
+            return;
           }
           set({
             cep: data.cep,
@@ -111,12 +103,12 @@ export const useGeoStore = create<GeoState>()(
             state: data.state ?? null,
             status: "ready",
             error: null,
-          })
+          });
         } catch {
           set({
             status: "error",
             error: "Erro de rede ao buscar CEP.",
-          })
+          });
         }
       },
 
@@ -148,4 +140,4 @@ export const useGeoStore = create<GeoState>()(
       }),
     },
   ),
-)
+);

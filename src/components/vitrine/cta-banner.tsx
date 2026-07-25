@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * CtaBanner — conversion-focused call-to-action section.
@@ -16,8 +16,8 @@
  *  H10 – Help: "O que vem depois?" mini-steps with animated connector, FAQ link
  */
 
-import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import * as React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   Wrench,
@@ -36,44 +36,40 @@ import {
   XCircle,
   Quote,
   Headset,
-} from "lucide-react"
+} from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
-import { useAuthStore, useUIStore } from "@/store"
-import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button";
+import { useScrollReveal, useCountUp } from "@/hooks/use-animation";
+import { useAuthStore, useUIStore } from "@/store";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type PublicStats = {
-  providers: number
-  services: number
-  reviews: number
-  completedBookings: number
-  avgRating: number
-  totalUsers: number
-  recentSignups24h: number
-}
+  providers: number;
+  services: number;
+  reviews: number;
+  completedBookings: number;
+  avgRating: number;
+  totalUsers: number;
+  recentSignups24h: number;
+};
 
-type VisitorTab = "client" | "provider"
+type VisitorTab = "client" | "provider";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const CLIENT_BENEFITS = [
-  "Cadastro gratuito",
-  "Sem taxa de serviço",
-  "Orçamento sem compromisso",
-]
+const CLIENT_BENEFITS = ["Cadastro gratuito", "Sem taxa de serviço", "Orçamento sem compromisso"];
 
 const PROVIDER_BENEFITS = [
   "Receba orçamentos qualificados",
   "Gestão de agenda integrada",
   "Pagamento garantido",
-]
+];
 
 const SIGNUP_STEPS = [
   {
@@ -91,25 +87,26 @@ const SIGNUP_STEPS = [
     label: "Agende com confiança",
     time: "5 min",
   },
-] as const
+] as const;
 
 const GUARANTEE_BADGES = [
   { icon: XCircle, label: "Sem compromisso" },
   { icon: Clock, label: "Cancele quando quiser" },
   { icon: Headset, label: "Suporte 24h" },
-] as const
+] as const;
 
 const TRUST_SIGNS = [
   { icon: XCircle, label: "Sem compromisso" },
   { icon: Clock, label: "Cancele quando quiser" },
   { icon: CreditCard, label: "Pagamento protegido" },
-] as const
+] as const;
 
 const TESTIMONIAL = {
-  quote: "Encontrei um encanador em 10 minutos, paguei menos do que esperava e ainda pude avaliar o serviço. Recomendo demais!",
+  quote:
+    "Encontrei um encanador em 10 minutos, paguei menos do que esperava e ainda pude avaliar o serviço. Recomendo demais!",
   author: "Ana P.",
   role: "Cliente, São Paulo",
-}
+};
 
 const FLOATING_MICRO = [
   { type: "star" as const, x: "5%", y: "8%", size: 12, delay: 0, duration: 5 },
@@ -120,7 +117,7 @@ const FLOATING_MICRO = [
   { type: "check" as const, x: "25%", y: "55%", size: 8, delay: 1.2, duration: 6 },
   { type: "dot" as const, x: "55%", y: "90%", size: 10, delay: 1.8, duration: 5 },
   { type: "star" as const, x: "45%", y: "5%", size: 8, delay: 0.3, duration: 6.5 },
-] as const
+] as const;
 
 // ---------------------------------------------------------------------------
 // Avatar stack for social proof
@@ -132,7 +129,7 @@ const AVATAR_DATA = [
   { initials: "JS", color: "bg-amber-500" },
   { initials: "PF", color: "bg-rose-500" },
   { initials: "CM", color: "bg-cyan-500" },
-]
+];
 
 function AvatarStack() {
   return (
@@ -157,7 +154,7 @@ function AvatarStack() {
         +5
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -172,12 +169,12 @@ function FloatingMicro({
   delay,
   duration,
 }: {
-  type: "star" | "check" | "dot"
-  x: string
-  y: string
-  size: number
-  delay: number
-  duration: number
+  type: "star" | "check" | "dot";
+  x: string;
+  y: string;
+  size: number;
+  delay: number;
+  duration: number;
 }) {
   return (
     <motion.div
@@ -200,19 +197,19 @@ function FloatingMicro({
       }}
     >
       {type === "star" && (
-        <Star style={{ width: size, height: size }} className="fill-amber-300/30 text-amber-300/40" />
+        <Star
+          style={{ width: size, height: size }}
+          className="fill-amber-300/30 text-amber-300/40"
+        />
       )}
       {type === "check" && (
         <CheckCircle2 style={{ width: size, height: size }} className="text-emerald-300/30" />
       )}
       {type === "dot" && (
-        <div
-          style={{ width: size, height: size }}
-          className="rounded-full bg-white/20"
-        />
+        <div style={{ width: size, height: size }} className="rounded-full bg-white/20" />
       )}
     </motion.div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +228,12 @@ function MeshBlobs() {
           x: [0, 15, -10, 5],
           y: [0, -10, 8, -5],
         }}
-        transition={{ duration: 8, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1] }}
+        transition={{
+          duration: 8,
+          repeat: Infinity,
+          repeatType: "reverse",
+          ease: [0.42, 0, 0.58, 1],
+        }}
       />
       {/* Secondary blob — bottom left */}
       <motion.div
@@ -242,7 +244,13 @@ function MeshBlobs() {
           x: [0, -12, 8, -5],
           y: [0, 10, -8, 5],
         }}
-        transition={{ duration: 10, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1], delay: 1 }}
+        transition={{
+          duration: 10,
+          repeat: Infinity,
+          repeatType: "reverse",
+          ease: [0.42, 0, 0.58, 1],
+          delay: 1,
+        }}
       />
       {/* Tertiary blob — center accent */}
       <motion.div
@@ -253,10 +261,16 @@ function MeshBlobs() {
           x: [0, -20, 10, -8],
           y: [0, 8, -12, 6],
         }}
-        transition={{ duration: 12, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1], delay: 2 }}
+        transition={{
+          duration: 12,
+          repeat: Infinity,
+          repeatType: "reverse",
+          ease: [0.42, 0, 0.58, 1],
+          delay: 2,
+        }}
       />
     </>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -287,7 +301,7 @@ function PulsingGlow({ children }: { children: React.ReactNode }) {
       />
       {children}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -295,7 +309,7 @@ function PulsingGlow({ children }: { children: React.ReactNode }) {
 // ---------------------------------------------------------------------------
 
 function LiveCounter({ count }: { count: number }) {
-  const { ref, value } = useCountUp(count, { duration: 1500 })
+  const { ref, value } = useCountUp(count, { duration: 1500 });
   return (
     <motion.span
       initial={{ opacity: 0, scale: 0.8 }}
@@ -308,7 +322,7 @@ function LiveCounter({ count }: { count: number }) {
       </span>
       <span ref={ref}>{value}</span> pessoas se cadastraram hoje
     </motion.span>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -330,7 +344,9 @@ function HandshakeIllustration() {
         {/* Body */}
         <div className="mx-auto mt-1 h-14 w-10 rounded-t-full bg-gradient-to-b from-emerald-300/80 to-emerald-400/60" />
         {/* Label */}
-        <span className="mt-1 block text-center text-[9px] font-semibold text-white/80">Cliente</span>
+        <span className="mt-1 block text-center text-[9px] font-semibold text-white/80">
+          Cliente
+        </span>
       </motion.div>
 
       {/* Abstract person 2 — provider */}
@@ -349,7 +365,9 @@ function HandshakeIllustration() {
           <Wrench className="size-3 text-white" />
         </div>
         {/* Label */}
-        <span className="mt-1 block text-center text-[9px] font-semibold text-white/80">Prestador</span>
+        <span className="mt-1 block text-center text-[9px] font-semibold text-white/80">
+          Prestador
+        </span>
       </motion.div>
 
       {/* Handshake in the middle — two overlapping circles */}
@@ -411,7 +429,7 @@ function HandshakeIllustration() {
         <ShieldCheck className="size-5 text-white/20" />
       </motion.div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -419,25 +437,27 @@ function HandshakeIllustration() {
 // ---------------------------------------------------------------------------
 
 function usePublicStats() {
-  const [stats, setStats] = React.useState<PublicStats | null>(null)
+  const [stats, setStats] = React.useState<PublicStats | null>(null);
 
   React.useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/stats/public")
-        if (!res.ok) return
-        const data: PublicStats = await res.json()
-        if (!cancelled) setStats(data)
+        const res = await fetch("/api/stats/public");
+        if (!res.ok) return;
+        const data: PublicStats = await res.json();
+        if (!cancelled) setStats(data);
       } catch {
         // silently ignore — fallback values used
       }
     }
-    load()
-    return () => { cancelled = true }
-  }, [])
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  return stats
+  return stats;
 }
 
 // ---------------------------------------------------------------------------
@@ -445,24 +465,24 @@ function usePublicStats() {
 // ---------------------------------------------------------------------------
 
 export default function CtaBanner() {
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
-  const { status, user } = useAuthStore()
-  const openAuth = useUIStore((s) => s.openAuth)
-  const stats = usePublicStats()
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
+  const { status, user } = useAuthStore();
+  const openAuth = useUIStore((s) => s.openAuth);
+  const stats = usePublicStats();
 
-  const isClient = status === "authenticated" && user?.role === "CLIENT"
-  const isProvider = status === "authenticated" && user?.role === "PROVIDER"
-  const isVisitor = status !== "authenticated"
+  const isClient = status === "authenticated" && user?.role === "CLIENT";
+  const isProvider = status === "authenticated" && user?.role === "PROVIDER";
+  const isVisitor = status !== "authenticated";
 
   // Visitor tab state
-  const [visitorTab, setVisitorTab] = React.useState<VisitorTab>("client")
+  const [visitorTab, setVisitorTab] = React.useState<VisitorTab>("client");
 
   // Animated count for totalUsers
-  const totalUsersValue = stats?.totalUsers ?? 527
+  const totalUsersValue = stats?.totalUsers ?? 527;
   const { ref: countRef, value: displayedUsers } = useCountUp(totalUsersValue, {
     duration: 2000,
     startOnView: true,
-  })
+  });
 
   // Derive benefits and CTAs based on active tab (for visitors) or auth role
   const activeBenefits = isVisitor
@@ -471,7 +491,7 @@ export default function CtaBanner() {
       : PROVIDER_BENEFITS
     : isProvider
       ? PROVIDER_BENEFITS
-      : CLIENT_BENEFITS
+      : CLIENT_BENEFITS;
 
   return (
     <section className="relative isolate overflow-hidden bg-background py-16 sm:py-20">
@@ -523,8 +543,7 @@ export default function CtaBanner() {
                     : "Pronto para grow no seu negócio?")}
                 {isClient && "Encontre o serviço que você precisa"}
                 {isProvider && "Comece a receber orçamentos hoje"}
-                {!isVisitor && !isClient && !isProvider &&
-                  "Pronto para começar?"}
+                {!isVisitor && !isClient && !isProvider && "Pronto para começar?"}
               </h2>
 
               <p className="mt-3 max-w-xl text-pretty text-emerald-50/90">
@@ -584,7 +603,7 @@ export default function CtaBanner() {
               <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2">
                 <AnimatePresence mode="wait">
                   <motion.div
-                    key={isVisitor ? visitorTab : (isProvider ? "provider" : "client")}
+                    key={isVisitor ? visitorTab : isProvider ? "provider" : "client"}
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -6 }}
@@ -617,10 +636,7 @@ export default function CtaBanner() {
                         <Button
                           size="lg"
                           onClick={() =>
-                            openAuth(
-                              "register",
-                              visitorTab === "provider" ? "PROVIDER" : "CLIENT",
-                            )
+                            openAuth("register", visitorTab === "provider" ? "PROVIDER" : "CLIENT")
                           }
                           className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg transition-shadow hover:bg-emerald-50 hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-emerald-500/30"
                         >
@@ -629,7 +645,12 @@ export default function CtaBanner() {
                             : "Cadastrar como prestador"}
                           <motion.span
                             animate={{ x: [0, 4, 0] }}
-                            transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1] }}
+                            transition={{
+                              duration: 1.5,
+                              repeat: Infinity,
+                              repeatType: "reverse",
+                              ease: [0.42, 0, 0.58, 1],
+                            }}
                           >
                             <ArrowRight className="size-4" />
                           </motion.span>
@@ -685,7 +706,7 @@ export default function CtaBanner() {
                           if (typeof window !== "undefined") {
                             document
                               .getElementById("vitrine-resultados")
-                              ?.scrollIntoView({ behavior: "smooth" })
+                              ?.scrollIntoView({ behavior: "smooth" });
                           }
                         }}
                         className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg transition-shadow hover:bg-emerald-50 hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-emerald-500/30"
@@ -694,7 +715,12 @@ export default function CtaBanner() {
                         Buscar prestadores
                         <motion.span
                           animate={{ x: [0, 4, 0] }}
-                          transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1] }}
+                          transition={{
+                            duration: 1.5,
+                            repeat: Infinity,
+                            repeatType: "reverse",
+                            ease: [0.42, 0, 0.58, 1],
+                          }}
                         >
                           <ArrowRight className="size-4" />
                         </motion.span>
@@ -717,7 +743,12 @@ export default function CtaBanner() {
                         Ir para meu painel
                         <motion.span
                           animate={{ x: [0, 4, 0] }}
-                          transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1] }}
+                          transition={{
+                            duration: 1.5,
+                            repeat: Infinity,
+                            repeatType: "reverse",
+                            ease: [0.42, 0, 0.58, 1],
+                          }}
                         >
                           <ArrowRight className="size-4" />
                         </motion.span>
@@ -770,9 +801,7 @@ export default function CtaBanner() {
                     <p className="text-sm font-medium text-white">
                       <span ref={countRef}>{displayedUsers}</span>+ cadastrados
                     </p>
-                    <p className="text-[11px] text-emerald-100/70">
-                      na plataforma
-                    </p>
+                    <p className="text-[11px] text-emerald-100/70">na plataforma</p>
                   </div>
                   {stats && stats.avgRating > 0 && (
                     <div className="ml-2 flex items-center gap-1 text-xs text-emerald-200">
@@ -792,9 +821,7 @@ export default function CtaBanner() {
                 transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
                 className="rounded-2xl bg-white/[0.08] p-6 backdrop-blur-xl ring-1 ring-white/[0.12] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]"
               >
-                <h3 className="text-sm font-semibold text-emerald-100">
-                  O que vem depois?
-                </h3>
+                <h3 className="text-sm font-semibold text-emerald-100">O que vem depois?</h3>
                 <p className="mt-1 text-xs text-emerald-100/60">
                   Três passos simples e você estará agendando
                 </p>
@@ -808,13 +835,19 @@ export default function CtaBanner() {
                     preserveAspectRatio="none"
                   >
                     <motion.line
-                      x1="20" y1="20" x2="20" y2="180"
+                      x1="20"
+                      y1="20"
+                      x2="20"
+                      y2="180"
                       stroke="rgba(255,255,255,0.15)"
                       strokeWidth="2"
                       strokeDasharray="4 3"
                     />
                     <motion.line
-                      x1="20" y1="20" x2="20" y2="180"
+                      x1="20"
+                      y1="20"
+                      x2="20"
+                      y2="180"
                       stroke="rgba(16,185,129,0.6)"
                       strokeWidth="2"
                       strokeLinecap="round"
@@ -826,7 +859,6 @@ export default function CtaBanner() {
 
                   <div className="space-y-5">
                     {SIGNUP_STEPS.map((step, i) => {
-                      const StepIcon = step.icon
                       return (
                         <motion.div
                           key={step.label}
@@ -843,15 +875,11 @@ export default function CtaBanner() {
                             <span className="text-xs font-bold text-white">{i + 1}</span>
                           </div>
                           <div className="pt-1">
-                            <p className="text-sm font-medium text-white">
-                              {step.label}
-                            </p>
-                            <p className="mt-0.5 text-xs text-emerald-100/60">
-                              ~{step.time}
-                            </p>
+                            <p className="text-sm font-medium text-white">{step.label}</p>
+                            <p className="mt-0.5 text-xs text-emerald-100/60">~{step.time}</p>
                           </div>
                         </motion.div>
-                      )
+                      );
                     })}
                   </div>
                 </div>
@@ -859,7 +887,7 @@ export default function CtaBanner() {
                 {/* Guarantee badges row (H5) */}
                 <div className="mt-5 flex items-center justify-center gap-3 border-t border-white/10 pt-4">
                   {GUARANTEE_BADGES.map((badge) => {
-                    const BadgeIcon = badge.icon
+                    const BadgeIcon = badge.icon;
                     return (
                       <span
                         key={badge.label}
@@ -868,7 +896,7 @@ export default function CtaBanner() {
                         <BadgeIcon className="size-3 text-emerald-300" />
                         {badge.label}
                       </span>
-                    )
+                    );
                   })}
                 </div>
 
@@ -922,7 +950,7 @@ export default function CtaBanner() {
             className="flex flex-wrap items-center justify-center gap-4 border-t border-white/10 px-6 py-4 sm:gap-6 sm:px-12"
           >
             {TRUST_SIGNS.map((sign) => {
-              const SignIcon = sign.icon
+              const SignIcon = sign.icon;
               return (
                 <span
                   key={sign.label}
@@ -931,11 +959,11 @@ export default function CtaBanner() {
                   <SignIcon className="size-3.5 text-emerald-300" />
                   {sign.label}
                 </span>
-              )
+              );
             })}
           </motion.div>
         </motion.div>
       </div>
     </section>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * Topbar — completely redesigned sticky header for the Severinno vitrine.
@@ -25,11 +25,13 @@
  *   H4 — Consistent animations and colors
  *   H6 — Recognizable icons and badges
  *   H7 — Mini search on scroll = efficiency for power users
+ *
+ * Animations are CSS-only (no framer-motion) to keep the initial chunk small.
  */
 
-import * as React from "react"
-import { useTheme } from "next-themes"
-import { motion, AnimatePresence } from "framer-motion"
+import * as React from "react";
+import { useSyncExternalStore } from "react";
+import { useTheme } from "next-themes";
 import {
   MapPin,
   LocateFixed,
@@ -47,18 +49,18 @@ import {
   Bell,
   Sparkles,
   ShieldCheck,
-} from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
-import { cn } from "@/lib/utils"
-import { useAuthStore, useGeoStore, useUIStore, useViewStore, useCompareStore } from "@/store"
-import { ROLE_LABELS, type UserRole } from "@/lib/constants"
-import type { Category } from "@/lib/api"
-import { apiGet } from "@/lib/api"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { cn } from "@/lib/utils";
+import { useAuthStore, useGeoStore, useUIStore, useViewStore, useCompareStore } from "@/store";
+import { ROLE_LABELS, type UserRole } from "@/lib/constants";
+import type { Category } from "@/lib/api";
+import { apiGet } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,19 +68,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-import {
-  Popover,
-  PopoverContent,
-  PopoverAnchor,
-} from "@/components/ui/popover"
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
 import {
   Command,
   CommandEmpty,
@@ -86,28 +78,27 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/command";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type TopbarProps = {
-  query: string
-  onQueryChange: (q: string) => void
-  categories: Category[]
-  activeCategoryId?: string | null
-  onCategorySelect?: (id: string | null) => void
-  onSearchSubmit?: () => void
-}
+  query: string;
+  onQueryChange: (q: string) => void;
+  categories: Category[];
+  activeCategoryId?: string | null;
+  onCategorySelect?: (id: string | null) => void;
+  onSearchSubmit?: () => void;
+};
 
 const DASHBOARD_VIEW: Record<UserRole, string> = {
   CLIENT: "client.dashboard",
   PROVIDER: "provider.dashboard",
   ADMIN: "admin.dashboard",
-}
+};
 
 // ---------------------------------------------------------------------------
 // Notification type for the bell
@@ -115,60 +106,65 @@ const DASHBOARD_VIEW: Record<UserRole, string> = {
 
 type NotificationsResponse = {
   items: Array<{
-    id: string
-    type: string
-    title: string
-    message: string
-    read: boolean
-    createdAt: string
-  }>
-  total: number
-  unreadCount: number
-}
+    id: string;
+    type: string;
+    title: string;
+    message: string;
+    read: boolean;
+    createdAt: string;
+  }>;
+  total: number;
+  unreadCount: number;
+};
 
 // ---------------------------------------------------------------------------
 // Providers count response for the welcome toast
 // ---------------------------------------------------------------------------
 
 type ProvidersCountResponse = {
-  total: number
-}
+  total: number;
+};
 
 // ---------------------------------------------------------------------------
 // Welcome Toast — slides in from top on first visit (H1: system status)
 // ---------------------------------------------------------------------------
 
-const WELCOME_TOAST_KEY = "severinno-welcome-seen"
+const WELCOME_TOAST_KEY = "severinno-welcome-seen";
 
 function WelcomeToast({ onDismiss }: { onDismiss: () => void }) {
-  const [providerCount, setProviderCount] = React.useState<number | null>(null)
+  const [providerCount, setProviderCount] = React.useState<number | null>(null);
+  const [exiting, setExiting] = React.useState(false);
+
+  const handleDismiss = React.useCallback(() => {
+    setExiting(true);
+    setTimeout(() => onDismiss(), 250); // matches toast-exit duration
+  }, [onDismiss]);
 
   React.useEffect(() => {
     apiGet<ProvidersCountResponse>("/api/providers", { limit: 1 })
       .then((data) => {
         if (data && typeof data.total === "number") {
-          setProviderCount(data.total)
+          setProviderCount(data.total);
         }
       })
       .catch(() => {
         // Fallback count
-        setProviderCount(120)
-      })
-  }, [])
+        setProviderCount(120);
+      });
+  }, []);
 
-  // Auto-dismiss after 8 seconds
+  // Auto-dismiss after 8 seconds — handleDismiss is defined above, captured fresh
   React.useEffect(() => {
-    const t = window.setTimeout(onDismiss, 8000)
-    return () => window.clearTimeout(t)
-  }, [onDismiss])
+    const t = window.setTimeout(() => handleDismiss(), 8000);
+    return () => window.clearTimeout(t);
+  }, [handleDismiss]);
 
   return (
-    <motion.div
-      initial={{ y: -100, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: -100, opacity: 0 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="fixed left-1/2 top-4 z-[60] -translate-x-1/2"
+    <div
+      className={cn(
+        "fixed left-1/2 top-4 z-[60] -translate-x-1/2",
+        exiting ? "toast-exit" : "toast-enter",
+      )}
     >
       <div className="flex items-center gap-3 rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-3 shadow-lg shadow-emerald-500/10 dark:border-emerald-800/40 dark:from-emerald-950/90 dark:to-teal-950/90 dark:shadow-emerald-500/5">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-md shadow-emerald-500/20">
@@ -186,15 +182,15 @@ function WelcomeToast({ onDismiss }: { onDismiss: () => void }) {
         </div>
         <button
           type="button"
-          onClick={onDismiss}
+          onClick={handleDismiss}
           className="ml-2 flex size-6 shrink-0 items-center justify-center rounded-full text-emerald-500 transition-colors hover:bg-emerald-200/50 hover:text-emerald-700 dark:hover:bg-emerald-800/50 dark:hover:text-emerald-300"
           aria-label="Dispensar notificação"
         >
           <X className="size-3.5" />
         </button>
       </div>
-    </motion.div>
-  )
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -205,58 +201,62 @@ export default function Topbar({
   query,
   onQueryChange,
   categories,
-  activeCategoryId,
+  activeCategoryId: _activeCategoryId,
   onCategorySelect,
   onSearchSubmit,
 }: TopbarProps) {
-  const { user, status, logout } = useAuthStore()
-  const { city, status: geoStatus, setFromGPS } = useGeoStore()
-  const openAuth = useUIStore((s) => s.openAuth)
-  const navigate = useViewStore((s) => s.navigate)
-  const compareCount = useCompareStore((s) => s.ids.length)
-  const openCompare = useCompareStore((s) => s.openCompare)
-  const { resolvedTheme, setTheme } = useTheme()
-  const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => setMounted(true), [])
+  const { user, status, logout } = useAuthStore();
+  const { city, status: geoStatus, setFromGPS } = useGeoStore();
+  const openAuth = useUIStore((s) => s.openAuth);
+  const navigate = useViewStore((s) => s.navigate);
+  const compareCount = useCompareStore((s) => s.ids.length);
+  const openCompare = useCompareStore((s) => s.openCompare);
+  const { resolvedTheme, setTheme } = useTheme();
+  // Hydration guard — useSyncExternalStore evita o padrão useEffect + setState
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
-  const [mobileOpen, setMobileOpen] = React.useState(false)
-  const [searchOpen, setSearchOpen] = React.useState(false)
-  const [searchFocused, setSearchFocused] = React.useState(false)
-  const [locating, setLocating] = React.useState(false)
-  const [scrolled, setScrolled] = React.useState(false)
-  const [pastHero, setPastHero] = React.useState(false)
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchFocused, setSearchFocused] = React.useState(false);
+  const [locating, setLocating] = React.useState(false);
+  const [scrolled, setScrolled] = React.useState(false);
+  const [pastHero, setPastHero] = React.useState(false);
 
   // ── Welcome toast state (H1: system status) ────────────────────────────
-  const [showWelcome, setShowWelcome] = React.useState(false)
+  const [showWelcome, setShowWelcome] = React.useState(false);
 
   React.useEffect(() => {
-    if (typeof window === "undefined") return
-    const seen = localStorage.getItem(WELCOME_TOAST_KEY)
+    if (typeof window === "undefined") return;
+    const seen = localStorage.getItem(WELCOME_TOAST_KEY);
     if (!seen) {
       // Small delay so the page loads first
-      const t = window.setTimeout(() => setShowWelcome(true), 1500)
-      return () => window.clearTimeout(t)
+      const t = window.setTimeout(() => setShowWelcome(true), 1500);
+      return () => window.clearTimeout(t);
     }
-  }, [])
+  }, []);
 
   const dismissWelcome = React.useCallback(() => {
-    setShowWelcome(false)
+    setShowWelcome(false);
     if (typeof window !== "undefined") {
-      localStorage.setItem(WELCOME_TOAST_KEY, "1")
+      localStorage.setItem(WELCOME_TOAST_KEY, "1");
     }
-  }, [])
+  }, []);
 
   // ── Track scroll position ───────────────────────────────────────────────
   React.useEffect(() => {
     const handleScroll = () => {
-      const y = window.scrollY
-      setScrolled(y > 20)
+      const y = window.scrollY;
+      setScrolled(y > 20);
       // Consider "past hero" when scrolled more than ~600px (rough hero height)
-      setPastHero(y > 500)
-    }
-    window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
+      setPastHero(y > 500);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Notifications query (only for authenticated users)
   const { data: notificationsData } = useQuery({
@@ -265,10 +265,10 @@ export default function Topbar({
     enabled: status === "authenticated" && !!user,
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
-  })
-  const unreadCount = notificationsData?.unreadCount ?? 0
+  });
+  const unreadCount = notificationsData?.unreadCount ?? 0;
 
-  const isAuth = status === "authenticated" && !!user
+  const isAuth = status === "authenticated" && !!user;
   const initials = user?.name
     ? user.name
         .split(" ")
@@ -276,37 +276,35 @@ export default function Topbar({
         .slice(0, 2)
         .join("")
         .toUpperCase()
-    : "?"
+    : "?";
 
   const handleLocate = React.useCallback(async () => {
-    setLocating(true)
+    setLocating(true);
     try {
-      await setFromGPS()
+      await setFromGPS();
     } finally {
-      setLocating(false)
+      setLocating(false);
     }
-  }, [setFromGPS])
+  }, [setFromGPS]);
 
   const triggerSearch = React.useCallback(() => {
-    setSearchOpen(false)
-    setMobileOpen(false)
-    onSearchSubmit?.()
-  }, [onSearchSubmit])
+    setSearchOpen(false);
+    setMobileOpen(false);
+    onSearchSubmit?.();
+  }, [onSearchSubmit]);
 
   const onSelectCategory = React.useCallback(
     (id: string | null) => {
-      setMobileOpen(false)
-      onCategorySelect?.(id)
+      setMobileOpen(false);
+      onCategorySelect?.(id);
     },
     [onCategorySelect],
-  )
+  );
 
   return (
     <>
       {/* ── Welcome Toast (H1: system status) ──────────────────────────── */}
-      <AnimatePresence>
-        {showWelcome && <WelcomeToast onDismiss={dismissWelcome} />}
-      </AnimatePresence>
+      {showWelcome && <WelcomeToast onDismiss={dismissWelcome} />}
 
       <header
         className={cn(
@@ -316,16 +314,15 @@ export default function Topbar({
             : "border-b border-transparent bg-background/70 backdrop-blur-md supports-[backdrop-filter]:bg-background/55",
         )}
       >
-        {/* ── Gradient bottom border on scroll (2px emerald-400 → teal-500) ── */}
-        <motion.div
+        {/* ── Gradient bottom border on scroll (CSS transition, no framer-motion) ── */}
+        <div
           className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-400 to-teal-500"
-          initial={{ scaleX: 0, opacity: 0 }}
-          animate={{
-            scaleX: scrolled ? 1 : 0,
+          style={{
+            transform: `scaleX(${scrolled ? 1 : 0})`,
             opacity: scrolled ? 1 : 0,
+            transformOrigin: "left",
+            transition: "transform 0.4s ease-out, opacity 0.4s ease-out",
           }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-          style={{ transformOrigin: "left" }}
         />
 
         {/* ── Main bar ─────────────────────────────────────────────────────── */}
@@ -342,221 +339,201 @@ export default function Topbar({
             className="group flex shrink-0 items-center gap-2.5 rounded-xl px-1.5 py-1.5 outline-none transition-all hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             aria-label="Severinno — página inicial"
           >
-            <motion.span
-              className="relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/25 transition-shadow duration-300 group-hover:shadow-lg group-hover:shadow-primary/30"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+            <span
+              className="relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/25 transition-all duration-300 hover:scale-110 active:scale-95 group-hover:shadow-lg group-hover:shadow-primary/30"
             >
-              <motion.div
-                className="flex items-center justify-center"
-                whileHover={{
-                  y: [0, -3, 0],
-                  transition: {
-                    duration: 0.5,
-                    repeat: Infinity,
-                    repeatType: "loop",
-                    ease: "easeInOut",
-                  },
-                }}
-              >
+              <div className="flex items-center justify-center logo-pin-bounce-hover">
                 <MapPin className="size-5 text-white" />
-              </motion.div>
+              </div>
               <span className="absolute -bottom-0.5 -right-0.5 flex size-3 items-center justify-center rounded-full bg-emerald-400 shadow-sm">
                 <Sparkles className="size-2 text-white" />
               </span>
-            </motion.span>
+            </span>
             <span className="text-xl font-extrabold tracking-tight">
               <span className="bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
                 Sever
               </span>
               <span className="text-foreground">inno</span>
             </span>
-            {/* "Verificado" shield badge (H6) */}
-            <motion.span
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.5, duration: 0.3 }}
-              className="hidden items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 dark:from-emerald-900/40 dark:to-teal-900/40 sm:inline-flex"
+            {/* "Verificado" shield badge (H6) — CSS scale-in with delay */}
+            <span
+              className="scale-in hidden items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 dark:from-emerald-900/40 dark:to-teal-900/40 sm:inline-flex"
+              style={{ animationDelay: "0.5s" }}
             >
               <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
               <span className="text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300">
                 Verificado
               </span>
-            </motion.span>
+            </span>
           </button>
 
           {/* ── Desktop search — full bar or mini bar (H7: efficiency) ──── */}
-          <div className="hidden flex-1 items-center justify-center md:flex">
+          {/*
+            Both search bars are always rendered; we crossfade between them
+            with CSS transitions (replaces AnimatePresence mode="wait").
+          */}
+          <div className="relative hidden flex-1 items-center justify-center md:flex">
             {/* Full search bar — visible when NOT past hero */}
-            <AnimatePresence mode="wait">
-              {!pastHero ? (
-                <motion.div
-                  key="full-search"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="w-full"
-                >
-                  <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-                    <PopoverAnchor asChild>
-                      <div className="relative mx-auto w-full max-w-xl">
-                        <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors duration-200 group-focus-within:text-primary" />
-                        <Input
-                          value={query}
-                          onChange={(e) => onQueryChange(e.target.value)}
-                          onFocus={() => {
-                            setSearchFocused(true)
-                            if (categories.length > 0) setSearchOpen(true)
-                          }}
-                          onBlur={() => setSearchFocused(false)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault()
-                              triggerSearch()
-                            }
-                          }}
-                          placeholder="Buscar serviço ou prestador…"
-                          className={cn(
-                            "h-11 w-full rounded-2xl border-0 bg-muted/50 pl-11 pr-10 text-sm shadow-none transition-all duration-300",
-                            "placeholder:text-muted-foreground/60",
-                            "hover:bg-muted/70 hover:shadow-sm",
-                            "focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:shadow-md",
-                            searchOpen && "bg-background shadow-md ring-2 ring-primary/20",
-                            searchFocused && "max-w-xl scale-[1.02]",
-                          )}
-                          aria-label="Buscar prestadores"
-                        />
-                        <AnimatePresence>
-                          {query ? (
-                            <motion.button
-                              type="button"
-                              aria-label="Limpar busca"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onQueryChange("")
-                              }}
-                              initial={{ scale: 0, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 0, opacity: 0 }}
-                              transition={{ duration: 0.15 }}
-                              className="absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            >
-                              <X className="size-3.5" />
-                            </motion.button>
-                          ) : null}
-                        </AnimatePresence>
-                        {/* Search shortcut hint */}
-                        {!query && !searchOpen && (
-                          <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground lg:inline-block">
-                            ⌘K
-                          </kbd>
-                        )}
-                      </div>
-                    </PopoverAnchor>
-                    <PopoverContent
-                      align="center"
-                      className="w-[min(90vw,36rem)] rounded-2xl border-0 p-0 shadow-2xl shadow-primary/5"
-                      onOpenAutoFocus={(e) => e.preventDefault()}
-                    >
-                      <Command shouldFilter={false} className="rounded-2xl">
-                        <CommandInput
-                          placeholder="O que você precisa? Ex.: encanador, pintura…"
-                          value={query}
-                          onValueChange={onQueryChange}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault()
-                              triggerSearch()
-                            }
-                          }}
-                        />
-                        <CommandList>
-                          <CommandEmpty>
-                            <div className="flex flex-col items-center gap-2 py-6 text-center">
-                              <Search className="size-8 text-muted-foreground/40" />
-                              <p className="text-sm text-muted-foreground">
-                                Digite e pressione Enter para buscar.
-                              </p>
-                            </div>
-                          </CommandEmpty>
-                          <CommandGroup heading="Categorias populares">
-                            {categories.slice(0, 6).map((c) => (
-                              <CommandItem
-                                key={c.id}
-                                value={c.id}
-                                onSelect={() => {
-                                  onSelectCategory(c.id)
-                                  setSearchOpen(false)
-                                }}
-                                className="gap-3 rounded-lg"
-                              >
-                                <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                  <Search className="size-3.5" />
-                                </span>
-                                <span className="font-medium">{c.name}</span>
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                          <CommandGroup heading="Sugestões">
-                            <CommandItem
-                              value="__search__"
-                              onSelect={() => triggerSearch()}
-                              className="gap-3 rounded-lg"
-                            >
-                              <span className="flex size-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                <Sparkles className="size-3.5" />
-                              </span>
-                              <span className="font-medium">
-                                Buscar por &ldquo;{query || "todos"}&rdquo;
-                              </span>
-                            </CommandItem>
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="mini-search"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  className="w-full max-w-sm"
-                >
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <div
+              className={cn(
+                "w-full transition-all duration-200",
+                pastHero
+                  ? "opacity-0 absolute inset-0 pointer-events-none"
+                  : "opacity-100 relative",
+              )}
+            >
+              <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+                <PopoverAnchor asChild>
+                  <div className="relative mx-auto w-full max-w-xl">
+                    <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors duration-200 group-focus-within:text-primary" />
                     <Input
                       value={query}
                       onChange={(e) => onQueryChange(e.target.value)}
                       onFocus={() => {
-                        // Scroll back to top to reveal full search if needed
-                        setSearchFocused(true)
+                        setSearchFocused(true);
+                        if (categories.length > 0) setSearchOpen(true);
                       }}
                       onBlur={() => setSearchFocused(false)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
-                          e.preventDefault()
-                          triggerSearch()
+                          e.preventDefault();
+                          triggerSearch();
                         }
                       }}
-                      placeholder="Buscar…"
+                      placeholder="Buscar serviço ou prestador…"
                       className={cn(
-                        "h-9 w-full rounded-xl border-0 bg-muted/50 pl-9 pr-3 text-xs shadow-none transition-all duration-300",
+                        "h-11 w-full rounded-2xl border-0 bg-muted/50 pl-11 pr-10 text-sm shadow-none transition-all duration-300",
                         "placeholder:text-muted-foreground/60",
-                        "hover:bg-muted/70",
-                        "focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:shadow-sm",
-                        searchFocused && "scale-[1.03]",
+                        "hover:bg-muted/70 hover:shadow-sm",
+                        "focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:shadow-md",
+                        searchOpen && "bg-background shadow-md ring-2 ring-primary/20",
+                        searchFocused && "max-w-xl scale-[1.02]",
                       )}
-                      aria-label="Buscar prestadores (compacto)"
+                      aria-label="Buscar prestadores"
                     />
+                    {/* Clear button (CSS scale-in animation) */}
+                    {query && (
+                      <button
+                        type="button"
+                        aria-label="Limpar busca"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onQueryChange("");
+                        }}
+                        className="scale-in absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    )}
+                    {/* Search shortcut hint */}
+                    {!query && !searchOpen && (
+                      <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground lg:inline-block">
+                        ⌘K
+                      </kbd>
+                    )}
                   </div>
-                </motion.div>
+                </PopoverAnchor>
+                <PopoverContent
+                  align="center"
+                  className="w-[min(90vw,36rem)] rounded-2xl border-0 p-0 shadow-2xl shadow-primary/5"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <Command shouldFilter={false} className="rounded-2xl">
+                    <CommandInput
+                      placeholder="O que você precisa? Ex.: encanador, pintura…"
+                      value={query}
+                      onValueChange={onQueryChange}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          triggerSearch();
+                        }
+                      }}
+                    />
+                    <CommandList>
+                      <CommandEmpty>
+                        <div className="flex flex-col items-center gap-2 py-6 text-center">
+                          <Search className="size-8 text-muted-foreground/40" />
+                          <p className="text-sm text-muted-foreground">
+                            Digite e pressione Enter para buscar.
+                          </p>
+                        </div>
+                      </CommandEmpty>
+                      <CommandGroup heading="Categorias populares">
+                        {categories.slice(0, 6).map((c) => (
+                          <CommandItem
+                            key={c.id}
+                            value={c.id}
+                            onSelect={() => {
+                              onSelectCategory(c.id);
+                              setSearchOpen(false);
+                            }}
+                            className="gap-3 rounded-lg"
+                          >
+                            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                              <Search className="size-3.5" />
+                            </span>
+                            <span className="font-medium">{c.name}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                      <CommandGroup heading="Sugestões">
+                        <CommandItem
+                          value="__search__"
+                          onSelect={() => triggerSearch()}
+                          className="gap-3 rounded-lg"
+                        >
+                          <span className="flex size-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+                            <Sparkles className="size-3.5" />
+                          </span>
+                          <span className="font-medium">
+                            Buscar por &ldquo;{query || "todos"}&rdquo;
+                          </span>
+                        </CommandItem>
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Mini search bar — visible when past hero */}
+            <div
+              className={cn(
+                "w-full max-w-sm transition-all duration-200",
+                pastHero
+                  ? "opacity-100 relative"
+                  : "opacity-0 absolute inset-0 pointer-events-none",
               )}
-            </AnimatePresence>
+            >
+              <div className="relative">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => onQueryChange(e.target.value)}
+                  onFocus={() => {
+                    // Scroll back to top to reveal full search if needed
+                    setSearchFocused(true);
+                  }}
+                  onBlur={() => setSearchFocused(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      triggerSearch();
+                    }
+                  }}
+                  placeholder="Buscar…"
+                  className={cn(
+                    "h-9 w-full rounded-xl border-0 bg-muted/50 pl-9 pr-3 text-xs shadow-none transition-all duration-300",
+                    "placeholder:text-muted-foreground/60",
+                    "hover:bg-muted/70",
+                    "focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:shadow-sm",
+                    searchFocused && "scale-[1.03]",
+                  )}
+                  aria-label="Buscar prestadores (compacto)"
+                />
+              </div>
+            </div>
           </div>
 
           {/* ── Location chip ─────────────────────────────────────────────── */}
@@ -588,7 +565,7 @@ export default function Topbar({
 
           {/* ── Auth area (desktop) ───────────────────────────────────────── */}
           <div className="hidden items-center gap-1.5 md:flex">
-            {/* Theme toggle with rotation animation */}
+            {/* Theme toggle with rotation animation (CSS rotate-in) */}
             <Button
               variant="ghost"
               size="icon"
@@ -598,56 +575,42 @@ export default function Topbar({
               title="Alternar tema"
             >
               {mounted ? (
-                <motion.div
-                  key={resolvedTheme}
-                  initial={{ rotate: -90, scale: 0 }}
-                  animate={{ rotate: 0, scale: 1 }}
-                  transition={{ duration: 0.4, type: "spring", stiffness: 200, damping: 15 }}
-                >
+                <div key={resolvedTheme} className="rotate-in">
                   {resolvedTheme === "dark" ? (
                     <Sun className="size-[18px]" />
                   ) : (
                     <Moon className="size-[18px]" />
                   )}
-                </motion.div>
+                </div>
               ) : (
                 <div className="size-[18px]" />
               )}
             </Button>
 
             {/* Compare button with bounce badge */}
-            <AnimatePresence>
-              {compareCount > 0 ? (
-                <motion.div
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            {compareCount > 0 && (
+              <div className="scale-in">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openCompare}
+                  className="h-9 gap-2 rounded-xl border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 shadow-sm transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-md dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300 dark:hover:from-emerald-900/40 dark:hover:text-emerald-200"
+                  aria-label={`Comparar ${compareCount} prestador(es)`}
+                  title={`Comparar ${compareCount} prestador(es)`}
                 >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openCompare}
-                    className="h-9 gap-2 rounded-xl border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 shadow-sm transition-all hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-md dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300 dark:hover:from-emerald-900/40 dark:hover:text-emerald-200"
-                    aria-label={`Comparar ${compareCount} prestador(es)`}
-                    title={`Comparar ${compareCount} prestador(es)`}
+                  <GitCompare className="size-4" />
+                  <span className="text-sm font-medium">Comparar</span>
+                  <span
+                    key={compareCount}
+                    className="badge-bounce ml-0.5 inline-flex"
                   >
-                    <GitCompare className="size-4" />
-                    <span className="text-sm font-medium">Comparar</span>
-                    <motion.span
-                      key={compareCount}
-                      initial={{ scale: 1.5 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                    >
-                      <Badge className="ml-0.5 h-5 min-w-5 justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 px-1.5 text-[10px] font-bold text-white shadow-sm">
-                        {compareCount}
-                      </Badge>
-                    </motion.span>
-                  </Button>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+                    <Badge className="h-5 min-w-5 justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 px-1.5 text-[10px] font-bold text-white shadow-sm">
+                      {compareCount}
+                    </Badge>
+                  </span>
+                </Button>
+              </div>
+            )}
 
             {isAuth ? (
               <>
@@ -662,19 +625,14 @@ export default function Topbar({
                       title="Notificações"
                     >
                       <Bell className="size-[18px] transition-transform duration-200 group-hover:rotate-12" />
-                      <AnimatePresence>
-                        {unreadCount > 0 ? (
-                          <motion.span
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            exit={{ scale: 0 }}
-                            transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                            className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-red-400 text-[9px] font-bold text-white shadow-sm"
-                          >
-                            {unreadCount > 9 ? "9+" : unreadCount}
-                          </motion.span>
-                        ) : null}
-                      </AnimatePresence>
+                      {unreadCount > 0 && (
+                        <span
+                          key={unreadCount}
+                          className="scale-in absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-red-400 text-[9px] font-bold text-white shadow-sm"
+                        >
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
                     </Button>
                   </PopoverAnchor>
                   <PopoverContent
@@ -693,9 +651,7 @@ export default function Topbar({
                       {(notificationsData?.items ?? []).length === 0 ? (
                         <div className="flex flex-col items-center gap-2 py-8 text-center">
                           <Bell className="size-8 text-muted-foreground/30" />
-                          <p className="text-sm text-muted-foreground">
-                            Nenhuma notificação
-                          </p>
+                          <p className="text-sm text-muted-foreground">Nenhuma notificação</p>
                         </div>
                       ) : (
                         <div className="flex flex-col">
@@ -733,8 +689,13 @@ export default function Topbar({
                         size="sm"
                         className="w-full text-xs font-medium text-primary hover:text-primary/80"
                         onClick={() => {
-                          const view = user?.role === "ADMIN" ? "admin.dashboard" : user?.role === "PROVIDER" ? "provider.dashboard" : "client.dashboard"
-                          navigate(view)
+                          const view =
+                            user?.role === "ADMIN"
+                              ? "admin.dashboard"
+                              : user?.role === "PROVIDER"
+                                ? "provider.dashboard"
+                                : "client.dashboard";
+                          navigate(view);
                         }}
                       >
                         Ver todas as notificações
@@ -796,13 +757,8 @@ export default function Topbar({
                       </Avatar>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold">{user?.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {user?.email}
-                        </p>
-                        <Badge
-                          variant="secondary"
-                          className="mt-1 gap-1 text-[10px] font-medium"
-                        >
+                        <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+                        <Badge variant="secondary" className="mt-1 gap-1 text-[10px] font-medium">
                           <ShieldCheck className="size-3" />
                           {user ? ROLE_LABELS[user.role] : ""}
                         </Badge>
@@ -868,54 +824,39 @@ export default function Topbar({
               title="Alternar tema"
             >
               {mounted ? (
-                <motion.div
-                  key={resolvedTheme}
-                  initial={{ rotate: -90, scale: 0 }}
-                  animate={{ rotate: 0, scale: 1 }}
-                  transition={{ duration: 0.4, type: "spring", stiffness: 200, damping: 15 }}
-                >
+                <div key={resolvedTheme} className="rotate-in">
                   {resolvedTheme === "dark" ? (
                     <Sun className="size-5" />
                   ) : (
                     <Moon className="size-5" />
                   )}
-                </motion.div>
+                </div>
               ) : (
                 <div className="size-5" />
               )}
             </Button>
 
             {/* Mobile compare with bounce badge */}
-            <AnimatePresence>
-              {compareCount > 0 ? (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            {compareCount > 0 && (
+              <div className="scale-in">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={openCompare}
+                  className="relative size-9 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+                  aria-label={`Comparar ${compareCount} prestador(es)`}
+                  title={`Comparar ${compareCount} prestador(es)`}
                 >
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={openCompare}
-                    className="relative size-9 rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
-                    aria-label={`Comparar ${compareCount} prestador(es)`}
-                    title={`Comparar ${compareCount} prestador(es)`}
+                  <GitCompare className="size-4" />
+                  <span
+                    key={compareCount}
+                    className="badge-bounce absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-[9px] font-bold text-white shadow-sm"
                   >
-                    <GitCompare className="size-4" />
-                    <motion.span
-                      key={compareCount}
-                      initial={{ scale: 1.5 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                      className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-[9px] font-bold text-white shadow-sm"
-                    >
-                      {compareCount}
-                    </motion.span>
-                  </Button>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+                    {compareCount}
+                  </span>
+                </Button>
+              </div>
+            )}
 
             {/* Mobile location shortcut */}
             <Button
@@ -975,8 +916,8 @@ export default function Topbar({
                   {/* Mobile search */}
                   <form
                     onSubmit={(e) => {
-                      e.preventDefault()
-                      triggerSearch()
+                      e.preventDefault();
+                      triggerSearch();
                     }}
                     className="relative"
                   >
@@ -1019,13 +960,8 @@ export default function Topbar({
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">
-                              {user?.name}
-                            </p>
-                            <Badge
-                              variant="secondary"
-                              className="mt-0.5 gap-1 text-[10px]"
-                            >
+                            <p className="truncate text-sm font-semibold">{user?.name}</p>
+                            <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
                               <ShieldCheck className="size-3" />
                               {user ? ROLE_LABELS[user.role] : ""}
                             </Badge>
@@ -1034,8 +970,8 @@ export default function Topbar({
                         <Button
                           variant="outline"
                           onClick={() => {
-                            setMobileOpen(false)
-                            if (user) navigate(DASHBOARD_VIEW[user.role])
+                            setMobileOpen(false);
+                            if (user) navigate(DASHBOARD_VIEW[user.role]);
                           }}
                           className="h-11 gap-2.5 rounded-xl"
                         >
@@ -1045,8 +981,8 @@ export default function Topbar({
                         <Button
                           variant="ghost"
                           onClick={() => {
-                            setMobileOpen(false)
-                            logout()
+                            setMobileOpen(false);
+                            logout();
                           }}
                           className="h-11 gap-2.5 rounded-xl text-destructive hover:bg-destructive/5 hover:text-destructive"
                         >
@@ -1059,8 +995,8 @@ export default function Topbar({
                         <Button
                           variant="outline"
                           onClick={() => {
-                            setMobileOpen(false)
-                            openAuth("login")
+                            setMobileOpen(false);
+                            openAuth("login");
                           }}
                           className="h-11 rounded-xl font-medium"
                         >
@@ -1068,8 +1004,8 @@ export default function Topbar({
                         </Button>
                         <Button
                           onClick={() => {
-                            setMobileOpen(false)
-                            openAuth("register", "CLIENT")
+                            setMobileOpen(false);
+                            openAuth("register", "CLIENT");
                           }}
                           className="h-11 rounded-xl bg-gradient-to-r from-primary to-emerald-600 font-medium shadow-md shadow-primary/20"
                         >
@@ -1085,5 +1021,5 @@ export default function Topbar({
         </div>
       </header>
     </>
-  )
+  );
 }

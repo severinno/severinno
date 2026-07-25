@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   CalendarDays,
   CalendarOff,
@@ -20,11 +20,11 @@ import {
   ShieldCheck,
   Sun,
   Wallet,
-} from "lucide-react"
-import { toast } from "sonner"
-import { ptBR } from "date-fns/locale"
-import { format } from "date-fns"
-import { motion, AnimatePresence } from "framer-motion"
+} from "lucide-react";
+import { toast } from "sonner";
+import { ptBR } from "date-fns/locale";
+import { format } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
 
 import {
   Dialog,
@@ -32,52 +32,34 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Calendar } from "@/components/ui/calendar"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
-import {
-  apiGet,
-  apiPost,
-  type ProviderDetail,
-  type ProviderService,
-} from "@/lib/api"
-import {
-  SERVICE_UNIT_LABELS,
-  SERVICE_UNIT_SHORT,
-  WEEKDAYS_SHORT,
-} from "@/lib/constants"
-import { formatBRL, formatDate, formatHHmm } from "@/lib/format"
-import { useUIStore } from "@/store/ui"
-import { useAuthStore } from "@/store/auth"
-import { useViewStore } from "@/store/view"
-import { useIsMobile } from "@/hooks/use-mobile"
-import { AddressForm, type AddressFormValue } from "./address-form"
-import {
-  StepWizard,
-  StepHeader,
-  InfoCard,
-  type StepDef,
-} from "./step-wizard"
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Calendar } from "@/components/ui/calendar";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+import { apiGet, apiPost, type ProviderDetail, type ProviderService } from "@/lib/api";
+import { SERVICE_UNIT_LABELS, SERVICE_UNIT_SHORT, WEEKDAYS_SHORT } from "@/lib/constants";
+import { formatBRL, formatDate, formatHHmm } from "@/lib/format";
+import { useUIStore } from "@/store/ui";
+import { useAuthStore } from "@/store/auth";
+import { useViewStore } from "@/store/view";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { AddressForm, type AddressFormValue } from "./address-form";
+import { StepWizard, StepHeader, InfoCard, type StepDef } from "./step-wizard";
 
 // ---------------------------------------------------------------------------
 // Step definitions — 4 steps
@@ -89,26 +71,26 @@ const STEPS: StepDef[] = [
   { id: 2, label: "Detalhes", shortLabel: "Detalhes", icon: MapPin },
   { id: 3, label: "Pagamento", shortLabel: "Pagamento", icon: Wallet },
   { id: 4, label: "Confirmação", shortLabel: "Confirmar", icon: Check },
-]
+];
 
-type Step = (typeof STEPS)[number]["id"]
+type Step = (typeof STEPS)[number]["id"];
 
 // ---------------------------------------------------------------------------
 // Form state
 // ---------------------------------------------------------------------------
 
 type BookingFormState = {
-  date: Date | undefined
-  time: string | undefined
-  quantity: number
-  notes: string
-  address: AddressFormValue
-  paymentMethod: "CARD" | "PIX"
-  cardName: string
-  cardNumber: string
-  cardExpiry: string
-  cardCvv: string
-}
+  date: Date | undefined;
+  time: string | undefined;
+  quantity: number;
+  notes: string;
+  address: AddressFormValue;
+  paymentMethod: "CARD" | "PIX";
+  cardName: string;
+  cardNumber: string;
+  cardExpiry: string;
+  cardCvv: string;
+};
 
 const emptyAddress: AddressFormValue = {
   cep: "",
@@ -120,7 +102,7 @@ const emptyAddress: AddressFormValue = {
   state: "",
   lat: null,
   lng: null,
-}
+};
 
 const initialState = (quantity = 1): BookingFormState => ({
   date: undefined,
@@ -133,16 +115,24 @@ const initialState = (quantity = 1): BookingFormState => ({
   cardNumber: "",
   cardExpiry: "",
   cardCvv: "",
-})
+});
 
 // ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------
 
-function cardNameValid(v: string) { return v.trim().length >= 3 }
-function cardNumberValid(v: string) { return v.replace(/\s/g, "").length >= 13 }
-function cardExpiryValid(v: string) { return /^\d{2}\/\d{2}$/.test(v) }
-function cardCvvValid(v: string) { return /^\d{3,4}$/.test(v) }
+function cardNameValid(v: string) {
+  return v.trim().length >= 3;
+}
+function cardNumberValid(v: string) {
+  return v.replace(/\s/g, "").length >= 13;
+}
+function cardExpiryValid(v: string) {
+  return /^\d{2}\/\d{2}$/.test(v);
+}
+function cardCvvValid(v: string) {
+  return /^\d{3,4}$/.test(v);
+}
 
 // ---------------------------------------------------------------------------
 // Time slot period grouping
@@ -150,98 +140,79 @@ function cardCvvValid(v: string) { return /^\d{3,4}$/.test(v) }
 // ---------------------------------------------------------------------------
 
 type TimePeriod = {
-  key: string
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  range: [number, number] // start hour, end hour (exclusive)
-}
+  key: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  range: [number, number]; // start hour, end hour (exclusive)
+};
 
 const TIME_PERIODS: TimePeriod[] = [
   { key: "morning", label: "Manhã", icon: Sun, range: [6, 12] },
   { key: "afternoon", label: "Tarde", icon: Clock, range: [12, 18] },
   { key: "evening", label: "Noite", icon: Moon, range: [18, 24] },
-]
+];
 
 // ---------------------------------------------------------------------------
 // Main modal
 // ---------------------------------------------------------------------------
 
 export function BookingModal() {
-  const open = useUIStore((s) => s.bookingModal.open)
-  const providerIdPreset = useUIStore((s) => s.bookingModal.providerId)
-  const serviceIdPreset = useUIStore((s) => s.bookingModal.serviceId)
-  const close = useUIStore((s) => s.closeBooking)
-  const openAuth = useUIStore((s) => s.openAuth)
-  const isMobile = useIsMobile()
-  const navigate = useViewStore((s) => s.navigate)
-  const user = useAuthStore((s) => s.user)
+  const open = useUIStore((s) => s.bookingModal.open);
+  const providerIdPreset = useUIStore((s) => s.bookingModal.providerId);
+  const serviceIdPreset = useUIStore((s) => s.bookingModal.serviceId);
+  const close = useUIStore((s) => s.closeBooking);
+  const openAuth = useUIStore((s) => s.openAuth);
+  const isMobile = useIsMobile();
+  const navigate = useViewStore((s) => s.navigate);
+  const user = useAuthStore((s) => s.user);
 
-  const [step, setStep] = React.useState<Step>(1)
-  const [state, setState] = React.useState<BookingFormState>(initialState())
-  const [submitting, setSubmitting] = React.useState(false)
-  const [touched, setTouched] = React.useState<Set<string>>(new Set())
+  const [step, setStep] = React.useState<Step>(1);
+  const [state, setState] = React.useState<BookingFormState>(initialState());
+  const [submitting, setSubmitting] = React.useState(false);
+  const [touched, setTouched] = React.useState<Set<string>>(new Set());
 
-  // Reset when modal opens
-  React.useEffect(() => {
-    if (open) {
-      setStep(1)
-      setState(initialState())
-      setTouched(new Set())
-    }
-  }, [open])
+  // Reset: key={String(open)} in <Sheet> forces remount
 
   // Fetch provider + services
   const providerQuery = useQuery({
     queryKey: ["provider", providerIdPreset],
-    queryFn: () =>
-      apiGet<ProviderDetail>(`/api/providers/${providerIdPreset}`),
+    queryFn: () => apiGet<ProviderDetail>(`/api/providers/${providerIdPreset}`),
     enabled: open && !!providerIdPreset,
     staleTime: 60 * 1000,
-  })
+  });
 
   const servicesQuery = useQuery({
     queryKey: ["services-by-provider", providerIdPreset],
-    queryFn: () =>
-      apiGet<ProviderService[]>("/api/services", { providerId: providerIdPreset }),
+    queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId: providerIdPreset }),
     enabled: open && !!providerIdPreset,
     staleTime: 60 * 1000,
-  })
+  });
 
-  const provider = providerQuery.data
-  const services = servicesQuery.data ?? []
-  const selectedService =
-    services.find((s) => s.id === serviceIdPreset) ?? services[0]
+  const provider = providerQuery.data;
+  const services = servicesQuery.data ?? [];
+  const selectedService = services.find((s) => s.id === serviceIdPreset) ?? services[0];
 
-  React.useEffect(() => {
-    if (open && selectedService) {
-      setState((s) => ({ ...s, quantity: 1 }))
-    }
-  }, [open, selectedService])
+  const set = <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) =>
+    setState((s) => ({ ...s, [key]: value }));
 
-  const set = <K extends keyof BookingFormState>(
-    key: K,
-    value: BookingFormState[K],
-  ) => setState((s) => ({ ...s, [key]: value }))
-
-  const markTouched = (field: string) =>
-    setTouched((prev) => new Set(prev).add(field))
+  const markTouched = (field: string) => setTouched((prev) => new Set(prev).add(field));
 
   // ── Step validation ──
-  const step1Valid = !!state.date && !!state.time
+  const step1Valid = !!state.date && !!state.time;
   const step2Valid =
     !!state.address.cep &&
     state.address.cep.replace(/\D/g, "").length === 8 &&
     !!state.address.street &&
     !!state.address.number &&
     !!state.address.city &&
-    !!state.address.state
+    !!state.address.state;
   const step3Valid =
     state.paymentMethod === "PIX" ||
     (state.paymentMethod === "CARD" &&
       cardNameValid(state.cardName) &&
       cardNumberValid(state.cardNumber) &&
       cardExpiryValid(state.cardExpiry) &&
-      cardCvvValid(state.cardCvv))
+      cardCvvValid(state.cardCvv));
   // Step 4 is always valid (it's a review)
 
   const validSteps: Record<number, boolean> = {
@@ -249,58 +220,58 @@ export function BookingModal() {
     2: step2Valid,
     3: step3Valid,
     4: true,
-  }
+  };
 
   // ── Navigation ──
   const handleStepClick = (target: Step) => {
     if (target < step) {
-      setStep(target)
-      return
+      setStep(target);
+      return;
     }
     for (let i = 1; i < target; i++) {
       if (!validSteps[i as Step]) {
-        toast.error("Complete os passos anteriores primeiro.")
-        return
+        toast.error("Complete os passos anteriores primeiro.");
+        return;
       }
     }
-    setStep(target)
-  }
+    setStep(target);
+  };
 
   const handleNext = () => {
     if (step === 1 && !step1Valid) {
-      toast.error("Selecione data e horário para continuar.")
-      return
+      toast.error("Selecione data e horário para continuar.");
+      return;
     }
     if (step === 2 && !step2Valid) {
-      toast.error("Preencha o endereço completo.")
-      return
+      toast.error("Preencha o endereço completo.");
+      return;
     }
     if (step === 3 && !step3Valid) {
-      toast.error("Verifique os dados de pagamento.")
-      return
+      toast.error("Verifique os dados de pagamento.");
+      return;
     }
-    setStep((s) => Math.min(4, s + 1) as Step)
-  }
+    setStep((s) => Math.min(4, s + 1) as Step);
+  };
 
-  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step)
+  const handleBack = () => setStep((s) => Math.max(1, s - 1) as Step);
 
   const handleSubmit = async () => {
     if (!user) {
-      toast.info("Faça cadastro gratuito para agendar serviços.")
-      openAuth("register", "CLIENT")
-      return
+      toast.info("Faça cadastro gratuito para agendar serviços.");
+      openAuth("register", "CLIENT");
+      return;
     }
     if (!provider || !selectedService || !state.date || !state.time) {
-      toast.error("Dados incompletos. Revise o agendamento.")
-      return
+      toast.error("Dados incompletos. Revise o agendamento.");
+      return;
     }
 
-    const [h, m] = state.time.split(":").map(Number)
-    const scheduledAt = new Date(state.date)
-    scheduledAt.setHours(h ?? 0, m ?? 0, 0, 0)
-    const amount = (selectedService.basePrice || 0) * (state.quantity || 1)
+    const [h, m] = state.time.split(":").map(Number);
+    const scheduledAt = new Date(state.date);
+    scheduledAt.setHours(h ?? 0, m ?? 0, 0, 0);
+    const amount = (selectedService.basePrice || 0) * (state.quantity || 1);
 
-    setSubmitting(true)
+    setSubmitting(true);
     try {
       await apiPost("/api/bookings", {
         providerId: provider.id,
@@ -322,19 +293,19 @@ export function BookingModal() {
         notes: state.notes,
         quantity: state.quantity,
         unit: selectedService.unit,
-      })
-      toast.success("Agendamento confirmado! Acompanhe em seus agendamentos.")
-      close()
-      navigate("client.bookings")
+      });
+      toast.success("Agendamento confirmado! Acompanhe em seus agendamentos.");
+      close();
+      navigate("client.bookings");
     } catch (e) {
       const msg =
         (e as { message?: string })?.message ??
-        "Não foi possível concluir o agendamento. Tente novamente."
-      toast.error(msg)
+        "Não foi possível concluir o agendamento. Tente novamente.";
+      toast.error(msg);
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
   // ── Step content ──
   const stepContent = (() => {
@@ -350,7 +321,7 @@ export function BookingModal() {
             loading={providerQuery.isLoading || servicesQuery.isLoading}
             isDesktop={!isMobile}
           />
-        )
+        );
       case 2:
         return (
           <Step2Details
@@ -359,7 +330,7 @@ export function BookingModal() {
             provider={provider}
             selectedService={selectedService}
           />
-        )
+        );
       case 3:
         return (
           <Step3Payment
@@ -369,7 +340,7 @@ export function BookingModal() {
             touched={touched}
             selectedService={selectedService}
           />
-        )
+        );
       case 4:
         return (
           <Step4Confirmation
@@ -378,25 +349,23 @@ export function BookingModal() {
             selectedService={selectedService}
             goToStep={setStep}
           />
-        )
+        );
       default:
-        return null
+        return null;
     }
-  })()
+  })();
 
   // Dynamic dialog sizing: wider on Step 1 for side-by-side calendar layout
-  const dialogSizeClass = step === 1
-    ? "sm:max-w-2xl"
-    : "sm:max-w-lg"
+  const dialogSizeClass = step === 1 ? "sm:max-w-2xl" : "sm:max-w-lg";
 
   // ── Step indicator (reused for desktop custom layout) ──
   const stepIndicator = (
     <div className="border-b px-4 sm:px-5 py-3">
       <div className="flex items-center justify-between">
         {STEPS.map((s, i) => {
-          const active = step === s.id
-          const done = validSteps[s.id] && step > s.id
-          const Icon = s.icon
+          const active = step === s.id;
+          const done = validSteps[s.id] && step > s.id;
+          const Icon = s.icon;
           return (
             <React.Fragment key={s.id}>
               <button
@@ -417,11 +386,8 @@ export function BookingModal() {
                     "inline-flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-all",
                     active &&
                       "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25",
-                    done &&
-                      "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
-                    !active &&
-                      !done &&
-                      "border-muted-foreground/20 text-muted-foreground",
+                    done && "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
+                    !active && !done && "border-muted-foreground/20 text-muted-foreground",
                   )}
                 >
                   {done ? (
@@ -432,9 +398,7 @@ export function BookingModal() {
                     s.id
                   )}
                 </span>
-                <span className="hidden sm:inline">
-                  {s.shortLabel ?? s.label}
-                </span>
+                <span className="hidden sm:inline">{s.shortLabel ?? s.label}</span>
               </button>
               {i < STEPS.length - 1 && (
                 <div className="flex-1 h-px bg-muted-foreground/15 mx-1 sm:mx-2 relative">
@@ -452,11 +416,11 @@ export function BookingModal() {
                 </div>
               )}
             </React.Fragment>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 
   // ── Footer buttons ──
   const footerButtons = (
@@ -503,7 +467,7 @@ export function BookingModal() {
         )}
       </div>
     </div>
-  )
+  );
 
   const wizardBody = (
     <StepWizard
@@ -525,11 +489,11 @@ export function BookingModal() {
     >
       {stepContent}
     </StepWizard>
-  )
+  );
 
   if (isMobile) {
     return (
-      <Sheet open={open} onOpenChange={(o) => !o && close()}>
+      <Sheet key={String(open)} open={open} onOpenChange={(o) => !o && close()}>
         <SheetContent
           side="bottom"
           className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
@@ -547,7 +511,7 @@ export function BookingModal() {
           <div className="flex-1 overflow-hidden">{wizardBody}</div>
         </SheetContent>
       </Sheet>
-    )
+    );
   }
 
   // ── Desktop: Custom layout with proper scrolling ──
@@ -593,7 +557,7 @@ export function BookingModal() {
         {footerButtons}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -615,62 +579,59 @@ function Step1Schedule({
   loading,
   isDesktop,
 }: {
-  state: BookingFormState
-  set: <K extends keyof BookingFormState>(
-    key: K,
-    value: BookingFormState[K],
-  ) => void
-  availability: ProviderDetail["availability"]
-  selectedService?: ProviderService
-  provider?: ProviderDetail
-  loading: boolean
-  isDesktop: boolean
+  state: BookingFormState;
+  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void;
+  availability: ProviderDetail["availability"];
+  selectedService?: ProviderService;
+  provider?: ProviderDetail;
+  loading: boolean;
+  isDesktop: boolean;
 }) {
   // Generate slot list for selected date
   const slots = React.useMemo(() => {
-    if (!state.date) return [] as { label: string; value: string }[]
-    const dow = state.date.getDay()
+    if (!state.date) return [] as { label: string; value: string }[];
+    const dow = state.date.getDay();
     const dayBlocks = (availability ?? [])
       .filter((a) => a.dayOfWeek === dow)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime))
-    if (dayBlocks.length === 0) return []
-    const out: { label: string; value: string }[] = []
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    if (dayBlocks.length === 0) return [];
+    const out: { label: string; value: string }[] = [];
     for (const block of dayBlocks) {
-      const [sh, sm] = block.startTime.split(":").map(Number)
-      const [eh, em] = block.endTime.split(":").map(Number)
-      let cur = sh * 60 + sm
-      const end = eh * 60 + em
+      const [sh, sm] = block.startTime.split(":").map(Number);
+      const [eh, em] = block.endTime.split(":").map(Number);
+      let cur = sh * 60 + sm;
+      const end = eh * 60 + em;
       while (cur + 60 <= end) {
-        const h = Math.floor(cur / 60)
-        const m = cur % 60
-        const hhmm = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
-        out.push({ label: formatHHmm(hhmm), value: hhmm })
-        cur += 60
+        const h = Math.floor(cur / 60);
+        const m = cur % 60;
+        const hhmm = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        out.push({ label: formatHHmm(hhmm), value: hhmm });
+        cur += 60;
       }
     }
-    return out
-  }, [state.date, availability])
+    return out;
+  }, [state.date, availability]);
 
   // Group slots by time period — Nielsen #6: recognition over recall
   const groupedSlots = React.useMemo(() => {
     return TIME_PERIODS.map((period) => ({
       ...period,
       slots: slots.filter((s) => {
-        const h = parseInt(s.value.split(":")[0], 10)
-        return h >= period.range[0] && h < period.range[1]
+        const h = parseInt(s.value.split(":")[0], 10);
+        return h >= period.range[0] && h < period.range[1];
       }),
-    })).filter((g) => g.slots.length > 0)
-  }, [slots])
+    })).filter((g) => g.slots.length > 0);
+  }, [slots]);
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-10">
         <Loader2 className="size-5 animate-spin text-emerald-600" />
       </div>
-    )
+    );
   }
 
   // ── Service info banner (compact, always visible) ──
@@ -692,12 +653,10 @@ function Step1Schedule({
             {SERVICE_UNIT_LABELS[selectedService.unit] ?? "un"}
           </p>
         </div>
-        {state.date && state.time && (
-          <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-        )}
+        {state.date && state.time && <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />}
       </div>
     </InfoCard>
-  ) : null
+  ) : null;
 
   // ── Calendar section (clean, no label — Calendar 03 style) ──
   const calendarSection = (
@@ -706,13 +665,13 @@ function Step1Schedule({
       locale={ptBR}
       selected={state.date}
       onSelect={(d) => {
-        set("date", d)
-        set("time", undefined)
+        set("date", d);
+        set("time", undefined);
       }}
       disabled={(d) => d < today}
       className="rounded-lg border shadow-sm [--cell-size:--spacing(7)]"
     />
-  )
+  );
 
   // ── Time slots section (Calendar 03 style — borderless chips) ──
   const timeSlotsSection = (
@@ -721,9 +680,7 @@ function Step1Schedule({
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center py-8">
             <CalendarDays className="mx-auto size-8 text-muted-foreground/20 mb-2" />
-            <p className="text-xs text-muted-foreground">
-              Selecione uma data
-            </p>
+            <p className="text-xs text-muted-foreground">Selecione uma data</p>
             <p className="text-[11px] text-muted-foreground/50 mt-0.5">
               para ver os horários disponíveis
             </p>
@@ -733,9 +690,7 @@ function Step1Schedule({
         <div className="flex-1 flex items-center justify-center">
           <div className="rounded-lg border border-dashed bg-muted/20 px-6 py-5 text-center">
             <CalendarOff className="mx-auto size-6 text-muted-foreground/30 mb-1.5" />
-            <p className="text-xs font-medium text-muted-foreground">
-              Sem horários neste dia
-            </p>
+            <p className="text-xs font-medium text-muted-foreground">Sem horários neste dia</p>
             <p className="text-[11px] text-muted-foreground/50 mt-0.5">
               {WEEKDAYS_SHORT[state.date.getDay()]} — fora do expediente
             </p>
@@ -745,7 +700,7 @@ function Step1Schedule({
         <ScrollArea className="flex-1 -mx-1 px-1">
           <div className="grid gap-3">
             {groupedSlots.map((group) => {
-              const PeriodIcon = group.icon
+              const PeriodIcon = group.icon;
               return (
                 <div key={group.key}>
                   <div className="flex items-center gap-1.5 mb-1.5">
@@ -759,7 +714,7 @@ function Step1Schedule({
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     {group.slots.map((s) => {
-                      const active = state.time === s.value
+                      const active = state.time === s.value;
                       return (
                         <button
                           key={s.value}
@@ -775,26 +730,28 @@ function Step1Schedule({
                         >
                           {s.label}
                         </button>
-                      )
+                      );
                     })}
                   </div>
                 </div>
-              )
+              );
             })}
           </div>
         </ScrollArea>
       )}
     </div>
-  )
+  );
 
   // ── Selected date summary (below calendar, both layouts) ──
   const selectedDateSummary = state.date && (
-    <div className={cn(
-      "mt-2 rounded-lg px-3 py-2 text-center transition-colors duration-200",
-      state.time
-        ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
-        : "bg-muted/40 text-muted-foreground"
-    )}>
+    <div
+      className={cn(
+        "mt-2 rounded-lg px-3 py-2 text-center transition-colors duration-200",
+        state.time
+          ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+          : "bg-muted/40 text-muted-foreground",
+      )}
+    >
       <p className="text-xs font-semibold">
         {format(state.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
       </p>
@@ -804,12 +761,10 @@ function Step1Schedule({
           {formatHHmm(state.time)}
         </p>
       ) : (
-        <p className="text-[11px] mt-0.5 opacity-60">
-          Escolha o horário →
-        </p>
+        <p className="text-[11px] mt-0.5 opacity-60">Escolha o horário →</p>
       )}
     </div>
-  )
+  );
 
   return (
     <div>
@@ -834,9 +789,7 @@ function Step1Schedule({
           </div>
 
           {/* RIGHT: Time slots */}
-          <div className="flex flex-col min-h-0 pl-4">
-            {timeSlotsSection}
-          </div>
+          <div className="flex flex-col min-h-0 pl-4">{timeSlotsSection}</div>
         </div>
       ) : (
         /* ── Mobile: Stacked ── */
@@ -847,7 +800,7 @@ function Step1Schedule({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -862,25 +815,22 @@ function Step2Details({
   provider,
   selectedService,
 }: {
-  state: BookingFormState
-  set: <K extends keyof BookingFormState>(
-    key: K,
-    value: BookingFormState[K],
-  ) => void
-  provider?: ProviderDetail
-  selectedService?: ProviderService
+  state: BookingFormState;
+  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void;
+  provider?: ProviderDetail;
+  selectedService?: ProviderService;
 }) {
   const scheduledAt =
     state.date && state.time
       ? (() => {
-          const d = new Date(state.date)
-          const [h, m] = state.time.split(":").map(Number)
-          d.setHours(h ?? 0, m ?? 0, 0, 0)
-          return d
+          const d = new Date(state.date);
+          const [h, m] = state.time.split(":").map(Number);
+          d.setHours(h ?? 0, m ?? 0, 0, 0);
+          return d;
         })()
-      : null
+      : null;
 
-  const estimatedTotal = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
+  const estimatedTotal = (selectedService?.basePrice ?? 0) * (state.quantity || 1);
 
   return (
     <div className="grid gap-4">
@@ -903,16 +853,14 @@ function Step2Details({
           </Avatar>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{provider?.name}</p>
-            <p className="text-[11px] text-muted-foreground truncate">
-              {selectedService?.title}
-            </p>
+            <p className="text-[11px] text-muted-foreground truncate">{selectedService?.title}</p>
           </div>
           <div className="text-right shrink-0">
             <p className="text-[11px] text-muted-foreground">
               {scheduledAt ? formatDate(scheduledAt) : "—"}
             </p>
             <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-              {scheduledAt ? formatHHmm(state.time!) : "—"}
+              {scheduledAt && state.time ? formatHHmm(state.time) : "—"}
             </p>
           </div>
         </div>
@@ -952,10 +900,7 @@ function Step2Details({
           <MapPin className="size-3.5 text-emerald-600" />
           Endereço do serviço
         </p>
-        <AddressForm
-          value={state.address}
-          onChange={(v) => set("address", v)}
-        />
+        <AddressForm value={state.address} onChange={(v) => set("address", v)} />
       </div>
 
       <Separator />
@@ -975,7 +920,7 @@ function Step2Details({
         />
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -991,24 +936,21 @@ function Step3Payment({
   touched,
   selectedService,
 }: {
-  state: BookingFormState
-  set: <K extends keyof BookingFormState>(
-    key: K,
-    value: BookingFormState[K],
-  ) => void
-  markTouched: (field: string) => void
-  touched: Set<string>
-  selectedService?: ProviderService
+  state: BookingFormState;
+  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void;
+  markTouched: (field: string) => void;
+  touched: Set<string>;
+  selectedService?: ProviderService;
 }) {
-  const amount = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
-  const fees = 0
-  const total = amount + fees
-  const [paid, setPaid] = React.useState(false)
+  const amount = (selectedService?.basePrice ?? 0) * (state.quantity || 1);
+  const fees = 0;
+  const total = amount + fees;
+  const [paid, setPaid] = React.useState(false);
 
   const fieldOk = (field: string, valid: boolean) => {
-    if (!touched.has(field)) return null
-    return valid
-  }
+    if (!touched.has(field)) return null;
+    return valid;
+  };
 
   return (
     <div className="grid gap-4">
@@ -1041,9 +983,7 @@ function Step3Payment({
 
       {/* Payment method selection */}
       <div>
-        <p className="text-xs font-medium text-muted-foreground mb-1.5">
-          Forma de pagamento
-        </p>
+        <p className="text-xs font-medium text-muted-foreground mb-1.5">Forma de pagamento</p>
         <RadioGroup
           value={state.paymentMethod}
           onValueChange={(v) => set("paymentMethod", v as "CARD" | "PIX")}
@@ -1080,7 +1020,9 @@ function Step3Payment({
           </div>
 
           <div className="grid gap-0.5">
-            <Label htmlFor="cardName" className="text-xs">Nome impresso</Label>
+            <Label htmlFor="cardName" className="text-xs">
+              Nome impresso
+            </Label>
             <div className="relative">
               <Input
                 id="cardName"
@@ -1090,7 +1032,8 @@ function Step3Payment({
                 onBlur={() => markTouched("cardName")}
                 className={cn(
                   "h-8 text-sm pr-7",
-                  fieldOk("cardName", cardNameValid(state.cardName)) === false && "border-destructive",
+                  fieldOk("cardName", cardNameValid(state.cardName)) === false &&
+                    "border-destructive",
                 )}
               />
               {fieldOk("cardName", cardNameValid(state.cardName)) && (
@@ -1100,7 +1043,9 @@ function Step3Payment({
           </div>
 
           <div className="grid gap-0.5">
-            <Label htmlFor="cardNumber" className="text-xs">Número</Label>
+            <Label htmlFor="cardNumber" className="text-xs">
+              Número
+            </Label>
             <div className="relative">
               <Input
                 id="cardNumber"
@@ -1108,14 +1053,15 @@ function Step3Payment({
                 placeholder="0000 0000 0000 0000"
                 value={state.cardNumber}
                 onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, "").slice(0, 16)
-                  const parts = digits.match(/.{1,4}/g)
-                  set("cardNumber", parts ? parts.join(" ") : "")
+                  const digits = e.target.value.replace(/\D/g, "").slice(0, 16);
+                  const parts = digits.match(/.{1,4}/g);
+                  set("cardNumber", parts ? parts.join(" ") : "");
                 }}
                 onBlur={() => markTouched("cardNumber")}
                 className={cn(
                   "h-8 text-sm pr-7",
-                  fieldOk("cardNumber", cardNumberValid(state.cardNumber)) === false && "border-destructive",
+                  fieldOk("cardNumber", cardNumberValid(state.cardNumber)) === false &&
+                    "border-destructive",
                 )}
               />
               {fieldOk("cardNumber", cardNumberValid(state.cardNumber)) && (
@@ -1126,7 +1072,9 @@ function Step3Payment({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-0.5">
-              <Label htmlFor="cardExpiry" className="text-xs">Validade</Label>
+              <Label htmlFor="cardExpiry" className="text-xs">
+                Validade
+              </Label>
               <div className="relative">
                 <Input
                   id="cardExpiry"
@@ -1135,14 +1083,15 @@ function Step3Payment({
                   maxLength={5}
                   value={state.cardExpiry}
                   onChange={(e) => {
-                    let v = e.target.value.replace(/\D/g, "").slice(0, 4)
-                    if (v.length >= 3) v = `${v.slice(0, 2)}/${v.slice(2)}`
-                    set("cardExpiry", v)
+                    let v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                    if (v.length >= 3) v = `${v.slice(0, 2)}/${v.slice(2)}`;
+                    set("cardExpiry", v);
                   }}
                   onBlur={() => markTouched("cardExpiry")}
                   className={cn(
                     "h-8 text-sm pr-7",
-                    fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) === false && "border-destructive",
+                    fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) === false &&
+                      "border-destructive",
                   )}
                 />
                 {fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) && (
@@ -1151,7 +1100,9 @@ function Step3Payment({
               </div>
             </div>
             <div className="grid gap-0.5">
-              <Label htmlFor="cardCvv" className="text-xs">CVV</Label>
+              <Label htmlFor="cardCvv" className="text-xs">
+                CVV
+              </Label>
               <div className="relative">
                 <Input
                   id="cardCvv"
@@ -1159,13 +1110,12 @@ function Step3Payment({
                   placeholder="123"
                   maxLength={4}
                   value={state.cardCvv}
-                  onChange={(e) =>
-                    set("cardCvv", e.target.value.replace(/\D/g, "").slice(0, 4))
-                  }
+                  onChange={(e) => set("cardCvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
                   onBlur={() => markTouched("cardCvv")}
                   className={cn(
                     "h-8 text-sm pr-7",
-                    fieldOk("cardCvv", cardCvvValid(state.cardCvv)) === false && "border-destructive",
+                    fieldOk("cardCvv", cardCvvValid(state.cardCvv)) === false &&
+                      "border-destructive",
                   )}
                 />
                 {fieldOk("cardCvv", cardCvvValid(state.cardCvv)) && (
@@ -1197,10 +1147,8 @@ function Step3Payment({
               size="sm"
               className="h-7 text-xs"
               onClick={() => {
-                navigator.clipboard
-                  .writeText("severinno@exemplo.com")
-                  .catch(() => {})
-                toast.success("Chave PIX copiada!")
+                navigator.clipboard.writeText("severinno@exemplo.com").catch(() => {});
+                toast.success("Chave PIX copiada!");
               }}
             >
               Copiar chave PIX
@@ -1212,8 +1160,8 @@ function Step3Payment({
             size="sm"
             className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40 h-8"
             onClick={() => {
-              setPaid(true)
-              toast.success("Pagamento confirmado. Conclua o agendamento.")
+              setPaid(true);
+              toast.success("Pagamento confirmado. Conclua o agendamento.");
             }}
             disabled={paid}
           >
@@ -1228,7 +1176,7 @@ function Step3Payment({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1244,21 +1192,21 @@ function Step4Confirmation({
   selectedService,
   goToStep,
 }: {
-  state: BookingFormState
-  provider?: ProviderDetail
-  selectedService?: ProviderService
-  goToStep: (s: Step) => void
+  state: BookingFormState;
+  provider?: ProviderDetail;
+  selectedService?: ProviderService;
+  goToStep: (s: Step) => void;
 }) {
-  const amount = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
+  const amount = (selectedService?.basePrice ?? 0) * (state.quantity || 1);
   const scheduledAt =
     state.date && state.time
       ? (() => {
-          const d = new Date(state.date)
-          const [h, m] = state.time.split(":").map(Number)
-          d.setHours(h ?? 0, m ?? 0, 0, 0)
-          return d
+          const d = new Date(state.date);
+          const [h, m] = state.time.split(":").map(Number);
+          d.setHours(h ?? 0, m ?? 0, 0, 0);
+          return d;
         })()
-      : null
+      : null;
 
   return (
     <div className="grid gap-4">
@@ -1328,17 +1276,14 @@ function Step4Confirmation({
           </span>
         </div>
         {state.notes && (
-          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
-            📝 {state.notes}
-          </p>
+          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">📝 {state.notes}</p>
         )}
       </ReviewSection>
 
       {/* What happens next — Nielsen #10: help & documentation */}
       <InfoCard variant="emerald" className="mt-1">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
-          <Clock className="size-3.5" />
-          O que acontece agora?
+          <Clock className="size-3.5" />O que acontece agora?
         </h4>
         <div className="grid gap-2.5">
           {[
@@ -1347,7 +1292,6 @@ function Step4Confirmation({
             { icon: Clock, label: "Em andamento", desc: "Serviço sendo realizado" },
             { icon: Check, label: "Concluído", desc: "Você avalia o serviço" },
           ].map((item, i) => {
-            const Icon = item.icon
             return (
               <div key={i} className="flex items-start gap-2.5">
                 <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shrink-0 mt-0.5">
@@ -1360,7 +1304,7 @@ function Step4Confirmation({
                   <p className="text-[11px] text-muted-foreground">{item.desc}</p>
                 </div>
               </div>
-            )
+            );
           })}
         </div>
       </InfoCard>
@@ -1371,7 +1315,7 @@ function Step4Confirmation({
         Ambiente de demonstração — nenhum pagamento será efetivado
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1384,9 +1328,9 @@ function ReviewSection({
   onEdit,
   children,
 }: {
-  label: string
-  onEdit: () => void
-  children: React.ReactNode
+  label: string;
+  onEdit: () => void;
+  children: React.ReactNode;
 }) {
   return (
     <div className="rounded-lg border p-3">
@@ -1405,7 +1349,7 @@ function ReviewSection({
       </div>
       {children}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1419,11 +1363,11 @@ function PaymentOption({
   icon: Icon,
   selected,
 }: {
-  value: string
-  title: string
-  description: string
-  icon: React.ComponentType<{ className?: string }>
-  selected: boolean
+  value: string;
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  selected: boolean;
 }) {
   return (
     <Label
@@ -1436,19 +1380,12 @@ function PaymentOption({
       )}
     >
       <RadioGroupItem value={value} id={`pay-${value}`} className="sr-only" />
-      <Icon
-        className={cn(
-          "size-4",
-          selected ? "text-emerald-600" : "text-muted-foreground",
-        )}
-      />
+      <Icon className={cn("size-4", selected ? "text-emerald-600" : "text-muted-foreground")} />
       <div className="flex-1 min-w-0">
         <p className="text-xs font-medium leading-tight">{title}</p>
-        <p className="text-[10px] text-muted-foreground leading-tight">
-          {description}
-        </p>
+        <p className="text-[10px] text-muted-foreground leading-tight">{description}</p>
       </div>
       {selected && <Check className="size-3.5 text-emerald-600 shrink-0" />}
     </Label>
-  )
+  );
 }

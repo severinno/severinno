@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ProviderSpotlight — Featured provider spotlight section.
@@ -12,8 +12,9 @@
  *   H10 Help/documentation           → Links to provider profile, expandable bio
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import Image from "next/image";
+import { useQuery } from "@tanstack/react-query";
 import {
   Star,
   BadgeCheck,
@@ -28,17 +29,17 @@ import {
   ChevronDown,
   ChevronUp,
   MessageCircle,
-} from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+} from "lucide-react";
+import { motion } from "framer-motion";
 
-import { fetchProviders, type ProviderCard, type ProviderService } from "@/lib/api"
-import { useScrollReveal } from "@/hooks/use-animation"
-import { useUIStore } from "@/store"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { formatBRL } from "@/lib/format"
-import { cn } from "@/lib/utils"
+import { fetchProviders, type ProviderCard, type ProviderService } from "@/lib/api";
+import { useScrollReveal } from "@/hooks/use-animation";
+import { useUIStore } from "@/store";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatBRL } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Staggered children animation variants
@@ -50,7 +51,7 @@ const containerVariants = {
     opacity: 1,
     transition: { staggerChildren: 0.08, delayChildren: 0.1 },
   },
-}
+};
 
 const itemVariants = {
   hidden: { opacity: 0, y: 16 },
@@ -59,17 +60,17 @@ const itemVariants = {
     y: 0,
     transition: { duration: 0.45, ease: "easeOut" as const },
   },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Helper: response time estimate (simulated based on rating)
 // ---------------------------------------------------------------------------
 
 function getResponseTime(rating: number): string {
-  if (rating >= 4.8) return "~30min"
-  if (rating >= 4.5) return "~1h"
-  if (rating >= 4.0) return "~2h"
-  return "~3h"
+  if (rating >= 4.8) return "~30min";
+  if (rating >= 4.5) return "~1h";
+  if (rating >= 4.0) return "~2h";
+  return "~3h";
 }
 
 // ---------------------------------------------------------------------------
@@ -80,16 +81,16 @@ const FAKE_CLIENT_AVATARS = [
   { name: "Maria S.", hue: 340 },
   { name: "João P.", hue: 160 },
   { name: "Ana L.", hue: 30 },
-]
+];
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function ProviderSpotlight() {
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
-  const openQuote = useUIStore((s) => s.openQuote)
-  const openProvider = useUIStore((s) => s.openProvider)
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
+  const openQuote = useUIStore((s) => s.openQuote);
+  const openProvider = useUIStore((s) => s.openProvider);
 
   // Fetch top-rated provider
   const providerQuery = useQuery({
@@ -101,9 +102,9 @@ export default function ProviderSpotlight() {
         verified: true,
       }),
     staleTime: 5 * 60 * 1000,
-  })
+  });
 
-  const provider: ProviderCard | undefined = providerQuery.data?.items?.[0]
+  const provider: ProviderCard | undefined = providerQuery.data?.items?.[0];
 
   return (
     <section className="relative overflow-hidden bg-gradient-to-b from-muted/30 to-background py-16 sm:py-20">
@@ -126,8 +127,7 @@ export default function ProviderSpotlight() {
             Destaque da semana
           </span>
           <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
-            Profissional em{" "}
-            <span className="text-emerald-600 dark:text-emerald-400">destaque</span>
+            Profissional em <span className="text-emerald-600 dark:text-emerald-400">destaque</span>
           </h2>
           <p className="mt-1.5 text-sm text-muted-foreground">
             Conheça um dos nossos prestadores mais bem avaliados.
@@ -162,7 +162,7 @@ export default function ProviderSpotlight() {
         )}
       </div>
     </section>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -175,12 +175,12 @@ function SpotlightCard({
   openQuote,
   openProvider,
 }: {
-  provider: ProviderCard
-  visible: boolean
-  openQuote: (opts?: { providerId?: string }) => void
-  openProvider: (id: string) => void
+  provider: ProviderCard;
+  visible: boolean;
+  openQuote: (opts?: { providerId?: string }) => void;
+  openProvider: (id: string) => void;
 }) {
-  const [bioExpanded, setBioExpanded] = React.useState(false)
+  const [bioExpanded, setBioExpanded] = React.useState(false);
 
   return (
     <motion.div
@@ -202,8 +202,7 @@ function SpotlightCard({
           aria-hidden
           className="pointer-events-none absolute inset-0 top-2 opacity-[0.03] dark:opacity-[0.05]"
           style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
+            backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
             backgroundSize: "20px 20px",
           }}
         />
@@ -222,15 +221,20 @@ function SpotlightCard({
             className="flex flex-col gap-6 sm:flex-row sm:items-start"
           >
             {/* Avatar — larger with decorative ring */}
-            <motion.div variants={itemVariants} className="relative shrink-0 self-center sm:self-start">
+            <motion.div
+              variants={itemVariants}
+              className="relative shrink-0 self-center sm:self-start"
+            >
               {/* Decorative ring */}
               <div className="absolute -inset-1.5 rounded-full bg-gradient-to-br from-emerald-400 via-teal-400 to-emerald-500 opacity-60 blur-[2px] transition-opacity group-hover:opacity-80" />
               <div className="relative flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 sm:size-28 dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-400 ring-4 ring-background">
                 {provider.avatarUrl ? (
-                  <img
+                  <Image
                     src={provider.avatarUrl}
                     alt={provider.name}
-                    className="size-full rounded-full object-cover"
+                    fill
+                    className="rounded-full object-cover"
+                    sizes="96px"
                   />
                 ) : (
                   <User className="size-12" />
@@ -265,9 +269,7 @@ function SpotlightCard({
                   )}
                   {provider.distanceKm != null && (
                     <span className="text-xs">
-                      {provider.distanceKm < 1
-                        ? "< 1 km"
-                        : `${Math.round(provider.distanceKm)} km`}
+                      {provider.distanceKm < 1 ? "< 1 km" : `${Math.round(provider.distanceKm)} km`}
                     </span>
                   )}
                   {provider.memberSince && (
@@ -288,8 +290,7 @@ function SpotlightCard({
                   </span>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  ({provider.reviewCount}{" "}
-                  {provider.reviewCount === 1 ? "avaliação" : "avaliações"})
+                  ({provider.reviewCount} {provider.reviewCount === 1 ? "avaliação" : "avaliações"})
                 </span>
               </motion.div>
 
@@ -332,7 +333,7 @@ function SpotlightCard({
                   <p
                     className={cn(
                       "text-sm text-muted-foreground transition-all duration-300",
-                      !bioExpanded && "line-clamp-2"
+                      !bioExpanded && "line-clamp-2",
                     )}
                   >
                     {provider.bio}
@@ -372,9 +373,7 @@ function SpotlightCard({
                     </div>
                   ))}
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  Clientes recentes
-                </span>
+                <span className="text-xs text-muted-foreground">Clientes recentes</span>
               </motion.div>
             </motion.div>
           </motion.div>
@@ -386,7 +385,10 @@ function SpotlightCard({
             animate={visible ? "visible" : "hidden"}
             className="mt-6 flex flex-col gap-2 border-t pt-5 sm:flex-row sm:items-center"
           >
-            <motion.div variants={itemVariants} className="flex flex-col gap-2 sm:flex-row sm:flex-1">
+            <motion.div
+              variants={itemVariants}
+              className="flex flex-col gap-2 sm:flex-row sm:flex-1"
+            >
               {/* Primary CTA — Pedir orçamento */}
               <Button
                 className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
@@ -413,10 +415,10 @@ function SpotlightCard({
                 className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300 transition-all duration-200"
                 onClick={() => {
                   const msg = encodeURIComponent(
-                    `Olá! Vi seu perfil no Severinno e gostaria de saber mais sobre seus serviços.`
-                  )
-                  const whatsappUrl = `https://wa.me/?text=${msg}`
-                  window.open(whatsappUrl, "_blank", "noopener")
+                    `Olá! Vi seu perfil no Severinno e gostaria de saber mais sobre seus serviços.`,
+                  );
+                  const whatsappUrl = `https://wa.me/?text=${msg}`;
+                  window.open(whatsappUrl, "_blank", "noopener");
                 }}
               >
                 <MessageCircle className="size-4" />
@@ -427,7 +429,7 @@ function SpotlightCard({
         </div>
       </motion.div>
     </motion.div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -442,7 +444,7 @@ function ServicePriceRow({ service }: { service: ProviderService }) {
         {formatBRL(service.basePrice)}
       </span>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -491,5 +493,5 @@ function SpotlightSkeleton() {
         </div>
       </div>
     </div>
-  )
+  );
 }

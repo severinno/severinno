@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * Compare store — tracks up to 3 providers the visitor is comparing.
@@ -8,23 +8,23 @@
  * fetches full provider details via /api/providers when opened.
  */
 
-import { create } from "zustand"
-import { persist, createJSONStorage } from "zustand/middleware"
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 
-export const MAX_COMPARE = 3
+export const MAX_COMPARE = 3;
 
 type CompareState = {
-  ids: string[]
-  modalOpen: boolean
+  ids: string[];
+  modalOpen: boolean;
 
-  toggle: (id: string) => void
-  remove: (id: string) => void
-  clear: () => void
-  isAdded: (id: string) => boolean
+  toggle: (id: string) => void;
+  remove: (id: string) => void;
+  clear: () => void;
+  isAdded: (id: string) => boolean;
 
-  openCompare: () => void
-  closeCompare: () => void
-}
+  openCompare: () => void;
+  closeCompare: () => void;
+};
 
 export const useCompareStore = create<CompareState>()(
   persist(
@@ -35,16 +35,15 @@ export const useCompareStore = create<CompareState>()(
       toggle: (id) =>
         set((s) => {
           if (s.ids.includes(id)) {
-            return { ids: s.ids.filter((x) => x !== id) }
+            return { ids: s.ids.filter((x) => x !== id) };
           }
           if (s.ids.length >= MAX_COMPARE) {
-            return s // ignore — caller should toast a warning
+            return s; // ignore — caller should toast a warning
           }
-          return { ids: [...s.ids, id] }
+          return { ids: [...s.ids, id] };
         }),
 
-      remove: (id) =>
-        set((s) => ({ ids: s.ids.filter((x) => x !== id) })),
+      remove: (id) => set((s) => ({ ids: s.ids.filter((x) => x !== id) })),
 
       clear: () => set({ ids: [] }),
 
@@ -59,4 +58,4 @@ export const useCompareStore = create<CompareState>()(
       partialize: (s) => ({ ids: s.ids }),
     },
   ),
-)
+);

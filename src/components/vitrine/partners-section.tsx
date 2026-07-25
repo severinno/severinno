@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * PartnersSection — "Trusted by" / partner logos marquee for social proof.
@@ -12,34 +12,70 @@
  *   H8  Aesthetic minimalism         → Minimal text, no overload
  */
 
-import * as React from "react"
-import { motion } from "framer-motion"
+import * as React from "react";
+import { motion } from "framer-motion";
 
-import { useScrollReveal } from "@/hooks/use-animation"
-import { cn } from "@/lib/utils"
+import { useScrollReveal } from "@/hooks/use-animation";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Partner data — placeholder companies
 // ---------------------------------------------------------------------------
 
 type Partner = {
-  name: string
-  color: string
-  bg: string
-}
+  name: string;
+  color: string;
+  bg: string;
+};
 
 const PARTNERS: Partner[] = [
-  { name: "TechNova", color: "text-emerald-700 dark:text-emerald-300", bg: "bg-emerald-50 dark:bg-emerald-950/40" },
-  { name: "Constrular", color: "text-amber-700 dark:text-amber-300", bg: "bg-amber-50 dark:bg-amber-950/40" },
+  {
+    name: "TechNova",
+    color: "text-emerald-700 dark:text-emerald-300",
+    bg: "bg-emerald-50 dark:bg-emerald-950/40",
+  },
+  {
+    name: "Constrular",
+    color: "text-amber-700 dark:text-amber-300",
+    bg: "bg-amber-50 dark:bg-amber-950/40",
+  },
   { name: "Hogárua", color: "text-sky-700 dark:text-sky-300", bg: "bg-sky-50 dark:bg-sky-950/40" },
-  { name: "ServiPro", color: "text-rose-700 dark:text-rose-300", bg: "bg-rose-50 dark:bg-rose-950/40" },
-  { name: "ReformMax", color: "text-violet-700 dark:text-violet-300", bg: "bg-violet-50 dark:bg-violet-950/40" },
-  { name: "LarDoceLar", color: "text-orange-700 dark:text-orange-300", bg: "bg-orange-50 dark:bg-orange-950/40" },
-  { name: "FixAll", color: "text-teal-700 dark:text-teal-300", bg: "bg-teal-50 dark:bg-teal-950/40" },
-  { name: "MãoDeObra+", color: "text-indigo-700 dark:text-indigo-300", bg: "bg-indigo-50 dark:bg-indigo-950/40" },
-  { name: "CasaFácil", color: "text-lime-700 dark:text-lime-300", bg: "bg-lime-50 dark:bg-lime-950/40" },
-  { name: "ObraCerta", color: "text-cyan-700 dark:text-cyan-300", bg: "bg-cyan-50 dark:bg-cyan-950/40" },
-]
+  {
+    name: "ServiPro",
+    color: "text-rose-700 dark:text-rose-300",
+    bg: "bg-rose-50 dark:bg-rose-950/40",
+  },
+  {
+    name: "ReformMax",
+    color: "text-violet-700 dark:text-violet-300",
+    bg: "bg-violet-50 dark:bg-violet-950/40",
+  },
+  {
+    name: "LarDoceLar",
+    color: "text-orange-700 dark:text-orange-300",
+    bg: "bg-orange-50 dark:bg-orange-950/40",
+  },
+  {
+    name: "FixAll",
+    color: "text-teal-700 dark:text-teal-300",
+    bg: "bg-teal-50 dark:bg-teal-950/40",
+  },
+  {
+    name: "MãoDeObra+",
+    color: "text-indigo-700 dark:text-indigo-300",
+    bg: "bg-indigo-50 dark:bg-indigo-950/40",
+  },
+  {
+    name: "CasaFácil",
+    color: "text-lime-700 dark:text-lime-300",
+    bg: "bg-lime-50 dark:bg-lime-950/40",
+  },
+  {
+    name: "ObraCerta",
+    color: "text-cyan-700 dark:text-cyan-300",
+    bg: "bg-cyan-50 dark:bg-cyan-950/40",
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Marquee item
@@ -55,16 +91,11 @@ function PartnerCard({ partner }: { partner: Partner }) {
       )}
       style={{ minWidth: 160 }}
     >
-      <span
-        className={cn(
-          "text-base font-bold tracking-tight",
-          partner.color,
-        )}
-      >
+      <span className={cn("text-base font-bold tracking-tight", partner.color)}>
         {partner.name}
       </span>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -76,11 +107,11 @@ function Marquee({
   speed = 30,
   className,
 }: {
-  children: React.ReactNode
-  speed?: number
-  className?: string
+  children: React.ReactNode;
+  speed?: number;
+  className?: string;
 }) {
-  const [hovered, setHovered] = React.useState(false)
+  const [hovered, setHovered] = React.useState(false);
 
   return (
     <div
@@ -110,7 +141,7 @@ function Marquee({
         {children}
       </motion.div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +149,7 @@ function Marquee({
 // ---------------------------------------------------------------------------
 
 export default function PartnersSection() {
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
 
   return (
     <section className="relative border-t border-border/40 bg-background py-12 sm:py-16">
@@ -170,5 +201,5 @@ export default function PartnersSection() {
         </motion.div>
       </div>
     </section>
-  )
+  );
 }

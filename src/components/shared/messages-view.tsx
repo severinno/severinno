@@ -1,69 +1,69 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { formatRelative } from "@/lib/format"
-import { apiGet, apiPost } from "@/lib/api"
-import { useAuthStore } from "@/store/auth"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { cn } from "@/lib/utils"
-import { Send, MessagesSquare, Loader2 } from "lucide-react"
-import { toast } from "sonner"
-import { useRealtime } from "@/hooks/use-realtime"
+import * as React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatRelative } from "@/lib/format";
+import { apiGet, apiPost } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+import { Send, MessagesSquare, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { useRealtime } from "@/hooks/use-realtime";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type ConversationPeer = {
-  id: string
-  name: string
-  avatarUrl?: string | null
-  role?: string
-}
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  role?: string;
+};
 
 export type Conversation = {
-  peerId: string
-  peer: ConversationPeer | null
-  lastMessage: string
-  lastAt: string
-  unreadCount: number
-}
+  peerId: string;
+  peer: ConversationPeer | null;
+  lastMessage: string;
+  lastAt: string;
+  unreadCount: number;
+};
 
 export type Message = {
-  id: string
-  fromId: string
-  toId: string
-  content: string
-  read: boolean
-  bookingId?: string | null
-  createdAt: string
-}
+  id: string;
+  fromId: string;
+  toId: string;
+  content: string;
+  read: boolean;
+  bookingId?: string | null;
+  createdAt: string;
+};
 
 type MessagesViewProps = {
   /** Force a specific peer to be selected initially (e.g. a booking's client). */
-  initialPeerId?: string
+  initialPeerId?: string;
   /** Optional title for the empty state. */
-  emptyTitle?: string
+  emptyTitle?: string;
   /** Optional description for the empty state. */
-  emptyDescription?: string
-  className?: string
-}
+  emptyDescription?: string;
+  className?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function initials(name?: string) {
-  if (!name) return "?"
+  if (!name) return "?";
   return name
     .split(" ")
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("")
+    .join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -85,102 +85,95 @@ export function MessagesView({
   emptyDescription = "Converse com seus clientes e prestadores em tempo real.",
   className,
 }: MessagesViewProps) {
-  const qc = useQueryClient()
-  const user = useAuthStore((s) => s.user)
-  const [selectedPeerId, setSelectedPeerId] = React.useState<string | undefined>(
-    initialPeerId,
-  )
-  const [draft, setDraft] = React.useState("")
-  const [sending, setSending] = React.useState(false)
-  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const [selectedPeerId, setSelectedPeerId] = React.useState<string | undefined>(initialPeerId);
+  const [draft, setDraft] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
 
-  const { on, isConnected, join } = useRealtime()
+  const { on, isConnected, join } = useRealtime();
 
   // --- Realtime subscription ---
   React.useEffect(() => {
-    if (!isConnected || !user) return
-    join({ userId: user.id, role: user.role.toLowerCase() })
-  }, [isConnected, user, join])
+    if (!isConnected || !user) return;
+    join({ userId: user.id, role: user.role.toLowerCase() });
+  }, [isConnected, user, join]);
 
   React.useEffect(() => {
     const unsub = on<{ fromId: string; toId: string }>("message:new", (msg) => {
-      if (!msg) return
+      if (!msg) return;
       // Invalidate conversations list + thread if relevant
-      qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
+      qc.invalidateQueries({ queryKey: ["messages", "conversations"] });
       if (selectedPeerId && (msg.fromId === selectedPeerId || msg.toId === selectedPeerId)) {
         qc.invalidateQueries({
           queryKey: ["messages", "thread", selectedPeerId],
-        })
+        });
       }
-    })
-    return () => unsub()
-  }, [on, qc, selectedPeerId])
+    });
+    return () => unsub();
+  }, [on, qc, selectedPeerId]);
 
   // --- Conversations list ---
   const conversationsQuery = useQuery<Conversation[]>({
     queryKey: ["messages", "conversations"],
     queryFn: async () => {
-      const data = await apiGet<{ items: Conversation[] }>("/api/messages")
-      return data?.items ?? []
+      const data = await apiGet<{ items: Conversation[] }>("/api/messages");
+      return data?.items ?? [];
     },
     refetchInterval: 15_000,
-  })
+  });
 
   // Auto-select first conversation on first load
   React.useEffect(() => {
-    if (
-      !selectedPeerId &&
-      conversationsQuery.data &&
-      conversationsQuery.data.length > 0
-    ) {
-      setSelectedPeerId(conversationsQuery.data[0].peerId)
+    if (!selectedPeerId && conversationsQuery.data && conversationsQuery.data.length > 0) {
+      setSelectedPeerId(conversationsQuery.data[0].peerId);
     }
-  }, [conversationsQuery.data, selectedPeerId])
+  }, [conversationsQuery.data, selectedPeerId]);
 
   // --- Thread ---
   const threadQuery = useQuery<{ peer: ConversationPeer; items: Message[] }>({
     queryKey: ["messages", "thread", selectedPeerId],
     queryFn: async () => {
-      if (!selectedPeerId) throw new Error("no peer")
-      return apiGet<{ peer: ConversationPeer; items: Message[] }>(
-        "/api/messages",
-        { with: selectedPeerId },
-      )
+      if (!selectedPeerId) throw new Error("no peer");
+      return apiGet<{ peer: ConversationPeer; items: Message[] }>("/api/messages", {
+        with: selectedPeerId,
+      });
     },
     enabled: !!selectedPeerId,
     refetchInterval: 10_000,
-  })
+  });
 
   // Scroll to bottom on new messages
   React.useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [threadQuery.data])
+  }, [threadQuery.data]);
 
   const send = async () => {
-    if (!selectedPeerId || !draft.trim()) return
-    setSending(true)
+    if (!selectedPeerId || !draft.trim()) return;
+    setSending(true);
     try {
       await apiPost("/api/messages", {
         toId: selectedPeerId,
         content: draft.trim(),
-      })
-      setDraft("")
+      });
+      setDraft("");
       qc.invalidateQueries({
         queryKey: ["messages", "thread", selectedPeerId],
-      })
-      qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
-    } catch (e) {
-      toast.error("Não foi possível enviar a mensagem. Tente novamente.")
+      });
+      qc.invalidateQueries({ queryKey: ["messages", "conversations"] });
+    } catch (_e) {
+      toast.error("Não foi possível enviar a mensagem. Tente novamente.");
     } finally {
-      setSending(false)
+      setSending(false);
     }
-  }
+  };
 
-  const conversations = conversationsQuery.data ?? []
-  const thread = threadQuery.data?.items ?? []
-  const peer = threadQuery.data?.peer
+  const conversations = conversationsQuery.data ?? [];
+  const thread = threadQuery.data?.items ?? [];
+  const peer = threadQuery.data?.peer;
 
   return (
     <div
@@ -209,7 +202,7 @@ export function MessagesView({
           ) : (
             <ul className="divide-y">
               {conversations.map((c) => {
-                const active = c.peerId === selectedPeerId
+                const active = c.peerId === selectedPeerId;
                 return (
                   <li key={c.peerId}>
                     <button
@@ -222,10 +215,7 @@ export function MessagesView({
                     >
                       <Avatar className="size-9 border">
                         {c.peer?.avatarUrl && (
-                          <AvatarImage
-                            src={c.peer.avatarUrl}
-                            alt={c.peer.name}
-                          />
+                          <AvatarImage src={c.peer.avatarUrl} alt={c.peer.name} />
                         )}
                         <AvatarFallback className="bg-emerald-600 text-xs text-white">
                           {initials(c.peer?.name)}
@@ -240,9 +230,7 @@ export function MessagesView({
                             {formatRelative(c.lastAt)}
                           </span>
                         </div>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {c.lastMessage}
-                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{c.lastMessage}</p>
                       </div>
                       {c.unreadCount > 0 && (
                         <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-bold text-white">
@@ -251,7 +239,7 @@ export function MessagesView({
                       )}
                     </button>
                   </li>
-                )
+                );
               })}
             </ul>
           )}
@@ -267,18 +255,14 @@ export function MessagesView({
             </div>
             <div>
               <p className="text-sm font-semibold">{emptyTitle}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {emptyDescription}
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{emptyDescription}</p>
             </div>
           </div>
         ) : (
           <>
             <header className="flex items-center gap-3 border-b p-3">
               <Avatar className="size-9 border">
-                {peer.avatarUrl && (
-                  <AvatarImage src={peer.avatarUrl} alt={peer.name} />
-                )}
+                {peer.avatarUrl && <AvatarImage src={peer.avatarUrl} alt={peer.name} />}
                 <AvatarFallback className="bg-emerald-600 text-xs text-white">
                   {initials(peer.name)}
                 </AvatarFallback>
@@ -290,7 +274,7 @@ export function MessagesView({
                     ? "Prestador"
                     : peer.role === "CLIENT"
                       ? "Cliente"
-                      : peer.role ?? ""}
+                      : (peer.role ?? "")}
                 </p>
               </div>
             </header>
@@ -307,21 +291,16 @@ export function MessagesView({
               ) : (
                 <ul className="flex flex-col gap-2">
                   {thread.map((m) => {
-                    const mine = m.fromId === user?.id
+                    const mine = m.fromId === user?.id;
                     return (
                       <li
                         key={m.id}
-                        className={cn(
-                          "flex flex-col gap-0.5",
-                          mine ? "items-end" : "items-start",
-                        )}
+                        className={cn("flex flex-col gap-0.5", mine ? "items-end" : "items-start")}
                       >
                         <div
                           className={cn(
                             "max-w-[80%] rounded-2xl px-3 py-2 text-sm",
-                            mine
-                              ? "bg-emerald-600 text-white"
-                              : "bg-muted text-foreground",
+                            mine ? "bg-emerald-600 text-white" : "bg-muted text-foreground",
                           )}
                         >
                           {m.content}
@@ -335,7 +314,7 @@ export function MessagesView({
                           })}
                         </span>
                       </li>
-                    )
+                    );
                   })}
                 </ul>
               )}
@@ -344,8 +323,8 @@ export function MessagesView({
             <footer className="border-t p-3">
               <form
                 onSubmit={(e) => {
-                  e.preventDefault()
-                  send()
+                  e.preventDefault();
+                  send();
                 }}
                 className="flex items-center gap-2"
               >
@@ -375,7 +354,7 @@ export function MessagesView({
         )}
       </section>
     </div>
-  )
+  );
 }
 
-export default MessagesView
+export default MessagesView;

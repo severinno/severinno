@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
-import { handleError } from "@/lib/api-server"
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { handleError } from "@/lib/api-server";
 
 /**
  * GET /api/reviews/recent — public endpoint for the vitrine testimonials section.
@@ -12,8 +12,8 @@ import { handleError } from "@/lib/api-server"
  */
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url)
-    const limit = Math.min(parseInt(searchParams.get("limit") || "6", 10), 12)
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(parseInt(searchParams.get("limit") || "6", 10), 12);
 
     const [reviews, agg] = await Promise.all([
       db.review.findMany({
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
         _avg: { rating: true },
         _count: { id: true },
       }),
-    ])
+    ]);
 
     const items = reviews.map((r) => ({
       id: r.id,
@@ -48,14 +48,14 @@ export async function GET(request: Request) {
       providerName: r.provider.name,
       providerAvatar: r.provider.avatarUrl,
       serviceTitle: r.service?.title ?? "Serviço",
-    }))
+    }));
 
     return NextResponse.json({
       items,
       total: agg._count.id,
       avgRating: agg._avg.rating ? Number(agg._avg.rating.toFixed(1)) : 0,
-    })
+    });
   } catch (e) {
-    return handleError(e)
+    return handleError(e);
   }
 }

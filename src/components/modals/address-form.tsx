@@ -1,58 +1,82 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Loader2, LocateFixed, MapPin } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import * as React from "react";
+import { Loader2, LocateFixed, MapPin } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { apiGet } from "@/lib/api"
-import { useGeoStore } from "@/store/geo"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/select";
+import { apiGet } from "@/lib/api";
+import { useGeoStore } from "@/store/geo";
+import { cn } from "@/lib/utils";
 
 export type AddressFormValue = {
-  cep: string
-  street: string
-  number: string
-  complement: string
-  district: string
-  city: string
-  state: string
-  lat?: number | null
-  lng?: number | null
-}
+  cep: string;
+  street: string;
+  number: string;
+  complement: string;
+  district: string;
+  city: string;
+  state: string;
+  lat?: number | null;
+  lng?: number | null;
+};
 
 type AddressFormProps = {
-  value: AddressFormValue
-  onChange: (v: AddressFormValue) => void
-  errors?: Partial<Record<keyof AddressFormValue, string>>
-  className?: string
+  value: AddressFormValue;
+  onChange: (v: AddressFormValue) => void;
+  errors?: Partial<Record<keyof AddressFormValue, string>>;
+  className?: string;
   /** Hide the "use my location" GPS button. */
-  hideGps?: boolean
+  hideGps?: boolean;
   /** Field label prefix for screen readers / nested forms. */
-  idPrefix?: string
-}
+  idPrefix?: string;
+};
 
 const UF_OPTIONS = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-  "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-  "RS", "RO", "RR", "SC", "SP", "SE", "TO",
-]
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
+];
 
 function onlyDigits(s: string): string {
-  return s.replace(/\D/g, "")
+  return s.replace(/\D/g, "");
 }
 
 function maskCep(cep: string): string {
-  const d = onlyDigits(cep).slice(0, 8)
-  if (d.length <= 5) return d
-  return `${d.slice(0, 5)}-${d.slice(5)}`
+  const d = onlyDigits(cep).slice(0, 8);
+  if (d.length <= 5) return d;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
 }
 
 /**
@@ -70,32 +94,32 @@ export function AddressForm({
   hideGps,
   idPrefix = "addr",
 }: AddressFormProps) {
-  const setFromGPS = useGeoStore((s) => s.setFromGPS)
-  const [cepLoading, setCepLoading] = React.useState(false)
-  const [gpsLoading, setGpsLoading] = React.useState(false)
-  const [cepError, setCepError] = React.useState<string | null>(null)
+  const setFromGPS = useGeoStore((s) => s.setFromGPS);
+  const [cepLoading, setCepLoading] = React.useState(false);
+  const [gpsLoading, setGpsLoading] = React.useState(false);
+  const [cepError, setCepError] = React.useState<string | null>(null);
 
   const set = React.useCallback(
     <K extends keyof AddressFormValue>(key: K, v: AddressFormValue[K]) => {
-      onChange({ ...value, [key]: v })
+      onChange({ ...value, [key]: v });
     },
     [value, onChange],
-  )
+  );
 
   const handleCepLookup = React.useCallback(
     async (raw: string) => {
-      const cep = onlyDigits(raw)
-      if (cep.length !== 8) return
-      setCepLoading(true)
-      setCepError(null)
+      const cep = onlyDigits(raw);
+      if (cep.length !== 8) return;
+      setCepLoading(true);
+      setCepError(null);
       try {
         const data = await apiGet<{
-          cep: string
-          street?: string
-          district?: string
-          city?: string
-          state?: string
-        }>("/api/geo/cep", { cep })
+          cep: string;
+          street?: string;
+          district?: string;
+          city?: string;
+          state?: string;
+        }>("/api/geo/cep", { cep });
         onChange({
           ...value,
           cep: data.cep ?? maskCep(cep),
@@ -103,34 +127,34 @@ export function AddressForm({
           district: data.district ?? value.district,
           city: data.city ?? value.city,
           state: data.state ?? value.state,
-        })
+        });
       } catch {
-        setCepError("CEP não encontrado. Preencha o endereço manualmente.")
+        setCepError("CEP não encontrado. Preencha o endereço manualmente.");
       } finally {
-        setCepLoading(false)
+        setCepLoading(false);
       }
     },
     [value, onChange],
-  )
+  );
 
   const handleGps = React.useCallback(async () => {
-    setGpsLoading(true)
+    setGpsLoading(true);
     try {
-      await setFromGPS()
-      const geo = useGeoStore.getState()
+      await setFromGPS();
+      const geo = useGeoStore.getState();
       if (geo.lat == null || geo.lng == null) {
-        setGpsLoading(false)
-        return
+        setGpsLoading(false);
+        return;
       }
       // Try reverse geocoding for a friendlier UX.
       try {
         const data = await apiGet<{
-          street?: string
-          district?: string
-          city?: string
-          state?: string
-          cep?: string
-        }>("/api/geo/reverse", { lat: geo.lat, lng: geo.lng })
+          street?: string;
+          district?: string;
+          city?: string;
+          state?: string;
+          cep?: string;
+        }>("/api/geo/reverse", { lat: geo.lat, lng: geo.lng });
         onChange({
           ...value,
           lat: geo.lat,
@@ -140,15 +164,15 @@ export function AddressForm({
           district: data.district ?? value.district,
           city: data.city ?? value.city,
           state: data.state ?? value.state,
-        })
+        });
       } catch {
         // Keep GPS coords only; user fills address manually.
-        onChange({ ...value, lat: geo.lat, lng: geo.lng })
+        onChange({ ...value, lat: geo.lat, lng: geo.lng });
       }
     } finally {
-      setGpsLoading(false)
+      setGpsLoading(false);
     }
-  }, [value, onChange, setFromGPS])
+  }, [value, onChange, setFromGPS]);
 
   return (
     <div className={cn("grid gap-3", className)}>
@@ -205,9 +229,7 @@ export function AddressForm({
           aria-invalid={!!errors?.street}
           className="h-10 text-sm"
         />
-        {errors?.street && (
-          <p className="text-xs text-destructive">{errors.street}</p>
-        )}
+        {errors?.street && <p className="text-xs text-destructive">{errors.street}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -221,9 +243,7 @@ export function AddressForm({
             aria-invalid={!!errors?.number}
             className="h-10 text-sm"
           />
-          {errors?.number && (
-            <p className="text-xs text-destructive">{errors.number}</p>
-          )}
+          {errors?.number && <p className="text-xs text-destructive">{errors.number}</p>}
         </div>
         <div className="col-span-1 grid gap-1.5 sm:col-span-2">
           <Label htmlFor={`${idPrefix}-complement`}>Complemento</Label>
@@ -258,19 +278,14 @@ export function AddressForm({
             aria-invalid={!!errors?.city}
             className="h-10 text-sm"
           />
-          {errors?.city && (
-            <p className="text-xs text-destructive">{errors.city}</p>
-          )}
+          {errors?.city && <p className="text-xs text-destructive">{errors.city}</p>}
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor={`${idPrefix}-state`}>UF</Label>
-          <Select
-            value={value.state}
-            onValueChange={(v) => set("state", v)}
-          >
+          <Select value={value.state} onValueChange={(v) => set("state", v)}>
             <SelectTrigger
               id={`${idPrefix}-state`}
               className="w-full h-10 text-sm"
@@ -286,9 +301,7 @@ export function AddressForm({
               ))}
             </SelectContent>
           </Select>
-          {errors?.state && (
-            <p className="text-xs text-destructive">{errors.state}</p>
-          )}
+          {errors?.state && <p className="text-xs text-destructive">{errors.state}</p>}
         </div>
         <div className="flex items-end">
           {value.lat != null && value.lng != null ? (
@@ -297,12 +310,10 @@ export function AddressForm({
               Localização confirmada
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              Confirme o endereço para prosseguir.
-            </p>
+            <p className="text-xs text-muted-foreground">Confirme o endereço para prosseguir.</p>
           )}
         </div>
       </div>
     </div>
-  )
+  );
 }

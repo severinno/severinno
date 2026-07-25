@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AdminBookings — read-only oversight of all bookings (admin).
@@ -26,7 +26,7 @@
  *   H10— Tooltip "Ver detalhes" no hover da linha; Dialog acessível (focus trap)
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   CalendarCheck,
   CalendarDays,
@@ -35,22 +35,22 @@ import {
   SearchX,
   ShieldQuestion,
   X,
-} from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
-import { apiGet } from "@/lib/api"
+import { apiGet } from "@/lib/api";
 import {
   BOOKING_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
   type BookingStatus,
   type PaymentMethod,
   type PaymentStatus,
-} from "@/lib/constants"
-import { formatBRL, formatDateTime } from "@/lib/format"
-import { cn } from "@/lib/utils"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+} from "@/lib/constants";
+import { formatBRL, formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -58,7 +58,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -66,13 +66,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import {
   BookingStatusBadge,
@@ -86,54 +82,54 @@ import {
   ResultCount,
   SearchInput,
   TableSkeleton,
-} from "./admin-shared"
+} from "./admin-shared";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type AdminBooking = {
-  id: string
-  status: BookingStatus
-  paymentStatus: PaymentStatus
-  paymentMethod: PaymentMethod
-  amount: number
-  scheduledAt: string
-  createdAt: string
-  address?: string | null
-  service?: { id: string; title: string } | null
-  client?: { id: string; name: string; avatarUrl?: string | null } | null
-  provider?: { id: string; name: string; avatarUrl?: string | null } | null
-}
+  id: string;
+  status: BookingStatus;
+  paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethod;
+  amount: number;
+  scheduledAt: string;
+  createdAt: string;
+  address?: string | null;
+  service?: { id: string; title: string } | null;
+  client?: { id: string; name: string; avatarUrl?: string | null } | null;
+  provider?: { id: string; name: string; avatarUrl?: string | null } | null;
+};
 
 type AdminBookingsResponse = {
-  items: AdminBooking[]
-  total: number
-  page: number
-  limit: number
-}
+  items: AdminBooking[];
+  total: number;
+  page: number;
+  limit: number;
+};
 
 type StatsResponse = {
-  bookingsByStatus: Record<string, number>
-}
+  bookingsByStatus: Record<string, number>;
+};
 
-type StatusFilter = "ALL" | BookingStatus
+type StatusFilter = "ALL" | BookingStatus;
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminBookings() {
-  const [status, setStatus] = React.useState<StatusFilter>("ALL")
-  const [page, setPage] = React.useState(1)
-  const [q, setQ] = React.useState("")
-  const [detail, setDetail] = React.useState<AdminBooking | null>(null)
-  const limit = 12
+  const [status, setStatus] = React.useState<StatusFilter>("ALL");
+  const [page, setPage] = React.useState(1);
+  const [q, setQ] = React.useState("");
+  const [detail, setDetail] = React.useState<AdminBooking | null>(null);
+  const limit = 12;
 
   // Per-status counts (H1) — mesmo cache do dashboard (60s)
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["admin", "stats"],
     queryFn: () => apiGet<StatsResponse>("/api/admin/stats"),
     staleTime: 60_000,
-  })
+  });
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "bookings", { status, page, limit }],
@@ -145,41 +141,37 @@ export function AdminBookings() {
         limit,
       }),
     staleTime: 15_000,
-  })
+  });
 
-  const rawItems = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / limit))
+  const rawItems = React.useMemo(() => data?.items ?? [], [data]);
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
 
   // H7 — busca client-side por cliente, prestador ou serviço
-  const query = q.trim().toLowerCase()
+  const query = q.trim().toLowerCase();
   const items = React.useMemo(() => {
-    if (!query) return rawItems
+    if (!query) return rawItems;
     return rawItems.filter((b) => {
-      const client = b.client?.name?.toLowerCase() ?? ""
-      const provider = b.provider?.name?.toLowerCase() ?? ""
-      const service = b.service?.title?.toLowerCase() ?? ""
-      return (
-        client.includes(query) ||
-        provider.includes(query) ||
-        service.includes(query)
-      )
-    })
-  }, [rawItems, query])
+      const client = b.client?.name?.toLowerCase() ?? "";
+      const provider = b.provider?.name?.toLowerCase() ?? "";
+      const service = b.service?.title?.toLowerCase() ?? "";
+      return client.includes(query) || provider.includes(query) || service.includes(query);
+    });
+  }, [rawItems, query]);
 
   // H1 — contagens por status vindas do /api/admin/stats
   const statusCounts = React.useMemo(() => {
-    const by = stats?.bookingsByStatus ?? {}
-    const sum = Object.values(by).reduce((a, b) => a + (b ?? 0), 0)
-    return { ALL: sum, ...by } as Record<StatusFilter, number>
-  }, [stats])
+    const by = stats?.bookingsByStatus ?? {};
+    const sum = Object.values(by).reduce((a, b) => a + (b ?? 0), 0);
+    return { ALL: sum, ...by } as Record<StatusFilter, number>;
+  }, [stats]);
 
-  const activeFilterCount = (status !== "ALL" ? 1 : 0) + (query ? 1 : 0)
+  const activeFilterCount = (status !== "ALL" ? 1 : 0) + (query ? 1 : 0);
   const clearFilters = () => {
-    setStatus("ALL")
-    setQ("")
-    setPage(1)
-  }
+    setStatus("ALL");
+    setQ("");
+    setPage(1);
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -192,8 +184,8 @@ export function AdminBookings() {
       <Tabs
         value={status}
         onValueChange={(v) => {
-          setStatus(v as StatusFilter)
-          setPage(1)
+          setStatus(v as StatusFilter);
+          setPage(1);
         }}
       >
         <TabsList className="h-auto flex-wrap gap-1 bg-card/50 border border-border/50 shadow-none p-1">
@@ -202,11 +194,7 @@ export function AdminBookings() {
             className="h-8 rounded-md px-3 text-xs font-medium gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             Todos
-            <CountBadge
-              loading={statsLoading}
-              count={statusCounts.ALL}
-              active={status === "ALL"}
-            />
+            <CountBadge loading={statsLoading} count={statusCounts.ALL} active={status === "ALL"} />
           </TabsTrigger>
           {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => (
             <TabsTrigger
@@ -230,9 +218,7 @@ export function AdminBookings() {
         onClear={clearFilters}
         activeCount={activeFilterCount}
         resultCount={total}
-        resultLabel={
-          total === 1 ? "agendamento no total" : "agendamentos no total"
-        }
+        resultLabel={total === 1 ? "agendamento no total" : "agendamentos no total"}
       >
         <SearchInput
           value={q}
@@ -272,12 +258,7 @@ export function AdminBookings() {
           }
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -326,10 +307,7 @@ export function AdminBookings() {
                             <div className="flex items-center gap-2.5">
                               <Avatar className="size-8 shrink-0">
                                 {b.client?.avatarUrl ? (
-                                  <AvatarImage
-                                    src={b.client.avatarUrl}
-                                    alt={b.client.name ?? ""}
-                                  />
+                                  <AvatarImage src={b.client.avatarUrl} alt={b.client.name ?? ""} />
                                 ) : null}
                                 <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
                                   {initials(b.client?.name ?? "?")}
@@ -353,22 +331,16 @@ export function AdminBookings() {
                                   {initials(b.provider?.name ?? "?")}
                                 </AvatarFallback>
                               </Avatar>
-                              <span className="truncate text-sm">
-                                {b.provider?.name ?? "—"}
-                              </span>
+                              <span className="truncate text-sm">{b.provider?.name ?? "—"}</span>
                             </div>
                           </TableCell>
                           <TableCell className="hidden px-4 py-3 text-sm md:table-cell">
-                            {b.service?.title ?? (
-                              <span className="text-muted-foreground">—</span>
-                            )}
+                            {b.service?.title ?? <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="hidden px-4 py-3 lg:table-cell">
                             <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                               <CalendarDays className="size-3.5 text-muted-foreground" />
-                              <span className="tabular-nums">
-                                {formatDateTime(b.scheduledAt)}
-                              </span>
+                              <span className="tabular-nums">{formatDateTime(b.scheduledAt)}</span>
                             </div>
                           </TableCell>
                           <TableCell className="px-4 py-3 text-right">
@@ -384,16 +356,13 @@ export function AdminBookings() {
                             <div className="flex flex-col gap-0.5">
                               <PaymentStatusBadge status={b.paymentStatus} />
                               <span className="text-[10px] text-muted-foreground">
-                                {PAYMENT_METHOD_LABELS[b.paymentMethod] ??
-                                  b.paymentMethod}
+                                {PAYMENT_METHOD_LABELS[b.paymentMethod] ?? b.paymentMethod}
                               </span>
                             </div>
                           </TableCell>
                         </TableRow>
                       </TooltipTrigger>
-                      <TooltipContent side="top">
-                        Ver detalhes do agendamento
-                      </TooltipContent>
+                      <TooltipContent side="top">Ver detalhes do agendamento</TooltipContent>
                     </Tooltip>
                   ))}
                 </TableBody>
@@ -402,36 +371,22 @@ export function AdminBookings() {
 
             {/* Result count + Pagination (H1 + H7) */}
             <div className="flex flex-col items-center justify-between gap-2 border-t border-border/50 px-4 py-3 sm:flex-row">
-              <ResultCount
-                page={page}
-                limit={limit}
-                total={total}
-                label="agendamentos"
-              />
-              <Pagination
-                page={page}
-                totalPages={totalPages}
-                onPageChange={setPage}
-              />
+              <ResultCount page={page} limit={limit} total={total} label="agendamentos" />
+              <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* H6 — Booking detail dialog */}
-      <Dialog
-        open={!!detail}
-        onOpenChange={(open) => !open && setDetail(null)}
-      >
+      <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarCheck className="size-5 text-primary" />
               Detalhes do agendamento
             </DialogTitle>
-            <DialogDescription>
-              Informações completas do agendamento selecionado.
-            </DialogDescription>
+            <DialogDescription>Informações completas do agendamento selecionado.</DialogDescription>
           </DialogHeader>
 
           {detail ? (
@@ -482,17 +437,10 @@ export function AdminBookings() {
                 <DetailRow
                   icon={CreditCard}
                   label="Pagamento"
-                  value={
-                    PAYMENT_METHOD_LABELS[detail.paymentMethod] ??
-                    detail.paymentMethod
-                  }
+                  value={PAYMENT_METHOD_LABELS[detail.paymentMethod] ?? detail.paymentMethod}
                 />
                 {detail.address ? (
-                  <DetailRow
-                    icon={MapPin}
-                    label="Endereço"
-                    value={detail.address}
-                  />
+                  <DetailRow icon={MapPin} label="Endereço" value={detail.address} />
                 ) : null}
                 <DetailRow
                   icon={CalendarCheck}
@@ -516,7 +464,7 @@ export function AdminBookings() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -528,9 +476,9 @@ function CountBadge({
   count,
   active,
 }: {
-  loading: boolean
-  count: number
-  active: boolean
+  loading: boolean;
+  count: number;
+  active: boolean;
 }) {
   return (
     <span
@@ -544,7 +492,7 @@ function CountBadge({
     >
       {loading ? "?" : count}
     </span>
-  )
+  );
 }
 
 function DetailField({
@@ -552,15 +500,13 @@ function DetailField({
   value,
   avatarUrl,
 }: {
-  label: string
-  value: string
-  avatarUrl?: string | null
+  label: string;
+  value: string;
+  avatarUrl?: string | null;
 }) {
   return (
     <div className="space-y-1">
-      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </p>
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
       <div className="flex items-center gap-2">
         <Avatar className="size-7 shrink-0">
           {avatarUrl ? <AvatarImage src={avatarUrl} alt={value} /> : null}
@@ -568,12 +514,10 @@ function DetailField({
             {initials(value)}
           </AvatarFallback>
         </Avatar>
-        <span className="truncate text-sm font-medium text-foreground">
-          {value}
-        </span>
+        <span className="truncate text-sm font-medium text-foreground">{value}</span>
       </div>
     </div>
-  )
+  );
 }
 
 function DetailRow({
@@ -581,19 +525,17 @@ function DetailRow({
   label,
   value,
 }: {
-  icon: React.ComponentType<{ className?: string }>
-  label: string
-  value: string
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
 }) {
   return (
     <div className="flex items-start gap-2.5">
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
         <p className="text-sm text-foreground">{value}</p>
       </div>
     </div>
-  )
+  );
 }

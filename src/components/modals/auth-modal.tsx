@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm, type Resolver } from "react-hook-form"
+import * as React from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm, type Resolver } from "react-hook-form";
 import {
   BadgeCheck,
   Check,
@@ -16,9 +16,9 @@ import {
   ShieldCheck,
   UserRound,
   Wrench,
-} from "lucide-react"
-import { toast } from "sonner"
-import { motion, AnimatePresence } from "framer-motion"
+} from "lucide-react";
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 
 import {
   Dialog,
@@ -26,12 +26,11 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
   Form,
   FormField,
@@ -40,17 +39,12 @@ import {
   FormControl,
   FormMessage,
   FormDescription,
-} from "@/components/ui/form"
-import {
-  loginSchema,
-  registerSchema,
-  type LoginInput,
-  type RegisterInput,
-} from "@/lib/validators"
-import { useUIStore, type AuthModalMode, type AuthModalRole } from "@/store/ui"
-import { useAuthStore, type AuthUser } from "@/store/auth"
-import { useViewStore } from "@/store/view"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/form";
+import { loginSchema, registerSchema, type LoginInput, type RegisterInput } from "@/lib/validators";
+import { useUIStore, type AuthModalMode, type AuthModalRole } from "@/store/ui";
+import { useAuthStore, type AuthUser } from "@/store/auth";
+import { useViewStore } from "@/store/view";
+import { cn } from "@/lib/utils";
 
 /**
  * Resolve the dashboard view for the authenticated user's role.
@@ -58,35 +52,30 @@ import { cn } from "@/lib/utils"
 function dashboardViewFor(role: AuthUser["role"] | undefined): string {
   switch (role) {
     case "ADMIN":
-      return "admin.dashboard"
+      return "admin.dashboard";
     case "PROVIDER":
-      return "provider.dashboard"
+      return "provider.dashboard";
     case "CLIENT":
     default:
-      return "client.dashboard"
+      return "client.dashboard";
   }
 }
 
 export function AuthModal() {
-  const open = useUIStore((s) => s.authModal.open)
-  const mode = useUIStore((s) => s.authModal.mode)
-  const role = useUIStore((s) => s.authModal.role)
-  const closeAuth = useUIStore((s) => s.closeAuth)
-  const openAuth = useUIStore((s) => s.openAuth)
+  const open = useUIStore((s) => s.authModal.open);
+  const mode = useUIStore((s) => s.authModal.mode);
+  const role = useUIStore((s) => s.authModal.role);
+  const closeAuth = useUIStore((s) => s.closeAuth);
+  const openAuth = useUIStore((s) => s.openAuth);
 
   // Local mode synced with the store (lets users toggle inside the modal).
-  const [localMode, setLocalMode] = React.useState<AuthModalMode>(mode)
-  const [localRole, setLocalRole] = React.useState<AuthModalRole>(role)
+  const [localMode] = React.useState<AuthModalMode>(mode);
+  const [localRole, setLocalRole] = React.useState<AuthModalRole>(role);
 
-  React.useEffect(() => {
-    if (open) {
-      setLocalMode(mode)
-      setLocalRole(role)
-    }
-  }, [open, mode, role])
+  // Sincronizado automaticamente via key={String(open)} no Dialog
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? null : closeAuth())}>
+    <Dialog key={String(open)} open={open} onOpenChange={(o) => (o ? null : closeAuth())}>
       <DialogContent className="sm:max-w-md gap-0 p-0 overflow-hidden">
         {/* Header — emerald gradient + brand mark */}
         <div className="relative bg-gradient-to-b from-emerald-50 to-background dark:from-emerald-950/40 px-6 pt-6 pb-4">
@@ -96,9 +85,7 @@ export function AuthModal() {
                 <Wrench className="size-5" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-muted-foreground leading-tight">
-                  Severinno
-                </p>
+                <p className="text-xs font-medium text-muted-foreground leading-tight">Severinno</p>
                 <DialogTitle className="text-xl leading-tight">
                   {localMode === "login" ? "Entrar" : "Cadastrar"}
                 </DialogTitle>
@@ -138,7 +125,7 @@ export function AuthModal() {
           <TabsContent value="login" className="mt-0">
             <LoginForm
               onSuccess={() => {
-                closeAuth()
+                closeAuth();
               }}
               onSwitchRegister={() => openAuth("register", localRole)}
             />
@@ -149,7 +136,7 @@ export function AuthModal() {
               role={localRole}
               onRoleChange={setLocalRole}
               onSuccess={() => {
-                closeAuth()
+                closeAuth();
               }}
               onSwitchLogin={() => openAuth("login", localRole)}
             />
@@ -157,7 +144,7 @@ export function AuthModal() {
         </Tabs>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -170,27 +157,27 @@ export function AuthModal() {
  * copies only the e-mail to the clipboard and fires a sonner toast.
  */
 const DEMO_ACCOUNTS: ReadonlyArray<{
-  email: string
-  password: string
-  role: string
+  email: string;
+  password: string;
+  role: string;
 }> = [
   { email: "admin@severinno.com", password: "admin123", role: "Administrador" },
   { email: "cliente@severinno.com", password: "cliente123", role: "Cliente" },
   { email: "joao@severinno.com", password: "provider123", role: "Prestador" },
-]
+];
 
 function LoginForm({
   onSuccess,
   onSwitchRegister,
 }: {
-  onSuccess: () => void
-  onSwitchRegister: () => void
+  onSuccess: () => void;
+  onSwitchRegister: () => void;
 }) {
-  const login = useAuthStore((s) => s.login)
-  const navigate = useViewStore((s) => s.navigate)
-  const [loading, setLoading] = React.useState(false)
-  const [formError, setFormError] = React.useState<string | null>(null)
-  const [showPassword, setShowPassword] = React.useState(false)
+  const login = useAuthStore((s) => s.login);
+  const navigate = useViewStore((s) => s.navigate);
+  const [loading, setLoading] = React.useState(false);
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const [showPassword, setShowPassword] = React.useState(false);
 
   const form = useForm<LoginInput>({
     // Cast around Zod 4's `z.coerce.number().optional()` typing, which
@@ -198,35 +185,32 @@ function LoginForm({
     resolver: zodResolver(loginSchema) as unknown as Resolver<LoginInput>,
     defaultValues: { email: "", password: "" },
     mode: "onTouched",
-  })
+  });
 
   const onSubmit = async (values: LoginInput) => {
-    setLoading(true)
-    setFormError(null)
+    setLoading(true);
+    setFormError(null);
     try {
-      const res = await login(values)
+      const res = await login(values);
       if (res.ok) {
         // login() already populated the store with the authenticated user.
-        const user = useAuthStore.getState().user
-        toast.success("Bem-vindo de volta!")
-        navigate(dashboardViewFor(user?.role))
-        onSuccess()
+        const user = useAuthStore.getState().user;
+        toast.success("Bem-vindo de volta!");
+        navigate(dashboardViewFor(user?.role));
+        onSuccess();
       } else {
-        const msg = res.error ?? "Não foi possível entrar."
-        setFormError(msg)
-        toast.error(msg)
+        const msg = res.error ?? "Não foi possível entrar.";
+        setFormError(msg);
+        toast.error(msg);
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="grid gap-4 p-6 pt-4"
-      >
+      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 p-6 pt-4">
         <FormField
           control={form.control}
           name="email"
@@ -258,11 +242,7 @@ function LoginForm({
                 <FormLabel className="text-sm font-medium">Senha</FormLabel>
                 <button
                   type="button"
-                  onClick={() =>
-                    toast.info(
-                      "Recuperação de senha disponível em breve.",
-                    )
-                  }
+                  onClick={() => toast.info("Recuperação de senha disponível em breve.")}
                   className="text-xs text-emerald-700 hover:underline dark:text-emerald-400"
                 >
                   Esqueci a senha
@@ -285,11 +265,7 @@ function LoginForm({
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                     aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                   >
-                    {showPassword ? (
-                      <EyeOff className="size-4" />
-                    ) : (
-                      <Eye className="size-4" />
-                    )}
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
               </FormControl>
@@ -331,14 +307,9 @@ function LoginForm({
             </p>
             <ul className="space-y-1.5">
               {DEMO_ACCOUNTS.map((acc) => (
-                <li
-                  key={acc.email}
-                  className="flex items-center justify-between gap-2"
-                >
+                <li key={acc.email} className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate font-mono text-foreground">
-                      {acc.email}
-                    </p>
+                    <p className="truncate font-mono text-foreground">{acc.email}</p>
                     <p className="text-muted-foreground">
                       {acc.password} · {acc.role}
                     </p>
@@ -347,8 +318,8 @@ function LoginForm({
                     type="button"
                     tabIndex={-1}
                     onClick={() => {
-                      void navigator.clipboard?.writeText(acc.email)
-                      toast.success("E-mail copiado")
+                      void navigator.clipboard?.writeText(acc.email);
+                      toast.success("E-mail copiado");
                     }}
                     className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-emerald-700 dark:hover:text-emerald-400"
                     aria-label={`Copiar e-mail ${acc.email}`}
@@ -373,7 +344,7 @@ function LoginForm({
         </div>
       </form>
     </Form>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -386,18 +357,18 @@ function RegisterForm({
   onSuccess,
   onSwitchLogin,
 }: {
-  role: AuthModalRole
-  onRoleChange: (r: AuthModalRole) => void
-  onSuccess: () => void
-  onSwitchLogin: () => void
+  role: AuthModalRole;
+  onRoleChange: (r: AuthModalRole) => void;
+  onSuccess: () => void;
+  onSwitchLogin: () => void;
 }) {
-  const register = useAuthStore((s) => s.register)
-  const fetchMe = useAuthStore((s) => s.fetchMe)
-  const navigate = useViewStore((s) => s.navigate)
-  const [loading, setLoading] = React.useState(false)
-  const [formError, setFormError] = React.useState<string | null>(null)
-  const [showPassword, setShowPassword] = React.useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false)
+  const register = useAuthStore((s) => s.register);
+  const fetchMe = useAuthStore((s) => s.fetchMe);
+  const navigate = useViewStore((s) => s.navigate);
+  const [loading, setLoading] = React.useState(false);
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
 
   const form = useForm<RegisterInput>({
     // Cast around Zod 4's `z.coerce.number().optional()` typing.
@@ -414,41 +385,38 @@ function RegisterForm({
       state: "",
     },
     mode: "onTouched",
-  })
+  });
 
   React.useEffect(() => {
-    form.setValue("role", role)
-  }, [role, form])
+    form.setValue("role", role);
+  }, [role, form]);
 
   const onSubmit = async (values: RegisterInput) => {
-    setLoading(true)
-    setFormError(null)
+    setLoading(true);
+    setFormError(null);
     try {
-      const res = await register(values)
+      const res = await register(values);
       if (res.ok) {
-        await fetchMe()
-        toast.success("Conta criada! Bem-vindo ao Severinno.")
-        const user = useAuthStore.getState().user
-        navigate(dashboardViewFor(user?.role))
-        onSuccess()
+        await fetchMe();
+        toast.success("Conta criada! Bem-vindo ao Severinno.");
+        const user = useAuthStore.getState().user;
+        navigate(dashboardViewFor(user?.role));
+        onSuccess();
       } else {
-        const msg = res.error ?? "Não foi possível criar a conta."
-        setFormError(msg)
-        toast.error(msg)
+        const msg = res.error ?? "Não foi possível criar a conta.";
+        setFormError(msg);
+        toast.error(msg);
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const isProvider = role === "PROVIDER"
+  const isProvider = role === "PROVIDER";
 
   return (
     <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="grid gap-4 p-6 pt-4"
-      >
+      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 p-6 pt-4">
         {/* Role toggle — large selectable cards */}
         <FormField
           control={form.control}
@@ -458,31 +426,29 @@ function RegisterForm({
               <FormLabel className="text-sm font-medium">Tipo de conta</FormLabel>
               <FormControl>
                 <div className="grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      {
-                        value: "CLIENT" as const,
-                        label: "Cliente",
-                        desc: "Peço serviços",
-                        icon: UserRound,
-                      },
-                      {
-                        value: "PROVIDER" as const,
-                        label: "Prestador",
-                        desc: "Ofereço serviços",
-                        icon: ShieldCheck,
-                      },
-                    ]
-                  ).map((opt) => {
-                    const active = field.value === opt.value
-                    const Icon = opt.icon
+                  {[
+                    {
+                      value: "CLIENT" as const,
+                      label: "Cliente",
+                      desc: "Peço serviços",
+                      icon: UserRound,
+                    },
+                    {
+                      value: "PROVIDER" as const,
+                      label: "Prestador",
+                      desc: "Ofereço serviços",
+                      icon: ShieldCheck,
+                    },
+                  ].map((opt) => {
+                    const active = field.value === opt.value;
+                    const Icon = opt.icon;
                     return (
                       <button
                         key={opt.value}
                         type="button"
                         onClick={() => {
-                          onRoleChange(opt.value)
-                          field.onChange(opt.value)
+                          onRoleChange(opt.value);
+                          field.onChange(opt.value);
                         }}
                         aria-pressed={active}
                         className={cn(
@@ -508,11 +474,9 @@ function RegisterForm({
                           <Check className="size-3" />
                         </span>
                         <span className="text-sm font-medium">{opt.label}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {opt.desc}
-                        </span>
+                        <span className="text-xs text-muted-foreground">{opt.desc}</span>
                       </button>
-                    )
+                    );
                   })}
                 </div>
               </FormControl>
@@ -531,11 +495,7 @@ function RegisterForm({
               <FormItem className="space-y-1.5">
                 <FormLabel className="text-sm font-medium">Nome completo</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Seu nome"
-                    className="h-10 text-sm"
-                    {...field}
-                  />
+                  <Input placeholder="Seu nome" className="h-10 text-sm" {...field} />
                 </FormControl>
                 <FormMessage className="text-xs" />
               </FormItem>
@@ -589,11 +549,7 @@ function RegisterForm({
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                       aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     >
-                      {showPassword ? (
-                        <EyeOff className="size-4" />
-                      ) : (
-                        <Eye className="size-4" />
-                      )}
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>
                 </FormControl>
@@ -622,11 +578,7 @@ function RegisterForm({
                       tabIndex={-1}
                       onClick={() => setShowConfirmPassword((v) => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={
-                        showConfirmPassword
-                          ? "Ocultar senha"
-                          : "Mostrar senha"
-                      }
+                      aria-label={showConfirmPassword ? "Ocultar senha" : "Mostrar senha"}
                     >
                       {showConfirmPassword ? (
                         <EyeOff className="size-4" />
@@ -658,11 +610,7 @@ function RegisterForm({
                   <FormItem className="space-y-1.5">
                     <FormLabel className="text-sm font-medium">CPF / CNPJ</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="000.000.000-00"
-                        className="h-10 text-sm"
-                        {...field}
-                      />
+                      <Input placeholder="000.000.000-00" className="h-10 text-sm" {...field} />
                     </FormControl>
                     <p className="text-xs text-muted-foreground">
                       Apenas dígitos ou com pontuação.
@@ -678,11 +626,7 @@ function RegisterForm({
                   <FormItem className="space-y-1.5">
                     <FormLabel className="text-sm font-medium">WhatsApp</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="(11) 90000-0000"
-                        className="h-10 text-sm"
-                        {...field}
-                      />
+                      <Input placeholder="(11) 90000-0000" className="h-10 text-sm" {...field} />
                     </FormControl>
                     <p className="text-xs text-muted-foreground">
                       Clientes usarão para contato direto.
@@ -698,11 +642,7 @@ function RegisterForm({
                   <FormItem className="space-y-1.5">
                     <FormLabel className="text-sm font-medium">Cidade</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="São Paulo"
-                        className="h-10 text-sm"
-                        {...field}
-                      />
+                      <Input placeholder="São Paulo" className="h-10 text-sm" {...field} />
                     </FormControl>
                     <FormMessage className="text-xs" />
                   </FormItem>
@@ -720,9 +660,7 @@ function RegisterForm({
                         placeholder="SP"
                         className="h-10 text-sm uppercase"
                         {...field}
-                        onChange={(e) =>
-                          field.onChange(e.target.value.toUpperCase())
-                        }
+                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                       />
                     </FormControl>
                     <FormMessage className="text-xs" />
@@ -736,10 +674,7 @@ function RegisterForm({
         {isProvider && (
           <FormDescription className="flex items-center gap-2 rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
             <BadgeCheck className="size-4 shrink-0 text-emerald-600" />
-            <span>
-              Como prestador, você poderá cadastrar serviços após verificação
-              do perfil.
-            </span>
+            <span>Como prestador, você poderá cadastrar serviços após verificação do perfil.</span>
           </FormDescription>
         )}
 
@@ -777,5 +712,5 @@ function RegisterForm({
         </div>
       </form>
     </Form>
-  )
+  );
 }

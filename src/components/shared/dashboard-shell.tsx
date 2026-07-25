@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * DashboardShell — reusable sidebar + topbar layout for all panels
@@ -20,9 +20,9 @@
  * thin copyright bar at the bottom of the main content area.
  */
 
-import * as React from "react"
-import { useTheme } from "next-themes"
-import { motion } from "framer-motion"
+import * as React from "react";
+import { useTheme } from "next-themes";
+import { motion } from "framer-motion";
 import {
   Bell,
   Check,
@@ -36,23 +36,20 @@ import {
   Moon,
   Sun,
   type LucideIcon,
-} from "lucide-react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+} from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { cn } from "@/lib/utils"
-import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
-import { formatRelative } from "@/lib/format"
-import { apiGet, apiPatch } from "@/lib/api"
-import { useAuthStore, useViewStore } from "@/store"
+import { cn } from "@/lib/utils";
+import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants";
+import { formatRelative } from "@/lib/format";
+import { apiGet, apiPatch } from "@/lib/api";
+import { useAuthStore, useViewStore } from "@/store";
 
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,13 +57,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+} from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   Sidebar,
   SidebarContent,
@@ -82,105 +74,103 @@ import {
   SidebarProvider,
   SidebarSeparator,
   SidebarTrigger,
-} from "@/components/ui/sidebar"
-import { ScrollArea } from "@/components/ui/scroll-area"
+} from "@/components/ui/sidebar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type NavItem = {
-  label: string
-  icon: LucideIcon
-  view: string
-  badge?: number | string
-}
+  label: string;
+  icon: LucideIcon;
+  view: string;
+  badge?: number | string;
+};
 
-export type Breadcrumb = { label: string; onClick?: () => void }
+export type Breadcrumb = { label: string; onClick?: () => void };
 
 type ShellUser = {
-  id?: string
-  name?: string | null
-  email?: string | null
-  role?: "CLIENT" | "PROVIDER" | "ADMIN"
-  avatarUrl?: string | null
-}
+  id?: string;
+  name?: string | null;
+  email?: string | null;
+  role?: "CLIENT" | "PROVIDER" | "ADMIN";
+  avatarUrl?: string | null;
+};
 
 export type DashboardShellProps = {
-  navItems: NavItem[]
-  currentView: string
-  title: string
-  subtitle?: string
-  breadcrumbs?: Breadcrumb[]
-  panelLabel: string
-  panelIcon: LucideIcon
-  user?: ShellUser | null
-  onNavigate: (view: string) => void
-  children: React.ReactNode
-  className?: string
-}
+  navItems: NavItem[];
+  currentView: string;
+  title: string;
+  subtitle?: string;
+  breadcrumbs?: Breadcrumb[];
+  panelLabel: string;
+  panelIcon: LucideIcon;
+  user?: ShellUser | null;
+  onNavigate: (view: string) => void;
+  children: React.ReactNode;
+  className?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Notification type (matches /api/notifications response)
 // ---------------------------------------------------------------------------
 
 type NotificationItem = {
-  id: string
-  type: string
-  title: string
-  body?: string | null
-  read: boolean
-  createdAt: string
-}
+  id: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  read: boolean;
+  createdAt: string;
+};
 
 type NotificationsResponse = {
-  items: NotificationItem[]
-  total: number
-  page: number
-  limit: number
-  unreadCount: number
-}
+  items: NotificationItem[];
+  total: number;
+  page: number;
+  limit: number;
+  unreadCount: number;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function initials(name?: string | null): string {
-  if (!name) return "?"
+  if (!name) return "?";
   return name
     .split(" ")
     .map((p) => p[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 }
 
 const DASHBOARD_VIEW: Record<string, string> = {
   CLIENT: "client.dashboard",
   PROVIDER: "provider.dashboard",
   ADMIN: "admin.dashboard",
-}
+};
 
 // Reusable motion presets for staggered card mount.
 const cardMotion = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
-} as const
+} as const;
 
 // ---------------------------------------------------------------------------
 // Shared nav item styles — used by both desktop SidebarMenuButton and mobile Sheet
 // ---------------------------------------------------------------------------
 
-const NAV_ITEM_ACTIVE =
-  "!bg-primary/5 !text-foreground font-medium hover:!bg-primary/8"
+const NAV_ITEM_ACTIVE = "!bg-primary/5 !text-foreground font-medium hover:!bg-primary/8";
 
-const NAV_ITEM_INACTIVE =
-  "!text-muted-foreground hover:!bg-accent/60 hover:!text-foreground"
+const NAV_ITEM_INACTIVE = "!text-muted-foreground hover:!bg-accent/60 hover:!text-foreground";
 
-const NAV_ICON_ACTIVE = "!text-primary"
+const NAV_ICON_ACTIVE = "!text-primary";
 
-const NAV_ICON_INACTIVE = "!text-muted-foreground"
+const NAV_ICON_INACTIVE = "!text-muted-foreground";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -199,11 +189,11 @@ export function DashboardShell({
   children,
   className,
 }: DashboardShellProps) {
-  const qc = useQueryClient()
-  const logout = useAuthStore((s) => s.logout)
-  const navigate = useViewStore((s) => s.navigate)
-  const { resolvedTheme, setTheme } = useTheme()
-  const [mobileOpen, setMobileOpen] = React.useState(false)
+  const qc = useQueryClient();
+  const logout = useAuthStore((s) => s.logout);
+  const navigate = useViewStore((s) => s.navigate);
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mobileOpen, setMobileOpen] = React.useState(false);
 
   // ---- Notifications query (auto-refresh 30s) -------------------------------
   const notificationsQuery = useQuery<NotificationsResponse>({
@@ -211,33 +201,31 @@ export function DashboardShell({
     queryFn: () => apiGet<NotificationsResponse>("/api/notifications"),
     refetchInterval: 30_000,
     staleTime: 10_000,
-  })
+  });
 
   const markReadMutation = useMutation({
     mutationFn: (id: string) => apiPatch(`/api/notifications/${id}/read`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["notifications"] })
+      qc.invalidateQueries({ queryKey: ["notifications"] });
     },
-  })
+  });
 
   const markAllReadMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      await Promise.all(
-        ids.map((id) => apiPatch(`/api/notifications/${id}/read`)),
-      )
+      await Promise.all(ids.map((id) => apiPatch(`/api/notifications/${id}/read`)));
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["notifications"] })
+      qc.invalidateQueries({ queryKey: ["notifications"] });
     },
-  })
+  });
 
-  const unreadCount = notificationsQuery.data?.unreadCount ?? 0
-  const notifItems = notificationsQuery.data?.items ?? []
+  const unreadCount = notificationsQuery.data?.unreadCount ?? 0;
+  const notifItems = notificationsQuery.data?.items ?? [];
 
   const handleNav = (view: string) => {
-    setMobileOpen(false)
-    onNavigate(view)
-  }
+    setMobileOpen(false);
+    onNavigate(view);
+  };
 
   // ---- Sidebar header -------------------------------------------------------
   const sidebarHeader = (
@@ -247,17 +235,13 @@ export function DashboardShell({
           <PanelIcon className="size-[18px]" />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold tracking-tight text-foreground">
-            {APP_NAME}
-          </p>
-          <p className="truncate text-[11px] font-medium text-muted-foreground/70">
-            {panelLabel}
-          </p>
+          <p className="truncate text-sm font-bold tracking-tight text-foreground">{APP_NAME}</p>
+          <p className="truncate text-[11px] font-medium text-muted-foreground/70">{panelLabel}</p>
         </div>
       </div>
       <SidebarSeparator className="mx-3 w-auto" />
     </SidebarHeader>
-  )
+  );
 
   // ---- Sidebar nav (desktop) -----------------------------------------------
   const navList = (
@@ -268,8 +252,8 @@ export function DashboardShell({
       <SidebarGroupContent>
         <SidebarMenu className="gap-px px-2">
           {navItems.map((item) => {
-            const Icon = item.icon
-            const active = currentView === item.view
+            const Icon = item.icon;
+            const active = currentView === item.view;
             return (
               <SidebarMenuItem key={item.view}>
                 <SidebarMenuButton
@@ -296,12 +280,12 @@ export function DashboardShell({
                   ) : null}
                 </SidebarMenuButton>
               </SidebarMenuItem>
-            )
+            );
           })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
-  )
+  );
 
   // ---- Sidebar footer -------------------------------------------------------
   const sidebarFooter = (
@@ -309,9 +293,7 @@ export function DashboardShell({
       <SidebarSeparator className="mx-3 w-auto" />
       <div className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5">
         <Avatar className="size-8 shrink-0">
-          {user?.avatarUrl ? (
-            <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
-          ) : null}
+          {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} /> : null}
           <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
             {initials(user?.name)}
           </AvatarFallback>
@@ -321,10 +303,7 @@ export function DashboardShell({
             {user?.name ?? "Visitante"}
           </p>
           {user?.role ? (
-            <Badge
-              variant="secondary"
-              className="mt-1 h-4 px-1.5 text-[10px] font-medium"
-            >
+            <Badge variant="secondary" className="mt-1 h-4 px-1.5 text-[10px] font-medium">
               {ROLE_LABELS[user.role]}
             </Badge>
           ) : null}
@@ -341,12 +320,12 @@ export function DashboardShell({
         </Button>
       </div>
     </SidebarFooter>
-  )
+  );
 
   // ---- Mobile nav items (shared styling) ------------------------------------
   const mobileNavItems = navItems.map((item) => {
-    const Icon = item.icon
-    const active = currentView === item.view
+    const Icon = item.icon;
+    const active = currentView === item.view;
     return (
       <button
         key={item.view}
@@ -372,17 +351,15 @@ export function DashboardShell({
           </span>
         ) : null}
       </button>
-    )
-  })
+    );
+  });
 
   // ---- Mobile sidebar user footer -------------------------------------------
   const mobileFooter = (
     <div className="border-t">
       <div className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5">
         <Avatar className="size-8 shrink-0">
-          {user?.avatarUrl ? (
-            <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
-          ) : null}
+          {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} /> : null}
           <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
             {initials(user?.name)}
           </AvatarFallback>
@@ -392,10 +369,7 @@ export function DashboardShell({
             {user?.name ?? "Visitante"}
           </p>
           {user?.role ? (
-            <Badge
-              variant="secondary"
-              className="mt-1 h-4 px-1.5 text-[10px] font-medium"
-            >
+            <Badge variant="secondary" className="mt-1 h-4 px-1.5 text-[10px] font-medium">
               {ROLE_LABELS[user.role]}
             </Badge>
           ) : null}
@@ -405,8 +379,8 @@ export function DashboardShell({
           size="icon"
           className="size-8 shrink-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
           onClick={() => {
-            setMobileOpen(false)
-            logout()
+            setMobileOpen(false);
+            logout();
           }}
           aria-label="Sair"
         >
@@ -414,18 +388,11 @@ export function DashboardShell({
         </Button>
       </div>
     </div>
-  )
+  );
 
   return (
-    <SidebarProvider
-      style={{ "--sidebar-width": "16.25rem" } as React.CSSProperties}
-    >
-      <div
-        className={cn(
-          "flex min-h-svh w-full flex-col bg-background",
-          className,
-        )}
-      >
+    <SidebarProvider style={{ "--sidebar-width": "16.25rem" } as React.CSSProperties}>
+      <div className={cn("flex min-h-svh w-full flex-col bg-background", className)}>
         <div className="flex flex-1">
           {/* Desktop sidebar */}
           <Sidebar collapsible="icon" className="border-r border-border/50">
@@ -538,9 +505,7 @@ export function DashboardShell({
                   variant="ghost"
                   size="icon"
                   className="size-9 text-muted-foreground hover:text-foreground"
-                  onClick={() =>
-                    setTheme(resolvedTheme === "dark" ? "light" : "dark")
-                  }
+                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
                   aria-label="Alternar tema"
                   title="Alternar tema"
                 >
@@ -571,10 +536,7 @@ export function DashboardShell({
                     >
                       <Avatar className="size-8">
                         {user?.avatarUrl ? (
-                          <AvatarImage
-                            src={user.avatarUrl}
-                            alt={user.name ?? ""}
-                          />
+                          <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
                         ) : null}
                         <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
                           {initials(user?.name)}
@@ -589,10 +551,7 @@ export function DashboardShell({
                         {user?.email}
                       </span>
                       {user?.role ? (
-                        <Badge
-                          variant="secondary"
-                          className="mt-1 w-fit text-[10px]"
-                        >
+                        <Badge variant="secondary" className="mt-1 w-fit text-[10px]">
                           {ROLE_LABELS[user.role]}
                         </Badge>
                       ) : null}
@@ -600,7 +559,7 @@ export function DashboardShell({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onSelect={() => {
-                        if (user?.role) navigate(DASHBOARD_VIEW[user.role])
+                        if (user?.role) navigate(DASHBOARD_VIEW[user.role]);
                       }}
                     >
                       <LayoutDashboard className="size-4" />
@@ -608,17 +567,14 @@ export function DashboardShell({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={() => {
-                        navigate("vitrine")
+                        navigate("vitrine");
                       }}
                     >
                       <MapPin className="size-4" />
                       Voltar à vitrine
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={() => logout()}
-                    >
+                    <DropdownMenuItem variant="destructive" onSelect={() => logout()}>
                       <LogOut className="size-4" />
                       Sair
                     </DropdownMenuItem>
@@ -629,16 +585,13 @@ export function DashboardShell({
 
             {/* Main scroll area */}
             <main className="flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">
-                {children}
-              </div>
+              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">{children}</div>
 
               {/* Thin copyright bar */}
               <footer className="mt-auto border-t border-border/50">
                 <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-1 px-6 py-3 text-xs text-muted-foreground sm:flex-row">
                   <p>
-                    © {new Date().getFullYear()} {APP_NAME}. Todos os direitos
-                    reservados.
+                    © {new Date().getFullYear()} {APP_NAME}. Todos os direitos reservados.
                   </p>
                   <p className="flex items-center gap-1.5">
                     <MapPin className="size-3 text-primary" />
@@ -651,7 +604,7 @@ export function DashboardShell({
         </div>
       </div>
     </SidebarProvider>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -666,17 +619,14 @@ function NotificationsBell({
   onMarkAllRead,
   markingAll,
 }: {
-  items: NotificationItem[]
-  unreadCount: number
-  isLoading: boolean
-  onMarkRead: (id: string) => void
-  onMarkAllRead: (ids: string[]) => void
-  markingAll: boolean
+  items: NotificationItem[];
+  unreadCount: number;
+  isLoading: boolean;
+  onMarkRead: (id: string) => void;
+  onMarkAllRead: (ids: string[]) => void;
+  markingAll: boolean;
 }) {
-  const unreadIds = React.useMemo(
-    () => items.filter((n) => !n.read).map((n) => n.id),
-    [items],
-  )
+  const unreadIds = React.useMemo(() => items.filter((n) => !n.read).map((n) => n.id), [items]);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -684,9 +634,7 @@ function NotificationsBell({
           variant="ghost"
           size="icon"
           className="relative size-9 text-muted-foreground hover:text-foreground"
-          aria-label={`Notificações${
-            unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""
-          }`}
+          aria-label={`Notificações${unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""}`}
         >
           <Bell className="size-[18px]" />
           {unreadCount > 0 ? (
@@ -699,10 +647,7 @@ function NotificationsBell({
           ) : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-80 gap-0 p-0"
-      >
+      <DropdownMenuContent align="end" className="w-80 gap-0 p-0">
         <div className="flex items-center justify-between border-b px-3 py-2.5">
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold">Notificações</p>
@@ -743,14 +688,12 @@ function NotificationsBell({
               <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
                 <Bell className="size-5" />
               </span>
-              <p className="text-sm text-muted-foreground">
-                Você não tem notificações.
-              </p>
+              <p className="text-sm text-muted-foreground">Você não tem notificações.</p>
             </div>
           ) : (
             <ul className="divide-y">
               {items.map((n) => {
-                const typeLabel = NOTIFICATION_TYPE_LABELS[n.type]
+                const typeLabel = NOTIFICATION_TYPE_LABELS[n.type];
                 return (
                   <li
                     key={n.id}
@@ -768,9 +711,7 @@ function NotificationsBell({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline justify-between gap-2">
-                        <p className="text-sm font-medium leading-tight">
-                          {n.title}
-                        </p>
+                        <p className="text-sm font-medium leading-tight">{n.title}</p>
                         <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
                           {formatRelative(n.createdAt)}
                         </span>
@@ -802,14 +743,14 @@ function NotificationsBell({
                       </div>
                     </div>
                   </li>
-                )
+                );
               })}
             </ul>
           )}
         </ScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -823,19 +764,14 @@ export function EmptyState({
   action,
   className,
 }: {
-  icon: LucideIcon
-  title: string
-  description?: string
-  action?: React.ReactNode
-  className?: string
+  icon: LucideIcon;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <Card
-      className={cn(
-        "border-dashed bg-muted/30 py-10 text-center",
-        className,
-      )}
-    >
+    <Card className={cn("border-dashed bg-muted/30 py-10 text-center", className)}>
       <CardContent className="flex flex-col items-center gap-3">
         <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
           <Icon className="size-7" />
@@ -843,15 +779,13 @@ export function EmptyState({
         <div className="space-y-1">
           <p className="text-base font-semibold">{title}</p>
           {description ? (
-            <p className="mx-auto max-w-md text-sm text-muted-foreground">
-              {description}
-            </p>
+            <p className="mx-auto max-w-md text-sm text-muted-foreground">{description}</p>
           ) : null}
         </div>
         {action}
       </CardContent>
     </Card>
-  )
+  );
 }
 
 export function StatCard({
@@ -863,15 +797,15 @@ export function StatCard({
   index = 0,
   trend,
 }: {
-  icon: LucideIcon
-  label: string
-  value: React.ReactNode
-  hint?: string
-  tone?: "primary" | "amber" | "sky" | "rose" | "zinc"
+  icon: LucideIcon;
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  tone?: "primary" | "amber" | "sky" | "rose" | "zinc";
   /** Index for staggered mount animation (0-based). */
-  index?: number
+  index?: number;
   /** Optional trend indicator shown next to the value. */
-  trend?: { direction: "up" | "down"; label: string }
+  trend?: { direction: "up" | "down"; label: string };
 }) {
   const toneClass = {
     primary: "bg-primary/10 text-primary",
@@ -879,7 +813,7 @@ export function StatCard({
     sky: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200",
     rose: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
     zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
-  }[tone]
+  }[tone];
   return (
     <motion.div
       initial={cardMotion.initial}
@@ -889,12 +823,7 @@ export function StatCard({
       <Card className="rounded-xl bg-card shadow-sm transition-shadow hover:shadow-md">
         <CardContent className="p-5">
           <div className="flex items-start justify-between gap-3">
-            <span
-              className={cn(
-                "flex size-10 items-center justify-center rounded-lg",
-                toneClass,
-              )}
-            >
+            <span className={cn("flex size-10 items-center justify-center rounded-lg", toneClass)}>
               <Icon className="size-5" />
             </span>
             {trend ? (
@@ -910,19 +839,15 @@ export function StatCard({
               </span>
             ) : null}
           </div>
-          <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-            {value}
-          </p>
+          <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
           <p className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
-          {hint ? (
-            <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-          ) : null}
+          {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
         </CardContent>
       </Card>
     </motion.div>
-  )
+  );
 }
 
 export function SectionTitle({
@@ -930,9 +855,9 @@ export function SectionTitle({
   description,
   action,
 }: {
-  title: string
-  description?: string
-  action?: React.ReactNode
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
@@ -941,14 +866,12 @@ export function SectionTitle({
           {title}
         </h2>
         {description ? (
-          <p className="truncate text-xs text-muted-foreground">
-            {description}
-          </p>
+          <p className="truncate text-xs text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {action}
     </div>
-  )
+  );
 }
 
-export { Separator }
+export { Separator };

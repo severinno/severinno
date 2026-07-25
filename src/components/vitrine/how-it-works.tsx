@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * HowItWorks — enhanced with Jakob Nielsen's 10 Usability Heuristics.
@@ -16,7 +16,7 @@
  *  H10 – Expandable details per step; tooltips on trust badges
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   Search,
   CalendarCheck,
@@ -34,17 +34,13 @@ import {
   Sparkles,
   ThumbsUp,
   type LucideIcon,
-} from "lucide-react"
-import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
-import { cn } from "@/lib/utils"
-import { useUIStore } from "@/store"
-import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
-import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip"
+} from "lucide-react";
+import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { useUIStore } from "@/store";
+import { useScrollReveal, useCountUp } from "@/hooks/use-animation";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 // ---------------------------------------------------------------------------
 // Step definitions — concrete, real-world examples (H2 + H6)
@@ -52,14 +48,14 @@ import {
 // ---------------------------------------------------------------------------
 
 interface StepDef {
-  icon: LucideIcon
-  title: string
-  oneLiner: string
-  example: string
-  details: string
-  miniIllustration: React.ReactNode
-  ctaLabel: string
-  stat: { value: number; suffix: string; label: string }
+  icon: LucideIcon;
+  title: string;
+  oneLiner: string;
+  example: string;
+  details: string;
+  miniIllustration: React.ReactNode;
+  ctaLabel: string;
+  stat: { value: number; suffix: string; label: string };
 }
 
 const STEPS: StepDef[] = [
@@ -77,9 +73,7 @@ const STEPS: StepDef[] = [
         {/* Search bar mockup */}
         <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 shadow-sm dark:bg-slate-800">
           <Search className="size-4 text-emerald-500" />
-          <span className="text-[11px] text-muted-foreground">
-            encanador em São Paulo
-          </span>
+          <span className="text-[11px] text-muted-foreground">encanador em São Paulo</span>
           <span className="ml-auto animate-pulse text-[11px] text-emerald-500">|</span>
         </div>
         {/* Filter pills */}
@@ -117,11 +111,19 @@ const STEPS: StepDef[] = [
               <span className="text-[8px] font-semibold">João S.</span>
             </div>
             <div className="mt-1 flex items-center gap-0.5">
-              {[1,2,3,4,5].map(i => (
-                <Star key={i} className={cn("size-2", i <= 4 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30")} />
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Star
+                  key={i}
+                  className={cn(
+                    "size-2",
+                    i <= 4 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30",
+                  )}
+                />
               ))}
             </div>
-            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">R$ 180</span>
+            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+              R$ 180
+            </span>
           </div>
           <div className="rounded-md border border-emerald-300 bg-emerald-50/80 p-1.5 shadow-sm ring-1 ring-emerald-200 dark:border-emerald-700 dark:bg-emerald-950/30 dark:ring-emerald-800">
             <div className="flex items-center gap-1">
@@ -129,12 +131,22 @@ const STEPS: StepDef[] = [
               <span className="text-[8px] font-semibold">Maria L.</span>
             </div>
             <div className="mt-1 flex items-center gap-0.5">
-              {[1,2,3,4,5].map(i => (
-                <Star key={i} className={cn("size-2", i <= 5 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30")} />
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Star
+                  key={i}
+                  className={cn(
+                    "size-2",
+                    i <= 5 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30",
+                  )}
+                />
               ))}
             </div>
-            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">R$ 150</span>
-            <span className="mt-0.5 block text-[7px] font-semibold text-emerald-600 dark:text-emerald-400">Melhor avaliação</span>
+            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+              R$ 150
+            </span>
+            <span className="mt-0.5 block text-[7px] font-semibold text-emerald-600 dark:text-emerald-400">
+              Melhor avaliação
+            </span>
           </div>
         </div>
         <div className="flex items-center justify-center gap-1 text-[8px] text-muted-foreground">
@@ -157,19 +169,30 @@ const STEPS: StepDef[] = [
       <div className="flex w-full flex-col gap-1.5">
         {/* Calendar mockup */}
         <div className="rounded-lg border bg-white p-2 shadow-sm dark:bg-slate-800">
-          <div className="mb-1 text-center text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Março 2025</div>
+          <div className="mb-1 text-center text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+            Março 2025
+          </div>
           <div className="grid grid-cols-7 gap-0.5 text-center text-[8px] text-muted-foreground">
-            {["S","T","Q","Q","S","S","D"].map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
-            {Array.from({length: 15}, (_, i) => (
-              <span key={i} className={cn(
-                "py-0.5 rounded",
-                i === 11 ? "bg-emerald-500 text-white font-bold" : ""
-              )}>{i + 1}</span>
+            {["S", "T", "Q", "Q", "S", "S", "D"].map((d, i) => (
+              <span key={`${d}-${i}`}>{d}</span>
+            ))}
+            {Array.from({ length: 15 }, (_, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "py-0.5 rounded",
+                  i === 11 ? "bg-emerald-500 text-white font-bold" : "",
+                )}
+              >
+                {i + 1}
+              </span>
             ))}
           </div>
           <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 dark:border-emerald-800 dark:bg-emerald-950/30">
             <CheckCircle2 className="size-3 text-emerald-500" />
-            <span className="text-[9px] font-medium text-emerald-700 dark:text-emerald-300">12 Mar, 14:00 — Confirmado</span>
+            <span className="text-[9px] font-medium text-emerald-700 dark:text-emerald-300">
+              12 Mar, 14:00 — Confirmado
+            </span>
           </div>
         </div>
       </div>
@@ -194,9 +217,7 @@ const STEPS: StepDef[] = [
                 key={i}
                 className={cn(
                   "size-4",
-                  i <= 4
-                    ? "fill-amber-400 text-amber-400"
-                    : "text-muted-foreground/30",
+                  i <= 4 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30",
                 )}
               />
             ))}
@@ -208,7 +229,7 @@ const STEPS: StepDef[] = [
             <div className="h-2 w-4/5 rounded-full bg-gradient-to-r from-amber-400 to-amber-500" />
           </div>
           <p className="mt-1 text-[9px] italic text-muted-foreground">
-            "Excelente trabalho, recomendo!"
+            {"\u201C"}Excelente trabalho, recomendo!{"\u201D"}
           </p>
         </div>
         {/* Verified badge */}
@@ -219,7 +240,7 @@ const STEPS: StepDef[] = [
       </div>
     ),
   },
-]
+];
 
 // Trust badges with tooltip descriptions (H10)
 const TRUST_ITEMS = [
@@ -243,7 +264,7 @@ const TRUST_ITEMS = [
     label: "Compare antes de contratar",
     tooltip: "Compare até 4 prestadores lado a lado antes de decidir",
   },
-]
+];
 
 // ---------------------------------------------------------------------------
 // Animation variants
@@ -254,21 +275,25 @@ const staggerContainer = {
   show: {
     transition: { staggerChildren: 0.12 },
   },
-}
+};
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Parallax blobs — different scroll speeds for layered depth
 // ---------------------------------------------------------------------------
 
-function ParallaxBlobs({ scrollYProgress }: { scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"] }) {
-  const y1 = useTransform(scrollYProgress, [0, 1], [0, -60])
-  const y2 = useTransform(scrollYProgress, [0, 1], [0, 40])
-  const y3 = useTransform(scrollYProgress, [0, 1], [0, -30])
+function ParallaxBlobs({
+  scrollYProgress,
+}: {
+  scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"];
+}) {
+  const y1 = useTransform(scrollYProgress, [0, 1], [0, -60]);
+  const y2 = useTransform(scrollYProgress, [0, 1], [0, 40]);
+  const y3 = useTransform(scrollYProgress, [0, 1], [0, -30]);
 
   return (
     <>
@@ -288,7 +313,7 @@ function ParallaxBlobs({ scrollYProgress }: { scrollYProgress: ReturnType<typeof
         style={{ y: y3 }}
       />
     </>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -296,13 +321,14 @@ function ParallaxBlobs({ scrollYProgress }: { scrollYProgress: ReturnType<typeof
 // ---------------------------------------------------------------------------
 
 function StepStat({ value, suffix, label }: { value: number; suffix: string; label: string }) {
-  const { ref, value: displayed } = useCountUp(value, { duration: 1200 })
+  const { ref, value: displayed } = useCountUp(value, { duration: 1200 });
   return (
     <span className="inline-flex items-baseline gap-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-      <span ref={ref}>{displayed}</span>{suffix}
+      <span ref={ref}>{displayed}</span>
+      {suffix}
       <span className="ml-0.5 font-normal text-muted-foreground">{label}</span>
     </span>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -313,44 +339,44 @@ export default function HowItWorks({
   className,
   onBrowseProviders,
 }: {
-  className?: string
-  onBrowseProviders?: () => void
+  className?: string;
+  onBrowseProviders?: () => void;
 }) {
-  const openAuth = useUIStore((s) => s.openAuth)
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
-  const sectionRef = React.useRef<HTMLDivElement>(null)
+  const openAuth = useUIStore((s) => s.openAuth);
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
+  const sectionRef = React.useRef<HTMLDivElement>(null);
 
   // Scroll progress for animated connector line (H1)
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ["start end", "end start"],
-  })
-  const lineProgress = useTransform(scrollYProgress, [0.1, 0.6], [0, 1])
+  });
+  const lineProgress = useTransform(scrollYProgress, [0.1, 0.6], [0, 1]);
 
   const { ref: countRef, value: countValue } = useCountUp(4, {
     duration: 800,
-  })
+  });
 
   // Mobile accordion state for AnimatePresence
-  const [expandedStep, setExpandedStep] = React.useState<number>(0)
+  const [expandedStep, setExpandedStep] = React.useState<number>(0);
 
   // Keyboard handler for step cards (H7)
   const handleStepKeyDown = React.useCallback(
     (idx: number, e: React.KeyboardEvent) => {
       if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault()
+        e.preventDefault();
         if (idx === 0 && onBrowseProviders) {
-          onBrowseProviders()
+          onBrowseProviders();
         } else if (idx === 3) {
-          openAuth("register", "CLIENT")
+          openAuth("register", "CLIENT");
         } else {
-          const el = document.getElementById("vitrine-resultados")
-          if (el) el.scrollIntoView({ behavior: "smooth" })
+          const el = document.getElementById("vitrine-resultados");
+          if (el) el.scrollIntoView({ behavior: "smooth" });
         }
       }
     },
     [onBrowseProviders, openAuth],
-  )
+  );
 
   return (
     <section
@@ -376,7 +402,10 @@ export default function HowItWorks({
       {/* Parallax decorative blobs */}
       <ParallaxBlobs scrollYProgress={scrollYProgress} />
 
-      <div ref={ref} className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+      <div
+        ref={ref}
+        className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24"
+      >
         {/* ── Header with quick-skip link (H7) ──────────────────────── */}
         <motion.header
           initial={{ opacity: 0, y: 20 }}
@@ -479,12 +508,12 @@ export default function HowItWorks({
                   onKeyDown={(e) => handleStepKeyDown(idx, e)}
                   onCtaClick={() => {
                     if (idx === 0 && onBrowseProviders) {
-                      onBrowseProviders()
+                      onBrowseProviders();
                     } else if (idx === 3) {
-                      openAuth("register", "CLIENT")
+                      openAuth("register", "CLIENT");
                     } else {
-                      const el = document.getElementById("vitrine-resultados")
-                      if (el) el.scrollIntoView({ behavior: "smooth" })
+                      const el = document.getElementById("vitrine-resultados");
+                      if (el) el.scrollIntoView({ behavior: "smooth" });
                     }
                   }}
                 />
@@ -513,8 +542,8 @@ export default function HowItWorks({
 
           <div className="space-y-0">
             {STEPS.map((step, idx) => {
-              const Icon = step.icon
-              const isExpanded = expandedStep === idx
+              const Icon = step.icon;
+              const isExpanded = expandedStep === idx;
               return (
                 <motion.div
                   key={step.title}
@@ -563,9 +592,7 @@ export default function HowItWorks({
                           className="overflow-hidden"
                         >
                           <div className="pb-2 pt-2">
-                            <p className="text-xs text-muted-foreground">
-                              {step.oneLiner}
-                            </p>
+                            <p className="text-xs text-muted-foreground">{step.oneLiner}</p>
                             <p className="mt-1 text-[10px] italic text-emerald-600 dark:text-emerald-400">
                               Ex: {step.example}
                             </p>
@@ -592,11 +619,11 @@ export default function HowItWorks({
                               variant="outline"
                               className="mt-3 h-8 gap-1.5 rounded-lg border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                               onClick={() => {
-                                if (idx === 0 && onBrowseProviders) onBrowseProviders()
-                                else if (idx === 3) openAuth("register", "CLIENT")
+                                if (idx === 0 && onBrowseProviders) onBrowseProviders();
+                                else if (idx === 3) openAuth("register", "CLIENT");
                                 else {
-                                  const el = document.getElementById("vitrine-resultados")
-                                  if (el) el.scrollIntoView({ behavior: "smooth" })
+                                  const el = document.getElementById("vitrine-resultados");
+                                  if (el) el.scrollIntoView({ behavior: "smooth" });
                                 }
                               }}
                             >
@@ -609,7 +636,7 @@ export default function HowItWorks({
                     </AnimatePresence>
                   </div>
                 </motion.div>
-              )
+              );
             })}
           </div>
         </div>
@@ -629,7 +656,7 @@ export default function HowItWorks({
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 sm:gap-x-8">
             {TRUST_ITEMS.map((item) => {
-              const TIcon = item.icon
+              const TIcon = item.icon;
               return (
                 <Tooltip key={item.label}>
                   <TooltipTrigger asChild>
@@ -638,14 +665,11 @@ export default function HowItWorks({
                       <span className="hidden text-xs sm:inline">{item.label}</span>
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    className="max-w-[220px] text-center text-xs"
-                  >
+                  <TooltipContent side="bottom" className="max-w-[220px] text-center text-xs">
                     {item.tooltip}
                   </TooltipContent>
                 </Tooltip>
-              )
+              );
             })}
           </div>
         </motion.div>
@@ -717,7 +741,7 @@ export default function HowItWorks({
         </motion.div>
       </div>
     </section>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -732,13 +756,13 @@ function StepCardDesktop({
   onKeyDown,
   onCtaClick,
 }: {
-  step: StepDef
-  index: number
-  visible: boolean
-  onKeyDown: (e: React.KeyboardEvent) => void
-  onCtaClick: () => void
+  step: StepDef;
+  index: number;
+  visible: boolean;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  onCtaClick: () => void;
 }) {
-  const Icon = step.icon
+  const Icon = step.icon;
 
   return (
     <motion.div
@@ -768,7 +792,12 @@ function StepCardDesktop({
             <motion.span
               initial={{ scale: 0, opacity: 0 }}
               animate={visible ? { scale: 1, opacity: 1 } : {}}
-              transition={{ duration: 0.3, delay: 0.6 + index * 0.15, type: "spring", stiffness: 300 }}
+              transition={{
+                duration: 0.3,
+                delay: 0.6 + index * 0.15,
+                type: "spring",
+                stiffness: 300,
+              }}
               className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-emerald-500 shadow-md"
               aria-hidden
             >
@@ -777,14 +806,10 @@ function StepCardDesktop({
           </div>
 
           {/* Title */}
-          <h3 className="mt-4 text-sm font-bold tracking-tight lg:text-base">
-            {step.title}
-          </h3>
+          <h3 className="mt-4 text-sm font-bold tracking-tight lg:text-base">{step.title}</h3>
 
           {/* One-liner description (H8 — minimalism) */}
-          <p className="mt-1 text-xs text-muted-foreground lg:text-sm">
-            {step.oneLiner}
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground lg:text-sm">{step.oneLiner}</p>
 
           {/* Step stat counter (H1) */}
           <div className="mt-2">
@@ -815,8 +840,8 @@ function StepCardDesktop({
             variant="outline"
             className="mt-3 h-7 gap-1.5 rounded-lg border-emerald-200 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
             onClick={(e) => {
-              e.stopPropagation()
-              onCtaClick()
+              e.stopPropagation();
+              onCtaClick();
             }}
           >
             {step.ctaLabel}
@@ -825,5 +850,5 @@ function StepCardDesktop({
         </div>
       </div>
     </motion.div>
-  )
+  );
 }

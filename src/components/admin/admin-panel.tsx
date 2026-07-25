@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AdminPanel — orchestrator for the admin dashboard.
@@ -18,7 +18,7 @@
  * If the current user isn't an ADMIN, a guard card is rendered instead.
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   LayoutDashboard,
   Network,
@@ -28,27 +28,20 @@ import {
   CalendarCheck,
   Settings as SettingsIcon,
   ShieldAlert,
-} from "lucide-react"
+} from "lucide-react";
 
-import {
-  DashboardShell,
-  type NavItem,
-  type Breadcrumb,
-} from "@/components/shared/dashboard-shell"
-import { useAuthStore, useViewStore } from "@/store"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell";
+import { useAuthStore, useViewStore } from "@/store";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
-import { AdminDashboard } from "./admin-dashboard"
-import { AdminTaxonomy } from "./admin-taxonomy"
-import { AdminUsers } from "./admin-users"
-import { AdminProviders } from "./admin-providers"
-import { AdminServices } from "./admin-services"
-import { AdminBookings } from "./admin-bookings"
-import { AdminSettings } from "./admin-settings"
+import { AdminDashboard } from "./admin-dashboard";
+import { AdminTaxonomy } from "./admin-taxonomy";
+import { AdminUsers } from "./admin-users";
+import { AdminProviders } from "./admin-providers";
+import { AdminServices } from "./admin-services";
+import { AdminBookings } from "./admin-bookings";
+import { AdminSettings } from "./admin-settings";
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -89,12 +82,9 @@ const NAV_ITEMS: NavItem[] = [
     label: "Configurações",
     icon: SettingsIcon,
   },
-]
+];
 
-const VIEW_META: Record<
-  string,
-  { title: string; subtitle?: string; breadcrumbs: Breadcrumb[] }
-> = {
+const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs: Breadcrumb[] }> = {
   "admin.dashboard": {
     title: "Visão geral",
     subtitle: "Indicadores principais e atividade recente do marketplace.",
@@ -102,8 +92,7 @@ const VIEW_META: Record<
   },
   "admin.taxonomy": {
     title: "Taxonomia de categorias",
-    subtitle:
-      "Gerencie a árvore de categorias em 3 níveis (pai → filha → subcategoria).",
+    subtitle: "Gerencie a árvore de categorias em 3 níveis (pai → filha → subcategoria).",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Taxonomia" }],
   },
   "admin.users": {
@@ -124,30 +113,23 @@ const VIEW_META: Record<
   "admin.bookings": {
     title: "Agendamentos",
     subtitle: "Supervisão de todos os agendamentos (somente leitura).",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Agendamentos" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Agendamentos" }],
   },
   "admin.settings": {
     title: "Configurações",
-    subtitle:
-      "Editor dinâmico de configurações (chave/valor). Equivalente runtime de um .env.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Configurações" },
-    ],
+    subtitle: "Editor dinâmico de configurações (chave/valor). Equivalente runtime de um .env.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Configurações" }],
   },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export function AdminPanel() {
-  const view = useViewStore((s) => s.view)
-  const navigate = useViewStore((s) => s.navigate)
-  const user = useAuthStore((s) => s.user)
-  const initialized = useAuthStore((s) => s.initialized)
+  const view = useViewStore((s) => s.view);
+  const navigate = useViewStore((s) => s.navigate);
+  const user = useAuthStore((s) => s.user);
+  const initialized = useAuthStore((s) => s.initialized);
 
   // Guard: only ADMINs may render this panel
   if (initialized && user?.role !== "ADMIN") {
@@ -158,17 +140,17 @@ export function AdminPanel() {
             <ShieldAlert className="size-10 text-amber-500" />
             <h2 className="text-lg font-semibold">Acesso restrito</h2>
             <p className="text-sm text-muted-foreground">
-              Esta área é exclusiva de administradores. Faça login com uma
-              conta ADMIN para continuar.
+              Esta área é exclusiva de administradores. Faça login com uma conta ADMIN para
+              continuar.
             </p>
             <Button onClick={() => navigate("vitrine")}>Voltar à vitrine</Button>
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
-  const meta = VIEW_META[view] ?? VIEW_META["admin.dashboard"]
+  const meta = VIEW_META[view] ?? VIEW_META["admin.dashboard"];
 
   return (
     <DashboardShell
@@ -194,34 +176,28 @@ export function AdminPanel() {
     >
       <AdminView view={view} onNavigate={navigate} />
     </DashboardShell>
-  )
+  );
 }
 
-function AdminView({
-  view,
-  onNavigate,
-}: {
-  view: string
-  onNavigate: (view: string) => void
-}) {
+function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: string) => void }) {
   switch (view) {
     case "admin.dashboard":
-      return <AdminDashboard onNavigate={onNavigate} />
+      return <AdminDashboard onNavigate={onNavigate} />;
     case "admin.taxonomy":
-      return <AdminTaxonomy />
+      return <AdminTaxonomy />;
     case "admin.users":
-      return <AdminUsers />
+      return <AdminUsers />;
     case "admin.providers":
-      return <AdminProviders />
+      return <AdminProviders />;
     case "admin.services":
-      return <AdminServices />
+      return <AdminServices />;
     case "admin.bookings":
-      return <AdminBookings />
+      return <AdminBookings />;
     case "admin.settings":
-      return <AdminSettings />
+      return <AdminSettings />;
     default:
-      return <AdminDashboard onNavigate={onNavigate} />
+      return <AdminDashboard onNavigate={onNavigate} />;
   }
 }
 
-export default AdminPanel
+export default AdminPanel;

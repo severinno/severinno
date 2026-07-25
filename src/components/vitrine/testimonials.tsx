@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * Testimonials — social proof section showing real reviews from the database.
@@ -16,152 +16,138 @@
  *   H10 – Help: "Avaliações verificadas" tooltip, verified badge explanation
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import Autoplay from "embla-carousel-autoplay"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import Autoplay from "embla-carousel-autoplay";
 import {
   Star,
   Quote,
   MessageSquare,
-  Loader2,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
   Info,
   ShieldCheck,
-} from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
-import { cn } from "@/lib/utils"
-import { formatRelative } from "@/lib/format"
-import { apiGet } from "@/lib/api"
-import { useScrollReveal } from "@/hooks/use-animation"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils";
+import { formatRelative } from "@/lib/format";
+import { apiGet } from "@/lib/api";
+import { useScrollReveal } from "@/hooks/use-animation";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import {
   Carousel,
   CarouselContent,
   CarouselItem,
   type CarouselApi,
-} from "@/components/ui/carousel"
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/carousel";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type ReviewItem = {
-  id: string
-  rating: number
-  comment: string | null
-  createdAt: string
-  clientName: string
-  clientAvatar: string | null
-  providerName: string
-  providerAvatar: string | null
-  serviceTitle: string
-}
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  clientName: string;
+  clientAvatar: string | null;
+  providerName: string;
+  providerAvatar: string | null;
+  serviceTitle: string;
+};
 
 type ReviewsResponse = {
-  items: ReviewItem[]
-  total: number
-  avgRating: number
-}
+  items: ReviewItem[];
+  total: number;
+  avgRating: number;
+};
 
-type RatingFilter = "all" | "5" | "4"
+type RatingFilter = "all" | "5" | "4";
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export default function Testimonials({
-  className,
-}: {
-  className?: string
-}) {
+export default function Testimonials({ className }: { className?: string }) {
   const { data, isLoading, isError, refetch } = useQuery<ReviewsResponse>({
     queryKey: ["vitrine-testimonials"],
     queryFn: () => apiGet<ReviewsResponse>("/api/reviews/recent?limit=6"),
     staleTime: 5 * 60 * 1000,
     retry: 2,
-  })
+  });
 
-  const reviews = data?.items ?? []
-  const avgRating = data?.avgRating ?? 0
-  const total = data?.total ?? 0
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
+  const reviews = React.useMemo(() => data?.items ?? [], [data]);
+  const avgRating = data?.avgRating ?? 0;
+  const total = data?.total ?? 0;
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
 
   // Compute star distribution from reviews
   const starDistribution = React.useMemo(() => {
-    const dist = [0, 0, 0, 0, 0] // index 0 = 1-star, index 4 = 5-star
+    const dist = [0, 0, 0, 0, 0]; // index 0 = 1-star, index 4 = 5-star
     for (const r of reviews) {
       if (r.rating >= 1 && r.rating <= 5) {
-        dist[r.rating - 1]++
+        dist[r.rating - 1]++;
       }
     }
-    return dist
-  }, [reviews])
-
-  const maxDistCount = Math.max(...starDistribution, 1)
+    return dist;
+  }, [reviews]);
 
   // Rating filter
-  const [ratingFilter, setRatingFilter] = React.useState<RatingFilter>("all")
+  const [ratingFilter, setRatingFilter] = React.useState<RatingFilter>("all");
   const filteredReviews = React.useMemo(() => {
-    if (ratingFilter === "all") return reviews
-    const n = Number(ratingFilter)
-    return reviews.filter((r) => r.rating === n)
-  }, [reviews, ratingFilter])
+    if (ratingFilter === "all") return reviews;
+    const n = Number(ratingFilter);
+    return reviews.filter((r) => r.rating === n);
+  }, [reviews, ratingFilter]);
 
   // Carousel API
-  const [api, setApi] = React.useState<CarouselApi>()
-  const [current, setCurrent] = React.useState(0)
-  const [count, setCount] = React.useState(0)
+  const [api, setApi] = React.useState<CarouselApi>();
+  const [current, setCurrent] = React.useState(0);
+  const [count, setCount] = React.useState(0);
 
   // Autoplay plugin ref
-  const autoplayRef = React.useRef(
-    Autoplay({ delay: 5000, stopOnInteraction: true }),
-  )
+  const autoplayRef = React.useRef(Autoplay({ delay: 5000, stopOnInteraction: true }));
 
   // Pause/resume on hover
-  const [isPaused, setIsPaused] = React.useState(false)
-  const pauseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [isPaused, setIsPaused] = React.useState(false);
+  const pauseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleMouseEnter = React.useCallback(() => {
-    setIsPaused(true)
-    autoplayRef.current.stop()
-    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current)
-  }, [])
+    setIsPaused(true);
+    autoplayRef.current.stop();
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+  }, []);
 
   const handleMouseLeave = React.useCallback(() => {
     pauseTimerRef.current = setTimeout(() => {
-      setIsPaused(false)
-      autoplayRef.current.play()
-    }, 300)
-  }, [])
+      setIsPaused(false);
+      autoplayRef.current.play();
+    }, 300);
+  }, []);
 
   // Sync carousel state
   React.useEffect(() => {
-    if (!api) return
-    setCount(api.scrollSnapList().length)
-    setCurrent(api.selectedScrollSnap())
-    const onSelect = () => setCurrent(api.selectedScrollSnap())
-    api.on("select", onSelect)
-    api.on("reInit", onSelect)
+    if (!api) return;
+    setCount(api.scrollSnapList().length);
+    setCurrent(api.selectedScrollSnap());
+    const onSelect = () => setCurrent(api.selectedScrollSnap());
+    api.on("select", onSelect);
+    api.on("reInit", onSelect);
     return () => {
-      api.off("select", onSelect)
-    }
-  }, [api])
+      api.off("select", onSelect);
+    };
+  }, [api]);
 
   // Current slide index within filteredReviews (for "slide X of Y" counter)
-  const visibleSlideNumber = current + 1
-  const totalSlides = filteredReviews.length
+  const visibleSlideNumber = current + 1;
+  const totalSlides = filteredReviews.length;
 
   return (
     <section
@@ -182,8 +168,7 @@ export default function Testimonials({
         <div
           className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]"
           style={{
-            backgroundImage:
-              "radial-gradient(circle, currentColor 1px, transparent 1px)",
+            backgroundImage: "radial-gradient(circle, currentColor 1px, transparent 1px)",
             backgroundSize: "32px 32px",
           }}
         />
@@ -259,9 +244,8 @@ export default function Testimonials({
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-[240px]">
-                      Avaliações verificadas são feitas apenas por clientes que
-                      completaram o serviço com o prestador. Não aceitamos
-                      avaliações anônimas ou de terceiros.
+                      Avaliações verificadas são feitas apenas por clientes que completaram o
+                      serviço com o prestador. Não aceitamos avaliações anônimas ou de terceiros.
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -270,8 +254,8 @@ export default function Testimonials({
               {/* Star distribution bars (Amazon-style histogram) */}
               <div className="flex-1 w-full space-y-1">
                 {[5, 4, 3, 2, 1].map((starVal) => {
-                  const count = starDistribution[starVal - 1]
-                  const pct = total > 0 ? (count / total) * 100 : 0
+                  const count = starDistribution[starVal - 1];
+                  const pct = total > 0 ? (count / total) * 100 : 0;
                   return (
                     <button
                       key={starVal}
@@ -309,7 +293,7 @@ export default function Testimonials({
                         {count}
                       </span>
                     </button>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -466,7 +450,7 @@ export default function Testimonials({
         )}
       </div>
     </section>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -474,7 +458,7 @@ export default function Testimonials({
 // ---------------------------------------------------------------------------
 
 function ReviewCard({ review }: { review: ReviewItem }) {
-  const stars = Array.from({ length: 5 }).map((_, i) => i < review.rating)
+  const stars = Array.from({ length: 5 }).map((_, i) => i < review.rating);
 
   return (
     <div className="group relative flex h-full flex-col gap-3 rounded-xl border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-emerald-200 dark:hover:border-emerald-800/50 overflow-hidden">
@@ -522,9 +506,7 @@ function ReviewCard({ review }: { review: ReviewItem }) {
               {review.comment}
             </p>
           ) : (
-            <p className="pl-10 text-sm italic text-muted-foreground">
-              Sem comentário escrito.
-            </p>
+            <p className="pl-10 text-sm italic text-muted-foreground">Sem comentário escrito.</p>
           )}
         </div>
 
@@ -562,23 +544,18 @@ function ReviewCard({ review }: { review: ReviewItem }) {
             <span>para</span>
             <Avatar className="size-5">
               {review.providerAvatar ? (
-                <AvatarImage
-                  src={review.providerAvatar}
-                  alt={review.providerName}
-                />
+                <AvatarImage src={review.providerAvatar} alt={review.providerName} />
               ) : null}
               <AvatarFallback className="size-5 bg-emerald-100 text-[8px] font-bold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
                 {review.providerName.charAt(0)}
               </AvatarFallback>
             </Avatar>
-            <span className="max-w-[6rem] truncate font-medium">
-              {review.providerName}
-            </span>
+            <span className="max-w-[6rem] truncate font-medium">{review.providerName}</span>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -591,15 +568,13 @@ function EmptyTestimonials() {
       <span className="flex size-16 items-center justify-center rounded-full bg-muted">
         <MessageSquare className="size-8 text-muted-foreground" />
       </span>
-      <h3 className="mt-4 text-base font-semibold">
-        Ainda não há avaliações
-      </h3>
+      <h3 className="mt-4 text-base font-semibold">Ainda não há avaliações</h3>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Assim que os primeiros serviços forem concluídos, as avaliações dos
-        clientes aparecerão aqui.
+        Assim que os primeiros serviços forem concluídos, as avaliações dos clientes aparecerão
+        aqui.
       </p>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -612,23 +587,16 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
       <span className="flex size-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/30">
         <RefreshCw className="size-8 text-red-500" />
       </span>
-      <h3 className="mt-4 text-base font-semibold">
-        Não foi possível carregar as avaliações
-      </h3>
+      <h3 className="mt-4 text-base font-semibold">Não foi possível carregar as avaliações</h3>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
         Ocorreu um erro ao buscar as avaliações. Tente novamente.
       </p>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onRetry}
-        className="mt-4 gap-2"
-      >
+      <Button variant="outline" size="sm" onClick={onRetry} className="mt-4 gap-2">
         <RefreshCw className="size-3.5" />
         Tentar novamente
       </Button>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -664,5 +632,5 @@ function ReviewSkeleton() {
         </div>
       </div>
     </div>
-  )
+  );
 }

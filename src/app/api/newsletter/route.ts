@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from "next/server"
-import { db } from "@/lib/db"
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/newsletter
@@ -10,35 +11,29 @@ import { db } from "@/lib/db"
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const email = (body.email as string | undefined)?.trim().toLowerCase()
+    const body = await req.json();
+    const email = (body.email as string | undefined)?.trim().toLowerCase();
 
     if (!email) {
-      return NextResponse.json(
-        { error: "E-mail é obrigatório." },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "E-mail é obrigatório." }, { status: 400 });
     }
 
     // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: "E-mail inválido." },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "E-mail inválido." }, { status: 400 });
     }
 
     // Check if already subscribed (using Setting as a KV store)
-    const key = `newsletter:${email}`
-    const existing = await db.setting.findUnique({ where: { key } })
+    const key = `newsletter:${email}`;
+    const existing = await db.setting.findUnique({ where: { key } });
 
     if (existing) {
       return NextResponse.json({
         ok: true,
         message: "Este e-mail já está inscrito!",
         alreadySubscribed: true,
-      })
+      });
     }
 
     // Save subscription
@@ -51,17 +46,14 @@ export async function POST(req: NextRequest) {
           source: "footer",
         }),
       },
-    })
+    });
 
     return NextResponse.json({
       ok: true,
       message: "Inscrição confirmada!",
-    })
+    });
   } catch (err) {
-    console.error("[newsletter] POST error:", err)
-    return NextResponse.json(
-      { error: "Erro interno. Tente novamente." },
-      { status: 500 },
-    )
+    logger.error("POST /api/newsletter failed", undefined, err);
+    return NextResponse.json({ error: "Erro interno. Tente novamente." }, { status: 500 });
   }
 }

@@ -1,44 +1,44 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import { MessageSquareReply, Star } from "lucide-react"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { MessageSquareReply, Star } from "lucide-react";
 
-import { apiGet } from "@/lib/api"
-import { formatDateTime } from "@/lib/format"
-import { useAuthStore } from "@/store/auth"
+import { apiGet } from "@/lib/api";
+import { formatDateTime } from "@/lib/format";
+import { useAuthStore } from "@/store/auth";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { StarRatingDisplay } from "@/components/modals/star-rating"
-import { cn } from "@/lib/utils"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StarRatingDisplay } from "@/components/modals/star-rating";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Review = {
-  id: string
-  rating: number
-  comment?: string | null
-  createdAt: string
-  booking?: { id: string; serviceId: string | null } | null
-  service?: { id: string; title: string } | null
-  client: { id: string; name: string; avatarUrl?: string | null }
-}
+  id: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  booking?: { id: string; serviceId: string | null } | null;
+  service?: { id: string; title: string } | null;
+  client: { id: string; name: string; avatarUrl?: string | null };
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function initials(name?: string) {
-  if (!name) return "?"
+  if (!name) return "?";
   return name
     .split(" ")
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("")
+    .join("");
 }
 
 // ---------------------------------------------------------------------------
@@ -46,31 +46,29 @@ function initials(name?: string) {
 // ---------------------------------------------------------------------------
 
 export function ProviderReviews() {
-  const user = useAuthStore((s) => s.user)
+  const user = useAuthStore((s) => s.user);
 
   const query = useQuery<{ items: Review[]; total: number }>({
     queryKey: ["provider", "reviews", user?.id],
     queryFn: async () => {
-      if (!user) return { items: [], total: 0 }
-      return apiGet("/api/reviews", { providerId: user.id })
+      if (!user) return { items: [], total: 0 };
+      return apiGet("/api/reviews", { providerId: user.id });
     },
     enabled: !!user,
-  })
+  });
 
-  const reviews = query.data?.items ?? []
+  const reviews = React.useMemo(() => query.data?.items ?? [], [query.data]);
 
   const avg =
-    reviews.length > 0
-      ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
-      : 0
+    reviews.length > 0 ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length : 0;
 
   const distribution = React.useMemo(() => {
-    const dist: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
+    const dist: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
     for (const r of reviews) {
-      dist[r.rating] = (dist[r.rating] ?? 0) + 1
+      dist[r.rating] = (dist[r.rating] ?? 0) + 1;
     }
-    return dist
-  }, [reviews])
+    return dist;
+  }, [reviews]);
 
   return (
     <div className="grid gap-6">
@@ -81,13 +79,10 @@ export function ProviderReviews() {
             <p className="text-xs uppercase tracking-wider text-muted-foreground">
               Avaliação média
             </p>
-            <p className="text-5xl font-bold tabular-nums text-primary">
-              {avg.toFixed(1)}
-            </p>
+            <p className="text-5xl font-bold tabular-nums text-primary">{avg.toFixed(1)}</p>
             <StarRatingDisplay value={avg} size={20} showCount={false} />
             <p className="text-xs text-muted-foreground tabular-nums">
-              {reviews.length}{" "}
-              {reviews.length === 1 ? "avaliação" : "avaliações"}
+              {reviews.length} {reviews.length === 1 ? "avaliação" : "avaliações"}
             </p>
           </CardContent>
         </Card>
@@ -99,17 +94,12 @@ export function ProviderReviews() {
           <CardContent className="p-4">
             <ul className="grid gap-2">
               {[5, 4, 3, 2, 1].map((star) => {
-                const count = distribution[star] ?? 0
-                const pct =
-                  reviews.length > 0 ? (count / reviews.length) * 100 : 0
+                const count = distribution[star] ?? 0;
+                const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0;
                 return (
-                  <li
-                    key={star}
-                    className="flex items-center gap-3 text-sm"
-                  >
+                  <li key={star} className="flex items-center gap-3 text-sm">
                     <span className="flex w-12 items-center gap-1">
-                      {star}{" "}
-                      <Star className="size-3 fill-amber-400 text-amber-400" />
+                      {star} <Star className="size-3 fill-amber-400 text-amber-400" />
                     </span>
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
                       <div
@@ -131,7 +121,7 @@ export function ProviderReviews() {
                       {pct.toFixed(0)}%
                     </span>
                   </li>
-                )
+                );
               })}
             </ul>
           </CardContent>
@@ -142,10 +132,7 @@ export function ProviderReviews() {
       {query.isLoading ? (
         <div className="grid gap-3">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-32 animate-pulse rounded-xl border bg-muted/30"
-            />
+            <div key={i} className="h-32 animate-pulse rounded-xl border bg-muted/30" />
           ))}
         </div>
       ) : reviews.length === 0 ? (
@@ -168,10 +155,7 @@ export function ProviderReviews() {
                 <div className="flex flex-wrap items-center gap-3">
                   <Avatar className="size-10 border">
                     {r.client.avatarUrl ? (
-                      <AvatarImage
-                        src={r.client.avatarUrl}
-                        alt={r.client.name}
-                      />
+                      <AvatarImage src={r.client.avatarUrl} alt={r.client.name} />
                     ) : null}
                     <AvatarFallback className="bg-primary text-xs text-primary-foreground">
                       {initials(r.client.name)}
@@ -183,26 +167,17 @@ export function ProviderReviews() {
                       {formatDateTime(r.createdAt)}
                     </p>
                   </div>
-                  <StarRatingDisplay
-                    value={r.rating}
-                    size={16}
-                    showCount={false}
-                  />
+                  <StarRatingDisplay value={r.rating} size={16} showCount={false} />
                 </div>
                 {r.comment && (
-                  <p className="text-sm leading-relaxed text-foreground">
-                    “{r.comment}”
-                  </p>
+                  <p className="text-sm leading-relaxed text-foreground">“{r.comment}”</p>
                 )}
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                   {r.service?.title && (
                     <span className="inline-flex items-center gap-1">
                       <MessageSquareReply className="size-3" />
                       Serviço:{" "}
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] font-medium"
-                      >
+                      <Badge variant="secondary" className="text-[10px] font-medium">
                         {r.service.title}
                       </Badge>
                     </span>
@@ -210,9 +185,7 @@ export function ProviderReviews() {
                   {r.booking && (
                     <span className="tabular-nums">
                       Agendamento:{" "}
-                      <span className="font-medium text-foreground">
-                        #{r.booking.id.slice(-6)}
-                      </span>
+                      <span className="font-medium text-foreground">#{r.booking.id.slice(-6)}</span>
                     </span>
                   )}
                 </div>
@@ -222,7 +195,7 @@ export function ProviderReviews() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default ProviderReviews
+export default ProviderReviews;

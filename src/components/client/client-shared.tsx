@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * client-shared — small presentation helpers shared by all client views.
@@ -13,10 +13,10 @@
  * and don't re-implement the same chrome.
  */
 
-import * as React from "react"
-import { type LucideIcon } from "lucide-react"
+import * as React from "react";
+import { type LucideIcon } from "lucide-react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // PageHeader
@@ -28,10 +28,10 @@ export function PageHeader({
   action,
   className,
 }: {
-  title: string
-  subtitle?: string
-  action?: React.ReactNode
-  className?: string
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+  className?: string;
 }) {
   return (
     <div
@@ -41,42 +41,28 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0 space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          {title}
-        </h1>
-        {subtitle ? (
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
-        ) : null}
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
+        {subtitle ? <p className="text-sm text-muted-foreground">{subtitle}</p> : null}
       </div>
-      {action ? (
-        <div className="flex flex-wrap items-center gap-2">{action}</div>
-      ) : null}
+      {action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // StatusBadge
 // ---------------------------------------------------------------------------
 
-export type StatusTone =
-  | "emerald"
-  | "amber"
-  | "rose"
-  | "teal"
-  | "zinc"
-  | "sky"
+export type StatusTone = "emerald" | "amber" | "rose" | "teal" | "zinc" | "sky";
 
 const TONE_CLASS: Record<StatusTone, string> = {
-  emerald:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  amber:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  amber: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
   teal: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
   zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
   sky: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200",
-}
+};
 
 export function StatusBadge({
   tone,
@@ -84,10 +70,10 @@ export function StatusBadge({
   children,
   className,
 }: {
-  tone: StatusTone
-  icon?: LucideIcon
-  children: React.ReactNode
-  className?: string
+  tone: StatusTone;
+  icon?: LucideIcon;
+  children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <span
@@ -100,7 +86,7 @@ export function StatusBadge({
       {Icon ? <Icon className="size-3" /> : null}
       {children}
     </span>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -109,33 +95,23 @@ export function StatusBadge({
 // touch src/lib/constants.ts.
 // ---------------------------------------------------------------------------
 
-import {
-  CheckCircle2,
-  Clock,
-  Loader2,
-  XCircle,
-  CircleSlash,
-} from "lucide-react"
+import { CheckCircle2, Clock, Loader2, XCircle, CircleSlash } from "lucide-react";
 
-import {
-  type BookingStatus,
-  type PaymentStatus,
-  type QuoteStatus,
-} from "@/lib/constants"
+import { type BookingStatus, type PaymentStatus, type QuoteStatus } from "@/lib/constants";
 
 export function bookingTone(status: BookingStatus): StatusTone {
   switch (status) {
     case "CONFIRMED":
     case "COMPLETED":
-      return "emerald"
+      return "emerald";
     case "PENDING":
-      return "amber"
+      return "amber";
     case "IN_PROGRESS":
-      return "teal"
+      return "teal";
     case "CANCELLED":
-      return "rose"
+      return "rose";
     default:
-      return "zinc"
+      return "zinc";
   }
 }
 
@@ -143,15 +119,15 @@ export function bookingIcon(status: BookingStatus): LucideIcon {
   switch (status) {
     case "CONFIRMED":
     case "COMPLETED":
-      return CheckCircle2
+      return CheckCircle2;
     case "PENDING":
-      return Clock
+      return Clock;
     case "IN_PROGRESS":
-      return Loader2
+      return Loader2;
     case "CANCELLED":
-      return XCircle
+      return XCircle;
     default:
-      return CircleSlash
+      return CircleSlash;
   }
 }
 
@@ -159,14 +135,14 @@ export function quoteTone(status: QuoteStatus): StatusTone {
   switch (status) {
     case "APPROVED":
     case "RESPONDED":
-      return "emerald"
+      return "emerald";
     case "PENDING":
-      return "amber"
+      return "amber";
     case "REJECTED":
     case "EXPIRED":
-      return "rose"
+      return "rose";
     default:
-      return "zinc"
+      return "zinc";
   }
 }
 
@@ -174,39 +150,39 @@ export function quoteIcon(status: QuoteStatus): LucideIcon {
   switch (status) {
     case "APPROVED":
     case "RESPONDED":
-      return CheckCircle2
+      return CheckCircle2;
     case "PENDING":
-      return Clock
+      return Clock;
     case "REJECTED":
     case "EXPIRED":
-      return XCircle
+      return XCircle;
     default:
-      return CircleSlash
+      return CircleSlash;
   }
 }
 
 export function paymentTone(status: PaymentStatus): StatusTone {
   switch (status) {
     case "PAID":
-      return "emerald"
+      return "emerald";
     case "PENDING":
-      return "amber"
+      return "amber";
     case "REFUNDED":
-      return "rose"
+      return "rose";
     default:
-      return "zinc"
+      return "zinc";
   }
 }
 
 export function paymentIcon(status: PaymentStatus): LucideIcon {
   switch (status) {
     case "PAID":
-      return CheckCircle2
+      return CheckCircle2;
     case "PENDING":
-      return Clock
+      return Clock;
     case "REFUNDED":
-      return XCircle
+      return XCircle;
     default:
-      return CircleSlash
+      return CircleSlash;
   }
 }

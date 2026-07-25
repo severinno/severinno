@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   CalendarCheck,
   CalendarDays,
@@ -14,35 +14,35 @@ import {
   Wallet,
   Wrench,
   type LucideIcon,
-} from "lucide-react"
+} from "lucide-react";
 
-import { apiGet } from "@/lib/api"
-import { useAuthStore } from "@/store/auth"
-import { useViewStore } from "@/store/view"
-import { DashboardShell, type NavItem } from "@/components/shared/dashboard-shell"
+import { apiGet } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
+import { useViewStore } from "@/store/view";
+import { DashboardShell, type NavItem } from "@/components/shared/dashboard-shell";
 
-import { ProviderDashboard } from "./provider-dashboard"
-import { ProviderExpediente } from "./provider-expediente"
-import { ProviderAgenda } from "./provider-agenda"
-import { ProviderBookings } from "./provider-bookings"
-import { ProviderQuotes } from "./provider-quotes"
-import { ProviderServices } from "./provider-services"
-import { ProviderFinance } from "./provider-finance"
-import { ProviderMessages } from "./provider-messages"
-import { ProviderReviews } from "./provider-reviews"
-import { ProviderProfile } from "./provider-profile"
+import { ProviderDashboard } from "./provider-dashboard";
+import { ProviderExpediente } from "./provider-expediente";
+import { ProviderAgenda } from "./provider-agenda";
+import { ProviderBookings } from "./provider-bookings";
+import { ProviderQuotes } from "./provider-quotes";
+import { ProviderServices } from "./provider-services";
+import { ProviderFinance } from "./provider-finance";
+import { ProviderMessages } from "./provider-messages";
+import { ProviderReviews } from "./provider-reviews";
+import { ProviderProfile } from "./provider-profile";
 
 // ---------------------------------------------------------------------------
 // View metadata
 // ---------------------------------------------------------------------------
 
 type ViewMeta = {
-  view: string
-  label: string
-  icon: LucideIcon
-  title: string
-  subtitle: string
-}
+  view: string;
+  label: string;
+  icon: LucideIcon;
+  title: string;
+  subtitle: string;
+};
 
 const VIEWS: ViewMeta[] = [
   {
@@ -115,18 +115,16 @@ const VIEWS: ViewMeta[] = [
     title: "Meu perfil",
     subtitle: "Edite suas informações de prestador.",
   },
-]
+];
 
-const VIEW_MAP: Record<string, ViewMeta> = Object.fromEntries(
-  VIEWS.map((v) => [v.view, v]),
-)
+const VIEW_MAP: Record<string, ViewMeta> = Object.fromEntries(VIEWS.map((v) => [v.view, v]));
 
 // ---------------------------------------------------------------------------
 // Pending counts (for nav badges)
 // ---------------------------------------------------------------------------
 
 function useBadges() {
-  const user = useAuthStore((s) => s.user)
+  const user = useAuthStore((s) => s.user);
 
   const quotesQuery = useQuery<{ items: Array<{ items: Array<{ status: string }> }> }>({
     queryKey: ["provider", "panel", "quotes-badges"],
@@ -134,7 +132,7 @@ function useBadges() {
       apiGet("/api/quotes", { role: "PROVIDER", status: "PENDING", page: 1, limit: 50 }),
     enabled: !!user,
     refetchInterval: 60_000,
-  })
+  });
 
   const bookingsQuery = useQuery<{ items: Array<{ status: string }> }>({
     queryKey: ["provider", "panel", "bookings-badges"],
@@ -142,20 +140,19 @@ function useBadges() {
       apiGet("/api/bookings", { role: "PROVIDER", status: "PENDING", page: 1, limit: 50 }),
     enabled: !!user,
     refetchInterval: 60_000,
-  })
+  });
 
   const pendingQuotes = React.useMemo(() => {
-    const items = quotesQuery.data?.items ?? []
+    const items = quotesQuery.data?.items ?? [];
     return items.reduce(
-      (acc, q) =>
-        acc + (q.items ?? []).filter((i) => i.status === "PENDING").length,
+      (acc, q) => acc + (q.items ?? []).filter((i) => i.status === "PENDING").length,
       0,
-    )
-  }, [quotesQuery.data])
+    );
+  }, [quotesQuery.data]);
 
-  const pendingBookings = bookingsQuery.data?.items?.length ?? 0
+  const pendingBookings = bookingsQuery.data?.items?.length ?? 0;
 
-  return { pendingQuotes, pendingBookings }
+  return { pendingQuotes, pendingBookings };
 }
 
 // ---------------------------------------------------------------------------
@@ -163,12 +160,12 @@ function useBadges() {
 // ---------------------------------------------------------------------------
 
 export function ProviderPanel() {
-  const navigate = useViewStore((s) => s.navigate)
-  const view = useViewStore((s) => s.view)
-  const user = useAuthStore((s) => s.user)
-  const { pendingQuotes, pendingBookings } = useBadges()
+  const navigate = useViewStore((s) => s.navigate);
+  const view = useViewStore((s) => s.view);
+  const user = useAuthStore((s) => s.user);
+  const { pendingQuotes, pendingBookings } = useBadges();
 
-  const meta = VIEW_MAP[view] ?? VIEWS[0]
+  const meta = VIEW_MAP[view] ?? VIEWS[0];
 
   const navItems: NavItem[] = VIEWS.map((v) => ({
     view: v.view,
@@ -180,12 +177,9 @@ export function ProviderPanel() {
         : v.view === "provider.bookings"
           ? pendingBookings
           : undefined,
-  }))
+  }));
 
-  const breadcrumbs = [
-    { label: "Painel do Prestador" },
-    { label: meta.label },
-  ]
+  const breadcrumbs = [{ label: "Painel do Prestador" }, { label: meta.label }];
 
   return (
     <DashboardShell
@@ -210,7 +204,7 @@ export function ProviderPanel() {
       {view === "provider.reviews" && <ProviderReviews />}
       {view === "provider.profile" && <ProviderProfile />}
     </DashboardShell>
-  )
+  );
 }
 
-export default ProviderPanel
+export default ProviderPanel;

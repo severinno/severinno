@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * RecentlyViewed — "Prestadores que você visualizou" section.
@@ -11,15 +11,13 @@
  * Shown in the vitrine below the hero, above the main results.
  */
 
-import * as React from "react"
-import { Star, MapPin, X, History, ArrowRight } from "lucide-react"
+import * as React from "react";
+import { Star, MapPin, X, History, ArrowRight } from "lucide-react";
 
-import { useRecentlyViewedStore, useUIStore } from "@/store"
-import { formatBRL } from "@/lib/format"
-import { SERVICE_UNIT_SHORT } from "@/lib/constants"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { useRecentlyViewedStore, useUIStore } from "@/store";
+import { formatBRL } from "@/lib/format";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,14 +28,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
 
 export function RecentlyViewed() {
-  const items = useRecentlyViewedStore((s) => s.items)
-  const clear = useRecentlyViewedStore((s) => s.clear)
-  const openProvider = useUIStore((s) => s.openProvider)
+  const items = useRecentlyViewedStore((s) => s.items);
+  const clear = useRecentlyViewedStore((s) => s.clear);
+  const openProvider = useUIStore((s) => s.openProvider);
 
-  if (items.length === 0) return null
+  if (items.length === 0) return null;
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -48,11 +46,10 @@ export function RecentlyViewed() {
               <History className="size-4" />
             </div>
             <div>
-              <CardTitle className="text-sm font-semibold">
-                Vistos recentemente
-              </CardTitle>
+              <CardTitle className="text-sm font-semibold">Vistos recentemente</CardTitle>
               <p className="text-xs text-muted-foreground">
-                {items.length} {items.length === 1 ? "prestador" : "prestadores"} que você visualizou
+                {items.length} {items.length === 1 ? "prestador" : "prestadores"} que você
+                visualizou
               </p>
             </div>
           </div>
@@ -67,8 +64,8 @@ export function RecentlyViewed() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Limpar histórico?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Isso vai remover todos os prestadores vistos recentemente. Você
-                  não pode desfazer esta ação.
+                  Isso vai remover todos os prestadores vistos recentemente. Você não pode desfazer
+                  esta ação.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -87,7 +84,7 @@ export function RecentlyViewed() {
           {/* Horizontal scroll on mobile, grid on desktop */}
           <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin] sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-4 sm:pb-0">
             {items.map((p) => {
-              const firstService = p.services?.[0]
+              const firstService = p.services?.[0];
               return (
                 <button
                   key={p.id}
@@ -109,14 +106,10 @@ export function RecentlyViewed() {
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium leading-tight">
-                        {p.name}
-                      </p>
+                      <p className="truncate text-sm font-medium leading-tight">{p.name}</p>
                       <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                         <Star className="size-3 fill-amber-400 text-amber-400" />
-                        <span className="font-medium text-foreground">
-                          {p.rating.toFixed(1)}
-                        </span>
+                        <span className="font-medium text-foreground">{p.rating.toFixed(1)}</span>
                         <span>·</span>
                         <span>{p.reviewCount} aval.</span>
                       </div>
@@ -151,11 +144,11 @@ export function RecentlyViewed() {
                     <ArrowRight className="size-3" />
                   </div>
                 </button>
-              )
+              );
             })}
           </div>
         </CardContent>
       </Card>
     </section>
-  )
+  );
 }

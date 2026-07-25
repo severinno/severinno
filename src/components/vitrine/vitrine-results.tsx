@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * VitrineResults — the main results area of the vitrine.
@@ -11,43 +11,26 @@
  *   - Loading: skeleton grid; Empty: friendly state with CTA; Pagination at bottom
  */
 
-import * as React from "react"
-import dynamic from "next/dynamic"
-import {
-  List,
-  MapIcon,
-  MapPin,
-  SlidersHorizontal,
-  SearchX,
-  X,
-  Loader2,
-} from "lucide-react"
+import * as React from "react";
+import dynamic from "next/dynamic";
+import { List, MapIcon, MapPin, SlidersHorizontal, SearchX, X, Loader2 } from "lucide-react";
 
-import { cn } from "@/lib/utils"
-import type { Category, ProviderCard as ProviderCardType } from "@/lib/api"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Separator } from "@/components/ui/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
+import { cn } from "@/lib/utils";
+import type { Category, ProviderCard as ProviderCardType } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   Pagination,
   PaginationContent,
   PaginationItem,
   PaginationNext,
   PaginationPrevious,
-} from "@/components/ui/pagination"
+} from "@/components/ui/pagination";
 
-import Filters, {
-  DEFAULT_FILTERS,
-  type FiltersState,
-} from "./filters"
-import ProviderCard, { ProviderCardSkeleton } from "./provider-card"
+import Filters, { DEFAULT_FILTERS, type FiltersState } from "./filters";
+import ProviderCard, { ProviderCardSkeleton } from "./provider-card";
 
 // MapLibre is client-only — dynamic import with ssr:false to be safe
 const ProvidersMap = dynamic(() => import("./providers-map"), {
@@ -57,32 +40,32 @@ const ProvidersMap = dynamic(() => import("./providers-map"), {
       <Loader2 className="size-6 animate-spin text-muted-foreground" />
     </div>
   ),
-})
+});
 
 export type VitrineResultsProps = {
-  providers: ProviderCardType[]
-  total: number
-  page: number
-  limit: number
-  isLoading: boolean
-  isFetching: boolean
-  error: unknown
-  filters: FiltersState
-  onFiltersChange: (next: FiltersState) => void
-  categories: Category[]
-  favorites: Set<string>
-  userLat?: number | null
-  userLng?: number | null
-  onQuote?: (id: string) => void
-  onBook?: (id: string, serviceId?: string) => void
-  onView?: (id: string) => void
-  onPageChange?: (page: number) => void
-  resultsAnchorId?: string
-  className?: string
-  radiusExpanded?: boolean
-}
+  providers: ProviderCardType[];
+  total: number;
+  page: number;
+  limit: number;
+  isLoading: boolean;
+  isFetching: boolean;
+  error: unknown;
+  filters: FiltersState;
+  onFiltersChange: (next: FiltersState) => void;
+  categories: Category[];
+  favorites: Set<string>;
+  userLat?: number | null;
+  userLng?: number | null;
+  onQuote?: (id: string) => void;
+  onBook?: (id: string, serviceId?: string) => void;
+  onView?: (id: string) => void;
+  onPageChange?: (page: number) => void;
+  resultsAnchorId?: string;
+  className?: string;
+  radiusExpanded?: boolean;
+};
 
-type ViewMode = "list" | "map"
+type ViewMode = "list" | "map";
 
 export default function VitrineResults({
   providers,
@@ -106,41 +89,38 @@ export default function VitrineResults({
   className,
   radiusExpanded,
 }: VitrineResultsProps) {
-  const [view, setView] = React.useState<ViewMode>("list")
-  const [selectedId, setSelectedId] = React.useState<string | null>(null)
-  const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false)
+  const [view, setView] = React.useState<ViewMode>("list");
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
 
-  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)))
-  const showingFrom = total === 0 ? 0 : (page - 1) * limit + 1
-  const showingTo = Math.min(total, page * limit)
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, limit)));
+  const showingFrom = total === 0 ? 0 : (page - 1) * limit + 1;
+  const showingTo = Math.min(total, page * limit);
 
-  const activeChips = buildChips(filters, categories)
+  const activeChips = buildChips(filters, categories);
 
   const handleChipRemove = (key: keyof FiltersState) => {
-    const next = { ...filters }
-    if (key === "q") next.q = ""
-    else if (key === "categoryId") next.categoryId = null
-    else if (key === "radius") next.radius = DEFAULT_FILTERS.radius
-    else if (key === "sort") next.sort = DEFAULT_FILTERS.sort
-    else if (key === "verifiedOnly") next.verifiedOnly = false
-    else if (key === "minRating") next.minRating = 0
-    onFiltersChange(next)
-  }
+    const next = { ...filters };
+    if (key === "q") next.q = "";
+    else if (key === "categoryId") next.categoryId = null;
+    else if (key === "radius") next.radius = DEFAULT_FILTERS.radius;
+    else if (key === "sort") next.sort = DEFAULT_FILTERS.sort;
+    else if (key === "verifiedOnly") next.verifiedOnly = false;
+    else if (key === "minRating") next.minRating = 0;
+    onFiltersChange(next);
+  };
 
   // Reset selection when providers change
   React.useEffect(() => {
     if (selectedId && !providers.some((p) => p.id === selectedId)) {
-      setSelectedId(null)
+      setSelectedId(null);
     }
-  }, [providers, selectedId])
+  }, [providers, selectedId]);
 
   return (
     <section
       id={resultsAnchorId}
-      className={cn(
-        "mx-auto w-full max-w-7xl scroll-mt-32 px-4 py-8 sm:px-6 lg:px-8",
-        className,
-      )}
+      className={cn("mx-auto w-full max-w-7xl scroll-mt-32 px-4 py-8 sm:px-6 lg:px-8", className)}
       aria-label="Resultados da busca"
     >
       <div className="lg:grid lg:grid-cols-[260px_1fr] lg:gap-8">
@@ -201,16 +181,13 @@ export default function VitrineResults({
                       <Filters
                         value={filters}
                         onChange={(v) => {
-                          onFiltersChange(v)
+                          onFiltersChange(v);
                         }}
                         categories={categories}
                       />
                     </div>
                     <div className="border-t p-3">
-                      <Button
-                        className="w-full"
-                        onClick={() => setMobileFiltersOpen(false)}
-                      >
+                      <Button className="w-full" onClick={() => setMobileFiltersOpen(false)}>
                         Ver {total} resultados
                       </Button>
                     </div>
@@ -236,11 +213,7 @@ export default function VitrineResults({
                   >
                     <List className="size-4" />
                   </ViewToggle>
-                  <ViewToggle
-                    active={view === "map"}
-                    onClick={() => setView("map")}
-                    label="Mapa"
-                  >
+                  <ViewToggle active={view === "map"} onClick={() => setView("map")} label="Mapa">
                     <MapIcon className="size-4" />
                   </ViewToggle>
                 </div>
@@ -289,7 +262,8 @@ export default function VitrineResults({
                   Nenhum prestador encontrado no raio de {filters.radius} km
                 </p>
                 <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                  Mostrando os prestadores mais próximos da sua localização. Aumente o raio na barra de filtros para ver mais opções ou ajuste sua localização.
+                  Mostrando os prestadores mais próximos da sua localização. Aumente o raio na barra
+                  de filtros para ver mais opções ou ajuste sua localização.
                 </p>
               </div>
             </div>
@@ -298,9 +272,7 @@ export default function VitrineResults({
           {/* Content */}
           <div className="mt-4">
             {error ? (
-              <ErrorState
-                onRetry={() => onFiltersChange({ ...filters })}
-              />
+              <ErrorState onRetry={() => onFiltersChange({ ...filters })} />
             ) : isLoading ? (
               <ResultsGrid>
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -310,9 +282,7 @@ export default function VitrineResults({
             ) : providers.length === 0 ? (
               <EmptyState
                 hasFilters={activeChips.length > 0}
-                onClear={() =>
-                  onFiltersChange({ ...DEFAULT_FILTERS, q: filters.q })
-                }
+                onClear={() => onFiltersChange({ ...DEFAULT_FILTERS, q: filters.q })}
               />
             ) : view === "list" ? (
               <ResultsGrid>
@@ -358,8 +328,8 @@ export default function VitrineResults({
                   <PaginationPrevious
                     href="#"
                     onClick={(e) => {
-                      e.preventDefault()
-                      if (page > 1) onPageChange?.(page - 1)
+                      e.preventDefault();
+                      if (page > 1) onPageChange?.(page - 1);
                     }}
                     aria-disabled={page <= 1}
                     className={cn(page <= 1 && "pointer-events-none opacity-50")}
@@ -374,13 +344,11 @@ export default function VitrineResults({
                   <PaginationNext
                     href="#"
                     onClick={(e) => {
-                      e.preventDefault()
-                      if (page < totalPages) onPageChange?.(page + 1)
+                      e.preventDefault();
+                      if (page < totalPages) onPageChange?.(page + 1);
                     }}
                     aria-disabled={page >= totalPages}
-                    className={cn(
-                      page >= totalPages && "pointer-events-none opacity-50",
-                    )}
+                    className={cn(page >= totalPages && "pointer-events-none opacity-50")}
                   />
                 </PaginationItem>
               </PaginationContent>
@@ -389,7 +357,7 @@ export default function VitrineResults({
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -397,11 +365,7 @@ export default function VitrineResults({
 // ---------------------------------------------------------------------------
 
 function ResultsGrid({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-      {children}
-    </div>
-  )
+  return <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">{children}</div>;
 }
 
 function ViewToggle({
@@ -410,10 +374,10 @@ function ViewToggle({
   label,
   children,
 }: {
-  active: boolean
-  onClick: () => void
-  label: string
-  children: React.ReactNode
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
     <button
@@ -432,7 +396,7 @@ function ViewToggle({
       {children}
       <span className="inline">{label}</span>
     </button>
-  )
+  );
 }
 
 function MapView({
@@ -446,15 +410,15 @@ function MapView({
   onBook,
   onView,
 }: {
-  providers: ProviderCardType[]
-  favorites: Set<string>
-  userLat?: number | null
-  userLng?: number | null
-  selectedId: string | null
-  onSelect: (id: string | null) => void
-  onQuote?: (id: string) => void
-  onBook?: (id: string, serviceId?: string) => void
-  onView?: (id: string) => void
+  providers: ProviderCardType[];
+  favorites: Set<string>;
+  userLat?: number | null;
+  userLng?: number | null;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onQuote?: (id: string) => void;
+  onBook?: (id: string, serviceId?: string) => void;
+  onView?: (id: string) => void;
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_400px]">
@@ -499,24 +463,16 @@ function MapView({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-function EmptyState({
-  hasFilters,
-  onClear,
-}: {
-  hasFilters: boolean
-  onClear: () => void
-}) {
+function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 py-16 text-center shadow-sm">
       <div className="flex size-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
         <SearchX className="size-8" />
       </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight">
-        Nenhum prestador encontrado
-      </h3>
+      <h3 className="mt-4 text-base font-semibold tracking-tight">Nenhum prestador encontrado</h3>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
         {hasFilters
           ? "Tente ajustar os filtros ou aumentar o raio de busca para ver mais resultados."
@@ -533,7 +489,7 @@ function EmptyState({
         </Button>
       ) : null}
     </div>
-  )
+  );
 }
 
 function ErrorState({ onRetry }: { onRetry: () => void }) {
@@ -542,66 +498,57 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
       <div className="flex size-14 items-center justify-center rounded-full bg-destructive/10">
         <X className="size-7 text-destructive" />
       </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight">
-        Algo deu errado
-      </h3>
+      <h3 className="mt-4 text-base font-semibold tracking-tight">Algo deu errado</h3>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Não foi possível carregar os prestadores. Verifique sua conexão e tente
-        novamente.
+        Não foi possível carregar os prestadores. Verifique sua conexão e tente novamente.
       </p>
       <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
         Tentar novamente
       </Button>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Active filter chips
 // ---------------------------------------------------------------------------
 
-type Chip = { key: keyof FiltersState; label: string }
+type Chip = { key: keyof FiltersState; label: string };
 
-function buildChips(
-  filters: FiltersState,
-  categories: Category[],
-): Chip[] {
-  const chips: Chip[] = []
+function buildChips(filters: FiltersState, categories: Category[]): Chip[] {
+  const chips: Chip[] = [];
   if (filters.q.trim()) {
-    chips.push({ key: "q", label: `“${filters.q.trim()}”` })
+    chips.push({ key: "q", label: `“${filters.q.trim()}”` });
   }
   if (filters.categoryId) {
-    const name = resolveCategoryName(filters.categoryId, categories)
-    if (name) chips.push({ key: "categoryId", label: `Categoria: ${name}` })
+    const name = resolveCategoryName(filters.categoryId, categories);
+    if (name) chips.push({ key: "categoryId", label: `Categoria: ${name}` });
   }
   if (filters.radius !== DEFAULT_FILTERS.radius) {
-    chips.push({ key: "radius", label: `Raio: ${filters.radius} km` })
+    chips.push({ key: "radius", label: `Raio: ${filters.radius} km` });
   }
   if (filters.sort !== DEFAULT_FILTERS.sort) {
     chips.push({
       key: "sort",
       label: filters.sort === "distance" ? "Mais próximos" : "Melhor avaliação",
-    })
+    });
   }
   if (filters.verifiedOnly) {
-    chips.push({ key: "verifiedOnly", label: "Verificados" })
+    chips.push({ key: "verifiedOnly", label: "Verificados" });
   }
   if (filters.minRating > 0) {
-    chips.push({ key: "minRating", label: `★ ${filters.minRating}+` })
+    chips.push({ key: "minRating", label: `★ ${filters.minRating}+` });
   }
-  return chips
+  return chips;
 }
 
-function resolveCategoryName(
-  id: string,
-  categories: Category[],
-): string | null {
+function resolveCategoryName(id: string, categories: Category[]): string | null {
   for (const c of categories) {
-    if (c.id === id) return c.name
+    if (c.id === id) return c.name;
     if (c.children?.length) {
-      const found = resolveCategoryName(id, c.children)
-      if (found) return found
+      const found = resolveCategoryName(id, c.children);
+      if (found) return found;
     }
   }
-  return null
+  return null;
 }

@@ -1,38 +1,36 @@
-"use client"
+"use client";
 
 /**
  * BackToTop — floating button that appears after scrolling 400px.
  * Smooth-scrolls to the top of the page. Respects reduced-motion.
  */
 
-import * as React from "react"
-import { ArrowUp } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import * as React from "react";
+import { ArrowUp } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export default function BackToTop() {
-  const [visible, setVisible] = React.useState(false)
+  const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
     const onScroll = () => {
-      setVisible(window.scrollY > 400)
-    }
-    onScroll()
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
-  }, [])
+      setVisible(window.scrollY > 400);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const handleClick = () => {
-    const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.scrollTo({
       top: 0,
       behavior: prefersReducedMotion ? "auto" : "smooth",
-    })
-  }
+    });
+  };
 
   return (
     <AnimatePresence>
@@ -62,5 +60,5 @@ export default function BackToTop() {
         </motion.div>
       ) : null}
     </AnimatePresence>
-  )
+  );
 }

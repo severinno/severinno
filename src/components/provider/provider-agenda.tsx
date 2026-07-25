@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   CalendarDays,
   CheckCircle2,
@@ -11,7 +11,7 @@ import {
   Loader2,
   MapPin,
   XCircle,
-} from "lucide-react"
+} from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -23,54 +23,51 @@ import {
   startOfMonth,
   startOfWeek,
   subMonths,
-} from "date-fns"
-import { ptBR } from "date-fns/locale"
+} from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-import { apiGet } from "@/lib/api"
-import {
-  BOOKING_STATUS_LABELS,
-  type BookingStatus,
-} from "@/lib/constants"
-import { formatBRL, formatTime } from "@/lib/format"
-import { cn } from "@/lib/utils"
+import { apiGet } from "@/lib/api";
+import { BOOKING_STATUS_LABELS, type BookingStatus } from "@/lib/constants";
+import { formatBRL, formatTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Booking = {
-  id: string
-  scheduledAt: string
-  status: BookingStatus
-  address: string
-  amount: number
-  service: { id: string; title: string }
+  id: string;
+  scheduledAt: string;
+  status: BookingStatus;
+  address: string;
+  amount: number;
+  service: { id: string; title: string };
   client: {
-    id: string
-    name: string
-    avatarUrl?: string | null
-  }
-}
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+  };
+};
 
-type Range = "today" | "week" | "month"
+type Range = "today" | "week" | "month";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function initials(name?: string) {
-  if (!name) return "?"
+  if (!name) return "?";
   return name
     .split(" ")
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("")
+    .join("");
 }
 
 const BADGE_STYLES: Record<BookingStatus, string> = {
@@ -79,7 +76,7 @@ const BADGE_STYLES: Record<BookingStatus, string> = {
   IN_PROGRESS: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
   COMPLETED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
   CANCELLED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
-}
+};
 
 const DOT_STYLES: Record<BookingStatus, string> = {
   PENDING: "bg-amber-500",
@@ -87,7 +84,7 @@ const DOT_STYLES: Record<BookingStatus, string> = {
   IN_PROGRESS: "bg-teal-500",
   COMPLETED: "bg-emerald-600",
   CANCELLED: "bg-rose-500",
-}
+};
 
 function StatusBadge({ status }: { status: BookingStatus }) {
   const Icon =
@@ -97,7 +94,7 @@ function StatusBadge({ status }: { status: BookingStatus }) {
         ? Clock
         : status === "IN_PROGRESS"
           ? Loader2
-          : XCircle
+          : XCircle;
   return (
     <Badge
       className={cn(
@@ -108,7 +105,7 @@ function StatusBadge({ status }: { status: BookingStatus }) {
       <Icon className="size-3" />
       {BOOKING_STATUS_LABELS[status]}
     </Badge>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -121,35 +118,35 @@ function CalendarGrid({
   selectedDay,
   onSelectDay,
 }: {
-  cursor: Date
-  bookings: Booking[]
-  selectedDay: Date
-  onSelectDay: (d: Date) => void
+  cursor: Date;
+  bookings: Booking[];
+  selectedDay: Date;
+  onSelectDay: (d: Date) => void;
 }) {
-  const monthStart = startOfMonth(cursor)
-  const monthEnd = endOfMonth(cursor)
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 })
-  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 })
+  const monthStart = startOfMonth(cursor);
+  const monthEnd = endOfMonth(cursor);
+  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
 
-  const days: Date[] = []
-  let d = gridStart
+  const days: Date[] = [];
+  let d = gridStart;
   while (d <= gridEnd) {
-    days.push(d)
-    d = addDays(d, 1)
+    days.push(d);
+    d = addDays(d, 1);
   }
 
   const bookingsByDay = React.useMemo(() => {
-    const map = new Map<string, Booking[]>()
+    const map = new Map<string, Booking[]>();
     for (const b of bookings) {
-      const key = format(new Date(b.scheduledAt), "yyyy-MM-dd")
-      const arr = map.get(key) ?? []
-      arr.push(b)
-      map.set(key, arr)
+      const key = format(new Date(b.scheduledAt), "yyyy-MM-dd");
+      const arr = map.get(key) ?? [];
+      arr.push(b);
+      map.set(key, arr);
     }
-    return map
-  }, [bookings])
+    return map;
+  }, [bookings]);
 
-  const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+  const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
   return (
     <div>
@@ -162,11 +159,11 @@ function CalendarGrid({
       </div>
       <div className="grid grid-cols-7 gap-1">
         {days.map((day) => {
-          const key = format(day, "yyyy-MM-dd")
-          const dayBookings = bookingsByDay.get(key) ?? []
-          const inMonth = isSameMonth(day, cursor)
-          const isSelected = isSameDay(day, selectedDay)
-          const isToday = isSameDay(day, new Date())
+          const key = format(day, "yyyy-MM-dd");
+          const dayBookings = bookingsByDay.get(key) ?? [];
+          const inMonth = isSameMonth(day, cursor);
+          const isSelected = isSameDay(day, selectedDay);
+          const isToday = isSameDay(day, new Date());
           return (
             <button
               key={key}
@@ -174,40 +171,26 @@ function CalendarGrid({
               onClick={() => onSelectDay(day)}
               className={cn(
                 "relative flex aspect-square flex-col items-center justify-center rounded-lg border text-sm transition-colors sm:aspect-[4/3]",
-                inMonth
-                  ? "bg-card"
-                  : "bg-muted/30 text-muted-foreground",
-                isSelected
-                  ? "border-primary ring-2 ring-primary/30"
-                  : "hover:border-primary/40",
+                inMonth ? "bg-card" : "bg-muted/30 text-muted-foreground",
+                isSelected ? "border-primary ring-2 ring-primary/30" : "hover:border-primary/40",
                 isToday && !isSelected && "border-primary",
               )}
             >
-              <span
-                className={cn(
-                  "text-xs font-medium",
-                  isToday && "text-primary",
-                )}
-              >
+              <span className={cn("text-xs font-medium", isToday && "text-primary")}>
                 {format(day, "d")}
               </span>
               {dayBookings.length > 0 && (
                 <span className="absolute bottom-1 flex gap-0.5">
                   {dayBookings.slice(0, 3).map((b, i) => (
-                    <span
-                      key={i}
-                      className={cn("size-1.5 rounded-full", DOT_STYLES[b.status])}
-                    />
+                    <span key={i} className={cn("size-1.5 rounded-full", DOT_STYLES[b.status])} />
                   ))}
                   {dayBookings.length > 3 && (
-                    <span className="text-[8px] leading-none text-muted-foreground">
-                      +
-                    </span>
+                    <span className="text-[8px] leading-none text-muted-foreground">+</span>
                   )}
                 </span>
               )}
             </button>
-          )
+          );
         })}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
@@ -225,7 +208,7 @@ function CalendarGrid({
         </span>
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -239,16 +222,13 @@ function DayList({ bookings }: { bookings: Booking[] }) {
         <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <CalendarDays className="size-5" />
         </div>
-        <p className="text-sm text-muted-foreground">
-          Nenhum agendamento neste dia.
-        </p>
+        <p className="text-sm text-muted-foreground">Nenhum agendamento neste dia.</p>
       </div>
-    )
+    );
   }
   const sorted = [...bookings].sort(
-    (a, b) =>
-      new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
-  )
+    (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+  );
   return (
     <ul className="grid gap-2">
       {sorted.map((b) => (
@@ -274,14 +254,10 @@ function DayList({ bookings }: { bookings: Booking[] }) {
           </Avatar>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium leading-tight">
-                {b.client.name}
-              </p>
+              <p className="text-sm font-medium leading-tight">{b.client.name}</p>
               <StatusBadge status={b.status} />
             </div>
-            <p className="truncate text-xs text-muted-foreground">
-              {b.service.title}
-            </p>
+            <p className="truncate text-xs text-muted-foreground">{b.service.title}</p>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
                 <MapPin className="size-3" />
@@ -295,7 +271,7 @@ function DayList({ bookings }: { bookings: Booking[] }) {
         </li>
       ))}
     </ul>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -303,9 +279,9 @@ function DayList({ bookings }: { bookings: Booking[] }) {
 // ---------------------------------------------------------------------------
 
 export function ProviderAgenda() {
-  const [range, setRange] = React.useState<Range>("month")
-  const [cursor, setCursor] = React.useState<Date>(new Date())
-  const [selectedDay, setSelectedDay] = React.useState<Date>(new Date())
+  const [range, setRange] = React.useState<Range>("month");
+  const [cursor, setCursor] = React.useState<Date>(new Date());
+  const [selectedDay, setSelectedDay] = React.useState<Date>(new Date());
 
   const query = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "agenda", "all"],
@@ -315,32 +291,30 @@ export function ProviderAgenda() {
         page: 1,
         limit: 200,
       }),
-  })
+  });
 
-  const bookings = query.data?.items ?? []
+  const bookings = React.useMemo(() => query.data?.items ?? [], [query.data]);
 
   // Filter bookings by range for the day-list
   const visibleBookings = React.useMemo(() => {
-    const now = new Date()
+    const now = new Date();
     if (range === "today") {
-      return bookings.filter((b) => isSameDay(new Date(b.scheduledAt), now))
+      return bookings.filter((b) => isSameDay(new Date(b.scheduledAt), now));
     }
     if (range === "week") {
-      const start = startOfWeek(now, { weekStartsOn: 0 })
-      const end = endOfWeek(now, { weekStartsOn: 0 })
+      const start = startOfWeek(now, { weekStartsOn: 0 });
+      const end = endOfWeek(now, { weekStartsOn: 0 });
       return bookings.filter((b) => {
-        const d = new Date(b.scheduledAt)
-        return d >= start && d <= end
-      })
+        const d = new Date(b.scheduledAt);
+        return d >= start && d <= end;
+      });
     }
-    return bookings
-  }, [bookings, range])
+    return bookings;
+  }, [bookings, range]);
 
   const dayBookings = React.useMemo(() => {
-    return bookings.filter((b) =>
-      isSameDay(new Date(b.scheduledAt), selectedDay),
-    )
-  }, [bookings, selectedDay])
+    return bookings.filter((b) => isSameDay(new Date(b.scheduledAt), selectedDay));
+  }, [bookings, selectedDay]);
 
   return (
     <div className="grid gap-6">
@@ -358,9 +332,9 @@ export function ProviderAgenda() {
               variant="outline"
               size="icon"
               onClick={() => {
-                const prev = subMonths(cursor, 1)
-                setCursor(prev)
-                setSelectedDay(prev)
+                const prev = subMonths(cursor, 1);
+                setCursor(prev);
+                setSelectedDay(prev);
               }}
               aria-label="Mês anterior"
             >
@@ -373,9 +347,9 @@ export function ProviderAgenda() {
               variant="outline"
               size="icon"
               onClick={() => {
-                const next = addMonths(cursor, 1)
-                setCursor(next)
-                setSelectedDay(next)
+                const next = addMonths(cursor, 1);
+                setCursor(next);
+                setSelectedDay(next);
               }}
               aria-label="Próximo mês"
             >
@@ -416,9 +390,7 @@ export function ProviderAgenda() {
         <Card className="py-0">
           <CardHeader className="border-b py-3">
             <CardTitle className="text-sm">
-              {range === "today"
-                ? "Agendamentos de hoje"
-                : "Agendamentos da semana"}
+              {range === "today" ? "Agendamentos de hoje" : "Agendamentos da semana"}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3">
@@ -427,7 +399,7 @@ export function ProviderAgenda() {
         </Card>
       )}
     </div>
-  )
+  );
 }
 
-export default ProviderAgenda
+export default ProviderAgenda;

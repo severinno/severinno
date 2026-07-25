@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * CookieConsent — GDPR/LGPD-compliant cookie consent banner.
@@ -13,45 +13,45 @@
  *   H10 Help/documentation           → Link to privacy policy
  */
 
-import * as React from "react"
-import { Cookie, Shield, X } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Button } from "@/components/ui/button"
+import * as React from "react";
+import { Cookie, Shield, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
 
-type ConsentState = "accepted" | "rejected" | null
+type ConsentState = "accepted" | "rejected" | null;
 
 export default function CookieConsent() {
-  const [visible, setVisible] = React.useState(false)
-  const [dismissed, setDismissed] = React.useState(false)
+  const [visible, setVisible] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(false);
 
   React.useEffect(() => {
     // Check if user has already made a choice
-    const consent = localStorage.getItem("severinno:cookie-consent") as ConsentState
+    const consent = localStorage.getItem("severinno:cookie-consent") as ConsentState;
     if (!consent) {
       // Show banner after a short delay so it doesn't interrupt initial page load
-      const timer = setTimeout(() => setVisible(true), 2000)
-      return () => clearTimeout(timer)
+      const timer = setTimeout(() => setVisible(true), 2000);
+      return () => clearTimeout(timer);
     }
-  }, [])
+  }, []);
 
   const handleAccept = () => {
-    localStorage.setItem("severinno:cookie-consent", "accepted")
-    setVisible(false)
-    setDismissed(true)
-  }
+    localStorage.setItem("severinno:cookie-consent", "accepted");
+    setVisible(false);
+    setDismissed(true);
+  };
 
   const handleReject = () => {
-    localStorage.setItem("severinno:cookie-consent", "rejected")
-    setVisible(false)
-    setDismissed(true)
-  }
+    localStorage.setItem("severinno:cookie-consent", "rejected");
+    setVisible(false);
+    setDismissed(true);
+  };
 
   const handleDismiss = () => {
-    setVisible(false)
-    setDismissed(true)
-  }
+    setVisible(false);
+    setDismissed(true);
+  };
 
-  if (dismissed) return null
+  if (dismissed) return null;
 
   return (
     <AnimatePresence>
@@ -75,7 +75,8 @@ export default function CookieConsent() {
                     Usamos cookies para melhorar sua experiência
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Utilizamos cookies essenciais para o funcionamento do site e cookies de análise para melhorar nossos serviços.{" "}
+                    Utilizamos cookies essenciais para o funcionamento do site e cookies de análise
+                    para melhorar nossos serviços.{" "}
                     <button
                       type="button"
                       className="text-emerald-600 hover:underline dark:text-emerald-400"
@@ -118,5 +119,5 @@ export default function CookieConsent() {
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  );
 }

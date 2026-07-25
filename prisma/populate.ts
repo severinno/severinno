@@ -323,7 +323,7 @@ async function main() {
 
   // --- 10 CLIENTES ------------------------------------------------
   console.log("   • criando 10 clientes com foto de perfil...")
-  const clientes = []
+  const clientes: Record<string, any>[] = []
   for (let i = 0; i < CLIENTES.length; i++) {
     const c = CLIENTES[i]!
     const cliente = await db.user.create({
@@ -348,7 +348,8 @@ async function main() {
 
   // --- 12 PRESTADORES ---------------------------------------------
   console.log("   • criando 12 prestadores com foto de perfil...")
-  const prestadores = []
+  // Seed script — tipos simplificados para evitar genéricos complexos do Prisma v6
+  const prestadores: { user: Record<string, any>; data: PrestadorData }[] = []
   for (const p of PRESTADORES) {
     const prestador = await db.user.create({
       data: {
@@ -369,7 +370,7 @@ async function main() {
         phone: randPhone("(11)"),
         cpfCnpj: randCpf(),
       },
-    })
+    }) as Record<string, any>
     prestadores.push({ user: prestador, data: p })
   }
 

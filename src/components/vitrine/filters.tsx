@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * Filters — sidebar / sheet of vitrine filters.
@@ -11,34 +11,34 @@
  * query can be driven from it.
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import { Search, SlidersHorizontal, Star, X } from "lucide-react"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, SlidersHorizontal, Star, X } from "lucide-react";
 
-import { cn } from "@/lib/utils"
-import { fetchCategories, type Category } from "@/lib/api"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import { Slider } from "@/components/ui/slider"
+import { cn } from "@/lib/utils";
+import { fetchCategories, type Category } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+} from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 export type FiltersState = {
-  q: string
-  categoryId: string | null
-  radius: number // 1-50 km
-  sort: "rating" | "distance"
-  verifiedOnly: boolean
-  minRating: 0 | 3 | 4 | 5
-}
+  q: string;
+  categoryId: string | null;
+  radius: number; // 1-50 km
+  sort: "rating" | "distance";
+  verifiedOnly: boolean;
+  minRating: 0 | 3 | 4 | 5;
+};
 
 export const DEFAULT_FILTERS: FiltersState = {
   q: "",
@@ -47,25 +47,19 @@ export const DEFAULT_FILTERS: FiltersState = {
   sort: "rating",
   verifiedOnly: false,
   minRating: 0,
-}
+};
 
 export type FiltersProps = {
-  value: FiltersState
-  onChange: (next: FiltersState) => void
-  categories: Category[]
+  value: FiltersState;
+  onChange: (next: FiltersState) => void;
+  categories: Category[];
   /** Total result count — when provided, a disabled "Ver N resultados"
    *  button is rendered at the bottom of the filters (desktop sidebar). */
-  total?: number
-  className?: string
-}
+  total?: number;
+  className?: string;
+};
 
-export default function Filters({
-  value,
-  onChange,
-  categories,
-  total,
-  className,
-}: FiltersProps) {
+export default function Filters({ value, onChange, categories, total, className }: FiltersProps) {
   // Resolve category chain for the currently-selected leaf
   const { data: l1Children } = useQuery({
     queryKey: ["categories", "children", resolveL1Id(value.categoryId, categories)],
@@ -75,7 +69,7 @@ export default function Filters({
       }),
     enabled: !!resolveL1Id(value.categoryId, categories),
     staleTime: 5 * 60 * 1000,
-  })
+  });
 
   const { data: l2Children } = useQuery({
     queryKey: ["categories", "children", resolveL2Id(value.categoryId, categories, l1Children)],
@@ -85,35 +79,33 @@ export default function Filters({
       }),
     enabled: !!resolveL2Id(value.categoryId, categories, l1Children),
     staleTime: 5 * 60 * 1000,
-  })
+  });
 
-  const setField = <K extends keyof FiltersState>(
-    key: K,
-    v: FiltersState[K],
-  ) => onChange({ ...value, [key]: v })
+  const setField = <K extends keyof FiltersState>(key: K, v: FiltersState[K]) =>
+    onChange({ ...value, [key]: v });
 
-  const l1Id = resolveL1Id(value.categoryId, categories)
-  const l2Id = resolveL2Id(value.categoryId, categories, l1Children)
-  const l3Id = resolveL3Id(value.categoryId, l2Children)
+  const l1Id = resolveL1Id(value.categoryId, categories);
+  const l2Id = resolveL2Id(value.categoryId, categories, l1Children);
+  const l3Id = resolveL3Id(value.categoryId, l2Children);
 
-  const handleClear = () => onChange({ ...DEFAULT_FILTERS, q: value.q })
+  const handleClear = () => onChange({ ...DEFAULT_FILTERS, q: value.q });
 
   // Breadcrumb path of selected category
   const breadcrumb = React.useMemo(() => {
-    const parts: string[] = []
-    if (!value.categoryId) return parts
-    const l1 = categories.find((c) => c.id === l1Id)
-    if (l1) parts.push(l1.name)
+    const parts: string[] = [];
+    if (!value.categoryId) return parts;
+    const l1 = categories.find((c) => c.id === l1Id);
+    if (l1) parts.push(l1.name);
     if (l1Children && l2Id) {
-      const l2 = l1Children.find((c) => c.id === l2Id)
-      if (l2) parts.push(l2.name)
+      const l2 = l1Children.find((c) => c.id === l2Id);
+      if (l2) parts.push(l2.name);
     }
     if (l2Children && l3Id) {
-      const l3 = l2Children.find((c) => c.id === l3Id)
-      if (l3) parts.push(l3.name)
+      const l3 = l2Children.find((c) => c.id === l3Id);
+      if (l3) parts.push(l3.name);
     }
-    return parts
-  }, [value.categoryId, categories, l1Id, l2Id, l3Id, l1Children, l2Children])
+    return parts;
+  }, [value.categoryId, categories, l1Id, l2Id, l3Id, l1Children, l2Children]);
 
   return (
     <div className={cn("flex flex-col gap-5", className)}>
@@ -153,9 +145,7 @@ export default function Filters({
       {/* Radius — moved up: most-used filter after category/search */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">
-          <Label className="text-xs font-medium text-muted-foreground">
-            Raio de busca
-          </Label>
+          <Label className="text-xs font-medium text-muted-foreground">Raio de busca</Label>
           <span className="inline-flex min-w-[3rem] items-center justify-center rounded-full bg-emerald-50 px-2 py-0.5 text-center text-[11px] font-semibold text-emerald-700">
             {value.radius} km
           </span>
@@ -177,21 +167,15 @@ export default function Filters({
 
       {/* Category cascade (3 levels) */}
       <div className="space-y-2">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Categoria
-        </Label>
+        <Label className="text-xs font-medium text-muted-foreground">Categoria</Label>
 
         {/* Selected path breadcrumb */}
         {breadcrumb.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50/60 px-2 py-1.5">
             {breadcrumb.map((p, idx) => (
               <React.Fragment key={`${p}-${idx}`}>
-                {idx > 0 ? (
-                  <span className="text-[11px] text-emerald-700/60">/</span>
-                ) : null}
-                <span className="text-[11px] font-medium text-emerald-800">
-                  {p}
-                </span>
+                {idx > 0 ? <span className="text-[11px] text-emerald-700/60">/</span> : null}
+                <span className="text-[11px] font-medium text-emerald-800">{p}</span>
               </React.Fragment>
             ))}
             <button
@@ -207,9 +191,7 @@ export default function Filters({
 
         <Select
           value={l1Id ?? "__all__"}
-          onValueChange={(v) =>
-            setField("categoryId", v === "__all__" ? null : v)
-          }
+          onValueChange={(v) => setField("categoryId", v === "__all__" ? null : v)}
         >
           <SelectTrigger className="w-full" size="sm">
             <SelectValue placeholder="Todas as categorias" />
@@ -227,9 +209,7 @@ export default function Filters({
         {l1Id && l1Children && l1Children.length > 0 ? (
           <Select
             value={l2Id ?? "__all__"}
-            onValueChange={(v) =>
-              setField("categoryId", v === "__all__" ? l1Id : v)
-            }
+            onValueChange={(v) => setField("categoryId", v === "__all__" ? l1Id : v)}
           >
             <SelectTrigger className="w-full" size="sm">
               <SelectValue placeholder="Todas as subcategorias" />
@@ -248,9 +228,7 @@ export default function Filters({
         {l2Id && l2Children && l2Children.length > 0 ? (
           <Select
             value={l3Id ?? "__all__"}
-            onValueChange={(v) =>
-              setField("categoryId", v === "__all__" ? l2Id : v)
-            }
+            onValueChange={(v) => setField("categoryId", v === "__all__" ? l2Id : v)}
           >
             <SelectTrigger className="w-full" size="sm">
               <SelectValue placeholder="Todas as opções" />
@@ -269,14 +247,8 @@ export default function Filters({
 
       {/* Sort — segmented control */}
       <div className="space-y-2">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Ordenar por
-        </Label>
-        <div
-          role="radiogroup"
-          aria-label="Ordenar por"
-          className="grid grid-cols-2 gap-2"
-        >
+        <Label className="text-xs font-medium text-muted-foreground">Ordenar por</Label>
+        <div role="radiogroup" aria-label="Ordenar por" className="grid grid-cols-2 gap-2">
           <SortOption
             active={value.sort === "rating"}
             onClick={() => setField("sort", "rating")}
@@ -292,14 +264,10 @@ export default function Filters({
 
       {/* Minimum rating */}
       <div className="space-y-2">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Avaliação mínima
-        </Label>
+        <Label className="text-xs font-medium text-muted-foreground">Avaliação mínima</Label>
         <RadioGroup
           value={String(value.minRating)}
-          onValueChange={(v) =>
-            setField("minRating", Number(v) as FiltersState["minRating"])
-          }
+          onValueChange={(v) => setField("minRating", Number(v) as FiltersState["minRating"])}
           className="grid grid-cols-4 gap-2"
         >
           <RatingRadio value="0" label="Todas" />
@@ -338,7 +306,7 @@ export default function Filters({
         </Button>
       ) : null}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -350,9 +318,9 @@ function SortOption({
   onClick,
   label,
 }: {
-  active: boolean
-  onClick: () => void
-  label: string
+  active: boolean;
+  onClick: () => void;
+  label: string;
 }) {
   return (
     <button
@@ -369,16 +337,10 @@ function SortOption({
     >
       {label}
     </button>
-  )
+  );
 }
 
-function RatingRadio({
-  value,
-  label,
-}: {
-  value: string
-  label: string
-}) {
+function RatingRadio({ value, label }: { value: string; label: string }) {
   return (
     <Label
       htmlFor={`rating-${value}`}
@@ -387,26 +349,25 @@ function RatingRadio({
       <RadioGroupItem id={`rating-${value}`} value={value} className="sr-only" />
       <span className="font-medium">{label}</span>
     </Label>
-  )
+  );
 }
 
-function resolveL1Id(
-  categoryId: string | null,
-  l1Categories: Category[],
-): string | null {
-  if (!categoryId) return null
+function resolveL1Id(categoryId: string | null, l1Categories: Category[]): string | null {
+  if (!categoryId) return null;
   // If the leaf is in L1 directly
-  if (l1Categories.some((c) => c.id === categoryId)) return categoryId
+  if (l1Categories.some((c) => c.id === categoryId)) return categoryId;
   // Otherwise: try to find via children (the API may include `children`).
   // As a fallback, return the first L1 that contains the leaf id (best-effort).
   for (const l1 of l1Categories) {
-    if (l1.children?.some((c) => c.id === categoryId || c.children?.some((g) => g.id === categoryId))) {
-      return l1.id
+    if (
+      l1.children?.some((c) => c.id === categoryId || c.children?.some((g) => g.id === categoryId))
+    ) {
+      return l1.id;
     }
   }
   // If we can't resolve, treat the categoryId itself as L1 (the API will
   // hydrate children of it).
-  return categoryId
+  return categoryId;
 }
 
 function resolveL2Id(
@@ -414,20 +375,17 @@ function resolveL2Id(
   l1Categories: Category[],
   l1Children?: Category[],
 ): string | null {
-  if (!categoryId) return null
-  if (!l1Children) return null
-  if (l1Children.some((c) => c.id === categoryId)) return categoryId
+  if (!categoryId) return null;
+  if (!l1Children) return null;
+  if (l1Children.some((c) => c.id === categoryId)) return categoryId;
   for (const l2 of l1Children) {
-    if (l2.children?.some((g) => g.id === categoryId)) return l2.id
+    if (l2.children?.some((g) => g.id === categoryId)) return l2.id;
   }
-  return null
+  return null;
 }
 
-function resolveL3Id(
-  categoryId: string | null,
-  l2Children?: Category[],
-): string | null {
-  if (!categoryId || !l2Children) return null
-  if (l2Children.some((c) => c.id === categoryId)) return categoryId
-  return null
+function resolveL3Id(categoryId: string | null, l2Children?: Category[]): string | null {
+  if (!categoryId || !l2Children) return null;
+  if (l2Children.some((c) => c.id === categoryId)) return categoryId;
+  return null;
 }

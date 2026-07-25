@@ -1,19 +1,19 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Star } from "lucide-react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { Star } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type StarRatingProps = {
   /** 0–5 (supports half stars visually via clip) */
-  value: number
+  value: number;
   /** Total reviews shown next to stars (display-only). */
-  count?: number
+  count?: number;
   /** Star size in px. */
-  size?: number
-  className?: string
-  showCount?: boolean
-}
+  size?: number;
+  className?: string;
+  showCount?: boolean;
+};
 
 /**
  * Display-only star rating — supports 0.5 increments by clipping a
@@ -26,8 +26,8 @@ export function StarRatingDisplay({
   className,
   showCount = true,
 }: StarRatingProps) {
-  const clamped = Math.max(0, Math.min(5, value))
-  const pct = (clamped / 5) * 100
+  const clamped = Math.max(0, Math.min(5, value));
+  const pct = (clamped / 5) * 100;
   return (
     <span
       className={cn("inline-flex items-center gap-1.5", className)}
@@ -35,10 +35,7 @@ export function StarRatingDisplay({
         count != null ? ` (${count} avaliações)` : ""
       }`}
     >
-      <span
-        className="relative inline-flex"
-        style={{ width: size * 5 + 4 * 2, height: size }}
-      >
+      <span className="relative inline-flex" style={{ width: size * 5 + 4 * 2, height: size }}>
         {/* empty layer */}
         <span className="absolute inset-0 flex" style={{ gap: 2 }}>
           {Array.from({ length: 5 }).map((_, i) => (
@@ -72,17 +69,17 @@ export function StarRatingDisplay({
         </span>
       )}
     </span>
-  )
+  );
 }
 
 type StarRatingInputProps = {
-  value: number
-  onChange: (v: number) => void
-  size?: number
-  className?: string
-  name?: string
-  disabled?: boolean
-}
+  value: number;
+  onChange: (v: number) => void;
+  size?: number;
+  className?: string;
+  name?: string;
+  disabled?: boolean;
+};
 
 /**
  * Interactive 1–5 star rating — keyboard accessible (left/right arrows
@@ -96,22 +93,22 @@ export function StarRatingInput({
   name,
   disabled,
 }: StarRatingInputProps) {
-  const [hover, setHover] = React.useState<number | null>(null)
-  const active = hover ?? value
+  const [hover, setHover] = React.useState<number | null>(null);
+  const active = hover ?? value;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (disabled) return
+    if (disabled) return;
     if (e.key === "ArrowRight" || e.key === "ArrowUp") {
-      e.preventDefault()
-      onChange(Math.min(5, Math.max(1, value + 1)))
+      e.preventDefault();
+      onChange(Math.min(5, Math.max(1, value + 1)));
     } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
-      e.preventDefault()
-      onChange(Math.min(5, Math.max(1, value - 1)))
+      e.preventDefault();
+      onChange(Math.min(5, Math.max(1, value - 1)));
     } else if (/^[1-5]$/.test(e.key)) {
-      e.preventDefault()
-      onChange(Number(e.key))
+      e.preventDefault();
+      onChange(Number(e.key));
     }
-  }
+  };
 
   return (
     <div
@@ -120,8 +117,8 @@ export function StarRatingInput({
       aria-label="Sua avaliação"
     >
       {Array.from({ length: 5 }).map((_, i) => {
-        const v = i + 1
-        const filled = v <= active
+        const v = i + 1;
+        const filled = v <= active;
         return (
           <button
             key={v}
@@ -150,12 +147,12 @@ export function StarRatingInput({
               strokeWidth={1.5}
             />
           </button>
-        )
+        );
       })}
       {name && <input type="hidden" name={name} value={value} readOnly />}
       <span className="ml-1.5 text-sm font-medium tabular-nums text-muted-foreground">
         {active > 0 ? `${active}.0` : "—"}
       </span>
     </div>
-  )
+  );
 }

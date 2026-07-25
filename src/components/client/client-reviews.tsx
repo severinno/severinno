@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ClientReviews — list of all reviews the client has given.
@@ -13,75 +13,63 @@
  * Reviews are immutable for the MVP.
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import {
-  Loader2,
-  MessageSquareQuote,
-  Star,
-} from "lucide-react"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2, MessageSquareQuote, Star } from "lucide-react";
 
-import { apiGet } from "@/lib/api"
-import { formatDate } from "@/lib/format"
-import { useUIStore, useViewStore } from "@/store"
+import { apiGet } from "@/lib/api";
+import { formatDate } from "@/lib/format";
+import { useUIStore, useViewStore } from "@/store";
 
-import { Card, CardContent } from "@/components/ui/card"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import {
-  StarRatingDisplay,
-} from "@/components/modals/star-rating"
-import {
-  EmptyState,
-  StatCard,
-} from "@/components/shared/dashboard-shell"
-import {
-  PageHeader,
-  StatusBadge,
-} from "@/components/client/client-shared"
+import { Card, CardContent } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { StarRatingDisplay } from "@/components/modals/star-rating";
+import { EmptyState, StatCard } from "@/components/shared/dashboard-shell";
+import { PageHeader, StatusBadge } from "@/components/client/client-shared";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type ReviewRow = {
-  id: string
-  rating: number
-  comment?: string | null
-  createdAt: string
-  provider: { id: string; name: string; avatarUrl?: string | null }
-  service: { id: string; title: string }
-}
+  id: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  provider: { id: string; name: string; avatarUrl?: string | null };
+  service: { id: string; title: string };
+};
 
 type BookingsForReviewsResponse = {
   items: Array<{
-    id: string
-    status: string
-    service: { id: string; title: string }
-    provider: { id: string; name: string; avatarUrl?: string | null }
+    id: string;
+    status: string;
+    service: { id: string; title: string };
+    provider: { id: string; name: string; avatarUrl?: string | null };
     reviews?: Array<{
-      id: string
-      rating: number
-      comment?: string | null
-      createdAt: string
-    }>
-  }>
-  total: number
-}
+      id: string;
+      rating: number;
+      comment?: string | null;
+      createdAt: string;
+    }>;
+  }>;
+  total: number;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function providerInitials(name?: string | null): string {
-  if (!name) return "P"
+  if (!name) return "P";
   return name
     .split(" ")
     .map((p) => p[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -89,8 +77,8 @@ function providerInitials(name?: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function ClientReviews() {
-  const navigate = useViewStore((s) => s.navigate)
-  const openProvider = useUIStore((s) => s.openProvider)
+  const navigate = useViewStore((s) => s.navigate);
+  const openProvider = useUIStore((s) => s.openProvider);
 
   // Derive reviews from the COMPLETED bookings list (each booking has a
   // `reviews` array — at most one per booking per MVP).
@@ -103,10 +91,10 @@ export function ClientReviews() {
         page: 1,
         limit: 50,
       }),
-  })
+  });
 
   const reviews = React.useMemo<ReviewRow[]>(() => {
-    const list: ReviewRow[] = []
+    const list: ReviewRow[] = [];
     for (const b of query.data?.items ?? []) {
       for (const r of b.reviews ?? []) {
         list.push({
@@ -116,20 +104,17 @@ export function ClientReviews() {
           createdAt: r.createdAt,
           provider: b.provider,
           service: b.service,
-        })
+        });
       }
     }
-    return list.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
-  }, [query.data])
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [query.data]);
 
   const avgRating = React.useMemo(() => {
-    if (reviews.length === 0) return 0
-    const sum = reviews.reduce((acc, r) => acc + r.rating, 0)
-    return sum / reviews.length
-  }, [reviews])
+    if (reviews.length === 0) return 0;
+    const sum = reviews.reduce((acc, r) => acc + r.rating, 0);
+    return sum / reviews.length;
+  }, [reviews]);
 
   return (
     <div className="space-y-4">
@@ -145,20 +130,12 @@ export function ClientReviews() {
           label="Serviços avaliados"
           value={reviews.length}
           tone="primary"
-          hint={
-            reviews.length === 0
-              ? "Avaliações ajudam a comunidade"
-              : "Obrigado por contribuir"
-          }
+          hint={reviews.length === 0 ? "Avaliações ajudam a comunidade" : "Obrigado por contribuir"}
         />
         <StatCard
           icon={Star}
           label="Nota média dada"
-          value={
-            reviews.length === 0
-              ? "—"
-              : `${avgRating.toFixed(1)} ★`
-          }
+          value={reviews.length === 0 ? "—" : `${avgRating.toFixed(1)} ★`}
           tone="amber"
           hint={
             reviews.length === 0
@@ -180,10 +157,7 @@ export function ClientReviews() {
           title="Você ainda não avaliou nenhum serviço"
           description="Avaliações ajudam outros clientes a encontrarem bons profissionais e reconhecem o trabalho dos prestadores. Quando você concluir um serviço, avalie-o aqui."
           action={
-            <Button
-              onClick={() => navigate("client.bookings")}
-              className="mt-2 gap-2"
-            >
+            <Button onClick={() => navigate("client.bookings")} className="mt-2 gap-2">
               Ver agendamentos
             </Button>
           }
@@ -191,31 +165,21 @@ export function ClientReviews() {
       ) : (
         <div className="grid gap-3">
           {reviews.map((r) => (
-            <ReviewCard
-              key={r.id}
-              review={r}
-              onViewProvider={() => openProvider(r.provider.id)}
-            />
+            <ReviewCard key={r.id} review={r} onViewProvider={() => openProvider(r.provider.id)} />
           ))}
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // ReviewCard
 // ---------------------------------------------------------------------------
 
-function ReviewCard({
-  review,
-  onViewProvider,
-}: {
-  review: ReviewRow
-  onViewProvider: () => void
-}) {
-  const provider = review.provider
-  const initials = providerInitials(provider.name)
+function ReviewCard({ review, onViewProvider }: { review: ReviewRow; onViewProvider: () => void }) {
+  const provider = review.provider;
+  const initials = providerInitials(provider.name);
 
   return (
     <Card className="rounded-xl shadow-sm transition-shadow hover:shadow-md">
@@ -250,16 +214,10 @@ function ReviewCard({
                 {formatDate(review.createdAt)}
               </span>
             </div>
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {review.service.title}
-            </p>
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">{review.service.title}</p>
 
             <div className="mt-2">
-              <StarRatingDisplay
-                value={review.rating}
-                size={16}
-                showCount={false}
-              />
+              <StarRatingDisplay value={review.rating} size={16} showCount={false} />
             </div>
 
             {review.comment ? (
@@ -267,20 +225,15 @@ function ReviewCard({
                 {review.comment}
               </p>
             ) : (
-              <p className="mt-2 text-xs italic text-muted-foreground">
-                Sem comentário.
-              </p>
+              <p className="mt-2 text-xs italic text-muted-foreground">Sem comentário.</p>
             )}
 
-            <StatusBadge
-              tone="zinc"
-              className="mt-3 text-[10px]"
-            >
+            <StatusBadge tone="zinc" className="mt-3 text-[10px]">
               Avaliação imutável (MVP)
             </StatusBadge>
           </div>
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

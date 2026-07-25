@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AdminTaxonomy — gerenciador da árvore de categorias em 3 níveis.
@@ -28,7 +28,7 @@
  * sugere uma ação que não existe.
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -54,17 +54,14 @@ import {
   Car,
   ChefHat,
   type LucideIcon,
-} from "lucide-react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+} from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-import { apiGet, apiPost, apiPatch, apiDelete, type Category } from "@/lib/api"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { apiGet, apiPost, apiPatch, apiDelete, type Category } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -72,23 +69,19 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import {
   PageSectionHeader,
@@ -100,7 +93,7 @@ import {
   type StatusTone,
   errMsg,
   slugify,
-} from "@/components/admin/admin-shared"
+} from "@/components/admin/admin-shared";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -112,13 +105,13 @@ import {
  * client-side `Category` de `@/lib/api` é mais estreito. Estendemos localmente.
  */
 type CategoryRow = Category & {
-  active: boolean
-  order: number
-}
+  active: boolean;
+  order: number;
+};
 
 type CategoryNode = Omit<CategoryRow, "children"> & {
-  children?: CategoryNode[]
-}
+  children?: CategoryNode[];
+};
 
 // ---------------------------------------------------------------------------
 // Level metadata — H4 consistência: UMA source of truth via StatusTone
@@ -128,11 +121,11 @@ type CategoryNode = Omit<CategoryRow, "children"> & {
 // Antes o nível 2 usava "slate" (divergia do comentário "lime"); padronizamos.
 // ---------------------------------------------------------------------------
 type LevelMeta = {
-  label: string
-  tone: StatusTone
-  dot: string
-  rowAccent: string
-}
+  label: string;
+  tone: StatusTone;
+  dot: string;
+  rowAccent: string;
+};
 
 const LEVEL_META: Record<number, LevelMeta> = {
   0: {
@@ -153,14 +146,14 @@ const LEVEL_META: Record<number, LevelMeta> = {
     dot: "bg-zinc-400",
     rowAccent: "border-l-2 border-zinc-400/70",
   },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Icon picker — H6 reconhecimento: catálogo fixo dos 12 ícones lucide mais
 // comuns, com preview. Se a categoria já tiver um ícone fora da lista,
 // mostramos como entrada "personalizada".
 // ---------------------------------------------------------------------------
-type IconOption = { name: string; icon: LucideIcon; label: string }
+type IconOption = { name: string; icon: LucideIcon; label: string };
 
 const ICON_OPTIONS: IconOption[] = [
   { name: "Wrench", icon: Wrench, label: "Chave inglesa" },
@@ -175,76 +168,70 @@ const ICON_OPTIONS: IconOption[] = [
   { name: "Thermometer", icon: Thermometer, label: "Termômetro" },
   { name: "Car", icon: Car, label: "Carro" },
   { name: "ChefHat", icon: ChefHat, label: "Chef (gastronomia)" },
-]
+];
 
-const ICON_BY_NAME = new Map(ICON_OPTIONS.map((o) => [o.name, o.icon]))
+const ICON_BY_NAME = new Map(ICON_OPTIONS.map((o) => [o.name, o.icon]));
 
 /**
  * Renderiza um ícone lucide pelo nome (H6 — preview).
  * Usa React.createElement para evitar o lint react-hooks/static-components,
  * que confunde variáveis capitalizadas com declaração de componente.
  */
-function CategoryIcon({
-  name,
-  className,
-}: {
-  name?: string | null
-  className?: string
-}) {
-  const Icon = name ? ICON_BY_NAME.get(name) : null
-  if (!Icon) return null
-  return React.createElement(Icon, { className })
+function CategoryIcon({ name, className }: { name?: string | null; className?: string }) {
+  const Icon = name ? ICON_BY_NAME.get(name) : null;
+  if (!Icon) return null;
+  return React.createElement(Icon, { className });
 }
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 type PendingToggle = {
-  id: string
-  name: string
-  currentValue: boolean
-} | null
+  id: string;
+  name: string;
+  currentValue: boolean;
+} | null;
 
 export function AdminTaxonomy() {
-  const queryClient = useQueryClient()
-  const [createOpen, setCreateOpen] = React.useState(false)
-  const [editTarget, setEditTarget] = React.useState<CategoryNode | null>(null)
-  const [deleteTarget, setDeleteTarget] = React.useState<CategoryNode | null>(
-    null,
-  )
-  const [expanded, setExpanded] = React.useState<Set<string>>(new Set())
-  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
+  const queryClient = useQueryClient();
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [editTarget, setEditTarget] = React.useState<CategoryNode | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<CategoryNode | null>(null);
+  const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null);
 
-  const { data: flat, isLoading, isError, refetch } = useQuery({
+  const {
+    data: flat,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["categories", "all"],
     queryFn: () => apiGet<CategoryRow[]>("/api/categories"),
     staleTime: 30_000,
-  })
+  });
 
   // Build the tree (from a flat list)
   const tree = React.useMemo<CategoryNode[]>(() => {
-    if (!flat) return []
-    const byParent = new Map<string | null, CategoryNode[]>()
+    if (!flat) return [];
+    const byParent = new Map<string | null, CategoryNode[]>();
     for (const c of flat) {
-      const key = c.parentId ?? null
-      const arr = byParent.get(key) ?? []
-      arr.push({ ...c, children: [] })
-      byParent.set(key, arr)
+      const key = c.parentId ?? null;
+      const arr = byParent.get(key) ?? [];
+      arr.push({ ...c, children: [] });
+      byParent.set(key, arr);
     }
-    const roots = byParent.get(null) ?? []
+    const roots = byParent.get(null) ?? [];
     const build = (nodes: CategoryNode[]): CategoryNode[] =>
       nodes
-        .sort(
-          (a, b) =>
-            (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name),
-        )
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
         .map((n) => {
-          const children = byParent.get(n.id) ?? []
-          n.children = build(children)
-          return n
-        })
-    return build(roots)
-  }, [flat])
+          const children = byParent.get(n.id) ?? [];
+          n.children = build(children);
+          return n;
+        });
+    return build(roots);
+  }, [flat]);
 
   // H1/H8 — service count por categoria não está disponível no MVP (o endpoint
   // /api/categories não retorna contagem de serviços). Em vez de manter um
@@ -252,99 +239,95 @@ export function AdminTaxonomy() {
   // TODO(N1/Svcs): quando /api/services?categoryId=X existir, alimentar aqui.
 
   // Auto-expand all level-0 nodes on first load
+  const didAutoExpand = React.useRef(false);
   React.useEffect(() => {
-    if (tree.length && expanded.size === 0) {
-      setExpanded(new Set(tree.map((n) => n.id)))
+    if (tree.length > 0 && !didAutoExpand.current) {
+      didAutoExpand.current = true;
+      setExpanded(new Set(tree.map((n) => n.id)));
     }
-  }, [tree, expanded.size])
+  }, [tree]);
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["categories"] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["categories"] });
 
   const createMutation = useMutation({
     mutationFn: (payload: CategoryPayload) =>
       apiPost<{ category: CategoryRow }>("/api/categories", payload),
     onSuccess: () => {
-      toast.success("Categoria criada com sucesso.")
-      invalidate()
-      setCreateOpen(false)
+      toast.success("Categoria criada com sucesso.");
+      invalidate();
+      setCreateOpen(false);
     },
     onError: (e: unknown) => {
-      toast.error(errMsg(e, "Não foi possível criar a categoria."))
+      toast.error(errMsg(e, "Não foi possível criar a categoria."));
     },
-  })
+  });
 
   const patchMutation = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<CategoryPayload> }) =>
       apiPatch<{ category: CategoryRow }>(`/api/categories/${id}`, patch),
     onSuccess: () => {
-      toast.success("Categoria atualizada.")
-      invalidate()
-      setEditTarget(null)
+      toast.success("Categoria atualizada.");
+      invalidate();
+      setEditTarget(null);
     },
     onError: (e: unknown) => {
-      toast.error(errMsg(e, "Não foi possível atualizar a categoria."))
+      toast.error(errMsg(e, "Não foi possível atualizar a categoria."));
     },
-  })
+  });
 
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       apiPatch<{ category: CategoryRow }>(`/api/categories/${id}`, { active }),
     onSuccess: (_d, vars) => {
-      toast.success(
-        vars.active
-          ? "Categoria ativada."
-          : "Categoria desativada.",
-      )
-      invalidate()
-      setPendingToggle(null)
+      toast.success(vars.active ? "Categoria ativada." : "Categoria desativada.");
+      invalidate();
+      setPendingToggle(null);
     },
     onError: (e: unknown) => {
-      toast.error(errMsg(e, "Falha ao alternar o estado ativo."))
-      setPendingToggle(null)
+      toast.error(errMsg(e, "Falha ao alternar o estado ativo."));
+      setPendingToggle(null);
     },
-  })
+  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/api/categories/${id}`),
     onSuccess: () => {
-      toast.success("Categoria excluída.")
-      invalidate()
-      setDeleteTarget(null)
+      toast.success("Categoria excluída.");
+      invalidate();
+      setDeleteTarget(null);
     },
     onError: (e: unknown) => {
-      const msg = errMsg(e, "Não foi possível excluir.")
+      const msg = errMsg(e, "Não foi possível excluir.");
       // H9 — mensagem específica para 409 (vínculos existentes)
       toast.error(msg, {
-        description:
-          "Remova os vínculos (filhos ou serviços) antes de tentar novamente.",
-      })
+        description: "Remova os vínculos (filhos ou serviços) antes de tentar novamente.",
+      });
     },
-  })
+  });
 
   const toggleExpand = (id: string) =>
     setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // H5 — handler do confirm-toggle
   const handleToggleConfirm = () => {
-    if (!pendingToggle) return
+    if (!pendingToggle) return;
     toggleActiveMutation.mutate({
       id: pendingToggle.id,
       active: !pendingToggle.currentValue,
-    })
-  }
+    });
+  };
 
-  const totalNodes = flat?.length ?? 0
+  const totalNodes = flat?.length ?? 0;
   const expandAll = () => {
-    if (!flat) return
-    setExpanded(new Set(flat.map((c) => c.id)))
-  }
-  const collapseAll = () => setExpanded(new Set())
+    if (!flat) return;
+    setExpanded(new Set(flat.map((c) => c.id)));
+  };
+  const collapseAll = () => setExpanded(new Set());
 
   return (
     <div className="flex flex-col gap-4">
@@ -391,11 +374,7 @@ export function AdminTaxonomy() {
             <ChevronsDownUp className="size-3.5" />
             Recolher tudo
           </Button>
-          <Button
-            size="sm"
-            onClick={() => setCreateOpen(true)}
-            className="h-8 gap-1.5"
-          >
+          <Button size="sm" onClick={() => setCreateOpen(true)} className="h-8 gap-1.5">
             <Plus className="size-4" />
             Nova categoria
           </Button>
@@ -424,11 +403,7 @@ export function AdminTaxonomy() {
                 title="Nenhuma categoria cadastrada"
                 description="Crie a primeira categoria pai para iniciar a taxonomia."
                 action={
-                  <Button
-                    size="sm"
-                    onClick={() => setCreateOpen(true)}
-                    className="gap-1.5"
-                  >
+                  <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
                     <Plus className="size-4" />
                     Criar primeira categoria
                   </Button>
@@ -481,8 +456,8 @@ export function AdminTaxonomy() {
         initial={editTarget ?? undefined}
         submitting={patchMutation.isPending}
         onSubmit={(p) => {
-          if (!editTarget) return
-          patchMutation.mutate({ id: editTarget.id, patch: p })
+          if (!editTarget) return;
+          patchMutation.mutate({ id: editTarget.id, patch: p });
         }}
       />
 
@@ -504,11 +479,8 @@ export function AdminTaxonomy() {
         description={
           <>
             Você está prestes a excluir{" "}
-            <strong className="text-foreground">
-              {deleteTarget?.name}
-            </strong>
-            . Esta ação não pode ser desfeita. Categorias com filhos ou serviços
-            vinculados não podem ser excluídas.
+            <strong className="text-foreground">{deleteTarget?.name}</strong>. Esta ação não pode
+            ser desfeita. Categorias com filhos ou serviços vinculados não podem ser excluídas.
           </>
         }
         confirmLabel={deleteMutation.isPending ? "Excluindo…" : "Excluir"}
@@ -516,7 +488,7 @@ export function AdminTaxonomy() {
         variant="destructive"
       />
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -531,25 +503,21 @@ function TreeNode({
   onDelete,
   onRequestToggleActive,
 }: {
-  node: CategoryNode
-  level: number
-  expanded: Set<string>
-  onToggleExpand: (id: string) => void
-  onEdit: (n: CategoryNode) => void
-  onDelete: (n: CategoryNode) => void
-  onRequestToggleActive: (n: CategoryNode) => void
+  node: CategoryNode;
+  level: number;
+  expanded: Set<string>;
+  onToggleExpand: (id: string) => void;
+  onEdit: (n: CategoryNode) => void;
+  onDelete: (n: CategoryNode) => void;
+  onRequestToggleActive: (n: CategoryNode) => void;
 }) {
-  const meta = LEVEL_META[level] ?? LEVEL_META[0]
-  const hasChildren = !!node.children && node.children.length > 0
-  const isOpen = expanded.has(node.id)
-  const hasIcon = !!node.icon && ICON_BY_NAME.has(node.icon)
+  const meta = LEVEL_META[level] ?? LEVEL_META[0];
+  const hasChildren = !!node.children && node.children.length > 0;
+  const isOpen = expanded.has(node.id);
+  const hasIcon = !!node.icon && ICON_BY_NAME.has(node.icon);
 
   return (
-    <li
-      role="treeitem"
-      aria-expanded={hasChildren ? isOpen : undefined}
-      aria-selected={false}
-    >
+    <li role="treeitem" aria-expanded={hasChildren ? isOpen : undefined} aria-selected={false}>
       <div
         className={cn(
           "group relative flex flex-wrap items-center gap-2 border-b border-border/50 h-12 transition-colors hover:bg-muted/20 last:border-0",
@@ -577,18 +545,11 @@ function TreeNode({
           disabled={!hasChildren}
           className={cn(
             "flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
-            hasChildren
-              ? "hover:bg-accent hover:text-foreground"
-              : "cursor-default opacity-30",
+            hasChildren ? "hover:bg-accent hover:text-foreground" : "cursor-default opacity-30",
           )}
         >
           {hasChildren ? (
-            <ChevronRight
-              className={cn(
-                "size-4 transition-transform",
-                isOpen && "rotate-90",
-              )}
-            />
+            <ChevronRight className={cn("size-4 transition-transform", isOpen && "rotate-90")} />
           ) : (
             <span className="size-1.5 rounded-full bg-current opacity-40" />
           )}
@@ -612,9 +573,7 @@ function TreeNode({
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              Reordenação disponível em breve
-            </TooltipContent>
+            <TooltipContent side="top">Reordenação disponível em breve</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -631,9 +590,7 @@ function TreeNode({
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              Reordenação disponível em breve
-            </TooltipContent>
+            <TooltipContent side="top">Reordenação disponível em breve</TooltipContent>
           </Tooltip>
         </div>
 
@@ -650,13 +607,11 @@ function TreeNode({
               <span className={cn("size-1.5 rounded-full", meta.dot)} />
               {meta.label}
             </StatusBadge>
-            {!node.active ? (
-              <StatusBadge tone="zinc">Inativa</StatusBadge>
-            ) : null}
+            {!node.active ? <StatusBadge tone="zinc">Inativa</StatusBadge> : null}
             {hasChildren ? (
               <StatusBadge tone="zinc">
-                {node.children!.length}{" "}
-                {node.children!.length === 1 ? "filha" : "filhas"}
+                {(node.children ?? []).length}{" "}
+                {(node.children ?? []).length === 1 ? "filha" : "filhas"}
               </StatusBadge>
             ) : null}
           </div>
@@ -728,7 +683,7 @@ function TreeNode({
       {/* Children */}
       {hasChildren && isOpen ? (
         <ul role="group">
-          {node.children!.map((child) => (
+          {(node.children ?? []).map((child) => (
             <TreeNode
               key={child.id}
               node={child}
@@ -743,21 +698,21 @@ function TreeNode({
         </ul>
       ) : null}
     </li>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // CategoryDialog — create / edit form (H6 icon picker, H10 slug help)
 // ---------------------------------------------------------------------------
 type CategoryPayload = {
-  name: string
-  slug: string
-  parentId?: string | null
-  level: number
-  icon?: string
-  order: number
-  active: boolean
-}
+  name: string;
+  slug: string;
+  parentId?: string | null;
+  level: number;
+  icon?: string;
+  order: number;
+  active: boolean;
+};
 
 function CategoryDialog({
   open,
@@ -769,74 +724,68 @@ function CategoryDialog({
   submitting,
   onSubmit,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  description: string
-  allCategories: CategoryRow[]
-  initial?: CategoryNode
-  submitting: boolean
-  onSubmit: (payload: CategoryPayload) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  allCategories: CategoryRow[];
+  initial?: CategoryNode;
+  submitting: boolean;
+  onSubmit: (payload: CategoryPayload) => void;
 }) {
-  const [name, setName] = React.useState("")
-  const [slug, setSlug] = React.useState("")
-  const [slugTouched, setSlugTouched] = React.useState(false)
-  const [parentId, setParentId] = React.useState<string>("__none__")
-  const [icon, setIcon] = React.useState<string>("__none__")
-  const [order, setOrder] = React.useState(0)
-  const [active, setActive] = React.useState(true)
+  const [name, setName] = React.useState("");
+  const [slug, setSlug] = React.useState("");
+  const [slugTouched, setSlugTouched] = React.useState(false);
+  const [parentId, setParentId] = React.useState<string>("__none__");
+  const [icon, setIcon] = React.useState<string>("__none__");
+  const [order, setOrder] = React.useState(0);
+  const [active, setActive] = React.useState(true);
 
   // Reset form when opening
   React.useEffect(() => {
-    if (!open) return
+    if (!open) return;
     if (initial) {
-      setName(initial.name)
-      setSlug(initial.slug)
-      setSlugTouched(true)
-      setParentId(initial.parentId ?? "__none__")
-      setIcon(initial.icon && initial.icon.length > 0 ? initial.icon : "__none__")
-      setOrder(initial.order ?? 0)
-      setActive(initial.active)
+      setName(initial.name);
+      setSlug(initial.slug);
+      setSlugTouched(true);
+      setParentId(initial.parentId ?? "__none__");
+      setIcon(initial.icon && initial.icon.length > 0 ? initial.icon : "__none__");
+      setOrder(initial.order ?? 0);
+      setActive(initial.active);
     } else {
-      setName("")
-      setSlug("")
-      setSlugTouched(false)
-      setParentId("__none__")
-      setIcon("__none__")
-      setOrder(0)
-      setActive(true)
+      setName("");
+      setSlug("");
+      setSlugTouched(false);
+      setParentId("__none__");
+      setIcon("__none__");
+      setOrder(0);
+      setActive(true);
     }
-  }, [open, initial])
+  }, [open, initial]);
 
   // Auto-generate slug from name unless user edited it manually
   React.useEffect(() => {
-    if (!slugTouched) setSlug(slugify(name))
-  }, [name, slugTouched])
+    if (!slugTouched) setSlug(slugify(name));
+  }, [name, slugTouched]);
 
   // Determine the level from the chosen parent
-  const parent = allCategories.find((c) => c.id === parentId)
-  const level = parent ? Math.min(2, parent.level + 1) : 0
+  const parent = allCategories.find((c) => c.id === parentId);
+  const level = parent ? Math.min(2, parent.level + 1) : 0;
 
   // Candidates for parent
-  const parentCandidates = allCategories.filter(
-    (c) => c.level < 2 && c.id !== initial?.id,
-  )
+  const parentCandidates = allCategories.filter((c) => c.level < 2 && c.id !== initial?.id);
 
   const canSubmit =
-    name.trim().length >= 2 &&
-    /^[a-z0-9-]+$/.test(slug) &&
-    slug.length >= 2 &&
-    !submitting
+    name.trim().length >= 2 && /^[a-z0-9-]+$/.test(slug) && slug.length >= 2 && !submitting;
 
   // H6 — nome/preview do ícone atual
-  const currentIconName = icon === "__none__" ? "" : icon
-  const hasCurrentIcon = currentIconName.length > 0 && ICON_BY_NAME.has(currentIconName)
-  const isCustomIcon =
-    currentIconName.length > 0 && !ICON_BY_NAME.has(currentIconName)
+  const currentIconName = icon === "__none__" ? "" : icon;
+  const hasCurrentIcon = currentIconName.length > 0 && ICON_BY_NAME.has(currentIconName);
+  const isCustomIcon = currentIconName.length > 0 && !ICON_BY_NAME.has(currentIconName);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!canSubmit) return
+    e.preventDefault();
+    if (!canSubmit) return;
     onSubmit({
       name: name.trim(),
       slug,
@@ -845,8 +794,8 @@ function CategoryDialog({
       icon: currentIconName,
       order: Number.isFinite(order) ? order : 0,
       active,
-    })
-  }
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -888,12 +837,8 @@ function CategoryDialog({
                       <Info className="size-3.5" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent
-                    side="right"
-                    className="max-w-xs text-xs leading-relaxed"
-                  >
-                    Identificador único usado nas URLs. Gerado
-                    automaticamente a partir do nome.
+                  <TooltipContent side="right" className="max-w-xs text-xs leading-relaxed">
+                    Identificador único usado nas URLs. Gerado automaticamente a partir do nome.
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -901,8 +846,8 @@ function CategoryDialog({
                 id="cat-slug"
                 value={slug}
                 onChange={(e) => {
-                  setSlug(e.target.value)
-                  setSlugTouched(true)
+                  setSlug(e.target.value);
+                  setSlugTouched(true);
                 }}
                 placeholder="reparos"
                 required
@@ -924,15 +869,11 @@ function CategoryDialog({
                   <SelectValue placeholder="Nenhuma (categoria pai)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">
-                    Nenhuma (categoria pai)
-                  </SelectItem>
+                  <SelectItem value="__none__">Nenhuma (categoria pai)</SelectItem>
                   {parentCandidates.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {"—".repeat(c.level)} {c.name}{" "}
-                      <span className="text-muted-foreground">
-                        ({LEVEL_META[c.level]?.label})
-                      </span>
+                      <span className="text-muted-foreground">({LEVEL_META[c.level]?.label})</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -943,16 +884,11 @@ function CategoryDialog({
               <div className="flex h-9 items-center gap-2 rounded-lg border border-input/60 bg-muted/40 px-3">
                 <StatusBadge tone={LEVEL_META[level]?.tone ?? "sky"}>
                   <span
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      LEVEL_META[level]?.dot ?? "bg-sky-500",
-                    )}
+                    className={cn("size-1.5 rounded-full", LEVEL_META[level]?.dot ?? "bg-sky-500")}
                   />
                   {LEVEL_META[level]?.label ?? "Pai"}
                 </StatusBadge>
-                <span className="text-xs text-muted-foreground">
-                  Nível {level}
-                </span>
+                <span className="text-xs text-muted-foreground">Nível {level}</span>
               </div>
             </div>
           </div>
@@ -1028,11 +964,7 @@ function CategoryDialog({
                 Categorias inativas não aparecem na vitrine pública.
               </p>
             </div>
-            <Switch
-              id="cat-active"
-              checked={active}
-              onCheckedChange={setActive}
-            />
+            <Switch id="cat-active" checked={active} onCheckedChange={setActive} />
           </div>
 
           <DialogFooter className="gap-2">
@@ -1056,32 +988,5 @@ function CategoryDialog({
         </form>
       </DialogContent>
     </Dialog>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Local error retry (H9)
-// ---------------------------------------------------------------------------
-function ErrorRetry({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-6 py-14 text-center dark:border-rose-900/50 dark:bg-rose-950/30">
-      <div className="flex size-14 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300">
-        <FolderTree className="size-7" />
-      </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight">
-        Não foi possível carregar a árvore de categorias
-      </h3>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Verifique sua conexão e tente novamente.
-      </p>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onRetry}
-        className="mt-4 gap-1.5"
-      >
-        Tentar novamente
-      </Button>
-    </div>
-  )
+  );
 }

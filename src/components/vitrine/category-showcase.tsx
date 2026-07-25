@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * CategoryShowcase — redesigned with Jakob Nielsen's 10 Usability Heuristics.
@@ -14,9 +14,11 @@
  *   H8 – Clean white background, generous whitespace, subtle shadows, minimal clutter
  *   H9 – Friendly empty/error states with "Tentar novamente" button
  *  H10 – Tooltips explaining each category, info badges on cards
+ *
+ * Animations are CSS-only (no framer-motion) to keep the initial chunk small.
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   Wrench,
   Sparkles,
@@ -48,47 +50,39 @@ import {
   Check,
   TrendingUp,
   type LucideIcon,
-} from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+} from "lucide-react";
 
-import { cn } from "@/lib/utils"
-import type { Category } from "@/lib/api"
-import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip"
-import {
-  ScrollArea,
-  ScrollBar,
-} from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils";
+import type { Category } from "@/lib/api";
+import { useScrollReveal, useCountUp } from "@/hooks/use-animation";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 // ---------------------------------------------------------------------------
 // Color tint system — each category gets a unique subtle background tint
 // ---------------------------------------------------------------------------
 
 type CategoryTint = {
-  bg: string
-  bgActive: string
-  gradientFrom: string
-  gradientTo: string
-  gradientActiveFrom: string
-  gradientActiveTo: string
-  text: string
-  textActive: string
-  ring: string
-  hoverBorder: string
-  darkBg: string
-  darkBgActive: string
-  darkGradientFrom: string
-  darkGradientTo: string
-  darkText: string
-  darkRing: string
-}
+  bg: string;
+  bgActive: string;
+  gradientFrom: string;
+  gradientTo: string;
+  gradientActiveFrom: string;
+  gradientActiveTo: string;
+  text: string;
+  textActive: string;
+  ring: string;
+  hoverBorder: string;
+  darkBg: string;
+  darkBgActive: string;
+  darkGradientFrom: string;
+  darkGradientTo: string;
+  darkText: string;
+  darkRing: string;
+};
 
 const TINTS: Record<string, CategoryTint> = {
   emerald: {
@@ -199,33 +193,23 @@ const TINTS: Record<string, CategoryTint> = {
     darkText: "dark:text-violet-400",
     darkRing: "dark:ring-violet-600",
   },
-}
-
-const TINT_KEYS = Object.keys(TINTS)
-
-function getTint(slug: string): CategoryTint {
-  let hash = 0
-  for (let i = 0; i < slug.length; i++) {
-    hash = (hash * 31 + slug.charCodeAt(i)) | 0
-  }
-  return TINTS[TINT_KEYS[Math.abs(hash) % TINT_KEYS.length]]!
-}
+};
 
 // ---------------------------------------------------------------------------
 // Icon + emoji mapping by slug
 // ---------------------------------------------------------------------------
 
-const FALLBACK_ICON = MoreHorizontal
+const FALLBACK_ICON = MoreHorizontal;
 
 const CATEGORY_META: Record<
   string,
   {
-    icon: LucideIcon
-    emoji: string
-    examples: string
-    tooltip: string
-    popular?: boolean
-    tint?: string
+    icon: LucideIcon;
+    emoji: string;
+    examples: string;
+    tooltip: string;
+    popular?: boolean;
+    tint?: string;
   }
 > = {
   reparos: {
@@ -383,18 +367,18 @@ const CATEGORY_META: Record<
     tooltip: "Saúde e bem-estar",
     tint: "rose",
   },
-}
+};
 
 function resolveMeta(c: Category) {
-  if (c.slug && CATEGORY_META[c.slug]) return CATEGORY_META[c.slug]!
-  if (c.icon && CATEGORY_META[c.icon]) return CATEGORY_META[c.icon]!
+  if (c.slug && c.slug in CATEGORY_META) return CATEGORY_META[c.slug as keyof typeof CATEGORY_META];
+  if (c.icon && c.icon in CATEGORY_META) return CATEGORY_META[c.icon as keyof typeof CATEGORY_META];
   // Best-effort slug substring match
   for (const [slug, meta] of Object.entries(CATEGORY_META)) {
     if (c.slug.includes(slug) || c.name.toLowerCase().includes(slug)) {
-      return meta
+      return meta;
     }
   }
-  return null
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -403,11 +387,11 @@ function resolveMeta(c: Category) {
 // ---------------------------------------------------------------------------
 
 function getProviderCount(categoryId: string): number {
-  let hash = 0
+  let hash = 0;
   for (let i = 0; i < categoryId.length; i++) {
-    hash = (hash * 31 + categoryId.charCodeAt(i)) | 0
+    hash = (hash * 31 + categoryId.charCodeAt(i)) | 0;
   }
-  return (Math.abs(hash) % 45) + 3 // 3–47 range
+  return (Math.abs(hash) % 45) + 3; // 3–47 range
 }
 
 // ---------------------------------------------------------------------------
@@ -415,44 +399,12 @@ function getProviderCount(categoryId: string): number {
 // ---------------------------------------------------------------------------
 
 export type CategoryShowcaseProps = {
-  categories: Category[]
-  activeId?: string | null
-  onSelect?: (id: string | null) => void
-  isLoading?: boolean
-  className?: string
-}
-
-// ---------------------------------------------------------------------------
-// Staggered entrance animation variants
-// ---------------------------------------------------------------------------
-
-const containerVariants = {
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.04,
-    },
-  },
-}
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 24, scale: 0.95 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: { duration: 0.4, ease: "easeOut" as const },
-  },
-}
-
-const chipVariants = {
-  hidden: { opacity: 0, scale: 0.85 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: { duration: 0.3, ease: "easeOut" as const },
-  },
-}
+  categories: Category[];
+  activeId?: string | null;
+  onSelect?: (id: string | null) => void;
+  isLoading?: boolean;
+  className?: string;
+};
 
 // ---------------------------------------------------------------------------
 // Decorative dot pattern for section header
@@ -460,10 +412,7 @@ const chipVariants = {
 
 function DecorativeDots() {
   return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute -top-4 right-0 hidden lg:block"
-    >
+    <div aria-hidden className="pointer-events-none absolute -top-4 right-0 hidden lg:block">
       <svg width="120" height="80" fill="none" className="opacity-[0.07] dark:opacity-[0.05]">
         {Array.from({ length: 24 }).map((_, i) => (
           <circle
@@ -477,7 +426,7 @@ function DecorativeDots() {
         ))}
       </svg>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -491,98 +440,102 @@ export default function CategoryShowcase({
   isLoading,
   className,
 }: CategoryShowcaseProps) {
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
-  const scrollRef = React.useRef<HTMLDivElement>(null)
-  const popularRef = React.useRef<HTMLDivElement>(null)
-  const [canScrollLeft, setCanScrollLeft] = React.useState(false)
-  const [canScrollRight, setCanScrollRight] = React.useState(false)
-  const [showAll, setShowAll] = React.useState(false)
-  const [focusIndex, setFocusIndex] = React.useState(-1)
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const popularRef = React.useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
+  const [, setFocusIndex] = React.useState(-1);
+  const [showAll, setShowAll] = React.useState(false);
 
-  const POPULAR_LIMIT = 8
-  const GRID_LIMIT = 12
-  const popularCategories = categories.filter((c) => {
-    const meta = resolveMeta(c)
-    return meta?.popular
-  }).slice(0, POPULAR_LIMIT)
+  const POPULAR_LIMIT = 8;
+  const GRID_LIMIT = 12;
+  const popularCategories = categories
+    .filter((c) => {
+      const meta = resolveMeta(c);
+      return meta?.popular;
+    })
+    .slice(0, POPULAR_LIMIT);
 
-  const visibleCategories = showAll
-    ? categories
-    : categories.slice(0, GRID_LIMIT)
+  const visibleCategories = showAll ? categories : categories.slice(0, GRID_LIMIT);
 
   const { ref: countRef, value: countValue } = useCountUp(categories.length, {
     duration: 1200,
-  })
+  });
 
   // Active category info
-  const activeCategory = categories.find((c) => c.id === activeId)
+  const activeCategory = categories.find((c) => c.id === activeId);
 
   // Update scroll arrow visibility
   const updateScrollButtons = React.useCallback(() => {
-    const el = scrollRef.current
-    if (!el) return
-    setCanScrollLeft(el.scrollLeft > 8)
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 8)
-  }, [])
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 8);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 8);
+  }, []);
 
   React.useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-    updateScrollButtons()
-    el.addEventListener("scroll", updateScrollButtons, { passive: true })
-    window.addEventListener("resize", updateScrollButtons)
+    const el = scrollRef.current;
+    if (!el) return;
+    updateScrollButtons();
+    el.addEventListener("scroll", updateScrollButtons, { passive: true });
+    window.addEventListener("resize", updateScrollButtons);
     return () => {
-      el.removeEventListener("scroll", updateScrollButtons)
-      window.removeEventListener("resize", updateScrollButtons)
-    }
-  }, [updateScrollButtons, categories, showAll])
+      el.removeEventListener("scroll", updateScrollButtons);
+      window.removeEventListener("resize", updateScrollButtons);
+    };
+  }, [updateScrollButtons, categories, showAll]);
 
   // Keyboard navigation for scroll
-  const handleKeyDown = React.useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "ArrowRight") {
-        scrollRef.current?.scrollBy({ left: 200, behavior: "smooth" })
-      } else if (e.key === "ArrowLeft") {
-        scrollRef.current?.scrollBy({ left: -200, behavior: "smooth" })
-      }
-    },
-    [],
-  )
+  const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "ArrowRight") {
+      scrollRef.current?.scrollBy({ left: 200, behavior: "smooth" });
+    } else if (e.key === "ArrowLeft") {
+      scrollRef.current?.scrollBy({ left: -200, behavior: "smooth" });
+    }
+  }, []);
 
   // Grid keyboard navigation
   const handleGridKeyDown = React.useCallback(
     (e: React.KeyboardEvent, idx: number) => {
-      const cols = typeof window !== "undefined" && window.innerWidth >= 1024 ? 6 : window.innerWidth >= 768 ? 4 : window.innerWidth >= 640 ? 3 : 2
-      let nextIdx = idx
-      if (e.key === "ArrowRight") nextIdx = idx + 1
-      else if (e.key === "ArrowLeft") nextIdx = idx - 1
-      else if (e.key === "ArrowDown") nextIdx = idx + cols
-      else if (e.key === "ArrowUp") nextIdx = idx - cols
-      else return
+      const cols =
+        typeof window !== "undefined" && window.innerWidth >= 1024
+          ? 6
+          : window.innerWidth >= 768
+            ? 4
+            : window.innerWidth >= 640
+              ? 3
+              : 2;
+      let nextIdx = idx;
+      if (e.key === "ArrowRight") nextIdx = idx + 1;
+      else if (e.key === "ArrowLeft") nextIdx = idx - 1;
+      else if (e.key === "ArrowDown") nextIdx = idx + cols;
+      else if (e.key === "ArrowUp") nextIdx = idx - cols;
+      else return;
 
-      e.preventDefault()
+      e.preventDefault();
       if (nextIdx >= 0 && nextIdx < visibleCategories.length) {
-        setFocusIndex(nextIdx)
-        const el = document.getElementById(`cat-card-${visibleCategories[nextIdx]?.id}`)
-        el?.focus()
+        setFocusIndex(nextIdx);
+        const el = document.getElementById(`cat-card-${visibleCategories[nextIdx]?.id}`);
+        el?.focus();
       }
     },
     [visibleCategories],
-  )
+  );
 
   const scrollBy = (direction: "left" | "right") => {
     scrollRef.current?.scrollBy({
       left: direction === "left" ? -260 : 260,
       behavior: "smooth",
-    })
-  }
+    });
+  };
 
   const scrollPopularBy = (direction: "left" | "right") => {
     popularRef.current?.scrollBy({
       left: direction === "left" ? -300 : 300,
       behavior: "smooth",
-    })
-  }
+    });
+  };
 
   return (
     <section
@@ -600,22 +553,23 @@ export default function CategoryShowcase({
         <DecorativeDots />
 
         {/* ── Header ────────────────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <div
+          className={cn(
+            "mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between",
+            visible && "animate-[slide-up-fade-in_0.5s_ease-out_forwards]",
+          )}
         >
           <div>
-            <motion.span
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={visible ? { opacity: 1, scale: 1 } : {}}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50",
+                visible && "scale-in",
+              )}
+              style={{ animationDelay: visible ? "0.1s" : "0s" }}
             >
               <Search className="size-3.5" />
               Explore categorias
-            </motion.span>
+            </span>
             <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
               Encontre o serviço ideal
             </h2>
@@ -629,52 +583,43 @@ export default function CategoryShowcase({
           </div>
 
           {/* Active filter indicator + clear button (H1 + H3) */}
-          <AnimatePresence>
-            {activeId && activeCategory && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: -4 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: -4 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="flex items-center gap-2.5"
-              >
-                <div className="relative">
-                  <Badge
-                    variant="secondary"
-                    className="gap-1.5 rounded-full bg-emerald-50 pl-3 pr-1.5 py-1 text-sm text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
-                  >
-                    {resolveMeta(activeCategory)?.emoji ?? ""}{" "}
-                    {activeCategory.name}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-5 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
-                      onClick={() => onSelect?.(null)}
-                      aria-label="Remover filtro de categoria"
-                    >
-                      <X className="size-3" />
-                    </Button>
-                  </Badge>
-                  {/* Animated pulse ring (H1) */}
-                  <span
-                    aria-hidden
-                    className="absolute -inset-1 animate-pulse rounded-full ring-2 ring-emerald-400/40 dark:ring-emerald-500/25"
-                  />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1.5 rounded-full text-xs text-muted-foreground hover:text-emerald-700 dark:hover:text-emerald-300"
-                  onClick={() => onSelect?.(null)}
-                  aria-label="Limpar todos os filtros"
+          {activeId && activeCategory && (
+            <div className="scale-in flex items-center gap-2.5">
+              <div className="relative">
+                <Badge
+                  variant="secondary"
+                  className="gap-1.5 rounded-full bg-emerald-50 pl-3 pr-1.5 py-1 text-sm text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
                 >
-                  <RefreshCw className="size-3" />
-                  Limpar filtros
-                </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
+                  {resolveMeta(activeCategory)?.emoji ?? ""} {activeCategory.name}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-5 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                    onClick={() => onSelect?.(null)}
+                    aria-label="Remover filtro de categoria"
+                  >
+                    <X className="size-3" />
+                  </Button>
+                </Badge>
+                {/* Animated pulse ring (H1) */}
+                <span
+                  aria-hidden
+                  className="absolute -inset-1 animate-pulse rounded-full ring-2 ring-emerald-400/40 dark:ring-emerald-500/25"
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-1.5 rounded-full text-xs text-muted-foreground hover:text-emerald-700 dark:hover:text-emerald-300"
+                onClick={() => onSelect?.(null)}
+                aria-label="Limpar todos os filtros"
+              >
+                <RefreshCw className="size-3" />
+                Limpar filtros
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* ── Loading state (H1 + H5) ─────────────────────────────── */}
         {isLoading ? (
@@ -684,10 +629,7 @@ export default function CategoryShowcase({
               <Skeleton className="mb-3 h-5 w-40" />
               <div className="flex gap-2 overflow-hidden">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    className="h-9 w-28 shrink-0 rounded-full"
-                  />
+                  <Skeleton key={i} className="h-9 w-28 shrink-0 rounded-full" />
                 ))}
               </div>
             </div>
@@ -713,12 +655,10 @@ export default function CategoryShowcase({
               <Search className="size-9 text-muted-foreground" />
             </div>
             <div>
-              <p className="text-lg font-semibold">
-                Nenhuma categoria disponível
-              </p>
+              <p className="text-lg font-semibold">Nenhuma categoria disponível</p>
               <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">
-                As categorias aparecerão aqui assim que estiverem disponíveis.
-                Tente recarregar a página.
+                As categorias aparecerão aqui assim que estiverem disponíveis. Tente recarregar a
+                página.
               </p>
             </div>
             <Button
@@ -736,17 +676,15 @@ export default function CategoryShowcase({
           <>
             {/* ── Popular categories quick-access bar (H7) ─────────── */}
             {popularCategories.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={visible ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.4, delay: 0.15 }}
-                className="mb-8"
+              <div
+                className={cn(
+                  "mb-8",
+                  visible && "animate-[slide-up-fade-in_0.4s_ease-out_0.15s_both]",
+                )}
               >
                 <div className="mb-3 flex items-center gap-2">
                   <TrendingUp className="size-4 text-emerald-600 dark:text-emerald-400" />
-                  <span className="text-sm font-medium text-muted-foreground">
-                    Mais buscadas
-                  </span>
+                  <span className="text-sm font-medium text-muted-foreground">Mais buscadas</span>
                 </div>
 
                 {/* Desktop: horizontal scroll with arrows */}
@@ -761,10 +699,7 @@ export default function CategoryShowcase({
                     </button>
                   )}
                   <ScrollArea className="w-full" type="scroll">
-                    <div
-                      ref={popularRef}
-                      className="flex gap-2 pb-1"
-                    >
+                    <div ref={popularRef} className="flex gap-2 pb-1">
                       {popularCategories.map((c, idx) => (
                         <PopularChip
                           key={c.id}
@@ -772,9 +707,7 @@ export default function CategoryShowcase({
                           active={activeId === c.id}
                           index={idx}
                           visible={visible}
-                          onSelect={() =>
-                            onSelect?.(activeId === c.id ? null : c.id)
-                          }
+                          onSelect={() => onSelect?.(activeId === c.id ? null : c.id)}
                         />
                       ))}
                     </div>
@@ -791,13 +724,11 @@ export default function CategoryShowcase({
                       active={activeId === c.id}
                       index={idx}
                       visible={visible}
-                      onSelect={() =>
-                        onSelect?.(activeId === c.id ? null : c.id)
-                      }
+                      onSelect={() => onSelect?.(activeId === c.id ? null : c.id)}
                     />
                   ))}
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* ── Category grid ──────────────────────────────────────── */}
@@ -839,19 +770,16 @@ export default function CategoryShowcase({
                     active={activeId === c.id}
                     visible={visible}
                     index={idx}
-                    onSelect={() =>
-                      onSelect?.(activeId === c.id ? null : c.id)
-                    }
+                    onSelect={() => onSelect?.(activeId === c.id ? null : c.id)}
                   />
                 ))}
               </div>
 
-              {/* Desktop: grid layout */}
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate={visible ? "visible" : "hidden"}
-                className="hidden sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4"
+              {/* Desktop: grid layout — CSS stagger animation */}
+              <div
+                className={cn(
+                  "hidden sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4",
+                )}
               >
                 {visibleCategories.map((c, idx) => (
                   <CategoryCard
@@ -860,32 +788,28 @@ export default function CategoryShowcase({
                     category={c}
                     active={activeId === c.id}
                     index={idx}
-                    onSelect={() =>
-                      onSelect?.(activeId === c.id ? null : c.id)
-                    }
+                    visible={visible}
+                    onSelect={() => onSelect?.(activeId === c.id ? null : c.id)}
                     onKeyDown={(e) => handleGridKeyDown(e, idx)}
                   />
                 ))}
-              </motion.div>
+              </div>
 
               {/* "Ver todas" expand button (H3 + H7) */}
               {categories.length > GRID_LIMIT && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={visible ? { opacity: 1 } : {}}
-                  transition={{ delay: 0.3 }}
-                  className="mt-6 flex justify-center"
+                <div
+                  className={cn(
+                    "mt-6 flex justify-center",
+                    visible && "fade-in",
+                  )}
+                  style={{ animationDelay: visible ? "0.3s" : "0s" }}
                 >
                   <Button
                     variant="outline"
                     size="default"
                     className="gap-2 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                     onClick={() => setShowAll((prev) => !prev)}
-                    aria-label={
-                      showAll
-                        ? "Ver menos categorias"
-                        : "Ver todas as categorias"
-                    }
+                    aria-label={showAll ? "Ver menos categorias" : "Ver todas as categorias"}
                   >
                     {showAll ? (
                       <>
@@ -899,14 +823,14 @@ export default function CategoryShowcase({
                       </>
                     )}
                   </Button>
-                </motion.div>
+                </div>
               )}
             </div>
           </>
         )}
       </div>
     </section>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -920,24 +844,20 @@ function PopularChip({
   visible,
   onSelect,
 }: {
-  category: Category
-  active: boolean
-  index: number
-  visible: boolean
-  onSelect: () => void
+  category: Category;
+  active: boolean;
+  index: number;
+  visible: boolean;
+  onSelect: () => void;
 }) {
-  const meta = resolveMeta(category)
-  const Icon = meta?.icon ?? FALLBACK_ICON
-  const emoji = meta?.emoji ?? "🔹"
-  const tintKey = meta?.tint ?? "emerald"
-  const tint = TINTS[tintKey] ?? TINTS.emerald
+  const meta = resolveMeta(category);
+  const Icon = meta?.icon ?? FALLBACK_ICON;
+  const emoji = meta?.emoji ?? "🔹";
+  const tintKey = meta?.tint ?? "emerald";
+  const tint = TINTS[tintKey] ?? TINTS.emerald;
 
   return (
-    <motion.button
-      variants={chipVariants}
-      initial="hidden"
-      animate={visible ? "visible" : "hidden"}
-      custom={index}
+    <button
       type="button"
       onClick={onSelect}
       aria-pressed={active}
@@ -949,11 +869,13 @@ function PopularChip({
       className={cn(
         "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all duration-200",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+        visible && "scale-in",
         active
           ? `${tint.bgActive} ${tint.darkBgActive} ${tint.ring} ${tint.darkRing} ring-2 border-transparent shadow-sm`
           : `bg-card border-border/60 ${tint.hoverBorder} hover:shadow-sm dark:hover:border-opacity-60`,
         active ? `${tint.text} ${tint.darkText}` : "text-foreground",
       )}
+      style={{ animationDelay: visible ? `${0.04 + index * 0.03}s` : "0s" }}
     >
       <span className="text-base leading-none" aria-hidden>
         {emoji}
@@ -970,8 +892,8 @@ function PopularChip({
           <Check className="size-2.5" />
         </span>
       )}
-    </motion.button>
-  )
+    </button>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -985,27 +907,24 @@ function MobileCategoryChip({
   index,
   onSelect,
 }: {
-  category: Category
-  active: boolean
-  visible: boolean
-  index: number
-  onSelect: () => void
+  category: Category;
+  active: boolean;
+  visible: boolean;
+  index: number;
+  onSelect: () => void;
 }) {
-  const meta = resolveMeta(category)
-  const Icon = meta?.icon ?? FALLBACK_ICON
-  const emoji = meta?.emoji ?? "🔹"
-  const tooltip = meta?.tooltip ?? category.name
-  const tintKey = meta?.tint ?? "emerald"
-  const tint = TINTS[tintKey] ?? TINTS.emerald
-  const providerCount = getProviderCount(category.id)
+  const meta = resolveMeta(category);
+  const Icon = meta?.icon ?? FALLBACK_ICON;
+  const emoji = meta?.emoji ?? "🔹";
+  const tooltip = meta?.tooltip ?? category.name;
+  const tintKey = meta?.tint ?? "emerald";
+  const tint = TINTS[tintKey] ?? TINTS.emerald;
+  const providerCount = getProviderCount(category.id);
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <motion.button
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={visible ? { opacity: 1, scale: 1 } : {}}
-          transition={{ duration: 0.3, delay: index * 0.03 }}
+        <button
           type="button"
           onClick={onSelect}
           aria-pressed={active}
@@ -1017,16 +936,18 @@ function MobileCategoryChip({
           className={cn(
             "relative flex min-w-[110px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-3 py-3.5 text-center transition-all duration-200",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+            visible && "scale-in",
             active
               ? `${tint.bgActive} ${tint.darkBgActive} ${tint.ring} ${tint.darkRing} ring-2 border-transparent shadow-md`
               : "bg-card border-border/60 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-sm",
           )}
+          style={{ animationDelay: visible ? `${index * 0.03}s` : "0s" }}
         >
           {/* Active checkmark badge */}
           {active && (
             <span
               className={cn(
-                "absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full shadow-md",
+                "absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full shadow-md scale-in",
                 `bg-gradient-to-br ${tint.gradientActiveFrom} ${tint.gradientActiveTo} text-white`,
               )}
               aria-hidden
@@ -1045,18 +966,13 @@ function MobileCategoryChip({
             )}
           >
             <Icon className="size-4.5" />
-            <span
-              className="absolute -top-1 -right-1 text-xs leading-none"
-              aria-hidden
-            >
+            <span className="absolute -top-1 -right-1 text-xs leading-none" aria-hidden>
               {emoji}
             </span>
           </span>
 
           {/* Category name */}
-          <span className="text-xs font-medium leading-tight">
-            {category.name}
-          </span>
+          <span className="text-xs font-medium leading-tight">{category.name}</span>
 
           {/* Provider count */}
           <span
@@ -1069,16 +985,13 @@ function MobileCategoryChip({
           >
             {providerCount} prest.
           </span>
-        </motion.button>
+        </button>
       </TooltipTrigger>
-      <TooltipContent
-        side="bottom"
-        className="max-w-[200px] text-center text-xs"
-      >
+      <TooltipContent side="bottom" className="max-w-[200px] text-center text-xs">
         {tooltip}
       </TooltipContent>
     </Tooltip>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1090,40 +1003,53 @@ function CategoryCard({
   category,
   active,
   index,
+  visible,
   onSelect,
   onKeyDown,
 }: {
-  id: string
-  category: Category
-  active: boolean
-  index: number
-  onSelect: () => void
-  onKeyDown: (e: React.KeyboardEvent) => void
+  id: string;
+  category: Category;
+  active: boolean;
+  index: number;
+  visible: boolean;
+  onSelect: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
 }) {
-  const meta = resolveMeta(category)
-  const Icon = meta?.icon ?? FALLBACK_ICON
-  const emoji = meta?.emoji ?? "🔹"
-  const examples = meta?.examples ?? ""
-  const tooltip = meta?.tooltip ?? category.name
-  const tintKey = meta?.tint ?? "emerald"
-  const tint = TINTS[tintKey] ?? TINTS.emerald
-  const providerCount = getProviderCount(category.id)
+  const meta = resolveMeta(category);
+  const Icon = meta?.icon ?? FALLBACK_ICON;
+  const emoji = meta?.emoji ?? "🔹";
+  const examples = meta?.examples ?? "";
+  const tooltip = meta?.tooltip ?? category.name;
+  const tintKey = meta?.tint ?? "emerald";
+  const tint = TINTS[tintKey] ?? TINTS.emerald;
+  const providerCount = getProviderCount(category.id);
+  const [showCheckmark, setShowCheckmark] = React.useState(active);
+
+  // Sync showCheckmark with active prop (with a tiny delay for exit animation)
+  React.useEffect(() => {
+    if (active) {
+      setShowCheckmark(true);
+    } else {
+      // Brief delay to match the visual feel
+      const t = setTimeout(() => setShowCheckmark(false), 200);
+      return () => clearTimeout(t);
+    }
+  }, [active]);
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <motion.div
-          variants={cardVariants}
+        <div
           id={id}
           role="button"
           tabIndex={0}
           onClick={onSelect}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault()
-              onSelect()
+              e.preventDefault();
+              onSelect();
             } else {
-              onKeyDown(e)
+              onKeyDown(e);
             }
           }}
           aria-pressed={active}
@@ -1136,29 +1062,28 @@ function CategoryCard({
             "group relative flex flex-col items-center gap-3 rounded-2xl border bg-card p-5 text-center transition-all duration-200 cursor-pointer select-none",
             "hover:-translate-y-1 hover:shadow-lg",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+            "opacity-0", // hidden until scroll-reveal animation plays (prevents pre-animation flicker)
+            visible && "animate-[slide-up-fade-in_0.4s_ease-out_forwards]",
             active
               ? `${tint.ring} ${tint.darkRing} ring-2 ${tint.bgActive} ${tint.darkBgActive} border-transparent shadow-lg -translate-y-1`
               : `border-border/50 ${tint.hoverBorder} dark:hover:border-opacity-60`,
           )}
+          style={{
+            animationDelay: visible ? `${0.04 * index}s` : "0s",
+          }}
         >
-          {/* Active checkmark badge (H3 + H6) */}
-          <AnimatePresence>
-            {active && (
-              <motion.span
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: "spring", stiffness: 500, damping: 25 }}
-                className={cn(
-                  "absolute -top-2 -right-2 z-10 flex size-6 items-center justify-center rounded-full shadow-lg",
-                  `bg-gradient-to-br ${tint.gradientActiveFrom} ${tint.gradientActiveTo} text-white`,
-                )}
-                aria-hidden
-              >
-                <Check className="size-3.5" strokeWidth={3} />
-              </motion.span>
-            )}
-          </AnimatePresence>
+          {/* Active checkmark badge (H3 + H6) — CSS scale-in */}
+          {showCheckmark && (
+            <span
+              className={cn(
+                "absolute -top-2 -right-2 z-10 flex size-6 items-center justify-center rounded-full shadow-lg scale-in",
+                `bg-gradient-to-br ${tint.gradientActiveFrom} ${tint.gradientActiveTo} text-white`,
+              )}
+              aria-hidden
+            >
+              <Check className="size-3.5" strokeWidth={3} />
+            </span>
+          )}
 
           {/* Icon with large gradient background (H6) */}
           <span
@@ -1170,18 +1095,13 @@ function CategoryCard({
             )}
           >
             <Icon className="size-6" />
-            <span
-              className="absolute -top-1.5 -right-1.5 text-sm leading-none"
-              aria-hidden
-            >
+            <span className="absolute -top-1.5 -right-1.5 text-sm leading-none" aria-hidden>
               {emoji}
             </span>
           </span>
 
           {/* Category name */}
-          <span className="text-sm font-semibold leading-tight">
-            {category.name}
-          </span>
+          <span className="text-sm font-semibold leading-tight">{category.name}</span>
 
           {/* Provider count pill (H2 + H6) */}
           <span
@@ -1213,16 +1133,13 @@ function CategoryCard({
           >
             <Info className="size-3" />
           </span>
-        </motion.div>
+        </div>
       </TooltipTrigger>
-      <TooltipContent
-        side="bottom"
-        className="max-w-[220px] text-center text-xs"
-      >
+      <TooltipContent side="bottom" className="max-w-[220px] text-center text-xs">
         <span className="font-medium">{category.name}</span>
         <br />
         {tooltip}
       </TooltipContent>
     </Tooltip>
-  )
+  );
 }

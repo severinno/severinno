@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * FlowTimeline — "what happens now" transparency for quotes and bookings.
@@ -11,20 +11,20 @@
  * Reduces anxiety after sending a quote or booking a service.
  */
 
-import * as React from "react"
-import { CheckCircle2, Clock, Circle, ArrowRight } from "lucide-react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { CheckCircle2, Clock, Circle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export type TimelineStep = {
-  label: string
-  description: string
-  status: "done" | "current" | "upcoming"
-}
+  label: string;
+  description: string;
+  status: "done" | "current" | "upcoming";
+};
 
 export type FlowTimelineProps = {
-  steps: TimelineStep[]
-  className?: string
-}
+  steps: TimelineStep[];
+  className?: string;
+};
 
 export function FlowTimeline({ steps, className }: FlowTimelineProps) {
   return (
@@ -36,22 +36,16 @@ export function FlowTimeline({ steps, className }: FlowTimelineProps) {
         </div>
         <div>
           <h3 className="text-sm font-semibold">O que acontece agora</h3>
-          <p className="text-xs text-muted-foreground">
-            Acompanhe cada etapa em tempo real
-          </p>
+          <p className="text-xs text-muted-foreground">Acompanhe cada etapa em tempo real</p>
         </div>
       </div>
 
       {/* Steps */}
       <ol className="relative space-y-4">
         {steps.map((step, i) => {
-          const isLast = i === steps.length - 1
+          const isLast = i === steps.length - 1;
           const Icon =
-            step.status === "done"
-              ? CheckCircle2
-              : step.status === "current"
-                ? Clock
-                : Circle
+            step.status === "done" ? CheckCircle2 : step.status === "current" ? Clock : Circle;
           return (
             <li key={i} className="relative flex gap-3">
               {/* Connector line */}
@@ -73,19 +67,13 @@ export function FlowTimeline({ steps, className }: FlowTimelineProps) {
                     "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400",
                   step.status === "current" &&
                     "bg-emerald-600 text-white ring-4 ring-emerald-600/20",
-                  step.status === "upcoming" &&
-                    "bg-slate-100 text-slate-400 dark:bg-slate-800",
+                  step.status === "upcoming" && "bg-slate-100 text-slate-400 dark:bg-slate-800",
                 )}
               >
                 <Icon className="size-3.5" />
               </span>
               {/* Content */}
-              <div
-                className={cn(
-                  "flex-1 pb-1",
-                  step.status === "upcoming" && "opacity-60",
-                )}
-              >
+              <div className={cn("flex-1 pb-1", step.status === "upcoming" && "opacity-60")}>
                 <p
                   className={cn(
                     "text-sm font-medium",
@@ -99,16 +87,14 @@ export function FlowTimeline({ steps, className }: FlowTimelineProps) {
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {step.description}
-                </p>
+                <p className="text-xs text-muted-foreground">{step.description}</p>
               </div>
             </li>
-          )
+          );
         })}
       </ol>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +107,10 @@ export function QuoteTimeline({ status }: { status: string }) {
       label: "Orçamento enviado",
       description: "O prestador recebeu sua solicitação",
       status:
-        status === "PENDING" || status === "RESPONDED" || status === "APPROVED" || status === "REJECTED"
+        status === "PENDING" ||
+        status === "RESPONDED" ||
+        status === "APPROVED" ||
+        status === "REJECTED"
           ? "done"
           : "upcoming",
     },
@@ -150,8 +139,8 @@ export function QuoteTimeline({ status }: { status: string }) {
       description: "Escolha data e horário com o prestador aprovado",
       status: status === "APPROVED" ? "current" : "upcoming",
     },
-  ]
-  return <FlowTimeline steps={steps} />
+  ];
+  return <FlowTimeline steps={steps} />;
 }
 
 export function BookingTimeline({ status }: { status: string }) {
@@ -171,9 +160,7 @@ export function BookingTimeline({ status }: { status: string }) {
       label: "Prestador confirma",
       description: "Confirmação do horário com o profissional",
       status:
-        status === "CONFIRMED" ||
-        status === "IN_PROGRESS" ||
-        status === "COMPLETED"
+        status === "CONFIRMED" || status === "IN_PROGRESS" || status === "COMPLETED"
           ? "done"
           : status === "PENDING"
             ? "current"
@@ -194,6 +181,6 @@ export function BookingTimeline({ status }: { status: string }) {
       description: "Você marca como concluído e avalia — pagamento é liberado",
       status: status === "COMPLETED" ? "done" : "upcoming",
     },
-  ]
-  return <FlowTimeline steps={steps} />
+  ];
+  return <FlowTimeline steps={steps} />;
 }

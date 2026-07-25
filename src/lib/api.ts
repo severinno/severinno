@@ -12,121 +12,117 @@
 // Shared API types — mirrored from the API contract in worklog.md
 // ---------------------------------------------------------------------------
 
-export type ServiceUnit =
-  | "UNIDADE"
-  | "METRO_LINEAR"
-  | "METRO_QUADRADO"
-  | "METRO_CUBICO"
+export type ServiceUnit = "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO";
 
 export type ProviderService = {
-  id: string
-  title: string
-  description?: string | null
-  basePrice: number
-  unit: ServiceUnit
-  photos?: string[]
-  category?: { id: string; name: string } | null
-}
+  id: string;
+  title: string;
+  description?: string | null;
+  basePrice: number;
+  unit: ServiceUnit;
+  photos?: string[];
+  category?: { id: string; name: string } | null;
+};
 
 export type ProviderCard = {
-  id: string
-  name: string
-  avatarUrl?: string | null
-  coverUrl?: string | null
-  bio?: string | null
-  rating: number
-  reviewCount: number
-  verified: boolean
-  city?: string | null
-  distanceKm?: number | null
-  lat?: number | null
-  lng?: number | null
-  services: ProviderService[]
-  completedBookings?: number
-  memberSince?: string
-}
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  coverUrl?: string | null;
+  bio?: string | null;
+  rating: number;
+  reviewCount: number;
+  verified: boolean;
+  city?: string | null;
+  distanceKm?: number | null;
+  lat?: number | null;
+  lng?: number | null;
+  services: ProviderService[];
+  completedBookings?: number;
+  memberSince?: string;
+};
 
 export type ProviderAvailability = {
-  id: string
-  dayOfWeek: number
-  startTime: string
-  endTime: string
-}
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+};
 
 export type ProviderReview = {
-  id: string
-  rating: number
-  comment?: string | null
-  createdAt: string
-  author?: { id: string; name: string; avatarUrl?: string | null } | null
-}
+  id: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  author?: { id: string; name: string; avatarUrl?: string | null } | null;
+};
 
 export type ProviderDetail = ProviderCard & {
-  whatsapp?: string | null
-  address?: string | null
-  district?: string | null
-  state?: string | null
-  cep?: string | null
-  radiusKm?: number | null
-  availability?: ProviderAvailability[]
-  reviews?: ProviderReview[]
-}
+  whatsapp?: string | null;
+  address?: string | null;
+  district?: string | null;
+  state?: string | null;
+  cep?: string | null;
+  radiusKm?: number | null;
+  availability?: ProviderAvailability[];
+  reviews?: ProviderReview[];
+};
 
 export type Category = {
-  id: string
-  name: string
-  slug: string
-  icon?: string | null
-  level: number
-  parentId?: string | null
-  children?: Category[]
-}
+  id: string;
+  name: string;
+  slug: string;
+  icon?: string | null;
+  level: number;
+  parentId?: string | null;
+  children?: Category[];
+};
 
 export type PagedResult<T> = {
-  items: T[]
-  total: number
-  page: number
-  limit: number
-  radiusExpanded?: boolean
-}
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  radiusExpanded?: boolean;
+};
 
-export type FavoriteResponse = { favorited: boolean }
+export type FavoriteResponse = { favorited: boolean };
 
 export type CepResult = {
-  cep: string
-  street?: string
-  district?: string
-  city?: string
-  state?: string
-}
+  cep: string;
+  street?: string;
+  district?: string;
+  city?: string;
+  state?: string;
+};
 
 export type ApiError = {
-  status: number
-  message: string
-  data?: unknown
-}
+  status: number;
+  message: string;
+  data?: unknown;
+};
 
 // ---------------------------------------------------------------------------
 // Core fetch wrapper
 // ---------------------------------------------------------------------------
 
 function buildUrl(path: string, params?: Record<string, unknown>): string {
-  if (!params) return path
-  const sp = new URLSearchParams()
+  if (!params) return path;
+  const sp = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null || value === "") continue
+    if (value === undefined || value === null || value === "") continue;
     if (Array.isArray(value)) {
       for (const v of value) {
         if (v !== undefined && v !== null && v !== "") {
-          sp.append(key, String(v))
+          sp.append(key, String(v));
         }
       }
     } else {
-      sp.append(key, String(value))
+      sp.append(key, String(value));
     }
   }
-  const qs = sp.toString()
-  return qs ? `${path}?${qs}` : path
+  const qs = sp.toString();
+  return qs ? `${path}?${qs}` : path;
 }
 
 async function request<T>(
@@ -135,7 +131,7 @@ async function request<T>(
   params?: Record<string, unknown>,
   body?: unknown,
 ): Promise<T> {
-  const url = method === "GET" ? buildUrl(path, params) : path
+  const url = method === "GET" ? buildUrl(path, params) : path;
   const init: RequestInit = {
     method,
     credentials: "include",
@@ -145,24 +141,24 @@ async function request<T>(
     },
     cache: "no-store",
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  }
+  };
 
-  let res: Response
+  let res: Response;
   try {
-    res = await fetch(url, init)
+    res = await fetch(url, init);
   } catch (e) {
     const err: ApiError = {
       status: 0,
       message: "Erro de rede. Verifique sua conexão e tente novamente.",
       data: e,
-    }
-    throw err
+    };
+    throw err;
   }
 
-  const contentType = res.headers.get("content-type") ?? ""
-  let parsed: unknown = null
+  const contentType = res.headers.get("content-type") ?? "";
+  let parsed: unknown = null;
   if (contentType.includes("application/json")) {
-    parsed = await res.json().catch(() => null)
+    parsed = await res.json().catch(() => null);
   }
 
   if (!res.ok) {
@@ -171,31 +167,28 @@ async function request<T>(
         ? String((parsed as { error?: unknown }).error)
         : undefined) ??
       (typeof parsed === "string" && parsed ? parsed : undefined) ??
-      `Erro ${res.status} ao processar a requisição.`
-    const err: ApiError = { status: res.status, message, data: parsed }
-    throw err
+      `Erro ${res.status} ao processar a requisição.`;
+    const err: ApiError = { status: res.status, message, data: parsed };
+    throw err;
   }
 
-  return parsed as T
+  return parsed as T;
 }
 
-export function apiGet<T>(
-  path: string,
-  params?: Record<string, unknown>,
-): Promise<T> {
-  return request<T>("GET", path, params)
+export function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+  return request<T>("GET", path, params);
 }
 
 export function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>("POST", path, undefined, body)
+  return request<T>("POST", path, undefined, body);
 }
 
 export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
-  return request<T>("PATCH", path, undefined, body)
+  return request<T>("PATCH", path, undefined, body);
 }
 
 export function apiDelete<T>(path: string): Promise<T> {
-  return request<T>("DELETE", path)
+  return request<T>("DELETE", path);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,17 +196,17 @@ export function apiDelete<T>(path: string): Promise<T> {
 // ---------------------------------------------------------------------------
 
 export type ProvidersQuery = {
-  lat?: number | null
-  lng?: number | null
-  q?: string
-  categoryId?: string
-  radius?: number
-  sort?: "rating" | "distance"
-  page?: number
-  limit?: number
-  verified?: boolean
-  minRating?: number
-}
+  lat?: number | null;
+  lng?: number | null;
+  q?: string;
+  categoryId?: string;
+  radius?: number;
+  sort?: "rating" | "distance";
+  page?: number;
+  limit?: number;
+  verified?: boolean;
+  minRating?: number;
+};
 
 export function fetchProviders(query: ProvidersQuery) {
   return apiGet<PagedResult<ProviderCard>>("/api/providers", {
@@ -227,28 +220,28 @@ export function fetchProviders(query: ProvidersQuery) {
     limit: query.limit,
     verified: query.verified,
     minRating: query.minRating,
-  })
+  });
 }
 
 export function fetchProviderDetail(id: string) {
-  return apiGet<ProviderDetail>(`/api/providers/${id}`)
+  return apiGet<ProviderDetail>(`/api/providers/${id}`);
 }
 
 export function fetchCategories(opts?: { level?: number; parentId?: string }) {
   return apiGet<Category[]>("/api/categories", {
     level: opts?.level,
     parentId: opts?.parentId,
-  })
+  });
 }
 
 export function toggleFavorite(providerId: string) {
-  return apiPost<FavoriteResponse>(`/api/providers/${providerId}/favorite`)
+  return apiPost<FavoriteResponse>(`/api/providers/${providerId}/favorite`);
 }
 
 export function fetchFavorites() {
-  return apiGet<ProviderCard[]>("/api/favorites")
+  return apiGet<ProviderCard[]>("/api/favorites");
 }
 
 export function fetchCep(cep: string) {
-  return apiGet<CepResult>("/api/geo/cep", { cep })
+  return apiGet<CepResult>("/api/geo/cep", { cep });
 }

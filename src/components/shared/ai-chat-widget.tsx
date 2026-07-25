@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AIChatWidget — floating chat assistant for the Severinno Marketplace.
@@ -19,22 +19,22 @@
  *   H10 Help/documentation           → AI assistant IS the help system
  */
 
-import * as React from "react"
-import { MessageCircle, X, Send, Bot, User, Trash2, Sparkles } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import * as React from "react";
+import { MessageCircle, X, Send, Bot, User, Trash2, Sparkles } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type ChatMessage = {
-  id: string
-  role: "user" | "assistant"
-  content: string
-  timestamp: Date
-}
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+};
 
 // ---------------------------------------------------------------------------
 // Suggested actions for first-time users (H6: Recognition over recall)
@@ -45,33 +45,33 @@ const SUGGESTED_ACTIONS = [
   { label: "Preciso de um eletricista", message: "Preciso de um eletricista, como encontro um?" },
   { label: "É seguro?", message: "É seguro contratar pelo Severinno?" },
   { label: "Quanto custa?", message: "Quanto custa contratar um prestador?" },
-]
+];
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function AIChatWidget() {
-  const [isOpen, setIsOpen] = React.useState(false)
-  const [messages, setMessages] = React.useState<ChatMessage[]>([])
-  const [input, setInput] = React.useState("")
-  const [isTyping, setIsTyping] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
+  const [input, setInput] = React.useState("");
+  const [isTyping, setIsTyping] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const messagesEndRef = React.useRef<HTMLDivElement>(null)
-  const inputRef = React.useRef<HTMLInputElement>(null)
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
   React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isTyping])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
 
   // Focus input when chat opens
   React.useEffect(() => {
     if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 100)
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [isOpen])
+  }, [isOpen, messages]);
 
   // Add initial greeting when chat first opens
   React.useEffect(() => {
@@ -84,16 +84,16 @@ export default function AIChatWidget() {
             "Olá! 👋 Sou o assistente virtual do Severinno. Posso ajudar você a encontrar serviços, tirar dúvidas sobre a plataforma e muito mais. Como posso ajudar?",
           timestamp: new Date(),
         },
-      ])
+      ]);
     }
     // Only run when chat opens
-  }, [isOpen])
+  }, [isOpen, messages]);
 
   const handleSend = async (messageText?: string) => {
-    const text = (messageText ?? input).trim()
-    if (!text || isTyping) return
+    const text = (messageText ?? input).trim();
+    if (!text || isTyping) return;
 
-    setError(null)
+    setError(null);
 
     // Add user message
     const userMsg: ChatMessage = {
@@ -101,28 +101,28 @@ export default function AIChatWidget() {
       role: "user",
       content: text,
       timestamp: new Date(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-    setInput("")
-    setIsTyping(true)
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setIsTyping(true);
 
     try {
       // Build history for context (last 10 messages)
       const history = messages.slice(-10).map((m) => ({
         role: m.role,
         content: m.content,
-      }))
+      }));
 
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, history }),
-      })
+      });
 
-      const data = await res.json()
+      const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Erro ao enviar mensagem.")
+        throw new Error(data.error || "Erro ao enviar mensagem.");
       }
 
       const assistantMsg: ChatMessage = {
@@ -130,36 +130,35 @@ export default function AIChatWidget() {
         role: "assistant",
         content: data.response,
         timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, assistantMsg])
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Erro desconhecido"
-      setError(errorMsg)
+      const errorMsg = err instanceof Error ? err.message : "Erro desconhecido";
+      setError(errorMsg);
       // H9: Error recovery — show friendly error and allow retry
     } finally {
-      setIsTyping(false)
+      setIsTyping(false);
     }
-  }
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+      e.preventDefault();
+      handleSend();
     }
-  }
+  };
 
   const handleClear = () => {
     setMessages([
       {
         id: `greeting-${Date.now()}`,
         role: "assistant",
-        content:
-          "Conversa limpa! Como posso ajudar você agora? 😊",
+        content: "Conversa limpa! Como posso ajudar você agora? 😊",
         timestamp: new Date(),
       },
-    ])
-    setError(null)
-  }
+    ]);
+    setError(null);
+  };
 
   return (
     <>
@@ -198,9 +197,7 @@ export default function AIChatWidget() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold">Assistente Severinno</p>
-                  <p className="text-[10px] text-emerald-100">
-                    IA · Online agora
-                  </p>
+                  <p className="text-[10px] text-emerald-100">IA · Online agora</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -310,8 +307,8 @@ export default function AIChatWidget() {
             <div className="border-t border-border px-4 py-3">
               <form
                 onSubmit={(e) => {
-                  e.preventDefault()
-                  handleSend()
+                  e.preventDefault();
+                  handleSend();
                 }}
                 className="flex items-center gap-2"
               >
@@ -341,5 +338,5 @@ export default function AIChatWidget() {
         )}
       </AnimatePresence>
     </>
-  )
+  );
 }

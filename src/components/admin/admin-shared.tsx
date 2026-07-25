@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * admin-shared — design system compartilhado de TODOS os painéis admin.
@@ -20,7 +20,7 @@
  * Agora há UMA única source of truth.
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -34,9 +34,9 @@ import {
   X,
   XCircle,
   type LucideIcon,
-} from "lucide-react"
+} from "lucide-react";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 import {
   type BookingStatus,
   type PaymentStatus,
@@ -45,7 +45,7 @@ import {
   ROLE_LABELS,
   BOOKING_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
-} from "@/lib/constants"
+} from "@/lib/constants";
 
 import {
   AlertDialog,
@@ -56,25 +56,25 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // ===========================================================================
 // Helpers (pure functions — substituem 5-6 cópias)
 // ===========================================================================
 
 export function initials(name?: string | null): string {
-  if (!name) return "?"
-  const parts = name.trim().split(/\s+/)
-  if (parts.length === 1) return parts[0]!.charAt(0).toUpperCase()
-  return (parts[0]!.charAt(0) + parts[parts.length - 1]!.charAt(0)).toUpperCase()
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return (parts[0] ?? "").charAt(0).toUpperCase();
+  return ((parts[0] ?? "").charAt(0) + (parts[parts.length - 1] ?? "").charAt(0)).toUpperCase();
 }
 
 export function errMsg(e: unknown, fallback = "Ocorreu um erro inesperado."): string {
-  if (e instanceof Error) return e.message || fallback
-  if (typeof e === "string") return e
-  return fallback
+  if (e instanceof Error) return e.message || fallback;
+  if (typeof e === "string") return e;
+  return fallback;
 }
 
 export function slugify(value: string): string {
@@ -84,31 +84,23 @@ export function slugify(value: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
+    .slice(0, 80);
 }
 
 // ===========================================================================
 // Tons de status — UMA source of truth (H4 consistência)
 // ===========================================================================
 
-export type StatusTone =
-  | "emerald"
-  | "amber"
-  | "rose"
-  | "teal"
-  | "zinc"
-  | "sky"
+export type StatusTone = "emerald" | "amber" | "rose" | "teal" | "zinc" | "sky";
 
 const TONE_CLASS: Record<StatusTone, string> = {
-  emerald:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  amber:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  amber: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
   teal: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
   zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
   sky: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200",
-}
+};
 
 export function StatusBadge({
   tone,
@@ -117,11 +109,11 @@ export function StatusBadge({
   className,
   spin,
 }: {
-  tone: StatusTone
-  icon?: LucideIcon
-  children: React.ReactNode
-  className?: string
-  spin?: boolean
+  tone: StatusTone;
+  icon?: LucideIcon;
+  children: React.ReactNode;
+  className?: string;
+  spin?: boolean;
 }) {
   return (
     <span
@@ -131,12 +123,10 @@ export function StatusBadge({
         className,
       )}
     >
-      {Icon ? (
-        <Icon className={cn("size-[13px] shrink-0", spin && "animate-spin")} />
-      ) : null}
+      {Icon ? <Icon className={cn("size-[13px] shrink-0", spin && "animate-spin")} /> : null}
       {children}
     </span>
-  )
+  );
 }
 
 // ---- Status tone/icon centralizado (H4) ----------------------------------
@@ -145,15 +135,15 @@ export function bookingTone(status: BookingStatus): StatusTone {
   switch (status) {
     case "CONFIRMED":
     case "COMPLETED":
-      return "emerald"
+      return "emerald";
     case "PENDING":
-      return "amber"
+      return "amber";
     case "IN_PROGRESS":
-      return "teal"
+      return "teal";
     case "CANCELLED":
-      return "rose"
+      return "rose";
     default:
-      return "zinc"
+      return "zinc";
   }
 }
 
@@ -161,15 +151,15 @@ export function bookingIcon(status: BookingStatus): LucideIcon {
   switch (status) {
     case "CONFIRMED":
     case "COMPLETED":
-      return CheckCircle2
+      return CheckCircle2;
     case "PENDING":
-      return Clock
+      return Clock;
     case "IN_PROGRESS":
-      return Loader2
+      return Loader2;
     case "CANCELLED":
-      return XCircle
+      return XCircle;
     default:
-      return XCircle
+      return XCircle;
   }
 }
 
@@ -177,40 +167,40 @@ export function quoteTone(status: QuoteStatus): StatusTone {
   switch (status) {
     case "APPROVED":
     case "RESPONDED":
-      return "emerald"
+      return "emerald";
     case "PENDING":
-      return "amber"
+      return "amber";
     case "REJECTED":
     case "EXPIRED":
-      return "rose"
+      return "rose";
     default:
-      return "zinc"
+      return "zinc";
   }
 }
 
 export function paymentTone(status: PaymentStatus): StatusTone {
   switch (status) {
     case "PAID":
-      return "emerald"
+      return "emerald";
     case "PENDING":
-      return "amber"
+      return "amber";
     case "REFUNDED":
-      return "rose"
+      return "rose";
     default:
-      return "zinc"
+      return "zinc";
   }
 }
 
 export function paymentIcon(status: PaymentStatus): LucideIcon {
   switch (status) {
     case "PAID":
-      return CheckCircle2
+      return CheckCircle2;
     case "PENDING":
-      return Clock
+      return Clock;
     case "REFUNDED":
-      return RotateCcw
+      return RotateCcw;
     default:
-      return XCircle
+      return XCircle;
   }
 }
 
@@ -221,25 +211,23 @@ export function RoleBadge({ role }: { role: UserRole }) {
     ADMIN: "emerald",
     PROVIDER: "teal",
     CLIENT: "zinc",
-  }
+  };
   const Icon: Record<UserRole, LucideIcon> = {
     ADMIN: ShieldCheck,
     PROVIDER: ShieldCheck,
     CLIENT: ShieldCheck,
-  }
+  };
   return (
     <StatusBadge tone={tone[role]} icon={Icon[role]}>
       {ROLE_LABELS[role]}
     </StatusBadge>
-  )
+  );
 }
 
 export function ActiveBadge({ active }: { active: boolean }) {
   return (
-    <StatusBadge tone={active ? "emerald" : "zinc"}>
-      {active ? "Ativo" : "Inativo"}
-    </StatusBadge>
-  )
+    <StatusBadge tone={active ? "emerald" : "zinc"}>{active ? "Ativo" : "Inativo"}</StatusBadge>
+  );
 }
 
 export function VerifiedBadge({ verified }: { verified: boolean }) {
@@ -248,30 +236,24 @@ export function VerifiedBadge({ verified }: { verified: boolean }) {
       <StatusBadge tone="emerald" icon={ShieldCheck}>
         Verificado
       </StatusBadge>
-    )
+    );
   }
   return (
     <StatusBadge tone="amber" icon={ShieldX}>
       Não verificado
     </StatusBadge>
-  )
+  );
 }
 
-export function BookingStatusBadge({
-  status,
-  spin,
-}: {
-  status: BookingStatus
-  spin?: boolean
-}) {
-  const tone = bookingTone(status)
-  const Icon = bookingIcon(status)
-  const isInProgress = status === "IN_PROGRESS"
+export function BookingStatusBadge({ status, spin }: { status: BookingStatus; spin?: boolean }) {
+  const tone = bookingTone(status);
+  const Icon = bookingIcon(status);
+  const isInProgress = status === "IN_PROGRESS";
   return (
     <StatusBadge tone={tone} icon={Icon} spin={spin ?? isInProgress}>
       {BOOKING_STATUS_LABELS[status]}
     </StatusBadge>
-  )
+  );
 }
 
 export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
@@ -279,7 +261,7 @@ export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
     <StatusBadge tone={paymentTone(status)} icon={paymentIcon(status)}>
       {PAYMENT_STATUS_LABELS[status]}
     </StatusBadge>
-  )
+  );
 }
 
 // ===========================================================================
@@ -292,10 +274,10 @@ export function PageSectionHeader({
   action,
   className,
 }: {
-  title: string
-  description?: string
-  action?: React.ReactNode
-  className?: string
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  className?: string;
 }) {
   return (
     <div
@@ -305,18 +287,14 @@ export function PageSectionHeader({
       )}
     >
       <div className="min-w-0 space-y-1">
-        <h2 className="text-xl font-bold tracking-tight text-foreground">
-          {title}
-        </h2>
+        <h2 className="text-xl font-bold tracking-tight text-foreground">{title}</h2>
         {description ? (
           <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>
         ) : null}
       </div>
-      {action ? (
-        <div className="flex shrink-0 items-center gap-2">{action}</div>
-      ) : null}
+      {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
     </div>
-  )
+  );
 }
 
 // ===========================================================================
@@ -331,19 +309,17 @@ export function FilterBar({
   resultLabel = "resultados",
   className,
 }: {
-  children: React.ReactNode
-  onClear?: () => void
-  activeCount?: number
-  resultCount?: number
-  resultLabel?: string
-  className?: string
+  children: React.ReactNode;
+  onClear?: () => void;
+  activeCount?: number;
+  resultCount?: number;
+  resultLabel?: string;
+  className?: string;
 }) {
   return (
     <div className={cn("mb-4", className)}>
       <div className="flex flex-col gap-3 rounded-xl border bg-card/50 p-3 shadow-none sm:flex-row sm:items-center">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          {children}
-        </div>
+        <div className="flex flex-1 flex-wrap items-center gap-2">{children}</div>
         {onClear && activeCount != null && activeCount > 0 ? (
           <Button
             type="button"
@@ -362,14 +338,12 @@ export function FilterBar({
       </div>
       {resultCount != null ? (
         <p className="mt-2 text-xs text-muted-foreground">
-          <span className="font-medium tabular-nums text-foreground">
-            {resultCount}
-          </span>{" "}
+          <span className="font-medium tabular-nums text-foreground">{resultCount}</span>{" "}
           {resultLabel}
         </p>
       ) : null}
     </div>
-  )
+  );
 }
 
 export function SearchInput({
@@ -378,10 +352,10 @@ export function SearchInput({
   placeholder = "Buscar…",
   className,
 }: {
-  value: string
-  onChange: (v: string) => void
-  placeholder?: string
-  className?: string
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
 }) {
   return (
     <div className={cn("relative", className)}>
@@ -394,7 +368,7 @@ export function SearchInput({
         className="h-9 w-full rounded-lg border border-input/60 bg-background pl-8 pr-3 text-sm outline-none transition-all placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
       />
     </div>
-  )
+  );
 }
 
 // ===========================================================================
@@ -406,9 +380,9 @@ export function TableSkeleton({
   cols = 5,
   className,
 }: {
-  rows?: number
-  cols?: number
-  className?: string
+  rows?: number;
+  cols?: number;
+  className?: string;
 }) {
   return (
     <div className={cn("overflow-hidden rounded-xl border border-border/50", className)}>
@@ -422,16 +396,22 @@ export function TableSkeleton({
       <div className="divide-y divide-border/50">
         {Array.from({ length: rows }).map((_, r) => (
           <div key={r} className="px-4 py-3">
-            <div className="grid items-center gap-4" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+            <div
+              className="grid items-center gap-4"
+              style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+            >
               {Array.from({ length: cols }).map((_, c) => (
-                <Skeleton key={c} className={cn("h-4", c === 0 ? "w-32" : c === cols - 1 ? "w-12" : "w-20")} />
+                <Skeleton
+                  key={c}
+                  className={cn("h-4", c === 0 ? "w-32" : c === cols - 1 ? "w-12" : "w-20")}
+                />
               ))}
             </div>
           </div>
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 export function EmptyState({
@@ -441,11 +421,11 @@ export function EmptyState({
   action,
   className,
 }: {
-  icon?: LucideIcon
-  title: string
-  description?: string
-  action?: React.ReactNode
-  className?: string
+  icon?: LucideIcon;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  className?: string;
 }) {
   return (
     <div
@@ -459,13 +439,11 @@ export function EmptyState({
       </div>
       <h3 className="mt-4 text-base font-semibold tracking-tight">{title}</h3>
       {description ? (
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          {description}
-        </p>
+        <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
       ) : null}
       {action ? <div className="mt-5">{action}</div> : null}
     </div>
-  )
+  );
 }
 
 export function ErrorState({
@@ -474,10 +452,10 @@ export function ErrorState({
   onRetry,
   className,
 }: {
-  title?: string
-  description?: string
-  onRetry?: () => void
-  className?: string
+  title?: string;
+  description?: string;
+  onRetry?: () => void;
+  className?: string;
 }) {
   return (
     <div
@@ -490,9 +468,7 @@ export function ErrorState({
         <AlertTriangle className="size-6" />
       </div>
       <h3 className="mt-4 text-base font-semibold tracking-tight">{title}</h3>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        {description}
-      </p>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
       {onRetry ? (
         <Button
           variant="outline"
@@ -505,7 +481,7 @@ export function ErrorState({
         </Button>
       ) : null}
     </div>
-  )
+  );
 }
 
 // ===========================================================================
@@ -518,12 +494,12 @@ export function Pagination({
   onPageChange,
   className,
 }: {
-  page: number
-  totalPages: number
-  onPageChange: (page: number) => void
-  className?: string
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  className?: string;
 }) {
-  if (totalPages <= 1) return null
+  if (totalPages <= 1) return null;
   return (
     <div className={cn("mt-4 flex items-center justify-center gap-3", className)}>
       <Button
@@ -549,7 +525,7 @@ export function Pagination({
         Próxima
       </Button>
     </div>
-  )
+  );
 }
 
 export function ResultCount({
@@ -558,22 +534,20 @@ export function ResultCount({
   total,
   label = "resultados",
 }: {
-  page: number
-  limit: number
-  total: number
-  label?: string
+  page: number;
+  limit: number;
+  total: number;
+  label?: string;
 }) {
-  const from = total === 0 ? 0 : (page - 1) * limit + 1
-  const to = Math.min(total, page * limit)
+  const from = total === 0 ? 0 : (page - 1) * limit + 1;
+  const to = Math.min(total, page * limit);
   return (
     <p className="text-xs text-muted-foreground">
-      Exibindo{" "}
-      <span className="font-medium tabular-nums text-foreground">{from}</span>
-      –<span className="font-medium tabular-nums text-foreground">{to}</span>{" "}
-      de <span className="font-medium tabular-nums text-foreground">{total}</span>{" "}
-      {label}
+      Exibindo <span className="font-medium tabular-nums text-foreground">{from}</span>–
+      <span className="font-medium tabular-nums text-foreground">{to}</span> de{" "}
+      <span className="font-medium tabular-nums text-foreground">{total}</span> {label}
     </p>
-  )
+  );
 }
 
 // ===========================================================================
@@ -585,11 +559,11 @@ export function SavingPill({
   label = "Salvando…",
   className,
 }: {
-  saving: boolean
-  label?: string
-  className?: string
+  saving: boolean;
+  label?: string;
+  className?: string;
 }) {
-  if (!saving) return null
+  if (!saving) return null;
   return (
     <span
       className={cn(
@@ -600,7 +574,7 @@ export function SavingPill({
       <Loader2 className="size-3 animate-spin" />
       {label}
     </span>
-  )
+  );
 }
 
 // ===========================================================================
@@ -617,14 +591,14 @@ export function ConfirmDialog({
   onConfirm,
   variant = "default",
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  description?: React.ReactNode
-  confirmLabel?: string
-  cancelLabel?: string
-  onConfirm: () => void
-  variant?: "default" | "destructive"
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  variant?: "default" | "destructive";
 }) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -656,7 +630,7 @@ export function ConfirmDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
+  );
 }
 
 // ===========================================================================
@@ -671,16 +645,16 @@ export function ConfirmToggleDialog({
   currentValue,
   onConfirm,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  targetLabel: string
-  field: "verified" | "active"
-  currentValue: boolean
-  onConfirm: () => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  targetLabel: string;
+  field: "verified" | "active";
+  currentValue: boolean;
+  onConfirm: () => void;
 }) {
-  const action = currentValue ? "remover" : " conceder"
-  const fieldLabel = field === "verified" ? "verificação" : "status ativo"
-  const tone = field === "verified" ? "amber" : "zinc"
+  const action = currentValue ? "remover" : " conceder";
+  const fieldLabel = field === "verified" ? "verificação" : "status ativo";
+  const tone = field === "verified" ? "amber" : "zinc";
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -703,10 +677,9 @@ export function ConfirmToggleDialog({
             {currentValue ? "Remover" : "Conceder"} {fieldLabel}?
           </AlertDialogTitle>
           <AlertDialogDescription className="pt-1">
-            Você está prestes a <strong>{action}</strong> de{" "}
-            <strong>{fieldLabel}</strong> para{" "}
-            <strong>{targetLabel}</strong>. Esta ação pode afetar a experiência
-            do usuário na plataforma.
+            Você está prestes a <strong>{action}</strong> de <strong>{fieldLabel}</strong> para{" "}
+            <strong>{targetLabel}</strong>. Esta ação pode afetar a experiência do usuário na
+            plataforma.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="gap-2 pt-2">
@@ -717,7 +690,7 @@ export function ConfirmToggleDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
+  );
 }
 
 // ===========================================================================
@@ -729,7 +702,7 @@ export function Kbd({ children }: { children: React.ReactNode }) {
     <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-border/60 bg-muted/50 px-1 font-mono text-[10px] font-semibold text-muted-foreground">
       {children}
     </kbd>
-  )
+  );
 }
 
 // ===========================================================================
@@ -740,32 +713,29 @@ export function FreshnessLabel({
   updatedAt,
   className,
 }: {
-  updatedAt?: Date | null
-  className?: string
+  updatedAt?: Date | null;
+  className?: string;
 }) {
-  if (!updatedAt) return null
+  if (!updatedAt) return null;
   return (
     <span
-      className={cn(
-        "inline-flex items-center gap-1 text-xs text-muted-foreground/70",
-        className,
-      )}
+      className={cn("inline-flex items-center gap-1 text-xs text-muted-foreground/70", className)}
       title={`Atualizado em ${updatedAt.toLocaleString("pt-BR")}`}
     >
       <Clock className="size-3" />
       Atualizado {formatRelativeShort(updatedAt)}
     </span>
-  )
+  );
 }
 
 function formatRelativeShort(date: Date): string {
-  const diffMs = Date.now() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return "agora"
-  if (diffMin < 60) return `há ${diffMin} min`
-  const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24) return `há ${diffH}h`
-  const diffD = Math.floor(diffH / 24)
-  if (diffD < 7) return `há ${diffD}d`
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "agora";
+  if (diffMin < 60) return `há ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `há ${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `há ${diffD}d`;
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }

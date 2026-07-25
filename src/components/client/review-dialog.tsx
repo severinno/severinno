@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * ReviewDialog — modal for submitting a review after a service is completed.
@@ -8,13 +8,13 @@
  * queries (so the row updates with the review attached).
  */
 
-import * as React from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Star } from "lucide-react"
-import { toast } from "sonner"
+import * as React from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Star } from "lucide-react";
+import { toast } from "sonner";
 
-import { apiPost } from "@/lib/api"
-import { Button } from "@/components/ui/button"
+import { apiPost } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -22,46 +22,29 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import {
-  StarRatingInput,
-} from "@/components/modals/star-rating"
+} from "@/components/ui/dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { StarRatingInput } from "@/components/modals/star-rating";
 
 export type ReviewDialogProps = {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   booking: {
-    id: string
-    service?: { title?: string } | null
-    provider?: { id?: string; name?: string; avatarUrl?: string | null } | null
-  } | null
-  onSubmitted?: () => void
-}
+    id: string;
+    service?: { title?: string } | null;
+    provider?: { id?: string; name?: string; avatarUrl?: string | null } | null;
+  } | null;
+  onSubmitted?: () => void;
+};
 
-export function ReviewDialog({
-  open,
-  onOpenChange,
-  booking,
-  onSubmitted,
-}: ReviewDialogProps) {
-  const qc = useQueryClient()
-  const [rating, setRating] = React.useState(0)
-  const [comment, setComment] = React.useState("")
+export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: ReviewDialogProps) {
+  const qc = useQueryClient();
+  const [rating, setRating] = React.useState(0);
+  const [comment, setComment] = React.useState("");
 
-  // Reset when the dialog reopens for a different booking
-  React.useEffect(() => {
-    if (open) {
-      setRating(0)
-      setComment("")
-    }
-  }, [open, booking?.id])
+  // Reset: key={String(open)} no Dialog força remount + estado limpo
 
   const submit = useMutation({
     mutationFn: () =>
@@ -71,38 +54,37 @@ export function ReviewDialog({
         comment: comment.trim() || undefined,
       }),
     onSuccess: () => {
-      toast.success("Avaliação enviada. Obrigado pelo seu feedback!")
-      qc.invalidateQueries({ queryKey: ["bookings"] })
-      qc.invalidateQueries({ queryKey: ["reviews"] })
-      qc.invalidateQueries({ queryKey: ["client", "reviews"] })
-      qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
-      onSubmitted?.()
-      onOpenChange(false)
+      toast.success("Avaliação enviada. Obrigado pelo seu feedback!");
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["reviews"] });
+      qc.invalidateQueries({ queryKey: ["client", "reviews"] });
+      qc.invalidateQueries({ queryKey: ["client", "dashboard"] });
+      onSubmitted?.();
+      onOpenChange(false);
     },
     onError: (e: { message?: string }) => {
-      toast.error(e?.message || "Não foi possível enviar sua avaliação.")
+      toast.error(e?.message || "Não foi possível enviar sua avaliação.");
     },
-  })
+  });
 
-  const provider = booking?.provider
+  const provider = booking?.provider;
   const providerInitials = (provider?.name ?? "")
     .split(" ")
     .map((p) => p[0])
     .filter(Boolean)
     .slice(0, 2)
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 
-  const canSubmit = rating >= 1 && !submit.isPending
+  const canSubmit = rating >= 1 && !submit.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog key={String(open)} open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Avaliar serviço</DialogTitle>
           <DialogDescription>
-            Conte como foi sua experiência. Sua avaliação é pública e ajuda
-            outros clientes.
+            Conte como foi sua experiência. Sua avaliação é pública e ajuda outros clientes.
           </DialogDescription>
         </DialogHeader>
 
@@ -111,19 +93,14 @@ export function ReviewDialog({
           <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
             <Avatar className="size-10">
               {provider?.avatarUrl ? (
-                <AvatarImage
-                  src={provider.avatarUrl}
-                  alt={provider.name ?? ""}
-                />
+                <AvatarImage src={provider.avatarUrl} alt={provider.name ?? ""} />
               ) : null}
               <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
                 {providerInitials || "?"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">
-                {provider?.name ?? "Prestador"}
-              </p>
+              <p className="truncate text-sm font-medium">{provider?.name ?? "Prestador"}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {booking?.service?.title ?? "Serviço"}
               </p>
@@ -134,12 +111,7 @@ export function ReviewDialog({
           <div className="space-y-2">
             <Label>Sua nota</Label>
             <div className="flex items-center gap-3 rounded-lg border p-3">
-              <StarRatingInput
-                value={rating}
-                onChange={setRating}
-                size={32}
-                name="rating"
-              />
+              <StarRatingInput value={rating} onChange={setRating} size={32} name="rating" />
               {rating === 0 ? (
                 <span className="ml-auto text-xs text-muted-foreground">
                   Selecione de 1 a 5 estrelas
@@ -171,25 +143,15 @@ export function ReviewDialog({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={submit.isPending}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submit.isPending}>
             Cancelar
           </Button>
-          <Button
-            onClick={() => submit.mutate()}
-            disabled={!canSubmit}
-            className="gap-2"
-          >
-            {submit.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : null}
+          <Button onClick={() => submit.mutate()} disabled={!canSubmit} className="gap-2">
+            {submit.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
             Enviar avaliação
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

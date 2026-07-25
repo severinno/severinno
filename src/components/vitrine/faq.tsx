@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * FAQ — Frequently Asked Questions accordion section.
@@ -16,7 +16,7 @@
  *   H10 Help/documentation           → "Ainda tem dúvidas?" CTA card, contact options, register button
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   HelpCircle,
   Search,
@@ -29,36 +29,36 @@ import {
   X,
   ChevronUp,
   ArrowRight,
-} from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/accordion"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { useScrollReveal } from "@/hooks/use-animation"
-import { useUIStore } from "@/store"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/accordion";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useScrollReveal } from "@/hooks/use-animation";
+import { useUIStore } from "@/store";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // FAQ data — curated for a service marketplace
 // ---------------------------------------------------------------------------
 
-type FAQCategory = "general" | "payment" | "scheduling" | "providers" | "safety"
+type FAQCategory = "general" | "payment" | "scheduling" | "providers" | "safety";
 
 type FAQItem = {
-  id: string
-  question: string
-  answer: string
-  category: FAQCategory
-  example?: string
-  popular?: boolean
-}
+  id: string;
+  question: string;
+  answer: string;
+  category: FAQCategory;
+  example?: string;
+  popular?: boolean;
+};
 
 const FAQS: FAQItem[] = [
   {
@@ -67,7 +67,8 @@ const FAQS: FAQItem[] = [
     question: "Como funciona o Severinno?",
     answer:
       "O Severinno conecta você a prestadores de serviço verificados próximos à sua localização. Você busca o serviço, compara avaliações reais de outros clientes, pede orçamento grátis e agenda — tudo pela plataforma. O pagamento só é liberado após você confirmar a conclusão do serviço.",
-    example: "Ex: Maria precisava de um eletricista. Buscou na plataforma, comparou 3 profissionais e contratou o mais bem avaliado — tudo em 5 minutos.",
+    example:
+      "Ex: Maria precisava de um eletricista. Buscou na plataforma, comparou 3 profissionais e contratou o mais bem avaliado — tudo em 5 minutos.",
     popular: true,
   },
   {
@@ -84,7 +85,8 @@ const FAQS: FAQItem[] = [
     question: "Como os prestadores são verificados?",
     answer:
       "Todos os prestadores passam por um processo de verificação que inclui validação de documento de identidade (RG/CPF/CNPJ), comprovante de endereço e confirmação de telefone. O selo 'Verificado' no perfil indica que essa validação foi concluída. Prestadores não verificados não aparecem na vitrine pública.",
-    example: "Ex: João contratou um encanador e viu o selo de verificação no perfil — sinal de que os documentos foram validados pela equipe.",
+    example:
+      "Ex: João contratou um encanador e viu o selo de verificação no perfil — sinal de que os documentos foram validados pela equipe.",
   },
   {
     id: "faq-4",
@@ -114,7 +116,8 @@ const FAQS: FAQItem[] = [
     question: "Como funciona o pagamento?",
     answer:
       "O pagamento é feito pela plataforma após a conclusão do serviço. Você pode pagar com cartão de crédito, PIX ou boleto. O valor só é repassado ao prestador depois que você marca o serviço como concluído — garantindo sua satisfação.",
-    example: "Ex: Você paga R$ 150 pelo serviço. O valor fica retido até você confirmar que ficou satisfeito. Só então o prestador recebe.",
+    example:
+      "Ex: Você paga R$ 150 pelo serviço. O valor fica retido até você confirmar que ficou satisfeito. Só então o prestador recebe.",
   },
   {
     id: "faq-8",
@@ -138,7 +141,7 @@ const FAQS: FAQItem[] = [
     answer:
       "Sim. Seguimos as diretrizes da LGPD (Lei Geral de Proteção de Dados). Seus dados de contato só são compartilhados com o prestador após a confirmação do agendamento. Não vendemos seus dados a terceiros.",
   },
-]
+];
 
 const CATEGORY_META: Record<
   FAQCategory,
@@ -148,110 +151,108 @@ const CATEGORY_META: Record<
     label: "Geral",
     icon: <HelpCircle className="size-3.5" />,
     color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
   payment: {
     label: "Pagamento",
     icon: <CreditCard className="size-3.5" />,
     color: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
   scheduling: {
     label: "Agendamento",
     icon: <Calendar className="size-3.5" />,
     color: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
   providers: {
     label: "Prestadores",
     icon: <UserCheck className="size-3.5" />,
     color: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
   safety: {
     label: "Segurança",
     icon: <ShieldCheck className="size-3.5" />,
     color: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
-}
+};
 
-const ALL_CATEGORIES: FAQCategory[] = ["general", "payment", "scheduling", "providers", "safety"]
+const ALL_CATEGORIES: FAQCategory[] = ["general", "payment", "scheduling", "providers", "safety"];
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function FAQ() {
-  const [query, setQuery] = React.useState("")
-  const [activeCategory, setActiveCategory] = React.useState<FAQCategory | null>(null)
-  const { ref, visible } = useScrollReveal<HTMLDivElement>()
-  const openAuth = useUIStore((s) => s.openAuth)
+  const [query, setQuery] = React.useState("");
+  const [activeCategory, setActiveCategory] = React.useState<FAQCategory | null>(null);
+  const { ref, visible } = useScrollReveal<HTMLDivElement>();
+  const openAuth = useUIStore((s) => s.openAuth);
 
   const filtered = React.useMemo(() => {
-    let result = FAQS
+    let result = FAQS;
     // Filter by category first
     if (activeCategory) {
-      result = result.filter((f) => f.category === activeCategory)
+      result = result.filter((f) => f.category === activeCategory);
     }
     // Then filter by search query
     if (query.trim()) {
-      const q = query.toLowerCase()
+      const q = query.toLowerCase();
       result = result.filter(
-        (f) =>
-          f.question.toLowerCase().includes(q) ||
-          f.answer.toLowerCase().includes(q),
-      )
+        (f) => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q),
+      );
     }
-    return result
-  }, [query, activeCategory])
+    return result;
+  }, [query, activeCategory]);
 
   // Popular questions for quick links (H6, H7)
-  const popularFaqs = React.useMemo(
-    () => FAQS.filter((f) => f.popular),
-    [],
-  )
+  const popularFaqs = React.useMemo(() => FAQS.filter((f) => f.popular), []);
 
   // Count by category in current filtered set (H1)
   const categoryCounts = React.useMemo(() => {
-    const counts: Partial<Record<FAQCategory, number>> = {}
+    const counts: Partial<Record<FAQCategory, number>> = {};
     for (const cat of ALL_CATEGORIES) {
-      let subset = FAQS.filter((f) => f.category === cat)
+      let subset = FAQS.filter((f) => f.category === cat);
       if (query.trim()) {
-        const q = query.toLowerCase()
+        const q = query.toLowerCase();
         subset = subset.filter(
-          (f) =>
-            f.question.toLowerCase().includes(q) ||
-            f.answer.toLowerCase().includes(q),
-        )
+          (f) => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q),
+        );
       }
-      if (subset.length > 0) counts[cat] = subset.length
+      if (subset.length > 0) counts[cat] = subset.length;
     }
-    return counts
-  }, [query])
+    return counts;
+  }, [query]);
 
   const handleCategoryToggle = (cat: FAQCategory) => {
-    setActiveCategory((prev) => (prev === cat ? null : cat))
-  }
+    setActiveCategory((prev) => (prev === cat ? null : cat));
+  };
 
   const handlePopularClick = (faqId: string) => {
     // Clear filters and scroll to the accordion item
-    setActiveCategory(null)
-    setQuery("")
+    setActiveCategory(null);
+    setQuery("");
     // Small delay to let the accordion render
     setTimeout(() => {
-      const el = document.getElementById(faqId)
+      const el = document.getElementById(faqId);
       if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" })
-        el.click()
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.click();
       }
-    }, 100)
-  }
+    }, 100);
+  };
 
   const handleClearSearch = () => {
-    setQuery("")
-    setActiveCategory(null)
-  }
+    setQuery("");
+    setActiveCategory(null);
+  };
 
   return (
     <section
@@ -263,16 +264,12 @@ export default function FAQ() {
         aria-hidden
         className="absolute inset-0 opacity-[0.03]"
         style={{
-          backgroundImage:
-            "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
+          backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
           backgroundSize: "24px 24px",
         }}
       />
 
-      <div
-        ref={ref}
-        className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
-      >
+      <div ref={ref} className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
           {/* ============ LEFT: heading + search + categories + popular + CTA ============ */}
           <div className="lg:sticky lg:top-24 lg:self-start space-y-6">
@@ -288,13 +285,11 @@ export default function FAQ() {
               </span>
               <h2 className="mt-4 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
                 Tire suas dúvidas antes de{" "}
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  contratar
-                </span>
+                <span className="text-emerald-600 dark:text-emerald-400">contratar</span>
               </h2>
               <p className="mt-3 text-pretty text-muted-foreground">
-                Reunimos as perguntas mais comuns sobre como o Severinno
-                funciona — do cadastro ao pagamento.
+                Reunimos as perguntas mais comuns sobre como o Severinno funciona — do cadastro ao
+                pagamento.
               </p>
             </motion.div>
 
@@ -310,10 +305,7 @@ export default function FAQ() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar nas dúvidas…"
-                className={cn(
-                  "pl-9 pr-10",
-                  query.trim() && "pr-20",
-                )}
+                className={cn("pl-9 pr-10", query.trim() && "pr-20")}
                 aria-label="Buscar nas perguntas frequentes"
               />
               {/* Clear button — H3: user control */}
@@ -345,9 +337,9 @@ export default function FAQ() {
               </p>
               <div className="flex flex-wrap gap-2">
                 {ALL_CATEGORIES.map((cat) => {
-                  const count = categoryCounts[cat]
-                  if (count === undefined) return null
-                  const isActive = activeCategory === cat
+                  const count = categoryCounts[cat];
+                  if (count === undefined) return null;
+                  const isActive = activeCategory === cat;
                   return (
                     <button
                       key={cat}
@@ -366,7 +358,7 @@ export default function FAQ() {
                       {CATEGORY_META[cat].label}
                       <span className="ml-0.5 tabular-nums">({count})</span>
                     </button>
-                  )
+                  );
                 })}
               </div>
             </motion.div>
@@ -410,8 +402,8 @@ export default function FAQ() {
                 <div>
                   <p className="font-semibold">Ainda tem dúvidas?</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Cadastre-se grátis e converse diretamente com prestadores
-                    verificados. Sem compromisso.
+                    Cadastre-se grátis e converse diretamente com prestadores verificados. Sem
+                    compromisso.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
@@ -421,12 +413,7 @@ export default function FAQ() {
                     >
                       Cadastrar grátis
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9 gap-1.5"
-                      asChild
-                    >
+                    <Button variant="outline" size="sm" className="h-9 gap-1.5" asChild>
                       <a href="#faq">
                         <MessageCircle className="size-3.5" />
                         Fale conosco
@@ -455,12 +442,16 @@ export default function FAQ() {
                     Nenhuma dúvida encontrada
                     {query && (
                       <span className="font-normal text-muted-foreground">
-                        {" "}para "{query}"
+                        {" "}
+                        para {"“"}
+                        {query}
+                        {"”"}
                       </span>
                     )}
                   </p>
                   <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                    Tente usar palavras-chave diferentes, navegue pelas categorias acima ou entre em contato com nosso suporte.
+                    Tente usar palavras-chave diferentes, navegue pelas categorias acima ou entre em
+                    contato com nosso suporte.
                   </p>
                   <div className="mt-5 flex flex-wrap justify-center gap-2">
                     <Button
@@ -500,9 +491,7 @@ export default function FAQ() {
                         key={faq.id}
                         id={faq.id}
                         initial={{ opacity: 0, y: 12 }}
-                        animate={
-                          visible ? { opacity: 1, y: 0 } : {}
-                        }
+                        animate={visible ? { opacity: 1, y: 0 } : {}}
                         transition={{ duration: 0.4, delay: idx * 0.05 }}
                       >
                         <AccordionItem
@@ -514,9 +503,7 @@ export default function FAQ() {
                               <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                                 {String(idx + 1).padStart(2, "0")}
                               </span>
-                              <span className="flex-1 text-base font-semibold">
-                                {faq.question}
-                              </span>
+                              <span className="flex-1 text-base font-semibold">{faq.question}</span>
                               <Badge
                                 variant="outline"
                                 className={cn(
@@ -557,8 +544,8 @@ export default function FAQ() {
               <button
                 type="button"
                 onClick={() => {
-                  const section = document.getElementById("faq")
-                  if (section) section.scrollIntoView({ behavior: "smooth" })
+                  const section = document.getElementById("faq");
+                  if (section) section.scrollIntoView({ behavior: "smooth" });
                 }}
                 className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
                 aria-label="Voltar ao topo da seção"
@@ -571,5 +558,5 @@ export default function FAQ() {
         </div>
       </div>
     </section>
-  )
+  );
 }

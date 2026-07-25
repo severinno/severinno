@@ -1,25 +1,26 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Loader2, UploadCloud, X } from "lucide-react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import Image from "next/image";
+import { Loader2, UploadCloud, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type FilePhotosProps = {
   /** Current list of stored photo URLs. */
-  value: string[]
+  value: string[];
   /** Called whenever the URL list changes (after upload or remove). */
-  onChange: (urls: string[]) => void
+  onChange: (urls: string[]) => void;
   /** Max number of photos. Default 4. */
-  max?: number
+  max?: number;
   /** Field label. */
-  label?: string
+  label?: string;
   /** Hint shown under the label. */
-  hint?: string
-  className?: string
-  disabled?: boolean
-}
+  hint?: string;
+  className?: string;
+  disabled?: boolean;
+};
 
-type UploadStatus = "idle" | "uploading" | "error"
+type UploadStatus = "idle" | "uploading" | "error";
 
 /**
  * Reusable photo uploader.
@@ -44,77 +45,75 @@ export function FilePhotos({
   className,
   disabled,
 }: FilePhotosProps) {
-  const inputRef = React.useRef<HTMLInputElement>(null)
-  const [status, setStatus] = React.useState<Record<number, UploadStatus>>(
-    {},
-  )
-  const [error, setError] = React.useState<string | null>(null)
-  const [dragging, setDragging] = React.useState(false)
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [status, setStatus] = React.useState<Record<number, UploadStatus>>({});
+  const [error, setError] = React.useState<string | null>(null);
+  const [dragging, setDragging] = React.useState(false);
 
-  const remaining = Math.max(0, max - value.length)
+  const remaining = Math.max(0, max - value.length);
 
   const upload = React.useCallback(async (file: File) => {
-    const formData = new FormData()
-    formData.append("file", file)
+    const formData = new FormData();
+    formData.append("file", file);
     try {
       const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
         credentials: "same-origin",
-      })
-      const data = await res.json().catch(() => null)
+      });
+      const data = await res.json().catch(() => null);
       if (!res.ok || !data?.url) {
-        throw new Error("URL ausente")
+        throw new Error("URL ausente");
       }
-      return data.url as string
+      return data.url as string;
     } catch {
       // Fallback: use a local object URL so the user still sees a preview.
       // The submit will then send this transitory URL; backend should
       // validate and reject if not absolute.
-      return URL.createObjectURL(file)
+      return URL.createObjectURL(file);
     }
-  }, [])
+  }, []);
 
   const handleFiles = async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return
-    setError(null)
-    const files = Array.from(fileList).slice(0, remaining)
+    if (!fileList || fileList.length === 0) return;
+    setError(null);
+    const files = Array.from(fileList).slice(0, remaining);
     for (let i = 0; i < files.length; i++) {
-      const file = files[i]
+      const file = files[i];
       if (!file.type.startsWith("image/")) {
-        setError("Apenas imagens são permitidas.")
-        continue
+        setError("Apenas imagens são permitidas.");
+        continue;
       }
       if (file.size > 5 * 1024 * 1024) {
-        setError("Cada imagem deve ter no máximo 5 MB.")
-        continue
+        setError("Cada imagem deve ter no máximo 5 MB.");
+        continue;
       }
-      setStatus((s) => ({ ...s, [i]: "uploading" }))
+      setStatus((s) => ({ ...s, [i]: "uploading" }));
       try {
-        const url = await upload(file)
-        onChange([...value, url])
-        setStatus((s) => ({ ...s, [i]: "idle" }))
+        const url = await upload(file);
+        onChange([...value, url]);
+        setStatus((s) => ({ ...s, [i]: "idle" }));
       } catch {
-        setStatus((s) => ({ ...s, [i]: "error" }))
-        setError("Falha ao enviar uma das imagens. Tente novamente.")
+        setStatus((s) => ({ ...s, [i]: "error" }));
+        setError("Falha ao enviar uma das imagens. Tente novamente.");
       }
     }
-    if (inputRef.current) inputRef.current.value = ""
-  }
+    if (inputRef.current) inputRef.current.value = "";
+  };
 
   const removeAt = (index: number) => {
-    const next = value.filter((_, i) => i !== index)
-    onChange(next)
-  }
+    const next = value.filter((_, i) => i !== index);
+    onChange(next);
+  };
 
-  const isUploading = Object.values(status).some((s) => s === "uploading")
+  const isUploading = Object.values(status).some((s) => s === "uploading");
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    setDragging(false)
-    if (disabled || isUploading || remaining <= 0) return
-    handleFiles(e.dataTransfer.files)
-  }
+    e.preventDefault();
+    setDragging(false);
+    if (disabled || isUploading || remaining <= 0) return;
+    handleFiles(e.dataTransfer.files);
+  };
 
   return (
     <div className={cn("grid gap-2", className)}>
@@ -136,13 +135,13 @@ export function FilePhotos({
           onClick={() => inputRef.current?.click()}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault()
-              inputRef.current?.click()
+              e.preventDefault();
+              inputRef.current?.click();
             }
           }}
           onDragOver={(e) => {
-            e.preventDefault()
-            if (!disabled && !isUploading) setDragging(true)
+            e.preventDefault();
+            if (!disabled && !isUploading) setDragging(true);
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
@@ -161,12 +160,8 @@ export function FilePhotos({
           ) : (
             <UploadCloud className="size-5 text-muted-foreground" />
           )}
-          <p className="text-sm font-medium">
-            Arraste imagens ou clique para enviar
-          </p>
-          <p className="text-xs text-muted-foreground">
-            JPG, PNG ou WebP · até 5 MB cada
-          </p>
+          <p className="text-sm font-medium">Arraste imagens ou clique para enviar</p>
+          <p className="text-xs text-muted-foreground">JPG, PNG ou WebP · até 5 MB cada</p>
         </div>
       )}
 
@@ -178,12 +173,12 @@ export function FilePhotos({
               key={url + i}
               className="group relative aspect-square overflow-hidden rounded-lg border bg-muted"
             >
-              {/* img element used intentionally for runtime-provided URLs */}
-              <img
+              <Image
                 src={url}
                 alt={`Foto ${i + 1}`}
-                className="size-full object-cover"
-                loading="lazy"
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 25vw, 200px"
               />
               <button
                 type="button"
@@ -211,5 +206,5 @@ export function FilePhotos({
         disabled={disabled || isUploading || remaining <= 0}
       />
     </div>
-  )
+  );
 }

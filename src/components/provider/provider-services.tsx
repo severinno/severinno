@@ -1,10 +1,11 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useForm, useWatch, type Resolver } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { toast } from "sonner"
+import * as React from "react";
+import Image from "next/image";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useForm, useWatch, type Resolver } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import {
   ChevronRight,
   Pencil,
@@ -14,17 +15,13 @@ import {
   Trash2,
   Wrench,
   AlertTriangle,
-} from "lucide-react"
+} from "lucide-react";
 
-import { apiDelete, apiGet, apiPatch, apiPost, type Category } from "@/lib/api"
-import {
-  SERVICE_UNITS,
-  SERVICE_UNIT_LABELS,
-  type ServiceUnit,
-} from "@/lib/constants"
-import { serviceSchema, type ServiceInput } from "@/lib/validators"
-import { formatBRL } from "@/lib/format"
-import { cn } from "@/lib/utils"
+import { apiDelete, apiGet, apiPatch, apiPost, type Category } from "@/lib/api";
+import { SERVICE_UNITS, SERVICE_UNIT_LABELS, type ServiceUnit } from "@/lib/constants";
+import { serviceSchema, type ServiceInput } from "@/lib/validators";
+import { formatBRL } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 import {
   AlertDialog,
@@ -35,9 +32,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -45,7 +42,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -54,61 +51,56 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import { FilePhotos } from "@/components/modals/file-photos"
-import { useAuthStore } from "@/store/auth"
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { FilePhotos } from "@/components/modals/file-photos";
+import { useAuthStore } from "@/store/auth";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type ServiceCategory = Category & { parentId?: string | null }
+type ServiceCategory = Category & { parentId?: string | null };
 
 type ProviderService = {
-  id: string
-  providerId: string
-  categoryId: string
-  title: string
-  description: string
-  basePrice: number
-  unit: ServiceUnit
-  photos: string[]
-  active: boolean
-  createdAt: string
-  updatedAt: string
-  category?: ServiceCategory | null
-}
+  id: string;
+  providerId: string;
+  categoryId: string;
+  title: string;
+  description: string;
+  basePrice: number;
+  unit: ServiceUnit;
+  photos: string[];
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  category?: ServiceCategory | null;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function categoryPathChips(
-  cat: ServiceCategory | null | undefined,
-  all: Category[],
-): Category[] {
-  if (!cat) return []
-  const chain: Category[] = []
-  let current: Category | undefined = cat
-  const guard = new Set<string>()
+function categoryPathChips(cat: ServiceCategory | null | undefined, all: Category[]): Category[] {
+  if (!cat) return [];
+  const chain: Category[] = [];
+  let current: Category | undefined = cat;
+  const guard = new Set<string>();
   while (current && !guard.has(current.id)) {
-    guard.add(current.id)
-    chain.unshift(current)
-    current = current.parentId
-      ? all.find((c) => c.id === current?.parentId)
-      : undefined
+    guard.add(current.id);
+    chain.unshift(current);
+    current = current.parentId ? all.find((c) => c.id === current?.parentId) : undefined;
   }
-  return chain
+  return chain;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,35 +113,32 @@ function ServiceFormDialog({
   service,
   categories,
 }: {
-  open: boolean
-  onOpenChange: (v: boolean) => void
-  service: ProviderService | null
-  categories: Category[]
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  service: ProviderService | null;
+  categories: Category[];
 }) {
-  const isEdit = !!service
-  const qc = useQueryClient()
+  const isEdit = !!service;
+  const qc = useQueryClient();
 
   // 3-level cascade selection
-  const [parentCatId, setParentCatId] = React.useState<string>("")
-  const [childCatId, setChildCatId] = React.useState<string>("")
-  const [subCatId, setSubCatId] = React.useState<string>("")
-  const [photos, setPhotos] = React.useState<string[]>([])
+  const [parentCatId, setParentCatId] = React.useState<string>("");
+  const [childCatId, setChildCatId] = React.useState<string>("");
+  const [subCatId, setSubCatId] = React.useState<string>("");
+  const [photos, setPhotos] = React.useState<string[]>([]);
 
   // Level-0 categories (pais)
-  const level0 = React.useMemo(
-    () => categories.filter((c) => c.level === 0),
-    [categories],
-  )
+  const level0 = React.useMemo(() => categories.filter((c) => c.level === 0), [categories]);
   // Level-1 (filhas) given selected pai
   const level1 = React.useMemo(
     () => categories.filter((c) => c.level === 1 && c.parentId === parentCatId),
     [categories, parentCatId],
-  )
+  );
   // Level-2 (subcategorias) given selected filha
   const level2 = React.useMemo(
     () => categories.filter((c) => c.level === 2 && c.parentId === childCatId),
     [categories, childCatId],
-  )
+  );
 
   const form = useForm<ServiceInput>({
     resolver: zodResolver(serviceSchema) as unknown as Resolver<ServiceInput>,
@@ -162,25 +151,21 @@ function ServiceFormDialog({
       photos: [],
       active: true,
     },
-  })
+  });
 
   // Hydrate form when editing
   React.useEffect(() => {
-    if (!open) return
+    if (!open) return;
     if (service) {
       // Find category and walk up to determine pai → filha → sub
-      const sub = categories.find((c) => c.id === service.categoryId)
-      const filha = sub?.parentId
-        ? categories.find((c) => c.id === sub?.parentId)
-        : null
-      const pai = filha?.parentId
-        ? categories.find((c) => c.id === filha?.parentId)
-        : null
+      const sub = categories.find((c) => c.id === service.categoryId);
+      const filha = sub?.parentId ? categories.find((c) => c.id === sub?.parentId) : null;
+      const pai = filha?.parentId ? categories.find((c) => c.id === filha?.parentId) : null;
 
-      setParentCatId(pai?.id ?? "")
-      setChildCatId(filha?.id ?? "")
-      setSubCatId(sub?.id ?? service.categoryId)
-      setPhotos(service.photos ?? [])
+      setParentCatId(pai?.id ?? "");
+      setChildCatId(filha?.id ?? "");
+      setSubCatId(sub?.id ?? service.categoryId);
+      setPhotos(service.photos ?? []);
       form.reset({
         title: service.title,
         description: service.description,
@@ -189,12 +174,12 @@ function ServiceFormDialog({
         unit: service.unit as ServiceUnit,
         photos: service.photos ?? [],
         active: service.active,
-      })
+      });
     } else {
-      setParentCatId("")
-      setChildCatId("")
-      setSubCatId("")
-      setPhotos([])
+      setParentCatId("");
+      setChildCatId("");
+      setSubCatId("");
+      setPhotos([]);
       form.reset({
         title: "",
         description: "",
@@ -203,58 +188,55 @@ function ServiceFormDialog({
         unit: "UNIDADE",
         photos: [],
         active: true,
-      })
+      });
     }
-  }, [open, service, categories, form])
+  }, [open, service, categories, form]);
 
   // Keep form's categoryId in sync with subCatId
   React.useEffect(() => {
-    form.setValue("categoryId", subCatId)
-  }, [subCatId, form])
+    form.setValue("categoryId", subCatId);
+  }, [subCatId, form]);
 
   // Keep form's photos in sync
   React.useEffect(() => {
-    form.setValue("photos", photos)
-  }, [photos, form])
+    form.setValue("photos", photos);
+  }, [photos, form]);
 
   const submit = form.handleSubmit(async (values) => {
     if (!subCatId) {
-      toast.error("Selecione a subcategoria do serviço.")
-      return
+      toast.error("Selecione a subcategoria do serviço.");
+      return;
     }
     try {
       const payload = {
         ...values,
         categoryId: subCatId,
         photos,
-      }
+      };
       if (isEdit && service) {
-        await apiPatch(`/api/services/${service.id}`, payload)
-        toast.success("Serviço atualizado com sucesso.")
+        await apiPatch(`/api/services/${service.id}`, payload);
+        toast.success("Serviço atualizado com sucesso.");
       } else {
-        await apiPost("/api/services", payload)
-        toast.success("Serviço criado com sucesso.")
+        await apiPost("/api/services", payload);
+        toast.success("Serviço criado com sucesso.");
       }
-      qc.invalidateQueries({ queryKey: ["provider", "services"] })
-      onOpenChange(false)
+      qc.invalidateQueries({ queryKey: ["provider", "services"] });
+      onOpenChange(false);
     } catch (e) {
-      const err = e as { message?: string }
-      toast.error(err?.message ?? "Erro ao salvar serviço.")
+      const err = e as { message?: string };
+      toast.error(err?.message ?? "Erro ao salvar serviço.");
     }
-  })
+  });
 
-  const watchedPrice = useWatch({ control: form.control, name: "basePrice" })
-  const currentPrice = service?.basePrice ?? 0
-  const priceLowerThanCurrent =
-    isEdit && Number(watchedPrice) < currentPrice
+  const watchedPrice = useWatch({ control: form.control, name: "basePrice" });
+  const currentPrice = service?.basePrice ?? 0;
+  const priceLowerThanCurrent = isEdit && Number(watchedPrice) < currentPrice;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? "Editar serviço" : "Novo serviço"}
-          </DialogTitle>
+          <DialogTitle>{isEdit ? "Editar serviço" : "Novo serviço"}</DialogTitle>
           <DialogDescription>
             {isEdit
               ? "Atualize as informações do seu serviço."
@@ -276,9 +258,9 @@ function ServiceFormDialog({
                   placeholder="Selecione…"
                   value={parentCatId}
                   onChange={(v) => {
-                    setParentCatId(v)
-                    setChildCatId("")
-                    setSubCatId("")
+                    setParentCatId(v);
+                    setChildCatId("");
+                    setSubCatId("");
                   }}
                   options={level0}
                 />
@@ -287,8 +269,8 @@ function ServiceFormDialog({
                   placeholder={parentCatId ? "Selecione…" : "—"}
                   value={childCatId}
                   onChange={(v) => {
-                    setChildCatId(v)
-                    setSubCatId("")
+                    setChildCatId(v);
+                    setSubCatId("");
                   }}
                   options={level1}
                   disabled={!parentCatId}
@@ -311,11 +293,7 @@ function ServiceFormDialog({
                 <FormItem>
                   <FormLabel>Título</FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder="Ex.: Instalação de tomadas"
-                      maxLength={80}
-                      {...field}
-                    />
+                    <Input placeholder="Ex.: Instalação de tomadas" maxLength={80} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -336,9 +314,7 @@ function ServiceFormDialog({
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>
-                    Mínimo 10 caracteres. Máximo 1200.
-                  </FormDescription>
+                  <FormDescription>Mínimo 10 caracteres. Máximo 1200.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -358,26 +334,20 @@ function ServiceFormDialog({
                         min={0}
                         {...field}
                         value={field.value ?? 0}
-                        onChange={(e) =>
-                          field.onChange(Number(e.target.value))
-                        }
+                        onChange={(e) => field.onChange(Number(e.target.value))}
                       />
                     </FormControl>
                     {isEdit ? (
                       <FormDescription>
-                        Preço atual: {formatBRL(currentPrice)}. Só é permitido
-                        reajustar para cima.
+                        Preço atual: {formatBRL(currentPrice)}. Só é permitido reajustar para cima.
                       </FormDescription>
                     ) : (
-                      <FormDescription>
-                        Preço mínimo sugerido para seus clientes.
-                      </FormDescription>
+                      <FormDescription>Preço mínimo sugerido para seus clientes.</FormDescription>
                     )}
                     {priceLowerThanCurrent && (
                       <p className="flex items-center gap-1 text-xs text-destructive">
-                        <AlertTriangle className="size-3" />
-                        O novo preço é menor que o atual e será recusado pelo
-                        servidor.
+                        <AlertTriangle className="size-3" />O novo preço é menor que o atual e será
+                        recusado pelo servidor.
                       </p>
                     )}
                     <FormMessage />
@@ -391,10 +361,7 @@ function ServiceFormDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unidade</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione…" />
@@ -426,10 +393,7 @@ function ServiceFormDialog({
                     </FormDescription>
                   </div>
                   <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
                 </FormItem>
               )}
@@ -444,18 +408,12 @@ function ServiceFormDialog({
             />
 
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  !subCatId || priceLowerThanCurrent || form.formState.isSubmitting
-                }
+                disabled={!subCatId || priceLowerThanCurrent || form.formState.isSubmitting}
               >
                 {form.formState.isSubmitting ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />
@@ -467,7 +425,7 @@ function ServiceFormDialog({
         </Form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function CategorySelect({
@@ -478,23 +436,17 @@ function CategorySelect({
   options,
   disabled,
 }: {
-  label: string
-  placeholder: string
-  value: string
-  onChange: (v: string) => void
-  options: Category[]
-  disabled?: boolean
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Category[];
+  disabled?: boolean;
 }) {
   return (
     <div className="grid gap-1.5">
-      <label className="text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
-      <Select
-        value={value}
-        onValueChange={onChange}
-        disabled={disabled || options.length === 0}
-      >
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <Select value={value} onValueChange={onChange} disabled={disabled || options.length === 0}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
@@ -507,7 +459,7 @@ function CategorySelect({
         </SelectContent>
       </Select>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -519,28 +471,28 @@ function DeleteServiceDialog({
   open,
   onOpenChange,
 }: {
-  service: ProviderService | null
-  open: boolean
-  onOpenChange: (v: boolean) => void
+  service: ProviderService | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
 }) {
-  const qc = useQueryClient()
-  const [loading, setLoading] = React.useState(false)
+  const qc = useQueryClient();
+  const [loading, setLoading] = React.useState(false);
 
   const confirm = async () => {
-    if (!service) return
-    setLoading(true)
+    if (!service) return;
+    setLoading(true);
     try {
-      await apiDelete(`/api/services/${service.id}`)
-      toast.success("Serviço excluído.")
-      qc.invalidateQueries({ queryKey: ["provider", "services"] })
-      onOpenChange(false)
+      await apiDelete(`/api/services/${service.id}`);
+      toast.success("Serviço excluído.");
+      qc.invalidateQueries({ queryKey: ["provider", "services"] });
+      onOpenChange(false);
     } catch (e) {
-      const err = e as { message?: string }
-      toast.error(err?.message ?? "Erro ao excluir serviço.")
+      const err = e as { message?: string };
+      toast.error(err?.message ?? "Erro ao excluir serviço.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -549,8 +501,8 @@ function DeleteServiceDialog({
           <AlertDialogTitle>Excluir serviço?</AlertDialogTitle>
           <AlertDialogDescription>
             Tem certeza que deseja excluir{" "}
-            <strong className="text-foreground">{service?.title}</strong>?
-            Esta ação não pode ser desfeita.
+            <strong className="text-foreground">{service?.title}</strong>? Esta ação não pode ser
+            desfeita.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -570,7 +522,7 @@ function DeleteServiceDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -585,24 +537,25 @@ function ServiceCard({
   onToggleActive,
   toggling,
 }: {
-  service: ProviderService
-  categories: Category[]
-  onEdit: () => void
-  onDelete: () => void
-  onToggleActive: () => void
-  toggling: boolean
+  service: ProviderService;
+  categories: Category[];
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggleActive: () => void;
+  toggling: boolean;
 }) {
-  const photo = service.photos?.[0]
-  const chips = categoryPathChips(service.category, categories)
+  const photo = service.photos?.[0];
+  const chips = categoryPathChips(service.category, categories);
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md">
       <div className="relative aspect-video w-full overflow-hidden bg-muted">
         {photo ? (
-          <img
+          <Image
             src={photo}
             alt={service.title}
-            className="size-full object-cover"
-            loading="lazy"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
         ) : (
           <div className="flex size-full items-center justify-center bg-muted text-muted-foreground">
@@ -624,18 +577,14 @@ function ServiceCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-4">
-        <p className="line-clamp-2 text-sm font-semibold leading-tight">
-          {service.title}
-        </p>
+        <p className="line-clamp-2 text-sm font-semibold leading-tight">{service.title}</p>
 
         {chips.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
             {chips.map((c, i) => (
               <span key={c.id} className="inline-flex items-center gap-1">
                 {i > 0 && <ChevronRight className="size-2.5" />}
-                <span className="rounded bg-muted px-1.5 py-0.5 font-medium">
-                  {c.name}
-                </span>
+                <span className="rounded bg-muted px-1.5 py-0.5 font-medium">{c.name}</span>
               </span>
             ))}
           </div>
@@ -646,7 +595,8 @@ function ServiceCard({
             {formatBRL(service.basePrice)}
           </span>
           <span className="text-xs text-muted-foreground">
-            {" "}/ {SERVICE_UNIT_LABELS[service.unit]}
+            {" "}
+            / {SERVICE_UNIT_LABELS[service.unit]}
           </span>
         </p>
 
@@ -684,7 +634,7 @@ function ServiceCard({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -692,75 +642,75 @@ function ServiceCard({
 // ---------------------------------------------------------------------------
 
 export function ProviderServices() {
-  const user = useAuthStore((s) => s.user)
-  const qc = useQueryClient()
-  const [search, setSearch] = React.useState("")
-  const [dialogOpen, setDialogOpen] = React.useState(false)
-  const [editing, setEditing] = React.useState<ProviderService | null>(null)
-  const [deleting, setDeleting] = React.useState<ProviderService | null>(null)
-  const [deleteOpen, setDeleteOpen] = React.useState(false)
-  const [togglingId, setTogglingId] = React.useState<string | null>(null)
+  const user = useAuthStore((s) => s.user);
+  const qc = useQueryClient();
+  const [search, setSearch] = React.useState("");
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState<ProviderService | null>(null);
+  const [deleting, setDeleting] = React.useState<ProviderService | null>(null);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [togglingId, setTogglingId] = React.useState<string | null>(null);
 
   const servicesQuery = useQuery<ProviderService[]>({
     queryKey: ["provider", "services", user?.id],
     queryFn: async () => {
-      if (!user) return []
+      if (!user) return [];
       return apiGet<ProviderService[]>("/api/services", {
         providerId: user.id,
-      })
+      });
     },
     enabled: !!user,
-  })
+  });
 
   const categoriesQuery = useQuery<Category[]>({
     queryKey: ["categories", "all"],
     queryFn: async () => apiGet<Category[]>("/api/categories"),
     staleTime: 5 * 60 * 1000,
-  })
+  });
 
-  const services = servicesQuery.data ?? []
+  const services = React.useMemo(() => servicesQuery.data ?? [], [servicesQuery.data]);
   const filtered = React.useMemo(() => {
-    if (!search.trim()) return services
-    const q = search.toLowerCase()
+    if (!search.trim()) return services;
+    const q = search.toLowerCase();
     return services.filter(
       (s) =>
         s.title.toLowerCase().includes(q) ||
         s.description?.toLowerCase().includes(q) ||
         s.category?.name?.toLowerCase().includes(q),
-    )
-  }, [services, search])
+    );
+  }, [services, search]);
 
   const openNew = () => {
-    setEditing(null)
-    setDialogOpen(true)
-  }
+    setEditing(null);
+    setDialogOpen(true);
+  };
 
   const openEdit = (s: ProviderService) => {
-    setEditing(s)
-    setDialogOpen(true)
-  }
+    setEditing(s);
+    setDialogOpen(true);
+  };
 
   const openDelete = (s: ProviderService) => {
-    setDeleting(s)
-    setDeleteOpen(true)
-  }
+    setDeleting(s);
+    setDeleteOpen(true);
+  };
 
   const toggleActive = async (s: ProviderService) => {
-    setTogglingId(s.id)
+    setTogglingId(s.id);
     try {
-      await apiPatch(`/api/services/${s.id}`, { active: !s.active })
-      qc.invalidateQueries({ queryKey: ["provider", "services", user?.id] })
-      toast.success(s.active ? "Serviço desativado." : "Serviço ativado.")
+      await apiPatch(`/api/services/${s.id}`, { active: !s.active });
+      qc.invalidateQueries({ queryKey: ["provider", "services", user?.id] });
+      toast.success(s.active ? "Serviço desativado." : "Serviço ativado.");
     } catch (e) {
-      const err = e as { message?: string }
-      toast.error(err?.message ?? "Erro ao atualizar serviço.")
+      const err = e as { message?: string };
+      toast.error(err?.message ?? "Erro ao atualizar serviço.");
     } finally {
-      setTogglingId(null)
+      setTogglingId(null);
     }
-  }
+  };
 
-  const totalActive = services.filter((s) => s.active).length
-  const totalInactive = services.length - totalActive
+  const totalActive = services.filter((s) => s.active).length;
+  const totalInactive = services.length - totalActive;
 
   return (
     <div className="grid gap-6">
@@ -785,10 +735,7 @@ export function ProviderServices() {
         <p className="text-xs text-muted-foreground tabular-nums">
           {filtered.length} serviço{filtered.length === 1 ? "" : "s"}
         </p>
-        <Button
-          onClick={openNew}
-          className="ml-auto gap-1.5"
-        >
+        <Button onClick={openNew} className="ml-auto gap-1.5">
           <Plus className="size-4" /> Novo serviço
         </Button>
       </div>
@@ -797,10 +744,7 @@ export function ProviderServices() {
       {servicesQuery.isLoading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-64 animate-pulse rounded-xl border bg-muted/30"
-            />
+            <div key={i} className="h-64 animate-pulse rounded-xl border bg-muted/30" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -810,9 +754,7 @@ export function ProviderServices() {
           </div>
           <div>
             <p className="text-sm font-semibold">
-              {search
-                ? "Nenhum serviço encontrado"
-                : "Você ainda não tem serviços cadastrados"}
+              {search ? "Nenhum serviço encontrado" : "Você ainda não tem serviços cadastrados"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               {search
@@ -849,13 +791,9 @@ export function ProviderServices() {
         categories={categoriesQuery.data ?? []}
       />
 
-      <DeleteServiceDialog
-        service={deleting}
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-      />
+      <DeleteServiceDialog service={deleting} open={deleteOpen} onOpenChange={setDeleteOpen} />
     </div>
-  )
+  );
 }
 
 function SummaryCard({
@@ -863,15 +801,13 @@ function SummaryCard({
   value,
   accent,
 }: {
-  label: string
-  value: number
-  accent?: "emerald"
+  label: string;
+  value: number;
+  accent?: "emerald";
 }) {
   return (
     <div className="rounded-xl border bg-card p-4">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground">
-        {label}
-      </p>
+      <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
       <p
         className={cn(
           "mt-1 text-2xl font-bold tabular-nums",
@@ -881,7 +817,7 @@ function SummaryCard({
         {value}
       </p>
     </div>
-  )
+  );
 }
 
-export default ProviderServices
+export default ProviderServices;

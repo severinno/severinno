@@ -3,6 +3,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
+// Entirely SPA — no page is statically generated; client hooks (
+// useSyncExternalStore, useAuthStore, etc.) require a browser runtime.
+export const dynamic = "force-dynamic";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -37,8 +41,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Severinno Marketplace",
-    description:
-      "Encontre prestadores de serviço verificados, com base na sua localização.",
+    description: "Encontre prestadores de serviço verificados, com base na sua localização.",
     siteName: "Severinno",
     locale: "pt_BR",
     type: "website",
@@ -46,8 +49,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Severinno Marketplace",
-    description:
-      "Encontre prestadores de serviço verificados, com base na sua localização.",
+    description: "Encontre prestadores de serviço verificados, com base na sua localização.",
   },
 };
 

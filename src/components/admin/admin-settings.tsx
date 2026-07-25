@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AdminSettings — editor dinâmico de configurações (console tipo .env).
@@ -20,7 +20,7 @@
  * (NÃO há endpoint DELETE no MVP — admin limpa o valor para desativar.)
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   Save,
   Plus,
@@ -41,18 +41,15 @@ import {
   EyeOff,
   Lock,
   type LucideIcon,
-} from "lucide-react"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+} from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-import { apiGet, apiPost } from "@/lib/api"
-import { cn } from "@/lib/utils"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { apiGet, apiPost } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -60,16 +57,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { formatDate } from "@/lib/format"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatDate } from "@/lib/format";
 
 import {
   PageSectionHeader,
@@ -80,22 +73,22 @@ import {
   EmptyState,
   errMsg,
   type StatusTone,
-} from "@/components/admin/admin-shared"
+} from "@/components/admin/admin-shared";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type Setting = {
-  id?: string
-  key: string
-  value: string
-  updatedAt?: string
-}
+  id?: string;
+  key: string;
+  value: string;
+  updatedAt?: string;
+};
 
 type SettingsResponse = {
-  items: Setting[]
-  total: number
-}
+  items: Setting[];
+  total: number;
+};
 
 // ---------------------------------------------------------------------------
 // SETTING_HELP — H10: descrições curtas p/ chaves com prefixo conhecido.
@@ -137,95 +130,90 @@ const SETTING_HELP: Record<string, string> = {
   WEATHER_API_URL: "URL base da API de clima.",
   SERVER_PORT: "Porta em que o servidor Next.js escuta.",
   SERVER_NODE_ENV: "Ambiente (development, production, test).",
-}
+};
 
 function lookupHelp(key: string): string | null {
-  if (SETTING_HELP[key]) return SETTING_HELP[key]
-  const upper = key.toUpperCase()
+  if (SETTING_HELP[key]) return SETTING_HELP[key];
+  const upper = key.toUpperCase();
   // Heurísticas por prefixo
-  if (upper.startsWith("PAYMENT_"))
-    return "Configuração relacionada ao gateway de pagamento."
-  if (upper.startsWith("SMTP_"))
-    return "Configuração do servidor de envio de e-mails (SMTP)."
-  if (upper.startsWith("EMAIL_"))
-    return "Configuração de remetente e provedor de e-mail."
+  if (upper.startsWith("PAYMENT_")) return "Configuração relacionada ao gateway de pagamento.";
+  if (upper.startsWith("SMTP_")) return "Configuração do servidor de envio de e-mails (SMTP).";
+  if (upper.startsWith("EMAIL_")) return "Configuração de remetente e provedor de e-mail.";
   if (upper.startsWith("NOMINATIM_") || upper.startsWith("GEO_"))
-    return "Configuração de geolocalização (endereço, CEP, mapa)."
-  if (upper.startsWith("SITE_"))
-    return "Configuração geral do site (branding, URL, nome)."
-  if (upper.startsWith("SUPPORT_"))
-    return "Canal de atendimento/suporte ao cliente."
-  if (upper.startsWith("WEATHER_"))
-    return "Integração com serviço de previsão do tempo."
-  return null
+    return "Configuração de geolocalização (endereço, CEP, mapa).";
+  if (upper.startsWith("SITE_")) return "Configuração geral do site (branding, URL, nome).";
+  if (upper.startsWith("SUPPORT_")) return "Canal de atendimento/suporte ao cliente.";
+  if (upper.startsWith("WEATHER_")) return "Integração com serviço de previsão do tempo.";
+  return null;
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 export function AdminSettings() {
-  const queryClient = useQueryClient()
-  const [createOpen, setCreateOpen] = React.useState(false)
-  const [draft, setDraft] = React.useState<Record<string, string>>({})
-  const [dirty, setDirty] = React.useState<Set<string>>(new Set())
+  const queryClient = useQueryClient();
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState<Record<string, string>>({});
+  const [dirty, setDirty] = React.useState<Set<string>>(new Set());
   // H3 — pilha de edições (para "Desfazer" reversível por campo)
-  const [editHistory, setEditHistory] = React.useState<string[]>([])
+  const [editHistory, setEditHistory] = React.useState<string[]>([]);
   // H5 — chaves reveladas (segredos)
-  const [revealedKeys, setRevealedKeys] = React.useState<Set<string>>(new Set())
+  const [revealedKeys, setRevealedKeys] = React.useState<Set<string>>(new Set());
   // H7 — busca por chave
-  const [query, setQuery] = React.useState("")
-  // H1 — última atualização
-  const [lastFetched, setLastFetched] = React.useState<Date | null>(null)
+  const [query, setQuery] = React.useState("");
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["admin", "settings"],
     queryFn: () => apiGet<SettingsResponse>("/api/admin/settings"),
     staleTime: 30_000,
-  })
+  });
 
-  // H1 — sincroniza freshness label
-  React.useEffect(() => {
-    if (dataUpdatedAt) setLastFetched(new Date(dataUpdatedAt))
-  }, [dataUpdatedAt])
+  const items = React.useMemo(() => data?.items ?? [], [data]);
 
-  const items = data?.items ?? []
+  // H1 — última atualização (derivado de dataUpdatedAt, sem useEffect)
+  const lastFetched = React.useMemo(
+    () => (dataUpdatedAt ? new Date(dataUpdatedAt) : null),
+    [dataUpdatedAt],
+  );
 
   // Group by prefix (first segment before "_"); fallback to "Geral"
   const groups = React.useMemo(() => {
-    const map = new Map<string, Setting[]>()
+    const map = new Map<string, Setting[]>();
     for (const s of items) {
-      const idx = s.key.indexOf("_")
-      const group = idx > 0 ? s.key.slice(0, idx) : "Geral"
-      const arr = map.get(group) ?? []
-      arr.push(s)
-      map.set(group, arr)
+      const idx = s.key.indexOf("_");
+      const group = idx > 0 ? s.key.slice(0, idx) : "Geral";
+      const arr = map.get(group) ?? [];
+      arr.push(s);
+      map.set(group, arr);
     }
     // Sort groups alphabetically, but keep "Geral" last
     return Array.from(map.entries()).sort((a, b) => {
-      if (a[0] === "Geral") return 1
-      if (b[0] === "Geral") return -1
-      return a[0].localeCompare(b[0])
-    })
-  }, [items])
+      if (a[0] === "Geral") return 1;
+      if (b[0] === "Geral") return -1;
+      return a[0].localeCompare(b[0]);
+    });
+  }, [items]);
 
   // H7 — quando buscando, lista flat filtrada por chave (case-insensitive)
   const flatFiltered = React.useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return null
-    return items.filter((s) => s.key.toLowerCase().includes(q))
-  }, [items, query])
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    return items.filter((s) => s.key.toLowerCase().includes(q));
+  }, [items, query]);
 
-  // Initialize draft when items arrive
+  // Initialize draft when items arrive (preserves existing user edits)
+  const initializedFromServer = React.useRef(false);
   React.useEffect(() => {
-    if (items.length === 0) return
+    if (items.length === 0 || initializedFromServer.current) return;
+    initializedFromServer.current = true;
     setDraft((prev) => {
-      const next: Record<string, string> = { ...prev }
+      const next: Record<string, string> = { ...prev };
       for (const s of items) {
-        if (!(s.key in next)) next[s.key] = s.value
+        if (!(s.key in next)) next[s.key] = s.value;
       }
-      return next
-    })
-  }, [items])
+      return next;
+    });
+  }, [items]);
 
   const upsertMutation = useMutation({
     mutationFn: (settings: Array<{ key: string; value: string }>) =>
@@ -235,14 +223,13 @@ export function AdminSettings() {
         vars.length === 1
           ? `Configuração "${vars[0].key}" salva.`
           : `${vars.length} configurações salvas.`,
-      )
-      setDirty(new Set())
-      setEditHistory([])
-      queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
+      );
+      setDirty(new Set());
+      setEditHistory([]);
+      queryClient.invalidateQueries({ queryKey: ["admin", "settings"] });
     },
-    onError: (e: unknown) =>
-      toast.error(errMsg(e, "Não foi possível salvar as configurações.")),
-  })
+    onError: (e: unknown) => toast.error(errMsg(e, "Não foi possível salvar as configurações.")),
+  });
 
   const createMutation = useMutation({
     mutationFn: (setting: { key: string; value: string }) =>
@@ -250,86 +237,81 @@ export function AdminSettings() {
         settings: [setting],
       }),
     onSuccess: (_d, vars) => {
-      toast.success(`Configuração "${vars.key}" criada.`)
-      queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
-      setCreateOpen(false)
+      toast.success(`Configuração "${vars.key}" criada.`);
+      queryClient.invalidateQueries({ queryKey: ["admin", "settings"] });
+      setCreateOpen(false);
     },
-    onError: (e: unknown) =>
-      toast.error(errMsg(e, "Não foi possível criar a configuração.")),
-  })
+    onError: (e: unknown) => toast.error(errMsg(e, "Não foi possível criar a configuração.")),
+  });
 
   // H3 — change tracking registra ordem das edições p/ undo por campo
   const handleValueChange = (key: string, value: string) => {
-    setDraft((prev) => ({ ...prev, [key]: value }))
+    setDraft((prev) => ({ ...prev, [key]: value }));
     setDirty((prev) => {
-      const next = new Set(prev)
-      const original = items.find((s) => s.key === key)?.value
-      if (original !== value) next.add(key)
-      else next.delete(key)
-      return next
-    })
+      const next = new Set(prev);
+      const original = items.find((s) => s.key === key)?.value;
+      if (original !== value) next.add(key);
+      else next.delete(key);
+      return next;
+    });
     setEditHistory((prev) => {
       // move key to end (most recent)
-      const next = prev.filter((k) => k !== key)
-      next.push(key)
-      return next
-    })
-  }
+      const next = prev.filter((k) => k !== key);
+      next.push(key);
+      return next;
+    });
+  };
 
   const saveAll = () => {
-    if (dirty.size === 0) return
+    if (dirty.size === 0) return;
     const pairs = Array.from(dirty).map((key) => ({
       key,
       value: draft[key] ?? "",
-    }))
-    upsertMutation.mutate(pairs)
-  }
+    }));
+    upsertMutation.mutate(pairs);
+  };
 
   // H3 — desfaz apenas a última edição (mais controle que "Descartar tudo")
   const undoLastEdit = () => {
-    if (editHistory.length === 0) return
-    const lastKey = editHistory[editHistory.length - 1]
-    const original = items.find((s) => s.key === lastKey)?.value ?? ""
-    setDraft((prev) => ({ ...prev, [lastKey]: original }))
+    if (editHistory.length === 0) return;
+    const lastKey = editHistory[editHistory.length - 1];
+    const original = items.find((s) => s.key === lastKey)?.value ?? "";
+    setDraft((prev) => ({ ...prev, [lastKey]: original }));
     setDirty((prev) => {
-      const next = new Set(prev)
-      next.delete(lastKey)
-      return next
-    })
-    setEditHistory((prev) => prev.slice(0, -1))
-    toast.success(`Alteração em "${lastKey}" desfeita.`)
-  }
+      const next = new Set(prev);
+      next.delete(lastKey);
+      return next;
+    });
+    setEditHistory((prev) => prev.slice(0, -1));
+    toast.success(`Alteração em "${lastKey}" desfeita.`);
+  };
 
   // H3 — descarta TODAS as alterações
   const resetAll = () => {
-    const next: Record<string, string> = {}
-    for (const s of items) next[s.key] = s.value
-    setDraft(next)
-    setDirty(new Set())
-    setEditHistory([])
-    toast.success("Todas as alterações foram descartadas.")
-  }
+    const next: Record<string, string> = {};
+    for (const s of items) next[s.key] = s.value;
+    setDraft(next);
+    setDirty(new Set());
+    setEditHistory([]);
+    toast.success("Todas as alterações foram descartadas.");
+  };
 
   // H5 — toggle de revelar segredo
   const toggleReveal = (key: string) => {
     setRevealedKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4 pb-24">
       <PageSectionHeader
         title="Configurações"
         description="Chaves dinâmicas (estilo .env) que controlam pagamentos, e-mail, geolocalização e mais."
-        action={
-          lastFetched ? (
-            <FreshnessLabel updatedAt={lastFetched} />
-          ) : null
-        }
+        action={lastFetched ? <FreshnessLabel updatedAt={lastFetched} /> : null}
       />
 
       {/* Warning banner — H5 prevenção */}
@@ -339,8 +321,8 @@ export function AdminSettings() {
           Estas configurações afetam todo o sistema. Edite com cuidado.
         </AlertTitle>
         <AlertDescription className="text-xs">
-          Alterações são salvas no banco e aplicadas instantaneamente. Erros
-          podem afetar pagamentos, e-mails e geolocalização.
+          Alterações são salvas no banco e aplicadas instantaneamente. Erros podem afetar
+          pagamentos, e-mails e geolocalização.
         </AlertDescription>
       </Alert>
 
@@ -401,11 +383,7 @@ export function AdminSettings() {
           title="Nenhuma configuração"
           description="Crie a primeira configuração para começar."
           action={
-            <Button
-              size="sm"
-              onClick={() => setCreateOpen(true)}
-              className="gap-1.5"
-            >
+            <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
               <Plus className="size-4" />
               Nova configuração
             </Button>
@@ -430,10 +408,13 @@ export function AdminSettings() {
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {groups.map(([group, groupItems]) => {
-            const meta = GROUP_META[group] ?? GROUP_META.default
-            const GroupIcon = meta.icon
+            const meta = GROUP_META[group] ?? GROUP_META.default;
+            const GroupIcon = meta.icon;
             return (
-              <Card key={group} className="rounded-xl border border-border/50 bg-card shadow-none overflow-hidden">
+              <Card
+                key={group}
+                className="rounded-xl border border-border/50 bg-card shadow-none overflow-hidden"
+              >
                 <div className="flex items-center justify-between border-b border-border/50 p-5">
                   <div className="flex items-center gap-3">
                     <span
@@ -446,14 +427,11 @@ export function AdminSettings() {
                     </span>
                     <div>
                       <p className="text-base font-semibold">{meta.label}</p>
-                      <p className="text-[11px] text-muted-foreground/70">
-                        {meta.description}
-                      </p>
+                      <p className="text-[11px] text-muted-foreground/70">{meta.description}</p>
                     </div>
                   </div>
                   <StatusBadge tone="zinc">
-                    {groupItems.length}{" "}
-                    {groupItems.length === 1 ? "chave" : "chaves"}
+                    {groupItems.length} {groupItems.length === 1 ? "chave" : "chaves"}
                   </StatusBadge>
                 </div>
                 <CardContent className="flex flex-col gap-2.5 p-4">
@@ -470,7 +448,7 @@ export function AdminSettings() {
                   ))}
                 </CardContent>
               </Card>
-            )
+            );
           })}
         </div>
       )}
@@ -480,14 +458,11 @@ export function AdminSettings() {
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/50 bg-background/95 backdrop-blur-sm">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
             <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground tabular-nums">
-                {dirty.size}
-              </span>{" "}
+              <span className="font-medium text-foreground tabular-nums">{dirty.size}</span>{" "}
               alteração(ões) não salva(s)
               {editHistory.length > 0 ? (
                 <span className="ml-1 text-xs text-muted-foreground">
-                  · última:{" "}
-                  <code className="font-mono">{editHistory[editHistory.length - 1]}</code>
+                  · última: <code className="font-mono">{editHistory[editHistory.length - 1]}</code>
                 </span>
               ) : null}
             </p>
@@ -502,9 +477,7 @@ export function AdminSettings() {
                 variant="outline"
                 size="sm"
                 onClick={undoLastEdit}
-                disabled={
-                  upsertMutation.isPending || editHistory.length === 0
-                }
+                disabled={upsertMutation.isPending || editHistory.length === 0}
                 className="gap-1.5"
               >
                 <Undo2 className="size-3.5" />
@@ -552,7 +525,7 @@ export function AdminSettings() {
         onSubmit={(p) => createMutation.mutate(p)}
       />
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -568,23 +541,21 @@ function SettingRow({
   onValueChange,
   onToggleReveal,
 }: {
-  setting: Setting
-  draftValue: string
-  isDirty: boolean
-  isRevealed: boolean
-  onValueChange: (key: string, value: string) => void
-  onToggleReveal: (key: string) => void
+  setting: Setting;
+  draftValue: string;
+  isDirty: boolean;
+  isRevealed: boolean;
+  onValueChange: (key: string, value: string) => void;
+  onToggleReveal: (key: string) => void;
 }) {
-  const isSecret = isSecretKey(setting.key)
-  const help = lookupHelp(setting.key)
+  const isSecret = isSecretKey(setting.key);
+  const help = lookupHelp(setting.key);
 
   return (
     <div
       className={cn(
         "flex flex-col gap-1.5 rounded-lg border p-3 transition-colors",
-        isDirty
-          ? "border-primary/40 bg-primary/5"
-          : "border-border/50 bg-card",
+        isDirty ? "border-primary/40 bg-primary/5" : "border-border/50 bg-card",
       )}
     >
       {/* Linha 1 — chave + badges + updatedAt + Info tooltip (H10) */}
@@ -613,10 +584,7 @@ function SettingRow({
                   <Info className="size-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent
-                side="top"
-                className="max-w-xs text-xs leading-relaxed"
-              >
+              <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
                 {help}
               </TooltipContent>
             </Tooltip>
@@ -651,16 +619,10 @@ function SettingRow({
                   aria-label={isRevealed ? "Ocultar valor" : "Mostrar valor"}
                   aria-pressed={isRevealed}
                 >
-                  {isRevealed ? (
-                    <EyeOff className="size-3.5" />
-                  ) : (
-                    <Eye className="size-3.5" />
-                  )}
+                  {isRevealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                 </button>
               </TooltipTrigger>
-              <TooltipContent>
-                {isRevealed ? "Ocultar valor" : "Mostrar valor"}
-              </TooltipContent>
+              <TooltipContent>{isRevealed ? "Ocultar valor" : "Mostrar valor"}</TooltipContent>
             </Tooltip>
           ) : null}
         </div>
@@ -674,11 +636,9 @@ function SettingRow({
       </div>
 
       {/* H4 — caption honesto sobre a ausência de endpoint DELETE */}
-      <p className="text-[10px] text-muted-foreground">
-        Para remover, limpe o valor e salve.
-      </p>
+      <p className="text-[10px] text-muted-foreground">Para remover, limpe o valor e salve.</p>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -692,12 +652,12 @@ function FlatResultsList({
   onValueChange,
   onToggleReveal,
 }: {
-  items: Setting[]
-  draft: Record<string, string>
-  dirty: Set<string>
-  revealedKeys: Set<string>
-  onValueChange: (key: string, value: string) => void
-  onToggleReveal: (key: string) => void
+  items: Setting[];
+  draft: Record<string, string>;
+  dirty: Set<string>;
+  revealedKeys: Set<string>;
+  onValueChange: (key: string, value: string) => void;
+  onToggleReveal: (key: string) => void;
 }) {
   if (items.length === 0) {
     return (
@@ -706,7 +666,7 @@ function FlatResultsList({
         title="Nenhuma configuração corresponde à busca"
         description="Ajuste o termo ou crie uma nova configuração."
       />
-    )
+    );
   }
   return (
     <Card className="rounded-xl border border-border/50 bg-card shadow-none overflow-hidden">
@@ -742,7 +702,7 @@ function FlatResultsList({
         ))}
       </CardContent>
     </Card>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -755,44 +715,37 @@ function CreateSettingDialog({
   submitting,
   onSubmit,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  existingKeys: string[]
-  submitting: boolean
-  onSubmit: (payload: { key: string; value: string }) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  existingKeys: string[];
+  submitting: boolean;
+  onSubmit: (payload: { key: string; value: string }) => void;
 }) {
-  const [key, setKey] = React.useState("")
-  const [value, setValue] = React.useState("")
+  const [key, setKey] = React.useState("");
+  const [value, setValue] = React.useState("");
 
-  React.useEffect(() => {
-    if (open) {
-      setKey("")
-      setValue("")
-    }
-  }, [open])
+  const keyValid = /^[A-Z0-9_]+$/.test(key) && key.length >= 1;
+  const dupe = existingKeys.includes(key.toUpperCase());
+  const help = keyValid && !dupe ? lookupHelp(key.toUpperCase()) : null;
 
-  const keyValid = /^[A-Z0-9_]+$/.test(key) && key.length >= 1
-  const dupe = existingKeys.includes(key.toUpperCase())
-  const help = keyValid && !dupe ? lookupHelp(key.toUpperCase()) : null
-
-  const canSubmit = keyValid && !dupe && !submitting
+  const canSubmit = keyValid && !dupe && !submitting;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog key={String(open)} open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Nova configuração</DialogTitle>
           <DialogDescription>
-            Adicione um novo par chave/valor. A chave deve ter apenas letras
-            maiúsculas, números e underline.
+            Adicione um novo par chave/valor. A chave deve ter apenas letras maiúsculas, números e
+            underline.
           </DialogDescription>
         </DialogHeader>
 
         <form
           onSubmit={(e) => {
-            e.preventDefault()
-            if (!canSubmit) return
-            onSubmit({ key: key.toUpperCase(), value })
+            e.preventDefault();
+            if (!canSubmit) return;
+            onSubmit({ key: key.toUpperCase(), value });
           }}
           className="flex flex-col gap-3 py-1"
         >
@@ -801,17 +754,13 @@ function CreateSettingDialog({
             <Input
               id="set-key"
               value={key}
-              onChange={(e) =>
-                setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))
-              }
+              onChange={(e) => setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
               placeholder="EX.: PAYMENT_API_KEY"
               className="font-mono"
               autoFocus
             />
             {dupe ? (
-              <p className="text-[11px] text-red-600">
-                Esta chave já existe.
-              </p>
+              <p className="text-[11px] text-red-600">Esta chave já existe.</p>
             ) : help ? (
               <p className="flex items-start gap-1 text-[11px] text-muted-foreground">
                 <Info className="mt-0.5 size-3 shrink-0" />
@@ -819,8 +768,7 @@ function CreateSettingDialog({
               </p>
             ) : (
               <p className="text-[11px] text-muted-foreground">
-                Convenção: <code>GRUPO_NOME</code> (ex.:{" "}
-                <code>PAYMENT_PIX_KEY</code>).
+                Convenção: <code>GRUPO_NOME</code> (ex.: <code>PAYMENT_PIX_KEY</code>).
               </p>
             )}
           </div>
@@ -855,7 +803,7 @@ function CreateSettingDialog({
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -863,37 +811,22 @@ function CreateSettingDialog({
 // description per prefix.
 // ---------------------------------------------------------------------------
 type GroupMeta = {
-  label: string
-  description: string
-  icon: LucideIcon
-  tone: string
-}
-
-const GROUP_TONE: Record<string, StatusTone> = {
-  payment: "emerald",
-  email: "teal",
-  smtp: "teal",
-  nominatim: "amber",
-  geo: "amber",
-  site: "emerald",
-  support: "amber",
-  weather: "amber",
-  server: "zinc",
-  Geral: "zinc",
-}
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  tone: string;
+};
 
 function toneToClass(tone: StatusTone): string {
   const map: Record<StatusTone, string> = {
-    emerald:
-      "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-    amber:
-      "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+    emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+    amber: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
     rose: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
     teal: "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
     zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
     sky: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
-  }
-  return map[tone]
+  };
+  return map[tone];
 }
 
 const GROUP_META: Record<string, GroupMeta> = {
@@ -963,18 +896,18 @@ const GROUP_META: Record<string, GroupMeta> = {
     icon: SettingsIcon,
     tone: toneToClass("zinc"),
   },
-}
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function isSecretKey(key: string): boolean {
-  const k = key.toUpperCase()
+  const k = key.toUpperCase();
   return (
     k.includes("SECRET") ||
     k.includes("TOKEN") ||
     k.includes("PASSWORD") ||
     k.includes("API_KEY") ||
     k.includes("KEY")
-  )
+  );
 }

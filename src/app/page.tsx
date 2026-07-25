@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AppShell — the single user-visible route ("/").
@@ -17,30 +17,30 @@
  *   6. Join the realtime room when authenticated (notifications + messages).
  */
 
-import dynamic from "next/dynamic"
-import { useEffect, useSyncExternalStore } from "react"
+import dynamic from "next/dynamic";
+import { useEffect, useSyncExternalStore } from "react";
 
-import { useAuthStore, useUIStore, useViewStore } from "@/store"
-import { useRealtime } from "@/hooks/use-realtime"
+import { useAuthStore, useUIStore, useViewStore } from "@/store";
+import { useRealtime } from "@/hooks/use-realtime";
 
 // All heavy components are dynamically imported to reduce Turbopack compile
 // memory.  On this 4 GB sandbox the server was OOM-killed whenever Chrome and
 // the Next.js dev server ran simultaneously; lazy compilation keeps peak RSS
 // under ~1.5 GB so both can coexist.
-const Vitrine = dynamic(() => import("@/components/vitrine/vitrine"))
+const Vitrine = dynamic(() => import("@/components/vitrine/vitrine"));
 const ClientPanel = dynamic(() =>
   import("@/components/client/client-panel").then((m) => m.ClientPanel),
-)
+);
 const ProviderPanel = dynamic(() =>
   import("@/components/provider/provider-panel").then((m) => m.ProviderPanel),
-)
+);
 const AdminPanel = dynamic(() =>
   import("@/components/admin/admin-panel").then((m) => m.AdminPanel),
-)
+);
 const ModalsHost = dynamic(
   () => import("@/components/modals/modals-host").then((m) => m.ModalsHost),
   { ssr: false },
-)
+);
 
 // Hydration gate: returns false during SSR + first client render, true after.
 // This avoids hydration mismatches caused by the persisted view store without
@@ -50,54 +50,54 @@ const useHydrated = () =>
     () => () => {},
     () => true,
     () => false,
-  )
+  );
 
 export default function Home() {
-  const mounted = useHydrated()
+  const mounted = useHydrated();
 
-  const view = useViewStore((s) => s.view)
-  const reset = useViewStore((s) => s.reset)
-  const user = useAuthStore((s) => s.user)
-  const initialized = useAuthStore((s) => s.initialized)
-  const fetchMe = useAuthStore((s) => s.fetchMe)
-  const openAuth = useUIStore((s) => s.openAuth)
+  const view = useViewStore((s) => s.view);
+  const reset = useViewStore((s) => s.reset);
+  const user = useAuthStore((s) => s.user);
+  const initialized = useAuthStore((s) => s.initialized);
+  const fetchMe = useAuthStore((s) => s.fetchMe);
+  const openAuth = useUIStore((s) => s.openAuth);
 
   // Realtime singleton (connects only in the browser)
-  const { join } = useRealtime()
+  const { join } = useRealtime();
 
   // Initial auth check — runs once on mount.
   useEffect(() => {
-    void fetchMe()
-  }, [fetchMe])
+    void fetchMe();
+  }, [fetchMe]);
 
   // ---- Auth guard for panel views -----------------------------------------
   // Gated on `mounted` so the guard never fires during the SSR/hydration
   // phase (when persisted store values may not yet be available).
   useEffect(() => {
-    if (!mounted || !initialized) return
+    if (!mounted || !initialized) return;
 
     if (view.startsWith("client.") && (!user || user.role !== "CLIENT")) {
-      reset("vitrine")
-      openAuth("login", "CLIENT")
-      return
+      reset("vitrine");
+      openAuth("login", "CLIENT");
+      return;
     }
     if (view.startsWith("provider.") && (!user || user.role !== "PROVIDER")) {
-      reset("vitrine")
-      openAuth("login", "PROVIDER")
-      return
+      reset("vitrine");
+      openAuth("login", "PROVIDER");
+      return;
     }
     if (view.startsWith("admin.") && (!user || user.role !== "ADMIN")) {
-      reset("vitrine")
-      openAuth("login", "CLIENT")
-      return
+      reset("vitrine");
+      openAuth("login", "CLIENT");
+      return;
     }
-  }, [mounted, view, user, initialized, reset, openAuth])
+  }, [mounted, view, user, initialized, reset, openAuth]);
 
   // ---- Join realtime room when authenticated ------------------------------
   useEffect(() => {
-    if (!user) return
-    join({ userId: user.id, role: user.role })
-  }, [user, join])
+    if (!user) return;
+    join({ userId: user.id, role: user.role });
+  }, [user, join]);
 
   // ---- Pre-hydration / loading shell --------------------------------------
   if (!mounted) {
@@ -108,19 +108,19 @@ export default function Home() {
           <span className="text-sm">Carregando Severinno…</span>
         </div>
       </div>
-    )
+    );
   }
 
   // ---- Route to the active surface ----------------------------------------
-  let content: React.ReactNode
+  let content: React.ReactNode;
   if (view.startsWith("client.")) {
-    content = <ClientPanel />
+    content = <ClientPanel />;
   } else if (view.startsWith("provider.")) {
-    content = <ProviderPanel />
+    content = <ProviderPanel />;
   } else if (view.startsWith("admin.")) {
-    content = <AdminPanel />
+    content = <AdminPanel />;
   } else {
-    content = <Vitrine />
+    content = <Vitrine />;
   }
 
   return (
@@ -128,5 +128,5 @@ export default function Home() {
       {content}
       <ModalsHost />
     </div>
-  )
+  );
 }

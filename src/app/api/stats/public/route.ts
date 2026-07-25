@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server"
-import { db } from "@/lib/db"
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 
 /**
  * Public platform stats — used by the vitrine hero for social proof.
@@ -7,35 +7,27 @@ import { db } from "@/lib/db"
  */
 export async function GET() {
   try {
-    const yesterday = new Date()
-    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
 
-    const [
-      providers,
-      services,
-      reviews,
-      completedBookings,
-      totalUsers,
-      recentSignups24h,
-    ] = await Promise.all([
-      db.user.count({ where: { role: "PROVIDER", active: true, verified: true } }),
-      db.service.count({ where: { active: true } }),
-      db.review.count(),
-      db.booking.count({ where: { status: "COMPLETED" } }),
-      db.user.count({ where: { active: true } }),
-      db.user.count({
-        where: {
-          active: true,
-          createdAt: { gte: yesterday },
-        },
-      }),
-    ])
+    const [providers, services, reviews, completedBookings, totalUsers, recentSignups24h] =
+      await Promise.all([
+        db.user.count({ where: { role: "PROVIDER", active: true, verified: true } }),
+        db.service.count({ where: { active: true } }),
+        db.review.count(),
+        db.booking.count({ where: { status: "COMPLETED" } }),
+        db.user.count({ where: { active: true } }),
+        db.user.count({
+          where: {
+            active: true,
+            createdAt: { gte: yesterday },
+          },
+        }),
+      ]);
 
     // Average rating across all reviews
-    const ratingAgg = await db.review.aggregate({ _avg: { rating: true } })
-    const avgRating = ratingAgg._avg.rating
-      ? Math.round(ratingAgg._avg.rating * 10) / 10
-      : 0
+    const ratingAgg = await db.review.aggregate({ _avg: { rating: true } });
+    const avgRating = ratingAgg._avg.rating ? Math.round(ratingAgg._avg.rating * 10) / 10 : 0;
 
     return NextResponse.json({
       providers,
@@ -45,7 +37,7 @@ export async function GET() {
       avgRating,
       totalUsers,
       recentSignups24h,
-    })
+    });
   } catch {
     return NextResponse.json(
       {
@@ -58,6 +50,6 @@ export async function GET() {
         recentSignups24h: 0,
       },
       { status: 200 },
-    )
+    );
   }
 }

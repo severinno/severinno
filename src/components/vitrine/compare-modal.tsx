@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * CompareModal — side-by-side comparison of up to 3 providers.
@@ -24,8 +24,8 @@
  * Styling: emerald accents only; works in both light and dark modes.
  */
 
-import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
+import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   X,
   Star,
@@ -38,19 +38,15 @@ import {
   GitCompare,
   FileText,
   Calendar,
-  Loader2,
   Trophy,
   Sparkles,
-} from "lucide-react"
+} from "lucide-react";
 
-import { cn } from "@/lib/utils"
-import { formatBRL } from "@/lib/format"
-import {
-  fetchProviderDetail,
-  type ProviderDetail,
-} from "@/lib/api"
-import { useCompareStore, useUIStore, MAX_COMPARE } from "@/store"
-import { toast } from "sonner"
+import { cn } from "@/lib/utils";
+import { formatBRL } from "@/lib/format";
+import { fetchProviderDetail, type ProviderDetail } from "@/lib/api";
+import { useCompareStore, useUIStore, MAX_COMPARE } from "@/store";
+import { toast } from "sonner";
 
 import {
   Dialog,
@@ -58,54 +54,56 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Skeleton } from "@/components/ui/skeleton"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const DAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+const DAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 function initialsOf(name?: string) {
-  if (!name) return "P"
+  if (!name) return "P";
   return name
     .split(" ")
     .map((p) => p[0])
     .slice(0, 2)
     .join("")
-    .toUpperCase()
+    .toUpperCase();
 }
 
 function cheapestService(p: ProviderDetail): number | null {
-  if (!p.services || p.services.length === 0) return null
+  if (!p.services || p.services.length === 0) return null;
   return p.services.reduce(
     (min, s) => (s.basePrice < min ? s.basePrice : min),
-    p.services[0]!.basePrice,
-  )
+    p.services[0]?.basePrice ?? Infinity,
+  );
 }
 
 function categoriesCovered(p: ProviderDetail): string[] {
-  const set = new Set<string>()
+  const set = new Set<string>();
   for (const s of p.services ?? []) {
-    if (s.category?.name) set.add(s.category.name)
+    if (s.category?.name) set.add(s.category.name);
   }
-  return Array.from(set)
+  return Array.from(set);
 }
 
 function weeklySummary(p: ProviderDetail): string {
-  if (!p.availability || p.availability.length === 0) return "Sem expediente"
-  const days = new Set(p.availability.map((a) => a.dayOfWeek))
-  if (days.size === 7) return "Todos os dias"
-  const segSex = [1, 2, 3, 4, 5].every((d) => days.has(d))
-  if (segSex && days.size === 5) return "Seg–Sex"
-  if (segSex && days.has(6) && !days.has(0)) return "Seg–Sáb"
-  return Array.from(days).sort().map((d) => DAY_LABELS[d]).join(", ")
+  if (!p.availability || p.availability.length === 0) return "Sem expediente";
+  const days = new Set(p.availability.map((a) => a.dayOfWeek));
+  if (days.size === 7) return "Todos os dias";
+  const segSex = [1, 2, 3, 4, 5].every((d) => days.has(d));
+  if (segSex && days.size === 5) return "Seg–Sex";
+  if (segSex && days.has(6) && !days.has(0)) return "Seg–Sáb";
+  return Array.from(days)
+    .sort()
+    .map((d) => DAY_LABELS[d])
+    .join(", ");
 }
 
 // ---------------------------------------------------------------------------
@@ -113,26 +111,26 @@ function weeklySummary(p: ProviderDetail): string {
 // ---------------------------------------------------------------------------
 
 type RowDef = {
-  key: string
-  label: string
-  icon?: React.ReactNode
-  render: (p: ProviderDetail) => React.ReactNode
-  highlight?: "best" | "neutral"
-  best?: (p: ProviderDetail) => boolean
-}
+  key: string;
+  label: string;
+  icon?: React.ReactNode;
+  render: (p: ProviderDetail) => React.ReactNode;
+  highlight?: "best" | "neutral";
+  best?: (p: ProviderDetail) => boolean;
+};
 
 // ---------------------------------------------------------------------------
 // Main modal
 // ---------------------------------------------------------------------------
 
 export default function CompareModal() {
-  const ids = useCompareStore((s) => s.ids)
-  const open = useCompareStore((s) => s.modalOpen)
-  const closeCompare = useCompareStore((s) => s.closeCompare)
-  const remove = useCompareStore((s) => s.remove)
-  const clear = useCompareStore((s) => s.clear)
-  const openQuote = useUIStore((s) => s.openQuote)
-  const openBooking = useUIStore((s) => s.openBooking)
+  const ids = useCompareStore((s) => s.ids);
+  const open = useCompareStore((s) => s.modalOpen);
+  const closeCompare = useCompareStore((s) => s.closeCompare);
+  const remove = useCompareStore((s) => s.remove);
+  const clear = useCompareStore((s) => s.clear);
+  const openQuote = useUIStore((s) => s.openQuote);
+  const openBooking = useUIStore((s) => s.openBooking);
 
   // Fetch each provider in parallel
   const queries = useQuery({
@@ -148,46 +146,42 @@ export default function CompareModal() {
               error: e as Error,
             })),
         ),
-      )
-      return results
+      );
+      return results;
     },
     enabled: open && ids.length > 0,
     staleTime: 30 * 1000,
-  })
+  });
 
   const providers = React.useMemo(() => {
-    if (!queries.data) return []
+    if (!queries.data) return [];
     return queries.data
       .filter((r): r is { id: string; data: ProviderDetail; error: null } => !!r.data)
-      .map((r) => r.data)
-  }, [queries.data])
+      .map((r) => r.data);
+  }, [queries.data]);
 
   // Loading state — show skeletons matching the number of selected providers
-  const isLoading = queries.isLoading || (queries.isFetching && providers.length === 0)
+  const isLoading = queries.isLoading || (queries.isFetching && providers.length === 0);
 
   // Best price / rating / completedBookings for "best" highlight
   const bestPrice = React.useMemo(
     () =>
       providers.length > 0
         ? Math.min(
-            ...providers
-              .map((p) => cheapestService(p))
-              .filter((v): v is number => v !== null),
+            ...providers.map((p) => cheapestService(p)).filter((v): v is number => v !== null),
           )
         : null,
     [providers],
-  )
+  );
   const bestRating = React.useMemo(
     () => (providers.length > 0 ? Math.max(...providers.map((p) => p.rating)) : null),
     [providers],
-  )
+  );
   const bestCompleted = React.useMemo(
     () =>
-      providers.length > 0
-        ? Math.max(...providers.map((p) => p.completedBookings ?? 0))
-        : null,
+      providers.length > 0 ? Math.max(...providers.map((p) => p.completedBookings ?? 0)) : null,
     [providers],
-  )
+  );
 
   const rows: RowDef[] = [
     {
@@ -210,8 +204,8 @@ export default function CompareModal() {
       label: "Preço a partir de",
       icon: <span className="text-emerald-600 font-bold text-xs">R$</span>,
       render: (p) => {
-        const price = cheapestService(p)
-        if (price === null) return <span className="text-muted-foreground">—</span>
+        const price = cheapestService(p);
+        if (price === null) return <span className="text-muted-foreground">—</span>;
         return (
           <div className="flex items-center gap-1.5">
             <span className="font-semibold text-emerald-700 dark:text-emerald-400">
@@ -221,7 +215,7 @@ export default function CompareModal() {
               <Trophy className="size-3.5 text-amber-500" aria-label="Menor preço" />
             ) : null}
           </div>
-        )
+        );
       },
     },
     {
@@ -231,7 +225,9 @@ export default function CompareModal() {
       render: (p) => (
         <div className="flex items-center gap-1.5">
           <span className="font-medium">{p.completedBookings ?? 0}</span>
-          {bestCompleted !== null && (p.completedBookings ?? 0) === bestCompleted && bestCompleted > 0 ? (
+          {bestCompleted !== null &&
+          (p.completedBookings ?? 0) === bestCompleted &&
+          bestCompleted > 0 ? (
             <Trophy className="size-3.5 text-amber-500" aria-label="Mais experiências" />
           ) : null}
         </div>
@@ -264,9 +260,7 @@ export default function CompareModal() {
       label: "Localização",
       icon: <MapPin className="size-4 text-muted-foreground" />,
       render: (p) => (
-        <span className="text-sm">
-          {[p.district, p.city].filter(Boolean).join(", ") || "—"}
-        </span>
+        <span className="text-sm">{[p.district, p.city].filter(Boolean).join(", ") || "—"}</span>
       ),
     },
     {
@@ -291,9 +285,8 @@ export default function CompareModal() {
       label: "Categorias",
       icon: <Sparkles className="size-4 text-emerald-600" />,
       render: (p) => {
-        const cats = categoriesCovered(p)
-        if (cats.length === 0)
-          return <span className="text-muted-foreground">—</span>
+        const cats = categoriesCovered(p);
+        if (cats.length === 0) return <span className="text-muted-foreground">—</span>;
         return (
           <div className="flex flex-wrap gap-1">
             {cats.map((c) => (
@@ -306,7 +299,7 @@ export default function CompareModal() {
               </Badge>
             ))}
           </div>
-        )
+        );
       },
     },
     {
@@ -320,7 +313,7 @@ export default function CompareModal() {
           <span className="text-muted-foreground">—</span>
         ),
     },
-  ]
+  ];
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && closeCompare()}>
@@ -333,9 +326,7 @@ export default function CompareModal() {
                 <GitCompare className="size-5" />
               </span>
               <div>
-                <DialogTitle className="text-lg font-bold">
-                  Comparar prestadores
-                </DialogTitle>
+                <DialogTitle className="text-lg font-bold">Comparar prestadores</DialogTitle>
                 <DialogDescription className="text-xs">
                   {providers.length > 0
                     ? `${providers.length} prestador(es) selecionado(s) — limite ${MAX_COMPARE}`
@@ -348,8 +339,8 @@ export default function CompareModal() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  clear()
-                  toast.success("Comparação limpa.")
+                  clear();
+                  toast.success("Comparação limpa.");
                 }}
                 className="text-muted-foreground hover:text-destructive"
               >
@@ -495,8 +486,8 @@ export default function CompareModal() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  closeCompare()
-                                  openQuote({ providerId: p.id })
+                                  closeCompare();
+                                  openQuote({ providerId: p.id });
                                 }}
                                 className="h-8 w-full gap-1.5 border-primary/30 text-xs text-primary hover:border-primary hover:bg-primary/10"
                               >
@@ -506,8 +497,8 @@ export default function CompareModal() {
                               <Button
                                 size="sm"
                                 onClick={() => {
-                                  closeCompare()
-                                  openBooking({ providerId: p.id })
+                                  closeCompare();
+                                  openBooking({ providerId: p.id });
                                 }}
                                 className="h-8 w-full gap-1.5 text-xs"
                               >
@@ -527,8 +518,7 @@ export default function CompareModal() {
               {providers.length > 0 ? (
                 <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Trophy className="size-3.5 text-amber-500" />
-                  Destaque nos critérios: melhor avaliação, menor preço e mais
-                  experiências.
+                  Destaque nos critérios: melhor avaliação, menor preço e mais experiências.
                 </p>
               ) : null}
             </div>
@@ -536,7 +526,7 @@ export default function CompareModal() {
         )}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -551,13 +541,12 @@ function EmptyCompare() {
       </span>
       <h3 className="mt-4 text-base font-semibold">Nenhum prestador selecionado</h3>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Use o ícone{" "}
-        <GitCompare className="inline size-3.5 text-emerald-600" /> nos cards da
-        vitrine para adicionar até {MAX_COMPARE} prestadores e comparar
-        avaliações, preços e serviços lado a lado.
+        Use o ícone <GitCompare className="inline size-3.5 text-emerald-600" /> nos cards da vitrine
+        para adicionar até {MAX_COMPARE} prestadores e comparar avaliações, preços e serviços lado a
+        lado.
       </p>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -596,10 +585,7 @@ function CompareSkeleton({ count, rows }: { count: number; rows: number }) {
                 <Skeleton className="h-3 w-20" />
               </td>
               {Array.from({ length: count }).map((_, c) => (
-                <td
-                  key={c}
-                  className="border-l border-t border-border/40 p-3"
-                >
+                <td key={c} className="border-l border-t border-border/40 p-3">
                   <Skeleton className="h-4 w-24" />
                 </td>
               ))}
@@ -608,5 +594,5 @@ function CompareSkeleton({ count, rows }: { count: number; rows: number }) {
         </tbody>
       </table>
     </div>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AdminServices — all services across providers (read-mostly).
@@ -27,7 +27,8 @@
  *   H10— Tooltips em Switch, ⋮ e "Ver prestador"; caption de filtros visível
  */
 
-import * as React from "react"
+import * as React from "react";
+import Image from "next/image";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -40,17 +41,17 @@ import {
   SearchX,
   Trash2,
   X,
-} from "lucide-react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { toast } from "sonner"
+} from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-import { apiDelete, apiGet, apiPatch } from "@/lib/api"
-import { type ServiceUnit, SERVICE_UNIT_SHORT } from "@/lib/constants"
-import { formatBRL, formatDate } from "@/lib/format"
-import { cn } from "@/lib/utils"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { apiDelete, apiGet, apiPatch } from "@/lib/api";
+import { type ServiceUnit, SERVICE_UNIT_SHORT } from "@/lib/constants";
+import { formatBRL, formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,15 +59,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -74,14 +75,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { useUIStore } from "@/store"
+} from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useUIStore } from "@/store";
 
 import {
   ConfirmDialog,
@@ -99,134 +96,128 @@ import {
   StatusBadge,
   TableSkeleton,
   type StatusTone,
-} from "./admin-shared"
+} from "./admin-shared";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type CategoryOption = {
-  id: string
-  name: string
-  slug: string
-  level: number
-  parentId?: string | null
-  active?: boolean
-  order?: number
-}
+  id: string;
+  name: string;
+  slug: string;
+  level: number;
+  parentId?: string | null;
+  active?: boolean;
+  order?: number;
+};
 
 type AdminService = {
-  id: string
-  title: string
-  description: string
-  basePrice: number
-  unit: ServiceUnit
-  active: boolean
-  createdAt: string
-  photos?: string[] | null
-  category?: CategoryOption | null
+  id: string;
+  title: string;
+  description: string;
+  basePrice: number;
+  unit: ServiceUnit;
+  active: boolean;
+  createdAt: string;
+  photos?: string[] | null;
+  category?: CategoryOption | null;
   provider: {
-    id: string
-    name: string
-    avatarUrl?: string | null
-    city?: string | null
-    state?: string | null
-    verified: boolean
-    active: boolean
-  }
-  _count?: { bookings: number; reviews: number }
-}
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    city?: string | null;
+    state?: string | null;
+    verified: boolean;
+    active: boolean;
+  };
+  _count?: { bookings: number; reviews: number };
+};
 
 type AdminServicesResponse = {
-  items: AdminService[]
-  total: number
-}
+  items: AdminService[];
+  total: number;
+};
 
 type ProviderOption = {
-  id: string
-  name: string
-}
+  id: string;
+  name: string;
+};
 
-type ActiveFilter = "ALL" | "true" | "false"
+type ActiveFilter = "ALL" | "true" | "false";
 
-type SortKey = "basePrice" | "createdAt"
-type SortDir = "asc" | "desc"
-type SortState = { key: SortKey; dir: SortDir } | null
+type SortKey = "basePrice" | "createdAt";
+type SortDir = "asc" | "desc";
+type SortState = { key: SortKey; dir: SortDir } | null;
 
 type PendingToggle = {
-  id: string
-  name: string
-  field: "active"
-  currentValue: boolean
-} | null
+  id: string;
+  name: string;
+  field: "active";
+  currentValue: boolean;
+} | null;
 
 // ---------------------------------------------------------------------------
 // Category tone by level (H4 — UMA source of truth, reaproveita StatusBadge)
 // level 0 (Pai) → emerald | level 1 (Filha) → teal | level ≥2 (Sub) → zinc
 // ---------------------------------------------------------------------------
 function categoryTone(level: number | undefined): StatusTone {
-  if (!level || level <= 0) return "emerald"
-  if (level === 1) return "teal"
-  return "zinc"
+  if (!level || level <= 0) return "emerald";
+  if (level === 1) return "teal";
+  return "zinc";
 }
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export function AdminServices() {
-  const queryClient = useQueryClient()
-  const openProvider = useUIStore((s) => s.openProvider)
+  const queryClient = useQueryClient();
+  const openProvider = useUIStore((s) => s.openProvider);
 
-  const [q, setQ] = React.useState("")
-  const [debouncedQ, setDebouncedQ] = React.useState("")
-  const [active, setActive] = React.useState<ActiveFilter>("ALL")
-  const [categoryFilter, setCategoryFilter] = React.useState<string>("ALL")
-  const [providerFilter, setProviderFilter] = React.useState<string>("ALL")
-  const [page, setPage] = React.useState(1)
-  const [sort, setSort] = React.useState<SortState>(null)
+  const [q, setQ] = React.useState("");
+  const [debouncedQ, setDebouncedQ] = React.useState("");
+  const [active, setActive] = React.useState<ActiveFilter>("ALL");
+  const [categoryFilter, setCategoryFilter] = React.useState<string>("ALL");
+  const [providerFilter, setProviderFilter] = React.useState<string>("ALL");
+  const [page, setPage] = React.useState(1);
+  const [sort, setSort] = React.useState<SortState>(null);
 
-  const [deleteTarget, setDeleteTarget] = React.useState<AdminService | null>(
-    null,
-  )
-  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
-  const [patchingId, setPatchingId] = React.useState<string | null>(null)
-  const [errorBanner, setErrorBanner] = React.useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = React.useState<AdminService | null>(null);
+  const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null);
+  const [patchingId, setPatchingId] = React.useState<string | null>(null);
+  const [errorBanner, setErrorBanner] = React.useState<string | null>(null);
 
-  const limit = 10
+  const limit = 10;
 
   React.useEffect(() => {
     const t = setTimeout(() => {
-      setDebouncedQ(q.trim())
-      setPage(1)
-    }, 350)
-    return () => clearTimeout(t)
-  }, [q])
+      setDebouncedQ(q.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
 
   // Full category list (incl. parentId/level — usado p/ resolver caminho)
   const { data: categories } = useQuery({
     queryKey: ["categories", "all-flat"],
     queryFn: () => apiGet<CategoryOption[]>("/api/categories"),
     staleTime: 60_000,
-  })
+  });
 
   // Provider options para o filtro (leve)
   const { data: providersList } = useQuery({
     queryKey: ["admin", "providers", "options"],
     queryFn: () =>
-      apiGet<{ items: ProviderOption[]; total: number }>(
-        "/api/admin/users",
-        { role: "PROVIDER", limit: 100 },
-      ),
+      apiGet<{ items: ProviderOption[]; total: number }>("/api/admin/users", {
+        role: "PROVIDER",
+        limit: 100,
+      }),
     staleTime: 60_000,
-  })
+  });
 
   // API devolve TODOS os serviços de uma vez — filtros server-side, ordenação
   // e paginação client-side (H1 + H7).
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: [
-      "admin",
-      "services",
-      { debouncedQ, active, categoryFilter, providerFilter },
-    ],
+    queryKey: ["admin", "services", { debouncedQ, active, categoryFilter, providerFilter }],
     queryFn: () =>
       apiGet<AdminServicesResponse>("/api/admin/services", {
         ...(debouncedQ ? { q: debouncedQ } : {}),
@@ -235,127 +226,111 @@ export function AdminServices() {
         ...(providerFilter !== "ALL" ? { providerId: providerFilter } : {}),
       }),
     staleTime: 15_000,
-  })
+  });
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["admin", "services"] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
 
   const patchMutation = useMutation({
-    mutationFn: ({
-      id,
-      patch,
-    }: {
-      id: string
-      patch: { active?: boolean }
-    }) => apiPatch(`/api/services/${id}`, patch),
-  })
+    mutationFn: ({ id, patch }: { id: string; patch: { active?: boolean } }) =>
+      apiPatch(`/api/services/${id}`, patch),
+  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/api/services/${id}`),
-  })
+  });
 
   // ---- Derived: sort + paginate client-side --------------------------------
-  const allItems = data?.items ?? []
-  const total = allItems.length
+  const allItems = React.useMemo(() => data?.items ?? [], [data]);
+  const total = allItems.length;
 
   const sortedItems = React.useMemo(() => {
-    if (!sort) return allItems
-    const copy = [...allItems]
+    if (!sort) return allItems;
+    const copy = [...allItems];
     copy.sort((a, b) => {
-      let cmp = 0
+      let cmp = 0;
       if (sort.key === "basePrice") {
-        cmp = a.basePrice - b.basePrice
+        cmp = a.basePrice - b.basePrice;
       } else {
-        cmp =
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       }
-      return sort.dir === "asc" ? cmp : -cmp
-    })
-    return copy
-  }, [allItems, sort])
+      return sort.dir === "asc" ? cmp : -cmp;
+    });
+    return copy;
+  }, [allItems, sort]);
 
-  const totalPages = Math.max(1, Math.ceil(sortedItems.length / limit))
-  const safePage = Math.min(page, totalPages)
-  const pageItems = sortedItems.slice(
-    (safePage - 1) * limit,
-    safePage * limit,
-  )
+  const totalPages = Math.max(1, Math.ceil(sortedItems.length / limit));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = sortedItems.slice((safePage - 1) * limit, safePage * limit);
 
   const activeFilterCount =
     (debouncedQ ? 1 : 0) +
     (active !== "ALL" ? 1 : 0) +
     (categoryFilter !== "ALL" ? 1 : 0) +
-    (providerFilter !== "ALL" ? 1 : 0)
+    (providerFilter !== "ALL" ? 1 : 0);
 
   const clearFilters = () => {
-    setQ("")
-    setDebouncedQ("")
-    setActive("ALL")
-    setCategoryFilter("ALL")
-    setProviderFilter("ALL")
-    setSort(null)
-    setPage(1)
-  }
+    setQ("");
+    setDebouncedQ("");
+    setActive("ALL");
+    setCategoryFilter("ALL");
+    setProviderFilter("ALL");
+    setSort(null);
+    setPage(1);
+  };
 
   const toggleSort = (key: SortKey) => {
     setSort((prev) => {
-      if (!prev || prev.key !== key) return { key, dir: "asc" }
-      if (prev.dir === "asc") return { key, dir: "desc" }
-      return null
-    })
-    setPage(1)
-  }
+      if (!prev || prev.key !== key) return { key, dir: "asc" };
+      if (prev.dir === "asc") return { key, dir: "desc" };
+      return null;
+    });
+    setPage(1);
+  };
 
   // ---- Mutation handlers ---------------------------------------------------
 
   const handleToggleConfirm = () => {
-    if (!pendingToggle) return
-    const { id, currentValue } = pendingToggle
-    setPatchingId(id)
+    if (!pendingToggle) return;
+    const { id, currentValue } = pendingToggle;
+    setPatchingId(id);
     patchMutation.mutate(
       { id, patch: { active: !currentValue } },
       {
         onSuccess: () => {
-          invalidate()
-          toast.success(
-            currentValue ? "Serviço desativado." : "Serviço ativado.",
-          )
-          setPendingToggle(null)
-          setPatchingId(null)
+          invalidate();
+          toast.success(currentValue ? "Serviço desativado." : "Serviço ativado.");
+          setPendingToggle(null);
+          setPatchingId(null);
         },
         onError: (e: unknown) => {
-          const msg = errMsg(e, "Falha ao atualizar serviço.")
-          setErrorBanner(msg)
-          toast.error(msg)
-          setPendingToggle(null)
-          setPatchingId(null)
+          const msg = errMsg(e, "Falha ao atualizar serviço.");
+          setErrorBanner(msg);
+          toast.error(msg);
+          setPendingToggle(null);
+          setPatchingId(null);
         },
       },
-    )
-  }
+    );
+  };
 
   const handleDeleteConfirm = () => {
-    if (!deleteTarget) return
+    if (!deleteTarget) return;
     deleteMutation.mutate(deleteTarget.id, {
       onSuccess: () => {
-        toast.success("Serviço excluído.")
-        invalidate()
-        setDeleteTarget(null)
+        toast.success("Serviço excluído.");
+        invalidate();
+        setDeleteTarget(null);
       },
       onError: (e: unknown) => {
-        const msg = errMsg(e, "Não foi possível excluir o serviço.")
-        setErrorBanner(msg)
-        toast.error(msg)
-        setDeleteTarget(null)
+        const msg = errMsg(e, "Não foi possível excluir o serviço.");
+        setErrorBanner(msg);
+        toast.error(msg);
+        setDeleteTarget(null);
       },
-    })
-  }
+    });
+  };
 
-  const renderSortHeader = (
-    label: string,
-    sortKey: SortKey,
-    align: "left" | "right" = "left",
-  ) => (
+  const renderSortHeader = (label: string, sortKey: SortKey, align: "left" | "right" = "left") => (
     <button
       type="button"
       onClick={() => toggleSort(sortKey)}
@@ -375,7 +350,7 @@ export function AdminServices() {
         <ArrowUpDown className="size-3 opacity-40" />
       )}
     </button>
-  )
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -406,9 +381,7 @@ export function AdminServices() {
         onClear={clearFilters}
         activeCount={activeFilterCount}
         resultCount={total}
-        resultLabel={
-          total === 1 ? "serviço encontrado" : "serviços encontrados"
-        }
+        resultLabel={total === 1 ? "serviço encontrado" : "serviços encontrados"}
       >
         <SearchInput
           value={q}
@@ -419,8 +392,8 @@ export function AdminServices() {
         <Select
           value={categoryFilter}
           onValueChange={(v) => {
-            setCategoryFilter(v)
-            setPage(1)
+            setCategoryFilter(v);
+            setPage(1);
           }}
         >
           <SelectTrigger className="h-9 w-auto min-w-[160px]">
@@ -438,16 +411,9 @@ export function AdminServices() {
               )
               .map((c) => (
                 <SelectItem key={c.id} value={c.id}>
-                  <span className="text-muted-foreground">
-                    {"—".repeat(c.level)}
-                  </span>{" "}
-                  {c.name}
+                  <span className="text-muted-foreground">{"—".repeat(c.level)}</span> {c.name}
                   <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                    {c.level === 0
-                      ? "pai"
-                      : c.level === 1
-                        ? "filha"
-                        : "sub"}
+                    {c.level === 0 ? "pai" : c.level === 1 ? "filha" : "sub"}
                   </span>
                 </SelectItem>
               ))}
@@ -456,8 +422,8 @@ export function AdminServices() {
         <Select
           value={providerFilter}
           onValueChange={(v) => {
-            setProviderFilter(v)
-            setPage(1)
+            setProviderFilter(v);
+            setPage(1);
           }}
         >
           <SelectTrigger className="h-9 w-auto min-w-[160px]">
@@ -475,8 +441,8 @@ export function AdminServices() {
         <Select
           value={active}
           onValueChange={(v) => {
-            setActive(v as ActiveFilter)
-            setPage(1)
+            setActive(v as ActiveFilter);
+            setPage(1);
           }}
         >
           <SelectTrigger className="h-9 w-auto min-w-[140px]">
@@ -506,12 +472,7 @@ export function AdminServices() {
           description="Ajuste os filtros de busca ou aguarde novos cadastros."
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -550,12 +511,11 @@ export function AdminServices() {
                 </TableHeader>
                 <TableBody>
                   {pageItems.map((s) => {
-                    const path = resolveCategoryPath(s.category, categories)
-                    const leaf = path.length > 0 ? path[path.length - 1] : null
-                    const pathStr = path.map((c) => c.name).join(" › ")
-                    const photo = firstPhoto(s.photos)
-                    const isPatchingThis =
-                      patchingId === s.id && patchMutation.isPending
+                    const path = resolveCategoryPath(s.category, categories);
+                    const leaf = path.length > 0 ? path[path.length - 1] : null;
+                    const pathStr = path.map((c) => c.name).join(" › ");
+                    const photo = firstPhoto(s.photos);
+                    const isPatchingThis = patchingId === s.id && patchMutation.isPending;
                     return (
                       <TableRow
                         key={s.id}
@@ -568,9 +528,11 @@ export function AdminServices() {
                           <div className="flex items-center gap-2.5">
                             <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
                               {photo ? (
-                                <img
+                                <Image
                                   src={photo}
                                   alt={s.title}
+                                  width={40}
+                                  height={40}
                                   className="size-full object-cover"
                                 />
                               ) : (
@@ -578,9 +540,7 @@ export function AdminServices() {
                               )}
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {s.title}
-                              </p>
+                              <p className="truncate text-sm font-medium">{s.title}</p>
                               <p className="truncate text-xs text-muted-foreground">
                                 {s.description.slice(0, 80)}
                                 {s.description.length > 80 ? "…" : ""}
@@ -592,10 +552,7 @@ export function AdminServices() {
                           <div className="flex items-center gap-2">
                             <Avatar className="size-8 shrink-0">
                               {s.provider.avatarUrl ? (
-                                <AvatarImage
-                                  src={s.provider.avatarUrl}
-                                  alt={s.provider.name}
-                                />
+                                <AvatarImage src={s.provider.avatarUrl} alt={s.provider.name} />
                               ) : null}
                               <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
                                 {initials(s.provider.name)}
@@ -607,9 +564,7 @@ export function AdminServices() {
                               </p>
                               <p className="truncate text-[10px] text-muted-foreground">
                                 {s.provider.city ?? "—"}
-                                {s.provider.state
-                                  ? `/${s.provider.state}`
-                                  : ""}
+                                {s.provider.state ? `/${s.provider.state}` : ""}
                               </p>
                             </div>
                           </div>
@@ -624,22 +579,15 @@ export function AdminServices() {
                                   </StatusBadge>
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent
-                                side="top"
-                                className="max-w-xs text-xs"
-                              >
-                                <span className="font-semibold">
-                                  Caminho da categoria
-                                </span>
+                              <TooltipContent side="top" className="max-w-xs text-xs">
+                                <span className="font-semibold">Caminho da categoria</span>
                                 <span className="mt-0.5 block text-muted-foreground">
                                   {pathStr}
                                 </span>
                               </TooltipContent>
                             </Tooltip>
                           ) : (
-                            <span className="text-xs text-muted-foreground">
-                              —
-                            </span>
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-right">
@@ -651,8 +599,7 @@ export function AdminServices() {
                           </span>
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
-                          {isPatchingThis &&
-                          pendingToggle?.field === "active" ? (
+                          {isPatchingThis && pendingToggle?.field === "active" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
                             <Tooltip>
@@ -695,14 +642,10 @@ export function AdminServices() {
                                   className="h-8 gap-1.5"
                                 >
                                   <Eye className="size-3.5" />
-                                  <span className="hidden sm:inline">
-                                    Ver prestador
-                                  </span>
+                                  <span className="hidden sm:inline">Ver prestador</span>
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>
-                                Abrir perfil do prestador
-                              </TooltipContent>
+                              <TooltipContent>Abrir perfil do prestador</TooltipContent>
                             </Tooltip>
                             {/* H6 — secondary/destructive actions in ⋮ */}
                             <DropdownMenu>
@@ -750,7 +693,7 @@ export function AdminServices() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    )
+                    );
                   })}
                 </TableBody>
               </Table>
@@ -764,11 +707,7 @@ export function AdminServices() {
                 total={sortedItems.length}
                 label="serviços"
               />
-              <Pagination
-                page={safePage}
-                totalPages={totalPages}
-                onPageChange={setPage}
-              />
+              <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </CardContent>
         </Card>
@@ -792,11 +731,8 @@ export function AdminServices() {
         description={
           <>
             Você está prestes a excluir{" "}
-            <strong className="text-foreground">
-              {deleteTarget?.title}
-            </strong>
-            . Esta ação não pode ser desfeita e o serviço será removido
-            permanentemente do catálogo.
+            <strong className="text-foreground">{deleteTarget?.title}</strong>. Esta ação não pode
+            ser desfeita e o serviço será removido permanentemente do catálogo.
           </>
         }
         confirmLabel={deleteMutation.isPending ? "Excluindo…" : "Excluir"}
@@ -805,7 +741,7 @@ export function AdminServices() {
         variant="destructive"
       />
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -817,21 +753,21 @@ function resolveCategoryPath(
   leaf: CategoryOption | null | undefined,
   all: CategoryOption[] | undefined,
 ): CategoryOption[] {
-  if (!leaf || !all) return []
-  const byId = new Map(all.map((c) => [c.id, c]))
-  const path: CategoryOption[] = []
-  let current: CategoryOption | undefined = leaf
-  let safety = 0
+  if (!leaf || !all) return [];
+  const byId = new Map(all.map((c) => [c.id, c]));
+  const path: CategoryOption[] = [];
+  let current: CategoryOption | undefined = leaf;
+  let safety = 0;
   while (current && safety < 5) {
-    path.unshift(current)
-    current = current.parentId ? byId.get(current.parentId) : undefined
-    safety++
+    path.unshift(current);
+    current = current.parentId ? byId.get(current.parentId) : undefined;
+    safety++;
   }
-  return path
+  return path;
 }
 
 function firstPhoto(photos: string[] | null | undefined): string | null {
-  if (!photos || !Array.isArray(photos) || photos.length === 0) return null
-  const first = photos[0]
-  return typeof first === "string" && first.length > 0 ? first : null
+  if (!photos || !Array.isArray(photos) || photos.length === 0) return null;
+  const first = photos[0];
+  return typeof first === "string" && first.length > 0 ? first : null;
 }

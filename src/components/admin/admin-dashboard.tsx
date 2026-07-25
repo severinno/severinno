@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * AdminDashboard — Visão Geral (redesign N2, heurísticas de Nielsen).
@@ -13,7 +13,7 @@
  * Data source: GET /api/admin/stats
  */
 
-import * as React from "react"
+import * as React from "react";
 import {
   ArrowRight,
   CalendarCheck,
@@ -23,7 +23,7 @@ import {
   Users,
   Wrench,
   type LucideIcon,
-} from "lucide-react"
+} from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -35,69 +35,69 @@ import {
   Tooltip as RTooltip,
   XAxis,
   YAxis,
-} from "recharts"
-import { useQuery } from "@tanstack/react-query"
+} from "recharts";
+import { useQuery } from "@tanstack/react-query";
 
-import { apiGet } from "@/lib/api"
-import { formatBRL } from "@/lib/format"
+import { apiGet } from "@/lib/api";
+import { formatBRL } from "@/lib/format";
 import {
   BOOKING_STATUS_LABELS,
   PAYMENT_STATUS_LABELS,
   type BookingStatus,
   type PaymentStatus,
-} from "@/lib/constants"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { cn } from "@/lib/utils"
+} from "@/lib/constants";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import {
   BookingStatusBadge,
   ErrorState,
   FreshnessLabel,
   initials,
-} from "@/components/admin/admin-shared"
+} from "@/components/admin/admin-shared";
 
 // ---------------------------------------------------------------------------
 // Types — mirrors /api/admin/stats response
 // ---------------------------------------------------------------------------
 
 type AdminStats = {
-  usersByRole: Record<string, number>
-  providers: number
-  services: number
-  bookingsByStatus: Record<string, number>
-  quotesByStatus: Record<string, number>
-  revenue: { total: number; paymentsPaid: number }
+  usersByRole: Record<string, number>;
+  providers: number;
+  services: number;
+  bookingsByStatus: Record<string, number>;
+  quotesByStatus: Record<string, number>;
+  revenue: { total: number; paymentsPaid: number };
   recentBookings: Array<{
-    id: string
-    status: string
-    paymentStatus: string
-    amount: number
-    scheduledAt: string
-    createdAt: string
-    service?: { id: string; title: string } | null
-    client?: { id: string; name: string; avatarUrl?: string | null } | null
-    provider?: { id: string; name: string; avatarUrl?: string | null } | null
-  }>
+    id: string;
+    status: string;
+    paymentStatus: string;
+    amount: number;
+    scheduledAt: string;
+    createdAt: string;
+    service?: { id: string; title: string } | null;
+    client?: { id: string; name: string; avatarUrl?: string | null } | null;
+    provider?: { id: string; name: string; avatarUrl?: string | null } | null;
+  }>;
   topProviders: Array<{
-    id: string
-    name: string
-    avatarUrl?: string | null
-    city?: string | null
-    verified: boolean
-    rating: number
-    reviewCount: number
-  }>
-}
+    id: string;
+    name: string;
+    avatarUrl?: string | null;
+    city?: string | null;
+    verified: boolean;
+    rating: number;
+    reviewCount: number;
+  }>;
+};
 
-type DateRange = "today" | "7d" | "30d" | "all"
+type DateRange = "today" | "7d" | "30d" | "all";
 
 const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
   { value: "today", label: "Hoje" },
   { value: "7d", label: "7d" },
   { value: "30d", label: "30d" },
   { value: "all", label: "Tudo" },
-]
+];
 
 const BOOKING_STATUS_ORDER: BookingStatus[] = [
   "PENDING",
@@ -105,19 +105,19 @@ const BOOKING_STATUS_ORDER: BookingStatus[] = [
   "IN_PROGRESS",
   "COMPLETED",
   "CANCELLED",
-]
+];
 
-const PAYMENT_STATUS_ORDER: PaymentStatus[] = ["PAID", "PENDING", "REFUNDED"]
+const PAYMENT_STATUS_ORDER: PaymentStatus[] = ["PAID", "PENDING", "REFUNDED"];
 
 // ---------------------------------------------------------------------------
 // Chart colors — cohesive palette
 // ---------------------------------------------------------------------------
 
 const PIE_COLORS: Record<PaymentStatus, string> = {
-  PAID: "hsl(160, 84%, 39%)",       // emerald-500
-  PENDING: "hsl(38, 92%, 50%)",     // amber-500
-  REFUNDED: "hsl(240, 6%, 50%)",    // zinc-500
-}
+  PAID: "hsl(160, 84%, 39%)", // emerald-500
+  PENDING: "hsl(38, 92%, 50%)", // amber-500
+  REFUNDED: "hsl(240, 6%, 50%)", // zinc-500
+};
 
 const TOOLTIP_STYLE: React.CSSProperties = {
   borderRadius: 8,
@@ -127,32 +127,20 @@ const TOOLTIP_STYLE: React.CSSProperties = {
   fontSize: 12,
   boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
   padding: "8px 10px",
-}
+};
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export function AdminDashboard({
-  onNavigate,
-}: {
-  onNavigate: (view: string) => void
-}) {
-  const [range, setRange] = React.useState<DateRange>("30d")
+export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => void }) {
+  const [range, setRange] = React.useState<DateRange>("30d");
 
-  const {
-    data,
-    isLoading,
-    isError,
-    isFetching,
-    refetch,
-    dataUpdatedAt,
-  } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["admin", "stats", range],
-    queryFn: () =>
-      apiGet<AdminStats>("/api/admin/stats", { range }),
+    queryFn: () => apiGet<AdminStats>("/api/admin/stats", { range }),
     staleTime: 60_000,
-  })
+  });
 
   // H9 — ErrorState with retry
   if (isError) {
@@ -162,58 +150,49 @@ export function AdminDashboard({
         description="Verifique sua conexão e se você está autenticado como administrador."
         onRetry={() => void refetch()}
       />
-    )
+    );
   }
 
   // H1 — Skeleton loading state
   if (isLoading || !data) {
-    return <DashboardSkeleton />
+    return <DashboardSkeleton />;
   }
 
-  const totalUsers = Object.values(data.usersByRole).reduce((a, b) => a + b, 0)
-  const totalBookings = Object.values(data.bookingsByStatus).reduce(
-    (a, b) => a + b,
-    0,
-  )
-
+  const totalUsers = Object.values(data.usersByRole).reduce((a, b) => a + b, 0);
   // Bar chart data — bookings by status
   const barData = BOOKING_STATUS_ORDER.map((s) => ({
     status: s,
     label: BOOKING_STATUS_LABELS[s],
     count: data.bookingsByStatus[s] ?? 0,
-  }))
+  }));
 
   // Pie chart data — revenue by payment status (computed from recent bookings)
   const revenueByPayment: Record<PaymentStatus, number> = {
     PAID: 0,
     PENDING: 0,
     REFUNDED: 0,
-  }
+  };
   for (const b of data.recentBookings) {
-    const ps = b.paymentStatus as PaymentStatus
+    const ps = b.paymentStatus as PaymentStatus;
     if (ps in revenueByPayment) {
-      revenueByPayment[ps] += b.amount
+      revenueByPayment[ps] += b.amount;
     }
   }
   const pieData = PAYMENT_STATUS_ORDER.map((s) => ({
     status: s,
     label: PAYMENT_STATUS_LABELS[s],
     value: revenueByPayment[s],
-  })).filter((r) => r.value > 0)
+  })).filter((r) => r.value > 0);
 
-  const freshnessDate = dataUpdatedAt ? new Date(dataUpdatedAt) : null
+  const freshnessDate = dataUpdatedAt ? new Date(dataUpdatedAt) : null;
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
       {/* Page header with period selector + freshness + refresh */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Visão geral
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Resumo da atividade da plataforma
-          </p>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">Visão geral</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">Resumo da atividade da plataforma</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -227,9 +206,7 @@ export function AdminDashboard({
             disabled={isFetching}
             aria-label="Atualizar dados"
           >
-            <RotateCw
-              className={cn("size-4", isFetching && "animate-spin")}
-            />
+            <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
           </Button>
 
           {/* Segmented period selector */}
@@ -258,26 +235,14 @@ export function AdminDashboard({
         aria-label="Indicadores principais"
         className="grid grid-cols-2 gap-4 lg:grid-cols-4"
       >
-        <KpiCard
-          icon={Users}
-          label="Usuários"
-          value={totalUsers.toLocaleString("pt-BR")}
-        />
-        <KpiCard
-          icon={Wrench}
-          label="Prestadores"
-          value={data.providers.toLocaleString("pt-BR")}
-        />
+        <KpiCard icon={Users} label="Usuários" value={totalUsers.toLocaleString("pt-BR")} />
+        <KpiCard icon={Wrench} label="Prestadores" value={data.providers.toLocaleString("pt-BR")} />
         <KpiCard
           icon={CalendarCheck}
           label="Serviços ativos"
           value={data.services.toLocaleString("pt-BR")}
         />
-        <KpiCard
-          icon={DollarSign}
-          label="Receita"
-          value={formatBRL(data.revenue.total)}
-        />
+        <KpiCard icon={DollarSign} label="Receita" value={formatBRL(data.revenue.total)} />
       </section>
 
       {/* Charts */}
@@ -285,9 +250,7 @@ export function AdminDashboard({
         {/* Bar chart — Bookings by status */}
         <div className="rounded-xl border border-border/50 bg-card">
           <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold text-foreground">
-              Agendamentos por status
-            </h2>
+            <h2 className="text-sm font-semibold text-foreground">Agendamentos por status</h2>
           </div>
           <div className="p-4">
             <BarChartSection data={barData} />
@@ -310,48 +273,32 @@ export function AdminDashboard({
       {/* Recent bookings table + Top providers list */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
-          <RecentBookingsTable
-            bookings={data.recentBookings}
-            onNavigate={onNavigate}
-          />
+          <RecentBookingsTable bookings={data.recentBookings} onNavigate={onNavigate} />
         </div>
         <div className="lg:col-span-2">
-          <TopProvidersList
-            providers={data.topProviders}
-            onNavigate={onNavigate}
-          />
+          <TopProvidersList providers={data.topProviders} onNavigate={onNavigate} />
         </div>
       </section>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
 // KPI Card
 // ---------------------------------------------------------------------------
 
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-}) {
+function KpiCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
     <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
       <span className="flex size-10 items-center justify-center rounded-lg bg-primary/8 text-primary">
         <Icon className="size-5" />
       </span>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-        {value}
-      </p>
+      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
       <p className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </p>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -361,27 +308,20 @@ function KpiCard({
 function BarChartSection({
   data,
 }: {
-  data: Array<{ status: BookingStatus; label: string; count: number }>
+  data: Array<{ status: BookingStatus; label: string; count: number }>;
 }) {
   if (data.every((d) => d.count === 0)) {
     return (
       <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
         Sem dados
       </div>
-    )
+    );
   }
 
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart
-        data={data}
-        margin={{ left: 0, right: 0, top: 8, bottom: 0 }}
-      >
-        <CartesianGrid
-          vertical={false}
-          strokeDasharray="3 3"
-          stroke="hsl(var(--border) / 0.5)"
-        />
+      <BarChart data={data} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
         <XAxis
           dataKey="label"
           tickLine={false}
@@ -397,31 +337,23 @@ function BarChartSection({
         />
         <RTooltip
           cursor={{ fill: "hsl(var(--accent) / 0.4)" }}
-          formatter={(v: number, _name: string, props: { payload: { label: string } }) => [
+          formatter={(v: number, _name: string, props: { payload?: { label: string } }) => [
             `${v} agendamentos`,
-            props.payload.label,
+            props.payload?.label ?? "",
           ]}
           contentStyle={TOOLTIP_STYLE}
         />
-        <Bar
-          dataKey="count"
-          radius={[4, 4, 0, 0]}
-          barSize={32}
-        >
+        <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={32}>
           {data.map((d) => (
             <Cell
               key={d.status}
-              fill={
-                d.count > 0
-                  ? "hsl(var(--primary))"
-                  : "hsl(var(--primary) / 0.1)"
-              }
+              fill={d.count > 0 ? "hsl(var(--primary))" : "hsl(var(--primary) / 0.1)"}
             />
           ))}
         </Bar>
       </BarChart>
     </ResponsiveContainer>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -431,14 +363,14 @@ function BarChartSection({
 function PieChartSection({
   data,
 }: {
-  data: Array<{ status: PaymentStatus; label: string; value: number }>
+  data: Array<{ status: PaymentStatus; label: string; value: number }>;
 }) {
   if (data.length === 0) {
     return (
       <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
         Sem dados
       </div>
-    )
+    );
   }
 
   return (
@@ -457,10 +389,7 @@ function PieChartSection({
               strokeWidth={2}
             >
               {data.map((d) => (
-                <Cell
-                  key={d.status}
-                  fill={PIE_COLORS[d.status]}
-                />
+                <Cell key={d.status} fill={PIE_COLORS[d.status]} />
               ))}
             </Pie>
             <RTooltip
@@ -473,9 +402,7 @@ function PieChartSection({
           <span className="text-lg font-bold tabular-nums text-foreground">
             {formatBRL(data.reduce((a, d) => a + d.value, 0))}
           </span>
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Total
-          </span>
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Total</span>
         </div>
       </div>
       <ul className="flex flex-1 flex-col gap-2">
@@ -485,9 +412,7 @@ function PieChartSection({
               className="size-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: PIE_COLORS[d.status] }}
             />
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {d.label}
-            </span>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{d.label}</span>
             <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">
               {formatBRL(d.value)}
             </span>
@@ -495,7 +420,7 @@ function PieChartSection({
         ))}
       </ul>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -506,17 +431,15 @@ function RecentBookingsTable({
   bookings,
   onNavigate,
 }: {
-  bookings: AdminStats["recentBookings"]
-  onNavigate: (view: string) => void
+  bookings: AdminStats["recentBookings"];
+  onNavigate: (view: string) => void;
 }) {
-  const rows = bookings.slice(0, 5)
+  const rows = bookings.slice(0, 5);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
       <div className="flex items-center justify-between border-b px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">
-          Agendamentos recentes
-        </h2>
+        <h2 className="text-sm font-semibold text-foreground">Agendamentos recentes</h2>
         <button
           type="button"
           onClick={() => onNavigate("admin.bookings")}
@@ -545,21 +468,15 @@ function RecentBookingsTable({
             </thead>
             <tbody className="divide-y">
               {rows.map((b) => {
-                const status = b.status as BookingStatus
+                const status = b.status as BookingStatus;
                 return (
-                  <tr
-                    key={b.id}
-                    className="h-12 transition-colors hover:bg-muted/20"
-                  >
+                  <tr key={b.id} className="h-12 transition-colors hover:bg-muted/20">
                     {/* Client */}
                     <td className="px-4">
                       <div className="flex items-center gap-2">
                         <Avatar className="size-6 shrink-0">
                           {b.client?.avatarUrl ? (
-                            <AvatarImage
-                              src={b.client.avatarUrl}
-                              alt={b.client.name ?? ""}
-                            />
+                            <AvatarImage src={b.client.avatarUrl} alt={b.client.name ?? ""} />
                           ) : null}
                           <AvatarFallback className="bg-primary/8 text-[10px] font-semibold text-primary">
                             {initials(b.client?.name ?? "?")}
@@ -575,10 +492,7 @@ function RecentBookingsTable({
                       <div className="flex items-center gap-2">
                         <Avatar className="size-6 shrink-0">
                           {b.provider?.avatarUrl ? (
-                            <AvatarImage
-                              src={b.provider.avatarUrl}
-                              alt={b.provider.name ?? ""}
-                            />
+                            <AvatarImage src={b.provider.avatarUrl} alt={b.provider.name ?? ""} />
                           ) : null}
                           <AvatarFallback className="bg-primary/8 text-[10px] font-semibold text-primary">
                             {initials(b.provider?.name ?? "?")}
@@ -606,14 +520,14 @@ function RecentBookingsTable({
                       <BookingStatusBadge status={status} />
                     </td>
                   </tr>
-                )
+                );
               })}
             </tbody>
           </table>
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -624,17 +538,15 @@ function TopProvidersList({
   providers,
   onNavigate,
 }: {
-  providers: AdminStats["topProviders"]
-  onNavigate: (view: string) => void
+  providers: AdminStats["topProviders"];
+  onNavigate: (view: string) => void;
 }) {
-  const items = providers.slice(0, 5)
+  const items = providers.slice(0, 5);
 
   return (
     <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
       <div className="flex items-center justify-between border-b px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">
-          Prestadores em destaque
-        </h2>
+        <h2 className="text-sm font-semibold text-foreground">Prestadores em destaque</h2>
         <button
           type="button"
           onClick={() => onNavigate("admin.providers")}
@@ -655,31 +567,23 @@ function TopProvidersList({
             <li key={p.id}>
               <div className="flex items-center gap-3 px-5 py-3">
                 <Avatar className="size-9 shrink-0">
-                  {p.avatarUrl ? (
-                    <AvatarImage src={p.avatarUrl} alt={p.name} />
-                  ) : null}
+                  {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
                   <AvatarFallback className="bg-primary/8 text-[11px] font-semibold text-primary">
                     {initials(p.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {p.name}
-                  </p>
+                  <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
                   <div className="mt-0.5 flex items-center gap-1.5">
                     <Star className="size-3 fill-amber-400 text-amber-400" />
                     <span className="text-xs font-medium tabular-nums text-foreground">
                       {p.rating.toFixed(1)}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      ({p.reviewCount})
-                    </span>
+                    <span className="text-xs text-muted-foreground">({p.reviewCount})</span>
                   </div>
                 </div>
                 {p.city ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {p.city}
-                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{p.city}</span>
                 ) : null}
               </div>
             </li>
@@ -687,7 +591,7 @@ function TopProvidersList({
         </ul>
       )}
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -713,10 +617,7 @@ function DashboardSkeleton() {
       {/* 4 KPI cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border/50 bg-card p-5"
-          >
+          <div key={i} className="rounded-xl border border-border/50 bg-card p-5">
             <Skeleton className="size-10 rounded-lg" />
             <Skeleton className="mt-3 h-7 w-24" />
             <Skeleton className="mt-1 h-3 w-16" />
@@ -727,10 +628,7 @@ function DashboardSkeleton() {
       {/* 2 chart cards */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border/50 bg-card"
-          >
+          <div key={i} className="rounded-xl border border-border/50 bg-card">
             <div className="border-b px-5 py-4">
               <Skeleton className="h-4 w-48" />
             </div>
@@ -769,5 +667,5 @@ function DashboardSkeleton() {
         </div>
       </div>
     </div>
-  )
+  );
 }

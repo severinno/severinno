@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * SocialProofTicker — Animated horizontal marquee of real-time platform activity.
@@ -15,18 +15,18 @@
  *   H8  Aesthetic & minimalist design → Minimal design, just scrolling text
  */
 
-import * as React from "react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Activity items — realistic platform actions in pt-BR (H2: real-world language)
 // ---------------------------------------------------------------------------
 
 type Activity = {
-  text: string
+  text: string;
   /** Optional icon emoji for visual anchoring */
-  emoji?: string
-}
+  emoji?: string;
+};
 
 const ACTIVITIES_ROW_1: Activity[] = [
   { text: "Maria contratou um eletricista em São Paulo", emoji: "⚡" },
@@ -35,7 +35,7 @@ const ACTIVITIES_ROW_1: Activity[] = [
   { text: "Ana pediu orçamento para encanador", emoji: "🔧" },
   { text: "Pedro se cadastrou como prestador verificado", emoji: "✅" },
   { text: "12 orçamentos enviados hoje", emoji: "📋" },
-]
+];
 
 const ACTIVITIES_ROW_2: Activity[] = [
   { text: "Carlos agendou limpeza de quintal em Belo Horizonte", emoji: "🧹" },
@@ -44,7 +44,7 @@ const ACTIVITIES_ROW_2: Activity[] = [
   { text: "Luciana contratou um pintor no Rio de Janeiro", emoji: "🎨" },
   { text: "Orçamento aceito: reforma de banheiro em Curitiba", emoji: "🚿" },
   { text: "5.200 serviços concluídos este mês", emoji: "🏆" },
-]
+];
 
 // ---------------------------------------------------------------------------
 // CSS-only infinite scroll (no JS interval) — using @keyframes
@@ -58,9 +58,9 @@ function MarqueeRow({
   speed = 40,
   reverse = false,
 }: {
-  items: Activity[]
-  speed?: number
-  reverse?: boolean
+  items: Activity[];
+  speed?: number;
+  reverse?: boolean;
 }) {
   return (
     <div className="group/marquee relative overflow-hidden">
@@ -110,7 +110,7 @@ function MarqueeRow({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -163,5 +163,5 @@ export default function SocialProofTicker() {
         </div>
       </div>
     </section>
-  )
+  );
 }
