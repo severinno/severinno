@@ -100,6 +100,7 @@ vi.mock("@/lib/redis", () => ({
   cacheInvalidate: vi.fn(),
 }))
 
+
 vi.mock("@/lib/api-server", async (importOriginal) => {
   const actual = await importOriginal()
   return {
@@ -107,11 +108,6 @@ vi.mock("@/lib/api-server", async (importOriginal) => {
     cacheControlPublic: vi.fn((response: Response) => response),
   }
 })
-
-vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
-}))
 
 import { requireUser } from "@/lib/auth"
 import { reviewSchema } from "@/lib/validators"
