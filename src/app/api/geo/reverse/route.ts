@@ -24,9 +24,9 @@ async function rateLimitedReverseGeocode(lat: number, lng: number) {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const lat = Number(searchParams.get("lat"))
-    const lng = Number(searchParams.get("lng"))
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    const latRaw = searchParams.get("lat")
+    const lngRaw = searchParams.get("lng")
+    if (!latRaw || !lngRaw || !Number.isFinite(Number(latRaw)) || !Number.isFinite(Number(lngRaw))) {
       return NextResponse.json(
         { error: "Lat/lng inválidos" },
         { status: 400 },
@@ -34,10 +34,10 @@ export async function GET(request: Request) {
     }
 
     // Round coords to 4 decimals (~11m precision) for cache key
-    const key = `geo:reverse:${lat.toFixed(4)},${lng.toFixed(4)}`
+    const key = `geo:reverse:${Number(latRaw).toFixed(4)},${Number(lngRaw).toFixed(4)}`
     const address = await withCache(
       key,
-      () => rateLimitedReverseGeocode(lat, lng),
+      () => rateLimitedReverseGeocode(Number(latRaw), Number(lngRaw)),
       3600, // 1h
     )
 

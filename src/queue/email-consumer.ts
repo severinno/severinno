@@ -10,7 +10,11 @@ async function handleEmail(msg: Record<string, unknown>): Promise<void> {
     logger.warn({ msg }, "invalid email payload, skipping")
     return
   }
-  await sendMail({ to, subject, html })
+  try {
+    await sendMail({ to, subject, html })
+  } catch (err) {
+    logger.error({ err, to, subject }, "failed to send email")
+  }
 }
 
 async function main() {

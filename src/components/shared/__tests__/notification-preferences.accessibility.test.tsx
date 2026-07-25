@@ -82,6 +82,8 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
 }))
 
+import { useQuery } from "@tanstack/react-query"
+
 // ---- SUT ───────────────────────────────────────────────────────────────────
 
 import { NotificationPreferences } from "../notification-preferences"
@@ -90,7 +92,7 @@ afterEach(cleanup)
 
 describe("NotificationPreferences — accessibility", () => {
   it("has no axe violations in loading state", async () => {
-    vi.mocked(require("@tanstack/react-query").useQuery).mockReturnValueOnce({
+    vi.mocked(useQuery).mockReturnValueOnce({
       data: undefined,
       isLoading: true,
     })
@@ -106,7 +108,7 @@ describe("NotificationPreferences — accessibility", () => {
   })
 
   it("has no axe violations with preferences loaded", async () => {
-    vi.mocked(require("@tanstack/react-query").useQuery).mockReturnValueOnce({
+    vi.mocked(useQuery).mockReturnValueOnce({
       data: {
         preferences: [
           { type: "BOOKING_CONFIRMED", pushEnabled: true, emailEnabled: true, whatsappEnabled: false, soundEnabled: true },

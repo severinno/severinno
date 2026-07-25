@@ -90,9 +90,27 @@ vi.mock("@/lib/validators", () => ({
   reviewSchema: { parse: vi.fn() },
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: { reviews: { prefix: 'reviews', max: 10, windowMs: 60000 } },
+}))
+
+vi.mock("@/lib/redis", () => ({
+  withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+  cacheInvalidate: vi.fn(),
+}))
+
+vi.mock("@/lib/api-server", async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    cacheControlPublic: vi.fn((response: Response) => response),
+  }
+})
+
 vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
 }))
 
 import { requireUser } from "@/lib/auth"
