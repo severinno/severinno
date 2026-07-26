@@ -2,11 +2,12 @@
 # GitHub Actions CI/CD — Severinno Marketplace
 #
 # Pipeline:
-#   lint    → ESLint
-#   typecheck → tsc --noEmit
-#   test    → vitest run
-#   build   → next build (Docker or standalone)
-#   deploy  → (VPS / Docker Hub / SSH deploy)
+#   lint       → ESLint
+#   typecheck  → tsc --noEmit
+#   utf8-check → iconv-based UTF-8 validation on all .ts files
+#   test       → vitest run
+#   build      → next build (Docker or standalone)
+#   deploy     → (VPS / Docker Hub / SSH deploy)
 # =============================================================================
 
 name: CI/CD
@@ -57,6 +58,17 @@ jobs:
       - run: bun run db:generate
       - run: bunx tsc --noEmit
 
+    # UTF-8 Encoding Check ----------------------------------------------------
+  # Reusable via .github/workflows/utf8-check.yml
+  utf8-check:
+    uses: ./.github/workflows/utf8-check.yml
+
+  # ── Quality Gate ──────────────────────────────────────────────────────────
+  # Consolidated: coverage gaps + cache manifest + coverage badge generation.
+  # Replaces the individual validate-coverage and validate-cache jobs.
+  quality-gate:
+    uses: ./.github/workflows/quality-gate.yml
+
   # ── Tests ─────────────────────────────────────────────────────────────────
   test:
     name: Tests
@@ -89,11 +101,27 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
 
+      - name: Generate coverage badge
+        run: npx tsx scripts/coverage-badge.ts --save
+
+      - name: Commit updated badge (push to main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/badge-coverage.svg
+          if git diff --cached --quiet; then
+            echo "No changes to badge — skipping commit"
+          else
+            git commit -m "chore: update coverage badge [skip ci]"
+            git push
+          fi
+
   # ── Build ─────────────────────────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, utf8-check, quality-gate, test]
 
     steps:
       - uses: actions/checkout@v4
@@ -152,4 +180,4 @@ jobs:
       #       docker compose pull
       #       docker compose up -d --force-recreate
 
-      - run: echo "✅ Build ready for deployment"
+      - run: echo "Build ready for deployment"

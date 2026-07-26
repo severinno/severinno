@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { haversineKm } from "@/lib/geo"
-import { handleError, notFound } from "@/lib/api-server"
+import { cacheControlPrivate, handleError, notFound } from "@/lib/api-server"
 import { getOptionalSession } from "@/lib/auth"
 
 type Params = { params: Promise<{ id: string }> }
@@ -86,7 +86,7 @@ export async function GET(request: Request, { params }: Params) {
 
     // Return the provider object directly (the typed fetch wrapper expects
     // a `ProviderDetail`, not `{ provider: ProviderDetail }`).
-    return NextResponse.json({
+    return cacheControlPrivate(NextResponse.json({
       ...safe,
       services: safe.services,
       availability: safe.availability,
@@ -96,7 +96,7 @@ export async function GET(request: Request, { params }: Params) {
       favoriteCount,
       distanceKm,
       favorited,
-    })
+    }), 60)
   } catch (e) {
     return handleError(e)
   }

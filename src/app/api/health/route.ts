@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { cacheGet } from "@/lib/redis"
+import { getCacheStats, getClient } from "@/lib/redis"
 import logger from "@/lib/logger"
+import pkg from "../../../../package.json"
 
 /**
  * GET /api/health
@@ -41,6 +42,12 @@ type HealthResponse = {
     database: "ok" | "error"
     redis: "ok" | "error"
   }
+  cache: {
+    hits: number
+    misses: number
+    total: number
+    hitRatio: number | null
+  }
   version: string
 }
 
@@ -70,12 +77,18 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
     checks: { database, redis },
-    // FIXME: read from package.json at build time
-    version: "0.2.0",
+    cache: getCacheStats(),
+    version: pkg.version,
   }
 
-  // Cache the result (best-effort, in-memory only to avoid dependency)
-  inMemoryCache = { timestamp: Date.now(), result: response }
+  // Cache the result (best-effort, in-memory only to avoid dependency).
+  // Only cache healthy responses — degraded states are critical and should
+  // be visible immediately on every poll, not masked for up to 15s.
+  if (allOk) {
+    inMemoryCache = { timestamp: Date.now(), result: response }
+  } else {
+    inMemoryCache = null
+  }
 
   const elapsed = Date.now() - start
   logger.info({ elapsed, status: response.status, checks: response.checks }, "health check")
@@ -96,10 +109,11 @@ async function checkDatabase(): Promise<"ok" | "error"> {
 }
 
 async function checkRedis(): Promise<"ok" | "error"> {
-  // Reuse the existing Redis singleton from @/lib/redis.
-  // The singleton handles connection pooling and errors gracefully.
+  // Use the raw ioredis client directly so that connection errors
+  // propagate to the try/catch (cacheGet swallows all errors internally).
   try {
-    await cacheGet("health:ping")
+    const client = getClient()
+    await client.ping()
     return "ok"
   } catch {
     // Redis is optional — the app degrades gracefully without it

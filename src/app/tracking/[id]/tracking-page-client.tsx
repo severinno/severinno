@@ -70,7 +70,11 @@ export function TrackingPageClient({ booking }: { booking: BookingData }) {
     if (!providerLocation) return
 
     let active = true
-    apiGet<{ route?: { polyline: string | null; distanceKm: number; durationMin: number } | null }>(
+    apiGet<{ route?: {
+      polyline: [number, number][] | null
+      distanceKm: number
+      durationMin: number
+    } | null }>(
       `/api/tracking/${booking.id}`,
       { lat: providerLocation[1], lng: providerLocation[0] }
     )
@@ -78,7 +82,8 @@ export function TrackingPageClient({ booking }: { booking: BookingData }) {
         if (!active) return
         if (res.route?.polyline) {
           try {
-            const coords = JSON.parse(res.route.polyline) as [number, number][]
+            const coords = res.route.polyline as [number, number][]
+            // OSRM returns [lng, lat] — convert to [lng, lat] for MapLibre
             setRouteCoords(coords)
             setEtaInfo({
               distanceKm: res.route.distanceKm,

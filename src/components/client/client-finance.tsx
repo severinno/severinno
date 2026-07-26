@@ -40,6 +40,8 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
+import { RealtimeStatusBadge } from "@/components/shared/realtime-status-badge"
 import { apiGet } from "@/lib/api"
 import {
   PAYMENT_METHOD_LABELS,
@@ -155,6 +157,8 @@ function providerInitials(name?: string | null): string {
 // ---------------------------------------------------------------------------
 
 export function ClientFinance() {
+  const { isConnected, status } = useRealtimeFinance()
+
   const now = new Date()
   const [tab, setTab] = React.useState("ALL")
   const [year, setYear] = React.useState<string>(String(now.getFullYear()))
@@ -263,6 +267,11 @@ export function ClientFinance() {
       <PageHeader
         title="Financeiro"
         subtitle="Acompanhe seus pagamentos e gastos com serviços."
+      />
+
+      <RealtimeStatusBadge
+        status={status}
+        isConnected={isConnected}
       />
 
       {/* Summary cards */}

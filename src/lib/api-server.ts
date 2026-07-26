@@ -160,11 +160,23 @@ export async function invalidateCategoryCache(): Promise<void> {
 
 
 // ---------------------------------------------------------------------------
-// Cache-Control helpers — set public Cache-Control headers on responses
+// Cache-Control helpers ï¿½ set public Cache-Control headers on responses
 // ---------------------------------------------------------------------------
 
 /**
- * Apply public Cache-Control headers to a NextResponse.
+ * Apply public Cache-Control + Vary headers to a NextResponse.
+ *
+ * Sets:
+ *   Cache-Control: public, max-age={maxAge}, s-maxage={swr}
+ *   Vary: Accept-Encoding, Accept
+ *
+ * The Vary header tells CDNs/proxies to cache separate copies based on:
+ *   Accept-Encoding â€” compressed (gzip) vs uncompressed responses
+ *   Accept          â€” JSON vs potential future content-type variants
+ *
+ * Without Vary, a CDN may serve a gzip-compressed response to a client
+ * that doesn't support it, or serve a JSON response to a client expecting
+ * HTML (shouldn't happen for this API, but is a safety net).
  *
  * @param response  The response to modify.
  * @param maxAge    Max age in seconds (e.g. 30, 60, 120).
@@ -180,11 +192,47 @@ export function cacheControlPublic(
     "Cache-Control",
     `public, max-age=${maxAge}, s-maxage=${swr}`,
   )
+  // Set Vary to prevent CDN cache collisions for encoding, format, and origin variants
+  response.headers.set("Vary", "Accept-Encoding, Accept, Origin")
+  return response
+}
+
+/**
+ * Apply private Cache-Control + Vary headers to a NextResponse.
+ *
+ * Use for routes that contain user-personalized data (e.g. `favorited`
+ * flags, user-specific recommendations). Private cache ensures the
+ * response is stored in the browser only, never in shared CDN caches.
+ *
+ * Sets:
+ *   Cache-Control: private, max-age={maxAge}
+ *   Vary: Cookie, Accept-Encoding, Accept
+ *
+ * The `Vary: Cookie` header ensures that different users (with different
+ * session cookies) get their own cached copy in the browser.
+ *
+ * NOTE: With `private` cache, `s-maxage` is intentionally omitted because
+ * shared/proxy caches (CDNs) must NOT store private responses.
+ *
+ * @param response  The response to modify.
+ * @param maxAge    Max age in seconds (e.g. 30, 60, 120).
+ */
+export function cacheControlPrivate(
+  response: NextResponse,
+  maxAge: number,
+): NextResponse {
+  response.headers.set(
+    "Cache-Control",
+    `private, max-age=${maxAge}`,
+  )
+  // Vary on Cookie separates cache per user session. Accept-Encoding and
+  // Accept are inherited from the public variant for encoding/format safety.
+  response.headers.set("Vary", "Cookie, Accept-Encoding, Accept")
   return response
 }
 
 // ---------------------------------------------------------------------------
-// Search reindex helpers — queue entities for the search-index consumer
+// Search reindex helpers ï¿½ queue entities for the search-index consumer
 // ---------------------------------------------------------------------------
 
 /**

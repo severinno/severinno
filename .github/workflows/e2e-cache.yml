@@ -1,0 +1,173 @@
+# =============================================================================
+# E2E Cache Validation — Severinno Marketplace
+#
+# Validates HTTP cache headers end-to-end:
+#   1. Start PostgreSQL (PostGIS) + Redis
+#   2. Push Prisma schema to test DB
+#   3. Build and start Next.js
+#   4. Run Playwright cache tests
+#   5. Clean up
+#
+# Triggered on:
+#   - PRs to main that touch cache-related files
+#   - Push to main (after deploy)
+# =============================================================================
+
+name: E2E Cache
+
+on:
+  pull_request:
+    branches: [main]
+    paths: &cache_paths
+      - "src/lib/api-server.ts"
+      - "src/lib/cache-manifest.ts"
+      - "src/app/api/**/route.ts"
+      - "e2e/providers-cache.spec.ts"
+      - "scripts/validate-cache-manifest.ts"
+      - "scripts/check-utf8.sh"
+      - "scripts/fix-encoding.sh"
+      - ".github/workflows/e2e-cache.yml"
+  push:
+    branches: [main]
+    paths: *cache_paths
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+  DATABASE_URL: postgresql://severinno:severinno_test@localhost:5433/severinno_test
+  REDIS_URL: redis://localhost:6381
+  BASE_URL: http://localhost:3000
+  SESSION_SECRET: ci-session-secret-e2e-cache-32-chars-long
+
+jobs:
+    # UTF-8 Encoding Check ----------------------------------------------------
+  # Fast gate: <10s, no dependencies beyond python3 (pre-installed on runners).
+  # Reusable via .github/workflows/utf8-check.yml
+  utf8-check:
+    uses: ./.github/workflows/utf8-check.yml
+
+  # ── Quality Gate ──────────────────────────────────────────────────────────
+  quality-gate:
+    uses: ./.github/workflows/quality-gate.yml
+
+  e2e-cache:
+    name: E2E Cache
+    needs: [utf8-check, quality-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: severinno_test
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 15s
+
+      redis:
+        image: valkey/valkey:7.2-alpine
+        ports:
+          - 6381:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      # Push schema instead of running full migrations — faster and sufficient
+      # for cache header testing (we don't need data, just the schema)
+      - name: Push Prisma schema to test database
+        run: |
+          npx prisma db push --accept-data-loss --skip-generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      # Use next start (production mode) for stable, fast responses
+      - name: Build Next.js
+        run: bun run build
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          SESSION_SECRET: ${{ env.SESSION_SECRET }}
+
+      - name: Start Next.js server
+        run: |
+          DATABASE_URL="${{ env.DATABASE_URL }}" \
+          REDIS_URL="${{ env.REDIS_URL }}" \
+          SESSION_SECRET="${{ env.SESSION_SECRET }}" \
+          npx next start -p 3000 &>/tmp/nextserver.log &
+          echo "PID=$!"
+          # Wait for server to respond
+          for i in $(seq 1 30); do
+            sleep 2
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health \
+              2>/dev/null | grep -q "200"; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+          done
+
+      # Smoke test: verify critical routes respond before running full test
+      - name: Smoke test API routes
+        run: |
+          for route in "/api/providers?page=1&limit=1" "/api/categories?limit=1" "/api/search?q=teste"; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000$route" || echo "000")
+            if [ "$status" = "200" ]; then
+              echo "  ✅ GET $route → $status"
+            else
+              echo "  ❌ GET $route → $status (expected 200)"
+              exit 1
+            fi
+          done
+
+      - name: Install Playwright browsers
+        run: bunx playwright install chromium --with-deps
+
+      - name: Run Playwright cache tests
+        run: |
+          bunx playwright test e2e/providers-cache.spec.ts \
+            --grep "cache headers|repeated calls|edge cache" \
+            --project chromium \
+            --reporter list
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-cache
+          path: playwright-report/
+          retention-days: 7

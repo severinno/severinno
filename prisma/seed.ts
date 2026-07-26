@@ -614,6 +614,30 @@ async function main() {
     })
   }
 
+  // ── Sync PostGIS location column (batch-inserted rows bypass trigger) ──
+  console.log("   • syncing PostGIS location columns...")
+  try {
+    await db.$executeRawUnsafe(`
+      UPDATE "User"
+      SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
+      WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
+    `)
+    await db.$executeRawUnsafe(`
+      UPDATE "Booking"
+      SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
+      WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
+    `)
+    await db.$executeRawUnsafe(`
+      UPDATE "QuoteRequest"
+      SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
+      WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
+    `)
+    console.log("   ✅ PostGIS locations synced")
+  } catch (e) {
+    // PostGIS may not be available (e.g. SQLite) — non-fatal
+    console.log("   ⚠️  PostGIS sync skipped (extension not available)")
+  }
+
   console.log("")
   console.log("✅ Seed completed successfully!")
   console.log(`   • Users:    1 admin + 2 clients + 6 providers`)

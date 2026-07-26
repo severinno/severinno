@@ -1,0 +1,40 @@
+# =============================================================================
+# Validate Cache Manifest — Severinno Marketplace
+#
+# Reusable workflow that validates the CACHED_ROUTES manifest matches the
+# actual route handlers in src/app/api/. Runs npx tsx scripts/validate-cache-manifest.ts
+# which greps for cacheControlPublic/cacheControlPrivate usage and compares
+# against the static manifest.
+#
+# Usage:
+#   jobs:
+#     validate-cache:
+#       uses: ./.github/workflows/validate-cache.yml
+#
+# Fast gate: ~30s (checkout + bun install + prisma generate + tsx).
+# =============================================================================
+
+name: Validate Cache Manifest
+
+on:
+  workflow_call:
+
+jobs:
+  validate-cache:
+    name: Validate Cache Manifest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Validate cache manifest against route handlers
+        run: npx tsx scripts/validate-cache-manifest.ts

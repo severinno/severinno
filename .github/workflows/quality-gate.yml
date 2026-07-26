@@ -1,0 +1,92 @@
+# =============================================================================
+# Quality Gate — Severinno Marketplace
+#
+# Consolidated reusable workflow that runs ALL code quality validators in
+# parallel before the build step. Replaces the individual reusable workflows:
+#   .github/workflows/validate-coverage.yml
+#   .github/workflows/validate-cache.yml
+#   coverage-badge inline steps in test jobs
+#
+# Jobs (run in parallel):
+#   1. coverage-gaps   → npx tsx scripts/coverage-gaps.ts --ci
+#   2. cache-manifest  → npx tsx scripts/validate-cache-manifest.ts
+#   3. coverage-badge  → npx tsx scripts/coverage-badge.ts --save
+#
+# Usage:
+#   jobs:
+#     quality-gate:
+#       uses: ./.github/workflows/quality-gate.yml
+#
+# Total runtime: ~30-45s (3 parallel jobs × ~10-15s each)
+# =============================================================================
+
+name: Quality Gate
+
+on:
+  workflow_call:
+
+jobs:
+  # ── Coverage Gaps ─────────────────────────────────────────────────────────
+  # Validates that all API routes have corresponding test files.
+  coverage-gaps:
+    name: Coverage Gaps
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Validate all API routes have test coverage
+        run: npx tsx scripts/coverage-gaps.ts --ci
+
+  # ── Cache Manifest ────────────────────────────────────────────────────────
+  # Validates the CACHED_ROUTES manifest matches actual route handlers.
+  cache-manifest:
+    name: Cache Manifest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Validate cache manifest against route handlers
+        run: npx tsx scripts/validate-cache-manifest.ts
+
+  # ── Coverage Badge ────────────────────────────────────────────────────────
+  # Generates the shields.io-style coverage badge SVG.
+  # Note: The badge commit step remains in parent workflows (ci.yml,
+  # release-deploy.yml) because they run on the same runner as the test
+  # job and can git-commit the generated file. This job uploads the badge
+  # as an artifact for downstream use if needed.
+  coverage-badge:
+    name: Coverage Badge
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Generate coverage badge SVG
+        run: npx tsx scripts/coverage-badge.ts --save
+
+      - name: Upload badge artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-coverage
+          path: docs/badge-coverage.svg
+          retention-days: 1

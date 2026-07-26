@@ -16,6 +16,16 @@ env:
   RABBITMQ_URL: amqp://localhost:5672
 
 jobs:
+    # UTF-8 Encoding Check ----------------------------------------------------
+  # Reusable via .github/workflows/utf8-check.yml
+  utf8-check:
+    uses: ./.github/workflows/utf8-check.yml
+
+  # ── Quality Gate ──────────────────────────────────────────────────────────
+  quality-gate:
+    uses: ./.github/workflows/quality-gate.yml
+
+  # ── Main PR Check ──────────────────────────────────────────────────────
   check:
     runs-on: ubuntu-latest
     steps:

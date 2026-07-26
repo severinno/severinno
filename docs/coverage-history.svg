@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="280" viewBox="0 0 600 280" role="img" aria-label="Coverage evolution: 57%">
+  <defs>
+    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bfa100" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#bfa100" stop-opacity="0.01"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="600" height="280" fill="#f8f9fa" rx="6"/>
+
+  <!-- Title -->
+  <text x="55" y="20" fill="#212529" font-family="DejaVu Sans,Verdana,sans-serif" font-size="13" font-weight="bold">Coverage Evolution</text>
+  <text x="570" y="20" text-anchor="end" fill="#bfa100" font-family="DejaVu Sans,Verdana,sans-serif" font-size="13" font-weight="bold">57%</text>
+
+  <!-- Grid lines + Y-axis labels -->
+  <line x1="55" y1="230" x2="570" y2="230" stroke="#e9ecef" stroke-width="1"/>
+  <text x="47" y="234" text-anchor="end" fill="#868e96" font-family="DejaVu Sans,Verdana,sans-serif" font-size="11">0%</text>
+  <line x1="55" y1="180" x2="570" y2="180" stroke="#e9ecef" stroke-width="1"/>
+  <text x="47" y="184" text-anchor="end" fill="#868e96" font-family="DejaVu Sans,Verdana,sans-serif" font-size="11">25%</text>
+  <line x1="55" y1="130" x2="570" y2="130" stroke="#e9ecef" stroke-width="1"/>
+  <text x="47" y="134" text-anchor="end" fill="#868e96" font-family="DejaVu Sans,Verdana,sans-serif" font-size="11">50%</text>
+  <line x1="55" y1="80" x2="570" y2="80" stroke="#e9ecef" stroke-width="1"/>
+  <text x="47" y="84" text-anchor="end" fill="#868e96" font-family="DejaVu Sans,Verdana,sans-serif" font-size="11">75%</text>
+  <line x1="55" y1="30" x2="570" y2="30" stroke="#e9ecef" stroke-width="1"/>
+  <text x="47" y="34" text-anchor="end" fill="#868e96" font-family="DejaVu Sans,Verdana,sans-serif" font-size="11">100%</text>
+
+  <!-- Y-axis line -->
+  <line x1="55" y1="30" x2="55" y2="230" stroke="#adb5bd" stroke-width="1"/>
+
+  <!-- X-axis line -->
+  <line x1="55" y1="230" x2="570" y2="230" stroke="#adb5bd" stroke-width="1"/>
+
+  <!-- Area fill under the line -->
+  <g></g>
+
+  <!-- Data line -->
+  <polyline fill="none" stroke="#bfa100" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="312.5,116.00000000000001"/>
+
+  <!-- Data dots -->
+  <g>
+    <g>
+      <circle cx="312.5" cy="116.00000000000001" r="4" fill="#bfa100" stroke="#fff" stroke-width="2"/>
+      <title>Jul 26: 57% (45/79)</title>
+    </g>
+  </g>
+
+  <!-- X-axis labels -->
+  <g>
+    <text x="312.5" y="268" text-anchor="middle" fill="#868e96" font-family="DejaVu Sans,Verdana,sans-serif" font-size="11">Jul 26</text>
+  </g>
+</svg>

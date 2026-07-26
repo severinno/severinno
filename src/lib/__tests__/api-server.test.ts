@@ -12,6 +12,7 @@ import {
   publicUser,
   USER_PUBLIC_SELECT,
   cacheControlPublic,
+  cacheControlPrivate,
   syncCategorySearch,
   syncServiceSearch,
 } from "../api-server"
@@ -188,6 +189,38 @@ describe("USER_PUBLIC_SELECT", () => {
   })
 })
 
+
+// ---------------------------------------------------------------------------
+// cacheControlPrivate
+// ---------------------------------------------------------------------------
+describe("cacheControlPrivate", () => {
+  it("sets Cache-Control: private with max-age", () => {
+    const res = new Response()
+    const result = cacheControlPrivate(res as unknown as NextResponse, 60)
+    expect(result.headers.get("Cache-Control")).toBe("private, max-age=60")
+    expect(result).toBe(res)
+  })
+
+  it("sets Vary: Cookie, Accept-Encoding, Accept", () => {
+    const res = new Response()
+    const result = cacheControlPrivate(res as unknown as NextResponse, 60)
+    expect(result.headers.get("Vary")).toBe("Cookie, Accept-Encoding, Accept")
+  })
+
+  it("does NOT include s-maxage in Cache-Control", () => {
+    const res = new Response()
+    const result = cacheControlPrivate(res as unknown as NextResponse, 120)
+    const cc = result.headers.get("Cache-Control")
+    expect(cc).toBe("private, max-age=120")
+    expect(cc).not.toContain("s-maxage")
+  })
+
+  it("handles zero max-age", () => {
+    const res = new Response()
+    const result = cacheControlPrivate(res as unknown as NextResponse, 0)
+    expect(result.headers.get("Cache-Control")).toBe("private, max-age=0")
+  })
+})
 
 // ---------------------------------------------------------------------------
 // cacheControlPublic

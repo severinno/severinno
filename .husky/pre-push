@@ -1,0 +1,19 @@
+bash scripts/check-utf8.sh --dry-run --ci src/
+
+# Coverage Gate: block pushes that add new API route.ts files without tests
+added=$(git diff --cached --name-only --diff-filter=A -- 'src/app/api/**/route.ts')
+if [ -n "$added" ]; then
+  fail=0
+  while IFS= read -r r; do
+    dir=$(dirname "$r" | sed 's|src/app/api/||' | sed 's|/[^/]*\[[^]]*\]||g' | tr '/' '-')
+    test_file="src/app/api/__tests__/${dir}-route.test.ts"
+    if [ ! -f "$test_file" ]; then
+      echo "  ❌ NOVA ROTA SEM TESTE: $r"
+      echo "     Esperado: $test_file"
+      fail=1
+    fi
+  done <<< "$added"
+  if [ "$fail" -ne 0 ]; then
+    exit 1
+  fi
+fi
