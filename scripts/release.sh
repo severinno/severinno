@@ -123,7 +123,9 @@ echo "  Unit tests: $TEST_COUNT_UNIT"
 echo "  E2E:        $E2E_COUNT"
 echo ""
 
-# ── Apply changes ───────────────────────────────────────────────────────────
+# ---- Apply changes ----------------------------------------------------------
+
+CHANGELOG_FILE="$PROJECT_DIR/CHANGELOG.md"
 
 if $DRY_RUN; then
   echo "⚠️  DRY-RUN — no changes made"
@@ -142,14 +144,8 @@ else
 fi
 
 sed "${SED_INLINE[@]}" "s/\"version\": \"$CURRENT_VERSION\"/\"version\": \"$NEW_VERSION\"/" "$PACKAGE_JSON"
-echo "  ✅ package.json: v$CURRENT_VERSION → v$NEW_VERSION"
+echo "  + package.json: v$CURRENT_VERSION -> v$NEW_VERSION"
 
-# Stage and commit version bump
-git add "$PACKAGE_JSON"
-git commit -m "chore: bump version to $TAG"
-echo "  ✅ Committed version bump"
-
-# Create tag
 # Prepend new entry to CHANGELOG.md
 if [ -f "$CHANGELOG_FILE" ]; then
   EXISTING=$(cat "$CHANGELOG_FILE")
@@ -168,20 +164,21 @@ fi
     echo "$EXISTING" | tail -n +3
   fi
 } > "$CHANGELOG_FILE"
-git add "$CHANGELOG_FILE"
-echo "  ✅ CHANGELOG.md written"
+echo "  + CHANGELOG.md written"
 
+# Stage and commit both files together
+git add "$PACKAGE_JSON" "$CHANGELOG_FILE"
 git commit -m "chore: bump version to $TAG"
-echo "  ✅ Committed version bump"
+echo "  + Committed version bump + changelog"
 
 # Create tag
 git tag -a "$TAG" -m "Release $TAG"
-echo "  ✅ Created tag: $TAG"
+echo "  + Created tag: $TAG"
 
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "========================================="
 echo "  Release $TAG created successfully!"
 echo ""
 echo "  To push:"
 echo "    git push origin main --tags"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "========================================="
