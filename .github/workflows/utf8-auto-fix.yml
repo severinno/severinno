@@ -1,0 +1,85 @@
+# =============================================================================
+# UTF-8 Auto-Fix — Severinno Marketplace
+#
+# Automatically detects and fixes byte-0x97 encoding corruption in .ts/.tsx
+# files on Pull Requests. Runs --fix first to correct known corruption,
+# then --dry-run --ci to validate no non-fixable issues remain.
+#
+# Safety:
+#   - Only auto-fixes byte 0x97 → UTF-8 em dash (safe, deterministic)
+#   - Does NOT fix mixed or unknown UTF-8 errors (requires manual review)
+#   - Only commits if ALL issues are resolved (non-fixable = workflow fails)
+#   - Commits via github-actions[bot] — no human identity used
+#   - Only runs when .ts/.tsx files are modified in the PR
+#
+# ⚠️ Fork PRs: GITHUB_TOKEN has read-only permissions on fork branches.
+#   Auto-commit will only work for PRs from branches within this repo.
+# =============================================================================
+
+name: UTF-8 Auto-Fix
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**/*.ts"
+      - "src/**/*.tsx"
+
+concurrency:
+  group: utf8-fix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auto-fix:
+    name: UTF-8 Auto-Fix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 1: Fix any byte 0x97 corruption (safe, deterministic)
+      - name: Fix byte 0x97 corruption
+        id: fix
+        run: |
+          python3 scripts/check_utf8.py --fix src/ || echo "FIX_EXIT=$?" >> $GITHUB_ENV
+
+      # Step 2: Validate no non-fixable issues remain
+      - name: Validate remaining UTF-8
+        id: validate
+        run: |
+          python3 scripts/check_utf8.py --dry-run --ci src/
+          echo "CLEAN=true" >> $GITHUB_OUTPUT
+
+      # Step 3: Check if files were modified by --fix
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "HAS_CHANGES=false" >> $GITHUB_OUTPUT
+          else
+            echo "HAS_CHANGES=true" >> $GITHUB_OUTPUT
+          fi
+
+      # Step 4: Commit and push fixes back to PR branch (same-repo PRs only)
+      - name: Commit and push fixes
+        if: >
+          steps.changes.outputs.HAS_CHANGES == 'true' &&
+          steps.validate.outputs.CLEAN == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: auto-corrigir byte 0x97 (Windows-1252 em dash) para UTF-8
+
+          Substitui byte 0x97 (Windows-1252 em dash →) por UTF-8 valido
+          (\\\\xe2\\\\x80\\\\x94) em arquivos .ts/.tsx corrompidos.
+
+          🤖 Generated with Codebuff"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

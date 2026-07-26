@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { geocodeCEP } from "@/lib/geo"
-import { handleError } from "@/lib/api-server"
+import { cacheControlPublic, handleError } from "@/lib/api-server"
 import { withCache } from "@/lib/redis"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       () => geocodeCEP(clean),
       86400, // 24h
     )
-    return NextResponse.json(address)
+    return cacheControlPublic(NextResponse.json(address), 60)
   } catch (e) {
     const msg = e instanceof Error ? e.message : "CEP inválido"
     if (msg.toLowerCase().includes("não encontrado")) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { fullTextSearch } from "@/lib/search"
-import { handleError } from "@/lib/api-server"
+import { cacheControlPublic, handleError } from "@/lib/api-server"
 
 export async function GET(request: Request) {
   try {
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     }
 
     const items = await fullTextSearch(q)
-    return NextResponse.json({ items, q })
+    return cacheControlPublic(NextResponse.json({ items, q }), 30)
   } catch (e) {
     return handleError(e)
   }

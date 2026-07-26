@@ -42,6 +42,7 @@ export const useGeoStore = create<GeoState>()(
       state: null,
       status: "idle",
       error: null,
+      updatedAt: null,
 
       setFromGPS: async () => {
         if (typeof navigator === "undefined" || !navigator.geolocation) {

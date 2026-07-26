@@ -20,6 +20,7 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
+      - ./scripts/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U severinno -d severinno"]
       interval: 5s
@@ -172,15 +173,23 @@ services:
       "
 
   # ── OSRM Routing (Optional) ────────────────────────────────────────────
+  # Start with: docker compose -f docker-compose.dev.yml --profile routing up -d osrm
+  # Setup data first: bash scripts/setup-osrm.sh
   osrm:
     image: ghcr.io/project-osrm/osrm-backend:latest
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
       - ./osrm-data:/data
     command: osrm-routed --algorithm mld /data/governador-valadares.osrm
     profiles:
       - routing
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/route/v1/driving/-41.9736,-19.8125;-41.9481,-18.8505?overview=false"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
 volumes:
   pgdata_dev:

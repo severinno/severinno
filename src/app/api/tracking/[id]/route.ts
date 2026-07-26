@@ -32,7 +32,11 @@ export async function GET(request: Request, { params }: Params) {
 
     if (!booking) throw notFound("Agendamento não encontrado")
 
-    let routeInfo: { distanceKm: number; durationMin: number } | null = null
+    let routeInfo: {
+      distanceKm: number
+      durationMin: number
+      polyline: [number, number][] | null
+    } | null = null
     if (latStr && lngStr) {
       const pLat = parseFloat(latStr)
       const pLng = parseFloat(lngStr)
@@ -41,6 +45,7 @@ export async function GET(request: Request, { params }: Params) {
         routeInfo = {
           distanceKm: route.distanceKm,
           durationMin: route.durationMin,
+          polyline: route.polyline,
         }
       }
     }

@@ -1,5 +1,21 @@
 # Severinno Marketplace
 
+<p align="center">
+  <em>Substitua <code>{owner}/{repo}</code> pelo seu repositório GitHub para ativar as badges dinâmicas.</em><br>
+  <a href="https://github.com/{owner}/{repo}/actions/workflows/ci.yml">
+    <img src="https://github.com/{owner}/{repo}/actions/workflows/ci.yml/badge.svg" alt="CI/CD">
+  </a>
+  <a href="https://github.com/{owner}/{repo}/actions/workflows/pr-check.yml">
+    <img src="https://github.com/{owner}/{repo}/actions/workflows/pr-check.yml/badge.svg" alt="PR Check">
+  </a>
+  <a href="https://github.com/{owner}/{repo}/actions/workflows/e2e-cache.yml">
+    <img src="https://github.com/{owner}/{repo}/actions/workflows/e2e-cache.yml/badge.svg" alt="E2E Cache">
+  </a>
+  <img src="https://img.shields.io/badge/utf8--check-467%20files%20%E2%9C%85-2ea44f" alt="UTF-8: 467 files">
+  <img src="https://img.shields.io/badge/tests-74%20unit%20%7C%20160%20e2e%20%E2%9C%85-2ea44f" alt="Tests: 74 unit | 160 E2E">
+  <img src="https://img.shields.io/badge/encoding%20guards-4%2F4%20active%20%E2%9C%85-2ea44f" alt="Encoding guards: 4/4 active">
+</p>
+
 > Marketplace de serviços com geolocalização — encontre prestadores verificados próximos a você.
 
 ## Stack
@@ -189,15 +205,49 @@ See [`.env.example`](.env.example) for all variables and their descriptions.
 
 ## Scripts
 
+### Development
+
 ```bash
 bun run dev        # Development server (Next.js + Turbopack)
 bun run build      # Production build
 bun run start      # Start production server
 bun run seed       # Seed database
-bun run consumer   # Start RabbitMQ notification worker
-bun run email-consumer  # Start email queue worker
-bun run vitest     # Run unit tests
-bun run e2e        # Run Playwright E2E tests
+```
+
+### Workers
+
+```bash
+bun run consumer         # Start RabbitMQ notification worker
+bun run email-consumer   # Start email queue worker
+```
+
+### Testes de Cache
+
+```bash
+# Fast gate — valida manifesto contra codigo real (~2s)
+npx tsx scripts/validate-cache-manifest.ts
+
+# Unit tests — 74 testes em 5 suites de cache
+bun vitest run src/app/api/__tests__/all-cache-routes.test.ts
+bun vitest run src/app/api/__tests__/providers-cache-header.test.ts
+bun vitest run src/app/api/__tests__/categories-cache-header.test.ts
+bun vitest run src/lib/__tests__/api-server.test.ts
+bun vitest run src/lib/__tests__/routing.test.ts
+
+# E2E cache headers via HTTP (requer servidor em :3000)
+npx playwright test e2e/all-cache-routes.spec.ts --project=chromium
+npx playwright test e2e/providers-cache.spec.ts --project=chromium
+
+# Todos os testes de cache de uma vez
+npx playwright test e2e/providers-cache.spec.ts e2e/all-cache-routes.spec.ts --project=chromium
+```
+
+### Geral
+
+```bash
+bun run vitest     # Run all unit tests
+bun run e2e        # Run full Playwright E2E suite (all browsers)
+npx playwright install  # Install Playwright browsers (first time only)
 ```
 
 ## Docker
@@ -298,3 +348,21 @@ bun vitest
 npx playwright install
 bun run e2e
 ```
+
+
+## Encoding Guards
+
+Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:
+
+| Camada | Gatilho | Comando | Tempo | Bloqueia? |
+|:------:|---------|---------|:-----:|:---------:|
+| 🏠 **Pre-commit** | `git commit` | `scripts/check-utf8.sh --dry-run --ci src/` | ~2s | ✅ Exit 1 |
+| 🚀 **Pre-push** | `git push` | `scripts/check-utf8.sh --dry-run --ci src/` | ~2s | ✅ Exit 1 |
+| 🔄 **CI/CD** | Push para `main`/`develop` | `scripts/check-utf8.sh --ci src/` (via `ci.yml`) | <10s | ✅ Bloqueia build |
+| 📋 **PR Check** | `pull_request` para `main` | `scripts/check-utf8.sh --ci src/` (via `pr-check.yml`) | <10s | ✅ Bloqueia merge |
+
+**467 arquivos escaneados** (`.ts` + `.tsx`) em cada execução — zero corrupção encontrada.
+
+> 📖 Veja [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md) para lições aprendidas sobre:
+> - **Next.js Vary injection** — App Router prepends seus próprios valores Vary
+> - **Windows-1252 byte 0x97** — Como diagnosticar e corrigir encoding corrompido

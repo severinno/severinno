@@ -16,6 +16,23 @@
  */
 
 import { db } from "@/lib/db"
+import { withCache } from "@/lib/redis"
+
+// Cache TTL values
+const PROXIMITY_CACHE_TTL = 60   // 60 seconds for proximity queries
+const DISTANCE_CACHE_TTL = 60     // 60 seconds for user-to-user distance
+const POSTGIS_CHECK_CACHE_TTL = 300 // 5 minutes for PostGIS availability check
+
+/**
+ * Build a cache key from rounded coordinates and radius.
+ * Rounding to 3 decimal places (~110m precision) groups nearby queries
+ * so the same cache entry serves requests from slightly different coords.
+ */
+function proximityCacheKey(lat: number, lng: number, radiusKm: number): string {
+  const rLat = lat.toFixed(3)
+  const rLng = lng.toFixed(3)
+  return `proximity:${rLat}:${rLng}:${radiusKm}`
+}
 
 /**
  * Result of a proximity query — provider id + distance in km.
@@ -28,6 +45,11 @@ export type ProximityResult = {
 /**
  * Find all provider geographic ids within a given radius (in km) from a
  * center point using PostGIS ST_DWithin (index-assisted).
+ *
+ * Results are cached in Redis for 60 seconds (PROXIMITY_CACHE_TTL) to
+ * avoid repeated queries for the same area within a short time window.
+ * The cache key uses lat/lng rounded to 3 decimal places (~110m precision)
+ * so nearby queries share a cache entry.
  *
  * Returns id + distanceKm for every provider within the radius. Additional
  * filters (active, verified, text search, category) should be applied by
@@ -42,33 +64,36 @@ export async function findProvidersWithinRadius(
   radiusKm: number,
 ): Promise<ProximityResult[]> {
   try {
-    // $queryRaw uses parameterized queries — `${lng}` etc. are safe from
-    // SQL injection because Prisma passes them as bound parameters.
-    const rows = await db.$queryRaw<Array<{ id: string; distance_km: number }>>`
-      SELECT
-        id,
-        ST_Distance(
-          location,
-          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
-        ) / 1000 AS distance_km
-      FROM "User"
-      WHERE
-        role = 'PROVIDER'
-        AND active = true
-        AND verified = true
-        AND "deletedAt" IS NULL
-        AND location IS NOT NULL
-        AND ST_DWithin(
-          location,
-          ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
-          ${radiusKm * 1000}  -- ST_DWithin uses meters
-        )
-      ORDER BY distance_km ASC
-    `
-    return rows.map((r) => ({ id: r.id, distanceKm: Number(r.distance_km) }))
+    return await withCache(
+      proximityCacheKey(lat, lng, radiusKm),
+      async () => {
+        const rows = await db.$queryRaw<Array<{ id: string; distance_km: number }>>`
+          SELECT
+            id,
+            ST_Distance(
+              location,
+              ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+            ) / 1000 AS distance_km
+          FROM "User"
+          WHERE
+            role = 'PROVIDER'
+            AND active = true
+            AND verified = true
+            AND "deletedAt" IS NULL
+            AND location IS NOT NULL
+            AND ST_DWithin(
+              location,
+              ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+              ${radiusKm * 1000}
+            )
+          ORDER BY distance_km ASC
+        `
+        return rows.map((r) => ({ id: r.id, distanceKm: Number(r.distance_km) }))
+      },
+      PROXIMITY_CACHE_TTL,
+    )
   } catch (e) {
-    // PostGIS likely not installed — return empty, caller falls back to Haversine
-    console.warn("PostGIS ST_DWithin query failed (extension may not be installed):", e)
+    console.warn("PostGIS ST_DWithin query failed:", e)
     return []
   }
 }
@@ -76,26 +101,37 @@ export async function findProvidersWithinRadius(
 /**
  * Calculate the distance (in km) between two users using PostGIS.
  * Returns null if either user has no location data.
+ *
+ * Results are cached in Redis for 60 seconds (DISTANCE_CACHE_TTL) to
+ * avoid repeated distance lookups between the same user pair.
  */
 export async function getDistanceBetween(
   userId1: string,
   userId2: string,
 ): Promise<number | null> {
   try {
-    const rows = await db.$queryRaw<Array<{ distance_km: number | null }>>`
-      SELECT
-        ST_Distance(
-          u1.location,
-          u2.location
-        ) / 1000 AS distance_km
-      FROM "User" u1, "User" u2
-      WHERE
-        u1.id = ${userId1}
-        AND u2.id = ${userId2}
-        AND u1.location IS NOT NULL
-        AND u2.location IS NOT NULL
-    `
-    return rows[0]?.distance_km ?? null
+    // Sort IDs so distance:A:B and distance:B:A share the same cache entry
+    const [a, b] = [userId1, userId2].sort()
+    return await withCache(
+      `distance:${a}:${b}`,
+      async () => {
+        const rows = await db.$queryRaw<Array<{ distance_km: number | null }>>`
+          SELECT
+            ST_Distance(
+              u1.location,
+              u2.location
+            ) / 1000 AS distance_km
+          FROM "User" u1, "User" u2
+          WHERE
+            u1.id = ${userId1}
+            AND u2.id = ${userId2}
+            AND u1.location IS NOT NULL
+            AND u2.location IS NOT NULL
+        `
+        return rows[0]?.distance_km ?? null
+      },
+      DISTANCE_CACHE_TTL,
+    )
   } catch {
     return null
   }
@@ -103,15 +139,25 @@ export async function getDistanceBetween(
 
 /**
  * Check if PostGIS extension is available in the current database.
+ *
+ * Results are cached in Redis for 5 minutes (POSTGIS_CHECK_CACHE_TTL) since
+ * the extension availability rarely changes (only when the extension is
+ * installed or removed via migration).
  */
 export async function isPostGISAvailable(): Promise<boolean> {
   try {
-    const rows = await db.$queryRaw<Array<{ available: boolean }>>`
-      SELECT true AS available
-      FROM pg_extension
-      WHERE extname = 'postgis'
-    `
-    return rows.length > 0 && rows[0]?.available === true
+    return await withCache(
+      "postgis:available",
+      async () => {
+        const rows = await db.$queryRaw<Array<{ available: boolean }>>`
+          SELECT true AS available
+          FROM pg_extension
+          WHERE extname = 'postgis'
+        `
+        return rows.length > 0 && rows[0]?.available === true
+      },
+      POSTGIS_CHECK_CACHE_TTL,
+    )
   } catch {
     return false
   }

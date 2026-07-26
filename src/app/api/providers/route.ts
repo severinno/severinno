@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { haversineKm } from "@/lib/geo"
 import {
+  cacheControlPublic,
   getCategoryDescendants,
   handleError,
   parsePagination,
@@ -236,7 +237,7 @@ export async function GET(request: Request) {
     // Radius expansion flag (only relevant for Haversine path)
     const radiusExpanded = !usePostGisInSql && hasGeo && radiusKm !== null && items.length === 0 && total > 0
 
-    return NextResponse.json({ items, total, page, limit, radiusExpanded })
+    return cacheControlPublic(NextResponse.json({ items, total, page, limit, radiusExpanded }), 60)
   } catch (e) {
     return handleError(e)
   }
@@ -286,9 +287,9 @@ async function fetchExpandedResults(opts: {
     { hasGeo, latNum, lngNum },
   )
 
-  return NextResponse.json({
+  return cacheControlPublic(NextResponse.json({
     items, total: fallbackTotal, page, limit, radiusExpanded: true,
-  })
+  }), 60)
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +338,7 @@ async function fetchProvidersData(
 
   // Compute distance via PostGIS (if available) or Haversine fallback
   // For PostGIS: fetch distances for all provider IDs in one query
-  let distanceMap = new Map<string, number | null>()
+  const distanceMap = new Map<string, number | null>()
   if (centerGeo) {
     try {
       const distRows = await db.$queryRawUnsafe<

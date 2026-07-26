@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { reverseGeocode } from "@/lib/geo"
-import { handleError } from "@/lib/api-server"
+import { cacheControlPublic, handleError } from "@/lib/api-server"
 import { withCache } from "@/lib/redis"
 
 // Simple in-memory rate limiter for Nominatim (1 req/s per OSM policy).
@@ -43,14 +43,14 @@ export async function GET(request: Request) {
 
     // Flatten the address — UI expects street/district/city/state/cep at the
     // top level (not nested under an `address` key).
-    return NextResponse.json({
+    return cacheControlPublic(NextResponse.json({
       street: address.road ?? null,
       district: address.neighbourhood ?? null,
       city: address.city ?? null,
       state: address.state ?? null,
       cep: address.postcode ?? null,
       displayName: address.displayName,
-    })
+    }), 60)
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao geocodificar"
     return NextResponse.json({ error: msg }, { status: 502 })

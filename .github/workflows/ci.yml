@@ -2,11 +2,12 @@
 # GitHub Actions CI/CD — Severinno Marketplace
 #
 # Pipeline:
-#   lint    → ESLint
-#   typecheck → tsc --noEmit
-#   test    → vitest run
-#   build   → next build (Docker or standalone)
-#   deploy  → (VPS / Docker Hub / SSH deploy)
+#   lint       → ESLint
+#   typecheck  → tsc --noEmit
+#   utf8-check → iconv-based UTF-8 validation on all .ts files
+#   test       → vitest run
+#   build      → next build (Docker or standalone)
+#   deploy     → (VPS / Docker Hub / SSH deploy)
 # =============================================================================
 
 name: CI/CD
@@ -57,6 +58,26 @@ jobs:
       - run: bun run db:generate
       - run: bunx tsc --noEmit
 
+  # ── UTF-8 Encoding Check ────────────────────────────────────────────────
+  # Validates all .ts source files against UTF-8 encoding to prevent
+  # Windows-1252 byte-0x97 corruption (common on Brazilian Windows setups).
+  # Uses Python's UTF-8 decoder (equivalent to iconv -f utf-8) with safe
+  # byte-0x97 detection that avoids false positives on valid multi-byte
+  # sequences (e.g. emoji like 🔗 = F0 9F 94 97).
+  #
+  # Fast gate: <10s, no dependencies beyond python3 (pre-installed on runners).
+  utf8-check:
+    name: UTF-8 Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run UTF-8 validation on all .ts files
+        run: bash scripts/check-utf8.sh --ci src/
+
+      - name: Summary
+        run: echo "All .ts files validated as valid UTF-8 encoding."
+
   # ── Tests ─────────────────────────────────────────────────────────────────
   test:
     name: Tests
@@ -93,7 +114,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, utf8-check, test]
 
     steps:
       - uses: actions/checkout@v4
@@ -152,4 +173,4 @@ jobs:
       #       docker compose pull
       #       docker compose up -d --force-recreate
 
-      - run: echo "✅ Build ready for deployment"
+      - run: echo "Build ready for deployment"
