@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { searchServices } from "@/lib/search"
-import { handleError } from "@/lib/api-server"
+import { cacheControlPublic, handleError } from "@/lib/api-server"
 
 /**
  * OpenSearch-powered service search.
@@ -31,14 +31,14 @@ export async function GET(request: Request) {
 
     const result = await searchServices(q, page, limit)
 
-    return NextResponse.json({
+    return cacheControlPublic(NextResponse.json({
       items: result.items,
       total: result.total,
       page: result.page,
       limit: result.limit,
       took: result.took,
       engine: "opensearch",
-    })
+    }), 30)
   } catch (e) {
     return handleError(e)
   }

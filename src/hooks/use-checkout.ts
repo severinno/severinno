@@ -9,7 +9,7 @@ export function useCheckout() {
   return {
     state: snapshot.value as CheckoutMachineState,
     context: snapshot.context as CheckoutContext,
-    can: (event: string) => (snapshot as { nextEvents: string[] }).nextEvents.includes(event),
+    can: (event: string) => (snapshot as unknown as { nextEvents: string[] }).nextEvents.includes(event),
     isError: snapshot.value === "error",
     isConfirmed: snapshot.value === "confirmed",
     isSubmitting: snapshot.value === "submitting",

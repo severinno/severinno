@@ -1,0 +1,1 @@
+bash scripts/check-utf8.sh --dry-run --ci src/

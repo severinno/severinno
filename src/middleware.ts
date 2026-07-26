@@ -115,6 +115,7 @@ const PUBLIC_API = new Set([
   "/api/health",
   "/api/stats/public",
   "/api/reviews/recent",
+  "/api/services",
   "/api/newsletter",
   "/api/sentry",
   "/api/webhooks/lytex",

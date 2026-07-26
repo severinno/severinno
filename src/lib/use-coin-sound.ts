@@ -107,7 +107,7 @@ function pickSound(
   playReview: () => void,
   playError: () => void,
 ): void {
-  if (ERROR_NOTIF_TYPES.has(notifType as string)) {
+  if (ERROR_NOTIF_TYPES.has(notifType as typeof ERROR_NOTIF_TYPES extends Set<infer T> ? T : string)) {
     playError()
   } else if (notifType === "BOOKING_COMPLETED" && userRole === "CLIENT") {
     playCompletion()

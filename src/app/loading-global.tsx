@@ -24,7 +24,7 @@ const dotVariants = {
       ease: "easeOut",
     },
   }),
-}
+} as const
 
 const pulseVariants = {
   pulse: {
@@ -37,7 +37,7 @@ const pulseVariants = {
       delay: 0.6,
     },
   },
-}
+} as const
 
 export default function LoadingGlobal() {
   return (

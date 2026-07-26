@@ -11,12 +11,12 @@ const container = {
     opacity: 1,
     transition: { staggerChildren: 0.1 },
   },
-}
+} as const
 
 const item = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" } },
-}
+} as const
 
 const iconVariants = {
   hidden: { scale: 0.6, rotate: -10, opacity: 0 },
@@ -30,12 +30,12 @@ const iconVariants = {
     scale: [1, 1.05, 1],
     transition: { duration: 2, repeat: Infinity, ease: "easeInOut" },
   },
-}
+} as const
 
 const shimmerBlock = {
   hidden: { opacity: 0, x: -20 },
   show: { opacity: 1, x: 0, transition: { duration: 0.4, ease: "easeOut" } },
-}
+} as const
 
 export default function Error({
   error,

@@ -33,6 +33,9 @@ model User {
   lng          Float?
   // Operating radius (km) — providers only; null for clients/admins
   radiusKm     Float?
+  // PostGIS spatial geography column — managed via SQL trigger (sync_user_location)
+  // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
+  location     Unsupported("geography(Point, 4326)")?
   // Brazilian address fields
   cep          String?
   street       String?
@@ -49,14 +52,18 @@ model User {
   avgRating    Float    @default(0)
   reviewCount  Int      @default(0)
   favoriteCount Int     @default(0)
+  // Lytex Pagamentos recipient ID for split payments
+  lytexRecipientId String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   // Relations
   services           Service[]
   availability       ProviderAvailability[]
+  dateBlocks         DateBlock[]
   quotesAsClient     QuoteRequest[]   @relation("QuoteRequestClient")
   quotesAsProvider   QuoteRequest[]   @relation("QuoteRequestProvider")
+  resetTokens        ResetToken[]
   quoteItems         QuoteItem[]
   bookingsAsClient   Booking[]        @relation("BookingClient")
   bookingsAsProvider Booking[]        @relation("BookingProvider")
@@ -68,6 +75,10 @@ model User {
   messagesTo         Message[]        @relation("MessageTo")
   notifications      Notification[]
   settings           Setting[]
+  pushSubscriptions  PushSubscription[]
+  walletTransactions  WalletTransaction[]
+  notificationPreferences NotificationPreference[]
+  settlementProviders ProviderSettlement[]
 
   @@index([role, active, verified])
   @@index([city])
@@ -78,16 +89,17 @@ model User {
 // CATEGORY — 3-level tree (pai → filha → subcategoria)
 // ============================================================================
 model Category {
-  id       String   @id @default(cuid())
-  name     String
-  slug     String   @unique
-  parentId String?
-  level    Int      @default(0) // 0=pai, 1=filha, 2=subcategoria
-  icon     String?
-  order    Int      @default(0)
-  active   Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  parentId    String?
+  description String?  // SEO description for category pages
+  level       Int      @default(0) // 0=pai, 1=filha, 2=subcategoria
+  icon        String?
+  order       Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[] @relation("CategoryTree")
@@ -112,6 +124,9 @@ model Service {
   unit        String   @default("UNIDADE")
   // photos: JSON array of url strings (max 4) — SQLite-safe
   photos      Json     @default("[]")
+  // duration in minutes (e.g. 60, 120, 180)
+  duration    Int?
+  search_vector Unsupported("tsvector")?
   active      Boolean  @default(true)
   deletedAt   DateTime?
   createdAt   DateTime @default(now())
@@ -160,6 +175,9 @@ model QuoteRequest {
   cep        String
   lat        Float
   lng        Float
+  // PostGIS spatial column — managed via SQL trigger (sync_quoterequest_location)
+  // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
+  location     Unsupported("geography(Point, 4326)")?
   expiresAt  DateTime
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -167,6 +185,7 @@ model QuoteRequest {
   client   User        @relation("QuoteRequestClient", fields: [clientId], references: [id], onDelete: Cascade)
   provider User        @relation("QuoteRequestProvider", fields: [providerId], references: [id], onDelete: Cascade)
   items    QuoteItem[]
+  bookings Booking[] @relation("BookingQuote")
 
   @@index([clientId])
   @@index([providerId])
@@ -213,19 +232,29 @@ model Booking {
   cep           String
   lat           Float
   lng           Float
+  // PostGIS spatial column — managed via SQL trigger (sync_booking_location)
+  // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
+  location     Unsupported("geography(Point, 4326)")?
   amount        Float
   // paymentMethod: "CARD" | "PIX"
   paymentMethod String   @default("PIX")
   // paymentStatus: "PENDING" | "PAID" | "REFUNDED"
   paymentStatus String   @default("PENDING")
   notes         String?
+  // Quote request that originated this booking
+  quoteId       String?  @unique
+  // Completion confirmation PIN code
+  completionPin String?
+  // Timestamp for automated reminders
+  reminderSentAt DateTime?
   deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  client   User     @relation("BookingClient", fields: [clientId], references: [id], onDelete: Cascade)
-  provider User     @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Cascade)
-  service  Service  @relation(fields: [serviceId], references: [id])
+  client   User        @relation("BookingClient", fields: [clientId], references: [id], onDelete: Cascade)
+  provider User        @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Cascade)
+  service  Service     @relation(fields: [serviceId], references: [id])
+  quote    QuoteRequest? @relation("BookingQuote", fields: [quoteId], references: [id], onDelete: SetNull)
   reviews  Review[]
   payment  Payment?
 
@@ -413,4 +442,108 @@ model Setting {
 
   updatedBy String?
   user      User?    @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
+}
+
+// ============================================================================
+// RESET TOKEN — password reset tokens
+// ============================================================================
+model ResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+// ============================================================================
+// DATE BLOCK — provider blocks specific dates (vacations, holidays)
+// ============================================================================
+model DateBlock {
+  id         String   @id @default(cuid())
+  providerId String
+  date       DateTime @db.Date
+  allDay     Boolean  @default(true)
+  startTime  String?
+  endTime    String?
+  reason     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  provider User @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+  @@index([date])
+  @@unique([providerId, date, startTime, endTime])
+}
+
+// ============================================================================
+// PUSH SUBSCRIPTION — Web Push notification subscriptions
+// ============================================================================
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ============================================================================
+// WALLET TRANSACTION — provider withdrawal history
+// ============================================================================
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  providerId  String
+  amount      Float
+  status      String   @default("pending")  // "pending" | "completed" | "failed" | "cancelled"
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  provider User @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+  @@index([status])
+}
+
+// ============================================================================
+// NOTIFICATION PREFERENCE — per-user per-type notification toggles
+// ============================================================================
+model NotificationPreference {
+  id             String  @id @default(cuid())
+  userId         String
+  type           String
+  pushEnabled    Boolean @default(true)
+  emailEnabled   Boolean @default(true)
+  whatsappEnabled Boolean @default(true)
+  soundEnabled   Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([userId])
+}
+
+// ============================================================================
+// SEARCH REINDEX QUEUE — async queue for OpenSearch reindexing
+// ============================================================================
+model SearchReindexQueue {
+  id         BigInt   @id @default(autoincrement())
+  entityType String
+  entityId   String
+  action     String
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
