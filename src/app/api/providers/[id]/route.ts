@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { haversineKm } from "@/lib/geo"
+import { haversineKm } from "@/lib/geo-server"
 import { cacheControlPrivate, handleError, notFound } from "@/lib/api-server"
 import { getOptionalSession } from "@/lib/auth"
 

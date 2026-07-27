@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "center": {
+      "lat": -23.5505,
+      "lng": -46.6333
+    },
+    "centerLabel": "São Paulo",
+    "cpuItersPerMs": 1223,
+    "platform": "win32",
+    "arch": "x64",
+    "nodeVersion": "v22.23.1",
+    "timestamp": "2026-07-26T21:01:48.735Z"
+  },
+  "benchmarks": [
+    {
+      "name": "Haversine JS   100",
+      "label": "haversine_100",
+      "mean": 86.2,
+      "min": 11,
+      "max": 1663,
+      "opsPerSec": 11599
+    },
+    {
+      "name": "Haversine JS  1 000",
+      "label": "haversine_1000",
+      "mean": 104.2,
+      "min": 92.3,
+      "max": 227.9,
+      "opsPerSec": 9593
+    },
+    {
+      "name": "Haversine JS 10 000",
+      "label": "haversine_10000",
+      "mean": 1177.6,
+      "min": 1078.9,
+      "max": 1315.4,
+      "opsPerSec": 849
+    },
+    {
+      "name": "PostGIS [model]  100",
+      "label": "postgis_model_100",
+      "mean": 10207.8,
+      "min": 10146.7,
+      "max": 10453.9,
+      "opsPerSec": 98
+    },
+    {
+      "name": "PostGIS [model] 1 000",
+      "label": "postgis_model_1000",
+      "mean": 10631.4,
+      "min": 10481.9,
+      "max": 11004.6,
+      "opsPerSec": 94
+    },
+    {
+      "name": "PostGIS [model]10 000",
+      "label": "postgis_model_10000",
+      "mean": 14881.5,
+      "min": 13508.8,
+      "max": 17802.5,
+      "opsPerSec": 67
+    },
+    {
+      "name": "haversineKm × 1",
+      "label": "haversine_single",
+      "mean": 1,
+      "min": 0.3,
+      "max": 653.7,
+      "opsPerSec": 1001262
+    },
+    {
+      "name": "PostGIS [model] × 1",
+      "label": "postgis_model_single",
+      "mean": 10108.8,
+      "min": 10040.9,
+      "max": 10840.2,
+      "opsPerSec": 99
+    }
+  ],
+  "analysis": {
+    "haversineUnitCosts": {
+      "at100": 0.862,
+      "at1000": 0.1042,
+      "at10000": 0.1178
+    },
+    "avgHaversinePerProvider": 0.3613,
+    "note": "Haversine JS is ~70× faster per call. PostGIS wins by FILTERING before computing (GiST index). Crossover depends on radius selectivity, not raw math throughput."
+  }
+}

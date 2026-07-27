@@ -26,6 +26,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@/vitrine/__tests__/*": [
+        "./src/components/vitrine/__tests__/*"
       ]
     }
   },

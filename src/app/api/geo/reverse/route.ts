@@ -2,21 +2,7 @@ import { NextResponse } from "next/server"
 import { reverseGeocode } from "@/lib/geo"
 import { cacheControlPublic, handleError } from "@/lib/api-server"
 import { withCache } from "@/lib/redis"
-
-// Simple in-memory rate limiter for Nominatim (1 req/s per OSM policy).
-// Resets every second — tracks the last request timestamp.
-let lastNominatimRequest = 0
-
-async function rateLimitedReverseGeocode(lat: number, lng: number) {
-  const now = Date.now()
-  const elapsed = now - lastNominatimRequest
-  if (elapsed < 1000) {
-    // Wait just enough to respect the 1 req/s limit
-    await new Promise((r) => setTimeout(r, 1000 - elapsed))
-  }
-  lastNominatimRequest = Date.now()
-  return reverseGeocode(lat, lng)
-}
+import { rateLimitedNominatim } from "@/lib/nominatim-rate-limit"
 
 // Public: reverse geocode lat/lng via Nominatim (OSM).
 // Returns a flat object (UI: `apiGet<{ street?, district?, city?, state?, cep? }>`).
@@ -37,7 +23,7 @@ export async function GET(request: Request) {
     const key = `geo:reverse:${Number(latRaw).toFixed(4)},${Number(lngRaw).toFixed(4)}`
     const address = await withCache(
       key,
-      () => rateLimitedReverseGeocode(Number(latRaw), Number(lngRaw)),
+      () => rateLimitedNominatim(() => reverseGeocode(Number(latRaw), Number(lngRaw))),
       3600, // 1h
     )
 

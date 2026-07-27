@@ -88,7 +88,8 @@ export type PagedResult<T> = {
   limit: number
   nextCursor: string | null
   hasMore: boolean
-  radiusExpanded?: boolean
+  /** Raio efetivamente usado na busca (PostGIS). null = sem expansão; -1 = além de 100km (sem filtro de raio). */
+  expandedRadius?: number | null
 }
 
 export type FavoriteResponse = { favorited: boolean }
@@ -99,6 +100,20 @@ export type CepResult = {
   district?: string
   city?: string
   state?: string
+}
+
+export type GeoSearchResult = {
+  lat: number
+  lng: number
+  displayName: string
+  street?: string | null
+  district?: string | null
+  city?: string | null
+  state?: string | null
+  cep?: string | null
+  category?: string
+  type?: string
+  importance: number
 }
 
 export type ApiError = {
@@ -252,4 +267,36 @@ export function fetchFavorites() {
 
 export function fetchCep(cep: string) {
   return apiGet<CepResult>("/api/geo/cep", { cep })
+}
+
+/**
+ * Forward-geocode a text address via Nominatim Search.
+ *
+ * @param q - Endereço textual ("Rua Augusta, São Paulo - SP")
+ * @param limit - Máx. resultados (default 5, max 10)
+ */
+export function fetchGeoSearch(q: string, limit?: number) {
+  return apiGet<GeoSearchResult[]>("/api/geo/search", { q, limit })
+}
+
+/**
+ * Reverse geocoding result from `/api/geo/reverse`.
+ */
+export type ReverseGeoResult = {
+  street?: string | null
+  district?: string | null
+  city?: string | null
+  state?: string | null
+  cep?: string | null
+  displayName?: string | null
+}
+
+/**
+ * Reverse-geocode lat/lng to an address via Nominatim Reverse.
+ *
+ * @param lat - Latitude
+ * @param lng - Longitude
+ */
+export function fetchReverseGeo(lat: number, lng: number) {
+  return apiGet<ReverseGeoResult>("/api/geo/reverse", { lat, lng })
 }

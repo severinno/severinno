@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { forbidden, handleError } from "@/lib/api-server"
-import { haversineKm } from "@/lib/geo"
+import { haversineKm } from "@/lib/geo-server"
 
 // CLIENT: list favorited providers (with optional distance computation).
 // Returns `ProviderCard[]` directly (UI: `apiGet<ProviderCard[]>("/api/favorites")`).

@@ -6,6 +6,10 @@
  * are skipped because axe-core hangs on them in jsdom.
  */
 
+// Load comprehensive lucide-react mock (49 icons) before component imports.
+// This replaces the global vitest.setup.tsx's 4-icon mock for axe-core tests.
+import "./vitrine-a11y-setup"
+
 import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, cleanup } from "@testing-library/react"
 import { axe } from "vitest-axe"
@@ -332,7 +336,11 @@ vi.mock("@/components/ui/alert-dialog", () => ({
 
 vi.mock("next/image", () => ({
   __esModule: true,
-  default: (p: any) => <img {...p} />,
+  default: (p: any) => {
+    // Filter Next.js-only boolean props that aren't valid HTML img attributes
+    const { fill, priority, ...safe } = p
+    return <img {...safe} />
+  },
 }))
 
 vi.mock("sonner", () => ({

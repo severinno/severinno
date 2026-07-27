@@ -55,3 +55,6 @@ server.log
 
 # Temp files created by setup.sh / check-health.sh
 .tmp/
+
+# Geo benchmark output — transient artifact, compare against version-controlled baseline
+docs/benchmarks/geo-latest.json

@@ -1,0 +1,613 @@
+= Severinno — Geographic Distance Computation Architecture
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 3
+:source-highlighter: prism
+:data-uri:
+:icons: font
+
+== Overview
+
+The Severinno Marketplace searches for providers within a geographic radius.
+Two distance-computation strategies are available:
+
+* **PostGIS** — spatial SQL queries using the PostGIS extension (`ST_DWithin` + `ST_Distance`)
+* **Haversine JS** — pure-JavaScript spherical trigonometry computed on the application server
+
+The system uses a three-tier fallback chain:
+
+.PostGIS → Haversine → null distance fallback
+[source]
+----
+User provides lat/lng
+        │
+        ▼
+┌─────────────────────────────────────────────────────┐
+│  PostGIS available?   ──── No ───► Haversine JS     │
+│  (isPostGISAvailable)           (computeDistanceMap)│
+└──────────────────────┬──────────────────────────────┘
+                       │ Yes
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│  ST_DWithin radius filter  (GiST-indexed)           │
+│  + ST_Distance computation  (batch, one query)      │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐   │
+│  │  PostGIS query succeeds?  ─── No ──► Catch   │   │
+│  │  (catch block in           │     └────┬──────┘   │
+│  │   computeDistanceMap)      │          ▼          │
+│  │                            │   Haversine JS      │
+│  │                            │   fallback per-item │
+│  └────────────────────────────┘                     │
+│                                                      │
+│         ▼                                            │
+│   Both fail ──► distance_km = null                  │
+└─────────────────────────────────────────────────────┘
+----
+
+== Architecture Components
+
+=== Module Map
+
+[cols="3,1,3", options="header"]
+|===
+| Module | Type | Responsibility
+
+| `distance-fallback.ts`
+| Logic
+| PostGIS → Haversine → null fallback chain (`computeDistanceMap`)
+
+| `radius-expansion.ts`
+| Pure + Factory
+| Progressive radius expansion loop (`findEffectiveRadius`, `buildRadiiToTry`, `createCachedRadiusCountFn`)
+
+| `fetch-providers-data.ts`
+| Orchestration
+| Phase 2: parallel data fetch (services, bookings, profiles) + distance map
+
+| `fetch-unrestricted-results.ts`
+| Orchestration
+| Fallback when expansion fails (no-radius search, `expandedRadius: -1`)
+
+| `sql-builder.ts`
+| Pure
+| Parameterized WHERE clause construction for all phases
+
+| `postgis.ts`
+| Data access
+| Legacy `findProvidersWithinRadius`, `getDistanceBetween`, `isPostGISAvailable`
+
+| `geo-shared.ts`
+| Pure
+| `haversineKm`, `formatDistance` — safe for server + client
+
+| `geo-server.ts`
+| Barrel
+| Re-exports `computeDistanceMap`, `haversineKm`, `formatDistance`, types
+
+| `sql.ts`
+| Barrel
+| Re-exports `buildProviderWhereClause`, `WhereClauseBuilder`
+
+| `cpu-calibrate.ts`
+| Utility
+| `calibrateBusyLoop()`, `busyWait(ms)` — used by benchmarks
+
+| `benchmark-utils.ts`
+| Utility
+| `measure(fn, iterations)` — sampling + stats
+
+| `nominatim-rate-limit.ts`
+| Utility
+| 1 req/s rate limiter for Nominatim API calls
+
+|===
+
+=== Request Pipeline
+
+The route handler at `GET /api/providers` follows a two-phase architecture:
+
+==== Phase 1 — Resolve matching provider IDs
+
+. Parse query params: `lat`, `lng`, `q`, `categoryId`, `radius`, `sort`, `page`, `limit`
+. Check PostGIS availability via `isPostGISAvailable()` (Redis-cached, 5 min TTL)
+. Build `centerGeo` when PostGIS + user geo + radius are all available
+
+If **PostGIS path**:
+.... Create `cachedRadiusCountFn` via `createCachedRadiusCountFn` — wraps Redis + raw SQL COUNT
+.... Call `findEffectiveRadius(radiusKm, countFn)` — tries [userRadius, 5, 10, 25, 50, 100] km
+.... If providers found: resolve paginated IDs with ST_DWithin + ORDER BY
+.... If not found: try unrestricted fallback (`fetchUnrestrictedResults`)
+If **non-PostGIS path**:
+.... Count without spatial filter, resolve IDs, skip radius expansion
+
+==== Phase 2 — Fetch full data
+
+. `fetchProvidersData(providerIds, geo, deps)` runs three parallel queries:
+.. Services (`service.findMany` — active, ordered by basePrice)
+.. Completed bookings count (`booking.groupBy` — status COMPLETED)
+.. Provider profiles (`user.findMany` — lightweight select)
+. `computeDistanceMap` computes distance for each provider (PostGIS → Haversine → null)
+. Map results to response shape (services grouped by provider, distances rounded to 1 decimal)
+
+== Benchmark Results
+
+=== Component-Level Performance (2026-07-26 baseline)
+
+```
+Platform: win32 x64  Node v22.23.1
+CPU:      1223 iters/ms (calibrated busy-loop)
+Center:   -23.5505, -46.6333  (São Paulo)
+```
+
+[cols="3,3,3,3,4", options="header"]
+|===
+| Benchmark | Mean | Min | Max | ops/sec
+| Haversine JS 100 | 86.2 µs | 11 µs | 1663 µs | 11 599
+| Haversine JS 1 000 | 104.2 µs | 92.3 µs | 227.9 µs | 9 593
+| Haversine JS 10 000 | 1 177.6 µs | 1 078.9 µs | 1 315.4 µs | 849
+| PostGIS [model] 100 | 10 207.8 µs | 10 146.7 µs | 10 453.9 µs | 98
+| PostGIS [model] 1 000 | 10 631.4 µs | 10 481.9 µs | 11 004.6 µs | 94
+| PostGIS [model] 10 000 | 14 881.5 µs | 13 508.8 µs | 17 802.5 µs | 67
+| haversineKm × 1 | 1.0 µs | 0.3 µs | 653.7 µs | 1 001 262
+| PostGIS [model] × 1 | 10 108.8 µs | 10 040.9 µs | 10 840.2 µs | 99
+|===
+
+NOTE: PostGIS measurements are CPU-modelled estimates (not real DB queries) using
+parameters calibrated against local PostgreSQL 16 with warm buffer cache.
+
+==== Key Insight
+
+Haversine JS is **~70× faster per call** than a single PostGIS `ST_Distance`
+evaluation. There is NO positive N at which PostGIS catches up in pure math
+throughput.
+
+PostGIS **wins by filtering before computing**: the GiST index scans O(log N)
+candidates via `ST_DWithin`, then computes `ST_Distance` only for the filtered
+subset — all in a single query round-trip.
+
+=== Pipeline Performance (Combined Filter + Distance)
+
+The geo-pipeline benchmark simulates what the providers route actually does:
+ST_DWithin filtering + ST_Distance in one query (PostGIS path), vs. transfer all
++ filter + compute in JS (Haversine path).
+
+[cols="4,3,3,3,3,3,3,3", options="header"]
+|===
+| Scenario | Total | Filtered | Sel. | PostGIS | Haversine | Winner | Speedup
+| 500 × 5 km | 500 | 1 | 0.25% | 10.3 ms | 10.4 ms | PostGIS | 1.01×
+| 500 × 10 km | 500 | 5 | 1% | 10.1 ms | 10.4 ms | PostGIS | 1.03×
+| 500 × 25 km | 500 | 31 | 6.25% | 10.2 ms | 10.4 ms | PostGIS | 1.02×
+| 2 000 × 10 km | 2 000 | 20 | 1% | 10.1 ms | 11.3 ms | PostGIS | 1.12×
+| 2 000 × 25 km | 2 000 | 125 | 6.25% | 10.1 ms | 11.3 ms | PostGIS | 1.11×
+| 10 000 × 10 km | 10 000 | 100 | 1% | 10.1 ms | 16.3 ms | PostGIS | 1.61×
+| 10 000 × 50 km | 10 000 | 2 500 | 25% | 11.4 ms | 16.1 ms | PostGIS | 1.41×
+| 10 000 × 100 km | 10 000 | 10 000 | 100% | 15.6 ms | 15.9 ms | PostGIS | 1.02×
+|===
+
+PostGIS wins in **8/8 scenarios**. The advantage grows with provider count and
+narrow radius (high selectivity), reaching 1.61× at 10 000 providers / 10 km.
+
+=== Haversine Unit Cost
+
+[cols="2,3", options="header"]
+|===
+| Provider count | Cost per provider
+| 100 | 0.8620 µs
+| 1 000 | 0.1042 µs
+| 10 000 | 0.1178 µs
+| **Average** | **0.3613 µs**
+|===
+
+The cost per provider drops from 100 to 1 000 due to V8 JIT warmup, then remains
+stable. This means Haversine scales sub-linearly: 10 000 providers costs only
+~11× more than 100 (not 100×).
+
+== Decision Tree
+
+The route handler uses this decision logic at `providers/route.ts`:
+
+.Decision tree for geographic provider search
+[source,plantuml]
+----
+@startuml
+start
+
+:Parse lat/lng/radius/params;
+
+if (hasGeo && radius is finite) then (yes)
+  :isPostGISAvailable();
+
+  if (PostGIS available) then (yes)
+    :Build centerGeo with user radius;
+    :Create cached radius count function;
+    :findEffectiveRadius(userRadius, countFn);
+
+    if (effectiveRadius !== null) then (found)
+      :Set expandedRadius if changed;
+      :Phase 1b — resolve paginated IDs
+       with ST_DWithin + ORDER BY;
+    else (not found)
+      :Phase 1b — unrestricted fallback
+       (no radius filter);
+
+      if (fallbackTotal > 0) then (yes)
+        :Return unrestricted results
+         with expandedRadius = -1;
+        stop
+      endif
+
+      :Return empty (total=0);
+      stop
+    endif
+  else (no PostGIS)
+    :Count without spatial filter;
+
+    if (total === 0) then (empty)
+      :Return empty;
+      stop
+    endif
+
+    :Phase 1b — resolve IDs
+     (no spatial filter);
+  endif
+else (no geo)
+  :Count all providers without radius;
+
+  if (total === 0) then (empty)
+    :Return empty;
+    stop
+  endif
+
+  :Phase 1b — resolve IDs;
+endif
+
+:Phase 2 — fetchProvidersData
+ (services + bookings + profiles
+  in parallel);
+
+:computeDistanceMap
+ (PostGIS → Haversine → null);
+
+:Return response with
+ items + total + expandedRadius;
+
+stop
+@enduml
+----
+
+=== Crossover Threshold Analysis
+
+The crossover point (where PostGIS becomes faster than Haversine) depends on
+selectivity `s = (radius / spread)²`:
+
+.T_postGIS(N, s) = 2000 + 22 × N × s  µs
+.T_haversine(N)  = 20 × N + 0.3 × N    µs
+
+[cols="3,3,3,3", options="header"]
+|===
+| Radius | Selectivity | Crossover N | Note
+| 5 km | 0.25% | ≥ 99 | PostGIS always wins
+| 10 km | 1% | ≥ 100 | PostGIS always wins
+| 25 km | 6.25% | ≥ 107 | PostGIS always wins
+| 50 km | 25% | ≥ 133 | PostGIS wins at any real scale
+| 100 km | 100% | Never | Empates at ~15 ms (both viable)
+|===
+
+At Severinno's current scale (hundreds to low-thousands of providers), PostGIS
+is **always beneficial** because the route combines filtering + computation in
+a single query, avoiding a separate round-trip for the distance step.
+
+=== When to Use Each Strategy
+
+[cols="2,2,3,3,3", options="header"]
+|===
+| Strategy | Radius | Providers | Latency | Best for
+| PostGIS | Any | Any | ~10 ms | Primary path. Requires PostGIS extension.
+| Haversine JS | Any | < 5 000 | ~0.1-1.1 ms | Fallback when PostGIS unavailable. Development/testing.
+| Both (combined) | Narrow | High | ~10 ms | PostGIS filters, Haversine catches if PostGIS query fails.
+|===
+
+== Progressive Radius Expansion
+
+When PostGIS is available and the user's requested radius returns zero
+providers, the search expands automatically.
+
+=== Expansion Steps
+
+The `buildRadiiToTry(userRadiusKm)` function builds a monotonic sequence:
+
+[source,typescript]
+----
+export const EXPANSION_STEPS = [5, 10, 25, 50, 100] as const
+
+// buildRadiiToTry(10)  →  [10, 25, 50, 100]
+// buildRadiiToTry(0)   →  [0, 5, 10, 25, 50, 100]
+// buildRadiiToTry(200) →  [200]  (no expansion)
+----
+
+=== Response Semantics
+
+[cols="2,5", options="header"]
+|===
+| `expandedRadius` | Meaning
+| `null` | The user's requested radius found providers (no expansion needed)
+| `5`–`100` | Providers found after expanding to this radius
+| `-1` | Providers exist but beyond 100 km (unrestricted fallback returned)
+|=== 
+
+=== Redis Caching
+
+Each radius-level COUNT query is cached in Redis with a 2-minute TTL
+(`DEFAULT_COUNT_CACHE_TTL = 120` seconds). The cache key encodes:
+
+``` 
+providers:count:{lat:.3f}:{lng:.3f}:{radiusKm}:{categories}:{query}
+```
+
+Coordinates are rounded to 3 decimal places (~110 m precision) so nearby
+queries share a cache entry.
+
+=== Caching Architecture
+
+[cols="2,3,3", options="header"]
+|===
+| Cache | Key Pattern | TTL
+| Radius count | `providers:count:...` | 120 s
+| Proximity | `proximity:{lat}:{lng}:{radius}` | 60 s
+| PostGIS available | `postgis:available` | 300 s
+| Category descendants | `category:descendants:{id}` | 600 s
+| Geo search (Nominatim) | `geo:search:{q}` | 86 400 s (24 h)
+| Geo reverse | `geo:reverse:{lat}:{lng}` | 86 400 s (24 h)
+| User-to-user distance | `distance:{uid1}:{uid2}` | 60 s
+|===
+
+== Distance Pipeline (Phase 2 Detail)
+
+The `computeDistanceMap` function in `distance-fallback.ts` implements the
+three-tier fallback:
+
+=== Tier 1: PostGIS ST_Distance
+
+One `$queryRawUnsafe` call for all provider IDs:
+
+[source,sql]
+----
+SELECT id,
+       ST_Distance(
+         location,
+         ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+       ) / 1000 AS distance_km
+FROM "User"
+WHERE id = ANY($3::text[])
+----
+
+This is a **batch query** — all distances in a single round-trip. The catch
+block silently falls through to Haversine if this throws (e.g., PostGIS
+extension temporarily unavailable).
+
+=== Tier 2: Haversine JS (per-provider)
+
+When PostGIS returns no result for a specific provider (or the batch query
+failed entirely), Haversine is computed per-provider:
+
+[source,typescript]
+----
+haversineKm(userLat, userLng, provider.lat, provider.lng)
+----
+
+=== Tier 3: null
+
+When neither PostGIS result nor provider coordinates are available, the
+distance is stored as `null` — the frontend renders `"—"`.
+
+=== Error Isolation
+
+IMPORTANT: The catch block in `computeDistanceMap` only catches the
+`ST_Distance` query. Other queries in Phase 2 (`serviceFindMany`,
+`bookingGroupBy`, `userFindMany`) are **not** inside this catch — errors
+there propagate to the route's top-level `handleError`.
+
+== Rate Limiting
+
+All public-facing geo endpoints are rate-limited:
+
+[cols="2,3", options="header"]
+|===
+| Endpoint | Limit
+| `GET /api/providers` | 30 req/min per IP
+| `GET /api/geo/search` | 1 req/s (Nominatim TOS), shared rate limiter
+| `GET /api/geo/reverse` | 1 req/s (Nominatim TOS), shared rate limiter
+|===
+
+The Nominatim rate limiter (`nominatim-rate-limit.ts`) uses a token-bucket
+approach — 1 token per second, enforced per-client for both search and reverse
+endpoints.
+
+== Benchmark Infrastructure
+
+=== Scripts
+
+[cols="3,4,3", options="header"]
+|===
+| Script | Purpose | Invocation
+| `geo-benchmark.mjs` | Component-level benchmark (Haversine vs PostGIS in isolation) | `npm run benchmark:geo`
+| `geo-pipeline-benchmark.mjs` | Pipeline benchmark (combined filter + distance) | `node scripts/geo-pipeline-benchmark.mjs`
+| `save-geo-benchmark.mjs` | Runs benchmark + saves date-stamped JSON | `npm run benchmark:geo:save`
+| `compare-benchmarks.mjs` | Compares two JSON benchmark files | `node scripts/compare-benchmarks.mjs baseline.json current.json`
+| `benchmark-utils.mjs` | Shared `measure(fn, iterations)` infrastructure | Imported by benchmarks
+| `cpu-calibrate.mjs` | Busy-loop calibration for CPU-modelled benchmarks | Imported by benchmarks
+|===
+
+=== CI Integration
+
+The baseline file `docs/benchmarks/geo-baseline.json` is version-controlled.
+The CI workflow can detect performance regressions:
+
+[source,bash]
+----
+# Generate current benchmark
+npm run benchmark:geo -- --json
+
+# Compare with baseline (exit 1 on regression)
+node scripts/compare-benchmarks.mjs \
+  docs/benchmarks/geo-baseline.json \
+  docs/benchmarks/geo-benchmark.json
+----
+
+=== Model Parameters
+
+The PostGIS model parameters were empirically calibrated against local
+PostgreSQL 16 with a warm buffer cache:
+
+[cols="2,3,4", options="header"]
+|===
+| Component | Latency | Source
+| TCP round-trip | 200 µs | loopback TCP ping
+| Query parse/plan | 1 800 µs | PG EXPLAIN ANALYZE
+| GiST index scan | O(log N) | Included in per-row cost
+| ST_Distance math | 2 µs/row | PostGIS manual §8.12
+| Serialize + transfer | 20 µs/row | pgbench -f st_distance
+| **Total** | **2 000 + 22 µs × N** | Model used in benchmarks
+|===
+
+== Recommendations for Future Optimizations
+
+=== Short Term (No Code Changes)
+
+. **Baseline tracking** — Continue versioning `geo-baseline.json` and running
+  comparisons in CI to catch regressions before deployment.
+
+. **Benchmark granularity** — The current `geo-benchmark.mjs` tests 100/1 000/
+  10 000 providers. For more precise tuning, add intermediate points
+  (2 000, 5 000) to better match the production distribution.
+
+=== Medium Term
+
+. **Adaptive radius expansion** — The current expansion steps are fixed
+  [5, 10, 25, 50, 100]. Consider making them configurable per category:
+  dense urban categories (e.g., "Diarista") can start at 2 km; sparse rural
+  categories (e.g., "Veterinário") can start at 20 km.
+
+. **Two-tier Redis caching** — The radius COUNT cache (120 s TTL) could be
+  extended with a pre-warm mechanism: when a new provider registers in a
+  region, invalidate only that region's cache keys rather than waiting for
+  TTL expiration.
+
+. **Combine Phase 1b + Phase 2 into a single raw SQL** — Currently Phase 1b
+  resolves IDs, then Phase 2 fetches data via Prisma. A single raw SQL with
+  `SELECT DISTINCT ON + JOIN` could reduce round-trips for the PostGIS path.
+
+=== Long Term
+
+. **PostGIS on read replicas** — If Haversine fallback is ever triggered by
+  database load (not unavailability), consider routing PostGIS queries to a
+  dedicated read replica with PostGIS extension.
+
+. **Geohash pre-filtering** — For ultra-low-latency requirements (< 5 ms),
+  pre-compute geohash prefixes for each provider and index them with a
+  B-tree. The route can filter by geohash prefix first, then refine with
+  Haversine — avoiding the PostGIS fixed overhead (~10 ms) entirely.
+
+. **Edge-case: provider clustering** — When many providers cluster in the
+  same building (e.g., professional coworking spaces), the GiST index
+  returns many tied-distance results. Consider adding a spatial
+  regularization term (tiny jitter on insert) or a deterministic tiebreaker
+  (favoriteCount) in the ORDER BY.
+
+. **Materialized distance view** — For the most common distance queries
+  (e.g., “show providers within 10 km of user”), maintain a materialized
+  view with pre-computed distance buckets. Refresh on provider location
+  changes.
+
+== Appendix
+
+=== A. File Reference
+
+[cols="2,4", options="header"]
+|===
+| File | Description
+| `src/lib/distance-fallback.ts` | PostGIS → Haversine → null fallback chain
+| `src/lib/radius-expansion.ts` | Progressive radius expansion loop + factory
+| `src/lib/fetch-providers-data.ts` | Phase 2 data fetch orchestrator
+| `src/lib/fetch-unrestricted-results.ts` | Unrestricted fallback (expandedRadius = -1)
+| `src/lib/sql-builder.ts` | Parameterized WHERE clause builder
+| `src/lib/postgis.ts` | Legacy PostGIS helpers (findProvidersWithinRadius, etc.)
+| `src/lib/geo-shared.ts` | Pure Haversine + formatDistance (server + client)
+| `src/lib/geo-server.ts` | Barrel re-exporting server-side geo utilities
+| `src/lib/sql.ts` | Barrel re-exporting SQL builder
+| `src/lib/cpu-calibrate.ts` | Busy-loop calibration (TS source)
+| `src/lib/cpu-calibrate.mjs` | Busy-loop calibration (ESM, used by benchmarks)
+| `src/lib/benchmark-utils.ts` | `measure()` sampling utility (TS source)
+| `src/lib/benchmark-utils.mjs` | `measure()` sampling utility (ESM, used by benchmarks)
+| `src/app/api/providers/route.ts` | Route handler orchestrating all phases
+| `src/app/api/geo/search/route.ts` | Nominatim search endpoint
+| `src/app/api/geo/reverse/route.ts` | Nominatim reverse geocode endpoint
+| `scripts/geo-benchmark.mjs` | Component-level benchmark script
+| `scripts/geo-pipeline-benchmark.mjs` | Pipeline-level benchmark script
+| `scripts/save-geo-benchmark.mjs` | Date-stamped benchmark saver
+| `scripts/compare-benchmarks.mjs` | Benchmark comparison/diff tool
+| `docs/benchmarks/geo-baseline.json` | Version-controlled performance baseline
+| `docs/benchmarks/architecture.adoc` | This document
+|===
+
+=== B. Benchmark JSON Schema
+
+[source,json]
+----
+{
+  "meta": {
+    "center":           { "lat": number, "lng": number },
+    "centerLabel":      string,       // e.g. "São Paulo"
+    "cpuItersPerMs":    number,       // calibrated busy-loop
+    "platform":         string,       // e.g. "win32"
+    "arch":             string,       // e.g. "x64"
+    "nodeVersion":      string,       // e.g. "v22.23.1"
+    "timestamp":        string        // ISO 8601
+  },
+  "benchmarks": [
+    {
+      "name":          string,        // display name
+      "label":         string,        // machine-readable
+      "mean":          number,        // µs
+      "min":           number,        // µs
+      "max":           number,        // µs
+      "opsPerSec":     number         // throughput
+    }
+  ],
+  "analysis": {
+    "haversineUnitCosts": {
+      "at100":        number,        // µs/provider
+      "at1000":       number,        // µs/provider
+      "at10000":      number         // µs/provider
+    },
+    "avgHaversinePerProvider": number,
+    "note":            string
+  }
+}
+----
+
+=== C. Dependency Injection Pattern
+
+All geo modules follow the same DI pattern for testability:
+
+[source,typescript]
+----
+// Module exports a function that accepts injected dependencies
+export async function computeDistanceMap(
+  opts: ComputeDistanceMapOptions  // ← contains queryRawUnsafe, etc.
+): Promise<Map<string, number | null>>
+
+// Factory creates a configured function
+export function createCachedRadiusCountFn(
+  opts: CreateCachedRadiusCountFnOptions  // ← contains withCache, queryRawUnsafe, etc.
+): RadiusCountFn                           // ← returned function is pure logic
+
+// Pure function — no I/O, no dependencies
+export function buildRadiiToTry(userRadiusKm: number): number[]
+----
+
+This pattern makes every module testable in isolation without database or
+Redis connections. Each module has a corresponding test file in
+`src/lib/__tests__/`.

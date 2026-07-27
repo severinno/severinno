@@ -1,6 +1,6 @@
 import "server-only"
 import { db as prisma } from "./db"
-import { haversineKm } from "./geo"
+import { haversineKm } from "./geo-server"
 
 export function isInCoverage(
   providerLat: number,

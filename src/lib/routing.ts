@@ -13,7 +13,7 @@
  *   docker compose -f docker-compose.dev.yml --profile routing up -d osrm
  */
 
-import { haversineKm } from "./geo-shared"
+import { haversineKm } from "./geo-server"
 
 // ---------------------------------------------------------------------------
 // Types

@@ -52,6 +52,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { cn } from "@/lib/utils"
 import { useAuthStore, useGeoStore, useUIStore, useViewStore, useCompareStore } from "@/store"
+import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
 import { ROLE_LABELS, type UserRole } from "@/lib/constants"
 import type { Category } from "@/lib/api"
 import { apiGet } from "@/lib/api"
@@ -563,31 +564,14 @@ export default function Topbar({
             </AnimatePresence>
           </div>
 
-          {/* ── Location chip ─────────────────────────────────────────────── */}
-          <div className="hidden items-center md:flex">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleLocate}
-              disabled={locating || geoStatus === "locating"}
-              className={cn(
-                "h-9 max-w-[14rem] gap-2 rounded-xl border px-3.5 text-sm font-medium transition-all duration-200",
-                "border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700",
-                "hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 hover:shadow-sm",
-                "dark:border-emerald-800/40 dark:from-emerald-950/50 dark:to-emerald-950/20 dark:text-emerald-300",
-                "dark:hover:from-emerald-900/50 dark:hover:to-emerald-950/30 dark:hover:text-emerald-200",
-              )}
-              title="Usar minha localização"
-              aria-label="Usar minha localização"
-            >
-              {locating || geoStatus === "locating" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <LocateFixed className="size-4 shrink-0" />
-              )}
-              <span className="truncate">{city || "Definir localização"}</span>
-            </Button>
+          {/* ── Location / AddressAutocomplete (desktop) ────────────────────── */}
+          <div className="hidden md:flex">
+            <div className="relative w-52">
+              <AddressAutocomplete
+                placeholder={city || "CEP, cidade ou endereço…"}
+                onSelect={() => onSearchSubmit?.()}
+              />
+            </div>
           </div>
 
           {/* ── Auth area (desktop) ───────────────────────────────────────── */}
@@ -997,7 +981,10 @@ export default function Topbar({
                   {/* Mobile location */}
                   <Button
                     variant="outline"
-                    onClick={handleLocate}
+                    onClick={() => {
+                      handleLocate()
+                      setMobileOpen(false)
+                    }}
                     disabled={locating}
                     className="h-11 justify-start gap-2.5 rounded-xl border-emerald-200/80 bg-gradient-to-r from-emerald-50 to-emerald-50/50 text-emerald-700 hover:from-emerald-100 hover:to-emerald-50 hover:text-emerald-800 dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-emerald-950/20 dark:text-emerald-300"
                   >

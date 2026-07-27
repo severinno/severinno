@@ -79,7 +79,8 @@ export type VitrineResultsProps = {
   onPageChange?: (page: number) => void
   resultsAnchorId?: string
   className?: string
-  radiusExpanded?: boolean
+  /** Raio efetivo usado na expansão. null = sem expansão, número = km usado, -1 = além de 100km (sem filtro) */
+  expandedRadius?: number | null
 }
 
 type ViewMode = "list" | "map"
@@ -104,7 +105,7 @@ export default function VitrineResults({
   onPageChange,
   resultsAnchorId,
   className,
-  radiusExpanded,
+  expandedRadius,
 }: VitrineResultsProps) {
   const [view, setView] = React.useState<ViewMode>("list")
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
@@ -280,17 +281,30 @@ export default function VitrineResults({
             <Separator className="mt-1" />
           </div>
 
-          {/* Radius expanded notice (Nielsen H9 — help users recover) */}
-          {radiusExpanded && !isLoading && !error && providers.length > 0 ? (
+          {/* Radius expanded notice — mostra quando o raio foi automaticamente expandido */}
+          {expandedRadius !== undefined && expandedRadius !== null && !isLoading && !error && providers.length > 0 ? (
             <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
               <MapPin className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-amber-900 dark:text-amber-200">
-                  Nenhum prestador encontrado no raio de {filters.radius} km
-                </p>
-                <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                  Mostrando os prestadores mais próximos da sua localização. Aumente o raio na barra de filtros para ver mais opções ou ajuste sua localização.
-                </p>
+                {expandedRadius === -1 ? (
+                  <>
+                    <p className="font-medium text-amber-900 dark:text-amber-200">
+                      Nenhum prestador encontrado num raio de até 100 km
+                    </p>
+                    <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                      Mostrando todos os prestadores disponíveis. Aumente o raio de busca ou ajuste sua localização para ver resultados mais próximos.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium text-amber-900 dark:text-amber-200">
+                      Nenhum prestador encontrado no raio de {filters.radius} km
+                    </p>
+                    <p className="mt-0.5 text-amber-700 dark:text-amber-300">
+                      Busca expandida automaticamente para <strong>{expandedRadius} km</strong>. Aumente o raio na barra de filtros para refinar ou ajuste sua localização.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
@@ -338,6 +352,8 @@ export default function VitrineResults({
                 onQuote={onQuote}
                 onBook={onBook}
                 onView={onView}
+                radius={filters.radius}
+                onRadiusChange={(r) => onFiltersChange({ ...filters, radius: r })}
               />
             )}
 
@@ -445,6 +461,8 @@ function MapView({
   onQuote,
   onBook,
   onView,
+  radius,
+  onRadiusChange,
 }: {
   providers: ProviderCardType[]
   favorites: Set<string>
@@ -455,6 +473,8 @@ function MapView({
   onQuote?: (id: string) => void
   onBook?: (id: string, serviceId?: string) => void
   onView?: (id: string) => void
+  radius?: number
+  onRadiusChange?: (radius: number) => void
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_400px]">
@@ -466,6 +486,8 @@ function MapView({
           userLng={userLng}
           selectedId={selectedId}
           onSelectProvider={(id) => onSelect(id)}
+          radius={radius}
+          onRadiusChange={onRadiusChange}
         />
       </div>
 

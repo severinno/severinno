@@ -18,21 +18,18 @@ name: E2E Cache
 on:
   pull_request:
     branches: [main]
-    paths:
+    paths: &cache_paths
       - "src/lib/api-server.ts"
       - "src/lib/cache-manifest.ts"
       - "src/app/api/**/route.ts"
       - "e2e/providers-cache.spec.ts"
       - "scripts/validate-cache-manifest.ts"
+      - "scripts/check-utf8.sh"
+      - "scripts/fix-encoding.sh"
       - ".github/workflows/e2e-cache.yml"
   push:
     branches: [main]
-    paths:
-      - "src/lib/api-server.ts"
-      - "src/lib/cache-manifest.ts"
-      - "src/app/api/**/route.ts"
-      - "scripts/validate-cache-manifest.ts"
-      - ".github/workflows/e2e-cache.yml"
+    paths: *cache_paths
   workflow_dispatch:
 
 concurrency:
@@ -47,24 +44,19 @@ env:
   SESSION_SECRET: ci-session-secret-e2e-cache-32-chars-long
 
 jobs:
-  # ── UTF-8 Encoding Check ────────────────────────────────────────────────
+    # UTF-8 Encoding Check ----------------------------------------------------
   # Fast gate: <10s, no dependencies beyond python3 (pre-installed on runners).
-  # Runs before the full E2E job to fail fast on corrupted files.
+  # Reusable via .github/workflows/utf8-check.yml
   utf8-check:
-    name: UTF-8 Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    uses: ./.github/workflows/utf8-check.yml
 
-      - name: Run UTF-8 validation on all .ts and .tsx files
-        run: bash scripts/check-utf8.sh --ci src/
-
-      - name: Summary
-        run: echo "All source files validated as valid UTF-8 encoding."
+  # ── Quality Gate ──────────────────────────────────────────────────────────
+  quality-gate:
+    uses: ./.github/workflows/quality-gate.yml
 
   e2e-cache:
     name: E2E Cache
-    needs: [utf8-check]
+    needs: [utf8-check, quality-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -123,11 +115,6 @@ jobs:
           npx prisma db push --accept-data-loss --skip-generate
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
-
-      # Validate that CACHED_ROUTES manifest matches actual route handlers.
-      # Fast CI gate — runs before build, catches missing/stale manifest entries.
-      - name: Validate cache manifest against route handlers
-        run: npx tsx scripts/validate-cache-manifest.ts
 
       # Use next start (production mode) for stable, fast responses
       - name: Build Next.js

@@ -4,6 +4,13 @@ on:
   pull_request:
     branches: [main]
   merge_group:
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Regression threshold percentage (default: auto-detect 10% for benchmark code, 5% otherwise)"
+        required: false
+        default: 0
+        type: number
 
 concurrency:
   group: pr-${{ github.ref }}
@@ -30,6 +37,139 @@ jobs:
 
       - name: Summary
         run: echo "All .ts files validated as valid UTF-8 encoding."
+
+  # ── Fuzz Tests ─────────────────────────────────────────────────────────
+  # Runs in parallel with other checks. No external dependencies needed.
+  fuzz:
+    name: Fuzz Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run fuzz tests
+        run: bun run fuzz:ci > fuzz-results.json
+
+      - name: Archive fuzz results
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-results
+          path: fuzz-results.json
+          retention-days: 30
+
+  # ── Geo Benchmark ──────────────────────────────────────────────────────
+  # Runs the geo-distance benchmark and compares against the baseline from
+  # main.  Fails the PR if any benchmark regresses >threshold % in mean
+  # latency.  The threshold is 5 % by default; when the PR touches
+  # benchmark or geolocation code paths, it widens to 10 % to reduce
+  # flakiness from algorithmic changes.
+  benchmark:
+    name: Geo Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed to fetch main branch for baseline
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run geo benchmark
+        run: |
+          node scripts/run-benchmark.mjs --type geo --json
+
+      - name: Fetch baseline from main
+        id: baseline
+        run: |
+          if git show main:docs/benchmarks/geo-baseline.json > /tmp/geo-baseline.json 2>/dev/null; then
+            echo "baseline_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "baseline_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Detect threshold ────────────────────────────────────────────
+      # Priority: workflow_dispatch input > auto-detect > default 5.
+      # Auto-detect: when the PR touches benchmark/geo code, widen to 10%
+      # to reduce flakiness from intentional algorithmic changes.
+      - name: Detect threshold
+        id: changes
+        run: |
+          MANUAL_INPUT=${{ github.event.inputs.threshold || 0 }}
+          if [ "$MANUAL_INPUT" -gt 0 ] 2>/dev/null; then
+            echo "threshold=$MANUAL_INPUT" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only origin/main...HEAD | grep -qE '^(src/lib/(geo-shared|distance-fallback|radius-expansion|fetch-providers-data|fetch-unrestricted-results|sql-builder)\.ts|src/app/api/providers/route\.ts|scripts/(geo-benchmark|compare-benchmarks|run-benchmark)\.mjs)$'; then
+            echo "threshold=10" >> "$GITHUB_OUTPUT"
+          else
+            echo "threshold=5" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compare with baseline
+        id: compare
+        if: steps.baseline.outputs.baseline_exists == 'true'
+        env:
+          BENCHMARK_THRESHOLD: ${{ steps.changes.outputs.threshold }}
+        run: |
+          node scripts/compare-benchmarks.mjs \
+            /tmp/geo-baseline.json \
+            docs/benchmarks/geo-latest.json \
+            2>&1 | tee /tmp/benchmark-diff.txt
+
+      - name: No baseline available
+        if: steps.baseline.outputs.baseline_exists != 'true'
+        run: |
+          echo "No geo-baseline.json on main — skipping comparison." | tee /tmp/benchmark-diff.txt
+
+      # ── Publish job summary ──────────────────────────────────────────
+      # Writes a condensed version of the comparison to the GitHub Actions
+      # Job Summary so failures are self-explanatory at a glance.
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          {
+            echo '## 📊 Geo-Benchmark Comparison'
+            echo ''
+            echo '| Setting | Value |'
+            echo '|---|---|'
+            echo "| Threshold | ${{ steps.changes.outputs.threshold }}% |"
+            echo "| Baseline | $(if [ -f /tmp/geo-baseline.json ]; then echo 'loaded'; else echo 'none'; fi) |"
+            echo ''
+            echo '```'
+            cat /tmp/benchmark-diff.txt 2>/dev/null || echo 'No benchmark data available.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Upload artifact even on failure so results can be inspected
+      - name: Upload benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geo-benchmark
+          path: docs/benchmarks/geo-latest.json
+          retention-days: 30
 
   # ── Main PR Check ──────────────────────────────────────────────────────
   check:

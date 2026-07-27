@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "model": "CPU-modelled local Redis 7 (loopback, no persistence)",
+    "cpuItersPerMs": 595,
+    "platform": "win32",
+    "arch": "x64",
+    "nodeVersion": "v22.23.1",
+    "timestamp": "2026-07-26T23:06:59.157Z"
+  },
+  "benchmarks": [
+    {
+      "name": "SET  × 1",
+      "label": "cache_set_single",
+      "mean": 31.3,
+      "min": 1.5,
+      "max": 1386.9,
+      "opsPerSec": 31928
+    },
+    {
+      "name": "GET  × 1",
+      "label": "cache_get_single",
+      "mean": 1.4,
+      "min": 1.2,
+      "max": 7.8,
+      "opsPerSec": 702247
+    },
+    {
+      "name": "DEL  × 1",
+      "label": "cache_del_single",
+      "mean": 1,
+      "min": 0.9,
+      "max": 6.4,
+      "opsPerSec": 987167
+    },
+    {
+      "name": "SETEX × 1",
+      "label": "cache_setex_single",
+      "mean": 1.8,
+      "min": 1.8,
+      "max": 4.9,
+      "opsPerSec": 545703
+    },
+    {
+      "name": "Pipeline 3 ops",
+      "label": "cache_pipeline_3",
+      "mean": 2.1,
+      "min": 2,
+      "max": 4.3,
+      "opsPerSec": 473821
+    },
+    {
+      "name": "Batch SET 100",
+      "label": "cache_set_batch_100",
+      "mean": 117.1,
+      "min": 113.3,
+      "max": 136.8,
+      "opsPerSec": 8538
+    },
+    {
+      "name": "Batch GET 100",
+      "label": "cache_get_batch_100",
+      "mean": 89.8,
+      "min": 85,
+      "max": 135.9,
+      "opsPerSec": 11130
+    },
+    {
+      "name": "Batch DEL 100",
+      "label": "cache_del_batch_100",
+      "mean": 59.7,
+      "min": 56.8,
+      "max": 79.3,
+      "opsPerSec": 16738
+    }
+  ],
+  "analysis": {
+    "note": "CPU-modelled estimate of local Redis operations. Real-world performance depends on network latency, Redis persistence config, and payload size.",
+    "modelParams": {
+      "singleSetUs": 400,
+      "singleGetUs": 300,
+      "singleDelUs": 200,
+      "singleSetexUs": 500,
+      "pipeline3Us": 600
+    }
+  }
+}
