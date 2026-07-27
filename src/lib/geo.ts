@@ -107,6 +107,162 @@ export async function reverseGeocode(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Nominatim Search (forward geocoding)
+// ---------------------------------------------------------------------------
+
+export type GeoSearchResult = {
+  lat: number
+  lng: number
+  displayName: string
+  street?: string | null
+  district?: string | null
+  city?: string | null
+  state?: string | null
+  cep?: string | null
+  category?: string
+  type?: string
+  importance: number
+}
+
+/**
+ * Shared response parser for Nominatim Search results.
+ */
+function parseNominatimSearchResponse(
+  data: Array<{
+    lat: string
+    lon: string
+    display_name?: string
+    category?: string
+    type?: string
+    importance?: string
+    address?: {
+      road?: string
+      neighbourhood?: string
+      suburb?: string
+      city?: string
+      town?: string
+      village?: string
+      state?: string
+      postcode?: string
+    }
+  }>,
+): GeoSearchResult[] {
+  if (!Array.isArray(data)) return []
+  return data.map((item) => {
+    const a = item.address ?? {}
+    return {
+      lat: Number.parseFloat(item.lat),
+      lng: Number.parseFloat(item.lon),
+      displayName: item.display_name ?? "",
+      street: a.road ?? null,
+      district: a.neighbourhood ?? a.suburb ?? null,
+      city: a.city ?? a.town ?? a.village ?? null,
+      state: a.state ?? null,
+      cep: a.postcode ?? null,
+      category: item.category,
+      type: item.type,
+      importance: Number.parseFloat(item.importance ?? "0"),
+    }
+  })
+}
+
+/** Shared headers for Nominatim API calls. */
+const NOMINATIM_HEADERS = {
+  Accept: "application/json",
+  "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
+} as const
+
+/**
+ * Forward-geocode a free-form text address using Nominatim Search.
+ *
+ * Accepts a query like "Rua Augusta, São Paulo" and returns up to `limit`
+ * results sorted by importance.
+ *
+ * @see https://nominatim.org/release-docs/develop/api/Search/
+ */
+export async function geocodeSearch(
+  query: string,
+  limit: number = 5,
+): Promise<GeoSearchResult[]> {
+  const trimmed = query.trim()
+  if (!trimmed) return []
+
+  const clampedLimit = Math.max(1, Math.min(10, limit))
+  const url =
+    `https://nominatim.openstreetmap.org/search?` +
+    `format=jsonv2&q=${encodeURIComponent(trimmed)}` +
+    `&addressdetails=1&limit=${clampedLimit}&accept-language=pt-BR`
+
+  const res = await fetch(url, { headers: NOMINATIM_HEADERS, next: { revalidate: 86400 } })
+  if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
+
+  return parseNominatimSearchResponse(await res.json())
+}
+
+/**
+ * Forward-geocode a structured address using Nominatim Search.
+ *
+ * Instead of a free-form `q`, this uses Nominatim's `structured=1` mode
+ * with dedicated fields for street, city, state, country, and postcode.
+ * The structured mode is significantly more precise for well-known
+ * addresses because each component is interpreted in its proper context.
+ *
+ * At least one of `street`, `city`, or `state` must be provided,
+ * otherwise an empty array is returned.
+ *
+ * @param opts.street  - Street name (optionally with housenumber), e.g. "Av. Paulista, 1000"
+ * @param opts.city    - City or locality name, e.g. "São Paulo"
+ * @param opts.state   - State code or name, e.g. "SP" or "São Paulo"
+ * @param opts.country - Country name (default "Brazil")
+ * @param opts.postcode- Postal code / CEP
+ * @param opts.limit   - Max results (default 5, max 10)
+ *
+ * @see https://nominatim.org/release-docs/develop/api/Search/#structured-query
+ */
+export async function geocodeSearchStructured(opts: {
+  street?: string | null
+  city?: string | null
+  state?: string | null
+  country?: string | null
+  postcode?: string | null
+  limit?: number
+}): Promise<GeoSearchResult[]> {
+  const { street, city, state, country, postcode, limit = 5 } = opts
+
+  // Require at least one field
+  if (!street?.trim() && !city?.trim() && !state?.trim() && !country?.trim() && !postcode?.trim()) {
+    return []
+  }
+
+  const clampedLimit = Math.max(1, Math.min(10, limit))
+
+  // Build query params — only include non-empty fields
+  const params = new URLSearchParams()
+  params.set("format", "jsonv2")
+  params.set("structured", "1")
+  params.set("addressdetails", "1")
+  params.set("limit", String(clampedLimit))
+  params.set("accept-language", "pt-BR")
+
+  if (street?.trim()) params.set("street", street.trim())
+  if (city?.trim()) params.set("city", city.trim())
+  if (state?.trim()) params.set("state", state.trim())
+  if (country?.trim()) params.set("country", country.trim())
+  if (postcode?.trim()) params.set("postcode", postcode.trim())
+
+  const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`
+
+  const res = await fetch(url, { headers: NOMINATIM_HEADERS, next: { revalidate: 86400 } })
+  if (!res.ok) throw new Error(`Nominatim structured HTTP ${res.status}`)
+
+  return parseNominatimSearchResponse(await res.json())
+}
+
+// ---------------------------------------------------------------------------
+// Currency formatter
+// ---------------------------------------------------------------------------
+
 /**
  * Format a number as BRL currency: "R$ 1.234,56".
  */

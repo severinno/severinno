@@ -30,6 +30,19 @@ export type GeoState = {
   clear: () => void
 }
 
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000
+
+/** Check if the persisted geo data is older than 24h and should be cleared. */
+function isStale(updatedAt: string | null): boolean {
+  if (!updatedAt) return true
+  return Date.now() - new Date(updatedAt).getTime() > TWENTY_FOUR_HOURS_MS
+}
+
+/** Build a display-name fallback from raw coordinates. */
+function coordsToDisplayName(lat: number, lng: number): string {
+  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+}
+
 export const useGeoStore = create<GeoState>()(
   persist(
     (set) => ({
@@ -52,16 +65,40 @@ export const useGeoStore = create<GeoState>()(
           })
           return
         }
-        set({ status: "locating", error: null, updatedAt: new Date().toISOString() })
+        set({ status: "locating", error: null })
         return new Promise<void>((resolve) => {
           navigator.geolocation.getCurrentPosition(
-            (pos) => {
+            async (pos) => {
+              const { latitude: lat, longitude: lng } = pos.coords
+              const now = new Date().toISOString()
+
+              // Try reverse geocode to populate address fields
+              let displayName = coordsToDisplayName(lat, lng)
+              let city: string | null = null
+              let state: string | null = null
+              let district: string | null = null
+
+              try {
+                const { fetchReverseGeo } = await import("@/lib/api")
+                const addr = await fetchReverseGeo(lat, lng)
+                if (addr.displayName) displayName = addr.displayName
+                city = addr.city ?? null
+                state = addr.state ?? null
+                district = addr.district ?? null
+              } catch {
+                // fallback: raw coordinates as display name
+              }
+
               set({
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
+                lat,
+                lng,
+                address: displayName,
+                city,
+                state,
+                district,
                 status: "ready",
                 error: null,
-                updatedAt: new Date().toISOString(),
+                updatedAt: now,
               })
               resolve()
             },
@@ -154,6 +191,14 @@ export const useGeoStore = create<GeoState>()(
         status: s.status,
         updatedAt: s.updatedAt,
       }),
+      // Expire stale data on rehydration
+      onRehydrateStorage: () => (state) => {
+        if (state && isStale(state.updatedAt)) {
+          // Clear expired state by resetting to initial values
+          // The store will re-render with empty location data
+          useGeoStore.getState().clear()
+        }
+      },
     },
   ),
 )

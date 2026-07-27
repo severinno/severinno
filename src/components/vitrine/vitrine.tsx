@@ -248,7 +248,7 @@ export default function Vitrine() {
           onView={handleView}
           onPageChange={(p) => dispatch({ type: 'SET_PAGE', page: p })}
           resultsAnchorId={RESULTS_ANCHOR_ID}
-          radiusExpanded={providersQuery.data?.radiusExpanded}
+          expandedRadius={providersQuery.data?.expandedRadius}
         />
 
         {/* 5. HowItWorks — process explanation */}

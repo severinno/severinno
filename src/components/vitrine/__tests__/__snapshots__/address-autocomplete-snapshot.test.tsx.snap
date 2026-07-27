@@ -1,0 +1,499 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AddressAutocomplete — snapshot > GPS spinner: shows spinner while GPS is locating > gps-spinner 1`] = `
+<DocumentFragment>
+  <div
+    class="relative"
+  >
+    <span
+      data-testid="icon-mappin"
+    />
+    <input
+      aria-autocomplete="list"
+      aria-expanded="false"
+      aria-label="Localização"
+      autocomplete="off"
+      class="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+      placeholder="CEP, cidade ou endereço…"
+      role="combobox"
+      value=""
+    />
+    <span
+      class="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2"
+    >
+      <button
+        aria-label="Usar localização atual"
+        class="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+        disabled=""
+        title="Usar localização atual"
+        type="button"
+      >
+        <span
+          data-testid="icon-loading"
+        />
+      </button>
+    </span>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`AddressAutocomplete — snapshot > dropdown hover: highlights first item on mouseEnter with bg-primary/10 and aria-selected=true > dropdown-hover 1`] = `
+<DocumentFragment>
+  <div
+    class="relative"
+  >
+    <span
+      data-testid="icon-mappin"
+    />
+    <input
+      aria-autocomplete="list"
+      aria-controls="address-suggestions"
+      aria-expanded="true"
+      aria-label="Localização"
+      autocomplete="off"
+      class="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+      placeholder="CEP, cidade ou endereço…"
+      role="combobox"
+      value="Av. Paulista"
+    />
+    <span
+      class="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2"
+    >
+      <button
+        aria-label="Usar localização atual"
+        class="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+        title="Usar localização atual"
+        type="button"
+      >
+        <span
+          animate="[object Object]"
+          class="inline-flex transition-colors duration-300"
+          transition="[object Object]"
+        >
+          <span
+            data-testid="icon-locate"
+          />
+        </span>
+      </button>
+      <button
+        aria-label="Limpar localização"
+        class="flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        type="button"
+      >
+        <span
+          data-testid="icon-x"
+        />
+      </button>
+    </span>
+    <div
+      class="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border bg-background p-1 shadow-lg"
+      id="address-suggestions"
+      role="listbox"
+    >
+      <button
+        aria-selected="true"
+        class="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors bg-primary/10 text-primary"
+        role="option"
+        type="button"
+      >
+        <span
+          data-testid="icon-mappin"
+        />
+        <div
+          class="min-w-0 flex-1"
+        >
+          <p
+            class="truncate font-medium"
+          >
+            Avenida Paulista, Bela Vista, São Paulo - SP, Brasil
+          </p>
+          <p
+            class="mt-0.5 text-xs text-muted-foreground"
+          >
+            São Paulo, SP
+          </p>
+        </div>
+        <span
+          aria-label="Alta relevância"
+          class="shrink-0 self-center text-[11px] text-amber-500"
+        >
+          ★
+        </span>
+      </button>
+      <button
+        aria-selected="false"
+        class="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted"
+        role="option"
+        type="button"
+      >
+        <span
+          data-testid="icon-mappin"
+        />
+        <div
+          class="min-w-0 flex-1"
+        >
+          <p
+            class="truncate font-medium"
+          >
+            Rua Augusta, Consolação, São Paulo - SP, Brasil
+          </p>
+          <p
+            class="mt-0.5 text-xs text-muted-foreground"
+          >
+            São Paulo, SP
+          </p>
+        </div>
+      </button>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`AddressAutocomplete — snapshot > empty state: renders input with MapPin icon and GPS button, no dropdown, no clear > empty 1`] = `
+<DocumentFragment>
+  <div
+    class="relative"
+  >
+    <span
+      data-testid="icon-mappin"
+    />
+    <input
+      aria-autocomplete="list"
+      aria-expanded="false"
+      aria-label="Localização"
+      autocomplete="off"
+      class="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+      placeholder="CEP, cidade ou endereço…"
+      role="combobox"
+      value=""
+    />
+    <span
+      class="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2"
+    >
+      <button
+        aria-label="Usar localização atual"
+        class="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+        title="Usar localização atual"
+        type="button"
+      >
+        <span
+          animate="[object Object]"
+          class="inline-flex transition-colors duration-300"
+          transition="[object Object]"
+        >
+          <span
+            data-testid="icon-locate"
+          />
+        </span>
+      </button>
+    </span>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`AddressAutocomplete — snapshot > fetch error: shows input with typed text, no dropdown, no loading spinner, GPS icon + clear button visible > fetch-error 1`] = `
+<DocumentFragment>
+  <div
+    class="relative"
+  >
+    <span
+      data-testid="icon-mappin"
+    />
+    <input
+      aria-autocomplete="list"
+      aria-expanded="false"
+      aria-label="Localização"
+      autocomplete="off"
+      class="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+      placeholder="CEP, cidade ou endereço…"
+      role="combobox"
+      value="Av. Paulista"
+    />
+    <span
+      class="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2"
+    >
+      <button
+        aria-label="Usar localização atual"
+        class="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+        title="Usar localização atual"
+        type="button"
+      >
+        <span
+          animate="[object Object]"
+          class="inline-flex transition-colors duration-300"
+          transition="[object Object]"
+        >
+          <span
+            data-testid="icon-locate"
+          />
+        </span>
+      </button>
+      <button
+        aria-label="Limpar localização"
+        class="flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        type="button"
+      >
+        <span
+          data-testid="icon-x"
+        />
+      </button>
+    </span>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`AddressAutocomplete — snapshot > geo store placeholder: shows city name as placeholder when input is empty and geo store has city > geo-placeholder 1`] = `
+<DocumentFragment>
+  <div
+    class="relative"
+  >
+    <span
+      data-testid="icon-mappin"
+    />
+    <input
+      aria-autocomplete="list"
+      aria-expanded="false"
+      aria-label="Localização"
+      autocomplete="off"
+      class="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+      placeholder="São Paulo"
+      role="combobox"
+      value=""
+    />
+    <span
+      class="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2"
+    >
+      <button
+        aria-label="Usar localização atual"
+        class="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+        title="Usar localização atual"
+        type="button"
+      >
+        <span
+          animate="[object Object]"
+          class="inline-flex transition-colors duration-300"
+          transition="[object Object]"
+        >
+          <span
+            data-testid="icon-locate"
+          />
+        </span>
+      </button>
+    </span>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`AddressAutocomplete — snapshot > input filled: shows filled input with clear button and filled GPS icon after selection > input-filled 1`] = `
+<DocumentFragment>
+  <div
+    class="relative"
+  >
+    <span
+      data-testid="icon-mappin"
+    />
+    <input
+      aria-autocomplete="list"
+      aria-expanded="false"
+      aria-label="Localização"
+      autocomplete="off"
+      class="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+      placeholder="CEP, cidade ou endereço…"
+      role="combobox"
+      value="Avenida Paulista, Bela Vista, São Paulo - SP, Brasil"
+    />
+    <span
+      class="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2"
+    >
+      <button
+        aria-label="Usar localização atual"
+        class="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+        title="Usar localização atual"
+        type="button"
+      >
+        <span
+          animate="[object Object]"
+          class="inline-flex transition-colors duration-300"
+          transition="[object Object]"
+        >
+          <span
+            data-testid="icon-locate"
+          />
+        </span>
+      </button>
+      <button
+        aria-label="Limpar localização"
+        class="flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        type="button"
+      >
+        <span
+          data-testid="icon-x"
+        />
+      </button>
+    </span>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`AddressAutocomplete — snapshot > results dropdown: shows dropdown with result items after fetch > results-dropdown 1`] = `
+<DocumentFragment>
+  <div
+    class="relative"
+  >
+    <span
+      data-testid="icon-mappin"
+    />
+    <input
+      aria-autocomplete="list"
+      aria-controls="address-suggestions"
+      aria-expanded="true"
+      aria-label="Localização"
+      autocomplete="off"
+      class="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+      placeholder="CEP, cidade ou endereço…"
+      role="combobox"
+      value="Av. Paulista"
+    />
+    <span
+      class="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2"
+    >
+      <button
+        aria-label="Usar localização atual"
+        class="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+        title="Usar localização atual"
+        type="button"
+      >
+        <span
+          animate="[object Object]"
+          class="inline-flex transition-colors duration-300"
+          transition="[object Object]"
+        >
+          <span
+            data-testid="icon-locate"
+          />
+        </span>
+      </button>
+      <button
+        aria-label="Limpar localização"
+        class="flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        type="button"
+      >
+        <span
+          data-testid="icon-x"
+        />
+      </button>
+    </span>
+    <div
+      class="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border bg-background p-1 shadow-lg"
+      id="address-suggestions"
+      role="listbox"
+    >
+      <button
+        aria-selected="false"
+        class="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted"
+        role="option"
+        type="button"
+      >
+        <span
+          data-testid="icon-mappin"
+        />
+        <div
+          class="min-w-0 flex-1"
+        >
+          <p
+            class="truncate font-medium"
+          >
+            Avenida Paulista, Bela Vista, São Paulo - SP, Brasil
+          </p>
+          <p
+            class="mt-0.5 text-xs text-muted-foreground"
+          >
+            São Paulo, SP
+          </p>
+        </div>
+        <span
+          aria-label="Alta relevância"
+          class="shrink-0 self-center text-[11px] text-amber-500"
+        >
+          ★
+        </span>
+      </button>
+      <button
+        aria-selected="false"
+        class="flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted"
+        role="option"
+        type="button"
+      >
+        <span
+          data-testid="icon-mappin"
+        />
+        <div
+          class="min-w-0 flex-1"
+        >
+          <p
+            class="truncate font-medium"
+          >
+            Rua Augusta, Consolação, São Paulo - SP, Brasil
+          </p>
+          <p
+            class="mt-0.5 text-xs text-muted-foreground"
+          >
+            São Paulo, SP
+          </p>
+        </div>
+      </button>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`AddressAutocomplete — snapshot > reverse geocode error: shows raw coords input, clear button visible, no dropdown, GPS icon after GPS locate fails > reverse-geocode-error 1`] = `
+<DocumentFragment>
+  <div
+    class="relative"
+  >
+    <span
+      data-testid="icon-mappin"
+    />
+    <input
+      aria-autocomplete="list"
+      aria-expanded="false"
+      aria-label="Localização"
+      autocomplete="off"
+      class="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+      placeholder="CEP, cidade ou endereço…"
+      role="combobox"
+      value="-23.5505, -46.6333"
+    />
+    <span
+      class="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2"
+    >
+      <button
+        aria-label="Usar localização atual"
+        class="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+        title="Usar localização atual"
+        type="button"
+      >
+        <span
+          animate="[object Object]"
+          class="inline-flex transition-colors duration-300 text-emerald-500"
+          transition="[object Object]"
+        >
+          <span
+            data-testid="icon-locate"
+          />
+        </span>
+      </button>
+      <button
+        aria-label="Limpar localização"
+        class="flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        type="button"
+      >
+        <span
+          data-testid="icon-x"
+        />
+      </button>
+    </span>
+  </div>
+</DocumentFragment>
+`;

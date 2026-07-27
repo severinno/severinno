@@ -29,12 +29,9 @@ import { motion, AnimatePresence } from "framer-motion"
 import Image from "next/image"
 import {
   Search,
-  LocateFixed,
-  Loader2,
   BadgeCheck,
   Star,
   ShieldCheck,
-  MapPin,
   ArrowRight,
   Users,
   Wrench,
@@ -50,6 +47,7 @@ import {
 import { useGeoStore } from "@/store/geo"
 import { useUIStore } from "@/store/ui"
 import { apiGet } from "@/lib/api"
+import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -123,11 +121,8 @@ export default function Hero({
   onSearchSubmit,
   resultsAnchorId,
 }: HeroProps) {
-  const { city, status, setFromGPS, setFromCEP } = useGeoStore()
+  const { city } = useGeoStore()
   const openAuth = useUIStore((s) => s.openAuth)
-  const [locating, setLocating] = React.useState(false)
-  const [cepInput, setCepInput] = React.useState("")
-  const [cepError, setCepError] = React.useState<string | null>(null)
 
   // H1 — Live social proof numbers
   const { data: stats } = useQuery<PublicStats>({
@@ -155,42 +150,6 @@ export default function Hero({
     }, 80)
   }, [resultsAnchorId])
 
-  const handleLocate = React.useCallback(async () => {
-    setLocating(true)
-    try {
-      await setFromGPS()
-    } finally {
-      setLocating(false)
-    }
-    scrollToResults()
-  }, [setFromGPS, scrollToResults])
-
-  // H5 — Prevenção de erros: CEP mask (XXXXX-XXX)
-  const maskCep = (raw: string) => {
-    const digits = raw.replace(/\D/g, "").slice(0, 8)
-    if (digits.length <= 5) return digits
-    return `${digits.slice(0, 5)}-${digits.slice(5)}`
-  }
-
-  const handleCep = React.useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault()
-      const cep = cepInput.replace(/\D/g, "")
-      if (cep.length !== 8) {
-        setCepError("Digite um CEP com 8 dígitos (ex: 01001-000).")
-        return
-      }
-      setCepError(null)
-      try {
-        await setFromCEP(cepInput)
-        scrollToResults()
-      } catch {
-        setCepError("CEP não encontrado. Verifique e tente novamente.")
-      }
-    },
-    [cepInput, setFromCEP, scrollToResults],
-  )
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     onSearchSubmit?.()
@@ -202,8 +161,6 @@ export default function Hero({
     onSearchSubmit?.()
     scrollToResults()
   }
-
-  const isLocating = locating || status === "locating" || status === "geocoding"
 
   // ---- Render --------------------------------------------------------------
 
@@ -284,23 +241,12 @@ export default function Hero({
                     aria-label="Serviço buscado"
                   />
                 </div>
-                <div className="relative flex items-center sm:w-44">
-                  <MapPin className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={cepInput}
-                    onChange={(e) => {
-                      setCepInput(maskCep(e.target.value))
-                      setCepError(null)
-                    }}
-                    placeholder={city ? city : "CEP ou cidade"}
-                    className="h-12 border-0 bg-transparent pl-10 text-left shadow-none focus-visible:ring-0"
-                    aria-label="Localização"
-                    inputMode="numeric"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault()
-                        void handleCep(e as unknown as React.FormEvent)
-                      }
+                <div className="relative flex items-center sm:w-56">
+                  <AddressAutocomplete
+                    placeholder={city || "CEP, cidade ou endereço…"}
+                    onSelect={() => {
+                      scrollToResults()
+                      onSearchSubmit?.()
                     }}
                   />
                 </div>
@@ -314,12 +260,6 @@ export default function Hero({
                 </Button>
               </div>
             </form>
-
-            {cepError && (
-              <p className="mt-2 text-sm text-amber-200" role="alert">
-                {cepError}
-              </p>
-            )}
 
             {/* Popular service chips */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -338,21 +278,6 @@ export default function Hero({
                 </button>
               ))}
             </div>
-
-            {/* GPS + CTAs */}
-            <button
-              type="button"
-              onClick={handleLocate}
-              disabled={isLocating}
-              className="mt-4 inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium text-emerald-50 underline-offset-4 transition-colors hover:text-white hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 disabled:opacity-60"
-            >
-              {isLocating ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <LocateFixed className="size-4" />
-              )}
-              Usar minha localização
-            </button>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Button
