@@ -11,7 +11,7 @@ const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379"
 
 let client: Redis | null = null
 
-function getClient(): Redis {
+export function getClient(): Redis {
   if (!client) {
     client = new Redis(REDIS_URL, {
       maxRetriesPerRequest: 3,
@@ -77,8 +77,44 @@ export async function cacheInvalidate(pattern: string): Promise<void> {
 }
 
 /**
+ * Cache hit/miss counters for observability.
+ * These are in-memory counters (not persisted to Redis) so they survive
+ * Redis restarts but reset on app restart. Good enough for monitoring.
+ */
+let cacheHits = 0
+let cacheMisses = 0
+
+/**
+ * Reset cache counters (useful for tests).
+ */
+export function resetCacheCounters(): void {
+  cacheHits = 0
+  cacheMisses = 0
+}
+
+/**
+ * Expose current cache hit/miss stats.
+ */
+export function getCacheStats(): {
+  hits: number
+  misses: number
+  total: number
+  hitRatio: number | null
+} {
+  const total = cacheHits + cacheMisses
+  return {
+    hits: cacheHits,
+    misses: cacheMisses,
+    total,
+    hitRatio: total > 0 ? +(cacheHits / total).toFixed(4) : null,
+  }
+}
+
+/**
  * Cache-aside helper: returns cached value if present, otherwise calls `fn`,
  * stores the result, and returns it.
+ *
+ * Tracks hit/miss counters for observability.
  */
 export async function withCache<T>(
   key: string,
@@ -86,8 +122,12 @@ export async function withCache<T>(
   ttl?: number,
 ): Promise<T> {
   const cached = await cacheGet<T>(key)
-  if (cached !== null) return cached
+  if (cached !== null) {
+    cacheHits++
+    return cached
+  }
 
+  cacheMisses++
   const result = await fn()
   await cacheSet(key, result, ttl)
   return result

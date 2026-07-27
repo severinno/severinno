@@ -14,6 +14,7 @@
   <img src="https://img.shields.io/badge/utf8--check-467%20files%20%E2%9C%85-2ea44f" alt="UTF-8: 467 files">
   <img src="https://img.shields.io/badge/tests-74%20unit%20%7C%20160%20e2e%20%E2%9C%85-2ea44f" alt="Tests: 74 unit | 160 E2E">
   <img src="https://img.shields.io/badge/encoding%20guards-4%2F4%20active%20%E2%9C%85-2ea44f" alt="Encoding guards: 4/4 active">
+  <img src="https://img.shields.io/badge/coverage-57%25%20(45%2F79)-bfa100" alt="Coverage: 57%">
 </p>
 
 > Marketplace de serviços com geolocalização — encontre prestadores verificados próximos a você.

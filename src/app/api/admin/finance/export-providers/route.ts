@@ -113,9 +113,9 @@ export async function GET(request: Request) {
       ps.name,
       ps.email,
       String(ps.count),
-      ROUND2(ps.total).toFixed(2).replace(".", ","),
-      ROUND2(ps.commission).toFixed(2).replace(".", ","),
-      ROUND2(ps.net).toFixed(2).replace(".", ","),
+      (ROUND2(ps.total) / 100).toFixed(2).replace(".", ","),
+      (ROUND2(ps.commission) / 100).toFixed(2).replace(".", ","),
+      (ROUND2(ps.net) / 100).toFixed(2).replace(".", ","),
     ])
 
     // Totals row
@@ -126,9 +126,9 @@ export async function GET(request: Request) {
       "TOTAL",
       "",
       String(sorted.reduce((s, [, p]) => s + p.count, 0)),
-      grandTotal.toFixed(2).replace(".", ","),
-      grandCommission.toFixed(2).replace(".", ","),
-      grandNet.toFixed(2).replace(".", ","),
+      (grandTotal / 100).toFixed(2).replace(".", ","),
+      (grandCommission / 100).toFixed(2).replace(".", ","),
+      (grandNet / 100).toFixed(2).replace(".", ","),
     ])
 
     // Build CSV string with BOM for Excel compatibility

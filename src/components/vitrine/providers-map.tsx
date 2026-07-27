@@ -9,12 +9,19 @@
  *
  * When there are > 20 providers, clusters them via MapLibre's built-in
  * GeoJSON clustering for performance.
+ *
+ * RADIUS CIRCLE + SLIDER:
+ *   When `radius` and `onRadiusChange` are provided, a semi-transparent circle
+ *   representing the search area is drawn around the user's location. A slider
+ *   overlay at the bottom of the map lets the user adjust the radius.
  */
 
 import { useEffect, useRef, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
+import { createRadiusGeoJSON, syncRadiusCircle, removeRadiusCircle, RADIUS_SOURCE_ID, type MapLike } from "@/lib/geo-circle"
+import { Slider } from "@/components/ui/slider"
 import type { ProviderCard } from "@/lib/api"
 
 type Props = {
@@ -24,6 +31,10 @@ type Props = {
   onSelectProvider?: (id: string) => void
   selectedId?: string | null
   className?: string
+  /** Current search radius in km (for the circle + slider). */
+  radius?: number
+  /** Called when the user adjusts the slider. */
+  onRadiusChange?: (radius: number) => void
 }
 
 const OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -35,7 +46,7 @@ const SP_DEFAULT: [number, number] = [-46.6333, -23.5505]
 const CLUSTER_MAX_ZOOM = 14
 const CLUSTER_RADIUS = 50
 
-type MapInstance = InstanceType<typeof import("maplibre-gl").Map>
+type MapLibreMap = InstanceType<typeof import("maplibre-gl").Map>
 type MarkerInstance = InstanceType<typeof import("maplibre-gl").Marker>
 type PopupInstance = InstanceType<typeof import("maplibre-gl").Popup>
 
@@ -46,9 +57,11 @@ export default function ProvidersMap({
   onSelectProvider,
   selectedId,
   className,
+  radius,
+  onRadiusChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<MapInstance | null>(null)
+  const mapRef = useRef<MapLibreMap | null>(null)
   const markersRef = useRef<Record<string, { marker: MarkerInstance; popup: PopupInstance }>>({})
   const userMarkerRef = useRef<MarkerInstance | null>(null)
   const clusterSourceAdded = useRef(false)
@@ -56,6 +69,8 @@ export default function ProvidersMap({
 
   const selectRef = useRef(onSelectProvider)
   selectRef.current = onSelectProvider
+
+  const hasUserLocation = typeof userLat === "number" && typeof userLng === "number"
 
   const clusterClickHandler = useCallback((e: any) => {
     const map = mapRef.current
@@ -120,6 +135,15 @@ export default function ProvidersMap({
         new maplibregl.NavigationControl({ visualizePitch: false }),
         "top-right",
       )
+      map.addControl(
+        new maplibregl.GeolocateControl({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: true,
+          showUserLocation: false, // custom marker via syncUserMarker
+          showAccuracyCircle: false, // radius circle via syncRadiusCircle
+        }),
+        "top-right",
+      )
       map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left")
 
       map.on("load", () => {
@@ -178,9 +202,9 @@ export default function ProvidersMap({
       if (cancelled) return
       const useClustering = providers.length > 20
       if (useClustering) {
-        syncClusterSource(map, maplibregl, providers, onSelectProvider, markersRef)
+        syncClusterSource(map, maplibregl, providers, onSelectProvider, markersRef, clusterSourceAdded)
       } else {
-        removeClusterSource(map)
+        removeClusterSource(map, clusterSourceAdded)
         syncProviderMarkers({
           map, maplibregl, providers, selectedId, onSelectProvider, markersRef,
         })
@@ -190,7 +214,7 @@ export default function ProvidersMap({
     return () => { cancelled = true }
   }, [providers, selectedId])
 
-  // ---- Sync user location marker ------------------------------------------
+  // ---- Sync user location marker + radius circle --------------------------
   useEffect(() => {
     const map = mapRef.current
     const maplibregl = maplibreglRef.current
@@ -199,9 +223,15 @@ export default function ProvidersMap({
     ;(async () => {
       if (cancelled) return
       syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
+      // Sync radius circle whenever user location or radius changes
+      if (hasUserLocation && typeof radius === "number" && radius > 0) {
+        syncRadiusCircle(map as unknown as MapLike, userLat!, userLng!, radius)
+      } else {
+        removeRadiusCircle(map as unknown as MapLike)
+      }
     })()
     return () => { cancelled = true }
-  }, [userLat, userLng])
+  }, [userLat, userLng, radius])
 
   return (
     <div
@@ -214,6 +244,26 @@ export default function ProvidersMap({
       role="application"
     >
       <div ref={containerRef} className="absolute inset-0" />
+
+      {/* Radius slider overlay — only when user has location and onRadiusChange is provided */}
+      {hasUserLocation && typeof radius === "number" && onRadiusChange ? (
+        <div className="absolute bottom-3 left-1/2 z-30 w-[calc(100%-24px)] max-w-xs -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-xl border bg-background/95 px-4 py-2.5 shadow-lg backdrop-blur-sm">
+            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">
+              {radius} km
+            </span>
+            <Slider
+              min={1}
+              max={100}
+              step={1}
+              value={[radius]}
+              onValueChange={([v]) => onRadiusChange(v ?? 15)}
+              aria-label="Ajustar raio de busca"
+              className="flex-1 [&_[data-slot=slider-track]]:h-1.5"
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -236,11 +286,12 @@ function buildGeoJSON(providers: ProviderCard[]) {
 }
 
 function syncClusterSource(
-  map: MapInstance,
+  map: MapLibreMap,
   maplibregl: typeof import("maplibre-gl"),
   providers: ProviderCard[],
   onSelectProvider: ((id: string) => void) | undefined,
   markersRef: React.RefObject<Record<string, MarkerRef>>,
+  clusterSourceAdded: React.MutableRefObject<boolean>,
 ) {
   // Remove existing HTML markers
   const registry = markersRef.current ?? {}
@@ -317,7 +368,7 @@ function syncClusterSource(
   clusterSourceAdded.current = true
 }
 
-function removeClusterSource(map: MapInstance) {
+function removeClusterSource(map: MapLibreMap, clusterSourceAdded: React.MutableRefObject<boolean>) {
   if (!clusterSourceAdded.current) return
   try {
     if (map.getLayer("unclustered-point")) map.removeLayer("unclustered-point")
@@ -333,7 +384,7 @@ function removeClusterSource(map: MapInstance) {
 // ---------------------------------------------------------------------------
 
 function fitToBounds(
-  map: MapInstance,
+  map: MapLibreMap,
   providers: ProviderCard[],
   userLat?: number | null,
   userLng?: number | null,
@@ -376,7 +427,7 @@ function fitToBounds(
 type MarkerRef = { marker: MarkerInstance; popup: PopupInstance }
 
 function syncProviderMarkers(opts: {
-  map: MapInstance
+  map: MapLibreMap
   maplibregl: typeof import("maplibre-gl")
   providers: ProviderCard[]
   selectedId?: string | null
@@ -478,7 +529,7 @@ function syncProviderMarkers(opts: {
 }
 
 function syncUserMarker(opts: {
-  map: MapInstance
+  map: MapLibreMap
   maplibregl: typeof import("maplibre-gl")
   lat?: number | null
   lng?: number | null

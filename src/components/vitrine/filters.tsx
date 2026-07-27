@@ -34,7 +34,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 export type FiltersState = {
   q: string
   categoryId: string | null
-  radius: number // 1-50 km
+  radius: number // 1-100 km
   sort: "rating" | "distance"
   verifiedOnly: boolean
   minRating: 0 | 3 | 4 | 5
@@ -162,7 +162,7 @@ export default function Filters({
         </div>
         <Slider
           min={1}
-          max={50}
+          max={100}
           step={1}
           value={[value.radius]}
           onValueChange={(v) => setField("radius", v[0] ?? 15)}
@@ -171,7 +171,7 @@ export default function Filters({
         />
         <div className="flex justify-between text-[10px] text-muted-foreground">
           <span>1 km</span>
-          <span>50 km</span>
+          <span>100 km</span>
         </div>
       </div>
 

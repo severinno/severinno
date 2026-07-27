@@ -60,6 +60,8 @@ vi.mock("@/lib/db", () => ({
 
 import { verifyWebhookSignature, parseExternalReference } from "@/lib/lytex"
 import { POST as webhookHandler } from "../webhooks/lytex/route"
+
+
 import { db } from "@/lib/db"
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -233,5 +235,316 @@ describe("POST /api/webhooks/lytex", () => {
 
     expect(parsed.status).toBe(401)
     expect(parsed.body!.error).toBe("Assinatura inválida")
+  })
+})
+
+// ── Idempotency — booking already PAID ──────────────────────────────────────
+
+describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => {
+  beforeEach(() => {
+    process.env.PAYMENT_WEBHOOK_SECRET = ""
+    vi.mocked(verifyWebhookSignature).mockReturnValue(true)
+    // Recreate all db mocks fresh — avoids vi.clearAllMocks() quirk that resets implementations
+    db.booking.findUnique = vi.fn()
+    db.booking.update = vi.fn()
+    db.payment.update = vi.fn()
+    db.payment.findUnique = vi.fn()
+    db.payment.upsert = vi.fn()
+    db.payment.updateMany = vi.fn()
+    db.$transaction = vi.fn(async (queries: Array<Promise<unknown>>) => Promise.all(queries))
+  })
+
+  it("atualiza apenas metadados quando booking já está PAID", async () => {
+    db.booking.findUnique = vi.fn().mockResolvedValue({
+      id: "book-1",
+      clientId: "client-1",
+      providerId: "provider-1",
+      paymentStatus: "PAID",
+      status: "CONFIRMED",
+      amount: 200,
+      payment: { id: "pay-1", status: "PAID" },
+    })
+    db.payment.update = vi.fn().mockResolvedValue({} as any)
+
+    const payload = {
+      id: "lytex-charge-duplicate",
+      transactionId: "tx-new",
+      externalReference: "booking:book-1",
+      status: "paid" as const,
+      paymentMethod: "PIX",
+      qrCode: "new-qr-code",
+      qrCodeImage: "data:image/png;base64,new",
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(parsed.body!.received).toBe(true)
+
+    // Should update metadata (lytexId, qrCode) but NOT call $transaction
+    expect(db.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { bookingId: "book-1" },
+        data: expect.objectContaining({ qrCode: "new-qr-code" }),
+      }),
+    )
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("não cria nova notificação quando booking já está PAID", async () => {
+    vi.mocked(db.booking.findUnique).mockResolvedValue({
+      id: "book-1",
+      clientId: "client-1",
+      providerId: "provider-1",
+      paymentStatus: "PAID",
+      status: "CONFIRMED",
+      amount: 200,
+      payment: { id: "pay-1", status: "PAID" },
+    })
+    vi.mocked(db.payment.update).mockResolvedValue({} as any)
+
+    const payload = {
+      id: "lytex-charge-duplicate-2",
+      transactionId: "tx-new-2",
+      externalReference: "booking:book-1",
+      status: "paid" as const,
+      paymentMethod: "PIX",
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    // notifyPaymentConfirmed is only called AFTER $transaction — since early return
+    // happens before $transaction, the notification should not be attempted
+    // We verify this indirectly: db.booking.update was not called (only payment.update)
+    expect(db.booking.update).not.toHaveBeenCalled()
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+})
+
+// ── Card payment ────────────────────────────────────────────────────────────
+
+describe("POST /api/webhooks/lytex — pagamento com cartão", () => {
+  beforeEach(() => {
+    process.env.PAYMENT_WEBHOOK_SECRET = ""
+    vi.mocked(verifyWebhookSignature).mockReturnValue(true)
+    db.booking.findUnique = vi.fn()
+    db.booking.update = vi.fn()
+    db.payment.update = vi.fn()
+    db.payment.findUnique = vi.fn()
+    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q))
+  })
+
+  it("processa charge.paid com paymentMethod CARD", async () => {
+    vi.mocked(db.booking.findUnique).mockResolvedValue({
+      id: "book-card-1",
+      clientId: "client-1",
+      providerId: "provider-1",
+      paymentStatus: "PENDING",
+      status: "CONFIRMED",
+      amount: 350,
+      payment: { id: "pay-card-1", status: "PENDING" },
+    })
+    vi.mocked(db.payment.update).mockResolvedValue({} as any)
+    vi.mocked(db.booking.update).mockResolvedValue({} as any)
+    vi.mocked(db.$transaction).mockResolvedValue([{}, {}])
+
+    const payload = {
+      id: "lytex-card-paid-1",
+      transactionId: "tx-card-1",
+      externalReference: "booking:book-card-1",
+      status: "paid" as const,
+      paymentMethod: "CARD",
+      paidAmount: 35000,
+      paidAt: new Date().toISOString(),
+      cardLastDigits: "4444",
+      cardBrand: "mastercard",
+      installments: 3,
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(db.$transaction).toHaveBeenCalled()
+    // Should pass card-specific fields to payment.update
+    expect(db.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cardLastDigits: "4444",
+          cardBrand: "mastercard",
+          installments: 3,
+          status: "PAID",
+        }),
+      }),
+    )
+  })
+})
+
+// ── Non-paid status events (log only) ───────────────────────────────────────
+
+describe("POST /api/webhooks/lytex — status não-pagos (log only)", () => {
+  beforeEach(() => {
+    process.env.PAYMENT_WEBHOOK_SECRET = ""
+    vi.mocked(verifyWebhookSignature).mockReturnValue(true)
+    db.booking.findUnique = vi.fn()
+    db.booking.update = vi.fn()
+    db.payment.update = vi.fn()
+    db.payment.findUnique = vi.fn()
+    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q))
+  })
+
+  it("canceled: apenas log, sem DB update", async () => {
+    const payload = {
+      id: "lytex-canceled-1",
+      transactionId: "tx-canceled",
+      externalReference: "booking:book-canceled",
+      status: "canceled" as const,
+      paymentMethod: "PIX",
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    // No DB mutation for canceled events
+    // db.booking.findUnique still gets called by parseExternalReference path
+    // but no update/transaction
+    expect(db.booking.update).not.toHaveBeenCalled()
+    expect(db.payment.update).not.toHaveBeenCalled()
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("waitingPayment: apenas log, sem DB update", async () => {
+    const payload = {
+      id: "lytex-waiting-1",
+      transactionId: "tx-waiting",
+      externalReference: "booking:book-waiting",
+      status: "waitingPayment" as const,
+      paymentMethod: "CARD",
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(db.booking.update).not.toHaveBeenCalled()
+    expect(db.payment.update).not.toHaveBeenCalled()
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("status desconhecido: apenas log, sem DB update", async () => {
+    const payload = {
+      id: "lytex-unknown-1",
+      transactionId: "tx-unknown",
+      externalReference: "booking:book-unknown",
+      status: "unknown_status" as any,
+      paymentMethod: "BOLETO",
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(db.booking.update).not.toHaveBeenCalled()
+    expect(db.payment.update).not.toHaveBeenCalled()
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+})
+
+// ── Edge cases ──────────────────────────────────────────────────────────────
+
+describe("POST /api/webhooks/lytex — edge cases", () => {
+  beforeEach(() => {
+    process.env.PAYMENT_WEBHOOK_SECRET = ""
+    vi.mocked(verifyWebhookSignature).mockReturnValue(true)
+    db.booking.findUnique = vi.fn()
+    db.booking.update = vi.fn()
+    db.payment.update = vi.fn()
+    db.payment.findUnique = vi.fn()
+    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q))
+  })
+
+  it("refund sem lytexId: warn, sem DB update", async () => {
+    vi.mocked(db.payment.findUnique).mockResolvedValue({
+      id: "pay-no-lytex",
+      status: "PAID",
+      lytexId: null,
+    })
+
+    const payload = {
+      id: "lytex-refund-no-id",
+      transactionId: "tx-refund",
+      externalReference: "booking:book-refund-no-id",
+      status: "refunded" as const,
+      paymentMethod: "PIX",
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    // refundBookingPayment logs warn and returns without DB update
+    expect(db.payment.update).not.toHaveBeenCalled()
+    expect(db.booking.update).not.toHaveBeenCalled()
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("confirmPayment sem payment: warn, retorna sem DB update", async () => {
+    vi.mocked(db.booking.findUnique).mockResolvedValue({
+      id: "book-no-payment",
+      clientId: "client-1",
+      providerId: "provider-1",
+      paymentStatus: "PENDING",
+      status: "CONFIRMED",
+      amount: 200,
+      payment: null, // No payment record yet
+    })
+
+    const payload = {
+      id: "lytex-paid-no-payment",
+      transactionId: "tx-no-payment",
+      externalReference: "booking:book-no-payment",
+      status: "paid" as const,
+      paymentMethod: "PIX",
+    }
+
+    const req = createMockRequest({ method: "POST", body: payload })
+    const res = await webhookHandler(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    // confirmBookingPayment logs warn and returns early
+    expect(db.payment.update).not.toHaveBeenCalled()
+    expect(db.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("JSON inválido no body retorna 200 (catch block)", async () => {
+    const req = createMockRequest({ method: "POST" })
+    // Override body to invalid JSON by accessing Request internals
+    // createMockRequest with no body creates an empty GET — use explicit invalid body
+    const badReq = new Request("http://localhost:3000/api/webhooks/lytex", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not-json-}",
+    })
+
+    const res = await webhookHandler(badReq)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    // catch block logs error and returns { received: true }
+    expect(parsed.body!.received).toBe(true)
+    // No DB operations should be attempted
+    expect(db.booking.findUnique).not.toHaveBeenCalled()
   })
 })

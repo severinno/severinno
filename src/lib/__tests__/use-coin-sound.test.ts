@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { renderHook } from "@testing-library/react"
 
-// ---------------------------------------------------------------------------
-// Mocks — vi.mock is hoisted to module level, so NO outer variables allowed
-// inside factories. We use `vi.fn()` directly in the factory and access them
-// via the module system.
-// ---------------------------------------------------------------------------
+// ---- Dynamic mock for useSoundEnabledPreference ----------------------------
+const mockSoundEnabled = vi.hoisted(() => ({ current: true as boolean | undefined }))
+
+vi.mock("@/lib/sound-context", () => ({
+  useSoundEnabledPreference: vi.fn(() => mockSoundEnabled.current),
+  useVibrateEnabledPreference: vi.fn(() => true),
+}))
 
 vi.mock("@/lib/sounds", () => ({
   playCoinSound: vi.fn(),
@@ -15,16 +17,14 @@ vi.mock("@/lib/sounds", () => ({
   playWelcomeSound: vi.fn(),
 }))
 
-// Dynamic auth store mock: tests set this variable before the hook renders.
-// This is safe because it's not referenced inside a vi.mock factory — instead
-// the factory reads it at call time via a getter closure.
-let mockSoundEnabled: boolean | undefined = true
-
 vi.mock("@/store/auth", () => ({
   useAuthStore: vi.fn(
     (selector?: (s: { user: { soundEnabled?: boolean } | null }) => unknown) => {
       const state = {
-        user: mockSoundEnabled === undefined ? null : { soundEnabled: mockSoundEnabled },
+        user:
+          mockSoundEnabled.current === undefined
+            ? null
+            : { soundEnabled: mockSoundEnabled.current },
       }
       return selector ? selector(state) : state
     },
@@ -58,7 +58,7 @@ const TX_CANCELLED: NotifItem = { id: "6", type: "BOOKING_CANCELLED" }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockSoundEnabled = true
+  mockSoundEnabled.current = true
 })
 
 // ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ describe("useCoinSound", () => {
   })
 
   it("playCoin calls playCoinSound when soundEnabled is true", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playCoin()
@@ -91,7 +91,7 @@ describe("useCoinSound", () => {
   })
 
   it("playCoin calls playCoinSound when soundEnabled is undefined", () => {
-    mockSoundEnabled = undefined
+    mockSoundEnabled.current = undefined
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playCoin()
@@ -100,7 +100,7 @@ describe("useCoinSound", () => {
   })
 
   it("playCoin does NOT call playCoinSound when soundEnabled is false", () => {
-    mockSoundEnabled = false
+    mockSoundEnabled.current = false
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playCoin()
@@ -109,7 +109,7 @@ describe("useCoinSound", () => {
   })
 
   it("playCompletion calls playCompletionSound when soundEnabled is true", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playCompletion()
@@ -119,7 +119,7 @@ describe("useCoinSound", () => {
   })
 
   it("playCompletion does NOT call playCompletionSound when soundEnabled is false", () => {
-    mockSoundEnabled = false
+    mockSoundEnabled.current = false
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playCompletion()
@@ -128,7 +128,7 @@ describe("useCoinSound", () => {
   })
 
   it("playReview calls playReviewSound when soundEnabled is true", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playReview()
@@ -138,7 +138,7 @@ describe("useCoinSound", () => {
   })
 
   it("playReview does NOT call playReviewSound when soundEnabled is false", () => {
-    mockSoundEnabled = false
+    mockSoundEnabled.current = false
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playReview()
@@ -147,7 +147,7 @@ describe("useCoinSound", () => {
   })
 
   it("playError calls playErrorSound when soundEnabled is true", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playError()
@@ -157,7 +157,7 @@ describe("useCoinSound", () => {
   })
 
   it("playError does NOT call playErrorSound when soundEnabled is false", () => {
-    mockSoundEnabled = false
+    mockSoundEnabled.current = false
     const { result } = renderHook(() => useCoinSound())
 
     result.current.playError()
@@ -166,20 +166,20 @@ describe("useCoinSound", () => {
   })
 
   it("playCoin reflects soundEnabled preference changes via rerender", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     const { result, rerender } = renderHook(() => useCoinSound())
 
     result.current.playCoin()
     expect(sounds.playCoinSound).toHaveBeenCalledTimes(1)
 
     // Disable — callback should now be a no-op
-    mockSoundEnabled = false
+    mockSoundEnabled.current = false
     rerender()
     result.current.playCoin()
     expect(sounds.playCoinSound).toHaveBeenCalledTimes(1) // no additional call
 
     // Re-enable
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     rerender()
     result.current.playCoin()
     expect(sounds.playCoinSound).toHaveBeenCalledTimes(2)
@@ -192,7 +192,7 @@ describe("useCoinSound", () => {
 
 describe("useTransactionNotificationSound", () => {
   it("seeds silently on first load — no sound triggered", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     renderHook(() => useTransactionNotificationSound([TX_CONFIRMED], "PROVIDER"))
 
     expect(sounds.playCoinSound).not.toHaveBeenCalled()
@@ -200,7 +200,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("plays coin sound when a new transaction notification appears", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -222,7 +222,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("plays completion sound for BOOKING_COMPLETED when role is CLIENT", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -236,7 +236,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("plays coin sound for BOOKING_COMPLETED when role is PROVIDER (not CLIENT)", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -250,7 +250,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("plays coin sound for QUOTE_APPROVED regardless of role", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -264,7 +264,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("ignores truly non-matching notification types (MESSAGE)", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -279,7 +279,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("silences all sound when role is ADMIN", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -293,7 +293,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("plays only ONE sound per batch even if multiple new notifications match", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -311,7 +311,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("does not sound on re-render with the same items", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -327,7 +327,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("plays review sound for REVIEW_RECEIVED notification", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -342,7 +342,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("plays error sound for BOOKING_CANCELLED notification", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -358,7 +358,7 @@ describe("useTransactionNotificationSound", () => {
   })
 
   it("resets seed when switching away from ADMIN and back", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     const { rerender } = renderHook(
       ({ items, role }: { items: NotifItem[]; role?: string | null }) =>
@@ -392,7 +392,7 @@ describe("useWelcomeSound", () => {
   })
 
   it("plays welcome sound on first mount when not played before", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     renderHook(() => useWelcomeSound())
 
     // After 600ms delay, should play
@@ -402,7 +402,7 @@ describe("useWelcomeSound", () => {
   })
 
   it("does NOT play welcome sound on second mount (already played)", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
 
     // First mount — marks as played
     const { unmount } = renderHook(() => useWelcomeSound())
@@ -417,7 +417,7 @@ describe("useWelcomeSound", () => {
   })
 
   it("does NOT play welcome sound when soundEnabled is false", () => {
-    mockSoundEnabled = false
+    mockSoundEnabled.current = false
     renderHook(() => useWelcomeSound())
 
     vi.advanceTimersByTime(600)
@@ -426,7 +426,7 @@ describe("useWelcomeSound", () => {
   })
 
   it("does not play before the 600ms delay", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     renderHook(() => useWelcomeSound())
 
     // Before 600ms — not yet played
@@ -439,7 +439,7 @@ describe("useWelcomeSound", () => {
   })
 
   it("cleans up the timer on unmount", () => {
-    mockSoundEnabled = true
+    mockSoundEnabled.current = true
     const { unmount } = renderHook(() => useWelcomeSound())
 
     // Unmount before the timer fires

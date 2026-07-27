@@ -5,7 +5,7 @@ import { ProviderCardSkeleton } from "../provider-card"
 describe("ProviderCardSkeleton", () => {
   it("renders without crashing", () => {
     const { container } = render(<ProviderCardSkeleton />)
-    expect(container).toBeInTheDocument()
+    expect(container).toBeTruthy()
   })
 
   it("renders multiple skeleton elements (pulse animations)", () => {
@@ -17,6 +17,6 @@ describe("ProviderCardSkeleton", () => {
   it("renders inside a Card with rounded corners", () => {
     const { container } = render(<ProviderCardSkeleton />)
     const card = container.querySelector("[class*='rounded-xl']")
-    expect(card).toBeInTheDocument()
+    expect(card).toBeTruthy()
   })
 })

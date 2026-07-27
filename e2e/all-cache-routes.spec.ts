@@ -34,7 +34,6 @@ type RouteConfig = {
   }
   /** Whether this route returns a private (user-personalized) response. */
   expectsPrivate?: boolean
-  /** Whether this route requires authentication (middleware blocks without session). */
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
@@ -111,8 +110,6 @@ function expectedCacheControl(entry: RouteEntry): string {
 
 test.describe("GET all cached routes — HTTP cache headers", () => {
   for (const entry of CACHED_ROUTES) {
-    const config = ROUTE_CONFIGS[entry.path]
-
     test(`${entry.path} returns ${expectedCacheControl(entry)}`, async ({ request }) => {
       const url = await resolveUrl(request, entry)
       const response = await request.get(url)

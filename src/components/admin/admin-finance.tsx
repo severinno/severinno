@@ -55,6 +55,8 @@ import {
   Wallet,
 } from "lucide-react"
 
+import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
+import { RealtimeStatusBadge } from "@/components/shared/realtime-status-badge"
 import { apiGet } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import { PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/constants"
@@ -192,6 +194,8 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 // ---------------------------------------------------------------------------
 
 export function AdminFinanceDashboard() {
+  const { isConnected, status } = useRealtimeFinance()
+
   const [period, setPeriod] = React.useState<Period>("30d")
   const [page, setPage] = React.useState(1)
   const [expandedProviders, setExpandedProviders] = React.useState<Set<string>>(new Set())
@@ -279,6 +283,11 @@ export function AdminFinanceDashboard() {
           <p className="mt-0.5 text-sm text-muted-foreground">
             Resumo de transações e faturamento da plataforma
           </p>
+          <RealtimeStatusBadge
+            status={status}
+            isConnected={isConnected}
+            className="mt-1.5"
+          />
         </div>
 
         <div className="flex items-center gap-2">

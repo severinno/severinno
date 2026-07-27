@@ -28,6 +28,8 @@ import {
   XCircle,
 } from "lucide-react"
 
+import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
+import { RealtimeStatusBadge } from "@/components/shared/realtime-status-badge"
 import { apiGet } from "@/lib/api"
 import {
   PAYMENT_METHOD_LABELS,
@@ -171,6 +173,8 @@ function FinanceStatCard({
 // ---------------------------------------------------------------------------
 
 export function ProviderFinance() {
+  const { isConnected, status } = useRealtimeFinance()
+
   const user = useAuthStore((s) => s.user)
   const now = new Date()
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
@@ -250,6 +254,12 @@ export function ProviderFinance() {
 
   return (
     <div className="grid gap-8">
+      {/* Live status badge */}
+      <RealtimeStatusBadge
+        status={status}
+        isConnected={isConnected}
+      />
+
       {/* Wallet */}
       <ProviderWallet />
 
