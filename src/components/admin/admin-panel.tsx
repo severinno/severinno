@@ -25,6 +25,7 @@ import {
   Banknote,
   BarChart3,
   Bell,
+  CreditCard,
   Database,
   LayoutDashboard,
   Network,
@@ -74,6 +75,7 @@ import { AdminPushMetrics } from "./admin-push-metrics"
 import { AdminProjectStatus } from "./admin-project-status"
 import { AdminPushAudit } from "./admin-push-audit"
 import { AdminWebhookAudit } from "./admin-webhook-audit"
+import { AdminGatewayDashboard } from "./admin-gateway-dashboard"
 import { AdminPgBouncer } from "./admin-pgbouncer"
 
 // ---------------------------------------------------------------------------
@@ -154,6 +156,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.webhook-audit",
     label: "Webhooks",
     icon: Webhook,
+  },
+  {
+    view: "admin.gateway",
+    label: "Gateway",
+    icon: CreditCard,
   },
   {
     view: "admin.performance",
@@ -310,6 +317,15 @@ const VIEW_META: Record<
       { label: "Status do Projeto" },
     ],
   },
+  "admin.gateway": {
+    title: "Gateway de Pagamento",
+    subtitle:
+      "Métricas agregadas do Lytex — receita, volume de transações e taxa de conversão.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Gateway" },
+    ],
+  },
   "admin.performance": {
     title: "Performance",
     subtitle:
@@ -443,6 +459,8 @@ function AdminView({
       return <AdminWebhookAudit />
     case "admin.project-status":
       return <AdminProjectStatus />
+    case "admin.gateway":
+      return <AdminGatewayDashboard />
     case "admin.performance":
       return <AdminPerformanceDashboard />
     case "admin.pgbouncer":
