@@ -86,6 +86,32 @@ async function verifySession(
 }
 
 // ---------------------------------------------------------------------------
+// CORS headers
+// ---------------------------------------------------------------------------
+// A sessão usa SameSite=Lax, que já protege contra CSRF básico.
+// Para plataforma com valores monetários, isso é suficiente para
+// prevenir ataques CSRF via formulários cruzados.
+//
+// O cookie SameSite=Lax impede que navegadores enviem o cookie
+// em requisições POST originadas de sites terceiros, exceto
+// navegação top-level por links GET.
+
+// Origem permitida para CORS — deve ser configurada via env var
+const ALLOWED_ORIGINS = process.env.NEXT_PUBLIC_APP_URL
+  ? [process.env.NEXT_PUBLIC_APP_URL]
+  : []  // Sem fallback — CORS só funciona com NEXT_PUBLIC_APP_URL configurada
+
+function addCorsHeaders(response: NextResponse, origin: string | null): void {
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    response.headers.set("Access-Control-Allow-Origin", origin)
+    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    response.headers.set("Access-Control-Allow-Credentials", "true")
+    response.headers.set("Access-Control-Max-Age", "86400")
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Route protection rules
 // ---------------------------------------------------------------------------
 
@@ -113,13 +139,17 @@ const PUBLIC_API = new Set([
   "/api/geo/cep",
   "/api/geo/reverse",
   "/api/health",
+  "/api/health/detailed",
   "/api/stats/public",
   "/api/reviews/recent",
   "/api/services",
   "/api/metrics",
+  "/api/metrics/prometheus",
   "/api/newsletter",
   "/api/sentry",
+  "/api/sentry/test",
   "/api/webhooks/lytex",
+  "/api/webhooks/sentry-alert",
 ])
 
 function isPublicApi(pathname: string): boolean {
@@ -128,6 +158,10 @@ function isPublicApi(pathname: string): boolean {
   if (/^\/api\/providers\/[^/]+$/.test(pathname)) return true
   // Dynamic category routes are public
   if (/^\/api\/categories\/[^/]+$/.test(pathname)) return true
+  // Push payload fetch (SW calls it without session cookie when browser is closed)
+  if (/^\/api\/push\/payload\/[a-z0-9]{16}$/.test(pathname)) return true
+  // Push click tracking (SW calls it without session cookie)
+  if (/^\/api\/push\/click$/.test(pathname)) return true
   return false
 }
 
@@ -142,9 +176,23 @@ export async function middleware(request: NextRequest) {
   // --- Security headers (applied to ALL responses) ---
   response.headers.set("X-DNS-Prefetch-Control", "on")
   response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+  response.headers.set("X-Content-Type-Options", "nosniff")
+  response.headers.set("X-Frame-Options", "DENY")
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
 
-  // --- Rate limiting (API routes only) ---
+  // --- CORS headers (API routes) ---
+  if (pathname.startsWith("/api/")) {
+    const origin = request.headers.get("origin")
+    addCorsHeaders(response, origin)
+
+    // Handle preflight (OPTIONS) requests
+    if (request.method === "OPTIONS") {
+      return new NextResponse(null, { status: 204, headers: response.headers })
+    }
+  }
+
+  // --- Rate limiting (API routes only, exempt cron) ---
   if (pathname.startsWith("/api/") && !pathname.startsWith("/api/cron/")) {
     const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
             ?? request.headers.get("x-real-ip")

@@ -185,10 +185,10 @@ export default function ProvidersMap({
       if (id) selectRef.current?.(id)
     })
     return () => {
-      map.off("click", "clusters", clusterClickHandler)
-      map.off("mouseenter", "clusters", clusterMouseHandler)
-      map.off("mouseleave", "clusters", () => { map.getCanvas().style.cursor = "" })
-      map.off("click", "unclustered-point")
+      (map.off as any)("click", "clusters", clusterClickHandler)
+      (map.off as any)("mouseenter", "clusters", clusterMouseHandler)
+      (map.off as any)("mouseleave", "clusters", () => { map.getCanvas().style.cursor = "" })
+      (map.off as any)("click", "unclustered-point")
     }
   }, [clusterClickHandler, clusterMouseHandler])
 
@@ -290,7 +290,7 @@ function syncClusterSource(
   maplibregl: typeof import("maplibre-gl"),
   providers: ProviderCard[],
   onSelectProvider: ((id: string) => void) | undefined,
-  markersRef: React.RefObject<Record<string, MarkerRef>>,
+  markersRef: React.MutableRefObject<Record<string, MarkerRef>>,
   clusterSourceAdded: React.MutableRefObject<boolean>,
 ) {
   // Remove existing HTML markers
@@ -308,7 +308,7 @@ function syncClusterSource(
 
   map.addSource("providers", {
     type: "geojson",
-    data: geojson,
+    data: geojson as any,
     cluster: true,
     clusterMaxZoom: CLUSTER_MAX_ZOOM,
     clusterRadius: CLUSTER_RADIUS,

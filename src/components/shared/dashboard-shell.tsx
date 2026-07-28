@@ -149,6 +149,73 @@ type NotificationsResponse = {
 }
 
 // ---------------------------------------------------------------------------
+// Notification route map — mapeia tipo da notificação pra view do app
+// ---------------------------------------------------------------------------
+
+const NOTIFICATION_ROUTES: Record<string, string> = {
+  BOOKING_CONFIRMED: "client.bookings",
+  BOOKING_CANCELLED: "client.bookings",
+  BOOKING_COMPLETED: "client.bookings",
+  QUOTE_RECEIVED: "client.quotes",
+  QUOTE_APPROVED: "client.quotes",
+  MESSAGE: "client.messages",
+  REVIEW_RECEIVED: "client.reviews",
+  WELCOME: "client.dashboard",
+  BOOKING_CREATED: "provider.agenda",
+  PAYMENT_CONFIRMED: "client.payments",
+  ADMIN_MANUAL: "client.dashboard",
+  PROMOTION: "vitrine",
+  REMINDER: "client.bookings",
+  UPDATE: "client.dashboard",
+}
+
+/** Agrupa notificações por período: Hoje, Ontem, Esta semana, Este mês, Anterior */
+function groupNotificationsByDate(items: NotificationItem[]): Array<{ label: string; items: NotificationItem[] }> {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const thisWeekStart = new Date(today)
+  thisWeekStart.setDate(thisWeekStart.getDate() - today.getDay()) // domingo
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const groups: Record<string, NotificationItem[]> = {
+    today: [],
+    yesterday: [],
+    week: [],
+    month: [],
+    older: [],
+  }
+
+  for (const item of items) {
+    const d = new Date(item.createdAt)
+    if (d >= today) {
+      groups.today.push(item)
+    } else if (d >= yesterday) {
+      groups.yesterday.push(item)
+    } else if (d >= thisWeekStart) {
+      groups.week.push(item)
+    } else if (d >= thisMonthStart) {
+      groups.month.push(item)
+    } else {
+      groups.older.push(item)
+    }
+  }
+
+  const labels: Record<string, string> = {
+    today: "Hoje",
+    yesterday: "Ontem",
+    week: "Esta semana",
+    month: "Este mês",
+    older: "Anterior",
+  }
+
+  return Object.entries(groups)
+    .filter(([, groupItems]) => groupItems.length > 0)
+    .map(([key, groupItems]) => ({ label: labels[key], items: groupItems }))
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -240,6 +307,9 @@ export function DashboardShell({
 
   const unreadCount = notificationsQuery.data?.unreadCount ?? 0
   const notifItems = notificationsQuery.data?.items ?? []
+
+  // ---- Favicon badge — mostra contador de não lidas na aba do navegador --
+  useFaviconBadge(unreadCount)
 
   // ---- Coin sound on new transaction notifications (auto-detected) ----------
   useTransactionNotificationSound(notifItems, user?.role)
@@ -584,6 +654,7 @@ export function DashboardShell({
                   onMarkRead={(id) => markReadMutation.mutate(id)}
                   onMarkAllRead={(ids) => markAllReadMutation.mutate(ids)}
                   markingAll={markAllReadMutation.isPending}
+                  onNavigate={navigate}
                 />
 
                 {/* Divider before user avatar */}
@@ -683,6 +754,7 @@ export function DashboardShell({
 }
 
 import { WalletBalancePill } from "@/components/shared/wallet-balance-pill"
+import { useFaviconBadge } from "@/hooks/use-favicon-badge"
 // ---------------------------------------------------------------------------
 // NotificationsBell — dropdown list of recent notifications
 // ---------------------------------------------------------------------------
@@ -694,6 +766,7 @@ function NotificationsBell({
   onMarkRead,
   onMarkAllRead,
   markingAll,
+  onNavigate,
 }: {
   items: NotificationItem[]
   unreadCount: number
@@ -701,6 +774,7 @@ function NotificationsBell({
   onMarkRead: (id: string) => void
   onMarkAllRead: (ids: string[]) => void
   markingAll: boolean
+  onNavigate: (view: string) => void
 }) {
   const unreadIds = React.useMemo(
     () => items.filter((n) => !n.read).map((n) => n.id),
@@ -777,63 +851,91 @@ function NotificationsBell({
               </p>
             </div>
           ) : (
-            <ul className="divide-y">
-              {items.map((n) => {
-                const typeLabel = NOTIFICATION_TYPE_LABELS[n.type]
-                return (
-                  <li
-                    key={n.id}
-                    className={cn(
-                      "relative flex gap-3 px-3 py-2.5 transition-colors hover:bg-accent/50",
-                      !n.read && "bg-primary/5",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "mt-1.5 size-2 shrink-0 rounded-full",
-                        n.read ? "bg-transparent ring-1 ring-border" : "bg-primary",
-                      )}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="text-sm font-medium leading-tight">
-                          {n.title}
-                        </p>
-                        <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                          {formatRelative(n.createdAt)}
-                        </span>
-                      </div>
-                      {n.body ? (
-                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                          {n.body}
-                        </p>
-                      ) : null}
-                      <div className="mt-1 flex items-center gap-2">
-                        {typeLabel ? (
-                          <Badge
-                            variant="outline"
-                            className="h-4 px-1.5 text-[10px] font-medium text-muted-foreground"
-                          >
-                            {typeLabel}
-                          </Badge>
-                        ) : null}
-                        {!n.read ? (
-                          <button
-                            type="button"
-                            onClick={() => onMarkRead(n.id)}
-                            className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline"
-                          >
-                            <Check className="size-3" />
-                            Marcar como lida
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
+            <div className="max-h-80 overflow-y-auto">
+              {groupNotificationsByDate(items).map((group) => (
+                <div key={group.label}>
+                  <div className="sticky top-0 z-10 bg-popover px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {group.label}
+                  </div>
+                  <ul className="divide-y">
+                    {group.items.map((n) => {
+                      const typeLabel = NOTIFICATION_TYPE_LABELS[n.type]
+                      const targetRoute = NOTIFICATION_ROUTES[n.type]
+                      return (
+                        <li
+                          key={n.id}
+                          className={cn(
+                            "relative flex gap-3 px-3 py-2.5 transition-colors",
+                            !n.read && "bg-primary/5",
+                            targetRoute && "cursor-pointer hover:bg-accent/50",
+                          )}
+                          onClick={() => {
+                            if (targetRoute) {
+                              onNavigate(targetRoute)
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if ((e.key === "Enter" || e.key === " ") && targetRoute) {
+                              e.preventDefault()
+                              onNavigate(targetRoute)
+                            }
+                          }}
+                          role={targetRoute ? "button" : undefined}
+                          tabIndex={targetRoute ? 0 : undefined}
+                          title={targetRoute ? `Ir para ${typeLabel ?? targetRoute}` : undefined}
+                        >
+                          <span
+                            className={cn(
+                              "mt-1.5 size-2 shrink-0 rounded-full",
+                              n.read ? "bg-transparent ring-1 ring-border" : "bg-primary",
+                            )}
+                            aria-hidden
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <p className="text-sm font-medium leading-tight">
+                                {n.title}
+                              </p>
+                              <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                                {formatRelative(n.createdAt)}
+                              </span>
+                            </div>
+                            {n.body ? (
+                              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                                {n.body}
+                              </p>
+                            ) : null}
+                            <div className="mt-1 flex items-center gap-2">
+                              {typeLabel ? (
+                                <Badge
+                                  variant="outline"
+                                  className="h-4 px-1.5 text-[10px] font-medium text-muted-foreground"
+                                >
+                                  {typeLabel}
+                                </Badge>
+                              ) : null}
+                              {!n.read ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    onMarkRead(n.id)
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline"
+                                >
+                                  <Check className="size-3" />
+                                  Marcar como lida
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
           )}
         </ScrollArea>
       </DropdownMenuContent>

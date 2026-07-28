@@ -113,6 +113,7 @@ async function checkRedis(): Promise<"ok" | "error"> {
   // propagate to the try/catch (cacheGet swallows all errors internally).
   try {
     const client = getClient()
+    if (!client) return "error"
     await client.ping()
     return "ok"
   } catch {

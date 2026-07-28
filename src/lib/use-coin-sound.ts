@@ -153,7 +153,7 @@ export function useTransactionNotificationSound(
     const allTypes = new Set([...TX_NOTIF_TYPES, ...REVIEW_NOTIF_TYPES, ...ERROR_NOTIF_TYPES])
     const prevIds = prevIdsRef.current
     for (const n of items) {
-      if (!prevIds.has(n.id) && allTypes.has(n.type as string)) {
+      if (!prevIds.has(n.id) && allTypes.has(n.type as unknown as typeof TX_NOTIF_TYPES extends Set<infer T> ? T : never)) {
         pickSound(n.type, userRole, playCoin, playCompletion, playReview, playError)
         break // one sound per batch is enough
       }

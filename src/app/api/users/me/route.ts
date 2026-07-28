@@ -6,7 +6,7 @@ import {
   forbidden,
   handleError,
   USER_PUBLIC_SELECT,
-  syncProviderSearch,
+  syncServiceSearch,
 } from "@/lib/api-server"
 
 // GET: current authenticated user (full public profile)
@@ -80,13 +80,8 @@ export async function PATCH(request: Request) {
     })
 
     if (existing.role === "PROVIDER") {
-      syncProviderSearch({
+      syncServiceSearch({
         id: updated.id,
-        name: updated.name,
-        bio: updated.bio,
-        city: updated.city,
-        lat: updated.lat,
-        lng: updated.lng,
       })
     }
 

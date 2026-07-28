@@ -5,20 +5,20 @@ import { motion } from "framer-motion"
 import { AlertTriangle, RefreshCw, Home, Bug } from "lucide-react"
 import Link from "next/link"
 
-const container = {
+const container: any = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
     transition: { staggerChildren: 0.1 },
   },
-} as const
+}
 
-const item = {
+const item: any = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" } },
-} as const
+}
 
-const iconVariants = {
+const iconVariants: any = {
   hidden: { scale: 0.6, rotate: -10, opacity: 0 },
   show: {
     scale: 1,
@@ -30,12 +30,12 @@ const iconVariants = {
     scale: [1, 1.05, 1],
     transition: { duration: 2, repeat: Infinity, ease: "easeInOut" },
   },
-} as const
+}
 
-const shimmerBlock = {
+const shimmerBlock: any = {
   hidden: { opacity: 0, x: -20 },
   show: { opacity: 1, x: 0, transition: { duration: 0.4, ease: "easeOut" } },
-} as const
+}
 
 export default function Error({
   error,
@@ -45,7 +45,7 @@ export default function Error({
   reset: () => void
 }) {
   const [isResetting, setIsResetting] = useState(false)
-  const resetTimer = useRef<ReturnType<typeof setTimeout>>()
+  const resetTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -105,7 +105,7 @@ export default function Error({
           {/* Animated icon */}
           <motion.div
             variants={iconVariants}
-            animate={["show", "pulse"]}
+            animate="show"
             className="mb-2"
           >
             <div className="relative">

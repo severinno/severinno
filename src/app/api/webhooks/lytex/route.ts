@@ -22,6 +22,7 @@ import {
   type LytexWebhookPayload,
 } from "@/lib/lytex"
 import { notifyPaymentConfirmed } from "@/lib/notifications"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ---------------------------------------------------------------------------
 // Helper: confirmar pagamento do booking
@@ -161,6 +162,9 @@ async function refundBookingPayment(bookingId: string) {
  */
 export async function POST(request: Request) {
   try {
+    // Rate limit para webhooks de pagamento (20/min — vem de IP fixo do Lytex)
+    await assertRateLimit(request, RATE_LIMITS.webhookLytex)
+
     const body = (await request.json()) as LytexWebhookPayload
 
     lytexLogger.info(

@@ -20,7 +20,12 @@
 
 import * as React from "react"
 import {
+  Activity,
+  AlertTriangle,
   Banknote,
+  BarChart3,
+  Bell,
+  Database,
   LayoutDashboard,
   Network,
   Users,
@@ -29,6 +34,12 @@ import {
   CalendarCheck,
   Handshake,
   Settings as SettingsIcon,
+  Heart,
+  Target,
+  List,
+  ClipboardList,
+  CalendarClock,
+  Webhook,
   ShieldAlert,
 } from "lucide-react"
 
@@ -53,6 +64,17 @@ import { AdminBookings } from "./admin-bookings"
 import { AdminFinanceDashboard } from "./admin-finance"
 import { AdminSettlements } from "./admin-settlements"
 import { AdminSettings } from "./admin-settings"
+import { AdminErrorTrends } from "./admin-errors"
+import { AdminHealthDashboard } from "./admin-health"
+import { AdminPerformanceDashboard } from "./admin-performance"
+import { AdminPushNotifications } from "./admin-push"
+import { AdminPushRecurring } from "./admin-push-recurring"
+import { AdminPushHistory } from "./admin-push-history"
+import { AdminPushMetrics } from "./admin-push-metrics"
+import { AdminProjectStatus } from "./admin-project-status"
+import { AdminPushAudit } from "./admin-push-audit"
+import { AdminWebhookAudit } from "./admin-webhook-audit"
+import { AdminPgBouncer } from "./admin-pgbouncer"
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -62,6 +84,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.dashboard",
     label: "Visão geral",
     icon: LayoutDashboard,
+  },
+  {
+    view: "admin.project-status",
+    label: "Status do Projeto",
+    icon: Target,
   },
   {
     view: "admin.taxonomy",
@@ -97,6 +124,56 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.bookings",
     label: "Agendamentos",
     icon: CalendarCheck,
+  },
+  {
+    view: "admin.push",
+    label: "Enviar Push",
+    icon: Bell,
+  },
+  {
+    view: "admin.push-recurring",
+    label: "Push Recorrente",
+    icon: CalendarClock,
+  },
+  {
+    view: "admin.push-metrics",
+    label: "Push Metrics",
+    icon: BarChart3,
+  },
+  {
+    view: "admin.push-history",
+    label: "Push Log",
+    icon: List,
+  },
+  {
+    view: "admin.push-audit",
+    label: "Auditoria",
+    icon: ClipboardList,
+  },
+  {
+    view: "admin.webhook-audit",
+    label: "Webhooks",
+    icon: Webhook,
+  },
+  {
+    view: "admin.performance",
+    label: "Performance",
+    icon: Activity,
+  },
+  {
+    view: "admin.pgbouncer",
+    label: "PgBouncer",
+    icon: Database,
+  },
+  {
+    view: "admin.errors",
+    label: "Erros",
+    icon: AlertTriangle,
+  },
+  {
+    view: "admin.health",
+    label: "Saúde",
+    icon: Heart,
   },
   {
     view: "admin.settings",
@@ -168,6 +245,105 @@ const VIEW_META: Record<
     breadcrumbs: [
       { label: "Painel do Administrador" },
       { label: "Configurações" },
+    ],
+  },
+  "admin.push-recurring": {
+    title: "Push Recorrente",
+    subtitle:
+      "Agende notificações push automáticas que disparam todo dia, semana ou mês — ideais para campanhas periódicas.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Push Recorrente" },
+    ],
+  },
+  "admin.push-metrics": {
+    title: "Métricas de Push",
+    subtitle:
+      "Delivery rate, click rate, bounce rate, ações, timeline e indicadores de saúde do sistema de push notifications.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Push Metrics" },
+    ],
+  },
+  "admin.push-history": {
+    title: "Histórico de Push",
+    subtitle:
+      "Todas as notificações push enviadas com status de entrega, destinatário e deep link.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Push Log" },
+    ],
+  },
+  "admin.push-audit": {
+    title: "Auditoria — Push",
+    subtitle:
+      "Log completo de auditoria: quem enviou/agendou, quando, para quantos destinatários e resultado final da operação.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Auditoria" },
+    ],
+  },
+  "admin.webhook-audit": {
+    title: "Log de Webhooks",
+    subtitle:
+      "Histórico de execuções de regras de webhook de eventos: quando cada regra foi executada, quantos usuários notificou e quais erros ocorreram.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Webhooks" },
+    ],
+  },
+  "admin.push": {
+    title: "Notificações Push",
+    subtitle:
+      "Envie notificações push manualmente para usuários específicos com push ativo.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Notificações Push" },
+    ],
+  },
+  "admin.project-status": {
+    title: "Status do Projeto",
+    subtitle:
+      "Análise completa de 7 camadas — notas, descobertas e ações pendentes para lançamento em produção.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Status do Projeto" },
+    ],
+  },
+  "admin.performance": {
+    title: "Performance",
+    subtitle:
+      "Métricas de tempo de resposta, banco de dados, chamadas externas e saúde do sistema.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Performance" },
+    ],
+  },
+  "admin.pgbouncer": {
+    title: "PgBouncer — Pool de Conexões",
+    subtitle:
+      "Monitoramento em tempo real do pooler de conexões PostgreSQL: estado do pool, métricas de queries e configuração.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "PgBouncer" },
+    ],
+  },
+  "admin.errors": {
+    title: "Monitoramento de Erros",
+    subtitle:
+      "Tendências de erro por endpoint, usuário e versão. Top erros e timeline.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Erros" },
+    ],
+  },
+  "admin.health": {
+    title: "Saúde do Sistema",
+    subtitle:
+      "Monitoramento em tempo real de todos os serviços: banco, Redis, RabbitMQ, workers, cache e métricas do processo.",
+    breadcrumbs: [
+      { label: "Painel do Administrador" },
+      { label: "Saúde" },
     ],
   },
 }
@@ -253,6 +429,28 @@ function AdminView({
       return <AdminSettlements />
     case "admin.bookings":
       return <AdminBookings />
+    case "admin.push":
+      return <AdminPushNotifications />
+    case "admin.push-recurring":
+      return <AdminPushRecurring />
+    case "admin.push-metrics":
+      return <AdminPushMetrics />
+    case "admin.push-history":
+      return <AdminPushHistory />
+    case "admin.push-audit":
+      return <AdminPushAudit />
+    case "admin.webhook-audit":
+      return <AdminWebhookAudit />
+    case "admin.project-status":
+      return <AdminProjectStatus />
+    case "admin.performance":
+      return <AdminPerformanceDashboard />
+    case "admin.pgbouncer":
+      return <AdminPgBouncer />
+    case "admin.errors":
+      return <AdminErrorTrends />
+    case "admin.health":
+      return <AdminHealthDashboard />
     case "admin.settings":
       return <AdminSettings />
     default:

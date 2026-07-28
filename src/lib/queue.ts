@@ -40,7 +40,7 @@ async function getConnection(): Promise<Connection> {
   return connPromise
 }
 
-async function getChannel(): Promise<Channel> {
+export async function getChannel(): Promise<Channel> {
   if (chanPromise) return chanPromise
   chanPromise = (async () => {
     const conn = await getConnection()

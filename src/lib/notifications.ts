@@ -22,6 +22,8 @@ import {
   isValidWhatsApp,
   evolutionLogger,
 } from "./evolution"
+import { sendPushNotification } from "./push"
+import { fireEvent } from "./event-hub"
 
 const notificationLogger = logger.child({ module: "notifications" })
 
@@ -107,7 +109,7 @@ async function sendWhatsApp(
 
 /**
  * Notificar provider sobre novo agendamento.
- * Canais: in-app + WhatsApp
+ * Canais: in-app + WhatsApp + Push
  */
 export async function notifyNewBooking(
   clientId: string,
@@ -117,13 +119,21 @@ export async function notifyNewBooking(
   scheduledAt: Date,
   clientName: string,
 ): Promise<void> {
+  const dateStr = scheduledAt.toLocaleDateString("pt-BR", { day: "numeric", month: "long", weekday: "short" })
+  const timeStr = scheduledAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+  const title = `📅 Novo agendamento: ${serviceName}`
+  const body = `${clientName} agendou para ${dateStr} às ${timeStr}`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
+
   // In-app para o provider
-  await createInAppNotification(
-    providerId,
-    "BOOKING_CREATED",
-    "Novo agendamento",
-    `${clientName} agendou "${serviceName}" para ${scheduledAt.toLocaleDateString("pt-BR")}.`,
-  )
+  await createInAppNotification(providerId, "BOOKING_CREATED", title, body)
+
+  // Push notification com botões Aceitar/Recusar
+  await sendPushNotification(providerId, title, body, pushUrl, {
+    notificationType: "BOOKING_CREATED",
+    bookingId,
+    tag: `booking:${bookingId}:new`,
+  }).catch(() => {})
 
   // WhatsApp para o provider
   await sendWhatsApp(
@@ -132,10 +142,20 @@ export async function notifyNewBooking(
       sendNewBookingNotification(to, clientName, serviceName, scheduledAt, bookingId),
     `booking:${bookingId}:new`,
   )
+
+  // 🔔 Fire event webhook — admin pode criar regras que disparam push automaticamente
+  // Scoped to providerId so the rule only notifies the affected provider, not ALL providers
+  await fireEvent("booking.created", {
+    clientName,
+    serviceName,
+    providerName: "",
+    date: `${dateStr} às ${timeStr}`,
+  }, { scopedUserIds: [providerId] }).catch(() => {})
 }
 
 /**
  * Notificar cliente e provider sobre mudança de status do agendamento.
+ * Canais: in-app + WhatsApp + Push
  */
 export async function notifyBookingStatus(
   userId: string,
@@ -144,22 +164,25 @@ export async function notifyBookingStatus(
   serviceName: string,
   details?: string,
 ): Promise<void> {
-  const statusLabels: Record<string, string> = {
-    CONFIRMED: "Agendamento confirmado",
-    IN_PROGRESS: "Serviço em andamento",
-    COMPLETED: "Serviço concluído",
-    CANCELLED: "Agendamento cancelado",
+  const statusMeta: Record<string, { icon: string; label: string }> = {
+    CONFIRMED: { icon: "✅", label: "Agendamento confirmado" },
+    IN_PROGRESS: { icon: "🔧", label: "Serviço em andamento" },
+    COMPLETED: { icon: "🎉", label: "Serviço concluído" },
+    CANCELLED: { icon: "❌", label: "Agendamento cancelado" },
   }
 
-  const label = statusLabels[status] ?? `Status: ${status}`
+  const meta = statusMeta[status] ?? { icon: "📋", label: `Status: ${status}` }
+  const label = `${meta.icon} ${meta.label}`
+  const body = details ?? `${serviceName} — ${meta.label.toLowerCase()}`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
 
   // In-app
-  await createInAppNotification(
-    userId,
-    `BOOKING_${status}`,
-    label,
-    details ?? `O agendamento #${bookingId.slice(0, 8)} está "${status}".`,
-  )
+  await createInAppNotification(userId, `BOOKING_${status}`, label, body)
+
+  // Push notification (sem actions — status change is informational)
+  await sendPushNotification(userId, label, body, pushUrl, {
+    tag: `booking:${bookingId}:${status}`,
+  }).catch(() => {})
 
   // WhatsApp
   await sendWhatsApp(
@@ -167,6 +190,20 @@ export async function notifyBookingStatus(
     (to) => sendBookingStatusNotification(to, status, serviceName, bookingId, details),
     `booking:${bookingId}:${status}`,
   )
+
+  // 🔔 Fire event webhook — scoped to the affected user (the one whose booking status changed)
+  const eventMap: Record<string, "booking.confirmed" | "booking.cancelled" | "booking.completed"> = {
+    CONFIRMED: "booking.confirmed",
+    CANCELLED: "booking.cancelled",
+    COMPLETED: "booking.completed",
+  }
+  const event = eventMap[status]
+  if (event) {
+    await fireEvent(event, {
+      serviceName,
+      date: new Date().toLocaleString("pt-BR"),
+    }, { scopedUserIds: [userId] }).catch(() => {})
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +212,7 @@ export async function notifyBookingStatus(
 
 /**
  * Notificar provider sobre novo pedido de orçamento.
+ * Canais: in-app + WhatsApp + Push
  */
 export async function notifyNewQuote(
   clientId: string,
@@ -183,13 +221,15 @@ export async function notifyNewQuote(
   itemsCount: number,
   clientName: string,
 ): Promise<void> {
+  const title = "Nova solicitação de orçamento"
+  const body = `${clientName} solicitou um orçamento com ${itemsCount} item(ns).`
+  const pushUrl = `/dashboard?tab=quotes&quote=${quoteId}`
+
   // In-app
-  await createInAppNotification(
-    providerId,
-    "QUOTE_CREATED",
-    "Nova solicitação de orçamento",
-    `${clientName} solicitou um orçamento com ${itemsCount} item(ns).`,
-  )
+  await createInAppNotification(providerId, "QUOTE_CREATED", title, body)
+
+  // Push notification
+  await sendPushNotification(providerId, title, body, pushUrl).catch(() => {})
 
   // WhatsApp
   await sendWhatsApp(
@@ -197,10 +237,19 @@ export async function notifyNewQuote(
     (to) => sendNewQuoteNotification(to, clientName, itemsCount, quoteId),
     `quote:${quoteId}:new`,
   )
+
+  // 🔔 Fire event webhook — scoped to the affected provider
+  await fireEvent("quote.received", {
+    clientName,
+    providerName: "",
+    serviceName: "",
+    itemsCount: String(itemsCount),
+  }, { scopedUserIds: [providerId] }).catch(() => {})
 }
 
 /**
  * Notificar cliente sobre resposta de orçamento do provider.
+ * Canais: in-app + WhatsApp + Push
  */
 export async function notifyQuoteResponse(
   clientId: string,
@@ -208,13 +257,15 @@ export async function notifyQuoteResponse(
   providerName: string,
   total: number,
 ): Promise<void> {
+  const title = "Orçamento respondido"
+  const body = `${providerName} respondeu ao orçamento — R$ ${total.toFixed(2)}.`
+  const pushUrl = `/dashboard?tab=quotes&quote=${quoteId}`
+
   // In-app
-  await createInAppNotification(
-    clientId,
-    "QUOTE_RESPONDED",
-    "Orçamento respondido",
-    `${providerName} respondeu ao orçamento — R$ ${total.toFixed(2)}.`,
-  )
+  await createInAppNotification(clientId, "QUOTE_RESPONDED", title, body)
+
+  // Push notification
+  await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
 
   // WhatsApp
   await sendWhatsApp(
@@ -222,6 +273,14 @@ export async function notifyQuoteResponse(
     (to) => sendQuoteResponseNotification(to, providerName, total, quoteId),
     `quote:${quoteId}:responded`,
   )
+
+  // 🔔 Fire event webhook — scoped to the affected client
+  await fireEvent("quote.responded", {
+    providerName,
+    clientName: "",
+    serviceName: "",
+    amount: String(total),
+  }, { scopedUserIds: [clientId] }).catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +289,7 @@ export async function notifyQuoteResponse(
 
 /**
  * Notificar usuário sobre nova mensagem recebida.
+ * Canais: in-app + WhatsApp + Push
  */
 export async function notifyNewMessage(
   toId: string,
@@ -237,13 +297,15 @@ export async function notifyNewMessage(
   content: string,
   bookingId?: string,
 ): Promise<void> {
-  // In-app (já feito no messages route, mas garantimos que caiam aqui também)
-  await createInAppNotification(
-    toId,
-    "MESSAGE",
-    `Nova mensagem de ${fromName}`,
-    content.length > 80 ? `${content.slice(0, 80)}…` : content,
-  )
+  const title = `Nova mensagem de ${fromName}`
+  const body = content.length > 80 ? `${content.slice(0, 80)}…` : content
+  const pushUrl = bookingId ? `/dashboard?tab=chat&booking=${bookingId}` : `/chat`
+
+  // In-app
+  await createInAppNotification(toId, "MESSAGE", title, body)
+
+  // Push notification
+  await sendPushNotification(toId, title, body, pushUrl).catch(() => {})
 
   // WhatsApp
   await sendWhatsApp(
@@ -251,6 +313,13 @@ export async function notifyNewMessage(
     (to) => sendNewMessageNotification(to, fromName, content, bookingId),
     `message:${bookingId ?? "general"}:new`,
   )
+
+  // 🔔 Fire event webhook — scoped to the recipient
+  await fireEvent("message.sent", {
+    fromName,
+    toName: "",
+    content: content.slice(0, 100),
+  }, { scopedUserIds: [toId] }).catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -259,19 +328,24 @@ export async function notifyNewMessage(
 
 /**
  * Notificar provider sobre pagamento confirmado.
+ * Canais: in-app + WhatsApp + Push
  */
 export async function notifyPaymentConfirmed(
   providerId: string,
   bookingId: string,
   amount: number,
 ): Promise<void> {
-  await createInAppNotification(
-    providerId,
-    "PAYMENT_CONFIRMED",
-    "Pagamento confirmado",
-    `Pagamento de R$ ${amount.toFixed(2)} confirmado para #${bookingId.slice(0, 8)}.`,
-  )
+  const title = "Pagamento confirmado"
+  const body = `Pagamento de R$ ${amount.toFixed(2)} confirmado para #${bookingId.slice(0, 8)}.`
+  const pushUrl = `/dashboard?tab=finance&booking=${bookingId}`
 
+  // In-app
+  await createInAppNotification(providerId, "PAYMENT_CONFIRMED", title, body)
+
+  // Push notification
+  await sendPushNotification(providerId, title, body, pushUrl).catch(() => {})
+
+  // WhatsApp
   await sendWhatsApp(
     providerId,
     (to) =>
@@ -281,6 +355,13 @@ export async function notifyPaymentConfirmed(
       ),
     `payment:${bookingId}:confirmed`,
   )
+
+  // 🔔 Fire event webhook — scoped to the affected provider
+  await fireEvent("payment.confirmed", {
+    providerName: "",
+    clientName: "",
+    amount: String(amount),
+  }, { scopedUserIds: [providerId] }).catch(() => {})
 }
 
 export { notificationLogger }

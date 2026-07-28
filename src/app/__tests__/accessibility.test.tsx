@@ -1,6 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { render, fireEvent, cleanup } from "@testing-library/react"
 import { axe } from "vitest-axe"
+
+// ---- Mock lucide-react icons (not-found.tsx + error.tsx) ---------------------
+vi.mock("lucide-react", () => {
+  const MockIcon = (props: Record<string, unknown>) =>
+    <svg aria-hidden="true" data-testid="mock-icon" {...props} />
+  return {
+    Search: MockIcon,
+    Home: MockIcon,
+    AlertTriangle: MockIcon,
+    RefreshCw: MockIcon,
+    Bug: MockIcon,
+  }
+})
+
+// ---- Mock framer-motion (error.tsx uses motion.div, motion.footer, etc.) ----
+vi.mock("framer-motion", () => ({
+  motion: {
+    div: ({ children, ..._props }: { children: React.ReactNode }) => <div>{children}</div>,
+    footer: ({ children, ..._props }: { children: React.ReactNode }) => <footer>{children}</footer>,
+  },
+}))
+
 import NotFound from "../not-found"
 import ErrorComponent from "../error"
 
@@ -102,7 +124,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
   })
 
   it("should have no accessibility violations with error digest", async () => {
-    const error = new Error("Database timeout")
+    const error = new Error("Database timeout") as Error & { digest: string }
     error.digest = "abc123def456"
     const { container } = render(
       <ErrorComponent error={error} reset={mockReset} />,
@@ -173,7 +195,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
   })
 
   it("shows error digest when available", () => {
-    const error = new Error("Server error")
+    const error = new Error("Server error") as Error & { digest: string }
     error.digest = "test-digest-123"
     const { container } = render(
       <ErrorComponent error={error} reset={mockReset} />,

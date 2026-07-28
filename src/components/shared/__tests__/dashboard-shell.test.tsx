@@ -60,6 +60,34 @@ vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => <div data-testid="sidebar-trigger" />,
 }))
 
+// ---- lucide-react icons (dashboard-shell + subcomponentes) ---------------
+vi.mock("lucide-react", () => {
+  // Retorna um SVG simples para cada ícone — evita resolver o módulo real
+  const MockIcon = (props: Record<string, unknown>) =>
+    <svg aria-hidden="true" data-testid="mock-icon" {...props} />
+  return {
+    // dashboard-shell
+    Bell: MockIcon,
+    Check: MockIcon,
+    CheckCheck: MockIcon,
+    ChevronRight: MockIcon,
+    LayoutDashboard: MockIcon,
+    Loader2: MockIcon,
+    LogOut: MockIcon,
+    MapPin: MockIcon,
+    Menu: MockIcon,
+    Moon: MockIcon,
+    Sun: MockIcon,
+    // MuteIndicator
+    Volume2: MockIcon,
+    VolumeX: MockIcon,
+    // VibrationIndicator
+    Smartphone: MockIcon,
+    // WalletBalancePill
+    Wallet: MockIcon,
+  }
+})
+
 // ---- framer-motion: motion.div renders as a plain div --------------------
 vi.mock("framer-motion", () => ({
   motion: {

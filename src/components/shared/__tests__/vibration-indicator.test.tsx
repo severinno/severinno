@@ -8,6 +8,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { cleanup, render, screen } from "@testing-library/react"
 
+// ---- Mock lucide-react Smartphone icon --------------------------------------
+vi.mock("lucide-react", () => {
+  const MockSvg = (props: Record<string, unknown>) =>
+    <svg aria-hidden="true" className="lucide-smartphone" {...props} />
+  return { Smartphone: MockSvg }
+})
+
 // ---- Dynamic mock for useVibrateEnabledPreference --------------------------
 let mockVibrateEnabled: boolean | undefined = true
 
@@ -16,6 +23,7 @@ vi.mock("@/lib/sound-context", () => ({
 }))
 
 // ---- SUT import (must be after vi.mock) ------------------------------------
+import React from "react"
 import { VibrationIndicator } from "../vibration-indicator"
 
 beforeEach(() => {

@@ -1,0 +1,60 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# logrotate — Caddy Server Logs (Severinno Marketplace)
+# ═══════════════════════════════════════════════════════════════════════════
+# Instalação no servidor host:
+#   sudo cp config/logrotate/caddy /etc/logrotate.d/caddy
+#   sudo logrotate -d /etc/logrotate.d/caddy  # dry-run
+#   sudo logrotate -f /etc/logrotate.d/caddy  # force run
+#
+# Testar:
+#   logrotate -d /etc/logrotate.d/caddy
+#
+# ═══════════════════════════════════════════════════════════════════════════
+
+/var/log/caddy/*.log {
+    # Rotacionar diariamente
+    daily
+
+    # Manter 14 backups
+    rotate 14
+
+    # Comprimir backups antigos (gzip)
+    compress
+
+    # Atrasar compressão do arquivo recém-rotacionado
+    # (evita comprimir um arquivo que ainda pode estar sendo escrito)
+    delaycompress
+
+    # Não rotacionar arquivos vazios
+    notifempty
+
+    # Copiar o arquivo atual e truncar (em vez de mover)
+    # Necessário porque o Caddy mantém o file descriptor do log aberto
+    copytruncate
+
+    # Criar arquivo novo com as mesmas permissões
+    create 0640 caddy caddy
+
+    # Opcional: enviar SIGHUP para o Caddy forçar reload/rótate dos logs
+    # Descomente se copytruncate não for suficiente:
+    # postrotate
+    #     docker exec severinno-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+    # endscript
+
+    # Missingok: não emitir erro se o arquivo não existir
+    missingok
+
+    # Data no nome do arquivo rotacionado
+    dateext
+    dateformat -%Y-%m-%d
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 📊 MONITORAMENTO DE TAMANHO
+# ═══════════════════════════════════════════════════════════════════════════
+# Verificar uso de disco dos logs:
+#   du -sh /var/log/caddy/
+#   ls -lah /var/log/caddy/
+#   logrotate -d /etc/logrotate.d/caddy  # simular próxima rotação
+#
+# ═══════════════════════════════════════════════════════════════════════════

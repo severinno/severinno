@@ -114,7 +114,7 @@ export async function findBestProviders(
   // Single batch call — coordinates use [lat, lng] order (routing.ts toLatLng)
   const clientCoords: [number, number] = [clientLat, clientLng]
   const providerCoords = validProviders.map(
-    (p: { lat: number; lng: number }): [number, number] => [p.lat, p.lng],
+    (p) => [p.lat!, p.lng!] as [number, number],
   )
   const routes = await getMultiRoute(clientCoords, providerCoords)
 
@@ -123,7 +123,7 @@ export async function findBestProviders(
   for (let i = 0; i < validProviders.length; i++) {
     const p = validProviders[i]
     const route = routes[i]
-    if (route.distanceKm > p.radiusKm) continue
+    if (p.radiusKm === null || route.distanceKm > p.radiusKm) continue
 
     const rating =
       p.reviewsReceived.length > 0
