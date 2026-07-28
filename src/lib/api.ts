@@ -227,6 +227,7 @@ export type ProvidersQuery = {
   sort?: "rating" | "distance"
   cursor?: string | null
   limit?: number
+  page?: number
   verified?: boolean
   minRating?: number
 }

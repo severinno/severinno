@@ -38,7 +38,7 @@ import {
   Heart,
   Target,
   List,
-  ClipboardList,
+  ClipboardCheck,
   CalendarClock,
   Webhook,
   ShieldAlert,
@@ -55,6 +55,7 @@ import {
   Card,
   CardContent,
 } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 
 import { AdminDashboard } from "./admin-dashboard"
 import { AdminTaxonomy } from "./admin-taxonomy"
@@ -150,7 +151,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     view: "admin.push-audit",
     label: "Auditoria",
-    icon: ClipboardList,
+    icon: ClipboardCheck,
   },
   {
     view: "admin.webhook-audit",
@@ -365,6 +366,48 @@ const VIEW_META: Record<
 }
 
 // ---------------------------------------------------------------------------
+// Admin Skeleton Loading — fallback para React.Suspense
+// ---------------------------------------------------------------------------
+function AdminSkeleton() {
+  return (
+    <div className="space-y-6 p-6">
+      {/* Stats cards skeleton */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="p-6">
+              <Skeleton className="mb-2 h-4 w-24" />
+              <Skeleton className="h-8 w-16" />
+              <Skeleton className="mt-2 h-3 w-32" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Chart area skeleton */}
+      <Card>
+        <CardContent className="p-6">
+          <Skeleton className="mb-4 h-5 w-40" />
+          <Skeleton className="h-64 w-full" />
+        </CardContent>
+      </Card>
+
+      {/* Table skeleton */}
+      <Card>
+        <CardContent className="p-6">
+          <Skeleton className="mb-4 h-5 w-32" />
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export function AdminPanel() {
@@ -416,7 +459,9 @@ export function AdminPanel() {
           : undefined
       }
     >
-      <AdminView view={view} onNavigate={navigate} />
+      <React.Suspense fallback={<AdminSkeleton />}>
+        <AdminView view={view} onNavigate={navigate} />
+      </React.Suspense>
     </DashboardShell>
   )
 }
