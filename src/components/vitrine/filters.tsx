@@ -56,6 +56,9 @@ export type FiltersProps = {
   /** Total result count — when provided, a disabled "Ver N resultados"
    *  button is rendered at the bottom of the filters (desktop sidebar). */
   total?: number
+  /** Whether the user has shared their location (lat/lng available).
+   *  When false, the "Mais próximos" sort option is disabled. */
+  hasGeo?: boolean
   className?: string
 }
 
@@ -64,6 +67,7 @@ export default function Filters({
   onChange,
   categories,
   total,
+  hasGeo = false,
   className,
 }: FiltersProps) {
   // Resolve category chain for the currently-selected leaf
@@ -87,10 +91,8 @@ export default function Filters({
     staleTime: 5 * 60 * 1000,
   })
 
-  const setField = <K extends keyof FiltersState>(
-    key: K,
-    v: FiltersState[K],
-  ) => onChange({ ...value, [key]: v })
+  const setField = <K extends keyof FiltersState>(key: K, v: FiltersState[K]) =>
+    onChange({ ...value, [key]: v })
 
   const l1Id = resolveL1Id(value.categoryId, categories)
   const l2Id = resolveL2Id(value.categoryId, categories, l1Children)
@@ -119,7 +121,7 @@ export default function Filters({
     <div className={cn("flex flex-col gap-5", className)}>
       <header className="flex items-center justify-between">
         <h2 className="inline-flex items-center gap-2 text-sm font-semibold">
-          <SlidersHorizontal className="size-4 text-primary" />
+          <SlidersHorizontal className="text-primary size-4" />
           Filtros
         </h2>
         <Button
@@ -127,7 +129,7 @@ export default function Filters({
           variant="ghost"
           size="sm"
           onClick={handleClear}
-          className="h-8 text-xs text-muted-foreground hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground h-8 text-xs"
         >
           Limpar filtros
         </Button>
@@ -135,11 +137,11 @@ export default function Filters({
 
       {/* Search */}
       <div className="space-y-1.5">
-        <Label htmlFor="filter-q" className="text-xs font-medium text-muted-foreground">
+        <Label htmlFor="filter-q" className="text-muted-foreground text-xs font-medium">
           Buscar
         </Label>
         <div className="relative">
-          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
             id="filter-q"
             value={value.q}
@@ -153,9 +155,7 @@ export default function Filters({
       {/* Radius — moved up: most-used filter after category/search */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">
-          <Label className="text-xs font-medium text-muted-foreground">
-            Raio de busca
-          </Label>
+          <Label className="text-muted-foreground text-xs font-medium">Raio de busca</Label>
           <span className="inline-flex min-w-[3rem] items-center justify-center rounded-full bg-emerald-50 px-2 py-0.5 text-center text-[11px] font-semibold text-emerald-700">
             {value.radius} km
           </span>
@@ -169,7 +169,7 @@ export default function Filters({
           aria-label="Raio de busca em quilômetros"
           className="[&_[data-slot=slider-track]]:h-2"
         />
-        <div className="flex justify-between text-[10px] text-muted-foreground">
+        <div className="text-muted-foreground flex justify-between text-[10px]">
           <span>1 km</span>
           <span>100 km</span>
         </div>
@@ -177,21 +177,15 @@ export default function Filters({
 
       {/* Category cascade (3 levels) */}
       <div className="space-y-2">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Categoria
-        </Label>
+        <Label className="text-muted-foreground text-xs font-medium">Categoria</Label>
 
         {/* Selected path breadcrumb */}
         {breadcrumb.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50/60 px-2 py-1.5">
             {breadcrumb.map((p, idx) => (
               <React.Fragment key={`${p}-${idx}`}>
-                {idx > 0 ? (
-                  <span className="text-[11px] text-emerald-700/60">/</span>
-                ) : null}
-                <span className="text-[11px] font-medium text-emerald-800">
-                  {p}
-                </span>
+                {idx > 0 ? <span className="text-[11px] text-emerald-700/60">/</span> : null}
+                <span className="text-[11px] font-medium text-emerald-800">{p}</span>
               </React.Fragment>
             ))}
             <button
@@ -207,9 +201,7 @@ export default function Filters({
 
         <Select
           value={l1Id ?? "__all__"}
-          onValueChange={(v) =>
-            setField("categoryId", v === "__all__" ? null : v)
-          }
+          onValueChange={(v) => setField("categoryId", v === "__all__" ? null : v)}
         >
           <SelectTrigger className="w-full" size="sm">
             <SelectValue placeholder="Todas as categorias" />
@@ -227,9 +219,7 @@ export default function Filters({
         {l1Id && l1Children && l1Children.length > 0 ? (
           <Select
             value={l2Id ?? "__all__"}
-            onValueChange={(v) =>
-              setField("categoryId", v === "__all__" ? l1Id : v)
-            }
+            onValueChange={(v) => setField("categoryId", v === "__all__" ? l1Id : v)}
           >
             <SelectTrigger className="w-full" size="sm">
               <SelectValue placeholder="Todas as subcategorias" />
@@ -248,9 +238,7 @@ export default function Filters({
         {l2Id && l2Children && l2Children.length > 0 ? (
           <Select
             value={l3Id ?? "__all__"}
-            onValueChange={(v) =>
-              setField("categoryId", v === "__all__" ? l2Id : v)
-            }
+            onValueChange={(v) => setField("categoryId", v === "__all__" ? l2Id : v)}
           >
             <SelectTrigger className="w-full" size="sm">
               <SelectValue placeholder="Todas as opções" />
@@ -269,14 +257,8 @@ export default function Filters({
 
       {/* Sort — segmented control */}
       <div className="space-y-2">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Ordenar por
-        </Label>
-        <div
-          role="radiogroup"
-          aria-label="Ordenar por"
-          className="grid grid-cols-2 gap-2"
-        >
+        <Label className="text-muted-foreground text-xs font-medium">Ordenar por</Label>
+        <div role="radiogroup" aria-label="Ordenar por" className="grid grid-cols-2 gap-2">
           <SortOption
             active={value.sort === "rating"}
             onClick={() => setField("sort", "rating")}
@@ -285,21 +267,19 @@ export default function Filters({
           <SortOption
             active={value.sort === "distance"}
             onClick={() => setField("sort", "distance")}
+            disabled={!hasGeo}
             label="Mais próximos"
+            title={!hasGeo ? "Compartilhe sua localização para ordenar por distância" : undefined}
           />
         </div>
       </div>
 
       {/* Minimum rating */}
       <div className="space-y-2">
-        <Label className="text-xs font-medium text-muted-foreground">
-          Avaliação mínima
-        </Label>
+        <Label className="text-muted-foreground text-xs font-medium">Avaliação mínima</Label>
         <RadioGroup
           value={String(value.minRating)}
-          onValueChange={(v) =>
-            setField("minRating", Number(v) as FiltersState["minRating"])
-          }
+          onValueChange={(v) => setField("minRating", Number(v) as FiltersState["minRating"])}
           className="grid grid-cols-4 gap-2"
         >
           <RatingRadio value="0" label="Todas" />
@@ -312,10 +292,10 @@ export default function Filters({
       {/* Verified only */}
       <label
         htmlFor="filter-verified"
-        className="flex cursor-pointer items-center justify-between rounded-lg border bg-card p-3 transition-colors hover:border-emerald-200"
+        className="bg-card flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:border-emerald-200"
       >
         <span className="flex items-center gap-2">
-          <Star className="size-4 text-primary" />
+          <Star className="text-primary size-4" />
           <span className="text-sm font-medium">Somente verificados</span>
         </span>
         <Switch
@@ -349,22 +329,29 @@ function SortOption({
   active,
   onClick,
   label,
+  disabled,
+  title,
 }: {
   active: boolean
   onClick: () => void
   label: string
+  disabled?: boolean
+  title?: string
 }) {
   return (
     <button
       type="button"
       role="radio"
       aria-checked={active}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      title={title}
       className={cn(
-        "flex h-9 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "focus-visible:ring-ring flex h-9 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-all outline-none focus-visible:ring-2",
         active
           ? "border-primary bg-primary/10 text-primary"
-          : "bg-background text-muted-foreground hover:border-emerald-200 hover:text-foreground",
+          : disabled
+            ? "border-muted text-muted-foreground/50 cursor-not-allowed"
+            : "bg-background text-muted-foreground hover:text-foreground hover:border-emerald-200",
       )}
     >
       {label}
@@ -372,17 +359,11 @@ function SortOption({
   )
 }
 
-function RatingRadio({
-  value,
-  label,
-}: {
-  value: string
-  label: string
-}) {
+function RatingRadio({ value, label }: { value: string; label: string }) {
   return (
     <Label
       htmlFor={`rating-${value}`}
-      className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border p-2 text-xs has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/10 has-[[data-state=checked]]:text-primary transition-colors"
+      className="has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/10 has-[[data-state=checked]]:text-primary flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border p-2 text-xs transition-colors"
     >
       <RadioGroupItem id={`rating-${value}`} value={value} className="sr-only" />
       <span className="font-medium">{label}</span>
@@ -390,17 +371,16 @@ function RatingRadio({
   )
 }
 
-function resolveL1Id(
-  categoryId: string | null,
-  l1Categories: Category[],
-): string | null {
+function resolveL1Id(categoryId: string | null, l1Categories: Category[]): string | null {
   if (!categoryId) return null
   // If the leaf is in L1 directly
   if (l1Categories.some((c) => c.id === categoryId)) return categoryId
   // Otherwise: try to find via children (the API may include `children`).
   // As a fallback, return the first L1 that contains the leaf id (best-effort).
   for (const l1 of l1Categories) {
-    if (l1.children?.some((c) => c.id === categoryId || c.children?.some((g) => g.id === categoryId))) {
+    if (
+      l1.children?.some((c) => c.id === categoryId || c.children?.some((g) => g.id === categoryId))
+    ) {
       return l1.id
     }
   }
@@ -423,10 +403,7 @@ function resolveL2Id(
   return null
 }
 
-function resolveL3Id(
-  categoryId: string | null,
-  l2Children?: Category[],
-): string | null {
+function resolveL3Id(categoryId: string | null, l2Children?: Category[]): string | null {
   if (!categoryId || !l2Children) return null
   if (l2Children.some((c) => c.id === categoryId)) return categoryId
   return null

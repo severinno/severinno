@@ -1,5 +1,5 @@
 /// <reference types="vitest/globals" />
-// Type augmentation for jest-dom matchers lives in ./vitest.d.ts
+// Type augmentation for jest-dom matchers lives in ./types/vitest.d.ts
 // Runtime: extend vitest expect with jest-dom matchers
 import { expect } from "vitest"
 import * as matchers from "@testing-library/jest-dom/matchers"

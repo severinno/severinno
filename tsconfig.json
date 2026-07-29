@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -24,24 +20,17 @@
       }
     ],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/vitrine/__tests__/*": [
-        "./src/components/vitrine/__tests__/*"
-      ]
+      "@/*": ["./src/*"],
+      "@/vitrine/__tests__/*": ["./src/components/vitrine/__tests__/*"]
     }
   },
   "include": [
     "next-env.d.ts",
+    "types/**/*.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "examples",
-    "mini-services"
-  ]
+  "exclude": ["node_modules", "examples", "mini-services"]
 }
