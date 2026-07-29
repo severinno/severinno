@@ -83,6 +83,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useUIStore } from "@/store/ui"
 
+import { Input } from "@/components/ui/input"
 import {
   ActiveBadge,
   ConfirmToggleDialog,
@@ -150,6 +151,8 @@ export function AdminProviders() {
 
   const [q, setQ] = React.useState("")
   const [debouncedQ, setDebouncedQ] = React.useState("")
+  const [city, setCity] = React.useState("")
+  const [stateFilter, setStateFilter] = React.useState("")
   const [verified, setVerified] = React.useState<VerifiedFilter>("ALL")
   const [active, setActive] = React.useState<ActiveFilter>("ALL")
   const [page, setPage] = React.useState(1)
@@ -170,11 +173,13 @@ export function AdminProviders() {
   }, [q])
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["admin", "providers", { debouncedQ, verified, active, page, limit }],
+    queryKey: ["admin", "providers", { debouncedQ, city, stateFilter, verified, active, page, limit }],
     queryFn: () =>
       apiGet<AdminUsersResponse>("/api/admin/users", {
         role: "PROVIDER",
         ...(debouncedQ ? { q: debouncedQ } : {}),
+        ...(city ? { city } : {}),
+        ...(stateFilter ? { state: stateFilter } : {}),
         page,
         limit,
       }),
@@ -224,12 +229,16 @@ export function AdminProviders() {
 
   const activeFilterCount =
     (debouncedQ ? 1 : 0) +
+    (city ? 1 : 0) +
+    (stateFilter ? 1 : 0) +
     (verified !== "ALL" ? 1 : 0) +
     (active !== "ALL" ? 1 : 0)
 
   const clearFilters = () => {
     setQ("")
     setDebouncedQ("")
+    setCity("")
+    setStateFilter("")
     setVerified("ALL")
     setActive("ALL")
     setSort(null)
@@ -328,7 +337,26 @@ export function AdminProviders() {
           value={q}
           onChange={setQ}
           placeholder="Buscar por nome, e-mail ou cidade"
-          className="min-w-[200px] flex-1"
+          className="min-w-[160px] flex-1"
+        />
+        <Input
+          value={city}
+          onChange={(e) => {
+            setCity(e.target.value)
+            setPage(1)
+          }}
+          placeholder="Cidade"
+          className="h-9 min-w-[120px] flex-1"
+        />
+        <Input
+          value={stateFilter}
+          onChange={(e) => {
+            setStateFilter(e.target.value.toUpperCase().slice(0, 2))
+            setPage(1)
+          }}
+          placeholder="UF"
+          maxLength={2}
+          className="h-9 w-[60px]"
         />
         <Select
           value={verified}

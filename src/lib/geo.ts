@@ -176,8 +176,8 @@ const NOMINATIM_HEADERS = {
 /**
  * Forward-geocode a free-form text address using Nominatim Search.
  *
- * Accepts a query like "Rua Augusta, São Paulo" and returns up to `limit`
- * results sorted by importance.
+ * Falls back to local DB address lookup if Nominatim is unavailable (HTTP error
+ * or network failure), so the user never sees a 502 error.
  *
  * @see https://nominatim.org/release-docs/develop/api/Search/
  */
@@ -189,15 +189,89 @@ export async function geocodeSearch(
   if (!trimmed) return []
 
   const clampedLimit = Math.max(1, Math.min(10, limit))
-  const url =
-    `https://nominatim.openstreetmap.org/search?` +
-    `format=jsonv2&q=${encodeURIComponent(trimmed)}` +
-    `&addressdetails=1&limit=${clampedLimit}&accept-language=pt-BR`
 
-  const res = await fetch(url, { headers: NOMINATIM_HEADERS, next: { revalidate: 86400 } })
-  if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
+  try {
+    const url =
+      `https://nominatim.openstreetmap.org/search?` +
+      `format=jsonv2&q=${encodeURIComponent(trimmed)}` +
+      `&addressdetails=1&limit=${clampedLimit}&accept-language=pt-BR`
 
-  return parseNominatimSearchResponse(await res.json())
+    const res = await fetch(url, {
+      headers: NOMINATIM_HEADERS,
+      next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(5000), // 5s timeout
+    })
+    if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
+
+    return parseNominatimSearchResponse(await res.json())
+  } catch {
+    // Nominatim unavailable — fall back to local DB address search
+    console.warn("[geo] Nominatim unavailable, falling back to local DB search")
+    return geocodeSearchLocal(trimmed, clampedLimit)
+  }
+}
+
+/**
+ * Fallback local address search when Nominatim is unavailable.
+ *
+ * Searches the User table for providers whose city/street/address match the
+ * query. This won't find every address (it only covers registered providers)
+ * but ensures the user never sees an error — they get partial results instead.
+ */
+async function geocodeSearchLocal(
+  query: string,
+  limit: number,
+): Promise<GeoSearchResult[]> {
+  try {
+    const { db } = await import("@/lib/db")
+
+    // Search for providers whose city, street, or state contains the query
+    const users = await db.user.findMany({
+      where: {
+        role: "PROVIDER",
+        active: true,
+        lat: { not: null },
+        lng: { not: null },
+        OR: [
+          { city: { contains: query, mode: "insensitive" } },
+          { street: { contains: query, mode: "insensitive" } },
+          { state: { contains: query, mode: "insensitive" } },
+          { district: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      select: {
+        lat: true,
+        lng: true,
+        city: true,
+        state: true,
+        district: true,
+        street: true,
+        cep: true,
+      },
+      take: limit,
+      orderBy: { avgRating: "desc" },
+    })
+
+    return users.map((u) => ({
+      lat: u.lat!,
+      lng: u.lng!,
+      displayName: [u.street, u.district, u.city, u.state]
+        .filter(Boolean)
+        .join(", "),
+      street: u.street,
+      district: u.district,
+      city: u.city,
+      state: u.state,
+      cep: u.cep,
+      category: "place",
+      type: "local_fallback",
+      importance: 0.5,
+    }))
+  } catch {
+    // If DB query also fails, return empty array
+    console.warn("[geo] Local DB fallback also failed")
+    return []
+  }
 }
 
 /**

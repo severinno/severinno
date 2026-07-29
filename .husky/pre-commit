@@ -3,3 +3,9 @@ set -euo pipefail
 bash scripts/check-utf8.sh --dry-run --ci src/
 node scripts/scan-lucide-icons.mjs --check
 bun x lint-staged
+
+# Barrel lint — detecta exports quebrados em arquivos de barrel (index.ts)
+bun run barrel-lint
+
+# Type check — rejeita commit se houver erros de tipo no projeto
+bun run typecheck

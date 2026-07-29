@@ -82,7 +82,7 @@ import { useUIStore } from "@/store/ui"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { AddressForm, type AddressFormValue } from "./address-form"
+import { GeoAddressForm, type AddressFormValue } from "@/components/forms/geo-address-form"
 import { FilePhotos } from "./file-photos"
 import {
   StepWizard,
@@ -710,7 +710,7 @@ function Step4Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
       />
 
       <InfoCard>
-        <AddressForm
+        <GeoAddressForm
           value={address}
           onChange={(v) => form.setValue("address", v, { shouldDirty: true })}
           errors={{

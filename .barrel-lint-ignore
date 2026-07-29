@@ -1,0 +1,62 @@
+# .barrel-lint-ignore
+# Scripts without header documentation (Usage + Exit code).
+# Remove entries as scripts are fixed.
+#
+# Usage:
+#   Add one script filename per line. Lines starting with # are comments.
+
+audit-playwright.mjs
+backup-db.sh
+cache-benchmark.mjs
+check-health.ps1
+check-health.sh
+coverage-analysis.py
+coverage-badge.ts
+coverage-gaps.ts
+coverage-history.ts
+dashboard.ps1
+dashboard.sh
+deploy.sh
+diagnose-completo.sh
+diagnose-docker.ps1
+diagnose-docker.sh
+dlq-monitor.sh
+docker-entrypoint.sh
+entrypoint.sh
+fail2ban-setup.sh
+format-fuzz-results.mjs
+generate-openapi.ts
+geo-benchmark.mjs
+geo-pipeline-benchmark.mjs
+glitchtip-alerts.sh
+glitchtip-setup.sh
+keep-alive.sh
+migrate-sqlite-to-postgres.ts
+pgbouncer-stress-test.sh
+pgbouncer-stress-test.ts
+restore-db.sh
+save-cache-benchmark.mjs
+save-geo-benchmark.mjs
+scan-lucide-icons.mjs
+search-benchmark.mjs
+search-index.ts
+seed-push-test.ts
+setup-cron-push.sh
+setup-osrm.ps1
+setup-osrm.sh
+setup-postgis-trigger.ts
+setup-secrets.sh
+setup-vps.sh
+setup.ps1
+setup.sh
+test-booking-flow.ts
+test-e2e-a11y.sh
+test-e2e-cache.sh
+test-email.ts
+test-fail2ban-recidive.sh
+test-lytex.ts
+test-postgis.ts
+test-push-e2e.ts
+test-push.ts
+test-redis-cache.ts
+test-security-headers.sh

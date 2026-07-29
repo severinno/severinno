@@ -42,6 +42,8 @@ import WhySeverinno from "./why-severinno"
 import CtaBanner from "./cta-banner"
 import ProviderSpotlight from "./provider-spotlight"
 import { RecentlyViewed } from "./recently-viewed"
+import NearbyProviders from "./nearby-providers"
+import ProviderSpotlightGeo from "./provider-spotlight-geo"
 import CompareBar from "./compare-bar"
 import CompareModal from "./compare-modal"
 import BackToTop from "./back-to-top"
@@ -226,6 +228,16 @@ export default function Vitrine() {
         />
 
         <RecentlyViewed />
+
+        {/* 3b. NearbyProviders — Perto de você (geo-aware) */}
+        <NearbyProviders />
+
+        {/* 3c. ProviderSpotlightGeo — prestadores próximos em destaque */}
+        <ProviderSpotlightGeo
+          onQuote={handleQuote}
+          onBook={handleBook}
+          onView={handleView}
+        />
 
         {/* 4. VitrineResults — provider listings */}
         <VitrineResults

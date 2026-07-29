@@ -71,7 +71,7 @@ import { useUIStore } from "@/store/ui"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { AddressForm, type AddressFormValue } from "./address-form"
+import { GeoAddressForm, type AddressFormValue } from "@/components/forms/geo-address-form"
 import {
   StepWizard,
   StepHeader,
@@ -952,7 +952,7 @@ function Step2Details({
           <MapPin className="size-3.5 text-emerald-600" />
           Endereço do serviço
         </p>
-        <AddressForm
+        <GeoAddressForm
           value={state.address}
           onChange={(v) => set("address", v)}
         />
