@@ -9,6 +9,7 @@
  *   ✅ Shows "Nenhum prestador encontrado" when providers === 0
  *   ✅ Clicking vitrine link calls navigate("vitrine")
  *   ✅ Clicking GPS trigger fires setFromGPS
+ *   ✅ Shows locating state with spinner and disabled button while browser asks permission
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
@@ -46,8 +47,7 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/store/geo", () => ({
   useGeoStore: Object.assign(
-    (selector?: (s: typeof geoState) => unknown) =>
-      selector ? selector(geoState) : geoState,
+    (selector?: (s: typeof geoState) => unknown) => (selector ? selector(geoState) : geoState),
     { getState: () => geoState },
   ),
 }))
@@ -159,7 +159,9 @@ describe("GeoAwarenessBadge — without GPS", () => {
     render(<GeoAwarenessBadge />)
 
     const gpsButton = screen.getByText("Compartilhar localização")
-    await act(async () => { gpsButton.click() })
+    await act(async () => {
+      gpsButton.click()
+    })
 
     expect(mockSetFromGPS).toHaveBeenCalled()
   })
@@ -168,8 +170,57 @@ describe("GeoAwarenessBadge — without GPS", () => {
     render(<GeoAwarenessBadge />)
 
     const vitrineLink = screen.getByText("Ver vitrine")
-    act(() => { vitrineLink.click() })
+    act(() => {
+      vitrineLink.click()
+    })
 
+    expect(mockNavigate).toHaveBeenCalledWith("vitrine")
+  })
+})
+
+describe("GeoAwarenessBadge — locating state", () => {
+  it("shows 'Obtendo sua localização…' when status is locating", () => {
+    setGeo({ lat: null, lng: null, status: "locating" })
+    render(<GeoAwarenessBadge />)
+
+    expect(screen.getByText("Obtendo sua localização…")).toBeTruthy()
+  })
+
+  it("shows 'Aguardando permissão do navegador' text", () => {
+    setGeo({ lat: null, lng: null, status: "locating" })
+    render(<GeoAwarenessBadge />)
+
+    expect(screen.getByText(/Aguardando permissão do navegador/)).toBeTruthy()
+  })
+
+  it("renders spinner icon while locating", () => {
+    setGeo({ lat: null, lng: null, status: "locating" })
+    render(<GeoAwarenessBadge />)
+
+    // Should show two spinners: one in the text area, one inside the disabled button
+    const spinners = screen.getAllByTestId("icon-loading")
+    expect(spinners.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("disables the GPS button while locating", () => {
+    setGeo({ lat: null, lng: null, status: "locating" })
+    render(<GeoAwarenessBadge />)
+
+    const buttons = screen.getAllByTestId("button")
+    const gpsButton = buttons.find((b) => b.textContent?.includes("Aguardando"))
+    expect(gpsButton).toBeTruthy()
+    expect(gpsButton).toBeDisabled()
+  })
+
+  it("keeps 'Ver vitrine' link active while locating", () => {
+    setGeo({ lat: null, lng: null, status: "locating" })
+    render(<GeoAwarenessBadge />)
+
+    const vitrineLink = screen.getByText("Ver vitrine")
+    expect(vitrineLink).toBeTruthy()
+    act(() => {
+      vitrineLink.click()
+    })
     expect(mockNavigate).toHaveBeenCalledWith("vitrine")
   })
 })
@@ -238,7 +289,9 @@ describe("GeoAwarenessBadge — with providers found", () => {
     render(<GeoAwarenessBadge />)
 
     const link = screen.getByLabelText("Ver prestadores na vitrine")
-    act(() => { link.click() })
+    act(() => {
+      link.click()
+    })
 
     expect(mockNavigate).toHaveBeenCalledWith("vitrine")
   })
@@ -282,7 +335,9 @@ describe("GeoAwarenessBadge — no providers found", () => {
     render(<GeoAwarenessBadge />)
 
     const link = screen.getByLabelText("Ver vitrine")
-    act(() => { link.click() })
+    act(() => {
+      link.click()
+    })
 
     expect(mockNavigate).toHaveBeenCalledWith("vitrine")
   })
@@ -297,7 +352,9 @@ describe("GeoAwarenessBadge — dismiss", () => {
     expect(container.innerHTML).not.toBe("")
 
     const dismissButton = screen.getByLabelText("Dispensar")
-    act(() => { dismissButton.click() })
+    act(() => {
+      dismissButton.click()
+    })
 
     expect(container.innerHTML).toBe("")
   })

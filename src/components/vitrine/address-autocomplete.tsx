@@ -27,6 +27,7 @@ import {
 import { useGeoStore } from "@/store/geo"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
+import { getCachedCep, setCachedCep, subscribeCepUpdates } from "@/lib/client-cep-cache"
 
 // ---------------------------------------------------------------------------
 // In-memory LRU cache for geocoding results (5 min TTL)
@@ -139,7 +140,7 @@ export default function AddressAutocomplete({
     if (!debouncedInput || debouncedInput.length < 3) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([])
-       
+
       setOpen(false)
       return
     }
@@ -161,7 +162,23 @@ export default function AddressAutocomplete({
       if (isCEP(debouncedInput)) {
         try {
           const clean = debouncedInput.replace(/\D/g, "")
+
+          // Try client-side cache first (localStorage, 7-day TTL)
+          const cached = getCachedCep(clean)
+          if (cached && !cancelled) {
+            const result = cepToResult(clean, cached)
+            const arr = [result]
+            cacheSet(debouncedInput.trim().toLowerCase(), arr)
+            setResults(arr)
+            setOpen(true)
+            setSelectedIdx(-1)
+            setLoading(false)
+            return
+          }
+
           const addr = await fetchCep(clean)
+          // Cache the successful result client-side
+          setCachedCep(clean, addr)
           if (cancelled) return
 
           // Try Nominatim structured search with postcode to get lat/lng
@@ -308,6 +325,16 @@ export default function AddressAutocomplete({
       setLocating(false)
     }
   }, [locating, setFromGPS, setFromCoords, onSelect])
+
+  // Listen for CEP cache updates from other tabs
+  React.useEffect(() => {
+    return subscribeCepUpdates(({ cep, data }) => {
+      // Another tab cached this CEP — warm up the in-memory cache
+      const key = cep.replace(/\D/g, "")
+      const result = cepToResult(key, data)
+      cacheSet(key, [result])
+    })
+  }, [])
 
   // Click outside to close
   React.useEffect(() => {
