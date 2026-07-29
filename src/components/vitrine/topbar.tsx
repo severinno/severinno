@@ -105,6 +105,10 @@ export type TopbarProps = {
   activeCategoryId?: string | null
   onCategorySelect?: (id: string | null) => void
   onSearchSubmit?: () => void
+  /** Current sort mode — used to show a persistent indicator in the header. */
+  sort?: "rating" | "distance"
+  /** Whether the user has shared their location. */
+  hasGeo?: boolean
 }
 
 const DASHBOARD_VIEW: Record<UserRole, string> = {
@@ -279,6 +283,8 @@ export default function Topbar({
   activeCategoryId,
   onCategorySelect,
   onSearchSubmit,
+  sort,
+  hasGeo,
 }: TopbarProps) {
   const { user, status, logout } = useAuthStore()
   const { city, status: geoStatus, setFromGPS } = useGeoStore()
@@ -646,6 +652,18 @@ export default function Topbar({
               />
             </div>
           </div>
+
+          {/* ── Sort indicator (desktop) — mostra quando ordenação por distância está ativa ── */}
+          {sort === "distance" && hasGeo ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="hidden items-center gap-1.5 rounded-full border border-emerald-200/60 bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-1.5 text-xs font-medium text-emerald-700 shadow-sm md:flex dark:border-emerald-800/40 dark:from-emerald-950/40 dark:to-teal-950/20 dark:text-emerald-300"
+            >
+              <LocateFixed className="size-3.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
+              <span className="whitespace-nowrap">Ordenando por distância</span>
+            </motion.div>
+          ) : null}
 
           {/* ── Auth area (desktop) ───────────────────────────────────────── */}
           <div className="hidden items-center gap-1.5 md:flex">

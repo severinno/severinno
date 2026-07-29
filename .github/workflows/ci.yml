@@ -42,6 +42,8 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run lint
+      - name: Check no direct jest-dom imports
+        run: bun run check:jest-dom-imports
 
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:

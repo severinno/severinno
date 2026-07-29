@@ -13,12 +13,14 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
-import { List, MapIcon, MapPin, SlidersHorizontal, SearchX, X, Loader2 } from "lucide-react"
+import { List, LocateFixed, MapIcon, MapPin, SlidersHorizontal, SearchX, X, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { Category, ProviderCard as ProviderCardType } from "@/lib/api"
+import { useGeoStore } from "@/store/geo"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "sonner"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
@@ -108,6 +110,30 @@ export default function VitrineResults({
   const showingFrom = total === 0 ? 0 : (page - 1) * limit + 1
   const showingTo = Math.min(total, page * limit)
 
+  const setFromGPS = useGeoStore((s) => s.setFromGPS)
+  const status = useGeoStore((s) => s.status)
+
+  const handleRequestGeo = React.useCallback(() => {
+    if (status === "locating") return // already locating
+
+    toast("Compartilhe sua localização", {
+      description: "Ative o GPS para ordenar prestadores por distância e ver quem está mais perto de você.",
+      icon: <LocateFixed className="size-4 text-emerald-600" />,
+      duration: 8_000,
+      action: {
+        label: "Compartilhar",
+        onClick: async () => {
+          await setFromGPS()
+          // Only sort by distance if GPS succeeded
+          const geoState = useGeoStore.getState()
+          if (geoState.status === "ready") {
+            onFiltersChange({ ...filters, sort: "distance" })
+          }
+        },
+      },
+    })
+  }, [status, setFromGPS, onFiltersChange])
+
   const activeChips = buildChips(filters, categories)
 
   const handleChipRemove = (key: keyof FiltersState) => {
@@ -137,6 +163,7 @@ export default function VitrineResults({
               categories={categories}
               total={total}
               hasGeo={hasGeo}
+              onRequestGeo={handleRequestGeo}
             />
           </div>
         </aside>
@@ -190,6 +217,7 @@ export default function VitrineResults({
                         }}
                         categories={categories}
                         hasGeo={hasGeo}
+                        onRequestGeo={handleRequestGeo}
                       />
                     </div>
                     <div className="border-t p-3">

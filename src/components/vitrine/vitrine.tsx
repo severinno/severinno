@@ -184,6 +184,8 @@ export default function Vitrine() {
             if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
           }
         }}
+        sort={filters.sort}
+        hasGeo={lat != null && lng != null}
       />
 
       <main className="flex-1">
