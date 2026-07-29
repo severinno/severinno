@@ -64,6 +64,7 @@ import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import {
   StatCard,
 } from "@/components/shared/dashboard-shell"
+import ProviderGeoAwarenessBadge from "@/components/provider/provider-geo-awareness-badge"
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -399,6 +400,9 @@ export function ProviderDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Geo-awareness badge — mostra demanda ativa na região */}
+      <ProviderGeoAwarenessBadge />
 
       {/* Sound & vibration preferences */}
       <PreferenceToggles

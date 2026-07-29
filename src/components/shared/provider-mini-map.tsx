@@ -16,6 +16,7 @@ import { useEffect, useRef, useState } from "react"
 import { Loader2, Maximize2, MapPin } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-circle"
+import { Slider } from "@/components/ui/slider"
 
 type Props = {
   providerLat: number
@@ -25,6 +26,8 @@ type Props = {
   userLng?: number | null
   /** Provider's service radius in km (for drawing the radius circle on the map). */
   radiusKm?: number | null
+  /** Called when the user adjusts the radius slider. */
+  onRadiusChange?: (radiusKm: number) => void
   /** Height in px. Default 200. */
   height?: number
   className?: string
@@ -48,11 +51,21 @@ export default function ProviderMiniMap({
   userLat,
   userLng,
   radiusKm,
+  onRadiusChange,
   height = 200,
   className,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<unknown>(null)
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading")
+  const [radius, setRadius] = useState(radiusKm ?? 50)
+
+  // Sync local radius when prop changes — intentional: the slider should
+  // follow when the provider's configured radius loads asynchronously.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    if (radiusKm != null) setRadius(radiusKm)
+  }, [radiusKm])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -151,6 +164,7 @@ export default function ProviderMiniMap({
         }
 
         mapInstance = map
+        mapRef.current = map
 
         cleanup = () => {
           map.remove()
@@ -171,6 +185,25 @@ export default function ProviderMiniMap({
     }
   }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm])
 
+  // Update radius circle dynamically when slider changes (without recreating map)
+  useEffect(() => {
+    const map = mapRef.current as MapLike | null
+    if (!map) return
+    if (typeof radius !== "number" || radius <= 0) return
+    try {
+      removeRadiusCircle(map)
+      syncRadiusCircle(map, providerLat, providerLng, radius)
+    } catch {
+      // map may not be fully loaded yet
+    }
+  }, [radius, providerLat, providerLng])
+
+  const handleRadiusChange = (value: number[]) => {
+    const newRadius = value[0] ?? 50
+    setRadius(newRadius)
+    onRadiusChange?.(newRadius)
+  }
+
   const openInOSM = () => {
     window.open(
       `https://www.openstreetmap.org/?mlat=${providerLat}&mlon=${providerLng}&zoom=15`,
@@ -180,50 +213,78 @@ export default function ProviderMiniMap({
   }
 
   return (
-    <div
-      className={cn("relative overflow-hidden rounded-xl border bg-muted", className)}
-      style={{ height }}
-    >
-      {/* Loading state */}
-      {status === "loading" && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/80">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+    <>
+      <div
+        className={cn("relative overflow-hidden rounded-xl border bg-muted", className)}
+        style={{ height }}
+      >
+        {/* Loading state */}
+        {status === "loading" && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/80">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {/* MapLibre container */}
+        <div ref={containerRef} className="absolute inset-0" />
+
+        {/* Fallback static image (if MapLibre failed) */}
+        {status === "error" && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-muted">
+            <img
+              src={staticMapUrl(providerLat, providerLng, 14, 400, height)}
+              alt={`Mapa de ${providerName}`}
+              className="size-full object-cover"
+            />
+            <p className="absolute bottom-2 text-[10px] text-muted-foreground bg-background/80 px-2 py-0.5 rounded">
+              Mapa interativo indisponível
+            </p>
+          </div>
+        )}
+
+        {/* Provider location badge */}
+        <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm backdrop-blur-sm">
+          <MapPin className="size-3 text-primary" />
+          <span className="truncate max-w-[120px]">{providerName}</span>
         </div>
-      )}
 
-      {/* MapLibre container */}
-      <div ref={containerRef} className="absolute inset-0" />
-
-      {/* Fallback static image (if MapLibre failed) */}
-      {status === "error" && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-muted">
-          <img
-            src={staticMapUrl(providerLat, providerLng, 14, 400, height)}
-            alt={`Mapa de ${providerName}`}
-            className="size-full object-cover"
-          />
-          <p className="absolute bottom-2 text-[10px] text-muted-foreground bg-background/80 px-2 py-0.5 rounded">
-            Mapa interativo indisponível
-          </p>
-        </div>
-      )}
-
-      {/* Provider location badge */}
-      <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm backdrop-blur-sm">
-        <MapPin className="size-3 text-primary" />
-        <span className="truncate max-w-[120px]">{providerName}</span>
+        {/* Expand button */}
+        <button
+          type="button"
+          onClick={openInOSM}
+          className="absolute top-2 right-2 z-20 flex size-7 items-center justify-center rounded-full bg-background/90 shadow-sm backdrop-blur-sm transition-colors hover:bg-background"
+          aria-label="Abrir no OpenStreetMap"
+          title="Abrir no OpenStreetMap"
+        >
+          <Maximize2 className="size-3.5 text-muted-foreground" />
+        </button>
       </div>
 
-      {/* Expand button */}
-      <button
-        type="button"
-        onClick={openInOSM}
-        className="absolute top-2 right-2 z-20 flex size-7 items-center justify-center rounded-full bg-background/90 shadow-sm backdrop-blur-sm transition-colors hover:bg-background"
-        aria-label="Abrir no OpenStreetMap"
-        title="Abrir no OpenStreetMap"
-      >
-        <Maximize2 className="size-3.5 text-muted-foreground" />
-      </button>
-    </div>
+      {/* Radius slider */}
+      <div className="mt-2 grid gap-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-medium text-muted-foreground">
+            Raio de busca
+          </span>
+          <span className="text-xs font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+            {radius} km
+          </span>
+        </div>
+        <Slider
+          value={[radius]}
+          onValueChange={handleRadiusChange}
+          min={1}
+          max={100}
+          step={1}
+          className="[&>span:first-child]:h-1.5 [&>span:first-child]:bg-emerald-100 [&>span:first-child_span]:bg-emerald-600 [&>span:last-child]:size-3.5 [&>span:last-child]:border-emerald-600"
+          aria-label="Raio de busca em quilômetros"
+        />
+        <div className="flex justify-between text-[9px] text-muted-foreground">
+          <span>1 km</span>
+          <span>50 km</span>
+          <span>100 km</span>
+        </div>
+      </div>
+    </>
   )
 }

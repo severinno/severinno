@@ -566,6 +566,11 @@ function ServiceCard({
 function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: boolean }) {
   const userLat = useGeoStore((s) => s.lat)
   const userLng = useGeoStore((s) => s.lng)
+  const [previewRadius, setPreviewRadius] = React.useState<number | null>(null)
+
+  const handleRadiusChange = React.useCallback((km: number) => {
+    setPreviewRadius(km)
+  }, [])
 
   if (loading) {
     return (
@@ -602,7 +607,8 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
           providerName={provider!.name}
           userLat={userLat}
           userLng={userLng}
-          radiusKm={radius}
+          radiusKm={previewRadius ?? radius}
+          onRadiusChange={handleRadiusChange}
           height={200}
           className="w-full"
         />

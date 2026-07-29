@@ -28,7 +28,19 @@ const AWARENESS_RADIUS_KM = 50
 export default function GeoAwarenessBadge() {
   const { lat, lng, status, setFromGPS } = useGeoStore()
   const navigate = useViewStore((s) => s.navigate)
-  const [dismissed, setDismissed] = React.useState(false)
+  const [dismissed, setDismissed] = React.useState(() => {
+    if (typeof window === "undefined") return false
+    return localStorage.getItem("severinno:client:geo-badge-dismissed") === "true"
+  })
+
+  const handleDismiss = React.useCallback(() => {
+    setDismissed(true)
+    try {
+      localStorage.setItem("severinno:client:geo-badge-dismissed", "true")
+    } catch {
+      // localStorage may be unavailable (private browsing, quota exceeded)
+    }
+  }, [])
 
   const hasLocation =
     status === "ready" &&
@@ -77,7 +89,7 @@ export default function GeoAwarenessBadge() {
       {/* Dismiss button */}
       <button
         type="button"
-        onClick={() => setDismissed(true)}
+        onClick={handleDismiss}
         className="text-muted-foreground/60 hover:bg-muted hover:text-foreground absolute top-2 right-2 flex size-5 items-center justify-center rounded-full transition-colors"
         aria-label="Dispensar"
       >
