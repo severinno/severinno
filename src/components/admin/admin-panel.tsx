@@ -28,6 +28,7 @@ import {
   CreditCard,
   Database,
   Globe,
+  Layers,
   LayoutDashboard,
   Map,
   Network,
@@ -76,6 +77,7 @@ import { AdminPgBouncer } from "./admin-pgbouncer"
 import { AdminGeoMetricsDashboard } from "./admin-geo-metrics-dashboard"
 import { AdminCoverageMap } from "./admin-coverage-map"
 import { AdminBenchmarkDashboard } from "./admin-benchmark-dashboard"
+import { AdminGeoCacheDashboard } from "./admin-geo-cache-dashboard"
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -165,6 +167,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.coverage",
     label: "Cobertura",
     icon: Map,
+  },
+  {
+    view: "admin.geo-cache",
+    label: "Cache Geo",
+    icon: Layers,
   },
   {
     view: "admin.geo-metrics",
@@ -300,6 +307,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     subtitle:
       "Grelha de calor mostrando a sobreposição dos raios de atendimento de todos os prestadores.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Cobertura" }],
+  },
+  "admin.geo-cache": {
+    title: "Diagnóstico do Cache Geo",
+    subtitle:
+      "Hit/miss ratio do Redis, top queries mais frequentes, heatmap de uso por endpoint e TTL das chaves de cache.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Cache Geo" }],
   },
   "admin.geo-metrics": {
     title: "Métricas de Geolocalização",
@@ -474,6 +487,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminGatewayDashboard />
     case "admin.coverage":
       return <AdminCoverageMap />
+    case "admin.geo-cache":
+      return <AdminGeoCacheDashboard />
     case "admin.geo-metrics":
       return <AdminGeoMetricsDashboard />
     case "admin.benchmarks":

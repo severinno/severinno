@@ -26,29 +26,20 @@
  *  - Node.js deps must be installable at each bisect step.
  *    The script uses `bun install` at each step if node_modules is stale.
  *
- * ==== Usage ====
+ * Usage:
+ *   node scripts/regression-bisect.mjs [options]
  *
- *   # Basic: find which commit broke the geo benchmark between two SHAs
- *   node scripts/regression-bisect.mjs \\
- *     --type geo \\
- *     --good  abc123 \\
- *     --bad   def456
+ * Options:
+ *   --type <geo|cache|search|pipeline>  Benchmark type
+ *   --good <sha>                        Known-good commit
+ *   --bad <sha>                         Known-bad (regression) commit
+ *   --threshold <pct>                   Allowed deviation % (default: 5)
+ *   --output <path>                     Report output file
+ *   --bisect-run                        Called by git bisect internally
  *
- *   # With custom threshold and output file
- *   node scripts/regression-bisect.mjs \\
- *     --type cache \\
- *     --good  abc123 \\
- *     --bad   def456 \\
- *     --threshold 10 \\
- *     --output /tmp/bisect-report.json
- *
- *   # Run without --good/--bad for bisect-run mode (called by git bisect)
- *   node scripts/regression-bisect.mjs --type geo --bisect-run
- *
- * ==== Exit codes ====
- *
- *   0 — found the culprit commit (or no regression detected)
- *   1 — failed to run bisect (script error)
+ * Exit code:
+ *   0 — culprit found or no regression
+ *   1 — bisect failed
  *   2 — invalid arguments
  */
 
@@ -68,38 +59,63 @@ const args = process.argv.slice(2)
 
 // Parse flags
 const typeIndex = args.indexOf("--type")
-const type = typeIndex !== -1 && args[typeIndex + 1] && !args[typeIndex + 1].startsWith("--")
-  ? args[typeIndex + 1]
-  : null
+const type =
+  typeIndex !== -1 && args[typeIndex + 1] && !args[typeIndex + 1].startsWith("--")
+    ? args[typeIndex + 1]
+    : null
 
 const goodIndex = args.indexOf("--good")
-const goodCommit = goodIndex !== -1 && args[goodIndex + 1] && !args[goodIndex + 1].startsWith("--")
-  ? args[goodIndex + 1]
-  : null
+const goodCommit =
+  goodIndex !== -1 && args[goodIndex + 1] && !args[goodIndex + 1].startsWith("--")
+    ? args[goodIndex + 1]
+    : null
 
 const badIndex = args.indexOf("--bad")
-const badCommit = badIndex !== -1 && args[badIndex + 1] && !args[badIndex + 1].startsWith("--")
-  ? args[badIndex + 1]
-  : null
+const badCommit =
+  badIndex !== -1 && args[badIndex + 1] && !args[badIndex + 1].startsWith("--")
+    ? args[badIndex + 1]
+    : null
 
 const thresholdIndex = args.indexOf("--threshold")
-const THRESHOLD = thresholdIndex !== -1 && args[thresholdIndex + 1] && !args[thresholdIndex + 1].startsWith("--")
-  ? parseFloat(args[thresholdIndex + 1])
-  : 5
+const THRESHOLD =
+  thresholdIndex !== -1 && args[thresholdIndex + 1] && !args[thresholdIndex + 1].startsWith("--")
+    ? parseFloat(args[thresholdIndex + 1])
+    : 5
 
 const outputIndex = args.indexOf("--output")
-const OUTPUT_FILE = outputIndex !== -1 && args[outputIndex + 1] && !args[outputIndex + 1].startsWith("--")
-  ? args[outputIndex + 1]
-  : null
+const OUTPUT_FILE =
+  outputIndex !== -1 && args[outputIndex + 1] && !args[outputIndex + 1].startsWith("--")
+    ? args[outputIndex + 1]
+    : null
 
 const bisectRunMode = args.includes("--bisect-run")
 
 // Benchmark registry (subset of run-benchmark.mjs)
 const BENCHMARKS = {
-  geo:    { script: "geo-benchmark.mjs",      latest: "geo-latest.json",      label: "Geo-Distance",       requiresDb: false },
-  cache:  { script: "cache-benchmark.mjs",    latest: "cache-latest.json",    label: "Redis Cache",        requiresDb: false },
-  search: { script: "search-benchmark.mjs",   latest: "search-latest.json",   label: "Search-Index",       requiresDb: false },
-  pipeline: { script: "geo-pipeline-benchmark.mjs", latest: "pipeline-latest.json", label: "Geo-Pipeline", requiresDb: false },
+  geo: {
+    script: "geo-benchmark.mjs",
+    latest: "geo-latest.json",
+    label: "Geo-Distance",
+    requiresDb: false,
+  },
+  cache: {
+    script: "cache-benchmark.mjs",
+    latest: "cache-latest.json",
+    label: "Redis Cache",
+    requiresDb: false,
+  },
+  search: {
+    script: "search-benchmark.mjs",
+    latest: "search-latest.json",
+    label: "Search-Index",
+    requiresDb: false,
+  },
+  pipeline: {
+    script: "geo-pipeline-benchmark.mjs",
+    latest: "pipeline-latest.json",
+    label: "Geo-Pipeline",
+    requiresDb: false,
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +153,9 @@ function fileExists(path) {
 function getBenchmarkConfig(type) {
   const cfg = BENCHMARKS[type]
   if (!cfg) {
-    console.error(`❌ Unknown benchmark type "${type}". Available: ${Object.keys(BENCHMARKS).join(", ")}`)
+    console.error(
+      `❌ Unknown benchmark type "${type}". Available: ${Object.keys(BENCHMARKS).join(", ")}`,
+    )
     process.exit(2)
   }
   return cfg
@@ -206,12 +224,16 @@ function bisectRun() {
     if (diff.regressions.length > 0) {
       console.log(`\n  ❌ BAD — ${diff.regressions.length} regression(s) detected:`)
       for (const r of diff.regressions) {
-        console.log(`       ${r.name}: ${r.mean.baseline} → ${r.mean.current} µs (${r.mean.pct > 0 ? "+" : ""}${r.mean.pct}%)`)
+        console.log(
+          `       ${r.name}: ${r.mean.baseline} → ${r.mean.current} µs (${r.mean.pct > 0 ? "+" : ""}${r.mean.pct}%)`,
+        )
       }
       return 1
     }
 
-    console.log(`\n  ✅ GOOD — all ${diff.benchmarks.length} benchmarks within ${THRESHOLD}% threshold`)
+    console.log(
+      `\n  ✅ GOOD — all ${diff.benchmarks.length} benchmarks within ${THRESHOLD}% threshold`,
+    )
     return 0
   } catch (e) {
     console.log(`  ⚠  Comparison error at this commit — treating as bad: ${e.message}`)
@@ -285,7 +307,9 @@ function runBisect() {
     const scriptPath = join(SCRIPTS_DIR, cfg.script)
 
     if (!fileExists(scriptPath)) {
-      console.error(`❌ Benchmark script ${cfg.script} not found at good commit ${getShortSha(good)}`)
+      console.error(
+        `❌ Benchmark script ${cfg.script} not found at good commit ${getShortSha(good)}`,
+      )
       run(`git checkout "${startSha}" --quiet 2>/dev/null`)
       if (hasStash) run("git stash pop --quiet 2>/dev/null || true")
       process.exit(1)
@@ -330,20 +354,19 @@ function runBisect() {
     console.log(bisectOutput)
 
     // Extract the first bad commit from output
-    const firstBadMatch = bisectOutput.match(
-      /([a-f0-9]+)\s+is the first bad commit/i,
-    )
+    const firstBadMatch = bisectOutput.match(/([a-f0-9]+)\s+is the first bad commit/i)
     const firstBadSha = firstBadMatch ? firstBadMatch[1] : null
 
     // Get commit details
     let culpritDetails = ""
     if (firstBadSha) {
       try {
-        culpritDetails = execSync(
-          `git log --oneline -1 --stat "${firstBadSha}"`,
-          { encoding: "utf-8" },
-        ).toString()
-      } catch { /* ignore */ }
+        culpritDetails = execSync(`git log --oneline -1 --stat "${firstBadSha}"`, {
+          encoding: "utf-8",
+        }).toString()
+      } catch {
+        /* ignore */
+      }
     }
 
     // ── 5. Build report ──────────────────────────────────────────────
@@ -412,7 +435,9 @@ function runBisect() {
     // ── Cleanup: git bisect reset restores original HEAD, then pop stash ──
     try {
       run("git bisect reset --quiet 2>/dev/null || true")
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     // After bisect reset, verify we're back at the starting commit
     try {
@@ -420,12 +445,16 @@ function runBisect() {
       if (actualSha !== startSha) {
         run(`git checkout "${startSha}" --quiet 2>/dev/null || true`)
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     if (hasStash) {
       try {
         run("git stash pop --quiet 2>/dev/null || true")
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 }
@@ -441,5 +470,5 @@ if (bisectRunMode) {
 } else {
   // Orchestrator mode
   const exitCode = runBisect()
-process.exit(exitCode ?? 0)
+  process.exit(exitCode ?? 0)
 }

@@ -23,6 +23,7 @@
 import * as React from "react"
 import { sweepCepCache } from "@/lib/client-cep-cache"
 import { sweepGeoCache } from "@/lib/client-geo-cache"
+import { attemptCacheWarming } from "@/lib/client-geo-cache-warm"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -51,6 +52,9 @@ let lastSweepAt = 0
 export type SweepResult = {
   cepRemoved: number
   geoRemoved: number
+  geoRenewed?: number
+  cepRenewed?: number
+  warmingSkipped?: boolean
   timestamp: number
 }
 
@@ -61,9 +65,20 @@ function runSweep(): SweepResult {
   }
 
   lastSweepAt = now
+
+  // 1. Sweep expired entries
+  const cepRemoved = sweepCepCache()
+  const geoRemoved = sweepGeoCache()
+
+  // 2. Attempt cache warming (only runs during 3-5 AM, once daily)
+  const warmResult = attemptCacheWarming()
+
   return {
-    cepRemoved: sweepCepCache(),
-    geoRemoved: sweepGeoCache(),
+    cepRemoved,
+    geoRemoved,
+    geoRenewed: warmResult.geoRenewed,
+    cepRenewed: warmResult.cepRenewed,
+    warmingSkipped: warmResult.skipped,
     timestamp: now,
   }
 }
@@ -109,10 +124,9 @@ export function useAutoCacheSweep(): SweepResult | null {
     _hookCount++
 
     // Run an initial sweep on mount (catches stale entries from previous sessions)
-    const initial = runSweep()
-    if (initial.cepRemoved > 0 || initial.geoRemoved > 0) {
-      setLastResult(initial)
-    }
+    // Note: we don't setState here to avoid cascading renders per react-hooks rule.
+    // The first interval tick (10min) will report the result.
+    runSweep()
 
     // Start the shared interval
     startInterval(setLastResult)
@@ -160,5 +174,5 @@ export function getTimeToNextSweep(): number | null {
   if (_intervalId == null) return null
   // Approximate: we don't track the exact start, but the interval fires
   // every SWEEP_INTERVAL_MS, so remaining is at most SWEEP_INTERVAL_MS.
-  return SWEEP_INTERVAL_MS - (Date.now() - lastSweepAt) % SWEEP_INTERVAL_MS
+  return SWEEP_INTERVAL_MS - ((Date.now() - lastSweepAt) % SWEEP_INTERVAL_MS)
 }
