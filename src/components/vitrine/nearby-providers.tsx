@@ -273,7 +273,7 @@ function NearbyCard({
         </div>
       </div>
 
-      {/* Distance */}
+      {/* Distance + 'Perto de você' badge */}
       <div className="mt-2 flex items-center gap-1 text-xs">
         <MapPin className="size-3 text-emerald-600" />
         {typeof provider.distanceKm === "number" ? (
@@ -285,6 +285,15 @@ function NearbyCard({
         ) : (
           <span className="text-muted-foreground">Distância desconhecida</span>
         )}
+        {provider.radiusKm != null &&
+        typeof provider.distanceKm === "number" &&
+        provider.distanceKm >= 0 &&
+        provider.distanceKm <= provider.radiusKm ? (
+          <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+            <Navigation className="size-2.5" />
+            Perto
+          </span>
+        ) : null}
       </div>
 
       {/* First service price */}

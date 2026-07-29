@@ -23,6 +23,7 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { notifyGeoAlert } from "@/lib/geo-alert-notify"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -326,6 +327,45 @@ export async function GET() {
     }
 
     const regressionCount = comparisons.reduce((a, c) => a + c.regressions.length, 0)
+
+    // ── Send push notification to admins on new regressions ───────────
+    if (regressionCount > 0) {
+      const worstRegressions = comparisons
+        .flatMap((c) => c.regressions)
+        .sort((a, b) => Math.abs(b.mean.pct) - Math.abs(a.mean.pct))
+        .slice(0, 3)
+
+      const summaryLines = worstRegressions.map(
+        (r) => `• ${r.name}: +${r.mean.pct.toFixed(1)}% (${r.mean.baseline.toFixed(0)} → ${r.mean.current.toFixed(0)}µs)`,
+      )
+
+      // Debounce via tag — only sends once per 15 min when regression count is stable
+      notifyGeoAlert({
+        title: `${regressionCount} regressão(ões) detectada(s) nos benchmarks`,
+        body: [
+          `${regressionCount} benchmark(s) acima do limiar de 5% nas últimas comparações.`,
+          ...summaryLines,
+          "",
+          "Revise as alterações recentes na camada de geolocalização.",
+        ].join("\n"),
+        severity: regressionCount > 5 ? "error" : "warning",
+        url: "/admin/benchmarks",
+        tag: `benchmark-regression:${comparisons.map((c) => c.type).sort().join(":")}`,
+        source: "benchmarks-api",
+        context: {
+          regressionCount,
+          affectedTypes: comparisons.filter((c) => c.regressions.length > 0).map((c) => c.type),
+          worstRegressions: worstRegressions.map((r) => ({
+            name: r.name,
+            type: r.label,
+            pct: r.mean.pct,
+            baseline: r.mean.baseline,
+            current: r.mean.current,
+          })),
+          totalComparisons: comparisons.length,
+        },
+      }).catch(() => {})
+    }
 
     const response: BenchmarksResponse = {
       runs: byType,

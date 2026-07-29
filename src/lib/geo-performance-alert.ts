@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { captureMessage } from "@/lib/sentry"
 import { getGeoMetrics, type GeoServiceName } from "@/lib/geo-metrics"
+import { notifyGeoAlert } from "@/lib/geo-alert-notify"
 import logger from "@/lib/logger"
 
 /**
@@ -208,10 +209,15 @@ export function checkGeoPerformance(
       const isRecovery = state.wasDegraded && state.consecutiveViolations >= CONSECUTIVE_THRESHOLD
 
       if (isRecovery) {
-        captureMessage(
-          `[GeoPerf] ✅ ${svc} P95 recovered — ${Math.round(p95)}ms (threshold: ${Math.round(threshold)}ms)`,
-          "info",
-          {
+        // Sentry + push notification
+        notifyGeoAlert({
+          title: `P95 Recuperado — ${Math.round(p95)}ms`,
+          body: `${svc.toUpperCase()} P95 voltou ao normal (${Math.round(p95)}ms, limiar: ${Math.round(threshold)}ms).`,
+          severity: "info",
+          url: "/admin/geo-metrics",
+          tag: `geo-perf:${svc}:recovery`,
+          source: "geo-performance-alert",
+          context: {
             service: svc,
             metric: "p95",
             value: Math.round(p95),
@@ -220,7 +226,8 @@ export function checkGeoPerformance(
             baselineSource: baseline.source,
             unit: "ms",
           },
-        )
+        }).catch(() => {})
+
         logger.info(
           { service: svc, p95, threshold, baselineMean: baseline.mean },
           "geo-performance-alert: recovery",
@@ -253,12 +260,20 @@ export function checkGeoPerformance(
       state.lastAlertedAt = Date.now()
       state.wasDegraded = true
 
-      const severity = p95 > baseline.mean * P95_THRESHOLD_MULTIPLIER * 1.5 ? "error" : "warn"
+      const severity: "warn" | "error" =
+        p95 > baseline.mean * P95_THRESHOLD_MULTIPLIER * 1.5 ? "error" : "warn"
 
-      captureMessage(
-        `[GeoPerf] ${severity === "error" ? "🛑" : "⚠️"} ${svc} P95 ${Math.round(p95)}ms — ${((p95 / threshold) * 100).toFixed(0)}% of threshold (${Math.round(threshold)}ms)`,
-        severity,
-        {
+      // Sentry + push notification to admins
+      notifyGeoAlert({
+        title: `P95 ${Math.round(p95)}ms — ${((p95 / threshold) * 100).toFixed(0)}% do limiar`,
+        body: `${svc.toUpperCase()} P95 ultrapassou ${P95_THRESHOLD_MULTIPLIER}× o baseline. ` +
+          `Atual: ${Math.round(p95)}ms, Limiar: ${Math.round(threshold)}ms, Baseline: ${Math.round(baseline.mean)}ms. ` +
+          `Amostras na janela: ${svcMetrics.count}.`,
+        severity: severity === "error" ? "error" : "warning",
+        url: "/admin/geo-metrics",
+        tag: `geo-perf:${svc}:degraded`,
+        source: "geo-performance-alert",
+        context: {
           service: svc,
           metric: "p95",
           value: Math.round(p95),
@@ -272,7 +287,7 @@ export function checkGeoPerformance(
           p50: Math.round(svcMetrics.p50),
           p99: Math.round(svcMetrics.p99),
         },
-      )
+      }).catch(() => {})
 
       logger.warn(
         {

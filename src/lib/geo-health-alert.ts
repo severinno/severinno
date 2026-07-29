@@ -20,7 +20,7 @@ import "server-only"
  */
 
 import { sendMail } from "@/lib/mail"
-import { captureMessage } from "@/lib/sentry"
+import { notifyGeoAlert } from "@/lib/geo-alert-notify"
 import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
@@ -308,6 +308,9 @@ export async function evaluateGeoHealth(checks: GeoHealthInput): Promise<GeoHeal
     duration: string
   }> = []
 
+  // Collect notification promises so we can await them all before returning
+  const notifyPromises: Promise<unknown>[] = []
+
   for (const [name, check] of Object.entries(checks) as [
     GeoServiceName,
     { status: "ok" | "error"; detail: string },
@@ -336,18 +339,28 @@ export async function evaluateGeoHealth(checks: GeoHealthInput): Promise<GeoHeal
         const label = SERVICE_LABELS[name]
         const icon = SERVICE_ICONS[name]
 
-        // Sentry: PostGIS uses "error" severity, others use "warn"
-        captureMessage(
-          `[GeoHealth] ${isCritical ? "🛑" : "🔴"} ${label} degraded for ${duration}`,
-          isCritical ? "error" : "warn",
-          {
-            service: name,
-            critical: isCritical,
-            consecutiveFailures: s.consecutiveFailures,
-            duration,
-            detail: check.detail,
-            firstDegradedAt: s.firstDegradedAt ? new Date(s.firstDegradedAt).toISOString() : null,
-          },
+        // Unified notification: Sentry + push to all admins
+        notifyPromises.push(
+          notifyGeoAlert({
+            title: `${isCritical ? "🛑" : "🔴"} ${label} degradado — ${duration}`,
+            body: `${check.detail}\n\nO serviço está indisponível há ${duration}. Fallbacks locais ativados.`,
+            severity: isCritical ? "error" : "warning",
+            url: "/admin/geo-metrics",
+            tag: `geo-health:${name}:degraded`,
+            source: "geo-health-alert",
+            context: {
+              service: name,
+              critical: isCritical,
+              consecutiveFailures: s.consecutiveFailures,
+              duration,
+              detail: check.detail,
+              firstDegradedAt: s.firstDegradedAt
+                ? new Date(s.firstDegradedAt).toISOString()
+                : null,
+            },
+          }).catch(() => {
+            // Notification is best-effort — don't block the health check
+          }),
         )
 
         degradedServices.push({
@@ -381,10 +394,23 @@ export async function evaluateGeoHealth(checks: GeoHealthInput): Promise<GeoHeal
         const label = SERVICE_LABELS[name]
         const icon = SERVICE_ICONS[name]
 
-        captureMessage(`[GeoHealth] ✅ ${label} recovered`, "info", {
-          service: name,
-          detail: check.detail,
-        })
+        // Unified notification: Sentry (info) + push recovery to admins
+        notifyPromises.push(
+          notifyGeoAlert({
+            title: `✅ ${label} recuperado`,
+            body: `O serviço voltou a funcionar normalmente após o período de degradação. Detalhe: ${check.detail}`,
+            severity: "info",
+            url: "/admin/geo-metrics",
+            tag: `geo-health:${name}:recovery`,
+            source: "geo-health-alert",
+            context: {
+              service: name,
+              detail: check.detail,
+            },
+          }).catch(() => {
+            // Notification is best-effort
+          }),
+        )
 
         recoveredServices.push({
           name: label,
@@ -464,6 +490,10 @@ export async function evaluateGeoHealth(checks: GeoHealthInput): Promise<GeoHeal
     })
     result.slackSent = true
   }
+
+  // Await all notification promises before returning
+  // This ensures Sentry events are recorded before callers check state
+  await Promise.allSettled(notifyPromises)
 
   logger.info(
     {

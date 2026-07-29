@@ -49,7 +49,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useUIStore } from "@/store/ui"
 import { useRecentlyViewedStore } from "@/store/recently-viewed"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { apiGet, type ProviderDetail, type ProviderService } from "@/lib/api"
+import { fetchProviderDetail, type ProviderDetail, type ProviderService } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import { SERVICE_UNIT_SHORT, WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/constants"
 import { StarRatingDisplay } from "./star-rating"
@@ -76,9 +76,17 @@ export function ProviderProfileModal() {
   const addRecentlyViewed = useRecentlyViewedStore((s) => s.addView)
   const isMobile = useIsMobile()
 
+  const { lat, lng } = useGeoStore()
+
   const query = useQuery({
-    queryKey: ["provider", providerId],
-    queryFn: () => apiGet<ProviderDetail>(`/api/providers/${providerId}`),
+    queryKey: ["provider", providerId, lat, lng],
+    queryFn: async () => {
+      const { lat: currentLat, lng: currentLng } = useGeoStore.getState()
+      return fetchProviderDetail(providerId!, {
+        lat: currentLat ?? undefined,
+        lng: currentLng ?? undefined,
+      })
+    },
     enabled: open && !!providerId,
     staleTime: 60 * 1000,
   })
