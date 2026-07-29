@@ -12,11 +12,41 @@
  * the map fails to load.
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import { Loader2, Maximize2, MapPin } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-circle"
+import {
+  syncRadiusCircle,
+  removeRadiusCircle,
+  syncRadiusHandle,
+  removeRadiusHandle,
+  makeRadiusEdgeDraggable,
+  type MapLike,
+} from "@/lib/geo-circle"
 import { Slider } from "@/components/ui/slider"
+import { apiPatch } from "@/lib/api"
+
+// ── Module-level preload ──────────────────────────────────────────────────
+// Starting the dynamic import at module evaluation time (not inside useEffect)
+// makes the bundle download in parallel with React rendering, so the map
+// appears near-instantly when the component mounts.
+//
+// The promise is cached globally so multiple instances share one download.
+
+let _maplibrePromise: Promise<unknown> | null = null
+let _cssPromise: Promise<void> | null = null
+
+/**
+ * Kick off the maplibre-gl dynamic import NOW so it's cached by the time
+ * the component's useEffect runs. Safe to call multiple times — the promise
+ * is cached and the import only happens once.
+ */
+export function preloadMaplibreGl(): void {
+  if (!_maplibrePromise) {
+    _maplibrePromise = import("maplibre-gl")
+    _cssPromise = import("maplibre-gl/dist/maplibre-gl.css") as Promise<void>
+  }
+}
 
 type Props = {
   providerLat: number
@@ -28,19 +58,15 @@ type Props = {
   radiusKm?: number | null
   /** Called when the user adjusts the radius slider. */
   onRadiusChange?: (radiusKm: number) => void
+  /** Enable interactive edge-dot dragging. Only meaningful for the provider's own profile. */
+  interactive?: boolean
   /** Height in px. Default 200. */
   height?: number
   className?: string
 }
 
 // Static map fallback URL (OpenStreetMap static image via staticmap.openstreetmap.de)
-function staticMapUrl(
-  lat: number,
-  lng: number,
-  zoom = 14,
-  width = 400,
-  height = 200,
-): string {
+function staticMapUrl(lat: number, lng: number, zoom = 14, width = 400, height = 200): string {
   return `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=${zoom}&size=${width}x${height}&maptype=mapnik&markers=${lat},${lng},red-pushpin`
 }
 
@@ -52,6 +78,7 @@ export default function ProviderMiniMap({
   userLng,
   radiusKm,
   onRadiusChange,
+  interactive = false,
   height = 200,
   className,
 }: Props) {
@@ -59,12 +86,43 @@ export default function ProviderMiniMap({
   const mapRef = useRef<unknown>(null)
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading")
   const [radius, setRadius] = useState(radiusKm ?? 50)
+  const [saving, setSaving] = useState(false)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Auto-save: debounced PATCH to /api/users/me ────────────────────
+  const autoSaveRadius = useCallback(
+    (km: number) => {
+      if (!interactive) return
+      setSaving(true)
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(async () => {
+        try {
+          await apiPatch("/api/users/me", { radiusKm: km })
+        } catch {
+          // save failed silently — the slider still works locally
+        } finally {
+          setSaving(false)
+        }
+      }, 800)
+    },
+    [interactive],
+  )
+
+  // Cleanup save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    }
+  }, [])
 
   // Sync local radius when prop changes — intentional: the slider should
   // follow when the provider's configured radius loads asynchronously.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // Use rAF to avoid synchronous setState inside effect (ESLint rule).
   useEffect(() => {
-    if (radiusKm != null) setRadius(radiusKm)
+    if (radiusKm != null) {
+      const id = requestAnimationFrame(() => setRadius(radiusKm))
+      return () => cancelAnimationFrame(id)
+    }
   }, [radiusKm])
 
   useEffect(() => {
@@ -74,10 +132,13 @@ export default function ProviderMiniMap({
     let mapInstance: unknown = null
     let cleanup: (() => void) | undefined
 
+    // Prime the import if it hasn't started yet (safe to call multiple times)
+    preloadMaplibreGl()
+
     ;(async () => {
       try {
-        const maplibregl = await import("maplibre-gl")
-        await import("maplibre-gl/dist/maplibre-gl.css")
+        const [maplibreModule] = await Promise.all([_maplibrePromise!, _cssPromise!])
+        const maplibregl = maplibreModule as typeof import("maplibre-gl")
         if (cancelled || !containerRef.current) return
 
         const map = new maplibregl.Map({
@@ -89,7 +150,8 @@ export default function ProviderMiniMap({
                 type: "raster",
                 tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
                 tileSize: 256,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+                attribution:
+                  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
                 maxzoom: 19,
               },
             },
@@ -110,12 +172,28 @@ export default function ProviderMiniMap({
           interactive: true,
         })
 
+        let dragCleanup: (() => void) | null = null
+
         map.on("load", () => {
           if (cancelled) return
           setStatus("ready")
           // Draw provider's service radius circle
           if (typeof radiusKm === "number" && radiusKm > 0) {
-            syncRadiusCircle(map as unknown as MapLike, providerLat, providerLng, radiusKm)
+            const mapLike = map as unknown as MapLike
+            syncRadiusCircle(mapLike, providerLat, providerLng, radiusKm)
+            if (interactive) {
+              syncRadiusHandle(mapLike, providerLat, providerLng, radiusKm)
+              dragCleanup = makeRadiusEdgeDraggable(
+                map as any,
+                providerLat,
+                providerLng,
+                (newRadius: number) => {
+                  setRadius(newRadius)
+                  onRadiusChange?.(newRadius)
+                  autoSaveRadius(newRadius)
+                },
+              )
+            }
           }
         })
 
@@ -124,7 +202,21 @@ export default function ProviderMiniMap({
           if (!cancelled) {
             setStatus("ready")
             if (typeof radiusKm === "number" && radiusKm > 0 && mapInstance) {
-              syncRadiusCircle(map as unknown as MapLike, providerLat, providerLng, radiusKm)
+              const mapLike = map as unknown as MapLike
+              syncRadiusCircle(mapLike, providerLat, providerLng, radiusKm)
+              if (interactive) {
+                syncRadiusHandle(mapLike, providerLat, providerLng, radiusKm)
+                dragCleanup = makeRadiusEdgeDraggable(
+                  map as any,
+                  providerLat,
+                  providerLng,
+                  (newRadius: number) => {
+                    setRadius(newRadius)
+                    onRadiusChange?.(newRadius)
+                    autoSaveRadius(newRadius)
+                  },
+                )
+              }
             }
           }
         }, 5000)
@@ -158,15 +250,15 @@ export default function ProviderMiniMap({
             border: 3px solid white;
             box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
           `
-          new maplibregl.Marker({ element: userEl })
-            .setLngLat([userLng, userLat])
-            .addTo(map)
+          new maplibregl.Marker({ element: userEl }).setLngLat([userLng, userLat]).addTo(map)
         }
 
         mapInstance = map
         mapRef.current = map
 
         cleanup = () => {
+          dragCleanup?.()
+          removeRadiusHandle(map as unknown as MapLike)
           map.remove()
           window.clearTimeout(fallbackTimer)
         }
@@ -180,23 +272,30 @@ export default function ProviderMiniMap({
       // Cleanup radius circle layers
       if (mapInstance) {
         removeRadiusCircle(mapInstance as unknown as MapLike)
+        removeRadiusHandle(mapInstance as unknown as MapLike)
       }
       cleanup?.()
     }
   }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm])
 
   // Update radius circle dynamically when slider changes (without recreating map)
+  // NOTE: We do NOT call removeRadiusCircle/removeRadiusHandle here because
+  // syncRadiusCircle and syncRadiusHandle already use setData() when the
+  // source exists — avoiding layer recreation preserves MapLibre event
+  // listeners registered by makeRadiusEdgeDraggable.
   useEffect(() => {
     const map = mapRef.current as MapLike | null
     if (!map) return
     if (typeof radius !== "number" || radius <= 0) return
     try {
-      removeRadiusCircle(map)
       syncRadiusCircle(map, providerLat, providerLng, radius)
+      if (interactive) {
+        syncRadiusHandle(map, providerLat, providerLng, radius)
+      }
     } catch {
       // map may not be fully loaded yet
     }
-  }, [radius, providerLat, providerLng])
+  }, [radius, providerLat, providerLng, interactive])
 
   const handleRadiusChange = (value: number[]) => {
     const newRadius = value[0] ?? 50
@@ -215,13 +314,13 @@ export default function ProviderMiniMap({
   return (
     <>
       <div
-        className={cn("relative overflow-hidden rounded-xl border bg-muted", className)}
+        className={cn("bg-muted relative overflow-hidden rounded-xl border", className)}
         style={{ height }}
       >
         {/* Loading state */}
         {status === "loading" && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/80">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          <div className="bg-muted/80 absolute inset-0 z-10 flex items-center justify-center">
+            <Loader2 className="text-muted-foreground size-5 animate-spin" />
           </div>
         )}
 
@@ -230,44 +329,47 @@ export default function ProviderMiniMap({
 
         {/* Fallback static image (if MapLibre failed) */}
         {status === "error" && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-muted">
+          <div className="bg-muted absolute inset-0 z-10 flex flex-col items-center justify-center">
             <img
               src={staticMapUrl(providerLat, providerLng, 14, 400, height)}
               alt={`Mapa de ${providerName}`}
               className="size-full object-cover"
             />
-            <p className="absolute bottom-2 text-[10px] text-muted-foreground bg-background/80 px-2 py-0.5 rounded">
+            <p className="text-muted-foreground bg-background/80 absolute bottom-2 rounded px-2 py-0.5 text-[10px]">
               Mapa interativo indisponível
             </p>
           </div>
         )}
 
         {/* Provider location badge */}
-        <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm backdrop-blur-sm">
-          <MapPin className="size-3 text-primary" />
-          <span className="truncate max-w-[120px]">{providerName}</span>
+        <div className="bg-background/90 text-foreground absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium shadow-sm backdrop-blur-sm">
+          <MapPin className="text-primary size-3" />
+          <span className="max-w-[120px] truncate">{providerName}</span>
         </div>
 
         {/* Expand button */}
         <button
           type="button"
           onClick={openInOSM}
-          className="absolute top-2 right-2 z-20 flex size-7 items-center justify-center rounded-full bg-background/90 shadow-sm backdrop-blur-sm transition-colors hover:bg-background"
+          className="bg-background/90 hover:bg-background absolute top-2 right-2 z-20 flex size-7 items-center justify-center rounded-full shadow-sm backdrop-blur-sm transition-colors"
           aria-label="Abrir no OpenStreetMap"
           title="Abrir no OpenStreetMap"
         >
-          <Maximize2 className="size-3.5 text-muted-foreground" />
+          <Maximize2 className="text-muted-foreground size-3.5" />
         </button>
       </div>
 
       {/* Radius slider */}
       <div className="mt-2 grid gap-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-medium text-muted-foreground">
-            Raio de busca
-          </span>
-          <span className="text-xs font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
-            {radius} km
+          <span className="text-muted-foreground text-[11px] font-medium">Raio de busca</span>
+          <span className="flex items-center gap-2">
+            {saving && (
+              <span className="text-muted-foreground animate-pulse text-[9px]">Salvando…</span>
+            )}
+            <span className="text-xs font-semibold text-emerald-700 tabular-nums dark:text-emerald-400">
+              {radius} km
+            </span>
           </span>
         </div>
         <Slider
@@ -279,7 +381,7 @@ export default function ProviderMiniMap({
           className="[&>span:first-child]:h-1.5 [&>span:first-child]:bg-emerald-100 [&>span:first-child_span]:bg-emerald-600 [&>span:last-child]:size-3.5 [&>span:last-child]:border-emerald-600"
           aria-label="Raio de busca em quilômetros"
         />
-        <div className="flex justify-between text-[9px] text-muted-foreground">
+        <div className="text-muted-foreground flex justify-between text-[9px]">
           <span>1 km</span>
           <span>50 km</span>
           <span>100 km</span>

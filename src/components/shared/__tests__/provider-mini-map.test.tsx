@@ -21,6 +21,9 @@ import { render, screen, cleanup, act, fireEvent } from "@testing-library/react"
 
 const mockSyncRadiusCircle = vi.hoisted(() => vi.fn())
 const mockRemoveRadiusCircle = vi.hoisted(() => vi.fn())
+const mockSyncRadiusHandle = vi.hoisted(() => vi.fn())
+const mockRemoveRadiusHandle = vi.hoisted(() => vi.fn())
+const mockMakeRadiusEdgeDraggable = vi.hoisted(() => vi.fn(() => vi.fn()))
 const mockMapOn = vi.hoisted(() => vi.fn())
 const mockMapRemove = vi.hoisted(() => vi.fn())
 const mockMapGetSource = vi.hoisted(() => vi.fn())
@@ -70,14 +73,20 @@ vi.mock("maplibre-gl", () => ({
 // Empty CSS import mock (the component imports maplibre-gl/dist/maplibre-gl.css dynamically)
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}))
 
-// Mock syncRadiusCircle / removeRadiusCircle
 vi.mock("@/lib/geo-circle", () => ({
-  syncRadiusCircle: (...args: unknown[]) => mockSyncRadiusCircle(...args),
-  removeRadiusCircle: (...args: unknown[]) => mockRemoveRadiusCircle(...args),
+  syncRadiusCircle: mockSyncRadiusCircle,
+  removeRadiusCircle: mockRemoveRadiusCircle,
+  syncRadiusHandle: mockSyncRadiusHandle,
+  removeRadiusHandle: mockRemoveRadiusHandle,
+  makeRadiusEdgeDraggable: mockMakeRadiusEdgeDraggable,
 }))
 
 vi.mock("@/lib/utils", () => ({
   cn: (...c: any[]) => c.filter(Boolean).join(" "),
+}))
+
+vi.mock("@/lib/api", () => ({
+  apiPatch: vi.fn().mockResolvedValue({}),
 }))
 
 vi.mock("lucide-react", () => ({
@@ -362,10 +371,10 @@ describe("ProviderMiniMap — radius slider interaction", () => {
     expect(mockSyncRadiusCircle).toHaveBeenLastCalledWith(expect.anything(), -23.5505, -46.6333, 75)
   })
 
-  it("calls removeRadiusCircle before syncRadiusCircle when slider changes", async () => {
-    mockRemoveRadiusCircle.mockClear()
-    mockSyncRadiusCircle.mockClear()
-
+  it("syncRadiusCircle uses setData (no removeRadiusCircle) when slider changes", async () => {
+    // Note: removeRadiusCircle is NOT called on slider changes to preserve
+    // MapLibre event listeners registered by makeRadiusEdgeDraggable.
+    // syncRadiusCircle uses setData() internally when the source exists.
     render(
       <ProviderMiniMap
         providerLat={-23.5505}
@@ -377,7 +386,6 @@ describe("ProviderMiniMap — radius slider interaction", () => {
 
     await triggerMapLoad()
 
-    // Clear the initial calls from map load
     mockRemoveRadiusCircle.mockClear()
     mockSyncRadiusCircle.mockClear()
 
@@ -390,10 +398,11 @@ describe("ProviderMiniMap — radius slider interaction", () => {
       await new Promise((r) => setTimeout(r, 0))
     })
 
-    // removeRadiusCircle then syncRadiusCircle should have been called
-    expect(mockRemoveRadiusCircle).toHaveBeenCalledTimes(1)
+    // syncRadiusCircle IS called with new radius (via setData internally)
     expect(mockSyncRadiusCircle).toHaveBeenCalledTimes(1)
     expect(mockSyncRadiusCircle).toHaveBeenLastCalledWith(expect.anything(), -23.5505, -46.6333, 25)
+    // removeRadiusCircle is NOT called — the layer stays alive preserving event listeners
+    expect(mockRemoveRadiusCircle).not.toHaveBeenCalled()
   })
 
   it("calls onRadiusChange callback with new value", async () => {
