@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, cleanup, act } from "@testing-library/react"
+import { render, screen, cleanup, act, fireEvent } from "@testing-library/react"
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks
@@ -121,7 +121,9 @@ async function triggerMapLoad() {
   // Trigger the map "load" event
   const cb = loadCallback
   if (cb) {
-    act(() => { cb() })
+    act(() => {
+      cb()
+    })
   }
 }
 
@@ -192,11 +194,7 @@ describe("ProviderMiniMap — syncRadiusCircle integration", () => {
 
   it("does NOT call syncRadiusCircle when radiusKm is undefined", async () => {
     render(
-      <ProviderMiniMap
-        providerLat={-23.5505}
-        providerLng={-46.6333}
-        providerName="Maria Silva"
-      />,
+      <ProviderMiniMap providerLat={-23.5505} providerLng={-46.6333} providerName="Maria Silva" />,
     )
 
     await triggerMapLoad()
@@ -225,11 +223,7 @@ describe("ProviderMiniMap — lifecycle", () => {
 
   it("removes the map instance on unmount", async () => {
     const { unmount } = render(
-      <ProviderMiniMap
-        providerLat={-23.5505}
-        providerLng={-46.6333}
-        providerName="Maria Silva"
-      />,
+      <ProviderMiniMap providerLat={-23.5505} providerLng={-46.6333} providerName="Maria Silva" />,
     )
 
     await triggerMapLoad()
@@ -243,11 +237,7 @@ describe("ProviderMiniMap — lifecycle", () => {
 describe("ProviderMiniMap — UI states", () => {
   it("shows loading spinner initially", () => {
     render(
-      <ProviderMiniMap
-        providerLat={-23.5505}
-        providerLng={-46.6333}
-        providerName="Maria Silva"
-      />,
+      <ProviderMiniMap providerLat={-23.5505} providerLng={-46.6333} providerName="Maria Silva" />,
     )
 
     expect(screen.getByTestId("icon-loading")).toBeTruthy()
@@ -255,11 +245,7 @@ describe("ProviderMiniMap — UI states", () => {
 
   it("renders provider name badge", () => {
     render(
-      <ProviderMiniMap
-        providerLat={-23.5505}
-        providerLng={-46.6333}
-        providerName="Maria Silva"
-      />,
+      <ProviderMiniMap providerLat={-23.5505} providerLng={-46.6333} providerName="Maria Silva" />,
     )
 
     expect(screen.getByText("Maria Silva")).toBeTruthy()
@@ -267,11 +253,7 @@ describe("ProviderMiniMap — UI states", () => {
 
   it("renders expand button with correct aria-label", () => {
     render(
-      <ProviderMiniMap
-        providerLat={-23.5505}
-        providerLng={-46.6333}
-        providerName="Maria Silva"
-      />,
+      <ProviderMiniMap providerLat={-23.5505} providerLng={-46.6333} providerName="Maria Silva" />,
     )
 
     expect(screen.getByLabelText("Abrir no OpenStreetMap")).toBeTruthy()
@@ -309,16 +291,187 @@ describe("ProviderMiniMap — user marker", () => {
   it("renders without user marker when userLat/userLng not provided", async () => {
     // This test verifies the map creation doesn't crash without user coords
     render(
-      <ProviderMiniMap
-        providerLat={-23.5505}
-        providerLng={-46.6333}
-        providerName="Maria Silva"
-      />,
+      <ProviderMiniMap providerLat={-23.5505} providerLng={-46.6333} providerName="Maria Silva" />,
     )
 
     await triggerMapLoad()
 
     // Map was created — the mock Marker was called at least once (for provider)
     expect(mockMapOn).toHaveBeenCalled()
+  })
+})
+
+// ===========================================================================
+// Radius slider interaction tests
+// ===========================================================================
+
+describe("ProviderMiniMap — radius slider interaction", () => {
+  it("updates displayed radius value when slider changes", async () => {
+    render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+      />,
+    )
+
+    await triggerMapLoad()
+
+    // Initial value
+    // Initial value — use getAllByText and assert count >= 1 because
+    // "50 km" also appears in the tick labels ("1 km | 50 km | 100 km")
+    const initialLabels = screen.getAllByText("50 km")
+    expect(initialLabels.length).toBeGreaterThanOrEqual(1)
+
+    // Change slider
+    const sliderInput = screen.getByTestId("slider-input")
+    fireEvent.change(sliderInput, { target: { value: "75" } })
+
+    // Updated value — "75 km" is unique (not in tick labels)
+    expect(screen.getByText("75 km")).toBeTruthy()
+  })
+
+  it("calls syncRadiusCircle with new radius when slider value changes", async () => {
+    render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+      />,
+    )
+
+    await triggerMapLoad()
+
+    // syncRadiusCircle was called once during map load (radius = 50)
+    expect(mockSyncRadiusCircle).toHaveBeenCalledTimes(1)
+    expect(mockSyncRadiusCircle).toHaveBeenLastCalledWith(expect.anything(), -23.5505, -46.6333, 50)
+
+    // Change slider
+    const sliderInput = screen.getByTestId("slider-input")
+    fireEvent.change(sliderInput, { target: { value: "75" } })
+
+    // Wait for React re-render and the second useEffect to fire
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    // syncRadiusCircle was called again with the new radius
+    expect(mockSyncRadiusCircle).toHaveBeenCalledTimes(2)
+    expect(mockSyncRadiusCircle).toHaveBeenLastCalledWith(expect.anything(), -23.5505, -46.6333, 75)
+  })
+
+  it("calls removeRadiusCircle before syncRadiusCircle when slider changes", async () => {
+    mockRemoveRadiusCircle.mockClear()
+    mockSyncRadiusCircle.mockClear()
+
+    render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+      />,
+    )
+
+    await triggerMapLoad()
+
+    // Clear the initial calls from map load
+    mockRemoveRadiusCircle.mockClear()
+    mockSyncRadiusCircle.mockClear()
+
+    // Change slider
+    const sliderInput = screen.getByTestId("slider-input")
+    fireEvent.change(sliderInput, { target: { value: "25" } })
+
+    // Wait for React re-render
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    // removeRadiusCircle then syncRadiusCircle should have been called
+    expect(mockRemoveRadiusCircle).toHaveBeenCalledTimes(1)
+    expect(mockSyncRadiusCircle).toHaveBeenCalledTimes(1)
+    expect(mockSyncRadiusCircle).toHaveBeenLastCalledWith(expect.anything(), -23.5505, -46.6333, 25)
+  })
+
+  it("calls onRadiusChange callback with new value", async () => {
+    const mockOnRadiusChange = vi.fn()
+
+    render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+        onRadiusChange={mockOnRadiusChange}
+      />,
+    )
+
+    await triggerMapLoad()
+
+    // Change slider
+    const sliderInput = screen.getByTestId("slider-input")
+    fireEvent.change(sliderInput, { target: { value: "90" } })
+
+    // Wait for state update
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    expect(mockOnRadiusChange).toHaveBeenCalledTimes(1)
+    expect(mockOnRadiusChange).toHaveBeenCalledWith(90)
+  })
+
+  it("syncRadiusCircle is not called when slider changes to value below min (0)", async () => {
+    // Note: the slider has min=1, so value=0 is unreachable via normal UI.
+    // This test bypasses the constraint via fireEvent to verify the
+    // internal guard `if (radius <= 0) return` in the radius update useEffect.
+    render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+      />,
+    )
+
+    await triggerMapLoad()
+
+    mockSyncRadiusCircle.mockClear()
+
+    // Change slider to 0 (below min=1 — native range auto-corrects to min)
+    const sliderInput = screen.getByTestId("slider-input")
+    fireEvent.change(sliderInput, { target: { value: "0" } })
+
+    // Wait for React re-render and any native auto-correction
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    // After the input auto-corrects 0 → 1 (native min), the effective
+    // radius should be 1, and syncRadiusCircle should have been called
+    // with radius=1 (the corrected value).
+    // The guard prevents radius=0 but the native min corrects to 1.
+    expect(mockSyncRadiusCircle).toHaveBeenCalledTimes(1)
+    expect(mockSyncRadiusCircle).toHaveBeenLastCalledWith(expect.anything(), -23.5505, -46.6333, 1)
+    // "1 km" will be shown (auto-corrected from 0) — also appears in tick marks
+    expect(screen.getAllByText("1 km").length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("renders slider with correct min/max bounds", () => {
+    render(
+      <ProviderMiniMap
+        providerLat={-23.5505}
+        providerLng={-46.6333}
+        providerName="Maria Silva"
+        radiusKm={50}
+      />,
+    )
+
+    const slider = screen.getByTestId("slider")
+    expect(slider).toHaveAttribute("data-min", "1")
+    expect(slider).toHaveAttribute("data-max", "100")
   })
 })

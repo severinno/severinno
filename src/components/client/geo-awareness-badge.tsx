@@ -42,6 +42,7 @@ export default function GeoAwarenessBadge() {
     }
   }, [])
 
+  const isLocating = status === "locating"
   const hasLocation =
     status === "ready" &&
     typeof lat === "number" &&
@@ -113,7 +114,34 @@ export default function GeoAwarenessBadge() {
 
         {/* Content */}
         <div className="min-w-0 flex-1">
-          {!hasLocation ? (
+          {isLocating ? (
+            <>
+              <p className="text-foreground text-sm font-semibold">Obtendo sua localização…</p>
+              <p className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-xs">
+                <Loader2 className="size-3 animate-spin" />
+                Aguardando permissão do navegador
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  className="h-8 gap-1.5 border-blue-200/50 bg-blue-50/50 text-xs text-blue-400 opacity-60 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-500"
+                >
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Aguardando…
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("vitrine")}
+                  className="text-muted-foreground hover:text-foreground h-8 gap-1.5 text-xs"
+                >
+                  Ver vitrine
+                </Button>
+              </div>
+            </>
+          ) : !hasLocation ? (
             <>
               <p className="text-foreground text-sm font-semibold">
                 Encontre prestadores perto de você

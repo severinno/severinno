@@ -117,6 +117,8 @@ vi.mock("lucide-react", () => {
 // Setup helper — call from each test file's beforeEach
 // ---------------------------------------------------------------------------
 
+import { clearCepCache } from "@/lib/client-cep-cache"
+
 export function resetCommonMocks(): void {
   vi.clearAllMocks()
   mockGeoStore.city = null
@@ -131,6 +133,8 @@ export function resetCommonMocks(): void {
   mockFetchReverseGeo.mockReset()
   mockFetchCep.mockReset()
   _mockToast.success.mockReset()
+  // Clear client-side CEP cache (localStorage) to avoid test pollution
+  clearCepCache()
 }
 
 /** Cleanup snippet to restore real timers after a describe block using fake timers. */

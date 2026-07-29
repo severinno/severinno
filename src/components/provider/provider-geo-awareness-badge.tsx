@@ -14,14 +14,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import {
-  Navigation,
-  MapPin,
-  Loader2,
-  X,
-  Users,
-  Settings,
-} from "lucide-react"
+import { Navigation, MapPin, Loader2, X, Users, Settings } from "lucide-react"
 
 import { fetchRegionDemand } from "@/lib/api"
 import { useViewStore } from "@/store/view"
@@ -98,12 +91,9 @@ export default function ProviderGeoAwarenessBadge() {
   }[scheme]
 
   const bgGradient = {
-    emerald:
-      "bg-gradient-to-r from-emerald-50/80 to-background dark:from-emerald-950/20",
-    amber:
-      "bg-gradient-to-r from-amber-50/80 to-background dark:from-amber-950/20",
-    blue:
-      "bg-gradient-to-r from-blue-50/80 to-background dark:from-blue-950/20",
+    emerald: "bg-gradient-to-r from-emerald-50/80 to-background dark:from-emerald-950/20",
+    amber: "bg-gradient-to-r from-amber-50/80 to-background dark:from-amber-950/20",
+    blue: "bg-gradient-to-r from-blue-50/80 to-background dark:from-blue-950/20",
     muted: "",
   }[scheme]
 
@@ -112,8 +102,7 @@ export default function ProviderGeoAwarenessBadge() {
       "bg-emerald-100 text-emerald-700 ring-emerald-200/50 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-800/30",
     amber:
       "bg-amber-100 text-amber-700 ring-amber-200/50 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-800/30",
-    blue:
-      "bg-blue-100 text-blue-700 ring-blue-200/50 dark:bg-blue-900/40 dark:text-blue-300 dark:ring-blue-800/30",
+    blue: "bg-blue-100 text-blue-700 ring-blue-200/50 dark:bg-blue-900/40 dark:text-blue-300 dark:ring-blue-800/30",
     muted: "bg-muted text-muted-foreground",
   }[scheme]
 
@@ -143,20 +132,14 @@ export default function ProviderGeoAwarenessBadge() {
             iconBg,
           )}
         >
-          {needsSetup ? (
-            <Settings className="size-5" />
-          ) : (
-            <Navigation className="size-5" />
-          )}
+          {needsSetup ? <Settings className="size-5" /> : <Navigation className="size-5" />}
         </span>
 
         {/* Content */}
         <div className="min-w-0 flex-1">
           {isLoading ? (
             <>
-              <p className="text-foreground text-sm font-semibold">
-                Analisando demanda na região…
-              </p>
+              <p className="text-foreground text-sm font-semibold">Analisando demanda na região…</p>
               <p className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-xs">
                 <Loader2 className="size-3 animate-spin" />
                 Calculando solicitações ativas
@@ -168,8 +151,8 @@ export default function ProviderGeoAwarenessBadge() {
                 Configure sua região de atendimento
               </p>
               <p className="text-muted-foreground mt-0.5 text-xs">
-                Defina sua localização e raio de atendimento para descobrir
-                quantos clientes estão ativos perto de você.
+                Defina sua localização e raio de atendimento para descobrir quantos clientes estão
+                ativos perto de você.
               </p>
               <div className="mt-2 flex items-center gap-2">
                 <Button
@@ -191,25 +174,18 @@ export default function ProviderGeoAwarenessBadge() {
               aria-label="Ver solicitações"
             >
               <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-                {total} solicitação
-                {total !== 1 ? "ões" : ""} ativa
-                {total !== 1 ? "s" : ""} na sua região
+                {total} {total === 1 ? "solicitação" : "solicitações"} ativa{total !== 1 ? "s" : ""}{" "}
+                na sua região
               </p>
               <p className="text-muted-foreground mt-0.5 flex items-center gap-1 text-xs">
                 <Users className="size-3 text-emerald-600" />
                 {data!.bookings} agendamento
-                {data!.bookings !== 1 ? "s" : ""} &middot; {data!.quotes}{" "}
-                orçamento
+                {data!.bookings !== 1 ? "s" : ""} &middot; {data!.quotes} orçamento
                 {data!.quotes !== 1 ? "s" : ""} pendente
                 {data!.quotes !== 1 ? "s" : ""}
-                {radiusKm != null && (
-                  <>
-                    {" "}
-                    &middot; Raio de {radiusKm} km
-                  </>
-                )}
+                {radiusKm != null && <> &middot; Raio de {radiusKm} km</>}
               </p>
-              <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+              <p className="text-muted-foreground/70 mt-0.5 flex items-center gap-1 text-[11px]">
                 <Navigation className="size-2.5" />
                 Clique para ver na agenda
               </p>
@@ -226,11 +202,8 @@ export default function ProviderGeoAwarenessBadge() {
               </p>
               <p className="text-muted-foreground mt-0.5 flex items-center gap-1 text-xs">
                 <MapPin className="size-3 text-amber-600" />
-                {radiusKm != null && (
-                  <>Raio de {radiusKm} km &middot; </>
-                )}
-                Amplie sua região ou configure seu endereço para alcançar
-                mais clientes
+                {radiusKm != null && <>Raio de {radiusKm} km &middot; </>}
+                Amplie sua região ou configure seu endereço para alcançar mais clientes
               </p>
             </button>
           ) : null}

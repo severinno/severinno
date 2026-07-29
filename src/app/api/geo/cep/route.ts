@@ -19,15 +19,12 @@ export async function GET(request: Request) {
     const address = await withCache(
       `geo:cep:${clean}`,
       () => geocodeCEP(clean),
-      86400, // 24h
+      604800, // 7 days (CEP data rarely changes)
     )
     return cacheControlPublic(NextResponse.json(address), 60)
   } catch (e) {
     if (e instanceof ZodError) {
-      return NextResponse.json(
-        { error: "CEP inválido", details: e.issues },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "CEP inválido", details: e.issues }, { status: 400 })
     }
     return handleError(e)
   }
