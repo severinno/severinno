@@ -17,11 +17,11 @@
  */
 
 import * as React from "react"
-import { useQuery } from "@tanstack/react-query"
-import { Navigation, Star, MapPin, ChevronDown, ChevronUp } from "lucide-react"
+import { useInfiniteQuery } from "@tanstack/react-query"
+import { Navigation, Star, MapPin, ChevronDown, ChevronUp, Loader2 } from "lucide-react"
 import Image from "next/image"
 
-import { fetchProviders, type ProviderCard } from "@/lib/api"
+import { fetchProviders, type ProviderCard, type PagedResult } from "@/lib/api"
 import { useGeoStore } from "@/store/geo"
 import { useUIStore } from "@/store/ui"
 import { formatBRL } from "@/lib/format"
@@ -31,13 +31,15 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const NEARBY_RADIUS_KM = 10
-const NEARBY_LIMIT = 12
+const PAGE_SIZE = 12
 const COLLAPSED_COUNT = 4
 
 export default function NearbyProviders() {
   const { lat, lng, status } = useGeoStore()
   const openProvider = useUIStore((s) => s.openProvider)
   const [expanded, setExpanded] = React.useState(false)
+  // Sentinel element for infinite scroll intersection
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null)
 
   const hasLocation =
     status === "ready" &&
@@ -46,27 +48,59 @@ export default function NearbyProviders() {
     Number.isFinite(lat) &&
     Number.isFinite(lng)
 
-  const nearbyQuery = useQuery({
+  const nearbyQuery = useInfiniteQuery({
     queryKey: ["providers", "nearby", lat?.toFixed(3), lng?.toFixed(3)],
-    queryFn: () =>
-      fetchProviders({
+    queryFn: async ({ pageParam }) => {
+      const result = await fetchProviders({
         lat: lat!,
         lng: lng!,
         radius: NEARBY_RADIUS_KM,
         sort: "distance",
-        limit: NEARBY_LIMIT,
-      }),
+        limit: PAGE_SIZE,
+        cursor: pageParam as string | null | undefined,
+      })
+      return result
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: PagedResult<ProviderCard>) =>
+      lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     enabled: hasLocation,
-    staleTime: 60 * 1000, // 1 min
+    staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
   })
 
-  const providers = nearbyQuery.data?.items ?? []
+  // Accumulate all providers from all pages
+  const providers = React.useMemo(
+    () => nearbyQuery.data?.pages.flatMap((p) => p.items) ?? [],
+    [nearbyQuery.data],
+  )
+
+  const isLoading = nearbyQuery.isLoading
+  const isFetchingNext = nearbyQuery.isFetchingNextPage
+  const hasNext = !!nearbyQuery.hasNextPage
   const hasMore = providers.length > COLLAPSED_COUNT
+
   // When expanded, show all; when collapsed, show first COLLAPSED_COUNT
   const visibleProviders = expanded ? providers : providers.slice(0, COLLAPSED_COUNT)
 
-  if (!hasLocation || (providers.length === 0 && !nearbyQuery.isLoading)) {
+  // ── Infinite scroll: IntersectionObserver on sentinel ───────────────
+  React.useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !expanded || !hasNext || isFetchingNext) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting && hasNext && !isFetchingNext) {
+          nearbyQuery.fetchNextPage()
+        }
+      },
+      { rootMargin: "200px" },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [expanded, hasNext, isFetchingNext, nearbyQuery.fetchNextPage])
+
+  if (!hasLocation || (providers.length === 0 && !isLoading)) {
     return null
   }
 
@@ -90,7 +124,7 @@ export default function NearbyProviders() {
           </div>
 
           {/* Loading */}
-          {nearbyQuery.isLoading ? (
+          {isLoading ? (
             <div
               className={cn(
                 "gap-3",
@@ -104,12 +138,26 @@ export default function NearbyProviders() {
               ))}
             </div>
           ) : expanded ? (
-            /* === EXPANDED: responsive grid === */
+            /* === EXPANDED: responsive grid with infinite scroll === */
             <div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {providers.map((provider) => (
                   <NearbyCard key={provider.id} provider={provider} onSelect={openProvider} />
                 ))}
+              </div>
+
+              {/* Sentinel for infinite scroll + loading indicator */}
+              <div ref={sentinelRef} className="mt-4 flex items-center justify-center">
+                {isFetchingNext ? (
+                  <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                    <Loader2 className="size-4 animate-spin text-emerald-600" />
+                    Carregando mais prestadores…
+                  </div>
+                ) : !hasNext && providers.length > PAGE_SIZE ? (
+                  <span className="text-muted-foreground text-[10px]">
+                    Todos os {providers.length} prestadores carregados
+                  </span>
+                ) : null}
               </div>
 
               {/* Collapse button */}

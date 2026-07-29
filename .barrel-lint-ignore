@@ -26,6 +26,8 @@ entrypoint.sh
 fail2ban-setup.sh
 format-fuzz-results.mjs
 generate-openapi.ts
+geo-benchmark-gist.mjs
+geo-benchmark-real.mjs
 geo-benchmark.mjs
 geo-pipeline-benchmark.mjs
 glitchtip-alerts.sh

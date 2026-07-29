@@ -38,7 +38,6 @@ import {
   GitCompare,
   FileText,
   Calendar,
-  Loader2,
   Trophy,
   Sparkles,
   Navigation,
@@ -64,7 +63,6 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -139,14 +137,19 @@ export default function CompareModal() {
   const { lat, lng } = useGeoStore()
 
   // Fetch each provider in parallel
+  // NOTE: lat/lng in queryKey ensures providers are re-fetched when
+  // the user updates their location (e.g. after sharing GPS).
+  // We read fresh values via getState() inside queryFn to avoid stale
+  // closure captures across re-renders.
   const queries = useQuery({
-    queryKey: ["compare-providers", ids] as const,
+    queryKey: ["compare-providers", ids, lat, lng] as const,
     queryFn: async () => {
+      const { lat: currentLat, lng: currentLng } = useGeoStore.getState()
       const results = await Promise.all(
         ids.map((id) =>
           fetchProviderDetail(id, {
-            lat: lat ?? undefined,
-            lng: lng ?? undefined,
+            lat: currentLat ?? undefined,
+            lng: currentLng ?? undefined,
           })
             .then((data) => ({ id, data, error: null as Error | null }))
             .catch((e: unknown) => ({

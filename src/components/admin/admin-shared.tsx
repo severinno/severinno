@@ -26,6 +26,8 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
+  MapPin,
+  Navigation,
   RotateCcw,
   Search,
   ShieldCheck,
@@ -58,6 +60,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 
 // ===========================================================================
@@ -91,19 +94,11 @@ export function slugify(value: string): string {
 // Tons de status — UMA source of truth (H4 consistência)
 // ===========================================================================
 
-export type StatusTone =
-  | "emerald"
-  | "amber"
-  | "rose"
-  | "teal"
-  | "zinc"
-  | "sky"
+export type StatusTone = "emerald" | "amber" | "rose" | "teal" | "zinc" | "sky"
 
 const TONE_CLASS: Record<StatusTone, string> = {
-  emerald:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  amber:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  amber: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
   teal: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
   zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
@@ -126,14 +121,12 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1 ring-inset ring-current/10",
+        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1 ring-current/10 ring-inset",
         TONE_CLASS[tone],
         className,
       )}
     >
-      {Icon ? (
-        <Icon className={cn("size-[13px] shrink-0", spin && "animate-spin")} />
-      ) : null}
+      {Icon ? <Icon className={cn("size-[13px] shrink-0", spin && "animate-spin")} /> : null}
       {children}
     </span>
   )
@@ -236,9 +229,7 @@ export function RoleBadge({ role }: { role: UserRole }) {
 
 export function ActiveBadge({ active }: { active: boolean }) {
   return (
-    <StatusBadge tone={active ? "emerald" : "zinc"}>
-      {active ? "Ativo" : "Inativo"}
-    </StatusBadge>
+    <StatusBadge tone={active ? "emerald" : "zinc"}>{active ? "Ativo" : "Inativo"}</StatusBadge>
   )
 }
 
@@ -257,13 +248,7 @@ export function VerifiedBadge({ verified }: { verified: boolean }) {
   )
 }
 
-export function BookingStatusBadge({
-  status,
-  spin,
-}: {
-  status: BookingStatus
-  spin?: boolean
-}) {
+export function BookingStatusBadge({ status, spin }: { status: BookingStatus; spin?: boolean }) {
   const tone = bookingTone(status)
   const Icon = bookingIcon(status)
   const isInProgress = status === "IN_PROGRESS"
@@ -305,16 +290,12 @@ export function PageSectionHeader({
       )}
     >
       <div className="min-w-0 space-y-1">
-        <h2 className="text-xl font-bold tracking-tight text-foreground">
-          {title}
-        </h2>
+        <h2 className="text-foreground text-xl font-bold tracking-tight">{title}</h2>
         {description ? (
-          <p className="max-w-2xl text-sm text-muted-foreground">{description}</p>
+          <p className="text-muted-foreground max-w-2xl text-sm">{description}</p>
         ) : null}
       </div>
-      {action ? (
-        <div className="flex shrink-0 items-center gap-2">{action}</div>
-      ) : null}
+      {action ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
     </div>
   )
 }
@@ -340,31 +321,27 @@ export function FilterBar({
 }) {
   return (
     <div className={cn("mb-4", className)}>
-      <div className="flex flex-col gap-3 rounded-xl border bg-card/50 p-3 shadow-none sm:flex-row sm:items-center">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          {children}
-        </div>
+      <div className="bg-card/50 flex flex-col gap-3 rounded-xl border p-3 shadow-none sm:flex-row sm:items-center">
+        <div className="flex flex-1 flex-wrap items-center gap-2">{children}</div>
         {onClear && activeCount != null && activeCount > 0 ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={onClear}
-            className="h-8 shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground h-8 shrink-0 gap-1.5"
           >
             <X className="size-3.5" />
             Limpar filtros
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+            <span className="bg-primary text-primary-foreground inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
               {activeCount}
             </span>
           </Button>
         ) : null}
       </div>
       {resultCount != null ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          <span className="font-medium tabular-nums text-foreground">
-            {resultCount}
-          </span>{" "}
+        <p className="text-muted-foreground mt-2 text-xs">
+          <span className="text-foreground font-medium tabular-nums">{resultCount}</span>{" "}
           {resultLabel}
         </p>
       ) : null}
@@ -385,13 +362,13 @@ export function SearchInput({
 }) {
   return (
     <div className={cn("relative", className)}>
-      <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/60" />
+      <Search className="text-muted-foreground/60 absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="h-9 w-full rounded-lg border border-input/60 bg-background pl-8 pr-3 text-sm outline-none transition-all placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20"
+        className="border-input/60 bg-background placeholder:text-muted-foreground/70 focus:border-primary focus:ring-primary/20 h-9 w-full rounded-lg border pr-3 pl-8 text-sm transition-all outline-none focus:ring-2"
       />
     </div>
   )
@@ -411,20 +388,26 @@ export function TableSkeleton({
   className?: string
 }) {
   return (
-    <div className={cn("overflow-hidden rounded-xl border border-border/50", className)}>
-      <div className="border-b border-border/50 bg-muted/30 px-4 py-2.5">
+    <div className={cn("border-border/50 overflow-hidden rounded-xl border", className)}>
+      <div className="border-border/50 bg-muted/30 border-b px-4 py-2.5">
         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
           {Array.from({ length: cols }).map((_, i) => (
             <Skeleton key={i} className="h-3.5 w-20" />
           ))}
         </div>
       </div>
-      <div className="divide-y divide-border/50">
+      <div className="divide-border/50 divide-y">
         {Array.from({ length: rows }).map((_, r) => (
           <div key={r} className="px-4 py-3">
-            <div className="grid items-center gap-4" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+            <div
+              className="grid items-center gap-4"
+              style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+            >
               {Array.from({ length: cols }).map((_, c) => (
-                <Skeleton key={c} className={cn("h-4", c === 0 ? "w-32" : c === cols - 1 ? "w-12" : "w-20")} />
+                <Skeleton
+                  key={c}
+                  className={cn("h-4", c === 0 ? "w-32" : c === cols - 1 ? "w-12" : "w-20")}
+                />
               ))}
             </div>
           </div>
@@ -450,18 +433,16 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-muted/20 px-6 py-16 text-center",
+        "border-border/60 bg-muted/20 flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center",
         className,
       )}
     >
-      <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/5 ring-1 ring-primary/10 text-primary/60">
+      <div className="bg-primary/5 ring-primary/10 text-primary/60 flex size-12 items-center justify-center rounded-2xl ring-1">
         <Icon className="size-6" />
       </div>
       <h3 className="mt-4 text-base font-semibold tracking-tight">{title}</h3>
       {description ? (
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          {description}
-        </p>
+        <p className="text-muted-foreground mt-1 max-w-sm text-sm">{description}</p>
       ) : null}
       {action ? <div className="mt-5">{action}</div> : null}
     </div>
@@ -490,9 +471,7 @@ export function ErrorState({
         <AlertTriangle className="size-6" />
       </div>
       <h3 className="mt-4 text-base font-semibold tracking-tight">{title}</h3>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        {description}
-      </p>
+      <p className="text-muted-foreground mt-1 max-w-sm text-sm">{description}</p>
       {onRetry ? (
         <Button
           variant="outline"
@@ -535,9 +514,9 @@ export function Pagination({
       >
         Anterior
       </Button>
-      <span className="text-sm tabular-nums text-muted-foreground">
-        Página <span className="font-medium text-foreground">{page}</span> de{" "}
-        <span className="font-medium text-foreground">{totalPages}</span>
+      <span className="text-muted-foreground text-sm tabular-nums">
+        Página <span className="text-foreground font-medium">{page}</span> de{" "}
+        <span className="text-foreground font-medium">{totalPages}</span>
       </span>
       <Button
         variant="outline"
@@ -566,13 +545,171 @@ export function ResultCount({
   const from = total === 0 ? 0 : (page - 1) * limit + 1
   const to = Math.min(total, page * limit)
   return (
-    <p className="text-xs text-muted-foreground">
-      Exibindo{" "}
-      <span className="font-medium tabular-nums text-foreground">{from}</span>
-      –<span className="font-medium tabular-nums text-foreground">{to}</span>{" "}
-      de <span className="font-medium tabular-nums text-foreground">{total}</span>{" "}
-      {label}
+    <p className="text-muted-foreground text-xs">
+      Exibindo <span className="text-foreground font-medium tabular-nums">{from}</span>–
+      <span className="text-foreground font-medium tabular-nums">{to}</span> de{" "}
+      <span className="text-foreground font-medium tabular-nums">{total}</span> {label}
     </p>
+  )
+}
+
+// ===========================================================================
+// AdminGeoFilter — H4/H7: filtro de localização geográfica reutilizável
+// ===========================================================================
+
+export interface GeoFilterState {
+  city: string
+  state: string
+  lat: number | null
+  lng: number | null
+  radiusKm: number
+  gpsActive: boolean
+}
+
+export const DEFAULT_GEO_FILTER: GeoFilterState = {
+  city: "",
+  state: "",
+  lat: null,
+  lng: null,
+  radiusKm: 50,
+  gpsActive: false,
+}
+
+export function AdminGeoFilter({
+  value,
+  onChange,
+  className,
+}: {
+  value: GeoFilterState
+  onChange: (next: GeoFilterState) => void
+  className?: string
+}) {
+  const [locating, setLocating] = React.useState(false)
+  const [geoError, setGeoError] = React.useState<string | null>(null)
+
+  const activeFilters = (value.city ? 1 : 0) + (value.state ? 1 : 0) + (value.lat != null ? 1 : 0)
+
+  const handleGPS = () => {
+    if (!navigator.geolocation) {
+      setGeoError("Geolocalização não suportada pelo navegador.")
+      return
+    }
+    setLocating(true)
+    setGeoError(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        onChange({
+          ...value,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          gpsActive: true,
+        })
+        setLocating(false)
+      },
+      (err) => {
+        setGeoError(
+          err.code === err.PERMISSION_DENIED
+            ? "Permissão de localização negada."
+            : "Não foi possível obter a localização.",
+        )
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 10_000 },
+    )
+  }
+
+  const clearGeo = () => {
+    onChange({ ...DEFAULT_GEO_FILTER, city: value.city, state: value.state })
+    setGeoError(null)
+  }
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2", className)}>
+      {/* City input */}
+      <Input
+        type="text"
+        value={value.city}
+        onChange={(e) => {
+          onChange({ ...value, city: e.target.value, gpsActive: false })
+          setGeoError(null)
+        }}
+        placeholder="Cidade"
+        className="h-9 min-w-[120px] flex-1"
+      />
+
+      {/* State input */}
+      <Input
+        type="text"
+        value={value.state}
+        onChange={(e) => {
+          onChange({ ...value, state: e.target.value.toUpperCase().slice(0, 2), gpsActive: false })
+          setGeoError(null)
+        }}
+        placeholder="UF"
+        maxLength={2}
+        className="h-9 w-[60px] text-center uppercase"
+      />
+
+      {/* Radius slider */}
+      <div className="flex items-center gap-2">
+        <label className="text-muted-foreground flex items-center gap-1 text-xs whitespace-nowrap">
+          <MapPin className="size-3" />
+          {value.radiusKm}km
+        </label>
+        <input
+          type="range"
+          min={5}
+          max={200}
+          step={5}
+          value={value.radiusKm}
+          onChange={(e) => onChange({ ...value, radiusKm: Number(e.target.value) })}
+          className="bg-muted accent-primary h-1.5 w-20 cursor-pointer appearance-none rounded-full"
+          title="Raio de busca (km)"
+        />
+      </div>
+
+      {/* GPS button */}
+      <button
+        type="button"
+        onClick={handleGPS}
+        disabled={locating}
+        className={cn(
+          "border-input/60 inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-colors",
+          value.gpsActive
+            ? "border-primary bg-primary/10 text-primary"
+            : "bg-background text-muted-foreground hover:text-foreground",
+          locating && "animate-pulse",
+        )}
+        title={
+          value.gpsActive ? "Localização GPS ativa. Clique para remover." : "Usar minha localização"
+        }
+      >
+        {locating ? <Loader2 className="size-4 animate-spin" /> : <Navigation className="size-4" />}
+      </button>
+
+      {/* Active filter pill */}
+      {activeFilters > 0 ? (
+        <span className="bg-primary/10 text-primary inline-flex h-6 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium">
+          <MapPin className="size-3" />
+          {activeFilters} geo
+        </span>
+      ) : null}
+
+      {/* Clear geo */}
+      {activeFilters > 0 ? (
+        <button
+          type="button"
+          onClick={clearGeo}
+          className="text-muted-foreground hover:text-foreground inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors"
+          title="Limpar filtros de localização"
+        >
+          <X className="size-3.5" />
+        </button>
+      ) : null}
+
+      {/* Geo error */}
+      {geoError ? <span className="text-[11px] text-rose-500">{geoError}</span> : null}
+    </div>
   )
 }
 
@@ -703,10 +840,9 @@ export function ConfirmToggleDialog({
             {currentValue ? "Remover" : "Conceder"} {fieldLabel}?
           </AlertDialogTitle>
           <AlertDialogDescription className="pt-1">
-            Você está prestes a <strong>{action}</strong> de{" "}
-            <strong>{fieldLabel}</strong> para{" "}
-            <strong>{targetLabel}</strong>. Esta ação pode afetar a experiência
-            do usuário na plataforma.
+            Você está prestes a <strong>{action}</strong> de <strong>{fieldLabel}</strong> para{" "}
+            <strong>{targetLabel}</strong>. Esta ação pode afetar a experiência do usuário na
+            plataforma.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="gap-2 pt-2">
@@ -726,7 +862,7 @@ export function ConfirmToggleDialog({
 
 export function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-border/60 bg-muted/50 px-1 font-mono text-[10px] font-semibold text-muted-foreground">
+    <kbd className="border-border/60 bg-muted/50 text-muted-foreground inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 font-mono text-[10px] font-semibold">
       {children}
     </kbd>
   )
@@ -746,10 +882,7 @@ export function FreshnessLabel({
   if (!updatedAt) return null
   return (
     <span
-      className={cn(
-        "inline-flex items-center gap-1 text-xs text-muted-foreground/70",
-        className,
-      )}
+      className={cn("text-muted-foreground/70 inline-flex items-center gap-1 text-xs", className)}
       title={`Atualizado em ${updatedAt.toLocaleString("pt-BR")}`}
     >
       <Clock className="size-3" />
