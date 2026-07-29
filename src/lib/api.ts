@@ -12,11 +12,7 @@
 // Shared API types — mirrored from the API contract in worklog.md
 // ---------------------------------------------------------------------------
 
-export type ServiceUnit =
-  | "UNIDADE"
-  | "METRO_LINEAR"
-  | "METRO_QUADRADO"
-  | "METRO_CUBICO"
+export type ServiceUnit = "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
 
 export type ProviderService = {
   id: string
@@ -39,6 +35,7 @@ export type ProviderCard = {
   verified: boolean
   city?: string | null
   distanceKm?: number | null
+  radiusKm?: number | null
   lat?: number | null
   lng?: number | null
   services: ProviderService[]
@@ -195,10 +192,7 @@ async function request<T>(
   return parsed as T
 }
 
-export function apiGet<T>(
-  path: string,
-  params?: Record<string, unknown>,
-): Promise<T> {
+export function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
   return request<T>("GET", path, params)
 }
 
@@ -247,8 +241,11 @@ export function fetchProviders(query: ProvidersQuery) {
   })
 }
 
-export function fetchProviderDetail(id: string) {
-  return apiGet<ProviderDetail>(`/api/providers/${id}`)
+export function fetchProviderDetail(id: string, opts?: { lat?: number; lng?: number }) {
+  return apiGet<ProviderDetail>(`/api/providers/${id}`, {
+    ...(opts?.lat !== undefined ? { lat: opts.lat } : {}),
+    ...(opts?.lng !== undefined ? { lng: opts.lng } : {}),
+  })
 }
 
 export function fetchCategories(opts?: { level?: number; parentId?: string }) {
@@ -278,6 +275,28 @@ export function fetchCep(cep: string) {
  */
 export function fetchGeoSearch(q: string, limit?: number) {
   return apiGet<GeoSearchResult[]>("/api/geo/search", { q, limit })
+}
+
+/**
+ * Structured search via Nominatim — use when you have separate address fields.
+ *
+ * Parâmetros (todos opcionais, mas ao menos um deve ser informado):
+ * @param street  - Logradouro, ex.: "Av. Paulista, 1000"
+ * @param city    - Cidade, ex.: "São Paulo"
+ * @param state   - Estado (sigla ou nome), ex.: "SP"
+ * @param country - País (default "Brazil")
+ * @param postcode- CEP, ex.: "01310100"
+ * @param limit   - Máx. resultados (default 5, max 10)
+ */
+export function fetchGeoSearchStructured(opts: {
+  street?: string
+  city?: string
+  state?: string
+  country?: string
+  postcode?: string
+  limit?: number
+}) {
+  return apiGet<GeoSearchResult[]>("/api/geo/search", opts)
 }
 
 /**

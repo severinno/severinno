@@ -19,6 +19,7 @@ import { vi } from "vitest"
 export const mockGeoStore: Record<string, unknown> = {
   setFromCoords: vi.fn(),
   setFromGPS: vi.fn().mockResolvedValue(undefined),
+  setFromCEP: vi.fn(),
   city: null as string | null,
   lat: null as number | null,
   lng: null as number | null,
@@ -27,7 +28,10 @@ export const mockGeoStore: Record<string, unknown> = {
 vi.mock("@/store/geo", () => ({
   useGeoStore: Object.assign(
     (selector: (s: typeof mockGeoStore) => unknown) => selector(mockGeoStore),
-    { getState: () => mockGeoStore },
+    {
+      getState: () => mockGeoStore,
+      setState: (partial: Record<string, unknown>) => Object.assign(mockGeoStore, partial),
+    },
   ),
 }))
 
@@ -36,11 +40,15 @@ vi.mock("@/store/geo", () => ({
 // ---------------------------------------------------------------------------
 
 export const mockFetchGeoSearch = vi.fn()
+export const mockFetchGeoSearchStructured = vi.fn()
 export const mockFetchReverseGeo = vi.fn()
+export const mockFetchCep = vi.fn()
 
 vi.mock("@/lib/api", () => ({
   fetchGeoSearch: (...args: any[]) => mockFetchGeoSearch(...args),
+  fetchGeoSearchStructured: (...args: any[]) => mockFetchGeoSearchStructured(...args),
   fetchReverseGeo: (...args: any[]) => mockFetchReverseGeo(...args),
+  fetchCep: (...args: any[]) => mockFetchCep(...args),
 }))
 
 // ---------------------------------------------------------------------------
@@ -65,7 +73,8 @@ export function getMockToast() {
 // Mock framer-motion
 // ---------------------------------------------------------------------------
 
-vi.mock("framer-motion", () => ({    motion: {
+vi.mock("framer-motion", () => ({
+  motion: {
     span: (p: any) => {
       const { size, color, stroke, strokeWidth, fill, absoluteStrokeWidth, ...safe } = p
       return <span {...safe} />
@@ -96,8 +105,10 @@ vi.mock("lucide-react", () => {
   Icon.displayName = "Icon"
   return {
     MapPin: () => <span data-testid="icon-mappin" />,
+    Mailbox: () => <span data-testid="icon-mailbox" />,
     LocateFixed: () => <span data-testid="icon-locate" />,
     Loader2: () => <span data-testid="icon-loading" />,
+    Navigation: () => <span data-testid="icon-navigation" />,
     X: () => <span data-testid="icon-x" />,
   }
 })
@@ -114,7 +125,17 @@ export function resetCommonMocks(): void {
   mockGeoStore.address = null
   mockGeoStore.setFromCoords = vi.fn()
   mockGeoStore.setFromGPS = vi.fn().mockResolvedValue(undefined)
+  mockGeoStore.setFromCEP = vi.fn()
   mockFetchGeoSearch.mockReset()
+  mockFetchGeoSearchStructured.mockReset()
   mockFetchReverseGeo.mockReset()
+  mockFetchCep.mockReset()
   _mockToast.success.mockReset()
+}
+
+/** Cleanup snippet to restore real timers after a describe block using fake timers. */
+export const useRealTimersAfterAll = {
+  afterAll: () => {
+    vi.useRealTimers()
+  },
 }

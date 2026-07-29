@@ -14,14 +14,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import {
-  MapPin,
-  Navigation,
-  Star,
-  Loader2,
-  ChevronRight,
-  Wrench,
-} from "lucide-react"
+import { MapPin, Navigation, Star, Loader2, ChevronRight, Wrench } from "lucide-react"
 
 import { fetchProviders, type ProviderCard } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
@@ -48,12 +41,7 @@ type Props = {
   className?: string
 }
 
-export default function ProviderSpotlightGeo({
-  onQuote,
-  onBook,
-  onView,
-  className,
-}: Props) {
+export default function ProviderSpotlightGeo({ onQuote, onBook, onView, className }: Props) {
   const { lat, lng, status } = useGeoStore()
   const hasLocation = status === "ready" && lat != null && lng != null
 
@@ -85,16 +73,14 @@ export default function ProviderSpotlightGeo({
   // Derive the cheapest service for price display
   const cheapestPrice = (p: ProviderCard) => {
     if (!p.services?.length) return null
-    return p.services.reduce(
-      (min, s) => (s.basePrice < min.basePrice ? s : min),
-      p.services[0],
-    ).basePrice
+    return p.services.reduce((min, s) => (s.basePrice < min.basePrice ? s : min), p.services[0])
+      .basePrice
   }
 
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-100/30 dark:from-emerald-950/30 dark:via-background dark:to-emerald-900/10",
+        "dark:via-background relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-100/30 dark:from-emerald-950/30 dark:to-emerald-900/10",
         className,
       )}
       aria-label="Prestadores próximos a você"
@@ -102,7 +88,7 @@ export default function ProviderSpotlightGeo({
       {/* Subtle decorative elements */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -right-16 -top-16 size-48 rounded-full bg-emerald-400/5 blur-3xl"
+        className="pointer-events-none absolute -top-16 -right-16 size-48 rounded-full bg-emerald-400/5 blur-3xl"
       />
       <div
         aria-hidden
@@ -117,18 +103,15 @@ export default function ProviderSpotlightGeo({
               <Navigation className="size-4" />
             </span>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">
-                Prestadores próximos
-              </h2>
-              <p className="text-xs text-muted-foreground">
-        {nearbyQuery.isLoading
-          ? "Buscando na sua região…"
-          : `${providers.length} prestador${providers.length !== 1 ? "es" : ""} perto de você`
-              }
-            </p>
+              <h2 className="text-foreground text-sm font-semibold">Prestadores próximos</h2>
+              <p className="text-muted-foreground text-xs">
+                {nearbyQuery.isLoading
+                  ? "Buscando na sua região…"
+                  : `${providers.length} prestador${providers.length !== 1 ? "es" : ""} perto de você`}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
         {/* Loading state */}
         {nearbyQuery.isLoading ? (
@@ -136,7 +119,7 @@ export default function ProviderSpotlightGeo({
             {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="flex-1 min-w-[240px] rounded-xl border bg-white p-4 dark:bg-card"
+                className="dark:bg-card min-w-[240px] flex-1 rounded-xl border bg-white p-4"
               >
                 <div className="flex items-center gap-3">
                   <Skeleton className="size-10 rounded-full" />
@@ -202,7 +185,7 @@ export default function ProviderSpotlightGeo({
 
         {/* Distance hint at the bottom */}
         {providers.length > 0 && !nearbyQuery.isLoading ? (
-          <p className="mt-3 text-center text-[11px] text-muted-foreground">
+          <p className="text-muted-foreground mt-3 text-center text-[11px]">
             <MapPin className="mr-0.5 inline size-3 align-text-top text-emerald-600" />
             Mostrando prestadores num raio de até 100 km da sua localização
           </p>
@@ -239,7 +222,9 @@ function SpotlightCard({
     : "P"
 
   const isNearby =
-    typeof provider.distanceKm === "number" && provider.distanceKm >= 0 && provider.distanceKm < 2
+    typeof provider.distanceKm === "number" &&
+    provider.distanceKm >= 0 &&
+    (provider.radiusKm != null ? provider.distanceKm <= provider.radiusKm : provider.distanceKm < 2)
 
   return (
     <div
@@ -253,7 +238,7 @@ function SpotlightCard({
       {isNearby ? (
         <Badge
           variant="outline"
-          className="absolute -top-2 -right-2 border-blue-200 bg-blue-50 text-blue-700 text-[10px] px-2 py-0.5 shadow-sm"
+          className="absolute -top-2 -right-2 border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700 shadow-sm"
         >
           <Navigation className="mr-0.5 size-3" />
           Perto de você
@@ -265,31 +250,29 @@ function SpotlightCard({
         <button
           type="button"
           onClick={() => onView?.(provider.id)}
-          className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
           aria-label={`Ver perfil de ${provider.name}`}
         >
           <Avatar className="size-10 shrink-0 rounded-md">
             {provider.avatarUrl ? (
               <AvatarImage src={provider.avatarUrl} alt={provider.name} />
             ) : null}
-            <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+            <AvatarFallback className="rounded-md bg-emerald-100 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               {initials}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium group-hover:text-emerald-700 transition-colors">
+            <p className="truncate text-sm font-medium transition-colors group-hover:text-emerald-700">
               {provider.name}
             </p>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
               {typeof provider.distanceKm === "number" ? (
                 <span className="inline-flex items-center gap-0.5">
                   <MapPin className="size-3 text-emerald-600" />
                   {formatDistance(provider.distanceKm)}
                 </span>
               ) : null}
-              {provider.city ? (
-                <span className="truncate">· {provider.city}</span>
-              ) : null}
+              {provider.city ? <span className="truncate">· {provider.city}</span> : null}
             </div>
           </div>
         </button>
@@ -304,7 +287,7 @@ function SpotlightCard({
 
       {/* Price hint */}
       {cheapestPrice !== null ? (
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="text-muted-foreground mt-2 text-xs">
           a partir de{" "}
           <span className="font-semibold text-emerald-700 dark:text-emerald-400">
             {formatBRL(cheapestPrice)}
