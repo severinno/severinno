@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function GET() {
   try {
@@ -24,6 +25,7 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
+    await assertRateLimit(req, RATE_LIMITS.general)
     const user = await requireUser()
     const { step, done } = await req.json()
 

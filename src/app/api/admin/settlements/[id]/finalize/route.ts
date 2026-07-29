@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * POST /api/admin/settlements/[id]/finalize
@@ -14,6 +15,7 @@ export async function POST(
 ) {
   try {
     const session = await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.settlements)
     const { id } = await params
 
     const body = (await request.json().catch(() => ({}))) as {

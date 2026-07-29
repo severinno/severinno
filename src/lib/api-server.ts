@@ -264,3 +264,18 @@ export async function syncServiceSearch(service: {
     "upsert",
   )
 }
+
+/**
+ * Queue a provider for search reindexing.
+ */
+export async function syncProviderSearch(provider: {
+  id: string
+}): Promise<void> {
+  await db.$queryRawUnsafe(
+    `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
+     VALUES ($1, $2, $3, NOW())`,
+    "provider",
+    provider.id,
+    "upsert",
+  )
+}

@@ -1,0 +1,93 @@
+src/app/__tests__/accessibility.test.tsx(106,11): error TS2339: Property 'digest' does not exist on type 'Error'.
+src/app/__tests__/accessibility.test.tsx(177,11): error TS2339: Property 'digest' does not exist on type 'Error'.
+src/app/api/__tests__/admin-finance-provider-transactions-route.test.ts(37,25): error TS2349: This expression is not callable.
+  Type '{ findUnique: Mock<Procedure>; upsert: Mock<Procedure>; findMany: Mock<Procedure>; }' has no call signatures.
+src/app/api/__tests__/admin-finance-route.test.ts(38,12): error TS2698: Spread types may only be created from object types.
+src/app/api/__tests__/admin-finance-route.test.ts(38,58): error TS18046: 'actual' is of type 'unknown'.
+src/app/api/__tests__/admin-finance-route.test.ts(50,3): error TS2322: Type '{ findUnique: Mock<Procedure>; upsert: Mock<Procedure>; findMany: Mock<Procedure>; }' is not assignable to type 'DynamicModelExtensionThis<TypeMap<InternalArgs & { result: {}; model: {}; query: {}; client: {}; }, {}>, "Setting", { result: {}; model: {}; query: {}; client: {}; }>'.
+  Type '{ findUnique: Mock<Procedure>; upsert: Mock<Procedure>; findMany: Mock<Procedure>; }' is missing the following properties from type '{ findUnique: <A extends SettingFindUniqueArgs<InternalArgs & { result: {}; model: {}; query: {}; client: {}; }>>(args: Exact<A, SettingFindUniqueArgs<InternalArgs & { ...; }>>) => DynamicModelExtensionFluentApi<...> & PrismaPromise<...>; ... 15 more ...; count: <A extends SettingCountArgs<...>>(args?: Exact<...> | ...': findUniqueOrThrow, findFirst, findFirstOrThrow, create, and 10 more.
+src/app/api/__tests__/change-password.test.ts(253,33): error TS2339: Property 'pushUrl' does not exist on type '{ userId: string; type: string; title: string; body?: string | undefined; }'.
+src/app/api/__tests__/cron-settlements-route.test.ts(28,25): error TS2349: This expression is not callable.
+  Type '{ findUnique: any; upsert: any; findMany: any; }' has no call signatures.
+src/app/api/__tests__/cron-settlements-route.test.ts(29,34): error TS2349: This expression is not callable.
+  Type '{ findFirst: any; create: any; findMany: any; findUnique: any; update: any; }' has no call signatures.
+src/app/api/__tests__/cron-settlements-route.test.ts(121,31): error TS2349: This expression is not callable.
+  Type 'String' has no call signatures.
+src/app/api/__tests__/newsletter-route.test.ts(106,29): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+  Type 'Request' is missing the following properties from type 'NextRequest': cookies, nextUrl, page, ua
+src/app/api/__tests__/newsletter-route.test.ts(123,29): error TS2345: Argument of type 'Request' is not assignable to parameter of type 'NextRequest'.
+  Type 'Request' is missing the following properties from type 'NextRequest': cookies, nextUrl, page, ua
+src/app/api/__tests__/providers-handle-error.test.ts(210,11): error TS7022: 'phase2Error' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+src/app/api/__tests__/providers-handle-error.test.ts(210,25): error TS2349: This expression is not callable.
+  Type 'Error' has no call signatures.
+src/app/api/__tests__/providers-handle-error.test.ts(211,62): error TS2448: Block-scoped variable 'phase2Error' used before its declaration.
+src/app/api/__tests__/providers-radius-expansion.test.ts(622,6): error TS2554: Expected 0 arguments, but got 1.
+src/app/api/__tests__/providers-radius-expansion.test.ts(622,44): error TS2339: Property 'mockImplementation' does not exist on type 'Promise<boolean>'.
+src/app/api/__tests__/quotes-route.test.ts(91,50): error TS2345: Argument of type '{ providerId: string; items: { serviceId: string; description: string; quantity: number; unit: string; }[]; notes: string; }' is not assignable to parameter of type '{ providerId: string; address: string; cep: string; lat: number; lng: number; items: { serviceId: string; description: string; quantity: number; unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"; photos: string[]; }[]; expiresAt?: Date | undefined; }'.
+  Type '{ providerId: string; items: { serviceId: string; description: string; quantity: number; unit: string; }[]; notes: string; }' is missing the following properties from type '{ providerId: string; address: string; cep: string; lat: number; lng: number; items: { serviceId: string; description: string; quantity: number; unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"; photos: string[]; }[]; expiresAt?: Date | undefined; }': address, cep, lat, lng
+src/app/api/__tests__/quotes-route.test.ts(204,62): error TS2345: Argument of type '{ price: number; providerNote: string; status: string; }' is not assignable to parameter of type '{ price: number; status: "REJECTED" | "QUOTED"; providerNote?: string | undefined; }'.
+  Types of property 'status' are incompatible.
+    Type 'string' is not assignable to type '"REJECTED" | "QUOTED"'.
+src/app/api/__tests__/webhooks-lytex-route.test.ts(254,5): error TS2322: Type 'Mock<(queries: Promise<unknown>[]) => Promise<unknown[]>>' is not assignable to type '{ <P extends PrismaPromise<any>[]>(arg: [...P], options?: { isolationLevel?: TransactionIsolationLevel | undefined; } | undefined): Promise<UnwrapTuple<P>>; <R>(fn: (client: Omit<...>) => Promise<...>, options?: { ...; } | undefined): Promise<...>; }'.
+  Types of parameters 'queries' and 'fn' are incompatible.
+    Type '(client: Omit<DynamicClientExtensionThis<TypeMap<InternalArgs & { result: {}; model: {}; query: {}; client: {}; }, {}>, TypeMapCb<{ log: "query"[]; }>, { result: {}; model: {}; query: {}; client: {}; }>, "$extends" | ... 3 more ... | "$on">) => Promise<...>' is not assignable to type 'Promise<unknown>[]'.
+src/app/api/__tests__/webhooks-lytex-route.test.ts(339,5): error TS2322: Type 'Mock<(q: Promise<unknown>[]) => Promise<unknown[]>>' is not assignable to type '{ <P extends PrismaPromise<any>[]>(arg: [...P], options?: { isolationLevel?: TransactionIsolationLevel | undefined; } | undefined): Promise<UnwrapTuple<P>>; <R>(fn: (client: Omit<...>) => Promise<...>, options?: { ...; } | undefined): Promise<...>; }'.
+  Types of parameters 'q' and 'fn' are incompatible.
+    Type '(client: Omit<DynamicClientExtensionThis<TypeMap<InternalArgs & { result: {}; model: {}; query: {}; client: {}; }, {}>, TypeMapCb<{ log: "query"[]; }>, { result: {}; model: {}; query: {}; client: {}; }>, "$extends" | ... 3 more ... | "$on">) => Promise<...>' is not assignable to type 'Promise<unknown>[]'.
+src/app/api/__tests__/webhooks-lytex-route.test.ts(399,5): error TS2322: Type 'Mock<(q: Promise<unknown>[]) => Promise<unknown[]>>' is not assignable to type '{ <P extends PrismaPromise<any>[]>(arg: [...P], options?: { isolationLevel?: TransactionIsolationLevel | undefined; } | undefined): Promise<UnwrapTuple<P>>; <R>(fn: (client: Omit<...>) => Promise<...>, options?: { ...; } | undefined): Promise<...>; }'.
+  Types of parameters 'q' and 'fn' are incompatible.
+    Type '(client: Omit<DynamicClientExtensionThis<TypeMap<InternalArgs & { result: {}; model: {}; query: {}; client: {}; }, {}>, TypeMapCb<{ log: "query"[]; }>, { result: {}; model: {}; query: {}; client: {}; }>, "$extends" | ... 3 more ... | "$on">) => Promise<...>' is not assignable to type 'Promise<unknown>[]'.
+src/app/api/__tests__/webhooks-lytex-route.test.ts(473,5): error TS2322: Type 'Mock<(q: Promise<unknown>[]) => Promise<unknown[]>>' is not assignable to type '{ <P extends PrismaPromise<any>[]>(arg: [...P], options?: { isolationLevel?: TransactionIsolationLevel | undefined; } | undefined): Promise<UnwrapTuple<P>>; <R>(fn: (client: Omit<...>) => Promise<...>, options?: { ...; } | undefined): Promise<...>; }'.
+  Types of parameters 'q' and 'fn' are incompatible.
+    Type '(client: Omit<DynamicClientExtensionThis<TypeMap<InternalArgs & { result: {}; model: {}; query: {}; client: {}; }, {}>, TypeMapCb<{ log: "query"[]; }>, { result: {}; model: {}; query: {}; client: {}; }>, "$extends" | ... 3 more ... | "$on">) => Promise<...>' is not assignable to type 'Promise<unknown>[]'.
+src/components/modals/__tests__/accessibility.test.tsx(540,43): error TS2322: Type '"forgot-password"' is not assignable to type '"login" | "register"'.
+src/components/shared/__tests__/dashboard-shell.test.tsx(211,25): error TS2741: Property '$$typeof' is missing in type '() => null' but required in type 'ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>'.
+src/components/shared/__tests__/dashboard-shell.test.tsx(212,24): error TS2741: Property '$$typeof' is missing in type '() => null' but required in type 'ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>'.
+src/components/shared/__tests__/dashboard-shell.test.tsx(528,29): error TS2741: Property '$$typeof' is missing in type '() => null' but required in type 'ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>'.
+src/components/shared/__tests__/dashboard-shell.test.tsx(529,29): error TS2741: Property '$$typeof' is missing in type '() => null' but required in type 'ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>'.
+src/components/shared/__tests__/notification-preferences.accessibility.test.tsx(95,45): error TS2345: Argument of type '{ data: undefined; isLoading: true; }' is not assignable to parameter of type 'UseQueryResult<unknown, unknown>'.
+  Type '{ data: undefined; isLoading: true; }' is not assignable to type 'QueryObserverLoadingResult<unknown, unknown> | QueryObserverPendingResult<unknown, unknown>'.
+    Type '{ data: undefined; isLoading: true; }' is missing the following properties from type 'QueryObserverPendingResult<unknown, unknown>': error, isError, isPending, isLoadingError, and 20 more.
+src/components/shared/__tests__/notification-preferences.accessibility.test.tsx(111,45): error TS2345: Argument of type '{ data: { preferences: { type: string; pushEnabled: boolean; emailEnabled: boolean; whatsappEnabled: boolean; soundEnabled: boolean; }[]; }; isLoading: false; }' is not assignable to parameter of type 'UseQueryResult<unknown, unknown>'.
+  Type '{ data: { preferences: { type: string; pushEnabled: boolean; emailEnabled: boolean; whatsappEnabled: boolean; soundEnabled: boolean; }[]; }; isLoading: false; }' is not assignable to type 'QueryObserverRefetchErrorResult<unknown, unknown> | QueryObserverSuccessResult<unknown, unknown> | QueryObserverPlaceholderResult<unknown, unknown>'.
+    Type '{ data: { preferences: { type: string; pushEnabled: boolean; emailEnabled: boolean; whatsappEnabled: boolean; soundEnabled: boolean; }[]; }; isLoading: false; }' is missing the following properties from type 'QueryObserverPlaceholderResult<unknown, unknown>': isError, error, isPending, isLoadingError, and 20 more.
+src/components/vitrine/__tests__/vitrine-accessibility.test.tsx(481,48): error TS2322: Type '{ id: string; name: string; city: string; bio: string; rating: number; reviewCount: number; verified: boolean; distanceKm: number; completedBookings: number; avatarUrl: string; coverUrl: string; memberSince: string; basePrice: number; services: { ...; }[]; }' is not assignable to type 'ProviderCard'.
+  Types of property 'services' are incompatible.
+    Type '{ id: string; title: string; basePrice: number; unit: string; category: { id: string; name: string; }; }[]' is not assignable to type 'ProviderService[]'.
+      Type '{ id: string; title: string; basePrice: number; unit: string; category: { id: string; name: string; }; }' is not assignable to type 'ProviderService'.
+        Types of property 'unit' are incompatible.
+          Type 'string' is not assignable to type 'ServiceUnit'.
+src/lib/__tests__/benchmark-diff.test.ts(118,24): error TS2339: Property 'elapsedMs' does not exist on type 'object'.
+src/lib/__tests__/benchmark-diff.test.ts(124,24): error TS2339: Property 'elapsedMs' does not exist on type 'object'.
+src/lib/__tests__/benchmark-diff.test.ts(243,29): error TS2339: Property 'haversineUnitCosts' does not exist on type 'object'.
+src/lib/__tests__/benchmark-diff.test.ts(244,29): error TS2339: Property 'avgHaversinePerProvider' does not exist on type 'object'.
+src/lib/__tests__/distance-fallback-fuzz.test.ts(135,5): error TS2322: Type 'Mock<(sql: string, ...params: unknown[]) => Promise<{ id: string; distance_km: number; }[]>>' is not assignable to type '<T>(sql: string, ...params: unknown[]) => Promise<T>'.
+  Type 'Promise<{ id: string; distance_km: number; }[]>' is not assignable to type 'Promise<T>'.
+    Type '{ id: string; distance_km: number; }[]' is not assignable to type 'T'.
+      'T' could be instantiated with an arbitrary type which could be unrelated to '{ id: string; distance_km: number; }[]'.
+src/lib/__tests__/distance-fallback-fuzz.test.ts(228,7): error TS2322: Type 'Mock<() => Promise<never[]>>' is not assignable to type '<T>(sql: string, ...params: unknown[]) => Promise<T>'.
+  Type 'Promise<never[]>' is not assignable to type 'Promise<T>'.
+    Type 'never[]' is not assignable to type 'T'.
+      'T' could be instantiated with an arbitrary type which could be unrelated to 'never[]'.
+src/lib/__tests__/distance-fallback-fuzz.test.ts(256,7): error TS2322: Type 'Mock<() => Promise<never[]>>' is not assignable to type '<T>(sql: string, ...params: unknown[]) => Promise<T>'.
+  Type 'Promise<never[]>' is not assignable to type 'Promise<T>'.
+    Type 'never[]' is not assignable to type 'T'.
+      'T' could be instantiated with an arbitrary type which could be unrelated to 'never[]'.
+src/lib/__tests__/distance-fallback-fuzz.test.ts(309,7): error TS2322: Type 'Mock<() => Promise<never[]>>' is not assignable to type '<T>(sql: string, ...params: unknown[]) => Promise<T>'.
+  Type 'Promise<never[]>' is not assignable to type 'Promise<T>'.
+    Type 'never[]' is not assignable to type 'T'.
+      'T' could be instantiated with an arbitrary type which could be unrelated to 'never[]'.
+src/lib/__tests__/fuzz-utils.ts(286,22): error TS2345: Argument of type 'number' is not assignable to parameter of type '5 | 10 | 50 | 100 | 25'.
+src/lib/__tests__/geo-store.test.ts(304,11): error TS2741: Property 'toJSON' is missing in type '{ latitude: number; longitude: number; accuracy: number; altitude: null; altitudeAccuracy: null; heading: null; speed: null; }' but required in type 'GeolocationCoordinates'.
+src/lib/__tests__/geo-store.test.ts(383,11): error TS2741: Property 'toJSON' is missing in type '{ latitude: number; longitude: number; accuracy: number; altitude: null; altitudeAccuracy: null; heading: null; speed: null; }' but required in type 'GeolocationCoordinates'.
+src/lib/__tests__/providers-pipeline-integration.test.ts(345,50): error TS2353: Object literal may only specify known properties, and 'radiusKm' does not exist in type 'CenterGeo'.
+src/lib/__tests__/push.test.ts(108,31): error TS2345: Argument of type 'string | Buffer<ArrayBufferLike>' is not assignable to parameter of type 'string'.
+  Type 'Buffer<ArrayBufferLike>' is not assignable to type 'string'.
+src/lib/__tests__/push.test.ts(121,31): error TS2345: Argument of type 'string | Buffer<ArrayBufferLike>' is not assignable to parameter of type 'string'.
+  Type 'Buffer<ArrayBufferLike>' is not assignable to type 'string'.
+src/lib/__tests__/push.test.ts(205,31): error TS2345: Argument of type 'string | Buffer<ArrayBufferLike>' is not assignable to parameter of type 'string'.
+  Type 'Buffer<ArrayBufferLike>' is not assignable to type 'string'.
+src/lib/__tests__/push.test.ts(260,31): error TS2345: Argument of type 'string | Buffer<ArrayBufferLike>' is not assignable to parameter of type 'string'.
+  Type 'Buffer<ArrayBufferLike>' is not assignable to type 'string'.
+src/lib/__tests__/use-balance-pulse.test.ts(51,16): error TS2322: Type 'number' is not assignable to type 'undefined'.
+src/lib/__tests__/whatsapp.test.ts(27,10): error TS2614: Module '"../logger"' has no exported member 'logger'. Did you mean to use 'import logger from "../logger"' instead?

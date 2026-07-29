@@ -488,6 +488,59 @@ export async function pollChargeStatus(
   return getCharge(chargeId)
 }
 
+// ---------------------------------------------------------------------------
+// Wallet / Split operations (used by provider/lytex/route.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Result type for Lytex wallet query.
+ */
+export type LytexWallet = {
+  balance: number
+  pendingBalance: number
+  totalReceived: number
+}
+
+/**
+ * Result type for a Lytex split (payment split between platform and provider).
+ */
+export type LytexSplit = {
+  _id: string
+  _invoiceId: string
+  value: number
+  status: string
+  createdAt: string
+}
+
+/**
+ * Fetch wallet balance for a Lytex recipient.
+ *
+ * @param recipientId - Lytex recipient ID (stored in User.lytexRecipientId)
+ * @returns Wallet balance information
+ */
+export async function getWallet(
+  recipientId: string,
+): Promise<LytexWallet> {
+  return lytexRequest<LytexWallet>("GET", `/recipients/${encodeURIComponent(recipientId)}/wallet`)
+}
+
+/**
+ * List payment splits (transfers) for a Lytex recipient.
+ *
+ * @param recipientId - Lytex recipient ID
+ * @param limit - Max results (default 50)
+ * @returns Array of splits/transfers
+ */
+export async function listSplits(
+  recipientId: string,
+  limit = 50,
+): Promise<LytexSplit[]> {
+  return lytexRequest<LytexSplit[]>(
+    "GET",
+    `/recipients/${encodeURIComponent(recipientId)}/splits?limit=${limit}`,
+  )
+}
+
 /**
  * Logger com prefixo [Lytex]
  */

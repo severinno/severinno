@@ -1,6 +1,6 @@
 {
   "name": "nextjs_tailwind_shadcn_ts",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "NODE_ENV=production node .next/standalone/server.js",
     "lint": "eslint .",
+    "security:audit": "pnpm audit --audit-level=high || echo '⚠️  Security audit found issues — review manually'",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:seed": "bun prisma/seed.ts",
@@ -149,6 +150,7 @@
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "6",
     "@testing-library/react": "16",
+    "@types/node": "26.1.1",
     "@types/react": "19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "3.1.1",

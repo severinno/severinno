@@ -1,10 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { Bell, BellOff, Loader2 } from "lucide-react"
+import { Bell, BellOff, Loader2, BellRing } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuthStore } from "@/store/auth"
 import { toast } from "sonner"
+import { useMobileOS, useStandaloneMode } from "@/components/shared/pwa-setup"
+import { cn } from "@/lib/utils"
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""
 
@@ -20,14 +22,24 @@ export function PushToggle() {
   const [supported, setSupported] = React.useState(false)
   const [subscribed, setSubscribed] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
+  const os = useMobileOS()
+  const standalone = useStandaloneMode()
+
+  const isMobile = os === "ios" || os === "android"
+  const isStandalone = standalone === "standalone"
+
+  // VAPID key must be configured in production for push to work.
+  // Without it, the component gracefully hides.
+  const vapidConfigured = VAPID_PUBLIC_KEY.length > 0
 
   React.useEffect(() => {
+    if (!vapidConfigured) return
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return
     setSupported(true)
     navigator.serviceWorker.ready.then((reg) =>
       reg.pushManager.getSubscription().then((sub) => setSubscribed(!!sub)),
     )
-  }, [])
+  }, [vapidConfigured])
 
   const toggle = async () => {
     if (loading || !user) return
@@ -63,7 +75,10 @@ export function PushToggle() {
           }),
         })
         setSubscribed(true)
-        toast.success("Notificações push ativadas!")
+        toast.success(isMobile
+          ? "Notificações push ativadas! ✅ As notificações chegam mesmo com o app fechado."
+          : "Notificações push ativadas!",
+        )
       }
     } catch {
       toast.error("Erro ao configurar notificações push.")
@@ -72,11 +87,50 @@ export function PushToggle() {
     }
   }
 
+  // Don't render anything if push isn't available or VAPID isn't configured
   if (!supported || !user) return null
+  if (!vapidConfigured) return null
+
+  // iOS without PWA installed: show a disclaimer that push needs the app installed
+  const needsIOSInstall = os === "ios" && !isStandalone
 
   return (
-    <Button variant="ghost" size="icon" disabled={loading} onClick={toggle} title={subscribed ? "Desativar notificações" : "Ativar notificações"}>
-      {loading ? <Loader2 className="size-4 animate-spin" /> : subscribed ? <Bell className="size-4" /> : <BellOff className="size-4" />}
-    </Button>
+    <div className="inline-flex items-center gap-2">
+      <Button
+        variant="ghost"
+        size="icon"
+        disabled={loading}
+        onClick={toggle}
+        title={
+          subscribed
+            ? "Desativar notificações"
+            : needsIOSInstall
+              ? "Instale o app para ativar notificações"
+              : "Ativar notificações"
+        }
+        className={cn(needsIOSInstall && "opacity-50 cursor-not-allowed")}
+      >
+        {loading ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : subscribed ? (
+          isMobile ? <BellRing className="size-4" /> : <Bell className="size-4" />
+        ) : (
+          <BellOff className="size-4" />
+        )}
+      </Button>
+
+      {/* Mobile status label */}
+      {isMobile && (
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          {subscribed
+            ? isStandalone
+              ? "Push ativo (PWA)"
+              : "Push ativo"
+            : needsIOSInstall
+              ? "Instale o app"
+              : "Push inativo"}
+        </span>
+      )}
+    </div>
   )
 }

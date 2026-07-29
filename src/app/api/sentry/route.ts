@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server"
  * Proxies envelope requests to the self-hosted GlitchTip instance
  * to bypass ad-blockers that block direct requests to error trackers.
  */
-const GLITCHTIP_INTERNAL_URL = process.env.GLITCHTIP_INTERNAL_URL ?? "http://glitchtip:8000"
+const GLITCHTIP_INTERNAL_URL = process.env.GLITCHTIP_INTERNAL_URL ?? "http://glitchtip-web:8000"
 
 export async function POST(request: NextRequest) {
   try {

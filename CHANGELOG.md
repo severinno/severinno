@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.4.0 (2026-07-28)
+
+### 🚀 Destaques
+
+- **Infraestrutura de Produção** — Caddyfile.prod com SSL/HSTS/CSP, docker-compose.prod.yml com PgBouncer, RabbitMQ, workers, fail2ban, logrotate, Docker secrets
+- **Push Notifications** — Web Push criptografado (>4KB), webhooks CRUD + fireEvent, agendamento recorrente + cron, dashboard admin com métricas
+- **Segurança** — CSP 10+ diretivas, HSTS, assertRateLimit em 14 rotas financeiras, Docker secrets, E2E security-headers
+- **Monitoramento** — /api/health/detailed (10+ serviços), /api/metrics/prometheus, dashboards admin (push, erros, performance, PgBouncer)
+- **Gateway de Pagamento** — Dashboard com gráficos de receita, volume de transações e taxa de conversão
+
+### Features
+
+- Infraestrutura: Caddyfile.prod, docker-compose.prod.yml, fail2ban, PgBouncer
+- Push: Web Push criptografado, service worker com badge, notificações em tempo real via WebSocket
+- Webhooks: CRUD, fireEvent com template vars, templates pré-definidos, auditoria
+- Agendamento: push one-shot + recorrente, cron job, fila de retry
+- Segurança: assertRateLimit em 14 rotas financeiras, Docker secrets, CSP/HSTS hardening
+- Monitoramento: health detailed, métricas Prometheus, dashboards admin visuais
+- Gateway: dashboard de pagamento com gráficos e filtro de data inline
+
+### Infraestrutura
+
+- Docker secrets para senhas sensíveis (12 secrets)
+- PgBouncer em transaction mode com pool tuning
+- RabbitMQ + workers (email, notificação, search-index)
+- fail2ban com 3 jails (caddy-access, caddy-badbots, recidive)
+- Logrotate para Caddy logs
+
+### Testes
+
+- E2E: security-headers.spec.ts (40+ testes de headers HTTP)
+- Unitários: 14+ arquivos com mocks corrigidos (lucide-react, framer-motion)
+- Testes de webhook: event-hub, webhooks-event-route
+- Testes de gateway: admin-gateway-stats-route, admin-gateway-dashboard
+
+### Fixes
+
+- not-found.test.tsx: mock lucide-react (Search, Home)
+- accessibility.test.tsx: mock lucide-react (5 ícones)
+- admin-panel.tsx: conflito ClipboardList/List no Turbopack
+- .gitignore: .freebuff/, test-results/, .agents/
+
+### Chores
+
+- Bump version to v0.4.0
+- TypeScript: 604 files
+
 ## v0.3.0-cache-mvp (2026-07-25)
 
 This release marks the **Cache MVP** milestone — a complete HTTP caching
@@ -70,4 +117,3 @@ unit + E2E tests.
 - Windows-1252 → UTF-8 encoding repair across codebase
 - Script `scripts/check-utf8.sh` for CI and local encoding verification
 - Script `scripts/fix-encoding.sh` for automatic encoding repair (dry-run mode)
-

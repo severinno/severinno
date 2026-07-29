@@ -2,12 +2,14 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { forbidden, handleError, notFound } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Params = { params: Promise<{ id: string }> }
 
 // Owner provider or admin: delete a single availability slot
-export async function DELETE(_request: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: Params) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     const { id } = await params
 

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth"
 import { serviceSchema } from "@/lib/validators"
 import { badRequest, forbidden, handleError, syncServiceSearch, cacheControlPublic } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // Public: list services, optionally filtered by providerId and/or categoryId
 export async function GET(request: Request) {
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
 // PROVIDER or ADMIN: create a service
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     if (session.role !== "PROVIDER" && session.role !== "ADMIN") {
       throw forbidden("Apenas prestadores podem cadastrar serviços")

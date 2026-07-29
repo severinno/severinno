@@ -2,12 +2,14 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { forbidden, handleError, notFound } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Params = { params: Promise<{ id: string }> }
 
 // Owner: mark a notification as read
-export async function PATCH(_request: Request, { params }: Params) {
+export async function PATCH(request: Request, { params }: Params) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     const { id } = await params
 

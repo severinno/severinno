@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 import { handleError, badRequest } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * POST /api/newsletter
@@ -11,6 +12,7 @@ import { handleError, badRequest } from "@/lib/api-server"
  * Simple dedup: if already subscribed, returns 200 with a friendly message.
  */
 export async function POST(req: NextRequest) {
+  await assertRateLimit(req, { prefix: "newsletter", max: 5, windowMs: 60_000 })
   try {
     const body = await req.json()
     const email = (body.email as string | undefined)?.trim().toLowerCase()

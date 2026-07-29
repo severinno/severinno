@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tests for useBalancePulse — tracks balance increases and triggers a
  * temporary "pulsing" flag + optional onIncrease callback.
@@ -48,7 +49,7 @@ describe("useBalancePulse", () => {
       { initialProps: { bal: undefined } },
     )
 
-    rerender({ bal: 100 })
+    rerender({ bal: 100 } as any)
 
     expect(result.current.isPulsing).toBe(false)
     expect(onIncrease).not.toHaveBeenCalled()

@@ -171,6 +171,25 @@ jobs:
           path: docs/benchmarks/geo-latest.json
           retention-days: 30
 
+  # ── Security Headers ──────────────────────────────────────────────────
+  # Verifica CSP, HSTS, X-Frame-Options e demais headers de segurança
+  # via curl. Roda no checkout sem dependências além de curl (pré-instalado).
+  # Falha se algum header obrigatório estiver ausente ou mal configurado.
+  security-headers:
+    name: Security Headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check security headers (CSP, HSTS, XFO, etc.)
+        run: bash scripts/test-security-headers.sh --ci --url "${{ secrets.BASE_URL || 'https://severinno.com.br' }}"
+
+      - name: Summary
+        run: |
+          echo "✅ Security headers verification complete."
+          echo "Headers checked: CSP, HSTS, X-Content-Type-Options, X-Frame-Options,"
+          echo "X-XSS-Protection, Referrer-Policy, Permissions-Policy, Server removal"
+
   # ── Main PR Check ──────────────────────────────────────────────────────
   check:
     runs-on: ubuntu-latest

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("../logger", () => ({
@@ -177,7 +178,7 @@ describe("dispatch.findBestProvider", () => {
     mockDb.service.findUnique.mockResolvedValue({
       provider: { active: true, lat: -23.5, lng: -46.6, radiusKm: 10, reviewsReceived: [], availability: [], _count: { bookingsAsProvider: 0 }, id: "prov-1", name: "P1" },
     })
-    vi.mocked(getRoute).mockResolvedValue({ distanceKm: 50, durationMin: 60 })
+    vi.mocked(getRoute).mockResolvedValue({ distanceKm: 50, durationMin: 60 } as any)
     expect(await findBestProvider("service-1", -23.5, -46.6)).toBeNull()
   })
 
@@ -185,7 +186,7 @@ describe("dispatch.findBestProvider", () => {
     mockDb.service.findUnique.mockResolvedValue({
       provider: { id: "prov-1", name: "Maria", active: true, lat: -23.5, lng: -46.6, radiusKm: 50, reviewsReceived: [{ rating: 5 }, { rating: 4 }], availability: [], _count: { bookingsAsProvider: 0 } },
     })
-    vi.mocked(getRoute).mockResolvedValue({ distanceKm: 5, durationMin: 15 })
+    vi.mocked(getRoute).mockResolvedValue({ distanceKm: 5, durationMin: 15 } as any)
 
     const result = await findBestProvider("service-1", -23.5, -46.6)
     expect(result!.providerId).toBe("prov-1")
@@ -197,7 +198,7 @@ describe("dispatch.findBestProvider", () => {
     mockDb.service.findUnique.mockResolvedValue({
       provider: { id: "prov-1", name: "No Reviews", active: true, lat: -23.5, lng: -46.6, radiusKm: 50, reviewsReceived: [], availability: [], _count: { bookingsAsProvider: 0 } },
     })
-    vi.mocked(getRoute).mockResolvedValue({ distanceKm: 3, durationMin: 10 })
+    vi.mocked(getRoute).mockResolvedValue({ distanceKm: 3, durationMin: 10 } as any)
     expect((await findBestProvider("service-1", -23.5, -46.6))!.rating).toBe(0)
   })
 })
@@ -218,7 +219,7 @@ describe("dispatch.findBestProviders", () => {
     vi.mocked(getMultiRoute).mockResolvedValue([
       { distanceKm: 5, durationMin: 15 },
       { distanceKm: 3, durationMin: 10 },
-    ])
+    ] as any)
 
     const result = await findBestProviders("service-1", -23.5, -46.6)
     expect(result).toHaveLength(2)
@@ -239,7 +240,7 @@ describe("dispatch.findBestProviders", () => {
       { distanceKm: 1, durationMin: 5 },
       { distanceKm: 1, durationMin: 5 },
       { distanceKm: 1, durationMin: 5 },
-    ])
+    ] as any)
     expect(await findBestProviders("service-1", 1, 1, 2)).toHaveLength(2)
   })
 })

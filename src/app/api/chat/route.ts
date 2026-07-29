@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
 import logger from "@/lib/logger"
 import { handleError, badRequest } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * POST /api/chat
@@ -13,6 +14,7 @@ import { handleError, badRequest } from "@/lib/api-server"
  * Body: { message: string, history?: Array<{role: string, content: string}> }
  */
 export async function POST(req: NextRequest) {
+  await assertRateLimit(req, RATE_LIMITS.general)
   try {
     const body = await req.json()
     const message = body.message as string | undefined

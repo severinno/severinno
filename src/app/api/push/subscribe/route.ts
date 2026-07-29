@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { handleError, badRequest, unauthorized } from "@/lib/api-server"
+import { handleError, badRequest } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, { prefix: "push-sub", max: 10, windowMs: 60_000 })
     const session = await requireUser()
     const body = await request.json()
     const { endpoint, p256dh, auth, userAgent } = body
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    await assertRateLimit(request, { prefix: "push-del", max: 10, windowMs: 60_000 })
     const session = await requireUser()
     const body = await request.json()
     const { endpoint } = body

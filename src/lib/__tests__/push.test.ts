@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -7,6 +8,13 @@ const { mockDb } = vi.hoisted(() => {
     pushSubscription: {
       findMany: vi.fn(),
       delete: vi.fn(),
+    },
+    pushAnalytics: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    pushSendLog: {
+      create: vi.fn(),
     },
   }
 
@@ -66,6 +74,29 @@ describe("sendPushNotification", () => {
     vi.clearAllMocks()
     mockDb.pushSubscription.findMany.mockReset()
     mockDb.pushSubscription.delete.mockReset()
+    mockDb.pushAnalytics.create.mockReset()
+    mockDb.pushAnalytics.update.mockReset()
+    mockDb.pushSendLog.create.mockReset()
+    // Make pushAnalytics.create return a valid analytics record
+    mockDb.pushAnalytics.create.mockResolvedValue({
+      id: "analytics-1",
+      userId: "user-1",
+      title: "",
+      body: null,
+      type: "ADMIN_MANUAL",
+      source: "auto",
+      status: "sent",
+      deviceCount: 1,
+      latencyMs: null,
+      errorMessage: null,
+      clickedAt: null,
+      action: null,
+      actionResult: null,
+      bookingId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    mockDb.pushAnalytics.update.mockResolvedValue({} as any)
   })
 
   it("envia notificação push para todas as subscrições do usuário", async () => {

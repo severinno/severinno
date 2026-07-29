@@ -658,7 +658,7 @@ function TreeNode({
               </StatusBadge>
             ) : null}
             {typeof node.serviceCount === "number" ? (
-              <StatusBadge tone="purple">
+              <StatusBadge tone="zinc">
                 {node.serviceCount}{" "}
                 {node.serviceCount === 1 ? "serviço" : "serviços"}
               </StatusBadge>

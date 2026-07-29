@@ -242,7 +242,7 @@ export async function ensureIndices(): Promise<void> {
             index: {
               number_of_shards: 1,
               number_of_replicas: process.env.NODE_ENV === "production" ? 1 : 0,
-              analysis: SHARED_ANALYSIS,
+              analysis: SHARED_ANALYSIS as any,
             },
           },
           mappings,

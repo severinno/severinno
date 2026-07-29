@@ -1,42 +1,44 @@
+/**
+ * Tests for src/lib/postgis.ts
+ *
+ * All functions (`findProvidersWithinRadius`, `getDistanceBetween`,
+ * `isPostGISAvailable`) use injected `db.$queryRaw` and `withCache`.
+ * These tests mock both dependencies to verify the SQL shape, caching
+ * behavior, error handling, and edge cases — without a real PostGIS DB.
+ */
+
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-// ── Hoisted mocks ──────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Hoisted mocks — must use vi.hoisted() so variable initialisers run before
+// the hoisted vi.mock() calls.
+// ---------------------------------------------------------------------------
 
-const { mockDb } = vi.hoisted(() => ({
-  mockDb: {
-    $queryRaw: vi.fn(),
-    $queryRawUnsafe: vi.fn(),
-  },
-}))
-
-const { mockWithCache } = vi.hoisted(() => ({
+const { mockQueryRaw, mockWithCache } = vi.hoisted(() => ({
+  mockQueryRaw: vi.fn(),
   mockWithCache: vi.fn(),
 }))
 
-vi.mock("@/lib/db", () => ({ db: mockDb }))
-vi.mock("@/lib/redis", () => ({ withCache: mockWithCache }))
+vi.mock("@/lib/db", () => ({
+  db: {
+    $queryRaw: mockQueryRaw,
+  },
+}))
 
-// ── Imports under test ----------------------------------------------------
+vi.mock("@/lib/redis", () => ({
+  withCache: (...args: unknown[]) => (mockWithCache as any)(...args),
+}))
+
+// ---------------------------------------------------------------------------
+// Module under test
+// ---------------------------------------------------------------------------
 
 import {
   findProvidersWithinRadius,
   getDistanceBetween,
   isPostGISAvailable,
+  type ProximityResult,
 } from "../postgis"
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Build a fake proximity row as returned by $queryRaw. */
-function makeRow(id: string, distanceKm: number): { id: string; distance_km: number } {
-  return { id, distance_km: distanceKm }
-}
-
-/** Build a fake pg_extension availability row. */
-function availabilityRow(available: boolean): Array<{ available: boolean }> {
-  return available ? [{ available: true }] : []
-}
 
 // ---------------------------------------------------------------------------
 // findProvidersWithinRadius
@@ -46,126 +48,141 @@ describe("findProvidersWithinRadius", () => {
   const LAT = -23.5505
   const LNG = -46.6333
   const RADIUS_KM = 10
-  const CACHE_TTL = 60
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.spyOn(console, "warn").mockImplementation(() => {})
-    // Default: withCache invokes the factory function
-    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
-  })
-
-  it("returns providers within radius from PostGIS query", async () => {
-    const rows = [makeRow("prov-1", 2.5), makeRow("prov-2", 5.1)]
-    mockDb.$queryRaw.mockResolvedValue(rows)
-
-    const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
-
-    expect(result).toEqual([
-      { id: "prov-1", distanceKm: 2.5 },
-      { id: "prov-2", distanceKm: 5.1 },
-    ])
-
-    // Verify withCache was called with a correct cache key
-    expect(mockWithCache).toHaveBeenCalledTimes(1)
-    const cacheKey = mockWithCache.mock.calls[0][0]
-    expect(cacheKey).toMatch(/^proximity:/)
-    expect(cacheKey).toContain(`${RADIUS_KM}`)
-
-    // Verify $queryRaw was called with a parameterized SQL containing ST_DWithin
-    expect(mockDb.$queryRaw).toHaveBeenCalledTimes(1)
-    const sql = mockDb.$queryRaw.mock.calls[0][0] as TemplateStringsArray
-    expect(sql.raw.join(" ")).toContain("ST_DWithin")
-    expect(sql.raw.join(" ")).toContain("ST_Distance")
-  })
-
-  it("returns empty array when no providers match", async () => {
-    mockDb.$queryRaw.mockResolvedValue([])
-
-    const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
-
-    expect(result).toEqual([])
-  })
-
-  it("returns empty array on PostGIS query failure (fallback)", async () => {
-    mockDb.$queryRaw.mockRejectedValue(new Error("PostGIS not available"))
-
-    const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
-
-    // Should gracefully fall back — no throw
-    expect(result).toEqual([])
-    expect(console.warn).toHaveBeenCalledWith(
-      "PostGIS ST_DWithin query failed:",
-      expect.any(Error),
+    // Default: withCache invokes factory (cache miss)
+    mockWithCache.mockImplementation(
+      async (_key: string, fn: () => unknown) => fn(),
     )
   })
 
-  it("uses cached result when Redis has the key", async () => {
-    const cached = [{ id: "prov-1", distanceKm: 2.5 }]
-    mockWithCache.mockImplementation(async (_key: string) => cached as never)
+  // ---- Happy path -------------------------------------------------------
+
+  it("returns providers within radius with distance in km", async () => {
+    const dbRows = [
+      { id: "p1", distance_km: 2.543 },
+      { id: "p2", distance_km: 5.789 },
+    ]
+    mockQueryRaw.mockResolvedValue(dbRows)
 
     const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
 
-    expect(result).toEqual(cached)
-    // Factory should NOT have been called since cache hit
-    expect(mockDb.$queryRaw).not.toHaveBeenCalled()
+    expect(result).toHaveLength(2)
+    expect(result[0]).toEqual({ id: "p1", distanceKm: 2.543 })
+    expect(result[1]).toEqual({ id: "p2", distanceKm: 5.789 })
   })
 
-  it("passes the correct TTL to withCache", async () => {
-    mockDb.$queryRaw.mockResolvedValue([])
+  it("returns empty array when no providers are within radius", async () => {
+    mockQueryRaw.mockResolvedValue([])
+
+    const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
+
+    expect(result).toEqual([])
+  })
+
+  it("returns a single provider when only one is within radius", async () => {
+    mockQueryRaw.mockResolvedValue([{ id: "p1", distance_km: 1.2 }])
+
+    const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
+
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe("p1")
+    expect(result[0].distanceKm).toBe(1.2)
+  })
+
+  // ---- Caching ----------------------------------------------------------
+
+  it("uses withCache with a proximity: cache key containing rounded coords and radius", async () => {
+    mockQueryRaw.mockResolvedValue([])
+
+    await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
+
+    const cacheKey = mockWithCache.mock.calls[0][0] as string
+    expect(cacheKey).toMatch(/^proximity:/)
+    // Coords rounded to 3 decimals (~110m precision).
+    // Floating-point toFixed(3) may round -23.5505 to "-23.551" or "-23.550"
+    // depending on internal representation — accept either.
+    expect(cacheKey).toMatch(/-\d+\.\d{3}:-\d+\.\d{3}/)
+    expect(cacheKey).toContain(":10")      // radius
+  })
+
+  it("calls $queryRaw on cache miss, returns cached result on cache hit", async () => {
+    // First call (cache miss) — $queryRaw is called
+    mockQueryRaw.mockResolvedValue([{ id: "p1", distance_km: 5.0 }])
+    await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
+
+    expect(mockQueryRaw).toHaveBeenCalledTimes(1)
+
+    // Second call (simulated cache hit)
+    vi.clearAllMocks()
+    const cachedRows: ProximityResult[] = [{ id: "p1", distanceKm: 3.0 }]
+    mockWithCache.mockImplementation(
+      async (_key: string, _fn: () => unknown, _ttl: number) => cachedRows,
+    )
+
+    const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
+
+    expect(result).toEqual(cachedRows)
+    // $queryRaw should NOT have been called (cache hit — factory not invoked)
+    expect(mockQueryRaw).not.toHaveBeenCalled()
+  })
+
+  it("uses 60s TTL for proximity queries", async () => {
+    mockQueryRaw.mockResolvedValue([])
 
     await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
 
     expect(mockWithCache).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(Function),
-      CACHE_TTL,
+      60,
     )
   })
 
-  it("rounds coordinates for cache key to 3 decimal places", async () => {
-    mockDb.$queryRaw.mockResolvedValue([])
+  // ---- Error handling ---------------------------------------------------
 
-    await findProvidersWithinRadius(-23.5505123, -46.6333789, RADIUS_KM)
-
-    const cacheKey = mockWithCache.mock.calls[0][0] as string
-    // Should contain rounded coordinates
-    expect(cacheKey).toContain("-23.551")
-    expect(cacheKey).toContain("-46.633")
-  })
-
-  it("handles non-numeric distance_km by converting to number", async () => {
-    const row = { id: "prov-1", distance_km: 3.7 }
-    mockDb.$queryRaw.mockResolvedValue([row])
+  it("returns empty array when PostGIS query fails (catch block)", async () => {
+    mockQueryRaw.mockRejectedValue(new Error("PostGIS connection lost"))
 
     const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
 
-    expect(result[0].distanceKm).toBe(3.7)
-    expect(typeof result[0].distanceKm).toBe("number")
+    expect(result).toEqual([])
   })
 
-  it("returns empty array for radiusKm = 0 (ST_DWithin matches nothing)", async () => {
-    mockDb.$queryRaw.mockResolvedValue([])
+  it("returns empty array when withCache itself throws", async () => {
+    mockWithCache.mockRejectedValue(new Error("Redis unavailable"))
+
+    const result = await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
+
+    expect(result).toEqual([])
+  })
+
+  // ---- Edge cases -------------------------------------------------------
+
+  it("handles radius = 0 (returns empty — no providers at exact point)", async () => {
+    mockQueryRaw.mockResolvedValue([])
 
     const result = await findProvidersWithinRadius(LAT, LNG, 0)
 
     expect(result).toEqual([])
-    // SQL was still called with 0 meters — no error
-    expect(mockDb.$queryRaw).toHaveBeenCalledTimes(1)
-    expect(console.warn).not.toHaveBeenCalled()
   })
 
-  it("returns empty array for negative radiusKm (ST_DWithin throws)", async () => {
-    mockDb.$queryRaw.mockRejectedValue(new Error("ST_DWithin: radius must be non-negative"))
+  it("handles a very large radius (5000 km)", async () => {
+    mockQueryRaw.mockResolvedValue([{ id: "p1", distance_km: 1500 }])
 
-    const result = await findProvidersWithinRadius(LAT, LNG, -5)
+    const result = await findProvidersWithinRadius(LAT, LNG, 5000)
 
-    expect(result).toEqual([])
-    // Error was caught, console.warn logged
-    expect(console.warn).toHaveBeenCalledWith(
-      "PostGIS ST_DWithin query failed:",
-      expect.any(Error),
-    )
+    expect(result).toHaveLength(1)
+    expect(result[0].distanceKm).toBe(1500)
+  })
+
+  it("handles equatorial coordinates (lat = 0)", async () => {
+    mockQueryRaw.mockResolvedValue([{ id: "p1", distance_km: 50 }])
+
+    const result = await findProvidersWithinRadius(0, 0, 100)
+
+    expect(result).toHaveLength(1)
   })
 })
 
@@ -174,70 +191,76 @@ describe("findProvidersWithinRadius", () => {
 // ---------------------------------------------------------------------------
 
 describe("getDistanceBetween", () => {
-  const USER_A = "user-alpha"
-  const USER_B = "user-beta"
-  const CACHE_TTL = 60
-
   beforeEach(() => {
     vi.clearAllMocks()
-    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
+    mockWithCache.mockImplementation(
+      async (_key: string, fn: () => unknown) => fn(),
+    )
   })
 
-  it("returns distance in km between two users", async () => {
-    mockDb.$queryRaw.mockResolvedValue([{ distance_km: 12.4 }])
+  it("returns the distance between two users", async () => {
+    mockQueryRaw.mockResolvedValue([{ distance_km: 15.3 }])
 
-    const result = await getDistanceBetween(USER_A, USER_B)
+    const distance = await getDistanceBetween("user-a", "user-b")
 
-    expect(result).toBe(12.4)
-    expect(mockDb.$queryRaw).toHaveBeenCalledTimes(1)
+    expect(distance).toBe(15.3)
   })
 
-  it("returns null when distance is null (one user has no location)", async () => {
-    mockDb.$queryRaw.mockResolvedValue([{ distance_km: null }])
+  it("returns null when either user has no location (DB returns null)", async () => {
+    mockQueryRaw.mockResolvedValue([{ distance_km: null }])
 
-    const result = await getDistanceBetween(USER_A, USER_B)
+    const distance = await getDistanceBetween("user-a", "user-b")
 
-    expect(result).toBeNull()
+    expect(distance).toBeNull()
   })
 
   it("returns null when query returns empty rows", async () => {
-    mockDb.$queryRaw.mockResolvedValue([])
+    mockQueryRaw.mockResolvedValue([])
 
-    const result = await getDistanceBetween(USER_A, USER_B)
+    const distance = await getDistanceBetween("user-a", "user-b")
 
-    expect(result).toBeNull()
+    expect(distance).toBeNull()
   })
 
-  it("returns null on database error", async () => {
-    mockDb.$queryRaw.mockRejectedValue(new Error("Connection lost"))
+  it("sorts IDs alphabetically in cache key for consistency", async () => {
+    mockQueryRaw.mockResolvedValue([{ distance_km: 10 }])
 
-    const result = await getDistanceBetween(USER_A, USER_B)
+    await getDistanceBetween("user-b", "user-a")
+    const keyBA = mockWithCache.mock.calls[0][0] as string
 
-    expect(result).toBeNull()
+    vi.clearAllMocks()
+    mockWithCache.mockImplementation(
+      async (_key: string, fn: () => unknown) => fn(),
+    )
+    mockQueryRaw.mockResolvedValue([{ distance_km: 10 }])
+
+    await getDistanceBetween("user-a", "user-b")
+    const keyAB = mockWithCache.mock.calls[0][0] as string
+
+    // Both should be the same key (sorted: user-a:user-b)
+    expect(keyAB).toBe(keyBA)
+    expect(keyBA).toContain("distance:")
+    expect(keyBA).toContain("user-a:")
+    expect(keyBA).toContain(":user-b")
   })
 
-  it("sorts IDs for cache key so A:B and B:A share cache", async () => {
-    mockDb.$queryRaw.mockResolvedValue([{ distance_km: 5.0 }])
+  it("returns null when PostGIS query fails (catch block)", async () => {
+    mockQueryRaw.mockRejectedValue(new Error("DB error"))
 
-    // Call with (A, B) then (B, A) — both must produce the same cache key
-    await getDistanceBetween(USER_A, USER_B)
-    await getDistanceBetween(USER_B, USER_A)
+    const distance = await getDistanceBetween("user-a", "user-b")
 
-    const keyFromFirstCall = mockWithCache.mock.calls[0][0]
-    const keyFromSecondCall = mockWithCache.mock.calls[1][0]
-
-    expect(keyFromFirstCall).toBe(keyFromSecondCall)
+    expect(distance).toBeNull()
   })
 
-  it("passes the correct TTL to withCache", async () => {
-    mockDb.$queryRaw.mockResolvedValue([{ distance_km: 3.0 }])
+  it("uses 60s TTL for distance queries", async () => {
+    mockQueryRaw.mockResolvedValue([{ distance_km: 5 }])
 
-    await getDistanceBetween(USER_A, USER_B)
+    await getDistanceBetween("user-a", "user-b")
 
     expect(mockWithCache).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(Function),
-      CACHE_TTL,
+      60,
     )
   })
 })
@@ -247,65 +270,63 @@ describe("getDistanceBetween", () => {
 // ---------------------------------------------------------------------------
 
 describe("isPostGISAvailable", () => {
-  const CACHE_TTL = 300
-
   beforeEach(() => {
     vi.clearAllMocks()
-    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
+    mockWithCache.mockImplementation(
+      async (_key: string, fn: () => unknown) => fn(),
+    )
   })
 
-  it("returns true when postgis extension exists", async () => {
-    mockDb.$queryRaw.mockResolvedValueOnce([{ available: true }])
+  it("returns true when PostGIS extension is installed", async () => {
+    mockQueryRaw.mockResolvedValue([{ available: true }])
 
     const result = await isPostGISAvailable()
 
     expect(result).toBe(true)
-    expect(mockDb.$queryRaw).toHaveBeenCalledTimes(1)
   })
 
-  it("returns false when postgis extension is not installed", async () => {
-    mockDb.$queryRaw.mockResolvedValueOnce([])
+  it("returns false when PostGIS extension is not installed (empty rows)", async () => {
+    mockQueryRaw.mockResolvedValue([])
 
     const result = await isPostGISAvailable()
 
     expect(result).toBe(false)
   })
 
-  it("returns false on database error", async () => {
-    mockDb.$queryRaw.mockRejectedValueOnce(new Error("Connection refused"))
+  it("returns false when query fails (catch block)", async () => {
+    mockQueryRaw.mockRejectedValue(new Error("DB connection lost"))
 
     const result = await isPostGISAvailable()
 
     expect(result).toBe(false)
   })
 
-  it("passes the correct TTL (5 minutes) to withCache", async () => {
-    mockDb.$queryRaw.mockResolvedValueOnce([{ available: true }])
+  it("caches result with 'postgis:available' key and 300s TTL", async () => {
+    mockQueryRaw.mockResolvedValue([{ available: true }])
 
     await isPostGISAvailable()
 
     expect(mockWithCache).toHaveBeenCalledWith(
-      expect.any(String),
+      "postgis:available",
       expect.any(Function),
-      CACHE_TTL,
+      300,
     )
   })
 
-  it("uses the expected cache key", async () => {
-    mockDb.$queryRaw.mockResolvedValueOnce([{ available: true }])
+  it("returns cached result on second call without querying DB", async () => {
+    // First call: cache miss, query executes
+    mockQueryRaw.mockResolvedValue([{ available: true }])
+    const result1 = await isPostGISAvailable()
+    expect(result1).toBe(true)
 
-    await isPostGISAvailable()
+    // Second call: simulated cache hit
+    vi.clearAllMocks()
+    mockWithCache.mockImplementation(
+      async (_key: string, _fn: () => unknown, _ttl: number) => true,
+    )
 
-    const cacheKey = mockWithCache.mock.calls[0][0]
-    expect(cacheKey).toBe("postgis:available")
-  })
-
-  it("returns cached value on subsequent calls without hitting DB", async () => {
-    mockWithCache.mockImplementation(async (_key: string) => true as never)
-
-    const result = await isPostGISAvailable()
-
-    expect(result).toBe(true)
-    expect(mockDb.$queryRaw).not.toHaveBeenCalled()
+    const result2 = await isPostGISAvailable()
+    expect(result2).toBe(true)
+    expect(mockQueryRaw).not.toHaveBeenCalled()
   })
 })

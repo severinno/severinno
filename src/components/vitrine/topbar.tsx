@@ -90,6 +90,9 @@ import {
 } from "@/components/ui/command"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { useFaviconBadge } from "@/hooks/use-favicon-badge"
+import { NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
+import { formatRelative } from "@/lib/format"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,6 +111,73 @@ const DASHBOARD_VIEW: Record<UserRole, string> = {
   CLIENT: "client.dashboard",
   PROVIDER: "provider.dashboard",
   ADMIN: "admin.dashboard",
+}
+
+// ---------------------------------------------------------------------------
+// Notification routes — mapeia tipo de notificação para tela de destino
+// ---------------------------------------------------------------------------
+
+const NOTIFICATION_ROUTES: Record<string, string> = {
+  BOOKING_CONFIRMED: "client.bookings",
+  BOOKING_CANCELLED: "client.bookings",
+  BOOKING_COMPLETED: "client.bookings",
+  BOOKING_NEW: "provider.bookings",
+  QUOTE_RECEIVED: "client.quotes",
+  QUOTE_APPROVED: "provider.quotes",
+  MESSAGE: "client.messages",
+  REVIEW_RECEIVED: "provider.reviews",
+  WELCOME: "",
+  PAYMENT_RECEIVED: "provider.finance",
+  PAYMENT_CONFIRMED: "client.bookings",
+}
+
+// ---------------------------------------------------------------------------
+// Group notifications by date (Hoje / Ontem / Esta semana / Este mês / Anterior)
+// ---------------------------------------------------------------------------
+
+function groupNotificationsByDate(items: NotificationsResponse['items']) {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const thisWeekStart = new Date(today)
+  thisWeekStart.setDate(thisWeekStart.getDate() - today.getDay())
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const groups: { label: string; items: NotificationsResponse['items'] }[] = []
+
+  const buckets: Record<string, NotificationsResponse['items']> = {
+    "Hoje": [],
+    "Ontem": [],
+    "Esta semana": [],
+    "Este mês": [],
+    "Anterior": [],
+  }
+
+  for (const item of items) {
+    const date = new Date(item.createdAt)
+    const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+
+    if (dateStart.getTime() === today.getTime()) {
+      buckets["Hoje"].push(item)
+    } else if (dateStart.getTime() === yesterday.getTime()) {
+      buckets["Ontem"].push(item)
+    } else if (dateStart >= thisWeekStart) {
+      buckets["Esta semana"].push(item)
+    } else if (dateStart >= thisMonthStart) {
+      buckets["Este mês"].push(item)
+    } else {
+      buckets["Anterior"].push(item)
+    }
+  }
+
+  for (const [label, items] of Object.entries(buckets)) {
+    if (items.length > 0) {
+      groups.push({ label, items })
+    }
+  }
+
+  return groups
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +342,9 @@ export default function Topbar({
     refetchInterval: 60 * 1000,
   })
   const unreadCount = notificationsData?.unreadCount ?? 0
+
+  // Favicon badge — mostra contador de não lidas na aba do navegador
+  useFaviconBadge(unreadCount)
 
   const isAuth = status === "authenticated" && !!user
   const initials = user?.name
@@ -677,7 +750,7 @@ export default function Topbar({
                         </Badge>
                       )}
                     </div>
-                    <ScrollArea className="max-h-72">
+                    <ScrollArea className="max-h-80">
                       {(notificationsData?.items ?? []).length === 0 ? (
                         <div className="flex flex-col items-center gap-2 py-8 text-center">
                           <Bell className="size-8 text-muted-foreground/30" />
@@ -686,30 +759,57 @@ export default function Topbar({
                           </p>
                         </div>
                       ) : (
-                        <div className="flex flex-col">
-                          {(notificationsData?.items ?? []).map((n, i) => (
-                            <div
-                              key={n.id}
-                              className={cn(
-                                "flex gap-3 px-4 py-3 transition-colors hover:bg-muted/50",
-                                !n.read && "bg-primary/5",
-                                i > 0 && "border-t",
-                              )}
-                            >
-                              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                <Bell className="size-4" />
+                        <div className="max-h-72 overflow-y-auto">
+                          {groupNotificationsByDate(notificationsData?.items ?? []).map((group) => (
+                            <div key={group.label}>
+                              <div className="sticky top-0 z-10 bg-popover px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                                {group.label}
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <p className={cn("text-sm leading-snug", !n.read && "font-medium")}>
-                                  {n.title || n.message}
-                                </p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  {new Date(n.createdAt).toLocaleDateString("pt-BR")}
-                                </p>
-                              </div>
-                              {!n.read && (
-                                <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
-                              )}
+                              {group.items.map((n) => {
+                                const typeLabel = NOTIFICATION_TYPE_LABELS[n.type]
+                                const targetRoute = NOTIFICATION_ROUTES[n.type]
+                                return (
+                                  <div
+                                    key={n.id}
+                                    className={cn(
+                                      "flex gap-3 px-4 py-3 transition-colors",
+                                      !n.read && "bg-primary/5",
+                                      targetRoute && "cursor-pointer hover:bg-muted/50",
+                                    )}
+                                    onClick={() => {
+                                      if (targetRoute) navigate(targetRoute)
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if ((e.key === "Enter" || e.key === " ") && targetRoute) {
+                                        e.preventDefault()
+                                        navigate(targetRoute)
+                                      }
+                                    }}
+                                    role={targetRoute ? "button" : undefined}
+                                    tabIndex={targetRoute ? 0 : undefined}
+                                  >
+                                    <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                      <Bell className="size-4" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className={cn("text-sm leading-snug", !n.read && "font-medium")}>
+                                        {n.title || n.message}
+                                      </p>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {formatRelative(n.createdAt)}
+                                      </p>
+                                      {typeLabel ? (
+                                        <Badge variant="outline" className="mt-1 h-4 text-[9px] font-medium">
+                                          {typeLabel}
+                                        </Badge>
+                                      ) : null}
+                                    </div>
+                                    {!n.read && (
+                                      <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
+                                    )}
+                                  </div>
+                                )
+                              })}
                             </div>
                           ))}
                         </div>

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Period = "7d" | "30d" | "90d" | "12m" | "all"
 
@@ -16,6 +17,7 @@ type Period = "7d" | "30d" | "90d" | "12m" | "all"
 export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const { searchParams } = new URL(request.url)
     const period = (searchParams.get("period") ?? "30d") as Period

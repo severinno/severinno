@@ -2,12 +2,14 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Params = { params: Promise<{ id: string }> }
 
 // CLIENT only: toggle favorite
 export async function POST(request: Request, { params }: Params) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     if (session.role !== "CLIENT") {
       throw forbidden("Apenas clientes podem favoritar prestadores")

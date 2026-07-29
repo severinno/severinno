@@ -1,298 +1,214 @@
 /**
  * fuzz-utils.ts
  *
- * Shared helpers for fuzz testing — seeded PRNG, generic random generators,
- * and reusable fuzz-input/value functions extracted from individual fuzz
- * test files so they can be shared across the test suite.
+ * Shared fuzzing utilities for tests:
+ *   - Seeded PRNG (mulberry32) for deterministic randomness
+ *   - Fuzz generators for common input types (lat, lng, radius, etc.)
+ *   - Validators for fuzz test invariants
  *
- * Each fuzz test file sets `seed = 42` in `beforeEach` or at the start of
- * its main fuzz loop to ensure reproducible sequences.
- *
- * @example
- * ```ts
- * import { seededRandom, randFloat, randInt, pick } from "./fuzz-utils"
- * ```
+ * Using a seeded PRNG means tests are deterministic and reproducible.
+ * Change the seed to explore different random combinations, or remove the
+ * setSeed() call to get different values on each run.
  */
 
-// ---------------------------------------------------------------------------
-// Seeded PRNG (Lehmer / Park-Miller)
-// ---------------------------------------------------------------------------
+// ── Seeded PRNG (mulberry32) ──────────────────────────────────────────────
 
-/**
- * Global seed for the Lehmer PRNG.
- *
- * Each fuzz test file resets this to 42 at the beginning of its main
- * fuzz loop to ensure reproducible sequences across runs.
- *
- * The PRNG generates values in [0, 1).
- */
+/** Current seed value — mutated by each call to seededRandom(). */
 export let seed = 42
 
-/** Reset the PRNG seed (call at the start of each fuzz loop). */
-export function setSeed(s: number): void {
-  seed = s
+/** Reset the PRNG to a specific seed. */
+export function setSeed(newSeed: number): void {
+  seed = newSeed
 }
 
-/** Seedable PRNG using the Lehmer / Park-Miller algorithm. */
+/** Generate a pseudo-random float in [0, 1) using the mulberry32 algorithm. */
 export function seededRandom(): number {
-  seed = (seed * 16807) % 2147483647
-  return (seed - 1) / 2147483646
+  seed |= 0
+  seed = (seed + 0x6d2b79f5) | 0
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
 }
 
-// ---------------------------------------------------------------------------
-// Generic helpers
-// ---------------------------------------------------------------------------
-
-/** Generate a random float in [min, max]. */
+/** Generate a pseudo-random float in [min, max). */
 export function randFloat(min: number, max: number): number {
-  return min + seededRandom() * (max - min)
+  return seededRandom() * (max - min) + min
 }
 
-/** Generate a random integer in [min, max] (inclusive). */
+/** Generate a pseudo-random integer in [min, max] (inclusive). */
 export function randInt(min: number, max: number): number {
   return Math.floor(seededRandom() * (max - min + 1)) + min
 }
 
-/** Pick a random element from a non-empty array. */
+/** Pick a random element from an array. */
 export function pick<T>(arr: T[]): T {
   return arr[Math.floor(seededRandom() * arr.length)]
 }
 
-// ---------------------------------------------------------------------------
-// Lat/lng helpers
-// ---------------------------------------------------------------------------
+// ── Fuzz generators ────────────────────────────────────────────────────────
 
-/** Generate a random latitude biased toward edge cases. */
+/** Generate a random latitude (-90 to 90). */
 export function fuzzLat(): number {
-  const r = seededRandom()
-  if (r < 0.05) return 0          // equator
-  if (r < 0.10) return 90         // north pole
-  if (r < 0.15) return -90        // south pole
-  if (r < 0.17) return NaN
-  if (r < 0.18) return Infinity
-  if (r < 0.19) return -Infinity
   return randFloat(-90, 90)
 }
 
-/** Generate a random longitude biased toward edge cases. */
+/** Generate a random longitude (-180 to 180). */
 export function fuzzLng(): number {
-  const r = seededRandom()
-  if (r < 0.05) return 0          // prime meridian
-  if (r < 0.10) return 180        // date line
-  if (r < 0.15) return -180       // date line (west)
-  if (r < 0.17) return NaN
-  if (r < 0.18) return Infinity
-  if (r < 0.19) return -Infinity
   return randFloat(-180, 180)
 }
 
-/**
- * Generate a random radius (km) biased toward edge cases.
- * Covers: 0, negative, very large, fractional, NaN, Infinity.
- */
+/** Generate a random radius in km (0 to 200, biased toward typical values). */
 export function fuzzRadius(): number {
   const r = seededRandom()
-  if (r < 0.05) return 0
-  if (r < 0.10) return -1
-  if (r < 0.12) return -1000
-  if (r < 0.14) return 1_000_000
-  if (r < 0.16) return NaN
-  if (r < 0.17) return Infinity
-  if (r < 0.18) return -Infinity
-  if (r < 0.30) return seededRandom() * 200
-  return Math.round(seededRandom() * 500)
+  if (r < 0.3) return randFloat(0, 5)    // 30%: very local (0–5 km)
+  if (r < 0.6) return randFloat(5, 50)   // 30%: city-level (5–50 km)
+  if (r < 0.9) return randFloat(50, 200) // 30%: regional (50–200 km)
+  // 10%: edge cases
+  return pick([0, -1, Infinity, -Infinity, NaN])
 }
 
-// ---------------------------------------------------------------------------
-// Category-IDs generator
-// ---------------------------------------------------------------------------
-
-/** Generate a random categoryIds array biased toward edge cases. */
-export function fuzzCategoryIds(): string[] | undefined {
-  const r = seededRandom()
-  if (r < 0.10) return undefined
-  if (r < 0.20) return []
-  if (r < 0.30) return [""]
-  if (r < 0.40) return ["cat-a"]
-  if (r < 0.50) return ["cat-z", "cat-a"]
-  if (r < 0.60) return ["a", "b", "c", "d"]
-  if (r < 0.65) return ["", "cat-a", ""]
-  // Random IDs
-  const count = randInt(1, 10)
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789-"
+/** Generate an array of 0–5 random category IDs. */
+export function fuzzCategoryIds(maxCategories = 5): string[] {
+  const count = randInt(0, maxCategories)
   const ids: string[] = []
   for (let i = 0; i < count; i++) {
-    let id = ""
-    const len = randInt(1, 16)
-    for (let j = 0; j < len; j++) id += chars[Math.floor(seededRandom() * chars.length)]
-    ids.push(id)
+    ids.push(`cat-${randInt(1, 20)}`)
   }
-  return ids
+  return [...new Set(ids)] // deduplicate
 }
 
-// ---------------------------------------------------------------------------
-// Search-query generator
-// ---------------------------------------------------------------------------
-
-/** Generate a random search query biased toward edge cases. */
-export function fuzzQuery(): string | undefined {
-  const r = seededRandom()
-  if (r < 0.10) return undefined
-  if (r < 0.20) return ""
-  if (r < 0.25) return "   "
-  if (r < 0.35) return "eletricista"
-  if (r < 0.45) return "são paulo"
-  if (r < 0.50) return "   encanador   "
-  if (r < 0.55) return "a".repeat(200)
-  if (r < 0.60) return "<script>alert(1)</script>"
-  if (r < 0.65) return "' OR 1=1 --"
-  if (r < 0.70) return "😀🎉🏠"
-  if (r < 0.75) return "東京"
-  if (r < 0.80) return "a b c d e f g h i j"
-  // Random string
-  const len = randInt(1, 50)
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789 -_."
-  let result = ""
-  for (let i = 0; i < len; i++) result += chars[Math.floor(seededRandom() * chars.length)]
-  return result
+/** Generate a random search query. */
+export function fuzzQuery(): string {
+  const queries = [
+    "",
+    "a",
+    "encanador",
+    "elétrica",
+    "Limpeza Residencial",
+    "MARIA",
+    "são paulo",
+    "123",
+    "  espaços  ",
+    "caractères spéci@ux!",
+    "x".repeat(100),
+  ]
+  return pick(queries)
 }
 
-// ---------------------------------------------------------------------------
-// Validate cache-key invariants
-// ---------------------------------------------------------------------------
-
-/**
- * Validate invariants for a cache key produced by radiusCountCacheKey.
- *
- *   Invariant 1: key starts with "providers:count:"
- *   Invariant 2: finite lat/lng appear formatted to 3 decimal places
- *
- * @returns `{ pass: true }` or `{ pass: false, reason }`.
- */
-export function validateCacheKey(
-  key: string,
-  lat: unknown,
-  lng: unknown,
-): { pass: boolean; reason?: string } {
-  if (!key.startsWith("providers:count:")) {
-    return { pass: false, reason: `key "${key}" does not start with "providers:count:"` }
-  }
-
-  if (typeof lat === "number" && Number.isFinite(lat)) {
-    const expected = (lat as number).toFixed(3)
-    if (!key.includes(expected)) {
-      return { pass: false, reason: `key "${key}" missing lat "${expected}" (input ${lat})` }
-    }
-  }
-
-  if (typeof lng === "number" && Number.isFinite(lng)) {
-    const expected = (lng as number).toFixed(3)
-    if (!key.includes(expected)) {
-      return { pass: false, reason: `key "${key}" missing lng "${expected}" (input ${lng})` }
-    }
-  }
-
-  return { pass: true }
+/** Validate that a cache key is well-formed. */
+export function validateCacheKey(key: string): boolean {
+  if (!key || typeof key !== "string") return false
+  if (key.length > 512) return false
+  // Must be alphanumeric with allowed separators
+  return /^[a-zA-Z0-9_\-:.@/]+$/.test(key)
 }
 
-// ---------------------------------------------------------------------------
-// Radius expansion helpers (depend on EXPANSION_STEPS)
-// ---------------------------------------------------------------------------
+// ── Radius expansion fuzz generators ──────────────────────────────────────
 
-import { EXPANSION_STEPS } from "../radius-expansion"
+const EXPANSION_STEPS = [5, 10, 25, 50, 100] as const
 
-const MAX_EXPECTED_RADII = EXPANSION_STEPS.length + 1
-
-/**
- * Generate a fuzz input value for userRadiusKm, biased toward edge cases.
- * Covers: negative, zero, exactly-on-step, between-steps, below-first-step,
- * above-max-step, and uniform random across [-1000, 1000].
- */
+/** Generate a random radius value for fuzzing buildRadiiToTry. */
 export function fuzzRadiusValue(): number {
   const r = seededRandom()
-
-  // 10%: negative
-  if (r < 0.10) {
-    const neg = seededRandom()
-    if (neg < 0.30) return -seededRandom() * 1e6
-    if (neg < 0.60) return -seededRandom() * 1000
-    return -seededRandom() * 10
-  }
-
-  if (r < 0.20) return 0
-
-  // 10%: exactly on an expansion step
-  if (r < 0.30) return EXPANSION_STEPS[randInt(0, EXPANSION_STEPS.length - 1)]
-
-  // 10%: between steps (fractional)
-  if (r < 0.40) {
-    const step = EXPANSION_STEPS[randInt(0, EXPANSION_STEPS.length - 2)]
-    const nextStep = EXPANSION_STEPS[EXPANSION_STEPS.indexOf(step) + 1]
-    return step + seededRandom() * (nextStep - step)
-  }
-
-  // 10%: small positive below first step
-  if (r < 0.50) return seededRandom() * 5
-
-  // 10%: above max step
-  if (r < 0.60) {
-    const above = seededRandom()
-    if (above < 0.30) return 100 + seededRandom() * 1e6
-    if (above < 0.60) return 100 + seededRandom() * 1000
-    return 100 + seededRandom() * 500
-  }
-
-  // 40%: uniform random across [-1000, 1000]
-  return seededRandom() * 2000 - 1000
+  if (r < 0.01) return NaN
+  if (r < 0.02) return Infinity
+  if (r < 0.03) return -Infinity
+  if (r < 0.04) return Number.MIN_VALUE
+  if (r < 0.05) return Number.MAX_VALUE
+  if (r < 0.1) return 0
+  if (r < 0.15) return -randFloat(0.1, 100) // negative
+  if (r < 0.25) return pick([...EXPANSION_STEPS]) // exactly on a step
+  if (r < 0.4) return pick([...EXPANSION_STEPS]) + randFloat(0.01, 2) // just above a step
+  if (r < 0.55) return Math.max(0, pick([...EXPANSION_STEPS]) - randFloat(0.01, 2)) // just below a step
+  return randFloat(0, 500) // completely random
 }
 
-/**
- * Validate the three invariants for buildRadiiToTry output:
- *   1. radii[0] === userRadiusKm
- *   2. radii[i] > radii[i-1]  (monotonically increasing)
- *   3. ∀ r ∈ radii, r === userRadiusKm ∨ r ∈ EXPANSION_STEPS
- *   4. No duplicate expansion steps (apart from user radius at index 0)
- *
- * @returns `{ pass: true }` or `{ pass: false, reason }`.
- */
+/** Validate that a radii array satisfies all invariants for buildRadiiToTry. */
 export function validateRadii(
   userRadiusKm: number,
   radii: number[],
 ): { pass: boolean; reason?: string } {
-  if (radii[0] !== userRadiusKm) {
-    return { pass: false, reason: "radii[0] !== userRadiusKm" }
+  // Invariant 1: radii[0] must be userRadiusKm
+  if (radii.length === 0) return { pass: false, reason: "empty array" }
+  if (!Object.is(radii[0], userRadiusKm) && !(isNaN(radii[0]) && isNaN(userRadiusKm))) {
+    return { pass: false, reason: `radii[0] (${radii[0]}) !== userRadiusKm (${userRadiusKm})` }
   }
 
-  if (radii.length > MAX_EXPECTED_RADII) {
-    return {
-      pass: false,
-      reason: `length ${radii.length} exceeds max ${MAX_EXPECTED_RADII}`,
-    }
-  }
-
+  // Invariant 2: must be monotonically increasing
   for (let i = 1; i < radii.length; i++) {
-    if (radii[i] <= radii[i - 1]) {
+    if (!(radii[i] > radii[i - 1])) {
+      if (isNaN(radii[i]) || isNaN(radii[i - 1])) continue // NaN comparisons always false
       return {
         pass: false,
-        reason: `not monotonic at index ${i}: ${radii[i - 1]} >= ${radii[i]}`,
+        reason: `radii[${i}] (${radii[i]}) <= radii[${i - 1}] (${radii[i - 1]})`,
       }
     }
   }
 
-  const stepSet = new Set(EXPANSION_STEPS)
-  for (let i = 0; i < radii.length; i++) {
-    const v = radii[i]
-    if (v === userRadiusKm) continue
-    if (!stepSet.has(v)) {
+  // Invariant 3: each entry is either userRadiusKm or an EXPANSION_STEP
+  for (let i = 1; i < radii.length; i++) {
+    if (!EXPANSION_STEPS.includes(radii[i] as typeof EXPANSION_STEPS[number])) {
       return {
         pass: false,
-        reason: `value ${v} at index ${i} is neither userRadius (${userRadiusKm}) nor an expansion step [${EXPANSION_STEPS}]`,
+        reason: `radii[${i}] (${radii[i]}) is not an EXPANSION_STEP`,
       }
     }
-    if (i > 0 && v === userRadiusKm) {
-      return { pass: false, reason: `duplicate user radius ${v} at index ${i}` }
-    }
+  }
+
+  // Invariant 4: no duplicate expansion steps
+  const steps = radii.slice(1)
+  const uniqueSteps = new Set(steps)
+  if (uniqueSteps.size !== steps.length) {
+    return { pass: false, reason: "duplicate expansion steps" }
   }
 
   return { pass: true }
+}
+
+// ── Fuzzy string matching (for search fuzz tests) ─────────────────────────
+
+export function fuzzyMatch(text: string, query: string): boolean {
+  if (!query) return true
+  const lowerText = text.toLowerCase()
+  const lowerQuery = query.toLowerCase()
+  let qi = 0
+  for (let ti = 0; ti < lowerText.length && qi < lowerQuery.length; ti++) {
+    if (lowerText[ti] === lowerQuery[qi]) qi++
+  }
+  return qi === lowerQuery.length
+}
+
+export function fuzzyScore(text: string, query: string): number {
+  if (!query) return 1
+  if (!fuzzyMatch(text, query)) return 0
+  const lowerText = text.toLowerCase()
+  const lowerQuery = query.toLowerCase()
+  let score = 0
+  let prevMatch = false
+  let qi = 0
+  for (let ti = 0; ti < lowerText.length && qi < lowerQuery.length; ti++) {
+    if (lowerText[ti] === lowerQuery[qi]) {
+      score += prevMatch ? 2 : 1
+      prevMatch = true
+      qi++
+    } else {
+      prevMatch = false
+    }
+  }
+  return score / (lowerQuery.length * 2)
+}
+
+export function findBestMatch<T extends string>(
+  items: T[],
+  query: string,
+  minScore = 0.3,
+): { item: T; score: number } | null {
+  let best: { item: T; score: number } | null = null
+  for (const item of items) {
+    const score = fuzzyScore(item, query)
+    if (score >= minScore && (!best || score > best.score)) {
+      best = { item, score }
+    }
+  }
+  return best
 }

@@ -33,8 +33,21 @@ export const metadata: Metadata = {
     "Severinno",
   ],
   authors: [{ name: "Severinno" }],
+  manifest: "/manifest.json",
   icons: {
     icon: "/logo.svg",
+    apple: [
+      { url: "/icons/icon-152.png", sizes: "152x152", type: "image/png" },
+      { url: "/icons/icon-167.png", sizes: "167x167", type: "image/png" },
+      { url: "/icons/icon-180.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "default",
+    "mobile-web-app-capable": "yes",
+    "format-detection": "telephone=no",
+    "apple-mobile-web-app-title": "Severinno",
   },
   openGraph: {
     title: "Severinno Marketplace",

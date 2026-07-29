@@ -1,0 +1,245 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Caddyfile — Severinno Marketplace (Produção)
+# ═══════════════════════════════════════════════════════════════════════════
+# HTTPS automático via Let's Encrypt / ZeroSSL.
+# Basta apontar o DNS do domínio para o IP do servidor.
+#
+# Uso no Docker Compose:
+#   - Porta 80  → HTTP (redireciona para HTTPS)
+#   - Porta 443 → HTTPS (automático)
+#   - Porta 2019 → Admin API (monitoramento interno)
+# ═══════════════════════════════════════════════════════════════════════════
+
+{
+  # ── Global settings ──────────────────────────────────────────────────
+  # Email obrigatório para registro ACME (Let's Encrypt / ZeroSSL)
+  email admin@severinno.com.br
+
+  # Admin API — apenas para monitoramento interno via Docker network
+  admin 0.0.0.0:2019
+
+  # OCSP stapling: mantém certificados frescos sem viagens extras de ida/volta
+  ocsp_stapling on
+
+  # ZeroSSL como CA (mais confiável que Let's Encrypt em alguns cenários)
+  # Remova esta linha para usar Let's Encrypt
+  acme_ca https://acme.zerossl.com/v2/DV90
+
+  # Armazenamento persistente de certificados (volume Docker caddy_data)
+  storage file:///data/caddy
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DOMÍNIO PRINCIPAL — severinno.com.br
+# ═══════════════════════════════════════════════════════════════════════════
+
+severinno.com.br, www.severinno.com.br {
+  # ── Compressão (zstd prioritário, fallback gzip) ──────────────────────
+  encode zstd gzip
+
+  # ── Security Headers ─────────────────────────────────────────────────
+  header {
+    # HSTS: força HTTPS por 1 ano, incluindo subdomínios
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    # Previne MIME sniffing
+    X-Content-Type-Options "nosniff"
+    # Previne clickjacking
+    X-Frame-Options "DENY"
+    # Referrer policy — envia apenas a origem em cross-origin
+    Referrer-Policy "strict-origin-when-cross-origin"
+    # Previne XSS em navegadores antigos (IE/Edge legacy)
+    X-XSS-Protection "1; mode=block"
+    # Permissions policy — desabilita recursos não utilizados
+    Permissions-Policy "camera=(), microphone=(), geolocation=(self), interest-cohort=()"
+    # Remove headers que revelam tecnologia do servidor
+    -Server
+    -X-Powered-By
+    -X-AspNet-Version
+  }
+
+  # ── Content Security Policy (linha única para compatibilidade HTTP) ───
+  # Segurança reforçada:
+  #   object-src 'none'       → Bloqueia plugins (Flash, Java, etc.)
+  #   worker-src 'self' blob: → Permite Service Workers + blob workers
+  #   manifest-src 'self'     → Manifest PWA apenas da origem
+  #   img-src restrito        → Sem wildcard https:; apenas domínios específicos
+  header {
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.osrm.org https://s3.severinno.com.br https://*.s3.severinno.com.br; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.tile.openstreetmap.org https://nominatim.openstreetmap.org ws: wss: https://api.glitchtip.com wss://severinno.com.br https://glitchtip.severinno.com.br; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'"
+  }
+
+  # ── Healthcheck interno (Docker HEALTHCHECK) ────────────────────────
+  # Responde 200 OK em /health para o Docker verificar se o Caddy está
+  # funcionando. Usa a porta 80 (principal) em vez de uma separada.
+  # NOTA: /health != /api/health (que vai para o Next.js).
+  handle /health {
+    respond "OK" 200 {
+      close
+    }
+  }
+
+  # ── Rate limiting (prevenção básica contra abuso) ────────────────────
+  rate_limit {
+    zone dynamic {
+      key {remote_host}
+      events 100
+      window 1m
+    }
+  }
+
+  # ── WebSocket (Socket.io) — Caddy detecta upgrade automático ─────────
+  handle_path /socket.io/* {
+    reverse_proxy realtime:3003 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+      flush_interval -1
+    }
+  }
+
+  # ── API e App (Next.js) ─────────────────────────────────────────────
+  handle {
+    reverse_proxy app:3000 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+
+      # Health check pass-through (Caddy monitora saúde do backend)
+      health_uri /api/health
+      health_interval 30s
+      health_timeout 5s
+      health_status 200
+
+      # Circuit breaker: remove backend do pool após 3 falhas consecutivas
+      max_fails 3
+      fail_duration 30s
+    }
+  }
+
+  # ── Access & Error Logs ──────────────────────────────────────────────
+  # Formato common log para compatibilidade com fail2ban.
+  # Os logs são parseados pelo fail2ban para detectar:
+  #   - Força bruta (401/403) via caddy-access jail
+  #   - Bots/scanners maliciosos via caddy-badbots jail
+  #   - Varredura de diretórios (404) via caddy-404-scan jail
+  log {
+    output file /var/log/caddy/severinno-access.log {
+      roll_size 100mb     # Rotaciona a cada 100MB
+      roll_keep 5          # Mantém 5 arquivos rotacionados
+      roll_keep_for 720h   # Remove após 30 dias
+    }
+    # Combined Log Format (CLF + User-Agent) — necessário para fail2ban parsear
+    # Formato: <host> - - [date] "method path proto" status size "referrer" "user-agent"
+    # O fail2ban precisa deste formato para os filters:
+    #   caddy-access  → detecta 401/403 (força bruta)
+    #   caddy-badbots → detecta paths sensíveis (.env, wp-admin) e user-agents maliciosos
+    #   caddy-404-scan→ detecta varredura de diretórios (muitos 404)
+    # Template explícito (compatível com qualquer versão do Caddy v2):
+    format transform "{request>remote_ip} - {request>user_id} [{ts}] \"{request>method} {request>uri} {request>proto}\" {status} {size} \"{request>headers>Referer}\" \"{request>headers>User-Agent}\""
+    level INFO
+  }
+
+  # ── Error pages (não vazar stack traces para o cliente) ──────────────
+  handle_errors {
+    @4xx {
+      expression {http.error.status_code} >= 400
+      expression {http.error.status_code} < 500
+    }
+    @5xx {
+      expression {http.error.status_code} >= 500
+    }
+
+    handle @4xx {
+      respond "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
+    }
+    handle @5xx {
+      respond "Service Unavailable" 503
+    }
+  }
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SUBDOMÍNIO — GlitchTip (Error Monitoring — Self-hosted Sentry)
+# ═══════════════════════════════════════════════════════════════════════════
+# Para ativar:
+#   1. Aponte glitchtip.severinno.com.br para o IP do servidor
+#   2. Inicie com: docker compose --profile glitchtip --env-file .env.glitchtip up -d
+#   3. ./scripts/glitchtip-setup.sh create-admin
+#   4. ./scripts/glitchtip-setup.sh create-project
+#   5. Copie o DSN para o .env.production
+# ═══════════════════════════════════════════════════════════════════════════
+
+glitchtip.severinno.com.br {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    -Server
+    -X-Powered-By
+  }
+
+  # Limite de 50MB para upload de source maps via GlitchTip
+  request_body {
+    max_size 52428800
+  }
+
+  reverse_proxy glitchtip-web:8000 {
+    header_up Host {host}
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+
+  # ── Logs em Combined Log Format (compatível com fail2ban) ───────────
+  log {
+    output file /var/log/caddy/glitchtip-access.log {
+      roll_size 100mb
+      roll_keep 5
+      roll_keep_for 720h
+    }
+    # Combined Log Format para compatibilidade com fail2ban (jail caddy-glitchtip)
+    format transform "{request>remote_ip} - {request>user_id} [{ts}] \"{request>method} {request>uri} {request>proto}\" {status} {size} \"{request>headers>Referer}\" \"{request>headers>User-Agent}\""
+    level INFO
+  }
+
+  # Error handling específico para GlitchTip
+  handle_errors {
+    @5xx {
+      expression {http.error.status_code} >= 500
+    }
+    handle @5xx {
+      respond "GlitchTip temporarily unavailable" 503
+    }
+  }
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SUBDOMÍNIO — MinIO Console do GlitchTip (opcional)
+# ═══════════════════════════════════════════════════════════════════════════
+# Descomente para acessar o console MinIO do GlitchTip via navegador.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# minio.severinno.com.br {
+#   encode zstd gzip
+#
+#   header {
+#     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+#     -Server
+#   }
+#
+#   reverse_proxy glitchtip-minio:9001 {
+#     header_up Host {host}
+#     header_up X-Real-IP {remote_host}
+#     header_up X-Forwarded-For {remote_host}
+#     header_up X-Forwarded-Proto {scheme}
+#   }
+#
+#   log {
+#     output file /var/log/caddy/minio-access.log
+#     format json
+#   }
+# }
+

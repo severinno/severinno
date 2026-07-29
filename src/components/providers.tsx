@@ -8,6 +8,9 @@ import {
 } from "@tanstack/react-query"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { SoundProvider } from "@/lib/sound-context"
+import { RealtimeProvider } from "@/components/shared/realtime-provider"
+import { PWASetup } from "@/components/shared/pwa-setup"
+import { PWAInstallBanner } from "@/components/shared/pwa-install"
 import { useState, useEffect, type ReactNode } from "react"
 
 const queryConfig: QueryClientConfig = {
@@ -45,6 +48,26 @@ export function Providers({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // ── Listen for silent-notification messages from the Service Worker ──
+  // When the app is in focus, the SW sends a message instead of showing
+  // a browser notification banner. We invalidate the notifications query
+  // so the favicon badge and bell update instantly.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return
+
+    function handleSWMessage(event: MessageEvent) {
+      if (event.data?.type === "silent-notification") {
+        // Invalidate notifications query to update badge + bell
+        client.invalidateQueries({ queryKey: ["notifications"] })
+        client.invalidateQueries({ queryKey: ["topbar-notifications"] })
+        client.invalidateQueries({ queryKey: ["admin", "push"] })
+      }
+    }
+
+    navigator.serviceWorker.addEventListener("message", handleSWMessage)
+    return () => navigator.serviceWorker.removeEventListener("message", handleSWMessage)
+  }, [client])
+
   return (
     <ThemeProvider
       attribute="class"
@@ -54,10 +77,18 @@ export function Providers({ children }: { children: ReactNode }) {
     >
       <QueryClientProvider client={client}>
         <SoundProvider>
-          {children}
+          <RealtimeProvider>
+            {children}
+          </RealtimeProvider>
           <SonnerToaster position="top-right" richColors closeButton />
         </SoundProvider>
       </QueryClientProvider>
+
+      {/* PWA setup — renderless (injects meta, detects standalone) */}
+      <PWASetup />
+
+      {/* PWA install banner for Android Chrome */}
+      <PWAInstallBanner />
     </ThemeProvider>
   )
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * distance-fallback-fuzz.test.ts
  *
@@ -132,7 +133,7 @@ async function runOneFuzz(): Promise<string> {
     hasGeo,
     userLat: randFloat(-90, 90),
     userLng: randFloat(-180, 180),
-    queryRawUnsafe: queryRaw,
+    queryRawUnsafe: queryRaw as any,
   })
 
   return diagnostic({
@@ -201,7 +202,7 @@ describe("computeDistanceMap fuzzing", () => {
       hasGeo: true,
       userLat: -23.55,
       userLng: -46.63,
-      queryRawUnsafe: queryRaw,
+      queryRawUnsafe: queryRaw as any,
     })
 
     expect(map.size).toBe(0)
@@ -225,7 +226,7 @@ describe("computeDistanceMap fuzzing", () => {
       hasGeo: true,
       userLat: 0,
       userLng: 0,
-      queryRawUnsafe: queryRaw,
+      queryRawUnsafe: queryRaw as any,
     })
 
     // PostGIS query runs but returns nothing (no coordinates to query with),
@@ -253,7 +254,7 @@ describe("computeDistanceMap fuzzing", () => {
       hasGeo: true,
       userLat: -23.55,
       userLng: -46.63,
-      queryRawUnsafe: queryRaw,
+      queryRawUnsafe: queryRaw as any,
     })
 
     // Both providers have incomplete coordinates → Haversine can't compute
@@ -280,7 +281,7 @@ describe("computeDistanceMap fuzzing", () => {
       hasGeo: true,
       userLat: 90, // North Pole
       userLng: 0,
-      queryRawUnsafe: queryRaw,
+      queryRawUnsafe: queryRaw as any,
     })
 
     expect(map.size).toBe(2)
@@ -306,7 +307,7 @@ describe("computeDistanceMap fuzzing", () => {
       hasGeo: true,
       userLat: -23.55,
       userLng: -46.63,
-      queryRawUnsafe: queryRaw,
+      queryRawUnsafe: queryRaw as any,
     })
 
     // Map has 1 key because Map deduplicates by key

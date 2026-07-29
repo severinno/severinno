@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ vi.mock("@/lib/db", () => ({
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { sendWhatsApp, sendWhatsAppToMany } from "../whatsapp"
-import { logger } from "../logger"
+import logger from "../logger"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 

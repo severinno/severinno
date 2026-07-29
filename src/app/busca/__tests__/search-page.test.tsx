@@ -45,7 +45,7 @@ vi.mock("@/components/vitrine/provider-card", () => ({
 
 afterEach(cleanup)
 
-describe.skip("SearchPage (pending implementation)", () => {
+describe("SearchPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUseSearchParams.mockReturnValue(new URLSearchParams(""))

@@ -276,4 +276,3 @@ describe("Unit cost reference", () => {
  *         filters + counts via PostGIS, Phase 2 fetches full data) is
  *         well-optimised for the expected scale.
  */
-`
