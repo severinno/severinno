@@ -144,6 +144,22 @@ export type GeoMetricsSnapshot = {
   windowSeconds: number
 }
 
+// ── Historical snapshot buffer ──────────────────────────────────────────
+
+/** Max number of historical snapshots kept in memory. */
+const MAX_HISTORY = 60
+
+/** In-memory ring buffer of historical snapshots (auto-saved on each getGeoMetrics call). */
+const snapshotHistory: Array<{
+  timestamp: number
+  services: Record<GeoServiceName, { p50: number; p95: number; p99: number; count: number }>
+}> = []
+
+/** Get the current historical snapshot buffer. */
+export function getGeoMetricsHistory(): typeof snapshotHistory {
+  return snapshotHistory
+}
+
 /**
  * Compute the current metrics snapshot for all geo services.
  * Prunes expired samples before computing.
@@ -169,11 +185,28 @@ export function getGeoMetrics(): GeoMetricsSnapshot {
     }
   }
 
-  return {
+  const snapshot = {
     services,
     timestamp: Date.now(),
     windowSeconds: WINDOW_MS / 1000,
   }
+
+  // Auto-save to history ring buffer
+  const historyEntry = {
+    timestamp: snapshot.timestamp,
+    services: Object.fromEntries(
+      Object.entries(services).map(([key, val]) => [
+        key,
+        { p50: val.p50, p95: val.p95, p99: val.p99, count: val.count },
+      ]),
+    ) as Record<GeoServiceName, { p50: number; p95: number; p99: number; count: number }>,
+  }
+  snapshotHistory.push(historyEntry)
+  if (snapshotHistory.length > MAX_HISTORY) {
+    snapshotHistory.shift()
+  }
+
+  return snapshot
 }
 
 /**

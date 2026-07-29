@@ -1,111 +1,116 @@
-# Declarações de Tipo (`types/`)
+# Type Declarations
 
-Diretório centralizado para todas as declarações `.d.ts` do projeto.  
-Carregado automaticamente pelo `tsconfig.json` através do padrão `"types/**/*.d.ts"`.
+Este diretório contém declarações de tipo globais do projeto, carregadas automaticamente pelo `tsconfig.json`.
 
----
+## Estrutura
 
-## Arquivos
+```
+types/                          ← Declarações globais (augmentações)
+├── README.md
+└── vitest.d.ts                 ← jest-dom + vitest-axe matchers
 
-### `vitest.d.ts`
+src/types/                      ← Declarações de módulo (declare module)
+├── css-modules.d.ts            ← maplibre-gl CSS import
+└── modules.d.ts                ← amqplib, nodemailer, web-push
 
-Augmentação de tipo para os matchers do ecossistema Vitest.
+next-env.d.ts                   ← Gerado pelo Next.js (não editar manualmente)
+```
+
+## Como Funciona
+
+### 1. Inclusão no `tsconfig.json`
+
+```jsonc
+{
+  "include": [
+    "types/**/*.d.ts", // <-- carrega todas as declarações daqui
+    "**/*.ts",
+    "**/*.tsx",
+    // ...
+  ],
+}
+```
+
+Arquivos `.d.ts` em `types/` são carregados **globalmente** — não precisam de import nos arquivos de teste ou fonte.
+
+### 2. `types/vitest.d.ts` — Augmentação de Matchers de Teste
+
+Centraliza referências de tipo para matchers personalizados do Vitest:
 
 ```ts
 /// <reference types="@testing-library/jest-dom/vitest" />
 /// <reference types="vitest-axe/extend-expect" />
 ```
 
-| Referência | Matchers que habilita | Runtime |
-|:-----------|:----------------------|:--------|
-| `@testing-library/jest-dom/vitest` | `toBeInTheDocument`, `toHaveAttribute`, `toBeDisabled`, `toHaveTextContent`, `toHaveValue`, `toBeVisible`, `toHaveClass`, `toHaveStyle`, etc. | `vitest.setup.ts` via `expect.extend(matchers)` |
-| `vitest-axe/extend-expect` | `toHaveNoViolations` | OPCIONAL — cada teste importa o `axe` manualmente |
+- **jest-dom**: `toBeInTheDocument`, `toHaveAttribute`, `toBeVisible`, `toHaveTextContent`, etc.
+- **vitest-axe**: `toHaveNoViolations`
 
-**Regra:** **Nunca** importe `@testing-library/jest-dom` diretamente em arquivos de teste.  
-Sempre use a augmentação centralizada aqui + o `expect.extend()` em `vitest.setup.ts`.
+Ambas augmentam a interface `Vi.Assertion` do Vitest via _declaration merging_ do TypeScript. Como são namespaces diferentes, não há conflito.
 
----
+#### Runtime (setup)
 
-### `css-modules.d.ts`
-
-Declaração para importação do CSS do MapLibre em componentes que usam mapa:
+As augmentações de tipo **não** fornecem o comportamento em runtime — é necessário o `vitest.setup.ts`:
 
 ```ts
+// vitest.setup.ts
+import * as matchers from "@testing-library/jest-dom/matchers"
+expect.extend(matchers) // habilita toBeInTheDocument etc. em runtime
+```
+
+O `vitest-axe` já faz `expect.extend` internamente — nenhum setup adicional é necessário para `toHaveNoViolations`.
+
+### 3. `src/types/` — Declarações de Módulo
+
+Usado para pacotes npm que não têm tipos publicados ou cujos tipos precisam de override:
+
+```ts
+// src/types/css-modules.d.ts
 declare module "maplibre-gl/dist/maplibre-gl.css"
+
+// src/types/modules.d.ts
+declare module "amqplib" { ... }
+declare module "nodemailer" { ... }
+declare module "web-push" { ... }
 ```
 
-Sem esta declaração, o TypeScript reclamaria ao importar um arquivo `.css` diretamente num
-módulo TypeScript (ex.: `import "maplibre-gl/dist/maplibre-gl.css"` no componente de mapa).
+## Quando Criar um Novo `.d.ts`
 
----
+### Nova augmentação de matcher de teste
 
-### `modules.d.ts`
+Adicione uma linha `/// <reference types="..." />` em `types/vitest.d.ts`:
 
-Ambient declarations para bibliotecas que não têm tipos publicados no DefinitelyTyped
-ou cujos tipos publicados não correspondem ao uso que o projeto faz delas.
-
-| Módulo | O que declara | Motivo |
-|:-------|:--------------|:-------|
-| `amqplib` | Re-exporta de `amqplib/channel_api` + default export | Tipos públicos do `amqplib` não expõem corretamente o `channel_api` como default |
-| `nodemailer` | Re-exporta de `nodemailer/lib/nodemailer` + default export | Mesmo caso do `amqplib` — tipos `@types/nodemailer` divergem da importação real |
-| `web-push` | `sendNotification`, `setVapidDetails`, `generateVAPIDKeys`, interfaces `PushSubscription`, `PushOptions`, `SendResult` | Biblioteca não tem tipos publicados |
-
-**Nota:** Estas declarações são **ambientes** — não precisam ser importadas em lugar nenhum.
-O TypeScript as encontra automaticamente através do `include` do `tsconfig.json`.
-
----
-
-## Convenções para Novas Declarações
-
-### 1. Escolha o arquivo certo
-
-| Cenário | Arquivo |
-|:--------|:--------|
-| Augmentação de tipo para teste (jest-dom, vitest-axe) | `vitest.d.ts` |
-| Importação de CSS de terceiros (ex.: `*.css`) | `css-modules.d.ts` |
-| Biblioteca sem tipos publicados ou com tipos incorretos | `modules.d.ts` |
-| Declaração específica de uma feature | Novo arquivo `*.d.ts` neste diretório |
-
-### 2. Prefira `@types/` packages
-
-Antes de criar uma ambient declaration aqui, verifique se a biblioteca tem tipos
-publicados no DefinitelyTyped:
-
-```bash
-npm install --save-dev @types/nome-da-biblioteca
-```
-
-Se existir, use o `@types/` package em vez de declarar manualmente.
-Crie uma ambient declaration **apenas** quando:
-- O `@types/` package não existir
-- O `@types/` package estiver desatualizado ou incorreto para a versão que usamos
-- A declaração for muito pequena (ex.: CSS module) e não justificar um package separado
-
-### 3. Estrutura da declaração
-
-**Para CSS modules:**
 ```ts
-declare module "nome-do-pacote/arquivo.css"
+/// <reference types="@testing-library/jest-dom/vitest" />
+/// <reference types="vitest-axe/extend-expect" />
+/// <reference types="novo-pacote/tipos" />  ← adicione aqui
 ```
 
-**Para módulos completos:**
+### Nova declaração de módulo
+
+Crie um arquivo em `src/types/` (ou adicione ao existente se for relacionado):
+
 ```ts
-declare module "nome-do-pacote" {
-  // Interfaces primeiro
-  // Funções depois
-  // Export no final
-  export function minhaFuncao(): void
-  export interface MinhaInterface { ... }
+// src/types/meu-pacote.d.ts
+declare module "meu-pacote" {
+  export function minhaFuncao(): string
 }
 ```
 
-### 4. NUNCA coloque lógica de runtime em `.d.ts`
+### Nova declaração global (fora de teste)
 
-Arquivos `.d.ts` são **apenas tipos** — não devem conter implementação,
-constantes, ou lógica executável. Para código de runtime, use arquivos `.ts` normais.
+Crie um arquivo em `types/`:
 
-### 5. Mantenha este README atualizado
+```ts
+// types/minha-global.d.ts
+interface Window {
+  minhaPropriedade: string
+}
+```
 
-Sempre que adicionar, remover ou modificar uma declaração, atualize a seção
-correspondente acima para que o diretório continue sendo a fonte única de verdade
-para o sistema de tipos do projeto.
+## Regras
+
+1. **Nunca importe `@testing-library/jest-dom` ou `vitest-axe` diretamente em arquivos de teste** — as augmentações já estão centralizadas em `types/vitest.d.ts`
+2. **Prefira criar arquivos separados** em vez de um arquivo `globals.d.ts` monolítico
+3. **Declarações de módulo** vão em `src/types/` (junto ao código-fonte)
+4. **Augmentações de matcher** vão em `types/vitest.d.ts` (globais, para todos os testes)
+5. **Não edite `next-env.d.ts`** — é gerado pelo Next.js e sobrescrito a cada build

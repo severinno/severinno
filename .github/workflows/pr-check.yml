@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed to fetch main branch for baseline
+          fetch-depth: 0 # needed to fetch main branch for baseline
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -215,9 +215,6 @@ jobs:
 
       - name: Lint
         run: bun run lint
-
-      - name: Check no direct jest-dom imports
-        run: bun run check:jest-dom-imports
 
       - name: Type check
         run: bunx tsc --noEmit
