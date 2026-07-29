@@ -45,6 +45,7 @@ const BENCHMARKS = {
     baseline: "geo-baseline.json",
     compareFilter: null,
     label: "Geo-Distance",
+    requiresDb: false,
   },
   cache: {
     script: "cache-benchmark.mjs",
@@ -52,6 +53,7 @@ const BENCHMARKS = {
     baseline: "cache-baseline.json",
     compareFilter: "cache",
     label: "Redis Cache",
+    requiresDb: false,
   },
   search: {
     script: "search-benchmark.mjs",
@@ -59,16 +61,36 @@ const BENCHMARKS = {
     baseline: "search-baseline.json",
     compareFilter: "search",
     label: "Search-Index",
+    requiresDb: false,
+  },
+  real: {
+    script: "geo-benchmark-real.mjs",
+    latest: "geo-real-latest.json",
+    baseline: "geo-real-baseline.json",
+    compareFilter: null,
+    label: "PostGIS Real (DB)",
+    requiresDb: true,
+  },
+  gist: {
+    script: "geo-benchmark-gist.mjs",
+    latest: "geo-gist-latest.json",
+    baseline: "geo-gist-baseline.json",
+    compareFilter: null,
+    label: "GiST Index",
+    requiresDb: true,
+  },
+  pipeline: {
+    script: "geo-pipeline-benchmark.mjs",
+    latest: "pipeline-latest.json",
+    baseline: "pipeline-baseline.json",
+    compareFilter: null,
+    label: "Geo-Pipeline",
+    requiresDb: false,
   },
 }
 
 const BENCHMARK_TYPES = Object.keys(BENCHMARKS)
-const OUT_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "docs",
-  "benchmarks",
-)
+const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "benchmarks")
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -94,12 +116,18 @@ if (allFlag) {
   type = "all"
 }
 
-// --type geo|cache|all is required
+// --type is required
 if (!type) {
-  console.error("❌ Usage: node scripts/run-benchmark.mjs --type geo|cache|all [--json] [--baseline] [--save] [--compare]")
+  console.error(
+    "❌ Usage: node scripts/run-benchmark.mjs --type geo|cache|search|real|gist|pipeline|all [--json] [--baseline] [--save] [--compare] [--skip-db]",
+  )
   console.error(`   Available types: ${BENCHMARK_TYPES.join(", ")}`)
+  console.error(`   Flags: --skip-db  skip benchmarks that require a database (real, gist)`)
   process.exit(2)
 }
+
+// --skip-db: skip benchmarks that require a real database
+const skipDb = args.includes("--skip-db")
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -126,6 +154,12 @@ function runSingle(type) {
 
   mkdirSync(OUT_DIR, { recursive: true })
 
+  // Skip DB-requiring benchmarks when --skip-db is set
+  if (skipDb && cfg.requiresDb) {
+    console.log(`  ⏭  ${cfg.label} — skipped (requires database)`)
+    return { status: "skipped", exitCode: 0, elapsedMs: 0 }
+  }
+
   // Determine output file based on flags
   let outputFile = null
 
@@ -137,6 +171,9 @@ function runSingle(type) {
   } else if (saveFlag) {
     const tag = new Date().toISOString().slice(0, 10)
     outputFile = benchmarkPath(type, `${type}-${tag}.json`)
+  } else if (jsonFlag) {
+    // Explicit --json without path override → save to latest
+    outputFile = benchmarkPath(type, cfg.latest)
   }
 
   // Build the command
@@ -145,9 +182,17 @@ function runSingle(type) {
     cmd += ` --json "${outputFile}"`
   }
 
+  const startMs = performance.now()
+
   // Run the benchmark
   console.log(`\n  ─── ${cfg.label} Benchmark ───────────────────────────────────\n`)
-  execSync(cmd, { stdio: "inherit" })
+  try {
+    execSync(cmd, { stdio: "inherit" })
+  } catch (e) {
+    return { status: "failed", exitCode: 1, elapsedMs: Math.round(performance.now() - startMs) }
+  }
+
+  const elapsedMs = Math.round(performance.now() - startMs)
 
   // If --compare, run comparison against baseline
   if (compareFlag) {
@@ -156,11 +201,11 @@ function runSingle(type) {
 
     if (!existsSync(baselinePath)) {
       console.log(`  ⚠  No baseline found at ${baselinePath} — skipping comparison.`)
-      return 0
+      return { status: "success", exitCode: 0, elapsedMs }
     }
     if (!existsSync(latestPath)) {
       console.log(`  ⚠  No latest results at ${latestPath} — skipping comparison.`)
-      return 0
+      return { status: "success", exitCode: 0, elapsedMs }
     }
 
     console.log(`\n  ─── Comparing ${type} against baseline ─────────────────────\n`)
@@ -173,14 +218,110 @@ function runSingle(type) {
 
     try {
       execSync(compareCmd, { stdio: "inherit" })
-      return 0
+      return { status: "success", exitCode: 0, elapsedMs }
     } catch {
       console.log(`\n  ⚠  Comparison failed — regression detected in ${type} benchmarks.`)
-      return 1
+      return { status: "regression", exitCode: 1, elapsedMs }
     }
   }
 
-  return 0
+  return { status: "success", exitCode: 0, elapsedMs }
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Summary table printer
+// ---------------------------------------------------------------------------
+
+function printSummaryTable(results, isAllMode) {
+  const { bgGreen, bgRed, bgYellow, bgBlue, reset } = getTermColors()
+
+  console.log("")
+  console.log(`╔══════════════════════════════════════════════════════════════════════╗`)
+  console.log(`║               ${bgBlue}Severinno — Benchmarks Summary${reset}               ║`)
+  console.log(`╚══════════════════════════════════════════════════════════════════════╝`)
+  console.log("")
+
+  console.log(`  ┌─ Type ─────────────┬─ Status ─────┬─ Time ─────┬─ Saved File ────────────┐`)
+
+  let totalPassed = 0
+  let totalFailed = 0
+  let totalSkipped = 0
+  let totalMs = 0
+
+  for (const r of results) {
+    const cfg = BENCHMARKS[r.type]
+    const label = (cfg?.label ?? r.type).padEnd(18)
+
+    let statusStr, statusColor
+    switch (r.status) {
+      case "success":
+        statusStr = "✅".padEnd(10)
+        statusColor = bgGreen
+        totalPassed++
+        break
+      case "skipped":
+        statusStr = "⏭".padEnd(10)
+        statusColor = bgYellow
+        totalSkipped++
+        break
+      case "regression":
+        statusStr = "⚠".padEnd(10)
+        statusColor = bgRed
+        totalFailed++
+        break
+      case "failed":
+        statusStr = "❌".padEnd(10)
+        statusColor = bgRed
+        totalFailed++
+        break
+      default:
+        statusStr = "?".padEnd(10)
+        statusColor = bgYellow
+    }
+
+    const timeStr = r.elapsedMs > 0 ? `${(r.elapsedMs / 1000).toFixed(1)}s`.padStart(8) : "   -"
+    totalMs += r.elapsedMs
+
+    // Only show saved file column if any output-saving flag is active
+    const showSavedColumn = isAllMode && (jsonFlag || compareFlag || baselineFlag || saveFlag)
+    const savedFile = showSavedColumn ? (cfg?.latest ?? "").padEnd(24) : "".padEnd(24)
+
+    console.log(`  │ ${label} │ ${statusColor}${statusStr}${reset} │ ${timeStr} │ ${savedFile} │`)
+  }
+
+  console.log(`  ├─${`─`.repeat(20)}┼${`─`.repeat(13)}┼${`─`.repeat(11)}┼${`─`.repeat(26)}┤`)
+
+  const totalLabel = `Total: ${results.length}`.padEnd(18)
+  const passedLabel = `${totalPassed} passed`
+  const skippedLabel = totalSkipped > 0 ? `, ${totalSkipped} skipped` : ""
+  const failedLabel = totalFailed > 0 ? `, ${totalFailed} failed` : ""
+  const statusSummary = `${passedLabel}${skippedLabel}${failedLabel}`.padEnd(11)
+  const timeSummary = `${(totalMs / 1000).toFixed(1)}s`.padStart(8)
+
+  console.log(`  │ ${totalLabel} │ ${statusSummary} │ ${timeSummary} │${`─`.repeat(26)}│`)
+  console.log(`  └${`─`.repeat(20)}┴${`─`.repeat(13)}┴${`─`.repeat(11)}┴${`─`.repeat(26)}┘`)
+  console.log("")
+
+  if (totalFailed > 0) {
+    console.log(`  ⚠  ${totalFailed} benchmark(s) had regressions or failures.`)
+    console.log("")
+  }
+}
+
+/** Get terminal color codes (no-op if not supported). */
+function getTermColors() {
+  const noColor = !process.stdout.isTTY || process.env.NO_COLOR
+  return {
+    bgGreen: noColor ? "" : "\x1b[42m",
+    bgRed: noColor ? "" : "\x1b[41m",
+    bgYellow: noColor ? "" : "\x1b[43m",
+    bgBlue: noColor ? "" : "\x1b[44m",
+    reset: noColor ? "" : "\x1b[0m",
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -188,13 +329,20 @@ function runSingle(type) {
 // ---------------------------------------------------------------------------
 
 if (type === "all") {
-  let exitCode = 0
+  const results = []
+
   for (const t of BENCHMARK_TYPES) {
-    const code = runSingle(t)
-    if (code !== 0) exitCode = code
+    const result = runSingle(t)
+    results.push({ type: t, ...result })
   }
-  process.exit(exitCode)
+
+  // Unified summary table
+  printSummaryTable(results, true)
+
+  // Determine exit
+  const anyFailure = results.some((r) => r.exitCode !== 0 && r.status !== "skipped")
+  process.exit(anyFailure ? 1 : 0)
 } else {
-  const exitCode = runSingle(type)
-  process.exit(exitCode)
+  const result = runSingle(type)
+  process.exit(result.exitCode ?? 0)
 }

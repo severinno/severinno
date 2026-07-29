@@ -68,18 +68,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-import {
-  Popover,
-  PopoverContent,
-  PopoverAnchor,
-} from "@/components/ui/popover"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover"
 import {
   Command,
   CommandEmpty,
@@ -139,7 +129,7 @@ const NOTIFICATION_ROUTES: Record<string, string> = {
 // Group notifications by date (Hoje / Ontem / Esta semana / Este mês / Anterior)
 // ---------------------------------------------------------------------------
 
-function groupNotificationsByDate(items: NotificationsResponse['items']) {
+function groupNotificationsByDate(items: NotificationsResponse["items"]) {
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const yesterday = new Date(today)
@@ -148,14 +138,14 @@ function groupNotificationsByDate(items: NotificationsResponse['items']) {
   thisWeekStart.setDate(thisWeekStart.getDate() - today.getDay())
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
 
-  const groups: { label: string; items: NotificationsResponse['items'] }[] = []
+  const groups: { label: string; items: NotificationsResponse["items"] }[] = []
 
-  const buckets: Record<string, NotificationsResponse['items']> = {
-    "Hoje": [],
-    "Ontem": [],
+  const buckets: Record<string, NotificationsResponse["items"]> = {
+    Hoje: [],
+    Ontem: [],
     "Esta semana": [],
     "Este mês": [],
-    "Anterior": [],
+    Anterior: [],
   }
 
   for (const item of items) {
@@ -243,7 +233,7 @@ function WelcomeToast({ onDismiss }: { onDismiss: () => void }) {
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: -100, opacity: 0 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="fixed left-1/2 top-4 z-[60] -translate-x-1/2"
+      className="fixed top-4 left-1/2 z-[60] -translate-x-1/2"
     >
       <div className="flex items-center gap-3 rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-3 shadow-lg shadow-emerald-500/10 dark:border-emerald-800/40 dark:from-emerald-950/90 dark:to-teal-950/90 dark:shadow-emerald-500/5">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-md shadow-emerald-500/20">
@@ -296,8 +286,8 @@ export default function Topbar({
   // Track hydration: true on client, false on server (avoids hydration mismatch)
   const mounted = React.useSyncExternalStore(
     () => () => {}, // subscribe (no-op — value never changes after mount)
-    () => true,     // getSnapshot (client: always mounted)
-    () => false,    // getServerSnapshot (server: not mounted)
+    () => true, // getSnapshot (client: always mounted)
+    () => false, // getServerSnapshot (server: not mounted)
   )
 
   const [mobileOpen, setMobileOpen] = React.useState(false)
@@ -396,13 +386,13 @@ export default function Topbar({
         className={cn(
           "sticky top-0 z-40 w-full transition-all duration-300 ease-out",
           scrolled
-            ? "border-b bg-background/95 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/90"
-            : "border-b border-transparent bg-background/70 backdrop-blur-md supports-[backdrop-filter]:bg-background/55",
+            ? "bg-background/95 supports-[backdrop-filter]:bg-background/90 border-b shadow-sm backdrop-blur-xl"
+            : "bg-background/70 supports-[backdrop-filter]:bg-background/55 border-b border-transparent backdrop-blur-md",
         )}
       >
         {/* ── Gradient bottom border on scroll (2px emerald-400 → teal-500) ── */}
         <motion.div
-          className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-400 to-teal-500"
+          className="absolute right-0 bottom-0 left-0 h-[2px] bg-gradient-to-r from-emerald-400 to-teal-500"
           initial={{ scaleX: 0, opacity: 0 }}
           animate={{
             scaleX: scrolled ? 1 : 0,
@@ -423,11 +413,11 @@ export default function Topbar({
           <button
             type="button"
             onClick={() => onSelectCategory(null)}
-            className="group flex shrink-0 items-center gap-2.5 rounded-xl px-1.5 py-1.5 outline-none transition-all hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="group hover:bg-primary/5 focus-visible:ring-ring flex shrink-0 items-center gap-2.5 rounded-xl px-1.5 py-1.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             aria-label="Severinno — página inicial"
           >
             <motion.span
-              className="relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/25 transition-shadow duration-300 group-hover:shadow-lg group-hover:shadow-primary/30"
+              className="from-primary shadow-primary/25 group-hover:shadow-primary/30 relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br to-emerald-600 shadow-md transition-shadow duration-300 group-hover:shadow-lg"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 20 }}
@@ -446,12 +436,12 @@ export default function Topbar({
               >
                 <MapPin className="size-5 text-white" />
               </motion.div>
-              <span className="absolute -bottom-0.5 -right-0.5 flex size-3 items-center justify-center rounded-full bg-emerald-400 shadow-sm">
+              <span className="absolute -right-0.5 -bottom-0.5 flex size-3 items-center justify-center rounded-full bg-emerald-400 shadow-sm">
                 <Sparkles className="size-2 text-white" />
               </span>
             </motion.span>
             <span className="text-xl font-extrabold tracking-tight">
-              <span className="bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
+              <span className="from-primary bg-gradient-to-r to-emerald-600 bg-clip-text text-transparent">
                 Sever
               </span>
               <span className="text-foreground">inno</span>
@@ -461,7 +451,7 @@ export default function Topbar({
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.5, duration: 0.3 }}
-              className="hidden items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 dark:from-emerald-900/40 dark:to-teal-900/40 sm:inline-flex"
+              className="hidden items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 sm:inline-flex dark:from-emerald-900/40 dark:to-teal-900/40"
             >
               <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
               <span className="text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300">
@@ -486,7 +476,7 @@ export default function Topbar({
                   <Popover open={searchOpen} onOpenChange={setSearchOpen}>
                     <PopoverAnchor asChild>
                       <div className="relative mx-auto w-full max-w-xl">
-                        <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground transition-colors duration-200 group-focus-within:text-primary" />
+                        <Search className="text-muted-foreground group-focus-within:text-primary pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 transition-colors duration-200" />
                         <Input
                           value={query}
                           onChange={(e) => onQueryChange(e.target.value)}
@@ -503,11 +493,11 @@ export default function Topbar({
                           }}
                           placeholder="Buscar serviço ou prestador…"
                           className={cn(
-                            "h-11 w-full rounded-2xl border-0 bg-muted/50 pl-11 pr-10 text-sm shadow-none transition-all duration-300",
+                            "bg-muted/50 h-11 w-full rounded-2xl border-0 pr-10 pl-11 text-sm shadow-none transition-all duration-300",
                             "placeholder:text-muted-foreground/60",
                             "hover:bg-muted/70 hover:shadow-sm",
-                            "focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:shadow-md",
-                            searchOpen && "bg-background shadow-md ring-2 ring-primary/20",
+                            "focus-visible:bg-background focus-visible:ring-primary/30 focus-visible:shadow-md focus-visible:ring-2",
+                            searchOpen && "bg-background ring-primary/20 shadow-md ring-2",
                             searchFocused && "max-w-xl scale-[1.02]",
                           )}
                           aria-label="Buscar prestadores"
@@ -525,7 +515,7 @@ export default function Topbar({
                               animate={{ scale: 1, opacity: 1 }}
                               exit={{ scale: 0, opacity: 0 }}
                               transition={{ duration: 0.15 }}
-                              className="absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                              className="bg-muted text-muted-foreground hover:bg-destructive/10 hover:text-destructive absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full transition-colors"
                             >
                               <X className="size-3.5" />
                             </motion.button>
@@ -533,7 +523,7 @@ export default function Topbar({
                         </AnimatePresence>
                         {/* Search shortcut hint */}
                         {!query && !searchOpen && (
-                          <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground lg:inline-block">
+                          <kbd className="bg-muted text-muted-foreground pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border px-1.5 py-0.5 text-[10px] font-medium lg:inline-block">
                             ⌘K
                           </kbd>
                         )}
@@ -541,7 +531,7 @@ export default function Topbar({
                     </PopoverAnchor>
                     <PopoverContent
                       align="center"
-                      className="w-[min(90vw,36rem)] rounded-2xl border-0 p-0 shadow-2xl shadow-primary/5"
+                      className="shadow-primary/5 w-[min(90vw,36rem)] rounded-2xl border-0 p-0 shadow-2xl"
                       onOpenAutoFocus={(e) => e.preventDefault()}
                     >
                       <Command shouldFilter={false} className="rounded-2xl">
@@ -559,8 +549,8 @@ export default function Topbar({
                         <CommandList>
                           <CommandEmpty>
                             <div className="flex flex-col items-center gap-2 py-6 text-center">
-                              <Search className="size-8 text-muted-foreground/40" />
-                              <p className="text-sm text-muted-foreground">
+                              <Search className="text-muted-foreground/40 size-8" />
+                              <p className="text-muted-foreground text-sm">
                                 Digite e pressione Enter para buscar.
                               </p>
                             </div>
@@ -576,7 +566,7 @@ export default function Topbar({
                                 }}
                                 className="gap-3 rounded-lg"
                               >
-                                <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-lg">
                                   <Search className="size-3.5" />
                                 </span>
                                 <span className="font-medium">{c.name}</span>
@@ -612,7 +602,7 @@ export default function Topbar({
                   className="w-full max-w-sm"
                 >
                   <div className="relative">
-                    <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2" />
                     <Input
                       value={query}
                       onChange={(e) => onQueryChange(e.target.value)}
@@ -629,10 +619,10 @@ export default function Topbar({
                       }}
                       placeholder="Buscar…"
                       className={cn(
-                        "h-9 w-full rounded-xl border-0 bg-muted/50 pl-9 pr-3 text-xs shadow-none transition-all duration-300",
+                        "bg-muted/50 h-9 w-full rounded-xl border-0 pr-3 pl-9 text-xs shadow-none transition-all duration-300",
                         "placeholder:text-muted-foreground/60",
                         "hover:bg-muted/70",
-                        "focus-visible:bg-background focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:shadow-sm",
+                        "focus-visible:bg-background focus-visible:ring-primary/30 focus-visible:shadow-sm focus-visible:ring-2",
                         searchFocused && "scale-[1.03]",
                       )}
                       aria-label="Buscar prestadores (compacto)"
@@ -671,7 +661,7 @@ export default function Topbar({
             <Button
               variant="ghost"
               size="icon"
-              className="group size-9 rounded-xl text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground"
+              className="group text-muted-foreground hover:bg-accent hover:text-foreground size-9 rounded-xl transition-all duration-200"
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               aria-label="Alternar tema"
               title="Alternar tema"
@@ -736,7 +726,7 @@ export default function Topbar({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="group relative size-9 rounded-xl text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+                      className="group text-muted-foreground hover:bg-accent hover:text-foreground relative size-9 rounded-xl transition-all"
                       aria-label="Notificações"
                       title="Notificações"
                     >
@@ -758,7 +748,7 @@ export default function Topbar({
                   </PopoverAnchor>
                   <PopoverContent
                     align="end"
-                    className="w-80 rounded-2xl border-0 p-0 shadow-2xl shadow-primary/5"
+                    className="shadow-primary/5 w-80 rounded-2xl border-0 p-0 shadow-2xl"
                   >
                     <div className="flex items-center justify-between border-b px-4 py-3">
                       <h3 className="text-sm font-semibold">Notificações</h3>
@@ -771,16 +761,14 @@ export default function Topbar({
                     <ScrollArea className="max-h-80">
                       {(notificationsData?.items ?? []).length === 0 ? (
                         <div className="flex flex-col items-center gap-2 py-8 text-center">
-                          <Bell className="size-8 text-muted-foreground/30" />
-                          <p className="text-sm text-muted-foreground">
-                            Nenhuma notificação
-                          </p>
+                          <Bell className="text-muted-foreground/30 size-8" />
+                          <p className="text-muted-foreground text-sm">Nenhuma notificação</p>
                         </div>
                       ) : (
                         <div className="max-h-72 overflow-y-auto">
                           {groupNotificationsByDate(notificationsData?.items ?? []).map((group) => (
                             <div key={group.label}>
-                              <div className="sticky top-0 z-10 bg-popover px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                              <div className="bg-popover text-muted-foreground sticky top-0 z-10 px-4 py-1.5 text-[10px] font-medium tracking-wider uppercase">
                                 {group.label}
                               </div>
                               {group.items.map((n) => {
@@ -792,7 +780,7 @@ export default function Topbar({
                                     className={cn(
                                       "flex gap-3 px-4 py-3 transition-colors",
                                       !n.read && "bg-primary/5",
-                                      targetRoute && "cursor-pointer hover:bg-muted/50",
+                                      targetRoute && "hover:bg-muted/50 cursor-pointer",
                                     )}
                                     onClick={() => {
                                       if (targetRoute) navigate(targetRoute)
@@ -806,24 +794,32 @@ export default function Topbar({
                                     role={targetRoute ? "button" : undefined}
                                     tabIndex={targetRoute ? 0 : undefined}
                                   >
-                                    <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                    <div className="bg-primary/10 text-primary mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg">
                                       <Bell className="size-4" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                      <p className={cn("text-sm leading-snug", !n.read && "font-medium")}>
+                                      <p
+                                        className={cn(
+                                          "text-sm leading-snug",
+                                          !n.read && "font-medium",
+                                        )}
+                                      >
                                         {n.title || n.message}
                                       </p>
-                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                      <p className="text-muted-foreground mt-0.5 text-xs">
                                         {formatRelative(n.createdAt)}
                                       </p>
                                       {typeLabel ? (
-                                        <Badge variant="outline" className="mt-1 h-4 text-[9px] font-medium">
+                                        <Badge
+                                          variant="outline"
+                                          className="mt-1 h-4 text-[9px] font-medium"
+                                        >
                                           {typeLabel}
                                         </Badge>
                                       ) : null}
                                     </div>
                                     {!n.read && (
-                                      <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" />
+                                      <span className="bg-primary mt-1.5 size-2 shrink-0 rounded-full" />
                                     )}
                                   </div>
                                 )
@@ -837,9 +833,14 @@ export default function Topbar({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="w-full text-xs font-medium text-primary hover:text-primary/80"
+                        className="text-primary hover:text-primary/80 w-full text-xs font-medium"
                         onClick={() => {
-                          const view = user?.role === "ADMIN" ? "admin.dashboard" : user?.role === "PROVIDER" ? "provider.dashboard" : "client.dashboard"
+                          const view =
+                            user?.role === "ADMIN"
+                              ? "admin.dashboard"
+                              : user?.role === "PROVIDER"
+                                ? "provider.dashboard"
+                                : "client.dashboard"
                           navigate(view)
                         }}
                       >
@@ -853,7 +854,7 @@ export default function Topbar({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="group size-9 rounded-xl text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+                  className="group text-muted-foreground hover:bg-accent hover:text-foreground size-9 rounded-xl transition-all"
                   onClick={() => navigate("client.favorites")}
                   aria-label="Favoritos"
                   title="Favoritos"
@@ -866,20 +867,20 @@ export default function Topbar({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="group flex items-center gap-2 rounded-xl border bg-background/80 py-1.5 pr-3 pl-1.5 text-sm outline-none transition-all duration-200 hover:border-primary/30 hover:bg-accent/50 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      className="group bg-background/80 hover:border-primary/30 hover:bg-accent/50 focus-visible:ring-ring flex items-center gap-2 rounded-xl border py-1.5 pr-3 pl-1.5 text-sm transition-all duration-200 outline-none hover:shadow-sm focus-visible:ring-2 focus-visible:ring-offset-2"
                       aria-label="Menu da conta"
                     >
                       <div className="relative">
-                        <Avatar className="size-7 ring-2 ring-background transition-shadow duration-200 group-hover:ring-primary/20">
+                        <Avatar className="ring-background group-hover:ring-primary/20 size-7 ring-2 transition-shadow duration-200">
                           {user?.avatarUrl ? (
                             <AvatarImage src={user.avatarUrl} alt={user.name} />
                           ) : null}
-                          <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-600 text-xs text-white">
+                          <AvatarFallback className="from-primary bg-gradient-to-br to-emerald-600 text-xs text-white">
                             {initials}
                           </AvatarFallback>
                         </Avatar>
                         {/* Online indicator */}
-                        <span className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-500" />
+                        <span className="border-background absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 bg-emerald-500" />
                       </div>
                       <span className="hidden max-w-[10rem] truncate font-medium lg:inline">
                         {user?.name?.split(" ")[0]}
@@ -889,26 +890,21 @@ export default function Topbar({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="end"
-                    className="w-64 rounded-2xl border-0 p-2 shadow-2xl shadow-primary/5"
+                    className="shadow-primary/5 w-64 rounded-2xl border-0 p-2 shadow-2xl"
                   >
                     <DropdownMenuLabel className="flex items-center gap-3 rounded-xl px-3 py-2.5">
-                      <Avatar className="size-10 ring-2 ring-primary/10">
+                      <Avatar className="ring-primary/10 size-10 ring-2">
                         {user?.avatarUrl ? (
                           <AvatarImage src={user.avatarUrl} alt={user.name} />
                         ) : null}
-                        <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-600 text-sm text-white">
+                        <AvatarFallback className="from-primary bg-gradient-to-br to-emerald-600 text-sm text-white">
                           {initials}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold">{user?.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {user?.email}
-                        </p>
-                        <Badge
-                          variant="secondary"
-                          className="mt-1 gap-1 text-[10px] font-medium"
-                        >
+                        <p className="text-muted-foreground truncate text-xs">{user?.email}</p>
+                        <Badge variant="secondary" className="mt-1 gap-1 text-[10px] font-medium">
                           <ShieldCheck className="size-3" />
                           {user ? ROLE_LABELS[user.role] : ""}
                         </Badge>
@@ -919,7 +915,7 @@ export default function Topbar({
                       onSelect={() => user && navigate(DASHBOARD_VIEW[user.role])}
                       className="gap-3 rounded-xl px-3 py-2.5"
                     >
-                      <LayoutDashboard className="size-4 text-primary" />
+                      <LayoutDashboard className="text-primary size-4" />
                       <span>Meu painel</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
@@ -947,14 +943,14 @@ export default function Topbar({
                   variant="ghost"
                   size="sm"
                   onClick={() => openAuth("login")}
-                  className="h-9 rounded-xl px-4 font-medium transition-all duration-200 hover:bg-primary/5 hover:text-primary"
+                  className="hover:bg-primary/5 hover:text-primary h-9 rounded-xl px-4 font-medium transition-all duration-200"
                 >
                   Entrar
                 </Button>
                 <Button
                   size="sm"
                   onClick={() => openAuth("register", "CLIENT")}
-                  className="h-9 rounded-xl bg-gradient-to-r from-primary to-emerald-600 px-5 font-medium shadow-md shadow-primary/20 transition-all duration-200 hover:shadow-lg hover:shadow-primary/30 hover:brightness-110"
+                  className="from-primary shadow-primary/20 hover:shadow-primary/30 h-9 rounded-xl bg-gradient-to-r to-emerald-600 px-5 font-medium shadow-md transition-all duration-200 hover:shadow-lg hover:brightness-110"
                 >
                   Cadastrar
                 </Button>
@@ -968,7 +964,7 @@ export default function Topbar({
             <Button
               variant="ghost"
               size="icon"
-              className="size-9 rounded-xl text-muted-foreground hover:text-foreground"
+              className="text-muted-foreground hover:text-foreground size-9 rounded-xl"
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               aria-label="Alternar tema"
               title="Alternar tema"
@@ -1059,11 +1055,11 @@ export default function Topbar({
               >
                 <SheetHeader className="border-b px-6 py-4">
                   <SheetTitle className="flex items-center gap-2.5">
-                    <span className="flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 shadow-sm">
+                    <span className="from-primary flex size-8 items-center justify-center rounded-xl bg-gradient-to-br to-emerald-600 shadow-sm">
                       <MapPin className="size-4 text-white" />
                     </span>
                     <span className="text-lg font-bold">
-                      <span className="bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
+                      <span className="from-primary bg-gradient-to-r to-emerald-600 bg-clip-text text-transparent">
                         Sever
                       </span>
                       <span>inno</span>
@@ -1086,12 +1082,12 @@ export default function Topbar({
                     }}
                     className="relative"
                   >
-                    <Search className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="text-muted-foreground absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
                     <Input
                       value={query}
                       onChange={(e) => onQueryChange(e.target.value)}
                       placeholder="Buscar serviço…"
-                      className="h-11 rounded-xl border-0 bg-muted/50 pl-10 shadow-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      className="bg-muted/50 focus-visible:ring-primary/30 h-11 rounded-xl border-0 pl-10 shadow-none focus-visible:ring-2"
                       aria-label="Buscar serviço"
                     />
                   </form>
@@ -1119,22 +1115,17 @@ export default function Topbar({
                     {isAuth ? (
                       <>
                         <div className="flex items-center gap-3">
-                          <Avatar className="size-10 ring-2 ring-primary/10">
+                          <Avatar className="ring-primary/10 size-10 ring-2">
                             {user?.avatarUrl ? (
                               <AvatarImage src={user.avatarUrl} alt={user.name} />
                             ) : null}
-                            <AvatarFallback className="bg-gradient-to-br from-primary to-emerald-600 text-sm text-white">
+                            <AvatarFallback className="from-primary bg-gradient-to-br to-emerald-600 text-sm text-white">
                               {initials}
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">
-                              {user?.name}
-                            </p>
-                            <Badge
-                              variant="secondary"
-                              className="mt-0.5 gap-1 text-[10px]"
-                            >
+                            <p className="truncate text-sm font-semibold">{user?.name}</p>
+                            <Badge variant="secondary" className="mt-0.5 gap-1 text-[10px]">
                               <ShieldCheck className="size-3" />
                               {user ? ROLE_LABELS[user.role] : ""}
                             </Badge>
@@ -1148,7 +1139,7 @@ export default function Topbar({
                           }}
                           className="h-11 gap-2.5 rounded-xl"
                         >
-                          <LayoutDashboard className="size-4 text-primary" />
+                          <LayoutDashboard className="text-primary size-4" />
                           Meu painel
                         </Button>
                         <Button
@@ -1157,7 +1148,7 @@ export default function Topbar({
                             setMobileOpen(false)
                             logout()
                           }}
-                          className="h-11 gap-2.5 rounded-xl text-destructive hover:bg-destructive/5 hover:text-destructive"
+                          className="text-destructive hover:bg-destructive/5 hover:text-destructive h-11 gap-2.5 rounded-xl"
                         >
                           <LogOut className="size-4" />
                           Sair
@@ -1180,7 +1171,7 @@ export default function Topbar({
                             setMobileOpen(false)
                             openAuth("register", "CLIENT")
                           }}
-                          className="h-11 rounded-xl bg-gradient-to-r from-primary to-emerald-600 font-medium shadow-md shadow-primary/20"
+                          className="from-primary shadow-primary/20 h-11 rounded-xl bg-gradient-to-r to-emerald-600 font-medium shadow-md"
                         >
                           Cadastrar grátis
                         </Button>

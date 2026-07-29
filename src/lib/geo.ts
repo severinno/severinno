@@ -9,43 +9,86 @@ import "server-only"
  */
 
 import { trackGeoLatency } from "./geo-metrics"
+import { withCache } from "./redis"
+import { rateLimitedNominatim } from "./nominatim-rate-limit"
 
 export { haversineKm, formatDistance } from "./geo-shared"
 
-// ── Instrumented wrappers for geo-metrics ────────────────────────────────
+// ── Cache-aside wrapper for geo functions ────────────────────────────────
+// Adds Redis caching INSIDE the geo functions so any caller (API route,
+// script, SSR page) gets cache hits automatically.
 
-/** Wraps geocodeCEP with ViaCEP latency tracking. */
-export function geocodeCEPWithMetrics(cep: string): Promise<ViaCEPResult> {
-  return trackGeoLatency("viacep", () => _geocodeCEP(cep))
+function normalizeCacheKey(input: string): string {
+  return input.trim().toLowerCase().replace(/\s+/g, " ")
 }
 
-/** Wraps geocodeSearch with Nominatim latency tracking. */
-export function geocodeSearchWithMetrics(
-  query: string,
-  limit?: number,
-): Promise<GeoSearchResult[]> {
-  return trackGeoLatency("nominatim", () => _geocodeSearch(query, limit))
+/**
+ * Cache-aside + rate-limited + instrumented wrapper for geo functions.
+ *
+ * On cache hit: returns instantly ("geo-cache" latency tracked).
+ * On cache miss:
+ *   1. rateLimitedNominatim — respeita política OSM (1 req/s)
+ *   2. trackGeoLatency — métricas P50/P95/P99
+ *   3. withCache — armazena no Redis + in-memory fallback
+ */
+function withCachedGeo<T>(key: string, fn: () => Promise<T>, ttl: number): Promise<T> {
+  // The rate limiter + latency tracker go INSIDE the cache-miss callback
+  // so they only run when we actually call the external API.
+  // Cache hit is nearly instant — no need for separate metrics.
+  return withCache(key, () => rateLimitedNominatim(fn), ttl)
 }
 
-/** Wraps geocodeSearchStructured with Nominatim latency tracking. */
-export function geocodeSearchStructuredWithMetrics(
+// ── Instrumented + cached wrappers ───────────────────────────────────────
+// Each wrapper adds BOTH latency tracking AND Redis caching.
+
+/** Wraps geocodeCEP with Redis cache (7d TTL) + ViaCEP latency tracking. */
+export function geocodeCEP(cep: string): Promise<ViaCEPResult> {
+  const clean = cep.replace(/\D/g, "")
+  return withCachedGeo(
+    `geo:cep:${clean}`,
+    () => trackGeoLatency("viacep", () => _geocodeCEP(clean)),
+    604800, // 7d
+  )
+}
+
+/** Wraps geocodeSearch with Redis cache (24h TTL) + Nominatim latency tracking. */
+export function geocodeSearch(query: string, limit: number = 5): Promise<GeoSearchResult[]> {
+  const key = `geo:search:${normalizeCacheKey(query)}:${Math.max(1, Math.min(10, limit))}`
+  return withCachedGeo(
+    key,
+    () => trackGeoLatency("nominatim", () => _geocodeSearch(query, limit)),
+    86400, // 24h
+  )
+}
+
+/** Wraps geocodeSearchStructured with Redis cache (24h TTL) + Nominatim tracking. */
+export function geocodeSearchStructured(
   opts: Parameters<typeof _geocodeSearchStructured>[0],
 ): Promise<GeoSearchResult[]> {
-  return trackGeoLatency("nominatim", () => _geocodeSearchStructured(opts))
+  const { street, city, state, country, postcode, limit = 5 } = opts
+  const parts = [
+    street?.trim().toLowerCase() ?? "",
+    city?.trim().toLowerCase() ?? "",
+    state?.trim().toLowerCase() ?? "",
+    country?.trim().toLowerCase() ?? "",
+    postcode?.trim() ?? "",
+    String(Math.max(1, Math.min(10, limit))),
+  ].join(":")
+  return withCachedGeo(
+    `geo:search:structured:${parts}`,
+    () => trackGeoLatency("nominatim", () => _geocodeSearchStructured(opts)),
+    86400, // 24h
+  )
 }
 
-/** Wraps reverseGeocode with Nominatim latency tracking. */
-export function reverseGeocodeWithMetrics(lat: number, lng: number): Promise<ReverseGeocodeResult> {
-  return trackGeoLatency("nominatim", () => _reverseGeocode(lat, lng))
+/** Wraps reverseGeocode with Redis cache (24h TTL) + Nominatim latency tracking. */
+export function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
+  return withCachedGeo(
+    `geo:reverse:${lat.toFixed(4)},${lng.toFixed(4)}`,
+    () => trackGeoLatency("nominatim", () => _reverseGeocode(lat, lng)),
+    86400, // 24h (coordenadas fixas — não mudam)
+  )
 }
-
-// ── Re-export original names as instrumented wrappers ─────────────────────
-// Existing callers get automatic latency tracking without changes.
-
-export const geocodeCEP = geocodeCEPWithMetrics
-export const geocodeSearch = geocodeSearchWithMetrics
-export const geocodeSearchStructured = geocodeSearchStructuredWithMetrics
-export const reverseGeocode = reverseGeocodeWithMetrics
 
 // ── Original (private) implementations ────────────────────────────────────
 

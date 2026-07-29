@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { evaluateGeoHealth, type GeoHealthInput } from "@/lib/geo-health-alert"
+import { checkGeoPerformance } from "@/lib/geo-performance-alert"
 import logger from "@/lib/logger"
 import { handleError } from "@/lib/api-server"
 
@@ -9,10 +10,16 @@ import { handleError } from "@/lib/api-server"
  * Triggered by an external scheduler (cron-job.org, systemd timer, etc.)
  * at a regular interval — recommended: every 5 minutes.
  *
- * Calls the internal /api/health endpoint and evaluates geo service status
- * (Nominatim, ViaCEP, PostGIS). If any service has been degraded for more
- * than CONSECUTIVE_FAILURES_THRESHOLD consecutive checks, sends a
- * notification to the admin (Sentry + email).
+ * Two layers of monitoring:
+ *
+ * 1. AVAILABILITY — Calls the internal /api/health endpoint and evaluates
+ *    geo service status (Nominatim, ViaCEP, PostGIS). If any service has
+ *    been degraded for more than CONSECUTIVE_FAILURES_THRESHOLD consecutive
+ *    checks, sends a notification (Sentry + email).
+ *
+ * 2. PERFORMANCE — Compares the current PostGIS P95 (from the in-memory
+ *    sliding window) against 2× the benchmark baseline. If exceeded,
+ *    sends a structured Sentry alert indicating possible regression.
  *
  * Authentication:
  *   Requires the `CRON_SECRET` environment variable. The caller must pass
@@ -50,9 +57,13 @@ export async function GET(request: Request) {
       )
     }
 
-    // ── Fetch health data ──────────────────────────────────────────
-    const baseUrl = getBaseUrl()
     const startedAt = Date.now()
+
+    // ═════════════════════════════════════════════════════════════════
+    // LAYER 1: Availability Check
+    // ═════════════════════════════════════════════════════════════════
+
+    const baseUrl = getBaseUrl()
 
     const response = await fetch(`${baseUrl}/api/health`, {
       signal: AbortSignal.timeout(30_000),
@@ -90,16 +101,58 @@ export async function GET(request: Request) {
       },
     }
 
-    // ── Evaluate and alert ─────────────────────────────────────────
-    const result = await evaluateGeoHealth(checks)
+    // ── Evaluate availability and alert ────────────────────────────
+    const availabilityResult = await evaluateGeoHealth(checks)
+
+    // ═════════════════════════════════════════════════════════════════
+    // LAYER 2: Performance Check (PostGIS P95 vs benchmark baseline)
+    // ═════════════════════════════════════════════════════════════════
+
+    const perfResults = checkGeoPerformance()
+
+    const perfDegraded = perfResults.filter((r) => r.degraded && r.alerted)
+    const perfRecovered = perfResults.filter((r) => r.recovered)
+
+    if (perfDegraded.length > 0) {
+      logger.warn(
+        {
+          perfDegraded: perfDegraded.map((r) => ({
+            service: "postgis",
+            p95: Math.round(r.p95),
+            threshold: Math.round(r.threshold),
+          })),
+        },
+        "geo-health-alert: performance regression detected",
+      )
+    }
+
+    if (perfRecovered.length > 0) {
+      logger.info(
+        {
+          perfRecovered: perfRecovered.map((r) => ({
+            service: "postgis",
+            p95: Math.round(r.p95),
+            threshold: Math.round(r.threshold),
+          })),
+        },
+        "geo-health-alert: performance recovered",
+      )
+    }
+
+    // ═════════════════════════════════════════════════════════════════
+    // Response
+    // ═════════════════════════════════════════════════════════════════
+
     const elapsed = Date.now() - startedAt
 
     logger.info(
       {
-        checked: result.checked,
-        degraded: result.degraded,
-        alertsSent: result.alertsSent,
-        recoveriesSent: result.recoveriesSent,
+        checked: availabilityResult.checked,
+        degraded: availabilityResult.degraded,
+        alertsSent: availabilityResult.alertsSent,
+        recoveriesSent: availabilityResult.recoveriesSent,
+        perfDegradedCount: perfDegraded.length,
+        perfRecoveredCount: perfRecovered.length,
         elapsed,
       },
       "cron geo-health-alert completed",
@@ -109,23 +162,33 @@ export async function GET(request: Request) {
       ok: true,
       timestamp: new Date().toISOString(),
       elapsed,
-      checks: {
+      availability: {
         nominatim: checks.nominatim.status,
         viacep: checks.viacep.status,
         postgis: checks.postgis.status,
+        degraded: availabilityResult.degraded,
+        alertsSent: availabilityResult.alertsSent,
+        recoveriesSent: availabilityResult.recoveriesSent,
+        services: availabilityResult.services.map((s) => ({
+          name: s.name,
+          status: s.status,
+          consecutiveFailures: s.consecutiveFailures,
+          alerted: s.alerted,
+          recovered: s.recovered,
+        })),
       },
-      summary: {
-        degraded: result.degraded,
-        alertsSent: result.alertsSent,
-        recoveriesSent: result.recoveriesSent,
+      performance: {
+        postgis: {
+          p95: Math.round(perfResults[0]?.p95 ?? 0),
+          threshold: Math.round(perfResults[0]?.threshold ?? 0),
+          baselineMean: Math.round(perfResults[0]?.baselineMean ?? 0),
+          baselineSource: perfResults[0]?.baselineSource ?? null,
+          degraded: perfResults[0]?.degraded ?? false,
+          alerted: perfResults[0]?.alerted ?? false,
+          recovered: perfResults[0]?.recovered ?? false,
+          consecutiveViolations: perfResults[0]?.consecutiveViolations ?? 0,
+        },
       },
-      services: result.services.map((s) => ({
-        name: s.name,
-        status: s.status,
-        consecutiveFailures: s.consecutiveFailures,
-        alerted: s.alerted,
-        recovered: s.recovered,
-      })),
     })
   } catch (e) {
     return handleError(e)

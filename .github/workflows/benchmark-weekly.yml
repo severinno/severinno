@@ -1,0 +1,288 @@
+# =============================================================================
+# Benchmark Weekly — Severinno Marketplace
+#
+# Runs the real PostGIS benchmark (scripts/geo-benchmark-real.mjs) weekly
+# against the staging database, records results in the repository, and
+# detects performance regressions.
+#
+# The benchmark:
+#   1. Connects to the staging PostgreSQL via secrets
+#   2. Creates temp tables with synthetic provider data
+#   3. Benchmarks ST_Distance, ST_DWithin, COUNT queries at 100/500/1k/5k
+#   4. Compares against baseline from the previous run
+#   5. Commits updated baseline + latest results if they changed
+#   6. Reports regression status as a workflow summary
+#
+# Security:
+#   - Never exposes staging credentials in logs
+#   - Temp tables are dropped after each benchmark tier
+#   - Only commits benchmark JSON files (no secrets, no source code)
+# =============================================================================
+
+name: Benchmark Weekly
+
+on:
+  schedule:
+    # Every Sunday at 03:00 UTC
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Regression threshold percentage"
+        required: false
+        default: 10
+        type: number
+      providers:
+        description: "Custom provider count (optional, default: 100,500,1000,5000)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: benchmark-weekly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_ENV: development
+  # Staging database — must be configured in GitHub Secrets
+  PGUSER: ${{ secrets.STAGING_PGUSER || 'severinno' }}
+  PGPASSWORD: ${{ secrets.STAGING_PGPASSWORD || '' }}
+  PGHOST: ${{ secrets.STAGING_PGHOST || 'localhost' }}
+  PGPORT: ${{ secrets.STAGING_PGPORT || '5432' }}
+  PGDATABASE: ${{ secrets.STAGING_PGDATABASE || 'severinno' }}
+
+jobs:
+  # ── Smoke Check ─────────────────────────────────────────────────────────
+  smoke:
+    name: Smoke Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Check benchmark scripts exist
+        run: |
+          MISSING=false
+          for script in scripts/geo-benchmark-real.mjs scripts/compare-benchmarks.mjs; do
+            if [ ! -f "$script" ]; then
+              echo "  ❌ Missing: $script"
+              MISSING=true
+            else
+              echo "  ✅ Found:   $script"
+            fi
+          done
+          if [ "$MISSING" = true ]; then
+            exit 1
+          fi
+
+      - name: Check docs/benchmarks/ directory
+        run: |
+          if [ ! -d "docs/benchmarks" ]; then
+            echo "❌ Missing output directory: docs/benchmarks/"
+            exit 1
+          fi
+          echo "  ✅ Output directory: docs/benchmarks/"
+
+      - name: Verify staging credentials (redacted)
+        run: |
+          if [ -z "${{ secrets.STAGING_PGHOST }}" ] && [ -z "${{ secrets.STAGING_PGPASSWORD }}" ]; then
+            echo "⚠  No staging database secrets configured."
+            echo "   The benchmark will try to connect to localhost."
+            echo "   Set STAGING_PGHOST, STAGING_PGPORT, STAGING_PGUSER,"
+            echo "   STAGING_PGPASSWORD, STAGING_PGDATABASE in GitHub Secrets."
+          else
+            echo "  ✅ Staging database credentials configured."
+            echo "  · Host: ${{ secrets.STAGING_PGHOST || 'localhost' }}:${{ secrets.STAGING_PGPORT || '5432' }}"
+            echo "  · User: ${{ secrets.STAGING_PGUSER || 'severinno' }}"
+            echo "  · Database: ${{ secrets.STAGING_PGDATABASE || 'severinno' }}"
+          fi
+
+  # ── Real PostGIS Benchmark ─────────────────────────────────────────────
+  benchmark:
+    name: PostGIS Real Benchmark
+    runs-on: ubuntu-latest
+    needs: smoke
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # ── Run the real benchmark ──────────────────────────────────────────
+      # Note: --keep is intentionally omitted so temp tables are cleaned up
+      # after each benchmark tier (important against a shared staging DB).
+      - name: Run real PostGIS benchmark
+        id: run
+        env:
+          PGUSER: ${{ env.PGUSER }}
+          PGPASSWORD: ${{ env.PGPASSWORD }}
+          PGHOST: ${{ env.PGHOST }}
+          PGPORT: ${{ env.PGPORT }}
+          PGDATABASE: ${{ env.PGDATABASE }}
+        run: |
+          if [ -n "${{ github.event.inputs.providers }}" ]; then
+            echo "  Using custom provider count: ${{ github.event.inputs.providers }}"
+            node scripts/geo-benchmark-real.mjs --json --providers "${{ github.event.inputs.providers }}"
+          else
+            node scripts/geo-benchmark-real.mjs --json
+          fi
+          echo "✅ Benchmark completed"
+
+      # ── Validate result ─────────────────────────────────────────────────
+      - name: Validate benchmark result
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = 'docs/benchmarks/geo-real-latest.json';
+            if (!fs.existsSync(path)) {
+              throw Error('geo-real-latest.json not found — benchmark may have failed');
+            }
+            const data = JSON.parse(fs.readFileSync(path, 'utf-8'));
+            if (!data.meta || !Array.isArray(data.benchmarks) || data.benchmarks.length === 0) {
+              throw Error('geo-real-latest.json: invalid or empty');
+            }
+            console.log('  ✅ Benchmark result validation passed');
+            console.log('  · Benchmarks: ' + data.benchmarks.length);
+            console.log('  · Platform:   ' + data.meta.platform + ' ' + data.meta.arch);
+            console.log('  · Timestamp:  ' + data.meta.timestamp);
+            console.log('  · PostGIS:    ' + (data.meta.postgisVersion || '?'));
+          "
+
+      # ── Fetch or create baseline ───────────────────────────────────────
+      - name: Fetch baseline from git
+        id: baseline
+        run: |
+          if git show HEAD:docs/benchmarks/geo-real-baseline.json > /tmp/geo-real-baseline.json 2>/dev/null; then
+            echo "baseline_exists=true" >> "$GITHUB_OUTPUT"
+            echo "  ✅ Baseline loaded from HEAD"
+          else
+            echo "baseline_exists=false" >> "$GITHUB_OUTPUT"
+            echo "  ℹ  No baseline yet. First run — results will become the baseline."
+          fi
+
+      # ── Determine threshold ─────────────────────────────────────────────
+      - name: Detect threshold
+        id: changes
+        run: |
+          MANUAL_INPUT=${{ github.event.inputs.threshold || 0 }}
+          if [ "$MANUAL_INPUT" -gt 0 ] 2>/dev/null; then
+            echo "threshold=$MANUAL_INPUT" >> "$GITHUB_OUTPUT"
+          else
+            echo "threshold=10" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Compare with baseline ──────────────────────────────────────────
+      - name: Compare with baseline
+        id: compare
+        if: steps.baseline.outputs.baseline_exists == 'true'
+        env:
+          BENCHMARK_THRESHOLD: ${{ steps.changes.outputs.threshold }}
+        continue-on-error: true
+        run: |
+          node scripts/compare-benchmarks.mjs \
+            /tmp/geo-real-baseline.json \
+            docs/benchmarks/geo-real-latest.json \
+            2>&1 | tee /tmp/benchmark-diff.txt
+
+      - name: No baseline available
+        if: steps.baseline.outputs.baseline_exists != 'true'
+        run: |
+          echo "No geo-real-baseline.json found — this is the first run." | tee /tmp/benchmark-diff.txt
+          echo "Results will be saved as the new baseline."
+
+      # ── Copy latest to baseline ────────────────────────────────────────
+      - name: Update baseline
+        id: update
+        run: |
+          cp docs/benchmarks/geo-real-latest.json docs/benchmarks/geo-real-baseline.json
+          echo "  ✅ Baseline updated from latest results"
+          echo "UPDATED=true" >> "$GITHUB_OUTPUT"
+
+      # ── Check for changes against HEAD ────────────────────────────────
+      # Compare against committed version, not the just-copied local file.
+      # Handles both tracked files (diff) and untracked files (first run).
+      - name: Check for changes against HEAD
+        id: diff
+        run: |
+          FILE="docs/benchmarks/geo-real-latest.json"
+          if git ls-files --error-unmatch "$FILE" 2>/dev/null; then
+            # Tracked file — diff against HEAD
+            if git diff --quiet HEAD -- "$FILE"; then
+              echo "HAS_CHANGES=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "HAS_CHANGES=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # Untracked file (first run) — always commit
+            echo "HAS_CHANGES=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Commit results ─────────────────────────────────────────────────
+      - name: Commit benchmark results
+        if: steps.diff.outputs.HAS_CHANGES == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/benchmarks/geo-real-baseline.json docs/benchmarks/geo-real-latest.json
+          git commit -m "chore: auto-atualizar benchmark real PostGIS (semanal)
+
+          Executa geo-benchmark-real.mjs contra o banco de staging,
+          atualiza o baseline e registra o resultado semanal para
+          monitoramento continuo de performance da camada PostGIS.
+
+          🤖 Generated with Codebuff"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Publish job summary ────────────────────────────────────────────
+      - name: Publish benchmark summary
+        if: always()
+        run: |
+          {
+            echo '## 📊 Benchmark Semanal — PostGIS Real'
+            echo ''
+            echo '| Setting | Value |'
+            echo '|---|---|'
+            echo "| Threshold | ${{ steps.changes.outputs.threshold }}% |"
+            echo "| Baseline | ${{ steps.baseline.outputs.baseline_exists == 'true' && 'loaded' || 'first run' }} |"
+            echo "| Commit | ${{ steps.diff.outputs.HAS_CHANGES == 'true' && 'yes' || 'no changes' }} |"
+            echo ''
+            echo '### Resultado da Comparação'
+            echo ''
+            echo '```'
+            cat /tmp/benchmark-diff.txt 2>/dev/null || echo 'No comparison data available.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Upload artifact ────────────────────────────────────────────────
+      - name: Upload benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geo-real-benchmark
+          path: |
+            docs/benchmarks/geo-real-latest.json
+            docs/benchmarks/geo-real-baseline.json
+          retention-days: 90
