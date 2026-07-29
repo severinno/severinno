@@ -246,4 +246,20 @@ export const RATE_LIMITS = {
   authMe: { prefix: "auth-me", max: 30, windowMs: 60_000 },
   /** General API: 60 per minute */
   general: { prefix: "general", max: 60, windowMs: 60_000 },
+  /** Payments (create + list): 10 per minute */
+  payments: { prefix: "payments", max: 10, windowMs: 60_000 },
+  /** Wallet transactions: 10 per minute */
+  wallet: { prefix: "wallet", max: 10, windowMs: 60_000 },
+  /** Wallet withdrawal: 3 per 10 minutes (high value) */
+  walletWithdraw: { prefix: "wallet-withdraw", max: 3, windowMs: 600_000 },
+  /** Settlements: 10 per minute */
+  settlements: { prefix: "settlements", max: 10, windowMs: 60_000 },
+  /** Push notifications send: 20 per minute */
+  pushSend: { prefix: "push-send", max: 20, windowMs: 60_000 },
+  /** Admin operations: 30 per minute */
+  admin: { prefix: "admin", max: 30, windowMs: 60_000 },
+  /** Webhook Lytex (pagamentos): 20 per minute — vem de IP fixo do Lytex */
+  webhookLytex: { prefix: "webhook-lytex", max: 20, windowMs: 60_000 },
+  /** Webhook Sentry/GlitchTip: 10 per minute */
+  webhookSentry: { prefix: "webhook-sentry", max: 10, windowMs: 60_000 },
 } as const

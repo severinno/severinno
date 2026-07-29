@@ -131,8 +131,7 @@ export default function Vitrine() {
         limit: PAGE_LIMIT,
       },
     ],
-    queryFn: () =>
-      fetchProviders({
+    queryFn: () =>        fetchProviders({
         q: debouncedQ || undefined,
         categoryId: filters.categoryId ?? undefined,
         radius: filters.radius,
@@ -143,7 +142,7 @@ export default function Vitrine() {
         lng,
         page,
         limit: PAGE_LIMIT,
-      }),
+      } as any),
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
   })

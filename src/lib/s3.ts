@@ -46,7 +46,8 @@ try {
 
 let client: S3Client | null = null
 
-function getS3Client(): S3Client {
+/** Get or create the S3 client singleton. */
+export function getS3Client(): S3Client {
   if (!client) {
     const endpoint = process.env.S3_ENDPOINT
     const region = process.env.S3_REGION || "auto"
@@ -71,7 +72,8 @@ function getS3Client(): S3Client {
   return client
 }
 
-function getBucket(): string {
+/** Get the configured bucket name. */
+export function getBucket(): string {
   return process.env.S3_BUCKET || "severinno-uploads"
 }
 

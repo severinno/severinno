@@ -96,7 +96,7 @@ services:
 
   # ── GlitchTip (Error Monitoring — 100% FOSS, MIT) ─────────────────────
   glitchtip:
-    image: glitchtip/glitchtip:v4.1
+    image: glitchtip/glitchtip:v5.2
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -123,7 +123,7 @@ services:
       start_period: 30s
 
   glitchtip-worker:
-    image: glitchtip/glitchtip:v4.1
+    image: glitchtip/glitchtip:v5.2
     command: ./bin/run-celery-with-beat.sh
     environment:
       DATABASE_URL: postgresql://severinno:severinno@postgis:5432/severinno_errors
@@ -141,7 +141,7 @@ services:
 
   # ── MinIO (S3-compatible Object Storage — 100% FOSS) ───────────────────
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
@@ -160,7 +160,7 @@ services:
 
   # ── MinIO Bucket Setup (one-shot init) ─────────────────────────────────
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2024-12-18T13-15-44Z
     depends_on:
       minio:
         condition: service_healthy
@@ -176,7 +176,7 @@ services:
   # Start with: docker compose -f docker-compose.dev.yml --profile routing up -d osrm
   # Setup data first: bash scripts/setup-osrm.sh
   osrm:
-    image: ghcr.io/project-osrm/osrm-backend:latest
+    image: ghcr.io/project-osrm/osrm-backend:v26.7.3
     ports:
       - "127.0.0.1:5000:5000"
     volumes:

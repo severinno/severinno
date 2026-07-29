@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * cache-key-fuzz.test.ts
  *

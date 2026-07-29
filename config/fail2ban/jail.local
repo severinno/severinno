@@ -1,0 +1,171 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# jail.local — Fail2ban para Severinno Marketplace
+# ═══════════════════════════════════════════════════════════════════════════
+# Instalação:
+#   sudo cp config/fail2ban/jail.local /etc/fail2ban/jail.local
+#   sudo cp config/fail2ban/filter.d/*.conf /etc/fail2ban/filter.d/
+#   sudo systemctl restart fail2ban
+#
+# Testar regras:
+#   sudo fail2ban-client status
+#   sudo fail2ban-client status sshd
+#   sudo fail2ban-client status caddy-access
+#   sudo fail2ban-client status caddy-badbots
+#   sudo fail2ban-client status caddy-404-scan
+#
+# Remover ban manual:
+#   sudo fail2ban-client set sshd unbanip <IP>
+#   sudo fail2ban-client set caddy-access unbanip <IP>
+# ═══════════════════════════════════════════════════════════════════════════
+
+[DEFAULT]
+# ── Configuração global ──────────────────────────────────────────────────
+# Tempo de banimento padrão: 24h (86400s)
+bantime = 86400
+
+# Janela de tempo para contar tentativas (10 minutos)
+findtime = 600
+
+# Número máximo de tentativas antes do ban
+maxretry = 5
+
+# Ignorar IPs internos e redes confiáveis
+ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+
+# Ação padrão: banir via iptables (ambos IPv4 e IPv6)
+banaction = iptables-multiport
+banaction_allports = iptables-allports
+
+# Destino de notificações (opcional — descomente se tiver SMTP)
+# action_mw = %(action_)s
+#     %(action_)s
+# dest = admin@severinno.com.br
+# sender = fail2ban@severinno.com.br
+
+# ── Chain personalizada para Caddy ──────────────────────────────────────
+# Isola as regras do Caddy em uma chain separada para facilitar debug
+chain = INPUT
+
+# ═══════════════════════════════════════════════════════════════════════════
+# JAIL 1: SSH — Proteção contra força bruta
+# ═══════════════════════════════════════════════════════════════════════════
+[sshd]
+enabled   = true
+port      = ssh
+filter    = sshd
+logpath   = /var/log/auth.log
+backend   = %(sshd_backend)s
+maxretry  = 3          # 3 tentativas erradas
+findtime  = 600        # em 10 minutos
+bantime   = 86400      # ban por 24h
+
+# ── Ação extra: logging do IP banido ────────────────────────────────────
+action    = iptables-multiport[name=sshd, port=ssh, protocol=tcp]
+           %(action_)s
+
+# ═══════════════════════════════════════════════════════════════════════════
+# JAIL 2: Caddy — Força bruta em autenticação
+# ═══════════════════════════════════════════════════════════════════════════
+# Detecta:
+#   - 401 (Unauthorized): tentativas de acesso sem credenciais válidas
+#   - 403 (Forbidden): acesso negado pelo middleware
+# Ideal para proteger /api/auth/login, /api/admin, /dashboard
+[caddy-access]
+enabled   = true
+port      = http,https
+filter    = caddy-access
+logpath   = /var/log/caddy/severinno-access.log
+maxretry  = 8          # 8 tentativas
+findtime  = 600        # em 10 minutos
+bantime   = 3600       # ban por 1h (primeiro offense)
+bantime.increment = true       # Incrementa ban a cada reincidência
+bantime.factor    = 2          # Dobra o tempo a cada reincidência
+bantime.maxtime   = 604800     # Máximo: 7 dias
+
+# ═══════════════════════════════════════════════════════════════════════════
+# JAIL 3: Caddy — Bots maliciosos e scanners
+# ═══════════════════════════════════════════════════════════════════════════
+# Detecta requests com padrões de bots/scanners conhecidos no user-agent
+# ou tentativas de acesso a paths sensíveis (.env, wp-admin, etc)
+[caddy-badbots]
+enabled   = true
+port      = http,https
+filter    = caddy-badbots
+logpath   = /var/log/caddy/severinno-access.log
+maxretry  = 2          # APENAS 2 requests — bots são agressivos
+findtime  = 300        # em 5 minutos
+bantime   = 604800     # ban por 7 DIAS (bots raramente mudam de IP)
+bantime.increment = true
+bantime.factor    = 4
+bantime.maxtime   = 2592000    # Máximo: 30 dias
+action    = iptables-allports[name=caddy-badbots]
+
+# ═══════════════════════════════════════════════════════════════════════════
+# JAIL 4: Caddy — Varredura de diretórios (404 scan)
+# ═══════════════════════════════════════════════════════════════════════════
+# Detecta clientes que geram muitas respostas 404 em sequência
+# (típico de scanners de vulnerabilidade e crawlers maliciosos)
+[caddy-404-scan]
+enabled   = true
+port      = http,https
+filter    = caddy-404-scan
+logpath   = /var/log/caddy/severinno-access.log
+maxretry  = 15         # 15 paths inexistentes
+findtime  = 300        # em 5 minutos
+bantime   = 43200      # ban por 12h
+bantime.increment = true
+bantime.factor    = 2
+bantime.maxtime   = 604800     # Máximo: 7 dias
+
+# ═══════════════════════════════════════════════════════════════════════════
+# JAIL 5: GlitchTip — Proteção extra para error monitoring
+# ═══════════════════════════════════════════════════════════════════════════
+[caddy-glitchtip]
+enabled   = true
+port      = http,https
+filter    = caddy-access
+logpath   = /var/log/caddy/glitchtip-access.log
+maxretry  = 10
+findtime  = 600
+bantime   = 3600
+bantime.increment = true
+bantime.factor    = 2
+bantime.maxtime   = 604800
+
+# ═══════════════════════════════════════════════════════════════════════════
+# JAIL RECIDIVA — Bloqueio permanente para reincidentes cross-jail
+# ═══════════════════════════════════════════════════════════════════════════
+# Detecta IPs banidos em MÚLTIPLOS jails simultaneamente dentro de 24h.
+# Exemplo: IP que faz força bruta SSH (jail sshd) E tenta acessar paths
+# sensíveis (jail caddy-badbots) é um candidato claro a ataque coordenado.
+#
+# ⚡ Ativado: proteção extra contra ataques multi-vetor.
+#
+# Testar:
+#   sudo fail2ban-client status recidive
+#   tail -f /var/log/fail2ban.log | grep recidive
+#
+# Simular ataque cross-jail:
+#   ./scripts/test-fail2ban-recidive.sh
+# ═══════════════════════════════════════════════════════════════════════════
+[recidive]
+enabled   = true
+filter    = recidive
+logpath   = /var/log/fail2ban.log
+maxretry  = 3          # 3 bans em qualquer jail
+findtime  = 86400      # em 24h (1 dia)
+bantime  = 1209600    # ban por 14 DIAS
+bantime.increment = true
+bantime.factor    = 2          # Dobra a cada reincidência
+bantime.maxtime   = 2592000    # Máximo: 30 dias
+
+# Notificação opcional (descomente se tiver SMTP configurado)
+# action   = %(action_)s
+#            mail-whois[name=recidive, dest=admin@severinno.com.br]
+
+# ── ⚠️ Importante: o jail recidive depende do log do próprio fail2ban.
+# O fail2ban deve ter permissão de leitura em /var/log/fail2ban.log.
+# Em sistemas Ubuntu/Debian, o grupo 'adm' já tem essa permissão.
+# Se o fail2ban não conseguir ler o próprio log, adicione o usuário ao grupo:
+#   sudo usermod -aG adm fail2ban
+#   sudo systemctl restart fail2ban

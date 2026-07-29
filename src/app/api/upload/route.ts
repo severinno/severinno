@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { uploadToS3 } from "@/lib/s3"
 import logger from "@/lib/logger"
 
@@ -37,6 +38,9 @@ const ALLOWED_MIME_TYPES = new Set([
 
 export async function POST(request: Request) {
   try {
+    // 0. Rate limit (conservador — uploads são pesados)
+    await assertRateLimit(request, { prefix: "upload", max: 10, windowMs: 60_000 })
+
     // 1. Auth
     await requireUser()
 

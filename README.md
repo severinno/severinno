@@ -336,6 +336,20 @@ Diagnóstico completo da stack, incluindo workers e serviços:
 docker compose up -d app realtime postgis redis rabbitmq email-worker notification-worker
 ```
 
+## Documentação
+
+| Documento | Descrição |
+|:----------|:----------|
+| [`docs/API.md`](docs/API.md) | Referência completa da API REST (50+ endpoints) |
+| [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md) | Estratégia de cache em 3 camadas (Redis + HTTP + Browser) |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Guia de deploy em produção com Docker + Caddy |
+| [`docs/PUSH_NOTIFICATIONS.md`](docs/PUSH_NOTIFICATIONS.md) | Sistema de push notifications (Web Push, agendamento, webhooks) |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Medidas de segurança (CSP, rate limiting, criptografia, Docker) |
+| [`docs/TESTING.md`](docs/TESTING.md) | Guia de testes (Vitest + Playwright, padrões de mock) |
+| [`docs/postgis-guide.md`](docs/postgis-guide.md) | Guia de PostGIS (geolocalização, consultas espaciais) |
+| [`lytex-integration.md`](lytex-integration.md) | Integração com Lytex Pagamentos (PIX + Cartão) |
+| [`Arquitetura_Software.md`](Arquitetura_Software.md) | Arquitetura de software do sistema |
+
 ## Testing
 
 ```bash
@@ -349,7 +363,6 @@ bun vitest
 npx playwright install
 bun run e2e
 ```
-
 
 ## Encoding Guards
 

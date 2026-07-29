@@ -1,7 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { Banknote, ExternalLink, SearchX, ShieldQuestion, X } from "lucide-react"
+import {
+  Banknote,
+  CalendarRange,
+  ExternalLink,
+  SearchX,
+  ShieldQuestion,
+  X,
+} from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"
@@ -17,7 +24,6 @@ import {
 } from "@/components/ui/table"
 
 import {
-  DateRangeFilter,
   EmptyState,
   ErrorState,
   FilterBar,
@@ -26,7 +32,6 @@ import {
   ResultCount,
   SearchInput,
   TableSkeleton,
-  type DateRangePreset,
 } from "./admin-shared"
 
 type LytexInvoice = {
@@ -69,22 +74,45 @@ export function AdminGateway() {
   const [page, setPage] = React.useState(1)
   const [search, setSearch] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL")
-  const [dateRange, setDateRange] = React.useState<DateRangePreset>("all")
+  const [dateRange, setDateRange] = React.useState<string>("all")
+  const [customStart, setCustomStart] = React.useState<string>("")
+  const [customEnd, setCustomEnd] = React.useState<string>("")
   const perPage = 20
+
+  const isDateActive = dateRange !== "all" || !!customStart || !!customEnd
 
   const activeFilterCount =
     (search ? 1 : 0) +
     (statusFilter !== "ALL" ? 1 : 0) +
-    (dateRange !== "all" ? 1 : 0)
+    (isDateActive ? 1 : 0)
 
   const clearFilters = () => {
     setSearch("")
     setStatusFilter("ALL")
     setDateRange("all")
+    setCustomStart("")
+    setCustomEnd("")
     setPage(1)
   }
 
-  const queryKey = ["admin-gateway-invoices", page, perPage, search, statusFilter, dateRange]
+  // Build date range query params
+  const buildDateParams = () => {
+    const params = new URLSearchParams()
+    if (dateRange === "custom") {
+      // Só envia se pelo menos uma data foi preenchida
+      if (customStart || customEnd) {
+        params.set("dateRange", "custom")
+        if (customStart) params.set("startDate", customStart)
+        if (customEnd) params.set("endDate", customEnd)
+      }
+    } else if (dateRange !== "all") {
+      params.set("dateRange", dateRange)
+    }
+    const qs = params.toString()
+    return qs ? `&${qs}` : ""
+  }
+
+  const queryKey = ["admin-gateway-invoices", page, perPage, search, statusFilter, dateRange, customStart, customEnd]
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey,
     queryFn: () =>
@@ -93,7 +121,7 @@ export function AdminGateway() {
         results: LytexInvoice[]
         paginate: { perPage: number; page: number; pages: number; total: number }
       }>(
-        `/api/admin/gateway/invoices?page=${page}&perPage=${perPage}${search ? `&search=${encodeURIComponent(search)}` : ""}${statusFilter !== "ALL" ? `&status=${statusFilter}` : ""}${dateRange !== "all" ? `&dateRange=${dateRange}` : ""}`,
+        `/api/admin/gateway/invoices?page=${page}&perPage=${perPage}${search ? `&search=${encodeURIComponent(search)}` : ""}${statusFilter !== "ALL" ? `&status=${statusFilter}` : ""}${buildDateParams()}`,
       ),
   })
 
@@ -145,13 +173,57 @@ export function AdminGateway() {
           ))}
         </select>
 
-        <DateRangeFilter
-          value={dateRange}
-          onChange={(v) => {
-            setDateRange(v)
-            setPage(1)
-          }}
-        />
+        {/* ── Date range filter inline ────────────────────────────── */}
+        <div className="relative flex items-center gap-1.5">
+          <CalendarRange className="size-3.5 text-muted-foreground shrink-0" />
+          <select
+            value={dateRange}
+            onChange={(e) => {
+              setDateRange(e.target.value)
+              setPage(1)
+              if (e.target.value !== "custom") {
+                setCustomStart("")
+                setCustomEnd("")
+              }
+            }}
+            className="h-9 appearance-none rounded-lg border border-input/60 bg-background px-2.5 pr-7 text-xs font-medium text-muted-foreground outline-none transition-colors hover:border-foreground/20 focus:border-primary/50"
+          >
+            <option value="all">Período: todos</option>
+            <option value="today">Hoje</option>
+            <option value="7d">Últimos 7 dias</option>
+            <option value="30d">Últimos 30 dias</option>
+            <option value="90d">Últimos 90 dias</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+
+          {/* Custom date inputs — aparece apenas quando "custom" é selecionado */}
+          {dateRange === "custom" && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => {
+                  setCustomStart(e.target.value)
+                  setPage(1)
+                }}
+                className="h-9 rounded-lg border border-input/60 bg-background px-2.5 text-xs text-foreground outline-none transition-colors hover:border-foreground/20 focus:border-primary/50 [color-scheme:var(--color-scheme)]"
+                aria-label="Data inicial"
+              />
+              <span className="text-xs text-muted-foreground">até</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => {
+                  setCustomEnd(e.target.value)
+                  setPage(1)
+                }}
+                min={customStart || undefined}
+                className="h-9 rounded-lg border border-input/60 bg-background px-2.5 text-xs text-foreground outline-none transition-colors hover:border-foreground/20 focus:border-primary/50 [color-scheme:var(--color-scheme)]"
+                aria-label="Data final"
+              />
+            </div>
+          )}
+        </div>
 
         {paginate ? (
           <ResultCount

@@ -56,5 +56,19 @@ server.log
 # Temp files created by setup.sh / check-health.sh
 .tmp/
 
+# Two-phase commit temp files (fix-two-phase.py)
+fix-two-phase.py
+*.fix-tmp
+*.fix-orig
+
 # Geo benchmark output — transient artifact, compare against version-controlled baseline
 docs/benchmarks/geo-latest.json
+
+# Freebuff Desktop — local app state, not project source
+.freebuff/
+
+# Playwright test artifacts — generated on every E2E run
+test-results/
+
+# AI agent skills and configurations
+.agents/

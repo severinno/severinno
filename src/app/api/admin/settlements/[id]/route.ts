@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * GET /api/admin/settlements/[id] — get settlement period details
@@ -12,6 +13,7 @@ export async function GET(
 ) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(_request, RATE_LIMITS.settlements)
     const { id } = await params
 
     const period = await db.settlementPeriod.findUnique({

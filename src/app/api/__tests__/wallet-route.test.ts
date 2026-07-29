@@ -84,7 +84,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     // booking-1 (200) + booking-2 (350) = 550 total COMPLETED
@@ -98,7 +98,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     // booking-3 (150) + booking-4 (100) = 250 * 0.85 = 212.5
@@ -109,7 +109,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     // booking-1 (200) + booking-2 (350) + booking-3 (150) + booking-4 (100) = 800
@@ -120,7 +120,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     expect(data.totalBookings).toBe(2)
@@ -130,7 +130,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     // (200 + 350) / 2 = 275
@@ -141,7 +141,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     // 4 bookings with PAID paymentStatus (COMPLETED + CONFIRMED + IN_PROGRESS)
@@ -168,7 +168,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue([])
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     expect(data.balance).toBe(0)
@@ -184,7 +184,7 @@ describe("GET /api/provider/wallet", () => {
     mockDb.booking.findMany.mockResolvedValue([mockBookings[4]]) // booking-5 is PENDING payment
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     expect(data.balance).toBe(0)
@@ -200,7 +200,7 @@ describe("GET /api/provider/wallet", () => {
       { id: "wth-2", amount: 50, description: "Saque de R$ 50,00", createdAt: new Date("2025-03-20"), status: "completed" },
     ])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     // balance was 467.5, minus 150 in withdrawals = 317.5
@@ -217,7 +217,7 @@ describe("GET /api/provider/wallet", () => {
       { id: "wth-1", amount: 999999, description: "Saque gigante", createdAt: new Date("2025-03-15"), status: "completed" },
     ])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     const data = await res.json()
 
     // balance capped at 0
@@ -233,7 +233,7 @@ describe("GET /api/provider/wallet", () => {
 
     mockDb.booking.findMany.mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/provider/wallet"))
     expect(res.status).toBe(401)
   })
 })

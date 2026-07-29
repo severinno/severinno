@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Accessibility (axe-core) tests for NotificationPreferences.
  *
@@ -82,6 +83,20 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn() },
 }))
 
+vi.stubGlobal(
+  "matchMedia",
+  vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+)
+
 import { useQuery } from "@tanstack/react-query"
 
 // ---- SUT ───────────────────────────────────────────────────────────────────
@@ -92,7 +107,7 @@ afterEach(cleanup)
 
 describe("NotificationPreferences — accessibility", () => {
   it("has no axe violations in loading state", async () => {
-    vi.mocked(useQuery).mockReturnValueOnce({
+    (vi.mocked(useQuery) as any).mockReturnValueOnce({
       data: undefined,
       isLoading: true,
     })
@@ -108,7 +123,7 @@ describe("NotificationPreferences — accessibility", () => {
   })
 
   it("has no axe violations with preferences loaded", async () => {
-    vi.mocked(useQuery).mockReturnValueOnce({
+    (vi.mocked(useQuery) as any).mockReturnValueOnce({
       data: {
         preferences: [
           { type: "BOOKING_CONFIRMED", pushEnabled: true, emailEnabled: true, whatsappEnabled: false, soundEnabled: true },

@@ -9,6 +9,7 @@ import {
   notFound,
 } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { fireEvent } from "@/lib/event-hub"
 
 // Public: list reviews (filter by providerId or bookingId)
 export async function GET(request: Request) {
@@ -84,8 +85,24 @@ export async function POST(request: Request) {
       },
       include: {
         client: { select: { id: true, name: true, avatarUrl: true } },
+        booking: {
+          select: {
+            service: { select: { title: true } },
+            provider: { select: { name: true } },
+          },
+        },
       },
     })
+
+    // 🔔 Fire event webhook for review.created — scoped to the provider who was reviewed
+    fireEvent("review.created", {
+      clientName: review.client.name,
+      providerName: review.booking?.provider?.name ?? "",
+      serviceName: review.booking?.service?.title ?? "",
+      rating: String(review.rating),
+      comment: review.comment ?? "",
+    }, { scopedUserIds: [booking.providerId] }).catch(() => {})
+
     return NextResponse.json({ review }, { status: 201 })
   } catch (e) {
     return handleError(e)

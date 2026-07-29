@@ -63,6 +63,17 @@ vi.mock("@/lib/sounds", () => ({
   tryVibrate: mockTryVibrate,
 }))
 
+vi.mock("lucide-react", () => ({
+  ArrowRight: () => <svg />,
+  CalendarCheck: () => <svg />,
+  Clock: () => <svg />,
+  DollarSign: () => <svg />,
+  RotateCw: () => <svg />,
+  Star: () => <svg />,
+  Users: () => <svg />,
+  Wrench: () => <svg />,
+}))
+
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))

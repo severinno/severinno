@@ -1,6 +1,16 @@
-import { describe, it, expect, afterEach } from "vitest"
+import { describe, it, expect, afterEach, vi } from "vitest"
 import { render, within, cleanup } from "@testing-library/react"
+
+vi.mock("lucide-react", () => ({
+  Search: () => <svg data-testid="icon-search" />,
+  Home: () => <svg data-testid="icon-home" />,
+}))
+
 import NotFound from "../not-found"
+vi.mock("lucide-react", () => ({
+  Search: () => <svg data-testid="icon-search" />,
+  Home: () => <svg data-testid="icon-home" />,
+}))
 
 afterEach(cleanup)
 

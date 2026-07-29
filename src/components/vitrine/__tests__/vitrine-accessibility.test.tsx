@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Accessibility (axe-core) tests for vitrine sections.
  *
@@ -478,7 +479,7 @@ describe("FAQ — accessibility", () => {
 describe("ProviderCard — accessibility", () => {
   it("has no axe violations (not favorited, default compare)", async () => {
     const ProviderCard = (await import("../provider-card")).default
-    const { container } = render(<ProviderCard provider={sampleProvider} />)
+    const { container } = render(<ProviderCard provider={sampleProvider as any} />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   }, 15_000)

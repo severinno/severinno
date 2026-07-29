@@ -5,6 +5,7 @@ import { createSession } from "@/lib/auth"
 import { registerSchema } from "@/lib/validators"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { fireEvent } from "@/lib/event-hub"
 
 export async function POST(request: Request) {
   try {
@@ -60,6 +61,16 @@ export async function POST(request: Request) {
     })
 
     await createSession(user.id, user.role as "CLIENT" | "PROVIDER" | "ADMIN")
+
+    // 🔔 Fire provider.registered event — admin webhooks can trigger auto push
+    if (user.role === "PROVIDER") {
+      fireEvent("provider.registered", {
+        providerName: user.name,
+        city: (data.city || "") as string,
+        state: (data.state || "") as string,
+      }).catch(() => {})
+    }
+
     return NextResponse.json({ user }, { status: 201 })
   } catch (e) {
     return handleError(e)

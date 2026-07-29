@@ -14,6 +14,12 @@ import { render, cleanup } from "@testing-library/react"
 import { axe } from "vitest-axe"
 
 // ---- Minimal mocks (only what PreferenceToggles needs to render without crashing)
+vi.mock("lucide-react", () => ({
+  Play: () => <svg />,
+  Smartphone: () => <svg />,
+  Volume2: () => <svg />,
+}))
+
 vi.mock("@/lib/api", () => ({
   apiPatch: vi.fn().mockResolvedValue({}),
 }))

@@ -59,6 +59,26 @@ vi.mock("@tanstack/react-query", () => ({
   }),
 }))
 
+vi.mock("lucide-react", () => ({
+  ArrowRight: () => <svg />,
+  Banknote: () => <svg />,
+  CalendarCheck: () => <svg />,
+  CalendarDays: () => <svg />,
+  CheckCircle2: () => <svg />,
+  Clock: () => <svg />,
+  FileText: () => <svg />,
+  Loader2: () => <svg />,
+  MapPin: () => <svg />,
+  Play: () => <svg />,
+  Plus: () => <svg />,
+  Send: () => <svg />,
+  Smartphone: () => <svg />,
+  Star: () => <svg />,
+  Volume2: () => <svg />,
+  Wallet: () => <svg />,
+  XCircle: () => <svg />,
+}))
+
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   apiPatch: mockApiPatch,

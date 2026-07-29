@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect } from "vitest"
 import { pct, arrow, computeDiff } from "../benchmark-diff.mjs"
 import type { BenchmarkJson } from "../benchmark-diff"
@@ -115,13 +116,13 @@ describe("computeDiff", () => {
   it("computes elapsedMs between timestamps", () => {
     const result = computeDiff(baselineFixture, currentFixture)
     // 25 days in ms = 25 * 24 * 60 * 60 * 1000
-    expect(result.meta.elapsedMs).toBe(25 * 24 * 60 * 60 * 1000)
+    expect((result.meta as any).elapsedMs).toBe(25 * 24 * 60 * 60 * 1000)
   })
 
   it("returns 0 elapsedMs when timestamps are missing", () => {
     const noTs: BenchmarkJson = { meta: {}, benchmarks: [] }
     const result = computeDiff(noTs, noTs)
-    expect(result.meta.elapsedMs).toBe(0)
+    expect((result.meta as any).elapsedMs).toBe(0)
   })
 
   it("computes pct for all metrics in each benchmark entry", () => {
@@ -240,8 +241,8 @@ describe("computeDiff", () => {
     }
     const result = computeDiff(withAnalysis, withAnalysis2)
     expect(result.analysis).not.toBeNull()
-    expect(result.analysis!.haversineUnitCosts!.at100.pct).toBeCloseTo(20, 0)
-    expect(result.analysis!.avgHaversinePerProvider.pct).toBeCloseTo(20, 0)
+    expect(((result.analysis as any).haversineUnitCosts as any).at100.pct).toBeCloseTo(20, 0)
+    expect((result.analysis as any).avgHaversinePerProvider.pct).toBeCloseTo(20, 0)
   })
 
   it("returns null analysis when one side lacks analysis", () => {

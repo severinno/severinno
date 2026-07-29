@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type PeriodType = "WEEKLY" | "MONTHLY"
 
@@ -49,6 +50,9 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await requireRole("ADMIN")
+
+    // Rate limit específico para criação de repasses financeiros
+    await assertRateLimit(request, RATE_LIMITS.settlements)
 
     const body = (await request.json().catch(() => ({}))) as {
       type?: PeriodType

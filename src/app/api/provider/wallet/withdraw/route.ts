@@ -3,11 +3,15 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { computeAvailableBalance } from "@/lib/wallet"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
 export async function POST(request: Request) {
   try {
     const session = await requireUser()
+
+    // Rate limit específico para saques (3 a cada 10 min)
+    await assertRateLimit(request, RATE_LIMITS.walletWithdraw)
 
     const body = await request.json()
     const { amount } = body as { amount?: number }

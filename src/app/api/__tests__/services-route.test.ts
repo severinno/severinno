@@ -53,9 +53,9 @@ vi.mock("@/lib/redis", () => ({
 }))
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
-    ...actual,
+    ...(actual as Record<string, unknown>),
     cacheControlPublic: vi.fn((response: Response) => response),
     syncServiceSearch: vi.fn(),
   }

@@ -15,6 +15,7 @@
 import * as React from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Bell, BellOff, Loader2, Volume2, Mail, Smartphone, MessageSquare } from "lucide-react"
+import { MobilePushGuide } from "@/components/shared/mobile-push-guide"
 import { toast } from "sonner"
 
 import { apiGet, apiPatch } from "@/lib/api"
@@ -159,6 +160,11 @@ export function NotificationPreferences() {
           </table>
         </div>
       </CardContent>
+
+      {/* Mobile-specific push guide (hidden on desktop) */}
+      <div className="px-6 pb-6">
+        <MobilePushGuide />
+      </div>
     </Card>
   )
 }

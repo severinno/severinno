@@ -13,7 +13,7 @@
 import { motion } from "framer-motion"
 import { LoadingShell, S } from "@/app/loading-shell"
 
-const dotVariants = {
+const dotVariants: any = {
   hidden: { opacity: 0, y: 4 },
   show: (i: number) => ({
     opacity: 1,
@@ -24,9 +24,9 @@ const dotVariants = {
       ease: "easeOut",
     },
   }),
-} as const
+}
 
-const pulseVariants = {
+const pulseVariants: any = {
   pulse: {
     scale: [1, 1.3, 1],
     opacity: [0.6, 1, 0.6],
@@ -37,7 +37,7 @@ const pulseVariants = {
       delay: 0.6,
     },
   },
-} as const
+}
 
 export default function LoadingGlobal() {
   return (

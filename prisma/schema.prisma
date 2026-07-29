@@ -79,9 +79,12 @@ model User {
   walletTransactions  WalletTransaction[]
   notificationPreferences NotificationPreference[]
   settlementProviders ProviderSettlement[]
+  pushSendLogs        PushSendLog[]
+  pushAnalytics      PushAnalytics[]
 
   @@index([role, active, verified])
   @@index([city])
+  @@index([city, active, verified])
   @@index([lat, lng])
 }
 
@@ -100,6 +103,7 @@ model Category {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  search_vector Unsupported("tsvector")?
 
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children Category[] @relation("CategoryTree")
@@ -133,7 +137,7 @@ model Service {
   updatedAt   DateTime @updatedAt
 
   provider  User       @relation(fields: [providerId], references: [id], onDelete: Cascade)
-  category  Category   @relation(fields: [categoryId], references: [id])
+  category  Category   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   reviews   Review[]
   quoteItems QuoteItem[]
   bookings  Booking[]
@@ -141,6 +145,7 @@ model Service {
   @@index([providerId])
   @@index([categoryId])
   @@index([active])
+  @@index([categoryId, active])
 }
 
 // ============================================================================
@@ -207,6 +212,7 @@ model QuoteItem {
   // status: "PENDING" | "QUOTED" | "ACCEPTED" | "REJECTED"
   status       String   @default("PENDING")
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   request  QuoteRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   provider User         @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -253,16 +259,19 @@ model Booking {
 
   client   User        @relation("BookingClient", fields: [clientId], references: [id], onDelete: Cascade)
   provider User        @relation("BookingProvider", fields: [providerId], references: [id], onDelete: Cascade)
-  service  Service     @relation(fields: [serviceId], references: [id])
+  service  Service     @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   quote    QuoteRequest? @relation("BookingQuote", fields: [quoteId], references: [id], onDelete: SetNull)
   reviews  Review[]
   payment  Payment?
+  pushAnalytics PushAnalytics[]
 
   @@index([clientId])
   @@index([providerId])
   @@index([serviceId])
   @@index([status])
   @@index([scheduledAt])
+  @@index([providerId, status, scheduledAt])
+  @@index([clientId, status, scheduledAt])
 }
 
 // ============================================================================
@@ -276,6 +285,7 @@ model Review {
   rating     Int      // 1-5
   comment    String?
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   client    User    @relation("ReviewClient", fields: [clientId], references: [id], onDelete: Cascade)
@@ -284,6 +294,7 @@ model Review {
   serviceId String?
 
   @@index([providerId])
+  @@index([providerId, createdAt])
   @@index([clientId])
   @@index([rating])
 }
@@ -296,6 +307,7 @@ model Favorite {
   clientId   String
   providerId String
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   client   User @relation("FavoriteClient", fields: [clientId], references: [id], onDelete: Cascade)
   provider User @relation("FavoriteProvider", fields: [providerId], references: [id], onDelete: Cascade)
@@ -315,12 +327,14 @@ model Message {
   read      Boolean  @default(false)
   bookingId String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   fromUser User @relation("MessageFrom", fields: [fromId], references: [id], onDelete: Cascade)
   toUser   User @relation("MessageTo", fields: [toId], references: [id], onDelete: Cascade)
 
   @@index([fromId])
   @@index([toId])
+  @@index([fromId, toId, createdAt])
   @@index([bookingId])
   @@index([read])
 }
@@ -336,10 +350,12 @@ model Notification {
   body      String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, createdAt])
   @@index([read])
 }
 
@@ -423,7 +439,7 @@ model ProviderSettlement {
   updatedAt       DateTime @updatedAt
 
   period   SettlementPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  provider User             @relation(fields: [providerId], references: [id])
+  provider User             @relation(fields: [providerId], references: [id], onDelete: Restrict)
 
   @@unique([periodId, providerId])
   @@index([periodId])
@@ -440,6 +456,7 @@ model Setting {
   value     String
   updatedAt DateTime @updatedAt
 
+  createdAt DateTime @default(now())
   updatedBy String?
   user      User?    @relation(fields: [updatedBy], references: [id], onDelete: SetNull)
 }
@@ -454,6 +471,7 @@ model ResetToken {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -493,10 +511,162 @@ model PushSubscription {
   auth      String
   userAgent String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ============================================================================
+// SCHEDULED PUSH NOTIFICATION — admin schedules push for future delivery
+// ============================================================================
+// status: "PENDING" | "SENT" | "CANCELLED" | "FAILED"
+model ScheduledPushNotification {
+  id          String   @id @default(cuid())
+  scheduledAt DateTime
+  status      String   @default("PENDING")
+  title       String
+  body        String?
+  pushUrl     String   @default("/")
+  type        String   @default("ADMIN_MANUAL")
+  userIds     Json     @default("[]")
+  // Results after sending
+  sentCount   Int      @default(0)
+  errorCount  Int      @default(0)
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+
+  // Recurring schedule reference (if this was generated by a recurring rule)
+  recurringId String?
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([recurringId])
+}
+
+// ============================================================================
+// RECURRING PUSH SCHEDULE — notificações push que se repetem
+// ============================================================================
+// Permite criar notificações push que disparam automaticamente em intervalos
+// regulares: diário, semanal, mensal.
+//
+// frequency: "daily" | "weekly" | "monthly"
+//   daily:   dispara todo dia no horário definido em time
+//   weekly:  dispara toda semana no dia da semana (dayOfWeek) no horário
+//   monthly: dispara todo mês no dia (dayOfMonth) no horário
+//
+// time: "HH:mm" no formato 24h (ex: "09:00", "18:30")
+// dayOfWeek: 0=domingo ... 6=sábado (apenas para frequency=weekly)
+// dayOfMonth: 1..31 (apenas para frequency=monthly)
+//
+// status: "ACTIVE" | "PAUSED" | "ARCHIVED"
+//
+// O cron job /api/cron/push-scheduled:
+//   1. Busca todos os ACTIVE
+//   2. Para cada um, verifica se já deve disparar hoje
+//   3. Cria um ScheduledPushNotification avulso e dispara
+//   4. Atualiza lastSentAt
+model RecurringPushSchedule {
+  id          String   @id @default(cuid())
+  // Recurrence config
+  frequency   String   // "daily" | "weekly" | "monthly"
+  time        String   // "HH:mm"
+  dayOfWeek   Int?     // 0-6, apenas para weekly
+  dayOfMonth  Int?     // 1-31, apenas para monthly
+  timezone    String   @default("America/Sao_Paulo")
+  // Content
+  title       String
+  body        String?
+  pushUrl     String   @default("/")
+  type        String   @default("RECURRING")
+  targetRoles Json     @default("[\"CLIENT\",\"PROVIDER\"]")
+  // Filters (opcional) — filtra usuários por critérios
+  filterCity  String?  // Cidade específica (opcional)
+  // Status
+  status      String   @default("ACTIVE")
+  lastSentAt  DateTime?
+  totalSent   Int      @default(0)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, frequency])
+  @@index([status, time])
+}
+
+// ============================================================================
+// EVENT WEBHOOK — configurable auto push triggers for system events
+// ============================================================================
+// Stores rules that define when and to whom to send automatic push notifications
+// when system events (booking created, review received, etc.) occur.
+// event: "booking.created" | "booking.confirmed" | "booking.cancelled" |
+//        "booking.completed" | "review.created" | "quote.received" |
+//        "quote.responded" | "payment.confirmed" | "message.sent" |
+//        "provider.registered"
+// targetRoles: JSON array of roles that receive the notification
+//   e.g. ["PROVIDER", "CLIENT"]
+model EventWebhook {
+  id          String   @id @default(cuid())
+  event       String
+  title       String   // supports {{variables}}
+  body        String?  // supports {{variables}}
+  pushUrl     String   @default("/")
+  targetRoles Json     @default("[\"PROVIDER\"]")
+  active      Boolean  @default(true)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executionLogs WebhookExecutionLog[]
+
+  @@unique([event, title])
+  @@index([event, active])
+}
+
+// ============================================================================
+// PUSH ANALYTICS — delivery metrics for push notifications
+// ============================================================================
+// Registra cada tentativa de envio de push para métricas de entrega.
+// source: "manual" | "auto" | "webhook" | "scheduled" | "cron"
+// status: "sent" | "delivered" | "clicked" | "bounced" | "failed"
+// action: "accept" | "reject" | "view" (preenchido quando o usuário clica
+//   em um botão de ação na notificação push)
+// actionResult: resultado da ação ("CONFIRMED", "CANCELLED", etc.)
+model PushAnalytics {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String?
+  type      String   @default("ADMIN_MANUAL")
+  source    String   @default("manual")
+  status    String   @default("sent")
+  // Device info
+  deviceCount Int    @default(0)
+  // Timing
+  latencyMs    Int?
+  clickedAt    DateTime?
+  errorMessage String?
+  // Action tracking — preenchido quando o usuário executa uma ação
+  // na notificação push (ex: Aceitar, Recusar, Visualizar)
+  action       String?  // "accept" | "reject" | "view"
+  actionResult String?  // resultado: "CONFIRMED" | "CANCELLED" | "viewed"
+  bookingId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([type])
+  @@index([source])
+  @@index([action])
+  @@index([bookingId])
 }
 
 // ============================================================================
@@ -536,6 +706,82 @@ model NotificationPreference {
 }
 
 // ============================================================================
+// PUSH SEND LOG — audit trail for push notification batches
+// ============================================================================
+// Registra cada operação de envio de push (manual, agendado, recorrente)
+// para auditoria: quem enviou, quando, para quantos, resultado.
+//
+// action: "manual_send" | "manual_schedule" | "scheduled_send" | "recurring_send"
+//
+// Metadata armazena detalhes adicionais como:
+//   - scheduleId / recurringId (se aplicável)
+//   - lista parcial de userIds (primeiros N para amostra)
+//   - erros individuais (se houver)
+//   - tempo total de processamento
+model PushSendLog {
+  id              String   @id @default(cuid())
+  adminId         String
+  action          String   // "manual_send" | "manual_schedule" | "scheduled_send" | "recurring_send"
+  title           String
+  body            String?
+  pushUrl         String   @default("/")
+  notificationType String  @default("ADMIN_MANUAL")
+  // Results
+  recipientCount  Int      @default(0)
+  sentCount       Int      @default(0)
+  errorCount      Int      @default(0)
+  directPushCount Int      @default(0)  // fallback direto quando RabbitMQ indisponível
+  metadata        Json?    // detalhes adicionais (scheduleId, recurringId, sample userIds, etc.)
+  createdAt       DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([notificationType])
+}
+
+// ============================================================================
+// WEBHOOK EXECUTION LOG — audit trail for event webhook firings
+// ============================================================================
+// Registra cada execução de uma regra de webhook de evento.
+// Criado automaticamente pelo event-hub.ts fireEvent() sempre que
+// um evento do sistema dispara notificações push via webhook.
+//
+// status: "success" | "partial" | "failed"
+//   success  → todos os sends foram bem-sucedidos
+//   partial  → alguns sends falharam
+//   failed   → todos os sends falharam
+model WebhookExecutionLog {
+  id           String   @id @default(cuid())
+  webhookId    String
+  event        String   // denormalized: "booking.created", etc.
+  title        String   // template rendered (denormalized)
+  body         String?
+  pushUrl      String?
+  targetRoles  Json?    // snapshot of targetRoles at execution time
+
+  webhook EventWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  // Results
+  usersFound   Int      @default(0)   // total users matching role + scoped filters
+  usersSent    Int      @default(0)   // successfully sent
+  usersFailed  Int      @default(0)   // push failed
+  errorMessage String?  // primeiro erro (se houver)
+  status       String   @default("success")
+  // Metadata
+  context      Json?    // snapshot of EventContext variables
+  executionMs  Int?     // total execution time in ms
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([webhookId])
+  @@index([event])
+  @@index([createdAt])
+  @@index([status])
+}
+
+// ============================================================================
 // SEARCH REINDEX QUEUE — async queue for OpenSearch reindexing
 // ============================================================================
 model SearchReindexQueue {
@@ -544,6 +790,7 @@ model SearchReindexQueue {
   entityId   String
   action     String
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([createdAt])
 }

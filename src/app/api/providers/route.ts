@@ -171,22 +171,22 @@ export async function GET(request: Request) {
           // Providers exist but beyond 100km — return unrestricted with expandedRadius = -1
           const unrestrictedResult = await fetchUnrestrictedResults(
             { fbWhere, fbParams, take, skip, hasGeo, latNum, lngNum },
-            {
-              serviceFindMany: db.service.findMany.bind(db),
-              bookingGroupBy: db.booking.groupBy.bind(db),
-              userFindMany: db.user.findMany.bind(db),
-              queryRawUnsafe: db.$queryRawUnsafe.bind(db),
-            },
-          )
-          return cacheControlPublic(
-            NextResponse.json({
-              ...unrestrictedResult,
-              page,
-              limit,
-            }),
-            60,
-          )
-        }
+      {
+        serviceFindMany: db.service.findMany.bind(db) as any,
+        bookingGroupBy: db.booking.groupBy.bind(db) as any,
+        userFindMany: db.user.findMany.bind(db) as any,
+        queryRawUnsafe: db.$queryRawUnsafe.bind(db),
+      },
+    )
+    return cacheControlPublic(
+      NextResponse.json({
+        ...unrestrictedResult,
+        page,
+        limit,
+      }),
+      60,
+    )
+  }
 
         // No providers at all
         return NextResponse.json({
@@ -257,9 +257,9 @@ export async function GET(request: Request) {
       providerIds,
       { hasGeo, latNum, lngNum, centerGeo },
       {
-        serviceFindMany: db.service.findMany.bind(db),
-        bookingGroupBy: db.booking.groupBy.bind(db),
-        userFindMany: db.user.findMany.bind(db),
+        serviceFindMany: db.service.findMany.bind(db) as any,
+        bookingGroupBy: db.booking.groupBy.bind(db) as any,
+        userFindMany: db.user.findMany.bind(db) as any,
         queryRawUnsafe: db.$queryRawUnsafe.bind(db),
       },
     )

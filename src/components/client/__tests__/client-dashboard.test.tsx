@@ -91,6 +91,25 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock("lucide-react", () => ({
+  CalendarDays: () => <svg />,
+  Camera: () => <svg />,
+  CheckCircle2: () => <svg />,
+  ChevronRight: () => <svg />,
+  FileText: () => <svg />,
+  Loader2: () => <svg />,
+  MapPin: () => <svg />,
+  Phone: () => <svg />,
+  Play: () => <svg />,
+  Plus: () => <svg />,
+  Search: () => <svg />,
+  Smartphone: () => <svg />,
+  TrendingUp: () => <svg />,
+  User: () => <svg />,
+  Volume2: () => <svg />,
+  Wallet: () => <svg />,
+}))
+
 // ---- Recharts needs ResizeObserver -----------------------------------------
 vi.stubGlobal(
   "ResizeObserver",

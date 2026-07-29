@@ -31,6 +31,23 @@ vi.mock("@tanstack/react-query", () => ({
   })),
 }))
 
+vi.mock("lucide-react", () => ({
+  Check: () => <svg />,
+  ChevronLeft: () => <svg />,
+  ChevronRight: () => <svg />,
+  Play: () => <svg />,
+  Smartphone: () => <svg />,
+  Volume2: () => <svg />,
+}))
+
+vi.mock("framer-motion", () => ({
+  motion: {
+    div: ({ children, ...p }: any) => <div {...p}>{children}</div>,
+    span: ({ children, ...p }: any) => <span {...p}>{children}</span>,
+  },
+  AnimatePresence: ({ children }: any) => <>{children}</>,
+}))
+
 vi.mock("@/lib/api", () => ({
   apiPatch: vi.fn().mockResolvedValue({}),
   apiPost: vi.fn().mockResolvedValue({}),

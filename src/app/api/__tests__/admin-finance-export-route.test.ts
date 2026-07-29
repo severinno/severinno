@@ -87,7 +87,7 @@ describe("GET /api/admin/finance/export", () => {
   })
 
   it("includes transaction data in CSV rows", async () => {
-    vi.mocked(db.payment.findMany).mockResolvedValue([
+    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([
       {
         id: "pay-1",
         bookingId: "b-1",
@@ -149,7 +149,7 @@ describe("GET /api/admin/finance/export", () => {
   })
 
   it("escapes values with commas/quotes properly", async () => {
-    vi.mocked(db.payment.findMany).mockResolvedValue([
+    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([
       {
         id: "pay-esc",
         bookingId: "b-esc",

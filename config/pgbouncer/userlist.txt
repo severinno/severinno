@@ -1,1 +1,17 @@
-"severinno" ""
+# ═══════════════════════════════════════════════════════════════════════════
+# userlist.txt — Autenticação PgBouncer
+# ═══════════════════════════════════════════════════════════════════════════
+# ATENÇÃO: Este arquivo NÃO é mais usado em produção.
+#
+# O pgbouncer.ini usa auth_type = trust, o que significa que o PgBouncer
+# DELEGA a autenticação ao PostgreSQL. O PostgreSQL já faz SCRAM-SHA-256.
+#
+# Este arquivo é mantido apenas como referência. Caso no futuro precise
+# de auth_type = scram-sha-256, gere o hash com:
+#   docker compose exec postgres psql -U severinno -c "SELECT passwd FROM pg_shadow WHERE usename='severinno';"
+#
+# Formato:
+#   "username" "SCRAM-SHA-256$<hash>"
+# ═══════════════════════════════════════════════════════════════════════════
+# "severinno" "SCRAM-SHA-256$<hash_do_postgresql>"  # ← descomente se mudar auth_type
+

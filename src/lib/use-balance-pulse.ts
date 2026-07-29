@@ -29,17 +29,17 @@
  * ```
  */
 
-import * as React from "react"
+import { useRef, useState, useEffect } from "react"
 
 export function useBalancePulse(
   balance: number | undefined,
   onIncrease?: () => void,
   pulseMs = 800,
 ): { isPulsing: boolean } {
-  const prevRef = React.useRef(balance)
-  const [isPulsing, setIsPulsing] = React.useState(false)
+  const prevRef = useRef(balance)
+  const [isPulsing, setIsPulsing] = useState(false)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (balance === undefined) return
 
     const prev = prevRef.current

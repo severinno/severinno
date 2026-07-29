@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { handleError, badRequest, unauthorized } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ── GET — list all preferences for the current user ─────────────────────────
 
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const userId = request.headers.get("x-user-id")
     if (!userId) throw unauthorized()
 

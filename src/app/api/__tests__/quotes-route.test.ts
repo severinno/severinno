@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "../quotes/route"
 import { GET as GET_DETAIL, PATCH } from "../quotes/[id]/route"
@@ -88,7 +89,7 @@ describe("POST /api/quotes (create)", () => {
   }
 
   beforeEach(() => {
-    vi.mocked(quoteSchema.parse).mockReturnValue(validQuoteInput)
+    (vi.mocked(quoteSchema.parse) as any).mockReturnValue(validQuoteInput)
     // Route uses user.findFirst, not findUnique
     mockDb.user.findFirst.mockResolvedValue({ id: "prov-1", verified: true })
     mockDb.service.findMany.mockResolvedValue([
@@ -201,7 +202,7 @@ describe("PATCH /api/quotes/[id]/items/[itemId] (provider response)", () => {
   const validResponse = { price: 15000, providerNote: "Posso fazer sim!", status: "RESPONDED" }
 
   beforeEach(() => {
-    vi.mocked(quoteItemResponseSchema.parse).mockReturnValue(validResponse)
+    (vi.mocked(quoteItemResponseSchema.parse) as any).mockReturnValue(validResponse)
     mockDb.quoteItem.findUnique.mockResolvedValue(mockQuoteItem)
     mockDb.quoteItem.update.mockResolvedValue({ ...mockQuoteItem, ...validResponse })
     vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })

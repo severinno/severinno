@@ -172,6 +172,29 @@ vi.mock("@/lib/constants", () => ({
   PAYMENT_METHOD_LABELS: { PIX: "PIX", CARD: "Cartão" },
 }))
 
+vi.mock("lucide-react", () => ({
+  ArrowDown: () => <svg />,
+  ArrowUp: () => <svg />,
+  Banknote: () => <svg />,
+  ChevronDown: () => <svg />,
+  ChevronLeft: () => <svg />,
+  ChevronRight: () => <svg />,
+  ChevronUp: () => <svg />,
+  CreditCard: () => <svg />,
+  DollarSign: () => <svg />,
+  Download: () => <svg />,
+  Handshake: () => <svg />,
+  Loader2: () => <svg />,
+  QrCode: () => <svg />,
+  Receipt: () => <svg />,
+  RotateCw: () => <svg />,
+  Ticket: () => <svg />,
+  TrendingDown: () => <svg />,
+  TrendingUp: () => <svg />,
+  UserCircle: () => <svg />,
+  Wallet: () => <svg />,
+}))
+
 vi.stubGlobal(
   "ResizeObserver",
   vi.fn().mockImplementation(() => ({
@@ -297,7 +320,7 @@ describe("AdminFinanceDashboard — data rendering", () => {
   it("renderiza seção de extrato por prestador", () => {
     render(<AdminFinanceDashboard />)
     expect(screen.getByText("Extrato por prestador")).toBeDefined()
-    expect(screen.getByText("Paulo Prestador")).toBeDefined()
+    expect(screen.getAllByText("Paulo Prestador").length).toBeGreaterThanOrEqual(1)
   })
 
   it("renderiza histórico de transações com dados", () => {

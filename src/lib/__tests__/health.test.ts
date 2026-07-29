@@ -9,6 +9,10 @@ vi.mock("@/lib/db", () => ({
 
 vi.mock("@/lib/redis", () => ({
   cacheGet: vi.fn().mockResolvedValue(null),
+  getCacheStats: vi.fn().mockReturnValue({ size: 0, hitRate: 0, keys: 0 }),
+  getClient: vi.fn().mockReturnValue({
+    ping: vi.fn().mockResolvedValue("PONG"),
+  }),
 }))
 
 vi.mock("@/lib/logger", () => ({

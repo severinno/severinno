@@ -65,7 +65,7 @@ describe("Cache-Control headers on GET /api/categories", () => {
   })
 
   it("sets cache headers even when no categories exist", async () => {
-    vi.mocked(db.category.findMany).mockResolvedValue([])
+    (vi.mocked(db.category.findMany) as any).mockResolvedValue([])
     const res = await GET(createMockRequest())
     expectCacheHeaders(res, 120, 600)
   })

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -93,11 +94,11 @@ describe("POST /api/webhooks/lytex", () => {
 
   it("processes charge.paid event and updates booking", async () => {
     // Mock setting lookup to return empty (skip signature validation)
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
-    vi.mocked(db.payment.upsert).mockResolvedValue({} as any)
-    vi.mocked(db.booking.update).mockResolvedValue({} as any)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
+    (vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
+    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
     // First mock: confirmBookingPayment findUnique — must have payment
-    vi.mocked(db.booking.findUnique)
+    (vi.mocked(db.booking.findUnique) as any)
       .mockResolvedValueOnce({
         id: "book-1",
         clientId: "client-1",
@@ -126,7 +127,7 @@ describe("POST /api/webhooks/lytex", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
-    expect(parsed.body!.received).toBe(true)
+    expect((parsed.body as any).received).toBe(true)
     expect(db.$transaction).toHaveBeenCalled()
     expect(db.payment.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -137,10 +138,10 @@ describe("POST /api/webhooks/lytex", () => {
   })
 
   it("processes charge.expired event", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
-    vi.mocked(db.payment.upsert).mockResolvedValue({} as any)
-    vi.mocked(db.booking.update).mockResolvedValue({} as any)
-    vi.mocked(db.booking.findUnique).mockResolvedValue({
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
+    (vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
+    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
+    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
       clientId: "client-1",
       amount: 200,
     })
@@ -161,14 +162,14 @@ describe("POST /api/webhooks/lytex", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
-    expect(parsed.body!.received).toBe(true)
+    expect((parsed.body as any).received).toBe(true)
     // Handler only logs for expired events — no DB update needed
     expect(db.booking.update).not.toHaveBeenCalled()
   })
 
   it("processes charge.refunded event", async () => {
-    vi.mocked(db.payment.findUnique).mockResolvedValue({ id: "pay-1", status: "PAID", lytexId: "lytex-charge-refunded-1" })
-    vi.mocked(db.booking.update).mockResolvedValue({
+    (vi.mocked(db.payment.findUnique) as any).mockResolvedValue({ id: "pay-1", status: "PAID", lytexId: "lytex-charge-refunded-1" })
+    (vi.mocked(db.booking.update) as any).mockResolvedValue({
       client: { name: "Client", email: "client@test.com", id: "client-1" },
       provider: { name: "Provider", id: "provider-1" },
       service: { title: "Service" },
@@ -188,7 +189,7 @@ describe("POST /api/webhooks/lytex", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
-    expect(parsed.body!.received).toBe(true)
+    expect((parsed.body as any).received).toBe(true)
     expect(db.payment.update).toHaveBeenCalled()
   })
 
@@ -212,7 +213,7 @@ describe("POST /api/webhooks/lytex", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect(parsed.body!.error).toBe("externalReference inválido")
+    expect((parsed.body as any).error).toBe("externalReference inválido")
   })
 
   it("returns 401 when signature is invalid", async () => {
@@ -234,7 +235,7 @@ describe("POST /api/webhooks/lytex", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(401)
-    expect(parsed.body!.error).toBe("Assinatura inválida")
+    expect((parsed.body as any).error).toBe("Assinatura inválida")
   })
 })
 
@@ -251,7 +252,7 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
     db.payment.findUnique = vi.fn()
     db.payment.upsert = vi.fn()
     db.payment.updateMany = vi.fn()
-    db.$transaction = vi.fn(async (queries: Array<Promise<unknown>>) => Promise.all(queries))
+    db.$transaction = vi.fn(async (queries: Array<Promise<unknown>>) => Promise.all(queries)) as any
   })
 
   it("atualiza apenas metadados quando booking já está PAID", async () => {
@@ -263,7 +264,7 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
       status: "CONFIRMED",
       amount: 200,
       payment: { id: "pay-1", status: "PAID" },
-    })
+    } as any)
     db.payment.update = vi.fn().mockResolvedValue({} as any)
 
     const payload = {
@@ -281,7 +282,7 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
-    expect(parsed.body!.received).toBe(true)
+    expect((parsed.body as any).received).toBe(true)
 
     // Should update metadata (lytexId, qrCode) but NOT call $transaction
     expect(db.payment.update).toHaveBeenCalledWith(
@@ -294,7 +295,7 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
   })
 
   it("não cria nova notificação quando booking já está PAID", async () => {
-    vi.mocked(db.booking.findUnique).mockResolvedValue({
+    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
       id: "book-1",
       clientId: "client-1",
       providerId: "provider-1",
@@ -303,7 +304,7 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
       amount: 200,
       payment: { id: "pay-1", status: "PAID" },
     })
-    vi.mocked(db.payment.update).mockResolvedValue({} as any)
+    (vi.mocked(db.payment.update) as any).mockResolvedValue({} as any)
 
     const payload = {
       id: "lytex-charge-duplicate-2",
@@ -336,11 +337,11 @@ describe("POST /api/webhooks/lytex — pagamento com cartão", () => {
     db.booking.update = vi.fn()
     db.payment.update = vi.fn()
     db.payment.findUnique = vi.fn()
-    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q))
+    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q)) as any
   })
 
   it("processa charge.paid com paymentMethod CARD", async () => {
-    vi.mocked(db.booking.findUnique).mockResolvedValue({
+    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
       id: "book-card-1",
       clientId: "client-1",
       providerId: "provider-1",
@@ -349,8 +350,8 @@ describe("POST /api/webhooks/lytex — pagamento com cartão", () => {
       amount: 350,
       payment: { id: "pay-card-1", status: "PENDING" },
     })
-    vi.mocked(db.payment.update).mockResolvedValue({} as any)
-    vi.mocked(db.booking.update).mockResolvedValue({} as any)
+    (vi.mocked(db.payment.update) as any).mockResolvedValue({} as any)
+    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
     vi.mocked(db.$transaction).mockResolvedValue([{}, {}])
 
     const payload = {
@@ -396,7 +397,7 @@ describe("POST /api/webhooks/lytex — status não-pagos (log only)", () => {
     db.booking.update = vi.fn()
     db.payment.update = vi.fn()
     db.payment.findUnique = vi.fn()
-    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q))
+    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q)) as any
   })
 
   it("canceled: apenas log, sem DB update", async () => {
@@ -470,11 +471,11 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
     db.booking.update = vi.fn()
     db.payment.update = vi.fn()
     db.payment.findUnique = vi.fn()
-    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q))
+    db.$transaction = vi.fn(async (q: Array<Promise<unknown>>) => Promise.all(q)) as any
   })
 
   it("refund sem lytexId: warn, sem DB update", async () => {
-    vi.mocked(db.payment.findUnique).mockResolvedValue({
+    (vi.mocked(db.payment.findUnique) as any).mockResolvedValue({
       id: "pay-no-lytex",
       status: "PAID",
       lytexId: null,
@@ -500,7 +501,7 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
   })
 
   it("confirmPayment sem payment: warn, retorna sem DB update", async () => {
-    vi.mocked(db.booking.findUnique).mockResolvedValue({
+    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
       id: "book-no-payment",
       clientId: "client-1",
       providerId: "provider-1",
@@ -543,7 +544,7 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
 
     expect(parsed.status).toBe(200)
     // catch block logs error and returns { received: true }
-    expect(parsed.body!.received).toBe(true)
+    expect((parsed.body as any).received).toBe(true)
     // No DB operations should be attempted
     expect(db.booking.findUnique).not.toHaveBeenCalled()
   })

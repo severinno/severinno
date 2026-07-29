@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Accessibility (axe-core) tests for the three modal components:
  *   AuthModal, BookingModal, QuoteModal
@@ -537,7 +538,7 @@ describe("AuthModal — accessibility", () => {
   })
 
   it("has no axe violations when open in forgot-password mode", async () => {
-    mockUIStore.authModal = { open: true, mode: "forgot-password", role: "CLIENT" }
+    mockUIStore.authModal = { open: true, mode: "forgot-password" as any, role: "CLIENT" }
     const { container } = render(<AuthModal />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)

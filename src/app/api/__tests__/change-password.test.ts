@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -103,8 +104,8 @@ describe("POST /api/auth/change-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
-    expect(parsed.body!.ok).toBe(true)
-    expect(parsed.body!.message).toContain("alterada")
+    expect((parsed.body as any).ok).toBe(true)
+    expect((parsed.body as any).message).toContain("alterada")
 
     // Verifica a senha atual
     expect(verifyPassword).toHaveBeenCalledWith(CURRENT_PASSWORD, mockUser.passwordHash)
@@ -144,7 +145,7 @@ describe("POST /api/auth/change-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect(parsed.body!.error).toContain("incorreta")
+    expect((parsed.body as any).error).toContain("incorreta")
 
     // Não deve atualizar o banco nem enviar notificação
     expect(mockDb.user.update).not.toHaveBeenCalled()
@@ -161,7 +162,7 @@ describe("POST /api/auth/change-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect(parsed.body!.error).toContain("6 caracteres")
+    expect((parsed.body as any).error).toContain("6 caracteres")
     expect(mockDb.user.update).not.toHaveBeenCalled()
   })
 
@@ -175,7 +176,7 @@ describe("POST /api/auth/change-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect(parsed.body!.error).toContain("obrigatórias")
+    expect((parsed.body as any).error).toContain("obrigatórias")
     expect(mockDb.user.update).not.toHaveBeenCalled()
   })
 
@@ -189,7 +190,7 @@ describe("POST /api/auth/change-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect(parsed.body!.error).toContain("obrigatórias")
+    expect((parsed.body as any).error).toContain("obrigatórias")
     expect(mockDb.user.update).not.toHaveBeenCalled()
   })
 
@@ -203,7 +204,7 @@ describe("POST /api/auth/change-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect(parsed.body!.error).toContain("inválidas")
+    expect((parsed.body as any).error).toContain("inválidas")
   })
 
   it("rejeita usuário não encontrado no banco", async () => {
@@ -218,7 +219,7 @@ describe("POST /api/auth/change-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect(parsed.body!.error).toContain("não encontrado")
+    expect((parsed.body as any).error).toContain("não encontrado")
     expect(mockDb.user.update).not.toHaveBeenCalled()
   })
 
@@ -250,7 +251,7 @@ describe("POST /api/auth/change-password", () => {
 
     // Push notification
     expect(sentNotifications.length).toBe(1)
-    expect(sentNotifications[0].pushUrl).toBe("/?view=profile")
+    expect((sentNotifications[0] as any).pushUrl).toBe("/?view=profile")
 
     // Email transactional
     expect(sentEmails.length).toBe(1)

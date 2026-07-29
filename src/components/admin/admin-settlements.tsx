@@ -382,7 +382,6 @@ export function AdminSettlements() {
                         </p>
                         <div className="mt-0.5 flex items-center gap-1">
                           <StatusBadge
-                            size="sm"
                             tone={
                               period.status === "FINALIZED"
                                 ? "emerald"

@@ -75,7 +75,8 @@ export function AdminMetrics() {
   if (!data) {
     return (
       <ErrorState
-        message="Não foi possível carregar as métricas."
+        title="Não foi possível carregar as métricas."
+        description="Verifique sua conexão e tente novamente."
         onRetry={() => refetch()}
       />
     )

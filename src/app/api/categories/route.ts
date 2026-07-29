@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth"
 import { categorySchema } from "@/lib/validators"
 import { handleError, notFound, cacheControlPublic, syncCategorySearch, invalidateCategoryCache } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type CategoryWithCount = Awaited<ReturnType<typeof db.category.findMany>>[number] & {
   serviceCount?: number
@@ -59,6 +60,7 @@ export async function GET(request: Request) {
 // Admin only: create category
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     await requireRole("ADMIN")
     const body = await request.json()
     const data = categorySchema.parse(body)
