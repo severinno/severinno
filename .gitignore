@@ -58,3 +58,12 @@ server.log
 
 # Geo benchmark output — transient artifact, compare against version-controlled baseline
 docs/benchmarks/geo-latest.json
+
+# Freebuff Desktop — local app state, not project source
+.freebuff/
+
+# Playwright test artifacts — generated on every E2E run
+test-results/
+
+# AI agent skills and configurations
+.agents/

@@ -62,6 +62,12 @@ vi.mock("@/components/ui/separator", () => ({
   ),
 }))
 
+vi.mock("lucide-react", () => ({
+  Play: () => <svg data-testid="icon-play" />,
+  Smartphone: () => <svg data-testid="icon-smartphone" />,
+  Volume2: () => <svg data-testid="icon-volume" />,
+}))
+
 // ---- SUT import (must be after vi.mock) ------------------------------------
 import { PreferenceToggles } from "../preference-toggles"
 

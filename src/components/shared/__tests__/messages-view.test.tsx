@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { cleanup, render, screen } from "@testing-library/react"
 
+vi.mock("lucide-react", () => ({
+  Send: () => <svg />,
+  MessagesSquare: () => <svg />,
+  Loader2: () => <svg />,
+}))
+
 vi.mock("@/store/auth", () => ({
   useAuthStore: vi.fn((selector) => {
     const state = { user: null, status: "unauthenticated" }

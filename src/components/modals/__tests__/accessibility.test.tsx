@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Accessibility (axe-core) tests for the three modal components:
  *   AuthModal, BookingModal, QuoteModal

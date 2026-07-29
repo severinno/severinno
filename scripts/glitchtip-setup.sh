@@ -9,15 +9,20 @@
 #   ./scripts/glitchtip-setup.sh logs             ← Tail GlitchTip logs
 #
 # Prerequisites:
-#   - docker compose running (docker compose -f docker-compose.glitchtip.yml up -d)
+#   - docker compose running (docker compose -f docker-compose.prod.yml
+#     --profile glitchtip --env-file .env.glitchtip up -d)
 #   - curl + jq installed
 # =============================================================================
 
 set -euo pipefail
 
-COMPOSE_FILE="docker-compose.glitchtip.yml"
+# O GlitchTip roda como profile dentro do docker-compose.prod.yml principal.
+# Nao existe mais docker-compose.glitchtip.yml separado.
+COMPOSE_FILE="docker-compose.prod.yml"
+COMPOSE_PROFILE="--profile glitchtip"
+COMPOSE_ENV="--env-file .env.glitchtip"
 GLITCHTIP_URL="${GLITCHTIP_URL:-http://localhost:8000}"
-COMPOSE_CMD="docker compose -f ${COMPOSE_FILE}"
+COMPOSE_CMD="docker compose -f ${COMPOSE_FILE} ${COMPOSE_PROFILE} ${COMPOSE_ENV}"
 
 # ── Colors ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -210,6 +215,8 @@ case "${1:-help}" in
     echo ""
     echo "Environment:"
     echo "  GLITCHTIP_URL   GlitchTip URL (default: http://localhost:8000)"
-    echo "  COMPOSE_FILE    Docker Compose file (default: docker-compose.glitchtip.yml)"
+    echo "  COMPOSE_FILE    Docker Compose file (default: docker-compose.prod.yml)"
+    echo "  COMPOSE_PROFILE Docker Compose profile (default: --profile glitchtip)"
+    echo "  COMPOSE_ENV     Env file (default: --env-file .env.glitchtip)"
     ;;
 esac

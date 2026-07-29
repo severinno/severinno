@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 import { handleError, parsePagination } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { computeBaseBalance, getWithdrawals } from "@/lib/wallet"
 
 export type TransactionHistoryItem = {
@@ -26,6 +27,7 @@ export type TransactionHistoryResponse = {
 export async function GET(request: Request) {
   try {
     const session = await requireUser()
+    await assertRateLimit(request, RATE_LIMITS.wallet)
     const { searchParams } = new URL(request.url)
     const { page, limit, skip, take } = parsePagination(searchParams)
     const typeFilter = searchParams.get("type")

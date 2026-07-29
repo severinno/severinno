@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { FEE_RATE } from "@/lib/wallet"
 
 type CommissionSummary = {
@@ -38,6 +39,7 @@ type CommissionSummary = {
 export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const { searchParams } = new URL(request.url)
     const yearParam = searchParams.get("year")

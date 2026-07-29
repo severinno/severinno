@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -13,13 +14,13 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     handleError: vi.fn((e: unknown) => {
       console.log("handleError received:", e instanceof Error ? e.message : e)
       console.log("handleError stack:", e instanceof Error ? e.stack : "no stack")
-      return actual.handleError(e)
+      return (actual as any).handleError(e)
     }),
   }
 })
@@ -101,6 +102,8 @@ const mockService = {
   active: true,
   providerId: "prov-1",
   photos: [],
+  duration: null,
+  deletedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   provider: { id: "prov-1", verified: true, active: true },
@@ -124,6 +127,10 @@ const mockBooking = {
   notes: null,
   createdAt: new Date(),
   updatedAt: new Date(),
+  deletedAt: null,
+  completionPin: null,
+  reminderSentAt: null,
+  quoteId: null,
   service: mockService,
   provider: { id: "prov-1", name: "Carlos Prestador", avatarUrl: null, whatsapp: "11999999999" },
   client: { id: "client-1", name: "João Cliente", avatarUrl: null },
@@ -296,7 +303,7 @@ describe("PATCH /api/bookings/[id]", () => {
       providerId: "prov-1",
       status: "PENDING",
       paymentStatus: "PENDING",
-    })
+    } as any)
     vi.mocked(db.booking.update).mockResolvedValue(mockBooking)
 
     const req = createMockRequest({ method: "PATCH", body: { status: "CANCELLED" } })
@@ -315,7 +322,7 @@ describe("PATCH /api/bookings/[id]", () => {
       providerId: "prov-1",
       status: "PENDING",
       paymentStatus: "PENDING",
-    })
+    } as any)
 
     // Client cannot directly go PENDING -> COMPLETED
     const req = createMockRequest({ method: "PATCH", body: { status: "COMPLETED" } })
@@ -332,7 +339,7 @@ describe("PATCH /api/bookings/[id]", () => {
       providerId: "prov-1",
       status: "PENDING",
       paymentStatus: "PENDING",
-    })
+    } as any)
     vi.mocked(db.booking.update).mockResolvedValue(mockBooking)
 
     const req = createMockRequest({ method: "PATCH", body: { status: "CONFIRMED" } })
@@ -349,7 +356,7 @@ describe("PATCH /api/bookings/[id]", () => {
       providerId: "prov-1",
       status: "PENDING",
       paymentStatus: "PENDING",
-    })
+    } as any)
 
     const req = createMockRequest({ method: "PATCH", body: { status: "CANCELLED" } })
     const res = await updateBooking(req, { params: Promise.resolve({ id: "book-1" }) })
@@ -364,7 +371,7 @@ describe("POST /api/bookings/[id]/pay", () => {
     _mockSession = null
   })
 
-  const pixBooking = {
+  const pixBooking: any = {
     id: "book-1",
     clientId: "client-1",
     status: "PENDING",

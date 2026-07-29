@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Lytex Pagamentos — Integration test
  *

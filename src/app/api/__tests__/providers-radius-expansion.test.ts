@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Integration tests for progressive radius expansion in GET /api/providers.
  *

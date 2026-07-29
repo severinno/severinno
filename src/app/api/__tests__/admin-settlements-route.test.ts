@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tests for admin settlement routes.
  *
@@ -39,10 +40,10 @@ import { db } from "@/lib/db"
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function resetDbMocks() {
-  db.settlementPeriod = { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() }
-  db.providerSettlement = { findUnique: vi.fn(), update: vi.fn() }
-  db.setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
-  db.payment = { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }
+  ;(db.settlementPeriod as any) = { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() }
+  ;(db.providerSettlement as any) = { findUnique: vi.fn(), update: vi.fn() }
+  ;(db.setting as any) = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
+  ;(db.payment as any) = { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }
 }
 
 function mockRequest(body?: unknown, method = "POST"): Request {

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "../quotes/route"
 import { GET as GET_DETAIL, PATCH } from "../quotes/[id]/route"

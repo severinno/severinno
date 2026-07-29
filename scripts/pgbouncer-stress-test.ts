@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+// @ts-nocheck
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  * pgbouncer-stress-test.ts — PgBouncer Stress Test

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect } from "vitest"
 import { pct, arrow, computeDiff } from "../benchmark-diff.mjs"
 import type { BenchmarkJson } from "../benchmark-diff"

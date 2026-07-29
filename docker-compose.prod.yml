@@ -155,7 +155,11 @@ services:
         condition: service_healthy
       realtime:
         condition: service_healthy
+    # start_period aumentado para 120s porque o Caddy depende de app + realtime
+    # saudaveis, que por sua vez dependem de PostgreSQL, Redis, MinIO e RabbitMQ.
+    # Com start_period baixo, o Caddy entra em ciclo de restart se o app demorar.
     healthcheck:
+      start_period: 120s
       # Verifica se o Caddy está respondendo na porta 80 (HTTP).
       # Usa wget em vez de curl porque a imagem caddy:2-alpine NAO
       # inclui curl (apenas BusyBox wget disponivel).
@@ -188,7 +192,8 @@ services:
   # NOTA: read_only=false — PG precisa de acesso de escrita para WAL,
   #       background writer e checkpoints.
   postgres:
-    image: postgis/postgis:16-3.4
+    # Tag fixada: postgis/postgis:16-3.4-alpine (71MB vs 280MB da versao full)
+    image: postgis/postgis:16-3.4-alpine
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -324,10 +329,12 @@ services:
           memory: "128M"
 
   # ── MinIO (S3-compatible Object Storage) ──────────────────────────────
+  # Tag fixada: minio/minio:RELEASE.2024-12-18T13-15-44Z
+  # Nao usar :latest — versoes do MinIO quebram compatibilidade com frequencia.
   # Hardening: tmpfs para /tmp, capacidades minimas.
   # NOTA: read_only=false porque MinIO escreve ativamente em /data.
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -372,8 +379,9 @@ services:
           memory: "128M"
 
   # ── MinIO Bucket Init (one-shot) ──────────────────────────────────────
+  # Tag fixada: minio/mc:RELEASE.2024-12-18T13-15-44Z (mesma versao do server)
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2024-12-18T13-15-44Z
     restart: "no"
     entrypoint:
       - /bin/sh
@@ -412,13 +420,14 @@ services:
   pgbouncer:
     # ── IMAGEM CORRIGIDA ─────────────────────────────────────────────────
     # bitnami/pgbouncer:latest NÃO EXISTE (404). Substituído por
-    # edoburu/pgbouncer:latest (v1.25.2) que:
+    # edoburu/pgbouncer:v1.25.2-p0 (pinned) que:
     #   ✅ Suporta max_prepared_statements (necessário para Prisma)
     #   ✅ Suporta auth_type = trust (configurado no pgbouncer.ini)
     #   ✅ Leitura de config a partir de /etc/pgbouncer/pgbouncer.ini
     #
+    # Tags disponíveis: https://hub.docker.com/r/edoburu/pgbouncer/tags
     # Histórico: https://github.com/edoburu/docker-pgbouncer
-    image: edoburu/pgbouncer:latest
+    image: edoburu/pgbouncer:v1.25.2-p0
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -922,8 +931,9 @@ services:
   pgbouncer-glitchtip:
     # ── IMAGEM CORRIGIDA ─────────────────────────────────────────────────
     # Mesma correção do pgbouncer principal: bitnami/pgbouncer NÃO EXISTE.
-    # Substituído por edoburu/pgbouncer:latest com path de config corrigido.
-    image: edoburu/pgbouncer:latest
+    # Substituído por edoburu/pgbouncer:v1.25.2-p0 com path de config corrigido.
+    # Tags disponíveis: https://hub.docker.com/r/edoburu/pgbouncer/tags
+    image: edoburu/pgbouncer:v1.25.2-p0
     restart: unless-stopped
     profiles:
       - glitchtip

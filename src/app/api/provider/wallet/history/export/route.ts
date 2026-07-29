@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { computeBaseBalance, getWithdrawals } from "@/lib/wallet"
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,7 @@ function statusLabel(status: string): string {
 export async function GET(request: Request) {
   try {
     const session = await requireUser()
+    await assertRateLimit(request, RATE_LIMITS.wallet)
     const { searchParams } = new URL(request.url)
     const typeFilter = searchParams.get("type")
     const dateStart = searchParams.get("dateStart")

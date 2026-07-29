@@ -25,9 +25,9 @@ import { db } from "@/lib/db"
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function resetDbMocks() {
-  db.setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
-  db.settlementPeriod = { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() }
-  db.payment = { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }
+  ;(db.setting as any) = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
+  ;(db.settlementPeriod as any) = { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() }
+  ;(db.payment as any) = { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }
 }
 
 const _origCronSecret = process.env.CRON_SECRET

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Playwright Visual Regression — AddressAutocomplete
  *

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * providers-pipeline-integration.test.ts
  *

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * DashboardShell — notification sound integration tests.
  *

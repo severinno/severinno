@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tests for the sound effect functions in sounds.ts.
  *

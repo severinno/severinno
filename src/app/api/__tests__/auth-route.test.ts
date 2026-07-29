@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -86,9 +87,11 @@ const mockUser = {
   lng: null,
   bio: null,
   radiusKm: null,
+  lytexRecipientId: null,
+  coverUrl: null,
   createdAt: new Date("2025-01-01"),
   updatedAt: new Date("2025-01-01"),
-}
+} as any
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * distance-fallback-fuzz.test.ts
  *

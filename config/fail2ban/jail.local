@@ -133,15 +133,39 @@ bantime.factor    = 2
 bantime.maxtime   = 604800
 
 # ═══════════════════════════════════════════════════════════════════════════
-# JAIL RECIDIVA — Ações especiais para reincidentes
+# JAIL RECIDIVA — Bloqueio permanente para reincidentes cross-jail
 # ═══════════════════════════════════════════════════════════════════════════
-# Este jail NÃO é ativado por padrão. Ative manualmente se quiser
-# bloquear IPs que aparecem em MÚLTIPLOS jails simultaneamente.
+# Detecta IPs banidos em MÚLTIPLOS jails simultaneamente dentro de 24h.
+# Exemplo: IP que faz força bruta SSH (jail sshd) E tenta acessar paths
+# sensíveis (jail caddy-badbots) é um candidato claro a ataque coordenado.
 #
-# [recidive]
-# enabled  = true
-# filter   = recidive
-# logpath  = /var/log/fail2ban.log
-# maxretry = 3          # 3 vezes em qualquer jail
-# findtime = 86400      # em 24h
-# bantime  = 1209600    # ban por 14 DIAS
+# ⚡ Ativado: proteção extra contra ataques multi-vetor.
+#
+# Testar:
+#   sudo fail2ban-client status recidive
+#   tail -f /var/log/fail2ban.log | grep recidive
+#
+# Simular ataque cross-jail:
+#   ./scripts/test-fail2ban-recidive.sh
+# ═══════════════════════════════════════════════════════════════════════════
+[recidive]
+enabled   = true
+filter    = recidive
+logpath   = /var/log/fail2ban.log
+maxretry  = 3          # 3 bans em qualquer jail
+findtime  = 86400      # em 24h (1 dia)
+bantime  = 1209600    # ban por 14 DIAS
+bantime.increment = true
+bantime.factor    = 2          # Dobra a cada reincidência
+bantime.maxtime   = 2592000    # Máximo: 30 dias
+
+# Notificação opcional (descomente se tiver SMTP configurado)
+# action   = %(action_)s
+#            mail-whois[name=recidive, dest=admin@severinno.com.br]
+
+# ── ⚠️ Importante: o jail recidive depende do log do próprio fail2ban.
+# O fail2ban deve ter permissão de leitura em /var/log/fail2ban.log.
+# Em sistemas Ubuntu/Debian, o grupo 'adm' já tem essa permissão.
+# Se o fail2ban não conseguir ler o próprio log, adicione o usuário ao grupo:
+#   sudo usermod -aG adm fail2ban
+#   sudo systemctl restart fail2ban

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "../categories/route"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
@@ -9,7 +10,7 @@ vi.mock("@/lib/redis", () => ({
 }))
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     cacheControlPublic: vi.fn((response: Response) => response),

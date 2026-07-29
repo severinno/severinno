@@ -34,8 +34,8 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
-  const actual = await importOriginal()
-  return { ...actual, handleError: vi.fn((e: unknown) => actual.handleError(e)) }
+  const actual = (await importOriginal()) as Record<string, unknown>
+  return { ...actual, handleError: vi.fn((e: unknown) => (actual as any).handleError(e)) }
 })
 
 // ── Imports ────────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ import { db } from "@/lib/db"
 
 /** Recreates all db mocks fresh to avoid vi.clearAllMocks() quirk */
 function resetDbMocks() {
-  db.setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
+  ;(db.setting as any) = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
   db.payment = {
     groupBy: vi.fn(),
     findMany: vi.fn(),

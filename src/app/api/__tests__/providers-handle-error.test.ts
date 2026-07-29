@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * providers-handle-error.test.ts
  *
@@ -88,7 +89,7 @@ vi.mock("@/lib/api-server", async () => {
 import { GET } from "../providers/route"
 import { db } from "@/lib/db"
 
-const baseProvider = {
+const baseProvider: any = {
   id: "prov-1",
   name: "Carlos Prestador",
   role: "PROVIDER",

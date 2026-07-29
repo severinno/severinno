@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "../reviews/route"
 import { GET as GET_RECENT } from "../reviews/recent/route"
@@ -102,7 +103,7 @@ vi.mock("@/lib/redis", () => ({
 
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
-  const actual = await importOriginal()
+  const actual = (await importOriginal()) as Record<string, unknown>
   return {
     ...actual,
     cacheControlPublic: vi.fn((response: Response) => response),

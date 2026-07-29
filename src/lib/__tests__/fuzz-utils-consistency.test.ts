@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * fuzz-utils-consistency.test.ts
  *

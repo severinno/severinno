@@ -32,7 +32,7 @@ async function setupPushMocks(page: any) {
       const origSubscribe = PushManager.prototype.subscribe
       const origGetSubscription = PushManager.prototype.getSubscription
 
-      PushManager.prototype.subscribe = async (options?: PushSubscriptionOptionsInit) => {
+      PushManager.prototype.subscribe = async function (this: PushManager, options?: PushSubscriptionOptionsInit) {
         try {
           return await origSubscribe.call(this, options)
         } catch {
@@ -50,7 +50,7 @@ async function setupPushMocks(page: any) {
         }
       }
 
-      PushManager.prototype.getSubscription = async function () {
+      PushManager.prototype.getSubscription = async function (this: PushManager) {
         try { return await origGetSubscription.call(this) }
         catch { return null }
       }
@@ -108,9 +108,10 @@ async function installSWPushHandler(page: any) {
       return origShow.call(this, title, options)
     }
 
-    reg.active?.addEventListener("message", (event: MessageEvent) => {
-      if (event.data?.type === "e2e-trigger-push") {
-        const p = event.data.payload || {}
+    reg.active?.addEventListener("message", (event: Event) => {
+      const msgEvent = event as MessageEvent
+      if (msgEvent.data?.type === "e2e-trigger-push") {
+        const p = msgEvent.data.payload || {}
         const opts: Record<string, unknown> = {
           body: p.body || "",
           icon: p.icon || "/icon-192.png",
@@ -149,7 +150,7 @@ async function loginAsAdmin(page: any): Promise<boolean> {
 
 /** Mocka a rota /api/admin/push/send para retornar sucesso sem depender de seed ADMIN. */
 async function mockAdminPushSend(page: any) {
-  await page.route("**/api/admin/push/send", async (route) => {
+  await page.route("**/api/admin/push/send", async (route: any) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",

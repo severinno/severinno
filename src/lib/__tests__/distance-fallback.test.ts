@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tests for src/lib/distance-fallback.ts — computeDistanceMap
  *

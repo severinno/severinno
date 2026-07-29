@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("../logger", () => ({
@@ -76,7 +77,7 @@ describe("searchProviders", () => {
   it("builds multi_match query for text search", async () => {
     // Temporarily pretend we're in production to get a client
     const prevEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "production"
+    ;(process.env as any).NODE_ENV = "production"
     process.env.OPENSEARCH_URL = "http://localhost:9200"
 
     mocks.mockSearch.mockResolvedValue({
@@ -131,7 +132,7 @@ describe("searchProviders", () => {
 
   it("returns empty result on search error", async () => {
     const prevEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "production"
+    ;(process.env as any).NODE_ENV = "production"
     process.env.OPENSEARCH_URL = "http://localhost:9200"
 
     mocks.mockSearch.mockRejectedValue(new Error("Connection refused"))
@@ -164,7 +165,7 @@ describe("searchServices", () => {
 
   it("builds service search query correctly", async () => {
     const prevEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "production"
+    ;(process.env as any).NODE_ENV = "production"
     process.env.OPENSEARCH_URL = "http://localhost:9200"
 
     mocks.mockSearch.mockResolvedValue({

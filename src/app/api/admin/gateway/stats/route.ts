@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
 const LY_BASE = process.env.LYTEX_BASE_URL ?? "https://api-pay.lytex.com.br"
@@ -97,6 +98,7 @@ async function fetchAllInvoices(token: string): Promise<LytexInvoice[]> {
 export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const { searchParams } = new URL(request.url)
     const period = (searchParams.get("period") ?? "30d") as Period
