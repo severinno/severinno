@@ -128,12 +128,7 @@ export interface MapLike {
  * @param lng     - Center longitude of the circle.
  * @param radiusKm- Radius in kilometres.
  */
-export function syncRadiusCircle(
-  map: MapLike,
-  lat: number,
-  lng: number,
-  radiusKm: number,
-): void {
+export function syncRadiusCircle(map: MapLike, lat: number, lng: number, radiusKm: number): void {
   const geojson = createRadiusGeoJSON(lat, lng, radiusKm)
 
   const existing = map.getSource(RADIUS_SOURCE_ID)
@@ -200,5 +195,180 @@ export function removeRadiusCircle(map: MapLike): void {
     if (map.getSource(RADIUS_SOURCE_ID)) map.removeSource(RADIUS_SOURCE_ID)
   } catch {
     // ignore — idempotent cleanup
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Interactive edge-dot dragging
+// ---------------------------------------------------------------------------
+
+/**
+ * Edge-drag geometry: store a single grab handle (north-most edge) that
+ * the provider can drag to visually resize the circle.
+ *
+ * When the north-most vertex of the polygon is stored as a separate point,
+ * we can render it with a larger, interactive marker and track drag events
+ * to compute the new radius in real-time.
+ */
+
+/** Layers used for the drag handle. */
+export const HANDLE_SOURCE_ID = "radius-handle-source"
+export const HANDLE_LAYER_ID = "radius-handle"
+
+/**
+ * (Re-)create the drag-handle source + layer from the current circle.
+ * Call this whenever the circle radius changes to keep the handle in sync.
+ */
+export function syncRadiusHandle(map: MapLike, lat: number, lng: number, radiusKm: number): void {
+  // Compute the north-most point of the circle
+  const northLat = lat + radiusKm / 111.32
+  const geojson: Record<string, unknown> = {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [lng, northLat] },
+        properties: {},
+      },
+    ],
+  }
+
+  const existing = map.getSource(HANDLE_SOURCE_ID)
+  if (existing) {
+    ;(existing as any).setData(geojson as any)
+    return
+  }
+
+  map.addSource(HANDLE_SOURCE_ID, {
+    type: "geojson",
+    data: geojson as any,
+  })
+
+  map.addLayer({
+    id: HANDLE_LAYER_ID,
+    type: "circle",
+    source: HANDLE_SOURCE_ID,
+    paint: {
+      "circle-color": "#ffffff",
+      "circle-radius": 9,
+      "circle-stroke-width": 3,
+      "circle-stroke-color": "#2563eb",
+      "circle-opacity": 1,
+    },
+  })
+}
+
+/** Remove the drag handle layer + source. */
+export function removeRadiusHandle(map: MapLike): void {
+  try {
+    if (map.getLayer(HANDLE_LAYER_ID)) map.removeLayer(HANDLE_LAYER_ID)
+    if (map.getSource(HANDLE_SOURCE_ID)) map.removeSource(HANDLE_SOURCE_ID)
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Enable interactive edge dragging on the radius circle.
+ *
+ * Renders a larger grab handle (north-most point) that the user can
+ * click & drag to resize the circle in real-time. On drag end,
+ * calls `onDragEnd(newRadiusKm)` so the host component can save.
+ *
+ * Event flow:
+ *   mousedown on handle → isDragging = true, cursor = grabbing
+ *   mousemove → compute haversine distance from center, update circle + handle via setData
+ *   mouseup / mouseleave → isDragging = false, cursor = normal, onDragEnd(finalRadius)
+ *
+ * @param map       - Full MapLibre Map instance (needs on/off/unproject/getCanvas).
+ * @param centerLat - Center latitude of the circle.
+ * @param centerLng - Center longitude of the circle.
+ * @param onDragEnd - Called with the final (rounded, clamped) radius in km.
+ * @returns         A cleanup function that removes all event handlers.
+ */
+export function makeRadiusEdgeDraggable(
+  map: any,
+  centerLat: number,
+  centerLng: number,
+  onDragEnd: (newRadiusKm: number) => void,
+): () => void {
+  let isDragging = false
+  let finalRadius = 0
+
+  const onMouseDown = (e: any) => {
+    e.preventDefault?.()
+    isDragging = true
+    if (map.getCanvas) map.getCanvas().style.cursor = "grabbing"
+    // Compute initial radius so onMouseUp has a value even without mouse move
+    const coords = map.unproject(e.point)
+    finalRadius = Math.round(
+      Math.max(1, Math.min(100, haversineKm(centerLat, centerLng, coords.lat, coords.lng))),
+    )
+  }
+
+  const onMouseMove = (e: any) => {
+    if (!isDragging) return
+    const coords = map.unproject(e.point)
+    const newRadius = Math.round(
+      Math.max(1, Math.min(100, haversineKm(centerLat, centerLng, coords.lat, coords.lng))),
+    )
+    finalRadius = newRadius
+
+    // Update circle + handle in real-time via setData
+    const src = map.getSource(RADIUS_SOURCE_ID)
+    if (src) src.setData(createRadiusGeoJSON(centerLat, centerLng, newRadius))
+    const hSrc = map.getSource(HANDLE_SOURCE_ID)
+    if (hSrc) {
+      hSrc.setData({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [centerLng, centerLat + newRadius / 111.32] },
+            properties: {},
+          },
+        ],
+      })
+    }
+  }
+
+  const onMouseUp = () => {
+    if (!isDragging) return
+    isDragging = false
+    if (map.getCanvas) map.getCanvas().style.cursor = ""
+    onDragEnd(finalRadius)
+  }
+
+  const onMouseEnterH = () => {
+    if (map.getCanvas && !isDragging) map.getCanvas().style.cursor = "grab"
+  }
+
+  const onMouseLeaveH = () => {
+    if (!isDragging && map.getCanvas) map.getCanvas().style.cursor = ""
+  }
+
+  // (mouseleave on global map is handled by onMouseUp, so onMouseLeaveG is unused)
+
+  // Attach — use direct (map as any).on/off since MapLike doesn't include event methods
+  const m = map as any
+  m.on("mousedown", HANDLE_LAYER_ID, onMouseDown)
+  m.on("mousemove", onMouseMove)
+  m.on("mouseup", onMouseUp)
+  m.on("mouseleave", onMouseUp)
+  m.on("mouseenter", HANDLE_LAYER_ID, onMouseEnterH)
+  m.on("mouseleave", HANDLE_LAYER_ID, onMouseLeaveH)
+
+  return () => {
+    try {
+      m.off("mousedown", HANDLE_LAYER_ID, onMouseDown)
+      m.off("mousemove", onMouseMove)
+      m.off("mouseup", onMouseUp)
+      m.off("mouseleave", onMouseUp)
+      m.off("mouseenter", HANDLE_LAYER_ID, onMouseEnterH)
+      m.off("mouseleave", HANDLE_LAYER_ID, onMouseLeaveH)
+      if (m.getCanvas) m.getCanvas().style.cursor = ""
+    } catch {
+      // map may be destroyed
+    }
   }
 }

@@ -8,7 +8,46 @@ import "server-only"
  * which is safe for both server and client.
  */
 
+import { trackGeoLatency } from "./geo-metrics"
+
 export { haversineKm, formatDistance } from "./geo-shared"
+
+// ── Instrumented wrappers for geo-metrics ────────────────────────────────
+
+/** Wraps geocodeCEP with ViaCEP latency tracking. */
+export function geocodeCEPWithMetrics(cep: string): Promise<ViaCEPResult> {
+  return trackGeoLatency("viacep", () => _geocodeCEP(cep))
+}
+
+/** Wraps geocodeSearch with Nominatim latency tracking. */
+export function geocodeSearchWithMetrics(
+  query: string,
+  limit?: number,
+): Promise<GeoSearchResult[]> {
+  return trackGeoLatency("nominatim", () => _geocodeSearch(query, limit))
+}
+
+/** Wraps geocodeSearchStructured with Nominatim latency tracking. */
+export function geocodeSearchStructuredWithMetrics(
+  opts: Parameters<typeof _geocodeSearchStructured>[0],
+): Promise<GeoSearchResult[]> {
+  return trackGeoLatency("nominatim", () => _geocodeSearchStructured(opts))
+}
+
+/** Wraps reverseGeocode with Nominatim latency tracking. */
+export function reverseGeocodeWithMetrics(lat: number, lng: number): Promise<ReverseGeocodeResult> {
+  return trackGeoLatency("nominatim", () => _reverseGeocode(lat, lng))
+}
+
+// ── Re-export original names as instrumented wrappers ─────────────────────
+// Existing callers get automatic latency tracking without changes.
+
+export const geocodeCEP = geocodeCEPWithMetrics
+export const geocodeSearch = geocodeSearchWithMetrics
+export const geocodeSearchStructured = geocodeSearchStructuredWithMetrics
+export const reverseGeocode = reverseGeocodeWithMetrics
+
+// ── Original (private) implementations ────────────────────────────────────
 
 export type ViaCEPResult = {
   cep: string
@@ -18,11 +57,8 @@ export type ViaCEPResult = {
   state: string
 }
 
-/**
- * Geocode a Brazilian CEP using the ViaCEP API.
- * Throws on network errors or invalid CEP.
- */
-export async function geocodeCEP(cep: string): Promise<ViaCEPResult> {
+/** @internal renamed to _geocodeCEP — use geocodeCEPWithMetrics for latency tracking. */
+async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
   const clean = cep.replace(/\D/g, "")
   if (clean.length !== 8) {
     throw new Error("CEP inválido (deve ter 8 dígitos)")
@@ -65,14 +101,8 @@ export type ReverseGeocodeResult = {
   postcode?: string
 }
 
-/**
- * Reverse geocode lat/lng using Nominatim (OpenStreetMap).
- * Calls server-side only — must include a real User-Agent per OSM policy.
- */
-export async function reverseGeocode(
-  lat: number,
-  lng: number,
-): Promise<ReverseGeocodeResult> {
+/** @internal renamed to _reverseGeocode — use reverseGeocodeWithMetrics for latency tracking. */
+async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=pt-BR`
   const res = await fetch(url, {
     headers: {
@@ -173,18 +203,8 @@ const NOMINATIM_HEADERS = {
   "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
 } as const
 
-/**
- * Forward-geocode a free-form text address using Nominatim Search.
- *
- * Falls back to local DB address lookup if Nominatim is unavailable (HTTP error
- * or network failure), so the user never sees a 502 error.
- *
- * @see https://nominatim.org/release-docs/develop/api/Search/
- */
-export async function geocodeSearch(
-  query: string,
-  limit: number = 5,
-): Promise<GeoSearchResult[]> {
+/** @internal renamed to _geocodeSearch — use geocodeSearchWithMetrics for latency tracking. */
+async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSearchResult[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
 
@@ -218,10 +238,7 @@ export async function geocodeSearch(
  * query. This won't find every address (it only covers registered providers)
  * but ensures the user never sees an error — they get partial results instead.
  */
-async function geocodeSearchLocal(
-  query: string,
-  limit: number,
-): Promise<GeoSearchResult[]> {
+async function geocodeSearchLocal(query: string, limit: number): Promise<GeoSearchResult[]> {
   try {
     const { db } = await import("@/lib/db")
 
@@ -255,9 +272,7 @@ async function geocodeSearchLocal(
     return users.map((u) => ({
       lat: u.lat!,
       lng: u.lng!,
-      displayName: [u.street, u.district, u.city, u.state]
-        .filter(Boolean)
-        .join(", "),
+      displayName: [u.street, u.district, u.city, u.state].filter(Boolean).join(", "),
       street: u.street,
       district: u.district,
       city: u.city,
@@ -274,27 +289,8 @@ async function geocodeSearchLocal(
   }
 }
 
-/**
- * Forward-geocode a structured address using Nominatim Search.
- *
- * Instead of a free-form `q`, this uses Nominatim's `structured=1` mode
- * with dedicated fields for street, city, state, country, and postcode.
- * The structured mode is significantly more precise for well-known
- * addresses because each component is interpreted in its proper context.
- *
- * At least one of `street`, `city`, or `state` must be provided,
- * otherwise an empty array is returned.
- *
- * @param opts.street  - Street name (optionally with housenumber), e.g. "Av. Paulista, 1000"
- * @param opts.city    - City or locality name, e.g. "São Paulo"
- * @param opts.state   - State code or name, e.g. "SP" or "São Paulo"
- * @param opts.country - Country name (default "Brazil")
- * @param opts.postcode- Postal code / CEP
- * @param opts.limit   - Max results (default 5, max 10)
- *
- * @see https://nominatim.org/release-docs/develop/api/Search/#structured-query
- */
-export async function geocodeSearchStructured(opts: {
+/** @internal renamed to _geocodeSearchStructured — use geocodeSearchStructuredWithMetrics for latency tracking. */
+async function _geocodeSearchStructured(opts: {
   street?: string | null
   city?: string | null
   state?: string | null
