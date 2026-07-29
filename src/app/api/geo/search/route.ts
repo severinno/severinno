@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server"
+import { ZodError } from "zod"
 import { geocodeSearch, geocodeSearchStructured } from "@/lib/geo"
-import { cacheControlPublic, HttpError } from "@/lib/api-server"
+import { cacheControlPublic, HttpError, handleError } from "@/lib/api-server"
 import { withCache } from "@/lib/redis"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { rateLimitedNominatim } from "@/lib/nominatim-rate-limit"
+import {
+  geocodeSearchSchema,
+  geocodeSearchStructuredSchema,
+} from "@/lib/validators"
 
 // ---------------------------------------------------------------------------
 // GET /api/geo/search
@@ -37,10 +42,6 @@ export async function GET(request: Request) {
     await assertRateLimit(request, RATE_LIMITS.geo)
 
     const { searchParams } = new URL(request.url)
-    const limitRaw = searchParams.get("limit")
-    const limit = limitRaw
-      ? Math.max(1, Math.min(10, Number.parseInt(limitRaw, 10) || 5))
-      : 5
 
     // Detect structured mode: if any of street/city/state is present, use structured
     const street = searchParams.get("street")
@@ -51,27 +52,47 @@ export async function GET(request: Request) {
     const hasStructured = !!(street?.trim() || city?.trim() || state?.trim())
 
     if (hasStructured) {
+      const parsed = geocodeSearchStructuredSchema.parse({
+        street,
+        city,
+        state,
+        country,
+        postcode,
+        limit: searchParams.get("limit"),
+      })
+      // Convert undefined → null for handleStructured's nullable params
       return await handleStructured({
-        street, city, state, country, postcode, limit,
+        street: parsed.street ?? null,
+        city: parsed.city ?? null,
+        state: parsed.state ?? null,
+        country: parsed.country ?? null,
+        postcode: parsed.postcode ?? null,
+        limit: parsed.limit,
       })
     }
 
-    // Fallback to free-form query
-    const q = searchParams.get("q") || ""
-    if (!q.trim()) {
+    // Free-form query with Zod validation
+    const raw = searchParams.get("q") || ""
+    if (!raw.trim()) {
       return NextResponse.json(
         { error: "Parâmetro \"q\" é obrigatório (endereço textual) ou informe street/city/state" },
         { status: 400 },
       )
     }
+    const parsed = geocodeSearchSchema.parse({
+      q: raw,
+      limit: searchParams.get("limit"),
+    })
 
-    return await handleFreeForm(q, limit)
+    return await handleFreeForm(parsed.q, parsed.limit)
   } catch (e) {
-    if (e instanceof HttpError) {
-      return NextResponse.json({ error: e.message }, { status: e.status })
+    if (e instanceof ZodError) {
+      return NextResponse.json(
+        { error: "Dados inválidos", details: e.issues },
+        { status: 400 },
+      )
     }
-    const msg = e instanceof Error ? e.message : "Erro ao buscar endereço"
-    return NextResponse.json({ error: msg }, { status: 502 })
+    return handleError(e)
   }
 }
 

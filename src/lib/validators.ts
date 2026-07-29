@@ -203,6 +203,40 @@ export const messageSchema = z.object({
 export type MessageInput = z.infer<typeof messageSchema>
 
 // ---------------------------------------------------------------------------
+// GEO SEARCH (Nominatim forward geocoding)
+// ---------------------------------------------------------------------------
+
+export const geocodeSearchSchema = z.object({
+  q: z.string().min(3, "Busca deve ter ao menos 3 caracteres").max(200),
+  limit: z.coerce.number().int().min(1).max(10).default(5),
+})
+export type GeocodeSearchInput = z.infer<typeof geocodeSearchSchema>
+
+export const geocodeSearchStructuredSchema = z.object({
+  street: z.string().max(200).optional(),
+  city: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
+  country: z.string().max(100).optional(),
+  postcode: z.string().max(20).optional(),
+  limit: z.coerce.number().int().min(1).max(10).default(5),
+})
+export type GeocodeSearchStructuredInput = z.infer<typeof geocodeSearchStructuredSchema>
+
+// ---------------------------------------------------------------------------
+// GEO CEP (ViaCEP geocoding)
+// ---------------------------------------------------------------------------
+
+export const geocodeCepSchema = z.object({
+  cep: z
+    .string()
+    .min(8, "CEP deve ter 8 dígitos")
+    .max(9)
+    .transform((v) => v.replace(/\D/g, ""))
+    .refine((v) => v.length === 8, "CEP deve ter 8 dígitos numéricos"),
+})
+export type GeocodeCepInput = z.infer<typeof geocodeCepSchema>
+
+// ---------------------------------------------------------------------------
 // SETTING (admin)
 // ---------------------------------------------------------------------------
 export const settingSchema = z.object({

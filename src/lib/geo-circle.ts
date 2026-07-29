@@ -1,3 +1,5 @@
+import { haversineKm } from "./geo-shared"
+
 /**
  * GeoJSON circle generator for drawing radius circles on maps.
  *
@@ -63,24 +65,10 @@ export function createRadiusGeoJSON(
 
 /**
  * Compute the haversine distance between two lat/lng points in km.
+ * Re-exports from geo-shared.ts to avoid code duplication.
  * Used internally by tests to validate circle geometry.
  */
-export function haversineDistance(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): number {
-  const R = 6371 // Earth's mean radius in km
-  const dLat = ((lat2 - lat1) * Math.PI) / 180
-  const dLng = ((lng2 - lng1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
+export const haversineDistance = haversineKm
 
 /**
  * Estimate the average radius of a polygon's points from its center.

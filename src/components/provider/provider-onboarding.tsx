@@ -11,9 +11,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Check, ChevronLeft, ChevronRight } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, MapPin } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
+import RadiusPreviewMap from "@/components/shared/radius-preview-map"
 
 const STEPS = ["Perfil", "Endereço", "Horários", "Serviços"]
 const WEEKDAYS = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
@@ -48,6 +49,9 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
     servicePrice: "",
     serviceDuration: "",
   })
+  const [providerLat, setProviderLat] = React.useState<number | null>(null)
+  const [providerLng, setProviderLng] = React.useState<number | null>(null)
+  const [providerRadius, setProviderRadius] = React.useState(15)
   const [soundEnabled, setSoundEnabled] = React.useState(true)
   const [vibrateEnabled, setVibrateEnabled] = React.useState(true)
   const [slots, setSlots] = React.useState(
@@ -88,13 +92,20 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
       })
     }
     if (step === 1) {
-      await updateProfile.mutateAsync({
+      const profileUpdate: Record<string, unknown> = {
         city: form.city,
         state: form.state,
         cep: form.cep,
         street: form.street,
         number: form.number,
-      })
+      }
+      // Only send lat/lng/radius if provider has located themselves
+      if (providerLat != null && providerLng != null) {
+        profileUpdate.lat = providerLat
+        profileUpdate.lng = providerLng
+        profileUpdate.radiusKm = providerRadius
+      }
+      await updateProfile.mutateAsync(profileUpdate)
     }
     const nextStep = Math.min(step + 1, STEPS.length - 1)
     setStep(nextStep)
@@ -213,6 +224,28 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
                   <Label>Número</Label>
                   <Input value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} />
                 </div>
+              </div>
+
+              {/* Radius preview map */}
+              <div className="rounded-lg border bg-card p-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <MapPin className="size-4 text-emerald-600" />
+                  <p className="text-sm font-medium">Raio de atendimento</p>
+                </div>
+                <RadiusPreviewMap
+                  lat={providerLat}
+                  lng={providerLng}
+                  initialRadius={providerRadius}
+                  showLocationControls={true}
+                  height={250}
+                  onLocationChange={(lat, lng) => {
+                    setProviderLat(lat)
+                    setProviderLng(lng)
+                  }}
+                  onRadiusChange={(radius) => {
+                    setProviderRadius(radius)
+                  }}
+                />
               </div>
             </div>
           )}

@@ -104,11 +104,24 @@ const EXCLUDE_PATTERNS = [
 const HEADER_EXTENSIONS = new Set([".mjs", ".ts", ".sh", ".py", ".ps1"])
 
 /** Files to skip in the header check (generated, vendor, or non-script). */
-const HEADER_SKIP = [
+let HEADER_SKIP = [
   "barrel-lint.mjs",           // itself (has header)
   "_coverage_analysis.py",     // underscore-prefixed = internal helper
   "_update_workflows.py",      // underscore-prefixed = internal helper
 ]
+
+// ── Load .barrel-lint-ignore (if it exists) ────────────────────────────────
+const IGNORE_FILE = join(ROOT, ".barrel-lint-ignore")
+try {
+  const ignoreContent = readFileSync(IGNORE_FILE, "utf-8")
+  const ignoreEntries = ignoreContent
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"))
+  HEADER_SKIP = [...HEADER_SKIP, ...ignoreEntries]
+} catch {
+  // .barrel-lint-ignore is optional; silently skip if absent
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

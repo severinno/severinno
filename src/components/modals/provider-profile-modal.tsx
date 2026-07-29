@@ -72,6 +72,14 @@ import {
 } from "@/lib/constants"
 import { StarRatingDisplay } from "./star-rating"
 import { cn } from "@/lib/utils"
+import { useGeoStore } from "@/store/geo"
+import dynamic from "next/dynamic"
+
+// Mini map — client-only, lazy loaded
+const ProviderMiniMap = dynamic(
+  () => import("@/components/shared/provider-mini-map"),
+  { ssr: false, loading: () => <Skeleton className="h-48 w-full rounded-xl" /> },
+)
 
 // ---------------------------------------------------------------------------
 // Main modal wrapper
@@ -556,6 +564,9 @@ function ServiceCard({
 // ---------------------------------------------------------------------------
 
 function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: boolean }) {
+  const userLat = useGeoStore((s) => s.lat)
+  const userLng = useGeoStore((s) => s.lng)
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -566,6 +577,11 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
   }
 
   const radius = provider?.radiusKm
+  const hasProviderCoords =
+    typeof provider?.lat === "number" &&
+    typeof provider?.lng === "number" &&
+    Number.isFinite(provider.lat) &&
+    Number.isFinite(provider.lng)
 
   return (
     <div className="space-y-4 text-sm">
@@ -577,6 +593,20 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
       ) : (
         <p className="text-xs text-muted-foreground italic">Sem descrição cadastrada.</p>
       )}
+
+      {/* Mini map with radius circle */}
+      {hasProviderCoords ? (
+        <ProviderMiniMap
+          providerLat={provider!.lat!}
+          providerLng={provider!.lng!}
+          providerName={provider!.name}
+          userLat={userLat}
+          userLng={userLng}
+          radiusKm={radius}
+          height={200}
+          className="w-full"
+        />
+      ) : null}
 
       <Separator />
 

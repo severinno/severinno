@@ -41,6 +41,7 @@ import {
   Loader2,
   Trophy,
   Sparkles,
+  Navigation,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -256,6 +257,24 @@ export default function CompareModal() {
               year: "numeric",
             })}
           </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: "distance",
+      label: "Distância",
+      icon: <Navigation className="size-4 text-muted-foreground" />,
+      render: (p) =>
+        p.distanceKm != null ? (
+          <div className="flex items-center gap-1.5">
+            <Navigation className="size-3.5 text-emerald-600" />
+            <span className="text-sm font-medium">
+              {p.distanceKm < 1
+                ? `${Math.round(p.distanceKm * 1000)} m`
+                : `${p.distanceKm.toFixed(1)} km`}
+            </span>
+          </div>
         ) : (
           <span className="text-muted-foreground">—</span>
         ),

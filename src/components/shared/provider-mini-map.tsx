@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Loader2, Maximize2, MapPin } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-circle"
 
 type Props = {
   providerLat: number
@@ -22,6 +23,8 @@ type Props = {
   providerName: string
   userLat?: number | null
   userLng?: number | null
+  /** Provider's service radius in km (for drawing the radius circle on the map). */
+  radiusKm?: number | null
   /** Height in px. Default 200. */
   height?: number
   className?: string
@@ -44,6 +47,7 @@ export default function ProviderMiniMap({
   providerName,
   userLat,
   userLng,
+  radiusKm,
   height = 200,
   className,
 }: Props) {
@@ -96,11 +100,20 @@ export default function ProviderMiniMap({
         map.on("load", () => {
           if (cancelled) return
           setStatus("ready")
+          // Draw provider's service radius circle
+          if (typeof radiusKm === "number" && radiusKm > 0) {
+            syncRadiusCircle(map as unknown as MapLike, providerLat, providerLng, radiusKm)
+          }
         })
 
         // Fallback: after 5s mark as ready anyway
         const fallbackTimer = window.setTimeout(() => {
-          if (!cancelled) setStatus("ready")
+          if (!cancelled) {
+            setStatus("ready")
+            if (typeof radiusKm === "number" && radiusKm > 0 && mapInstance) {
+              syncRadiusCircle(map as unknown as MapLike, providerLat, providerLng, radiusKm)
+            }
+          }
         }, 5000)
 
         // Add provider marker
@@ -150,9 +163,13 @@ export default function ProviderMiniMap({
 
     return () => {
       cancelled = true
+      // Cleanup radius circle layers
+      if (mapInstance) {
+        removeRadiusCircle(mapInstance as unknown as MapLike)
+      }
       cleanup?.()
     }
-  }, [providerLat, providerLng, providerName, userLat, userLng])
+  }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm])
 
   const openInOSM = () => {
     window.open(

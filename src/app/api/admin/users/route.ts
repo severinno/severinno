@@ -10,10 +10,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const role = searchParams.get("role") || undefined
     const q = searchParams.get("q")?.trim() || undefined
+    const city = searchParams.get("city")?.trim() || undefined
+    const state = searchParams.get("state")?.trim() || undefined
     const { page, limit, skip, take } = parsePagination(searchParams)
 
     const where = {
       ...(role ? { role } : {}),
+      ...(city ? { city: { contains: city } } : {}),
+      ...(state ? { state } : {}),
       ...(q
         ? {
             OR: [

@@ -31,6 +31,7 @@ import {
   Wrench,
   GitCompare,
   X,
+  Navigation,
 } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
@@ -236,13 +237,21 @@ export default function ProviderCard({
           className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/40 to-transparent"
         />
 
-        {/* Verified badge */}
-        {provider.verified ? (
-          <span className="absolute top-3 left-3 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white shadow-sm">
-            <ShieldCheck className="size-3.5" />
-            Verificado
-          </span>
-        ) : null}
+        {/* Verified badge + Perto de você badge */}
+        <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
+          {provider.verified ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white shadow-sm">
+              <ShieldCheck className="size-3.5" />
+              Verificado
+            </span>
+          ) : null}
+          {typeof provider.distanceKm === "number" && provider.distanceKm >= 0 && provider.distanceKm < 2 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+              <Navigation className="size-3" />
+              Perto de você
+            </span>
+          ) : null}
+        </div>
 
         {/* Favorite heart + Compare button */}
         <div className="absolute top-3 right-3 flex items-center gap-1.5">

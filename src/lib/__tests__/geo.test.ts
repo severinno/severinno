@@ -218,7 +218,7 @@ describe("geocodeSearch", () => {
     expect(results).toEqual([])
   })
 
-  it("throws on HTTP error from Nominatim", async () => {
+  it("returns empty array on HTTP error (falls back to local DB)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: false,
       status: 429,
@@ -227,14 +227,18 @@ describe("geocodeSearch", () => {
     } as Response)
 
     const { geocodeSearch } = await import("../geo")
-    await expect(geocodeSearch("São Paulo")).rejects.toThrow("Nominatim HTTP 429")
+    const results = await geocodeSearch("São Paulo")
+    // Now gracefully falls back to local DB (which also fails) → returns []
+    expect(results).toEqual([])
   })
 
-  it("throws on network error", async () => {
+  it("returns empty array on network error (falls back to local DB)", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("Network failure"))
 
     const { geocodeSearch } = await import("../geo")
-    await expect(geocodeSearch("São Paulo")).rejects.toThrow("Network failure")
+    const results = await geocodeSearch("São Paulo")
+    // Now gracefully falls back to local DB (which also fails) → returns []
+    expect(results).toEqual([])
   })
 
   it("clamps limit to minimum 1", async () => {
