@@ -1012,7 +1012,9 @@ services:
 
   # ── GlitchTip: MinIO (source maps & cold storage) ─────────────────────
   glitchtip-minio:
-    image: minio/minio:latest
+    # Tag fixada: minio/minio:RELEASE.2024-12-18T13-15-44Z (mesma versao do minio principal)
+    # Nao usar :latest — versoes do MinIO quebram compatibilidade com frequencia.
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     restart: unless-stopped
     profiles:
       - glitchtip
@@ -1050,7 +1052,8 @@ services:
 
   # ── GlitchTip: MinIO Bucket Init ──────────────────────────────────────
   glitchtip-minio-init:
-    image: minio/mc:latest
+    # Tag fixada: minio/mc:RELEASE.2024-12-18T13-15-44Z (mesma versao do minio principal)
+    image: minio/mc:RELEASE.2024-12-18T13-15-44Z
     restart: "no"
     profiles:
       - glitchtip

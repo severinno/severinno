@@ -1,26 +1,7 @@
 import "server-only"
 
-/**
- * HealthMonitor — Continuous health monitoring for GlitchTip/Sentry alerting.
- *
- * Polls the internal /api/health/detailed endpoint and sends structured Sentry
- * events for every service that is unhealthy or degraded. This enables GlitchTip
- * alert rules to fire on real system failures.
- *
- * Usage:
- *   - Called by GET /api/cron/health-monitor (scheduled via cron-job.org, etc.)
- *   - Can also be called programmatically from a route or worker
- *
- * Sentry event structure:
- *   - Unhealthy service → level: "error",   tag: { service: "<name>" }
- *   - Degraded service  → level: "warning", tag: { service: "<name>" }
- *   - Overall unhealthy → level: "fatal",   all unhealthy services as context
- */
-
 import { captureMessage, captureError } from "./sentry"
 import logger from "./logger"
-
-// ── Types ─────────────────────────────────────────────────────────────────
 
 export interface HealthMonitorResult {
   healthy: boolean
@@ -30,12 +11,7 @@ export interface HealthMonitorResult {
   degradedCount: number
   unhealthyCount: number
   alertsSent: number
-  services: Array<{
-    name: string
-    status: string
-    message: string
-    alerted: boolean
-  }>
+  services: Array<{ name: string; status: string; message: string; alerted: boolean }>
   timestamp: string
 }
 
@@ -57,39 +33,18 @@ interface DetailedHealthResponse {
   cache: { hits: number; misses: number; total: number }
 }
 
-// ── Thresholds para alertas de recurso ─────────────────────────────────────
-// Valores que disparam alertas quando excedidos (evita alarmes falsos
-// em picos momentâneos — usa window de 3 checks consecutivos)
-
 const THRESHOLDS = {
-  // Memória
-  RSS_MB_WARN: 400,           // Aviso quando RSS > 400MB
-  RSS_MB_CRIT: 600,           // Crítico quando RSS > 600MB
-  HEAP_MB_WARN: 200,          // Aviso quando heap > 200MB
-  HEAP_MB_CRIT: 350,          // Crítico quando heap > 350MB
-  // Latência
-  DB_LATENCY_WARN_MS: 2000,   // Aviso quando DB query > 2s
-  DB_LATENCY_CRIT_MS: 5000,   // Crítico quando DB query > 5s
-  CACHE_WARN_MS: 1000,       // Aviso quando cache > 1s
-  // Filas
-  QUEUE_DEPTH_WARN: 100,      // Aviso quando fila > 100 mensagens
-  QUEUE_DEPTH_CRIT: 500,      // Crítico quando fila > 500 mensagens
-  // Workers
-  WORKER_IDLE_WARN_HOURS: 2,  // Aviso se worker idle por > 2h
-  // Cache
-  CACHE_HIT_RATIO_WARN: 0.5,  // Aviso quando hit ratio < 50%
-}
-
-// ── Critical services (mirrors the route's CRITICAL_SERVICES) ──────────────
+  RSS_MB_WARN: 400, RSS_MB_CRIT: 600,
+  HEAP_MB_WARN: 200, HEAP_MB_CRIT: 350,
+  DB_LATENCY_WARN_MS: 2000, DB_LATENCY_CRIT_MS: 5000,
+  QUEUE_DEPTH_WARN: 100, QUEUE_DEPTH_CRIT: 500,
+  CACHE_HIT_RATIO_WARN: 0.5,
+} as const
 
 const CRITICAL_SERVICES = new Set(["database", "app"])
 
-// ── Alert state (debounce: alerta apenas se o mesmo threshold for
-//     violado em N checks consecutivos para evitar spam)
-//     Chave: "<service>_<threshold_name>"
-//     Valor: contador de violações consecutivas
 const alertState = new Map<string, number>()
-const ALERT_DEBOUNCE_COUNT = 3  // Só alerta após 3 checks consecutivos
+const ALERT_DEBOUNCE_COUNT = 3
 
 function trackThresholdViolation(key: string): boolean {
   const count = (alertState.get(key) ?? 0) + 1
@@ -293,76 +248,23 @@ export async function runHealthMonitor(): Promise<HealthMonitorResult> {
       }
     }
 
-    // ── Database latency threshold ─────────────────────────────────
     const dbSvc = health.services.find((s) => s.name === "database")
-    if (dbSvc?.latencyMs !== null && dbSvc?.latencyMs !== undefined) {
-      if (dbSvc.latencyMs > THRESHOLDS.DB_LATENCY_CRIT_MS) {
-        if (trackThresholdViolation("db_latency_crit")) {
-          captureMessage(
-            `[HealthMonitor] 🛑 Database latency critical: ${dbSvc.latencyMs}ms (limit: ${THRESHOLDS.DB_LATENCY_CRIT_MS}ms)`,
-            "error",
-            { service: "database", metric: "latency", value: dbSvc.latencyMs, threshold: THRESHOLDS.DB_LATENCY_CRIT_MS, unit: "ms" },
-          )
-          result.alertsSent++
-        }
-      } else if (dbSvc.latencyMs > THRESHOLDS.DB_LATENCY_WARN_MS) {
-        if (trackThresholdViolation("db_latency_warn")) {
-          captureMessage(
-            `[HealthMonitor] ⚠️ Database latency high: ${dbSvc.latencyMs}ms (warn: ${THRESHOLDS.DB_LATENCY_WARN_MS}ms)`,
-            "warn",
-            { service: "database", metric: "latency", value: dbSvc.latencyMs, threshold: THRESHOLDS.DB_LATENCY_WARN_MS, unit: "ms" },
-          )
-          result.alertsSent++
-        }
-      } else {
-        resetThresholdViolation("db_latency_crit")
-        resetThresholdViolation("db_latency_warn")
-      }
+    if (dbSvc?.latencyMs != null) {
+      result.alertsSent += checkThreshold("database", "latency", "latency", THRESHOLDS.DB_LATENCY_WARN_MS, THRESHOLDS.DB_LATENCY_CRIT_MS, { ["latency"]: `${dbSvc.latencyMs}` }, "ms")
     }
 
-    // ── Queue depth thresholds ─────────────────────────────────────
     const workersSvc = health.services.find((s) => s.name === "workers")
     if (workersSvc?.details?.queueDepths) {
       const qDepths = workersSvc.details.queueDepths as Record<string, number>
       for (const [qName, qDepth] of Object.entries(qDepths)) {
-        if (qDepth > THRESHOLDS.QUEUE_DEPTH_CRIT) {
-          if (trackThresholdViolation(`queue_${qName}_crit`)) {
-            captureMessage(
-              `[HealthMonitor] 🛑 Queue critical: ${qName} has ${qDepth} messages (limit: ${THRESHOLDS.QUEUE_DEPTH_CRIT})`,
-              "error",
-              { service: "queue", queue: qName, metric: "depth", value: qDepth, threshold: THRESHOLDS.QUEUE_DEPTH_CRIT },
-            )
-            result.alertsSent++
-          }
-        } else if (qDepth > THRESHOLDS.QUEUE_DEPTH_WARN) {
-          if (trackThresholdViolation(`queue_${qName}_warn`)) {
-          captureMessage(
-            `[HealthMonitor] ⚠️ Queue growing: ${qName} has ${qDepth} messages (warn: ${THRESHOLDS.QUEUE_DEPTH_WARN})`,
-            "warn",
-              { service: "queue", queue: qName, metric: "depth", value: qDepth, threshold: THRESHOLDS.QUEUE_DEPTH_WARN },
-            )
-            result.alertsSent++
-          }
-        } else {
-          resetThresholdViolation(`queue_${qName}_crit`)
-          resetThresholdViolation(`queue_${qName}_warn`)
-        }
+        result.alertsSent += checkThreshold("queue", qName, "depth", THRESHOLDS.QUEUE_DEPTH_WARN, THRESHOLDS.QUEUE_DEPTH_CRIT, { ["depth"]: String(qDepth) }, "messages")
       }
     }
 
-    // ── Cache hit ratio threshold ──────────────────────────────────
-    const cache = health.cache
-    if (cache.total > 0) {
-      const hitRatio = cache.hits / cache.total
-      if (hitRatio < THRESHOLDS.CACHE_HIT_RATIO_WARN) {
-        if (trackThresholdViolation("cache_hit_ratio")) {
-          captureMessage(
-            `[HealthMonitor] ⚠️ Cache hit ratio low: ${(hitRatio * 100).toFixed(1)}% (warn: ${(THRESHOLDS.CACHE_HIT_RATIO_WARN * 100).toFixed(0)}%)`,
-            "warn",
-            { service: "cache", metric: "hit_ratio", value: hitRatio, threshold: THRESHOLDS.CACHE_HIT_RATIO_WARN },
-          )
-          result.alertsSent++
-        }
+    if (health.cache.total > 0) {
+      const hitRatio = health.cache.hits / health.cache.total
+      if (hitRatio < THRESHOLDS.CACHE_HIT_RATIO_WARN && trackThresholdViolation("cache_hit_ratio")) {
+        result.alertsSent += captureAndCount("warn", `Cache hit ratio low: ${(hitRatio * 100).toFixed(1)}%`, "cache", { metric: "hit_ratio", value: hitRatio, threshold: THRESHOLDS.CACHE_HIT_RATIO_WARN })
       } else {
         resetThresholdViolation("cache_hit_ratio")
       }
