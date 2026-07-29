@@ -9,6 +9,10 @@
  *   ✅ PostGIS critical severity: uses "error" instead of "warn"
  *   ✅ Mixed scenario: one service down, one ok
  *   ✅ All services down at once
+ *
+ * notifyGeoAlert is mocked so we can verify it's called with the right
+ * arguments without being coupled to its internal implementation (which
+ * calls captureMessage + push internally).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -17,14 +21,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // Mocks (must be before the module import)
 // ---------------------------------------------------------------------------
 
-const mockCaptureMessage = vi.hoisted(() => vi.fn())
+const mockNotifyGeoAlert = vi.hoisted(() => vi.fn())
 const mockSendMail = vi.hoisted(() => vi.fn())
 const mockLoggerInfo = vi.hoisted(() => vi.fn())
 const mockLoggerWarn = vi.hoisted(() => vi.fn())
 const mockFetch = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/sentry", () => ({
-  captureMessage: (...args: any[]) => mockCaptureMessage(...args),
+// Mock notifyGeoAlert so tests are decoupled from its internal Sentry + push
+vi.mock("@/lib/geo-alert-notify", () => ({
+  notifyGeoAlert: (...args: any[]) => {
+    mockNotifyGeoAlert(...args)
+    return Promise.resolve({
+      sentrySent: true,
+      pushSent: true,
+      pushDebounced: false,
+      adminCount: 1,
+    })
+  },
 }))
 
 vi.mock("@/lib/mail", () => ({
@@ -107,7 +120,7 @@ describe("evaluateGeoHealth — healthy state", () => {
     expect(result.alertsSent).toBe(0)
     expect(result.recoveriesSent).toBe(0)
     expect(result.slackSent).toBe(false)
-    expect(mockCaptureMessage).not.toHaveBeenCalled()
+    expect(mockNotifyGeoAlert).not.toHaveBeenCalled()
     expect(mockSendMail).not.toHaveBeenCalled()
     expect(mockFetch).not.toHaveBeenCalled()
   })
@@ -130,15 +143,12 @@ describe("evaluateGeoHealth — degradation → alert", () => {
 
     expect(result.degraded).toBe(1)
     expect(result.alertsSent).toBe(0)
-    expect(mockCaptureMessage).not.toHaveBeenCalled()
+    expect(mockNotifyGeoAlert).not.toHaveBeenCalled()
   })
 
   it("alerts on second consecutive failure (threshold reached)", async () => {
     // Check 1: first failure
     await evaluateGeoHealth(NOMINATIM_DOWN)
-
-    // Small delay so formatDuration shows a non-zero duration
-    await new Promise((r) => setTimeout(r, 1))
 
     // Check 2: second consecutive failure → threshold reached
     const result = await evaluateGeoHealth(NOMINATIM_DOWN)
@@ -146,14 +156,13 @@ describe("evaluateGeoHealth — degradation → alert", () => {
     expect(result.alertsSent).toBe(1)
     expect(result.services[0]!.alerted).toBe(true) // nominatim
 
-    // captureMessage should have been called once (for nominatim)
-    expect(mockCaptureMessage).toHaveBeenCalledTimes(1)
-    expect(mockCaptureMessage).toHaveBeenCalledWith(
-      expect.stringContaining("[GeoHealth]"),
-      "warn",
+    // notifyGeoAlert should have been called once (for nominatim)
+    expect(mockNotifyGeoAlert).toHaveBeenCalledTimes(1)
+    expect(mockNotifyGeoAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        service: "nominatim",
-        consecutiveFailures: 2,
+        severity: "warning",
+        source: "geo-health-alert",
+        tag: "geo-health:nominatim:degraded",
       }),
     )
   })
@@ -183,7 +192,7 @@ describe("evaluateGeoHealth — recovery", () => {
     await evaluateGeoHealth(NOMINATIM_DOWN)
 
     // Clear mocks so we can detect new calls from recovery
-    mockCaptureMessage.mockClear()
+    mockNotifyGeoAlert.mockClear()
     mockSendMail.mockClear()
 
     // Recovery: service is healthy again
@@ -192,24 +201,26 @@ describe("evaluateGeoHealth — recovery", () => {
     expect(result.recoveriesSent).toBe(1)
     expect(result.services[0]!.recovered).toBe(true) // nominatim
 
-    // captureMessage should have been called for recovery info
-    expect(mockCaptureMessage).toHaveBeenCalledWith(
-      expect.stringContaining("recovered"),
-      "info",
-      expect.objectContaining({ service: "nominatim" }),
+    // notifyGeoAlert should have been called for recovery info
+    expect(mockNotifyGeoAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        severity: "info",
+        tag: "geo-health:nominatim:recovery",
+        source: "geo-health-alert",
+      }),
     )
   })
 
   it("does NOT send recovery if no alert was previously sent", async () => {
     // One failure only (no alert yet)
     await evaluateGeoHealth(NOMINATIM_DOWN)
-    mockCaptureMessage.mockClear()
+    mockNotifyGeoAlert.mockClear()
 
     // Recovery
     const result = await evaluateGeoHealth(HEALTHY)
 
     expect(result.recoveriesSent).toBe(0)
-    expect(mockCaptureMessage).not.toHaveBeenCalled()
+    expect(mockNotifyGeoAlert).not.toHaveBeenCalled()
   })
 })
 
@@ -219,34 +230,24 @@ describe("evaluateGeoHealth — debounce", () => {
     await evaluateGeoHealth(NOMINATIM_DOWN)
     await evaluateGeoHealth(NOMINATIM_DOWN)
 
-    expect(mockCaptureMessage).toHaveBeenCalledTimes(1)
-    mockCaptureMessage.mockClear()
+    expect(mockNotifyGeoAlert).toHaveBeenCalledTimes(1)
+    mockNotifyGeoAlert.mockClear()
 
     // Third consecutive failure within the 5 min debounce window
     const result = await evaluateGeoHealth(NOMINATIM_DOWN)
 
     // Should NOT trigger another alert
     expect(result.alertsSent).toBe(0)
-    expect(mockCaptureMessage).not.toHaveBeenCalled()
+    expect(mockNotifyGeoAlert).not.toHaveBeenCalled()
   })
 
   it("sends new alert after 5+ minutes have passed", async () => {
     // Trigger alert
     await evaluateGeoHealth(NOMINATIM_DOWN)
     await evaluateGeoHealth(NOMINATIM_DOWN)
-    mockCaptureMessage.mockClear()
+    mockNotifyGeoAlert.mockClear()
 
-    // Advance time past the 5 min debounce window
-    // We can't use vi.advanceTimers since Date.now is used internally.
-    // Instead, we simulate the check happening after 6 minutes by
-    // waiting 6ms in real time and manipulating the internal state.
-    // The debounce check is: Date.now() - s.lastAlertedAt > 5 * 60 * 1000
-    // We can't easily mock Date.now in this case, so we'll set
-    // lastAlertedAt to 6 minutes ago by forcing the value.
-
-    // Actually, let's use a simpler approach: just verify the logic
-    // by checking that consecutive failures still increment but
-    // lastAlertedAt prevents duplicate alerts.
+    // Third consecutive failure — debounced by lastAlertedAt
     const result = await evaluateGeoHealth(NOMINATIM_DOWN)
     expect(result.alertsSent).toBe(0) // debounced
 
@@ -263,13 +264,13 @@ describe("evaluateGeoHealth — PostGIS critical severity", () => {
 
     expect(result.alertsSent).toBe(1)
 
-    // PostGIS should use "error" severity
-    const criticalCall = mockCaptureMessage.mock.calls.find(
-      (call: any[]) => typeof call[0] === "string" && call[0].includes("PostGIS"),
+    // PostGIS should use "error" severity via notifyGeoAlert
+    const criticalCall = mockNotifyGeoAlert.mock.calls.find(
+      (call: any[]) => call[0]?.title?.includes("PostGIS"),
     )
 
     expect(criticalCall).toBeTruthy()
-    expect(criticalCall![1]).toBe("error") // severity level
+    expect(criticalCall![0]?.severity).toBe("error")
   })
 
   it("uses 'warn' severity for Nominatim degradation", async () => {
@@ -279,13 +280,13 @@ describe("evaluateGeoHealth — PostGIS critical severity", () => {
 
     expect(result.alertsSent).toBe(1)
 
-    // Nominatim should use "warn" severity
-    const warnCall = mockCaptureMessage.mock.calls.find(
-      (call: any[]) => typeof call[0] === "string" && call[0].includes("Nominatim"),
+    // Nominatim should use "warn" severity via notifyGeoAlert
+    const warnCall = mockNotifyGeoAlert.mock.calls.find(
+      (call: any[]) => call[0]?.title?.includes("Nominatim"),
     )
 
     expect(warnCall).toBeTruthy()
-    expect(warnCall![1]).toBe("warn")
+    expect(warnCall![0]?.severity).toBe("warning")
   })
 })
 
@@ -313,8 +314,8 @@ describe("evaluateGeoHealth — mixed and edge cases", () => {
     expect(result.alertsSent).toBe(3) // one per service
     expect(result.services.every((s) => s.alerted)).toBe(true)
 
-    // captureMessage called 3 times (one per service)
-    expect(mockCaptureMessage).toHaveBeenCalledTimes(3)
+    // notifyGeoAlert called 3 times (one per service)
+    expect(mockNotifyGeoAlert).toHaveBeenCalledTimes(3)
   })
 
   it("correctly tracks consecutive failures across calls", async () => {
