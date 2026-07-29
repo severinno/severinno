@@ -21,8 +21,10 @@
  *   H9 — Error banner dismissível + toast.error específico + ErrorState com retry
  *   H10— Tooltips em todos os botões de ícone (⋮, Ver perfil)
  *
- * O tipo `AdminUser` é definido de forma IDÊNTICA em admin-users.tsx (H4).
- * Se alterar campos aqui, replique lá.
+ * O tipo `AdminUser` no admin-providers.tsx inclui campos extras
+ * (lat, lng, distanceKm) que o admin-users.tsx não tem, pois
+ * a tabela de prestadores exibe distância geográfica. Mantenha os
+ * campos BASE sincronizados entre os dois arquivos.
  */
 
 import * as React from "react"
@@ -35,8 +37,8 @@ import {
   HardHat,
   MapPin,
   MoreHorizontal,
+  Navigation,
   Power,
-  SearchX,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,
@@ -75,22 +77,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useUIStore } from "@/store/ui"
 
-import { Input } from "@/components/ui/input"
 import {
   ActiveBadge,
+  AdminGeoFilter,
   ConfirmToggleDialog,
+  DEFAULT_GEO_FILTER,
   EmptyState,
   ErrorState,
   errMsg,
   FilterBar,
+  type GeoFilterState,
   initials,
   PageSectionHeader,
   Pagination,
@@ -119,6 +119,9 @@ type AdminUser = {
   verified: boolean
   active: boolean
   createdAt: string
+  lat?: number | null
+  lng?: number | null
+  distanceKm?: number | null
 }
 
 type AdminUsersResponse = {
@@ -151,8 +154,7 @@ export function AdminProviders() {
 
   const [q, setQ] = React.useState("")
   const [debouncedQ, setDebouncedQ] = React.useState("")
-  const [city, setCity] = React.useState("")
-  const [stateFilter, setStateFilter] = React.useState("")
+  const [geoFilter, setGeoFilter] = React.useState<GeoFilterState>(DEFAULT_GEO_FILTER)
   const [verified, setVerified] = React.useState<VerifiedFilter>("ALL")
   const [active, setActive] = React.useState<ActiveFilter>("ALL")
   const [page, setPage] = React.useState(1)
@@ -173,30 +175,27 @@ export function AdminProviders() {
   }, [q])
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["admin", "providers", { debouncedQ, city, stateFilter, verified, active, page, limit }],
+    queryKey: ["admin", "providers", { debouncedQ, verified, active, page, limit, geoFilter }],
     queryFn: () =>
       apiGet<AdminUsersResponse>("/api/admin/users", {
         role: "PROVIDER",
         ...(debouncedQ ? { q: debouncedQ } : {}),
-        ...(city ? { city } : {}),
-        ...(stateFilter ? { state: stateFilter } : {}),
+        ...(geoFilter.city ? { city: geoFilter.city } : {}),
+        ...(geoFilter.state ? { state: geoFilter.state } : {}),
+        ...(geoFilter.lat != null ? { lat: String(geoFilter.lat) } : {}),
+        ...(geoFilter.lng != null ? { lng: String(geoFilter.lng) } : {}),
+        ...(geoFilter.radiusKm ? { radius: String(geoFilter.radiusKm) } : {}),
         page,
         limit,
       }),
     staleTime: 15_000,
   })
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["admin", "providers"] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "providers"] })
 
   const patchMutation = useMutation({
-    mutationFn: ({
-      id,
-      patch,
-    }: {
-      id: string
-      patch: { verified?: boolean; active?: boolean }
-    }) => apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
+    mutationFn: ({ id, patch }: { id: string; patch: { verified?: boolean; active?: boolean } }) =>
+      apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
   })
 
   const rawItems = data?.items ?? []
@@ -229,16 +228,14 @@ export function AdminProviders() {
 
   const activeFilterCount =
     (debouncedQ ? 1 : 0) +
-    (city ? 1 : 0) +
-    (stateFilter ? 1 : 0) +
+    (geoFilter.city || geoFilter.state || geoFilter.lat != null ? 1 : 0) +
     (verified !== "ALL" ? 1 : 0) +
     (active !== "ALL" ? 1 : 0)
 
   const clearFilters = () => {
     setQ("")
     setDebouncedQ("")
-    setCity("")
-    setStateFilter("")
+    setGeoFilter(DEFAULT_GEO_FILTER)
     setVerified("ALL")
     setActive("ALL")
     setSort(null)
@@ -268,8 +265,8 @@ export function AdminProviders() {
                 ? "Verificação removida."
                 : "Prestador verificado."
               : currentValue
-              ? "Prestador desativado."
-              : "Prestador ativado.",
+                ? "Prestador desativado."
+                : "Prestador ativado.",
           )
           setPendingToggle(null)
           setPatchingId(null)
@@ -289,7 +286,10 @@ export function AdminProviders() {
     <button
       type="button"
       onClick={() => toggleSort(sortKey)}
-      className={cn("inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider transition-colors hover:text-foreground", sort?.key === sortKey ? "text-foreground" : "text-muted-foreground")}
+      className={cn(
+        "hover:text-foreground inline-flex items-center gap-1 text-[11px] font-semibold tracking-wider uppercase transition-colors",
+        sort?.key === sortKey ? "text-foreground" : "text-muted-foreground",
+      )}
     >
       {label}
       {sort?.key === sortKey ? (
@@ -321,7 +321,7 @@ export function AdminProviders() {
             type="button"
             onClick={() => setErrorBanner(null)}
             aria-label="Dispensar aviso"
-            className="absolute right-3 top-3 rounded-md p-1 text-current/70 transition-colors hover:text-current"
+            className="absolute top-3 right-3 rounded-md p-1 text-current/70 transition-colors hover:text-current"
           >
             <X className="size-3.5" />
           </button>
@@ -339,24 +339,12 @@ export function AdminProviders() {
           placeholder="Buscar por nome, e-mail ou cidade"
           className="min-w-[160px] flex-1"
         />
-        <Input
-          value={city}
-          onChange={(e) => {
-            setCity(e.target.value)
+        <AdminGeoFilter
+          value={geoFilter}
+          onChange={(next) => {
+            setGeoFilter(next)
             setPage(1)
           }}
-          placeholder="Cidade"
-          className="h-9 min-w-[120px] flex-1"
-        />
-        <Input
-          value={stateFilter}
-          onChange={(e) => {
-            setStateFilter(e.target.value.toUpperCase().slice(0, 2))
-            setPage(1)
-          }}
-          placeholder="UF"
-          maxLength={2}
-          className="h-9 w-[60px]"
         />
         <Select
           value={verified}
@@ -416,12 +404,7 @@ export function AdminProviders() {
           description="Ajuste os filtros de busca ou aguarde novos cadastros."
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -429,78 +412,70 @@ export function AdminProviders() {
           }
         />
       ) : (
-        <Card className="rounded-xl border border-border/50 bg-card overflow-hidden shadow-none">
+        <Card className="border-border/50 bg-card overflow-hidden rounded-xl border shadow-none">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="h-10 bg-muted/30 hover:bg-muted/30">
+                  <TableRow className="bg-muted/30 hover:bg-muted/30 h-10">
                     <TableHead>{renderSortHeader("Prestador", "name")}</TableHead>
-                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase md:table-cell">
                       Contato
                     </TableHead>
-                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase lg:table-cell">
                       Localidade
                     </TableHead>
-                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {geoFilter.lat != null ? (
+                      <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
+                        Distância
+                      </TableHead>
+                    ) : null}
+                    <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
                       Verificação
                     </TableHead>
-                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
                       Status
                     </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Desde", "createdAt")}
                     </TableHead>
-                    <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-[11px] font-semibold tracking-wider uppercase">
                       Ações
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((p) => {
-                    const isPatchingThis =
-                      patchingId === p.id && patchMutation.isPending
-                    const patchingField = isPatchingThis
-                      ? pendingToggle?.field ?? null
-                      : null
+                    const isPatchingThis = patchingId === p.id && patchMutation.isPending
+                    const patchingField = isPatchingThis ? (pendingToggle?.field ?? null) : null
                     return (
                       <TableRow
                         key={p.id}
-                        className="h-12 border-b border-border/50 transition-colors last:border-0 hover:bg-muted/20"
+                        className="border-border/50 hover:bg-muted/20 h-12 border-b transition-colors last:border-0"
                       >
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-8 shrink-0">
-                              {p.avatarUrl ? (
-                                <AvatarImage src={p.avatarUrl} alt={p.name} />
-                              ) : null}
-                              <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
+                              {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
                                 {initials(p.name)}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {p.name}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {p.email}
-                              </p>
+                              <p className="truncate text-sm font-medium">{p.name}</p>
+                              <p className="text-muted-foreground truncate text-xs">{p.email}</p>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className="hidden px-4 py-3 md:table-cell">
                           <div className="flex flex-col text-xs">
                             {p.whatsapp ? (
-                              <span className="text-foreground/80">
-                                {p.whatsapp}
-                              </span>
+                              <span className="text-foreground/80">{p.whatsapp}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
                             {p.cpfCnpj ? (
-                              <span className="font-mono text-muted-foreground">
-                                {p.cpfCnpj}
-                              </span>
+                              <span className="text-muted-foreground font-mono">{p.cpfCnpj}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
@@ -508,8 +483,8 @@ export function AdminProviders() {
                         </TableCell>
                         <TableCell className="hidden px-4 py-3 text-xs lg:table-cell">
                           {p.city ? (
-                            <span className="inline-flex items-center gap-1 text-foreground/80">
-                              <MapPin className="size-3 text-muted-foreground" />
+                            <span className="text-foreground/80 inline-flex items-center gap-1">
+                              <MapPin className="text-muted-foreground size-3" />
                               {p.city}
                               {p.state ? `/${p.state}` : ""}
                             </span>
@@ -517,6 +492,29 @@ export function AdminProviders() {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
+                        {geoFilter.lat != null ? (
+                          <TableCell className="px-4 py-3 text-center">
+                            {p.distanceKm != null ? (
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1 text-xs font-medium",
+                                  p.distanceKm <= 10
+                                    ? "text-emerald-600"
+                                    : p.distanceKm <= 50
+                                      ? "text-amber-600"
+                                      : "text-muted-foreground",
+                                )}
+                              >
+                                <Navigation className="size-3" />
+                                {p.distanceKm < 1
+                                  ? "< 1 km"
+                                  : `${p.distanceKm.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km`}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        ) : null}
                         <TableCell className="px-4 py-3 text-center">
                           {patchingField === "verified" ? (
                             <SavingPill saving label="Salvando…" />
@@ -531,7 +529,7 @@ export function AdminProviders() {
                             <ActiveBadge active={p.active} />
                           )}
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 text-xs text-muted-foreground tabular-nums sm:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
                           {formatDate(p.createdAt)}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-right">
@@ -546,14 +544,10 @@ export function AdminProviders() {
                                   className="h-8 gap-1.5 text-xs"
                                 >
                                   <Eye className="size-3.5" />
-                                  <span className="hidden sm:inline">
-                                    Ver perfil
-                                  </span>
+                                  <span className="hidden sm:inline">Ver perfil</span>
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>
-                                Ver perfil público do prestador
-                              </TooltipContent>
+                              <TooltipContent>Ver perfil público do prestador</TooltipContent>
                             </Tooltip>
                             {/* H6 — secondary actions in ⋮.
                                 "Ver perfil público" REMOVIDO (já é o botão visível). */}
@@ -592,9 +586,7 @@ export function AdminProviders() {
                                   ) : (
                                     <ShieldCheck className="size-3.5" />
                                   )}
-                                  {p.verified
-                                    ? "Remover verificação"
-                                    : "Verificar"}
+                                  {p.verified ? "Remover verificação" : "Verificar"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() =>
@@ -627,17 +619,8 @@ export function AdminProviders() {
       {/* Result count + pagination — only when there are results */}
       {!isError && !isLoading && items.length > 0 ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <ResultCount
-            page={page}
-            limit={limit}
-            total={total}
-            label="prestadores"
-          />
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-          />
+          <ResultCount page={page} limit={limit} total={total} label="prestadores" />
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       ) : null}
 

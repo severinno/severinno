@@ -75,6 +75,7 @@ import { AdminGatewayDashboard } from "./admin-gateway-dashboard"
 import { AdminPgBouncer } from "./admin-pgbouncer"
 import { AdminGeoMetricsDashboard } from "./admin-geo-metrics-dashboard"
 import { AdminCoverageMap } from "./admin-coverage-map"
+import { AdminBenchmarkDashboard } from "./admin-benchmark-dashboard"
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -169,6 +170,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.geo-metrics",
     label: "Geo Metrics",
     icon: Globe,
+  },
+  {
+    view: "admin.benchmarks",
+    label: "Benchmarks",
+    icon: BarChart3,
   },
   {
     view: "admin.performance",
@@ -299,6 +305,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     title: "Métricas de Geolocalização",
     subtitle: "Latência P50/P95/P99 dos serviços de geocoding (Nominatim, ViaCEP) e PostGIS.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Geo Metrics" }],
+  },
+  "admin.benchmarks": {
+    title: "Monitoramento de Benchmarks",
+    subtitle:
+      "Comparação contínua de desempenho dos benchmarks de geolocalização com detecção automática de regressões.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Benchmarks" }],
   },
   "admin.performance": {
     title: "Performance",
@@ -464,6 +476,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminCoverageMap />
     case "admin.geo-metrics":
       return <AdminGeoMetricsDashboard />
+    case "admin.benchmarks":
+      return <AdminBenchmarkDashboard />
     case "admin.performance":
       return <AdminPerformanceDashboard />
     case "admin.pgbouncer":

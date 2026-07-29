@@ -63,32 +63,77 @@ async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
   if (clean.length !== 8) {
     throw new Error("CEP inválido (deve ter 8 dígitos)")
   }
-  const url = `https://viacep.com.br/ws/${clean}/json/`
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-    // ViaCEP cache-friendly: short cache is fine
-    next: { revalidate: 86400 },
-  })
-  if (!res.ok) {
-    throw new Error(`ViaCEP HTTP ${res.status}`)
+
+  try {
+    const url = `https://viacep.com.br/ws/${clean}/json/`
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(5000), // 5s timeout
+    })
+    if (!res.ok) throw new Error(`ViaCEP HTTP ${res.status}`)
+
+    const data = (await res.json()) as {
+      cep?: string
+      logradouro?: string
+      bairro?: string
+      localidade?: string
+      uf?: string
+      erro?: boolean
+    }
+    if (data.erro) throw new Error("CEP não encontrado")
+
+    return {
+      cep: data.cep ?? clean,
+      street: data.logradouro ?? "",
+      district: data.bairro ?? "",
+      city: data.localidade ?? "",
+      state: data.uf ?? "",
+    }
+  } catch {
+    // ViaCEP unavailable — fall back to local DB CEP search
+    return geocodeCEPLocal(clean)
   }
-  const data = (await res.json()) as {
-    cep?: string
-    logradouro?: string
-    bairro?: string
-    localidade?: string
-    uf?: string
-    erro?: boolean
-  }
-  if (data.erro) {
+}
+
+/**
+ * Fallback local CEP lookup when ViaCEP is unavailable.
+ *
+ * Searches the User table for a provider whose `cep` matches the given CEP.
+ * Returns a ViaCEPResult-compatible object so the caller receives the same
+ * shape regardless of whether ViaCEP or the fallback was used.
+ */
+async function geocodeCEPLocal(cep: string): Promise<ViaCEPResult> {
+  try {
+    const { db } = await import("@/lib/db")
+
+    // Try matching both with and without hyphen (DB may store either format)
+    const withHyphen = `${cep.slice(0, 5)}-${cep.slice(5)}`
+    const user = await db.user.findFirst({
+      where: {
+        role: "PROVIDER",
+        active: true,
+        OR: [{ cep: cep }, { cep: withHyphen }],
+      },
+      select: { cep: true, street: true, district: true, city: true, state: true },
+      orderBy: { avgRating: "desc" as const },
+    })
+
+    if (!user) {
+      // No match found in DB either
+      throw new Error("CEP não encontrado")
+    }
+
+    return {
+      cep: user.cep ?? cep,
+      street: user.street ?? "",
+      district: user.district ?? "",
+      city: user.city ?? "",
+      state: user.state ?? "",
+    }
+  } catch {
+    // DB query also failed
     throw new Error("CEP não encontrado")
-  }
-  return {
-    cep: data.cep ?? clean,
-    street: data.logradouro ?? "",
-    district: data.bairro ?? "",
-    city: data.localidade ?? "",
-    state: data.uf ?? "",
   }
 }
 
@@ -103,37 +148,42 @@ export type ReverseGeocodeResult = {
 
 /** @internal renamed to _reverseGeocode — use reverseGeocodeWithMetrics for latency tracking. */
 async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
-  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=pt-BR`
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
-    },
-    next: { revalidate: 3600 },
-  })
-  if (!res.ok) {
-    throw new Error(`Nominatim HTTP ${res.status}`)
-  }
-  const data = (await res.json()) as {
-    display_name?: string
-    address?: {
-      road?: string
-      neighbourhood?: string
-      city?: string
-      town?: string
-      village?: string
-      state?: string
-      postcode?: string
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=pt-BR`
+    const res = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
+      },
+      next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(5000), // 5s timeout
+    })
+    if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
+
+    const data = (await res.json()) as {
+      display_name?: string
+      address?: {
+        road?: string
+        neighbourhood?: string
+        city?: string
+        town?: string
+        village?: string
+        state?: string
+        postcode?: string
+      }
     }
-  }
-  const a = data.address ?? {}
-  return {
-    displayName: data.display_name ?? "",
-    road: a.road,
-    neighbourhood: a.neighbourhood,
-    city: a.city ?? a.town ?? a.village,
-    state: a.state,
-    postcode: a.postcode,
+    const a = data.address ?? {}
+    return {
+      displayName: data.display_name ?? "",
+      road: a.road,
+      neighbourhood: a.neighbourhood,
+      city: a.city ?? a.town ?? a.village,
+      state: a.state,
+      postcode: a.postcode,
+    }
+  } catch {
+    // Nominatim unavailable — fall back to nearest provider in DB
+    return reverseGeocodeLocal(lat, lng)
   }
 }
 
@@ -153,6 +203,85 @@ export type GeoSearchResult = {
   category?: string
   type?: string
   importance: number
+}
+
+/**
+ * Fallback local reverse geocode when Nominatim is unavailable.
+ *
+ * Finds the nearest provider in the DB (by Haversine distance to the given
+ * coordinates) and returns their address. Limited to ~100km radius to avoid
+ * returning irrelevant results.
+ */
+async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeocodeResult> {
+  try {
+    const { db } = await import("@/lib/db")
+    const { haversineKm } = await import("@/lib/geo-server")
+
+    const users = await db.user.findMany({
+      where: {
+        role: "PROVIDER",
+        active: true,
+        lat: { not: null },
+        lng: { not: null },
+      },
+      select: {
+        lat: true,
+        lng: true,
+        street: true,
+        district: true,
+        city: true,
+        state: true,
+        cep: true,
+      },
+      take: 5,
+      orderBy: { avgRating: "desc" as const },
+    })
+
+    // Find the nearest provider by Haversine distance
+    let nearest: (typeof users)[number] | null = null
+    let minDist = Infinity
+    for (const u of users) {
+      if (u.lat == null || u.lng == null) continue
+      const d = haversineKm(lat, lng, u.lat, u.lng)
+      if (d < minDist) {
+        minDist = d
+        nearest = u
+      }
+    }
+
+    if (!nearest || minDist > 100) {
+      // No provider within 100km — return minimal result with raw coords
+      return {
+        displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+        road: undefined,
+        neighbourhood: undefined,
+        city: undefined,
+        state: undefined,
+        postcode: undefined,
+      }
+    }
+
+    return {
+      displayName: [nearest.street, nearest.district, nearest.city, nearest.state]
+        .filter(Boolean)
+        .join(", "),
+      road: nearest.street ?? undefined,
+      neighbourhood: nearest.district ?? undefined,
+      city: nearest.city ?? undefined,
+      state: nearest.state ?? undefined,
+      postcode: nearest.cep ?? undefined,
+    }
+  } catch {
+    // DB query also failed — return minimal result
+    return {
+      displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+      road: undefined,
+      neighbourhood: undefined,
+      city: undefined,
+      state: undefined,
+      postcode: undefined,
+    }
+  }
 }
 
 /**
@@ -226,7 +355,6 @@ async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSear
     return parseNominatimSearchResponse(await res.json())
   } catch {
     // Nominatim unavailable — fall back to local DB address search
-    console.warn("[geo] Nominatim unavailable, falling back to local DB search")
     return geocodeSearchLocal(trimmed, clampedLimit)
   }
 }
@@ -323,10 +451,17 @@ async function _geocodeSearchStructured(opts: {
 
   const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`
 
-  const res = await fetch(url, { headers: NOMINATIM_HEADERS, next: { revalidate: 86400 } })
-  if (!res.ok) throw new Error(`Nominatim structured HTTP ${res.status}`)
+  try {
+    const res = await fetch(url, { headers: NOMINATIM_HEADERS, next: { revalidate: 86400 } })
+    if (!res.ok) throw new Error(`Nominatim structured HTTP ${res.status}`)
 
-  return parseNominatimSearchResponse(await res.json())
+    return parseNominatimSearchResponse(await res.json())
+  } catch {
+    // Nominatim unavailable — fall back to local DB address search
+    // Build a combined query from the structured fields for the local search
+    const combined = [street, city, state].filter(Boolean).join(", ")
+    return geocodeSearchLocal(combined, clampedLimit)
+  }
 }
 
 // ---------------------------------------------------------------------------
