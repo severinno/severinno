@@ -46,11 +46,9 @@ import {
 
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
-import {
-  fetchProviderDetail,
-  type ProviderDetail,
-} from "@/lib/api"
+import { fetchProviderDetail, type ProviderDetail } from "@/lib/api"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
+import { useGeoStore } from "@/store/geo"
 import { useUIStore } from "@/store/ui"
 import { toast } from "sonner"
 
@@ -107,7 +105,10 @@ function weeklySummary(p: ProviderDetail): string {
   const segSex = [1, 2, 3, 4, 5].every((d) => days.has(d))
   if (segSex && days.size === 5) return "Seg–Sex"
   if (segSex && days.has(6) && !days.has(0)) return "Seg–Sáb"
-  return Array.from(days).sort().map((d) => DAY_LABELS[d]).join(", ")
+  return Array.from(days)
+    .sort()
+    .map((d) => DAY_LABELS[d])
+    .join(", ")
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +136,7 @@ export default function CompareModal() {
   const clear = useCompareStore((s) => s.clear)
   const openQuote = useUIStore((s) => s.openQuote)
   const openBooking = useUIStore((s) => s.openBooking)
+  const { lat, lng } = useGeoStore()
 
   // Fetch each provider in parallel
   const queries = useQuery({
@@ -142,7 +144,10 @@ export default function CompareModal() {
     queryFn: async () => {
       const results = await Promise.all(
         ids.map((id) =>
-          fetchProviderDetail(id)
+          fetchProviderDetail(id, {
+            lat: lat ?? undefined,
+            lng: lng ?? undefined,
+          })
             .then((data) => ({ id, data, error: null as Error | null }))
             .catch((e: unknown) => ({
               id,
@@ -172,9 +177,7 @@ export default function CompareModal() {
     () =>
       providers.length > 0
         ? Math.min(
-            ...providers
-              .map((p) => cheapestService(p))
-              .filter((v): v is number => v !== null),
+            ...providers.map((p) => cheapestService(p)).filter((v): v is number => v !== null),
           )
         : null,
     [providers],
@@ -185,11 +188,15 @@ export default function CompareModal() {
   )
   const bestCompleted = React.useMemo(
     () =>
-      providers.length > 0
-        ? Math.max(...providers.map((p) => p.completedBookings ?? 0))
-        : null,
+      providers.length > 0 ? Math.max(...providers.map((p) => p.completedBookings ?? 0)) : null,
     [providers],
   )
+  const closestDistance = React.useMemo(() => {
+    const distances = providers
+      .map((p) => p.distanceKm)
+      .filter((v): v is number => v != null && v !== undefined)
+    return distances.length > 0 ? Math.min(...distances) : null
+  }, [providers])
 
   const rows: RowDef[] = [
     {
@@ -200,7 +207,7 @@ export default function CompareModal() {
         <div className="flex items-center gap-1.5">
           <Star className="size-4 fill-amber-400 text-amber-400" />
           <span className="font-semibold">{p.rating > 0 ? p.rating.toFixed(1) : "—"}</span>
-          <span className="text-xs text-muted-foreground">({p.reviewCount})</span>
+          <span className="text-muted-foreground text-xs">({p.reviewCount})</span>
           {bestRating !== null && p.rating === bestRating && p.rating > 0 ? (
             <Trophy className="size-3.5 text-amber-500" aria-label="Melhor avaliação" />
           ) : null}
@@ -210,7 +217,7 @@ export default function CompareModal() {
     {
       key: "price",
       label: "Preço a partir de",
-      icon: <span className="text-emerald-600 font-bold text-xs">R$</span>,
+      icon: <span className="text-xs font-bold text-emerald-600">R$</span>,
       render: (p) => {
         const price = cheapestService(p)
         if (price === null) return <span className="text-muted-foreground">—</span>
@@ -233,7 +240,9 @@ export default function CompareModal() {
       render: (p) => (
         <div className="flex items-center gap-1.5">
           <span className="font-medium">{p.completedBookings ?? 0}</span>
-          {bestCompleted !== null && (p.completedBookings ?? 0) === bestCompleted && bestCompleted > 0 ? (
+          {bestCompleted !== null &&
+          (p.completedBookings ?? 0) === bestCompleted &&
+          bestCompleted > 0 ? (
             <Trophy className="size-3.5 text-amber-500" aria-label="Mais experiências" />
           ) : null}
         </div>
@@ -248,7 +257,7 @@ export default function CompareModal() {
     {
       key: "member-since",
       label: "Na plataforma desde",
-      icon: <CalendarClock className="size-4 text-muted-foreground" />,
+      icon: <CalendarClock className="text-muted-foreground size-4" />,
       render: (p) =>
         p.memberSince ? (
           <span className="text-sm">
@@ -264,7 +273,7 @@ export default function CompareModal() {
     {
       key: "distance",
       label: "Distância",
-      icon: <Navigation className="size-4 text-muted-foreground" />,
+      icon: <Navigation className="size-4 text-emerald-600" />,
       render: (p) =>
         p.distanceKm != null ? (
           <div className="flex items-center gap-1.5">
@@ -274,6 +283,14 @@ export default function CompareModal() {
                 ? `${Math.round(p.distanceKm * 1000)} m`
                 : `${p.distanceKm.toFixed(1)} km`}
             </span>
+            {closestDistance !== null &&
+            p.distanceKm === closestDistance &&
+            closestDistance < 9999 ? (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                <Navigation className="size-2.5" />
+                Mais próximo
+              </span>
+            ) : null}
           </div>
         ) : (
           <span className="text-muted-foreground">—</span>
@@ -282,17 +299,15 @@ export default function CompareModal() {
     {
       key: "location",
       label: "Localização",
-      icon: <MapPin className="size-4 text-muted-foreground" />,
+      icon: <MapPin className="text-muted-foreground size-4" />,
       render: (p) => (
-        <span className="text-sm">
-          {[p.district, p.city].filter(Boolean).join(", ") || "—"}
-        </span>
+        <span className="text-sm">{[p.district, p.city].filter(Boolean).join(", ") || "—"}</span>
       ),
     },
     {
       key: "radius",
       label: "Raio de atendimento",
-      icon: <MapPin className="size-4 text-muted-foreground" />,
+      icon: <MapPin className="text-muted-foreground size-4" />,
       render: (p) =>
         p.radiusKm ? (
           <span className="text-sm">{p.radiusKm} km</span>
@@ -303,7 +318,7 @@ export default function CompareModal() {
     {
       key: "availability",
       label: "Expediente",
-      icon: <Clock className="size-4 text-muted-foreground" />,
+      icon: <Clock className="text-muted-foreground size-4" />,
       render: (p) => <span className="text-sm">{weeklySummary(p)}</span>,
     },
     {
@@ -312,8 +327,7 @@ export default function CompareModal() {
       icon: <Sparkles className="size-4 text-emerald-600" />,
       render: (p) => {
         const cats = categoriesCovered(p)
-        if (cats.length === 0)
-          return <span className="text-muted-foreground">—</span>
+        if (cats.length === 0) return <span className="text-muted-foreground">—</span>
         return (
           <div className="flex flex-wrap gap-1">
             {cats.map((c) => (
@@ -346,16 +360,14 @@ export default function CompareModal() {
     <Dialog open={open} onOpenChange={(o) => !o && closeCompare()}>
       <DialogContent className="max-w-6xl gap-0 overflow-hidden p-0 sm:rounded-xl">
         {/* Header */}
-        <DialogHeader className="border-b bg-gradient-to-r from-emerald-50 to-background px-5 py-4 dark:from-emerald-950/30">
+        <DialogHeader className="to-background border-b bg-gradient-to-r from-emerald-50 px-5 py-4 dark:from-emerald-950/30">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+              <span className="bg-primary text-primary-foreground flex size-9 items-center justify-center rounded-lg shadow-sm">
                 <GitCompare className="size-5" />
               </span>
               <div>
-                <DialogTitle className="text-lg font-bold">
-                  Comparar prestadores
-                </DialogTitle>
+                <DialogTitle className="text-lg font-bold">Comparar prestadores</DialogTitle>
                 <DialogDescription className="text-xs">
                   {providers.length > 0
                     ? `${providers.length} prestador(es) selecionado(s) — limite ${MAX_COMPARE}`
@@ -389,8 +401,8 @@ export default function CompareModal() {
                 <CompareSkeleton count={ids.length} rows={rows.length} />
               ) : providers.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <X className="size-10 text-muted-foreground" />
-                  <p className="mt-3 text-sm text-muted-foreground">
+                  <X className="text-muted-foreground size-10" />
+                  <p className="text-muted-foreground mt-3 text-sm">
                     Não foi possível carregar os prestadores selecionados.
                   </p>
                 </div>
@@ -399,26 +411,26 @@ export default function CompareModal() {
                   <table className="w-full border-separate border-spacing-0 text-sm">
                     <thead>
                       <tr>
-                        <th className="sticky left-0 z-10 w-44 bg-background p-3 text-left align-top text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                        <th className="bg-background text-muted-foreground sticky left-0 z-10 w-44 p-3 text-left align-top text-xs font-semibold tracking-wide uppercase">
                           Critério
                         </th>
                         {providers.map((p) => (
                           <th
                             key={p.id}
-                            className="min-w-[200px] border-l border-border/60 bg-background p-3 text-left align-top"
+                            className="border-border/60 bg-background min-w-[200px] border-l p-3 text-left align-top"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex items-center gap-2.5">
-                                <Avatar className="size-11 border-2 border-card shadow-sm">
+                                <Avatar className="border-card size-11 border-2 shadow-sm">
                                   {p.avatarUrl ? (
                                     <AvatarImage src={p.avatarUrl} alt={p.name} />
                                   ) : null}
-                                  <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+                                  <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
                                     {initialsOf(p.name)}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="min-w-0">
-                                  <p className="truncate text-sm font-bold leading-tight">
+                                  <p className="truncate text-sm leading-tight font-bold">
                                     {p.name}
                                   </p>
                                   {p.verified ? (
@@ -436,7 +448,7 @@ export default function CompareModal() {
                                 type="button"
                                 onClick={() => remove(p.id)}
                                 aria-label={`Remover ${p.name} da comparação`}
-                                className="flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                                className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex size-6 shrink-0 items-center justify-center rounded-full transition"
                               >
                                 <X className="size-4" />
                               </button>
@@ -450,8 +462,8 @@ export default function CompareModal() {
                         <tr key={row.key} className="group">
                           <td
                             className={cn(
-                              "sticky left-0 z-10 w-44 bg-background p-3 align-top text-xs font-medium tracking-wide text-muted-foreground uppercase",
-                              idx > 0 && "border-t border-border/40",
+                              "bg-background text-muted-foreground sticky left-0 z-10 w-44 p-3 align-top text-xs font-medium tracking-wide uppercase",
+                              idx > 0 && "border-border/40 border-t",
                             )}
                           >
                             <div className="flex items-center gap-2">
@@ -465,7 +477,7 @@ export default function CompareModal() {
                             <td
                               key={`${p.id}-${row.key}`}
                               className={cn(
-                                "border-l border-t border-border/40 p-3 align-top",
+                                "border-border/40 border-t border-l p-3 align-top",
                                 idx % 2 === 1 && "bg-muted/20",
                               )}
                             >
@@ -476,7 +488,7 @@ export default function CompareModal() {
                       ))}
                       {/* Bio row — spans full width */}
                       <tr>
-                        <td className="sticky left-0 z-10 w-44 border-t border-border/40 bg-background p-3 align-top text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                        <td className="border-border/40 bg-background text-muted-foreground sticky left-0 z-10 w-44 border-t p-3 align-top text-xs font-medium tracking-wide uppercase">
                           <div className="flex items-center gap-2">
                             <span className="text-emerald-600 dark:text-emerald-400">
                               <FileText className="size-4" />
@@ -487,9 +499,9 @@ export default function CompareModal() {
                         {providers.map((p) => (
                           <td
                             key={`${p.id}-bio`}
-                            className="border-l border-t border-border/40 bg-muted/20 p-3 align-top"
+                            className="border-border/40 bg-muted/20 border-t border-l p-3 align-top"
                           >
-                            <p className="line-clamp-3 text-xs text-muted-foreground">
+                            <p className="text-muted-foreground line-clamp-3 text-xs">
                               {p.bio || "Sem descrição."}
                             </p>
                           </td>
@@ -497,7 +509,7 @@ export default function CompareModal() {
                       </tr>
                       {/* Actions row */}
                       <tr>
-                        <td className="sticky left-0 z-10 w-44 border-t border-border/40 bg-background p-3 align-top text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                        <td className="border-border/40 bg-background text-muted-foreground sticky left-0 z-10 w-44 border-t p-3 align-top text-xs font-medium tracking-wide uppercase">
                           <div className="flex items-center gap-2">
                             <span className="text-emerald-600 dark:text-emerald-400">
                               <Calendar className="size-4" />
@@ -508,7 +520,7 @@ export default function CompareModal() {
                         {providers.map((p) => (
                           <td
                             key={`${p.id}-actions`}
-                            className="border-l border-t border-border/40 p-3 align-top"
+                            className="border-border/40 border-t border-l p-3 align-top"
                           >
                             <div className="flex flex-col gap-1.5">
                               <Button
@@ -518,7 +530,7 @@ export default function CompareModal() {
                                   closeCompare()
                                   openQuote({ providerId: p.id })
                                 }}
-                                className="h-8 w-full gap-1.5 border-primary/30 text-xs text-primary hover:border-primary hover:bg-primary/10"
+                                className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 h-8 w-full gap-1.5 text-xs"
                               >
                                 <FileText className="size-3.5" />
                                 Orçamento
@@ -545,10 +557,10 @@ export default function CompareModal() {
 
               {/* Helper note */}
               {providers.length > 0 ? (
-                <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <p className="text-muted-foreground mt-4 flex items-center gap-1.5 text-xs">
                   <Trophy className="size-3.5 text-amber-500" />
-                  Destaque nos critérios: melhor avaliação, menor preço e mais
-                  experiências.
+                  Destaque nos critérios: melhor avaliação, menor preço, mais experiências e mais
+                  próximo.
                 </p>
               ) : null}
             </div>
@@ -566,15 +578,14 @@ export default function CompareModal() {
 function EmptyCompare() {
   return (
     <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-      <span className="flex size-16 items-center justify-center rounded-full bg-muted">
-        <GitCompare className="size-8 text-muted-foreground" />
+      <span className="bg-muted flex size-16 items-center justify-center rounded-full">
+        <GitCompare className="text-muted-foreground size-8" />
       </span>
       <h3 className="mt-4 text-base font-semibold">Nenhum prestador selecionado</h3>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Use o ícone{" "}
-        <GitCompare className="inline size-3.5 text-emerald-600" /> nos cards da
-        vitrine para adicionar até {MAX_COMPARE} prestadores e comparar
-        avaliações, preços e serviços lado a lado.
+      <p className="text-muted-foreground mt-1 max-w-sm text-sm">
+        Use o ícone <GitCompare className="inline size-3.5 text-emerald-600" /> nos cards da vitrine
+        para adicionar até {MAX_COMPARE} prestadores e comparar avaliações, preços e serviços lado a
+        lado.
       </p>
     </div>
   )
@@ -590,13 +601,13 @@ function CompareSkeleton({ count, rows }: { count: number; rows: number }) {
       <table className="w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr>
-            <th className="sticky left-0 z-10 w-44 bg-background p-3 text-left text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            <th className="bg-background text-muted-foreground sticky left-0 z-10 w-44 p-3 text-left text-xs font-semibold tracking-wide uppercase">
               Critério
             </th>
             {Array.from({ length: count }).map((_, i) => (
               <th
                 key={i}
-                className="min-w-[200px] border-l border-border/60 bg-background p-3 text-left"
+                className="border-border/60 bg-background min-w-[200px] border-l p-3 text-left"
               >
                 <div className="flex items-center gap-2.5">
                   <Skeleton className="size-11 rounded-full" />
@@ -612,14 +623,11 @@ function CompareSkeleton({ count, rows }: { count: number; rows: number }) {
         <tbody>
           {Array.from({ length: rows }).map((_, r) => (
             <tr key={r}>
-              <td className="sticky left-0 z-10 w-44 border-t border-border/40 bg-background p-3">
+              <td className="border-border/40 bg-background sticky left-0 z-10 w-44 border-t p-3">
                 <Skeleton className="h-3 w-20" />
               </td>
               {Array.from({ length: count }).map((_, c) => (
-                <td
-                  key={c}
-                  className="border-l border-t border-border/40 p-3"
-                >
+                <td key={c} className="border-border/40 border-t border-l p-3">
                   <Skeleton className="h-4 w-24" />
                 </td>
               ))}
