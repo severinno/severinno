@@ -205,12 +205,9 @@ export default function ProviderCard({
         data-provider-id={provider.id}
         data-compare-name={provider.name}
         data-compare-avatar={provider.avatarUrl ?? ""}
-        data-compare-distance={
-          typeof provider.distanceKm === "number"
-            ? provider.distanceKm < 1
-              ? `${Math.round(provider.distanceKm * 1000)}m`
-              : `${provider.distanceKm.toFixed(1)}km`
-            : ""
+        data-compare-distance={formatDistance(provider.distanceKm)}
+        data-compare-distance-km={
+          typeof provider.distanceKm === "number" ? String(provider.distanceKm) : ""
         }
         className={cn(
           "group relative gap-0 overflow-hidden rounded-xl border py-0 shadow-sm transition-all duration-200",

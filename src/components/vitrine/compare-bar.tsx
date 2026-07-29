@@ -9,13 +9,14 @@
  */
 
 import * as React from "react"
-import { GitCompare, X, Trash2, ArrowRight } from "lucide-react"
+import { GitCompare, X, Trash2, ArrowRight, Navigation } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export default function CompareBar() {
@@ -25,11 +26,18 @@ export default function CompareBar() {
   const openCompare = useCompareStore((s) => s.openCompare)
 
   // Resolve names/avatars/distance from the DOM via data-attributes on cards.
-  // Each ProviderCard sets `data-compare-name`, `data-compare-avatar`, and
-  // `data-compare-distance` on the card root, so the bar can show chips
-  // without fetching.
+  // Each ProviderCard sets `data-compare-name`, `data-compare-avatar`,
+  // `data-compare-distance` (formatted), and `data-compare-distance-km` (raw)
+  // on the card root, so the bar can show chips without fetching.
   const [providerInfo, setProviderInfo] = React.useState<
-    { id: string; name: string; avatarUrl?: string | null; distance?: string | null }[]
+    {
+      id: string
+      name: string
+      avatarUrl?: string | null
+      distance?: string | null
+      distanceKm?: number | null
+      isClosest: boolean
+    }[]
   >([])
 
   React.useEffect(() => {
@@ -38,26 +46,45 @@ export default function CompareBar() {
       setProviderInfo([])
       return
     }
+
+    // Resolve from DOM
     const found: {
       id: string
       name: string
       avatarUrl?: string | null
       distance?: string | null
+      distanceKm?: number | null
     }[] = []
     for (const id of ids) {
       const el = document.querySelector<HTMLElement>(`[data-provider-id="${id}"]`)
-      if (el) {
-        found.push({
-          id,
-          name: el.dataset.compareName || "Prestador",
-          avatarUrl: el.dataset.compareAvatar || null,
-          distance: el.dataset.compareDistance || null,
-        })
-      } else {
-        found.push({ id, name: "Prestador", avatarUrl: null, distance: null })
-      }
+      const rawKm = el?.dataset.compareDistanceKm
+      found.push({
+        id,
+        name: el?.dataset.compareName || "Prestador",
+        avatarUrl: el?.dataset.compareAvatar || null,
+        distance: el?.dataset.compareDistance || null,
+        distanceKm: rawKm ? Number(rawKm) : null,
+      })
     }
-    setProviderInfo(found)
+
+    // Compute closest among those with valid distance
+    const validDistances = found.filter(
+      (p): p is typeof p & { distanceKm: number } =>
+        typeof p.distanceKm === "number" && Number.isFinite(p.distanceKm),
+    )
+    const minKm =
+      validDistances.length > 0 ? Math.min(...validDistances.map((p) => p.distanceKm)) : null
+
+    setProviderInfo(
+      found.map((p) => ({
+        ...p,
+        isClosest:
+          minKm !== null &&
+          typeof p.distanceKm === "number" &&
+          Number.isFinite(p.distanceKm) &&
+          p.distanceKm === minKm,
+      })),
+    )
   }, [ids])
 
   const canCompare = ids.length >= 2
@@ -112,10 +139,16 @@ export default function CompareBar() {
                     </AvatarFallback>
                   </Avatar>
                   <span className="max-w-[8rem] truncate text-xs font-medium">{p.name}</span>
-                  {p.distance ? (
+                  {p.distance && p.distance !== "—" ? (
                     <span className="text-muted-foreground shrink-0 text-[10px]">
                       · {p.distance}
                     </span>
+                  ) : null}
+                  {p.isClosest ? (
+                    <Badge className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0 text-[9px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                      <Navigation className="size-2.5" />
+                      +próx
+                    </Badge>
                   ) : null}
                   <button
                     type="button"

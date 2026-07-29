@@ -119,6 +119,21 @@ vi.mock("lucide-react", () => {
 
 import { clearCepCache } from "@/lib/client-cep-cache"
 
+// ── Mock client-geo-cache ─────────────────────────────────────────────────
+// The address-autocomplete component now uses localStorage geo cache.
+// By default, return null (cache miss) so tests exercise the API path.
+// Individual tests can override with mockGetCachedGeo.mockReturnValue(...)
+
+const mockGetCachedGeo = vi.fn().mockReturnValue(null)
+const mockSetCachedGeo = vi.fn()
+const mockSubscribeGeoUpdates = vi.fn().mockReturnValue(() => {})
+
+vi.mock("@/lib/client-geo-cache", () => ({
+  getCachedGeo: (...args: any[]) => mockGetCachedGeo(...args),
+  setCachedGeo: (...args: any[]) => mockSetCachedGeo(...args),
+  subscribeGeoUpdates: (...args: any[]) => mockSubscribeGeoUpdates(...args),
+}))
+
 export function resetCommonMocks(): void {
   vi.clearAllMocks()
   mockGeoStore.city = null
@@ -133,6 +148,11 @@ export function resetCommonMocks(): void {
   mockFetchReverseGeo.mockReset()
   mockFetchCep.mockReset()
   _mockToast.success.mockReset()
+  mockGetCachedGeo.mockReset()
+  mockGetCachedGeo.mockReturnValue(null)
+  mockSetCachedGeo.mockReset()
+  mockSubscribeGeoUpdates.mockReset()
+  mockSubscribeGeoUpdates.mockReturnValue(() => {})
   // Clear client-side CEP cache (localStorage) to avoid test pollution
   clearCepCache()
 }

@@ -28,6 +28,7 @@ import { useGeoStore } from "@/store/geo"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { getCachedCep, setCachedCep, subscribeCepUpdates } from "@/lib/client-cep-cache"
+import { getCachedGeo, setCachedGeo, subscribeGeoUpdates } from "@/lib/client-geo-cache"
 
 // ---------------------------------------------------------------------------
 // In-memory LRU cache for geocoding results (5 min TTL)
@@ -221,9 +222,22 @@ export default function AddressAutocomplete({
       }
 
       // Default: Nominatim search
+      // Check localStorage cache before hitting the API
+      const cachedGeo = getCachedGeo(debouncedInput)
+      if (cachedGeo && !cancelled) {
+        cacheSet(debouncedInput.trim().toLowerCase(), cachedGeo)
+        setResults(cachedGeo)
+        setOpen(cachedGeo.length > 0)
+        setSelectedIdx(-1)
+        setLoading(false)
+        return
+      }
+
       try {
         const data = await fetchGeoSearch(debouncedInput, 5)
         if (cancelled) return
+        // Cache in both localStorage (1h TTL) and in-memory (5min TTL)
+        setCachedGeo(debouncedInput, data)
         cacheSet(debouncedInput.trim().toLowerCase(), data)
         setResults(data)
         setOpen(data.length > 0)
@@ -326,14 +340,24 @@ export default function AddressAutocomplete({
     }
   }, [locating, setFromGPS, setFromCoords, onSelect])
 
-  // Listen for CEP cache updates from other tabs
+  // Listen for cache updates from other tabs (CEP + geo)
   React.useEffect(() => {
-    return subscribeCepUpdates(({ cep, data }) => {
+    const unsubCep = subscribeCepUpdates(({ cep, data }) => {
       // Another tab cached this CEP — warm up the in-memory cache
       const key = cep.replace(/\D/g, "")
       const result = cepToResult(key, data)
       cacheSet(key, [result])
     })
+
+    const unsubGeo = subscribeGeoUpdates(({ query, results }) => {
+      // Another tab searched this query — warm up the in-memory cache
+      cacheSet(query, results)
+    })
+
+    return () => {
+      unsubCep()
+      unsubGeo()
+    }
   }, [])
 
   // Click outside to close
