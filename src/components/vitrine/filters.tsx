@@ -59,6 +59,9 @@ export type FiltersProps = {
   /** Whether the user has shared their location (lat/lng available).
    *  When false, the "Mais próximos" sort option is disabled. */
   hasGeo?: boolean
+  /** Called when the user clicks "Mais próximos" without having shared
+   *  their location. The parent should show a toast with a GPS action. */
+  onRequestGeo?: () => void
   className?: string
 }
 
@@ -68,6 +71,7 @@ export default function Filters({
   categories,
   total,
   hasGeo = false,
+  onRequestGeo,
   className,
 }: FiltersProps) {
   // Resolve category chain for the currently-selected leaf
@@ -266,7 +270,13 @@ export default function Filters({
           />
           <SortOption
             active={value.sort === "distance"}
-            onClick={() => setField("sort", "distance")}
+            onClick={() => {
+              if (!hasGeo) {
+                onRequestGeo?.()
+              } else {
+                setField("sort", "distance")
+              }
+            }}
             disabled={!hasGeo}
             label="Mais próximos"
             title={!hasGeo ? "Compartilhe sua localização para ordenar por distância" : undefined}
@@ -343,8 +353,9 @@ function SortOption({
       type="button"
       role="radio"
       aria-checked={active}
-      onClick={disabled ? undefined : onClick}
+      onClick={onClick}
       title={title}
+      aria-disabled={disabled}
       className={cn(
         "focus-visible:ring-ring flex h-9 items-center justify-center rounded-lg border px-2 text-xs font-medium transition-all outline-none focus-visible:ring-2",
         active

@@ -230,6 +230,47 @@ export function clearCepCache(): void {
 }
 
 /**
+ * Sweep all expired CEP entries from localStorage.
+ * Iterates all keys with the CEP prefix and removes those past the 7-day TTL.
+ * Returns the number of entries removed.
+ */
+export function sweepCepCache(): number {
+  let removed = 0
+  const now = Date.now()
+
+  try {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key?.startsWith(STORAGE_PREFIX)) continue
+
+      try {
+        const raw = localStorage.getItem(key)
+        if (!raw) {
+          keysToRemove.push(key)
+          continue
+        }
+        const entry = JSON.parse(raw) as CepCacheEntry
+        if (!entry.cachedAt || now - entry.cachedAt >= CEP_TTL_MS) {
+          keysToRemove.push(key)
+        }
+      } catch {
+        keysToRemove.push(key)
+      }
+    }
+
+    for (const key of keysToRemove) {
+      localStorage.removeItem(key)
+    }
+    removed = keysToRemove.length
+  } catch {
+    // localStorage unavailable
+  }
+
+  return removed
+}
+
+/**
  * Get diagnostics about the current CEP cache state.
  * Useful for debugging or an admin panel.
  */

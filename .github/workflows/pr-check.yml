@@ -216,6 +216,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Check no direct jest-dom imports
+        run: bun run check:jest-dom-imports
+
       - name: Type check
         run: bunx tsc --noEmit
 

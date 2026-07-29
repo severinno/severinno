@@ -58,6 +58,7 @@
     "docker:build": "docker build -t severinno:latest .",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
+    "check:jest-dom-imports": "grep -rn '@testing-library/jest-dom' src/ --include='*.test.*' 2>/dev/null && { echo '❌ Direct jest-dom imports found in test files - use centralized types/vitest.d.ts instead'; exit 1; } || echo '✅ No direct jest-dom imports'",
     "health": "curl -f http://localhost:3000/api/health",
     "prepare": "husky"
   },

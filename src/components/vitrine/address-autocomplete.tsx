@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { getCachedCep, setCachedCep, subscribeCepUpdates } from "@/lib/client-cep-cache"
 import { getCachedGeo, setCachedGeo, subscribeGeoUpdates } from "@/lib/client-geo-cache"
+import { useAutoCacheSweep } from "@/hooks/use-auto-cache-sweep"
 
 // ---------------------------------------------------------------------------
 // In-memory LRU cache for geocoding results (5 min TTL)
@@ -132,6 +133,9 @@ export default function AddressAutocomplete({
   const setFromCoords = useGeoStore((s) => s.setFromCoords)
   const setFromGPS = useGeoStore((s) => s.setFromGPS)
   const city = useGeoStore((s) => s.city)
+
+  // Start periodic cache sweep (10min interval + on visibility change)
+  useAutoCacheSweep()
 
   const debouncedInput = useDebounce(input, 300)
 

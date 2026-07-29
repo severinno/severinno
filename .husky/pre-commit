@@ -7,5 +7,8 @@ bun x lint-staged
 # Barrel lint — detecta exports quebrados em arquivos de barrel (index.ts)
 bun run barrel-lint
 
+# JEST-DOM imports check — rejeita import direto em test files (deve usar types/vitest.d.ts)
+bun run check:jest-dom-imports
+
 # Type check — rejeita commit se houver erros de tipo no projeto
 bun run typecheck
