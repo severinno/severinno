@@ -11,6 +11,7 @@ import "server-only"
 import { trackGeoLatency } from "./geo-metrics"
 import { withCache } from "./redis"
 import { rateLimitedNominatim } from "./nominatim-rate-limit"
+import { recordSearch, recordCEP, recordReverse } from "./geo-query-log"
 
 export { haversineKm, formatDistance } from "./geo-shared"
 
@@ -42,27 +43,33 @@ function withCachedGeo<T>(key: string, fn: () => Promise<T>, ttl: number): Promi
 // Each wrapper adds BOTH latency tracking AND Redis caching.
 
 /** Wraps geocodeCEP with Redis cache (7d TTL) + ViaCEP latency tracking. */
-export function geocodeCEP(cep: string): Promise<ViaCEPResult> {
+export async function geocodeCEP(cep: string): Promise<ViaCEPResult> {
   const clean = cep.replace(/\D/g, "")
-  return withCachedGeo(
+  const result = await withCachedGeo(
     `geo:cep:${clean}`,
     () => trackGeoLatency("viacep", () => _geocodeCEP(clean)),
     604800, // 7d
   )
+  // Record in query log so we can warm the most popular CEPs after restart
+  recordCEP(cep)
+  return result
 }
 
 /** Wraps geocodeSearch with Redis cache (24h TTL) + Nominatim latency tracking. */
-export function geocodeSearch(query: string, limit: number = 5): Promise<GeoSearchResult[]> {
+export async function geocodeSearch(query: string, limit: number = 5): Promise<GeoSearchResult[]> {
   const key = `geo:search:${normalizeCacheKey(query)}:${Math.max(1, Math.min(10, limit))}`
-  return withCachedGeo(
+  const result = await withCachedGeo(
     key,
     () => trackGeoLatency("nominatim", () => _geocodeSearch(query, limit)),
     86400, // 24h
   )
+  // Record in query log so we can warm the most popular search queries after restart
+  recordSearch(query)
+  return result
 }
 
 /** Wraps geocodeSearchStructured with Redis cache (24h TTL) + Nominatim tracking. */
-export function geocodeSearchStructured(
+export async function geocodeSearchStructured(
   opts: Parameters<typeof _geocodeSearchStructured>[0],
 ): Promise<GeoSearchResult[]> {
   const { street, city, state, country, postcode, limit = 5 } = opts
@@ -74,20 +81,27 @@ export function geocodeSearchStructured(
     postcode?.trim() ?? "",
     String(Math.max(1, Math.min(10, limit))),
   ].join(":")
-  return withCachedGeo(
+  const result = await withCachedGeo(
     `geo:search:structured:${parts}`,
     () => trackGeoLatency("nominatim", () => _geocodeSearchStructured(opts)),
     86400, // 24h
   )
+  // Record structured search as a combined query for warming purposes
+  const combined = [street, city, state, postcode].filter(Boolean).join(", ")
+  if (combined) recordSearch(combined)
+  return result
 }
 
 /** Wraps reverseGeocode with Redis cache (24h TTL) + Nominatim latency tracking. */
-export function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
-  return withCachedGeo(
+export async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
+  const result = await withCachedGeo(
     `geo:reverse:${lat.toFixed(4)},${lng.toFixed(4)}`,
     () => trackGeoLatency("nominatim", () => _reverseGeocode(lat, lng)),
     86400, // 24h (coordenadas fixas — não mudam)
   )
+  // Record in query log so we can warm the most popular reverse geocodes after restart
+  recordReverse(lat, lng)
+  return result
 }
 
 // ── Original (private) implementations ────────────────────────────────────
