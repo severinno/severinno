@@ -320,3 +320,17 @@ export type ReverseGeoResult = {
 export function fetchReverseGeo(lat: number, lng: number) {
   return apiGet<ReverseGeoResult>("/api/geo/reverse", { lat, lng })
 }
+
+export type RegionDemandResponse = {
+  total: number
+  bookings: number
+  quotes: number
+  providerLat: number | null
+  providerLng: number | null
+  radiusKm: number | null
+  regionConfigured: boolean
+}
+
+export function fetchRegionDemand() {
+  return apiGet<RegionDemandResponse>("/api/provider/region-demand")
+}
