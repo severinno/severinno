@@ -1,34 +1,39 @@
 import "server-only"
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
-import { captureMessage } from "@/lib/sentry"
 import { getGeoMetrics, type GeoServiceName } from "@/lib/geo-metrics"
 import { notifyGeoAlert } from "@/lib/geo-alert-notify"
+import { computeGeoBaselines } from "./geo-auto-baseline"
 import logger from "@/lib/logger"
 
 /**
- * GeoPerformanceAlert — Monitors PostGIS P95 latency against the benchmark
- * baseline and sends a Sentry alert when P95 exceeds 2× the baseline.
+ * GeoPerformanceAlert — Monitors P95 latency for ALL geo services
+ * (Nominatim, ViaCEP, PostGIS) against an adaptive auto-baseline and
+ * sends Sentry + push alerts when P95 exceeds 2× the baseline.
  *
  * This is a separate concern from the availability monitor (geo-health-alert.ts):
- *   - Availability: "Is PostGIS up or down?"
- *   - Performance:  "Is PostGIS fast enough?"
+ *   - Availability: "Is the service up or down?"
+ *   - Performance:  "Is the service fast enough?"
  *
  * How it works:
- *   1. Loads the benchmark baseline (geo-real-baseline.json → geo-baseline.json → geo-benchmark.json)
- *   2. At each check, compares current PostGIS P95 against 2× baseline
- *   3. If exceeded, sends a structured Sentry alert with debounce (max 1 per 15 min)
- *   4. Sends a recovery notification when P95 returns below the threshold
+ *   1. Derives per-service P95 baselines from historical snapshots
+ *      (auto-baseline adaptativo, 24h lookback via geo-auto-baseline.ts).
+ *   2. Falls back to benchmark file (geo-benchmark.json) for PostGIS when
+ *      no history is available.
+ *   3. At each check, compares current P95 against 2× baseline per service.
+ *   4. If exceeded, sends a structured alert with debounce (max 1 per 15 min).
+ *   5. Sends a recovery notification when P95 returns below the threshold.
  *
- * The baseline is the mean latency of the first PostGIS benchmark entry at
- * 100-provider scale (most representative of typical API workloads).
+ * The auto-baseline adapts to real operating conditions without manual
+ * recalibration — times of day, network variability, API changes.
  */
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type BaselineSource = "geo-real-baseline" | "geo-baseline" | "geo-benchmark"
+export type BaselineSource =
+  "geo-real-baseline" | "geo-baseline" | "geo-benchmark" | "historical-auto"
 
 export type PerformanceCheckResult = {
   /** Current PostGIS P95 from the sliding window. */
@@ -160,33 +165,24 @@ export function loadGeoBaseline(): {
 // ---------------------------------------------------------------------------
 
 /**
- * Check PostGIS P95 against the benchmark baseline and send Sentry alerts
- * when the threshold is exceeded.
+ * Check P95 for all geo services against adaptive auto-baselines.
  *
- * @param services - Optional: which services to check (default: ["postgis"])
+ * For each service, the baseline is derived from historical snapshots
+ * (24h lookback) or falls back to sensible defaults when no history exists.
+ *
+ * @param services - Optional: which services to check (default: all three)
  * @returns Array of per-service check results
  */
 export function checkGeoPerformance(
-  services: GeoServiceName[] = ["postgis"],
+  services: GeoServiceName[] = ["nominatim", "viacep", "postgis"],
 ): PerformanceCheckResult[] {
-  const baseline = loadGeoBaseline()
   const metrics = getGeoMetrics()
 
-  if (!baseline) {
-    logger.warn("geo-performance-alert: no baseline available — skipping check")
-    return services.map((svc) => ({
-      p95: 0,
-      threshold: 0,
-      baselineMean: 0,
-      baselineSource: null,
-      degraded: false,
-      alerted: false,
-      recovered: false,
-      consecutiveViolations: 0,
-    }))
-  }
+  // Derive adaptive baselines from historical snapshots
+  const autoBaselines = computeGeoBaselines()
 
-  const threshold = baseline.mean * P95_THRESHOLD_MULTIPLIER
+  // Also load benchmark baseline for reference (PostGIS only, fallback)
+  const benchmarkBaseline = loadGeoBaseline()
 
   const results: PerformanceCheckResult[] = []
 
@@ -199,6 +195,30 @@ export function checkGeoPerformance(
 
     const p95 = svcMetrics.p95
     const state = getPerfState(svc)
+
+    // Use auto-baseline when available, fall back to benchmark for PostGIS
+    const autoBaseline = autoBaselines.find((b) => b.service === svc)
+    let threshold: number
+    let baselineMean: number
+    let baselineSource: BaselineSource | null
+
+    if (autoBaseline && autoBaseline.source === "historical") {
+      // Auto-baseline from historical data
+      threshold = autoBaseline.threshold
+      baselineMean = autoBaseline.p95Baseline
+      baselineSource = "historical-auto"
+    } else if (svc === "postgis" && benchmarkBaseline) {
+      // Fallback to benchmark file for PostGIS
+      threshold = benchmarkBaseline.mean * P95_THRESHOLD_MULTIPLIER
+      baselineMean = benchmarkBaseline.mean
+      baselineSource = benchmarkBaseline.source
+    } else {
+      // No baseline available — use a generous default to avoid false positives
+      threshold = 2000 // 2s
+      baselineMean = 0
+      baselineSource = null
+    }
+
     const isDegraded = p95 > threshold && svcMetrics.count > 0
 
     // Track consecutive violations
@@ -209,7 +229,6 @@ export function checkGeoPerformance(
       const isRecovery = state.wasDegraded && state.consecutiveViolations >= CONSECUTIVE_THRESHOLD
 
       if (isRecovery) {
-        // Sentry + push notification
         notifyGeoAlert({
           title: `P95 Recuperado — ${Math.round(p95)}ms`,
           body: `${svc.toUpperCase()} P95 voltou ao normal (${Math.round(p95)}ms, limiar: ${Math.round(threshold)}ms).`,
@@ -222,14 +241,14 @@ export function checkGeoPerformance(
             metric: "p95",
             value: Math.round(p95),
             threshold: Math.round(threshold),
-            baselineMean: Math.round(baseline.mean),
-            baselineSource: baseline.source,
+            baselineMean: Math.round(baselineMean),
+            baselineSource: baselineSource ?? "unknown",
             unit: "ms",
           },
         }).catch(() => {})
 
         logger.info(
-          { service: svc, p95, threshold, baselineMean: baseline.mean },
+          { service: svc, p95, threshold, baselineMean },
           "geo-performance-alert: recovery",
         )
       }
@@ -240,8 +259,8 @@ export function checkGeoPerformance(
       results.push({
         p95,
         threshold,
-        baselineMean: baseline.mean,
-        baselineSource: baseline.source,
+        baselineMean,
+        baselineSource,
         degraded: false,
         alerted: false,
         recovered: isRecovery,
@@ -260,14 +279,13 @@ export function checkGeoPerformance(
       state.lastAlertedAt = Date.now()
       state.wasDegraded = true
 
-      const severity: "warn" | "error" =
-        p95 > baseline.mean * P95_THRESHOLD_MULTIPLIER * 1.5 ? "error" : "warn"
+      const severity: "warn" | "error" = p95 > threshold * 1.5 ? "error" : "warn"
 
-      // Sentry + push notification to admins
       notifyGeoAlert({
         title: `P95 ${Math.round(p95)}ms — ${((p95 / threshold) * 100).toFixed(0)}% do limiar`,
-        body: `${svc.toUpperCase()} P95 ultrapassou ${P95_THRESHOLD_MULTIPLIER}× o baseline. ` +
-          `Atual: ${Math.round(p95)}ms, Limiar: ${Math.round(threshold)}ms, Baseline: ${Math.round(baseline.mean)}ms. ` +
+        body:
+          `${svc.toUpperCase()} P95 ultrapassou ${P95_THRESHOLD_MULTIPLIER}× o baseline. ` +
+          `Atual: ${Math.round(p95)}ms, Limiar: ${Math.round(threshold)}ms, Baseline: ${Math.round(baselineMean)}ms. ` +
           `Amostras na janela: ${svcMetrics.count}.`,
         severity: severity === "error" ? "error" : "warning",
         url: "/admin/geo-metrics",
@@ -278,9 +296,8 @@ export function checkGeoPerformance(
           metric: "p95",
           value: Math.round(p95),
           threshold: Math.round(threshold),
-          baselineMean: Math.round(baseline.mean),
-          baselineSource: baseline.source,
-          baselineTimestamp: baseline.timestamp,
+          baselineMean: Math.round(baselineMean),
+          baselineSource: baselineSource ?? "unknown",
           multiplier: P95_THRESHOLD_MULTIPLIER,
           unit: "ms",
           sampleCount: svcMetrics.count,
@@ -294,8 +311,8 @@ export function checkGeoPerformance(
           service: svc,
           p95,
           threshold,
-          baselineMean: baseline.mean,
-          baselineSource: baseline.source,
+          baselineMean,
+          baselineSource,
           consecutiveViolations: state.consecutiveViolations,
         },
         "geo-performance-alert: P95 exceeded threshold",
@@ -304,8 +321,8 @@ export function checkGeoPerformance(
       results.push({
         p95,
         threshold,
-        baselineMean: baseline.mean,
-        baselineSource: baseline.source,
+        baselineMean,
+        baselineSource,
         degraded: true,
         alerted: true,
         recovered: false,
@@ -315,8 +332,8 @@ export function checkGeoPerformance(
       results.push({
         p95,
         threshold,
-        baselineMean: baseline.mean,
-        baselineSource: baseline.source,
+        baselineMean,
+        baselineSource,
         degraded: true,
         alerted: false,
         recovered: false,

@@ -17,6 +17,7 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  Bell,
   CheckCircle2,
   Globe,
   RefreshCw,
@@ -40,6 +41,8 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip as RTooltip,
   XAxis,
@@ -52,13 +55,32 @@ import { cn } from "@/lib/utils"
 import { ErrorState } from "@/components/admin/admin-shared"
 
 import type { GeoMetricsResponse } from "@/app/api/admin/geo-metrics/route"
+import {
+  POSTGIS_FIXED_US,
+  POSTGIS_PER_ROW_US,
+  PROVIDER_COUNTS,
+  computeSelectivityPoints,
+  computeCrossovers,
+  computeMeasuredFull,
+  computeP95Stats,
+  computeCostAtSelectivity,
+  radiusToSelectivity,
+  selectivityToRadiusLabel,
+  REFERENCE_RADIUS_KM,
+  modelPostGISFullMs,
+  modelDelta,
+} from "@/lib/geo-benchmark-model"
 
-// ── GiST model constants (from geo-benchmark-real.mjs analysis) ───────────
-
-/** Fixed PostGIS overhead (TCP + query parse/plan) in µs. */
-const POSTGIS_FIXED_US = 2000
-/** Per-row ST_Distance computation cost in µs. */
-const POSTGIS_PER_ROW_US = 22
+// ── P95 Baseline thresholds (ms) — derived from geo-benchmark.json ───────
+// These represent the expected healthy P95 for each geo service.
+// 2x this value triggers a visual alert on the dashboard.
+// Values based on: typical external API latency (Nominatim, ViaCEP) and
+// the PostGIS model from the benchmark (~10ms compute + small network overhead).
+const P95_BASELINE_MS: Record<string, number> = {
+  nominatim: 400,
+  viacep: 250,
+  postgis: 30,
+}
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
 
@@ -160,8 +182,39 @@ export function AdminGeoMetricsDashboard() {
     (s) => s.errorRate < 0.05 && s.count > 0,
   ).length
 
+  // P95 vs baseline alert: which services are exceeding 2x baseline?
+  const exceededServices = Object.entries(services).filter(([key, metrics]) => {
+    const baseline = P95_BASELINE_MS[key]
+    return baseline != null && metrics.p95 > baseline * 2
+  })
+  const hasExceeded = exceededServices.length > 0
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
+      {/* ── P95 Exceeded Alert Banner ────────────────────────────────── */}
+      {hasExceeded && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 dark:border-red-800/30 dark:bg-red-950/20"
+        >
+          <Bell className="mt-0.5 size-5 shrink-0 text-red-500" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+              P95 acima do limiar de alerta
+            </p>
+            <p className="mt-0.5 text-xs text-red-700 dark:text-red-400">
+              {exceededServices
+                .map(([key, metrics]) => {
+                  const baseline = P95_BASELINE_MS[key]
+                  const threshold = Math.round(baseline * 2)
+                  return `${labels[key] ?? key}: ${Math.round(metrics.p95)}ms (limiar: ${threshold}ms)`
+                })
+                .join(" · ")}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -263,6 +316,21 @@ export function AdminGeoMetricsDashboard() {
                     n === "p95" ? "P95" : n === "p50" ? "P50" : "P99",
                   ]}
                 />
+                {/* Reference line: 2x P95 baseline for the top-most service */}
+                {sortedByP95.length > 0 && P95_BASELINE_MS[sortedByP95[0]!.key] != null && (
+                  <ReferenceLine
+                    x={Math.round(P95_BASELINE_MS[sortedByP95[0]!.key]! * 2)}
+                    stroke="hsl(0, 72%, 51%)"
+                    strokeDasharray="4 4"
+                    strokeWidth={2}
+                    label={{
+                      value: "2× baseline",
+                      position: "insideTopRight",
+                      fill: "hsl(0, 72%, 51%)",
+                      fontSize: 10,
+                    }}
+                  />
+                )}
                 <Bar dataKey="p95" name="P95" radius={[0, 3, 3, 0]} barSize={14}>
                   {sortedByP95.map((entry) => (
                     <Cell key={entry.key} fill={latencyColor(entry.p95)} />
@@ -334,18 +402,27 @@ export function AdminGeoMetricsDashboard() {
         {Object.entries(services).map(([key, metrics]) => {
           const Icon = SERVICE_ICONS[key] ?? Globe
           const isHealthy = metrics.errorRate < 0.05 && metrics.count > 0
+          const baseline = P95_BASELINE_MS[key]
+          const p95Exceeded = baseline != null && metrics.p95 > baseline * 2
           return (
             <div
               key={key}
-              className="border-border/50 bg-card hover:border-primary/20 rounded-xl border transition-colors"
+              className={cn(
+                "border-border/50 bg-card rounded-xl border transition-colors",
+                p95Exceeded
+                  ? "border-red-200 hover:border-red-300 dark:border-red-800/30 dark:hover:border-red-700"
+                  : "hover:border-primary/20",
+              )}
             >
               <div className="flex items-center gap-3 border-b px-5 py-4">
                 <span
                   className={cn(
                     "flex size-9 items-center justify-center rounded-lg",
-                    isHealthy
-                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                      : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+                    p95Exceeded
+                      ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                      : isHealthy
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
                   )}
                 >
                   <Icon className="size-4" />
@@ -354,7 +431,9 @@ export function AdminGeoMetricsDashboard() {
                   <p className="text-foreground text-sm font-semibold">{labels[key] ?? key}</p>
                   <p className="text-muted-foreground text-[11px]">{SERVICE_DESC[key] ?? ""}</p>
                 </div>
-                {isHealthy ? (
+                {p95Exceeded ? (
+                  <Bell className="size-4 shrink-0 text-red-500" />
+                ) : isHealthy ? (
                   <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
                 ) : (
                   <AlertTriangle className="size-4 shrink-0 text-amber-500" />
@@ -371,6 +450,19 @@ export function AdminGeoMetricsDashboard() {
                     <span className="text-muted-foreground">Chamadas</span>
                     <span className="font-medium tabular-nums">
                       {metrics.count.toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">P95 vs Baseline</span>
+                    <span
+                      className={cn(
+                        "font-medium tabular-nums",
+                        p95Exceeded ? "text-red-500" : "text-muted-foreground",
+                      )}
+                    >
+                      {baseline != null
+                        ? `${Math.round(metrics.p95)}ms / ${Math.round(baseline)}ms`
+                        : `${Math.round(metrics.p95)}ms`}
                     </span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs">
@@ -409,7 +501,7 @@ export function AdminGeoMetricsDashboard() {
       {data.benchmark != null &&
         "comparisons" in data.benchmark &&
         data.benchmark.comparisons.length > 0 && (
-          <GiSTSelectivitySection benchmark={data.benchmark} />
+          <GiSTSelectivitySection benchmark={data.benchmark} history={data.history} />
         )}
 
       {/* ── Benchmark Comparison ──────────────────────────────────── */}
@@ -649,6 +741,14 @@ function TimelineSection({
   history: NonNullable<GeoMetricsResponse["history"]>
   labels: Record<string, string>
 }) {
+  // Compute the 2x P95 baseline per service for the ReferenceLine
+  const baselineThresholds = Object.keys(history[0]?.services ?? {}).reduce<
+    Record<string, number | null>
+  >((acc, svc) => {
+    const bl = P95_BASELINE_MS[svc]
+    acc[svc] = bl != null ? Math.round(bl * 2) : null
+    return acc
+  }, {})
   // Build timeline data: one row per snapshot timestamp
   const timelineData: Array<Record<string, string | number>> = history.map((snap) => {
     const time = new Date(snap.timestamp)
@@ -723,6 +823,21 @@ function TimelineSection({
                       }}
                     />
                     <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
+                    {/* Reference line: 2x P95 baseline for this service */}
+                    {baselineThresholds[svc] != null && (
+                      <ReferenceLine
+                        y={baselineThresholds[svc]!}
+                        stroke="hsl(0, 72%, 51%)"
+                        strokeDasharray="4 4"
+                        strokeWidth={1.5}
+                        label={{
+                          value: "2× baseline",
+                          position: "right",
+                          fill: "hsl(0, 72%, 51%)",
+                          fontSize: 9,
+                        }}
+                      />
+                    )}
                     <Line
                       type="monotone"
                       dataKey={`${svc}_p50`}
@@ -776,8 +891,10 @@ function TimelineSection({
 
 function GiSTSelectivitySection({
   benchmark,
+  history,
 }: {
   benchmark: NonNullable<GeoMetricsResponse["benchmark"]>
+  history: NonNullable<GeoMetricsResponse["history"]> | null
 }) {
   // Use benchmark's avgHaversinePerProvider (dynamic, changes per run)
   const haversinePerProviderUs =
@@ -785,71 +902,42 @@ function GiSTSelectivitySection({
       ? benchmark.analysis.avgHaversinePerProvider
       : 0.1323 // fallback hardcoded
 
-  // Provider counts to model
-  const providerCounts = [100, 500, 1000, 5000, 10000]
+  // ── Radius slider state ────────────────────────────────────────────
+  const [radiusKm, setRadiusKm] = React.useState(15)
+  const densityLabel = "SP (~10/km²)"
 
-  // Generate selectivity curve: selectivity from 0% to 100%
-  // PostGIS filtered cost: T(N, s) = FIXED_US + PER_ROW_US × N × s
-  // Where s = selectivity (fraction of providers within radius)
-  const selectivityPoints = Array.from({ length: 21 }, (_, i) => {
-    const selectivity = i / 20 // 0, 0.05, 0.1, ..., 1.0
-    const pct = Math.round(selectivity * 100)
+  // Compute selectivity from selected radius
+  const currentSelectivity = radiusToSelectivity(radiusKm)
+  const selPct = Math.round(currentSelectivity * 100)
 
-    const row: Record<string, number | string> = {
-      selectivity: `${pct}%`,
-      pct: selectivity,
-    }
+  // Generate selectivity curve data points via extracted pure function
+  const selectivityPoints = computeSelectivityPoints(benchmark.comparisons, haversinePerProviderUs)
 
-    for (const n of providerCounts) {
-      // PostGIS filtered (ST_DWithin + ST_Distance on subset)
-      const pgFiltered = POSTGIS_FIXED_US + POSTGIS_PER_ROW_US * n * selectivity
-      row[`pg_${n}`] = Math.round((pgFiltered / 1000) * 10) / 10 // convert to ms, 1 decimal
-
-      // Haversine full scan
-      const haversine = haversinePerProviderUs * n
-      row[`hav_${n}`] = Math.round((haversine / 1000) * 100) / 100 // convert to ms, 2 decimal
-
-      // PostGIS full scan (no filter, s=1.0)
-      if (pct === 100) {
-        row[`pg_full_${n}`] =
-          Math.round(((POSTGIS_FIXED_US + POSTGIS_PER_ROW_US * n) / 1000) * 10) / 10
-      }
-    }
-
-    // Real benchmark data points for PostGIS full scan (from benchmark comparisons)
-    for (const comp of benchmark.comparisons) {
-      if (pct === 100) {
-        const key = `bench_pg_${comp.scale}`
-        row[key] = Math.round((comp.postgis.mean / 1000) * 10) / 10
-      }
-    }
-
-    return row
-  })
-
-  // Compute crossover points: where haversine becomes cheaper than PostGIS filtered
-  const crossovers: Array<{ n: number; selectivity: number }> = []
-  for (const n of providerCounts) {
-    // haversine total = haversinePerProviderUs × n
-    // PostGIS filtered = POSTGIS_FIXED_US + POSTGIS_PER_ROW_US × n × s
-    // Crossover when: haversine = postgis_filtered
-    // haversinePerProviderUs × n = POSTGIS_FIXED_US + POSTGIS_PER_ROW_US × n × s
-    // s = (haversinePerProviderUs × n - POSTGIS_FIXED_US) / (POSTGIS_PER_ROW_US × n)
-    const num = haversinePerProviderUs * n - POSTGIS_FIXED_US
-    const den = POSTGIS_PER_ROW_US * n
-    if (den > 0) {
-      const s = num / den
-      if (s > 0 && s < 1) {
-        crossovers.push({ n, selectivity: s })
-      }
-    }
-  }
+  // Compute crossover points via extracted pure function
+  const crossovers = computeCrossovers(haversinePerProviderUs)
 
   // Get measured full-scan latencies from benchmark
-  const measuredFull: Array<{ n: number; ms: number }> = []
-  for (const comp of benchmark.comparisons) {
-    measuredFull.push({ n: comp.scale, ms: Math.round((comp.postgis.mean / 1000) * 10) / 10 })
-  }
+  const measuredFull = computeMeasuredFull(benchmark.comparisons)
+
+  // ── Cost at selected radius ────────────────────────────────────────
+  const costData = computeCostAtSelectivity(currentSelectivity, haversinePerProviderUs)
+
+  // Regime indicators from cost data
+  const pgFasterCount = costData.filter((c) => c.faster === "PostGIS").length
+  const havFasterCount = costData.filter((c) => c.faster === "Haversine").length
+
+  // Snap selectivity to nearest 5% for ReferenceLine (X axis uses category labels)
+  const snapPct = Math.min(Math.round(currentSelectivity * 20) * 5, 100)
+  const refLineLabel = `${snapPct}%`
+
+  // ── Real P95 band from geo-metrics history (PostGIS) ────────────────
+  const p95Stats = computeP95Stats(history)
+  const hasP95Data = p95Stats.count > 0
+  const p95Mean = p95Stats.mean
+  const p95Min = p95Stats.min
+  const p95Max = p95Stats.max
+  const p95Stdev = p95Stats.stdev
+  const postgisP95ValuesCount = p95Stats.count
 
   return (
     <section aria-label="Seletividade GiST vs Custo" className="space-y-6">
@@ -859,6 +947,63 @@ function GiSTSelectivitySection({
           Curva de Seletividade — GiST Index vs Haversine
         </h2>
       </div>
+
+      {/* ── Radius Selector ─────────────────────────────────────────── */}
+      <MetricCard icon={MapPin} title="Selecionar Raio de Busca">
+        <div className="flex flex-col gap-4">
+          {/* Slider */}
+          <div className="flex items-center gap-4">
+            <span className="text-muted-foreground w-14 text-right text-xs font-medium">
+              {radiusKm} km
+            </span>
+            <input
+              type="range"
+              min={1}
+              max={REFERENCE_RADIUS_KM}
+              value={radiusKm}
+              onChange={(e) => setRadiusKm(Number(e.target.value))}
+              className="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-red-300"
+              aria-label="Raio de busca em km"
+            />
+          </div>
+
+          {/* Preset buttons */}
+          <div className="flex flex-wrap gap-2">
+            {[5, 15, 30, 50].map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRadiusKm(r)}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
+                  radiusKm === r
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-muted/70",
+                )}
+              >
+                {r} km
+              </button>
+            ))}
+            <span className="text-muted-foreground ml-auto self-center text-[10px]">
+              {densityLabel}
+            </span>
+          </div>
+
+          {/* Selectivity indicator */}
+          <div className="flex items-center gap-3 rounded-lg border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/10">
+            <span className="text-foreground font-semibold">{selPct}%</span>
+            <span className="text-muted-foreground">
+              dos providers em <strong>{radiusKm} km</strong>
+              {currentSelectivity > 0 && (
+                <>
+                  {" · "}seletividade equivalente a{" "}
+                  <strong>{selectivityToRadiusLabel(currentSelectivity)}</strong>
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+      </MetricCard>
 
       {/* Main chart: selectivity vs latency */}
       <MetricCard icon={LineChartIcon} title="Custo por Seletividade (ms)">
@@ -915,7 +1060,7 @@ function GiSTSelectivitySection({
               <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} iconSize={8} />
 
               {/* PostGIS filtered lines (one per provider count) */}
-              {providerCounts.map((n, idx) => (
+              {PROVIDER_COUNTS.map((n, idx) => (
                 <Line
                   key={`pg_${n}`}
                   type="monotone"
@@ -930,7 +1075,7 @@ function GiSTSelectivitySection({
               ))}
 
               {/* Haversine lines (reference) */}
-              {providerCounts.map((n, idx) => (
+              {PROVIDER_COUNTS.map((n, idx) => (
                 <Line
                   key={`hav_${n}`}
                   type="monotone"
@@ -958,10 +1103,154 @@ function GiSTSelectivitySection({
                   connectNulls={false}
                 />
               ))}
+
+              {/* Real P95 band from geo-metrics history — shows where real operation sits */}
+              {hasP95Data && (
+                <>
+                  {/* Shaded band: P95 min–max range */}
+                  <ReferenceArea
+                    y1={p95Min}
+                    y2={p95Max}
+                    fill="hsl(38, 92%, 50%)"
+                    fillOpacity={0.12}
+                    stroke="none"
+                    label={{
+                      value: `P95 real: ${p95Mean.toFixed(0)}ms · ${postgisP95ValuesCount} amostras`,
+                      position: "right",
+                      fill: "hsl(38, 92%, 50%)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                    }}
+                  />
+                  {/* Solid reference line at P95 mean */}
+                  <ReferenceLine
+                    y={p95Mean}
+                    stroke="hsl(38, 92%, 50%)"
+                    strokeWidth={2.5}
+                    strokeDasharray="none"
+                  />
+                  {/* Stddev bounds as lighter dashed lines */}
+                  {p95Stdev > 1 && (
+                    <>
+                      <ReferenceLine
+                        y={p95Mean + p95Stdev}
+                        stroke="hsl(38, 92%, 50%)"
+                        strokeWidth={1}
+                        strokeDasharray="3 3"
+                        strokeOpacity={0.5}
+                      />
+                      <ReferenceLine
+                        y={Math.max(p95Mean - p95Stdev, 0.1)}
+                        stroke="hsl(38, 92%, 50%)"
+                        strokeWidth={1}
+                        strokeDasharray="3 3"
+                        strokeOpacity={0.5}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Reference line at selected radius selectivity (snapped to 5%) */}
+              {currentSelectivity > 0 && (
+                <ReferenceLine
+                  x={refLineLabel}
+                  stroke="hsl(201, 90%, 48%)"
+                  strokeWidth={2.5}
+                  strokeDasharray="none"
+                  label={{
+                    value: `${radiusKm}km · ${selPct}%`,
+                    position: "top",
+                    fill: "hsl(201, 90%, 48%)",
+                    fontSize: 11,
+                    fontWeight: 600,
+                  }}
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </div>
       </MetricCard>
+
+      {/* ── Cost at Selected Radius ──────────────────────────────────── */}
+      {costData.length > 0 && (
+        <MetricCard
+          icon={Timer}
+          title={`Custo Estimado em ${radiusKm}km (seletividade ${selPct}%)`}
+        >
+          <div className="space-y-3">
+            <div className="text-muted-foreground grid grid-cols-5 gap-2 text-[10px] font-medium">
+              <div>Providers</div>
+              <div className="text-right">PostGIS (ms)</div>
+              <div className="text-right">Haversine (ms)</div>
+              <div className="text-right">Razão</div>
+              <div className="text-right">Regime</div>
+            </div>
+            {costData.map((c) => (
+              <div
+                key={c.n}
+                className={cn(
+                  "grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs",
+                  c.faster === "PostGIS"
+                    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-950/10"
+                    : c.faster === "Haversine"
+                      ? "border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+                      : "border-border/50",
+                )}
+              >
+                <span className="font-medium tabular-nums">
+                  {c.n >= 1000 ? `${(c.n / 1000).toFixed(0)}k` : c.n}
+                </span>
+                <span className="text-right font-mono text-[11px] tabular-nums">
+                  {c.postgisMs.toFixed(c.postgisMs < 1 ? 2 : 1)}
+                </span>
+                <span className="text-right font-mono text-[11px] tabular-nums">
+                  {c.haversineMs.toFixed(c.haversineMs < 1 ? 2 : 1)}
+                </span>
+                <span className="text-right font-medium tabular-nums">{c.ratio}:1</span>
+                <span
+                  className={cn(
+                    "text-right text-[10px] font-medium",
+                    c.faster === "PostGIS"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : c.faster === "Haversine"
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  {c.faster === "PostGIS"
+                    ? "✓ GiST"
+                    : c.faster === "Haversine"
+                      ? "✓ Haversine"
+                      : "—"}
+                </span>
+              </div>
+            ))}
+            <div className="text-muted-foreground flex items-center gap-3 border-t pt-2 text-[10px]">
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                  pgFasterCount >= havFasterCount
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                GiST vence em {pgFasterCount} de {costData.length} escalas
+              </span>
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                  havFasterCount >= pgFasterCount
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                    : "bg-muted text-muted-foreground",
+                )}
+              >
+                Haversine vence em {havFasterCount} de {costData.length} escalas
+              </span>
+            </div>
+          </div>
+        </MetricCard>
+      )}
 
       {/* Crossovers + Analysis cards */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -1029,8 +1318,8 @@ function GiSTSelectivitySection({
                 </thead>
                 <tbody>
                   {measuredFull.map((m) => {
-                    const model = (POSTGIS_FIXED_US + POSTGIS_PER_ROW_US * m.n) / 1000
-                    const delta = m.ms - model
+                    const model = modelPostGISFullMs(m.n)
+                    const delta = modelDelta(m.ms, m.n)
                     return (
                       <tr key={m.n} className="border-b last:border-0">
                         <td className="py-2 pr-3 font-medium tabular-nums">

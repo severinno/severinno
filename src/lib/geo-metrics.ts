@@ -1,4 +1,6 @@
 import "server-only"
+import { persistSnapshot, loadPersistedSnapshots } from "./geo-metrics-persist"
+import logger from "./logger"
 
 /**
  * Geo Performance Metrics — in-memory sliding window for geo service latencies.
@@ -15,9 +17,9 @@ import "server-only"
  *   │  latency + error  │  ← each sample is { ms: number, error: boolean }
  *   └──────────────────┘
  *
- * Because this runs in-memory on a single Node.js process, it is reset on
- * every server restart. That's acceptable for an admin-only monitoring view;
- * persistent storage (Redis) is left for a future iteration.
+ * Historical snapshots are persisted to disk (docs/benchmarks/metrics/)
+ * via geo-metrics-persist.ts — they survive server restarts with auto-
+ * rotation at 1000 files.
  */
 
 export type GeoServiceName = "nominatim" | "viacep" | "postgis"
@@ -147,18 +149,49 @@ export type GeoMetricsSnapshot = {
 // ── Historical snapshot buffer ──────────────────────────────────────────
 
 /** Max number of historical snapshots kept in memory. */
-const MAX_HISTORY = 60
+const MAX_HISTORY = 1000
 
-/** In-memory ring buffer of historical snapshots (auto-saved on each getGeoMetrics call). */
+/**
+ * In-memory ring buffer of historical snapshots.
+ * Hydrated from disk on module init and kept updated in memory.
+ * Also persisted to disk via geo-metrics-persist.ts.
+ */
 const snapshotHistory: Array<{
   timestamp: number
   services: Record<GeoServiceName, { p50: number; p95: number; p99: number; count: number }>
 }> = []
 
-/** Get the current historical snapshot buffer. */
+/** Get the current historical snapshot buffer (in-memory). */
 export function getGeoMetricsHistory(): typeof snapshotHistory {
   return snapshotHistory
 }
+
+// ── Module init: hydrate from disk ────────────────────────────────────────
+// Load persisted snapshots from the previous server session so the
+// historical timeline doesn't start empty after a restart.
+
+function hydrateFromDisk(): void {
+  try {
+    const persisted = loadPersistedSnapshots()
+    for (const snap of persisted) {
+      snapshotHistory.push(snap)
+      if (snapshotHistory.length > MAX_HISTORY) {
+        snapshotHistory.shift()
+        break // loaded oldest-first, so remaining are even older — skip
+      }
+    }
+    if (persisted.length > 0) {
+      logger.info(
+        { loaded: persisted.length, capped: snapshotHistory.length },
+        "geo-metrics: hydrated historical snapshots from disk",
+      )
+    }
+  } catch (err) {
+    logger.warn({ err }, "geo-metrics: failed to hydrate snapshots from disk")
+  }
+}
+
+hydrateFromDisk()
 
 /**
  * Compute the current metrics snapshot for all geo services.
@@ -205,6 +238,9 @@ export function getGeoMetrics(): GeoMetricsSnapshot {
   if (snapshotHistory.length > MAX_HISTORY) {
     snapshotHistory.shift()
   }
+
+  // Persist to disk (debounced, survives restarts)
+  persistSnapshot(historyEntry)
 
   return snapshot
 }
