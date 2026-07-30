@@ -139,7 +139,7 @@ export async function GET(): Promise<NextResponse<DebugResponse>> {
   const memCache = getMemoryCacheDiagnostics()
 
   const redis = {
-    available: isRedisAvailable,
+    available: isRedisAvailable(),
     hits: cacheStats.hits,
     misses: cacheStats.misses,
     total: cacheStats.total,

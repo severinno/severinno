@@ -97,7 +97,7 @@ vi.mock("@/lib/redis", () => ({
     size: 45,
     maxAgeMs: 3600_000,
   }),
-  isRedisAvailable: true,
+  isRedisAvailable: vi.fn().mockReturnValue(true),
 }))
 
 // ── Import the handler AFTER mocks are set up ──────────────────────────────

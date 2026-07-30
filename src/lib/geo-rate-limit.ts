@@ -129,6 +129,39 @@ function getClientIp(request: Request): string {
 }
 
 // ---------------------------------------------------------------------------
+// Hit/miss counters (observability)
+// ---------------------------------------------------------------------------
+
+let rateLimitAllowed = 0
+let rateLimitBlocked = 0
+
+/**
+ * Reset rate limit counters (useful for tests).
+ */
+export function resetRateLimitCounters(): void {
+  rateLimitAllowed = 0
+  rateLimitBlocked = 0
+}
+
+/**
+ * Get accumulated allow/block counts since startup or last reset.
+ */
+export function getRateLimitCounters(): {
+  allowed: number
+  blocked: number
+  total: number
+  blockRatio: number | null
+} {
+  const total = rateLimitAllowed + rateLimitBlocked
+  return {
+    allowed: rateLimitAllowed,
+    blocked: rateLimitBlocked,
+    total,
+    blockRatio: total > 0 ? +(rateLimitBlocked / total).toFixed(4) : null,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Rate limit headers
 // ---------------------------------------------------------------------------
 
@@ -177,9 +210,9 @@ export async function checkGeoRateLimit(
   const windowStart = now - config.windowMs
 
   // ── Attempt Redis (shared client, cluster-aware) ─────────────────────
-  // isRedisAvailable may be null (untested), true, or false.
-  // We try Redis unless it was explicitly marked unavailable.
-  if (isRedisAvailable !== false) {
+  // isRedisAvailable() returns true when Redis (any tier) is active.
+  // We try Redis unless all Redis tiers are unavailable.
+  if (isRedisAvailable()) {
     try {
       const c = getClient()
       // Inside this block, isRedisAvailable was narrowed to true|null —
@@ -229,6 +262,14 @@ async function redisSlidingWindow(
       // but since we record ALL requests including blocked ones, the count
       // already includes the current request. For the "remaining" calculation
       // we use count (before ADD) + 1 (the just-added member).
+
+      // Track allowed/blocked for observability
+      if (allowed) {
+        rateLimitAllowed++
+      } else {
+        rateLimitBlocked++
+      }
+
       return {
         allowed,
         remaining: Math.max(0, config.max - (count + 1)),
@@ -241,14 +282,22 @@ async function redisSlidingWindow(
   // Fallback: non-pipeline (e.g. Cluster mode where pipeline routes by slot)
   await c.zremrangebyscore(key, 0, windowStart)
   const count = await c.zcard(key)
-  if (count < config.max) {
+  const allowed = count < config.max
+  if (allowed) {
     // Only record the request if under the limit
     await c.zadd(key, now, member)
     await c.pexpire(key, config.windowMs * 2)
   }
 
+  // Track allowed/blocked for observability
+  if (allowed) {
+    rateLimitAllowed++
+  } else {
+    rateLimitBlocked++
+  }
+
   return {
-    allowed: count < config.max,
+    allowed,
     remaining: Math.max(0, config.max - (count + 1)),
     reset: windowStart + config.windowMs,
     limit: config.max,
@@ -288,6 +337,13 @@ function memorySlidingWindow(
   // Reset = oldest timestamp in window + window duration
   const firstTs = entry.timestamps.length > 0 ? entry.timestamps[0] : null
   const reset = firstTs !== null ? firstTs + config.windowMs : now + config.windowMs
+
+  // Track allowed/blocked for observability
+  if (allowed) {
+    rateLimitAllowed++
+  } else {
+    rateLimitBlocked++
+  }
 
   return {
     allowed,
@@ -340,4 +396,118 @@ export function isGeoRateLimitError(
   e: unknown,
 ): e is HttpError & { headers: Record<string, string> } {
   return e instanceof HttpError && e.status === 429
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics (admin dashboard)
+// ---------------------------------------------------------------------------
+
+/** Shape of the diagnostics for a single endpoint. */
+export type RateLimitEndpointDiagnostics = {
+  config: GeoRateLimitConfig
+  /** Number of unique IPs tracked for this endpoint. */
+  trackedIPs: number
+  /** Top IPs by request count (up to 5 per endpoint). */
+  topIPs: Array<{ ip: string; requests: number; remaining: number }>
+}
+
+export type RateLimitDiagnostics = {
+  /** Per-endpoint configuration. */
+  config: Record<GeoEndpoint, GeoRateLimitConfig>
+  /** Whether Redis is currently available for rate limiting. */
+  redisAvailable: boolean
+  /** Total tracked IPs across all endpoints (in-memory store). */
+  totalTrackedIPs: number
+  /** Per-endpoint summary. */
+  endpoints: Record<GeoEndpoint, RateLimitEndpointDiagnostics>
+  /** Memory store size (total entries). */
+  memoryStoreSize: number
+  /** Accumulated allow/block counters since startup. */
+  counters: { allowed: number; blocked: number; total: number; blockRatio: number | null }
+  /** Timestamp of the snapshot. */
+  timestamp: number
+}
+
+/**
+ * Collect diagnostics snapshot of the geo rate limiter state.
+ *
+ * Reads the in-memory store to report:
+ *   - How many unique IPs are tracked per endpoint
+ *   - Top IPs by request count (up to 5 per endpoint)
+ *   - Remaining capacity for each tracked IP
+ *   - Redis vs in-memory usage
+ *
+ * This is a synchronous O(N) scan of the memoryStore — safe for diagnostic
+ * use (typically < 1000 entries). Returns data from memory only; does NOT
+ * query Redis (avoiding latency on the admin dashboard).
+ */
+export function getRateLimitDiagnostics(): RateLimitDiagnostics {
+  const now = Date.now()
+  const endpoints: GeoEndpoint[] = ["search", "cep", "reverse"]
+  const redisAvailable = isRedisAvailable()
+
+  // Build per-endpoint stats by parsing the in-memory store keys
+  // Key format: ratelimit:geo:{endpoint}:{ip}
+  const endpointData: Record<
+    GeoEndpoint,
+    {
+      entries: Map<string, SlidingEntry>
+      topIPs: Array<{ ip: string; requests: number; remaining: number }>
+    }
+  > = {
+    search: { entries: new Map(), topIPs: [] },
+    cep: { entries: new Map(), topIPs: [] },
+    reverse: { entries: new Map(), topIPs: [] },
+  }
+
+  for (const [key, entry] of memoryStore) {
+    // Only look at geo rate limit keys
+    const match = key.match(/^ratelimit:geo:(search|cep|reverse):(.+)$/)
+    if (!match) continue
+
+    const ep = match[1] as GeoEndpoint
+    const ip = match[2]
+    const config = GEO_LIMITS[ep]
+    const windowStart = now - config.windowMs
+
+    // Filter out expired timestamps
+    const activeTimestamps = entry.timestamps.filter((t) => t > windowStart)
+    const remaining = Math.max(0, config.max - activeTimestamps.length - 1)
+
+    endpointData[ep].entries.set(ip, entry)
+    endpointData[ep].topIPs.push({ ip, requests: activeTimestamps.length, remaining })
+  }
+
+  // Sort each endpoint's top IPs descending by request count, take top 5
+  const formattedEndpoints = {} as Record<
+    GeoEndpoint,
+    {
+      config: GeoRateLimitConfig
+      trackedIPs: number
+      topIPs: Array<{ ip: string; requests: number; remaining: number }>
+    }
+  >
+
+  let totalTrackedIPs = 0
+  for (const ep of endpoints) {
+    const data = endpointData[ep]
+    data.topIPs.sort((a, b) => b.requests - a.requests)
+
+    formattedEndpoints[ep] = {
+      config: GEO_LIMITS[ep],
+      trackedIPs: data.entries.size,
+      topIPs: data.topIPs.slice(0, 5),
+    }
+    totalTrackedIPs += data.entries.size
+  }
+
+  return {
+    config: GEO_LIMITS,
+    redisAvailable,
+    totalTrackedIPs,
+    endpoints: formattedEndpoints,
+    memoryStoreSize: memoryStore.size,
+    counters: getRateLimitCounters(),
+    timestamp: now,
+  }
 }

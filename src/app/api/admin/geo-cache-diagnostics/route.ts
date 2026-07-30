@@ -56,7 +56,7 @@ export async function GET() {
 
     // Try to read TTL for common cache keys from Redis
     let keyTTLs: Array<{ key: string; ttlSeconds: number | null }> = []
-    if (isRedisAvailable === true) {
+    if (isRedisAvailable()) {
       try {
         const client = getClient()
         if (client) {

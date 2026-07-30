@@ -44,6 +44,7 @@ import {
   ClipboardCheck,
   CalendarClock,
   Webhook,
+  Shield,
   ShieldAlert,
 } from "lucide-react"
 
@@ -79,6 +80,8 @@ import { AdminCoverageMap } from "./admin-coverage-map"
 import { AdminBenchmarkDashboard } from "./admin-benchmark-dashboard"
 import { AdminBenchmarkEvolution } from "./admin-benchmark-evolution"
 import { AdminGeoCacheDashboard } from "./admin-geo-cache-dashboard"
+import { AdminRedisDiagnosticsDashboard } from "./admin-redis-diagnostics"
+import { AdminGeoRateLimitStatus } from "./admin-geo-rate-limit-status"
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -168,6 +171,16 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.coverage",
     label: "Cobertura",
     icon: Map,
+  },
+  {
+    view: "admin.redis-diagnostics",
+    label: "Redis",
+    icon: Database,
+  },
+  {
+    view: "admin.geo-rate-limit-status",
+    label: "Rate Limit Geo",
+    icon: Shield,
   },
   {
     view: "admin.geo-cache",
@@ -319,6 +332,18 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     subtitle:
       "Hit/miss ratio do Redis, top queries mais frequentes, heatmap de uso por endpoint e TTL das chaves de cache.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Cache Geo" }],
+  },
+  "admin.redis-diagnostics": {
+    title: "Diagnóstico do Redis",
+    subtitle:
+      "Hit/miss ratio, nós do cluster, distribuição de slots, chaves por nó e cache em memória.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Redis" }],
+  },
+  "admin.geo-rate-limit-status": {
+    title: "Status do Rate Limiter Geo",
+    subtitle:
+      "IPs mais ativos, hits/misses, capacidade restante e estado Redis vs in-memory para os endpoints de geolocalização.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Rate Limit Geo" }],
   },
   "admin.geo-metrics": {
     title: "Métricas de Geolocalização",
@@ -499,6 +524,10 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminGatewayDashboard />
     case "admin.coverage":
       return <AdminCoverageMap />
+    case "admin.redis-diagnostics":
+      return <AdminRedisDiagnosticsDashboard />
+    case "admin.geo-rate-limit-status":
+      return <AdminGeoRateLimitStatus />
     case "admin.geo-cache":
       return <AdminGeoCacheDashboard />
     case "admin.geo-metrics":
