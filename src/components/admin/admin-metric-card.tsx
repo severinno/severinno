@@ -75,9 +75,9 @@ export function KpiCard({ icon: Icon, label, value, subtitle, trend }: KpiCardPr
         </span>
         {trend ? (
           trend === "up" ? (
-            <TrendingUp className="size-4 text-red-500" />
+            <TrendingUp className="size-4 text-emerald-500" />
           ) : (
-            <TrendingDown className="size-4 text-emerald-500" />
+            <TrendingDown className="size-4 text-red-500" />
           )
         ) : null}
       </div>

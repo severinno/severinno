@@ -183,6 +183,26 @@ export function buildReindexSlowResponse(delayMs = 100): Promise<Response> {
 }
 
 // ===========================================================================
+// GistDegradationPanel — shared default props for tests
+// ===========================================================================
+
+/**
+ * Default props for rendering GistDegradationPanel in a test.
+ * Uses realistic values (P95=90ms, radius=15km, model max=35.2ms, 4/5 scales
+ * exceed the model).  Individual tests can override specific fields via spread:
+ *
+ *   render(<GistDegradationPanel {...DEFAULT_PROPS} gistDegraded={false} />)
+ */
+export const DEFAULT_GIST_DEGRADATION_PROPS = {
+  gistDegraded: true,
+  p95Mean: 90,
+  radiusKm: 15,
+  snapPct: 9,
+  maxModelAtSelectivity: 35.2,
+  exceedingCount: 4,
+}
+
+// ===========================================================================
 // Helper: click through the full REINDEX flow
 // ===========================================================================
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Accessibility (axe-core) tests for vitrine sections.
  *

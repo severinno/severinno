@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * DashboardShell — notification sound integration tests.
  *
@@ -233,9 +232,14 @@ import { DashboardShell, type DashboardShellProps, type NavItem } from "../dashb
 // Fixtures
 // ---------------------------------------------------------------------------
 
+// Helper: creates a mock LucideIcon-compatible element for nav items
+function mockIcon() {
+  return (() => null) as unknown as NonNullable<NavItem["icon"]>
+}
+
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", icon: () => null, view: "client.dashboard" },
-  { label: "Serviços", icon: () => null, view: "client.services" },
+  { label: "Dashboard", icon: mockIcon(), view: "client.dashboard" },
+  { label: "Serviços", icon: mockIcon(), view: "client.services" },
 ]
 
 const DEFAULT_PROPS: DashboardShellProps = {
@@ -243,7 +247,7 @@ const DEFAULT_PROPS: DashboardShellProps = {
   currentView: "client.dashboard",
   title: "Meu Painel",
   panelLabel: "Painel do Cliente",
-  panelIcon: (() => null) as unknown as DashboardShellProps["panelIcon"],
+  panelIcon: mockIcon(),
   user: null,
   onNavigate: vi.fn(),
   children: <div>Conteúdo</div>,
@@ -578,8 +582,8 @@ describe("DashboardShell — WalletBalancePill (provider wallet)", () => {
 describe("DashboardShell — nav item badges", () => {
   it("renders badge on nav items when badge is provided", () => {
     const itemsWithBadge: NavItem[] = [
-      { label: "Mensagens", icon: () => null, view: "client.messages", badge: 3 },
-      { label: "Dashboard", icon: () => null, view: "client.dashboard" },
+      { label: "Mensagens", icon: mockIcon(), view: "client.messages", badge: 3 },
+      { label: "Dashboard", icon: mockIcon(), view: "client.dashboard" },
     ]
     renderShell({
       navItems: itemsWithBadge,

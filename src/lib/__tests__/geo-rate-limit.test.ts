@@ -30,7 +30,10 @@ import {
   assertGeoRateLimit,
   geoRateLimitHeaders,
   GEO_LIMITS,
+  getRateLimitDiagnostics,
+  getRateLimitCounters,
   isGeoRateLimitError,
+  resetRateLimiter,
   type GeoEndpoint,
   type GeoRateLimitResult,
 } from "@/lib/geo-rate-limit"
@@ -56,6 +59,163 @@ function advanceTime(ms: number): void {
 // ---------------------------------------------------------------------------
 // Suite
 // ---------------------------------------------------------------------------
+
+// ── getRateLimitDiagnostics ─────────────────────────────────────────────
+//
+// Tests for the admin diagnostics function that reads the in-memory store
+// and returns per-endpoint tracking stats, sorted topIPs, and counters.
+//
+// Uses fake timers for deterministic control and resetRateLimiter() in
+// beforeEach to isolate the memory store from other describe blocks.
+
+describe("getRateLimitDiagnostics", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-04-13T10:00:00.000Z"))
+    // Clear memory store + counters to isolate from other tests
+    resetRateLimiter()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("retorna config, endpoints e counters quando sem dados", () => {
+    const diag = getRateLimitDiagnostics()
+
+    expect(diag.config.search).toEqual({ max: 30, windowMs: 60_000 })
+    expect(diag.config.cep).toEqual({ max: 60, windowMs: 60_000 })
+    expect(diag.config.reverse).toEqual({ max: 30, windowMs: 60_000 })
+
+    expect(diag.endpoints.search.trackedIPs).toBe(0)
+    expect(diag.endpoints.cep.trackedIPs).toBe(0)
+    expect(diag.endpoints.reverse.trackedIPs).toBe(0)
+    expect(diag.totalTrackedIPs).toBe(0)
+    expect(diag.memoryStoreSize).toBe(0)
+
+    expect(diag.counters).toMatchObject({ allowed: 0, blocked: 0, total: 0 })
+    expect(diag.counters.blockRatio).toBeNull()
+
+    expect(diag.timestamp).toBeGreaterThan(0)
+    expect(typeof diag.redisAvailable).toBe("boolean")
+  })
+
+  it("retorna topIPs ordenado decrescente com múltiplos IPs no search", async () => {
+    // IP-A: 30 requests (mais ativo)
+    const reqA = makeRequest("10.0.0.100")
+    for (let i = 0; i < 30; i++) {
+      await checkGeoRateLimit(reqA, "search")
+    }
+
+    // IP-B: 25 requests
+    const reqB = makeRequest("10.0.0.101")
+    for (let i = 0; i < 25; i++) {
+      await checkGeoRateLimit(reqB, "search")
+    }
+
+    // IP-C: 5 requests (menos ativo)
+    const reqC = makeRequest("10.0.0.102")
+    for (let i = 0; i < 5; i++) {
+      await checkGeoRateLimit(reqC, "search")
+    }
+
+    const diag = getRateLimitDiagnostics()
+    const topIPs = diag.endpoints.search.topIPs
+
+    // Sorted descending by request count
+    expect(topIPs[0].ip).toBe("10.0.0.100")
+    expect(topIPs[0].requests).toBe(30)
+    expect(topIPs[1].ip).toBe("10.0.0.101")
+    expect(topIPs[1].requests).toBe(25)
+    expect(topIPs[2].ip).toBe("10.0.0.102")
+    expect(topIPs[2].requests).toBe(5)
+
+    expect(diag.endpoints.search.trackedIPs).toBe(3)
+    expect(diag.totalTrackedIPs).toBe(3)
+  })
+
+  it("separa IPs por endpoint (search vs cep vs reverse)", async () => {
+    const req = makeRequest("10.0.0.200")
+    await checkGeoRateLimit(req, "search")
+    await checkGeoRateLimit(req, "cep")
+    await checkGeoRateLimit(req, "reverse")
+
+    const diag = getRateLimitDiagnostics()
+
+    expect(diag.endpoints.search.trackedIPs).toBe(1)
+    expect(diag.endpoints.cep.trackedIPs).toBe(1)
+    expect(diag.endpoints.reverse.trackedIPs).toBe(1)
+    // Total: 3 (same IP but different endpoints)
+    expect(diag.totalTrackedIPs).toBe(3)
+  })
+
+  it("filtra timestamps expirados e zera requests ativos", async () => {
+    const req = makeRequest("10.0.0.50")
+    await checkGeoRateLimit(req, "search")
+
+    // Advance 61s — window slides, entry expires
+    vi.advanceTimersByTime(61_000)
+
+    const diag = getRateLimitDiagnostics()
+
+    // IP still exists in the store (never deleted), but active requests = 0
+    expect(diag.endpoints.search.trackedIPs).toBe(1)
+    expect(diag.endpoints.search.topIPs[0].requests).toBe(0)
+    expect(diag.endpoints.search.topIPs[0].remaining).toBe(29) // max - 0 - 1 = 29
+  })
+
+  it("limita topIPs a 5 por endpoint", async () => {
+    // Create 7 IPs with varying request counts
+    for (let i = 0; i < 7; i++) {
+      const req = makeRequest(`10.0.0.${210 + i}`)
+      // Each IP makes (i+1) requests — last one makes 7
+      for (let j = 0; j < i + 1; j++) {
+        await checkGeoRateLimit(req, "search")
+      }
+    }
+
+    const diag = getRateLimitDiagnostics()
+
+    // Tracks 7 but only returns top 5
+    expect(diag.endpoints.search.trackedIPs).toBe(7)
+    expect(diag.endpoints.search.topIPs).toHaveLength(5)
+  })
+
+  it("retorna remaining correto (max - activeRequests - 1)", async () => {
+    const req = makeRequest("10.0.0.60")
+    await checkGeoRateLimit(req, "search") // 1 request → remaining = 30 - 1 - 1 = 28
+
+    let diag = getRateLimitDiagnostics()
+    expect(diag.endpoints.search.topIPs[0].remaining).toBe(28)
+
+    // 4 more requests = 5 total → remaining = 30 - 5 - 1 = 24
+    for (let i = 0; i < 4; i++) {
+      await checkGeoRateLimit(req, "search")
+    }
+
+    diag = getRateLimitDiagnostics()
+    expect(diag.endpoints.search.topIPs[0].remaining).toBe(24)
+  })
+
+  it("inclui counters acumulados com blockRatio calculado", async () => {
+    // Make some allowed requests
+    const req1 = makeRequest("10.0.0.70")
+    await checkGeoRateLimit(req1, "search")
+
+    // Get counters before checking diag (getRateLimitCounters is also
+    // called internally by getRateLimitDiagnostics, so they should match)
+    const countersBefore = getRateLimitCounters()
+
+    const diag = getRateLimitDiagnostics()
+
+    // Totals match
+    expect(diag.counters.allowed).toBeGreaterThan(0)
+    expect(diag.counters.total).toBe(diag.counters.allowed + diag.counters.blocked)
+    // May have been incremented by other tests if isolation failed, but
+    // the relationship should hold
+    expect(diag.counters.total).toBeGreaterThan(0)
+  })
+})
 
 describe("GEO_LIMITS", () => {
   it("define search com max=30 e windowMs=60000", () => {

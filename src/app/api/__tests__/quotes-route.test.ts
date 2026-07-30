@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "../quotes/route"
 import { GET as GET_DETAIL, PATCH } from "../quotes/[id]/route"
@@ -15,7 +14,20 @@ const { mockQuoteDetail, mockQuoteItem } = vi.hoisted(() => ({
     createdAt: new Date(),
     notes: "Preciso de limpeza",
     items: [
-      { id: "qi-1", quoteRequestId: "qt-1", providerId: "prov-1", serviceId: "svc-1", description: "Limpeza", quantity: 1, unit: "un", photos: [], status: "PENDING", providerNote: null, service: { id: "svc-1", title: "Limpeza" }, provider: { id: "prov-1", name: "Maria Souza", avatarUrl: null } },
+      {
+        id: "qi-1",
+        quoteRequestId: "qt-1",
+        providerId: "prov-1",
+        serviceId: "svc-1",
+        description: "Limpeza",
+        quantity: 1,
+        unit: "un",
+        photos: [],
+        status: "PENDING",
+        providerNote: null,
+        service: { id: "svc-1", title: "Limpeza" },
+        provider: { id: "prov-1", name: "Maria Souza", avatarUrl: null },
+      },
     ],
     client: { id: "client-1", name: "João", avatarUrl: null },
     provider: { id: "prov-1", name: "Maria Souza", avatarUrl: null },
@@ -35,7 +47,13 @@ const { mockQuoteDetail, mockQuoteItem } = vi.hoisted(() => ({
 }))
 
 const mockDb = vi.hoisted(() => ({
-  quoteRequest: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), count: vi.fn(), update: vi.fn() },
+  quoteRequest: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    count: vi.fn(),
+    update: vi.fn(),
+  },
   quoteItem: { findUnique: vi.fn(), update: vi.fn() },
   user: { findFirst: vi.fn() },
   service: { findMany: vi.fn() },
@@ -43,8 +61,14 @@ const mockDb = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }))
-vi.mock("@/lib/validators", () => ({ quoteSchema: { parse: vi.fn() }, quoteItemResponseSchema: { parse: vi.fn() } }))
-vi.mock("@/lib/logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() } }))
+vi.mock("@/lib/validators", () => ({
+  quoteSchema: { parse: vi.fn() },
+  quoteItemResponseSchema: { parse: vi.fn() },
+}))
+vi.mock("@/lib/logger", () => ({
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
+}))
 
 import { requireUser } from "@/lib/auth"
 import { quoteSchema, quoteItemResponseSchema } from "@/lib/validators"
@@ -89,7 +113,7 @@ describe("POST /api/quotes (create)", () => {
   }
 
   beforeEach(() => {
-    (vi.mocked(quoteSchema.parse) as any).mockReturnValue(validQuoteInput)
+    ;(vi.mocked(quoteSchema.parse) as any).mockReturnValue(validQuoteInput)
     // Route uses user.findFirst, not findUnique
     mockDb.user.findFirst.mockResolvedValue({ id: "prov-1", verified: true })
     mockDb.service.findMany.mockResolvedValue([
@@ -124,9 +148,7 @@ describe("POST /api/quotes (create)", () => {
   })
 
   it("throws 400 when service does not belong to provider", async () => {
-    mockDb.service.findMany.mockResolvedValue([
-      { id: "svc-1", providerId: "prov-1" },
-    ])
+    mockDb.service.findMany.mockResolvedValue([{ id: "svc-1", providerId: "prov-1" }])
     const response = await POST(createMockRequest({ method: "POST", body: validQuoteInput }))
     expect(response.status).toBe(400)
   })
@@ -138,7 +160,9 @@ describe("GET /api/quotes/[id] (detail)", () => {
   })
 
   it("returns quote detail with items", async () => {
-    const response = await GET_DETAIL(createMockRequest(), { params: Promise.resolve({ id: "qt-1" }) })
+    const response = await GET_DETAIL(createMockRequest(), {
+      params: Promise.resolve({ id: "qt-1" }),
+    })
     const data = await response.json()
     expect(response.status).toBe(200)
     // Route returns { quote } wrapper
@@ -148,52 +172,76 @@ describe("GET /api/quotes/[id] (detail)", () => {
 
   it("returns 404 for non-existent quote", async () => {
     mockDb.quoteRequest.findUnique.mockResolvedValue(null)
-    const response = await GET_DETAIL(createMockRequest(), { params: Promise.resolve({ id: "not-found" }) })
+    const response = await GET_DETAIL(createMockRequest(), {
+      params: Promise.resolve({ id: "not-found" }),
+    })
     expect(response.status).toBe(404)
   })
 
   it("allows client to view own quote", async () => {
-    const response = await GET_DETAIL(createMockRequest(), { params: Promise.resolve({ id: "qt-1" }) })
+    const response = await GET_DETAIL(createMockRequest(), {
+      params: Promise.resolve({ id: "qt-1" }),
+    })
     expect(response.status).toBe(200)
   })
 
   it("allows provider to view assigned quote", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })
-    const response = await GET_DETAIL(createMockRequest(), { params: Promise.resolve({ id: "qt-1" }) })
+    const response = await GET_DETAIL(createMockRequest(), {
+      params: Promise.resolve({ id: "qt-1" }),
+    })
     expect(response.status).toBe(200)
   })
 
   it("denies access to unrelated user", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "other-user", role: "CLIENT" })
-    const response = await GET_DETAIL(createMockRequest(), { params: Promise.resolve({ id: "qt-1" }) })
+    const response = await GET_DETAIL(createMockRequest(), {
+      params: Promise.resolve({ id: "qt-1" }),
+    })
     expect(response.status).toBe(403)
   })
 })
 
 describe("PATCH /api/quotes/[id] (update status)", () => {
   beforeEach(() => {
-    mockDb.quoteRequest.findUnique.mockResolvedValue({ id: "qt-1", clientId: "client-1", status: "PENDING" })
+    mockDb.quoteRequest.findUnique.mockResolvedValue({
+      id: "qt-1",
+      clientId: "client-1",
+      status: "PENDING",
+    })
     mockDb.quoteRequest.update.mockResolvedValue({ ...mockQuoteDetail, status: "APPROVED" })
   })
 
   it("allows client to approve quote", async () => {
-    const response = await PATCH(createMockRequest({ method: "PATCH", body: { status: "APPROVED" } }), { params: Promise.resolve({ id: "qt-1" }) })
+    const response = await PATCH(
+      createMockRequest({ method: "PATCH", body: { status: "APPROVED" } }),
+      { params: Promise.resolve({ id: "qt-1" }) },
+    )
     expect(response.status).toBe(200)
   })
 
   it("allows client to reject quote", async () => {
-    const response = await PATCH(createMockRequest({ method: "PATCH", body: { status: "REJECTED" } }), { params: Promise.resolve({ id: "qt-1" }) })
+    const response = await PATCH(
+      createMockRequest({ method: "PATCH", body: { status: "REJECTED" } }),
+      { params: Promise.resolve({ id: "qt-1" }) },
+    )
     expect(response.status).toBe(200)
   })
 
   it("rejects invalid status", async () => {
-    const response = await PATCH(createMockRequest({ method: "PATCH", body: { status: "INVALID" } }), { params: Promise.resolve({ id: "qt-1" }) })
+    const response = await PATCH(
+      createMockRequest({ method: "PATCH", body: { status: "INVALID" } }),
+      { params: Promise.resolve({ id: "qt-1" }) },
+    )
     expect(response.status).toBe(400)
   })
 
   it("denies status update by non-client/non-admin", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })
-    const response = await PATCH(createMockRequest({ method: "PATCH", body: { status: "APPROVED" } }), { params: Promise.resolve({ id: "qt-1" }) })
+    const response = await PATCH(
+      createMockRequest({ method: "PATCH", body: { status: "APPROVED" } }),
+      { params: Promise.resolve({ id: "qt-1" }) },
+    )
     expect(response.status).toBe(403)
   })
 })
@@ -202,20 +250,24 @@ describe("PATCH /api/quotes/[id]/items/[itemId] (provider response)", () => {
   const validResponse = { price: 15000, providerNote: "Posso fazer sim!", status: "RESPONDED" }
 
   beforeEach(() => {
-    (vi.mocked(quoteItemResponseSchema.parse) as any).mockReturnValue(validResponse)
+    ;(vi.mocked(quoteItemResponseSchema.parse) as any).mockReturnValue(validResponse)
     mockDb.quoteItem.findUnique.mockResolvedValue(mockQuoteItem)
     mockDb.quoteItem.update.mockResolvedValue({ ...mockQuoteItem, ...validResponse })
     vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })
   })
 
   it("allows provider to respond to a quote item", async () => {
-    const response = await PATCH_ITEM(createMockRequest({ method: "PATCH", body: validResponse }), { params: Promise.resolve({ id: "qt-1", itemId: "qi-1" }) })
+    const response = await PATCH_ITEM(createMockRequest({ method: "PATCH", body: validResponse }), {
+      params: Promise.resolve({ id: "qt-1", itemId: "qi-1" }),
+    })
     expect(response.status).toBe(200)
     expect(mockDb.quoteItem.update).toHaveBeenCalled()
   })
 
   it("updates parent quote status to RESPONDED", async () => {
-    await PATCH_ITEM(createMockRequest({ method: "PATCH", body: validResponse }), { params: Promise.resolve({ id: "qt-1", itemId: "qi-1" }) })
+    await PATCH_ITEM(createMockRequest({ method: "PATCH", body: validResponse }), {
+      params: Promise.resolve({ id: "qt-1", itemId: "qi-1" }),
+    })
     expect(mockDb.quoteRequest.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "RESPONDED" } }),
     )
@@ -223,13 +275,17 @@ describe("PATCH /api/quotes/[id]/items/[itemId] (provider response)", () => {
 
   it("returns 404 when item not found", async () => {
     mockDb.quoteItem.findUnique.mockResolvedValue(null)
-    const response = await PATCH_ITEM(createMockRequest({ method: "PATCH", body: validResponse }), { params: Promise.resolve({ id: "qt-1", itemId: "not-found" }) })
+    const response = await PATCH_ITEM(createMockRequest({ method: "PATCH", body: validResponse }), {
+      params: Promise.resolve({ id: "qt-1", itemId: "not-found" }),
+    })
     expect(response.status).toBe(404)
   })
 
   it("denies response by non-provider user", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "client-1", role: "CLIENT" })
-    const response = await PATCH_ITEM(createMockRequest({ method: "PATCH", body: validResponse }), { params: Promise.resolve({ id: "qt-1", itemId: "qi-1" }) })
+    const response = await PATCH_ITEM(createMockRequest({ method: "PATCH", body: validResponse }), {
+      params: Promise.resolve({ id: "qt-1", itemId: "qi-1" }),
+    })
     expect(response.status).toBe(403)
   })
 })

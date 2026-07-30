@@ -1,7 +1,5 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@/__tests__/test-utils"
-import userEvent from "@testing-library/user-event"
 
 // ---- Mock lucide-react Star icon -------------------------------------------
 vi.mock("lucide-react", () => {

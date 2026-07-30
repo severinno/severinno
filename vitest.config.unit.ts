@@ -14,7 +14,12 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["src/components/**/*.test.{ts,tsx}", "node_modules", ".next"],
-    setupFiles: ["./vitest.setup.ts"],
+    server: {
+      deps: {
+        inline: ["react", "react-dom"],
+      },
+    },
+    setupFiles: ["./vitest.act-setup.ts", "./vitest.setup.ts"],
 
     pool: "forks",
     poolOptions: { forks: { singleFork: true } },

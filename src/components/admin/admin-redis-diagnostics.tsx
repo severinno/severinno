@@ -26,8 +26,6 @@ import {
   Minus,
   Server,
   Timer,
-  TrendingDown,
-  TrendingUp,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {
@@ -48,7 +46,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
 import { ErrorState } from "@/components/admin/admin-shared"
-import { MetricCard } from "@/components/admin/admin-metric-card"
+import { MetricCard, KpiCard } from "@/components/admin/admin-metric-card"
+import { TierBanner } from "@/components/admin/admin-tier-banner"
 
 import type { RedisDiagnosticsResponse } from "@/app/api/admin/redis-diagnostics/route"
 
@@ -181,28 +180,16 @@ export function AdminRedisDiagnosticsDashboard() {
 
       {/* ── Active Tier Banner ───────────────────────────────────── */}
       {activeTier !== "cluster" && (
-        <div
-          className={cn(
-            "rounded-xl border px-5 py-3 text-xs",
+        <TierBanner
+          state={activeTier === "standalone" ? "degraded" : "critical"}
+          title={activeTier === "standalone" ? "⚠️ Modo degradado" : "🔴 Cache apenas em memória"}
+          description={
             activeTier === "standalone"
-              ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/30 dark:bg-amber-950/20 dark:text-amber-300"
-              : "border-red-200 bg-red-50 text-red-800 dark:border-red-800/30 dark:bg-red-950/20 dark:text-red-300",
-          )}
-        >
-          <span className="font-semibold">
-            {activeTier === "standalone" ? "⚠️ Modo degradado" : "🔴 Cache apenas em memória"}
-          </span>
-          <span className="ml-2">
-            {activeTier === "standalone"
-              ? `O cluster falhou e o Redis está rodando em modo standalone.`
-              : `O Redis está indisponível — o cache está sendo mantido apenas em memória.`}
-            {degradationCount > 0 && (
-              <span className="ml-1">
-                ({degradationCount} degradação{degradationCount !== 1 ? "ões" : ""} desde o início).
-              </span>
-            )}
-          </span>
-        </div>
+              ? "O cluster falhou e o Redis está rodando em modo standalone."
+              : "O Redis está indisponível — o cache está sendo mantido apenas em memória."
+          }
+          degradationCount={degradationCount}
+        />
       )}
 
       {/* ── KPI Cards ──────────────────────────────────────────────── */}
@@ -526,44 +513,7 @@ export function AdminRedisDiagnosticsDashboard() {
   )
 }
 
-// ── KPI Card ──────────────────────────────────────────────────────────────
-
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  subtitle,
-  trend,
-}: {
-  icon: React.ElementType
-  label: string
-  value: string
-  subtitle?: string
-  trend?: "up" | "down"
-}) {
-  return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
-      <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          <Icon className="size-5" />
-        </span>
-        {trend ? (
-          trend === "up" ? (
-            <TrendingUp className="size-4 text-emerald-500" />
-          ) : (
-            <TrendingDown className="size-4 text-red-500" />
-          )
-        ) : null}
-      </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
-        {label}
-      </p>
-      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
-    </div>
-  )
-}
-
+// ── KPI Card is now imported from @/components/admin/admin-metric-card
 // ── Skeleton ──────────────────────────────────────────────────────────────
 
 function RedisDiagnosticsSkeleton() {

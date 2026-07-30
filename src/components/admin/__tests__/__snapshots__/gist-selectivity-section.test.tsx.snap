@@ -18,9 +18,26 @@ exports[`GiSTSelectivitySection > renders full section without errors (snapshot)
       >
         Curva de Seletividade — GiST Index vs Haversine
       </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
       <button
         aria-label="Exportar simulação como JSON"
-        class="ml-auto inline-flex h-7 items-center gap-1 rounded-lg border bg-muted/50 px-2.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
         type="button"
       >
         <span
@@ -28,6 +45,17 @@ exports[`GiSTSelectivitySection > renders full section without errors (snapshot)
           data-testid="lucide-icon"
         />
         Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
       </button>
     </div>
     <div
@@ -279,8 +307,7 @@ exports[`GiSTSelectivitySection > renders full section without errors (snapshot)
           <p
             class="text-muted-foreground mt-2 text-[10px]"
           >
-            As curvas se ajustam automaticamente para
-             
+            As curvas se ajustam automaticamente para 
             <strong>
               5
                escalas
@@ -1008,9 +1035,26 @@ exports[`GiSTSelectivitySection > renders snapshot at 5 km radius preset > radiu
       >
         Curva de Seletividade — GiST Index vs Haversine
       </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
       <button
         aria-label="Exportar simulação como JSON"
-        class="ml-auto inline-flex h-7 items-center gap-1 rounded-lg border bg-muted/50 px-2.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
         type="button"
       >
         <span
@@ -1018,6 +1062,17 @@ exports[`GiSTSelectivitySection > renders snapshot at 5 km radius preset > radiu
           data-testid="lucide-icon"
         />
         Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
       </button>
     </div>
     <div
@@ -1269,8 +1324,7 @@ exports[`GiSTSelectivitySection > renders snapshot at 5 km radius preset > radiu
           <p
             class="text-muted-foreground mt-2 text-[10px]"
           >
-            As curvas se ajustam automaticamente para
-             
+            As curvas se ajustam automaticamente para 
             <strong>
               5
                escalas
@@ -1998,9 +2052,26 @@ exports[`GiSTSelectivitySection > renders snapshot at 15 km radius preset > radi
       >
         Curva de Seletividade — GiST Index vs Haversine
       </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
       <button
         aria-label="Exportar simulação como JSON"
-        class="ml-auto inline-flex h-7 items-center gap-1 rounded-lg border bg-muted/50 px-2.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
         type="button"
       >
         <span
@@ -2008,6 +2079,17 @@ exports[`GiSTSelectivitySection > renders snapshot at 15 km radius preset > radi
           data-testid="lucide-icon"
         />
         Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
       </button>
     </div>
     <div
@@ -2259,8 +2341,7 @@ exports[`GiSTSelectivitySection > renders snapshot at 15 km radius preset > radi
           <p
             class="text-muted-foreground mt-2 text-[10px]"
           >
-            As curvas se ajustam automaticamente para
-             
+            As curvas se ajustam automaticamente para 
             <strong>
               5
                escalas
@@ -2988,9 +3069,26 @@ exports[`GiSTSelectivitySection > renders snapshot at 30 km radius preset > radi
       >
         Curva de Seletividade — GiST Index vs Haversine
       </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
       <button
         aria-label="Exportar simulação como JSON"
-        class="ml-auto inline-flex h-7 items-center gap-1 rounded-lg border bg-muted/50 px-2.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
         type="button"
       >
         <span
@@ -2998,6 +3096,17 @@ exports[`GiSTSelectivitySection > renders snapshot at 30 km radius preset > radi
           data-testid="lucide-icon"
         />
         Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
       </button>
     </div>
     <div
@@ -3249,8 +3358,7 @@ exports[`GiSTSelectivitySection > renders snapshot at 30 km radius preset > radi
           <p
             class="text-muted-foreground mt-2 text-[10px]"
           >
-            As curvas se ajustam automaticamente para
-             
+            As curvas se ajustam automaticamente para 
             <strong>
               5
                escalas
@@ -3978,9 +4086,26 @@ exports[`GiSTSelectivitySection > renders snapshot at 50 km radius preset > radi
       >
         Curva de Seletividade — GiST Index vs Haversine
       </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
       <button
         aria-label="Exportar simulação como JSON"
-        class="ml-auto inline-flex h-7 items-center gap-1 rounded-lg border bg-muted/50 px-2.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
         type="button"
       >
         <span
@@ -3988,6 +4113,17 @@ exports[`GiSTSelectivitySection > renders snapshot at 50 km radius preset > radi
           data-testid="lucide-icon"
         />
         Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
       </button>
     </div>
     <div
@@ -4239,8 +4375,7 @@ exports[`GiSTSelectivitySection > renders snapshot at 50 km radius preset > radi
           <p
             class="text-muted-foreground mt-2 text-[10px]"
           >
-            As curvas se ajustam automaticamente para
-             
+            As curvas se ajustam automaticamente para 
             <strong>
               5
                escalas
@@ -4968,9 +5103,26 @@ exports[`GiSTSelectivitySection > renders without errors when history is null (n
       >
         Curva de Seletividade — GiST Index vs Haversine
       </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
       <button
         aria-label="Exportar simulação como JSON"
-        class="ml-auto inline-flex h-7 items-center gap-1 rounded-lg border bg-muted/50 px-2.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
         type="button"
       >
         <span
@@ -4978,6 +5130,17 @@ exports[`GiSTSelectivitySection > renders without errors when history is null (n
           data-testid="lucide-icon"
         />
         Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
       </button>
     </div>
     <div
@@ -5229,8 +5392,7 @@ exports[`GiSTSelectivitySection > renders without errors when history is null (n
           <p
             class="text-muted-foreground mt-2 text-[10px]"
           >
-            As curvas se ajustam automaticamente para
-             
+            As curvas se ajustam automaticamente para 
             <strong>
               5
                escalas

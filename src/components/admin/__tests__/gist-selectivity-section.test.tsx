@@ -19,8 +19,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
 import { render, screen, fireEvent, cleanup } from "@/__tests__/test-utils"
-import { GiSTSelectivitySection } from "../admin-geo-metrics-dashboard"
-import type { BenchmarkData } from "@/app/api/admin/geo-metrics/route"
+import { GiSTSelectivitySection } from "../gist-selectivity-section"
 
 // ===========================================================================
 // Mock Recharts — JSDOM does not support SVG measurement, so we render
@@ -72,6 +71,7 @@ vi.mock("lucide-react", () => {
   return {
     Activity: Icon,
     AlertTriangle: Icon,
+    Copy: Icon,
     BarChart3: Icon,
     Bell: Icon,
     CheckCircle2: Icon,
@@ -87,87 +87,21 @@ vi.mock("lucide-react", () => {
     Timer: Icon,
     TrendingDown: Icon,
     TrendingUp: Icon,
+    Upload: Icon,
     Zap: Icon,
   }
 })
 
 // ===========================================================================
-// Fixtures
+// Shared fixtures
 // ===========================================================================
 
-function makeBenchmarkData(): BenchmarkData {
-  return {
-    meta: {
-      timestamp: "2026-04-13T00:00:00.000Z",
-      platform: "win32",
-      nodeVersion: "v22.14.0",
-      centerLabel: "-23.5505, -46.6333",
-    },
-    comparisons: [
-      {
-        label: "100 providers",
-        scale: 100,
-        haversine: { mean: 49.78, opsPerSec: 20088 },
-        postgis: { mean: 4200, opsPerSec: 238 },
-        ratio: 84.4,
-      },
-      {
-        label: "1 000 providers",
-        scale: 1000,
-        haversine: { mean: 497.8, opsPerSec: 2009 },
-        postgis: { mean: 24000, opsPerSec: 42 },
-        ratio: 48.2,
-      },
-      {
-        label: "10 000 providers",
-        scale: 10000,
-        haversine: { mean: 4978, opsPerSec: 201 },
-        postgis: { mean: 222000, opsPerSec: 4.5 },
-        ratio: 44.6,
-      },
-    ],
-    analysis: {
-      note: "Haversine JS é significativamente mais rápido que PostGIS para buscas de providers em São Paulo.",
-      avgHaversinePerProvider: 0.4978,
-    },
-  }
-}
-
-/** History with P95 values that are BELOW all model curves (normal operation). */
-function makeNormalHistory(): Array<{
-  timestamp: number
-  services: Record<string, { p50: number; p95: number; p99: number; count: number }>
-}> {
-  const now = Date.now()
-  return [
-    { timestamp: now - 5000, services: { postgis: { p50: 8, p95: 12, p99: 30, count: 200 } } },
-    { timestamp: now - 4000, services: { postgis: { p50: 9, p95: 15, p99: 35, count: 180 } } },
-    { timestamp: now - 3000, services: { postgis: { p50: 7, p95: 11, p99: 28, count: 220 } } },
-    { timestamp: now - 2000, services: { postgis: { p50: 10, p95: 14, p99: 32, count: 190 } } },
-    { timestamp: now - 1000, services: { postgis: { p50: 8, p95: 13, p99: 29, count: 210 } } },
-  ]
-}
-
-/** History with P95 values that EXCEED all model curves (degraded GiST).
- * All values are exactly 250 so the mean is exactly 250.0 for a
- * deterministic assertion in the snapshot test. */
-function makeDegradedHistory(): Array<{
-  timestamp: number
-  services: Record<string, { p50: number; p95: number; p99: number; count: number }>
-}> {
-  const now = Date.now()
-  return [
-    { timestamp: now - 5000, services: { postgis: { p50: 80, p95: 250, p99: 500, count: 200 } } },
-    { timestamp: now - 4000, services: { postgis: { p50: 80, p95: 250, p99: 500, count: 200 } } },
-    { timestamp: now - 3000, services: { postgis: { p50: 80, p95: 250, p99: 500, count: 200 } } },
-    { timestamp: now - 2000, services: { postgis: { p50: 80, p95: 250, p99: 500, count: 200 } } },
-    { timestamp: now - 1000, services: { postgis: { p50: 80, p95: 250, p99: 500, count: 200 } } },
-  ]
-}
-
-function makeBaselines(): Record<string, number> {
-  return { nominatim: 400, viacep: 250, postgis: 30 }
-}
+import {
+  FIXTURE_BENCHMARK,
+  FIXTURE_NORMAL_HISTORY,
+  FIXTURE_DEGRADED_HISTORY,
+  FIXTURE_BASELINES,
+} from "./fixtures"
 
 // ===========================================================================
 // Helpers
@@ -182,9 +116,9 @@ function renderGiST(props?: {
 }) {
   return render(
     <GiSTSelectivitySection
-      benchmark={makeBenchmarkData()}
-      history={props?.history ?? makeNormalHistory()}
-      baselines={props?.baselines ?? makeBaselines()}
+      benchmark={FIXTURE_BENCHMARK}
+      history={props?.history ?? FIXTURE_NORMAL_HISTORY}
+      baselines={props?.baselines ?? FIXTURE_BASELINES}
     />,
   )
 }
@@ -385,9 +319,9 @@ describe("GiSTSelectivitySection", () => {
   it("renders without errors when history is null (no P95 band)", () => {
     const { asFragment } = render(
       <GiSTSelectivitySection
-        benchmark={makeBenchmarkData()}
+        benchmark={FIXTURE_BENCHMARK}
         history={null}
-        baselines={makeBaselines()}
+        baselines={FIXTURE_BASELINES}
       />,
     )
 
@@ -402,9 +336,9 @@ describe("GiSTSelectivitySection", () => {
   it("renders without errors when history is empty array", () => {
     render(
       <GiSTSelectivitySection
-        benchmark={makeBenchmarkData()}
+        benchmark={FIXTURE_BENCHMARK}
         history={[]}
-        baselines={makeBaselines()}
+        baselines={FIXTURE_BASELINES}
       />,
     )
 
@@ -425,14 +359,14 @@ describe("GiSTSelectivitySection", () => {
     // The GiSTSelectivitySection uses a useRef buffer (size=5) that needs 5
     // consecutive renders before the degradation alert appears.  First render
     // only has 1 entry, so we re-render 4 more times to fill the buffer.
-    const { rerender } = renderGiST({ history: makeDegradedHistory() })
+    const { rerender } = renderGiST({ history: FIXTURE_DEGRADED_HISTORY })
 
     const rerenderSame = () => {
       rerender(
         <GiSTSelectivitySection
-          benchmark={makeBenchmarkData()}
-          history={makeDegradedHistory()}
-          baselines={makeBaselines()}
+          benchmark={FIXTURE_BENCHMARK}
+          history={FIXTURE_DEGRADED_HISTORY}
+          baselines={FIXTURE_BASELINES}
         />,
       )
     }
@@ -446,15 +380,15 @@ describe("GiSTSelectivitySection", () => {
   })
 
   it("degradation alert shows exact P95 value (250ms) in message", () => {
-    const { rerender } = renderGiST({ history: makeDegradedHistory() })
+    const { rerender } = renderGiST({ history: FIXTURE_DEGRADED_HISTORY })
 
     // Fill the 5-entry degradation buffer
     const rerenderSame = () => {
       rerender(
         <GiSTSelectivitySection
-          benchmark={makeBenchmarkData()}
-          history={makeDegradedHistory()}
-          baselines={makeBaselines()}
+          benchmark={FIXTURE_BENCHMARK}
+          history={FIXTURE_DEGRADED_HISTORY}
+          baselines={FIXTURE_BASELINES}
         />,
       )
     }

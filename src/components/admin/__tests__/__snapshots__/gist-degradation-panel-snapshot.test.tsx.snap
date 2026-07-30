@@ -1,0 +1,1231 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GistDegradationPanel — snapshot dos 4 estados visuais > 1. estado inicial — painel degradado visível, botão 'Executar REINDEX', sem indicador > gist-degradation-panel-initial 1`] = `
+<DocumentFragment>
+  <div
+    class="rounded-xl border border-red-300 bg-red-50 dark:border-red-800/40 dark:bg-red-950/20"
+    data-open="false"
+    data-testid="collapsible"
+  >
+    <div
+      class="flex items-start gap-3 px-5 py-4"
+      role="alert"
+    >
+      <span
+        data-class="mt-0.5 size-5 shrink-0 text-red-500"
+        data-testid="lucide-icon"
+      />
+      <div
+        class="min-w-0 flex-1"
+      >
+        <p
+          class="text-sm font-semibold text-red-800 dark:text-red-300"
+        >
+          🛑 Índice GiST degradado
+        </p>
+        <p
+          class="mt-0.5 text-xs text-red-700 dark:text-red-400"
+        >
+          P95 real (
+          90
+          ms) ultrapassou 
+          <strong>
+            todas
+          </strong>
+           as curvas teóricas do modelo PostGIS em 
+          <strong>
+            15
+             km
+          </strong>
+           (seletividade 
+          9
+          %). A curva mais alta do modelo prevê 
+          35.2
+          ms. O índice GiST pode estar com performance degradada —
+           
+          4 de 5 escalas de provedores estão acima do esperado.
+        </p>
+        <button
+          class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-red-700 shadow-sm transition-colors hover:bg-red-50 dark:border-red-700/40 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/40"
+          type="button"
+        >
+          <span
+            data-class="size-3.5"
+            data-testid="lucide-icon"
+          />
+          Ver detalhes do índice
+          <span
+            class="inline-block transition-transform"
+          >
+            ▼
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      data-testid="collapsible-content"
+    >
+      <div
+        class="border-t border-red-200 px-5 py-4 dark:border-red-800/30"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              🔍 Diagnóstico
+            </p>
+            <p
+              class="mt-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              O P95 real do PostGIS (
+              90
+              ms) excede a previsão do modelo teórico em 
+              55
+              ms em
+               
+              <strong>
+                4
+              </strong>
+               de 
+              <strong>
+                5
+              </strong>
+               
+              escalas de provedores. As escalas mais afetadas são as de maior volume (acima de
+               
+              500
+               
+              providers), onde o custo linear do full scan domina.
+            </p>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              🛠️ Recomendação
+            </p>
+            <ul
+              class="mt-1 space-y-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  1.
+                </span>
+                <span>
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    REINDEX INDEX CONCURRENTLY idx_user_location_gist;
+                  </code>
+                   — 
+                  Reconstrói o índice GiST de localização de usuários.
+                </span>
+              </li>
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  2.
+                </span>
+                <span>
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    VACUUM ANALYZE "User";
+                  </code>
+                   — 
+                  Atualiza estatísticas do planner para o índice.
+                </span>
+              </li>
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  3.
+                </span>
+                <span>
+                  Se o problema persistir, avalie particionar a tabela por região geográfica ou aumentar o
+                   
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    work_mem
+                  </code>
+                   
+                  do PostgreSQL.
+                </span>
+              </li>
+            </ul>
+            <div
+              class="mt-3 flex items-center gap-3 border-t border-red-200 pt-3 dark:border-red-800/30"
+            >
+              <div
+                class="flex flex-wrap items-center gap-3"
+              >
+                <div
+                  data-open="false"
+                  data-testid="alert-dialog"
+                >
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                  >
+                    <span
+                      data-class="size-3.5"
+                      data-testid="lucide-icon"
+                    />
+                    Executar REINDEX
+                  </button>
+                  <div
+                    data-testid="alert-dialog-content"
+                  >
+                    <div>
+                      <div>
+                        ⚠️ Executar REINDEX nos índices GiST?
+                      </div>
+                      <div>
+                        <p>
+                          Esta ação irá reconstruir 
+                          <strong>
+                            3 índices
+                          </strong>
+                           espaciais GiST do PostGIS:
+                        </p>
+                        <ul
+                          class="list-inside list-disc space-y-1 text-[13px]"
+                        >
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_user_location_gist
+                            </code>
+                             — 
+                            localização de usuários
+                          </li>
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_booking_location_gist
+                            </code>
+                             — 
+                            localização de bookings
+                          </li>
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_quoterequest_location_gist
+                            </code>
+                             — 
+                            localização de quote requests
+                          </li>
+                        </ul>
+                        <p
+                          class="text-amber-600 dark:text-amber-400"
+                        >
+                          ⏱ A operação usa REINDEX CONCURRENTLY e não bloqueia a tabela durante a execução. Pode levar alguns segundos dependendo do volume de dados.
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      data-testid="alert-dialog-footer"
+                    >
+                      <button
+                        type="button"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        data-testid="alert-dialog-action"
+                        type="button"
+                      >
+                        Sim, executar REINDEX
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              📊 Impacto no Modelo
+            </p>
+            <p
+              class="mt-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              T(N, s) = 
+              2
+              ms + 
+              0.022
+              ms × N × s
+              <br />
+              P95 real (
+              90
+              ms) vs modelo máximo em 
+              15
+              km (
+              35.2
+              ms) — razão de
+               
+              <strong
+                class="text-red-600"
+              >
+                2.6
+                ×
+              </strong>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`GistDegradationPanel — snapshot dos 4 estados visuais > 2. reindexando — botão 'Reindexando…', indicador loading com spinner > gist-degradation-panel-reindexing 1`] = `
+<DocumentFragment>
+  <div
+    class="rounded-xl border border-red-300 bg-red-50 dark:border-red-800/40 dark:bg-red-950/20"
+    data-open="false"
+    data-testid="collapsible"
+  >
+    <div
+      class="flex items-start gap-3 px-5 py-4"
+      role="alert"
+    >
+      <span
+        data-class="mt-0.5 size-5 shrink-0 text-red-500"
+        data-testid="lucide-icon"
+      />
+      <div
+        class="min-w-0 flex-1"
+      >
+        <p
+          class="text-sm font-semibold text-red-800 dark:text-red-300"
+        >
+          🛑 Índice GiST degradado
+        </p>
+        <p
+          class="mt-0.5 text-xs text-red-700 dark:text-red-400"
+        >
+          P95 real (
+          90
+          ms) ultrapassou 
+          <strong>
+            todas
+          </strong>
+           as curvas teóricas do modelo PostGIS em 
+          <strong>
+            15
+             km
+          </strong>
+           (seletividade 
+          9
+          %). A curva mais alta do modelo prevê 
+          35.2
+          ms. O índice GiST pode estar com performance degradada —
+           
+          4 de 5 escalas de provedores estão acima do esperado.
+        </p>
+        <button
+          class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-red-700 shadow-sm transition-colors hover:bg-red-50 dark:border-red-700/40 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/40"
+          type="button"
+        >
+          <span
+            data-class="size-3.5"
+            data-testid="lucide-icon"
+          />
+          Ver detalhes do índice
+          <span
+            class="inline-block transition-transform"
+          >
+            ▼
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      data-testid="collapsible-content"
+    >
+      <div
+        class="border-t border-red-200 px-5 py-4 dark:border-red-800/30"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              🔍 Diagnóstico
+            </p>
+            <p
+              class="mt-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              O P95 real do PostGIS (
+              90
+              ms) excede a previsão do modelo teórico em 
+              55
+              ms em
+               
+              <strong>
+                4
+              </strong>
+               de 
+              <strong>
+                5
+              </strong>
+               
+              escalas de provedores. As escalas mais afetadas são as de maior volume (acima de
+               
+              500
+               
+              providers), onde o custo linear do full scan domina.
+            </p>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              🛠️ Recomendação
+            </p>
+            <ul
+              class="mt-1 space-y-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  1.
+                </span>
+                <span>
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    REINDEX INDEX CONCURRENTLY idx_user_location_gist;
+                  </code>
+                   — 
+                  Reconstrói o índice GiST de localização de usuários.
+                </span>
+              </li>
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  2.
+                </span>
+                <span>
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    VACUUM ANALYZE "User";
+                  </code>
+                   — 
+                  Atualiza estatísticas do planner para o índice.
+                </span>
+              </li>
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  3.
+                </span>
+                <span>
+                  Se o problema persistir, avalie particionar a tabela por região geográfica ou aumentar o
+                   
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    work_mem
+                  </code>
+                   
+                  do PostgreSQL.
+                </span>
+              </li>
+            </ul>
+            <div
+              class="mt-3 flex items-center gap-3 border-t border-red-200 pt-3 dark:border-red-800/30"
+            >
+              <div
+                class="flex flex-wrap items-center gap-3"
+              >
+                <div
+                  data-open="false"
+                  data-testid="alert-dialog"
+                >
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled=""
+                    type="button"
+                  >
+                    <span
+                      data-class="size-3.5"
+                      data-testid="lucide-icon"
+                    />
+                    Reindexando…
+                  </button>
+                  <div
+                    data-testid="alert-dialog-content"
+                  >
+                    <div>
+                      <div>
+                        ⚠️ Executar REINDEX nos índices GiST?
+                      </div>
+                      <div>
+                        <p>
+                          Esta ação irá reconstruir 
+                          <strong>
+                            3 índices
+                          </strong>
+                           espaciais GiST do PostGIS:
+                        </p>
+                        <ul
+                          class="list-inside list-disc space-y-1 text-[13px]"
+                        >
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_user_location_gist
+                            </code>
+                             — 
+                            localização de usuários
+                          </li>
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_booking_location_gist
+                            </code>
+                             — 
+                            localização de bookings
+                          </li>
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_quoterequest_location_gist
+                            </code>
+                             — 
+                            localização de quote requests
+                          </li>
+                        </ul>
+                        <p
+                          class="text-amber-600 dark:text-amber-400"
+                        >
+                          ⏱ A operação usa REINDEX CONCURRENTLY e não bloqueia a tabela durante a execução. Pode levar alguns segundos dependendo do volume de dados.
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      data-testid="alert-dialog-footer"
+                    >
+                      <button
+                        type="button"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        data-testid="alert-dialog-action"
+                        disabled=""
+                        type="button"
+                      >
+                        Executando…
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <span
+                  aria-live="polite"
+                  class="inline-flex items-center gap-1.5 text-xs opacity-100 transition-opacity duration-300 text-muted-foreground"
+                >
+                  <span
+                    data-class="size-3 animate-spin"
+                    data-testid="lucide-icon"
+                  />
+                  <span>
+                    Reindexando índices…
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              📊 Impacto no Modelo
+            </p>
+            <p
+              class="mt-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              T(N, s) = 
+              2
+              ms + 
+              0.022
+              ms × N × s
+              <br />
+              P95 real (
+              90
+              ms) vs modelo máximo em 
+              15
+              km (
+              35.2
+              ms) — razão de
+               
+              <strong
+                class="text-red-600"
+              >
+                2.6
+                ×
+              </strong>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`GistDegradationPanel — snapshot dos 4 estados visuais > 3. sucesso — indicador verde com resultado da API > gist-degradation-panel-success 1`] = `
+<DocumentFragment>
+  <div
+    class="rounded-xl border border-red-300 bg-red-50 dark:border-red-800/40 dark:bg-red-950/20"
+    data-open="false"
+    data-testid="collapsible"
+  >
+    <div
+      class="flex items-start gap-3 px-5 py-4"
+      role="alert"
+    >
+      <span
+        data-class="mt-0.5 size-5 shrink-0 text-red-500"
+        data-testid="lucide-icon"
+      />
+      <div
+        class="min-w-0 flex-1"
+      >
+        <p
+          class="text-sm font-semibold text-red-800 dark:text-red-300"
+        >
+          🛑 Índice GiST degradado
+        </p>
+        <p
+          class="mt-0.5 text-xs text-red-700 dark:text-red-400"
+        >
+          P95 real (
+          90
+          ms) ultrapassou 
+          <strong>
+            todas
+          </strong>
+           as curvas teóricas do modelo PostGIS em 
+          <strong>
+            15
+             km
+          </strong>
+           (seletividade 
+          9
+          %). A curva mais alta do modelo prevê 
+          35.2
+          ms. O índice GiST pode estar com performance degradada —
+           
+          4 de 5 escalas de provedores estão acima do esperado.
+        </p>
+        <button
+          class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-red-700 shadow-sm transition-colors hover:bg-red-50 dark:border-red-700/40 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/40"
+          type="button"
+        >
+          <span
+            data-class="size-3.5"
+            data-testid="lucide-icon"
+          />
+          Ver detalhes do índice
+          <span
+            class="inline-block transition-transform"
+          >
+            ▼
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      data-testid="collapsible-content"
+    >
+      <div
+        class="border-t border-red-200 px-5 py-4 dark:border-red-800/30"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              🔍 Diagnóstico
+            </p>
+            <p
+              class="mt-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              O P95 real do PostGIS (
+              90
+              ms) excede a previsão do modelo teórico em 
+              55
+              ms em
+               
+              <strong>
+                4
+              </strong>
+               de 
+              <strong>
+                5
+              </strong>
+               
+              escalas de provedores. As escalas mais afetadas são as de maior volume (acima de
+               
+              500
+               
+              providers), onde o custo linear do full scan domina.
+            </p>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              🛠️ Recomendação
+            </p>
+            <ul
+              class="mt-1 space-y-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  1.
+                </span>
+                <span>
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    REINDEX INDEX CONCURRENTLY idx_user_location_gist;
+                  </code>
+                   — 
+                  Reconstrói o índice GiST de localização de usuários.
+                </span>
+              </li>
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  2.
+                </span>
+                <span>
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    VACUUM ANALYZE "User";
+                  </code>
+                   — 
+                  Atualiza estatísticas do planner para o índice.
+                </span>
+              </li>
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  3.
+                </span>
+                <span>
+                  Se o problema persistir, avalie particionar a tabela por região geográfica ou aumentar o
+                   
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    work_mem
+                  </code>
+                   
+                  do PostgreSQL.
+                </span>
+              </li>
+            </ul>
+            <div
+              class="mt-3 flex items-center gap-3 border-t border-red-200 pt-3 dark:border-red-800/30"
+            >
+              <div
+                class="flex flex-wrap items-center gap-3"
+              >
+                <div
+                  data-open="false"
+                  data-testid="alert-dialog"
+                >
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                  >
+                    <span
+                      data-class="size-3.5"
+                      data-testid="lucide-icon"
+                    />
+                    Executar REINDEX
+                  </button>
+                  <div
+                    data-testid="alert-dialog-content"
+                  >
+                    <div>
+                      <div>
+                        ⚠️ Executar REINDEX nos índices GiST?
+                      </div>
+                      <div>
+                        <p>
+                          Esta ação irá reconstruir 
+                          <strong>
+                            3 índices
+                          </strong>
+                           espaciais GiST do PostGIS:
+                        </p>
+                        <ul
+                          class="list-inside list-disc space-y-1 text-[13px]"
+                        >
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_user_location_gist
+                            </code>
+                             — 
+                            localização de usuários
+                          </li>
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_booking_location_gist
+                            </code>
+                             — 
+                            localização de bookings
+                          </li>
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_quoterequest_location_gist
+                            </code>
+                             — 
+                            localização de quote requests
+                          </li>
+                        </ul>
+                        <p
+                          class="text-amber-600 dark:text-amber-400"
+                        >
+                          ⏱ A operação usa REINDEX CONCURRENTLY e não bloqueia a tabela durante a execução. Pode levar alguns segundos dependendo do volume de dados.
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      data-testid="alert-dialog-footer"
+                    >
+                      <button
+                        type="button"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        data-testid="alert-dialog-action"
+                        type="button"
+                      >
+                        Sim, executar REINDEX
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <span
+                  aria-live="assertive"
+                  class="inline-flex items-center gap-1.5 text-xs opacity-100 transition-opacity duration-300 text-emerald-600 dark:text-emerald-400"
+                >
+                  <span
+                    data-class="size-3.5 shrink-0"
+                    data-testid="lucide-icon"
+                  />
+                  <span>
+                    3/3 índices reindexados com sucesso. (2122ms) — idx_user_location_gist: 1234ms · idx_booking_location_gist: 567ms · idx_quoterequest_location_gist: 321ms
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              📊 Impacto no Modelo
+            </p>
+            <p
+              class="mt-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              T(N, s) = 
+              2
+              ms + 
+              0.022
+              ms × N × s
+              <br />
+              P95 real (
+              90
+              ms) vs modelo máximo em 
+              15
+              km (
+              35.2
+              ms) — razão de
+               
+              <strong
+                class="text-red-600"
+              >
+                2.6
+                ×
+              </strong>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;
+
+exports[`GistDegradationPanel — snapshot dos 4 estados visuais > 4. isRefetching — indicador 'Atualizando métricas…' com spinner, botão inalterado > gist-degradation-panel-refetching 1`] = `
+<DocumentFragment>
+  <div
+    class="rounded-xl border border-red-300 bg-red-50 dark:border-red-800/40 dark:bg-red-950/20"
+    data-open="false"
+    data-testid="collapsible"
+  >
+    <div
+      class="flex items-start gap-3 px-5 py-4"
+      role="alert"
+    >
+      <span
+        data-class="mt-0.5 size-5 shrink-0 text-red-500"
+        data-testid="lucide-icon"
+      />
+      <div
+        class="min-w-0 flex-1"
+      >
+        <p
+          class="text-sm font-semibold text-red-800 dark:text-red-300"
+        >
+          🛑 Índice GiST degradado
+        </p>
+        <p
+          class="mt-0.5 text-xs text-red-700 dark:text-red-400"
+        >
+          P95 real (
+          90
+          ms) ultrapassou 
+          <strong>
+            todas
+          </strong>
+           as curvas teóricas do modelo PostGIS em 
+          <strong>
+            15
+             km
+          </strong>
+           (seletividade 
+          9
+          %). A curva mais alta do modelo prevê 
+          35.2
+          ms. O índice GiST pode estar com performance degradada —
+           
+          4 de 5 escalas de provedores estão acima do esperado.
+        </p>
+        <button
+          class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-red-700 shadow-sm transition-colors hover:bg-red-50 dark:border-red-700/40 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/40"
+          type="button"
+        >
+          <span
+            data-class="size-3.5"
+            data-testid="lucide-icon"
+          />
+          Ver detalhes do índice
+          <span
+            class="inline-block transition-transform"
+          >
+            ▼
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      data-testid="collapsible-content"
+    >
+      <div
+        class="border-t border-red-200 px-5 py-4 dark:border-red-800/30"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              🔍 Diagnóstico
+            </p>
+            <p
+              class="mt-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              O P95 real do PostGIS (
+              90
+              ms) excede a previsão do modelo teórico em 
+              55
+              ms em
+               
+              <strong>
+                4
+              </strong>
+               de 
+              <strong>
+                5
+              </strong>
+               
+              escalas de provedores. As escalas mais afetadas são as de maior volume (acima de
+               
+              500
+               
+              providers), onde o custo linear do full scan domina.
+            </p>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              🛠️ Recomendação
+            </p>
+            <ul
+              class="mt-1 space-y-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  1.
+                </span>
+                <span>
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    REINDEX INDEX CONCURRENTLY idx_user_location_gist;
+                  </code>
+                   — 
+                  Reconstrói o índice GiST de localização de usuários.
+                </span>
+              </li>
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  2.
+                </span>
+                <span>
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    VACUUM ANALYZE "User";
+                  </code>
+                   — 
+                  Atualiza estatísticas do planner para o índice.
+                </span>
+              </li>
+              <li
+                class="flex items-start gap-1.5"
+              >
+                <span
+                  class="mt-0.5 shrink-0"
+                >
+                  3.
+                </span>
+                <span>
+                  Se o problema persistir, avalie particionar a tabela por região geográfica ou aumentar o
+                   
+                  <code
+                    class="rounded bg-red-100/80 px-1 py-0.5 font-mono text-[10px] dark:bg-red-900/30"
+                  >
+                    work_mem
+                  </code>
+                   
+                  do PostgreSQL.
+                </span>
+              </li>
+            </ul>
+            <div
+              class="mt-3 flex items-center gap-3 border-t border-red-200 pt-3 dark:border-red-800/30"
+            >
+              <div
+                class="flex flex-wrap items-center gap-3"
+              >
+                <div
+                  data-open="false"
+                  data-testid="alert-dialog"
+                >
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                  >
+                    <span
+                      data-class="size-3.5"
+                      data-testid="lucide-icon"
+                    />
+                    Executar REINDEX
+                  </button>
+                  <div
+                    data-testid="alert-dialog-content"
+                  >
+                    <div>
+                      <div>
+                        ⚠️ Executar REINDEX nos índices GiST?
+                      </div>
+                      <div>
+                        <p>
+                          Esta ação irá reconstruir 
+                          <strong>
+                            3 índices
+                          </strong>
+                           espaciais GiST do PostGIS:
+                        </p>
+                        <ul
+                          class="list-inside list-disc space-y-1 text-[13px]"
+                        >
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_user_location_gist
+                            </code>
+                             — 
+                            localização de usuários
+                          </li>
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_booking_location_gist
+                            </code>
+                             — 
+                            localização de bookings
+                          </li>
+                          <li>
+                            <code
+                              class="bg-muted rounded px-1 py-0.5 font-mono text-[11px]"
+                            >
+                              idx_quoterequest_location_gist
+                            </code>
+                             — 
+                            localização de quote requests
+                          </li>
+                        </ul>
+                        <p
+                          class="text-amber-600 dark:text-amber-400"
+                        >
+                          ⏱ A operação usa REINDEX CONCURRENTLY e não bloqueia a tabela durante a execução. Pode levar alguns segundos dependendo do volume de dados.
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      data-testid="alert-dialog-footer"
+                    >
+                      <button
+                        type="button"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        data-testid="alert-dialog-action"
+                        type="button"
+                      >
+                        Sim, executar REINDEX
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <span
+                  aria-live="polite"
+                  class="inline-flex items-center gap-1.5 text-xs opacity-100 transition-opacity duration-300 text-muted-foreground"
+                >
+                  <span
+                    data-class="size-3 animate-spin"
+                    data-testid="lucide-icon"
+                  />
+                  <span>
+                    Atualizando métricas…
+                  </span>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p
+              class="text-xs font-semibold text-red-800 dark:text-red-300"
+            >
+              📊 Impacto no Modelo
+            </p>
+            <p
+              class="mt-1 text-[11px] text-red-700 dark:text-red-400"
+            >
+              T(N, s) = 
+              2
+              ms + 
+              0.022
+              ms × N × s
+              <br />
+              P95 real (
+              90
+              ms) vs modelo máximo em 
+              15
+              km (
+              35.2
+              ms) — razão de
+               
+              <strong
+                class="text-red-600"
+              >
+                2.6
+                ×
+              </strong>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</DocumentFragment>
+`;

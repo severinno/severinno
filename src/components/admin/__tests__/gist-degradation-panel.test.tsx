@@ -99,14 +99,9 @@ let mockFetchResponse: FetchResponseFn
 // Default props
 // ===========================================================================
 
-const DEFAULT_PROPS = {
-  gistDegraded: true,
-  p95Mean: 90,
-  radiusKm: 15,
-  snapPct: 9,
-  maxModelAtSelectivity: 35.2,
-  exceedingCount: 4,
-}
+import { DEFAULT_GIST_DEGRADATION_PROPS } from "@/components/admin/__tests__/mocks"
+
+const DEFAULT_PROPS = DEFAULT_GIST_DEGRADATION_PROPS
 
 // ===========================================================================
 // Tests

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
@@ -34,7 +33,7 @@ import { sendPushNotification } from "@/lib/push"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function mockRule(overrides: Record<string, unknown> = {}) {
+function mockRule(overrides: Record<string, unknown> = {}): any {
   return {
     id: "rule-1",
     event: "booking.created",
@@ -46,7 +45,7 @@ function mockRule(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function mockUser(id: string, name: string) {
+function mockUser(id: string, name: string): any {
   return { id, name }
 }
 
@@ -96,14 +95,14 @@ describe("fireEvent", () => {
     expect(sendPushNotification).toHaveBeenCalledTimes(2)
     expect(sendPushNotification).toHaveBeenCalledWith(
       "user-1",
-      'Novo booking: Ana — Limpeza',
-      'Ana agendou Limpeza para 15 de ago às 14:00',
+      "Novo booking: Ana — Limpeza",
+      "Ana agendou Limpeza para 15 de ago às 14:00",
       "/dashboard",
     )
     expect(sendPushNotification).toHaveBeenCalledWith(
       "user-2",
-      'Novo booking: Ana — Limpeza',
-      'Ana agendou Limpeza para 15 de ago às 14:00',
+      "Novo booking: Ana — Limpeza",
+      "Ana agendou Limpeza para 15 de ago às 14:00",
       "/dashboard",
     )
   })
@@ -270,9 +269,7 @@ describe("fireEvent", () => {
   // ── All pushes fail → status 'failed' ─────────────────────────
   it("sets status to 'failed' when all pushes fail", async () => {
     vi.mocked(db.eventWebhook.findMany).mockResolvedValue([mockRule()])
-    vi.mocked(db.user.findMany).mockResolvedValue([
-      mockUser("user-1", "João"),
-    ])
+    vi.mocked(db.user.findMany).mockResolvedValue([mockUser("user-1", "João")])
     vi.mocked(sendPushNotification).mockRejectedValue(new Error("push failed"))
 
     await fireEvent("booking.created", { clientName: "Ana" })
@@ -312,12 +309,14 @@ describe("fireEvent", () => {
 
   // ── provider.registered event ─────────────────────────────────
   it("works with provider.registered event", async () => {
-    vi.mocked(db.eventWebhook.findMany).mockResolvedValue([mockRule({
-      event: "provider.registered",
-      title: "Novo prestador: {{providerName}}",
-      body: "{{providerName}} se cadastrou em {{city}}/{{state}}",
-      targetRoles: ["ADMIN"],
-    })])
+    vi.mocked(db.eventWebhook.findMany).mockResolvedValue([
+      mockRule({
+        event: "provider.registered",
+        title: "Novo prestador: {{providerName}}",
+        body: "{{providerName}} se cadastrou em {{city}}/{{state}}",
+        targetRoles: ["ADMIN"],
+      }),
+    ])
     vi.mocked(db.user.findMany).mockResolvedValue([mockUser("admin-1", "Admin")])
 
     await fireEvent("provider.registered", {

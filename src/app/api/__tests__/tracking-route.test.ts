@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest"
 import { parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -9,7 +8,10 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
-  return { ...(actual as Record<string, unknown>), handleError: vi.fn((e: unknown) => (actual.handleError as (e: unknown) => Response)(e)) }
+  return {
+    ...(actual as Record<string, unknown>),
+    handleError: vi.fn((e: unknown) => (actual.handleError as (e: unknown) => Response)(e)),
+  }
 })
 
 vi.mock("@/lib/db", () => ({
@@ -48,7 +50,7 @@ const mockBooking = {
 
 describe("GET /api/tracking/[id]", () => {
   it("returns booking data for valid id", async () => {
-    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue(mockBooking)
+    ;(vi.mocked(db.booking.findUnique) as any).mockResolvedValue(mockBooking)
 
     const req = new Request("http://localhost")
     const res = await GET(req, { params: Promise.resolve({ id: "book-1" }) })
@@ -75,7 +77,7 @@ describe("GET /api/tracking/[id]", () => {
   })
 
   it("returns 404 for non-existent booking", async () => {
-    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.booking.findUnique) as any).mockResolvedValue(null)
 
     const req = new Request("http://localhost")
     const res = await GET(req, { params: Promise.resolve({ id: "invalid-id" }) })
@@ -86,7 +88,7 @@ describe("GET /api/tracking/[id]", () => {
   })
 
   it("returns cancelled booking data (tracking shows all statuses)", async () => {
-    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
       ...mockBooking,
       status: "CANCELLED",
       paymentStatus: "REFUNDED",

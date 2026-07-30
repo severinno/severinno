@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -62,7 +61,6 @@ vi.mock("@/lib/db", () => ({
 import { verifyWebhookSignature, parseExternalReference } from "@/lib/lytex"
 import { POST as webhookHandler } from "../webhooks/lytex/route"
 
-
 import { db } from "@/lib/db"
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -94,11 +92,13 @@ describe("POST /api/webhooks/lytex", () => {
 
   it("processes charge.paid event and updates booking", async () => {
     // Mock setting lookup to return empty (skip signature validation)
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
-    // First mock: confirmBookingPayment findUnique — must have payment
-    (vi.mocked(db.booking.findUnique) as any)
+    ;(vi.mocked(db.setting.findUnique) as any)
+      .mockResolvedValue(null)(vi.mocked(db.payment.upsert) as any)
+      .mockResolvedValue({} as any)(vi.mocked(db.booking.update) as any)
+      .mockResolvedValue({} as any)(
+        // First mock: confirmBookingPayment findUnique — must have payment
+        vi.mocked(db.booking.findUnique) as any,
+      )
       .mockResolvedValueOnce({
         id: "book-1",
         clientId: "client-1",
@@ -138,13 +138,14 @@ describe("POST /api/webhooks/lytex", () => {
   })
 
   it("processes charge.expired event", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
-      clientId: "client-1",
-      amount: 200,
-    })
+    ;(vi.mocked(db.setting.findUnique) as any)
+      .mockResolvedValue(null)(vi.mocked(db.payment.upsert) as any)
+      .mockResolvedValue({} as any)(vi.mocked(db.booking.update) as any)
+      .mockResolvedValue({} as any)(vi.mocked(db.booking.findUnique) as any)
+      .mockResolvedValue({
+        clientId: "client-1",
+        amount: 200,
+      })
 
     const payload = {
       id: "lytex-charge-expired-1",
@@ -168,13 +169,16 @@ describe("POST /api/webhooks/lytex", () => {
   })
 
   it("processes charge.refunded event", async () => {
-    (vi.mocked(db.payment.findUnique) as any).mockResolvedValue({ id: "pay-1", status: "PAID", lytexId: "lytex-charge-refunded-1" })
-    (vi.mocked(db.booking.update) as any).mockResolvedValue({
-      client: { name: "Client", email: "client@test.com", id: "client-1" },
-      provider: { name: "Provider", id: "provider-1" },
-      service: { title: "Service" },
-      amount: 200,
-    } as any)
+    ;(vi.mocked(db.payment.findUnique) as any)
+      .mockResolvedValue({ id: "pay-1", status: "PAID", lytexId: "lytex-charge-refunded-1" })(
+        vi.mocked(db.booking.update) as any,
+      )
+      .mockResolvedValue({
+        client: { name: "Client", email: "client@test.com", id: "client-1" },
+        provider: { name: "Provider", id: "provider-1" },
+        service: { title: "Service" },
+        amount: 200,
+      } as any)
 
     const payload = {
       id: "lytex-charge-refunded-1",
@@ -295,16 +299,17 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
   })
 
   it("não cria nova notificação quando booking já está PAID", async () => {
-    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
-      id: "book-1",
-      clientId: "client-1",
-      providerId: "provider-1",
-      paymentStatus: "PAID",
-      status: "CONFIRMED",
-      amount: 200,
-      payment: { id: "pay-1", status: "PAID" },
-    })
-    (vi.mocked(db.payment.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.booking.findUnique) as any)
+      .mockResolvedValue({
+        id: "book-1",
+        clientId: "client-1",
+        providerId: "provider-1",
+        paymentStatus: "PAID",
+        status: "CONFIRMED",
+        amount: 200,
+        payment: { id: "pay-1", status: "PAID" },
+      })(vi.mocked(db.payment.update) as any)
+      .mockResolvedValue({} as any)
 
     const payload = {
       id: "lytex-charge-duplicate-2",
@@ -341,17 +346,18 @@ describe("POST /api/webhooks/lytex — pagamento com cartão", () => {
   })
 
   it("processa charge.paid com paymentMethod CARD", async () => {
-    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
-      id: "book-card-1",
-      clientId: "client-1",
-      providerId: "provider-1",
-      paymentStatus: "PENDING",
-      status: "CONFIRMED",
-      amount: 350,
-      payment: { id: "pay-card-1", status: "PENDING" },
-    })
-    (vi.mocked(db.payment.update) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.booking.findUnique) as any)
+      .mockResolvedValue({
+        id: "book-card-1",
+        clientId: "client-1",
+        providerId: "provider-1",
+        paymentStatus: "PENDING",
+        status: "CONFIRMED",
+        amount: 350,
+        payment: { id: "pay-card-1", status: "PENDING" },
+      })(vi.mocked(db.payment.update) as any)
+      .mockResolvedValue({} as any)(vi.mocked(db.booking.update) as any)
+      .mockResolvedValue({} as any)
     vi.mocked(db.$transaction).mockResolvedValue([{}, {}])
 
     const payload = {
@@ -475,7 +481,7 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
   })
 
   it("refund sem lytexId: warn, sem DB update", async () => {
-    (vi.mocked(db.payment.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.payment.findUnique) as any).mockResolvedValue({
       id: "pay-no-lytex",
       status: "PAID",
       lytexId: null,
@@ -501,7 +507,7 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
   })
 
   it("confirmPayment sem payment: warn, retorna sem DB update", async () => {
-    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
       id: "book-no-payment",
       clientId: "client-1",
       providerId: "provider-1",

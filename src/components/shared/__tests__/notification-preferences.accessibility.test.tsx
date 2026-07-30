@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Accessibility (axe-core) tests for NotificationPreferences.
  *
@@ -8,7 +7,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, cleanup } from "@/__tests__/test-utils"
+import { render, cleanup, screen } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Mocks ─────────────────────────────────────────────────────────────────
@@ -150,8 +149,8 @@ describe("NotificationPreferences — accessibility", () => {
   })
 
   it("renders table switches with aria-labels", () => {
-    const { getAllByRole } = render(<NotificationPreferences />)
-    const switches = getAllByRole("switch")
+    render(<NotificationPreferences />)
+    const switches = screen.getAllByRole("switch")
     expect(switches.length).toBeGreaterThan(0)
     switches.forEach((s) => {
       expect(s).toHaveAttribute("aria-label")

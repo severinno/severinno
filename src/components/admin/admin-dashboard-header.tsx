@@ -36,6 +36,7 @@
 
 import * as React from "react"
 import { RefreshButton } from "@/components/admin/admin-refresh-button"
+import { TierBanner, type TierBannerProps } from "@/components/admin/admin-tier-banner"
 
 // ---------------------------------------------------------------------------
 // Props
@@ -56,6 +57,10 @@ export interface DashboardHeaderProps {
   refreshLabel?: string
   /** Optional extra elements rendered before the timestamp in the right section. */
   prefixContent?: React.ReactNode
+  /** Optional extra elements rendered after the refresh button (e.g. reset buttons). */
+  suffixContent?: React.ReactNode
+  /** Optional tier degradation banner shown below the header row. */
+  tierBanner?: TierBannerProps
 }
 
 // ---------------------------------------------------------------------------
@@ -70,24 +75,40 @@ export function DashboardHeader({
   dataUpdatedAt,
   refreshLabel = "Atualizar",
   prefixContent,
+  suffixContent,
+  tierBanner,
 }: DashboardHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 className="text-foreground text-xl font-bold tracking-tight">{title}</h1>
-        <p className="text-muted-foreground mt-0.5 text-sm">{description}</p>
-      </div>
-      <div className="flex items-center gap-3">
-        {prefixContent}
+    <>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-foreground text-xl font-bold tracking-tight">{title}</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">{description}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {prefixContent}
 
-        {dataUpdatedAt ? (
-          <span className="text-muted-foreground text-xs">
-            Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
-          </span>
-        ) : null}
+          {dataUpdatedAt ? (
+            <span className="text-muted-foreground text-xs">
+              Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
+            </span>
+          ) : null}
 
-        <RefreshButton isFetching={isFetching} onRefresh={onRefresh} label={refreshLabel} />
+          <RefreshButton isFetching={isFetching} onRefresh={onRefresh} label={refreshLabel} />
+
+          {suffixContent}
+        </div>
       </div>
-    </div>
+
+      {tierBanner ? (
+        <TierBanner
+          state={tierBanner.state}
+          title={tierBanner.title}
+          description={tierBanner.description}
+          degradationCount={tierBanner.degradationCount}
+          className={tierBanner.className}
+        />
+      ) : null}
+    </>
   )
 }
