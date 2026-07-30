@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Usage: node scripts/run-benchmark.mjs --type <type> [options]
+// Exit code: 0 = success, 1 = failure/regression, 2 = bad args
 
 /**
  * run-benchmark.mjs — unified benchmark runner
@@ -22,15 +24,33 @@
  *   --save         Save result to docs/benchmarks/<type>-YYYY-MM-DD.json
  *   --compare      After running, compare against the baseline file
  *   --all          Run all registered benchmark types
- *   --no-cache     Force re-run even if today's latest JSON exists
+ *   --no-cache     Force re-run even if a fresh cached result exists
  *   --skip-db      Skip benchmarks that require a database (real, gist)
+ *
+ * Environment:
+ *   BENCHMARK_CACHE_TTL_HOURS   Cache TTL in hours (default: 24).
+ *                               A cached result is reused if its
+ *                               meta.timestamp is newer than now - TTL.
+ *                               Set to 0 to disable cache entirely.
+ *
+ * Cache manifest (docs/benchmarks/.benchmark-cache.json):
+ *   In addition to the TTL check, the runner records the current HEAD
+ *   commit hash in a cache manifest file after each successful benchmark.
+ *   On subsequent runs, if the HEAD commit has changed since the cached
+ *   result was generated, the cache is automatically invalidated and the
+ *   benchmark re-runs.  This ensures that code changes always produce
+ *   fresh benchmark data, even within the same TTL window.
+ *
+ *   The commit check is skipped when git is not available (e.g., running
+ *   outside a repository) to avoid unnecessary cache invalidations.
  *
  * Cache:
  *   When running --type all, each type checks if <type>-latest.json exists
- *   and its meta.timestamp is from today. If so, the benchmark is SKIPPED
- *   (status: cached) and the existing result is reused.  This avoids
- *   re-running all 6 benchmarks on every CI retry when only 1-2 failed.
- *   Use --no-cache to force a full re-run of all types.
+ *   and its meta.timestamp is within BENCHMARK_CACHE_TTL_HOURS. If so,
+ *   the benchmark is SKIPPED (status: cached) and the existing result is
+ *   reused.  This avoids re-running all 6 benchmarks on every CI retry
+ *   when only 1-2 failed.  Use --no-cache to force a full re-run of all
+ *   types.
  *
  * Exit codes:
  *   0 — success
@@ -40,7 +60,7 @@
 
 import { execSync } from "node:child_process"
 import { join, dirname } from "node:path"
-import { existsSync, mkdirSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 // ---------------------------------------------------------------------------
@@ -140,14 +160,103 @@ if (!type) {
 // --skip-db: skip benchmarks that require a real database
 const skipDb = args.includes("--skip-db")
 
-// --no-cache: force re-run even if today's latest JSON exists
+// --no-cache: force re-run even if a fresh cached result exists
 const noCache = args.includes("--no-cache")
+
+// ── Cache TTL from env (default: 24h, set to 0 to disable) ────────────────
+const CACHE_TTL_HOURS = (() => {
+  const raw = process.env.BENCHMARK_CACHE_TTL_HOURS?.trim()
+  if (raw === undefined || raw === "") return 24
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) {
+    console.warn(`  ⚠  Invalid BENCHMARK_CACHE_TTL_HOURS=${raw}, falling back to 24h`)
+    return 24
+  }
+  return n
+})()
+const CACHE_TTL_MS = CACHE_TTL_HOURS * 60 * 60 * 1000
+
+const CACHE_MANIFEST_PATH = join(OUT_DIR, ".benchmark-cache.json")
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url))
+
+// ── Git commit hash ──────────────────────────────────────────────────────
+
+/**
+ * Get the current HEAD commit hash (short form, 7 chars).
+ * Returns null when git is not available or not a git repository.
+ */
+function getCurrentCommitHash() {
+  try {
+    return execSync("git rev-parse --short HEAD", {
+      encoding: "utf-8",
+      timeout: 3000,
+    })
+      .trim()
+      .slice(0, 7)
+  } catch {
+    return null
+  }
+}
+
+// ── Cache manifest helpers ───────────────────────────────────────────────
+
+/**
+ * Read the benchmark cache manifest.
+ * Returns an empty record when the file is missing, corrupt, or invalid.
+ *
+ * Format:
+ *   {
+ *     "version": 1,
+ *     "entries": {
+ *       "geo": { "commitHash": "abc1234", "timestamp": "2026-..." },
+ *       ...
+ *     }
+ *   }
+ */
+function readCacheManifest() {
+  try {
+    if (!existsSync(CACHE_MANIFEST_PATH)) return { version: 1, entries: {} }
+    const raw = readFileSync(CACHE_MANIFEST_PATH, "utf-8")
+    const data = JSON.parse(raw)
+    if (data?.version === 1 && data?.entries && typeof data.entries === "object") {
+      return data
+    }
+    return { version: 1, entries: {} }
+  } catch {
+    return { version: 1, entries: {} }
+  }
+}
+
+/**
+ * Write the cache manifest to disk.
+ * Creates the output directory if needed.
+ */
+function writeCacheManifest(manifest) {
+  try {
+    mkdirSync(OUT_DIR, { recursive: true })
+    writeFileSync(CACHE_MANIFEST_PATH, JSON.stringify(manifest, null, 2), "utf-8")
+  } catch {
+    // Best-effort — manifest loss only reduces cache efficiency
+  }
+}
+
+/**
+ * Check if the commit hash in the cache manifest matches the current HEAD.
+ * Returns true only when both are available and equal.
+ * When git is unavailable (null), returns true to avoid false invalidations.
+ */
+function isCommitCacheValid(manifestEntry, currentCommitHash) {
+  // No git available — skip commit check (optimistic)
+  if (currentCommitHash == null) return true
+  // No manifest entry for this type — not cached before
+  if (!manifestEntry?.commitHash) return false
+  return manifestEntry.commitHash === currentCommitHash
+}
 
 function benchmarkPath(type, file) {
   return join(OUT_DIR, file)
@@ -174,45 +283,79 @@ function runSingle(type) {
     return { status: "skipped", exitCode: 0, elapsedMs: 0 }
   }
 
-  // ── Cache check: skip if latest JSON exists and was generated today ───
+  // ── Cache check: skip if latest JSON exists and is within TTL ─────────
   // Cache is bypassed when:
   //   - --no-cache is set (explicit force)
+  //   - CACHE_TTL_HOURS is 0 (disabled via env var)
   //   - --baseline  is set (user wants a fresh baseline capture)
   //   - --save      is set (user wants a fresh dated snapshot)
-  const todayStr = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+  const cacheEnabled = CACHE_TTL_HOURS > 0
   const latestPath = benchmarkPath(type, cfg.latest)
-  const cacheValid = !noCache && !baselineFlag && !saveFlag && existsSync(latestPath)
+  const cacheValid =
+    !noCache && cacheEnabled && !baselineFlag && !saveFlag && existsSync(latestPath)
 
   if (cacheValid) {
     try {
       const raw = readFileSync(latestPath, "utf-8")
       const data = JSON.parse(raw)
-      const fileDate = data.meta?.timestamp?.slice(0, 10)
+      const fileTs = data.meta?.timestamp
 
-      if (fileDate === todayStr) {
-        console.log(`  📦 ${cfg.label} — cached (gerado hoje, ${fileDate})`)
+      if (fileTs) {
+        const fileTime = new Date(fileTs).getTime()
+        const ageMs = Date.now() - fileTime
+        const ageHours = ageMs / (60 * 60 * 1000)
 
-        // If --compare is set, still run comparison against baseline
-        if (compareFlag) {
-          const baselinePath = benchmarkPath(type, cfg.baseline)
-          if (existsSync(baselinePath)) {
-            console.log(`\n  ─── Comparing ${type} against baseline (cached result) ─────\n`)
-            let compareCmd = `node "${join(SCRIPTS_DIR, "compare-benchmarks.mjs")}"`
-            if (cfg.compareFilter) compareCmd += ` --filter ${cfg.compareFilter}`
-            compareCmd += ` "${baselinePath}" "${latestPath}"`
-            try {
-              execSync(compareCmd, { stdio: "inherit" })
-              return { status: "cached", exitCode: 0, elapsedMs: 0 }
-            } catch {
-              console.log(`\n  ⚠  Regression detected in cached ${type} benchmarks.`)
-              return { status: "regression", exitCode: 1, elapsedMs: 0 }
+        if (ageMs < CACHE_TTL_MS) {
+          // ── Commit hash check ────────────────────────────────────────
+          // If the code has changed since the cached result was generated,
+          // invalidate the cache even if TTL is still valid.
+          const manifest = readCacheManifest()
+          const currentCommit = getCurrentCommitHash()
+          const manifestEntry = manifest.entries[type]
+          const commitOk = isCommitCacheValid(manifestEntry, currentCommit)
+
+          if (!commitOk) {
+            const manifestHash = manifestEntry?.commitHash ?? "none"
+            const currentLabel = currentCommit ?? "?"
+            console.log(
+              `  ℹ  ${cfg.label} — cache invalidado (commit mudou: ${manifestHash} → ${currentLabel})`,
+            )
+            // Remove the stale entry and fall through to re-run
+            delete manifest.entries[type]
+            writeCacheManifest(manifest)
+          } else {
+            const remainingHours = ((CACHE_TTL_MS - ageMs) / (60 * 60 * 1000)).toFixed(1)
+            const commitLabel = currentCommit ? ` @ ${currentCommit}` : ""
+            console.log(
+              `  📦 ${cfg.label} — cached (${ageHours.toFixed(1)}h atrás, expira em ${remainingHours}h${commitLabel})`,
+            )
+
+            // If --compare is set, still run comparison against baseline
+            if (compareFlag) {
+              const baselinePath = benchmarkPath(type, cfg.baseline)
+              if (existsSync(baselinePath)) {
+                console.log(`\n  ─── Comparing ${type} against baseline (cached result) ─────\n`)
+                let compareCmd = `node "${join(SCRIPTS_DIR, "compare-benchmarks.mjs")}"`
+                if (cfg.compareFilter) compareCmd += ` --filter ${cfg.compareFilter}`
+                compareCmd += ` "${baselinePath}" "${latestPath}"`
+                try {
+                  execSync(compareCmd, { stdio: "inherit" })
+                  return { status: "cached", exitCode: 0, elapsedMs: 0 }
+                } catch {
+                  console.log(`\n  ⚠  Regression detected in cached ${type} benchmarks.`)
+                  return { status: "regression", exitCode: 1, elapsedMs: 0 }
+                }
+              }
             }
-          }
-        }
 
-        return { status: "cached", exitCode: 0, elapsedMs: 0 }
+            return { status: "cached", exitCode: 0, elapsedMs: 0 }
+          }
+        } else {
+          console.log(
+            `  ℹ  ${cfg.label} — cache expirado (${ageHours.toFixed(1)}h atrás, TTL: ${CACHE_TTL_HOURS}h)`,
+          )
+        }
       }
-      console.log(`  ℹ  ${cfg.label} — cache expirado (último: ${fileDate}, hoje: ${todayStr})`)
     } catch {
       // Invalid/corrupt JSON — re-run anyway
       console.log(`  ℹ  ${cfg.label} — cache inválido, re-executando…`)
@@ -252,6 +395,19 @@ function runSingle(type) {
   }
 
   const elapsedMs = Math.round(performance.now() - startMs)
+
+  // ── Update cache manifest with current commit hash ─────────────────
+  // Records which code version generated this result, so future runs
+  // can skip the benchmark when neither code nor TTL changed.
+  const currentCommit = getCurrentCommitHash()
+  if (currentCommit) {
+    const manifest = readCacheManifest()
+    manifest.entries[type] = {
+      commitHash: currentCommit,
+      timestamp: new Date().toISOString(),
+    }
+    writeCacheManifest(manifest)
+  }
 
   // If --compare, run comparison against baseline
   if (compareFlag) {

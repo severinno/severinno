@@ -2,6 +2,7 @@ import "server-only"
 import { db } from "@/lib/db"
 import { captureMessage } from "@/lib/sentry"
 import { sendPushNotification } from "@/lib/push"
+import { sendSlackAlert } from "@/lib/slack-notify"
 import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
@@ -153,6 +154,19 @@ export async function notifyGeoAlert(payload: GeoAlertPayload): Promise<{
     },
     "geo-alert-notify: alert sent",
   )
+
+  // ── 3. Slack webhook (non-blocking, best-effort) ─────────────────
+  // sendSlackAlert catches all errors internally, so this never throws.
+  sendSlackAlert({
+    title,
+    body,
+    severity,
+    url: url ?? "/admin",
+    source,
+    fields: context
+      ? Object.fromEntries(Object.entries(context).map(([k, v]) => [k, String(v ?? "")]))
+      : undefined,
+  })
 
   return {
     sentrySent: true,

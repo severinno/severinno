@@ -77,6 +77,7 @@ import { AdminPgBouncer } from "./admin-pgbouncer"
 import { AdminGeoMetricsDashboard } from "./admin-geo-metrics-dashboard"
 import { AdminCoverageMap } from "./admin-coverage-map"
 import { AdminBenchmarkDashboard } from "./admin-benchmark-dashboard"
+import { AdminBenchmarkEvolution } from "./admin-benchmark-evolution"
 import { AdminGeoCacheDashboard } from "./admin-geo-cache-dashboard"
 
 // ---------------------------------------------------------------------------
@@ -182,6 +183,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.benchmarks",
     label: "Benchmarks",
     icon: BarChart3,
+  },
+  {
+    view: "admin.benchmark-evolution",
+    label: "Evolução Geo",
+    icon: Activity,
   },
   {
     view: "admin.performance",
@@ -324,6 +330,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     subtitle:
       "Comparação contínua de desempenho dos benchmarks de geolocalização com detecção automática de regressões.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Benchmarks" }],
+  },
+  "admin.benchmark-evolution": {
+    title: "Evolução dos Benchmarks Geo",
+    subtitle:
+      "Visualização temporal dos 6 benchmarks de geolocalização ao longo de todas as execuções.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Evolução Geo" }],
   },
   "admin.performance": {
     title: "Performance",
@@ -493,6 +505,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminGeoMetricsDashboard />
     case "admin.benchmarks":
       return <AdminBenchmarkDashboard />
+    case "admin.benchmark-evolution":
+      return <AdminBenchmarkEvolution />
     case "admin.performance":
       return <AdminPerformanceDashboard />
     case "admin.pgbouncer":

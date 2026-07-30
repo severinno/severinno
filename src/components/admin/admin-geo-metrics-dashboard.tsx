@@ -71,6 +71,7 @@ import {
   modelPostGISFullMs,
   modelDelta,
 } from "@/lib/geo-benchmark-model"
+import { buildBenchmarkBarData, getMaxPostgisLatency, ratioColor } from "@/lib/benchmark-data"
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
 
@@ -568,17 +569,9 @@ function BenchmarkSection({
 }: {
   benchmark: NonNullable<GeoMetricsResponse["benchmark"]>
 }) {
-  const barData = benchmark.comparisons.map((c) => ({
-    label: c.label,
-    scale: c.scale,
-    haversine: c.haversine.mean,
-    postgis: c.postgis.mean,
-    haversine_ops: c.haversine.opsPerSec,
-    postgis_ops: c.postgis.opsPerSec,
-    ratio: c.ratio,
-  }))
+  const barData = buildBenchmarkBarData(benchmark)
 
-  const maxLatency = Math.max(...barData.map((d) => d.postgis))
+  const maxLatency = getMaxPostgisLatency(barData)
 
   return (
     <section aria-label="Comparação de benchmark" className="space-y-6">
@@ -741,10 +734,7 @@ function BenchmarkSection({
                 />
                 <Bar dataKey="ratio" name="Razão" radius={[0, 3, 3, 0]} barSize={20}>
                   {barData.map((entry) => (
-                    <Cell
-                      key={entry.label}
-                      fill={entry.ratio > 50 ? COLOR_P99 : entry.ratio > 10 ? COLOR_P95 : COLOR_P50}
-                    />
+                    <Cell key={entry.label} fill={ratioColor(entry.ratio)} />
                   ))}
                 </Bar>
               </BarChart>
@@ -926,7 +916,7 @@ function TimelineSection({
 
 // ── GiST Selectivity vs Cost Section ──────────────────────────────────────
 
-function GiSTSelectivitySection({
+export function GiSTSelectivitySection({
   benchmark,
   history,
   baselines,
@@ -941,10 +931,23 @@ function GiSTSelectivitySection({
       ? benchmark.analysis.avgHaversinePerProvider
       : 0.1323 // fallback hardcoded
 
-  // ── Radius slider state ────────────────────────────────────────────
+  // ── Radius + Density state ────────────────────────────────────────
   const [radiusKm, setRadiusKm] = React.useState(15)
+  const [density, setDensity] = React.useState(10) // providers/km²
   const [useLogScale, setUseLogScale] = React.useState(true)
-  const densityLabel = "SP (~10/km²)"
+
+  // Estimated providers within the search area at current density
+  const estimatedProviders = Math.round(density * Math.PI * radiusKm * radiusKm)
+
+  // Density label for display
+  const densityLabel =
+    density <= 3
+      ? `Interior (~${density}/km²)`
+      : density <= 7
+        ? `Sul/Sudeste (~${density}/km²)`
+        : density <= 15
+          ? `São Paulo (~${density}/km²)`
+          : `Metrópole (~${density}/km²)`
 
   // Compute selectivity from selected radius
   const currentSelectivity = radiusToSelectivity(radiusKm)
@@ -979,6 +982,45 @@ function GiSTSelectivitySection({
   const p95Stdev = p95Stats.stdev
   const postgisP95ValuesCount = p95Stats.count
 
+  // ── GiST degradation check: real P95 exceeds ALL model curves ─────
+  const currentSelLabel = `${snapPct}%`
+  const selRow = selectivityPoints.find(
+    (r: Record<string, unknown>) => r.selectivity === currentSelLabel,
+  )
+  let gistDegraded = false
+  let maxModelAtSelectivity = 0
+  let exceedingCount = 0
+
+  // Inject cost data into the selectivityPoints row at the reference line
+  // so the chart tooltip can show cost-per-provider at the selected radius.
+  const refLineRow = selectivityPoints.find(
+    (r: Record<string, unknown>) => r.selectivity === refLineLabel,
+  )
+  if (refLineRow) {
+    for (const c of costData) {
+      const label = c.n >= 1000 ? `${(c.n / 1000).toFixed(0)}k` : String(c.n)
+      refLineRow[`cost_pg_${c.n}`] = c.postgisMs
+      refLineRow[`cost_hav_${c.n}`] = c.haversineMs
+      refLineRow[`cost_ratio_${c.n}`] = c.ratio
+      refLineRow[`cost_faster_${c.n}`] = c.faster
+      refLineRow[`cost_label_${c.n}`] = label
+    }
+  }
+
+  if (hasP95Data && selRow) {
+    const pgKeys = PROVIDER_COUNTS.map((n) => `pg_${n}`)
+    let maxVal = 0
+    let exceeding = 0
+    for (const k of pgKeys) {
+      const v = Number(selRow[k] ?? 0)
+      if (v > maxVal) maxVal = v
+      if (p95Mean > v) exceeding++
+    }
+    maxModelAtSelectivity = maxVal
+    exceedingCount = exceeding
+    gistDegraded = p95Mean > maxVal
+  }
+
   return (
     <section aria-label="Seletividade GiST vs Custo" className="space-y-6">
       <div className="flex items-center gap-2">
@@ -987,6 +1029,30 @@ function GiSTSelectivitySection({
           Curva de Seletividade — GiST Index vs Haversine
         </h2>
       </div>
+
+      {/* ── GiST Degradation Alert ──────────────────────────────────── */}
+      {gistDegraded && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 px-5 py-4 dark:border-red-800/40 dark:bg-red-950/20"
+        >
+          <Database className="mt-0.5 size-5 shrink-0 text-red-500" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+              🛑 Índice GiST degradado
+            </p>
+            <p className="mt-0.5 text-xs text-red-700 dark:text-red-400">
+              P95 real ({Math.round(p95Mean)}ms) ultrapassou <strong>todas</strong> as curvas
+              teóricas do modelo PostGIS em <strong>{radiusKm} km</strong> (seletividade {snapPct}
+              %). A curva mais alta do modelo prevê {maxModelAtSelectivity.toFixed(1)}ms. O índice
+              GiST pode estar com performance degradada —{" "}
+              {exceedingCount >= PROVIDER_COUNTS.length
+                ? "todas as escalas de provedores estão acima do esperado."
+                : `${exceedingCount} de ${PROVIDER_COUNTS.length} escalas de provedores estão acima do esperado.`}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Radius Selector ─────────────────────────────────────────── */}
       <MetricCard icon={MapPin} title="Selecionar Raio de Busca">
@@ -1024,9 +1090,54 @@ function GiSTSelectivitySection({
                 {r} km
               </button>
             ))}
-            <span className="text-muted-foreground ml-auto self-center text-[10px]">
-              {densityLabel}
-            </span>
+          </div>
+
+          {/* Density Slider */}
+          <div className="border-t pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-muted-foreground text-[10px] font-medium">
+                Densidade: {densityLabel}
+              </span>
+              <span className="text-muted-foreground text-[10px]">
+                ~{estimatedProviders.toLocaleString("pt-BR")} providers na área
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-muted-foreground w-10 text-right text-[10px] font-medium">
+                {density}/km²
+              </span>
+              <input
+                type="range"
+                min={2}
+                max={50}
+                value={density}
+                onChange={(e) => setDensity(Number(e.target.value))}
+                className="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300"
+                aria-label="Densidade de providers por km²"
+              />
+            </div>
+            <div className="mt-1.5 flex gap-2">
+              {[
+                { v: 2, label: "Interior" },
+                { v: 8, label: "RJ" },
+                { v: 10, label: "SP" },
+                { v: 30, label: "Metrópole" },
+              ].map((p) => (
+                <button
+                  key={p.v}
+                  type="button"
+                  onClick={() => setDensity(p.v)}
+                  className={cn(
+                    "rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all",
+                    density === p.v
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "bg-muted text-muted-foreground hover:bg-muted/70",
+                  )}
+                >
+                  {p.label} {p.v}/km²
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Selectivity indicator */}
@@ -1101,33 +1212,15 @@ function GiSTSelectivitySection({
                 domain={useLogScale ? ["auto", "auto"] : [0, "auto"]}
               />
               <RTooltip
-                contentStyle={TOOLTIP_STYLE}
-                formatter={(v: number, n: string) => {
-                  const labelMap: Record<string, string> = {
-                    pg_100: "PostGIS filtrado (100 prov)",
-                    pg_500: "PostGIS filtrado (500 prov)",
-                    pg_1000: "PostGIS filtrado (1k prov)",
-                    pg_5000: "PostGIS filtrado (5k prov)",
-                    pg_10000: "PostGIS filtrado (10k prov)",
-                    hav_100: "Haversine (100 prov)",
-                    hav_500: "Haversine (500 prov)",
-                    hav_1000: "Haversine (1k prov)",
-                    hav_5000: "Haversine (5k prov)",
-                    hav_10000: "Haversine (10k prov)",
-                    bench_pg_100: "PostGIS full scan medido (100)",
-                    bench_pg_1000: "PostGIS full scan medido (1k)",
-                    bench_pg_10000: "PostGIS full scan medido (10k)",
-                  }
-                  const label = labelMap[n] ?? n
-                  // For PostGIS filtered (model) lines, show delta vs real P95
-                  let deltaStr = ""
-                  if (n.startsWith("pg_") && hasP95Data && v > 0) {
-                    const delta = p95Mean - v
-                    const sign = delta >= 0 ? "+" : ""
-                    deltaStr = `  ·  P95 real ${sign}${delta.toFixed(1)}ms vs modelo`
-                  }
-                  return [`${v.toFixed(v < 1 ? 2 : 1)}ms${deltaStr}`, label]
-                }}
+                content={
+                  <GiSTCostTooltip
+                    refLineLabel={refLineLabel}
+                    radiusKm={radiusKm}
+                    selPct={selPct}
+                    hasP95Data={hasP95Data}
+                    p95Mean={p95Mean}
+                  />
+                }
               />
               <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} iconSize={8} />
 
@@ -1383,7 +1476,8 @@ function GiSTSelectivitySection({
               </table>
             )}
             <p className="text-muted-foreground text-[10px] leading-relaxed">
-              * Raio estimado para densidade de São Paulo (~10 providers/km²)
+              * Raio estimado para densidade de <strong>{density} providers/km²</strong> · Área de
+              cobertura: ~{Math.round(Math.PI * radiusKm * radiusKm).toLocaleString("pt-BR")} km²
             </p>
           </div>
         </MetricCard>
@@ -1466,6 +1560,180 @@ function GiSTSelectivitySection({
         </MetricCard>
       </div>
     </section>
+  )
+}
+
+// ── GiST Cost Tooltip ─────────────────────────────────────────────────────
+
+/**
+ * Custom Recharts Tooltip content for the GiST selectivity chart.
+ *
+ * Displays:
+ *   1. Standard curve values (PostGIS filtered + Haversine)
+ *   2. Cost-at-radius section when hovering AT the reference line
+ *   3. P95 delta for PostGIS filtered lines
+ */
+function GiSTCostTooltip({
+  active,
+  payload,
+  label,
+  refLineLabel,
+  radiusKm,
+  selPct,
+  hasP95Data,
+  p95Mean,
+}: {
+  active?: boolean
+  payload?: Array<{ name?: string; dataKey?: string; value?: number; color?: string }>
+  label?: string
+  refLineLabel: string
+  radiusKm: number
+  selPct: number
+  hasP95Data: boolean
+  p95Mean: number
+}) {
+  if (!active || !payload || payload.length === 0) return null
+
+  // Detect if we're at the reference line by checking if the x-label matches
+  const isAtRefLine = label === refLineLabel
+
+  // Separate cost-at-radius items from curve items
+  const curves: Array<{ key: string; label: string; value: number; color?: string }> = []
+  const costs: Array<{
+    label: string
+    postgisMs: number
+    haversineMs: number
+    ratio: number
+    faster: string
+  }> = []
+
+  for (const entry of payload) {
+    const key = String(entry.dataKey ?? entry.name ?? "")
+    const value = Number(entry.value ?? 0)
+
+    if (key.startsWith("cost_pg_")) {
+      // Find the matching hav/ratio/faster for this cost entry
+      const n = key.replace("cost_pg_", "")
+      const havEntry = payload.find((p) => p.dataKey === `cost_hav_${n}`)
+      const ratioEntry = payload.find((p) => p.dataKey === `cost_ratio_${n}`)
+      const fasterEntry = payload.find((p) => p.dataKey === `cost_faster_${n}`)
+      costs.push({
+        label: n,
+        postgisMs: value,
+        haversineMs: Number(havEntry?.value ?? 0),
+        ratio: Number(ratioEntry?.value ?? 0),
+        faster: String(fasterEntry?.value ?? "Haversine"),
+      })
+      continue
+    }
+    // Skip cost_hav_, cost_ratio_, cost_faster_, cost_label_ — handled above
+    if (
+      key.startsWith("cost_hav_") ||
+      key.startsWith("cost_ratio_") ||
+      key.startsWith("cost_faster_") ||
+      key.startsWith("cost_label_")
+    ) {
+      continue
+    }
+
+    // Label mapping for curve entries
+    const labelMap: Record<string, string> = {
+      pg_100: "PostGIS 100",
+      pg_500: "PostGIS 500",
+      pg_1000: "PostGIS 1k",
+      pg_5000: "PostGIS 5k",
+      pg_10000: "PostGIS 10k",
+      hav_100: "Haversine 100",
+      hav_500: "Haversine 500",
+      hav_1000: "Haversine 1k",
+      hav_5000: "Haversine 5k",
+      hav_10000: "Haversine 10k",
+      bench_pg_100: "Medido 100",
+      bench_pg_1000: "Medido 1k",
+      bench_pg_10000: "Medido 10k",
+    }
+    const displayLabel = labelMap[key] ?? key
+
+    // For PostGIS filtered lines, add P95 delta
+    let deltaStr = ""
+    if (key.startsWith("pg_") && hasP95Data && value > 0) {
+      const delta = p95Mean - value
+      const sign = delta >= 0 ? "+" : ""
+      deltaStr = ` · P95 ${sign}${delta.toFixed(1)}ms`
+    }
+
+    curves.push({ key, label: displayLabel, value, color: entry.color })
+  }
+
+  return (
+    <div style={TOOLTIP_STYLE as React.CSSProperties}>
+      {/* Selectivity header */}
+      <p className="text-foreground mb-1.5 text-[11px] font-semibold">Seletividade: {label}</p>
+
+      {/* Curve values */}
+      <div className="space-y-0.5">
+        {curves.map((c) => (
+          <div key={c.key} className="flex items-center justify-between gap-3 text-[11px]">
+            <span className="text-muted-foreground flex items-center gap-1.5">
+              <span
+                className="inline-block size-2 shrink-0 rounded-full"
+                style={{ backgroundColor: c.color ?? "var(--muted-foreground)" }}
+              />
+              {c.label}
+            </span>
+            <span className="text-foreground tabular-nums">
+              {c.value.toFixed(c.value < 1 ? 2 : 1)}ms
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Cost-at-radius separator — only when at reference line */}
+      {isAtRefLine && costs.length > 0 && (
+        <>
+          <div className="bg-border my-2 h-px" />
+          <p className="text-foreground mb-1 text-[11px] font-semibold">
+            📍 Custo neste raio ({radiusKm}km · {selPct}%)
+          </p>
+          <div className="text-[10px]">
+            <div className="text-muted-foreground mb-0.5 flex items-center justify-between font-medium">
+              <span>Prov</span>
+              <span className="text-right">GiST · Hav · Razão</span>
+            </div>
+            {costs.map((c) => {
+              const label = c.label
+              return (
+                <div
+                  key={c.label}
+                  className="flex items-center justify-between gap-2 rounded-sm py-0.5"
+                >
+                  <span className="tabular-nums">{label}</span>
+                  <span className="tabular-nums">
+                    <span
+                      className={
+                        c.faster === "PostGIS" ? "text-emerald-500" : "text-muted-foreground"
+                      }
+                    >
+                      {c.postgisMs.toFixed(c.postgisMs < 1 ? 2 : 1)}
+                    </span>
+                    <span className="text-muted-foreground"> · </span>
+                    <span
+                      className={
+                        c.faster === "Haversine" ? "text-amber-500" : "text-muted-foreground"
+                      }
+                    >
+                      {c.haversineMs.toFixed(c.haversineMs < 1 ? 2 : 1)}
+                    </span>
+                    <span className="text-muted-foreground"> · </span>
+                    <span className="text-muted-foreground">{c.ratio}:1</span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
