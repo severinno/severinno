@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 
 // Import shared mocks BEFORE the component
 import "./test-setup"
@@ -28,10 +28,7 @@ describe("LoginPage (/login)", () => {
     render(<LoginPageClient />)
     const forgotLink = screen.getByText("Esqueceu a senha?")
     expect(forgotLink).toBeDefined()
-    expect(forgotLink.closest("a")).toHaveAttribute(
-      "href",
-      "/auth/reset-password",
-    )
+    expect(forgotLink.closest("a")).toHaveAttribute("href", "/auth/reset-password")
   })
 
   it("has a link to register page", () => {

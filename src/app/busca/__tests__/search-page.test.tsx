@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 
 import { SearchPage } from "../search-page"
 
@@ -66,7 +66,9 @@ describe("SearchPage", () => {
   it("shows prompt when no query is provided", () => {
     render(<SearchPage />)
     expect(
-      screen.getByText("Digite o que você está procurando acima para encontrar os melhores profissionais perto de você."),
+      screen.getByText(
+        "Digite o que você está procurando acima para encontrar os melhores profissionais perto de você.",
+      ),
     ).toBeDefined()
   })
 

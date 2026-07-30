@@ -43,6 +43,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/admin/admin-shared"
 
 import type { SnapshotsSummaryResponse, TimeBucket, GeoServiceName } from "@/types/geo"
+import { MetricCard } from "@/components/admin/admin-metric-card"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -184,28 +185,6 @@ function KpiCard({
 // ---------------------------------------------------------------------------
 // Metric Card
 // ---------------------------------------------------------------------------
-
-function MetricCard({
-  icon: Icon,
-  title,
-  children,
-  className,
-}: {
-  icon: React.ElementType
-  title: string
-  children: React.ReactNode
-  className?: string
-}) {
-  return (
-    <div className={cn("bg-card border-border/50 rounded-xl border p-5", className)}>
-      <div className="mb-4 flex items-center gap-2">
-        <Icon className="text-muted-foreground size-4" />
-        <h3 className="text-foreground text-sm font-semibold">{title}</h3>
-      </div>
-      {children}
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Main Component

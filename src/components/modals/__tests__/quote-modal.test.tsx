@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render, screen } from "@/__tests__/test-utils"
 import { QuoteModal } from "../quote-modal"
-import {
-  createMockAuthStore,
-  createMockUIStore,
-  createMockViewStore,
-} from "./test-utils"
+import { createMockAuthStore, createMockUIStore, createMockViewStore } from "./test-utils"
 import * as React from "react"
 
 // -----------------------------------------------------------------------
@@ -21,30 +17,26 @@ const mockViewStore = createMockViewStore()
 // -----------------------------------------------------------------------
 
 vi.mock("@/store/ui", () => ({
-  useUIStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockUIStore),
-    { getState: () => mockUIStore },
-  ),
+  useUIStore: Object.assign((selector: (s: any) => unknown) => selector(mockUIStore), {
+    getState: () => mockUIStore,
+  }),
 }))
 
 vi.mock("@/store/auth", () => ({
-  useAuthStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockAuthStore),
-    { getState: () => mockAuthStore },
-  ),
+  useAuthStore: Object.assign((selector: (s: any) => unknown) => selector(mockAuthStore), {
+    getState: () => mockAuthStore,
+  }),
 }))
 
 vi.mock("@/store/view", () => ({
-  useViewStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockViewStore),
-    { getState: () => mockViewStore },
-  ),
+  useViewStore: Object.assign((selector: (s: any) => unknown) => selector(mockViewStore), {
+    getState: () => mockViewStore,
+  }),
 }))
 
 vi.mock("@/store/geo", () => ({
   useGeoStore: Object.assign(
-    (selector: (s: any) => unknown) =>
-      selector({ setFromGPS: vi.fn(), lat: null, lng: null }),
+    (selector: (s: any) => unknown) => selector({ setFromGPS: vi.fn(), lat: null, lng: null }),
     { getState: () => ({ lat: null, lng: null }) },
   ),
 }))
@@ -82,24 +74,20 @@ vi.mock("@/hooks/use-mobile", () => ({
 
 // Dialog
 vi.mock("@/components/ui/dialog", () => ({
-  Dialog: ({ children, open }: any) =>
-    open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({ children, open }: any) => (open ? <div data-testid="dialog">{children}</div> : null),
   DialogContent: ({ children, className }: any) => (
     <div data-testid="dialog-content" className={className}>
       {children}
     </div>
   ),
   DialogHeader: ({ children }: any) => <>{children}</>,
-  DialogTitle: ({ children }: any) => (
-    <h2 data-testid="dialog-title">{children}</h2>
-  ),
+  DialogTitle: ({ children }: any) => <h2 data-testid="dialog-title">{children}</h2>,
   DialogDescription: ({ children }: any) => <p>{children}</p>,
 }))
 
 // Sheet (mobile)
 vi.mock("@/components/ui/sheet", () => ({
-  Sheet: ({ children, open }: any) =>
-    open ? <div data-testid="sheet">{children}</div> : null,
+  Sheet: ({ children, open }: any) => (open ? <div data-testid="sheet">{children}</div> : null),
   SheetContent: ({ children }: any) => <div>{children}</div>,
   SheetHeader: ({ children }: any) => <>{children}</>,
   SheetTitle: ({ children }: any) => <h2>{children}</h2>,
@@ -132,7 +120,11 @@ vi.mock("@/components/ui/textarea", () => ({
 
 // Badge
 vi.mock("@/components/ui/badge", () => ({
-  Badge: ({ children, ...p }: any) => <span data-testid="badge" {...p}>{children}</span>,
+  Badge: ({ children, ...p }: any) => (
+    <span data-testid="badge" {...p}>
+      {children}
+    </span>
+  ),
 }))
 
 // Separator
@@ -143,12 +135,8 @@ vi.mock("@/components/ui/separator", () => ({
 // Avatar
 vi.mock("@/components/ui/avatar", () => ({
   Avatar: ({ children }: any) => <div data-testid="avatar">{children}</div>,
-  AvatarImage: ({ src, alt }: any) => (
-    <img src={src} alt={alt} data-testid="avatar-image" />
-  ),
-  AvatarFallback: ({ children }: any) => (
-    <span data-testid="avatar-fallback">{children}</span>
-  ),
+  AvatarImage: ({ src, alt }: any) => <img src={src} alt={alt} data-testid="avatar-image" />,
+  AvatarFallback: ({ children }: any) => <span data-testid="avatar-fallback">{children}</span>,
 }))
 
 // ScrollArea (used by StepWizard in original, but mobile mock renders directly)
@@ -165,7 +153,10 @@ vi.mock("@/components/ui/select", () => ({
   Select: ({ children, value, onValueChange }: any) => (
     <div data-testid="select" data-value={value}>
       {React.Children.map(children, (child: any) => {
-        if (child?.type?.displayName === "SelectTrigger" || child?.type?.displayName === "SelectContent") {
+        if (
+          child?.type?.displayName === "SelectTrigger" ||
+          child?.type?.displayName === "SelectContent"
+        ) {
           return React.cloneElement(child, { onValueChange })
         }
         return child
@@ -173,13 +164,21 @@ vi.mock("@/components/ui/select", () => ({
     </div>
   ),
   SelectTrigger: ({ children, ...p }: any) => {
-    const Trigger = (props: any) => <button data-testid="select-trigger" {...props}>{props.children}</button>
+    const Trigger = (props: any) => (
+      <button data-testid="select-trigger" {...props}>
+        {props.children}
+      </button>
+    )
     Trigger.displayName = "SelectTrigger"
     return <Trigger {...p}>{children}</Trigger>
   },
   SelectContent: ({ children }: any) => <div data-testid="select-content">{children}</div>,
   SelectItem: ({ value, children }: any) => {
-    const Item = (props: any) => <button data-testid="select-item" data-value={props.value}>{props.children}</button>
+    const Item = (props: any) => (
+      <button data-testid="select-item" data-value={props.value}>
+        {props.children}
+      </button>
+    )
     Item.displayName = "SelectItem"
     return <Item value={value}>{children}</Item>
   },
@@ -190,11 +189,11 @@ vi.mock("@/components/ui/select", () => ({
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({ children }: any) => <div data-testid="popover">{children}</div>,
   PopoverTrigger: ({ children, ...p }: any) => (
-    <button data-testid="popover-trigger" {...p}>{children}</button>
+    <button data-testid="popover-trigger" {...p}>
+      {children}
+    </button>
   ),
-  PopoverContent: ({ children }: any) => (
-    <div data-testid="popover-content">{children}</div>
-  ),
+  PopoverContent: ({ children }: any) => <div data-testid="popover-content">{children}</div>,
 }))
 
 // Command (used in provider combobox)
@@ -204,7 +203,9 @@ vi.mock("@/components/ui/command", () => ({
   CommandGroup: ({ children }: any) => <div>{children}</div>,
   CommandInput: (p: any) => <input data-testid="command-input" {...p} />,
   CommandItem: ({ children, ...p }: any) => (
-    <button data-testid="command-item" {...p}>{children}</button>
+    <button data-testid="command-item" {...p}>
+      {children}
+    </button>
   ),
   CommandList: ({ children }: any) => <div>{children}</div>,
 }))
@@ -225,14 +226,25 @@ vi.mock("../address-form", () => ({
 
 // FilePhotos (used in Step3)
 vi.mock("../file-photos", () => ({
-  FilePhotos: ({ label }: any) => (
-    <div data-testid="file-photos">{label}</div>
-  ),
+  FilePhotos: ({ label }: any) => <div data-testid="file-photos">{label}</div>,
 }))
 
 // StepWizard
 vi.mock("../step-wizard", () => ({
-  StepWizard: ({ children, currentStep, validSteps, steps, onStepClick, onBack, onNext, onSubmit, submitting, currentStepValid, submitLabel, nextLabel }: any) => (
+  StepWizard: ({
+    children,
+    currentStep,
+    validSteps,
+    steps,
+    onStepClick,
+    onBack,
+    onNext,
+    onSubmit,
+    submitting,
+    currentStepValid,
+    submitLabel,
+    nextLabel,
+  }: any) => (
     <div data-testid="step-wizard" data-step={currentStep}>
       {/* Step indicator labels */}
       <div data-testid="step-indicator">
@@ -250,14 +262,12 @@ vi.mock("../step-wizard", () => ({
       {children}
       <div data-testid="step-footer">
         {currentStep > 1 && (
-          <button data-testid="back-btn" onClick={onBack}>Voltar</button>
+          <button data-testid="back-btn" onClick={onBack}>
+            Voltar
+          </button>
         )}
         {currentStep < steps.length ? (
-          <button
-            data-testid="next-btn"
-            disabled={!currentStepValid}
-            onClick={onNext}
-          >
+          <button data-testid="next-btn" disabled={!currentStepValid} onClick={onNext}>
             {nextLabel ?? "Continuar"}
           </button>
         ) : (
@@ -381,13 +391,28 @@ vi.mock("zod", () => {
 
 const mockProvidersList = {
   items: [
-    { id: "prov-1", name: "Maria Silva", city: "São Paulo", verified: true, avatarUrl: null, rating: 4.8, reviewCount: 25 },
+    {
+      id: "prov-1",
+      name: "Maria Silva",
+      city: "São Paulo",
+      verified: true,
+      avatarUrl: null,
+      rating: 4.8,
+      reviewCount: 25,
+    },
   ],
   total: 1,
 }
 
 const mockServicesList = [
-  { id: "svc-1", title: "Instalação Elétrica", basePrice: 150, unit: "UNIDADE" as const, providerId: "prov-1", description: "Descrição do serviço" },
+  {
+    id: "svc-1",
+    title: "Instalação Elétrica",
+    basePrice: 150,
+    unit: "UNIDADE" as const,
+    providerId: "prov-1",
+    description: "Descrição do serviço",
+  },
 ]
 
 // -----------------------------------------------------------------------
@@ -466,7 +491,9 @@ describe("QuoteModal — auth gate", () => {
     mockAuthStore.user = null
     renderModal()
 
-    expect(screen.getAllByText("Faça cadastro gratuito para pedir orçamentos").length).toBeGreaterThan(0)
+    expect(
+      screen.getAllByText("Faça cadastro gratuito para pedir orçamentos").length,
+    ).toBeGreaterThan(0)
   })
 
   it("does not call openAuth when user is logged in", () => {
@@ -506,9 +533,7 @@ describe("QuoteModal — step navigation", () => {
     renderModal()
 
     const stepHeaders = screen.getAllByTestId("step-header")
-    const header = stepHeaders.find((h) =>
-      h.textContent?.includes("Escolha o prestador"),
-    )
+    const header = stepHeaders.find((h) => h.textContent?.includes("Escolha o prestador"))
     expect(header).toBeTruthy()
   })
 })

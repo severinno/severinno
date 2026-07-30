@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, act, cleanup } from "@testing-library/react"
+import { render, screen, act, cleanup } from "@/__tests__/test-utils"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ProviderCard } from "@/lib/api"
 
@@ -128,7 +128,7 @@ vi.mock("@/components/ui/carousel", () => ({
 import ProviderSpotlightGeo from "../provider-spotlight-geo"
 
 // Ensure DOM cleanup between tests when run in batch
- 
+
 import { afterEach } from "vitest"
 
 afterEach(cleanup)

@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent } from "@/__tests__/test-utils"
 import { AuthModal } from "../auth-modal"
-import { createMockAuthStore, createMockUIStore, createMockViewStore, TestQueryProvider } from "./test-utils"
+import {
+  createMockAuthStore,
+  createMockUIStore,
+  createMockViewStore,
+  TestQueryProvider,
+} from "./test-utils"
 
 // Shared mock stores
 const mockAuthStore = createMockAuthStore()
@@ -10,35 +15,37 @@ const mockViewStore = createMockViewStore()
 
 // Store mock factories (use selector pattern + getState)
 vi.mock("@/store/auth", () => ({
-  useAuthStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockAuthStore),
-    { getState: () => mockAuthStore },
-  ),
+  useAuthStore: Object.assign((selector: (s: any) => unknown) => selector(mockAuthStore), {
+    getState: () => mockAuthStore,
+  }),
 }))
 
 vi.mock("@/store/ui", () => ({
-  useUIStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockUIStore),
-    { getState: () => mockUIStore },
-  ),
+  useUIStore: Object.assign((selector: (s: any) => unknown) => selector(mockUIStore), {
+    getState: () => mockUIStore,
+  }),
 }))
 
 vi.mock("@/store/view", () => ({
-  useViewStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockViewStore),
-    { getState: () => mockViewStore },
-  ),
+  useViewStore: Object.assign((selector: (s: any) => unknown) => selector(mockViewStore), {
+    getState: () => mockViewStore,
+  }),
 }))
 
-vi.mock("sonner", () => ({ toast: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() } }))
+vi.mock("sonner", () => ({
+  toast: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+}))
 
 vi.mock("framer-motion", () => ({
-  motion: { div: ({ children, ...p }: any) => <div {...p}>{children}</div>, p: ({ children, ...p }: any) => <p {...p}>{children}</p> },
+  motion: {
+    div: ({ children, ...p }: any) => <div {...p}>{children}</div>,
+    p: ({ children, ...p }: any) => <p {...p}>{children}</p>,
+  },
   AnimatePresence: ({ children }: any) => <>{children}</>,
 }))
 
 vi.mock("@/components/ui/dialog", () => ({
-  Dialog: ({ children, open }: any) => open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({ children, open }: any) => (open ? <div data-testid="dialog">{children}</div> : null),
   DialogContent: ({ children }: any) => <div data-testid="dialog-content">{children}</div>,
   DialogHeader: ({ children }: any) => <>{children}</>,
   DialogTitle: ({ children }: any) => <h2>{children}</h2>,
@@ -46,14 +53,18 @@ vi.mock("@/components/ui/dialog", () => ({
 }))
 
 vi.mock("@/components/ui/tabs", () => ({
-  Tabs: ({ children, value }: any) => <div data-testid="tabs" data-value={value}>{children}</div>,
+  Tabs: ({ children, value }: any) => (
+    <div data-testid="tabs" data-value={value}>
+      {children}
+    </div>
+  ),
   TabsList: ({ children }: any) => <div>{children}</div>,
   TabsTrigger: ({ children, value }: any) => <button data-value={value}>{children}</button>,
   TabsContent: ({ children, value }: any) => <div data-tab-content={value}>{children}</div>,
 }))
 
 // Form: capture submitted values via a registry (vi.hoisted — required for vi.mock references)
-const formValues = vi.hoisted(() => ({} as Record<string, any>))
+const formValues = vi.hoisted(() => ({}) as Record<string, any>)
 const mockHandleSubmit = vi.hoisted(() =>
   vi.fn((fn: (v: any) => void) => async (e?: any) => {
     e?.preventDefault?.()
@@ -72,12 +83,18 @@ vi.mock("@/components/ui/form", () => ({
   FormField: ({ render, name }: any) => {
     const mockField = {
       value: formValues[name] ?? "",
-      onChange: (v: any) => { formValues[name] = v?.target?.value ?? v },
+      onChange: (v: any) => {
+        formValues[name] = v?.target?.value ?? v
+      },
       onBlur: () => {},
       name,
       ref: () => {},
     }
-    return <div data-field-name={name}>{typeof render === "function" ? render({ field: mockField }) : null}</div>
+    return (
+      <div data-field-name={name}>
+        {typeof render === "function" ? render({ field: mockField }) : null}
+      </div>
+    )
   },
   FormItem: ({ children }: any) => <>{children}</>,
   FormLabel: ({ children }: any) => <label>{children}</label>,
@@ -91,7 +108,9 @@ vi.mock("react-hook-form", () => ({
     const form = {
       control: {},
       handleSubmit: mockHandleSubmit,
-      setValue: vi.fn((name, value) => { formValues[name] = value }),
+      setValue: vi.fn((name, value) => {
+        formValues[name] = value
+      }),
       getValues: () => ({ ...formValues }),
       formState: { errors: {}, isSubmitting: false },
       register: vi.fn(),
@@ -105,21 +124,37 @@ vi.mock("react-hook-form", () => ({
 
 // Other UI mocks
 vi.mock("@/components/ui/input", () => ({ Input: (p: any) => <input {...p} /> }))
-vi.mock("@/components/ui/label", () => ({ Label: ({ children, ...p }: any) => <label {...p}>{children}</label> }))
-vi.mock("@/components/ui/button", () => ({ Button: ({ children, ...p }: any) => <button {...p}>{children}</button> }))
+vi.mock("@/components/ui/label", () => ({
+  Label: ({ children, ...p }: any) => <label {...p}>{children}</label>,
+}))
+vi.mock("@/components/ui/button", () => ({
+  Button: ({ children, ...p }: any) => <button {...p}>{children}</button>,
+}))
 vi.mock("@/components/ui/separator", () => ({ Separator: () => <hr /> }))
 
 vi.mock("lucide-react", () => {
   const Icon = () => <span data-testid="icon" />
   Icon.displayName = "Icon"
   return {
-    Mail: Icon, Lock: Icon, Eye: Icon, EyeOff: Icon, Loader2: Icon,
-    UserRound: Icon, ShieldCheck: Icon, Check: Icon, ChevronDown: Icon,
-    Copy: Icon, Wrench: Icon, BadgeCheck: Icon,
+    Mail: Icon,
+    Lock: Icon,
+    Eye: Icon,
+    EyeOff: Icon,
+    Loader2: Icon,
+    UserRound: Icon,
+    ShieldCheck: Icon,
+    Check: Icon,
+    ChevronDown: Icon,
+    Copy: Icon,
+    Wrench: Icon,
+    BadgeCheck: Icon,
   }
 })
 
-vi.mock("@/lib/validators", () => ({ loginSchema: { parse: vi.fn() }, registerSchema: { parse: vi.fn() } }))
+vi.mock("@/lib/validators", () => ({
+  loginSchema: { parse: vi.fn() },
+  registerSchema: { parse: vi.fn() },
+}))
 vi.mock("@/lib/utils", () => ({ cn: (...c: any[]) => c.filter(Boolean).join(" ") }))
 vi.mock("@hookform/resolvers/zod", () => ({ zodResolver: () => ({}) }))
 
@@ -138,13 +173,21 @@ beforeEach(() => {
 
 describe("AuthModal — rendering", () => {
   it("renders nothing when closed", () => {
-    const { container } = render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    const { container } = render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
     expect(container.querySelector('[data-testid="dialog"]')).not.toBeInTheDocument()
   })
 
   it("renders login form when open in login mode", () => {
     mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
     // "Entrar" appears on tab trigger + submit button
     const elements = screen.getAllByText("Entrar")
     expect(elements.length).toBeGreaterThan(0)
@@ -152,28 +195,44 @@ describe("AuthModal — rendering", () => {
 
   it("renders register form when open in register mode", () => {
     mockUIStore.authModal = { open: true, mode: "register", role: "CLIENT" }
-    render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
     const elements = screen.getAllByText("Criar conta")
     expect(elements.length).toBeGreaterThan(0)
   })
 
   it("shows role toggle buttons in register mode", () => {
     mockUIStore.authModal = { open: true, mode: "register", role: "CLIENT" }
-    render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
     expect(screen.getAllByText("Cliente").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Prestador").length).toBeGreaterThan(0)
   })
 
   it("shows provider-specific fields when role is PROVIDER", () => {
     mockUIStore.authModal = { open: true, mode: "register", role: "PROVIDER" }
-    render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
     expect(screen.getByText("CPF / CNPJ")).toBeInTheDocument()
     expect(screen.getByText(/Como prestador/)).toBeInTheDocument()
   })
 
   it("renders demo credentials in login mode", () => {
     mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
     // Demo credentials link — may appear once or in collapse/expand
     const elements = screen.getAllByText("Ver credenciais de demonstração")
     expect(elements.length).toBeGreaterThan(0)
@@ -183,14 +242,18 @@ describe("AuthModal — rendering", () => {
 describe("AuthModal — form submission", () => {
   it("calls login() with email and password on login form submit", async () => {
     mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    const { container } = render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    const { container } = render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
 
     // Set form values via the shared registry
     formValues.email = "test@test.com"
     formValues.password = "test123"
 
     // Submit the form directly (fireEvent.click on submit button is unreliable in jsdom)
-    const formEl = container.querySelector('form')
+    const formEl = container.querySelector("form")
     expect(formEl).toBeTruthy()
     if (formEl) fireEvent.submit(formEl)
 
@@ -201,12 +264,16 @@ describe("AuthModal — form submission", () => {
   it("calls navigate on successful login", async () => {
     mockAuthStore.login.mockResolvedValue({ ok: true })
     mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    const { container } = render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    const { container } = render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
 
     formValues.email = "test@test.com"
     formValues.password = "test123"
 
-    const formEl = container.querySelector('form')
+    const formEl = container.querySelector("form")
     expect(formEl).toBeTruthy()
     if (formEl) fireEvent.submit(formEl)
 
@@ -220,12 +287,16 @@ describe("AuthModal — form submission", () => {
   it("shows error toast on failed login", async () => {
     mockAuthStore.login.mockResolvedValue({ ok: false, error: "Credenciais inválidas" })
     mockUIStore.authModal = { open: true, mode: "login", role: "CLIENT" }
-    const { container } = render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    const { container } = render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
 
     formValues.email = "test@test.com"
     formValues.password = "wrong"
 
-    const formEl = container.querySelector('form')
+    const formEl = container.querySelector("form")
     expect(formEl).toBeTruthy()
     if (formEl) fireEvent.submit(formEl)
 
@@ -235,7 +306,11 @@ describe("AuthModal — form submission", () => {
 
   it("calls register() on register form submit", async () => {
     mockUIStore.authModal = { open: true, mode: "register", role: "CLIENT" }
-    const { container } = render(<TestQueryProvider><AuthModal /></TestQueryProvider>)
+    const { container } = render(
+      <TestQueryProvider>
+        <AuthModal />
+      </TestQueryProvider>,
+    )
 
     formValues.name = "Test User"
     formValues.email = "new@test.com"

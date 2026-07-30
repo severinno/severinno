@@ -66,13 +66,16 @@ import {
   computeMeasuredFull,
   computeP95Stats,
   computeCostAtSelectivity,
+  computeGiSTDegradation,
   radiusToSelectivity,
-  selectivityToRadiusLabel,
-  REFERENCE_RADIUS_KM,
   modelPostGISFullMs,
   modelDelta,
 } from "@/lib/geo-benchmark-model"
 import { buildBenchmarkBarData, getMaxPostgisLatency, ratioColor } from "@/lib/benchmark-data"
+import { GistDegradationPanel } from "@/components/admin/gist-degradation-panel"
+import { RadiusDensitySelector } from "@/components/admin/radius-density-selector"
+import { MetricCard } from "@/components/admin/admin-metric-card"
+import { IndicadorDeAtualizacao } from "@/components/admin/indicador-de-atualizacao"
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
 
@@ -91,6 +94,11 @@ const TOOLTIP_STYLE: React.CSSProperties = {
 const COLOR_P50 = "hsl(160, 84%, 39%)"
 const COLOR_P95 = "hsl(38, 92%, 50%)"
 const COLOR_P99 = "hsl(0, 72%, 51%)"
+
+// ── GiST degradation history buffer — last N polls, majority vote
+//     Prevents alert flickering when P95 oscillates near the threshold.
+const GIST_DEGRADATION_HISTORY_SIZE = 5
+const GIST_DEGRADATION_MAJORITY = 3
 
 const SERVICE_ICONS: Record<string, React.ElementType> = {
   nominatim: Search,
@@ -217,7 +225,6 @@ export function AdminGeoMetricsDashboard() {
             Latência P50/P95/P99 dos serviços de geocoding e PostGIS
           </p>
         </div>
-
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
             <span className="text-muted-foreground text-xs">
@@ -233,6 +240,8 @@ export function AdminGeoMetricsDashboard() {
           >
             <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
           </button>
+
+          <IndicadorDeAtualizacao status={isFetching ? "refetching" : null} />
         </div>
       </div>
 
@@ -538,6 +547,8 @@ export function AdminGeoMetricsDashboard() {
             benchmark={data.benchmark}
             history={data.history}
             baselines={baselines}
+            onReindexSuccess={() => void refetch()}
+            isRefetching={isFetching}
           />
         )}
 
@@ -993,16 +1004,25 @@ export function GiSTSelectivitySection({
   benchmark,
   history,
   baselines,
+  onReindexSuccess,
+  isRefetching,
 }: {
   benchmark: NonNullable<GeoMetricsResponse["benchmark"]>
   history: NonNullable<GeoMetricsResponse["history"]> | null
   baselines: Record<string, number>
+  onReindexSuccess?: () => void
+  isRefetching?: boolean
 }) {
   // Use benchmark's avgHaversinePerProvider (dynamic, changes per run)
   const haversinePerProviderUs =
     benchmark.analysis.avgHaversinePerProvider > 0
       ? benchmark.analysis.avgHaversinePerProvider
       : 0.1323 // fallback hardcoded
+
+  // ── Degradation history buffer — prevents alert flickering when P95
+  //     oscillates near the threshold. Only flags degraded when the
+  //     majority of the last N polls agree.
+  const degHistoryRef = React.useRef<boolean[]>([])
 
   // ── Radius + Density state ────────────────────────────────────────
   const [radiusKm, setRadiusKm] = React.useState(15)
@@ -1061,9 +1081,6 @@ export function GiSTSelectivitySection({
 
   // ── GiST degradation check: real P95 exceeds ALL model curves ─────
   const currentSelLabel = `${snapPct}%`
-  const selRow = selectivityPoints.find(
-    (r: Record<string, unknown>) => r.selectivity === currentSelLabel,
-  )
   let gistDegraded = false
   let maxModelAtSelectivity = 0
   let exceedingCount = 0
@@ -1084,19 +1101,78 @@ export function GiSTSelectivitySection({
     }
   }
 
-  if (hasP95Data && selRow) {
-    const pgKeys = PROVIDER_COUNTS.map((n) => `pg_${n}`)
-    let maxVal = 0
-    let exceeding = 0
-    for (const k of pgKeys) {
-      const v = Number(selRow[k] ?? 0)
-      if (v > maxVal) maxVal = v
-      if (p95Mean > v) exceeding++
-    }
-    maxModelAtSelectivity = maxVal
-    exceedingCount = exceeding
-    gistDegraded = p95Mean > maxVal
+  // Use extracted pure function for GiST degradation check
+  const degradation = computeGiSTDegradation(
+    selectivityPoints,
+    currentSelLabel,
+    p95Mean,
+    hasP95Data,
+  )
+
+  // ── Smooth degradation via history buffer — prevent flickering ────
+  const degHistory = degHistoryRef.current
+  degHistory.push(degradation.gistDegraded)
+  if (degHistory.length > GIST_DEGRADATION_HISTORY_SIZE) {
+    degHistory.shift()
   }
+  const degradedCount = degHistory.filter(Boolean).length
+  const smoothedDegraded =
+    degHistory.length >= GIST_DEGRADATION_HISTORY_SIZE && degradedCount >= GIST_DEGRADATION_MAJORITY
+
+  gistDegraded = smoothedDegraded
+  maxModelAtSelectivity = degradation.maxModelAtSelectivity
+  exceedingCount = degradation.exceedingCount
+
+  // ── Sentry alert for sustained degradation ─────────────────────────
+  // Sends a warning to Sentry when ALL 5 consecutive polls are degraded.
+  // Uses a ref to debounce — fires only once per degradation episode.
+  const sentryAlertedRef = React.useRef(false)
+
+  // Reset debounce flag when the index recovers
+  if (!gistDegraded && sentryAlertedRef.current) {
+    sentryAlertedRef.current = false
+  }
+
+  // Fire when smoothed degraded AND all 5 history slots are degraded
+  React.useEffect(() => {
+    if (
+      gistDegraded &&
+      degradedCount === GIST_DEGRADATION_HISTORY_SIZE &&
+      !sentryAlertedRef.current
+    ) {
+      sentryAlertedRef.current = true
+
+      import("@sentry/nextjs")
+        .then((Sentry) => {
+          Sentry.captureMessage("🛑 Índice GiST degradado — 5 polls consecutivos", {
+            level: "warning" as const,
+            tags: { source: "gist-degradation-live" },
+            extra: {
+              p95MeanMs: Math.round(p95Mean),
+              radiusKm,
+              selectivityPct: snapPct,
+              maxModelAtSelectivityMs: Math.round(maxModelAtSelectivity * 10) / 10,
+              exceedingScales: exceedingCount,
+              totalScales: PROVIDER_COUNTS.length,
+              p95Ratio: Number((p95Mean / maxModelAtSelectivity).toFixed(1)),
+              historyBufferSize: GIST_DEGRADATION_HISTORY_SIZE,
+              degradedSlots: degradedCount,
+            },
+          })
+        })
+        .catch(() => {
+          // @sentry/nextjs not available — dev without SDK
+        })
+    }
+  }, [
+    gistDegraded,
+    degradedCount,
+    p95Mean,
+    radiusKm,
+    snapPct,
+    maxModelAtSelectivity,
+    exceedingCount,
+  ])
 
   return (
     <section aria-label="Seletividade GiST vs Custo" className="space-y-6">
@@ -1108,129 +1184,29 @@ export function GiSTSelectivitySection({
       </div>
 
       {/* ── GiST Degradation Alert ──────────────────────────────────── */}
-      {gistDegraded && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 px-5 py-4 dark:border-red-800/40 dark:bg-red-950/20"
-        >
-          <Database className="mt-0.5 size-5 shrink-0 text-red-500" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-red-800 dark:text-red-300">
-              🛑 Índice GiST degradado
-            </p>
-            <p className="mt-0.5 text-xs text-red-700 dark:text-red-400">
-              P95 real ({Math.round(p95Mean)}ms) ultrapassou <strong>todas</strong> as curvas
-              teóricas do modelo PostGIS em <strong>{radiusKm} km</strong> (seletividade {snapPct}
-              %). A curva mais alta do modelo prevê {maxModelAtSelectivity.toFixed(1)}ms. O índice
-              GiST pode estar com performance degradada —{" "}
-              {exceedingCount >= PROVIDER_COUNTS.length
-                ? "todas as escalas de provedores estão acima do esperado."
-                : `${exceedingCount} de ${PROVIDER_COUNTS.length} escalas de provedores estão acima do esperado.`}
-            </p>
-          </div>
-        </div>
-      )}
+      <GistDegradationPanel
+        gistDegraded={gistDegraded}
+        p95Mean={p95Mean}
+        radiusKm={radiusKm}
+        snapPct={snapPct}
+        maxModelAtSelectivity={maxModelAtSelectivity}
+        exceedingCount={exceedingCount}
+        onReindexSuccess={onReindexSuccess}
+        isRefetching={isRefetching}
+      />
 
-      {/* ── Radius Selector ─────────────────────────────────────────── */}
+      {/* ── Radius + Density + Selectivity Selector (extracted) ──── */}
       <MetricCard icon={MapPin} title="Selecionar Raio de Busca">
-        <div className="flex flex-col gap-4">
-          {/* Slider */}
-          <div className="flex items-center gap-4">
-            <span className="text-muted-foreground w-14 text-right text-xs font-medium">
-              {radiusKm} km
-            </span>
-            <input
-              type="range"
-              min={1}
-              max={REFERENCE_RADIUS_KM}
-              value={radiusKm}
-              onChange={(e) => setRadiusKm(Number(e.target.value))}
-              className="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-red-300"
-              aria-label="Raio de busca em km"
-            />
-          </div>
-
-          {/* Preset buttons */}
-          <div className="flex flex-wrap gap-2">
-            {[5, 15, 30, 50].map((r) => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRadiusKm(r)}
-                className={cn(
-                  "rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
-                  radiusKm === r
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted text-muted-foreground hover:bg-muted/70",
-                )}
-              >
-                {r} km
-              </button>
-            ))}
-          </div>
-
-          {/* Density Slider */}
-          <div className="border-t pt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-muted-foreground text-[10px] font-medium">
-                Densidade: {densityLabel}
-              </span>
-              <span className="text-muted-foreground text-[10px]">
-                ~{estimatedProviders.toLocaleString("pt-BR")} providers na área
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-muted-foreground w-10 text-right text-[10px] font-medium">
-                {density}/km²
-              </span>
-              <input
-                type="range"
-                min={2}
-                max={50}
-                value={density}
-                onChange={(e) => setDensity(Number(e.target.value))}
-                className="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300"
-                aria-label="Densidade de providers por km²"
-              />
-            </div>
-            <div className="mt-1.5 flex gap-2">
-              {[
-                { v: 2, label: "Interior" },
-                { v: 8, label: "RJ" },
-                { v: 10, label: "SP" },
-                { v: 30, label: "Metrópole" },
-              ].map((p) => (
-                <button
-                  key={p.v}
-                  type="button"
-                  onClick={() => setDensity(p.v)}
-                  className={cn(
-                    "rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all",
-                    density === p.v
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "bg-muted text-muted-foreground hover:bg-muted/70",
-                  )}
-                >
-                  {p.label} {p.v}/km²
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Selectivity indicator */}
-          <div className="flex items-center gap-3 rounded-lg border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/10">
-            <span className="text-foreground font-semibold">{selPct}%</span>
-            <span className="text-muted-foreground">
-              dos providers em <strong>{radiusKm} km</strong>
-              {currentSelectivity > 0 && (
-                <>
-                  {" · "}seletividade equivalente a{" "}
-                  <strong>{selectivityToRadiusLabel(currentSelectivity)}</strong>
-                </>
-              )}
-            </span>
-          </div>
-        </div>
+        <RadiusDensitySelector
+          radiusKm={radiusKm}
+          onRadiusKmChange={setRadiusKm}
+          density={density}
+          onDensityChange={setDensity}
+          estimatedProviders={estimatedProviders}
+          densityLabel={densityLabel}
+          currentSelectivity={currentSelectivity}
+          selPct={selPct}
+        />
       </MetricCard>
 
       {/* Main chart: selectivity vs latency */}
@@ -1951,26 +1927,6 @@ function KpiCard({
         {label}
       </p>
       {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
-    </div>
-  )
-}
-
-function MetricCard({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: React.ElementType
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="border-border/50 bg-card rounded-xl border">
-      <div className="flex items-center gap-2 border-b px-5 py-4">
-        <Icon className="text-primary size-4" />
-        <h2 className="text-foreground text-sm font-semibold">{title}</h2>
-      </div>
-      <div className="p-4">{children}</div>
     </div>
   )
 }

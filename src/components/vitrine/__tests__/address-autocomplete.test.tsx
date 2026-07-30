@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, act } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
 import AddressAutocomplete from "../address-autocomplete"
 
 import {
@@ -457,13 +457,11 @@ describe("AddressAutocomplete — GPS locate and reverse geocode", () => {
   })
 
   it("calls setFromGPS and uses address populated by store", async () => {
-    mockGeoStore.setFromGPS = vi
-      .fn()
-      .mockImplementation(async () => {
-        mockGeoStore.lat = -23.5505
-        mockGeoStore.lng = -46.6333
-        mockGeoStore.address = "Avenida Paulista, São Paulo - SP, Brasil"
-      })
+    mockGeoStore.setFromGPS = vi.fn().mockImplementation(async () => {
+      mockGeoStore.lat = -23.5505
+      mockGeoStore.lng = -46.6333
+      mockGeoStore.address = "Avenida Paulista, São Paulo - SP, Brasil"
+    })
 
     const onSelect = vi.fn()
     render(<AddressAutocomplete onSelect={onSelect} />)
@@ -489,13 +487,11 @@ describe("AddressAutocomplete — GPS locate and reverse geocode", () => {
   })
 
   it("falls back to raw coordinates when store has no address", async () => {
-    mockGeoStore.setFromGPS = vi
-      .fn()
-      .mockImplementation(async () => {
-        mockGeoStore.lat = -23.5505
-        mockGeoStore.lng = -46.6333
-        // address stays null → component falls back to raw coords
-      })
+    mockGeoStore.setFromGPS = vi.fn().mockImplementation(async () => {
+      mockGeoStore.lat = -23.5505
+      mockGeoStore.lng = -46.6333
+      // address stays null → component falls back to raw coords
+    })
 
     render(<AddressAutocomplete />)
     const input = screen.getByRole("combobox") as HTMLInputElement
@@ -516,12 +512,10 @@ describe("AddressAutocomplete — GPS locate and reverse geocode", () => {
   })
 
   it("does nothing when GPS returns null coordinates", async () => {
-    mockGeoStore.setFromGPS = vi
-      .fn()
-      .mockImplementation(async () => {
-        mockGeoStore.lat = null
-        mockGeoStore.lng = null
-      })
+    mockGeoStore.setFromGPS = vi.fn().mockImplementation(async () => {
+      mockGeoStore.lat = null
+      mockGeoStore.lng = null
+    })
 
     const onSelect = vi.fn()
     render(<AddressAutocomplete onSelect={onSelect} />)

@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render, screen } from "@/__tests__/test-utils"
 import { ProviderProfileModal } from "../provider-profile-modal"
-import {
-  createMockAuthStore,
-  createMockUIStore,
-  createMockViewStore,
-} from "./test-utils"
+import { createMockAuthStore, createMockUIStore, createMockViewStore } from "./test-utils"
 import * as React from "react"
 
 // -----------------------------------------------------------------------
@@ -26,24 +22,21 @@ const mockRecentlyViewedStore = {
 // -----------------------------------------------------------------------
 
 vi.mock("@/store/ui", () => ({
-  useUIStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockUIStore),
-    { getState: () => mockUIStore },
-  ),
+  useUIStore: Object.assign((selector: (s: any) => unknown) => selector(mockUIStore), {
+    getState: () => mockUIStore,
+  }),
 }))
 
 vi.mock("@/store/auth", () => ({
-  useAuthStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockAuthStore),
-    { getState: () => mockAuthStore },
-  ),
+  useAuthStore: Object.assign((selector: (s: any) => unknown) => selector(mockAuthStore), {
+    getState: () => mockAuthStore,
+  }),
 }))
 
 vi.mock("@/store/view", () => ({
-  useViewStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockViewStore),
-    { getState: () => mockViewStore },
-  ),
+  useViewStore: Object.assign((selector: (s: any) => unknown) => selector(mockViewStore), {
+    getState: () => mockViewStore,
+  }),
 }))
 
 vi.mock("@/store/recently-viewed", () => ({
@@ -86,8 +79,7 @@ vi.mock("@/hooks/use-mobile", () => ({
 
 // Dialog
 vi.mock("@/components/ui/dialog", () => ({
-  Dialog: ({ children, open }: any) =>
-    open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({ children, open }: any) => (open ? <div data-testid="dialog">{children}</div> : null),
   DialogContent: ({ children, showCloseButton, className }: any) => (
     <div data-testid="dialog-content" className={className}>
       {children}
@@ -107,8 +99,7 @@ vi.mock("@/components/ui/dialog", () => ({
 
 // Sheet (mobile)
 vi.mock("@/components/ui/sheet", () => ({
-  Sheet: ({ children, open }: any) =>
-    open ? <div data-testid="sheet">{children}</div> : null,
+  Sheet: ({ children, open }: any) => (open ? <div data-testid="sheet">{children}</div> : null),
   SheetContent: ({ children }: any) => <div>{children}</div>,
   SheetTitle: ({ children }: any) => <h2>{children}</h2>,
   SheetDescription: ({ children }: any) => <p>{children}</p>,
@@ -137,12 +128,8 @@ vi.mock("@/components/ui/tabs", () => ({
 // Avatar
 vi.mock("@/components/ui/avatar", () => ({
   Avatar: ({ children }: any) => <div data-testid="avatar">{children}</div>,
-  AvatarImage: ({ src, alt }: any) => (
-    <img src={src} alt={alt} data-testid="avatar-image" />
-  ),
-  AvatarFallback: ({ children }: any) => (
-    <span data-testid="avatar-fallback">{children}</span>
-  ),
+  AvatarImage: ({ src, alt }: any) => <img src={src} alt={alt} data-testid="avatar-image" />,
+  AvatarFallback: ({ children }: any) => <span data-testid="avatar-fallback">{children}</span>,
 }))
 
 // Button
@@ -156,7 +143,11 @@ vi.mock("@/components/ui/button", () => ({
 
 // Badge
 vi.mock("@/components/ui/badge", () => ({
-  Badge: ({ children, ...p }: any) => <span data-testid="badge" {...p}>{children}</span>,
+  Badge: ({ children, ...p }: any) => (
+    <span data-testid="badge" {...p}>
+      {children}
+    </span>
+  ),
 }))
 
 // Separator
@@ -194,22 +185,13 @@ vi.mock("@/lib/api", () => ({
 
 // Format
 vi.mock("@/lib/format", () => ({
-  formatBRL: (v: number) =>
-    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+  formatBRL: (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
 }))
 
 // Constants
 vi.mock("@/lib/constants", () => ({
   SERVICE_UNIT_SHORT: { UNIT: "un", HOUR: "h", KG: "kg" },
-  WEEKDAYS: [
-    "Domingo",
-    "Segunda",
-    "Terça",
-    "Quarta",
-    "Quinta",
-    "Sexta",
-    "Sábado",
-  ],
+  WEEKDAYS: ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"],
   WEEKDAYS_SHORT: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
 }))
 
@@ -395,9 +377,7 @@ describe("ProviderProfileModal — rendering", () => {
 
     // Share, favorite, and close buttons are rendered
     expect(screen.getAllByLabelText("Compartilhar").length).toBeGreaterThan(0)
-    expect(
-      screen.getAllByLabelText("Adicionar aos favoritos").length,
-    ).toBeGreaterThan(0)
+    expect(screen.getAllByLabelText("Adicionar aos favoritos").length).toBeGreaterThan(0)
     expect(screen.getAllByLabelText("Fechar").length).toBeGreaterThan(0)
   })
 
@@ -457,9 +437,7 @@ describe("ProviderProfileModal — tabs switching", () => {
     renderModal()
 
     const tabTriggers = screen.getAllByTestId("tab-trigger")
-    const servicesTab = tabTriggers.find((t) =>
-      t.textContent?.includes("Serviços"),
-    )
+    const servicesTab = tabTriggers.find((t) => t.textContent?.includes("Serviços"))
     // 2 services → "(2)" visible in trigger
     expect(servicesTab).toBeTruthy()
     expect(servicesTab?.textContent).toContain("2")

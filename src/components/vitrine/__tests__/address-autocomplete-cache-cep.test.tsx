@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, act } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
 import AddressAutocomplete from "../address-autocomplete"
 
 import {

@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, cleanup, act } from "@testing-library/react"
+import { render, screen, cleanup, act } from "@/__tests__/test-utils"
 import type { ProviderDetail } from "@/lib/api"
 
 // ---------------------------------------------------------------------------
@@ -130,7 +130,14 @@ vi.mock("@/components/ui/dialog", () => ({
 
 vi.mock("@/components/ui/button", () => ({
   Button: ({ children, onClick, className, variant, size, disabled }: any) => (
-    <button onClick={onClick} className={className} data-variant={variant} data-size={size} disabled={disabled} data-testid="button">
+    <button
+      onClick={onClick}
+      className={className}
+      data-variant={variant}
+      data-size={size}
+      disabled={disabled}
+      data-testid="button"
+    >
       {children}
     </button>
   ),
@@ -138,7 +145,9 @@ vi.mock("@/components/ui/button", () => ({
 
 vi.mock("@/components/ui/badge", () => ({
   Badge: ({ children, className, variant }: any) => (
-    <span className={className} data-variant={variant} data-testid="badge">{children}</span>
+    <span className={className} data-variant={variant} data-testid="badge">
+      {children}
+    </span>
   ),
 }))
 
@@ -187,7 +196,17 @@ function providerDetail(overrides: Partial<ProviderDetail> = {}): ProviderDetail
     district: "Bela Vista",
     completedBookings: 45,
     memberSince: "2024-01-15",
-    services: [{ id: "s1", title: "Pintura", basePrice: 150, description: null, unit: "UNIDADE", photos: [], category: { id: "c1", name: "Acabamento" } }],
+    services: [
+      {
+        id: "s1",
+        title: "Pintura",
+        basePrice: 150,
+        description: null,
+        unit: "UNIDADE",
+        photos: [],
+        category: { id: "c1", name: "Acabamento" },
+      },
+    ],
     availability: [{ id: "a1", dayOfWeek: 1, startTime: "08:00", endTime: "18:00" }],
     reviews: [],
     whatsapp: null,
@@ -342,8 +361,36 @@ describe("CompareModal — trophies and highlights", () => {
   })
 
   it("shows Trophy for best price (cheapest)", () => {
-    const p1 = providerDetail({ id: "p1", name: "Maria", services: [{ id: "s1", title: "Pintura", basePrice: 150, description: null, unit: "UNIDADE", photos: [], category: { id: "c1", name: "Acabamento" } }] })
-    const p2 = providerDetail({ id: "p2", name: "João", services: [{ id: "s2", title: "Elétrica", basePrice: 200, description: null, unit: "UNIDADE", photos: [], category: { id: "c2", name: "Elétrica" } }] })
+    const p1 = providerDetail({
+      id: "p1",
+      name: "Maria",
+      services: [
+        {
+          id: "s1",
+          title: "Pintura",
+          basePrice: 150,
+          description: null,
+          unit: "UNIDADE",
+          photos: [],
+          category: { id: "c1", name: "Acabamento" },
+        },
+      ],
+    })
+    const p2 = providerDetail({
+      id: "p2",
+      name: "João",
+      services: [
+        {
+          id: "s2",
+          title: "Elétrica",
+          basePrice: 200,
+          description: null,
+          unit: "UNIDADE",
+          photos: [],
+          category: { id: "c2", name: "Elétrica" },
+        },
+      ],
+    })
     mockQueryResult([p1, p2])
 
     render(<CompareModal />)
@@ -365,7 +412,9 @@ describe("CompareModal — interaction", () => {
     const removeButtons = screen.getAllByLabelText(/Remover.*da comparação/)
     expect(removeButtons.length).toBe(2)
 
-    act(() => { removeButtons[0].click() })
+    act(() => {
+      removeButtons[0].click()
+    })
     expect(compareState.remove).toHaveBeenCalledWith("p1")
   })
 
@@ -377,7 +426,9 @@ describe("CompareModal — interaction", () => {
     render(<CompareModal />)
 
     const clearButton = screen.getByText("Limpar tudo")
-    act(() => { clearButton.click() })
+    act(() => {
+      clearButton.click()
+    })
     expect(compareState.clear).toHaveBeenCalled()
   })
 })

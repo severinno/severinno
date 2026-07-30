@@ -18,7 +18,7 @@
  *   - Como funciona         — how it works steps
  */
 import { describe, it, expect, afterEach } from "vitest"
-import { render, cleanup } from "@testing-library/react"
+import { render, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 import RootLoading from "../loading"
 import BuscaLoading from "../busca/loading"
@@ -72,9 +72,7 @@ describe("Root Loading (/) — accessibility", () => {
 
   it("partners section has descriptive aria-label", () => {
     const { container } = render(<RootLoading />)
-    expect(
-      container.querySelector('[aria-label="Parceiros e imprensa"]'),
-    ).toBeInTheDocument()
+    expect(container.querySelector('[aria-label="Parceiros e imprensa"]')).toBeInTheDocument()
   })
 
   it("renders content sections with semantic HTML", () => {
@@ -85,16 +83,12 @@ describe("Root Loading (/) — accessibility", () => {
 
   it("decorative blobs have pointer-events-none", () => {
     const { container } = render(<RootLoading />)
-    expect(
-      container.querySelectorAll(".pointer-events-none").length,
-    ).toBeGreaterThanOrEqual(1)
+    expect(container.querySelectorAll(".pointer-events-none").length).toBeGreaterThanOrEqual(1)
   })
 
   it("gradient fades have aria-hidden", () => {
     const { container } = render(<RootLoading />)
-    expect(
-      container.querySelectorAll('[aria-hidden="true"]').length,
-    ).toBeGreaterThanOrEqual(1)
+    expect(container.querySelectorAll('[aria-hidden="true"]').length).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -137,9 +131,7 @@ describe("Categoria Loading (/categoria/[slug]) — accessibility", () => {
   it("renders breadcrumb and grid layout", () => {
     const { container } = render(<CategoriaLoading />)
     // Category has grids with lg:grid-cols-4 (highlights) and lg:grid-cols-3 (providers)
-    const grids = container.querySelectorAll(
-      '[class*="lg:grid-cols-4"], [class*="lg:grid-cols-3"]',
-    )
+    const grids = container.querySelectorAll('[class*="lg:grid-cols-4"], [class*="lg:grid-cols-3"]')
     expect(grids.length).toBeGreaterThanOrEqual(2)
   })
 })

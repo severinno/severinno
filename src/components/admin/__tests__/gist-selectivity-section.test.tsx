@@ -18,7 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
-import { render, screen } from "@testing-library/react"
+import { render, screen } from "@/__tests__/test-utils"
 import { GiSTSelectivitySection } from "../admin-geo-metrics-dashboard"
 import type { BenchmarkData } from "@/app/api/admin/geo-metrics/route"
 

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Hoisted shared state (avoids vi.mock hoisting TDZ) --------------------
@@ -21,7 +21,11 @@ const { mockApiPatch, mockPlayCoinSound, mockTryVibrate } = vi.hoisted(() => {
 
 vi.mock("@/store/auth", () => ({
   useAuthStore: vi.fn(
-    (selector?: (s: { user: { id: string; name: string; soundEnabled?: boolean; vibrateEnabled?: boolean } | null }) => unknown) => {
+    (
+      selector?: (s: {
+        user: { id: string; name: string; soundEnabled?: boolean; vibrateEnabled?: boolean } | null
+      }) => unknown,
+    ) => {
       const state = {
         user: { id: "admin-1", name: "Admin", soundEnabled: true, vibrateEnabled: true },
       }

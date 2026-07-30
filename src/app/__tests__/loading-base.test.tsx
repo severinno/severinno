@@ -1,12 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest"
-import { render, cleanup } from "@testing-library/react"
-import {
-  shimmerCSS,
-  ShimmerStyle,
-  S,
-  createContainer,
-  createItem,
-} from "../loading-base"
+import { render, cleanup } from "@/__tests__/test-utils"
+import { shimmerCSS, ShimmerStyle, S, createContainer, createItem } from "../loading-base"
 
 afterEach(cleanup)
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render, screen } from "@/__tests__/test-utils"
 import { Button } from "../button"
 
 describe("Button", () => {
@@ -22,7 +22,15 @@ describe("Button", () => {
 
   it("forwards onClick", () => {
     let clicked = false
-    render(<Button onClick={() => { clicked = true }}>Click</Button>)
+    render(
+      <Button
+        onClick={() => {
+          clicked = true
+        }}
+      >
+        Click
+      </Button>,
+    )
     screen.getByText("Click").click()
     expect(clicked).toBe(true)
   })

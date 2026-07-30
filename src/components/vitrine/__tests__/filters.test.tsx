@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, act } from "@testing-library/react"
+import { render, screen, act } from "@/__tests__/test-utils"
 import type { Category } from "@/lib/api"
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,9 @@ vi.mock("@/lib/utils", () => ({
 }))
 
 vi.mock("lucide-react", () => {
-  const Icon = ({ className, ...rest }: any) => <span data-testid="icon" className={className} {...rest} />
+  const Icon = ({ className, ...rest }: any) => (
+    <span data-testid="icon" className={className} {...rest} />
+  )
   Icon.displayName = "Icon"
   return {
     Search: Icon,
@@ -81,14 +83,23 @@ vi.mock("@/components/ui/label", () => ({
 
 vi.mock("@/components/ui/switch", () => ({
   Switch: ({ checked, onCheckedChange, id }: any) => (
-    <input type="checkbox" checked={checked} onChange={(e) => onCheckedChange(e.target.checked)} id={id} data-testid="switch" />
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onCheckedChange(e.target.checked)}
+      id={id}
+      data-testid="switch"
+    />
   ),
 }))
 
 vi.mock("@/components/ui/slider", () => ({
   Slider: ({ value, onValueChange, min, max, step, "aria-label": ariaLabel }: any) => (
     <div data-testid="slider" data-value={value?.[0]}>
-      <button onClick={() => onValueChange?.([Math.min(max, (value?.[0] ?? 0) + 10)])} data-testid="slider-up">
+      <button
+        onClick={() => onValueChange?.([Math.min(max, (value?.[0] ?? 0) + 10)])}
+        data-testid="slider-up"
+      >
         +
       </button>
     </div>
@@ -128,13 +139,15 @@ import Filters, { DEFAULT_FILTERS, type FiltersState } from "../filters"
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createProps(overrides?: Partial<{
-  value: FiltersState
-  onChange: ReturnType<typeof vi.fn>
-  categories: Category[]
-  hasGeo: boolean
-  onRequestGeo: ReturnType<typeof vi.fn>
-}>): {
+function createProps(
+  overrides?: Partial<{
+    value: FiltersState
+    onChange: ReturnType<typeof vi.fn>
+    categories: Category[]
+    hasGeo: boolean
+    onRequestGeo: ReturnType<typeof vi.fn>
+  }>,
+): {
   value: FiltersState
   onChange: ReturnType<typeof vi.fn>
   categories: Category[]
@@ -221,7 +234,9 @@ describe("Filters — 'Mais próximos' interaction", () => {
     render(<Filters {...props} />)
 
     const btn = getSortButton("Mais próximos")
-    act(() => { btn.click() })
+    act(() => {
+      btn.click()
+    })
 
     expect(onRequestGeo).toHaveBeenCalledTimes(1)
     expect(props.onChange).not.toHaveBeenCalled()
@@ -233,12 +248,12 @@ describe("Filters — 'Mais próximos' interaction", () => {
     render(<Filters {...props} />)
 
     const btn = getSortButton("Mais próximos")
-    act(() => { btn.click() })
+    act(() => {
+      btn.click()
+    })
 
     expect(onChange).toHaveBeenCalledTimes(1)
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ sort: "distance" }),
-    )
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sort: "distance" }))
   })
 
   it("calls onChange with sort=rating when clicking Melhor avaliação", () => {
@@ -251,11 +266,11 @@ describe("Filters — 'Mais próximos' interaction", () => {
     render(<Filters {...props} />)
 
     const btn = getSortButton("Melhor avaliação")
-    act(() => { btn.click() })
+    act(() => {
+      btn.click()
+    })
 
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ sort: "rating" }),
-    )
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ sort: "rating" }))
   })
 })
 
@@ -269,9 +284,7 @@ describe("Filters — 'Mais próximos' title", () => {
     render(<Filters {...props} />)
 
     const btn = getSortButton("Mais próximos")
-    expect(btn.getAttribute("title")).toBe(
-      "Compartilhe sua localização para ordenar por distância",
-    )
+    expect(btn.getAttribute("title")).toBe("Compartilhe sua localização para ordenar por distância")
   })
 
   it("has no title when enabled", () => {

@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, cleanup, act } from "@testing-library/react"
+import { render, screen, cleanup, act } from "@/__tests__/test-utils"
 
 // ---------------------------------------------------------------------------
 // Hoisted mocks

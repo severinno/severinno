@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest"
-import { render, within, cleanup } from "@testing-library/react"
+import { render, within, cleanup } from "@/__tests__/test-utils"
 import { LoadingShell, StaggerContainer, StaggerItem, S } from "../loading-shell"
 
 afterEach(cleanup)
