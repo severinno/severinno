@@ -12,6 +12,7 @@
     "start": "NODE_ENV=production node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "check:direct-rtl-import": "node scripts/check-direct-rtl-import.mjs",
     "security:audit": "pnpm audit --audit-level=high || echo '⚠️  Security audit found issues — review manually'",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",

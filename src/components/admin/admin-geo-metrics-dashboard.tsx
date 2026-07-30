@@ -23,8 +23,6 @@ import {
   RefreshCw,
   Search,
   Timer,
-  TrendingDown,
-  TrendingUp,
   MapPin,
   Database,
   LineChart as LineChartIcon,
@@ -85,7 +83,7 @@ import {
 } from "@/lib/benchmark-data"
 import { GistDegradationPanel } from "@/components/admin/gist-degradation-panel"
 import { RadiusDensitySelector } from "@/components/admin/radius-density-selector"
-import { MetricCard } from "@/components/admin/admin-metric-card"
+import { MetricCard, KpiCard } from "@/components/admin/admin-metric-card"
 import { IndicadorDeAtualizacao } from "@/components/admin/indicador-de-atualizacao"
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
@@ -2214,42 +2212,6 @@ function GiSTCostTooltip({
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────
-
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  subtitle,
-  trend,
-}: {
-  icon: React.ElementType
-  label: string
-  value: string
-  subtitle?: string
-  trend?: "up" | "down"
-}) {
-  return (
-    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
-      <div className="flex items-start justify-between">
-        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
-          <Icon className="size-5" />
-        </span>
-        {trend ? (
-          trend === "up" ? (
-            <TrendingUp className="size-4 text-red-500" />
-          ) : (
-            <TrendingDown className="size-4 text-emerald-500" />
-          )
-        ) : null}
-      </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
-        {label}
-      </p>
-      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
-    </div>
-  )
-}
 
 function LatencyBar({ label, value, max }: { label: string; value: number; max: number }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0

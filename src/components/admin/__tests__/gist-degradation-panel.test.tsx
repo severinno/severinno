@@ -3,19 +3,22 @@
  *
  * Tests for the GistDegradationPanel component.
  *
- * Mocks:
- *   - fetch (global) — three modes: success, failure, network-error
- *   - lucide-react — simple icon placeholders
- *   - Collapsible — div-based stub for jsdom compatibility
- *   - AlertDialog — div-based stub for jsdom compatibility
- *   - sonner (toast) — prevent side effects during tests
- *   - geo-benchmark-model constants — deterministic test values
+ * Mocks (shared in ./mocks.tsx):
+ *   - lucide-react — MockIcon placeholder
+ *   - AlertDialog — div-based stub
+ *   - sonner toast — silent mock
+ *
+ * Mocks (local — unique to this test):
+ *   - Collapsible — div-based stub for jsdom
+ *   - geo-benchmark-model — deterministic constant values
  *
  * Test coverage:
  *   - GistDegradationPanel: null/render states, text content, collapsible
  *   - onReindexSuccess callback: called ONLY on API success,
  *     NEVER on API failure (success:false) or network error
  *   - Prop threading: isRefetching, onReindexSuccess
+ *   - Model impact section with formula and ratio
+ *   - Corner cases: large P95, zero exceedingCount, high maxModel
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
@@ -23,30 +26,37 @@ import { render, screen, fireEvent, waitFor, cleanup } from "@/__tests__/test-ut
 import { GistDegradationPanel } from "../gist-degradation-panel"
 
 // ===========================================================================
-// Mock global fetch — installed per-test in beforeEach, removed in afterEach
+// Shared mocks (lucide-react, AlertDialog, sonner) — imported via async
+// vi.mock factories to work around vitest's hoisting mechanism.
 // ===========================================================================
 
-let mockFetchResponse: () => Promise<Response>
+vi.mock("lucide-react", async () => {
+  const { MockIcon } = await import("./mocks")
+  return {
+    Database: MockIcon,
+    RefreshCw: MockIcon,
+    CheckCircle2: MockIcon,
+    AlertTriangle: MockIcon,
+  }
+})
 
-// ===========================================================================
-// Mock lucide-react — simple icon placeholders
-// ===========================================================================
+vi.mock("@/components/ui/alert-dialog", async () => {
+  const { createAlertDialogMock } = await import("./mocks")
+  return createAlertDialogMock()
+})
 
-vi.mock("lucide-react", () => {
-  const Icon = (p: { className?: string; "data-testid"?: string }) => (
-    <span data-testid={p["data-testid"] ?? "lucide-icon"} data-class={p.className} />
-  )
-  Icon.displayName = "LucideIcon"
-  return { Database: Icon, RefreshCw: Icon, CheckCircle2: Icon, AlertTriangle: Icon }
+vi.mock("sonner", async () => {
+  const { toastMock } = await import("./mocks")
+  return { toast: toastMock }
 })
 
 // ===========================================================================
-// Mock collapsible — div-based stub for jsdom
+// Mock Collapsible — div-based stub for jsdom (unique to this test)
 // ===========================================================================
 
 vi.mock("@/components/ui/collapsible", () => ({
   Collapsible: ({ open, onOpenChange, children, className }: any) => (
-    <div data-testid="collapsible" data-open={open} className={className}>
+    <div data-testid="collapsible" data-open={String(open)} className={className}>
       {children}
     </div>
   ),
@@ -62,70 +72,7 @@ vi.mock("@/components/ui/collapsible", () => ({
 }))
 
 // ===========================================================================
-// Mock AlertDialog — div-based stub for jsdom
-// Simula onOpenChange ao clicar no trigger para que o estado interno
-// do componente (showReindexConfirm) seja atualizado.
-// ===========================================================================
-
-vi.mock("@/components/ui/alert-dialog", () => ({
-  AlertDialog: ({ open, children, onOpenChange }: any) => (
-    <div data-testid="alert-dialog" data-open={open}>
-      {React.Children.map(children, (child: any) => {
-        if (
-          React.isValidElement(child) &&
-          (child as any).type?.displayName === "AlertDialogTrigger"
-        ) {
-          return React.cloneElement(child as React.ReactElement<any>, { onOpenChange })
-        }
-        return child
-      })}
-      {open && <div data-testid="alert-dialog-open" />}
-    </div>
-  ),
-  AlertDialogTrigger: Object.assign(
-    function AlertDialogTrigger({ asChild, children, onOpenChange }: any) {
-      if (asChild && React.isValidElement(children)) {
-        return React.cloneElement(children as React.ReactElement<any>, {
-          onClick: (...args: any[]) => {
-            onOpenChange?.(true)
-            const childOnClick = (children as React.ReactElement<any>).props.onClick
-            if (childOnClick) childOnClick(...args)
-          },
-        })
-      }
-      return (
-        <button type="button" onClick={() => onOpenChange?.(true)}>
-          {children}
-        </button>
-      )
-    },
-    { displayName: "AlertDialogTrigger" },
-  ),
-  AlertDialogContent: ({ children }: any) => (
-    <div data-testid="alert-dialog-content">{children}</div>
-  ),
-  AlertDialogHeader: ({ children }: any) => <div>{children}</div>,
-  AlertDialogFooter: ({ children }: any) => <div data-testid="alert-dialog-footer">{children}</div>,
-  AlertDialogTitle: ({ children }: any) => <div>{children}</div>,
-  AlertDialogDescription: ({ children }: any) => <div>{children}</div>,
-  AlertDialogAction: ({ disabled, onClick, children }: any) => (
-    <button type="button" disabled={disabled} data-testid="alert-dialog-action" onClick={onClick}>
-      {children}
-    </button>
-  ),
-  AlertDialogCancel: ({ children }: any) => <button type="button">{children}</button>,
-}))
-
-// ===========================================================================
-// Mock sonner toast — silent during tests
-// ===========================================================================
-
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
-}))
-
-// ===========================================================================
-// Mock geo-benchmark-model constants
+// Mock geo-benchmark-model constants (unique to this test)
 // ===========================================================================
 
 vi.mock("@/lib/geo-benchmark-model", () => ({
@@ -133,6 +80,20 @@ vi.mock("@/lib/geo-benchmark-model", () => ({
   POSTGIS_PER_ROW_US: 22,
   PROVIDER_COUNTS: [100, 500, 1000, 5000, 10000],
 }))
+
+// ===========================================================================
+// Shared imports (FetchResponseFn, built response helpers, clickExecuteReindex)
+// ===========================================================================
+
+import type { FetchResponseFn } from "./mocks"
+import {
+  buildReindexSuccessResponse,
+  buildReindexFailureResponse,
+  buildReindexSlowResponse,
+  clickExecuteReindex,
+} from "./mocks"
+
+let mockFetchResponse: FetchResponseFn
 
 // ===========================================================================
 // Default props
@@ -145,25 +106,6 @@ const DEFAULT_PROPS = {
   snapPct: 9,
   maxModelAtSelectivity: 35.2,
   exceedingCount: 4,
-}
-
-// ===========================================================================
-// Helpers
-// ===========================================================================
-
-/** Click through the REINDEX flow: trigger button → confirm in AlertDialog.
- *  After the click, waits for the result indicator to appear, ensuring the
- *  async fetch + React state update have completed before returning. */
-async function clickExecuteReindex() {
-  // Step 1: click "Executar REINDEX" to open the AlertDialog
-  fireEvent.click(screen.getByText("Executar REINDEX"))
-
-  // Step 2: click "Sim, executar REINDEX" in the AlertDialog
-  fireEvent.click(screen.getByTestId("alert-dialog-action"))
-
-  // Wait for success/failure indicator text to appear
-  // This ensures the async fetch + state update completed
-  await screen.findByText(/sucesso|Falha|Erro/, undefined, { timeout: 2000 })
 }
 
 // ===========================================================================
@@ -180,22 +122,7 @@ describe("GistDegradationPanel", () => {
     )
 
     // Default fetch: success
-    mockFetchResponse = () =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            success: true,
-            message: "3/3 índices reindexados com sucesso.",
-            indexes: [
-              { name: "idx_user_location_gist", durationMs: 1234, ok: true },
-              { name: "idx_booking_location_gist", durationMs: 567, ok: true },
-              { name: "idx_quoterequest_location_gist", durationMs: 321, ok: true },
-            ],
-            totalDurationMs: 2122,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      )
+    mockFetchResponse = () => Promise.resolve(buildReindexSuccessResponse())
   })
 
   afterEach(() => {
@@ -299,19 +226,7 @@ describe("GistDegradationPanel", () => {
 
   it("shows 'Executando…' during REINDEX execution", async () => {
     // Make fetch slow so we can observe the loading state
-    mockFetchResponse = () =>
-      new Promise((resolve) =>
-        setTimeout(
-          () =>
-            resolve(
-              new Response(
-                JSON.stringify({ success: true, message: "ok", indexes: [], totalDurationMs: 0 }),
-                { status: 200, headers: { "Content-Type": "application/json" } },
-              ),
-            ),
-          100,
-        ),
-      )
+    mockFetchResponse = () => buildReindexSlowResponse(100)
 
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
     fireEvent.click(screen.getByText("Executar REINDEX"))
@@ -355,18 +270,7 @@ describe("GistDegradationPanel", () => {
   // ── onReindexSuccess: failure scenario ────────────────────────────
 
   it("does NOT call onReindexSuccess when REINDEX returns success:false", async () => {
-    mockFetchResponse = () =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            success: false,
-            message: "Erro interno",
-            indexes: [],
-            totalDurationMs: 0,
-          }),
-          { status: 500, headers: { "Content-Type": "application/json" } },
-        ),
-      )
+    mockFetchResponse = () => Promise.resolve(buildReindexFailureResponse("Erro interno"))
 
     const onSuccess = vi.fn()
     render(<GistDegradationPanel {...DEFAULT_PROPS} onReindexSuccess={onSuccess} />)
@@ -394,8 +298,6 @@ describe("GistDegradationPanel", () => {
     await clickExecuteReindex()
 
     // Wait for error state to render
-    // The result indicator shows ❌ — no need to wait for it since
-    // clickExecuteReindex already waits for ✅/❌ to appear
     expect(screen.getByText(/NetworkError/)).toBeInTheDocument()
 
     // Assert onReindexSuccess was NEVER called
@@ -462,5 +364,117 @@ describe("GistDegradationPanel", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} maxModelAtSelectivity={1000} />)
 
     expect(screen.getByText(/0.1×/)).toBeInTheDocument()
+  })
+
+  // ── Estados visuais do GistReindexButton dentro do painel pai ────
+  //
+  // Validates that the 4 visual states defined in GistReindexButton also
+  // function correctly when the button is rendered inside GistDegradationPanel
+  // (the collapsible alert panel that contains the button in its recommendation
+  // section). The CollapsibleContent mock renders children unconditionally,
+  // and the AlertDialog mock renders children unconditionally — both mock
+  // artifacts that make the button accessible without expanding the panel.
+  //
+  // These tests mirror the "Estados visuais" describe block in
+  // gist-reindex-button.test.tsx but use the parent panel props.
+
+  describe("Estados visuais (GistReindexButton dentro do panel pai)", () => {
+    it("1. estado inicial — botão 'Executar REINDEX', sem indicador", () => {
+      render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+
+      // Alert: painel degradado visível
+      expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
+
+      // Botão "Executar REINDEX" presente e habilitado
+      const btn = screen.getByText("Executar REINDEX")
+      expect(btn).toBeInTheDocument()
+      expect(btn).not.toBeDisabled()
+
+      // Nenhum spinner ou indicador visível
+      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
+      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
+      expect(screen.queryByText("Atualizando métricas…")).not.toBeInTheDocument()
+      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
+    })
+
+    it("2. reindexando — botão 'Reindexando…', indicador loading com spinner", async () => {
+      // Fetch nunca resolve para manter estado de loading
+      mockFetchResponse = () => new Promise(() => {})
+
+      render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+
+      // Clicar no botão do REINDEX → abre AlertDialog → clica em confirmar
+      fireEvent.click(screen.getByText("Executar REINDEX"))
+      fireEvent.click(screen.getByTestId("alert-dialog-action"))
+
+      // Botão do trigger alterou texto para "Reindexando…"
+      expect(screen.getByText("Reindexando…")).toBeInTheDocument()
+      expect(screen.queryByText("Executar REINDEX")).not.toBeInTheDocument()
+
+      // Botão de confirmação do dialog mostra "Executando…"
+      expect(screen.getByText("Executando…")).toBeInTheDocument()
+
+      // Indicador de loading visível
+      expect(screen.getByText("Reindexando índices…")).toBeInTheDocument()
+
+      // Spinner com animate-spin presente
+      const spinners = screen.getAllByTestId("lucide-icon")
+      const animatedSpinner = spinners.find((el) =>
+        el.getAttribute("data-class")?.includes("animate-spin"),
+      )
+      expect(animatedSpinner).toBeInTheDocument()
+
+      // Nenhum resultado ainda
+      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
+      expect(screen.queryByText("Sim, executar REINDEX")).not.toBeInTheDocument()
+    })
+
+    it("3. sucesso — indicador verde com resultado da API", async () => {
+      render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+      await clickExecuteReindex()
+
+      // Painel degradado continua visível
+      expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
+
+      // Botão voltou ao texto inicial "Executar REINDEX"
+      expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
+      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
+
+      // Indicador verde de sucesso com detalhes da API
+      const resultEl = screen.getByText(/sucesso/)
+      expect(resultEl).toBeInTheDocument()
+      expect(resultEl.textContent).toContain("sucesso")
+      expect(resultEl.textContent).toContain("2122ms")
+      expect(resultEl.textContent).toContain("idx_user_location_gist")
+
+      // Nenhum spinner de loading
+      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
+      expect(screen.queryByText("Atualizando métricas…")).not.toBeInTheDocument()
+    })
+
+    it("4. isRefetching — indicador 'Atualizando métricas…' com spinner, botão inalterado", () => {
+      render(<GistDegradationPanel {...DEFAULT_PROPS} isRefetching={true} />)
+
+      // Painel degradado visível
+      expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
+
+      // Botão "Executar REINDEX" ainda aparece (não está reindexando)
+      expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
+      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
+      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
+
+      // Indicador de refetch visível
+      expect(screen.getByText("Atualizando métricas…")).toBeInTheDocument()
+
+      // Ícone com animate-spin presente
+      const icons = screen.getAllByTestId("lucide-icon")
+      const animatedIcon = icons.find((el) =>
+        el.getAttribute("data-class")?.includes("animate-spin"),
+      )
+      expect(animatedIcon).toBeInTheDocument()
+
+      // Nenhum resultado
+      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
+    })
   })
 })
