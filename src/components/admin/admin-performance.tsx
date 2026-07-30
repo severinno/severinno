@@ -174,28 +174,28 @@ export function AdminPerformanceDashboard() {
           icon={Timer}
           label="P95 Geral"
           value={`${Math.round(data.endpoints.reduce((a, e) => Math.max(a, e.p95Ms), 0))}ms`}
-          trend={data.endpoints.some((e) => e.p95Ms > 500) ? "up" : "down"}
+          trend={data.endpoints.some((e) => e.p95Ms > 500) ? "down" : "up"}
         />
         <KpiCard
           icon={AlertTriangle}
           label="Taxa de Erro"
           value={`${data.errorSummary.total5xx + data.errorSummary.total4xx}`}
           subtitle={`${data.errorSummary.total5xx} 5xx · ${data.errorSummary.total4xx} 4xx`}
-          trend={data.errorSummary.total5xx > 10 ? "up" : "down"}
+          trend={data.errorSummary.total5xx > 10 ? "down" : "up"}
         />
         <KpiCard
           icon={Database}
           label="DB Slow Queries"
           value={`${data.dbQueries.reduce((a, q) => a + q.slowCount, 0)}`}
           subtitle={`${data.dbQueries.reduce((a, q) => a + q.calls, 0).toLocaleString()} chamadas`}
-          trend={data.dbQueries.some((q) => q.slowCount > 5) ? "up" : "down"}
+          trend={data.dbQueries.some((q) => q.slowCount > 5) ? "down" : "up"}
         />
         <KpiCard
           icon={Server}
           label="Memória"
           value={`${data.systemHealth.memoryUsageMb}MB`}
           subtitle={`Uptime: ${Math.round(data.systemHealth.uptime / 60)}min`}
-          trend={data.systemHealth.memoryUsageMb > 300 ? "up" : "down"}
+          trend={data.systemHealth.memoryUsageMb > 300 ? "down" : "up"}
         />
       </section>
 

@@ -35,6 +35,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
 import { ErrorState } from "@/components/admin/admin-shared"
+import { TierBanner } from "@/components/admin/admin-tier-banner"
 
 import type { DetailedHealthResponse } from "@/app/api/health/detailed/route"
 import { MetricCard } from "@/components/admin/admin-metric-card"
@@ -107,6 +108,18 @@ export function AdminHealthDashboard() {
         onRefresh={() => void refetch()}
         dataUpdatedAt={dataUpdatedAt}
         refreshLabel="Atualizar health check"
+        tierBanner={
+          data.status !== "healthy"
+            ? {
+                state: data.status === "degraded" ? "degraded" : "critical",
+                title: data.status === "degraded" ? "⚠️ Sistema degradado" : "🔴 Sistema crítico",
+                description:
+                  data.status === "degraded"
+                    ? `${data.summary.degraded} serviço(s) operando com degradação.`
+                    : `${data.summary.unhealthy} serviço(s) fora do ar.`,
+              }
+            : undefined
+        }
       />
 
       {/* ── Overall Status Hero ──────────────────────────────────────── */}
@@ -185,7 +198,7 @@ export function AdminHealthDashboard() {
           label="Serviços"
           value={String(data.summary.total)}
           subtitle={`${data.summary.healthy} saudáveis`}
-          trend={data.summary.unhealthy > 0 ? "up" : "down"}
+          trend={data.summary.unhealthy > 0 ? "down" : "up"}
         />
         <KpiCard
           icon={Clock}
@@ -197,7 +210,7 @@ export function AdminHealthDashboard() {
           icon={HardDrive}
           label="Memória RSS"
           value={formatBytes(getMemoryRSS(data))}
-          trend={getMemoryRSS(data) > 300 * 1024 * 1024 ? "up" : "down"}
+          trend={getMemoryRSS(data) > 300 * 1024 * 1024 ? "down" : "up"}
         />
       </section>
 

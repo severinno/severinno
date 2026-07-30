@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Tests for src/lib/distance-fallback.ts — computeDistanceMap
  *
@@ -27,15 +26,9 @@ const USER_LNG = -46.6333
  * Mock queryRawUnsafe factory.
  * Returns a spy that resolves with the given rows, or rejects with an error.
  */
-function mockQueryRaw(
-  rows?: Array<{ id: string; distance_km: number }>,
-  shouldReject = false,
-) {
-  return vi.fn(
-    () =>
-      shouldReject
-        ? Promise.reject(new Error("DB error"))
-        : Promise.resolve(rows ?? []),
+function mockQueryRaw(rows?: Array<{ id: string; distance_km: number }>, shouldReject = false) {
+  return vi.fn(() =>
+    shouldReject ? Promise.reject(new Error("DB error")) : Promise.resolve(rows ?? []),
   ) as any
 }
 

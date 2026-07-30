@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Tests for useBalancePulse — tracks balance increases and triggers a
  * temporary "pulsing" flag + optional onIncrease callback.

@@ -27,6 +27,8 @@
  */
 
 import { Redis, Cluster } from "ioredis"
+import { captureMessage } from "@/lib/sentry"
+import logger from "@/lib/logger"
 
 // ── Configuration ─────────────────────────────────────────────────────────
 
@@ -175,6 +177,17 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
  * error from an old client), the call is ignored.
  */
 let degradationCount = 0
+/** Last Sentry alert timestamp (debounce: max 1 alert per 15 min). */
+let lastDegradationAlertAt: number | null = null
+
+/** Last proactive recovery timestamp (debounce: max 1 attempt per 60 min). */
+let lastProactiveRecoveryAt: number | null = null
+
+/** Debounce interval for degradation alerts (15 minutes). */
+const DEGRADATION_ALERT_DEBOUNCE_MS = 15 * 60 * 1000
+
+/** Debounce interval for proactive recovery (60 minutes). */
+const PROACTIVE_RECOVERY_DEBOUNCE_MS = 60 * 60 * 1000
 
 function degradeTier(failedTier: Tier): void {
   // Build the chain from the priority-ordered list
@@ -197,12 +210,166 @@ function degradeTier(failedTier: Tier): void {
       `(degradation #${degradationCount}, failed tier: ${failedTier})`,
   )
 
+  // Alert Sentry when degradation count reaches 3+, indicating the cluster
+  // has failed repeatedly and needs operational attention.
+  // Debounced to max 1 alert per 15 min to prevent alert fatigue during
+  // sustained outages where the 30s recovery cycle keeps failing.
+  if (degradationCount >= 3) {
+    const now = Date.now()
+    if (
+      lastDegradationAlertAt !== null &&
+      now - lastDegradationAlertAt < DEGRADATION_ALERT_DEBOUNCE_MS
+    ) {
+      // Skip — still within debounce window
+    } else {
+      lastDegradationAlertAt = now
+      captureMessage(
+        `[Redis] Múltiplas degradações — ${degradationCount} desde o início`,
+        "error",
+        {
+          degradationCount,
+          currentTier: activeTier,
+          nextTier,
+          failedTier,
+          configMode: REDIS_CLUSTER_MODE ? "cluster" : "standalone",
+          degradationChain: `${activeTier} → ${nextTier}`,
+        },
+      )
+    }
+  }
+
+  // ── Proactive auto-recovery ──────────────────────────────────────────
+  //
+  // When degradationCount reaches 5+, trigger GiST REINDEX (in case the
+  // root cause is spatial index bloat) AND restart Redis clients with a
+  // clean configuration.  Debounced to 1 attempt per 60 min.
+  //
+  // Fire-and-forget — non-blocking, best-effort recovery.
+  if (degradationCount === 5 || (degradationCount > 5 && degradationCount % 10 === 0)) {
+    const now = Date.now()
+    if (
+      lastProactiveRecoveryAt === null ||
+      now - lastProactiveRecoveryAt >= PROACTIVE_RECOVERY_DEBOUNCE_MS
+    ) {
+      lastProactiveRecoveryAt = now
+      proactiveRecovery().catch(() => {
+        /* fire-and-forget — errors are logged inside proactiveRecovery */
+      })
+    }
+  }
+
   activeTier = nextTier
 
   // Ensure the next tier's client exists so it's ready on first use
   if (nextTier !== "memory") {
     ensureClient(nextTier as "cluster" | "standalone")
   }
+}
+
+// ── Proactive recovery (GiST REINDEX + Redis restart) ────────────────────
+//
+// When the system has degraded 5+ times, it proactively:
+//   1. REINDEXes PostGIS spatial indexes (if GiST bloat is the root cause)
+//   2. Restarts Redis clients with a clean slate
+//
+// Both steps are fire-and-forget (best-effort).  The GiST REINDEX uses
+// REINDEX CONCURRENTLY so it does not block the application.
+
+/**
+ * Spatial indexes to REINDEX during proactive recovery.
+ * These are the PostGIS GiST indexes used by proximity queries.
+ */
+const SPATIAL_INDEXES = [
+  "idx_user_location_gist",
+  "idx_booking_location_gist",
+  "idx_quoterequest_location_gist",
+] as const
+
+/**
+ * Fire-and-forget GiST REINDEX.
+ *
+ * Best-effort: if Prisma is unavailable or the index doesn't exist,
+ * the error is logged and the recovery continues.
+ */
+async function tryReindexGiST(): Promise<void> {
+  try {
+    const { db } = await import("@/lib/db")
+    for (const name of SPATIAL_INDEXES) {
+      try {
+        const start = performance.now()
+        await db.$executeRawUnsafe(`REINDEX INDEX CONCURRENTLY IF EXISTS "${name}"`)
+        logger.info(
+          { indexName: name, durationMs: Math.round(performance.now() - start) },
+          "[proactive] GiST REINDEX completed",
+        )
+      } catch (err) {
+        logger.warn({ indexName: name, err }, "[proactive] GiST REINDEX failed (non-blocking)")
+      }
+    }
+    captureMessage("[Redis] Proactive recovery — GiST REINDEX concluído", "info", {
+      degradationCount,
+    })
+  } catch (err) {
+    logger.warn({ err }, "[proactive] GiST REINDEX unavailable (Prisma not loaded)")
+  }
+}
+
+/**
+ * Fire-and-forget Redis client restart.
+ *
+ * Disposes all existing clients and creates fresh ones for the configured
+ * tier.  The 30s health check timer will promote back up if higher tiers
+ * become available.
+ */
+async function restartRedisClients(): Promise<void> {
+  // Dispose old clients
+  if (clusterClient) {
+    try {
+      clusterClient.disconnect()
+    } catch {
+      /* ignore */
+    }
+    clusterClient = null
+  }
+  if (standaloneClient) {
+    try {
+      standaloneClient.disconnect()
+    } catch {
+      /* ignore */
+    }
+    standaloneClient = null
+  }
+
+  // Reset to configured tier and create a fresh client
+  // configMode is always "cluster" or "standalone" — never "memory"
+  activeTier = configMode
+  ensureClient(configMode)
+
+  logger.info(
+    { newTier: configMode, degradationCount },
+    "[proactive] Redis clients restarted with clean configuration",
+  )
+
+  captureMessage("[Redis] Proactive recovery — clients reiniciados", "info", {
+    degradationCount,
+    newTier: configMode,
+  })
+}
+
+/**
+ * Fire-and-forget proactive recovery orchestrator.
+ *
+ * Steps:
+ *   1. GiST REINDEX (spatial indexes, non-blocking)
+ *   2. Redis client restart (fresh connections)
+ *
+ * Errors are logged inside each step — the orchestrator never throws.
+ */
+async function proactiveRecovery(): Promise<void> {
+  logger.warn({ degradationCount }, "[proactive] Starting proactive recovery")
+
+  await tryReindexGiST()
+  await restartRedisClients()
 }
 
 // ── Get the current active client ─────────────────────────────────────────
@@ -245,6 +412,9 @@ let isRecovering = false
  *
  * For each tier above the current one, try to create a fresh client and
  * ping it.  The first tier that succeeds becomes the new active tier.
+ *
+ * Exported for testing — do NOT call directly in production code.
+ * The recovery timer (checkRedis) manages this automatically every 30s.
  */
 async function tryRecoverTier(): Promise<void> {
   const TIER_ORDER: Tier[] = ["cluster", "standalone", "memory"]
@@ -753,6 +923,47 @@ export type RedisDiagnostics = {
   memoryStoreSize: number
   /** Timestamp of the diagnostics snapshot. */
   timestamp: number
+}
+
+/**
+ * Collect comprehensive Redis diagnostics.
+ *
+ * In cluster mode, queries each master node for key count, sample keys, and
+ * reads the cluster SLOTS to show slot distribution.
+ *
+ * In standalone mode, returns DBSIZE and a key sample via KEYS.
+ *
+ * Gracefully handles unavailability — returns partial results with
+ * available=false rather than throwing.
+ */
+// ── Testing exports (__testing__ prefix) ───────────────────────────────
+//
+// These are exported ONLY for unit tests.  Do NOT use them in production
+// code.  The degradation/recovery chain is managed automatically by the
+// event handlers on Redis clients (degradeTier) and the periodic health
+// check timer (tryRecoverTier).
+//
+// See redis-degradation-chain.test.ts for usage.
+export { degradeTier as __testing__degradeTier, tryRecoverTier as __testing__tryRecoverTier }
+
+/**
+ * Reset the degradation state to the configured starting tier.
+ *
+ * Exported ONLY for property-based tests — avoids re-importing the module
+ * between fast-check runs (expensive due to vi.resetModules + async import).
+ *
+ * Resets:
+ *   - activeTier → configMode (cluster or standalone, depending on env)
+ *   - degradationCount → 0
+ *   - lastDegradationAlertAt → null
+ *   - everConnected → false
+ */
+export function __testing__resetDegradationState(): void {
+  activeTier = configMode
+  degradationCount = 0
+  lastDegradationAlertAt = null
+  lastProactiveRecoveryAt = null
+  everConnected = false
 }
 
 /**

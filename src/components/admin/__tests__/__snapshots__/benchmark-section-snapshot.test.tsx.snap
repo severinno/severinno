@@ -247,7 +247,7 @@ exports[`BenchmarkSection > matches snapshot > benchmark-section 1`] = `
                 Análise:
               </span>
                
-              Haversine JS e significativamente mais rapido que PostGIS para buscas de providers em Sao Paulo.
+              Haversine JS é significativamente mais rápido que PostGIS para buscas de providers em São Paulo.
             </p>
             <p
               class="text-muted-foreground mt-1 text-[10px]"

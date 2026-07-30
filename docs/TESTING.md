@@ -4,12 +4,12 @@
 
 ## Stack
 
-| Camada | Ferramenta | Escopo |
-|--------|-----------|--------|
-| **Unitários** | Vitest 3.x | API routes, libs, hooks |
-| **Componentes** | Vitest + jsdom + Testing Library | React components |
-| **E2E** | Playwright | Fluxos críticos (cache, auth, bookings) |
-| **Acessibilidade** | `vitest-axe` | Componentes de UI |
+| Camada             | Ferramenta                       | Escopo                                  |
+| ------------------ | -------------------------------- | --------------------------------------- |
+| **Unitários**      | Vitest 3.x                       | API routes, libs, hooks                 |
+| **Componentes**    | Vitest + jsdom + Testing Library | React components                        |
+| **E2E**            | Playwright                       | Fluxos críticos (cache, auth, bookings) |
+| **Acessibilidade** | `vitest-axe`                     | Componentes de UI                       |
 
 ```
 Total: 155 unitários | 32 E2E
@@ -62,7 +62,7 @@ function resetDbMocks() {
 beforeEach(() => {
   process.env.SOME_ENV = "value"
   vi.mocked(verifyWebhookSignature).mockReturnValue(true)
-  resetDbMocks()  // <-- fresh vi.fn() para cada teste
+  resetDbMocks() // <-- fresh vi.fn() para cada teste
 })
 
 it("test", async () => {
@@ -78,12 +78,12 @@ it("test", async () => {
 
 **Arquivos afetados no projeto:**
 
-| Arquivo | Padrão usado |
-|---------|-------------|
-| `webhooks-lytex-route.test.ts` | `resetDbMocks()` com fresh `vi.fn()` |
-| `admin-finance-route.test.ts` | `resetDbMocks()` com fresh `vi.fn()` |
-| `admin-finance-export-route.test.ts` | `resetDbMocks()` com fresh `vi.fn()` |
-| `admin-finance-provider-transactions-route.test.ts` | `resetDbMocks()` com fresh `vi.fn()` |
+| Arquivo                                              | Padrão usado                                                                                  |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `webhooks-lytex-route.test.ts`                       | `resetDbMocks()` com fresh `vi.fn()`                                                          |
+| `admin-finance-route.test.ts`                        | `resetDbMocks()` com fresh `vi.fn()`                                                          |
+| `admin-finance-export-route.test.ts`                 | `resetDbMocks()` com fresh `vi.fn()`                                                          |
+| `admin-finance-provider-transactions-route.test.ts`  | `resetDbMocks()` com fresh `vi.fn()`                                                          |
 | Demais testes (`bookings-route`, `auth-route`, etc.) | `vi.clearAllMocks()` + mocks simples — funcionam porque usam `let _mockVar` que é reatribuído |
 
 ### 2. `mockResolvedValueOnce` TEM PRIORIDADE sobre `mockResolvedValue`
@@ -94,11 +94,12 @@ Quando um mock tem tanto um valor default (`mockResolvedValue`) quanto valores
 one-time (`mockResolvedValueOnce`), os valores one-time são consumidos PRIMEIRO:
 
 ```typescript
-const fn = vi.fn()
-  .mockResolvedValue("default")   // ← usado APÓS exaurir os once
-  .mockResolvedValueOnce("primeiro")  // 1ª chamada → "primeiro"
-  .mockResolvedValueOnce("segundo")   // 2ª chamada → "segundo"
-                                    // 3ª chamada → "default"
+const fn = vi
+  .fn()
+  .mockResolvedValue("default") // ← usado APÓS exaurir os once
+  .mockResolvedValueOnce("primeiro") // 1ª chamada → "primeiro"
+  .mockResolvedValueOnce("segundo") // 2ª chamada → "segundo"
+// 3ª chamada → "default"
 ```
 
 Isso é **contraintuitivo** quando você escreve:
@@ -144,7 +145,13 @@ vi.mock("@/lib/db", () => ({ db: {} }))
 // 2. Reatribui no beforeEach (executa a cada teste):
 function resetDbMocks() {
   db.booking = { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), create: vi.fn() }
-  db.payment = { findMany: vi.fn(), update: vi.fn(), upsert: vi.fn(), groupBy: vi.fn(), count: vi.fn() }
+  db.payment = {
+    findMany: vi.fn(),
+    update: vi.fn(),
+    upsert: vi.fn(),
+    groupBy: vi.fn(),
+    count: vi.fn(),
+  }
   db.setting = { findUnique: vi.fn() }
 }
 
@@ -175,7 +182,7 @@ vi.mock("@/lib/auth", () => ({
 }))
 
 beforeEach(() => {
-  _mockRole = "ADMIN"  // ou "CLIENT", "PROVIDER", null
+  _mockRole = "ADMIN" // ou "CLIENT", "PROVIDER", null
 })
 ```
 
@@ -206,6 +213,65 @@ npx tsx scripts/coverage-gaps.ts --ci
 npx playwright test e2e/providers-cache.spec.ts --project=chromium
 ```
 
+---## Snapshot Management
+
+O projeto usa **snapshot tests** do Vitest (`toMatchSnapshot`) para capturar
+a saída renderizada de componentes em diferentes estados visuais.
+
+Atualmente há 8 snapshot tests em `src/components/admin/__tests__/`:
+
+| Arquivo                                    | Componente             |                  Snapshots                   |
+| :----------------------------------------- | :--------------------- | :------------------------------------------: |
+| `gist-reindex-button-snapshot.test.tsx`    | `GistReindexButton`    | 4 (initial, reindexing, success, refetching) |
+| `gist-degradation-panel-snapshot.test.tsx` | `GistDegradationPanel` | 4 (initial, reindexing, success, refetching) |
+
+### Workflow
+
+#### Atualizar snapshots (quando uma mudança intencional de UI quebra snapshots)
+
+```bash
+# Regenera TODOS os snapshots
+bun run test:snapshot-update
+
+# Ou para um arquivo específico
+npx vitest run --update src/components/admin/__tests__/gist-reindex-button-snapshot.test.tsx
+```
+
+#### Visualizar diff ao revisar snapshots
+
+```bash
+# Vitest mostra o diff no terminal quando um snapshot diverge
+bun run test:unit  # Se um snapshot quebrou, o diff aparece no output
+```
+
+#### Commitar snapshots atualizados
+
+1. Execute `bun run test:snapshot-update`
+2. Revise o diff dos snapshots no `git diff` — confirme que a mudança é intencional
+3. Faça commit junto com as alterações de código que os geraram
+4. **Nunca** faça `git add -A` depois de `--update` sem revisar o diff primeiro
+
+### Diretrizes
+
+- **Snapshots são arquivos de commit** — estão em `src/components/*/__tests__/__snapshots__/`
+  e precisam ser versionados para que o CI possa compará-los
+- **Prefira snapshots pequenos** — cada teste deve capturar UM estado visual, não o componente inteiro
+- **Nomeie snapshots com prefixo do componente** — ex: `gist-reindex-button-initial`,
+  `gist-degradation-panel-success` — para evitar colisão entre arquivos
+- **Evite atualizar snapshots em lote** — se mais de 3 snapshots quebrarem, a mudança
+  provavelmente é intencional (e o diff é fácil de revisar). Se dezenas quebrarem,
+  desconfie de mudança estrutural no componente base
+- **CI falha se snapshots divergirem** — é um guardrail contra regressão visual.
+  Execute `--update` localmente, revise, e comite. O CI só aceita snapshots exatos
+
+### Troubleshooting
+
+| Problema                                    | Causa provável                                                                  | Solução                                                               |
+| :------------------------------------------ | :------------------------------------------------------------------------------ | :-------------------------------------------------------------------- |
+| Snapshot quebrou no CI mas não localmente   | Versão diferente do React, jsdom, ou sistema de arquivos                        | Rode `bun run test:snapshot-update` na mesma plataforma do CI (Linux) |
+| `asFragment()` captura HTML enorme (>100KB) | Mock renderiza conteúdo condicional incondicionalmente                          | Verifique se Collapsible/AlertDialog mocks têm wrapper conditional    |
+| Snapshot mudou sem alteração de código      | Dependência dinâmica (ex: `Date.now()`, `Math.random()`, `crypto.randomUUID()`) | Mock a função com `vi.fn().mockReturnValue(fixedValue)`               |
+
 ---
 
 ## Histórico de Lições Aprendidas
@@ -232,3 +298,17 @@ fazendo com que os valores fossem consumidos na ordem errada para as 5 chamadas
 retornavam 500 porque a 1ª chamada recebia o 1º once em vez do default.
 
 **Solução:** Usar 5x `mockResolvedValueOnce` — uma para cada chamada.
+
+### Sessão: Snapshot Gravity — GiST Degradation Panel
+
+**Problema:** Ao criar snapshots para o `GistDegradationPanel`, os 4 estados visuais do
+botão filho (`GistReindexButton`) geravam arquivos grandes (>50KB cada) porque o mock do
+`Collapsible` e `AlertDialog` renderizavam conteúdo condicional incondicionalmente.
+
+**Aprendizado:** Mocks que ignoram `open`/`closed` state produzem snapshots que
+capturam TODO o conteúdo do componente, não apenas o estado atual. Isso é aceitável
+para testes de snapshot (o snapshot ainda detecta regressão), mas torna o diff menos
+legível. Para testes de asserção, mantivemos os testes funcionais separados.
+
+**Solução:** Manter ambos: snapshot tests (detecção de regressão) + assertion tests
+(validação isolada de estados), aceitando que os snapshots são mais pesados que o ideal.

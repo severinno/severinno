@@ -368,10 +368,16 @@ bun vitest run
 # Watch mode
 bun vitest
 
+# Snapshot update (regenera todos os snapshots)
+bun run test:snapshot-update
+
 # E2E (requires built app + Playwright browsers)
 npx playwright install
 bun run e2e
 ```
+
+> **Snapshot management:** `bun run test:snapshot-update` → revisar `git diff`.
+> [Guia completo → `docs/TESTING.md#snapshot-management`](docs/TESTING.md#snapshot-management)
 
 ## Encoding Guards
 

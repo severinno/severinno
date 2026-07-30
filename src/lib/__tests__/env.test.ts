@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 const ORIG_ENV = { ...process.env }
@@ -72,9 +71,7 @@ describe("env validation", () => {
       RABBITMQ_URL: "amqp://localhost:5672",
     }
 
-    await expect(import("../env")).rejects.toThrow(
-      "Invalid environment variables",
-    )
+    await expect(import("../env")).rejects.toThrow("Invalid environment variables")
   })
 
   it("rejects non-url APP_URL returning undefined env", async () => {

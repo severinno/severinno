@@ -144,6 +144,21 @@ export function resetRateLimitCounters(): void {
 }
 
 /**
+ * Full reset: clears counters, memory store, and per-IP entries.
+ *
+ * This is a hard reset — all in-memory tracking state is discarded.
+ * Redis-backed entries are NOT cleared (they expire naturally via TTL).
+ * Use this when you need to zero out the diagnostic dashboard counters
+ * without restarting the server.
+ *
+ * Available via POST /api/admin/geo-rate-limit-status/reset
+ */
+export function resetRateLimiter(): void {
+  resetRateLimitCounters()
+  memoryStore.clear()
+}
+
+/**
  * Get accumulated allow/block counts since startup or last reset.
  */
 export function getRateLimitCounters(): {

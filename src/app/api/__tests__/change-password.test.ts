@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -38,9 +37,11 @@ vi.mock("@/lib/notification-queue", () => ({
 }))
 
 vi.mock("@/lib/mail", () => ({
-  sendMail: vi.fn().mockImplementation(async (payload: { to: string; subject: string; html: string }) => {
-    sentEmails.push(payload)
-  }),
+  sendMail: vi
+    .fn()
+    .mockImplementation(async (payload: { to: string; subject: string; html: string }) => {
+      sentEmails.push(payload)
+    }),
   passwordChangedHtml: vi.fn().mockReturnValue("<html>senha alterada</html>"),
 }))
 

@@ -12,7 +12,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
 import { render, screen, fireEvent, cleanup } from "@/__tests__/test-utils"
 import { BenchmarkSection } from "../admin-geo-metrics-dashboard"
-import type { BenchmarkData, BenchmarkBarItem } from "@/lib/benchmark-data"
 
 // ===========================================================================
 // Mock Recharts — JSDOM does not support SVG measurement
@@ -44,6 +43,7 @@ vi.mock("lucide-react", () => {
   return {
     Activity: Icon,
     AlertTriangle: Icon,
+    Copy: Icon,
     BarChart3: Icon,
     Bell: Icon,
     CheckCircle2: Icon,
@@ -59,92 +59,25 @@ vi.mock("lucide-react", () => {
     Timer: Icon,
     TrendingDown: Icon,
     TrendingUp: Icon,
+    Upload: Icon,
     Zap: Icon,
   }
 })
 
 // ===========================================================================
-// Mock benchmark-data functions — deterministic return values
+// Shared fixtures
 // ===========================================================================
 
-const mockBarData: BenchmarkBarItem[] = [
-  {
-    label: "100 providers",
-    scale: 100,
-    haversine: 49.78,
-    postgis: 4200,
-    haversine_ops: 20088,
-    postgis_ops: 238,
-    ratio: 84.4,
-  },
-  {
-    label: "1 000 providers",
-    scale: 1000,
-    haversine: 497.8,
-    postgis: 24000,
-    haversine_ops: 2009,
-    postgis_ops: 42,
-    ratio: 48.2,
-  },
-  {
-    label: "10 000 providers",
-    scale: 10000,
-    haversine: 4978,
-    postgis: 222000,
-    haversine_ops: 201,
-    postgis_ops: 4.5,
-    ratio: 44.6,
-  },
-]
+import { FIXTURE_BENCHMARK, FIXTURE_BAR_DATA } from "./fixtures"
 
 vi.mock("@/lib/benchmark-data", () => ({
-  buildBenchmarkBarData: vi.fn(() => mockBarData),
+  buildBenchmarkBarData: vi.fn(() => FIXTURE_BAR_DATA),
   getMaxPostgisLatency: vi.fn(() => 222000),
   ratioColor: vi.fn(() => "hsl(0, 72%, 51%)"),
   generateBenchmarkCsv: vi.fn(() => "mock-csv-content"),
   downloadFile: vi.fn(),
   printBenchmarkReport: vi.fn(),
 }))
-
-// ===========================================================================
-// Fixtures
-// ===========================================================================
-
-const FIXTURE_BENCHMARK: BenchmarkData = {
-  meta: {
-    timestamp: "2026-04-13T00:00:00.000Z",
-    platform: "win32",
-    nodeVersion: "v22.14.0",
-    centerLabel: "-23.5505, -46.6333",
-  },
-  comparisons: [
-    {
-      label: "100 providers",
-      scale: 100,
-      haversine: { mean: 49.78, opsPerSec: 20088 },
-      postgis: { mean: 4200, opsPerSec: 238 },
-      ratio: 84.4,
-    },
-    {
-      label: "1 000 providers",
-      scale: 1000,
-      haversine: { mean: 497.8, opsPerSec: 2009 },
-      postgis: { mean: 24000, opsPerSec: 42 },
-      ratio: 48.2,
-    },
-    {
-      label: "10 000 providers",
-      scale: 10000,
-      haversine: { mean: 4978, opsPerSec: 201 },
-      postgis: { mean: 222000, opsPerSec: 4.5 },
-      ratio: 44.6,
-    },
-  ],
-  analysis: {
-    note: "Haversine JS e significativamente mais rapido que PostGIS para buscas de providers em Sao Paulo.",
-    avgHaversinePerProvider: 0.4978,
-  },
-}
 
 // ===========================================================================
 // Tests
@@ -208,7 +141,7 @@ describe("BenchmarkSection", () => {
 
     expect(screen.getByText(/Razão PostGIS/)).toBeInTheDocument()
 
-    expect(screen.getByText(/Haversine JS e significativamente mais rapido/)).toBeInTheDocument()
+    expect(screen.getByText(/Haversine JS é significativamente mais rápido/)).toBeInTheDocument()
   })
 
   it("shows benchmark metadata (platform, nodeVersion, center) in footer", () => {

@@ -20,12 +20,29 @@ import {
   CheckCircle2,
   Globe,
   Network,
+  RefreshCw,
   Search,
   Shield,
   Timer,
+  Trash2,
   Wifi,
   WifiOff,
 } from "lucide-react"
+import { useMutation } from "@tanstack/react-query"
+import { toast } from "sonner"
+
+import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { useQuery } from "@tanstack/react-query"
 import {
   Bar,
@@ -40,7 +57,7 @@ import {
   YAxis,
 } from "recharts"
 
-import { apiGet } from "@/lib/api"
+import { apiGet, apiPost } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
@@ -166,6 +183,7 @@ export function AdminGeoRateLimitStatus() {
             </span>
           )
         }
+        suffixContent={<RateLimitResetButton onReset={() => void refetch()} />}
       />
 
       {/* ── KPI Cards ──────────────────────────────────────────────── */}
@@ -181,7 +199,7 @@ export function AdminGeoRateLimitStatus() {
           label="IPs Trackeados"
           value={formatCount(totalTrackedIPs)}
           subtitle={redisAvailable ? "Redis + in-memory" : "Apenas in-memory"}
-          trend={usageRatio > 0.5 ? "up" : usageRatio < 0.1 ? "down" : undefined}
+          trend={usageRatio > 0.5 ? "down" : usageRatio < 0.1 ? "up" : undefined}
         />
         <KpiCard
           icon={Ban}
@@ -452,6 +470,75 @@ export function AdminGeoRateLimitStatus() {
         </p>
       </div>
     </div>
+  )
+}
+
+// ── Rate Limit Reset Button ───────────────────────────────────────────────
+
+function RateLimitResetButton({ onReset }: { onReset: () => void }) {
+  const [showConfirm, setShowConfirm] = React.useState(false)
+
+  const resetMutation = useMutation({
+    mutationFn: () =>
+      apiPost<{ success: boolean; message: string }>("/api/admin/geo-rate-limit-status/reset"),
+    onSuccess: (res) => {
+      toast.success(res.message)
+      onReset()
+      setShowConfirm(false)
+    },
+    onError: () => {
+      toast.error("Erro ao resetar rate limiter")
+    },
+  })
+
+  return (
+    <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+      <AlertDialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800/30 dark:text-red-400 dark:hover:bg-red-950/20"
+        >
+          <Trash2 className="size-3.5" />
+          Resetar contadores
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Resetar rate limiter?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Isso vai zerar todos os contadores de allow/block e limpar o cache in-memory de IPs
+            trackeados. Dados no Redis não são afetados (expiram naturalmente via TTL).
+            <br />
+            <br />
+            Recomendado após um pico de tráfego ou antes de iniciar um teste de carga.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={resetMutation.isPending}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={resetMutation.isPending}
+            onClick={(e) => {
+              e.preventDefault()
+              resetMutation.mutate()
+            }}
+            className="bg-red-600 text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
+          >
+            {resetMutation.isPending ? (
+              <>
+                <RefreshCw className="size-3.5 animate-spin" />
+                Resetando…
+              </>
+            ) : (
+              <>
+                <Trash2 className="size-3.5" />
+                Sim, resetar
+              </>
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 

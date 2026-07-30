@@ -11,7 +11,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent, cleanup } from "@/__tests__/test-utils"
 
-import { RadiusDensitySelector } from "../radius-density-selector" // ── Helpers: encontrar inputs range ───────────────────────────────────────
+import { RadiusDensitySelector } from "../radius-density-selector"
+
+// ===========================================================================
+// Shared fixtures
+// ===========================================================================
+
+import { FIXTURE_RADIUS_DENSITY_PROPS } from "./fixtures"
+
+// ── Helpers: encontrar inputs range ───────────────────────────────────────
 
 function radiusSlider(): HTMLInputElement {
   return screen.getByLabelText("Raio de busca em km")
@@ -20,18 +28,9 @@ function radiusSlider(): HTMLInputElement {
 function densitySlider(): HTMLInputElement {
   return screen.getByLabelText("Densidade de providers por km²")
 }
-// ── Default props ─────────────────────────────────────────────────────────
+// ── Default props (imported from shared fixtures) ────────────────────────
 
-const DEFAULT_PROPS = {
-  radiusKm: 15,
-  onRadiusKmChange: vi.fn(),
-  density: 10,
-  onDensityChange: vi.fn(),
-  estimatedProviders: 7068,
-  densityLabel: "São Paulo (~10/km²)",
-  currentSelectivity: 0.15,
-  selPct: 15,
-}
+const DEFAULT_PROPS = FIXTURE_RADIUS_DENSITY_PROPS
 
 // ── Suite ─────────────────────────────────────────────────────────────────
 

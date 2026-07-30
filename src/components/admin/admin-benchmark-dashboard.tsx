@@ -225,7 +225,7 @@ export function AdminBenchmarkDashboard() {
           label="Regressões"
           value={String(regressionCount)}
           subtitle={`Limiar: ${5}%`}
-          trend={hasRegressions ? "up" : "down"}
+          trend={hasRegressions ? "down" : "up"}
         />
         <KpiCard
           icon={Clock}
