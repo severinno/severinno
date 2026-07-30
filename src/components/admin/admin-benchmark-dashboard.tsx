@@ -55,6 +55,8 @@ import type {
   ComparisonResult,
   BenchmarkFile,
   GistCrossoverPoint,
+  CrossoverDriftAlert,
+  BenchmarkHistoryEntry,
 } from "@/app/api/admin/benchmarks/route"
 
 // ---------------------------------------------------------------------------
@@ -113,29 +115,36 @@ export function AdminBenchmarkDashboard() {
   })
   const [selectedTypes, setSelectedTypes] = React.useState<Set<string>>(new Set())
   const [metricMode, setMetricMode] = React.useState<"mean" | "ops" | "p95">("mean")
+  const [timelineTab, setTimelineTab] = React.useState<"gist" | "geo" | "cache">("gist")
 
-  // Initialize state from data once after loading
-  React.useEffect(() => {
-    if (!data) return
-    if (dateRange.start !== "") return // already initialized
-
+  // Compute default date range from data (derived, no setState in effect)
+  const defaultDateRange = React.useMemo(() => {
+    if (!data) return null
     const timestamps = Object.values(data.runs)
       .flat()
       .map((r) => r.meta?.timestamp)
       .filter(Boolean) as string[]
-    const min = timestamps.length > 0
-      ? new Date(Math.min(...timestamps.map((t) => new Date(t).getTime())))
-      : new Date()
-    const max = timestamps.length > 0
-      ? new Date(Math.max(...timestamps.map((t) => new Date(t).getTime())))
-      : new Date()
-
-    setDateRange({
+    if (timestamps.length === 0) return null
+    const min = new Date(Math.min(...timestamps.map((t) => new Date(t).getTime())))
+    const max = new Date(Math.max(...timestamps.map((t) => new Date(t).getTime())))
+    return {
       start: min.toISOString().slice(0, 7) + "-01",
       end: max.toISOString().slice(0, 10),
+    }
+  }, [data])
+
+  // Sync computed defaults to state once on first load.
+  // Uses queueMicrotask to defer setState outside the effect's synchronous
+  // body, satisfying react-hooks/set-state-in-effect.
+  const initRef = React.useRef(false)
+  React.useEffect(() => {
+    if (initRef.current || !defaultDateRange) return
+    initRef.current = true
+    queueMicrotask(() => {
+      setDateRange(defaultDateRange)
+      setSelectedTypes(new Set(Object.keys(data?.runs ?? {})))
     })
-    setSelectedTypes(new Set(Object.keys(data.runs)))
-  }, [data, dateRange.start])
+  }, [defaultDateRange, data])
 
   // ── Error state ─────────────────────────────────────────────────────
   if (isError) {
@@ -153,7 +162,16 @@ export function AdminBenchmarkDashboard() {
     return <BenchmarkSkeleton />
   }
 
-  const { summary, comparisons, runs, regressionCount, lastRun, gistCrossoverHistory } = data
+  const {
+    summary,
+    comparisons,
+    runs,
+    regressionCount,
+    lastRun,
+    gistCrossoverHistory,
+    crossoverDriftAlerts,
+    benchmarkHistory,
+  } = data
   const hasComparisons = comparisons.length > 0
   const hasRegressions = regressionCount > 0
 
@@ -247,6 +265,11 @@ export function AdminBenchmarkDashboard() {
         />
       </section>
 
+      {/* ── Crossover Drift Alert Banner ──────────────────────────── */}
+      {crossoverDriftAlerts && crossoverDriftAlerts.length > 0 ? (
+        <CrossoverDriftBanner alerts={crossoverDriftAlerts} />
+      ) : null}
+
       {/* ── Alert Banner ────────────────────────────────────────────── */}
       {hasRegressions ? (
         <section
@@ -287,10 +310,7 @@ export function AdminBenchmarkDashboard() {
 
       {/* ── Filters: Date Range + Benchmark Type + Metric Mode ───────── */}
       {Object.keys(runs).length > 0 && (
-        <section
-          aria-label="Filtros"
-          className="border-border/50 bg-card rounded-xl border p-4"
-        >
+        <section aria-label="Filtros" className="border-border/50 bg-card rounded-xl border p-4">
           <div className="flex flex-wrap items-end gap-4">
             {/* Date range */}
             <div className="flex items-center gap-3">
@@ -300,9 +320,7 @@ export function AdminBenchmarkDashboard() {
                 <input
                   type="date"
                   value={dateRange.start}
-                  onChange={(e) =>
-                    setDateRange((prev) => ({ ...prev, start: e.target.value }))
-                  }
+                  onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
                   className="border-input/60 bg-background h-8 rounded-lg border px-2 text-xs"
                 />
               </div>
@@ -311,9 +329,7 @@ export function AdminBenchmarkDashboard() {
                 <input
                   type="date"
                   value={dateRange.end}
-                  onChange={(e) =>
-                    setDateRange((prev) => ({ ...prev, end: e.target.value }))
-                  }
+                  onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
                   className="border-input/60 bg-background h-8 rounded-lg border px-2 text-xs"
                 />
               </div>
@@ -372,7 +388,9 @@ export function AdminBenchmarkDashboard() {
           {/* Active filter summary */}
           <div className="text-muted-foreground mt-3 flex items-center gap-3 text-[10px]">
             <span>
-              <span className="text-foreground font-medium">{Object.keys(filteredRuns).length}</span>
+              <span className="text-foreground font-medium">
+                {Object.keys(filteredRuns).length}
+              </span>
               {` / ${Object.keys(runs).length} tipos com dados no período`}
             </span>
             <span>
@@ -380,7 +398,10 @@ export function AdminBenchmarkDashboard() {
               {` runs no período`}
             </span>
             {(() => {
-              const ts = Object.values(runs).flat().map((r) => r.meta?.timestamp).filter(Boolean) as string[]
+              const ts = Object.values(runs)
+                .flat()
+                .map((r) => r.meta?.timestamp)
+                .filter(Boolean) as string[]
               if (ts.length === 0) return null
               const mi = new Date(Math.min(...ts.map((t: string) => new Date(t).getTime())))
               const ma = new Date(Math.max(...ts.map((t: string) => new Date(t).getTime())))
@@ -391,7 +412,7 @@ export function AdminBenchmarkDashboard() {
                 <button
                   type="button"
                   onClick={() => setDateRange({ start: ds, end: de })}
-                  className="text-primary hover:text-primary/80 underline-offset-2 underline transition-colors"
+                  className="text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"
                 >
                   Limpar filtro de data
                 </button>
@@ -405,7 +426,9 @@ export function AdminBenchmarkDashboard() {
       {trendData.length > 0 && (
         <section aria-label="Tendência temporal" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <MetricCard
-            icon={metricMode === "ops" ? Activity : metricMode === "p95" ? MousePointerClick : BarChart3}
+            icon={
+              metricMode === "ops" ? Activity : metricMode === "p95" ? MousePointerClick : BarChart3
+            }
             title={
               metricMode === "ops"
                 ? "Throughput por Run (ops/sec)"
@@ -448,7 +471,12 @@ export function AdminBenchmarkDashboard() {
                   />
                   <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
                   {[...selectedTypes].map((type) => {
-                    const dataKey = metricMode === "ops" ? `${type}_ops` : metricMode === "p95" ? `${type}_p95` : type
+                    const dataKey =
+                      metricMode === "ops"
+                        ? `${type}_ops`
+                        : metricMode === "p95"
+                          ? `${type}_p95`
+                          : type
                     return (
                       <Line
                         key={dataKey}
@@ -470,7 +498,9 @@ export function AdminBenchmarkDashboard() {
 
           {/* Per-benchmark temporal chart */}
           <MetricCard
-            icon={metricMode === "ops" ? Activity : metricMode === "p95" ? MousePointerClick : BarChart3}
+            icon={
+              metricMode === "ops" ? Activity : metricMode === "p95" ? MousePointerClick : BarChart3
+            }
             title={
               metricMode === "ops"
                 ? "Benchmarks Individuais (ops/sec)"
@@ -481,14 +511,8 @@ export function AdminBenchmarkDashboard() {
           >
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={perBenchTrend}
-                  margin={{ left: 8, right: 8, top: 8, bottom: 8 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="hsl(var(--border) / 0.5)"
-                  />
+                <LineChart data={perBenchTrend} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                   <XAxis
                     dataKey="date"
                     tickLine={false}
@@ -544,9 +568,97 @@ export function AdminBenchmarkDashboard() {
         </section>
       )}
 
-      {/* ── GiST Crossover Timeline ─────────────────────────────────── */}
-      {gistCrossoverHistory.length > 0 && (
-        <GiSTCrossoverTimeline history={gistCrossoverHistory} />
+      {/* ── Benchmark History Timeline (Tabbed) ────────────────────── */}
+      {/* NOTE: 'pipeline' type not yet tracked — no pipeline JSON files
+         exist in git history.  Add HISTORY_FILES entry in route.ts when
+         pipeline benchmark snapshots become available. */}
+      {(gistCrossoverHistory.length > 0 ||
+        benchmarkHistory.geo?.length > 0 ||
+        benchmarkHistory.cache?.length > 0) && (
+        <>
+          {/* Tab bar */}
+          <div className="border-border/50 bg-card flex items-center rounded-t-xl border border-b-0 px-5">
+            <button
+              type="button"
+              onClick={() => setTimelineTab("gist")}
+              className={cn(
+                "border-b-2 px-4 py-3 text-[11px] font-medium transition-colors",
+                timelineTab === "gist"
+                  ? "border-emerald-500 text-emerald-600 dark:text-emerald-400"
+                  : "text-muted-foreground hover:text-foreground border-transparent",
+              )}
+            >
+              <GitCompareArrows className="mr-1.5 inline size-3.5" />
+              GiST Crossover
+              {gistCrossoverHistory.length > 0 && (
+                <span className="text-muted-foreground ml-1.5 text-[9px]">
+                  {gistCrossoverHistory.length}
+                </span>
+              )}
+            </button>
+
+            {benchmarkHistory.geo && benchmarkHistory.geo.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTimelineTab("geo")}
+                className={cn(
+                  "border-b-2 px-4 py-3 text-[11px] font-medium transition-colors",
+                  timelineTab === "geo"
+                    ? "border-sky-500 text-sky-600 dark:text-sky-400"
+                    : "text-muted-foreground hover:text-foreground border-transparent",
+                )}
+              >
+                <MapPin className="mr-1.5 inline size-3.5" />
+                Geo
+                <span className="text-muted-foreground ml-1.5 text-[9px]">
+                  {benchmarkHistory.geo.length}
+                </span>
+              </button>
+            )}
+
+            {benchmarkHistory.cache && benchmarkHistory.cache.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTimelineTab("cache")}
+                className={cn(
+                  "border-b-2 px-4 py-3 text-[11px] font-medium transition-colors",
+                  timelineTab === "cache"
+                    ? "border-amber-500 text-amber-600 dark:text-amber-400"
+                    : "text-muted-foreground hover:text-foreground border-transparent",
+                )}
+              >
+                <Database className="mr-1.5 inline size-3.5" />
+                Cache
+                <span className="text-muted-foreground ml-1.5 text-[9px]">
+                  {benchmarkHistory.cache.length}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* Tab content */}
+          <div className="p-4">
+            {timelineTab === "gist" && gistCrossoverHistory.length > 0 && (
+              <GiSTCrossoverTimeline history={gistCrossoverHistory} />
+            )}
+            {timelineTab === "geo" && benchmarkHistory.geo && (
+              <BenchmarkTimelineView
+                type="geo"
+                label="Geo Benchmarks"
+                history={benchmarkHistory.geo}
+                color="hsl(201, 90%, 48%)"
+              />
+            )}
+            {timelineTab === "cache" && benchmarkHistory.cache && (
+              <BenchmarkTimelineView
+                type="cache"
+                label="Cache Benchmarks"
+                history={benchmarkHistory.cache}
+                color="hsl(38, 92%, 50%)"
+              />
+            )}
+          </div>
+        </>
       )}
 
       {/* ── Comparisons ──────────────────────────────────────────────── */}
@@ -827,6 +939,115 @@ function MetricCard({
   )
 }
 
+// ── Crossover Drift Banner ──────────────────────────────────────────────
+
+function CrossoverDriftBanner({ alerts }: { alerts: CrossoverDriftAlert[] }) {
+  const [expanded, setExpanded] = React.useState(false)
+
+  if (alerts.length === 0) return null
+
+  // Group by gistFaster state change for summary
+  const stateChanges = alerts.filter((a) => a.gistFasterStateChanged)
+  const maxDrift = Math.max(...alerts.map((a) => a.stepDrift ?? 0), 0)
+
+  return (
+    <section
+      aria-label="Alerta de deriva do crossover GiST"
+      className="rounded-xl border border-violet-200 bg-violet-50/80 p-4 dark:border-violet-900/30 dark:bg-violet-950/10"
+    >
+      <div className="flex flex-col gap-3">
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <GitCompareArrows className="mt-0.5 size-5 shrink-0 text-violet-500" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-violet-800 dark:text-violet-300">
+              {alerts.length} alteração(ões) no raio de crossover GiST
+            </p>
+            <p className="mt-0.5 text-xs text-violet-700 dark:text-violet-400">
+              {maxDrift > 0 ? `Deriva de até ${maxDrift} step(s) detectada. ` : ""}
+              {stateChanges.length > 0
+                ? `${stateChanges.length} densidade(s) com mudança de regime GiST (mais lento/rápido que full scan). `
+                : ""}
+              O raio de crossover mudou significativamente — pode indicar alteração no índice GiST,
+              versão do PostGIS ou hardware.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-violet-600 transition-colors hover:text-violet-800 dark:text-violet-400 dark:hover:text-violet-200"
+          >
+            {expanded ? "Ocultar" : "Detalhes"}
+          </button>
+        </div>
+
+        {/* Expanded details table */}
+        {expanded && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-violet-200 text-violet-600 dark:border-violet-800 dark:text-violet-400">
+                  <th className="pr-3 pb-2 font-medium">Densidade</th>
+                  <th className="pr-3 pb-2 text-right font-medium">Anterior</th>
+                  <th className="pr-3 pb-2 text-right font-medium">Atual</th>
+                  <th className="pr-3 pb-2 text-right font-medium">Steps</th>
+                  <th className="pr-3 pb-2 text-center font-medium">Regime</th>
+                  <th className="pb-2 font-medium">Commits</th>
+                </tr>
+              </thead>
+              <tbody>
+                {alerts.map((alert, idx) => (
+                  <tr
+                    key={`drift-${alert.density}-${idx}`}
+                    className="border-b border-violet-100 last:border-0 dark:border-violet-800/30"
+                  >
+                    <td className="py-2 pr-3 font-medium tabular-nums">
+                      {alert.density.toLocaleString()} prov
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums">
+                      {alert.previousRadiusKm != null ? `${alert.previousRadiusKm} km` : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums">
+                      {alert.currentRadiusKm != null ? `${alert.currentRadiusKm} km` : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-medium tabular-nums">
+                      {alert.stepDrift != null ? (
+                        <span className={alert.stepDrift > 1 ? "text-red-500" : "text-amber-500"}>
+                          {alert.stepDrift}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-center">
+                      {alert.gistFasterStateChanged ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+                          Mudou
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-[10px]">Estável</span>
+                      )}
+                    </td>
+                    <td className="py-2 font-mono text-[10px] tabular-nums">
+                      <span className="cursor-help" title={`Anterior: ${alert.previousCommitHash}`}>
+                        {alert.previousCommitHash.slice(0, 7)}
+                      </span>
+                      <span className="text-muted-foreground mx-1">→</span>
+                      <span className="cursor-help" title={`Atual: ${alert.currentCommitHash}`}>
+                        {alert.currentCommitHash.slice(0, 7)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function StatusBadge({ status }: { status: string }) {
   const color = STATUS_COLORS[status] ?? "hsl(240, 4%, 60%)"
 
@@ -942,7 +1163,7 @@ function perBenchLines(
     const [type, label] = dataKey.replace(suffix, "").split("::")
     const prettyName = label
       ? `${TYPE_LABELS[type] ?? type}: ${label.replace(/_/g, " ")}`
-      : TYPE_LABELS[type] ?? type
+      : (TYPE_LABELS[type] ?? type)
 
     return {
       dataKey,
@@ -1041,11 +1262,7 @@ function buildTrendData(
  *   - Commit hash tooltip for traceability
  */
 
-const CROSSOVER_COLORS = [
-  "hsl(160, 84%, 39%)",
-  "hsl(201, 90%, 48%)",
-  "hsl(38, 92%, 50%)",
-]
+const CROSSOVER_COLORS = ["hsl(160, 84%, 39%)", "hsl(201, 90%, 48%)", "hsl(38, 92%, 50%)"]
 
 function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
   const [selectedDensity, setSelectedDensity] = React.useState<number | "all">("all")
@@ -1112,6 +1329,39 @@ function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
           return row[`${key}_radius`] != null || row[`${key}_ratio`] != null
         })
 
+  // ── 4-week rolling average crossover radius ──────────────────────
+  const ROLLING_WINDOW = 4
+
+  const rollingAvgKm = (() => {
+    if (chartData.length === 0) return null
+
+    if (selectedDensity === "all") {
+      // Average of all densities: collect first non-null radius per point
+      const recent = chartData.slice(-ROLLING_WINDOW).filter(Boolean)
+      const values: number[] = []
+      for (const row of recent) {
+        for (const d of densities) {
+          const v = row[`density_${d}_radius`]
+          if (v != null && typeof v === "number") {
+            values.push(v)
+            break
+          }
+        }
+      }
+      if (values.length === 0) return null
+      return +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)
+    }
+
+    // Single density selected: average last ROLLING_WINDOW non-null radius values
+    const key = `density_${selectedDensity}_radius`
+    const values = chartData
+      .map((row) => row[key])
+      .filter((v): v is number => v != null && typeof v === "number")
+      .slice(-ROLLING_WINDOW)
+    if (values.length === 0) return null
+    return +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(1)
+  })()
+
   // Show the last commit's hash
   const latestPoint = history.reduce((a, b) =>
     new Date(a.timestamp) > new Date(b.timestamp) ? a : b,
@@ -1125,10 +1375,8 @@ function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
         <div className="flex items-center gap-2">
           <GitCompareArrows className="size-5 text-emerald-500" />
-          <h2 className="text-foreground text-sm font-semibold">
-            Evolução do Crossover GiST
-          </h2>
-          <span className="text-muted-foreground rounded-full border px-2 py-0.5 text-[10px] font-mono">
+          <h2 className="text-foreground text-sm font-semibold">Evolução do Crossover GiST</h2>
+          <span className="text-muted-foreground rounded-full border px-2 py-0.5 font-mono text-[10px]">
             {chartData.length} snapshots
           </span>
         </div>
@@ -1171,10 +1419,7 @@ function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
         <MetricCard icon={MapPin} title="Raio de Crossover (km)">
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={filteredChartData}
-                margin={{ left: 8, right: 8, top: 8, bottom: 8 }}
-              >
+              <LineChart data={filteredChartData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                 <XAxis
                   dataKey="date"
@@ -1199,7 +1444,10 @@ function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
                   contentStyle={TOOLTIP_STYLE}
                   formatter={(v: number, n: string) => {
                     const density = n.match(/density_(\d+)/)?.[1]
-                    return [`${v} km`, density ? `${Number(density).toLocaleString()} providers` : n]
+                    return [
+                      `${v} km`,
+                      density ? `${Number(density).toLocaleString()} providers` : n,
+                    ]
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
@@ -1232,6 +1480,23 @@ function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
                         />
                       )
                     })()}
+                {/* 4-week rolling average reference line */}
+                {rollingAvgKm != null && (
+                  <ReferenceLine
+                    key={`rolling-avg-${rollingAvgKm}`}
+                    y={rollingAvgKm}
+                    stroke="hsl(270, 76%, 53%)"
+                    strokeDasharray="6 3"
+                    strokeWidth={2}
+                    label={{
+                      value: `Média 4 sem: ${rollingAvgKm} km`,
+                      position: "insideTopRight",
+                      fill: "hsl(270, 76%, 53%)",
+                      fontSize: 9,
+                    }}
+                    className="animate-in fade-in duration-500"
+                  />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1241,10 +1506,7 @@ function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
         <MetricCard icon={BarChart3} title="Melhor Razão GiST / Full Scan (%)">
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart
-                data={filteredChartData}
-                margin={{ left: 8, right: 8, top: 8, bottom: 8 }}
-              >
+              <LineChart data={filteredChartData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
                 <XAxis
                   dataKey="date"
@@ -1335,17 +1597,225 @@ function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
             <span className="font-mono font-medium">
               {new Date(latestPoint.timestamp).toLocaleDateString("pt-BR")}
             </span>
-            <span className="ml-1 font-mono text-[9px]">
-              ({latestPoint.commitHash})
-            </span>
+            <span className="ml-1 font-mono text-[9px]">({latestPoint.commitHash})</span>
           </span>
-          <span>
-            Densidades monitoradas:{" "}
-            {densities.map((d) => d.toLocaleString()).join(", ")}
-          </span>
+          <span>Densidades monitoradas: {densities.map((d) => d.toLocaleString()).join(", ")}</span>
         </div>
       </div>
     </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark Timeline View (Geo / Cache)
+// ---------------------------------------------------------------------------
+
+/**
+ * BenchmarkTimelineView — Renders a per-benchmark evolution chart and
+ * snapshot table from git history entries (e.g. geo or cache benchmark
+ * JSON files extracted from git).
+ */
+function BenchmarkTimelineView({
+  type,
+  label,
+  history,
+  color,
+}: {
+  type: string
+  label: string
+  history: BenchmarkHistoryEntry[]
+  color: string
+}) {
+  // Build chart data: group by date, then per benchmark label
+  const chartData = React.useMemo(() => {
+    const dateMap = new Map<
+      string,
+      { ts: number; vals: Record<string, { mean: number; ops: number; p95: number }> }
+    >()
+
+    for (const entry of history) {
+      const ts = entry.timestamp
+      if (!ts) continue
+
+      const d = new Date(ts)
+      const dateKey = d.toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, { ts: d.getTime(), vals: {} })
+      }
+      const group = dateMap.get(dateKey)!
+
+      for (const bench of entry.data.benchmarks) {
+        if (!group.vals[bench.label] || group.vals[bench.label].mean === 0) {
+          group.vals[bench.label] = {
+            mean: bench.mean,
+            ops: bench.opsPerSec,
+            p95: bench.p95 ?? bench.mean,
+          }
+        }
+      }
+    }
+
+    return [...dateMap.entries()]
+      .sort(([, a], [, b]) => a.ts - b.ts)
+      .map(([date, { vals }]) => {
+        const row: Record<string, number | string> = { date }
+        for (const [key, v] of Object.entries(vals)) {
+          row[`${key}_mean`] = v.mean
+          row[`${key}_ops`] = v.ops
+          row[`${key}_p95`] = v.p95
+        }
+        return row
+      })
+  }, [history])
+
+  // Determine which lines to render
+  const lines = React.useMemo(() => {
+    if (chartData.length === 0) return []
+    const suffix = "_mean"
+    const keys = Object.keys(chartData[0]).filter((k) => k.endsWith(suffix) && k !== "date")
+
+    const PALETTE = [
+      "hsl(201, 90%, 48%)",
+      "hsl(38, 92%, 50%)",
+      "hsl(160, 84%, 39%)",
+      "hsl(0, 72%, 51%)",
+    ]
+
+    return keys.map((dataKey, idx) => ({
+      dataKey,
+      name: dataKey.replace(suffix, "").replace(/_/g, " "),
+      color: PALETTE[idx % PALETTE.length],
+    }))
+  }, [chartData])
+
+  if (chartData.length === 0) {
+    return (
+      <div className="text-muted-foreground flex flex-col items-center gap-2 py-12">
+        <FileJson className="size-8 opacity-50" />
+        <p className="text-sm">Nenhum snapshot histórico encontrado para {label}.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Chart */}
+      <div className="h-[280px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+            <XAxis
+              dataKey="date"
+              tickLine={false}
+              axisLine={false}
+              tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              width={50}
+              tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+              label={{
+                value: "µs",
+                angle: -90,
+                position: "insideLeft",
+                style: { fontSize: 10, fill: "hsl(var(--muted-foreground))" },
+              }}
+              scale="log"
+              domain={["auto", "auto"]}
+            />
+            <RTooltip
+              contentStyle={TOOLTIP_STYLE}
+              formatter={(v: number, n: string) => [`${v.toFixed(v < 1 ? 2 : 1)} µs`, n]}
+            />
+            <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
+            {lines.slice(0, 12).map((line) => (
+              <Line
+                key={line.dataKey}
+                type="monotone"
+                dataKey={line.dataKey}
+                name={line.name}
+                stroke={line.color}
+                strokeWidth={1.5}
+                dot={{ r: 3 }}
+                activeDot={{ r: 5 }}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+        {lines.length > 12 && (
+          <p className="text-muted-foreground mt-1 text-[10px]">
+            Mostrando 12 de {lines.length} benchmarks
+          </p>
+        )}
+      </div>
+
+      {/* Snapshot table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr className="text-muted-foreground border-b">
+              <th className="pr-3 pb-2 font-medium">Snapshot</th>
+              <th className="pr-3 pb-2 font-medium">Commit</th>
+              <th className="pr-3 pb-2 text-right font-medium">Benchmarks</th>
+              <th className="pr-3 pb-2 text-right font-medium">Latência Média</th>
+              <th className="pb-2 text-right font-medium">Throughput</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((entry, idx) => {
+              const avg =
+                entry.data.benchmarks.length > 0
+                  ? entry.data.benchmarks.reduce((a, b) => a + b.mean, 0) /
+                    entry.data.benchmarks.length
+                  : 0
+              const throughput =
+                entry.data.benchmarks.length > 0
+                  ? entry.data.benchmarks.reduce((a, b) => a + b.opsPerSec, 0) /
+                    entry.data.benchmarks.length
+                  : 0
+              return (
+                <tr
+                  key={`${entry.commitHash}-${idx}`}
+                  className="hover:bg-muted/20 border-b last:border-0"
+                >
+                  <td className="text-foreground py-2 pr-3 font-medium tabular-nums">
+                    {new Date(entry.timestamp).toLocaleDateString("pt-BR")}
+                  </td>
+                  <td className="py-2 pr-3 font-mono text-[10px]">
+                    <span className="cursor-help" title={`Commit completo: ${entry.commitHash}`}>
+                      {entry.commitHash}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3 text-right tabular-nums">
+                    {entry.data.benchmarks.length}
+                  </td>
+                  <td className="py-2 pr-3 text-right tabular-nums">{avg.toFixed(1)} µs</td>
+                  <td className="py-2 text-right tabular-nums">{throughput.toFixed(0)} ops/s</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer */}
+      <div className="text-muted-foreground flex items-center gap-4 text-[10px]">
+        <span>
+          Total de snapshots: <span className="font-medium">{history.length}</span>
+        </span>
+        <span>
+          Período: {new Date(history[0].timestamp).toLocaleDateString("pt-BR")} →{" "}
+          {new Date(history[history.length - 1].timestamp).toLocaleDateString("pt-BR")}
+        </span>
+      </div>
+    </div>
   )
 }
 

@@ -31,6 +31,7 @@
 import "server-only"
 import { geocodeSearch, geocodeCEP, reverseGeocode } from "./geo"
 import { cacheGet } from "./redis"
+import { getTopSearches, getTopCEPs, getTopReverses } from "./geo-query-log"
 import logger from "./logger"
 
 // ---------------------------------------------------------------------------
@@ -97,14 +98,44 @@ const TOP_COORDS: Array<{ lat: number; lng: number; label: string }> = [
   { lat: -30.0346, lng: -51.2177, label: "Porto Alegre (centro)" },
 ]
 
+/**
+ * Grupo 1 — Bairros populares para busca.
+ * Bairros icônicos das maiores capitais, prováveis de serem pesquisados
+ * por clientes buscando prestadores próximos.
+ */
+const TOP_NEIGHBORHOODS: string[] = [
+  "Copacabana, Rio de Janeiro, RJ",
+  "Moema, São Paulo, SP",
+  "Barra da Tijuca, Rio de Janeiro, RJ",
+  "Pinheiros, São Paulo, SP",
+  "Savassi, Belo Horizonte, MG",
+]
+
+/**
+ * Grupo 3 — Capitais estaduais faltantes.
+ * Capitais brasileiras com alta densidade populacional que ainda não
+ * estavam na lista TOP_CITIES original.
+ */
+const MISSING_CAPITALS: string[] = [
+  "Belém, PA",
+  "Vitória, ES",
+  "Natal, RN",
+  "São Luís, MA",
+  "Maceió, AL",
+  "Campo Grande, MS",
+]
+
 // ---------------------------------------------------------------------------
 // Cache warm implementation
 // ---------------------------------------------------------------------------
 
 export type WarmResult = {
-  searches: number // geocodeSearch calls made (cache misses)
-  ceps: number // geocodeCEP calls made
-  reverses: number // reverseGeocode calls made
+  searches: number // static geocodeSearch calls made (cache misses)
+  ceps: number // static geocodeCEP calls made
+  reverses: number // static reverseGeocode calls made
+  logSearches: number // log-based geocodeSearch calls made
+  logCeps: number // log-based geocodeCEP calls made
+  logReverses: number // log-based reverseGeocode calls made
   total: number
   skipped: number // already in cache
   errors: number
@@ -190,14 +221,109 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
+  // ── Warm neighborhood searches (Grupo 1) ───────────────────────────
+  for (const bairro of TOP_NEIGHBORHOODS) {
+    try {
+      const key = `geo:search:${bairro.toLowerCase()}:5`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await geocodeSearch(bairro, 5)
+      searches++
+    } catch {
+      errors++
+    }
+  }
+
+  // ── Warm missing capital searches (Grupo 3) ────────────────────────
+  for (const capital of MISSING_CAPITALS) {
+    try {
+      const key = `geo:search:${capital.toLowerCase()}:5`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await geocodeSearch(capital, 5)
+      searches++
+    } catch {
+      errors++
+    }
+  }
+
+  // ── Warm log-based queries ──────────────────────────────────────────
+  // After the static lists, warm the most popular user queries from the
+  // persistent query log.  Deduplication happens naturally via isKeyCached():
+  // if the static list already primed an entry, the log loop skips it.
+
+  let logSearches = 0
+  let logCeps = 0
+  let logReverses = 0
+
+  // Log-based searches
+  const topSearches = getTopSearches(10)
+  for (const { query } of topSearches) {
+    try {
+      const key = `geo:search:${query.toLowerCase()}:5`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await geocodeSearch(query, 5)
+      logSearches++
+    } catch {
+      errors++
+    }
+  }
+
+  // Log-based CEP lookups
+  const topCEPs = getTopCEPs(10)
+  for (const { cep } of topCEPs) {
+    try {
+      const key = `geo:cep:${cep}`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await geocodeCEP(cep)
+      logCeps++
+    } catch {
+      errors++
+    }
+  }
+
+  // Log-based reverse geocodes
+  const topReverses = getTopReverses(5)
+  for (const { coords } of topReverses) {
+    try {
+      const key = `geo:reverse:${coords}`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      const [lat, lng] = coords.split(",").map(Number)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        errors++
+        continue
+      }
+      await reverseGeocode(lat, lng)
+      logReverses++
+    } catch {
+      errors++
+    }
+  }
+
   const elapsedMs = Date.now() - start
-  const total = searches + ceps + reverses
+  const total = searches + ceps + reverses + logSearches + logCeps + logReverses
 
   logger.info(
     {
       searches,
       ceps,
       reverses,
+      logSearches,
+      logCeps,
+      logReverses,
       total,
       skipped,
       errors,
@@ -205,11 +331,27 @@ export async function warmGeoCache(): Promise<WarmResult> {
       warmedCities: TOP_CITIES.length,
       warmedCeps: TOP_CEPS.length,
       warmedCoords: TOP_COORDS.length,
+      warmedNeighborhoods: TOP_NEIGHBORHOODS.length,
+      warmedMissingCapitals: MISSING_CAPITALS.length,
+      logSearchesEntries: topSearches.length,
+      logCepsEntries: topCEPs.length,
+      logReversesEntries: topReverses.length,
     },
     "geo-cache-warm: complete",
   )
 
-  return { searches, ceps, reverses, total, skipped, errors, elapsedMs }
+  return {
+    searches,
+    ceps,
+    reverses,
+    logSearches,
+    logCeps,
+    logReverses,
+    total,
+    skipped,
+    errors,
+    elapsedMs,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -218,14 +360,19 @@ export async function warmGeoCache(): Promise<WarmResult> {
 
 export function getWarmConfig(): {
   cities: number
+  neighborhoods: number
+  missingCapitals: number
   ceps: number
   coords: number
   totalQueries: number
 } {
+  const staticSearches = TOP_CITIES.length + TOP_NEIGHBORHOODS.length + MISSING_CAPITALS.length
   return {
     cities: TOP_CITIES.length,
+    neighborhoods: TOP_NEIGHBORHOODS.length,
+    missingCapitals: MISSING_CAPITALS.length,
     ceps: TOP_CEPS.length,
     coords: TOP_COORDS.length,
-    totalQueries: TOP_CITIES.length + TOP_CEPS.length + TOP_COORDS.length,
+    totalQueries: staticSearches + TOP_CEPS.length + TOP_COORDS.length,
   }
 }
