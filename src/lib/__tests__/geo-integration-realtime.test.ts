@@ -136,7 +136,7 @@ describe("geo integration — real modules + temp disk", () => {
   // 1. recordGeoLatency → getGeoMetrics → persist + disk
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("records samples, computes P95, and persists snapshot to disk", () => {
+  it("records samples, computes P95, and persists snapshot to disk", async () => {
     // Record realistic samples for all three services
     // Nominatim: P95 should be ~950ms
     for (const ms of [100, 200, 150, 800, 900, 850, 950, 100, 120, 110]) {
@@ -168,13 +168,13 @@ describe("geo integration — real modules + temp disk", () => {
     expect(metrics.services.postgis.count).toBe(12)
 
     // Flush pending snapshot to disk (debounce is 5s, force it)
-    flushGeoMetrics()
+    await flushGeoMetrics()
 
     // Verify the snapshot file exists on disk
-    expect(getSnapshotCount()).toBeGreaterThanOrEqual(1)
+    expect(await getSnapshotCount()).toBeGreaterThanOrEqual(1)
 
     // Verify we can reload from disk
-    const reloaded = loadPersistedSnapshots()
+    const reloaded = await loadPersistedSnapshots()
     expect(reloaded.length).toBeGreaterThanOrEqual(1)
 
     // Most recent snapshot should match our services
@@ -187,7 +187,7 @@ describe("geo integration — real modules + temp disk", () => {
   // 2. computeGeoBaselines — auto-baseline from persisted snapshots
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("computeGeoBaselines derives adaptive thresholds from disk snapshots", () => {
+  it("computeGeoBaselines derives adaptive thresholds from disk snapshots", async () => {
     // Write multiple historical snapshots with consistent P95 values
     const baseTs = Date.now() - 3600_000 // 1 hour ago
     for (let i = 0; i < 10; i++) {
@@ -196,9 +196,9 @@ describe("geo integration — real modules + temp disk", () => {
       })
     }
 
-    flushGeoMetrics()
+    await flushGeoMetrics()
 
-    const baselines = computeGeoBaselines(7200_000) // 2h lookback
+    const baselines = await computeGeoBaselines(7200_000) // 2h lookback
 
     // PostGIS: P95 was 15 in all historical snapshots → baseline ~15ms
     const pg = baselines.find((b) => b.service === "postgis")
@@ -224,7 +224,7 @@ describe("geo integration — real modules + temp disk", () => {
   // 3. checkGeoPerformance — detects elevated P95 via deterministic baseline
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("checkGeoPerformance detects elevated P95 via auto-baseline", () => {
+  it("checkGeoPerformance detects elevated P95 via auto-baseline", async () => {
     // We already have historical snapshots with PostGIS P95=15ms from test #2.
     // Record new samples that push current PostGIS P95 well above 2× baseline.
     // Auto-baseline threshold for PostGIS ≈ 30ms (15ms × 2).
@@ -234,7 +234,7 @@ describe("geo integration — real modules + temp disk", () => {
     }
     getGeoMetrics()
 
-    const results = checkGeoPerformance()
+    const results = await checkGeoPerformance()
 
     // At least one result with a valid baseline
     expect(results.length).toBeGreaterThanOrEqual(1)
@@ -253,8 +253,8 @@ describe("geo integration — real modules + temp disk", () => {
   // 4. Load persisted data — round-trip from disk
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("loads historical snapshots from disk and verifies content integrity", () => {
-    const snapshots = loadPersistedSnapshots()
+  it("loads historical snapshots from disk and verifies content integrity", async () => {
+    const snapshots = await loadPersistedSnapshots()
 
     // Should have at least the historical + the live snapshot(s)
     expect(snapshots.length).toBeGreaterThanOrEqual(1)
@@ -287,7 +287,7 @@ describe("geo integration — real modules + temp disk", () => {
   // 5. Elevated PostGIS P95 → flagged as degraded by checkGeoPerformance
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("flags degraded when PostGIS P95 exceeds 2x auto-baseline", () => {
+  it("flags degraded when PostGIS P95 exceeds 2x auto-baseline", async () => {
     // Write historical snapshots with LOW PostGIS P95 so threshold is low
     const baseTs = Date.now() - 1800_000 // 30 min ago
     for (let i = 0; i < 6; i++) {
@@ -300,7 +300,7 @@ describe("geo integration — real modules + temp disk", () => {
         },
       })
     }
-    flushGeoMetrics()
+    await flushGeoMetrics()
 
     // Reset state for clean test
     resetPerformanceAlertState()
@@ -314,7 +314,7 @@ describe("geo integration — real modules + temp disk", () => {
     getGeoMetrics()
 
     // Run the performance check
-    const results = checkGeoPerformance()
+    const results = await checkGeoPerformance()
 
     // Find the PostGIS result — it should be degraded
     const pg = results.find((r) => {

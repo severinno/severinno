@@ -169,10 +169,11 @@ export function getGeoMetricsHistory(): typeof snapshotHistory {
 // ── Module init: hydrate from disk ────────────────────────────────────────
 // Load persisted snapshots from the previous server session so the
 // historical timeline doesn't start empty after a restart.
+// Uses async IIFE because loadPersistedSnapshots is async (Redis-backed).
 
-function hydrateFromDisk(): void {
+;(async () => {
   try {
-    const persisted = loadPersistedSnapshots()
+    const persisted = await loadPersistedSnapshots()
     for (const snap of persisted) {
       snapshotHistory.push(snap)
       if (snapshotHistory.length > MAX_HISTORY) {
@@ -189,9 +190,7 @@ function hydrateFromDisk(): void {
   } catch (err) {
     logger.warn({ err }, "geo-metrics: failed to hydrate snapshots from disk")
   }
-}
-
-hydrateFromDisk()
+})()
 
 /**
  * Compute the current metrics snapshot for all geo services.

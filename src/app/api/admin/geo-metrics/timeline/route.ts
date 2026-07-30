@@ -162,7 +162,7 @@ export async function GET(request: Request) {
     }
 
     // ── Load and filter snapshots ────────────────────────────────────
-    const allSnapshots = loadPersistedSnapshots()
+    const allSnapshots = await loadPersistedSnapshots()
 
     const filtered = allSnapshots.filter((s) => s.timestamp >= from && s.timestamp <= to)
 

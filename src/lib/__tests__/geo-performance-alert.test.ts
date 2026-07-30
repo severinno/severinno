@@ -177,9 +177,9 @@ describe("checkGeoPerformance", () => {
   // 1. Normal — P95 below threshold
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("returns not degraded when P95 is below 2x baseline", () => {
+  it("returns not degraded when P95 is below 2x baseline", async () => {
     // Default from beforeEach: P95 values are below thresholds
-    const results = checkGeoPerformance()
+    const results = await checkGeoPerformance()
 
     expect(results).toHaveLength(3)
     for (const r of results) {
@@ -194,19 +194,19 @@ describe("checkGeoPerformance", () => {
   // 2. Degradation — P95 above threshold for 2 consecutive checks
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("alerts after 2 consecutive violations (CONSECUTIVE_THRESHOLD)", () => {
+  it("alerts after 2 consecutive violations (CONSECUTIVE_THRESHOLD)", async () => {
     mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 900, viacep: 50, postgis: 10 }))
     mockCB().mockReturnValue(makeBaselines())
 
     // First call: 1st violation (degraded=true, alerted=false)
-    const r1 = checkGeoPerformance()
+    const r1 = await checkGeoPerformance()
     const nom1 = r1.find((r) => r.p95 === 900)!
     expect(nom1.degraded).toBe(true)
     expect(nom1.alerted).toBe(false)
     expect(nom1.consecutiveViolations).toBe(1)
 
     // Second call: 2nd violation → should alert
-    const r2 = checkGeoPerformance()
+    const r2 = await checkGeoPerformance()
     const nom2 = r2.find((r) => r.p95 === 900)!
     expect(nom2.degraded).toBe(true)
     expect(nom2.alerted).toBe(true)
@@ -227,22 +227,22 @@ describe("checkGeoPerformance", () => {
   // 3. Debounce — alerts within 15min don't re-trigger
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("does not re-alert within debounce window (15 min)", () => {
+  it("does not re-alert within debounce window (15 min)", async () => {
     mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 900, viacep: 50, postgis: 10 }))
     mockCB().mockReturnValue(makeBaselines())
 
     // Call 1-2: trigger alert (2 consecutive violations)
-    checkGeoPerformance() // 1st violation
-    checkGeoPerformance() // 2nd violation → alert sent
+    await checkGeoPerformance() // 1st violation
+    await checkGeoPerformance() // 2nd violation → alert sent
     expect(mockNA()).toHaveBeenCalledTimes(1)
 
     // Call 3-4: still degraded but within debounce → no re-alert
     mockNA().mockClear()
-    const r3 = checkGeoPerformance()
+    const r3 = await checkGeoPerformance()
     expect(r3.find((r) => r.p95 === 900)!.alerted).toBe(false)
     expect(mockNA()).not.toHaveBeenCalled()
 
-    const r4 = checkGeoPerformance()
+    const r4 = await checkGeoPerformance()
     expect(r4.find((r) => r.p95 === 900)!.alerted).toBe(false)
     expect(mockNA()).not.toHaveBeenCalled()
   })
@@ -251,21 +251,21 @@ describe("checkGeoPerformance", () => {
   // 4. Recovery — P95 returns below threshold
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("sends recovery notification when P95 drops back below threshold", () => {
+  it("sends recovery notification when P95 drops back below threshold", async () => {
     // Start degraded
     mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 900, viacep: 50, postgis: 10 }))
     mockCB().mockReturnValue(makeBaselines())
 
     // Trigger alert (2 violations)
-    checkGeoPerformance()
-    checkGeoPerformance()
+    await checkGeoPerformance()
+    await checkGeoPerformance()
     expect(mockNA()).toHaveBeenCalledTimes(1)
 
     // Now P95 drops below threshold
     mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 200, viacep: 50, postgis: 10 }))
 
     // Recovery should happen
-    const result = checkGeoPerformance()
+    const result = await checkGeoPerformance()
     const nomResult = result.find((r) => r.p95 === 200)!
     expect(nomResult.degraded).toBe(false)
     expect(nomResult.recovered).toBe(true)
@@ -283,13 +283,13 @@ describe("checkGeoPerformance", () => {
   // 5. No baseline — fallback to generous 2s threshold
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("uses generous 2s threshold when no baseline is available", () => {
+  it("uses generous 2s threshold when no baseline is available", async () => {
     mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 1500, viacep: 800, postgis: 50 }))
     // source = "fallback" → code falls through to generous 2s default
     // (or PostGIS benchmark file if it exists on disk)
     mockCB().mockReturnValue(makeFallbackBaselines())
 
-    const results = checkGeoPerformance()
+    const results = await checkGeoPerformance()
 
     // Nominatim: 1500 < 2000 → not degraded (generous 2s threshold)
     const nom = results.find((r) => r.p95 === 1500)!
@@ -312,12 +312,12 @@ describe("checkGeoPerformance", () => {
   // 6. Multiple services — independent tracking
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("tracks violations independently per service", () => {
+  it("tracks violations independently per service", async () => {
     mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 900, viacep: 500, postgis: 10 }))
     mockCB().mockReturnValue(makeBaselines())
 
     // First call: all services evaluated
-    const r1 = checkGeoPerformance()
+    const r1 = await checkGeoPerformance()
     // Nominatim: 900 > 800 → degraded
     expect(r1.find((r) => r.p95 === 900)!.degraded).toBe(true)
     // ViaCEP: 500 == 500 → NOT >, so not degraded
@@ -326,7 +326,7 @@ describe("checkGeoPerformance", () => {
     expect(r1.find((r) => r.p95 === 10)!.degraded).toBe(false)
 
     // Second call: Nominatim alerts (second violation)
-    const r2 = checkGeoPerformance()
+    const r2 = await checkGeoPerformance()
     expect(r2.find((r) => r.p95 === 900)!.alerted).toBe(true)
     expect(mockNA()).toHaveBeenCalledTimes(1)
     expect(mockNA().mock.calls[0][0].tag).toBe("geo-perf:nominatim:degraded")
@@ -336,14 +336,14 @@ describe("checkGeoPerformance", () => {
   // 7. Error severity — P95 exceeds 1.5× threshold → "error"
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("uses 'error' severity when P95 exceeds 1.5x threshold", () => {
+  it("uses 'error' severity when P95 exceeds 1.5x threshold", async () => {
     // P95=1500, threshold=800 → 1500 > 1200 (800×1.5) → "error"
     mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 1500, viacep: 50, postgis: 10 }))
     mockCB().mockReturnValue(makeBaselines())
 
     // Trigger alert
-    checkGeoPerformance()
-    checkGeoPerformance()
+    await checkGeoPerformance()
+    await checkGeoPerformance()
 
     expect(mockNA()).toHaveBeenCalledTimes(1)
     const alertCall = mockNA().mock.calls[0][0]
@@ -354,14 +354,14 @@ describe("checkGeoPerformance", () => {
   // 9. Edge case — P95 exactly equal to threshold (not degraded)
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("returns not degraded when P95 equals threshold exactly (>= vs >)", () => {
+  it("returns not degraded when P95 equals threshold exactly (>= vs >)", async () => {
     // ViaCEP threshold is 500 (2 × 250).  P95 === threshold exactly.
     // The guard uses strict `p95 > threshold`, not `p95 >= threshold`,
     // so equality must NOT trigger degradation.
     mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 100, viacep: 500, postgis: 10 }))
     mockCB().mockReturnValue(makeBaselines())
 
-    const results = checkGeoPerformance()
+    const results = await checkGeoPerformance()
 
     const via = results.find((r) => r.p95 === 500)!
     expect(via.p95).toBe(500)
@@ -381,7 +381,7 @@ describe("checkGeoPerformance", () => {
   // 8. Missing service metrics — returns empty result
   // ═══════════════════════════════════════════════════════════════════════
 
-  it("returns empty result when service has no metrics", () => {
+  it("returns empty result when service has no metrics", async () => {
     mockGM().mockReturnValue({
       services: {},
       timestamp: Date.now(),
@@ -389,7 +389,7 @@ describe("checkGeoPerformance", () => {
     })
     mockCB().mockReturnValue(makeFallbackBaselines())
 
-    const results = checkGeoPerformance(["nominatim"])
+    const results = await checkGeoPerformance(["nominatim"])
 
     expect(results).toHaveLength(1)
     expect(results[0].p95).toBe(0)
