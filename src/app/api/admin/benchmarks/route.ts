@@ -25,6 +25,9 @@ import { execSync } from "node:child_process"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { notifyGeoAlert } from "@/lib/geo-alert-notify"
+import { queueEmail } from "@/lib/email-queue"
+import { db } from "@/lib/db"
+import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -83,6 +86,19 @@ export interface ComparisonResult {
   totalBenchmarks: number
 }
 
+/**
+ * Generic entry extracted from git history — any benchmark JSON file
+ * that was committed over time can be tracked.
+ */
+export interface BenchmarkHistoryEntry {
+  /** Commit timestamp from the benchmark file's meta. */
+  timestamp: string
+  /** Short commit hash where this version was found. */
+  commitHash: string
+  /** The full benchmark file content at this commit. */
+  data: BenchmarkFile
+}
+
 export interface GistCrossoverPoint {
   timestamp: string
   commitHash: string
@@ -93,6 +109,23 @@ export interface GistCrossoverPoint {
   selectivityPct: number | null
 }
 
+export interface CrossoverDriftAlert {
+  /** Provider density where drift was detected. */
+  density: number
+  /** Previous crossover radius in km. */
+  previousRadiusKm: number | null
+  /** Current crossover radius in km. */
+  currentRadiusKm: number | null
+  /** Number of radius steps drifted (null if incomparable). */
+  stepDrift: number | null
+  /** Whether the "gistFaster" state flipped. */
+  gistFasterStateChanged: boolean
+  /** Commit hash from the previous snapshot. */
+  previousCommitHash: string
+  /** Commit hash from the current snapshot. */
+  currentCommitHash: string
+}
+
 export interface BenchmarksResponse {
   runs: Record<string, BenchmarkFile[]>
   comparisons: ComparisonResult[]
@@ -100,6 +133,10 @@ export interface BenchmarksResponse {
   lastRun: string | null
   /** Historical GiST crossover data extracted from git history */
   gistCrossoverHistory: GistCrossoverPoint[]
+  /** Alerts when crossover radius drifted >1 step in any density. */
+  crossoverDriftAlerts: CrossoverDriftAlert[]
+  /** Historical benchmark data for all tracked file types (geo, cache, …). */
+  benchmarkHistory: Record<string, BenchmarkHistoryEntry[]>
   summary: {
     totalRuns: number
     totalComparisons: number
@@ -117,9 +154,7 @@ const BENCHMARK_DIR = join(process.cwd(), "docs", "benchmarks")
 
 const THRESHOLD_PCT = 5 // regression threshold in percent
 
-// ── GiST crossover history from git ───────────────────────────────────────
-
-const GIST_BASELINE_PATH = "docs/benchmarks/geo-gist-baseline.json"
+// ── Generic git history extraction ────────────────────────────────────────
 
 interface GitHistoryEntry {
   hash: string
@@ -127,25 +162,28 @@ interface GitHistoryEntry {
 }
 
 /**
- * Extract historical GiST baseline snapshots from git history.
- * Uses git log to find commits that changed geo-gist-baseline.json,
- * then git show to retrieve each version's content.
+ * Extract historical snapshots of a benchmark JSON file from git history.
  *
- * Returns up to MAX_SNAPSHOTS entries, sorted chronologically.
+ * Uses `git log` to find commits that touched `relativePath`, then `git show`
+ * to retrieve each version's content.
+ *
+ * Returns up to `maxSnapshots` entries, sorted chronologically by the
+ * benchmark file's own `meta.timestamp` (not the commit timestamp).
+ * Returns an empty array when git is not available or the file has no history.
  */
-function extractGistHistory(): GitHistoryEntry[] {
+function extractGitHistory(relativePath: string, maxSnapshots = 50): GitHistoryEntry[] {
   try {
-    // Get all commit hashes that modified the GiST baseline file
-    const logOutput = execSync(
-      `git log --format="%H %ct" -- "${GIST_BASELINE_PATH}"`,
-      { encoding: "utf-8", timeout: 10_000, maxBuffer: 1024 * 1024 },
-    )
+    // Get all commit hashes that modified the file
+    const logOutput = execSync(`git log --format="%H %ct" -- "${relativePath}"`, {
+      encoding: "utf-8",
+      timeout: 10_000,
+      maxBuffer: 1024 * 1024,
+    })
       .trim()
       .split("\n")
       .filter(Boolean)
 
-    const MAX_SNAPSHOTS = 50
-    const recentCommits = logOutput.slice(0, MAX_SNAPSHOTS)
+    const recentCommits = logOutput.slice(0, maxSnapshots)
     const entries: GitHistoryEntry[] = []
 
     for (const line of recentCommits) {
@@ -153,10 +191,11 @@ function extractGistHistory(): GitHistoryEntry[] {
       if (!hash) continue
 
       try {
-        const content = execSync(
-          `git show "${hash}:${GIST_BASELINE_PATH}"`,
-          { encoding: "utf-8", timeout: 5000, maxBuffer: 1024 * 1024 },
-        )
+        const content = execSync(`git show "${hash}:${relativePath}"`, {
+          encoding: "utf-8",
+          timeout: 5000,
+          maxBuffer: 1024 * 1024,
+        })
         const data = JSON.parse(content) as BenchmarkFile
         entries.push({ hash, data })
       } catch {
@@ -165,7 +204,7 @@ function extractGistHistory(): GitHistoryEntry[] {
       }
     }
 
-    // Sort chronologically by timestamp
+    // Sort chronologically by the benchmark file's own timestamp
     entries.sort(
       (a, b) =>
         new Date(a.data.meta?.timestamp ?? 0).getTime() -
@@ -177,6 +216,142 @@ function extractGistHistory(): GitHistoryEntry[] {
     // git not available or not a git repository
     return []
   }
+}
+
+/**
+ * Convert git history entries into a flat history array.
+ */
+function buildBenchmarkHistory(entries: GitHistoryEntry[]): BenchmarkHistoryEntry[] {
+  return entries
+    .filter((e) => e.data.meta?.timestamp)
+    .map(({ hash, data }) => ({
+      timestamp: data.meta!.timestamp!,
+      commitHash: hash.slice(0, 7),
+      data,
+    }))
+}
+
+// ── File paths to track in git history ───────────────────────────────────
+
+/** Map of benchmark type → file path(s) to extract from git history. */
+const HISTORY_FILES: Record<string, string[]> = {
+  geo: ["docs/benchmarks/geo-benchmark.json", "docs/benchmarks/geo-baseline.json"],
+  cache: ["docs/benchmarks/cache-latest.json"],
+}
+
+/**
+ * Extract history for all configured benchmark types.
+ * Merges history from multiple file paths per type (dedup by commit hash).
+ */
+function extractAllBenchmarkHistory(): Record<string, BenchmarkHistoryEntry[]> {
+  const result: Record<string, BenchmarkHistoryEntry[]> = {}
+
+  for (const [type, paths] of Object.entries(HISTORY_FILES)) {
+    const seenHashes = new Set<string>()
+    const entries: BenchmarkHistoryEntry[] = []
+
+    for (const filePath of paths) {
+      const gitEntries = extractGitHistory(filePath)
+      for (const e of gitEntries) {
+        if (seenHashes.has(e.hash)) continue
+        seenHashes.add(e.hash)
+        const history = buildBenchmarkHistory([e])
+        entries.push(...history)
+      }
+    }
+
+    // Sort by timestamp
+    entries.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+
+    if (entries.length > 0) result[type] = entries
+  }
+
+  return result
+}
+
+// ── Constants for crossover drift detection ──────────────────────────────
+
+/** Max allowed step drift before firing an alert.  User request: >1 step. */
+const MAX_CROSSOVER_STEP_DRIFT = 1
+
+/** Debounce tag for crossover drift notifications (15 min cooldown). */
+const CROSSOVER_DRIFT_TAG = "crossover-drift"
+
+// ---------------------------------------------------------------------------
+// Crossover drift detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect significant changes in the GiST crossover radius between the
+ * last two historical snapshots, grouped by density.
+ *
+ * Returns an alert per density where the crossover moved by more than
+ * `MAX_CROSSOVER_STEP_DRIFT` radius steps, or where the gistFaster state
+ * flipped (e.g., GiST was faster and no longer is).
+ *
+ * Requires at least 2 timestamp groups in `history` to compare.
+ */
+function detectCrossoverDrift(points: GistCrossoverPoint[]): CrossoverDriftAlert[] {
+  if (points.length < 2) return []
+
+  // Group points by density
+  const byDensity = new Map<number, GistCrossoverPoint[]>()
+  for (const p of points) {
+    if (!byDensity.has(p.density)) byDensity.set(p.density, [])
+    byDensity.get(p.density)!.push(p)
+  }
+
+  // Also collect all unique radius values to build an index map
+  const allRadii = new Set<number>()
+  for (const p of points) {
+    if (p.crossoverRadiusKm != null) allRadii.add(p.crossoverRadiusKm)
+  }
+  const sortedRadii = [...allRadii].sort((a, b) => a - b)
+  const radiusIndex = new Map(sortedRadii.map((r, i) => [r, i]))
+
+  const alerts: CrossoverDriftAlert[] = []
+
+  for (const [density, dps] of byDensity) {
+    // Sort by timestamp, get last two non-null-radius points
+    const sorted = dps.sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    )
+    if (sorted.length < 2) continue
+
+    const prev = sorted[sorted.length - 2]
+    const curr = sorted[sorted.length - 1]
+
+    // If both have null radius, nothing to compare
+    if (prev.crossoverRadiusKm == null && curr.crossoverRadiusKm == null) continue
+
+    // Compute step drift
+    let stepDrift: number | null = null
+    if (prev.crossoverRadiusKm != null && curr.crossoverRadiusKm != null) {
+      const prevIdx = radiusIndex.get(prev.crossoverRadiusKm)
+      const currIdx = radiusIndex.get(curr.crossoverRadiusKm)
+      if (prevIdx != null && currIdx != null) {
+        stepDrift = Math.abs(currIdx - prevIdx)
+      }
+    }
+
+    const gistFasterStateChanged = prev.gistFaster !== curr.gistFaster
+
+    // Alert if drift > threshold OR gistFaster state flipped
+    const isDrifted = stepDrift != null && stepDrift > MAX_CROSSOVER_STEP_DRIFT
+    if (isDrifted || gistFasterStateChanged) {
+      alerts.push({
+        density,
+        previousRadiusKm: prev.crossoverRadiusKm,
+        currentRadiusKm: curr.crossoverRadiusKm,
+        stepDrift,
+        gistFasterStateChanged,
+        previousCommitHash: prev.commitHash,
+        currentCommitHash: curr.commitHash,
+      })
+    }
+  }
+
+  return alerts
 }
 
 /**
@@ -228,7 +403,8 @@ function buildCrossoverHistory(entries: GitHistoryEntry[]): GistCrossoverPoint[]
         crossoverRadiusKm: radiusKm,
         bestRatioPct,
         gistFaster,
-        selectivityPct: selectivity != null && isFinite(selectivity) ? +selectivity.toFixed(1) : null,
+        selectivityPct:
+          selectivity != null && isFinite(selectivity) ? +selectivity.toFixed(1) : null,
       })
     }
   }
@@ -468,7 +644,8 @@ export async function GET() {
         .slice(0, 3)
 
       const summaryLines = worstRegressions.map(
-        (r) => `• ${r.name}: +${r.mean.pct.toFixed(1)}% (${r.mean.baseline.toFixed(0)} → ${r.mean.current.toFixed(0)}µs)`,
+        (r) =>
+          `• ${r.name}: +${r.mean.pct.toFixed(1)}% (${r.mean.baseline.toFixed(0)} → ${r.mean.current.toFixed(0)}µs)`,
       )
 
       // Debounce via tag — only sends once per 15 min when regression count is stable
@@ -482,7 +659,10 @@ export async function GET() {
         ].join("\n"),
         severity: regressionCount > 5 ? "error" : "warning",
         url: "/admin/benchmarks",
-        tag: `benchmark-regression:${comparisons.map((c) => c.type).sort().join(":")}`,
+        tag: `benchmark-regression:${comparisons
+          .map((c) => c.type)
+          .sort()
+          .join(":")}`,
         source: "benchmarks-api",
         context: {
           regressionCount,
@@ -500,8 +680,93 @@ export async function GET() {
     }
 
     // ── Extract GiST crossover history from git ──────────────────────
-    const gistHistoryEntries = extractGistHistory()
+    const gistHistoryEntries = extractGitHistory("docs/benchmarks/geo-gist-baseline.json")
     const gistCrossoverHistory = buildCrossoverHistory(gistHistoryEntries)
+
+    // ── Extract generic benchmark history (geo, cache, …) ────────────
+    const benchmarkHistory = extractAllBenchmarkHistory()
+
+    // ── Detect crossover drift ──────────────────────────────────────
+    const crossoverDriftAlerts = detectCrossoverDrift(gistCrossoverHistory)
+
+    // ── Dispatch alerts on significant drift ─────────────────────────
+    if (crossoverDriftAlerts.length > 0) {
+      const details = crossoverDriftAlerts
+        .map(
+          (a) =>
+            `• ${a.density.toLocaleString()} prov: ` +
+            `${a.previousRadiusKm ?? "?"} km → ${a.currentRadiusKm ?? "?"} km` +
+            (a.stepDrift != null ? ` (${a.stepDrift} step(s))` : "") +
+            (a.gistFasterStateChanged ? " [gistFaster mudou!]" : ""),
+        )
+        .join("\n")
+
+      const title = `${crossoverDriftAlerts.length} alteração(ões) no crossover GiST`
+      const body = [
+        `O raio de crossover GiST mudou em ${crossoverDriftAlerts.length} densidade(s):`,
+        "",
+        details,
+        "",
+        "Isso pode indicar mudança no índice GiST, versão do PostGIS ou hardware.",
+        "Revise o dashboard de benchmarks para mais detalhes.",
+      ].join("\n")
+
+      // Sentry + Push + Slack via notifyGeoAlert
+      notifyGeoAlert({
+        title,
+        body,
+        severity: "warning",
+        url: "/admin/benchmarks",
+        tag: CROSSOVER_DRIFT_TAG,
+        source: "benchmarks-api",
+        context: {
+          driftCount: crossoverDriftAlerts.length,
+          drifts: crossoverDriftAlerts.map((a) => ({
+            density: a.density,
+            previousRadiusKm: a.previousRadiusKm,
+            currentRadiusKm: a.currentRadiusKm,
+            stepDrift: a.stepDrift,
+            gistFasterStateChanged: a.gistFasterStateChanged,
+            previousCommit: a.previousCommitHash,
+            currentCommit: a.currentCommitHash,
+          })),
+        },
+      }).catch(() => {})
+
+      // Email to admins via queue — fetch ALL admin emails from DB
+      const adminEmails = await db.user
+        .findMany({ where: { role: "ADMIN" }, select: { email: true } })
+        .then((users) => users.map((u) => u.email))
+        .catch(() => ["admin@severinno.com.br"])
+      const emailTo =
+        adminEmails.length > 0 ? [...new Set(adminEmails)].join(",") : "admin@severinno.com.br"
+
+      queueEmail({
+        to: emailTo,
+        subject: `[Severinno] ${title}`,
+        html: [
+          `<h2>⚠️ ${title}</h2>`,
+          `<p>O raio de crossover GiST mudou significativamente nas últimas execuções de benchmark.</p>`,
+          `<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;font-size:14px">`,
+          `<tr style="background:#f5f5f5"><th>Densidade</th><th>Anterior</th><th>Atual</th><th>Steps</th><th>Estado GiST</th></tr>`,
+          ...crossoverDriftAlerts.map(
+            (a) =>
+              `<tr>` +
+              `<td>${a.density.toLocaleString()} prov</td>` +
+              `<td>${a.previousRadiusKm ?? "?"} km</td>` +
+              `<td>${a.currentRadiusKm ?? "?"} km</td>` +
+              `<td>${a.stepDrift != null ? String(a.stepDrift) : "—"}</td>` +
+              `<td>${a.gistFasterStateChanged ? "⚠️ Mudou" : "Estável"}</td>` +
+              `</tr>`,
+          ),
+          `</table>`,
+          `<p><a href="${process.env.NEXT_PUBLIC_APP_URL || "https://severinno.com.br"}/admin/benchmarks">Ver dashboard</a></p>`,
+          `<hr><p style="color:#888;font-size:12px">Gerado automaticamente pelo sistema de monitoramento de benchmarks.</p>`,
+        ].join("\n"),
+      }).catch((err) => {
+        logger.error({ err }, "Failed to queue crossover drift email")
+      })
+    }
 
     const response: BenchmarksResponse = {
       runs: byType,
@@ -509,6 +774,8 @@ export async function GET() {
       regressionCount,
       lastRun,
       gistCrossoverHistory,
+      crossoverDriftAlerts,
+      benchmarkHistory,
       summary: {
         totalRuns: Object.values(byType).reduce((a, r) => a + r.length, 0),
         totalComparisons: comparisons.length,

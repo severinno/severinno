@@ -26,6 +26,8 @@
  *   --all          Run all registered benchmark types
  *   --no-cache     Force re-run even if a fresh cached result exists
  *   --skip-db      Skip benchmarks that require a database (real, gist)
+ *   --force        Shorthand for --no-cache --skip-db combined (clean run
+ *                  without external dependencies)
  *
  * Environment:
  *   BENCHMARK_CACHE_TTL_HOURS   Cache TTL in hours (default: 24).
@@ -148,20 +150,24 @@ if (allFlag) {
 // --type is required
 if (!type) {
   console.error(
-    "❌ Usage: node scripts/run-benchmark.mjs --type geo|cache|search|real|gist|pipeline|all [--json] [--baseline] [--save] [--compare] [--no-cache] [--skip-db]",
+    "❌ Usage: node scripts/run-benchmark.mjs --type geo|cache|search|real|gist|pipeline|all [--json] [--baseline] [--save] [--compare] [--no-cache] [--skip-db] [--force]",
   )
   console.error(`   Available types: ${BENCHMARK_TYPES.join(", ")}`)
   console.error(`   Flags:`)
   console.error(`     --no-cache   ignore cached results and force re-run`)
   console.error(`     --skip-db    skip benchmarks that require a database (real, gist)`)
+  console.error(`     --force      shorthand for --no-cache --skip-db`)
   process.exit(2)
 }
 
+// --force: shorthand for --no-cache --skip-db (clean run, no deps)
+const forceFlag = args.includes("--force")
+
 // --skip-db: skip benchmarks that require a real database
-const skipDb = args.includes("--skip-db")
+const skipDb = forceFlag || args.includes("--skip-db")
 
 // --no-cache: force re-run even if a fresh cached result exists
-const noCache = args.includes("--no-cache")
+const noCache = forceFlag || args.includes("--no-cache")
 
 // ── Cache TTL from env (default: 24h, set to 0 to disable) ────────────────
 const CACHE_TTL_HOURS = (() => {

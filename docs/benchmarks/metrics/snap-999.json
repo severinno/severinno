@@ -1,0 +1,8 @@
+{
+  "timestamp": 999,
+  "services": {
+    "nominatim": { "p50": 100, "p95": 200, "p99": 400, "count": 50 },
+    "viacep": { "p50": 60, "p95": 120, "p99": 240, "count": 30 },
+    "postgis": { "p50": 8, "p95": 15, "p99": 30, "count": 200 }
+  }
+}
