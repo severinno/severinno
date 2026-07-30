@@ -15,16 +15,7 @@
  */
 
 import * as React from "react"
-import {
-  Activity,
-  BarChart3,
-  CalendarDays,
-  Database,
-  History,
-  MapPin,
-  RefreshCw,
-  Search,
-} from "lucide-react"
+import { Activity, BarChart3, CalendarDays, Database, History, MapPin, Search } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {
   Area,
@@ -39,6 +30,7 @@ import {
 
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/admin/admin-shared"
 
@@ -223,19 +215,14 @@ export function AdminGeoSnapshotsChart() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">
-            Evolução Temporal — Snapshots Geo
-          </h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            Médias diárias e semanais de P50/P95/P99 dos serviços de geolocalização
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Days selector */}
+      <DashboardHeader
+        title="Evolução Temporal - Snapshots Geo"
+        description="Médias diárias e semanais de P50/P95/P99 dos serviços de geolocalização"
+        isFetching={isFetching}
+        onRefresh={() => void refetch()}
+        dataUpdatedAt={dataUpdatedAt}
+        refreshLabel="Atualizar"
+        prefixContent={
           <div className="bg-muted/50 inline-flex items-center gap-1 rounded-lg border p-0.5">
             {DAY_PRESETS.map((p) => (
               <button
@@ -253,24 +240,8 @@ export function AdminGeoSnapshotsChart() {
               </button>
             ))}
           </div>
-
-          {/* Refresh */}
-          {dataUpdatedAt ? (
-            <span className="text-muted-foreground hidden text-[10px] sm:inline">
-              {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50"
-            aria-label="Atualizar"
-          >
-            <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* ── KPI Cards ──────────────────────────────────────────────── */}
       <section aria-label="Resumo dos snapshots" className="grid grid-cols-2 gap-4 lg:grid-cols-4">

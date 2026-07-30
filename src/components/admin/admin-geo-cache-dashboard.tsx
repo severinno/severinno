@@ -23,7 +23,6 @@ import {
   Globe,
   HardDrive,
   MapPin,
-  RefreshCw,
   Search,
   Server,
   Timer,
@@ -49,6 +48,7 @@ import {
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
 import { ErrorState } from "@/components/admin/admin-shared"
 
 import type { GeoCacheDiagnosticsResponse } from "@/app/api/admin/geo-cache-diagnostics/route"
@@ -153,24 +153,15 @@ export function AdminGeoCacheDashboard() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">
-            Diagnóstico do Cache Geo
-          </h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            Hit/miss ratio, queries mais frequentes, e heatmap de uso do Redis
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="text-muted-foreground text-xs">
-            {dataUpdatedAt
-              ? `Atualizado ${new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}`
-              : ""}
-          </span>
-          {cacheStats.redisAvailable === true ? (
+      <DashboardHeader
+        title="Diagnóstico do Cache Geo"
+        description="Hit/miss ratio, queries mais frequentes, e heatmap de uso do Redis"
+        isFetching={isFetching}
+        onRefresh={() => void refetch()}
+        dataUpdatedAt={dataUpdatedAt}
+        refreshLabel="Atualizar diagnóstico"
+        prefixContent={
+          cacheStats.redisAvailable === true ? (
             <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
               <CheckCircle2 className="size-3" />
               Redis
@@ -185,18 +176,9 @@ export function AdminGeoCacheDashboard() {
               <Timer className="size-3" />
               Redis não testado
             </span>
-          )}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50"
-            aria-label="Atualizar diagnóstico"
-          >
-            <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
-          </button>
-        </div>
-      </div>
+          )
+        }
+      />
 
       {/* ── KPI Cards ───────────────────────────────────────────────── */}
       <section aria-label="KPIs do cache" className="grid grid-cols-2 gap-4 lg:grid-cols-4">

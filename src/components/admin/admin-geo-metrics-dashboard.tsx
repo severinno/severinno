@@ -20,7 +20,6 @@ import {
   Bell,
   CheckCircle2,
   Globe,
-  RefreshCw,
   Search,
   Timer,
   MapPin,
@@ -30,6 +29,8 @@ import {
   Zap,
   Microscope,
   FileJson,
+  Copy,
+  Upload,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {
@@ -84,7 +85,7 @@ import {
 import { GistDegradationPanel } from "@/components/admin/gist-degradation-panel"
 import { RadiusDensitySelector } from "@/components/admin/radius-density-selector"
 import { MetricCard, KpiCard } from "@/components/admin/admin-metric-card"
-import { IndicadorDeAtualizacao } from "@/components/admin/indicador-de-atualizacao"
+import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
 
@@ -224,35 +225,14 @@ export function AdminGeoMetricsDashboard() {
         </div>
       )}
 
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">
-            Métricas de Geolocalização
-          </h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            Latência P50/P95/P99 dos serviços de geocoding e PostGIS
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {dataUpdatedAt ? (
-            <span className="text-muted-foreground text-xs">
-              Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50"
-            aria-label="Atualizar métricas"
-          >
-            <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
-          </button>
-
-          <IndicadorDeAtualizacao status={isFetching ? "refetching" : null} />
-        </div>
-      </div>
+      <DashboardHeader
+        title="Métricas de Geolocalização"
+        description="Latência P50/P95/P99 dos serviços de geocoding e PostGIS"
+        isFetching={isFetching}
+        onRefresh={() => void refetch()}
+        dataUpdatedAt={dataUpdatedAt}
+        refreshLabel="Atualizar métricas"
+      />
 
       {/* ── KPI Cards ───────────────────────────────────────────────── */}
       <section
@@ -1260,9 +1240,20 @@ export function GiSTSelectivitySection({
     exceedingCount,
   ])
 
+  /** Format provider count: 1000 → "1k", 10000 → "10k", etc. */
+  const fmtCount = (n: number): string => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+    if (n >= 1_000) return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}k`
+    return String(n)
+  }
+
   // ── Export simulation snapshot ─────────────────────────────────────
   const exportSimulation = React.useCallback(() => {
+    const scalesSummary = scaledCounts.map(fmtCount).join(", ")
+    const summary = `Raio ${radiusKm}km, densidade ${density}/km², total ${fmtCount(totalProviders)} providers → ${scaledCounts.length} escalas [${scalesSummary}]`
+
     const snapshot = {
+      summary,
       exportedAt: new Date().toISOString(),
       benchmark: {
         platform: benchmark.meta.platform,
@@ -1307,6 +1298,101 @@ export function GiSTSelectivitySection({
     benchmark,
   ])
 
+  // ── Copy simulation JSON to clipboard ───────────────────────────────
+  const copySimulation = React.useCallback(() => {
+    const scalesSummary = scaledCounts.map(fmtCount).join(", ")
+    const summary = `Raio ${radiusKm}km, densidade ${density}/km², total ${fmtCount(totalProviders)} providers → ${scaledCounts.length} escalas [${scalesSummary}]`
+
+    const snapshot = {
+      summary,
+      exportedAt: new Date().toISOString(),
+      benchmark: {
+        platform: benchmark.meta.platform,
+        nodeVersion: benchmark.meta.nodeVersion,
+        center: benchmark.meta.centerLabel,
+      },
+      params: {
+        radiusKm,
+        density,
+        totalProviders,
+        selectivityPct: selPct,
+        refLineLabel,
+      },
+      scales: {
+        totalProviderCount: providerCounts,
+        densityAdjusted: scaledCounts,
+        count: scaledCounts.length,
+      },
+      crossovers: crossovers.map((c) => ({
+        providers: c.n,
+        selectivityPct: Math.round(c.selectivity * 100),
+      })),
+      costData,
+    }
+    const json = JSON.stringify(snapshot, null, 2)
+    navigator.clipboard
+      .writeText(json)
+      .then(() => {
+        toast.success("Simulação copiada para a área de transferência")
+      })
+      .catch(() => {
+        toast.error("Não foi possível copiar — verifique as permissões da área de transferência")
+      })
+  }, [
+    radiusKm,
+    density,
+    totalProviders,
+    selPct,
+    refLineLabel,
+    providerCounts,
+    scaledCounts,
+    crossovers,
+    costData,
+    benchmark,
+  ])
+
+  // ── Import simulation from JSON file ────────────────────────────────
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const importSimulation = React.useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const handleFileChange = React.useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0]
+      if (!file) return
+
+      const reader = new FileReader()
+      reader.onerror = () => {
+        toast.error("Erro ao ler o arquivo — tente novamente")
+      }
+      reader.onload = (evt) => {
+        try {
+          const data = JSON.parse(evt.target?.result as string) as {
+            params?: { radiusKm?: number; density?: number; totalProviders?: number }
+          }
+          const p = data.params
+          if (!p) {
+            toast.error("JSON inválido — campo 'params' não encontrado")
+            return
+          }
+          if (p.radiusKm != null) setRadiusKm(p.radiusKm)
+          if (p.density != null) setDensity(p.density)
+          if (p.totalProviders != null) setTotalProviders(p.totalProviders)
+          toast.success("Simulação importada: parâmetros restaurados")
+        } catch {
+          toast.error("Erro ao ler o arquivo JSON")
+        }
+      }
+      reader.readAsText(file)
+
+      // Reset the input so the same file can be re-imported
+      e.target.value = ""
+    },
+    [setRadiusKm, setDensity, setTotalProviders],
+  )
+
   return (
     <section aria-label="Seletividade GiST vs Custo" className="space-y-6">
       <div className="flex items-center gap-2">
@@ -1314,15 +1400,42 @@ export function GiSTSelectivitySection({
         <h2 className="text-foreground text-lg font-semibold">
           Curva de Seletividade — GiST Index vs Haversine
         </h2>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={handleFileChange}
+          aria-hidden="true"
+        />
+        {/* Import simulation */}
+        <button
+          type="button"
+          onClick={importSimulation}
+          className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+          aria-label="Importar simulação de arquivo JSON"
+        >
+          <Upload className="size-3" />
+          Importar
+        </button>
         {/* Export simulation */}
         <button
           type="button"
           onClick={exportSimulation}
-          className="bg-muted/50 text-muted-foreground hover:text-foreground ml-auto inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+          className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
           aria-label="Exportar simulação como JSON"
         >
           <FileJson className="size-3" />
           Exportar
+        </button>
+        <button
+          type="button"
+          onClick={copySimulation}
+          className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+          aria-label="Copiar simulação como JSON"
+        >
+          <Copy className="size-3" />
+          Copiar
         </button>
       </div>
 

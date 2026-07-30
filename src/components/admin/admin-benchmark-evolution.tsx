@@ -22,7 +22,6 @@ import {
   Gauge,
   GitCompareArrows,
   MousePointerClick,
-  RefreshCw,
   TrendingDown,
   TrendingUp,
   Zap,
@@ -41,9 +40,10 @@ import {
 } from "recharts"
 
 import { apiGet } from "@/lib/api"
-import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState } from "@/components/admin/admin-shared"
+import { RefreshButton } from "@/components/admin/admin-refresh-button"
 
 import type { BenchmarksResponse, BenchmarkPoint } from "@/app/api/admin/benchmarks/route"
 
@@ -707,15 +707,7 @@ function HeaderSection({
             Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
           </span>
         ) : null}
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={isFetching}
-          className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50"
-          aria-label="Atualizar"
-        >
-          <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
-        </button>
+        <RefreshButton isFetching={isFetching} onRefresh={onRefresh} />
       </div>
     </div>
   )

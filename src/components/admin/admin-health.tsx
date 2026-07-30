@@ -23,7 +23,6 @@ import {
   HardDrive,
   MemoryStick,
   Rabbit,
-  RefreshCw,
   Server,
   Wifi,
   XCircle,
@@ -34,6 +33,7 @@ import { useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
 import { ErrorState } from "@/components/admin/admin-shared"
 
 import type { DetailedHealthResponse } from "@/app/api/health/detailed/route"
@@ -100,32 +100,14 @@ export function AdminHealthDashboard() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">Saúde do Sistema</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            Monitoramento em tempo real de todos os serviços
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {dataUpdatedAt ? (
-            <span className="text-muted-foreground text-xs">
-              Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50"
-            aria-label="Atualizar health check"
-          >
-            <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
-          </button>
-        </div>
-      </div>
+      <DashboardHeader
+        title="Saúde do Sistema"
+        description="Monitoramento em tempo real de todos os serviços"
+        isFetching={isFetching}
+        onRefresh={() => void refetch()}
+        dataUpdatedAt={dataUpdatedAt}
+        refreshLabel="Atualizar health check"
+      />
 
       {/* ── Overall Status Hero ──────────────────────────────────────── */}
       <section aria-label="Status geral do sistema">
