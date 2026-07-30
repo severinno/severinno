@@ -4,6 +4,10 @@ bash scripts/check-utf8.sh --dry-run --ci src/
 node scripts/scan-lucide-icons.mjs --check
 bun x lint-staged
 
+# Direct RTL import check — impede import de @testing-library/react
+# em arquivos .test.* (devem usar @/__tests__/test-utils)
+bun run check:direct-rtl-import
+
 # Barrel lint — detecta exports quebrados em arquivos de barrel (index.ts)
 bun run barrel-lint
 

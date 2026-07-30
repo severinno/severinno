@@ -292,7 +292,7 @@ test.describe("Admin Geo-Metrics Dashboard", () => {
 
     await expect(page.getByText("Interpretação")).toBeVisible({ timeout: 15_000 })
 
-    await expect(page.getByText(/Regime GiST \(verde\)/)).toBeVisible()
+    await expect(page.getByText(/Regime GiST \\(verde\\)/)).toBeVisible()
     await expect(page.getByText(/Regime Haversine/)).toBeVisible()
   })
 
@@ -326,7 +326,7 @@ test.describe("Admin Geo-Metrics Dashboard", () => {
   test("KPI cards display header metrics", async ({ page }) => {
     await page.goto(`${BASE_URL}/admin/geo-metrics`)
 
-    await expect(page.getByText(/Chamadas \(janela\)/)).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/Chamadas \\(janela\\)/)).toBeVisible({ timeout: 15_000 })
 
     await expect(page.getByText(/P95 Máximo/)).toBeVisible()
     await expect(page.getByText(/Erros/)).toBeVisible()
@@ -359,5 +359,126 @@ test.describe("Admin Geo-Metrics Dashboard", () => {
         !e.includes("inside a test was not wrapped in act") && !e.includes("ReactDOMTestUtils.act"),
     )
     expect(filtered).toEqual([])
+  })
+
+  // ── Recharts: Bar Chart (Latency per Service) ─────────────────────
+
+  test.describe("Recharts — Bar Charts", () => {
+    test("latency bar chart renders Recharts SVG surface", async ({ page }) => {
+      await page.goto(`${BASE_URL}/admin/geo-metrics`)
+
+      // Wait for the first bar chart SVG (Latência por Serviço)
+      const surfaces = page.locator(".recharts-surface")
+      await expect(surfaces.first()).toBeVisible({ timeout: 15_000 })
+
+      // Should have at least 2 chart surfaces (latency bar + P50/P95/P99 bar)
+      const count = await surfaces.count()
+      expect(count).toBeGreaterThanOrEqual(2)
+    })
+
+    test("latency bar chart shows P95 bars for all 3 services", async ({ page }) => {
+      await page.goto(`${BASE_URL}/admin/geo-metrics`)
+
+      await expect(page.getByText("Latência por Serviço (ms)")).toBeVisible({ timeout: 15_000 })
+
+      // Recharts renders bars as .recharts-bar-rectangle
+      const bars = page.locator(".recharts-bar-rectangle")
+      await expect(bars.first()).toBeVisible({ timeout: 10_000 })
+
+      // Should have at least 3 visible bars (one per service: nominatim, viacep, postgis)
+      const barCount = await bars.count()
+      expect(barCount).toBeGreaterThanOrEqual(3)
+    })
+
+    test("P50/P95/P99 chart renders with service labels and percentile values", async ({
+      page,
+    }) => {
+      await page.goto(`${BASE_URL}/admin/geo-metrics`)
+
+      await expect(page.getByText("P50 / P95 / P99 por Serviço")).toBeVisible({ timeout: 15_000 })
+
+      // Verify service names appear as XAxis labels
+      await expect(page.getByText("Nominatim").first()).toBeVisible()
+      await expect(page.getByText("ViaCEP").first()).toBeVisible()
+      await expect(page.getByText("PostGIS").first()).toBeVisible()
+
+      // Verify actual P50/P95/P99 values from mock data render as SVG text
+      // The mock defines specific percentile values for each service.
+      // Recharts renders YAxis tick values as .recharts-cartesian-axis-tick-value
+      // inside SVG — we verify the values are rendered somewhere on the page.
+      //
+      // P50: nominatim=142, viacep=85, postgis=12
+      await expect(page.getByText("142").first()).toBeVisible({ timeout: 5_000 })
+      await expect(page.getByText("85").first()).toBeVisible()
+      await expect(page.getByText("12").first()).toBeVisible()
+
+      // P95: nominatim=890, viacep=430, postgis=45
+      await expect(page.getByText("890").first()).toBeVisible({ timeout: 5_000 })
+      await expect(page.getByText("430").first()).toBeVisible()
+      await expect(page.getByText("45").first()).toBeVisible()
+
+      // P99: nominatim=1200, viacep=600, postgis=120
+      await expect(page.getByText("1200").first()).toBeVisible({ timeout: 5_000 })
+      await expect(page.getByText("600").first()).toBeVisible()
+      await expect(page.getByText("120").first()).toBeVisible()
+    })
+
+    test("P95 ReferenceLine is visible in the latency bar chart", async ({ page }) => {
+      await page.goto(`${BASE_URL}/admin/geo-metrics`)
+
+      await expect(page.getByText("Latência por Serviço (ms)")).toBeVisible({ timeout: 15_000 })
+
+      // Recharts ReferenceLine renders as .recharts-reference-line
+      const refLines = page.locator(".recharts-reference-line")
+      await expect(refLines.first()).toBeVisible({ timeout: 10_000 })
+    })
+  })
+
+  // ── Recharts: GiST Selectivity Line Chart ─────────────────────────
+
+  test.describe("Recharts — GiST Selectivity LineChart", () => {
+    test("GiST LineChart renders SVG surface with selectivity data", async ({ page }) => {
+      await page.goto(`${BASE_URL}/admin/geo-metrics`)
+
+      await expect(page.getByText("Curva de Seletividade — GiST Index vs Haversine")).toBeVisible({
+        timeout: 15_000,
+      })
+
+      // The main GiST chart is inside a ResponsiveContainer
+      const surfaces = page.locator(".recharts-surface")
+      const surfaceCount = await surfaces.count()
+
+      // At least one surface should exist (the GiST chart)
+      expect(surfaceCount).toBeGreaterThanOrEqual(1)
+    })
+
+    test("GiST LineChart renders at least 3 data lines (pg, hav, bench)", async ({ page }) => {
+      await page.goto(`${BASE_URL}/admin/geo-metrics`)
+
+      // Wait for the chart to fully render
+      await expect(page.getByText(/Curva de Seletividade/)).toBeVisible({ timeout: 15_000 })
+
+      // Recharts renders each <Line> as a <path> with class .recharts-curve
+      const curves = page.locator(".recharts-curve")
+      const curveCount = await curves.count()
+
+      // Should have PostGIS, Haversine, and Benchmark lines (at least 3)
+      expect(curveCount).toBeGreaterThanOrEqual(3)
+    })
+
+    test("GiST Legend renders with component names", async ({ page }) => {
+      await page.goto(`${BASE_URL}/admin/geo-metrics`)
+
+      await expect(page.getByText(/Curva de Seletividade/)).toBeVisible({ timeout: 15_000 })
+
+      // Recharts Legend renders as .recharts-legend-wrapper containing text
+      // The legend shows line names: pg_100, pg_1000, hav_100, etc.
+      const legend = page.locator(".recharts-legend-wrapper")
+      await expect(legend).toBeVisible({ timeout: 10_000 })
+
+      // Legend items should show provider scale numbers
+      await expect(legend.getByText(/pg_/).first()).toBeVisible()
+      await expect(legend.getByText(/hav_/).first()).toBeVisible()
+    })
   })
 })
