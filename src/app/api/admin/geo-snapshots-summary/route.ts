@@ -32,6 +32,9 @@ import {
   loadPersistedSnapshots,
   getSnapshotCount,
   getSnapshotsDir,
+  resetCacheFlags,
+  wasSnapshotCacheHit,
+  wasCountCacheHit,
 } from "@/lib/geo-metrics-persist"
 import type { PersistedSnapshot } from "@/lib/geo-metrics-persist"
 import type { GeoServiceName } from "@/lib/geo-metrics"
@@ -179,7 +182,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const daysParam = searchParams.get("days")
 
-    let snapshots = loadPersistedSnapshots()
+    // Reset cache flags before this request's calls
+    resetCacheFlags()
+
+    let snapshots = await loadPersistedSnapshots()
 
     // Filter by recency if ?days=N is provided
     if (daysParam) {
@@ -199,7 +205,7 @@ export async function GET(request: NextRequest) {
         ? new Date(snapshots[snapshots.length - 1]!.timestamp).toISOString()
         : null
 
-    const totalSnapshots = getSnapshotCount()
+    const totalSnapshots = await getSnapshotCount()
 
     const response: SnapshotsSummaryResponse = {
       daily,
@@ -213,7 +219,19 @@ export async function GET(request: NextRequest) {
       },
     }
 
-    return NextResponse.json(response)
+    // Determine cache status for debug/monitoring
+    const snapCache = wasSnapshotCacheHit()
+    const cntCache = wasCountCacheHit()
+    const cacheLabel =
+      snapCache === null && cntCache === null
+        ? "MISS" // neither was called (shouldn't happen)
+        : snapCache === true && cntCache === true
+          ? "HIT"
+          : "PARTIAL"
+
+    const jsonResponse = NextResponse.json(response)
+    jsonResponse.headers.set("X-Snapshots-Cache", cacheLabel)
+    return jsonResponse
   } catch (e) {
     return handleError(e)
   }

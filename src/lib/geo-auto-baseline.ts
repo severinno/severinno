@@ -71,12 +71,14 @@ export type ServiceBaseline = {
  * @param lookbackMs — Optional lookback window in ms (default: 24h).
  * @returns Array of per-service baselines with metadata.
  */
-export function computeGeoBaselines(lookbackMs: number = DEFAULT_LOOKBACK_MS): ServiceBaseline[] {
+export async function computeGeoBaselines(
+  lookbackMs: number = DEFAULT_LOOKBACK_MS,
+): Promise<ServiceBaseline[]> {
   const now = Date.now()
   const cutoff = now - lookbackMs
 
-  // 1. Load persisted snapshots from disk
-  const allSnapshots = loadPersistedSnapshots()
+  // 1. Load persisted snapshots from disk (Redis cache or disk)
+  const allSnapshots = await loadPersistedSnapshots()
 
   // 2. Filter to the lookback window
   const recent = allSnapshots.filter((s) => s.timestamp >= cutoff)
@@ -140,8 +142,11 @@ export function computeGeoBaselines(lookbackMs: number = DEFAULT_LOOKBACK_MS): S
  * Get the adaptive baseline for a single service.
  * Convenience wrapper around computeGeoBaselines().
  */
-export function getServiceBaseline(service: GeoServiceName, lookbackMs?: number): ServiceBaseline {
-  const all = computeGeoBaselines(lookbackMs)
+export async function getServiceBaseline(
+  service: GeoServiceName,
+  lookbackMs?: number,
+): Promise<ServiceBaseline> {
+  const all = await computeGeoBaselines(lookbackMs)
   return (
     all.find((b) => b.service === service) ?? {
       service,
@@ -157,14 +162,14 @@ export function getServiceBaseline(service: GeoServiceName, lookbackMs?: number)
 // Diagnostics
 // ---------------------------------------------------------------------------
 
-export function getBaselineDiagnostics(): {
+export async function getBaselineDiagnostics(): Promise<{
   lookbackHours: number
   fallbackBaselines: Record<GeoServiceName, number>
   currentBaselines: ServiceBaseline[]
-} {
+}> {
   return {
     lookbackHours: DEFAULT_LOOKBACK_MS / 3_600_000,
     fallbackBaselines: { ...FALLBACK_BASELINES },
-    currentBaselines: computeGeoBaselines(),
+    currentBaselines: await computeGeoBaselines(),
   }
 }

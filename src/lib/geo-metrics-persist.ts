@@ -30,6 +30,7 @@ import {
   mkdirSync,
 } from "node:fs"
 import { join, basename } from "node:path"
+import { cacheGet, cacheSet, cacheInvalidate } from "./redis"
 import logger from "./logger"
 import type { GeoServiceName } from "./geo-metrics"
 
@@ -75,19 +76,22 @@ const FILE_PREFIX = "snap-"
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let pendingSnapshot: PersistedSnapshot | null = null
 
-// ── Module-level cache for loadPersistedSnapshots ────────────────────────
-// Prevents reading + parsing up to 1000 files on every API request.
-// Invalidated when a new snapshot is written to disk.
+// ── Redis cache configuration ──────────────────────────────────────────
+// Cache is stored in Redis (shared across instances, survives restarts)
+// instead of module-level variables. The in-memory fallback in redis.ts
+// ensures the cache works even when Redis is temporarily unavailable.
 
 /** Cache TTL in ms. After this, the next call re-reads from disk. */
 const CACHE_TTL_MS = 10_000
 
-interface SnapshotCache {
-  data: PersistedSnapshot[]
-  cachedAt: number
-}
+/** Cache TTL in seconds (for Redis SETEX). */
+const CACHE_TTL_S = Math.ceil(CACHE_TTL_MS / 1000) // 10s
 
-let snapshotsCache: SnapshotCache | null = null
+/** Redis cache key for the full snapshots array. */
+const SNAPSHOTS_CACHE_KEY = "geo:metrics:snapshots"
+
+/** Redis cache key for the snapshot count. */
+const COUNT_CACHE_KEY = "geo:metrics:count"
 
 // ---------------------------------------------------------------------------
 // Directory management
@@ -112,19 +116,28 @@ function parseSnapshotFileName(name: string): number | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Save a single snapshot to disk.
- * Path: {SNAPSHOTS_DIR}/snap-{timestamp}.json
+ * Invalidate Redis caches for geo metrics.
+ * Clears both snapshots and count cache keys so the next call re-reads from disk.
+ * Also resets the in-memory status flags.
  */
-function invalidateSnapshotsCache(): void {
-  snapshotsCache = null
+async function invalidateSnapshotsCache(): Promise<void> {
+  lastSnapshotCacheHit = null
+  lastCountCacheHit = null
+  // Fire-and-forget — cache invalidation is best-effort
+  try {
+    await cacheInvalidate(SNAPSHOTS_CACHE_KEY)
+    await cacheInvalidate(COUNT_CACHE_KEY)
+  } catch {
+    // Redis down — in-memory fallback handles it
+  }
 }
 
-function writeSnapshot(snapshot: PersistedSnapshot): void {
+async function writeSnapshot(snapshot: PersistedSnapshot): Promise<void> {
   try {
     ensureDir()
     const filePath = join(SNAPSHOTS_DIR, `${FILE_PREFIX}${snapshot.timestamp}.json`)
     writeFileSync(filePath, JSON.stringify(snapshot), "utf-8")
-    invalidateSnapshotsCache()
+    await invalidateSnapshotsCache()
   } catch (err) {
     logger.error({ err }, "geo-metrics-persist: failed to write snapshot")
   }
@@ -134,7 +147,7 @@ function writeSnapshot(snapshot: PersistedSnapshot): void {
  * Enforce MAX_SNAPSHOTS limit by deleting the oldest files.
  * Called after each write.
  */
-function rotateOldSnapshots(): void {
+async function rotateOldSnapshots(): Promise<void> {
   try {
     ensureDir()
     const entries = readdirSync(SNAPSHOTS_DIR, { withFileTypes: true })
@@ -157,7 +170,7 @@ function rotateOldSnapshots(): void {
       }
     }
 
-    invalidateSnapshotsCache()
+    await invalidateSnapshotsCache()
 
     logger.info(
       { deleted: toDelete.length, remaining: MAX_SNAPSHOTS },
@@ -166,6 +179,36 @@ function rotateOldSnapshots(): void {
   } catch (err) {
     logger.error({ err }, "geo-metrics-persist: failed to rotate snapshots")
   }
+}
+
+// ── Cache status tracking (for API debug headers) ────────────────────────
+// Set by loadPersistedSnapshots and getSnapshotCount on every call.
+// Read by the API route to emit X-Snapshots-Cache: HIT | MISS.
+
+let lastSnapshotCacheHit: boolean | null = null
+let lastCountCacheHit: boolean | null = null
+
+/**
+ * Reset cache status flags before a fresh request.
+ */
+export function resetCacheFlags(): void {
+  lastSnapshotCacheHit = null
+  lastCountCacheHit = null
+}
+
+/**
+ * Get the cache status for the most recent loadPersistedSnapshots() call.
+ * Returns: true = HIT, false = MISS, null = not called yet in this request.
+ */
+export function wasSnapshotCacheHit(): boolean | null {
+  return lastSnapshotCacheHit
+}
+
+/**
+ * Get the cache status for the most recent getSnapshotCount() call.
+ */
+export function wasCountCacheHit(): boolean | null {
+  return lastCountCacheHit
 }
 
 // ---------------------------------------------------------------------------
@@ -184,11 +227,11 @@ export function persistSnapshot(snapshot: PersistedSnapshot): void {
 
   if (debounceTimer) return // already scheduled
 
-  debounceTimer = setTimeout(() => {
+  debounceTimer = setTimeout(async () => {
     debounceTimer = null
     if (pendingSnapshot) {
-      writeSnapshot(pendingSnapshot)
-      rotateOldSnapshots()
+      await writeSnapshot(pendingSnapshot)
+      await rotateOldSnapshots()
       pendingSnapshot = null
     }
   }, DEBOUNCE_MS)
@@ -202,15 +245,24 @@ export function persistSnapshot(snapshot: PersistedSnapshot): void {
  * Load all historical snapshots from disk, sorted chronologically (oldest first).
  * Called on server startup to hydrate the in-memory ring buffer.
  *
- * Results are cached at the module level for CACHE_TTL_MS to avoid
- * reading + parsing up to 1000 files on every API request. The cache is
- * invalidated whenever a snapshot is written or deleted.
+ * Results are cached in Redis (shared across instances, survives restarts)
+ * for CACHE_TTL_MS to avoid reading + parsing up to 1000 files on every
+ * API request. The cache is invalidated whenever a snapshot is written
+ * or deleted.
  */
-export function loadPersistedSnapshots(): PersistedSnapshot[] {
-  // Return cached data if still fresh
-  if (snapshotsCache && Date.now() - snapshotsCache.cachedAt < CACHE_TTL_MS) {
-    return snapshotsCache.data
+export async function loadPersistedSnapshots(): Promise<PersistedSnapshot[]> {
+  // Try Redis cache first (shared across instances, survives restarts)
+  try {
+    const cached = await cacheGet<PersistedSnapshot[]>(SNAPSHOTS_CACHE_KEY)
+    if (cached !== null) {
+      lastSnapshotCacheHit = true
+      return cached
+    }
+  } catch {
+    // Redis unavailable — fall through to disk
   }
+
+  lastSnapshotCacheHit = false
 
   try {
     ensureDir()
@@ -251,8 +303,12 @@ export function loadPersistedSnapshots(): PersistedSnapshot[] {
       "geo-metrics-persist: loaded historical snapshots",
     )
 
-    // Store in cache
-    snapshotsCache = { data: snapshots, cachedAt: Date.now() }
+    // Store in Redis cache (best-effort, 10s TTL)
+    try {
+      await cacheSet(SNAPSHOTS_CACHE_KEY, snapshots, CACHE_TTL_S)
+    } catch {
+      // Redis down — in-memory fallback in redis.ts handles it
+    }
 
     return snapshots
   } catch (err) {
@@ -269,25 +325,25 @@ export function loadPersistedSnapshots(): PersistedSnapshot[] {
  * Immediately flush any pending snapshot, skipping the debounce timer.
  * Safe to call multiple times — writes at most once.
  */
-export function flushGeoMetrics(): void {
+export async function flushGeoMetrics(): Promise<void> {
   if (debounceTimer) {
     clearTimeout(debounceTimer)
     debounceTimer = null
   }
   if (pendingSnapshot) {
-    writeSnapshot(pendingSnapshot)
-    rotateOldSnapshots()
+    await writeSnapshot(pendingSnapshot)
+    await rotateOldSnapshots()
     pendingSnapshot = null
   }
   // Always invalidate cache — even when there's no pending snapshot,
   // external writes (e.g. historical snapshots placed directly on disk)
   // must be visible on the next loadPersistedSnapshots() call.
-  invalidateSnapshotsCache()
+  await invalidateSnapshotsCache()
 }
 
 function setupShutdownHandlers(): void {
-  const handler = () => {
-    flushGeoMetrics()
+  const handler = async () => {
+    await flushGeoMetrics()
   }
   process.on("SIGINT", handler)
   process.on("SIGTERM", handler)
@@ -299,11 +355,32 @@ setupShutdownHandlers()
 // Diagnostics
 // ---------------------------------------------------------------------------
 
-export function getSnapshotCount(): number {
+export async function getSnapshotCount(): Promise<number> {
+  // Try Redis cache first
+  try {
+    const cached = await cacheGet<number>(COUNT_CACHE_KEY)
+    if (cached !== null) {
+      lastCountCacheHit = true
+      return cached
+    }
+  } catch {
+    // Redis unavailable — fall through to disk
+  }
+
+  lastCountCacheHit = false
+
   try {
     ensureDir()
     const entries = readdirSync(SNAPSHOTS_DIR, { withFileTypes: true })
-    return entries.filter((e) => e.isFile() && parseSnapshotFileName(e.name) !== null).length
+    const count = entries.filter((e) => e.isFile() && parseSnapshotFileName(e.name) !== null).length
+
+    // Store in Redis cache (best-effort)
+    try {
+      await cacheSet(COUNT_CACHE_KEY, count, CACHE_TTL_S)
+    } catch {
+      // Redis down
+    }
+    return count
   } catch {
     return 0
   }

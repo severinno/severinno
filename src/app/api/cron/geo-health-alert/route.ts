@@ -108,7 +108,7 @@ export async function GET(request: Request) {
     // LAYER 2: Performance Check (PostGIS P95 vs benchmark baseline)
     // ═════════════════════════════════════════════════════════════════
 
-    const perfResults = checkGeoPerformance()
+    const perfResults = await checkGeoPerformance()
 
     const perfDegraded = perfResults.filter((r) => r.degraded && r.alerted)
     const perfRecovered = perfResults.filter((r) => r.recovered)

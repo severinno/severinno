@@ -173,13 +173,13 @@ export function loadGeoBaseline(): {
  * @param services - Optional: which services to check (default: all three)
  * @returns Array of per-service check results
  */
-export function checkGeoPerformance(
+export async function checkGeoPerformance(
   services: GeoServiceName[] = ["nominatim", "viacep", "postgis"],
-): PerformanceCheckResult[] {
+): Promise<PerformanceCheckResult[]> {
   const metrics = getGeoMetrics()
 
   // Derive adaptive baselines from historical snapshots
-  const autoBaselines = computeGeoBaselines()
+  const autoBaselines = await computeGeoBaselines()
 
   // Also load benchmark baseline for reference (PostGIS only, fallback)
   const benchmarkBaseline = loadGeoBaseline()
