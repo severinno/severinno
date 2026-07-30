@@ -22,6 +22,7 @@ import { NextResponse } from "next/server"
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { requireUser } from "@/lib/auth"
+import { getP95Baselines } from "@/lib/geo-baselines"
 import {
   getGeoMetrics,
   getGeoMetricsHistory,
@@ -62,6 +63,8 @@ export type GeoMetricsResponse = ReturnType<typeof getGeoMetrics> & {
     timestamp: number
     services: Record<GeoServiceName, { p50: number; p95: number; p99: number; count: number }>
   }>
+  /** P95 baseline thresholds per service (configurable via env vars) */
+  baselines: Record<string, number>
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +159,7 @@ export async function GET() {
       labels: SERVICE_LABELS,
       benchmark,
       history,
+      baselines: getP95Baselines(),
     })
   } catch {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
