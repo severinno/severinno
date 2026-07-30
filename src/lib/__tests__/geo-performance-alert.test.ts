@@ -24,6 +24,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import * as fc from "fast-check"
 
 // ---------------------------------------------------------------------------
 // vi.mock (hoisted before static imports)
@@ -397,5 +398,258 @@ describe("checkGeoPerformance", () => {
     expect(results[0].baselineSource).toBeNull()
     expect(results[0].degraded).toBe(false)
     expect(results[0].alerted).toBe(false)
+  })
+})
+
+// ===========================================================================
+// Property-based tests (fast-check)
+// ===========================================================================
+
+describe("checkGeoPerformance — property-based", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetPerformanceAlertState()
+  })
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Property 1: degraded === true IFF p95 > threshold
+  // ═════════════════════════════════════════════════════════════════════
+  //
+  // For any P95 value (0–5000ms) with a fixed historical baseline:
+  //   - First call with clean state
+  //   - baselineSource should be "historical-auto"
+  //   - threshold = baseline × 2
+  //   - degraded === (p95 > threshold)
+  //   - When p95 === threshold exactly → NOT degraded (strict >, not >=)
+
+  it("degraded === true IFF p95 > threshold (any P95 value)", async () => {
+    // Fixed historical baseline: PostGIS P95 baseline = 30ms → threshold = 60ms
+    const FIXED_BASELINES = [
+      {
+        service: "postgis" as const,
+        p95Baseline: 30,
+        sampleCount: 100,
+        source: "historical" as const,
+        threshold: 60,
+      },
+    ]
+
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 0, max: 5000 }), // p95
+        async (p95) => {
+          // Setup: only PostGIS, with this P95
+          mockGM().mockReturnValue(makeGeoMetrics({ postgis: p95 }))
+          mockCB().mockReturnValue(FIXED_BASELINES)
+          resetPerformanceAlertState()
+
+          const results = await checkGeoPerformance(["postgis"])
+
+          expect(results).toHaveLength(1)
+          const r = results[0]!
+
+          // Threshold is always 60 (from FIXED_BASELINES)
+          expect(r.threshold).toBe(60)
+          expect(r.p95).toBe(p95)
+
+          // Core property: degraded === (p95 > threshold)
+          const expectedDegraded = p95 > 60
+          expect(r.degraded).toBe(expectedDegraded)
+
+          // First call → never alerted
+          expect(r.alerted).toBe(false)
+
+          // Consecutive violations follow the same rule
+          expect(r.consecutiveViolations).toBe(expectedDegraded ? 1 : 0)
+
+          // No notifications on first call
+          expect(mockNA()).not.toHaveBeenCalled()
+        },
+      ),
+      { verbose: false, numRuns: 200 },
+    )
+  })
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Property 2: threshold always = p95Baseline × 2
+  // ═════════════════════════════════════════════════════════════════════
+  //
+  // For any baseline mean (1–2000ms), the threshold should always be
+  // exactly 2× the baseline, rounded to an integer.
+
+  it("threshold always equals P95 baseline × 2 (any baseline)", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 1, max: 2000 }), // baseline mean
+        fc.integer({ min: 0, max: 5000 }), // p95
+        async (baselineMean, p95) => {
+          const baselines = [
+            {
+              service: "postgis" as const,
+              p95Baseline: baselineMean,
+              sampleCount: 50,
+              source: "historical" as const,
+              threshold: Math.round(baselineMean * 2),
+            },
+          ]
+
+          mockGM().mockReturnValue(makeGeoMetrics({ postgis: p95 }))
+          mockCB().mockReturnValue(baselines)
+          resetPerformanceAlertState()
+
+          const results = await checkGeoPerformance(["postgis"])
+
+          expect(results).toHaveLength(1)
+          const r = results[0]!
+          expect(r.baselineMean).toBe(baselineMean)
+          expect(r.threshold).toBe(Math.round(baselineMean * 2))
+        },
+      ),
+      { verbose: false, numRuns: 200 },
+    )
+  })
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Property 3: 2nd call with degraded=true → alerted=true
+  // ═════════════════════════════════════════════════════════════════════
+  //
+  // For any P95 above threshold (across a range of values):
+  //   1st call: degraded=true, alerted=false, violations=1
+  //   2nd call: degraded=true, alerted=true,  violations=2
+  //   notifyGeoAlert called exactly once (on 2nd call)
+  //
+  // This validates the CONSECUTIVE_THRESHOLD = 2 logic.
+
+  it("alerted after 2 consecutive violations for any p95 > threshold", async () => {
+    const FIXED_BASELINES = [
+      {
+        service: "postgis" as const,
+        p95Baseline: 30,
+        sampleCount: 100,
+        source: "historical" as const,
+        threshold: 60,
+      },
+    ]
+
+    await fc.assert(
+      fc.asyncProperty(
+        // Generate P95 values strictly above threshold (61–5000)
+        fc.integer({ min: 61, max: 5000 }),
+        async (p95) => {
+          // Clean state per run
+          mockGM().mockReturnValue(makeGeoMetrics({ postgis: p95 }))
+          mockCB().mockReturnValue(FIXED_BASELINES)
+          resetPerformanceAlertState()
+          vi.clearAllMocks()
+
+          // ── 1st call ──
+          const r1 = await checkGeoPerformance(["postgis"])
+          expect(r1).toHaveLength(1)
+          expect(r1[0]!.degraded).toBe(true)
+          expect(r1[0]!.alerted).toBe(false)
+          expect(r1[0]!.consecutiveViolations).toBe(1)
+          expect(mockNA()).not.toHaveBeenCalled()
+
+          // ── 2nd call ──
+          const r2 = await checkGeoPerformance(["postgis"])
+          expect(r2).toHaveLength(1)
+          expect(r2[0]!.degraded).toBe(true)
+          expect(r2[0]!.alerted).toBe(true)
+          expect(r2[0]!.consecutiveViolations).toBe(2)
+
+          // Exactly one alert sent (on 2nd call)
+          expect(mockNA()).toHaveBeenCalledTimes(1)
+          const alertCall = mockNA().mock.calls[0][0]
+          expect(alertCall.tag).toContain("geo-perf:postgis:degraded")
+          expect(alertCall.context.value).toBe(p95)
+        },
+      ),
+      { verbose: false, numRuns: 200 },
+    )
+  })
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Property 4: multiple services — each independently evaluated
+  // ═════════════════════════════════════════════════════════════════════
+  //
+  // For random P95 values across all three services, each service
+  // should be evaluated independently against its own threshold.
+
+  it("each service independently evaluated against its own threshold", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 0, max: 2000 }), // nominatim P95
+        fc.integer({ min: 0, max: 2000 }), // viacep P95
+        fc.integer({ min: 0, max: 200 }), // postgis P95
+        async (nomP95, viaP95, pgP95) => {
+          mockGM().mockReturnValue(
+            makeGeoMetrics({
+              nominatim: nomP95,
+              viacep: viaP95,
+              postgis: pgP95,
+            }),
+          )
+          mockCB().mockReturnValue(makeBaselines())
+          resetPerformanceAlertState()
+
+          const results = await checkGeoPerformance()
+
+          expect(results).toHaveLength(3)
+
+          // Each service independently evaluated
+          for (const r of results) {
+            const expectedDegraded = r.p95 > r.threshold
+            expect(r.degraded).toBe(expectedDegraded)
+            expect(r.alerted).toBe(false) // first call never alerts
+            expect(r.recovered).toBe(false)
+          }
+        },
+      ),
+      { verbose: false, numRuns: 100 },
+    )
+  })
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Property 5: no false positives when P95 equals threshold exactly
+  // ═════════════════════════════════════════════════════════════════════
+  //
+  // Use fc.constant to force p95 === threshold exactly and verify
+  // degraded is always false (strict >, not >=).
+
+  it("p95 === threshold exactly → never degraded (strict > guard)", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.integer({ min: 2, max: 2000 }), // baseline (2–2000ms)
+        async (baseline) => {
+          const threshold = baseline * 2
+          const baselines = [
+            {
+              service: "postgis" as const,
+              p95Baseline: baseline,
+              sampleCount: 100,
+              source: "historical" as const,
+              threshold,
+            },
+          ]
+
+          // Force p95 === threshold exactly
+          mockGM().mockReturnValue(makeGeoMetrics({ postgis: threshold }))
+          mockCB().mockReturnValue(baselines)
+          resetPerformanceAlertState()
+
+          const results = await checkGeoPerformance(["postgis"])
+
+          expect(results).toHaveLength(1)
+          const r = results[0]!
+          expect(r.p95).toBe(threshold)
+          expect(r.threshold).toBe(threshold)
+          // Strict >, not >= → P95 equal to threshold is NOT degraded
+          expect(r.degraded).toBe(false)
+          expect(r.alerted).toBe(false)
+          expect(r.consecutiveViolations).toBe(0)
+        },
+      ),
+      { verbose: false, numRuns: 100 },
+    )
   })
 })
