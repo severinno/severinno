@@ -16,9 +16,9 @@
  *   - Cost-at-selectivity cards render with regime indicators
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
-import { render, screen } from "@/__tests__/test-utils"
+import { render, screen, fireEvent, cleanup } from "@/__tests__/test-utils"
 import { GiSTSelectivitySection } from "../admin-geo-metrics-dashboard"
 import type { BenchmarkData } from "@/app/api/admin/geo-metrics/route"
 
@@ -55,6 +55,9 @@ vi.mock("recharts", () => ({
     />
   ),
   ReferenceArea: (p: any) => <div data-testid="reference-area" data-y1={p.y1} data-y2={p.y2} />,
+  Customized: ({ component: Component }: any) =>
+    Component ? <div data-testid="customized">{Component({})}</div> : null,
+  Scatter: () => <div data-testid="recharts-scatter" />,
 }))
 
 // ===========================================================================
@@ -73,6 +76,7 @@ vi.mock("lucide-react", () => {
     Bell: Icon,
     CheckCircle2: Icon,
     Database: Icon,
+    FileJson: Icon,
     GitCompareArrows: Icon,
     Globe: Icon,
     LineChart: Icon,
@@ -194,6 +198,14 @@ describe("GiSTSelectivitySection", () => {
     vi.clearAllMocks()
   })
 
+  afterEach(() => {
+    try {
+      cleanup()
+    } catch {
+      // Container may already be cleaned up by React 19 + jsdom flushSync
+    }
+  })
+
   // ── Section Headers ─────────────────────────────────────────────────
 
   it("renders section title with GiST and Haversine heading", () => {
@@ -304,12 +316,13 @@ describe("GiSTSelectivitySection", () => {
     expect(screen.getByText("Razão")).toBeInTheDocument()
     expect(screen.getByText("Regime")).toBeInTheDocument()
 
-    // Provider count labels in cost table: 100, 500, 1k, 5k, 10k
+    // Provider count labels in cost table: 100, 300, 1k, 3k, 10k
+    // (default totalProviders=10000 → [100, 300, 1000, 3000, 10000])
     // Each number may appear in multiple tables, use getAllByText
     const all100 = screen.getAllByText("100")
     expect(all100.length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText("500")).toBeInTheDocument()
-    expect(screen.getByText("5k")).toBeInTheDocument()
+    expect(screen.getByText("300")).toBeInTheDocument()
+    expect(screen.getByText("3k")).toBeInTheDocument()
     const all10k = screen.getAllByText("10k")
     expect(all10k.length).toBeGreaterThanOrEqual(1)
   })
@@ -409,7 +422,22 @@ describe("GiSTSelectivitySection", () => {
   })
 
   it("shows full degradation alert when P95 exceeds all model curves", () => {
-    renderGiST({ history: makeDegradedHistory() })
+    // The GiSTSelectivitySection uses a useRef buffer (size=5) that needs 5
+    // consecutive renders before the degradation alert appears.  First render
+    // only has 1 entry, so we re-render 4 more times to fill the buffer.
+    const { rerender } = renderGiST({ history: makeDegradedHistory() })
+
+    const rerenderSame = () => {
+      rerender(
+        <GiSTSelectivitySection
+          benchmark={makeBenchmarkData()}
+          history={makeDegradedHistory()}
+          baselines={makeBaselines()}
+        />,
+      )
+    }
+
+    for (let i = 0; i < 4; i++) rerenderSame()
 
     // Alert section heading
     expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
@@ -418,7 +446,20 @@ describe("GiSTSelectivitySection", () => {
   })
 
   it("degradation alert shows exact P95 value (250ms) in message", () => {
-    renderGiST({ history: makeDegradedHistory() })
+    const { rerender } = renderGiST({ history: makeDegradedHistory() })
+
+    // Fill the 5-entry degradation buffer
+    const rerenderSame = () => {
+      rerender(
+        <GiSTSelectivitySection
+          benchmark={makeBenchmarkData()}
+          history={makeDegradedHistory()}
+          baselines={makeBaselines()}
+        />,
+      )
+    }
+
+    for (let i = 0; i < 4; i++) rerenderSame()
 
     // Verify the P95 value is mentioned by checking text across all elements
     const allEls = screen.getAllByText(/250ms|250 ms/)
@@ -435,6 +476,27 @@ describe("GiSTSelectivitySection", () => {
       (el) => el.getAttribute("data-label") === "2× baseline PostGIS (60ms)",
     )
     expect(baselineLine).toBeInTheDocument()
+  })
+
+  // ── Radius Preset Snapshots ──────────────────────────────────────────
+  //
+  //  4 radius presets (5, 15, 30, 50 km) with snapshot after clicking each
+  //  button.  Each preset produces a different selectivity state that affects
+  //  the cost table, regime indicators, and chart reference lines.
+  //
+  //  Expected selectivities (REFERENCE_RADIUS_KM=50):
+  //    5 km  → (5/50)²  = 1%   → snapPct  0%
+  //    15 km → (15/50)² = 9%   → snapPct 10%
+  //    30 km → (30/50)² = 36%  → snapPct 35%
+  //    50 km → (50/50)² = 100% → snapPct 100%
+
+  it.each([5, 15, 30, 50])("renders snapshot at %d km radius preset", (radius) => {
+    const { asFragment } = renderGiST()
+
+    const btn = screen.getByRole("button", { name: `${radius} km` })
+    fireEvent.click(btn)
+
+    expect(asFragment()).toMatchSnapshot(`radius-${radius}km`)
   })
 
   // ── Full Snapshot ─────────────────────────────────────────────────

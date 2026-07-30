@@ -31,6 +31,7 @@ import {
   GitCompareArrows,
   Zap,
   Microscope,
+  FileJson,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {
@@ -38,6 +39,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Customized,
   Legend,
   Line,
   LineChart,
@@ -61,17 +63,26 @@ import {
   POSTGIS_FIXED_US,
   POSTGIS_PER_ROW_US,
   PROVIDER_COUNTS,
+  computeProviderCounts,
   computeSelectivityPoints,
   computeCrossovers,
   computeMeasuredFull,
   computeP95Stats,
   computeCostAtSelectivity,
+  computeCostInjection,
   computeGiSTDegradation,
   radiusToSelectivity,
   modelPostGISFullMs,
   modelDelta,
 } from "@/lib/geo-benchmark-model"
-import { buildBenchmarkBarData, getMaxPostgisLatency, ratioColor } from "@/lib/benchmark-data"
+import {
+  buildBenchmarkBarData,
+  getMaxPostgisLatency,
+  ratioColor,
+  generateBenchmarkCsv,
+  downloadFile,
+  printBenchmarkReport,
+} from "@/lib/benchmark-data"
 import { GistDegradationPanel } from "@/components/admin/gist-degradation-panel"
 import { RadiusDensitySelector } from "@/components/admin/radius-density-selector"
 import { MetricCard } from "@/components/admin/admin-metric-card"
@@ -576,7 +587,7 @@ export function AdminGeoMetricsDashboard() {
 
 // ── Benchmark Comparison Section ──────────────────────────────────────────
 
-function BenchmarkSection({
+export function BenchmarkSection({
   benchmark,
 }: {
   benchmark: NonNullable<GeoMetricsResponse["benchmark"]>
@@ -599,8 +610,36 @@ function BenchmarkSection({
         </h2>
       </div>
 
-      {/* ── Scale toggle ───────────────────────────────────────────── */}
+      {/* ── Export buttons + Scale toggle ──────────────────────────── */}
       <div className="flex items-center justify-end gap-2">
+        {/* CSV */}
+        <button
+          type="button"
+          onClick={() => {
+            const csv = generateBenchmarkCsv(benchmark)
+            const ts = new Date().toISOString().slice(0, 19).replace(/[:]/g, "-")
+            downloadFile(csv, `benchmark-${ts}.csv`, "text/csv;charset=utf-8")
+          }}
+          className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+          aria-label="Exportar CSV"
+        >
+          <FileJson className="size-3" />
+          CSV
+        </button>
+
+        {/* PDF / Print */}
+        <button
+          type="button"
+          onClick={() => {
+            printBenchmarkReport(benchmark)
+          }}
+          className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+          aria-label="Exportar PDF"
+        >
+          <FileJson className="size-3" />
+          PDF
+        </button>
+
         <span className="text-muted-foreground text-[10px]">
           Gráficos: {benchUseLog ? "Log" : "Linear"}
         </span>
@@ -1026,7 +1065,15 @@ export function GiSTSelectivitySection({
 
   // ── Radius + Density state ────────────────────────────────────────
   const [radiusKm, setRadiusKm] = React.useState(15)
+  // ── Density determines providers per area — declared before scaledCounts ──
   const [density, setDensity] = React.useState(10) // providers/km²
+
+  // ── Total provider count in database (simulates small vs large DB) ──
+  const [totalProviders, setTotalProviders] = React.useState(10000)
+  const providerCounts = computeProviderCounts(totalProviders)
+  // Scale provider counts by density so a denser city produces more
+  // providers within the same area, directly affecting model costs.
+  const scaledCounts = providerCounts.map((n) => Math.max(1, Math.round((n * density) / 10)))
   const [useLogScale, setUseLogScale] = React.useState(() => {
     if (typeof window === "undefined") return true
     const stored = localStorage.getItem("geo-scale-gist")
@@ -1051,16 +1098,24 @@ export function GiSTSelectivitySection({
   const selPct = Math.round(currentSelectivity * 100)
 
   // Generate selectivity curve data points via extracted pure function
-  const selectivityPoints = computeSelectivityPoints(benchmark.comparisons, haversinePerProviderUs)
+  const selectivityPoints = computeSelectivityPoints(
+    benchmark.comparisons,
+    haversinePerProviderUs,
+    scaledCounts,
+  )
 
   // Compute crossover points via extracted pure function
-  const crossovers = computeCrossovers(haversinePerProviderUs)
+  const crossovers = computeCrossovers(haversinePerProviderUs, scaledCounts)
 
   // Get measured full-scan latencies from benchmark
   const measuredFull = computeMeasuredFull(benchmark.comparisons)
 
   // ── Cost at selected radius ────────────────────────────────────────
-  const costData = computeCostAtSelectivity(currentSelectivity, haversinePerProviderUs)
+  const costData = computeCostAtSelectivity(
+    currentSelectivity,
+    haversinePerProviderUs,
+    scaledCounts,
+  )
 
   // Regime indicators from cost data
   const pgFasterCount = costData.filter((c) => c.faster === "PostGIS").length
@@ -1087,18 +1142,51 @@ export function GiSTSelectivitySection({
 
   // Inject cost data into the selectivityPoints row at the reference line
   // so the chart tooltip can show cost-per-provider at the selected radius.
+  // Inject cost-at-selectivity data into the reference line row for the
+  // GiSTCostTooltip to consume when the cursor is at this selectivity.
+  // refLineRow is also used below for intersection dots computation.
   const refLineRow = selectivityPoints.find(
     (r: Record<string, unknown>) => r.selectivity === refLineLabel,
   )
-  if (refLineRow) {
-    for (const c of costData) {
-      const label = c.n >= 1000 ? `${(c.n / 1000).toFixed(0)}k` : String(c.n)
-      refLineRow[`cost_pg_${c.n}`] = c.postgisMs
-      refLineRow[`cost_hav_${c.n}`] = c.haversineMs
-      refLineRow[`cost_ratio_${c.n}`] = c.ratio
-      refLineRow[`cost_faster_${c.n}`] = c.faster
-      refLineRow[`cost_label_${c.n}`] = label
-    }
+  computeCostInjection(selectivityPoints, costData, refLineLabel)
+
+  // ── Intersection dots: interactive points at the reference line ──
+  // Extrai os valores de cada curva (PostGIS/Haversine) no ponto exato
+  // da ReferenceLine vertical para renderizar círculos clicáveis.
+  const refLineIndex = selectivityPoints.findIndex(
+    (r: Record<string, unknown>) => r.selectivity === refLineLabel,
+  )
+  const intersectionCurves: Array<{
+    key: string
+    value: number
+    label: string
+    isPostGIS: boolean
+    color: string
+    count: number
+  }> = []
+  if (refLineIndex >= 0 && refLineRow) {
+    ;[
+      ...scaledCounts.map((n, idx) => ({
+        key: `pg_${n}`,
+        count: n,
+        isPostGIS: true,
+        color: `hsl(${200 + idx * 30}, 70%, ${50 + idx * 5}%)`,
+        label: `PostGIS ${n >= 1000 ? `${n / 1000}k` : n}`,
+      })),
+      ...scaledCounts.map((n, idx) => ({
+        key: `hav_${n}`,
+        count: n,
+        isPostGIS: false,
+        color: `hsl(${140 + idx * 10}, 50%, ${45 + idx * 5}%)`,
+        label: `Haversine ${n >= 1000 ? `${n / 1000}k` : n}`,
+      })),
+    ].forEach((curve) => {
+      const raw = (refLineRow as Record<string, unknown>)[curve.key]
+      const value = typeof raw === "number" ? raw : Number(raw) || 0
+      if (value > 0) {
+        intersectionCurves.push({ ...curve, value })
+      }
+    })
   }
 
   // Use extracted pure function for GiST degradation check
@@ -1153,7 +1241,7 @@ export function GiSTSelectivitySection({
               selectivityPct: snapPct,
               maxModelAtSelectivityMs: Math.round(maxModelAtSelectivity * 10) / 10,
               exceedingScales: exceedingCount,
-              totalScales: PROVIDER_COUNTS.length,
+              totalScales: scaledCounts.length,
               p95Ratio: Number((p95Mean / maxModelAtSelectivity).toFixed(1)),
               historyBufferSize: GIST_DEGRADATION_HISTORY_SIZE,
               degradedSlots: degradedCount,
@@ -1174,6 +1262,53 @@ export function GiSTSelectivitySection({
     exceedingCount,
   ])
 
+  // ── Export simulation snapshot ─────────────────────────────────────
+  const exportSimulation = React.useCallback(() => {
+    const snapshot = {
+      exportedAt: new Date().toISOString(),
+      benchmark: {
+        platform: benchmark.meta.platform,
+        nodeVersion: benchmark.meta.nodeVersion,
+        center: benchmark.meta.centerLabel,
+      },
+      params: {
+        radiusKm,
+        density,
+        totalProviders,
+        selectivityPct: selPct,
+        refLineLabel,
+      },
+      scales: {
+        totalProviderCount: providerCounts,
+        densityAdjusted: scaledCounts,
+        count: scaledCounts.length,
+      },
+      crossovers: crossovers.map((c) => ({
+        providers: c.n,
+        selectivityPct: Math.round(c.selectivity * 100),
+      })),
+      costData,
+    }
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `gist-simulation-${radiusKm}km-${totalProviders}prov-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [
+    radiusKm,
+    density,
+    totalProviders,
+    selPct,
+    refLineLabel,
+    providerCounts,
+    scaledCounts,
+    crossovers,
+    costData,
+    benchmark,
+  ])
+
   return (
     <section aria-label="Seletividade GiST vs Custo" className="space-y-6">
       <div className="flex items-center gap-2">
@@ -1181,6 +1316,16 @@ export function GiSTSelectivitySection({
         <h2 className="text-foreground text-lg font-semibold">
           Curva de Seletividade — GiST Index vs Haversine
         </h2>
+        {/* Export simulation */}
+        <button
+          type="button"
+          onClick={exportSimulation}
+          className="bg-muted/50 text-muted-foreground hover:text-foreground ml-auto inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+          aria-label="Exportar simulação como JSON"
+        >
+          <FileJson className="size-3" />
+          Exportar
+        </button>
       </div>
 
       {/* ── GiST Degradation Alert ──────────────────────────────────── */}
@@ -1207,6 +1352,64 @@ export function GiSTSelectivitySection({
           currentSelectivity={currentSelectivity}
           selPct={selPct}
         />
+
+        {/* ── Total Providers slider — simula DB pequeno vs grande ── */}
+        <div className="border-t pt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-muted-foreground text-[10px] font-medium">Tamanho do banco</span>
+            <span className="text-foreground text-xs font-semibold tabular-nums">
+              {totalProviders.toLocaleString("pt-BR")} providers
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-muted-foreground w-8 text-right text-[10px] font-medium">
+              100
+            </span>
+            <input
+              type="range"
+              min={100}
+              max={100000}
+              step={100}
+              value={totalProviders}
+              onChange={(e) => setTotalProviders(Number(e.target.value))}
+              className="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-violet-300 via-sky-300 to-emerald-300"
+              aria-label="Total de providers no banco"
+            />
+            <span className="text-muted-foreground w-10 text-left text-[10px] font-medium">
+              100k
+            </span>
+          </div>
+          <div className="mt-1.5 flex gap-2">
+            {[
+              { v: 200, label: "Pequeno" },
+              { v: 1000, label: "Médio" },
+              { v: 10000, label: "Grande" },
+              { v: 100000, label: "Mega" },
+            ].map((p) => (
+              <button
+                key={p.v}
+                type="button"
+                onClick={() => setTotalProviders(p.v)}
+                className={cn(
+                  "rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all",
+                  totalProviders === p.v
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-muted/70",
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-muted-foreground mt-2 text-[10px]">
+            As curvas se ajustam automaticamente para <strong>{scaledCounts.length} escalas</strong>{" "}
+            ({" "}
+            {scaledCounts
+              .map((n) => (n >= 1000 ? `${(n / 1000).toFixed(0)}k` : String(n)))
+              .join(" → ")}{" "}
+            )
+          </p>
+        </div>
       </MetricCard>
 
       {/* Main chart: selectivity vs latency */}
@@ -1288,7 +1491,7 @@ export function GiSTSelectivitySection({
               <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} iconSize={8} />
 
               {/* PostGIS filtered lines (one per provider count) */}
-              {PROVIDER_COUNTS.map((n, idx) => (
+              {scaledCounts.map((n, idx) => (
                 <Line
                   key={`pg_${n}`}
                   type="monotone"
@@ -1303,7 +1506,7 @@ export function GiSTSelectivitySection({
               ))}
 
               {/* Haversine lines (reference) */}
-              {PROVIDER_COUNTS.map((n, idx) => (
+              {scaledCounts.map((n, idx) => (
                 <Line
                   key={`hav_${n}`}
                   type="monotone"
@@ -1409,6 +1612,91 @@ export function GiSTSelectivitySection({
                     fill: "hsl(201, 90%, 48%)",
                     fontSize: 11,
                     fontWeight: 600,
+                  }}
+                />
+              )}
+
+              {/* Interactive intersection dots at the ReferenceLine + curves
+                  crossing points.  Rendered via Recharts Customized which
+                  provides pixel coordinates from the chart's internal axes. */}
+              {refLineIndex >= 0 && intersectionCurves.length > 0 && (
+                <Customized
+                  component={({ formattedGraphicalItems }: any) => {
+                    if (!formattedGraphicalItems) return null
+                    const dots = intersectionCurves
+                      .map((curve) => {
+                        const item = formattedGraphicalItems.find(
+                          (fi: any) => fi.item?.props?.dataKey === curve.key,
+                        )
+                        if (!item?.points?.[refLineIndex]) return null
+                        return {
+                          ...curve,
+                          cx: item.points[refLineIndex].x,
+                          cy: item.points[refLineIndex].y,
+                        }
+                      })
+                      .filter(Boolean)
+
+                    if (dots.length === 0) return null
+
+                    return (
+                      <g className="intersection-dots">
+                        {dots.map(
+                          (d: any) =>
+                            d && (
+                              <g
+                                key={d.key}
+                                className="cursor-pointer"
+                                onClick={() => {
+                                  // eslint-disable-next-line no-console
+                                  console.log(
+                                    `[GiST] %s: %s · %d providers`,
+                                    d.label,
+                                    `${d.value.toFixed(d.value < 1 ? 2 : 1)}ms`,
+                                    d.count,
+                                  )
+                                }}
+                              >
+                                {/* Outer ring — scales on hover via inline
+                                    transition for browsers that support `r`
+                                    as a CSS property (Chrome 114+).  Falls
+                                    back to instant attribute swap. */}
+                                <circle
+                                  cx={d.cx}
+                                  cy={d.cy}
+                                  r={7}
+                                  fill="hsl(var(--background))"
+                                  stroke={d.color}
+                                  strokeWidth={2.5}
+                                  style={{
+                                    cursor: "pointer",
+                                    transition: "r 150ms ease, stroke-width 150ms ease",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    // Use CSS properties instead of setAttribute so
+                                    // the inline transition triggers in Chrome 114+
+                                    e.currentTarget.style.r = "9px"
+                                    e.currentTarget.style.strokeWidth = "3px"
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.r = "7px"
+                                    e.currentTarget.style.strokeWidth = "2.5px"
+                                  }}
+                                />
+                                {/* Inner filled dot */}
+                                <circle
+                                  cx={d.cx}
+                                  cy={d.cy}
+                                  r={3}
+                                  fill={d.color}
+                                  className="pointer-events-none"
+                                />
+                                {/* Small label on hover would go here — future enhancement */}
+                              </g>
+                            ),
+                        )}
+                      </g>
+                    )
                   }}
                 />
               )}
@@ -1655,6 +1943,38 @@ function GiSTCostTooltip({
   hasP95Data: boolean
   p95Mean: number
 }) {
+  // ── Dark mode detection via prefers-color-scheme ────────────────────
+  // Detects the OS-level dark mode preference and adjusts the tooltip
+  // box-shadow for optimal contrast in dark mode, independent of the
+  // Tailwind dark: class on <html>.  Initialized as false to avoid flash.
+  const [isDark, setIsDark] = React.useState(false)
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)")
+    setIsDark(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsDark(e.matches)
+    mq.addEventListener("change", handler)
+    return () => mq.removeEventListener("change", handler)
+  }, [])
+
+  const tooltipStyle: React.CSSProperties = {
+    ...TOOLTIP_STYLE,
+    ...(isDark
+      ? {
+          // Explicit dark mode colors — independent of the Tailwind dark: class
+          // on <html>.  These HSL values match the shadcn/ui default .dark theme
+          // in globals.css:
+          //   --popover:            222.2 84% 4.9%
+          //   --border:             217.2 32.6% 17.5%
+          //   --popover-foreground: 210 40% 98%
+          background: "hsl(222.2, 84%, 4.9%)",
+          borderColor: "hsl(217.2, 32.6%, 17.5%)",
+          color: "hsl(210, 40%, 98%)",
+          boxShadow: "0 4px 24px -4px rgba(0, 0, 0, 0.55), 0 2px 8px -2px rgba(0, 0, 0, 0.3)",
+        }
+      : {}),
+  }
+
   if (!active || !payload || payload.length === 0) return null
 
   // Detect if we're at the reference line by checking if the x-label matches
@@ -1759,7 +2079,7 @@ function GiSTCostTooltip({
   }
 
   return (
-    <div style={TOOLTIP_STYLE as React.CSSProperties}>
+    <div style={tooltipStyle as React.CSSProperties}>
       {/* ── Context Summary ──────────────────────────────────────── */}
       {/* Compute average model PostGIS latency across all provider scales
           at this selectivity point, for a concise real-vs-model comparison. */}

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { geocodeCEP } from "@/lib/geo"
 import { cacheControlPublic, handleError } from "@/lib/api-server"
-import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { assertGeoRateLimit } from "@/lib/geo-rate-limit"
 import { geocodeCepSchema } from "@/lib/validators"
 
 // Public: geocode a Brazilian CEP via ViaCEP.
@@ -10,7 +10,7 @@ import { geocodeCepSchema } from "@/lib/validators"
 // Cached internally by geocodeCEP via withCachedGeo (Redis, 7d TTL).
 export async function GET(request: Request) {
   try {
-    await assertRateLimit(request, RATE_LIMITS.geo)
+    await assertGeoRateLimit(request, "cep")
     const { searchParams } = new URL(request.url)
     const rawCep = searchParams.get("cep") || ""
     const { cep: clean } = geocodeCepSchema.parse({ cep: rawCep })

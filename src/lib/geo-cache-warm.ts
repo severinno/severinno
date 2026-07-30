@@ -340,6 +340,21 @@ export async function warmGeoCache(): Promise<WarmResult> {
     "geo-cache-warm: complete",
   )
 
+  // Store runtime result for the debug endpoint
+  _lastWarmResult = {
+    searches,
+    ceps,
+    reverses,
+    logSearches,
+    logCeps,
+    logReverses,
+    total,
+    skipped,
+    errors,
+    elapsedMs,
+    completedAt: new Date().toISOString(),
+  }
+
   return {
     searches,
     ceps,
@@ -352,6 +367,25 @@ export async function warmGeoCache(): Promise<WarmResult> {
     errors,
     elapsedMs,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Last warm result (runtime status)
+// ---------------------------------------------------------------------------
+
+let _lastWarmResult:
+  | (WarmResult & {
+      /** ISO timestamp when warmGeoCache() last completed. */
+      completedAt: string
+    })
+  | null = null
+
+/**
+ * Get the result of the last warmGeoCache() execution, if any.
+ * Returns null if warmGeoCache() has never been called this session.
+ */
+export function getLastWarmResult(): typeof _lastWarmResult {
+  return _lastWarmResult
 }
 
 // ---------------------------------------------------------------------------
