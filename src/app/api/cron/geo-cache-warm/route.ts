@@ -1,7 +1,22 @@
 import { NextResponse } from "next/server"
 import { warmGeoCache, getWarmConfig } from "@/lib/geo-cache-warm"
+import { isCooldownElapsed, markCompleted } from "@/lib/cron-cooldown"
 import logger from "@/lib/logger"
 import { handleError } from "@/lib/api-server"
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Cooldown name for this cron job. */
+const CRON_NAME = "geo-cache-warm"
+
+/** 23 hours — prevents re-execution within the same day. */
+const COOLDOWN_MS = 23 * 60 * 60 * 1000
+
+// ---------------------------------------------------------------------------
+// Route handler
+// ---------------------------------------------------------------------------
 
 /**
  * GET /api/cron/geo-cache-warm
@@ -11,10 +26,15 @@ import { handleError } from "@/lib/api-server"
  * after a server restart get cached responses instead of the 5s Nominatim
  * / ViaCEP latency.
  *
- * **When to call:**
- *   - After every deployment / server restart
- *   - Ideally via a post-deploy hook (e.g., after `docker compose up`)
- *   - Also runnable on a daily schedule during low traffic (3 AM)
+ * **Cooldown:** Prevents re-execution within 23 hours of the last successful
+ *   run. The cooldown state is stored in Redis (with in-memory fallback) and
+ *   survives server restarts. This means frequent invocations (e.g., every
+ *   5 min by a cron orchestrator) are safe — only the first call in each
+ *   23-hour window actually executes the warming.
+ * *   **When to call:**
+ *   - After every deployment / server restart (cooldown is fresh, so it runs)
+ *   - On a daily schedule during low traffic (3 AM)
+ *   - The cooldown prevents duplicate runs if both hooks fire
  *
  * **Duration:** ~30 seconds for the full list of ~48 queries (respects the
  *   1 req/s Nominatim rate limit via rateLimitedNominatim).
@@ -31,7 +51,7 @@ import { handleError } from "@/lib/api-server"
  *   CRON_SECRET   — Shared secret for cron authentication
  *
  * Response:
- *   200: Warm completed with summary
+ *   200: Warm completed (or skipped due to cooldown)
  *   401: Missing or invalid Authorization header
  *
  * @example
@@ -57,13 +77,36 @@ export async function GET(request: Request) {
       )
     }
 
+    // ── Cooldown check ───────────────────────────────────────────────
+    const cooldownElapsed = await isCooldownElapsed(CRON_NAME, COOLDOWN_MS)
+
+    if (!cooldownElapsed) {
+      const skipResponse = {
+        ok: true,
+        status: "skipped",
+        reason: "cooldown",
+        cooldownMs: COOLDOWN_MS,
+        timestamp: new Date().toISOString(),
+        message:
+          "Skipped — last successful run was less than 23 hours ago. " +
+          "Use POST /api/cron/geo-cache-warm/clear-cooldown to force a re-run.",
+      }
+      logger.info(skipResponse, "geo-cache-warm: skipped (cooldown)")
+      return NextResponse.json(skipResponse)
+    }
+
+    // ── Execute warming ──────────────────────────────────────────────
     const config = getWarmConfig()
     logger.info({ totalQueries: config.totalQueries }, "geo-cache-warm: starting")
 
     const result = await warmGeoCache()
 
+    // ── Mark cooldown ─────────────────────────────────────────────────
+    await markCompleted(CRON_NAME, COOLDOWN_MS)
+
     const response = {
       ok: true,
+      status: "completed",
       timestamp: new Date().toISOString(),
       config,
       result,

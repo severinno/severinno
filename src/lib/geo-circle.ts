@@ -64,13 +64,6 @@ export function createRadiusGeoJSON(
 }
 
 /**
- * Compute the haversine distance between two lat/lng points in km.
- * Re-exports from geo-shared.ts to avoid code duplication.
- * Used internally by tests to validate circle geometry.
- */
-export const haversineDistance = haversineKm
-
-/**
  * Estimate the average radius of a polygon's points from its center.
  * Computes haversine distance from center to each vertex and returns
  * the mean. Used by tests to validate circle geometry.
@@ -92,7 +85,7 @@ export function estimatePolygonRadius(
   const numVerts = coords.length - 1 // exclude closing point
   for (let i = 0; i < numVerts; i++) {
     const [lng, lat] = coords[i]
-    total += haversineDistance(centerLat, centerLng, lat, lng)
+    total += haversineKm(centerLat, centerLng, lat, lng)
   }
   return total / numVerts
 }

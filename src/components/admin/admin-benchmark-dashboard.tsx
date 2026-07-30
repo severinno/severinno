@@ -17,24 +17,28 @@ import * as React from "react"
 import {
   AlertTriangle,
   BarChart3,
+  CalendarDays,
   CheckCircle2,
   Clock,
   Database,
   FileJson,
+  Filter,
+  GitCompareArrows,
   TrendingDown,
   TrendingUp,
   Activity,
   RefreshCw,
+  MapPin,
+  MousePointerClick,
+  Gauge,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip as RTooltip,
   XAxis,
@@ -49,7 +53,8 @@ import { ErrorState } from "@/components/admin/admin-shared"
 import type {
   BenchmarksResponse,
   ComparisonResult,
-  BenchmarkDiffEntry,
+  BenchmarkFile,
+  GistCrossoverPoint,
 } from "@/app/api/admin/benchmarks/route"
 
 // ---------------------------------------------------------------------------
@@ -101,6 +106,38 @@ export function AdminBenchmarkDashboard() {
     refetchInterval: 60_000,
   })
 
+  // ── State hooks (must be before early returns for React rules-of-hooks) ──
+  const [dateRange, setDateRange] = React.useState<{ start: string; end: string }>({
+    start: "",
+    end: "",
+  })
+  const [selectedTypes, setSelectedTypes] = React.useState<Set<string>>(new Set())
+  const [metricMode, setMetricMode] = React.useState<"mean" | "ops" | "p95">("mean")
+
+  // Initialize state from data once after loading
+  React.useEffect(() => {
+    if (!data) return
+    if (dateRange.start !== "") return // already initialized
+
+    const timestamps = Object.values(data.runs)
+      .flat()
+      .map((r) => r.meta?.timestamp)
+      .filter(Boolean) as string[]
+    const min = timestamps.length > 0
+      ? new Date(Math.min(...timestamps.map((t) => new Date(t).getTime())))
+      : new Date()
+    const max = timestamps.length > 0
+      ? new Date(Math.max(...timestamps.map((t) => new Date(t).getTime())))
+      : new Date()
+
+    setDateRange({
+      start: min.toISOString().slice(0, 7) + "-01",
+      end: max.toISOString().slice(0, 10),
+    })
+    setSelectedTypes(new Set(Object.keys(data.runs)))
+  }, [data, dateRange.start])
+
+  // ── Error state ─────────────────────────────────────────────────────
   if (isError) {
     return (
       <ErrorState
@@ -111,21 +148,42 @@ export function AdminBenchmarkDashboard() {
     )
   }
 
+  // ── Loading state ───────────────────────────────────────────────────
   if (isLoading || !data) {
     return <BenchmarkSkeleton />
   }
 
-  const { summary, comparisons, runs, regressionCount, lastRun } = data
+  const { summary, comparisons, runs, regressionCount, lastRun, gistCrossoverHistory } = data
   const hasComparisons = comparisons.length > 0
   const hasRegressions = regressionCount > 0
 
-  // ── Trend data: extract mean values for key benchmarks across historical runs ──
-  const trendData = buildTrendData(runs)
+  // Filter runs by date range
+  const filterTimestamp = (ts: string | undefined): boolean => {
+    if (!ts || dateRange.start === "" || dateRange.end === "") return true // show all when uninitialized
+    const t = new Date(ts).getTime()
+    return t >= new Date(dateRange.start).getTime() && t <= new Date(dateRange.end).getTime()
+  }
 
-  // ── Aggregate all diffs for the regressions table ──
-  const allRegressions = comparisons.flatMap((c) =>
-    c.regressions.map((r) => ({ ...r, type: c.type })),
-  )
+  const filteredRuns: Record<string, BenchmarkFile[]> = {}
+  for (const [type, typeRuns] of Object.entries(runs)) {
+    const filtered = typeRuns.filter((r) => filterTimestamp(r.meta?.timestamp))
+    if (filtered.length > 0) filteredRuns[type] = filtered
+  }
+
+  // ── Trend data: extract mean/ops/p95 values for key benchmarks across historical runs ──
+  const trendData = buildTrendData(filteredRuns)
+
+  // ── Per-benchmark temporal data (all individual benchmark names) ──────────
+  const perBenchTrend = buildPerBenchTrend(runs, filterTimestamp, selectedTypes)
+
+  const toggleType = (type: string) => {
+    setSelectedTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(type)) next.delete(type)
+      else next.add(type)
+      return next
+    })
+  }
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
@@ -227,10 +285,135 @@ export function AdminBenchmarkDashboard() {
         </section>
       ) : null}
 
-      {/* ── Trend Chart ─────────────────────────────────────────────── */}
+      {/* ── Filters: Date Range + Benchmark Type + Metric Mode ───────── */}
+      {Object.keys(runs).length > 0 && (
+        <section
+          aria-label="Filtros"
+          className="border-border/50 bg-card rounded-xl border p-4"
+        >
+          <div className="flex flex-wrap items-end gap-4">
+            {/* Date range */}
+            <div className="flex items-center gap-3">
+              <CalendarDays className="text-muted-foreground size-4" />
+              <div className="flex items-center gap-2">
+                <label className="text-muted-foreground text-[10px]">De</label>
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) =>
+                    setDateRange((prev) => ({ ...prev, start: e.target.value }))
+                  }
+                  className="border-input/60 bg-background h-8 rounded-lg border px-2 text-xs"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-muted-foreground text-[10px]">Até</label>
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) =>
+                    setDateRange((prev) => ({ ...prev, end: e.target.value }))
+                  }
+                  className="border-input/60 bg-background h-8 rounded-lg border px-2 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Type filter chips */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Filter className="text-muted-foreground size-3.5" />
+              {Object.keys(runs).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => toggleType(type)}
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-[10px] font-medium transition-all",
+                    selectedTypes.has(type)
+                      ? "text-white shadow-sm"
+                      : "bg-muted text-muted-foreground hover:bg-muted/70",
+                  )}
+                  style={
+                    selectedTypes.has(type)
+                      ? { backgroundColor: TYPE_COLORS[type] ?? "#888" }
+                      : undefined
+                  }
+                >
+                  {TYPE_LABELS[type] ?? type}
+                </button>
+              ))}
+            </div>
+
+            {/* Metric mode selector */}
+            <div className="ml-auto flex items-center gap-1 rounded-lg border p-0.5">
+              {[
+                { key: "mean" as const, icon: Gauge, label: "Latência" },
+                { key: "ops" as const, icon: Activity, label: "Throughput" },
+                { key: "p95" as const, icon: MousePointerClick, label: "P95" },
+              ].map(({ key, icon: Icon, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setMetricMode(key)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-all",
+                    metricMode === key
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icon className="size-3" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Active filter summary */}
+          <div className="text-muted-foreground mt-3 flex items-center gap-3 text-[10px]">
+            <span>
+              <span className="text-foreground font-medium">{Object.keys(filteredRuns).length}</span>
+              {` / ${Object.keys(runs).length} tipos com dados no período`}
+            </span>
+            <span>
+              <span className="text-foreground font-medium">{filteredRunCount(filteredRuns)}</span>
+              {` runs no período`}
+            </span>
+            {(() => {
+              const ts = Object.values(runs).flat().map((r) => r.meta?.timestamp).filter(Boolean) as string[]
+              if (ts.length === 0) return null
+              const mi = new Date(Math.min(...ts.map((t: string) => new Date(t).getTime())))
+              const ma = new Date(Math.max(...ts.map((t: string) => new Date(t).getTime())))
+              const ds = mi.toISOString().slice(0, 7) + "-01"
+              const de = ma.toISOString().slice(0, 10)
+              if (dateRange.start === ds && dateRange.end === de) return null
+              return (
+                <button
+                  type="button"
+                  onClick={() => setDateRange({ start: ds, end: de })}
+                  className="text-primary hover:text-primary/80 underline-offset-2 underline transition-colors"
+                >
+                  Limpar filtro de data
+                </button>
+              )
+            })()}
+          </div>
+        </section>
+      )}
+
+      {/* ── Trend Chart (per-type aggregated) ────────────────────────── */}
       {trendData.length > 0 && (
         <section aria-label="Tendência temporal" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <MetricCard icon={BarChart3} title="Latência Média por Run (µs)">
+          <MetricCard
+            icon={metricMode === "ops" ? Activity : metricMode === "p95" ? MousePointerClick : BarChart3}
+            title={
+              metricMode === "ops"
+                ? "Throughput por Run (ops/sec)"
+                : metricMode === "p95"
+                  ? "P95 por Run (µs)"
+                  : "Latência Média por Run (µs)"
+            }
+          >
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trendData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
@@ -247,37 +430,65 @@ export function AdminBenchmarkDashboard() {
                     width={50}
                     tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
                     label={{
-                      value: "µs",
+                      value: metricMode === "ops" ? "ops/s" : metricMode === "p95" ? "µs" : "µs",
                       angle: -90,
                       position: "insideLeft",
                       style: { fontSize: 10, fill: "hsl(var(--muted-foreground))" },
                     }}
+                    scale={metricMode === "ops" ? "auto" : "log"}
+                    domain={["auto", "auto"]}
                   />
-                  <RTooltip contentStyle={TOOLTIP_STYLE} />
+                  <RTooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    formatter={(v: number, n: string) => {
+                      const label = TYPE_LABELS[n.replace(/_ops$|_p95$/, "")] ?? n
+                      const suffix = metricMode === "ops" ? " ops/s" : " µs"
+                      return [`${v.toFixed(v < 1 ? 2 : 1)}${suffix}`, label]
+                    }}
+                  />
                   <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
-                  {Object.keys(TYPE_COLORS).map((type) => (
-                    <Line
-                      key={type}
-                      type="monotone"
-                      dataKey={type}
-                      name={TYPE_LABELS[type]}
-                      stroke={TYPE_COLORS[type]}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      activeDot={{ r: 5 }}
-                      connectNulls
-                    />
-                  ))}
+                  {[...selectedTypes].map((type) => {
+                    const dataKey = metricMode === "ops" ? `${type}_ops` : metricMode === "p95" ? `${type}_p95` : type
+                    return (
+                      <Line
+                        key={dataKey}
+                        type="monotone"
+                        dataKey={dataKey}
+                        name={TYPE_LABELS[type] ?? type}
+                        stroke={TYPE_COLORS[type] ?? "#888"}
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        activeDot={{ r: 5 }}
+                        connectNulls
+                      />
+                    )
+                  })}
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </MetricCard>
 
-          <MetricCard icon={Activity} title="ops/sec por Run">
+          {/* Per-benchmark temporal chart */}
+          <MetricCard
+            icon={metricMode === "ops" ? Activity : metricMode === "p95" ? MousePointerClick : BarChart3}
+            title={
+              metricMode === "ops"
+                ? "Benchmarks Individuais (ops/sec)"
+                : metricMode === "p95"
+                  ? "Benchmarks Individuais P95 (µs)"
+                  : "Benchmarks Individuais (µs)"
+            }
+          >
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendData} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                <LineChart
+                  data={perBenchTrend}
+                  margin={{ left: 8, right: 8, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="hsl(var(--border) / 0.5)"
+                  />
                   <XAxis
                     dataKey="date"
                     tickLine={false}
@@ -290,32 +501,52 @@ export function AdminBenchmarkDashboard() {
                     width={50}
                     tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
                     label={{
-                      value: "ops/s",
+                      value: metricMode === "ops" ? "ops/s" : "µs",
                       angle: -90,
                       position: "insideLeft",
                       style: { fontSize: 10, fill: "hsl(var(--muted-foreground))" },
                     }}
+                    scale={metricMode === "ops" ? "auto" : "log"}
+                    domain={["auto", "auto"]}
                   />
-                  <RTooltip contentStyle={TOOLTIP_STYLE} />
+                  <RTooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    formatter={(v: number, n: string) => {
+                      const suffix = metricMode === "ops" ? " ops/s" : " µs"
+                      return [`${v.toFixed(v < 1 ? 2 : 1)}${suffix}`, n]
+                    }}
+                  />
                   <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
-                  {Object.keys(TYPE_COLORS).map((type) => (
-                    <Line
-                      key={type}
-                      type="monotone"
-                      dataKey={`${type}_ops`}
-                      name={TYPE_LABELS[type]}
-                      stroke={TYPE_COLORS[type]}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      activeDot={{ r: 5 }}
-                      connectNulls
-                    />
-                  ))}
+                  {perBenchLines(perBenchTrend, metricMode)
+                    .slice(0, 15)
+                    .map((line) => (
+                      <Line
+                        key={line.dataKey}
+                        type="monotone"
+                        dataKey={line.dataKey}
+                        name={line.name}
+                        stroke={line.color}
+                        strokeWidth={1.5}
+                        dot={false}
+                        activeDot={{ r: 3 }}
+                        connectNulls
+                      />
+                    ))}
                 </LineChart>
               </ResponsiveContainer>
             </div>
+            {perBenchLines(perBenchTrend, metricMode).length > 15 && (
+              <p className="text-muted-foreground mt-1 text-[10px]">
+                Mostrando 15 de {perBenchLines(perBenchTrend, metricMode).length} benchmarks
+              </p>
+            )}
           </MetricCard>
         </section>
+      )}
+
+      {/* ── GiST Crossover Timeline ─────────────────────────────────── */}
+      {gistCrossoverHistory.length > 0 && (
+        <GiSTCrossoverTimeline history={gistCrossoverHistory} />
       )}
 
       {/* ── Comparisons ──────────────────────────────────────────────── */}
@@ -618,8 +849,111 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
+// ── Helpers for filtered runs ────────────────────────────────────────────
+
+function filteredRunCount(runs: Record<string, BenchmarkFile[]>): number {
+  return Object.values(runs).reduce((a, r) => a + r.length, 0)
+}
+
 // ---------------------------------------------------------------------------
-// Trend data builder
+// Per-benchmark temporal trend builder
+// ---------------------------------------------------------------------------
+
+function buildPerBenchTrend(
+  allRuns: Record<string, BenchmarksResponse["runs"][string]>,
+  filterFn: (ts: string | undefined) => boolean,
+  selectedTypes: Set<string>,
+): Array<Record<string, number | string>> {
+  // Collect all entries grouped by date
+  const dateMap = new Map<
+    string,
+    { ts: number; vals: Record<string, { mean: number; ops: number; p95: number }> }
+  >()
+
+  for (const [type, typeRuns] of Object.entries(allRuns)) {
+    if (!selectedTypes.has(type)) continue
+
+    for (const run of typeRuns) {
+      const ts = run.meta?.timestamp
+      if (!ts || !filterFn(ts)) continue
+
+      const d = new Date(ts)
+      const dateKey = d.toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, { ts: d.getTime(), vals: {} })
+      }
+      const group = dateMap.get(dateKey)!
+
+      for (const bench of run.benchmarks) {
+        const key = `${type}::${bench.label}`
+        if (!group.vals[key] || group.vals[key].mean === 0) {
+          group.vals[key] = {
+            mean: bench.mean,
+            ops: bench.opsPerSec,
+            p95: bench.p95 ?? bench.mean, // fallback to mean if no P95
+          }
+        }
+      }
+    }
+  }
+
+  // Convert to sorted array
+  return [...dateMap.entries()]
+    .sort(([, a], [, b]) => a.ts - b.ts)
+    .map(([date, { vals }]) => {
+      const row: Record<string, number | string> = { date }
+      for (const [key, v] of Object.entries(vals)) {
+        row[`${key}_mean`] = v.mean
+        row[`${key}_ops`] = v.ops
+        row[`${key}_p95`] = v.p95
+      }
+      return row
+    })
+}
+
+/** Build line configs for per-benchmark chart */
+function perBenchLines(
+  data: Array<Record<string, number | string>>,
+  metric: "mean" | "ops" | "p95",
+): Array<{ dataKey: string; name: string; color: string }> {
+  if (data.length === 0) return []
+
+  const suffix = metric === "mean" ? "_mean" : metric === "ops" ? "_ops" : "_p95"
+  const keys = Object.keys(data[0]).filter((k) => k.endsWith(suffix) && k !== "date")
+
+  const TYPE_PALETTE = [
+    "hsl(201, 90%, 48%)",
+    "hsl(38, 92%, 50%)",
+    "hsl(160, 84%, 39%)",
+    "hsl(0, 72%, 51%)",
+    "hsl(270, 76%, 53%)",
+    "hsl(340, 82%, 52%)",
+    "hsl(180, 80%, 40%)",
+    "hsl(30, 90%, 55%)",
+  ]
+
+  return keys.map((dataKey, idx) => {
+    // Extract readable name from key: "geo::haversine_100" → "geo: haversine 100"
+    const [type, label] = dataKey.replace(suffix, "").split("::")
+    const prettyName = label
+      ? `${TYPE_LABELS[type] ?? type}: ${label.replace(/_/g, " ")}`
+      : TYPE_LABELS[type] ?? type
+
+    return {
+      dataKey,
+      name: prettyName,
+      color: TYPE_PALETTE[idx % TYPE_PALETTE.length],
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Trend data builder (per-type aggregated)
 // ---------------------------------------------------------------------------
 
 function buildTrendData(
@@ -632,6 +966,7 @@ function buildTrendData(
     type: string
     mean: number
     ops: number
+    p95: number
   }
 
   const allEntries: TrendEntry[] = []
@@ -656,6 +991,7 @@ function buildTrendData(
         type,
         mean: firstBench.mean,
         ops: firstBench.opsPerSec,
+        p95: firstBench.p95 ?? firstBench.mean,
       })
     }
   }
@@ -666,14 +1002,14 @@ function buildTrendData(
   // Group by date + type, keeping first occurrence's timestamp
   const grouped = new Map<
     string,
-    { types: Record<string, { mean: number; ops: number }>; ts: number }
+    { types: Record<string, { mean: number; ops: number; p95: number }>; ts: number }
   >()
   for (const entry of allEntries) {
     if (!grouped.has(entry.date)) {
       grouped.set(entry.date, { types: {}, ts: entry.timestamp })
     }
     const group = grouped.get(entry.date)!
-    group.types[entry.type] = { mean: entry.mean, ops: entry.ops }
+    group.types[entry.type] = { mean: entry.mean, ops: entry.ops, p95: entry.p95 }
   }
 
   // Convert to array preserving chronological order (entries were already sorted)
@@ -684,9 +1020,333 @@ function buildTrendData(
       for (const [type, vals] of Object.entries(types)) {
         row[type] = vals.mean
         row[`${type}_ops`] = vals.ops
+        row[`${type}_p95`] = vals.p95
       }
       return row
     })
+}
+
+// ---------------------------------------------------------------------------
+// GiST Crossover Timeline
+// ---------------------------------------------------------------------------
+
+/**
+ * GiSTCrossoverTimeline — Plots the evolution of the GiST index crossover
+ * radius across weekly benchmark runs, extracted from git history of
+ * geo-gist-baseline.json.
+ *
+ * Shows:
+ *   - Crossover radius (km) per density over time
+ *   - Best GiST/full ratio (%) per density over time
+ *   - Commit hash tooltip for traceability
+ */
+
+const CROSSOVER_COLORS = [
+  "hsl(160, 84%, 39%)",
+  "hsl(201, 90%, 48%)",
+  "hsl(38, 92%, 50%)",
+]
+
+function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
+  const [selectedDensity, setSelectedDensity] = React.useState<number | "all">("all")
+
+  // Group by density
+  const densities = [...new Set(history.map((p) => p.density))].sort((a, b) => a - b)
+
+  // Build chart data: group by timestamp, flatten for Recharts
+  const timeGroups = new Map<
+    string,
+    {
+      ts: number
+      date: string
+      commitHash: string
+      values: Record<string, { radius: number | null; ratio: number | null }>
+    }
+  >()
+
+  for (const point of history) {
+    const d = new Date(point.timestamp)
+    const dateKey = d.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    })
+
+    if (!timeGroups.has(dateKey)) {
+      timeGroups.set(dateKey, {
+        ts: d.getTime(),
+        date: dateKey,
+        commitHash: point.commitHash,
+        values: {},
+      })
+    }
+    const group = timeGroups.get(dateKey)!
+    group.values[`density_${point.density}`] = {
+      radius: point.crossoverRadiusKm,
+      ratio: point.bestRatioPct,
+    }
+  }
+
+  const chartData = [...timeGroups.entries()]
+    .sort(([, a], [, b]) => a.ts - b.ts)
+    .map(([, group]) => {
+      const row: Record<string, number | string | null> = {
+        date: group.date,
+        commitHash: group.commitHash,
+      }
+      for (const [key, v] of Object.entries(group.values)) {
+        row[`${key}_radius`] = v.radius
+        row[`${key}_ratio`] = v.ratio
+      }
+      return row
+    })
+
+  if (chartData.length === 0) return null
+
+  // Filtered data for per-density view
+  const filteredChartData =
+    selectedDensity === "all"
+      ? chartData
+      : chartData.filter((row) => {
+          const key = `density_${selectedDensity}`
+          return row[`${key}_radius`] != null || row[`${key}_ratio`] != null
+        })
+
+  // Show the last commit's hash
+  const latestPoint = history.reduce((a, b) =>
+    new Date(a.timestamp) > new Date(b.timestamp) ? a : b,
+  )
+
+  return (
+    <section
+      aria-label="Evolução do crossover GiST"
+      className="border-border/50 bg-card rounded-xl border"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+        <div className="flex items-center gap-2">
+          <GitCompareArrows className="size-5 text-emerald-500" />
+          <h2 className="text-foreground text-sm font-semibold">
+            Evolução do Crossover GiST
+          </h2>
+          <span className="text-muted-foreground rounded-full border px-2 py-0.5 text-[10px] font-mono">
+            {chartData.length} snapshots
+          </span>
+        </div>
+
+        {/* Density selector */}
+        <div className="flex items-center gap-1.5">
+          <MapPin className="text-muted-foreground size-3.5" />
+          <button
+            type="button"
+            onClick={() => setSelectedDensity("all")}
+            className={cn(
+              "rounded-full px-2.5 py-1 text-[10px] font-medium transition-all",
+              selectedDensity === "all"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-muted text-muted-foreground hover:bg-muted/70",
+            )}
+          >
+            Todos
+          </button>
+          {densities.map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => setSelectedDensity(d)}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-[10px] font-medium transition-all",
+                selectedDensity === d
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted text-muted-foreground hover:bg-muted/70",
+              )}
+            >
+              {d.toLocaleString()} prov
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 p-4 lg:grid-cols-2">
+        {/* ── Crossover Radius Chart ───────────────────────────────── */}
+        <MetricCard icon={MapPin} title="Raio de Crossover (km)">
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={filteredChartData}
+                margin={{ left: 8, right: 8, top: 8, bottom: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={40}
+                  tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                  label={{
+                    value: "km",
+                    angle: -90,
+                    position: "insideLeft",
+                    style: { fontSize: 9, fill: "hsl(var(--muted-foreground))" },
+                  }}
+                />
+                <RTooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(v: number, n: string) => {
+                    const density = n.match(/density_(\d+)/)?.[1]
+                    return [`${v} km`, density ? `${Number(density).toLocaleString()} providers` : n]
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
+                {selectedDensity === "all"
+                  ? densities.map((d, idx) => (
+                      <Line
+                        key={`density_${d}`}
+                        type="monotone"
+                        dataKey={`density_${d}_radius`}
+                        name={`${d.toLocaleString()} providers`}
+                        stroke={CROSSOVER_COLORS[idx % CROSSOVER_COLORS.length]}
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                        connectNulls={false}
+                      />
+                    ))
+                  : (() => {
+                      const d = selectedDensity
+                      return (
+                        <Line
+                          type="monotone"
+                          dataKey={`density_${d}_radius`}
+                          name={`${d.toLocaleString()} providers`}
+                          stroke={CROSSOVER_COLORS[0]}
+                          strokeWidth={2.5}
+                          dot={{ r: 5, fill: CROSSOVER_COLORS[0] }}
+                          activeDot={{ r: 7 }}
+                          connectNulls={false}
+                        />
+                      )
+                    })()}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </MetricCard>
+
+        {/* ── Best Ratio Chart ─────────────────────────────────────── */}
+        <MetricCard icon={BarChart3} title="Melhor Razão GiST / Full Scan (%)">
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={filteredChartData}
+                margin={{ left: 8, right: 8, top: 8, bottom: 8 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={45}
+                  tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }}
+                  domain={[0, 100]}
+                  label={{
+                    value: "%",
+                    angle: -90,
+                    position: "insideLeft",
+                    style: { fontSize: 9, fill: "hsl(var(--muted-foreground))" },
+                  }}
+                />
+                <RTooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(v: number, n: string) => {
+                    const density = n.match(/density_(\d+)/)?.[1]
+                    return [`${v}%`, density ? `${Number(density).toLocaleString()} providers` : n]
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
+                {/* Reference line at 100% = GiST same speed as full scan */}
+                {/* Below 100% = GiST faster */}
+                <ReferenceLine
+                  y={100}
+                  stroke="hsl(0, 72%, 51%)"
+                  strokeDasharray="4 4"
+                  strokeWidth={1.5}
+                  label={{
+                    value: "Full scan",
+                    position: "right",
+                    fill: "hsl(0, 72%, 51%)",
+                    fontSize: 9,
+                  }}
+                />
+                {selectedDensity === "all"
+                  ? densities.map((d, idx) => (
+                      <Line
+                        key={`density_${d}_ratio`}
+                        type="monotone"
+                        dataKey={`density_${d}_ratio`}
+                        name={`${d.toLocaleString()} providers`}
+                        stroke={CROSSOVER_COLORS[idx % CROSSOVER_COLORS.length]}
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                        activeDot={{ r: 6 }}
+                        connectNulls={false}
+                      />
+                    ))
+                  : (() => {
+                      const d = selectedDensity
+                      return (
+                        <Line
+                          type="monotone"
+                          dataKey={`density_${d}_ratio`}
+                          name={`${d.toLocaleString()} providers`}
+                          stroke={CROSSOVER_COLORS[1]}
+                          strokeWidth={2.5}
+                          dot={{ r: 5, fill: CROSSOVER_COLORS[1] }}
+                          activeDot={{ r: 7 }}
+                          connectNulls={false}
+                        />
+                      )
+                    })()}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </MetricCard>
+      </div>
+
+      {/* Summary footer */}
+      <div className="border-t px-5 py-3">
+        <div className="text-muted-foreground flex flex-wrap items-center gap-x-6 gap-y-1 text-[10px]">
+          <span>
+            Baseline commits consultados:{" "}
+            <span className="font-mono font-medium">{chartData.length}</span>
+          </span>
+          <span>
+            Último snapshot:{" "}
+            <span className="font-mono font-medium">
+              {new Date(latestPoint.timestamp).toLocaleDateString("pt-BR")}
+            </span>
+            <span className="ml-1 font-mono text-[9px]">
+              ({latestPoint.commitHash})
+            </span>
+          </span>
+          <span>
+            Densidades monitoradas:{" "}
+            {densities.map((d) => d.toLocaleString()).join(", ")}
+          </span>
+        </div>
+      </div>
+    </section>
+  )
 }
 
 // ---------------------------------------------------------------------------

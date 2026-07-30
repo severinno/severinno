@@ -21,6 +21,7 @@
 import { NextResponse } from "next/server"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { execSync } from "node:child_process"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { notifyGeoAlert } from "@/lib/geo-alert-notify"
@@ -82,11 +83,23 @@ export interface ComparisonResult {
   totalBenchmarks: number
 }
 
+export interface GistCrossoverPoint {
+  timestamp: string
+  commitHash: string
+  density: number
+  crossoverRadiusKm: number | null
+  bestRatioPct: number | null
+  gistFaster: boolean
+  selectivityPct: number | null
+}
+
 export interface BenchmarksResponse {
   runs: Record<string, BenchmarkFile[]>
   comparisons: ComparisonResult[]
   regressionCount: number
   lastRun: string | null
+  /** Historical GiST crossover data extracted from git history */
+  gistCrossoverHistory: GistCrossoverPoint[]
   summary: {
     totalRuns: number
     totalComparisons: number
@@ -103,6 +116,125 @@ export interface BenchmarksResponse {
 const BENCHMARK_DIR = join(process.cwd(), "docs", "benchmarks")
 
 const THRESHOLD_PCT = 5 // regression threshold in percent
+
+// ── GiST crossover history from git ───────────────────────────────────────
+
+const GIST_BASELINE_PATH = "docs/benchmarks/geo-gist-baseline.json"
+
+interface GitHistoryEntry {
+  hash: string
+  data: BenchmarkFile
+}
+
+/**
+ * Extract historical GiST baseline snapshots from git history.
+ * Uses git log to find commits that changed geo-gist-baseline.json,
+ * then git show to retrieve each version's content.
+ *
+ * Returns up to MAX_SNAPSHOTS entries, sorted chronologically.
+ */
+function extractGistHistory(): GitHistoryEntry[] {
+  try {
+    // Get all commit hashes that modified the GiST baseline file
+    const logOutput = execSync(
+      `git log --format="%H %ct" -- "${GIST_BASELINE_PATH}"`,
+      { encoding: "utf-8", timeout: 10_000, maxBuffer: 1024 * 1024 },
+    )
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+
+    const MAX_SNAPSHOTS = 50
+    const recentCommits = logOutput.slice(0, MAX_SNAPSHOTS)
+    const entries: GitHistoryEntry[] = []
+
+    for (const line of recentCommits) {
+      const [hash] = line.split(" ")
+      if (!hash) continue
+
+      try {
+        const content = execSync(
+          `git show "${hash}:${GIST_BASELINE_PATH}"`,
+          { encoding: "utf-8", timeout: 5000, maxBuffer: 1024 * 1024 },
+        )
+        const data = JSON.parse(content) as BenchmarkFile
+        entries.push({ hash, data })
+      } catch {
+        // File may not exist in that commit yet, skip
+        continue
+      }
+    }
+
+    // Sort chronologically by timestamp
+    entries.sort(
+      (a, b) =>
+        new Date(a.data.meta?.timestamp ?? 0).getTime() -
+        new Date(b.data.meta?.timestamp ?? 0).getTime(),
+    )
+
+    return entries
+  } catch {
+    // git not available or not a git repository
+    return []
+  }
+}
+
+/**
+ * Convert git history entries into flat crossover data points.
+ */
+function buildCrossoverHistory(entries: GitHistoryEntry[]): GistCrossoverPoint[] {
+  const points: GistCrossoverPoint[] = []
+
+  for (const { hash, data } of entries) {
+    const ts = data.meta?.timestamp
+    if (!ts) continue
+
+    const crossover = data.crossover
+    if (!Array.isArray(crossover)) continue
+
+    for (const row of crossover) {
+      const r = row as Record<string, unknown>
+      // Each crossover row has: providerCount, radiusKm, selectivity, gistFaster,
+      // dWithinUs, fullScanUs, etc.
+      const density = Number(r.providerCount ?? r.density)
+      const radiusKm = r.radiusKm != null ? Number(r.radiusKm) : null
+      const selectivity = r.selectivity != null ? Number(r.selectivity) * 100 : null
+      const gistFaster = r.gistFaster === true
+
+      // Best ratio: find the best GiST/full ratio from this run's analyses
+      let bestRatioPct: number | null = null
+      if (Array.isArray(data.analyses)) {
+        const densityAnalyses = data.analyses.filter(
+          (a) =>
+            (a as Record<string, unknown>).providerCount === density ||
+            (a as Record<string, unknown>).density === density,
+        ) as Array<Record<string, unknown>>
+        for (const a of densityAnalyses) {
+          const dw = Number(a.dWithinUs ?? 0)
+          const fs = Number(a.fullScanUs ?? 0)
+          if (dw > 0 && fs > 0) {
+            const ratio = (dw / fs) * 100
+            if (bestRatioPct == null || ratio < bestRatioPct) {
+              bestRatioPct = +ratio.toFixed(1)
+            }
+          }
+        }
+      }
+
+      points.push({
+        timestamp: ts,
+        commitHash: hash.slice(0, 7),
+        density: isFinite(density) ? density : 0,
+        crossoverRadiusKm: radiusKm,
+        bestRatioPct,
+        gistFaster,
+        selectivityPct: selectivity != null && isFinite(selectivity) ? +selectivity.toFixed(1) : null,
+      })
+    }
+  }
+
+  return points
+}
 
 /** Parse a benchmark type from the file name or meta. */
 function detectType(file: BenchmarkFile, fileName: string): string {
@@ -367,11 +499,16 @@ export async function GET() {
       }).catch(() => {})
     }
 
+    // ── Extract GiST crossover history from git ──────────────────────
+    const gistHistoryEntries = extractGistHistory()
+    const gistCrossoverHistory = buildCrossoverHistory(gistHistoryEntries)
+
     const response: BenchmarksResponse = {
       runs: byType,
       comparisons,
       regressionCount,
       lastRun,
+      gistCrossoverHistory,
       summary: {
         totalRuns: Object.values(byType).reduce((a, r) => a + r.length, 0),
         totalComparisons: comparisons.length,
