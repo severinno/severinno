@@ -97,6 +97,52 @@ describe("P95_BASELINE_MS — env var override", () => {
 })
 
 // ═════════════════════════════════════════════════════════════════════════
+// Edge cases — env var boundary values
+// ═════════════════════════════════════════════════════════════════════════
+
+describe("P95_BASELINE_MS — edge cases", () => {
+  it("treats env var '0' as falsy and falls back to default", async () => {
+    process.env.GEO_P95_BASELINE_NOMINATIM = "0"
+    const { P95_BASELINE_MS } = await import("../geo-baselines")
+    // Number("0") is 0, which is falsy → falls back to 400
+    expect(P95_BASELINE_MS.nominatim).toBe(400)
+  })
+
+  it("accepts negative env var values", async () => {
+    process.env.GEO_P95_BASELINE_VIACEP = "-50"
+    const { P95_BASELINE_MS } = await import("../geo-baselines")
+    // Number("-50") is -50, which is truthy → uses -50
+    expect(P95_BASELINE_MS.viacep).toBe(-50)
+  })
+
+  it("trims whitespace around env var value", async () => {
+    process.env.GEO_P95_BASELINE_POSTGIS = "  45  "
+    const { P95_BASELINE_MS } = await import("../geo-baselines")
+    // Number() trims whitespace: Number("  45  ") → 45
+    expect(P95_BASELINE_MS.postgis).toBe(45)
+  })
+
+  it("falls back to default when env var is the string 'NaN'", async () => {
+    process.env.GEO_P95_BASELINE_NOMINATIM = "NaN"
+    const { P95_BASELINE_MS } = await import("../geo-baselines")
+    // Number("NaN") is NaN, which is falsy → falls back to 400
+    expect(P95_BASELINE_MS.nominatim).toBe(400)
+  })
+
+  it("accepts float values from env var", async () => {
+    process.env.GEO_P95_BASELINE_VIACEP = "275.5"
+    const { P95_BASELINE_MS } = await import("../geo-baselines")
+    expect(P95_BASELINE_MS.viacep).toBe(275.5)
+  })
+
+  it("accepts very large env var values", async () => {
+    process.env.GEO_P95_BASELINE_POSTGIS = "9999"
+    const { P95_BASELINE_MS } = await import("../geo-baselines")
+    expect(P95_BASELINE_MS.postgis).toBe(9999)
+  })
+})
+
+// ═════════════════════════════════════════════════════════════════════════
 // getP95Baselines
 // ═════════════════════════════════════════════════════════════════════════
 

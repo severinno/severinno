@@ -50,6 +50,7 @@ import {
 } from "recharts"
 
 import { apiGet } from "@/lib/api"
+import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { ErrorState } from "@/components/admin/admin-shared"
@@ -572,6 +573,11 @@ function BenchmarkSection({
   const barData = buildBenchmarkBarData(benchmark)
 
   const maxLatency = getMaxPostgisLatency(barData)
+  const [benchUseLog, setBenchUseLog] = React.useState(() => {
+    if (typeof window === "undefined") return true
+    const stored = localStorage.getItem("geo-scale-bench")
+    return stored !== null ? stored === "true" : true
+  })
 
   return (
     <section aria-label="Comparação de benchmark" className="space-y-6">
@@ -582,8 +588,40 @@ function BenchmarkSection({
         </h2>
       </div>
 
+      {/* ── Scale toggle ───────────────────────────────────────────── */}
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-muted-foreground text-[10px]">
+          Gráficos: {benchUseLog ? "Log" : "Linear"}
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !benchUseLog
+            localStorage.setItem("geo-scale-bench", String(next))
+            setBenchUseLog(next)
+          }}
+          className={cn(
+            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors",
+            benchUseLog ? "bg-primary border-primary" : "bg-muted border-border",
+          )}
+          role="switch"
+          aria-checked={benchUseLog}
+          aria-label="Alternar escala Log/Linear nos gráficos de benchmark"
+        >
+          <span
+            className={cn(
+              "inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform",
+              benchUseLog ? "translate-x-[18px]" : "translate-x-[2px]",
+            )}
+          />
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <MetricCard icon={GitCompareArrows} title="Latência Média (µs) — Escala Log">
+        <MetricCard
+          icon={GitCompareArrows}
+          title={`Latência Média (µs) — Escala ${benchUseLog ? "Log" : "Linear"}`}
+        >
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -601,8 +639,8 @@ function BenchmarkSection({
                   tickLine={false}
                   axisLine={false}
                   tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                  scale="log"
-                  domain={[1, maxLatency * 2]}
+                  scale={benchUseLog ? "log" : "linear"}
+                  domain={benchUseLog ? [1, maxLatency * 2] : [0, "auto"]}
                   tickFormatter={(v: number) =>
                     v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
                   }
@@ -661,7 +699,8 @@ function BenchmarkSection({
                   tickLine={false}
                   axisLine={false}
                   tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                  scale="log"
+                  scale={benchUseLog ? "log" : "linear"}
+                  domain={benchUseLog ? undefined : [0, "auto"]}
                   tickFormatter={(v: number) =>
                     v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
                   }
@@ -797,6 +836,11 @@ function TimelineSection({
   })
 
   const serviceKeys = Object.keys(history[0]?.services ?? {})
+  const [timelineUseLog, setTimelineUseLog] = React.useState(() => {
+    if (typeof window === "undefined") return true
+    const stored = localStorage.getItem("geo-scale-timeline")
+    return stored !== null ? stored === "true" : true
+  })
 
   return (
     <section aria-label="Evolução temporal" className="space-y-6">
@@ -808,6 +852,33 @@ function TimelineSection({
         <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[10px] font-medium">
           {history.length} snapshots
         </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-muted-foreground text-[9px]">
+            {timelineUseLog ? "Log" : "Linear"}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !timelineUseLog
+              localStorage.setItem("geo-scale-timeline", String(next))
+              setTimelineUseLog(next)
+            }}
+            className={cn(
+              "relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border transition-colors",
+              timelineUseLog ? "bg-primary border-primary" : "bg-muted border-border",
+            )}
+            role="switch"
+            aria-checked={timelineUseLog}
+            aria-label="Alternar escala Log/Linear"
+          >
+            <span
+              className={cn(
+                "inline-block size-3 rounded-full bg-white shadow-sm transition-transform",
+                timelineUseLog ? "translate-x-[14px]" : "translate-x-[1px]",
+              )}
+            />
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -840,6 +911,8 @@ function TimelineSection({
                         position: "insideLeft",
                         style: { fontSize: 10, fill: "hsl(var(--muted-foreground))" },
                       }}
+                      scale={timelineUseLog ? "log" : "linear"}
+                      domain={timelineUseLog ? ["auto", "auto"] : [0, "auto"]}
                     />
                     <RTooltip
                       contentStyle={TOOLTIP_STYLE}
@@ -934,7 +1007,11 @@ export function GiSTSelectivitySection({
   // ── Radius + Density state ────────────────────────────────────────
   const [radiusKm, setRadiusKm] = React.useState(15)
   const [density, setDensity] = React.useState(10) // providers/km²
-  const [useLogScale, setUseLogScale] = React.useState(true)
+  const [useLogScale, setUseLogScale] = React.useState(() => {
+    if (typeof window === "undefined") return true
+    const stored = localStorage.getItem("geo-scale-gist")
+    return stored !== null ? stored === "true" : true
+  })
 
   // Estimated providers within the search area at current density
   const estimatedProviders = Math.round(density * Math.PI * radiusKm * radiusKm)
@@ -1165,7 +1242,17 @@ export function GiSTSelectivitySection({
           </span>
           <button
             type="button"
-            onClick={() => setUseLogScale((prev) => !prev)}
+            onClick={() => {
+              const next = !useLogScale
+              localStorage.setItem("geo-scale-gist", String(next))
+              if (!next) {
+                toast.info(
+                  "Escala linear — pontos próximos de zero podem ficar comprimidos devido à diferença de magnitude entre Haversine (µs) e PostGIS (ms).",
+                  { duration: 5000 },
+                )
+              }
+              setUseLogScale(next)
+            }}
             className={cn(
               "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors",
               useLogScale ? "bg-primary border-primary" : "bg-muted border-border",
@@ -1598,7 +1685,18 @@ function GiSTCostTooltip({
   const isAtRefLine = label === refLineLabel
 
   // Separate cost-at-radius items from curve items
-  const curves: Array<{ key: string; label: string; value: number; color?: string }> = []
+  const curves: Array<{
+    key: string
+    label: string
+    value: number
+    color?: string
+    /** P95 delta (real − model) for PostGIS filtered lines. Null when N/A. */
+    delta: number | null
+    /** Visual icon for the delta magnitude. */
+    deltaIcon: string | null
+    /** CSS color class for the delta text. */
+    deltaColor: string | null
+  }> = []
   const costs: Array<{
     label: string
     postgisMs: number
@@ -1654,21 +1752,94 @@ function GiSTCostTooltip({
     }
     const displayLabel = labelMap[key] ?? key
 
-    // For PostGIS filtered lines, add P95 delta
-    let deltaStr = ""
+    // For PostGIS filtered lines, compute P95 delta + visual indicator
+    let delta: number | null = null
+    let deltaIcon: string | null = null
+    let deltaColor: string | null = null
     if (key.startsWith("pg_") && hasP95Data && value > 0) {
-      const delta = p95Mean - value
-      const sign = delta >= 0 ? "+" : ""
-      deltaStr = ` · P95 ${sign}${delta.toFixed(1)}ms`
+      delta = p95Mean - value
+      // 🔴 real >> model, 🟢 real << model, ⚪ near zero
+      if (delta >= 5) {
+        deltaIcon = "🔴"
+        deltaColor = "text-red-500"
+      } else if (delta <= -2) {
+        deltaIcon = "🟢"
+        deltaColor = "text-emerald-500"
+      } else {
+        deltaIcon = "⚪"
+        deltaColor = "text-muted-foreground"
+      }
     }
 
-    curves.push({ key, label: displayLabel, value, color: entry.color })
+    curves.push({
+      key,
+      label: displayLabel,
+      value,
+      color: entry.color,
+      delta,
+      deltaIcon,
+      deltaColor,
+    })
   }
 
   return (
     <div style={TOOLTIP_STYLE as React.CSSProperties}>
+      {/* ── Context Summary ──────────────────────────────────────── */}
+      {/* Compute average model PostGIS latency across all provider scales
+          at this selectivity point, for a concise real-vs-model comparison. */}
+      {(() => {
+        const pgValues = curves
+          .filter((c) => c.key.startsWith("pg_") && c.value > 0)
+          .map((c) => c.value)
+        const avgModel =
+          pgValues.length > 0 ? pgValues.reduce((a, b) => a + b, 0) / pgValues.length : null
+        const hasRealP95 = hasP95Data && p95Mean > 0
+
+        if (!avgModel && !hasRealP95) return null
+
+        // Compute summary delta
+        let summaryDelta: number | null = null
+        let summaryIcon: string | null = null
+        let summaryColor: string | null = null
+        if (avgModel != null && hasRealP95) {
+          summaryDelta = p95Mean - avgModel
+          if (summaryDelta >= 5) {
+            summaryIcon = "🔴"
+            summaryColor = "text-red-500"
+          } else if (summaryDelta <= -2) {
+            summaryIcon = "🟢"
+            summaryColor = "text-emerald-500"
+          } else {
+            summaryIcon = "⚪"
+            summaryColor = "text-muted-foreground"
+          }
+        }
+
+        return (
+          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-blue-50/50 px-2.5 py-1.5 text-[10px] dark:bg-blue-950/10">
+            <span className="text-foreground font-semibold">{label}</span>
+            {avgModel != null && (
+              <span className="text-muted-foreground">
+                Modelo: <span className="tabular-nums">{avgModel.toFixed(1)}ms</span>
+              </span>
+            )}
+            {hasRealP95 && (
+              <span className="text-muted-foreground">
+                P95 real: <span className="font-medium tabular-nums">{p95Mean.toFixed(1)}ms</span>
+              </span>
+            )}
+            {summaryDelta != null && summaryIcon != null && (
+              <span className={cn("font-medium tabular-nums", summaryColor)}>
+                {summaryIcon} Δ {summaryDelta >= 0 ? "+" : ""}
+                {summaryDelta.toFixed(1)}ms
+              </span>
+            )}
+          </div>
+        )
+      })()}
+
       {/* Selectivity header */}
-      <p className="text-foreground mb-1.5 text-[11px] font-semibold">Seletividade: {label}</p>
+      <p className="text-foreground mb-1.5 text-[11px] font-semibold">Curvas por Escala</p>
 
       {/* Curve values */}
       <div className="space-y-0.5">
@@ -1681,8 +1852,17 @@ function GiSTCostTooltip({
               />
               {c.label}
             </span>
-            <span className="text-foreground tabular-nums">
+            <span className="text-foreground flex items-center gap-1.5 tabular-nums">
               {c.value.toFixed(c.value < 1 ? 2 : 1)}ms
+              {c.delta != null && c.deltaIcon != null && (
+                <span
+                  className={cn("text-[10px]", c.deltaColor)}
+                  title={`P95 Δ: ${c.delta >= 0 ? "+" : ""}${c.delta.toFixed(1)}ms`}
+                >
+                  {c.deltaIcon} {c.delta >= 0 ? "+" : ""}
+                  {c.delta.toFixed(1)}
+                </span>
+              )}
             </span>
           </div>
         ))}

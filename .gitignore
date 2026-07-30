@@ -61,8 +61,14 @@ fix-two-phase.py
 *.fix-tmp
 *.fix-orig
 
-# Geo benchmark output — transient artifact, compare against version-controlled baseline
+# Geo benchmark output — transient artifacts, compare against version-controlled baseline
 docs/benchmarks/geo-latest.json
+
+# Geo metrics snapshots — runtime performance data, regenerated on each server start
+docs/benchmarks/metrics/
+
+# Runtime data directory (cache, temp files, generated assets)
+data/
 
 # Freebuff Desktop — local app state, not project source
 .freebuff/

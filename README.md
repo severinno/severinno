@@ -21,20 +21,20 @@
 
 ## Stack
 
-| Layer | Tech |
-|-------|------|
-| **Frontend** | Next.js 16 (App Router, Turbopack), React 19, Tailwind v4, shadcn/ui, Motion, XState |
-| **Backend** | Next.js API routes, Prisma ORM, Zod validation |
-| **Database** | PostgreSQL 16 + PostGIS 3.4 |
-| **Cache** | Redis 7 (geo cache, rate limiting, session) |
-| **Queue** | RabbitMQ 4 (notifications, email) |
-| **Routing** | OSRM (fallback Haversine) |
-| **Realtime** | Socket.io (tracking, chat, notifications) |
-| **Auth** | Session-based (iron-web-token, crypto) |
-| **Storage** | S3-compatible (R2) with local fallback |
-| **Monitoring** | Sentry (errors), Pino (logs) |
-| **Testing** | Vitest (unit), Playwright (E2E) |
-| **Container** | Docker Compose (postgis, redis, rabbitmq, pgbackup) |
+| Layer          | Tech                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------ |
+| **Frontend**   | Next.js 16 (App Router, Turbopack), React 19, Tailwind v4, shadcn/ui, Motion, XState |
+| **Backend**    | Next.js API routes, Prisma ORM, Zod validation                                       |
+| **Database**   | PostgreSQL 16 + PostGIS 3.4                                                          |
+| **Cache**      | Redis 7 (geo cache, rate limiting, session)                                          |
+| **Queue**      | RabbitMQ 4 (notifications, email)                                                    |
+| **Routing**    | OSRM (fallback Haversine)                                                            |
+| **Realtime**   | Socket.io (tracking, chat, notifications)                                            |
+| **Auth**       | Session-based (iron-web-token, crypto)                                               |
+| **Storage**    | S3-compatible (R2) with local fallback                                               |
+| **Monitoring** | Sentry (errors), Pino (logs)                                                         |
+| **Testing**    | Vitest (unit), Playwright (E2E)                                                      |
+| **Container**  | Docker Compose (postgis, redis, rabbitmq, pgbackup)                                  |
 
 ## Quick Start
 
@@ -85,18 +85,19 @@ Cada um pode ser executado individualmente para desenvolvimento ou debug.
 
 Servidor WebSocket para notificações em tempo real, chat e tracking.
 
-| Propriedade | Valor |
-|-------------|-------|
-| **Porta** | `3003` |
-| **Path** | `/ws` (Socket.io) — `/health` (healthcheck), `/emit` (HTTP emit) |
-| **Stack** | Socket.io 4, Bun |
-| **Docker** | `docker compose up -d realtime` |
-| **Manual** | `cd mini-services/realtime && bun index.ts` |
-| **Dev (hot-reload)** | `cd mini-services/realtime && bun --hot index.ts` |
+| Propriedade          | Valor                                                            |
+| -------------------- | ---------------------------------------------------------------- |
+| **Porta**            | `3003`                                                           |
+| **Path**             | `/ws` (Socket.io) — `/health` (healthcheck), `/emit` (HTTP emit) |
+| **Stack**            | Socket.io 4, Bun                                                 |
+| **Docker**           | `docker compose up -d realtime`                                  |
+| **Manual**           | `cd mini-services/realtime && bun index.ts`                      |
+| **Dev (hot-reload)** | `cd mini-services/realtime && bun --hot index.ts`                |
 
 **Healthcheck:** `curl http://localhost:3003/health` → `{"status":"ok"}`
 
 **Envio manual de evento (debug):**
+
 ```bash
 curl -X POST http://localhost:3003/emit \
   -H "Content-Type: application/json" \
@@ -113,15 +114,16 @@ curl -X POST http://localhost:3003/emit \
 
 **Eventos suportados:**
 
-| Evento | Roteamento | Descrição |
-|--------|-----------|-----------|
-| `booking:update` | `user:{clientId}` + `user:{providerId}` | Atualização de agendamento |
-| `quote:update` | `user:{clientId}` + `user:{providerId}` | Resposta de orçamento |
-| `message:send` | `user:{toId}` | Nova mensagem no chat |
-| `notification:new` | `user:{toId}` | Notificação push |
-| `tracking:position` | `user:{clientId}` | Posição em tempo real |
+| Evento              | Roteamento                              | Descrição                  |
+| ------------------- | --------------------------------------- | -------------------------- |
+| `booking:update`    | `user:{clientId}` + `user:{providerId}` | Atualização de agendamento |
+| `quote:update`      | `user:{clientId}` + `user:{providerId}` | Resposta de orçamento      |
+| `message:send`      | `user:{toId}`                           | Nova mensagem no chat      |
+| `notification:new`  | `user:{toId}`                           | Notificação push           |
+| `tracking:position` | `user:{clientId}`                       | Posição em tempo real      |
 
 **Conexão do cliente:**
+
 - **Desenvolvimento:** Conecta direto em `http://localhost:3003` (via `NEXT_PUBLIC_REALTIME_URL` no `.env`)
 - **Produção:** Conecta via Caddy em `/?XTransformPort=3003` (que roteia para o container `realtime:3003`)
 
@@ -149,16 +151,17 @@ Requer download de dados OSRM do Brasil (~600MB). Veja [documentação OSRM](htt
 
 ## Views (SPA routing via `useViewStore`)
 
-| View | Description |
-|------|-------------|
-| `vitrine` | Public storefront — hero, search, filters, provider cards, map |
-| `client.*` | Client dashboard — bookings, quotes, favorites, messages |
-| `provider.*` | Provider panel — services, agenda, finances, messages |
-| `admin.*` | Admin panel — users, services, taxonomy, settings |
+| View         | Description                                                    |
+| ------------ | -------------------------------------------------------------- |
+| `vitrine`    | Public storefront — hero, search, filters, provider cards, map |
+| `client.*`   | Client dashboard — bookings, quotes, favorites, messages       |
+| `provider.*` | Provider panel — services, agenda, finances, messages          |
+| `admin.*`    | Admin panel — users, services, taxonomy, settings              |
 
 ## API Routes (36 endpoints)
 
 ### Public
+
 - `GET  /api/providers` — list with filters, geolocation, pagination
 - `GET  /api/providers/:id` — detail with services, reviews, availability
 - `GET  /api/categories` — category tree
@@ -170,12 +173,14 @@ Requer download de dados OSRM do Brasil (~600MB). Veja [documentação OSRM](htt
 - `POST /api/newsletter` — subscribe email
 
 ### Auth
+
 - `POST /api/auth/register` — create account
 - `POST /api/auth/login` — authenticate
 - `POST /api/auth/logout` — destroy session
 - `GET  /api/auth/me` — current user
 
 ### Authenticated
+
 - `GET|PATCH /api/users/me` — read/update own profile
 - `GET|POST  /api/bookings` — list/create bookings
 - `GET|PATCH /api/bookings/:id` — detail/update booking
@@ -192,12 +197,14 @@ Requer download de dados OSRM do Brasil (~600MB). Veja [documentação OSRM](htt
 - `POST /api/upload` — upload file (avatar, photo)
 
 ### Admin
+
 - `GET /api/admin/stats` — platform analytics
 - `GET /api/admin/users` — list/manage users
 - `GET|POST /api/admin/services` — manage all services
 - `GET|POST /api/admin/settings` — platform settings
 
 ### Health
+
 - `GET  /api/health` — DB + Redis + RabbitMQ status
 
 ## Environment Variables
@@ -271,26 +278,26 @@ docker compose --profile routing up -d osrm
 
 Scripts de diagnóstico da infraestrutura Docker, localizados em `scripts/`.
 
-| Script | Plataforma | O que verifica |
-|--------|-----------|----------------|
-| `diagnose-docker.ps1` | Windows | Port bindings, healthchecks, redes, Hyper-V, conflitos de porta, recursos Docker |
-| `diagnose-docker.sh` | Linux / Mac | Mesmo que o .ps1, exceto Hyper-V (Windows-only) |
+| Script                 | Plataforma  | O que verifica                                                                   |
+| ---------------------- | ----------- | -------------------------------------------------------------------------------- |
+| `diagnose-docker.ps1`  | Windows     | Port bindings, healthchecks, redes, Hyper-V, conflitos de porta, recursos Docker |
+| `diagnose-docker.sh`   | Linux / Mac | Mesmo que o .ps1, exceto Hyper-V (Windows-only)                                  |
 | `diagnose-completo.sh` | Linux / Mac | Tudo do `diagnose-docker.sh` + workers (RabbitMQ), filas, PostgreSQL, Redis, E2E |
 
 ### diagnose-docker (Windows / Linux / Mac)
 
 Diagnóstico básico da infraestrutura:
 
-| # | Seção | Descrição |
-|---|-------|-----------|
-| 1 | Pré-requisitos | Docker CLI, Compose, daemon, curl, jq |
-| 2 | Portas Excluídas (PS1) | Hyper-V / Windows (`netsh`) — apenas no `.ps1` |
-| 2/3 | Port Conflicts | Portas ocupadas no host (ss / lsof / netstat) |
-| 3/4 | Container Status | `docker compose ps` + healthcheck parsing |
-| 4/5 | Port Bindings | `docker inspect` — publicadas vs expostas |
-| 5/6 | Networks | frontend / backend, flag `internal`, containers na rede |
-| 6/7 | Healthcheck | HTTP endpoints (Realtime + Next.js) |
-| 7/8 | Docker Resources | `docker system df` |
+| #   | Seção                  | Descrição                                               |
+| --- | ---------------------- | ------------------------------------------------------- |
+| 1   | Pré-requisitos         | Docker CLI, Compose, daemon, curl, jq                   |
+| 2   | Portas Excluídas (PS1) | Hyper-V / Windows (`netsh`) — apenas no `.ps1`          |
+| 2/3 | Port Conflicts         | Portas ocupadas no host (ss / lsof / netstat)           |
+| 3/4 | Container Status       | `docker compose ps` + healthcheck parsing               |
+| 4/5 | Port Bindings          | `docker inspect` — publicadas vs expostas               |
+| 5/6 | Networks               | frontend / backend, flag `internal`, containers na rede |
+| 6/7 | Healthcheck            | HTTP endpoints (Realtime + Next.js)                     |
+| 7/8 | Docker Resources       | `docker system df`                                      |
 
 **Uso:**
 
@@ -308,15 +315,15 @@ powershell -ExecutionPolicy Bypass -File scripts/diagnose-docker.ps1 -Verbose
 
 Diagnóstico completo da stack, incluindo workers e serviços:
 
-| # | Seção | Descrição |
-|---|-------|-----------|
-| 1-5 | (mesmo do básico) | Portas, containers, bindings, redes |
-| 6 | **Workers** | email-worker + notification-worker: estado, logs, restart count |
-| 7 | **RabbitMQ** | Conectividade, filas, consumidores, exchange (`rabbitmqctl`) |
-| 8 | **DB & Redis** | PostgreSQL (`pg_isready`), Redis (`PING`) via `docker exec` |
-| 9 | Healthcheck | Realtime + Next.js `/api/health` com parsing de serviços |
-| 10 | **E2E Filas** | Publica mensagem via `rabbitmqctl publish`, verifica consumo before/after |
-| 11 | Docker Resources | `docker system df` |
+| #   | Seção             | Descrição                                                                 |
+| --- | ----------------- | ------------------------------------------------------------------------- |
+| 1-5 | (mesmo do básico) | Portas, containers, bindings, redes                                       |
+| 6   | **Workers**       | email-worker + notification-worker: estado, logs, restart count           |
+| 7   | **RabbitMQ**      | Conectividade, filas, consumidores, exchange (`rabbitmqctl`)              |
+| 8   | **DB & Redis**    | PostgreSQL (`pg_isready`), Redis (`PING`) via `docker exec`               |
+| 9   | Healthcheck       | Realtime + Next.js `/api/health` com parsing de serviços                  |
+| 10  | **E2E Filas**     | Publica mensagem via `rabbitmqctl publish`, verifica consumo before/after |
+| 11  | Docker Resources  | `docker system df`                                                        |
 
 **Uso:**
 
@@ -326,29 +333,31 @@ Diagnóstico completo da stack, incluindo workers e serviços:
 ```
 
 **Pré-requisitos:**
+
 - `docker` + `docker compose` funcionando
 - `curl` (para healthchecks HTTP)
 - `jq` (recomendado para parsing JSON preciso)
 - `ss` ou `lsof` ou `netstat` (para detecção de portas)
 
 **Requisitos dos workers:** Os workers precisam estar rodando via Docker Compose:
+
 ```bash
 docker compose up -d app realtime postgis redis rabbitmq email-worker notification-worker
 ```
 
 ## Documentação
 
-| Documento | Descrição |
-|:----------|:----------|
-| [`docs/API.md`](docs/API.md) | Referência completa da API REST (50+ endpoints) |
-| [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md) | Estratégia de cache em 3 camadas (Redis + HTTP + Browser) |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Guia de deploy em produção com Docker + Caddy |
+| Documento                                                  | Descrição                                                       |
+| :--------------------------------------------------------- | :-------------------------------------------------------------- |
+| [`docs/API.md`](docs/API.md)                               | Referência completa da API REST (50+ endpoints)                 |
+| [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md)         | Estratégia de cache em 3 camadas (Redis + HTTP + Browser)       |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)                 | Guia de deploy em produção com Docker + Caddy                   |
 | [`docs/PUSH_NOTIFICATIONS.md`](docs/PUSH_NOTIFICATIONS.md) | Sistema de push notifications (Web Push, agendamento, webhooks) |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Medidas de segurança (CSP, rate limiting, criptografia, Docker) |
-| [`docs/TESTING.md`](docs/TESTING.md) | Guia de testes (Vitest + Playwright, padrões de mock) |
-| [`docs/postgis-guide.md`](docs/postgis-guide.md) | Guia de PostGIS (geolocalização, consultas espaciais) |
-| [`lytex-integration.md`](lytex-integration.md) | Integração com Lytex Pagamentos (PIX + Cartão) |
-| [`Arquitetura_Software.md`](Arquitetura_Software.md) | Arquitetura de software do sistema |
+| [`docs/SECURITY.md`](docs/SECURITY.md)                     | Medidas de segurança (CSP, rate limiting, criptografia, Docker) |
+| [`docs/TESTING.md`](docs/TESTING.md)                       | Guia de testes (Vitest + Playwright, padrões de mock)           |
+| [`docs/postgis-guide.md`](docs/postgis-guide.md)           | Guia de PostGIS (geolocalização, consultas espaciais)           |
+| [`lytex-integration.md`](lytex-integration.md)             | Integração com Lytex Pagamentos (PIX + Cartão)                  |
+| [`Arquitetura_Software.md`](Arquitetura_Software.md)       | Arquitetura de software do sistema                              |
 
 ## Testing
 
@@ -368,15 +377,33 @@ bun run e2e
 
 Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:
 
-| Camada | Gatilho | Comando | Tempo | Bloqueia? |
-|:------:|---------|---------|:-----:|:---------:|
-| 🏠 **Pre-commit** | `git commit` | `scripts/check-utf8.sh --dry-run --ci src/` | ~2s | ✅ Exit 1 |
-| 🚀 **Pre-push** | `git push` | `scripts/check-utf8.sh --dry-run --ci src/` | ~2s | ✅ Exit 1 |
-| 🔄 **CI/CD** | Push para `main`/`develop` | `scripts/check-utf8.sh --ci src/` (via `ci.yml`) | <10s | ✅ Bloqueia build |
-| 📋 **PR Check** | `pull_request` para `main` | `scripts/check-utf8.sh --ci src/` (via `pr-check.yml`) | <10s | ✅ Bloqueia merge |
+|      Camada       | Gatilho                    | Comando                                                | Tempo |     Bloqueia?     |
+| :---------------: | -------------------------- | ------------------------------------------------------ | :---: | :---------------: |
+| 🏠 **Pre-commit** | `git commit`               | `scripts/check-utf8.sh --dry-run --ci src/`            |  ~2s  |     ✅ Exit 1     |
+|  🚀 **Pre-push**  | `git push`                 | `scripts/check-utf8.sh --dry-run --ci src/`            |  ~2s  |     ✅ Exit 1     |
+|   🔄 **CI/CD**    | Push para `main`/`develop` | `scripts/check-utf8.sh --ci src/` (via `ci.yml`)       | <10s  | ✅ Bloqueia build |
+|  📋 **PR Check**  | `pull_request` para `main` | `scripts/check-utf8.sh --ci src/` (via `pr-check.yml`) | <10s  | ✅ Bloqueia merge |
 
 **467 arquivos escaneados** (`.ts` + `.tsx`) em cada execução — zero corrupção encontrada.
 
 > 📖 Veja [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md) para lições aprendidas sobre:
+>
 > - **Next.js Vary injection** — App Router prepends seus próprios valores Vary
 > - **Windows-1252 byte 0x97** — Como diagnosticar e corrigir encoding corrompido
+
+## Regression Guards
+
+Testes que protegem contra regressões em condições de contorno — alterar a lógica
+sem perceber o impacto em edge cases.
+
+### `p95 > threshold` — Degradação por Limiar
+
+| Arquivo                                                                                              | Teste                                                              | Descrição                                                                                                                                                                                                    |
+| :--------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`src/lib/__tests__/geo-performance-alert.test.ts`](src/lib/__tests__/geo-performance-alert.test.ts) | `returns not degraded when P95 equals threshold exactly (>= vs >)` | **Teste #9** — Verifica que `p95 > threshold` usa **comparação estrita (`>`)** e não `>=`. Quando P95 é exatamente igual ao limiar (ex: 500ms === 500ms), o serviço **não** deve ser marcado como degradado. |
+
+**⚠️ Alerta de regressão:** Substituir `p95 > threshold` por `p95 >= threshold` no código de
+`checkGeoPerformance()` (`src/lib/geo-performance-alert.ts`) **quebra este teste** e faz com que
+serviços cujo P95 iguale exatamente o limiar sejam falsamente marcados como degradados,
+disparando notificações de alerta desnecessárias. O teste #9 serve como guardrail contra essa
+mudança inadvertida.

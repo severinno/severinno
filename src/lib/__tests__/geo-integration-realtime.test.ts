@@ -77,6 +77,7 @@ import {
 } from "@/lib/geo-metrics-persist"
 import type { PersistedSnapshot } from "@/lib/geo-metrics-persist"
 import { computeGeoBaselines } from "@/lib/geo-auto-baseline"
+import { notifyGeoAlert } from "@/lib/geo-alert-notify"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -324,5 +325,135 @@ describe("geo integration — real modules + temp disk", () => {
     expect(pg).toBeDefined()
     expect(pg!.degraded).toBe(true)
     expect(pg!.consecutiveViolations).toBe(1) // first violation
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 6. Complete recovery cycle: degrade → alert → recover
+  // ═══════════════════════════════════════════════════════════════════════
+
+  it("complete recovery cycle: degrade → alert → recover → recovery notification", async () => {
+    // ── Phase 1: Isolate this test — full state reset ───────────────────
+    // Flush ANY pending snapshot from previous tests first
+    await flushGeoMetrics()
+    resetPerformanceAlertState()
+    resetGeoMetrics()
+    vi.clearAllMocks()
+
+    // ── Phase 2: Write LOW PostGIS P95 historical snapshots ───────────
+    // So the auto-baseline threshold is low (10ms × 2 = 20ms)
+    // Use FRESH timestamps (now, not 30min ago) to avoid lookback filtering
+    const baseTs = Date.now() - 60_000 // 60 seconds ago
+    for (let i = 0; i < 6; i++) {
+      writeHistoricalSnapshot({
+        timestamp: baseTs + i * 10_000, // every 10s — all within lookback
+        services: {
+          nominatim: { p50: 100, p95: 200, p99: 400, count: 50 },
+          viacep: { p50: 60, p95: 120, p99: 240, count: 30 },
+          postgis: { p50: 5, p95: 10, p99: 20, count: 200 },
+        },
+      })
+    }
+
+    // Clear the Redis cache so loadPersistedSnapshots reads fresh from disk
+    await flushGeoMetrics()
+
+    // ── Phase 3: Verify the auto-baseline is using our snapshots ───────
+    const initialBaselines = await computeGeoBaselines(3600_000) // 1h lookback
+    const pgInit = initialBaselines.find((b) => b.service === "postgis")
+    expect(pgInit).toBeDefined()
+    expect(pgInit!.source).toBe("historical")
+    expect(pgInit!.sampleCount).toBeGreaterThanOrEqual(5)
+    // With 6 or more snapshots at P95=10ms, mean should be ~10ms
+    // But previous tests may have left snapshots on disk with different values
+    // So we use a generous range
+    expect(pgInit!.p95Baseline).toBeLessThanOrEqual(100)
+    expect(pgInit!.threshold).toBeLessThanOrEqual(200)
+
+    // Reset state fresh
+    resetPerformanceAlertState()
+    resetGeoMetrics()
+
+    // ── Phase 4: Record HIGH PostGIS samples → P95 well above threshold ─
+    for (const ms of [70, 80, 75, 90, 85, 95, 88, 82, 78, 92]) {
+      recordGeoLatency("postgis", ms)
+    }
+    const metricsHigh = getGeoMetrics()
+    // Verify current P95 is indeed high
+    expect(metricsHigh.services.postgis.p95).toBeGreaterThan(80)
+    expect(metricsHigh.services.postgis.count).toBe(10)
+
+    // ── Phase 5: First check → 1st violation (degraded, no alert yet) ─
+    const r1 = await checkGeoPerformance()
+
+    const pg1 = r1.find((r) => r.p95 > 80)
+    expect(pg1).toBeDefined()
+    expect(pg1!.degraded).toBe(true)
+    expect(pg1!.alerted).toBe(false)
+    expect(pg1!.recovered).toBe(false)
+    expect(pg1!.consecutiveViolations).toBe(1)
+    expect(pg1!.baselineSource).not.toBeNull()
+
+    // ── Phase 6: Second check → 2nd violation → alert sent ────────────
+    const r2 = await checkGeoPerformance()
+    const pg2 = r2.find((r) => r.p95 > 80)
+    expect(pg2).toBeDefined()
+    expect(pg2!.degraded).toBe(true)
+    expect(pg2!.alerted).toBe(true)
+    expect(pg2!.recovered).toBe(false)
+    expect(pg2!.consecutiveViolations).toBe(2)
+
+    // Verify degradation notification was sent
+    // Severity is "error" because P95 (~90ms) > 1.5× threshold (~32ms × 1.5 = ~48ms)
+    expect(notifyGeoAlert).toHaveBeenCalledTimes(1)
+    expect(notifyGeoAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tag: expect.stringContaining("geo-perf:postgis:degraded"),
+        severity: "error",
+      }),
+    )
+
+    // ── Phase 7: Clear high samples, record LOW PostGIS samples ────────
+    resetGeoMetrics()
+    vi.clearAllMocks() // clear degradation alert from mock count
+
+    for (const ms of [5, 8, 10, 6, 7, 9, 11, 4, 12, 3]) {
+      recordGeoLatency("postgis", ms)
+    }
+    const metricsLow = getGeoMetrics()
+    // Verify current P95 is low (well below threshold)
+    expect(metricsLow.services.postgis.p95).toBeLessThan(25)
+    expect(metricsLow.services.postgis.count).toBe(10)
+
+    // ── Phase 8: Third check → recovery detected ───────────────────────
+    const r3 = await checkGeoPerformance()
+    const pg3 = r3.find((r) => r.p95 > 0)
+    expect(pg3).toBeDefined()
+    expect(pg3!.degraded).toBe(false)
+    expect(pg3!.alerted).toBe(false)
+    expect(pg3!.recovered).toBe(true)
+    expect(pg3!.consecutiveViolations).toBe(0)
+    expect(pg3!.p95).toBeLessThan(25)
+    expect(pg3!.threshold).toBeGreaterThan(0)
+
+    // Verify recovery notification was sent
+    expect(notifyGeoAlert).toHaveBeenCalledTimes(1)
+    expect(notifyGeoAlert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tag: expect.stringContaining("geo-perf:postgis:recovery"),
+        severity: "info",
+      }),
+    )
+
+    // ── Phase 9: Fourth check → steady state (no duplicate recovery) ───
+    const r4 = await checkGeoPerformance()
+    const pg4 = r4.find((r) => r.p95 > 0)
+    expect(pg4).toBeDefined()
+    expect(pg4!.degraded).toBe(false)
+    expect(pg4!.alerted).toBe(false)
+    expect(pg4!.recovered).toBe(false) // recovery already sent, now clear
+    expect(pg4!.consecutiveViolations).toBe(0)
+
+    // No additional notifications
+    expect(notifyGeoAlert).toHaveBeenCalledTimes(1)
   })
 })
