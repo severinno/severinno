@@ -21,6 +21,7 @@
 import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, CheckCircle2, Loader2, MapPin, RefreshCw, Users } from "lucide-react"
+import { RefreshButton } from "@/components/admin/admin-refresh-button"
 import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"
@@ -338,15 +339,11 @@ export function AdminCoverageMap() {
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50"
-            aria-label="Atualizar mapa"
-          >
-            <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
-          </button>
+          <RefreshButton
+            isFetching={isFetching}
+            onRefresh={() => void refetch()}
+            label="Atualizar mapa"
+          />
         </div>
       </div>
 

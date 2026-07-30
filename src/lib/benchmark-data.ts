@@ -427,6 +427,36 @@ export function generateBenchmarkHtmlReport(benchmark: BenchmarkData): string {
   ].join("\n")
 }
 
+// ---------------------------------------------------------------------------
+// Filter helpers (extracted from admin-benchmark-dashboard.tsx)
+// ---------------------------------------------------------------------------
+
+/**
+ * isTimestampInRange — Pure function to check if a timestamp falls within
+ * a date range.  When start/end are empty, returns true (show all).
+ *
+ * Extracted from the inline closure in AdminBenchmarkDashboard so it can
+ * be unit-tested independently.
+ */
+export function isTimestampInRange(ts: string | undefined, start: string, end: string): boolean {
+  if (!ts || !start || !end) return true
+  const t = new Date(ts).getTime()
+  return t >= new Date(start).getTime() && t <= new Date(end).getTime()
+}
+
+/**
+ * filteredRunCount — Total number of run entries across all benchmark types.
+ *
+ * Accepts any Record whose values are arrays with a `length` property.
+ */
+export function filteredRunCount(runs: Record<string, unknown[]>): number {
+  return Object.values(runs).reduce((a, r) => a + r.length, 0)
+}
+
+// ---------------------------------------------------------------------------
+// File download helpers
+// ---------------------------------------------------------------------------
+
 /**
  * Trigger a file download in the browser.
  */

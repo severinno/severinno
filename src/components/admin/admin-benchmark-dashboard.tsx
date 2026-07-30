@@ -48,10 +48,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { ErrorState } from "@/components/admin/admin-shared"
 import { MetricCard, KpiCard } from "@/components/admin/admin-metric-card"
+import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
 import {
   buildTrendData,
   buildPerBenchTrend,
   perBenchLines,
+  isTimestampInRange,
+  filteredRunCount,
   BENCHMARK_TYPE_LABELS,
 } from "@/lib/benchmark-data"
 
@@ -174,11 +177,8 @@ export function AdminBenchmarkDashboard() {
   const hasRegressions = regressionCount > 0
 
   // Filter runs by date range
-  const filterTimestamp = (ts: string | undefined): boolean => {
-    if (!ts || dateRange.start === "" || dateRange.end === "") return true // show all when uninitialized
-    const t = new Date(ts).getTime()
-    return t >= new Date(dateRange.start).getTime() && t <= new Date(dateRange.end).getTime()
-  }
+  const filterTimestamp = (ts: string | undefined): boolean =>
+    isTimestampInRange(ts, dateRange.start, dateRange.end)
 
   const filteredRuns: Record<string, BenchmarkFile[]> = {}
   for (const [type, typeRuns] of Object.entries(runs)) {
@@ -203,34 +203,14 @@ export function AdminBenchmarkDashboard() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
-      {/* ── Header ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-foreground text-xl font-bold tracking-tight">
-            Monitoramento de Benchmarks
-          </h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            Comparação contínua de desempenho dos benchmarks de geolocalização
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {dataUpdatedAt ? (
-            <span className="text-muted-foreground text-xs">
-              Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
-            </span>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50"
-            aria-label="Atualizar benchmarks"
-          >
-            <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
-          </button>
-        </div>
-      </div>
+      <DashboardHeader
+        title="Monitoramento de Benchmarks"
+        description="Comparação contínua de desempenho dos benchmarks de geolocalização"
+        isFetching={isFetching}
+        onRefresh={() => void refetch()}
+        dataUpdatedAt={dataUpdatedAt}
+        refreshLabel="Atualizar benchmarks"
+      />
 
       {/* ── KPI Cards ───────────────────────────────────────────────── */}
       <section aria-label="KPIs de benchmark" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -1010,12 +990,6 @@ function StatusBadge({ status }: { status: string }) {
       {labels[status] ?? status}
     </span>
   )
-}
-
-// ── Helpers for filtered runs ────────────────────────────────────────────
-
-function filteredRunCount(runs: Record<string, BenchmarkFile[]>): number {
-  return Object.values(runs).reduce((a, r) => a + r.length, 0)
 }
 
 // ---------------------------------------------------------------------------

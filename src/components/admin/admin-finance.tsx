@@ -47,13 +47,13 @@ import {
   Loader2,
   QrCode,
   Receipt,
-  RotateCw,
   Ticket,
   TrendingDown,
   TrendingUp,
   UserCircle,
   Wallet,
 } from "lucide-react"
+import { RefreshButton } from "@/components/admin/admin-refresh-button"
 
 import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
 import { RealtimeStatusBadge } from "@/components/shared/realtime-status-badge"
@@ -206,17 +206,16 @@ export function AdminFinanceDashboard() {
     setExpandedProviders(new Set())
   }, [period])
 
-  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } =
-    useQuery({
-      queryKey: ["admin", "finance", period, page],
-      queryFn: () =>
-        apiGet<FinanceResponse>("/api/admin/finance", {
-          period,
-          page,
-          limit,
-        }),
-      staleTime: 30_000,
-    })
+  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery({
+    queryKey: ["admin", "finance", period, page],
+    queryFn: () =>
+      apiGet<FinanceResponse>("/api/admin/finance", {
+        period,
+        page,
+        limit,
+      }),
+    staleTime: 30_000,
+  })
 
   if (isError) {
     return (
@@ -232,7 +231,17 @@ export function AdminFinanceDashboard() {
     return <FinanceSkeleton />
   }
 
-  const { summary, monthlyRevenue, paymentMethods, transactions, total, averageTicket, commissionPercent, providerStats, mrr } = data
+  const {
+    summary,
+    monthlyRevenue,
+    paymentMethods,
+    transactions,
+    total,
+    averageTicket,
+    commissionPercent,
+    providerStats,
+    mrr,
+  } = data
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
@@ -280,35 +289,18 @@ export function AdminFinanceDashboard() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Financeiro</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Resumo de transações e faturamento da plataforma
           </p>
-          <RealtimeStatusBadge
-            status={status}
-            isConnected={isConnected}
-            className="mt-1.5"
-          />
+          <RealtimeStatusBadge status={status} isConnected={isConnected} className="mt-1.5" />
         </div>
 
         <div className="flex items-center gap-2">
           <ExportCSVButton period={period} />
 
-          {isFetching && (
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            aria-label="Atualizar"
-          >
-            <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
-          </Button>
+          <RefreshButton isFetching={isFetching} onRefresh={() => void refetch()} />
 
-          <div className="inline-flex h-8 items-center rounded-lg border bg-muted/50 p-0.5">
+          <div className="bg-muted/50 inline-flex h-8 items-center rounded-lg border p-0.5">
             {PERIOD_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -332,10 +324,7 @@ export function AdminFinanceDashboard() {
       </div>
 
       {/* Summary cards */}
-      <section
-        aria-label="Resumo financeiro"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-3"
-      >
+      <section aria-label="Resumo financeiro" className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {statCards.map((card) => (
           <StatCard
             key={card.status}
@@ -349,9 +338,9 @@ export function AdminFinanceDashboard() {
       </section>
 
       {/* Grand total bar */}
-      <div className="rounded-xl border border-border/50 bg-gradient-to-r from-emerald-500/5 to-primary/5 p-4">
+      <div className="border-border/50 to-primary/5 rounded-xl border bg-gradient-to-r from-emerald-500/5 p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex items-center gap-2 text-sm">
             <DollarSign className="size-5 text-emerald-600" />
             <span>Faturamento total (recebido + pendente)</span>
           </div>
@@ -362,12 +351,10 @@ export function AdminFinanceDashboard() {
       {/* Charts */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Monthly revenue bar chart */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Faturamento mensal</h2>
-            <p className="text-xs text-muted-foreground">
-              Pagamentos confirmados por mês
-            </p>
+            <p className="text-muted-foreground text-xs">Pagamentos confirmados por mês</p>
           </div>
           <div className="p-4">
             <MonthlyRevenueChart data={monthlyRevenue} />
@@ -375,12 +362,10 @@ export function AdminFinanceDashboard() {
         </div>
 
         {/* MRR trend line chart */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">MRR — Receita Recorrente</h2>
-            <p className="text-xs text-muted-foreground">
-              Média mensal dos últimos 6 meses
-            </p>
+            <p className="text-muted-foreground text-xs">Média mensal dos últimos 6 meses</p>
           </div>
           <div className="p-4">
             <MrrTrendChart data={mrr.history} growth={mrr.growth} />
@@ -391,12 +376,10 @@ export function AdminFinanceDashboard() {
       {/* Payment method + monthly ticket average */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Payment method pie chart */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Forma de pagamento</h2>
-            <p className="text-xs text-muted-foreground">
-              Distribuição por método no período
-            </p>
+            <p className="text-muted-foreground text-xs">Distribuição por método no período</p>
           </div>
           <div className="p-4">
             <PaymentMethodChart data={paymentMethods} />
@@ -404,12 +387,10 @@ export function AdminFinanceDashboard() {
         </div>
 
         {/* Monthly ticket average chart */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Ticket médio mensal</h2>
-            <p className="text-xs text-muted-foreground">
-              Valor médio por transação por mês
-            </p>
+            <p className="text-muted-foreground text-xs">Valor médio por transação por mês</p>
           </div>
           <div className="p-4">
             <MonthlyTicketChart data={monthlyRevenue} />
@@ -419,15 +400,15 @@ export function AdminFinanceDashboard() {
 
       {/* Per-provider statement */}
       <section>
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="flex items-center justify-between border-b px-5 py-4">
             <div className="flex items-center gap-2">
-              <Handshake className="size-4 text-muted-foreground" />
+              <Handshake className="text-muted-foreground size-4" />
               <div>
                 <h2 className="text-sm font-semibold">Extrato por prestador</h2>
-                <p className="text-xs text-muted-foreground">
-                  Comissão da plataforma: {commissionPercent}% ·{' '}
-                  {providerStats.length} prestador{providerStats.length !== 1 ? "es" : ""} com transações no período
+                <p className="text-muted-foreground text-xs">
+                  Comissão da plataforma: {commissionPercent}% · {providerStats.length} prestador
+                  {providerStats.length !== 1 ? "es" : ""} com transações no período
                 </p>
               </div>
             </div>
@@ -436,8 +417,8 @@ export function AdminFinanceDashboard() {
 
           {providerStats.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-5 py-12 text-center">
-              <Handshake className="size-8 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">
+              <Handshake className="text-muted-foreground/30 size-8" />
+              <p className="text-muted-foreground text-sm">
                 Nenhum prestador com pagamentos no período
               </p>
             </div>
@@ -445,20 +426,20 @@ export function AdminFinanceDashboard() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 h-11 hover:bg-muted/50">
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 h-11">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Prestador
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
                       Transações
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
                       Total recebido
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
                       Comissão ({commissionPercent}%)
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
                       Repasse líquido
                     </TableHead>
                   </TableRow>
@@ -469,7 +450,7 @@ export function AdminFinanceDashboard() {
                     return (
                       <React.Fragment key={ps.id}>
                         <TableRow
-                          className="h-14 cursor-pointer transition-colors hover:bg-muted/30"
+                          className="hover:bg-muted/30 h-14 cursor-pointer transition-colors"
                           onClick={() =>
                             setExpandedProviders((prev) => {
                               const next = new Set(prev)
@@ -486,7 +467,7 @@ export function AdminFinanceDashboard() {
                             <div className="flex items-center gap-3">
                               <button
                                 type="button"
-                                className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground/50 transition-colors hover:text-foreground"
+                                className="text-muted-foreground/50 hover:text-foreground flex size-6 shrink-0 items-center justify-center rounded transition-colors"
                                 aria-label={expanded ? "Recolher" : "Expandir"}
                               >
                                 {expanded ? (
@@ -495,14 +476,12 @@ export function AdminFinanceDashboard() {
                                   <ChevronDown className="size-4" />
                                 )}
                               </button>
-                              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                              <div className="bg-primary/10 text-primary flex size-8 shrink-0 items-center justify-center rounded-full">
                                 <UserCircle className="size-5" />
                               </div>
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-medium">
-                                  {ps.name}
-                                </p>
-                                <p className="truncate text-[11px] text-muted-foreground">
+                                <p className="truncate text-sm font-medium">{ps.name}</p>
+                                <p className="text-muted-foreground truncate text-[11px]">
                                   {ps.email}
                                 </p>
                               </div>
@@ -514,23 +493,17 @@ export function AdminFinanceDashboard() {
                           <TableCell className="text-right text-sm font-semibold tabular-nums">
                             {formatBRL(ps.total)}
                           </TableCell>
-                          <TableCell className="text-right text-sm tabular-nums text-amber-600 dark:text-amber-400">
+                          <TableCell className="text-right text-sm text-amber-600 tabular-nums dark:text-amber-400">
                             -{formatBRL(ps.commission)}
                           </TableCell>
-                          <TableCell className="text-right text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                          <TableCell className="text-right text-sm font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
                             {formatBRL(ps.net)}
                           </TableCell>
                         </TableRow>
                         {expanded && (
                           <TableRow>
-                            <TableCell
-                              colSpan={5}
-                              className="bg-muted/20 p-0"
-                            >
-                              <ProviderDetail
-                                providerId={ps.id}
-                                period={period}
-                              />
+                            <TableCell colSpan={5} className="bg-muted/20 p-0">
+                              <ProviderDetail providerId={ps.id} period={period} />
                             </TableCell>
                           </TableRow>
                         )}
@@ -547,13 +520,13 @@ export function AdminFinanceDashboard() {
             <div className="flex items-center justify-end gap-8 border-t px-5 py-3">
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">Total de repasses:</span>
-                <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                <span className="font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
                   {formatBRL(providerStats.reduce((s, p) => s + p.net, 0))}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">Comissão total:</span>
-                <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                <span className="font-semibold text-amber-600 tabular-nums dark:text-amber-400">
                   {formatBRL(providerStats.reduce((s, p) => s + p.commission, 0))}
                 </span>
               </div>
@@ -564,11 +537,11 @@ export function AdminFinanceDashboard() {
 
       {/* Transaction history */}
       <section>
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="flex items-center justify-between border-b px-5 py-4">
             <div>
               <h2 className="text-sm font-semibold">Histórico de transações</h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 {total} transação{total !== 1 ? "ões" : ""} encontrada{total !== 1 ? "s" : ""}
               </p>
             </div>
@@ -576,56 +549,51 @@ export function AdminFinanceDashboard() {
 
           {transactions.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-5 py-12 text-center">
-              <Banknote className="size-8 text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">Nenhuma transação no período</p>
+              <Banknote className="text-muted-foreground/30 size-8" />
+              <p className="text-muted-foreground text-sm">Nenhuma transação no período</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 h-11 hover:bg-muted/50">
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 h-11">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Data
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Cliente
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Prestador
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground md:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase md:table-cell">
                       Serviço
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
                       Valor
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Método
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Status
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {transactions.map((tx) => (
-                    <TableRow
-                      key={tx.id}
-                      className="h-14 transition-colors hover:bg-muted/30"
-                    >
-                      <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                    <TableRow key={tx.id} className="hover:bg-muted/30 h-14 transition-colors">
+                      <TableCell className="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
                         {formatDateShort(tx.createdAt)}
                       </TableCell>
                       <TableCell className="text-xs font-medium">
                         {tx.booking?.client?.name ?? "—"}
                       </TableCell>
-                      <TableCell className="text-xs">
-                        {tx.booking?.provider?.name ?? "—"}
-                      </TableCell>
-                      <TableCell className="hidden max-w-[160px] truncate text-xs text-muted-foreground md:table-cell">
+                      <TableCell className="text-xs">{tx.booking?.provider?.name ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground hidden max-w-[160px] truncate text-xs md:table-cell">
                         {tx.booking?.service?.title ?? "—"}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-right text-sm font-semibold tabular-nums">
+                      <TableCell className="text-right text-sm font-semibold whitespace-nowrap tabular-nums">
                         {formatBRL(tx.amount)}
                       </TableCell>
                       <TableCell>
@@ -644,7 +612,7 @@ export function AdminFinanceDashboard() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between border-t px-5 py-3">
-              <p className="text-xs text-muted-foreground tabular-nums">
+              <p className="text-muted-foreground text-xs tabular-nums">
                 Página {page} de {totalPages}
               </p>
               <div className="flex items-center gap-2">
@@ -703,31 +671,32 @@ function StatCard({
   }
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
       <div className="flex items-center justify-between">
-        <span className={cn("flex size-10 items-center justify-center rounded-lg", accentStyles[accent])}>
+        <span
+          className={cn(
+            "flex size-10 items-center justify-center rounded-lg",
+            accentStyles[accent],
+          )}
+        >
           <Icon className="size-5" />
         </span>
-        <span className="text-xs text-muted-foreground tabular-nums">
+        <span className="text-muted-foreground text-xs tabular-nums">
           {count} transação{count !== 1 ? "ões" : ""}
         </span>
       </div>
       <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
     </div>
   )
 }
 
-function MonthlyRevenueChart({
-  data,
-}: {
-  data: MonthlyRevenue[]
-}) {
+function MonthlyRevenueChart({ data }: { data: MonthlyRevenue[] }) {
   if (data.length === 0 || data.every((d) => d.total === 0)) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados no período
       </div>
     )
@@ -736,11 +705,7 @@ function MonthlyRevenueChart({
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
-        <CartesianGrid
-          vertical={false}
-          strokeDasharray="3 3"
-          stroke="hsl(var(--border) / 0.5)"
-        />
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
         <XAxis
           dataKey="label"
           tickLine={false}
@@ -753,9 +718,7 @@ function MonthlyRevenueChart({
           axisLine={false}
           width={48}
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-          tickFormatter={(v: number) =>
-            v >= 1000 ? `R$ ${(v / 1000).toFixed(0)}k` : `R$ ${v}`
-          }
+          tickFormatter={(v: number) => (v >= 1000 ? `R$ ${(v / 1000).toFixed(0)}k` : `R$ ${v}`)}
         />
         <RTooltip
           cursor={{ fill: "hsl(var(--accent) / 0.4)" }}
@@ -763,27 +726,16 @@ function MonthlyRevenueChart({
           labelFormatter={(l: string) => `Mês: ${l}`}
           contentStyle={TOOLTIP_STYLE}
         />
-        <Bar
-          dataKey="total"
-          radius={[4, 4, 0, 0]}
-          maxBarSize={36}
-          fill="hsl(var(--primary))"
-        />
+        <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={36} fill="hsl(var(--primary))" />
       </BarChart>
     </ResponsiveContainer>
   )
 }
 
-function MrrTrendChart({
-  data,
-  growth,
-}: {
-  data: MrrHistoryItem[]
-  growth: number
-}) {
+function MrrTrendChart({ data, growth }: { data: MrrHistoryItem[]; growth: number }) {
   if (data.length === 0 || data.every((d) => d.total === 0)) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados de MRR no período
       </div>
     )
@@ -798,11 +750,7 @@ function MrrTrendChart({
             <stop offset="95%" stopColor="hsl(270, 67%, 50%)" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid
-          vertical={false}
-          strokeDasharray="3 3"
-          stroke="hsl(var(--border) / 0.5)"
-        />
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
         <XAxis
           dataKey="label"
           tickLine={false}
@@ -815,9 +763,7 @@ function MrrTrendChart({
           axisLine={false}
           width={48}
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-          tickFormatter={(v: number) =>
-            v >= 1000 ? `R$ ${(v / 1000).toFixed(0)}k` : `R$ ${v}`
-          }
+          tickFormatter={(v: number) => (v >= 1000 ? `R$ ${(v / 1000).toFixed(0)}k` : `R$ ${v}`)}
         />
         <RTooltip
           formatter={(v: number) => [formatBRL(v), "MRR"]}
@@ -838,11 +784,7 @@ function MrrTrendChart({
   )
 }
 
-function MonthlyTicketChart({
-  data,
-}: {
-  data: MonthlyRevenue[]
-}) {
+function MonthlyTicketChart({ data }: { data: MonthlyRevenue[] }) {
   // Calculate ticket médio per month
   const ticketData = data
     .filter((d) => d.count > 0)
@@ -853,7 +795,7 @@ function MonthlyTicketChart({
 
   if (ticketData.length === 0) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados no período
       </div>
     )
@@ -862,11 +804,7 @@ function MonthlyTicketChart({
   return (
     <ResponsiveContainer width="100%" height={220}>
       <BarChart data={ticketData} margin={{ left: -12, right: 0, top: 8, bottom: 0 }}>
-        <CartesianGrid
-          vertical={false}
-          strokeDasharray="3 3"
-          stroke="hsl(var(--border) / 0.5)"
-        />
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
         <XAxis
           dataKey="label"
           tickLine={false}
@@ -879,13 +817,14 @@ function MonthlyTicketChart({
           axisLine={false}
           width={48}
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-          tickFormatter={(v: number) =>
-            v >= 1000 ? `R$ ${(v / 1000).toFixed(0)}k` : `R$ ${v}`
-          }
+          tickFormatter={(v: number) => (v >= 1000 ? `R$ ${(v / 1000).toFixed(0)}k` : `R$ ${v}`)}
         />
         <RTooltip
           cursor={{ fill: "hsl(var(--accent) / 0.4)" }}
-          formatter={(v: number, n: string) => [formatBRL(v), n === "average" ? "Ticket médio" : "Receita"]}
+          formatter={(v: number, n: string) => [
+            formatBRL(v),
+            n === "average" ? "Ticket médio" : "Receita",
+          ]}
           labelFormatter={(l: string) => `Mês: ${l}`}
           contentStyle={TOOLTIP_STYLE}
         />
@@ -901,14 +840,10 @@ function MonthlyTicketChart({
   )
 }
 
-function PaymentMethodChart({
-  data,
-}: {
-  data: MethodStat[]
-}) {
+function PaymentMethodChart({ data }: { data: MethodStat[] }) {
   if (data.length === 0 || data.every((d) => d.total === 0)) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados no período
       </div>
     )
@@ -949,12 +884,10 @@ function PaymentMethodChart({
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-lg font-bold tabular-nums text-foreground">
+          <span className="text-foreground text-lg font-bold tabular-nums">
             {formatBRL(totalValue)}
           </span>
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Total
-          </span>
+          <span className="text-muted-foreground text-[10px] tracking-wide uppercase">Total</span>
         </div>
       </div>
 
@@ -969,15 +902,13 @@ function PaymentMethodChart({
                 className="size-2.5 shrink-0 rounded-full"
                 style={{ backgroundColor: PIE_COLORS[method] ?? "hsl(var(--muted-foreground))" }}
               />
-              <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+              <span className="text-muted-foreground min-w-0 flex-1 text-xs">
                 {PAYMENT_METHOD_LABELS[method] ?? method}
               </span>
-              <span className="text-xs font-medium tabular-nums text-foreground">
+              <span className="text-foreground text-xs font-medium tabular-nums">
                 {formatBRL(d.total)}
               </span>
-              <span className="text-[11px] text-muted-foreground tabular-nums">
-                ({pct}%)
-              </span>
+              <span className="text-muted-foreground text-[11px] tabular-nums">({pct}%)</span>
             </li>
           )
         })}
@@ -1075,17 +1006,15 @@ function ProviderDetail({ providerId, period }: { providerId: string; period: Pe
   if (isLoading) {
     return (
       <div className="flex items-center justify-center gap-2 px-5 py-6">
-        <Loader2 className="size-4 animate-spin text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">
-          Carregando transações…
-        </span>
+        <Loader2 className="text-muted-foreground size-4 animate-spin" />
+        <span className="text-muted-foreground text-xs">Carregando transações…</span>
       </div>
     )
   }
 
   if (isError || !data) {
     return (
-      <div className="px-5 py-4 text-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground px-5 py-4 text-center text-xs">
         Não foi possível carregar as transações.
       </div>
     )
@@ -1093,48 +1022,48 @@ function ProviderDetail({ providerId, period }: { providerId: string; period: Pe
 
   if (data.transactions.length === 0) {
     return (
-      <div className="px-5 py-4 text-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground px-5 py-4 text-center text-xs">
         Nenhuma transação encontrada para este prestador no período.
       </div>
     )
   }
 
   return (
-    <div className="px-2 pb-3 pt-1">
-      <div className="overflow-x-auto rounded-lg border border-border/30">
+    <div className="px-2 pt-1 pb-3">
+      <div className="border-border/30 overflow-x-auto rounded-lg border">
         <Table>
           <TableHeader>
-            <TableRow className="h-9 bg-muted/30 hover:bg-muted/30">
-              <TableHead className="px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <TableRow className="bg-muted/30 hover:bg-muted/30 h-9">
+              <TableHead className="text-muted-foreground px-3 text-[10px] font-semibold tracking-wide uppercase">
                 Data
               </TableHead>
-              <TableHead className="px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <TableHead className="text-muted-foreground px-3 text-[10px] font-semibold tracking-wide uppercase">
                 Cliente
               </TableHead>
-              <TableHead className="hidden px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:table-cell">
+              <TableHead className="text-muted-foreground hidden px-3 text-[10px] font-semibold tracking-wide uppercase sm:table-cell">
                 Serviço
               </TableHead>
-              <TableHead className="px-3 text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <TableHead className="text-muted-foreground px-3 text-right text-[10px] font-semibold tracking-wide uppercase">
                 Valor
               </TableHead>
-              <TableHead className="px-3 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <TableHead className="text-muted-foreground px-3 text-[10px] font-semibold tracking-wide uppercase">
                 Método
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.transactions.map((tx) => (
-              <TableRow key={tx.id} className="h-10 transition-colors hover:bg-muted/20">
-                <TableCell className="px-3 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">
+              <TableRow key={tx.id} className="hover:bg-muted/20 h-10 transition-colors">
+                <TableCell className="text-muted-foreground px-3 text-[11px] whitespace-nowrap tabular-nums">
                   {formatDateShort(tx.createdAt)}
                 </TableCell>
                 <TableCell className="px-3 text-[11px] font-medium">
                   {tx.booking?.client?.name ?? "—"}
                 </TableCell>
-                <TableCell className="hidden max-w-[140px] truncate px-3 text-[11px] text-muted-foreground sm:table-cell">
+                <TableCell className="text-muted-foreground hidden max-w-[140px] truncate px-3 text-[11px] sm:table-cell">
                   {tx.booking?.service?.title ?? "—"}
                 </TableCell>
-                <TableCell className="px-3 whitespace-nowrap text-right text-[11px] font-semibold tabular-nums">
+                <TableCell className="px-3 text-right text-[11px] font-semibold whitespace-nowrap tabular-nums">
                   {formatBRL(tx.amount)}
                 </TableCell>
                 <TableCell className="px-3">
@@ -1148,10 +1077,10 @@ function ProviderDetail({ providerId, period }: { providerId: string; period: Pe
 
       {/* Mini summary */}
       <div className="flex items-center justify-end gap-4 px-3 pt-2">
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-muted-foreground text-[10px]">
           {data.summary.transactions} transação{data.summary.transactions !== 1 ? "ões" : ""}
         </span>
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-muted-foreground text-[10px]">
           Total: <span className="font-semibold">{formatBRL(data.summary.total)}</span>
         </span>
         <span className="text-[10px] text-amber-600 dark:text-amber-400">
@@ -1295,7 +1224,7 @@ function FinanceSkeleton() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-border/50 bg-card p-5">
+          <div key={i} className="border-border/50 bg-card rounded-xl border p-5">
             <div className="flex items-center justify-between">
               <Skeleton className="size-10 rounded-lg" />
               <Skeleton className="h-4 w-20" />
@@ -1310,7 +1239,7 @@ function FinanceSkeleton() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-border/50 bg-card">
+          <div key={i} className="border-border/50 bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
               <Skeleton className="h-4 w-44" />
             </div>
@@ -1321,7 +1250,7 @@ function FinanceSkeleton() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-border/50 bg-card">
+      <div className="border-border/50 bg-card rounded-xl border">
         <div className="border-b px-5 py-4">
           <Skeleton className="h-4 w-48" />
         </div>
