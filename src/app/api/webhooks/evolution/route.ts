@@ -126,10 +126,193 @@ export async function POST(request: Request) {
           "Webhook Evolution: mensagem recebida de usuário cadastrado",
         )
 
-        // TODO: rotear mensagem para o destinatário apropriado
-        // Por enquanto, apenas logamos a mensagem recebida
-        // No futuro: identificar destinatário via contexto da conversa
-        // e rotear para o chat correto
+        // ── Roteamento para o destinatário apropriado ────────────────
+        // Estratégia (4 níveis):
+        //   1. Booking  — se a mensagem contém #abc12345, extrai o ID
+        //      e roteia para a outra parte do agendamento.
+        //   2. Quote    — mesma lógica para solicitações de orçamento.
+        //   3. Último   — último contato no sistema de mensagens.
+        //      contato
+        //   4. Admin    — primeiro admin ativo como fallback.
+        // ──────────────────────────────────────────────────────────────
+
+        const refMatch = text.match(/#([a-zA-Z0-9]{6,12})/)
+        const ref = refMatch?.[1]
+        let recipientId: string | null = null
+        let bookingId: string | null = null
+
+        // ── 1. Tentar referência de booking ─────────────────────────
+        if (ref && !recipientId) {
+          try {
+            const booking = await db.booking.findFirst({
+              where: {
+                OR: [{ id: { startsWith: ref } }, { id: ref }],
+              },
+              select: { id: true, clientId: true, providerId: true },
+            })
+
+            if (booking) {
+              bookingId = booking.id
+              recipientId = booking.clientId === user.id ? booking.providerId : booking.clientId
+
+              evolutionLogger.debug(
+                { bookingId: booking.id, recipientId },
+                "Webhook Evolution: destinatário via referência de booking",
+              )
+            }
+          } catch {
+            evolutionLogger.warn(
+              { ref },
+              "Webhook Evolution: erro ao buscar booking por referência",
+            )
+          }
+        }
+
+        // ── 2. Tentar referência de quote request ──────────────────
+        if (ref && !recipientId) {
+          try {
+            const quote = await db.quoteRequest.findFirst({
+              where: {
+                OR: [{ id: { startsWith: ref } }, { id: ref }],
+              },
+              select: { id: true, clientId: true, providerId: true },
+            })
+
+            if (quote) {
+              recipientId = quote.clientId === user.id ? quote.providerId : quote.clientId
+
+              evolutionLogger.debug(
+                { quoteId: quote.id, recipientId },
+                "Webhook Evolution: destinatário via referência de quote",
+              )
+            }
+          } catch {
+            evolutionLogger.warn({ ref }, "Webhook Evolution: erro ao buscar quote por referência")
+          }
+        }
+
+        // ── 3. Último contato no sistema de mensagens ──────────────
+        if (!recipientId) {
+          try {
+            const lastMessage = await db.message.findFirst({
+              where: {
+                OR: [{ fromId: user.id }, { toId: user.id }],
+              },
+              orderBy: { createdAt: "desc" },
+              select: { fromId: true, toId: true },
+            })
+
+            if (lastMessage) {
+              recipientId = lastMessage.fromId === user.id ? lastMessage.toId : lastMessage.fromId
+
+              evolutionLogger.debug(
+                { recipientId },
+                "Webhook Evolution: destinatário via último contato",
+              )
+            }
+          } catch {
+            evolutionLogger.warn(
+              { userId: user.id },
+              "Webhook Evolution: erro ao buscar último contato",
+            )
+          }
+        }
+
+        // ── 4. Fallback: admin disponível ──────────────────────────
+        if (!recipientId) {
+          try {
+            const admin = await db.user.findFirst({
+              where: { role: "ADMIN", active: true },
+              select: { id: true },
+              orderBy: { createdAt: "asc" },
+            })
+
+            if (admin) {
+              recipientId = admin.id
+
+              evolutionLogger.info(
+                { recipientId },
+                "Webhook Evolution: destinatário fallback — admin",
+              )
+            }
+          } catch {
+            evolutionLogger.warn(
+              { userId: user.id },
+              "Webhook Evolution: erro ao buscar admin para fallback",
+            )
+          }
+        }
+
+        // ── Se ainda não tem destinatário, abortar ──────────────────
+        if (!recipientId) {
+          evolutionLogger.warn(
+            { userId: user.id },
+            "Webhook Evolution: não foi possível determinar destinatário — sem booking, quote, contato anterior ou admin disponível",
+          )
+          break
+        }
+
+        // ── Validar que o destinatário está ativo ───────────────────
+        try {
+          const recipientActive = await db.user.findUnique({
+            where: { id: recipientId },
+            select: { active: true },
+          })
+          if (!recipientActive?.active) {
+            evolutionLogger.warn(
+              { recipientId },
+              "Webhook Evolution: destinatário resolvido está inativo — mensagem descartada",
+            )
+            break
+          }
+        } catch {
+          evolutionLogger.warn({ recipientId }, "Webhook Evolution: erro ao validar destinatário")
+          break
+        }
+
+        // ── Persistir mensagem no banco ────────────────────────────
+        try {
+          await db.message.create({
+            data: {
+              fromId: user.id,
+              toId: recipientId,
+              content: text,
+              bookingId,
+              read: false,
+            },
+          })
+        } catch {
+          evolutionLogger.error(
+            { userId: user.id, recipientId },
+            "Webhook Evolution: falha ao persistir mensagem",
+          )
+          break
+        }
+
+        // ── Notificação in-app para o destinatário (best-effort) ───
+        await db.notification
+          .create({
+            data: {
+              userId: recipientId,
+              type: "MESSAGE",
+              title: `Nova mensagem de ${user.name}`,
+              body: text.length > 80 ? text.slice(0, 80) + "…" : text,
+              read: false,
+            },
+          })
+          .catch(() => {
+            /* ignore notification errors — best-effort */
+          })
+
+        evolutionLogger.info(
+          {
+            userId: user.id,
+            recipientId,
+            bookingId: bookingId ?? undefined,
+            contentLength: text.length,
+          },
+          "Webhook Evolution: mensagem roteada e persistida com sucesso",
+        )
 
         break
       }
@@ -138,10 +321,7 @@ export async function POST(request: Request) {
       case "connection.update": {
         const status = data?.instance?.status ?? "unknown"
 
-        evolutionLogger.info(
-          { instance, status },
-          "Webhook Evolution: atualização de conexão",
-        )
+        evolutionLogger.info({ instance, status }, "Webhook Evolution: atualização de conexão")
 
         if (status === "disconnected" || status === "error") {
           evolutionLogger.warn(
@@ -154,10 +334,7 @@ export async function POST(request: Request) {
       }
 
       default:
-        evolutionLogger.debug(
-          { event },
-          "Webhook Evolution: evento não tratado",
-        )
+        evolutionLogger.debug({ event }, "Webhook Evolution: evento não tratado")
     }
 
     return NextResponse.json({ received: true })

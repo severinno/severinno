@@ -29,7 +29,8 @@ export default function CompareBar() {
   // Each ProviderCard sets `data-compare-name`, `data-compare-avatar`,
   // `data-compare-distance` (formatted), and `data-compare-distance-km` (raw)
   // on the card root, so the bar can show chips without fetching.
-  const [providerInfo, setProviderInfo] = React.useState<
+  // Uses useMemo instead of useEffect + useState to avoid set-state-in-effect.
+  const providerInfo = React.useMemo<
     {
       id: string
       name: string
@@ -38,34 +39,27 @@ export default function CompareBar() {
       distanceKm?: number | null
       isClosest: boolean
     }[]
-  >([])
+  >(() => {
+    if (ids.length === 0) return []
 
-  React.useEffect(() => {
-    if (ids.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setProviderInfo([])
-      return
-    }
-
-    // Resolve from DOM
+    // Resolve from DOM (synchronous read — valid in useMemo for client components)
     const found: {
       id: string
       name: string
       avatarUrl?: string | null
       distance?: string | null
       distanceKm?: number | null
-    }[] = []
-    for (const id of ids) {
+    }[] = ids.map((id) => {
       const el = document.querySelector<HTMLElement>(`[data-provider-id="${id}"]`)
       const rawKm = el?.dataset.compareDistanceKm
-      found.push({
+      return {
         id,
         name: el?.dataset.compareName || "Prestador",
         avatarUrl: el?.dataset.compareAvatar || null,
         distance: el?.dataset.compareDistance || null,
         distanceKm: rawKm ? Number(rawKm) : null,
-      })
-    }
+      }
+    })
 
     // Compute closest among those with valid distance
     const validDistances = found.filter(
@@ -75,16 +69,14 @@ export default function CompareBar() {
     const minKm =
       validDistances.length > 0 ? Math.min(...validDistances.map((p) => p.distanceKm)) : null
 
-    setProviderInfo(
-      found.map((p) => ({
-        ...p,
-        isClosest:
-          minKm !== null &&
-          typeof p.distanceKm === "number" &&
-          Number.isFinite(p.distanceKm) &&
-          p.distanceKm === minKm,
-      })),
-    )
+    return found.map((p) => ({
+      ...p,
+      isClosest:
+        minKm !== null &&
+        typeof p.distanceKm === "number" &&
+        Number.isFinite(p.distanceKm) &&
+        p.distanceKm === minKm,
+    }))
   }, [ids])
 
   const canCompare = ids.length >= 2

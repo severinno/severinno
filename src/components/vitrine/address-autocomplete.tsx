@@ -137,12 +137,10 @@ export default function AddressAutocomplete({
 
   // Fetch results when debounced input changes
   // Checks cache first, then decides CEP vs Nominatim based on input.
+  // Cleanup for short/empty inputs is handled in the onChange handler to
+  // avoid calling setState inside useEffect (React anti-pattern).
   React.useEffect(() => {
     if (!debouncedInput || debouncedInput.length < 3) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setResults([])
-
-      setOpen(false)
       return
     }
 
@@ -395,7 +393,13 @@ export default function AddressAutocomplete({
         ref={inputRef}
         value={input}
         onChange={(e) => {
-          setInput(e.target.value)
+          const val = e.target.value
+          setInput(val)
+          // Close dropdown and clear stale results immediately when cleared
+          if (!val || val.trim().length < 3) {
+            setResults([])
+            setOpen(false)
+          }
         }}
         onFocus={() => {
           if (results.length > 0) setOpen(true)

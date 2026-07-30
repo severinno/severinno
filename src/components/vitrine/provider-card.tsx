@@ -79,10 +79,17 @@ export default function ProviderCard({
   const openAuth = useUIStore((s) => s.openAuth)
 
   // Optimistic favorite state (initialized from prop; synced if prop changes)
+  // Uses a ref-based guard to only call setFavorited when the prop actually
+  // changes, avoiding unnecessary set-state-in-effect renders.
   const [favorited, setFavorited] = React.useState<boolean>(!!favoritedProp)
+  const prevFavoritedProp = React.useRef<boolean>(!!favoritedProp)
+
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setFavorited(!!favoritedProp)
+    const next = !!favoritedProp
+    if (prevFavoritedProp.current !== next) {
+      prevFavoritedProp.current = next
+      setFavorited(next)
+    }
   }, [favoritedProp])
 
   const coverUrl = provider.coverUrl || `https://picsum.photos/seed/provider-${provider.id}/800/450`
