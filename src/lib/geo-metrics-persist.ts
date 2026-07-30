@@ -75,6 +75,20 @@ const FILE_PREFIX = "snap-"
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let pendingSnapshot: PersistedSnapshot | null = null
 
+// ── Module-level cache for loadPersistedSnapshots ────────────────────────
+// Prevents reading + parsing up to 1000 files on every API request.
+// Invalidated when a new snapshot is written to disk.
+
+/** Cache TTL in ms. After this, the next call re-reads from disk. */
+const CACHE_TTL_MS = 10_000
+
+interface SnapshotCache {
+  data: PersistedSnapshot[]
+  cachedAt: number
+}
+
+let snapshotsCache: SnapshotCache | null = null
+
 // ---------------------------------------------------------------------------
 // Directory management
 // ---------------------------------------------------------------------------
@@ -101,11 +115,16 @@ function parseSnapshotFileName(name: string): number | null {
  * Save a single snapshot to disk.
  * Path: {SNAPSHOTS_DIR}/snap-{timestamp}.json
  */
+function invalidateSnapshotsCache(): void {
+  snapshotsCache = null
+}
+
 function writeSnapshot(snapshot: PersistedSnapshot): void {
   try {
     ensureDir()
     const filePath = join(SNAPSHOTS_DIR, `${FILE_PREFIX}${snapshot.timestamp}.json`)
     writeFileSync(filePath, JSON.stringify(snapshot), "utf-8")
+    invalidateSnapshotsCache()
   } catch (err) {
     logger.error({ err }, "geo-metrics-persist: failed to write snapshot")
   }
@@ -137,6 +156,8 @@ function rotateOldSnapshots(): void {
         // best-effort
       }
     }
+
+    invalidateSnapshotsCache()
 
     logger.info(
       { deleted: toDelete.length, remaining: MAX_SNAPSHOTS },
@@ -180,8 +201,17 @@ export function persistSnapshot(snapshot: PersistedSnapshot): void {
 /**
  * Load all historical snapshots from disk, sorted chronologically (oldest first).
  * Called on server startup to hydrate the in-memory ring buffer.
+ *
+ * Results are cached at the module level for CACHE_TTL_MS to avoid
+ * reading + parsing up to 1000 files on every API request. The cache is
+ * invalidated whenever a snapshot is written or deleted.
  */
 export function loadPersistedSnapshots(): PersistedSnapshot[] {
+  // Return cached data if still fresh
+  if (snapshotsCache && Date.now() - snapshotsCache.cachedAt < CACHE_TTL_MS) {
+    return snapshotsCache.data
+  }
+
   try {
     ensureDir()
     const entries = readdirSync(SNAPSHOTS_DIR, { withFileTypes: true })
@@ -216,7 +246,13 @@ export function loadPersistedSnapshots(): PersistedSnapshot[] {
       }
     }
 
-    logger.info({ loaded: snapshots.length }, "geo-metrics-persist: loaded historical snapshots")
+    logger.info(
+      { loaded: snapshots.length, cacheTTL: `${CACHE_TTL_MS}ms` },
+      "geo-metrics-persist: loaded historical snapshots",
+    )
+
+    // Store in cache
+    snapshotsCache = { data: snapshots, cachedAt: Date.now() }
 
     return snapshots
   } catch (err) {
@@ -224,6 +260,40 @@ export function loadPersistedSnapshots(): PersistedSnapshot[] {
     return []
   }
 }
+
+// ── Graceful shutdown: flush pending snapshot on SIGINT/SIGTERM ─────────
+// Ensures the most recent metrics are persisted before the process exits.
+// Follows the same pattern as geo-query-log.ts.
+
+/**
+ * Immediately flush any pending snapshot, skipping the debounce timer.
+ * Safe to call multiple times — writes at most once.
+ */
+export function flushGeoMetrics(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
+  }
+  if (pendingSnapshot) {
+    writeSnapshot(pendingSnapshot)
+    rotateOldSnapshots()
+    pendingSnapshot = null
+  }
+  // Always invalidate cache — even when there's no pending snapshot,
+  // external writes (e.g. historical snapshots placed directly on disk)
+  // must be visible on the next loadPersistedSnapshots() call.
+  invalidateSnapshotsCache()
+}
+
+function setupShutdownHandlers(): void {
+  const handler = () => {
+    flushGeoMetrics()
+  }
+  process.on("SIGINT", handler)
+  process.on("SIGTERM", handler)
+}
+
+setupShutdownHandlers()
 
 // ---------------------------------------------------------------------------
 // Diagnostics

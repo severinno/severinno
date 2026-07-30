@@ -351,6 +351,33 @@ describe("checkGeoPerformance", () => {
   })
 
   // ═══════════════════════════════════════════════════════════════════════
+  // 9. Edge case — P95 exactly equal to threshold (not degraded)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  it("returns not degraded when P95 equals threshold exactly (>= vs >)", () => {
+    // ViaCEP threshold is 500 (2 × 250).  P95 === threshold exactly.
+    // The guard uses strict `p95 > threshold`, not `p95 >= threshold`,
+    // so equality must NOT trigger degradation.
+    mockGM().mockReturnValue(makeGeoMetrics({ nominatim: 100, viacep: 500, postgis: 10 }))
+    mockCB().mockReturnValue(makeBaselines())
+
+    const results = checkGeoPerformance()
+
+    const via = results.find((r) => r.p95 === 500)!
+    expect(via.p95).toBe(500)
+    expect(via.threshold).toBe(500)
+    // Strict >, not >= → P95 equal to threshold is NOT degraded
+    expect(via.degraded).toBe(false)
+    expect(via.alerted).toBe(false)
+    expect(via.recovered).toBe(false)
+    expect(mockNA()).not.toHaveBeenCalled()
+
+    // Confirm other services still work as expected
+    expect(results.find((r) => r.p95 === 100)!.degraded).toBe(false)
+    expect(results.find((r) => r.p95 === 10)!.degraded).toBe(false)
+  })
+
+  // ═══════════════════════════════════════════════════════════════════════
   // 8. Missing service metrics — returns empty result
   // ═══════════════════════════════════════════════════════════════════════
 

@@ -53,6 +53,7 @@ import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { ErrorState } from "@/components/admin/admin-shared"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 
 import type { GeoMetricsResponse } from "@/app/api/admin/geo-metrics/route"
 import {
@@ -70,17 +71,6 @@ import {
   modelPostGISFullMs,
   modelDelta,
 } from "@/lib/geo-benchmark-model"
-
-// ── P95 Baseline thresholds (ms) — derived from geo-benchmark.json ───────
-// These represent the expected healthy P95 for each geo service.
-// 2x this value triggers a visual alert on the dashboard.
-// Values based on: typical external API latency (Nominatim, ViaCEP) and
-// the PostGIS model from the benchmark (~10ms compute + small network overhead).
-const P95_BASELINE_MS: Record<string, number> = {
-  nominatim: 400,
-  viacep: 250,
-  postgis: 30,
-}
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
 
@@ -152,7 +142,7 @@ export function AdminGeoMetricsDashboard() {
     return <GeoSkeleton />
   }
 
-  const { services, windowSeconds, labels } = data
+  const { services, windowSeconds, labels, baselines = {} } = data
 
   // Build chart data for each service
   type ServiceChartItem = {
@@ -184,7 +174,7 @@ export function AdminGeoMetricsDashboard() {
 
   // P95 vs baseline alert: which services are exceeding 2x baseline?
   const exceededServices = Object.entries(services).filter(([key, metrics]) => {
-    const baseline = P95_BASELINE_MS[key]
+    const baseline = baselines[key]
     return baseline != null && metrics.p95 > baseline * 2
   })
   const hasExceeded = exceededServices.length > 0
@@ -205,7 +195,7 @@ export function AdminGeoMetricsDashboard() {
             <p className="mt-0.5 text-xs text-red-700 dark:text-red-400">
               {exceededServices
                 .map(([key, metrics]) => {
-                  const baseline = P95_BASELINE_MS[key]
+                  const baseline = baselines[key]
                   const threshold = Math.round(baseline * 2)
                   return `${labels[key] ?? key}: ${Math.round(metrics.p95)}ms (limiar: ${threshold}ms)`
                 })
@@ -317,9 +307,9 @@ export function AdminGeoMetricsDashboard() {
                   ]}
                 />
                 {/* Reference line: 2x P95 baseline for the top-most service */}
-                {sortedByP95.length > 0 && P95_BASELINE_MS[sortedByP95[0]!.key] != null && (
+                {sortedByP95.length > 0 && baselines[sortedByP95[0]!.key] != null && (
                   <ReferenceLine
-                    x={Math.round(P95_BASELINE_MS[sortedByP95[0]!.key]! * 2)}
+                    x={Math.round(baselines[sortedByP95[0]!.key]! * 2)}
                     stroke="hsl(0, 72%, 51%)"
                     strokeDasharray="4 4"
                     strokeWidth={2}
@@ -402,7 +392,7 @@ export function AdminGeoMetricsDashboard() {
         {Object.entries(services).map(([key, metrics]) => {
           const Icon = SERVICE_ICONS[key] ?? Globe
           const isHealthy = metrics.errorRate < 0.05 && metrics.count > 0
-          const baseline = P95_BASELINE_MS[key]
+          const baseline = baselines[key]
           const p95Exceeded = baseline != null && metrics.p95 > baseline * 2
           return (
             <div
@@ -432,7 +422,48 @@ export function AdminGeoMetricsDashboard() {
                   <p className="text-muted-foreground text-[11px]">{SERVICE_DESC[key] ?? ""}</p>
                 </div>
                 {p95Exceeded ? (
-                  <Bell className="size-4 shrink-0 text-red-500" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex cursor-pointer items-center justify-center"
+                        aria-label="Detalhes do alerta P95"
+                      >
+                        <Bell className="size-4 shrink-0 text-red-500" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" align="end" className="max-w-[260px] space-y-1.5">
+                      <p className="font-semibold">🔔 P95 excedeu 2× baseline</p>
+                      <div className="text-muted-foreground space-y-1 text-[11px]">
+                        <p>
+                          <span className="text-foreground font-medium">Baseline:</span>{" "}
+                          {baseline != null ? `${Math.round(baseline)}ms` : "—"}
+                          {" → "}2× limiar:{" "}
+                          <span className="font-medium text-red-500">
+                            {baseline != null ? `${Math.round(baseline * 2)}ms` : "—"}
+                          </span>
+                        </p>
+                        <p>
+                          <span className="text-foreground font-medium">P95 atual:</span>{" "}
+                          <span className="font-medium text-red-500">
+                            {Math.round(metrics.p95)}ms
+                          </span>
+                        </p>
+                        <p>
+                          <span className="text-foreground font-medium">Excedente:</span>{" "}
+                          {baseline != null
+                            ? `${Math.round(metrics.p95 - baseline * 2)}ms acima do limiar`
+                            : "—"}
+                        </p>
+                        <p>
+                          <span className="text-foreground font-medium">Última amostra:</span>{" "}
+                          {metrics.lastSampleAt
+                            ? new Date(metrics.lastSampleAt).toLocaleString("pt-BR")
+                            : "—"}
+                        </p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
                 ) : isHealthy ? (
                   <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
                 ) : (
@@ -501,7 +532,11 @@ export function AdminGeoMetricsDashboard() {
       {data.benchmark != null &&
         "comparisons" in data.benchmark &&
         data.benchmark.comparisons.length > 0 && (
-          <GiSTSelectivitySection benchmark={data.benchmark} history={data.history} />
+          <GiSTSelectivitySection
+            benchmark={data.benchmark}
+            history={data.history}
+            baselines={baselines}
+          />
         )}
 
       {/* ── Benchmark Comparison ──────────────────────────────────── */}
@@ -511,7 +546,7 @@ export function AdminGeoMetricsDashboard() {
 
       {/* ── Historical Evolution (P50/P95/P99 timeline) ───────────── */}
       {data.history != null && data.history.length > 1 && (
-        <TimelineSection history={data.history} labels={data.labels} />
+        <TimelineSection history={data.history} labels={data.labels} baselines={baselines} />
       )}
 
       {/* ── Info note ────────────────────────────────────────────────── */}
@@ -737,15 +772,17 @@ function BenchmarkSection({
 function TimelineSection({
   history,
   labels,
+  baselines,
 }: {
   history: NonNullable<GeoMetricsResponse["history"]>
   labels: Record<string, string>
+  baselines: Record<string, number>
 }) {
   // Compute the 2x P95 baseline per service for the ReferenceLine
   const baselineThresholds = Object.keys(history[0]?.services ?? {}).reduce<
     Record<string, number | null>
   >((acc, svc) => {
-    const bl = P95_BASELINE_MS[svc]
+    const bl = baselines[svc]
     acc[svc] = bl != null ? Math.round(bl * 2) : null
     return acc
   }, {})
@@ -892,9 +929,11 @@ function TimelineSection({
 function GiSTSelectivitySection({
   benchmark,
   history,
+  baselines,
 }: {
   benchmark: NonNullable<GeoMetricsResponse["benchmark"]>
   history: NonNullable<GeoMetricsResponse["history"]> | null
+  baselines: Record<string, number>
 }) {
   // Use benchmark's avgHaversinePerProvider (dynamic, changes per run)
   const haversinePerProviderUs =
@@ -904,6 +943,7 @@ function GiSTSelectivitySection({
 
   // ── Radius slider state ────────────────────────────────────────────
   const [radiusKm, setRadiusKm] = React.useState(15)
+  const [useLogScale, setUseLogScale] = React.useState(true)
   const densityLabel = "SP (~10/km²)"
 
   // Compute selectivity from selected radius
@@ -1007,6 +1047,30 @@ function GiSTSelectivitySection({
 
       {/* Main chart: selectivity vs latency */}
       <MetricCard icon={LineChartIcon} title="Custo por Seletividade (ms)">
+        {/* Scale toggle */}
+        <div className="flex items-center justify-end gap-2 px-1 pb-3">
+          <span className="text-muted-foreground text-[10px]">
+            Escala: {useLogScale ? "Log" : "Linear"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setUseLogScale((prev) => !prev)}
+            className={cn(
+              "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors",
+              useLogScale ? "bg-primary border-primary" : "bg-muted border-border",
+            )}
+            role="switch"
+            aria-checked={useLogScale}
+            aria-label="Alternar escala Log/Linear"
+          >
+            <span
+              className={cn(
+                "inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform",
+                useLogScale ? "translate-x-[18px]" : "translate-x-[2px]",
+              )}
+            />
+          </button>
+        </div>
         <div className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={selectivityPoints} margin={{ left: 8, right: 8, top: 16, bottom: 8 }}>
@@ -1033,8 +1097,8 @@ function GiSTSelectivitySection({
                   position: "insideLeft",
                   style: { fontSize: 10, fill: "hsl(var(--muted-foreground))" },
                 }}
-                scale="log"
-                domain={["auto", "auto"]}
+                scale={useLogScale ? "log" : "linear"}
+                domain={useLogScale ? ["auto", "auto"] : [0, "auto"]}
               />
               <RTooltip
                 contentStyle={TOOLTIP_STYLE}
@@ -1054,7 +1118,15 @@ function GiSTSelectivitySection({
                     bench_pg_1000: "PostGIS full scan medido (1k)",
                     bench_pg_10000: "PostGIS full scan medido (10k)",
                   }
-                  return [`${v.toFixed(v < 1 ? 2 : 1)}ms`, labelMap[n] ?? n]
+                  const label = labelMap[n] ?? n
+                  // For PostGIS filtered (model) lines, show delta vs real P95
+                  let deltaStr = ""
+                  if (n.startsWith("pg_") && hasP95Data && v > 0) {
+                    const delta = p95Mean - v
+                    const sign = delta >= 0 ? "+" : ""
+                    deltaStr = `  ·  P95 real ${sign}${delta.toFixed(1)}ms vs modelo`
+                  }
+                  return [`${v.toFixed(v < 1 ? 2 : 1)}ms${deltaStr}`, label]
                 }}
               />
               <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} iconSize={8} />
@@ -1149,6 +1221,23 @@ function GiSTSelectivitySection({
                     </>
                   )}
                 </>
+              )}
+
+              {/* 2× baseline reference line for PostGIS — shows alert threshold */}
+              {baselines["postgis"] != null && (
+                <ReferenceLine
+                  y={Math.round(baselines["postgis"]! * 2)}
+                  stroke="hsl(0, 72%, 51%)"
+                  strokeDasharray="6 3"
+                  strokeWidth={2}
+                  label={{
+                    value: `2× baseline PostGIS (${Math.round(baselines["postgis"]! * 2)}ms)`,
+                    position: "right",
+                    fill: "hsl(0, 72%, 51%)",
+                    fontSize: 10,
+                    fontWeight: 600,
+                  }}
+                />
               )}
 
               {/* Reference line at selected radius selectivity (snapped to 5%) */}
