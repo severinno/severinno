@@ -589,18 +589,14 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
 
   it("falls back to Haversine distance when PostGIS is unavailable and radius is specified", async () => {
     // Use mockResolvedValueOnce so the default true is restored after this test
-    vi.mocked(isPostGISAvailable)
-      .mockResolvedValueOnce(false)(
-        // Phase 1: Count + IDs without spatial filter (non-PostGIS path)
-        // @ts-expect-error DeepMockProxy $queryRawUnsafe type resolution edge case
-        (db as any).$queryRawUnsafe as any,
-      )
-      .mockImplementation((sql: string) => {
-        if (sql.includes("COUNT")) {
-          return Promise.resolve([{ total: BigInt(2) }])
-        }
-        return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }])
-      })
+    vi.mocked(isPostGISAvailable).mockResolvedValueOnce(false)
+    // Phase 1: Count + IDs without spatial filter (non-PostGIS path)
+    ;((db as any).$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("COUNT")) {
+        return Promise.resolve([{ total: BigInt(2) }])
+      }
+      return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }])
+    })
 
     vi.mocked(db.service.findMany as any).mockResolvedValue([
       {

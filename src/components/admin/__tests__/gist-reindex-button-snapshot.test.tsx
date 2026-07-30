@@ -53,7 +53,11 @@ vi.mock("sonner", async () => {
 // ===========================================================================
 
 import type { FetchResponseFn } from "./mocks"
-import { buildReindexSuccessResponse, clickExecuteReindex } from "./mocks"
+import {
+  buildReindexSuccessResponse,
+  clickExecuteReindex,
+  DEFAULT_GIST_REINDEX_PROPS,
+} from "./mocks"
 
 let mockFetchResponse: FetchResponseFn
 
@@ -85,7 +89,7 @@ describe("GistReindexButton — snapshot dos 4 estados visuais", () => {
   // ── 1. Initial ────────────────────────────────────────────────────
 
   it("1. estado inicial — botão 'Executar REINDEX', sem indicador", () => {
-    const { asFragment } = render(<GistReindexButton />)
+    const { asFragment } = render(<GistReindexButton {...DEFAULT_GIST_REINDEX_PROPS} />)
 
     // Sanity: botão renderizado, sem indicadores
     expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
@@ -101,7 +105,7 @@ describe("GistReindexButton — snapshot dos 4 estados visuais", () => {
     // Fetch nunca resolve para manter estado de loading
     mockFetchResponse = () => new Promise(() => {})
 
-    const { asFragment } = render(<GistReindexButton />)
+    const { asFragment } = render(<GistReindexButton {...DEFAULT_GIST_REINDEX_PROPS} />)
 
     // Abrir AlertDialog e clicar em confirmar → dispara fetch (nunca resolve)
     fireEvent.click(screen.getByText("Executar REINDEX"))
@@ -119,7 +123,7 @@ describe("GistReindexButton — snapshot dos 4 estados visuais", () => {
   // ── 3. Sucesso ────────────────────────────────────────────────────
 
   it("3. sucesso — indicador verde com resultado da API", async () => {
-    const { asFragment } = render(<GistReindexButton />)
+    const { asFragment } = render(<GistReindexButton {...DEFAULT_GIST_REINDEX_PROPS} />)
     await clickExecuteReindex()
 
     // Sanity: resultado verde, botão voltou ao normal
@@ -133,7 +137,9 @@ describe("GistReindexButton — snapshot dos 4 estados visuais", () => {
   // ── 4. Refetching ─────────────────────────────────────────────────
 
   it("4. isRefetching — indicador 'Atualizando métricas…' com spinner, botão inalterado", () => {
-    const { asFragment } = render(<GistReindexButton isRefetching={true} />)
+    const { asFragment } = render(
+      <GistReindexButton {...DEFAULT_GIST_REINDEX_PROPS} isRefetching={true} />,
+    )
 
     // Sanity: botão normal + indicador de refetch
     expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()

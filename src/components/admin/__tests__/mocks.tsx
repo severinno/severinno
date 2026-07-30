@@ -203,6 +203,19 @@ export const DEFAULT_GIST_DEGRADATION_PROPS = {
 }
 
 // ===========================================================================
+// GistReindexButton — shared default props for tests
+// ===========================================================================
+
+/**
+ * Default props for rendering GistReindexButton in a test.
+ * Both props are optional in the component, so the default is empty.
+ * Exporting this constant lets tests override specific fields via spread:
+ *
+ *   render(<GistReindexButton {...DEFAULT_GIST_REINDEX_PROPS} isRefetching={true} />)
+ */
+export const DEFAULT_GIST_REINDEX_PROPS: Record<string, never> = {}
+
+// ===========================================================================
 // Helper: click through the full REINDEX flow
 // ===========================================================================
 

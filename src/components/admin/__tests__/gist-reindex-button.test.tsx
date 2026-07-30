@@ -63,6 +63,7 @@ import {
   buildReindexFailureResponse,
   buildReindexSlowResponse,
   clickExecuteReindex,
+  DEFAULT_GIST_REINDEX_PROPS,
 } from "./mocks"
 
 let mockFetchResponse: FetchResponseFn
@@ -71,9 +72,11 @@ let mockFetchResponse: FetchResponseFn
 // Helpers
 // ===========================================================================
 
-/** Render the component with the given props. */
-function renderButton(props: Partial<React.ComponentProps<typeof GistReindexButton>> = {}) {
-  return render(<GistReindexButton {...props} />)
+/** Render the component with the given props, merged over DEFAULT_GIST_REINDEX_PROPS. */
+function renderButton(
+  props: Partial<React.ComponentProps<typeof GistReindexButton>> = DEFAULT_GIST_REINDEX_PROPS,
+) {
+  return render(<GistReindexButton {...DEFAULT_GIST_REINDEX_PROPS} {...props} />)
 }
 
 // ===========================================================================
