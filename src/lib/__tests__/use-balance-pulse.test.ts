@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { renderHook, act } from "@testing-library/react"
+import { renderHook, act } from "@/__tests__/test-utils"
 
 import { useBalancePulse } from "../use-balance-pulse"
 
@@ -154,14 +154,18 @@ describe("useBalancePulse", () => {
     expect(onIncrease).toHaveBeenCalledTimes(1)
 
     // Reset pulse timer so next increase doesn't overlap
-    act(() => { vi.advanceTimersByTime(800) })
+    act(() => {
+      vi.advanceTimersByTime(800)
+    })
     // isPulsing should now be false
     expect(result.current.isPulsing).toBe(false)
 
     rerender({ bal: 100 })
     expect(onIncrease).toHaveBeenCalledTimes(2)
 
-    act(() => { vi.advanceTimersByTime(800) })
+    act(() => {
+      vi.advanceTimersByTime(800)
+    })
     expect(result.current.isPulsing).toBe(false)
 
     rerender({ bal: 200 })
@@ -181,7 +185,9 @@ describe("useBalancePulse", () => {
     expect(result.current.isPulsing).toBe(true)
 
     // Second increase before timer expires → timer restarts
-    act(() => { vi.advanceTimersByTime(400) }) // half of 800ms
+    act(() => {
+      vi.advanceTimersByTime(400)
+    }) // half of 800ms
     rerender({ bal: 200 })
     expect(onIncrease).toHaveBeenCalledTimes(2)
     expect(result.current.isPulsing).toBe(true)
@@ -189,11 +195,15 @@ describe("useBalancePulse", () => {
     // If the old timer had not been cleared, isPulsing would reset now
     // (800ms from first increase). But since it was restarted ~400ms ago,
     // isPulsing should stay true for another ~400ms.
-    act(() => { vi.advanceTimersByTime(400) })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
     expect(result.current.isPulsing).toBe(true) // still pulsing (new timer)
 
     // Advance past the new timer (800ms from second increase)
-    act(() => { vi.advanceTimersByTime(400 + 50) })
+    act(() => {
+      vi.advanceTimersByTime(400 + 50)
+    })
     expect(result.current.isPulsing).toBe(false)
   })
 
@@ -208,10 +218,14 @@ describe("useBalancePulse", () => {
     rerender({ bal: 100 })
     expect(result.current.isPulsing).toBe(true)
 
-    act(() => { vi.advanceTimersByTime(250) })
+    act(() => {
+      vi.advanceTimersByTime(250)
+    })
     expect(result.current.isPulsing).toBe(true) // still pulsing
 
-    act(() => { vi.advanceTimersByTime(100) }) // 350ms total → past 300ms
+    act(() => {
+      vi.advanceTimersByTime(100)
+    }) // 350ms total → past 300ms
     expect(result.current.isPulsing).toBe(false)
   })
 

@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, cleanup } from "@testing-library/react"
+import { render, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Mocks ─────────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ afterEach(cleanup)
 
 describe("NotificationPreferences — accessibility", () => {
   it("has no axe violations in loading state", async () => {
-    (vi.mocked(useQuery) as any).mockReturnValueOnce({
+    ;(vi.mocked(useQuery) as any).mockReturnValueOnce({
       data: undefined,
       isLoading: true,
     })
@@ -123,11 +123,23 @@ describe("NotificationPreferences — accessibility", () => {
   })
 
   it("has no axe violations with preferences loaded", async () => {
-    (vi.mocked(useQuery) as any).mockReturnValueOnce({
+    ;(vi.mocked(useQuery) as any).mockReturnValueOnce({
       data: {
         preferences: [
-          { type: "BOOKING_CONFIRMED", pushEnabled: true, emailEnabled: true, whatsappEnabled: false, soundEnabled: true },
-          { type: "MESSAGE", pushEnabled: true, emailEnabled: false, whatsappEnabled: true, soundEnabled: false },
+          {
+            type: "BOOKING_CONFIRMED",
+            pushEnabled: true,
+            emailEnabled: true,
+            whatsappEnabled: false,
+            soundEnabled: true,
+          },
+          {
+            type: "MESSAGE",
+            pushEnabled: true,
+            emailEnabled: false,
+            whatsappEnabled: true,
+            soundEnabled: false,
+          },
         ],
       },
       isLoading: false,

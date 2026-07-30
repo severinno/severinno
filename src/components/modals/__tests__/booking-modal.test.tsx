@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 import { BookingModal } from "../booking-modal"
-import {
-  createMockAuthStore,
-  createMockUIStore,
-  createMockViewStore,
-} from "./test-utils"
+import { createMockAuthStore, createMockUIStore, createMockViewStore } from "./test-utils"
 import * as React from "react"
 
 afterEach(cleanup)
@@ -23,30 +19,26 @@ const mockViewStore = createMockViewStore()
 // -----------------------------------------------------------------------
 
 vi.mock("@/store/ui", () => ({
-  useUIStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockUIStore),
-    { getState: () => mockUIStore },
-  ),
+  useUIStore: Object.assign((selector: (s: any) => unknown) => selector(mockUIStore), {
+    getState: () => mockUIStore,
+  }),
 }))
 
 vi.mock("@/store/auth", () => ({
-  useAuthStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockAuthStore),
-    { getState: () => mockAuthStore },
-  ),
+  useAuthStore: Object.assign((selector: (s: any) => unknown) => selector(mockAuthStore), {
+    getState: () => mockAuthStore,
+  }),
 }))
 
 vi.mock("@/store/view", () => ({
-  useViewStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockViewStore),
-    { getState: () => mockViewStore },
-  ),
+  useViewStore: Object.assign((selector: (s: any) => unknown) => selector(mockViewStore), {
+    getState: () => mockViewStore,
+  }),
 }))
 
 vi.mock("@/store/geo", () => ({
   useGeoStore: Object.assign(
-    (selector: (s: any) => unknown) =>
-      selector({ setFromGPS: vi.fn(), lat: null, lng: null }),
+    (selector: (s: any) => unknown) => selector({ setFromGPS: vi.fn(), lat: null, lng: null }),
     { getState: () => ({ lat: null, lng: null }) },
   ),
 }))
@@ -83,24 +75,20 @@ vi.mock("@/hooks/use-mobile", () => ({
 
 // Dialog mock – controlled by open prop
 vi.mock("@/components/ui/dialog", () => ({
-  Dialog: ({ children, open }: any) =>
-    open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({ children, open }: any) => (open ? <div data-testid="dialog">{children}</div> : null),
   DialogContent: ({ children, className }: any) => (
     <div data-testid="dialog-content" className={className}>
       {children}
     </div>
   ),
   DialogHeader: ({ children }: any) => <>{children}</>,
-  DialogTitle: ({ children }: any) => (
-    <h2 data-testid="dialog-title">{children}</h2>
-  ),
+  DialogTitle: ({ children }: any) => <h2 data-testid="dialog-title">{children}</h2>,
   DialogDescription: ({ children }: any) => <p>{children}</p>,
 }))
 
 // Sheet mock (used on mobile)
 vi.mock("@/components/ui/sheet", () => ({
-  Sheet: ({ children, open }: any) =>
-    open ? <div data-testid="sheet">{children}</div> : null,
+  Sheet: ({ children, open }: any) => (open ? <div data-testid="sheet">{children}</div> : null),
   SheetContent: ({ children }: any) => <div>{children}</div>,
   SheetHeader: ({ children }: any) => <>{children}</>,
   SheetTitle: ({ children }: any) => <h2>{children}</h2>,
@@ -145,10 +133,7 @@ vi.mock("@/components/ui/separator", () => ({
 vi.mock("@/components/ui/calendar", () => ({
   Calendar: ({ onSelect }: any) => (
     <div data-testid="calendar">
-      <button
-        data-testid="calendar-select"
-        onClick={() => onSelect?.(new Date(2026, 6, 20))}
-      >
+      <button data-testid="calendar-select" onClick={() => onSelect?.(new Date(2026, 6, 20))}>
         Select Date
       </button>
     </div>
@@ -180,12 +165,8 @@ vi.mock("@/components/ui/radio-group", () => ({
 // Avatar
 vi.mock("@/components/ui/avatar", () => ({
   Avatar: ({ children }: any) => <div data-testid="avatar">{children}</div>,
-  AvatarImage: ({ src, alt }: any) => (
-    <img src={src} alt={alt} data-testid="avatar-image" />
-  ),
-  AvatarFallback: ({ children }: any) => (
-    <span data-testid="avatar-fallback">{children}</span>
-  ),
+  AvatarImage: ({ src, alt }: any) => <img src={src} alt={alt} data-testid="avatar-image" />,
+  AvatarFallback: ({ children }: any) => <span data-testid="avatar-fallback">{children}</span>,
 }))
 
 // ScrollArea
@@ -213,21 +194,25 @@ vi.mock("@/components/ui/select", () => ({
     </div>
   ),
   SelectTrigger: ({ children, ...p }: any) => {
-    const Trigger = (props: any) => <button data-testid="select-trigger" {...props}>{props.children}</button>
+    const Trigger = (props: any) => (
+      <button data-testid="select-trigger" {...props}>
+        {props.children}
+      </button>
+    )
     Trigger.displayName = "SelectTrigger"
     return <Trigger {...p}>{children}</Trigger>
   },
-  SelectContent: ({ children }: any) => (
-    <div data-testid="select-content">{children}</div>
-  ),
+  SelectContent: ({ children }: any) => <div data-testid="select-content">{children}</div>,
   SelectItem: ({ value, children }: any) => {
-    const Item = (props: any) => <button data-testid="select-item" data-value={props.value}>{props.children}</button>
+    const Item = (props: any) => (
+      <button data-testid="select-item" data-value={props.value}>
+        {props.children}
+      </button>
+    )
     Item.displayName = "SelectItem"
     return <Item value={value}>{children}</Item>
   },
-  SelectValue: ({ placeholder }: any) => (
-    <span data-testid="select-value">{placeholder}</span>
-  ),
+  SelectValue: ({ placeholder }: any) => <span data-testid="select-value">{placeholder}</span>,
 }))
 
 // API functions
@@ -251,9 +236,7 @@ vi.mock("@/lib/constants", () => ({
 
 // Format helpers – re-export real date-fns so dates display correctly
 vi.mock("@/lib/format", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/format")>(
-    "@/lib/format",
-  )
+  const actual = await vi.importActual<typeof import("@/lib/format")>("@/lib/format")
   return {
     formatBRL: actual.formatBRL,
     formatDate: actual.formatDate,
@@ -389,7 +372,7 @@ describe("BookingModal — rendering", () => {
     const dialogs = screen.getAllByTestId("dialog")
     expect(dialogs.length).toBeGreaterThan(0)
     const titles = screen.getAllByTestId("dialog-title")
-    expect(titles.find(t => t.textContent === "Agendar serviço")).toBeDefined()
+    expect(titles.find((t) => t.textContent === "Agendar serviço")).toBeDefined()
     // Steps
     expect(screen.getByText("Agenda")).toBeInTheDocument()
     expect(screen.getByText("Detalhes")).toBeInTheDocument()

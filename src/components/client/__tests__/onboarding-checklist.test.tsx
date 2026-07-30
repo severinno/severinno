@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Hoisted shared state (avoids vi.mock hoisting TDZ) --------------------
@@ -40,7 +40,11 @@ const { mockState, mockApiPatch } = vi.hoisted(() => {
 
 vi.mock("@/store/auth", () => ({
   useAuthStore: vi.fn(
-    (selector?: (s: { user: { id: string; soundEnabled?: boolean; vibrateEnabled?: boolean } | null }) => unknown) => {
+    (
+      selector?: (s: {
+        user: { id: string; soundEnabled?: boolean; vibrateEnabled?: boolean } | null
+      }) => unknown,
+    ) => {
       const state = { user: mockState.user }
       return selector ? selector(state) : state
     },
@@ -48,12 +52,10 @@ vi.mock("@/store/auth", () => ({
 }))
 
 vi.mock("@/store/view", () => ({
-  useViewStore: vi.fn(
-    (selector?: (s: { navigate: ReturnType<typeof vi.fn> }) => unknown) => {
-      const state = { navigate: vi.fn() }
-      return selector ? selector(state) : state
-    },
-  ),
+  useViewStore: vi.fn((selector?: (s: { navigate: ReturnType<typeof vi.fn> }) => unknown) => {
+    const state = { navigate: vi.fn() }
+    return selector ? selector(state) : state
+  }),
 }))
 
 vi.mock("@tanstack/react-query", () => ({

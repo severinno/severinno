@@ -37,13 +37,11 @@ import { cn } from "@/lib/utils"
 import { ErrorState } from "@/components/admin/admin-shared"
 
 import type { DetailedHealthResponse } from "@/app/api/health/detailed/route"
+import { MetricCard } from "@/components/admin/admin-metric-card"
 
 // ── Status helpers ────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<
-  string,
-  { icon: LucideIcon; label: string; fg: string; bg: string }
-> = {
+const STATUS_CONFIG: Record<string, { icon: LucideIcon; label: string; fg: string; bg: string }> = {
   healthy: {
     icon: CheckCircle2,
     label: "Saudável",
@@ -105,17 +103,15 @@ export function AdminHealthDashboard() {
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Saúde do Sistema
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <h1 className="text-foreground text-xl font-bold tracking-tight">Saúde do Sistema</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Monitoramento em tempo real de todos os serviços
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
@@ -123,7 +119,7 @@ export function AdminHealthDashboard() {
             type="button"
             onClick={() => void refetch()}
             disabled={isFetching}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border bg-muted/50 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+            className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50"
             aria-label="Atualizar health check"
           >
             <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
@@ -137,10 +133,10 @@ export function AdminHealthDashboard() {
           className={cn(
             "relative overflow-hidden rounded-2xl border p-6 transition-colors",
             data.status === "healthy"
-              ? "border-emerald-200 bg-gradient-to-br from-emerald-50/60 to-background dark:border-emerald-900/30 dark:from-emerald-950/10"
+              ? "to-background border-emerald-200 bg-gradient-to-br from-emerald-50/60 dark:border-emerald-900/30 dark:from-emerald-950/10"
               : data.status === "degraded"
-                ? "border-amber-200 bg-gradient-to-br from-amber-50/60 to-background dark:border-amber-900/30 dark:from-amber-950/10"
-                : "border-red-200 bg-gradient-to-br from-red-50/60 to-background dark:border-red-900/30 dark:from-red-950/10",
+                ? "to-background border-amber-200 bg-gradient-to-br from-amber-50/60 dark:border-amber-900/30 dark:from-amber-950/10"
+                : "to-background border-red-200 bg-gradient-to-br from-red-50/60 dark:border-red-900/30 dark:from-red-950/10",
           )}
         >
           <div className="flex items-start gap-4">
@@ -154,14 +150,18 @@ export function AdminHealthDashboard() {
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-foreground">
-                  {statusCfg.label}
-                </h2>
-                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-medium", statusCfg.bg, statusCfg.fg)}>
+                <h2 className="text-foreground text-lg font-bold">{statusCfg.label}</h2>
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                    statusCfg.bg,
+                    statusCfg.fg,
+                  )}
+                >
                   v{data.version}
                 </span>
               </div>
-              <p className="mt-0.5 text-sm text-muted-foreground">
+              <p className="text-muted-foreground mt-0.5 text-sm">
                 {data.summary.healthy}/{data.summary.total} serviços operacionais
                 {data.summary.degraded > 0 && ` · ${data.summary.degraded} degradados`}
                 {data.summary.unhealthy > 0 && ` · ${data.summary.unhealthy} críticos`}
@@ -170,7 +170,7 @@ export function AdminHealthDashboard() {
           </div>
 
           {/* Summary bars */}
-          <div className="mt-4 flex h-2 gap-0.5 overflow-hidden rounded-full bg-muted">
+          <div className="bg-muted mt-4 flex h-2 gap-0.5 overflow-hidden rounded-full">
             <div
               className="bg-emerald-500 transition-all duration-500"
               style={{ width: `${(data.summary.healthy / data.summary.total) * 100}%` }}
@@ -188,7 +188,10 @@ export function AdminHealthDashboard() {
       </section>
 
       {/* ── KPI Cards ───────────────────────────────────────────────── */}
-      <section aria-label="Indicadores do sistema" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <section
+        aria-label="Indicadores do sistema"
+        className="grid grid-cols-2 gap-4 lg:grid-cols-4"
+      >
         <KpiCard
           icon={Server}
           label="Versão"
@@ -219,10 +222,8 @@ export function AdminHealthDashboard() {
       {/* ── Service Cards Grid ───────────────────────────────────────── */}
       <section>
         <div className="mb-4 flex items-center gap-2">
-          <Wifi className="size-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">
-            Serviços
-          </h2>
+          <Wifi className="text-primary size-4" />
+          <h2 className="text-foreground text-sm font-semibold">Serviços</h2>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {data.services.map((svc) => (
@@ -237,7 +238,7 @@ export function AdminHealthDashboard() {
         <MetricCard icon={Database} title="Cache Stats">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Hit Ratio</span>
+              <span className="text-muted-foreground text-xs">Hit Ratio</span>
               <span
                 className={cn(
                   "text-xs font-medium tabular-nums",
@@ -252,7 +253,7 @@ export function AdminHealthDashboard() {
               </span>
             </div>
             {data.cache.total > 0 && (
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
                 <div
                   className="h-full rounded-full bg-emerald-500 transition-all"
                   style={{ width: `${(data.cache.hits / data.cache.total) * 100}%` }}
@@ -260,17 +261,17 @@ export function AdminHealthDashboard() {
               </div>
             )}
             <div className="grid grid-cols-2 gap-3 pt-1">
-              <div className="rounded-lg bg-muted/30 p-3">
-                <p className="text-lg font-bold tabular-nums text-emerald-500">
+              <div className="bg-muted/30 rounded-lg p-3">
+                <p className="text-lg font-bold text-emerald-500 tabular-nums">
                   {data.cache.hits.toLocaleString()}
                 </p>
-                <p className="text-[10px] text-muted-foreground">Hits</p>
+                <p className="text-muted-foreground text-[10px]">Hits</p>
               </div>
-              <div className="rounded-lg bg-muted/30 p-3">
-                <p className="text-lg font-bold tabular-nums text-amber-500">
+              <div className="bg-muted/30 rounded-lg p-3">
+                <p className="text-lg font-bold text-amber-500 tabular-nums">
                   {data.cache.misses.toLocaleString()}
                 </p>
-                <p className="text-[10px] text-muted-foreground">Misses</p>
+                <p className="text-muted-foreground text-[10px]">Misses</p>
               </div>
             </div>
           </div>
@@ -292,10 +293,7 @@ export function AdminHealthDashboard() {
               value={getRSSInfo(data)}
               status={getMemoryRSS(data) > 300 * 1024 * 1024 ? "warn" : "ok"}
             />
-            <StatusRow
-              label="DB Connection"
-              value={getDbMode(data)}
-            />
+            <StatusRow label="DB Connection" value={getDbMode(data)} />
           </div>
         </MetricCard>
       </section>
@@ -314,9 +312,9 @@ export function AdminHealthDashboard() {
       </section>
 
       {/* ── Raw Timestamp ────────────────────────────────────────────── */}
-      <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-2 text-[10px] text-muted-foreground">
-        Último check: {new Date(data.timestamp).toLocaleString("pt-BR")} ·{" "}
-        Cache TTL: 15s · Refetch automático: 30s
+      <div className="border-border/50 bg-muted/30 text-muted-foreground rounded-lg border px-4 py-2 text-[10px]">
+        Último check: {new Date(data.timestamp).toLocaleString("pt-BR")} · Cache TTL: 15s · Refetch
+        automático: 30s
       </div>
     </div>
   )
@@ -338,9 +336,9 @@ function KpiCard({
   trend?: "up" | "down"
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
       <div className="flex items-start justify-between">
-        <span className="flex size-10 items-center justify-center rounded-lg bg-primary/8 text-primary">
+        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
           <Icon className="size-5" />
         </span>
         {trend ? (
@@ -351,50 +349,22 @@ function KpiCard({
           )
         ) : null}
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-        {value}
-      </p>
-      <p className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
-      {subtitle ? (
-        <p className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</p>
-      ) : null}
+      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
     </div>
   )
 }
 
-function MetricCard({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: LucideIcon
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="rounded-xl border border-border/50 bg-card">
-      <div className="flex items-center gap-2 border-b px-5 py-4">
-        <Icon className="size-4 text-primary" />
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
-  )
-}
-
-function ServiceCard({
-  service,
-}: {
-  service: DetailedHealthResponse["services"][number]
-}) {
+function ServiceCard({ service }: { service: DetailedHealthResponse["services"][number] }) {
   const cfg = getStatusConfig(service.status)
 
   return (
     <div
       className={cn(
-        "rounded-xl border bg-card p-4 transition-all hover:shadow-sm",
+        "bg-card rounded-xl border p-4 transition-all hover:shadow-sm",
         service.status === "unhealthy" && "border-red-200 dark:border-red-900/30",
         service.status === "degraded" && "border-amber-200 dark:border-amber-900/30",
       )}
@@ -402,9 +372,7 @@ function ServiceCard({
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-foreground capitalize">
-              {service.name}
-            </h3>
+            <h3 className="text-foreground text-sm font-semibold capitalize">{service.name}</h3>
             <span
               className={cn(
                 "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium capitalize",
@@ -416,9 +384,7 @@ function ServiceCard({
               {cfg.label}
             </span>
           </div>
-          <p className="mt-1 truncate text-[11px] text-muted-foreground">
-            {service.message}
-          </p>
+          <p className="text-muted-foreground mt-1 truncate text-[11px]">{service.message}</p>
         </div>
         {service.latencyMs !== null ? (
           <span
@@ -439,10 +405,10 @@ function ServiceCard({
       {/* Details expandable */}
       {service.details && Object.keys(service.details).length > 0 ? (
         <details className="mt-2">
-          <summary className="text-[10px] font-medium text-muted-foreground hover:text-foreground cursor-default">
+          <summary className="text-muted-foreground hover:text-foreground cursor-default text-[10px] font-medium">
             Detalhes
           </summary>
-          <pre className="mt-1 overflow-x-auto rounded-md bg-muted/50 p-2 text-[9px] leading-relaxed text-muted-foreground">
+          <pre className="bg-muted/50 text-muted-foreground mt-1 overflow-x-auto rounded-md p-2 text-[9px] leading-relaxed">
             {JSON.stringify(service.details, null, 2)}
           </pre>
         </details>
@@ -462,7 +428,7 @@ function StatusRow({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-muted-foreground text-xs">{label}</span>
       <span
         className={cn(
           "text-xs font-medium tabular-nums",
@@ -553,12 +519,12 @@ function getDbMode(data: DetailedHealthResponse): string {
 function renderRabbitMQDetails(data: DetailedHealthResponse): React.ReactNode {
   const rabbitmqSvc = data.services.find((s) => s.name === "rabbitmq")
   if (!rabbitmqSvc) {
-    return <p className="text-xs text-muted-foreground">RabbitMQ não verificado</p>
+    return <p className="text-muted-foreground text-xs">RabbitMQ não verificado</p>
   }
 
   if (rabbitmqSvc.status === "unhealthy" || rabbitmqSvc.status === "unknown") {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex items-center gap-2 text-xs">
         <XCircle className="size-3 text-red-500" />
         {rabbitmqSvc.message}
       </div>
@@ -566,11 +532,10 @@ function renderRabbitMQDetails(data: DetailedHealthResponse): React.ReactNode {
   }
 
   const queues = rabbitmqSvc.details?.queues as
-    | Record<string, { messages: number; consumers: number }>
-    | undefined
+    Record<string, { messages: number; consumers: number }> | undefined
 
   if (!queues) {
-    return <p className="text-xs text-muted-foreground">{rabbitmqSvc.message}</p>
+    return <p className="text-muted-foreground text-xs">{rabbitmqSvc.message}</p>
   }
 
   return (
@@ -578,13 +543,11 @@ function renderRabbitMQDetails(data: DetailedHealthResponse): React.ReactNode {
       {Object.entries(queues).map(([qName, qData]) => (
         <div
           key={qName}
-          className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2"
+          className="bg-muted/30 flex items-center justify-between rounded-lg px-3 py-2"
         >
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-foreground">{qName}</p>
-            <p className="text-[10px] text-muted-foreground">
-              {qData.consumers} consumers
-            </p>
+            <p className="text-foreground text-xs font-medium">{qName}</p>
+            <p className="text-muted-foreground text-[10px]">{qData.consumers} consumers</p>
           </div>
           <span
             className={cn(
@@ -605,13 +568,13 @@ function renderRabbitMQDetails(data: DetailedHealthResponse): React.ReactNode {
 function renderWorkersDetails(data: DetailedHealthResponse): React.ReactNode {
   const workersSvc = data.services.find((s) => s.name === "workers")
   if (!workersSvc) {
-    return <p className="text-xs text-muted-foreground">Workers não verificados</p>
+    return <p className="text-muted-foreground text-xs">Workers não verificados</p>
   }
 
   const workers = workersSvc.details?.workers as Record<string, string> | undefined
   if (!workers) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex items-center gap-2 text-xs">
         <AlertTriangle className="size-3 text-amber-500" />
         {workersSvc.message}
       </div>
@@ -623,9 +586,9 @@ function renderWorkersDetails(data: DetailedHealthResponse): React.ReactNode {
       {Object.entries(workers).map(([wName, wStatus]) => (
         <div
           key={wName}
-          className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2"
+          className="bg-muted/30 flex items-center justify-between rounded-lg px-3 py-2"
         >
-          <span className="text-xs font-medium text-foreground">{wName}</span>
+          <span className="text-foreground text-xs font-medium">{wName}</span>
           <span
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium",
@@ -664,7 +627,7 @@ function HealthSkeleton() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border bg-card p-5">
+          <div key={i} className="bg-card rounded-xl border p-5">
             <Skeleton className="size-10 rounded-lg" />
             <Skeleton className="mt-3 h-7 w-20" />
             <Skeleton className="mt-1 h-3 w-16" />
@@ -677,7 +640,7 @@ function HealthSkeleton() {
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="rounded-xl border bg-card p-4">
+          <div key={i} className="bg-card rounded-xl border p-4">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Skeleton className="h-4 w-24" />

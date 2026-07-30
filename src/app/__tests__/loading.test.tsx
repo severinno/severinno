@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest"
-import { render, within, cleanup } from "@testing-library/react"
+import { render, within, cleanup } from "@/__tests__/test-utils"
 import Loading from "../loading"
 
 afterEach(cleanup)
@@ -92,9 +92,7 @@ describe("Root Loading (home page skeleton)", () => {
 
   it("renders partners trust section with aria-label", () => {
     const { container } = render(<Loading />)
-    const partnersSection = container.querySelector(
-      '[aria-label="Parceiros e imprensa"]',
-    )
+    const partnersSection = container.querySelector('[aria-label="Parceiros e imprensa"]')
     expect(partnersSection).toBeInTheDocument()
   })
 

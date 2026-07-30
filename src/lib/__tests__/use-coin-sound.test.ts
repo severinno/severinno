@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { renderHook } from "@testing-library/react"
+import { renderHook } from "@/__tests__/test-utils"
 
 // ---- Dynamic mock for useSoundEnabledPreference ----------------------------
 const mockSoundEnabled = vi.hoisted(() => ({ current: true as boolean | undefined }))
@@ -18,17 +18,13 @@ vi.mock("@/lib/sounds", () => ({
 }))
 
 vi.mock("@/store/auth", () => ({
-  useAuthStore: vi.fn(
-    (selector?: (s: { user: { soundEnabled?: boolean } | null }) => unknown) => {
-      const state = {
-        user:
-          mockSoundEnabled.current === undefined
-            ? null
-            : { soundEnabled: mockSoundEnabled.current },
-      }
-      return selector ? selector(state) : state
-    },
-  ),
+  useAuthStore: vi.fn((selector?: (s: { user: { soundEnabled?: boolean } | null }) => unknown) => {
+    const state = {
+      user:
+        mockSoundEnabled.current === undefined ? null : { soundEnabled: mockSoundEnabled.current },
+    }
+    return selector ? selector(state) : state
+  }),
 }))
 
 // ---------------------------------------------------------------------------

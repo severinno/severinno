@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, within, cleanup } from "@testing-library/react"
+import { render, within, cleanup } from "@/__tests__/test-utils"
 
 vi.mock("lucide-react", () => ({
   Search: () => <svg data-testid="icon-search" />,
@@ -49,9 +49,7 @@ describe("NotFound (404 page)", () => {
   it("renders footer with copyright", () => {
     const { container } = render(<NotFound />)
     const year = new Date().getFullYear().toString()
-    expect(
-      within(container).getByText(new RegExp(`©.*${year}.*Severinno`)),
-    ).toBeInTheDocument()
+    expect(within(container).getByText(new RegExp(`©.*${year}.*Severinno`))).toBeInTheDocument()
   })
 
   it("renders Search and Home icons (SVGs)", () => {

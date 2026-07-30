@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Hoisted shared state (avoids vi.mock hoisting TDZ) --------------------

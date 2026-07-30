@@ -49,6 +49,7 @@ import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { ErrorState } from "@/components/admin/admin-shared"
+import { MetricCard } from "@/components/admin/admin-metric-card"
 
 import type {
   BenchmarksResponse,
@@ -915,26 +916,6 @@ function KpiCard({
         {label}
       </p>
       {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
-    </div>
-  )
-}
-
-function MetricCard({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: React.ElementType
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="border-border/50 bg-card rounded-xl border">
-      <div className="flex items-center gap-2 border-b px-5 py-4">
-        <Icon className="text-primary size-4" />
-        <h2 className="text-foreground text-sm font-semibold">{title}</h2>
-      </div>
-      <div className="p-4">{children}</div>
     </div>
   )
 }

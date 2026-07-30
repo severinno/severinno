@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, cleanup } from "@testing-library/react"
+import { render, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Hoisted shared label-input pairing counter ---------------------------
@@ -65,7 +65,9 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/components/ui/button", () => ({
   Button: ({ children, disabled, ...p }: any) => (
-    <button disabled={disabled} {...p}>{children}</button>
+    <button disabled={disabled} {...p}>
+      {children}
+    </button>
   ),
 }))
 
@@ -73,7 +75,11 @@ vi.mock("@/components/ui/button", () => ({
 vi.mock("@/components/ui/label", () => ({
   Label: ({ children, ...p }: any) => {
     labelPairId.current++
-    return <label htmlFor={`input-${labelPairId.current}`} {...p}>{children}</label>
+    return (
+      <label htmlFor={`input-${labelPairId.current}`} {...p}>
+        {children}
+      </label>
+    )
   },
 }))
 
@@ -87,17 +93,19 @@ vi.mock("@/components/ui/textarea", () => ({
 
 vi.mock("@/components/ui/card", () => ({
   Card: ({ children, className }: any) => (
-    <div data-testid="card" className={className}>{children}</div>
+    <div data-testid="card" className={className}>
+      {children}
+    </div>
   ),
   CardContent: ({ children }: any) => <div>{children}</div>,
   CardHeader: ({ children }: any) => <>{children}</>,
   // Preserve heading hierarchy: real shadcn CardTitle renders as <h3>
   CardTitle: ({ children, className }: any) => (
-    <h3 data-testid="card-title" className={className}>{children}</h3>
+    <h3 data-testid="card-title" className={className}>
+      {children}
+    </h3>
   ),
-  CardDescription: ({ children }: any) => (
-    <p data-testid="card-desc">{children}</p>
-  ),
+  CardDescription: ({ children }: any) => <p data-testid="card-desc">{children}</p>,
   CardFooter: ({ children }: any) => <>{children}</>,
 }))
 

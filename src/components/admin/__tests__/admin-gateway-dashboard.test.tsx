@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Builder -------------------------------------------------------------
@@ -18,11 +18,11 @@ import { axe } from "vitest-axe"
 function buildGatewayStatsData() {
   return {
     period: "30d",
-    totalVolume: 50000000,   // R$ 500.000,00 em centavos
+    totalVolume: 50000000, // R$ 500.000,00 em centavos
     totalCount: 120,
     paidCount: 85,
     conversionRate: 70.8,
-    averageTicket: 588235,   // R$ 5.882,35 em centavos
+    averageTicket: 588235, // R$ 5.882,35 em centavos
     byStatus: [
       { status: "paid", total: 45000000, count: 85 },
       { status: "waitingPayment", total: 3000000, count: 18 },
@@ -30,9 +30,30 @@ function buildGatewayStatsData() {
       { status: "canceled", total: 500000, count: 7 },
     ],
     monthly: [
-      { month: "2026-01", label: "Jan/26", total: 8000000, count: 20, paid: 6500000, paidCount: 15 },
-      { month: "2026-02", label: "Fev/26", total: 12000000, count: 28, paid: 10000000, paidCount: 22 },
-      { month: "2026-03", label: "Mar/26", total: 15000000, count: 35, paid: 13000000, paidCount: 26 },
+      {
+        month: "2026-01",
+        label: "Jan/26",
+        total: 8000000,
+        count: 20,
+        paid: 6500000,
+        paidCount: 15,
+      },
+      {
+        month: "2026-02",
+        label: "Fev/26",
+        total: 12000000,
+        count: 28,
+        paid: 10000000,
+        paidCount: 22,
+      },
+      {
+        month: "2026-03",
+        label: "Mar/26",
+        total: 15000000,
+        count: 35,
+        paid: 13000000,
+        paidCount: 26,
+      },
     ],
     methodDistribution: [
       { method: "PIX", total: 35000000, count: 70 },
@@ -61,8 +82,7 @@ vi.mock("@/lib/api", () => ({
 }))
 
 vi.mock("@/lib/utils", () => ({
-  cn: (...inputs: (string | undefined | null | false)[]) =>
-    inputs.filter(Boolean).join(" "),
+  cn: (...inputs: (string | undefined | null | false)[]) => inputs.filter(Boolean).join(" "),
 }))
 
 vi.mock("lucide-react", () => ({
@@ -95,15 +115,29 @@ vi.mock("@/components/ui/button", () => ({
 }))
 
 vi.mock("@/components/admin/admin-shared", () => ({
-  ErrorState: ({ title, description, onRetry }: { title: string; description?: string; onRetry?: () => void }) => (
+  ErrorState: ({
+    title,
+    description,
+    onRetry,
+  }: {
+    title: string
+    description?: string
+    onRetry?: () => void
+  }) => (
     <div data-testid="error-state">
       <h2>{title}</h2>
       {description && <p>{description}</p>}
-      {onRetry && <button type="button" onClick={onRetry} data-testid="retry-btn">Tentar novamente</button>}
+      {onRetry && (
+        <button type="button" onClick={onRetry} data-testid="retry-btn">
+          Tentar novamente
+        </button>
+      )}
     </div>
   ),
   TableSkeleton: ({ rows, cols }: { rows?: number; cols?: number }) => (
-    <div data-testid="table-skeleton">{rows}×{cols}</div>
+    <div data-testid="table-skeleton">
+      {rows}×{cols}
+    </div>
   ),
 }))
 

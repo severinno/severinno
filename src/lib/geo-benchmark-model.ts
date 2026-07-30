@@ -63,6 +63,70 @@ export type HistorySnapshot = {
 }
 
 // ---------------------------------------------------------------------------
+// GiST degradation check
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of the GiST degradation check.
+ */
+export type GiSTDegradationResult = {
+  /** Whether the real P95 exceeds ALL model curves at this selectivity. */
+  gistDegraded: boolean
+  /** Highest PostGIS filtered latency among all provider scales. */
+  maxModelAtSelectivity: number
+  /** How many provider scales have model latency below the real P95. */
+  exceedingCount: number
+}
+
+/**
+ * Check whether the real PostGIS P95 exceeds all theoretical model curves
+ * at a given selectivity level, indicating possible GiST index degradation.
+ *
+ * @param selectivityPoints — The full array of selectivity curve points
+ *   (from computeSelectivityPoints).
+ * @param selectivityLabel  — The selectivity label to look up (e.g. "15%").
+ * @param p95Mean           — Real PostGIS P95 mean from geo-metrics history.
+ * @param hasP95Data        — Whether valid P95 data is available.
+ * @param providerCounts    — Provider scales to check (default PROVIDER_COUNTS).
+ */
+export function computeGiSTDegradation(
+  selectivityPoints: SelectivityPoint[],
+  selectivityLabel: string,
+  p95Mean: number,
+  hasP95Data: boolean,
+  providerCounts: number[] = PROVIDER_COUNTS,
+): GiSTDegradationResult {
+  const result: GiSTDegradationResult = {
+    gistDegraded: false,
+    maxModelAtSelectivity: 0,
+    exceedingCount: 0,
+  }
+
+  if (!hasP95Data || p95Mean <= 0) return result
+
+  const selRow = selectivityPoints.find(
+    (r: Record<string, unknown>) => r.selectivity === selectivityLabel,
+  )
+  if (!selRow) return result
+
+  const pgKeys = providerCounts.map((n) => `pg_${n}`)
+  let maxVal = 0
+  let exceeding = 0
+
+  for (const k of pgKeys) {
+    const v = Number(selRow[k] ?? 0)
+    if (v > maxVal) maxVal = v
+    if (p95Mean > v) exceeding++
+  }
+
+  result.maxModelAtSelectivity = maxVal
+  result.exceedingCount = exceeding
+  result.gistDegraded = p95Mean > maxVal
+
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // Selectivity curve
 // ---------------------------------------------------------------------------
 

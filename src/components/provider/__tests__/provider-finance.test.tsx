@@ -3,19 +3,22 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Builder --------------------------------------------------------------
 
-function buildBooking(id: string, overrides: Partial<{
-  amount: number
-  paymentMethod: string
-  paymentStatus: string
-  clientName: string
-  serviceTitle: string
-  scheduledAt: string
-}> = {}) {
+function buildBooking(
+  id: string,
+  overrides: Partial<{
+    amount: number
+    paymentMethod: string
+    paymentStatus: string
+    clientName: string
+    serviceTitle: string
+    scheduledAt: string
+  }> = {},
+) {
   const now = new Date()
   // Use current month/year so filters match
   const defaultDate = new Date(now.getFullYear(), now.getMonth(), 15).toISOString()
@@ -45,10 +48,12 @@ vi.mock("@/hooks/use-realtime-finance", () => ({
 }))
 
 vi.mock("@/store/auth", () => ({
-  useAuthStore: vi.fn((selector?: (s: { user: { id: string; name: string; role: string } | null }) => unknown) => {
-    const state = { user: { id: "provider-1", name: "Paulo", role: "PROVIDER" } }
-    return selector ? selector(state) : state
-  }),
+  useAuthStore: vi.fn(
+    (selector?: (s: { user: { id: string; name: string; role: string } | null }) => unknown) => {
+      const state = { user: { id: "provider-1", name: "Paulo", role: "PROVIDER" } }
+      return selector ? selector(state) : state
+    },
+  ),
 }))
 
 vi.mock("@/lib/api", () => ({
@@ -56,15 +61,14 @@ vi.mock("@/lib/api", () => ({
 }))
 
 vi.mock("@/lib/format", () => ({
-  formatBRL: vi.fn((v: number) =>
-    `R$ ${(v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+  formatBRL: vi.fn(
+    (v: number) => `R$ ${(v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
   ),
   formatDate: vi.fn(() => "15/03/2025"),
 }))
 
 vi.mock("@/lib/utils", () => ({
-  cn: (...inputs: (string | undefined | null | false)[]) =>
-    inputs.filter(Boolean).join(" "),
+  cn: (...inputs: (string | undefined | null | false)[]) => inputs.filter(Boolean).join(" "),
 }))
 
 vi.mock("@/lib/constants", () => ({
@@ -82,10 +86,18 @@ vi.mock("lucide-react", () => ({
 }))
 
 vi.mock("@/components/ui/card", () => ({
-  Card: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
-  CardContent: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
-  CardHeader: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
-  CardTitle: ({ children, className }: { children?: React.ReactNode; className?: string }) => <h3 className={className}>{children}</h3>,
+  Card: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div className={className}>{children}</div>
+  ),
+  CardContent: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div className={className}>{children}</div>
+  ),
+  CardHeader: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div className={className}>{children}</div>
+  ),
+  CardTitle: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <h3 className={className}>{children}</h3>
+  ),
 }))
 
 vi.mock("@/components/ui/avatar", () => ({
@@ -103,20 +115,38 @@ vi.mock("@/components/ui/badge", () => ({
 vi.mock("@/components/ui/table", () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
-  TableCell: ({ children, className }: { children?: React.ReactNode; className?: string }) => <td className={className}>{children}</td>,
-  TableHead: ({ children, className }: { children?: React.ReactNode; className?: string }) => <th className={className}>{children}</th>,
+  TableCell: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <td className={className}>{children}</td>
+  ),
+  TableHead: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <th className={className}>{children}</th>
+  ),
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
-  TableRow: ({ children, className }: { children?: React.ReactNode; className?: string }) => <tr className={className}>{children}</tr>,
+  TableRow: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <tr className={className}>{children}</tr>
+  ),
 }))
 
 vi.mock("@/components/ui/select", () => ({
   Select: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectTrigger: ({ children, className, ...props }: { children?: React.ReactNode; className?: string; [key: string]: unknown }) => (
-    <button type="button" className={className} {...props}>{children}</button>
+  SelectTrigger: ({
+    children,
+    className,
+    ...props
+  }: {
+    children?: React.ReactNode
+    className?: string
+    [key: string]: unknown
+  }) => (
+    <button type="button" className={className} {...props}>
+      {children}
+    </button>
   ),
   SelectValue: () => <span>Valor</span>,
   SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectItem: ({ children, value }: { children: React.ReactNode; value?: string }) => <div data-value={value}>{children}</div>,
+  SelectItem: ({ children, value }: { children: React.ReactNode; value?: string }) => (
+    <div data-value={value}>{children}</div>
+  ),
 }))
 
 vi.mock("../provider-wallet", () => ({
@@ -165,7 +195,12 @@ const emptyData = { items: [], total: 0 }
 
 describe("ProviderFinance — loading", () => {
   beforeEach(() => {
-    useQueryMock().mockReturnValue({ data: undefined, isLoading: true, isError: false, refetch: vi.fn() } as any)
+    useQueryMock().mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    } as any)
   })
 
   afterEach(() => vi.clearAllMocks())
@@ -239,7 +274,12 @@ describe("ProviderFinance — data rendering", () => {
 
 describe("ProviderFinance — empty state", () => {
   beforeEach(() => {
-    useQueryMock().mockReturnValue({ data: emptyData, isLoading: false, isError: false, refetch: vi.fn() } as any)
+    useQueryMock().mockReturnValue({
+      data: emptyData,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as any)
   })
 
   afterEach(() => vi.clearAllMocks())
