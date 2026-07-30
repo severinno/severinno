@@ -133,6 +133,25 @@ function radiusIndexMap(radii) {
   return map
 }
 
+/**
+ * Find the nearest radius value in a sorted list.
+ * Returns { radius, index } or null if the list is empty.
+ */
+function nearestRadius(target, radii) {
+  if (radii.length === 0) return null
+  let best = radii[0], bestIdx = 0
+  let bestDist = Math.abs(target - best)
+  for (let i = 1; i < radii.length; i++) {
+    const dist = Math.abs(target - radii[i])
+    if (dist < bestDist) {
+      bestDist = dist
+      best = radii[i]
+      bestIdx = i
+    }
+  }
+  return { radius: best, index: bestIdx }
+}
+
 const baselineRadiusIndex = radiusIndexMap(baselineRadii)
 const currentRadiusIndex = radiusIndexMap(currentRadii)
 
@@ -169,16 +188,31 @@ for (const density of densities) {
         )
       : null
 
-  // Compute step drift
+  // Compute step drift — with intelligent fallback for divergent radius lists
   let stepDrift = null
+  let stepDriftNote = null
   if (baselineCrossoverRadius != null && currentCrossoverRadius != null) {
     const baseIdx = baselineRadiusIndex[baselineCrossoverRadius]
     const currIdx = currentRadiusIndex[currentCrossoverRadius]
     if (baseIdx != null && currIdx != null) {
       stepDrift = Math.abs(currIdx - baseIdx)
     } else {
-      // Radius exists in one list but not the other — lists diverged
-      stepDrift = null
+      // Radii lists diverged — find nearest radius in the other list
+      const baseNearest = baseIdx == null && baselineRadii.length > 0
+        ? nearestRadius(baselineCrossoverRadius, baselineRadii)
+        : null
+      const currNearest = currIdx == null && currentRadii.length > 0
+        ? nearestRadius(currentCrossoverRadius, currentRadii)
+        : null
+
+      const resolvedBaseIdx = baseIdx ?? baseNearest?.index ?? null
+      const resolvedCurrIdx = currIdx ?? currNearest?.index ?? null
+
+      if (resolvedBaseIdx != null && resolvedCurrIdx != null) {
+        stepDrift = Math.abs(resolvedCurrIdx - resolvedBaseIdx)
+        stepDriftNote = `aproximado (baseline ${baselineCrossoverRadius}km ≈ ${baseNearest?.radius ?? "?"}km, current ${currentCrossoverRadius}km ≈ ${currNearest?.radius ?? "?"}km)`
+      }
+      // else: both unresolvable — keep stepDrift as null
     }
   }
 
@@ -215,6 +249,7 @@ for (const density of densities) {
     },
     diff: {
       stepDrift,
+      stepDriftNote,
       ratioDriftPct: +ratioDrift.toFixed(1),
       crossoverRadiusChanged: baselineCrossoverRadius !== currentCrossoverRadius,
       gistFasterStateChanged: (baselineCrossoverRow != null) !== (currentCrossoverRow != null),
@@ -232,12 +267,16 @@ for (const comp of comparisons) {
   if (comp.significant) {
     const reasons = []
     if (comp.diff.stepDrift != null && comp.diff.stepDrift > MAX_STEP_DRIFT) {
-      reasons.push(`crossover radius moved ${comp.diff.stepDrift} steps (max: ${MAX_STEP_DRIFT})`)
+      let msg = `crossover radius moved ${comp.diff.stepDrift} steps (max: ${MAX_STEP_DRIFT})`
+      if (comp.diff.stepDriftNote) msg += ` — ${comp.diff.stepDriftNote}`
+      reasons.push(msg)
     } else if (
       comp.diff.stepDrift == null &&
       comp.baseline.crossoverRadius !== comp.current.crossoverRadius
     ) {
-      reasons.push("crossover radius indeterminate — radius lists diverged between runs")
+      let msg = "crossover radius indeterminate — radius lists diverged between runs"
+      if (comp.diff.stepDriftNote) msg += ` (${comp.diff.stepDriftNote})`
+      reasons.push(msg)
     }
     if (comp.diff.ratioDriftPct > MAX_RATIO_DRIFT) {
       reasons.push(`best ratio drifted ${comp.diff.ratioDriftPct}pp (max: ${MAX_RATIO_DRIFT}pp)`)

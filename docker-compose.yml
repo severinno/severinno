@@ -141,6 +141,53 @@ services:
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:3003}
     # Health check defined in Dockerfile
 
+  # ── Geo Cache Warm (one-shot init) ───────────────────────────────────────
+  # After the app is healthy, pre-fills the Redis cache with the most
+  # frequent geo queries (top Brazilian cities, common CEPs, major city
+  # coordinates) so the first users after deploy get cached responses
+  # instead of the 5s Nominatim / ViaCEP latency.
+  #
+  # Uses the 23h cooldown in the cron endpoint itself — if this service
+  # runs twice within 23h (e.g. after a restart), the second call is
+  # skipped automatically.
+  #
+  # The CRON_SECRET env var must be set in the app service for
+  # authentication.
+  geo-cache-warm:
+    image: curlimages/curl:8.12.1
+    restart: "no"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - default
+    environment:
+      CRON_SECRET: ${CRON_SECRET}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "[geo-cache-warm] App is healthy — triggering cache warming..."
+        CRON_SECRET_VAL="$${CRON_SECRET}"
+        if [ -z "$$CRON_SECRET_VAL" ]; then
+          echo "[geo-cache-warm] ⚠️  CRON_SECRET not set — skipping cache warm"
+          exit 0
+        fi
+        RESPONSE=$$(curl -s -w "\n%{http_code}" \
+          -H "Authorization: Bearer $$CRON_SECRET_VAL" \
+          "http://app:3000/api/cron/geo-cache-warm")
+        HTTP_CODE=$$(echo "$$RESPONSE" | tail -1)
+        BODY=$$(echo "$$RESPONSE" | head -n -1)
+        echo "[geo-cache-warm] HTTP $$HTTP_CODE"
+        echo "[geo-cache-warm] Response: $$BODY"
+        if [ "$$HTTP_CODE" = "200" ]; then
+          echo "[geo-cache-warm] ✅ Geo cache warm completed or skipped (cooldown)"
+          exit 0
+        else
+          echo "[geo-cache-warm] ❌ Failed (HTTP $$HTTP_CODE)"
+          exit 1
+        fi
+
   # ═══════════════════════════════════════════════════════════════════════
   # WORKERS — perfil isolado para deploy seletivo
   # ═══════════════════════════════════════════════════════════════════════

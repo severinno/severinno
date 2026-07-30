@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest"
-import {
-  createRadiusGeoJSON,
-  haversineDistance,
-  estimatePolygonRadius,
-} from "../geo-circle"
+import { createRadiusGeoJSON, estimatePolygonRadius } from "../geo-circle"
+import { haversineKm } from "../geo-shared"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -147,16 +144,16 @@ describe("createRadiusGeoJSON", () => {
 })
 
 // ---------------------------------------------------------------------------
-// haversineDistance
+// haversineKm — imported from geo-shared
 // ---------------------------------------------------------------------------
 
-describe("haversineDistance", () => {
+describe("haversineKm", () => {
   it("returns 0 for the same point", () => {
-    expect(haversineDistance(-23.55, -46.63, -23.55, -46.63)).toBe(0)
+    expect(haversineKm(-23.55, -46.63, -23.55, -46.63)).toBe(0)
   })
 
   it("computes ~10km for 0.1° lat difference at equator", () => {
-    const d = haversineDistance(0, 0, 0.09, 0)
+    const d = haversineKm(0, 0, 0.09, 0)
     // ~0.09° × 111.32 km/° ≈ 10 km
     expect(d).toBeGreaterThan(9.5)
     expect(d).toBeLessThan(10.5)
@@ -165,7 +162,7 @@ describe("haversineDistance", () => {
   it("computes ~3959km between São Paulo and Manaus", () => {
     // São Paulo: -23.5505, -46.6333
     // Manaus: -3.1190, -60.0217
-    const d = haversineDistance(-23.5505, -46.6333, -3.119, -60.0217)
+    const d = haversineKm(-23.5505, -46.6333, -3.119, -60.0217)
     // Real distance ≈ 2700 km
     expect(d).toBeGreaterThan(2600)
     expect(d).toBeLessThan(2800)

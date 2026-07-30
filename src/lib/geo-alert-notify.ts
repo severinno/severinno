@@ -168,4 +168,5 @@ export async function notifyGeoAlert(payload: GeoAlertPayload): Promise<{
 
 export function resetGeoAlertDebounce(): void {
   lastPushByTag.clear()
+  lastSentryByTag.clear()
 }

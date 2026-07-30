@@ -22,6 +22,15 @@
  *   --save         Save result to docs/benchmarks/<type>-YYYY-MM-DD.json
  *   --compare      After running, compare against the baseline file
  *   --all          Run all registered benchmark types
+ *   --no-cache     Force re-run even if today's latest JSON exists
+ *   --skip-db      Skip benchmarks that require a database (real, gist)
+ *
+ * Cache:
+ *   When running --type all, each type checks if <type>-latest.json exists
+ *   and its meta.timestamp is from today. If so, the benchmark is SKIPPED
+ *   (status: cached) and the existing result is reused.  This avoids
+ *   re-running all 6 benchmarks on every CI retry when only 1-2 failed.
+ *   Use --no-cache to force a full re-run of all types.
  *
  * Exit codes:
  *   0 — success
@@ -31,7 +40,7 @@
 
 import { execSync } from "node:child_process"
 import { join, dirname } from "node:path"
-import { existsSync, mkdirSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
 // ---------------------------------------------------------------------------
@@ -119,15 +128,20 @@ if (allFlag) {
 // --type is required
 if (!type) {
   console.error(
-    "❌ Usage: node scripts/run-benchmark.mjs --type geo|cache|search|real|gist|pipeline|all [--json] [--baseline] [--save] [--compare] [--skip-db]",
+    "❌ Usage: node scripts/run-benchmark.mjs --type geo|cache|search|real|gist|pipeline|all [--json] [--baseline] [--save] [--compare] [--no-cache] [--skip-db]",
   )
   console.error(`   Available types: ${BENCHMARK_TYPES.join(", ")}`)
-  console.error(`   Flags: --skip-db  skip benchmarks that require a database (real, gist)`)
+  console.error(`   Flags:`)
+  console.error(`     --no-cache   ignore cached results and force re-run`)
+  console.error(`     --skip-db    skip benchmarks that require a database (real, gist)`)
   process.exit(2)
 }
 
 // --skip-db: skip benchmarks that require a real database
 const skipDb = args.includes("--skip-db")
+
+// --no-cache: force re-run even if today's latest JSON exists
+const noCache = args.includes("--no-cache")
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -158,6 +172,51 @@ function runSingle(type) {
   if (skipDb && cfg.requiresDb) {
     console.log(`  ⏭  ${cfg.label} — skipped (requires database)`)
     return { status: "skipped", exitCode: 0, elapsedMs: 0 }
+  }
+
+  // ── Cache check: skip if latest JSON exists and was generated today ───
+  // Cache is bypassed when:
+  //   - --no-cache is set (explicit force)
+  //   - --baseline  is set (user wants a fresh baseline capture)
+  //   - --save      is set (user wants a fresh dated snapshot)
+  const todayStr = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+  const latestPath = benchmarkPath(type, cfg.latest)
+  const cacheValid = !noCache && !baselineFlag && !saveFlag && existsSync(latestPath)
+
+  if (cacheValid) {
+    try {
+      const raw = readFileSync(latestPath, "utf-8")
+      const data = JSON.parse(raw)
+      const fileDate = data.meta?.timestamp?.slice(0, 10)
+
+      if (fileDate === todayStr) {
+        console.log(`  📦 ${cfg.label} — cached (gerado hoje, ${fileDate})`)
+
+        // If --compare is set, still run comparison against baseline
+        if (compareFlag) {
+          const baselinePath = benchmarkPath(type, cfg.baseline)
+          if (existsSync(baselinePath)) {
+            console.log(`\n  ─── Comparing ${type} against baseline (cached result) ─────\n`)
+            let compareCmd = `node "${join(SCRIPTS_DIR, "compare-benchmarks.mjs")}"`
+            if (cfg.compareFilter) compareCmd += ` --filter ${cfg.compareFilter}`
+            compareCmd += ` "${baselinePath}" "${latestPath}"`
+            try {
+              execSync(compareCmd, { stdio: "inherit" })
+              return { status: "cached", exitCode: 0, elapsedMs: 0 }
+            } catch {
+              console.log(`\n  ⚠  Regression detected in cached ${type} benchmarks.`)
+              return { status: "regression", exitCode: 1, elapsedMs: 0 }
+            }
+          }
+        }
+
+        return { status: "cached", exitCode: 0, elapsedMs: 0 }
+      }
+      console.log(`  ℹ  ${cfg.label} — cache expirado (último: ${fileDate}, hoje: ${todayStr})`)
+    } catch {
+      // Invalid/corrupt JSON — re-run anyway
+      console.log(`  ℹ  ${cfg.label} — cache inválido, re-executando…`)
+    }
   }
 
   // Determine output file based on flags
@@ -261,6 +320,11 @@ function printSummaryTable(results, isAllMode) {
       case "success":
         statusStr = "✅".padEnd(10)
         statusColor = bgGreen
+        totalPassed++
+        break
+      case "cached":
+        statusStr = "📦".padEnd(10)
+        statusColor = bgBlue
         totalPassed++
         break
       case "skipped":

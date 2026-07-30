@@ -641,8 +641,7 @@ services:
       OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME}
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD}
 
-      # ── Upload ───────────────────────────────────────────────────────
-      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10485760}
+      # ── Upload ───────────────────────────────────────────────────────          MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10485760}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
@@ -662,6 +661,56 @@ services:
         reservations:
           cpus: "0.25"
           memory: "256M"
+
+  # ── Geo Cache Warm (one-shot init) ───────────────────────────────────────
+  # After the app is healthy, pre-fills the Redis cache with the most
+  # frequent geo queries (top Brazilian cities, common CEPs, major city
+  # coordinates) so the first users after deploy get cached responses
+  # instead of the 5s Nominatim / ViaCEP latency.
+  #
+  # Uses the 23h cooldown in the cron endpoint itself — if this service
+  # runs twice within 23h (e.g. after a restart), the second call is
+  # skipped automatically via skip response from the cron endpoint.
+  geo-cache-warm:
+    image: curlimages/curl:8.12.1
+    restart: "no"
+    networks:
+      - backend
+    depends_on:
+      app:
+        condition: service_healthy
+    # CRON_SECRET is shared from the app service's secret
+    secrets:
+      - cron_secret
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "[geo-cache-warm] App is healthy — triggering cache warming..."
+        CRON_SECRET_VAL="$$(cat /run/secrets/cron_secret 2>/dev/null || echo \"\")"
+        if [ -z "$$CRON_SECRET_VAL" ]; then
+          echo "[geo-cache-warm] ⚠️  CRON_SECRET not found — skipping"
+          exit 0
+        fi
+        RESPONSE=$$(curl -s -w "\n%{http_code}" \
+          -H "Authorization: Bearer $$CRON_SECRET_VAL" \
+          "http://app:3000/api/cron/geo-cache-warm")
+        HTTP_CODE=$$(echo "$$RESPONSE" | tail -1)
+        BODY=$$(echo "$$RESPONSE" | head -n -1)
+        echo "[geo-cache-warm] HTTP $$HTTP_CODE"
+        echo "[geo-cache-warm] Response: $$BODY"
+        if [ "$$HTTP_CODE" = "200" ]; then
+          echo "[geo-cache-warm] ✅ Geo cache warm completed or skipped (cooldown)"
+          exit 0
+        else
+          echo "[geo-cache-warm] ❌ Failed (HTTP $$HTTP_CODE)"
+          exit 1
+        fi
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: "32M"
 
   # ============================================================================
   # WORKERS — sempre ativos em producao (sem profile)
