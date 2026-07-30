@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { geocodeSearch, geocodeSearchStructured } from "@/lib/geo"
 import { cacheControlPublic, handleError } from "@/lib/api-server"
-import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { assertGeoRateLimit } from "@/lib/geo-rate-limit"
 import { geocodeSearchSchema, geocodeSearchStructuredSchema } from "@/lib/validators"
 
 // ---------------------------------------------------------------------------
@@ -34,7 +34,7 @@ import { geocodeSearchSchema, geocodeSearchStructuredSchema } from "@/lib/valida
  */
 export async function GET(request: Request) {
   try {
-    await assertRateLimit(request, RATE_LIMITS.geo)
+    await assertGeoRateLimit(request, "search")
 
     const { searchParams } = new URL(request.url)
 

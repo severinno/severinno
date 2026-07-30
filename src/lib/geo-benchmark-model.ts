@@ -26,6 +26,26 @@ export const POSTGIS_PER_ROW_US = 22
 /** Provider counts used to model the selectivity curves. */
 export const PROVIDER_COUNTS = [100, 500, 1000, 5000, 10000]
 
+// ── Provider count generator ──────────────────────────────────────────────
+
+/**
+ * Generate 5 logarithmically-spaced provider counts based on a total
+ * database size, replacing the hardcoded PROVIDER_COUNTS constant when
+ * the user simulates small vs large databases via the UI slider.
+ *
+ * Examples:
+ *   total=200    → [10, 20, 60, 140, 200]
+ *   total=10000  → [100, 300, 1000, 3000, 10000]
+ *   total=100000 → [1000, 3000, 10000, 30000, 100000]
+ *
+ * Deduplicates entries and ensures ascending order.
+ */
+export function computeProviderCounts(totalProviders: number): number[] {
+  const factors = [0.01, 0.03, 0.1, 0.3, 1.0]
+  const raw = factors.map((f) => Math.max(10, Math.round(totalProviders * f)))
+  return raw.filter((v, i) => i === 0 || v > raw[i - 1])
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -144,6 +164,7 @@ export function computeGiSTDegradation(
 export function computeSelectivityPoints(
   benchmark: Array<{ scale: number; postgis: { mean: number } }>,
   avgHaversinePerProvider: number,
+  providerCounts: number[] = PROVIDER_COUNTS,
 ): SelectivityPoint[] {
   return Array.from({ length: 21 }, (_, i) => {
     const selectivity = i / 20 // 0, 0.05, 0.1, ..., 1.0
@@ -154,7 +175,7 @@ export function computeSelectivityPoints(
       pct: selectivity,
     }
 
-    for (const n of PROVIDER_COUNTS) {
+    for (const n of providerCounts) {
       // PostGIS filtered (ST_DWithin + ST_Distance on subset)
       const pgFiltered = POSTGIS_FIXED_US + POSTGIS_PER_ROW_US * n * selectivity
       row[`pg_${n}`] = Math.round((pgFiltered / 1000) * 10) / 10 // ms, 1 decimal
@@ -328,8 +349,9 @@ export type CostAtSelectivity = {
 export function computeCostAtSelectivity(
   selectivity: number,
   avgHaversinePerProvider: number,
+  providerCounts: number[] = PROVIDER_COUNTS,
 ): CostAtSelectivity[] {
-  return PROVIDER_COUNTS.map((n) => {
+  return providerCounts.map((n) => {
     const pgMs = (POSTGIS_FIXED_US + POSTGIS_PER_ROW_US * n * selectivity) / 1000
     const havMs = (avgHaversinePerProvider * n) / 1000
     const ratio = havMs > 0 ? +(pgMs / havMs).toFixed(1) : 0
@@ -356,4 +378,37 @@ export function modelPostGISFullMs(n: number): number {
  */
 export function modelDelta(measuredMs: number, n: number): number {
   return measuredMs - modelPostGISFullMs(n)
+}
+
+/**
+ * Inject cost-at-selectivity data into a selectivity data row at the
+ * reference line (selected radius).  Mutates and returns the same
+ * selectivityPoints array for convenience (inline mutation matches the
+ * existing pattern used by the GiST chart tooltip).
+ *
+ * The injected fields are:
+ *   cost_pg_{n}, cost_hav_{n}, cost_ratio_{n}, cost_faster_{n}, cost_label_{n}
+ *
+ * These are consumed by GiSTCostTooltip to show per-provider-cost details
+ * when the cursor is on the reference line.
+ */
+export function computeCostInjection(
+  selectivityPoints: SelectivityPoint[],
+  costData: CostAtSelectivity[],
+  refLineLabel: string,
+): SelectivityPoint[] {
+  const refLineRow = selectivityPoints.find(
+    (r: Record<string, unknown>) => r.selectivity === refLineLabel,
+  )
+  if (refLineRow) {
+    for (const c of costData) {
+      const label = c.n >= 1000 ? `${(c.n / 1000).toFixed(0)}k` : String(c.n)
+      ;(refLineRow as Record<string, unknown>)[`cost_pg_${c.n}`] = c.postgisMs
+      ;(refLineRow as Record<string, unknown>)[`cost_hav_${c.n}`] = c.haversineMs
+      ;(refLineRow as Record<string, unknown>)[`cost_ratio_${c.n}`] = c.ratio
+      ;(refLineRow as Record<string, unknown>)[`cost_faster_${c.n}`] = c.faster
+      ;(refLineRow as Record<string, unknown>)[`cost_label_${c.n}`] = label
+    }
+  }
+  return selectivityPoints
 }

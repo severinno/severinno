@@ -50,6 +50,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { ErrorState } from "@/components/admin/admin-shared"
 import { MetricCard } from "@/components/admin/admin-metric-card"
+import {
+  buildTrendData,
+  buildPerBenchTrend,
+  perBenchLines,
+  BENCHMARK_TYPE_LABELS,
+} from "@/lib/benchmark-data"
 
 import type {
   BenchmarksResponse,
@@ -81,13 +87,6 @@ const STATUS_COLORS: Record<string, string> = {
   changed: "hsl(38, 92%, 50%)",
   new: "hsl(201, 90%, 48%)",
   removed: "hsl(240, 6%, 50%)",
-}
-
-const TYPE_LABELS: Record<string, string> = {
-  geo: "Modelo CPU (Haversine + PostGIS)",
-  cache: "Cache Performance",
-  gist_index_analysis: "GiST Index Analysis",
-  real_postgis: "PostGIS Real (DB)",
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -261,7 +260,7 @@ export function AdminBenchmarkDashboard() {
           label="Tipos Monitorados"
           value={String(Object.keys(runs).length)}
           subtitle={Object.keys(runs)
-            .map((t) => TYPE_LABELS[t] ?? t)
+            .map((t) => BENCHMARK_TYPE_LABELS[t] ?? t)
             .join(", ")}
         />
       </section>
@@ -356,7 +355,7 @@ export function AdminBenchmarkDashboard() {
                       : undefined
                   }
                 >
-                  {TYPE_LABELS[type] ?? type}
+                  {BENCHMARK_TYPE_LABELS[type] ?? type}
                 </button>
               ))}
             </div>
@@ -465,7 +464,7 @@ export function AdminBenchmarkDashboard() {
                   <RTooltip
                     contentStyle={TOOLTIP_STYLE}
                     formatter={(v: number, n: string) => {
-                      const label = TYPE_LABELS[n.replace(/_ops$|_p95$/, "")] ?? n
+                      const label = BENCHMARK_TYPE_LABELS[n.replace(/_ops$|_p95$/, "")] ?? n
                       const suffix = metricMode === "ops" ? " ops/s" : " µs"
                       return [`${v.toFixed(v < 1 ? 2 : 1)}${suffix}`, label]
                     }}
@@ -483,7 +482,7 @@ export function AdminBenchmarkDashboard() {
                         key={dataKey}
                         type="monotone"
                         dataKey={dataKey}
-                        name={TYPE_LABELS[type] ?? type}
+                        name={BENCHMARK_TYPE_LABELS[type] ?? type}
                         stroke={TYPE_COLORS[type] ?? "#888"}
                         strokeWidth={2}
                         dot={{ r: 3 }}
@@ -701,7 +700,7 @@ export function AdminBenchmarkDashboard() {
                               color: TYPE_COLORS[type] ?? "#888",
                             }}
                           >
-                            {TYPE_LABELS[type] ?? type}
+                            {BENCHMARK_TYPE_LABELS[type] ?? type}
                           </span>
                         </td>
                         <td className="py-2 pr-4 tabular-nums">{run.benchmarks.length}</td>
@@ -754,7 +753,7 @@ export function AdminBenchmarkDashboard() {
 
 function ComparisonSection({ comparison }: { comparison: ComparisonResult }) {
   const [showAll, setShowAll] = React.useState(false)
-  const typeLabel = TYPE_LABELS[comparison.type] ?? comparison.type
+  const typeLabel = BENCHMARK_TYPE_LABELS[comparison.type] ?? comparison.type
 
   // Show regressions first, then sorted by change magnitude
   const sortedDiffs = React.useMemo(() => {
@@ -1055,177 +1054,6 @@ function StatusBadge({ status }: { status: string }) {
 
 function filteredRunCount(runs: Record<string, BenchmarkFile[]>): number {
   return Object.values(runs).reduce((a, r) => a + r.length, 0)
-}
-
-// ---------------------------------------------------------------------------
-// Per-benchmark temporal trend builder
-// ---------------------------------------------------------------------------
-
-function buildPerBenchTrend(
-  allRuns: Record<string, BenchmarksResponse["runs"][string]>,
-  filterFn: (ts: string | undefined) => boolean,
-  selectedTypes: Set<string>,
-): Array<Record<string, number | string>> {
-  // Collect all entries grouped by date
-  const dateMap = new Map<
-    string,
-    { ts: number; vals: Record<string, { mean: number; ops: number; p95: number }> }
-  >()
-
-  for (const [type, typeRuns] of Object.entries(allRuns)) {
-    if (!selectedTypes.has(type)) continue
-
-    for (const run of typeRuns) {
-      const ts = run.meta?.timestamp
-      if (!ts || !filterFn(ts)) continue
-
-      const d = new Date(ts)
-      const dateKey = d.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
-
-      if (!dateMap.has(dateKey)) {
-        dateMap.set(dateKey, { ts: d.getTime(), vals: {} })
-      }
-      const group = dateMap.get(dateKey)!
-
-      for (const bench of run.benchmarks) {
-        const key = `${type}::${bench.label}`
-        if (!group.vals[key] || group.vals[key].mean === 0) {
-          group.vals[key] = {
-            mean: bench.mean,
-            ops: bench.opsPerSec,
-            p95: bench.p95 ?? bench.mean, // fallback to mean if no P95
-          }
-        }
-      }
-    }
-  }
-
-  // Convert to sorted array
-  return [...dateMap.entries()]
-    .sort(([, a], [, b]) => a.ts - b.ts)
-    .map(([date, { vals }]) => {
-      const row: Record<string, number | string> = { date }
-      for (const [key, v] of Object.entries(vals)) {
-        row[`${key}_mean`] = v.mean
-        row[`${key}_ops`] = v.ops
-        row[`${key}_p95`] = v.p95
-      }
-      return row
-    })
-}
-
-/** Build line configs for per-benchmark chart */
-function perBenchLines(
-  data: Array<Record<string, number | string>>,
-  metric: "mean" | "ops" | "p95",
-): Array<{ dataKey: string; name: string; color: string }> {
-  if (data.length === 0) return []
-
-  const suffix = metric === "mean" ? "_mean" : metric === "ops" ? "_ops" : "_p95"
-  const keys = Object.keys(data[0]).filter((k) => k.endsWith(suffix) && k !== "date")
-
-  const TYPE_PALETTE = [
-    "hsl(201, 90%, 48%)",
-    "hsl(38, 92%, 50%)",
-    "hsl(160, 84%, 39%)",
-    "hsl(0, 72%, 51%)",
-    "hsl(270, 76%, 53%)",
-    "hsl(340, 82%, 52%)",
-    "hsl(180, 80%, 40%)",
-    "hsl(30, 90%, 55%)",
-  ]
-
-  return keys.map((dataKey, idx) => {
-    // Extract readable name from key: "geo::haversine_100" → "geo: haversine 100"
-    const [type, label] = dataKey.replace(suffix, "").split("::")
-    const prettyName = label
-      ? `${TYPE_LABELS[type] ?? type}: ${label.replace(/_/g, " ")}`
-      : (TYPE_LABELS[type] ?? type)
-
-    return {
-      dataKey,
-      name: prettyName,
-      color: TYPE_PALETTE[idx % TYPE_PALETTE.length],
-    }
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Trend data builder (per-type aggregated)
-// ---------------------------------------------------------------------------
-
-function buildTrendData(
-  runs: Record<string, BenchmarksResponse["runs"][string]>,
-): Array<Record<string, number | string>> {
-  // Collect all entries with timestamps
-  interface TrendEntry {
-    date: string
-    timestamp: number
-    type: string
-    mean: number
-    ops: number
-    p95: number
-  }
-
-  const allEntries: TrendEntry[] = []
-
-  for (const [type, typeRuns] of Object.entries(runs)) {
-    for (const run of typeRuns) {
-      const ts = run.meta?.timestamp
-      if (!ts) continue
-
-      // Use the first benchmark's mean as the representative value for this type
-      const firstBench = run.benchmarks[0]
-      if (!firstBench) continue
-
-      const d = new Date(ts)
-      allEntries.push({
-        date: d.toLocaleDateString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }),
-        timestamp: d.getTime(),
-        type,
-        mean: firstBench.mean,
-        ops: firstBench.opsPerSec,
-        p95: firstBench.p95 ?? firstBench.mean,
-      })
-    }
-  }
-
-  // Sort by timestamp ascending (chronological)
-  allEntries.sort((a, b) => a.timestamp - b.timestamp)
-
-  // Group by date + type, keeping first occurrence's timestamp
-  const grouped = new Map<
-    string,
-    { types: Record<string, { mean: number; ops: number; p95: number }>; ts: number }
-  >()
-  for (const entry of allEntries) {
-    if (!grouped.has(entry.date)) {
-      grouped.set(entry.date, { types: {}, ts: entry.timestamp })
-    }
-    const group = grouped.get(entry.date)!
-    group.types[entry.type] = { mean: entry.mean, ops: entry.ops, p95: entry.p95 }
-  }
-
-  // Convert to array preserving chronological order (entries were already sorted)
-  return [...grouped.entries()]
-    .sort(([, a], [, b]) => a.ts - b.ts)
-    .map(([date, { types }]) => {
-      const row: Record<string, number | string> = { date }
-      for (const [type, vals] of Object.entries(types)) {
-        row[type] = vals.mean
-        row[`${type}_ops`] = vals.ops
-        row[`${type}_p95`] = vals.p95
-      }
-      return row
-    })
 }
 
 // ---------------------------------------------------------------------------
