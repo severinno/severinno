@@ -75,11 +75,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useUIStore } from "@/store/ui"
 
@@ -99,7 +95,7 @@ import {
   StatusBadge,
   TableSkeleton,
   type StatusTone,
-} from "./admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -184,9 +180,7 @@ export function AdminServices() {
   const [page, setPage] = React.useState(1)
   const [sort, setSort] = React.useState<SortState>(null)
 
-  const [deleteTarget, setDeleteTarget] = React.useState<AdminService | null>(
-    null,
-  )
+  const [deleteTarget, setDeleteTarget] = React.useState<AdminService | null>(null)
   const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
   const [patchingId, setPatchingId] = React.useState<string | null>(null)
   const [errorBanner, setErrorBanner] = React.useState<string | null>(null)
@@ -212,21 +206,17 @@ export function AdminServices() {
   const { data: providersList } = useQuery({
     queryKey: ["admin", "providers", "options"],
     queryFn: () =>
-      apiGet<{ items: ProviderOption[]; total: number }>(
-        "/api/admin/users",
-        { role: "PROVIDER", limit: 100 },
-      ),
+      apiGet<{ items: ProviderOption[]; total: number }>("/api/admin/users", {
+        role: "PROVIDER",
+        limit: 100,
+      }),
     staleTime: 60_000,
   })
 
   // API devolve TODOS os serviços de uma vez — filtros server-side, ordenação
   // e paginação client-side (H1 + H7).
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: [
-      "admin",
-      "services",
-      { debouncedQ, active, categoryFilter, providerFilter },
-    ],
+    queryKey: ["admin", "services", { debouncedQ, active, categoryFilter, providerFilter }],
     queryFn: () =>
       apiGet<AdminServicesResponse>("/api/admin/services", {
         ...(debouncedQ ? { q: debouncedQ } : {}),
@@ -237,17 +227,11 @@ export function AdminServices() {
     staleTime: 15_000,
   })
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["admin", "services"] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "services"] })
 
   const patchMutation = useMutation({
-    mutationFn: ({
-      id,
-      patch,
-    }: {
-      id: string
-      patch: { active?: boolean }
-    }) => apiPatch(`/api/services/${id}`, patch),
+    mutationFn: ({ id, patch }: { id: string; patch: { active?: boolean } }) =>
+      apiPatch(`/api/services/${id}`, patch),
   })
 
   const deleteMutation = useMutation({
@@ -266,8 +250,7 @@ export function AdminServices() {
       if (sort.key === "basePrice") {
         cmp = a.basePrice - b.basePrice
       } else {
-        cmp =
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       }
       return sort.dir === "asc" ? cmp : -cmp
     })
@@ -276,10 +259,7 @@ export function AdminServices() {
 
   const totalPages = Math.max(1, Math.ceil(sortedItems.length / limit))
   const safePage = Math.min(page, totalPages)
-  const pageItems = sortedItems.slice(
-    (safePage - 1) * limit,
-    safePage * limit,
-  )
+  const pageItems = sortedItems.slice((safePage - 1) * limit, safePage * limit)
 
   const activeFilterCount =
     (debouncedQ ? 1 : 0) +
@@ -317,9 +297,7 @@ export function AdminServices() {
       {
         onSuccess: () => {
           invalidate()
-          toast.success(
-            currentValue ? "Serviço desativado." : "Serviço ativado.",
-          )
+          toast.success(currentValue ? "Serviço desativado." : "Serviço ativado.")
           setPendingToggle(null)
           setPatchingId(null)
         },
@@ -351,16 +329,12 @@ export function AdminServices() {
     })
   }
 
-  const renderSortHeader = (
-    label: string,
-    sortKey: SortKey,
-    align: "left" | "right" = "left",
-  ) => (
+  const renderSortHeader = (label: string, sortKey: SortKey, align: "left" | "right" = "left") => (
     <button
       type="button"
       onClick={() => toggleSort(sortKey)}
       className={cn(
-        "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground",
+        "text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px] font-semibold tracking-wider uppercase transition-colors",
         align === "right" && "flex-row-reverse",
       )}
     >
@@ -394,7 +368,7 @@ export function AdminServices() {
             type="button"
             onClick={() => setErrorBanner(null)}
             aria-label="Dispensar aviso"
-            className="absolute right-3 top-3 rounded-md p-1 text-current/70 transition-colors hover:text-current"
+            className="absolute top-3 right-3 rounded-md p-1 text-current/70 transition-colors hover:text-current"
           >
             <X className="size-3.5" />
           </button>
@@ -406,9 +380,7 @@ export function AdminServices() {
         onClear={clearFilters}
         activeCount={activeFilterCount}
         resultCount={total}
-        resultLabel={
-          total === 1 ? "serviço encontrado" : "serviços encontrados"
-        }
+        resultLabel={total === 1 ? "serviço encontrado" : "serviços encontrados"}
       >
         <SearchInput
           value={q}
@@ -438,16 +410,9 @@ export function AdminServices() {
               )
               .map((c) => (
                 <SelectItem key={c.id} value={c.id}>
-                  <span className="text-muted-foreground">
-                    {"—".repeat(c.level)}
-                  </span>{" "}
-                  {c.name}
-                  <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                    {c.level === 0
-                      ? "pai"
-                      : c.level === 1
-                        ? "filha"
-                        : "sub"}
+                  <span className="text-muted-foreground">{"—".repeat(c.level)}</span> {c.name}
+                  <span className="text-muted-foreground ml-1.5 text-[10px] tracking-wide uppercase">
+                    {c.level === 0 ? "pai" : c.level === 1 ? "filha" : "sub"}
                   </span>
                 </SelectItem>
               ))}
@@ -506,12 +471,7 @@ export function AdminServices() {
           description="Ajuste os filtros de busca ou aguarde novos cadastros."
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -519,31 +479,31 @@ export function AdminServices() {
           }
         />
       ) : (
-        <Card className="rounded-xl border border-border/50 bg-card overflow-hidden">
+        <Card className="border-border/50 bg-card overflow-hidden rounded-xl border">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30 h-10">
-                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Serviço
                     </TableHead>
-                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Prestador
                     </TableHead>
-                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase md:table-cell">
                       Categoria
                     </TableHead>
                     <TableHead className="text-right">
                       {renderSortHeader("Preço", "basePrice", "right")}
                     </TableHead>
-                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
                       Ativo
                     </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Criado", "createdAt")}
                     </TableHead>
-                    <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-[11px] font-semibold tracking-wider uppercase">
                       Ações
                     </TableHead>
                   </TableRow>
@@ -554,34 +514,27 @@ export function AdminServices() {
                     const leaf = path.length > 0 ? path[path.length - 1] : null
                     const pathStr = path.map((c) => c.name).join(" › ")
                     const photo = firstPhoto(s.photos)
-                    const isPatchingThis =
-                      patchingId === s.id && patchMutation.isPending
+                    const isPatchingThis = patchingId === s.id && patchMutation.isPending
                     return (
                       <TableRow
                         key={s.id}
                         className={cn(
-                          "h-12 border-b border-border/50 transition-colors last:border-0 hover:bg-muted/20",
+                          "border-border/50 hover:bg-muted/20 h-12 border-b transition-colors last:border-0",
                           !s.active && "opacity-70",
                         )}
                       >
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+                            <div className="bg-muted flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border">
                               {photo ? (
-                                <img
-                                  src={photo}
-                                  alt={s.title}
-                                  className="size-full object-cover"
-                                />
+                                <img src={photo} alt={s.title} className="size-full object-cover" />
                               ) : (
-                                <ImageIcon className="size-4 text-muted-foreground" />
+                                <ImageIcon className="text-muted-foreground size-4" />
                               )}
                             </div>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {s.title}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
+                              <p className="truncate text-sm font-medium">{s.title}</p>
+                              <p className="text-muted-foreground truncate text-xs">
                                 {s.description.slice(0, 80)}
                                 {s.description.length > 80 ? "…" : ""}
                               </p>
@@ -592,24 +545,19 @@ export function AdminServices() {
                           <div className="flex items-center gap-2">
                             <Avatar className="size-8 shrink-0">
                               {s.provider.avatarUrl ? (
-                                <AvatarImage
-                                  src={s.provider.avatarUrl}
-                                  alt={s.provider.name}
-                                />
+                                <AvatarImage src={s.provider.avatarUrl} alt={s.provider.name} />
                               ) : null}
-                              <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
+                              <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
                                 {initials(s.provider.name)}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-xs font-medium hover:text-primary transition-colors">
+                              <p className="hover:text-primary truncate text-xs font-medium transition-colors">
                                 {s.provider.name}
                               </p>
-                              <p className="truncate text-[10px] text-muted-foreground">
+                              <p className="text-muted-foreground truncate text-[10px]">
                                 {s.provider.city ?? "—"}
-                                {s.provider.state
-                                  ? `/${s.provider.state}`
-                                  : ""}
+                                {s.provider.state ? `/${s.provider.state}` : ""}
                               </p>
                             </div>
                           </div>
@@ -624,35 +572,27 @@ export function AdminServices() {
                                   </StatusBadge>
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent
-                                side="top"
-                                className="max-w-xs text-xs"
-                              >
-                                <span className="font-semibold">
-                                  Caminho da categoria
-                                </span>
-                                <span className="mt-0.5 block text-muted-foreground">
+                              <TooltipContent side="top" className="max-w-xs text-xs">
+                                <span className="font-semibold">Caminho da categoria</span>
+                                <span className="text-muted-foreground mt-0.5 block">
                                   {pathStr}
                                 </span>
                               </TooltipContent>
                             </Tooltip>
                           ) : (
-                            <span className="text-xs text-muted-foreground">
-                              —
-                            </span>
+                            <span className="text-muted-foreground text-xs">—</span>
                           )}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-right">
-                          <span className="text-sm font-semibold tabular-nums text-foreground">
+                          <span className="text-foreground text-sm font-semibold tabular-nums">
                             {formatBRL(s.basePrice)}
                           </span>
-                          <span className="ml-1 text-[10px] text-muted-foreground">
+                          <span className="text-muted-foreground ml-1 text-[10px]">
                             /{SERVICE_UNIT_SHORT[s.unit]}
                           </span>
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
-                          {isPatchingThis &&
-                          pendingToggle?.field === "active" ? (
+                          {isPatchingThis && pendingToggle?.field === "active" ? (
                             <SavingPill saving label="Salvando…" />
                           ) : (
                             <Tooltip>
@@ -680,7 +620,7 @@ export function AdminServices() {
                             </Tooltip>
                           )}
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 text-xs text-muted-foreground tabular-nums sm:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
                           {formatDate(s.createdAt)}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-right">
@@ -695,14 +635,10 @@ export function AdminServices() {
                                   className="h-8 gap-1.5"
                                 >
                                   <Eye className="size-3.5" />
-                                  <span className="hidden sm:inline">
-                                    Ver prestador
-                                  </span>
+                                  <span className="hidden sm:inline">Ver prestador</span>
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>
-                                Abrir perfil do prestador
-                              </TooltipContent>
+                              <TooltipContent>Abrir perfil do prestador</TooltipContent>
                             </Tooltip>
                             {/* H6 — secondary/destructive actions in ⋮ */}
                             <DropdownMenu>
@@ -757,18 +693,14 @@ export function AdminServices() {
             </div>
 
             {/* Result count + Pagination — H1 + H7 */}
-            <div className="flex flex-col items-center justify-between gap-2 border-t border-border/50 px-4 py-3 sm:flex-row">
+            <div className="border-border/50 flex flex-col items-center justify-between gap-2 border-t px-4 py-3 sm:flex-row">
               <ResultCount
                 page={safePage}
                 limit={limit}
                 total={sortedItems.length}
                 label="serviços"
               />
-              <Pagination
-                page={safePage}
-                totalPages={totalPages}
-                onPageChange={setPage}
-              />
+              <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </CardContent>
         </Card>
@@ -792,11 +724,8 @@ export function AdminServices() {
         description={
           <>
             Você está prestes a excluir{" "}
-            <strong className="text-foreground">
-              {deleteTarget?.title}
-            </strong>
-            . Esta ação não pode ser desfeita e o serviço será removido
-            permanentemente do catálogo.
+            <strong className="text-foreground">{deleteTarget?.title}</strong>. Esta ação não pode
+            ser desfeita e o serviço será removido permanentemente do catálogo.
           </>
         }
         confirmLabel={deleteMutation.isPending ? "Excluindo…" : "Excluir"}

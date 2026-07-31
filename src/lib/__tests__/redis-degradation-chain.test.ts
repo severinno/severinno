@@ -420,6 +420,45 @@ describe("Redis Sentry degradation alert", () => {
   })
 
   it(
+    "dispara captureMessage após 3 degradações via __testing__degradeTier " +
+      "direto (sem mockar Redis)",
+    async () => {
+      await reloadModule(true)
+      redisModule.__testing__resetDegradationState()
+
+      // ── Duas degradações diretas (cluster → standalone → memory) ──
+      // Nenhuma chama Redis — apenas manipulam o state machine.
+      redisModule.__testing__degradeTier("cluster")
+      expect(redisModule.getCacheStats().degradationCount).toBe(1)
+      expect(redisModule.getCacheStats().activeTier).toBe("standalone")
+      expect(mockCaptureMessage).not.toHaveBeenCalled()
+
+      redisModule.__testing__degradeTier("standalone")
+      expect(redisModule.getCacheStats().degradationCount).toBe(2)
+      expect(redisModule.getCacheStats().activeTier).toBe("memory")
+      expect(mockCaptureMessage).not.toHaveBeenCalled()
+
+      // ── Recupera um tier (memory → standalone) ──────────────────
+      await redisModule.__testing__tryRecoverTier()
+      expect(redisModule.getCacheStats().activeTier).toBe("standalone")
+
+      // ── Terceira degradação (standalone → memory) ───────────────
+      // degradationCount atinge 3 → captureMessage DISPARA
+      redisModule.__testing__degradeTier("standalone")
+      expect(redisModule.getCacheStats().degradationCount).toBe(3)
+      expect(redisModule.getCacheStats().activeTier).toBe("memory")
+
+      // ── Assert ──────────────────────────────────────────────────
+      expect(mockCaptureMessage).toHaveBeenCalledTimes(1)
+      expect(mockCaptureMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Múltiplas degradações"),
+        "error",
+        expect.objectContaining({ degradationCount: 3 }),
+      )
+    },
+  )
+
+  it(
     "calls captureMessage with severity='error' and degradationCount=3 " +
       "after 3 degradations (cacheGet + recovery + cacheGet)",
     async () => {

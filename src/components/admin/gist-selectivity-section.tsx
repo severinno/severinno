@@ -65,18 +65,9 @@ import {
 import { GistDegradationPanel } from "@/components/admin/gist-degradation-panel"
 import { RadiusDensitySelector } from "@/components/admin/radius-density-selector"
 import { MetricCard } from "@/components/admin/admin-metric-card"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ── Chart tooltip style (shared) ──────────────────────────────────────────
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
 
 // ── GiST degradation history buffer — last N polls, majority vote
 //     Prevents alert flickering when P95 oscillates near the threshold.

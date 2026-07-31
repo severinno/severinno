@@ -44,24 +44,12 @@ import {
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
-import { ErrorState } from "@/components/admin/admin-shared"
-import { MetricCard, KpiCard } from "@/components/admin/admin-metric-card"
-import { TierBanner } from "@/components/admin/admin-tier-banner"
+import { DashboardHeader, ErrorState, KpiCard, MetricCard, TierBanner } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import type { RedisDiagnosticsResponse } from "@/app/api/admin/redis-diagnostics/route"
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
 
 // ── Color palette ────────────────────────────────────────────────────────
 

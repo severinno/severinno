@@ -36,31 +36,43 @@ export function useBalancePulse(
   onIncrease?: () => void,
   pulseMs = 800,
 ): { isPulsing: boolean } {
-  const prevRef = useRef(balance)
+  const [prevBalance, setPrevBalance] = useState(balance)
   const [isPulsing, setIsPulsing] = useState(false)
+  // Incremented on every increase so the pulse effect can restart its timer
+  // even when `isPulsing` is already `true`.
+  const [pulseNonce, setPulseNonce] = useState(0)
+  const onIncreaseRef = useRef(onIncrease)
 
+  // Keep the callback ref fresh without re-running the pulse effect when the
+  // consumer passes a new inline function on unrelated re-renders.
   useEffect(() => {
-    if (balance === undefined) return
+    onIncreaseRef.current = onIncrease
+  }, [onIncrease])
 
-    const prev = prevRef.current
+  // "Adjusting state when props change" (render phase) — detects increases
+  // without a state-setting effect (react-hooks/set-state-in-effect). This is
+  // the documented React pattern: setState during render is legal as long as
+  // it's conditional, and the re-render converges because `prevBalance` is
+  // updated in the same pass.
+  if (balance !== undefined && prevBalance !== undefined && balance > prevBalance) {
+    // Balance increased → pulse + restart timer
+    setPrevBalance(balance)
+    setIsPulsing(true)
+    setPulseNonce((n) => n + 1)
+  } else if (balance !== undefined && balance !== prevBalance) {
+    // Balance decreased or changed → track the new base silently
+    setPrevBalance(balance)
+  }
 
-    if (prev !== undefined && balance > prev) {
-      // Balance increased → pulse
-      setIsPulsing(true)
-      onIncrease?.()
-      const timer = setTimeout(() => setIsPulsing(false), pulseMs)
-      prevRef.current = balance
-      return () => clearTimeout(timer)
-    }
+  // Fire the callback and schedule the pulse end. Re-runs on a new increase
+  // (nonce) so a rapid increase restarts the timer.
+  useEffect(() => {
+    if (!isPulsing) return
 
-    if (prev !== undefined && balance < prev) {
-      // Balance decreased → update ref silently
-      prevRef.current = balance
-      return
-    }
-
-    prevRef.current = balance
-  }, [balance, onIncrease, pulseMs])
+    onIncreaseRef.current?.()
+    const timer = setTimeout(() => setIsPulsing(false), pulseMs)
+    return () => clearTimeout(timer)
+  }, [isPulsing, pulseMs, pulseNonce])
 
   return { isPulsing }
 }

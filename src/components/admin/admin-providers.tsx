@@ -99,7 +99,7 @@ import {
   SearchInput,
   TableSkeleton,
   VerifiedBadge,
-} from "./admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types — definidos IDÊNTICOS em admin-users.tsx (H4 consistência).

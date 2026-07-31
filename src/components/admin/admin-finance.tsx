@@ -53,7 +53,8 @@ import {
   UserCircle,
   Wallet,
 } from "lucide-react"
-import { RefreshButton } from "@/components/admin/admin-refresh-button"
+import { ErrorState, RefreshButton } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
 import { RealtimeStatusBadge } from "@/components/shared/realtime-status-badge"
@@ -71,7 +72,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ErrorState } from "@/components/admin/admin-shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -177,16 +177,6 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 const PIE_COLORS: Record<PaymentMethod, string> = {
   PIX: "hsl(160, 84%, 39%)",
   CARD: "hsl(221, 83%, 53%)",
-}
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
 }
 
 // ---------------------------------------------------------------------------

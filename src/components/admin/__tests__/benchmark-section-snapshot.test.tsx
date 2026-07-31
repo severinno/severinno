@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
 import { render, screen, fireEvent, cleanup } from "@/__tests__/test-utils"
-import { BenchmarkSection } from "../admin-geo-metrics-dashboard"
+import { BenchmarkSection } from "../benchmark-section"
 
 // ===========================================================================
 // Mock Recharts — JSDOM does not support SVG measurement

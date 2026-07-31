@@ -79,7 +79,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { ErrorState, FreshnessLabel, initials } from "@/components/admin/admin-shared"
+import { ErrorState, FreshnessLabel, initials } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -88,16 +89,6 @@ import { ErrorState, FreshnessLabel, initials } from "@/components/admin/admin-s
 const COLORS = {
   commission: "hsl(38, 92%, 50%)",
   providerNet: "hsl(160, 84%, 39%)",
-}
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
 }
 
 // ---------------------------------------------------------------------------
@@ -116,18 +107,12 @@ export function AdminCommissions() {
     filterParams.providerId = selectedProvider
   }
 
-  const {
-    data,
-    isLoading,
-    isError,
-    isFetching,
-    refetch,
-    dataUpdatedAt,
-  } = useQuery<CommissionSummary>({
-    queryKey: ["admin", "commissions", selectedYear, selectedProvider],
-    queryFn: () => apiGet("/api/admin/commissions", filterParams),
-    staleTime: 60_000,
-  })
+  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } =
+    useQuery<CommissionSummary>({
+      queryKey: ["admin", "commissions", selectedYear, selectedProvider],
+      queryFn: () => apiGet("/api/admin/commissions", filterParams),
+      staleTime: 60_000,
+    })
 
   if (isError) {
     return (
@@ -150,92 +135,74 @@ export function AdminCommissions() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Comissões
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <h1 className="text-foreground text-xl font-bold tracking-tight">Comissões</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Taxa da plataforma de {FEE_RATE * 100}% sobre serviços realizados
           </p>
-        </div>          <div className="flex items-center gap-3">
-            {/* Provider filter */}
-            <Select
-              value={selectedProvider}
-              onValueChange={setSelectedProvider}
+        </div>{" "}
+        <div className="flex items-center gap-3">
+          {/* Provider filter */}
+          <Select value={selectedProvider} onValueChange={setSelectedProvider}>
+            <SelectTrigger
+              className="h-8 w-[160px] gap-1 text-xs"
+              aria-label="Filtrar por prestador"
             >
-              <SelectTrigger
-                className="h-8 w-[160px] gap-1 text-xs"
-                aria-label="Filtrar por prestador"
-              >
-                <Users className="size-3.5" />
-                <SelectValue placeholder="Todos prestadores" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos prestadores</SelectItem>
-                {data?.providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <Users className="size-3.5" />
+              <SelectValue placeholder="Todos prestadores" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos prestadores</SelectItem>
+              {data?.providers.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            {/* Year selector */}
-            <Select
-              value={String(selectedYear)}
-              onValueChange={(v) => setSelectedYear(parseInt(v, 10))}
+          {/* Year selector */}
+          <Select
+            value={String(selectedYear)}
+            onValueChange={(v) => setSelectedYear(parseInt(v, 10))}
+          >
+            <SelectTrigger className="h-8 w-[100px] gap-1 text-xs" aria-label="Selecionar ano">
+              <Calendar className="size-3.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {Array.from({ length: 5 }, (_, i) => currentYear - i).map((year) => (
+                <SelectItem key={year} value={String(year)}>
+                  {year}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FreshnessLabel updatedAt={freshnessDate} />
+          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" asChild>
+            <a
+              href={`/api/admin/commissions/export?year=${selectedYear}${selectedProvider !== "all" ? `&providerId=${selectedProvider}` : ""}`}
+              download
             >
-              <SelectTrigger
-                className="h-8 w-[100px] gap-1 text-xs"
-                aria-label="Selecionar ano"
-              >
-                <Calendar className="size-3.5" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 5 }, (_, i) => currentYear - i).map(
-                  (year) => (
-                    <SelectItem key={year} value={String(year)}>
-                      {year}
-                    </SelectItem>
-                  ),
-                )}
-              </SelectContent>
-            </Select>
-            <FreshnessLabel updatedAt={freshnessDate} />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              asChild
-            >
-              <a
-                href={`/api/admin/commissions/export?year=${selectedYear}${selectedProvider !== "all" ? `&providerId=${selectedProvider}` : ""}`}
-                download
-              >
-                <Download className="size-3.5" />
-                Exportar CSV
-              </a>
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={() => void refetch()}
-              disabled={isFetching}
-              aria-label="Atualizar dados"
-            >
-              <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
-            </Button>
-          </div>
+              <Download className="size-3.5" />
+              Exportar CSV
+            </a>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+            aria-label="Atualizar dados"
+          >
+            <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
+          </Button>
+        </div>
       </div>
 
       {/* Summary cards */}
-      <section
-        aria-label="Resumo financeiro"
-        className="grid grid-cols-2 gap-4 lg:grid-cols-4"
-      >
+      <section aria-label="Resumo financeiro" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
           icon={DollarSign}
           label="Receita Bruta"
@@ -266,23 +233,18 @@ export function AdminCommissions() {
       </section>
 
       {/* Monthly chart */}
-      <section className="rounded-xl border border-border/50 bg-card">
+      <section className="border-border/50 bg-card rounded-xl border">
         <div className="border-b px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">
-            Receita mensal ({selectedYear})
-          </h2>
+          <h2 className="text-foreground text-sm font-semibold">Receita mensal ({selectedYear})</h2>
         </div>
         <div className="p-4">
           {data.monthly.length === 0 ? (
-            <div className="flex h-[260px] items-center justify-center text-xs text-muted-foreground">
+            <div className="text-muted-foreground flex h-[260px] items-center justify-center text-xs">
               Sem dados neste ano.
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart
-                data={data.monthly}
-                margin={{ left: 0, right: 0, top: 8, bottom: 0 }}
-              >
+              <BarChart data={data.monthly} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
                 <CartesianGrid
                   vertical={false}
                   strokeDasharray="3 3"
@@ -294,7 +256,20 @@ export function AdminCommissions() {
                   axisLine={false}
                   tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                   tickFormatter={(v: string) => {
-                    const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+                    const months = [
+                      "Jan",
+                      "Fev",
+                      "Mar",
+                      "Abr",
+                      "Mai",
+                      "Jun",
+                      "Jul",
+                      "Ago",
+                      "Set",
+                      "Out",
+                      "Nov",
+                      "Dez",
+                    ]
                     const m = parseInt(v.split("-")[1], 10) - 1
                     return months[m] ?? v
                   }}
@@ -312,18 +287,24 @@ export function AdminCommissions() {
                   cursor={{ fill: "hsl(var(--accent) / 0.4)" }}
                   formatter={(v: number, name: string) => [
                     formatBRL(v),
-                    name === "gross"
-                      ? "Bruto"
-                      : name === "commission"
-                        ? "Comissão"
-                        : "Líquido",
+                    name === "gross" ? "Bruto" : name === "commission" ? "Comissão" : "Líquido",
                   ]}
                   contentStyle={TOOLTIP_STYLE}
                   labelFormatter={(label: string) => {
                     const [y, m] = label.split("-")
                     const months = [
-                      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-                      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+                      "Janeiro",
+                      "Fevereiro",
+                      "Março",
+                      "Abril",
+                      "Maio",
+                      "Junho",
+                      "Julho",
+                      "Agosto",
+                      "Setembro",
+                      "Outubro",
+                      "Novembro",
+                      "Dezembro",
                     ]
                     return `${months[parseInt(m, 10) - 1]} de ${y}`
                   }}
@@ -354,21 +335,19 @@ export function AdminCommissions() {
       </section>
 
       {/* Per-provider breakdown */}
-      <section className="overflow-hidden rounded-xl border border-border/50 bg-card">
+      <section className="border-border/50 bg-card overflow-hidden rounded-xl border">
         <div className="border-b px-5 py-4">
-          <h2 className="text-sm font-semibold text-foreground">
-            Prestadores por receita
-          </h2>
+          <h2 className="text-foreground text-sm font-semibold">Prestadores por receita</h2>
         </div>
         {data.providers.length === 0 ? (
-          <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+          <div className="text-muted-foreground px-5 py-12 text-center text-sm">
             Nenhum prestador com receita ainda.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="h-10 border-b bg-muted/30 text-xs font-medium text-muted-foreground">
+                <tr className="bg-muted/30 text-muted-foreground h-10 border-b text-xs font-medium">
                   <th className="px-4 font-medium">Prestador</th>
                   <th className="px-4 text-right font-medium">Agendamentos</th>
                   <th className="px-4 text-right font-medium">Bruto</th>
@@ -378,40 +357,31 @@ export function AdminCommissions() {
               </thead>
               <tbody className="divide-y">
                 {data.providers.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="h-14 transition-colors hover:bg-muted/20"
-                  >
+                  <tr key={p.id} className="hover:bg-muted/20 h-14 transition-colors">
                     <td className="px-4">
                       <div className="flex items-center gap-2.5">
                         <Avatar className="size-8 shrink-0">
-                          {p.avatarUrl ? (
-                            <AvatarImage src={p.avatarUrl} alt={p.name} />
-                          ) : null}
-                          <AvatarFallback className="bg-primary/8 text-[10px] font-semibold text-primary">
+                          {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
+                          <AvatarFallback className="bg-primary/8 text-primary text-[10px] font-semibold">
                             {initials(p.name)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-foreground">
-                            {p.name}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
+                          <p className="text-foreground truncate text-sm font-medium">{p.name}</p>
+                          <p className="text-muted-foreground text-[10px]">
                             {p.completedCount} completo{p.completedCount === 1 ? "" : "s"}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 text-right tabular-nums">
-                      {p.bookingCount}
-                    </td>
-                    <td className="px-4 text-right tabular-nums font-medium">
+                    <td className="px-4 text-right tabular-nums">{p.bookingCount}</td>
+                    <td className="px-4 text-right font-medium tabular-nums">
                       {formatBRL(p.grossRevenue)}
                     </td>
-                    <td className="px-4 text-right tabular-nums text-amber-600 dark:text-amber-400">
+                    <td className="px-4 text-right text-amber-600 tabular-nums dark:text-amber-400">
                       {formatBRL(p.commission)}
                     </td>
-                    <td className="px-4 text-right tabular-nums font-medium text-emerald-600 dark:text-emerald-400">
+                    <td className="px-4 text-right font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
                       {formatBRL(p.netEarnings)}
                     </td>
                   </tr>
@@ -423,15 +393,15 @@ export function AdminCommissions() {
       </section>
 
       {/* Footer summary */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border/50 bg-muted/20 px-5 py-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="border-border/50 bg-muted/20 flex flex-wrap items-center justify-between gap-4 rounded-xl border px-5 py-4">
+        <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Percent className="size-4" />
           <span>
-            A plataforma retém <strong>{FEE_RATE * 100}%</strong> sobre cada
-            serviço pago. O restante é repassado ao prestador.
+            A plataforma retém <strong>{FEE_RATE * 100}%</strong> sobre cada serviço pago. O
+            restante é repassado ao prestador.
           </span>
         </div>
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="text-muted-foreground flex items-center gap-4 text-xs">
           <span className="tabular-nums">
             <Users className="mr-1 inline size-3" />
             {data.providers.length} prestadores
@@ -467,17 +437,15 @@ function KpiCard({
   }[accent]
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
       <span className={cn("flex size-10 items-center justify-center rounded-lg", accentBg)}>
         <Icon className="size-5" />
       </span>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-        {value}
-      </p>
-      <p className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
-      <p className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</p>
+      <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p>
     </div>
   )
 }
@@ -486,7 +454,7 @@ function LegendItem({ color, label }: { color: string; label: string }) {
   return (
     <div className="flex items-center gap-1.5">
       <span className="size-2.5 rounded-sm" style={{ backgroundColor: color }} />
-      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className="text-muted-foreground text-[11px]">{label}</span>
     </div>
   )
 }
@@ -510,7 +478,7 @@ function CommissionsSkeleton() {
       </div>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-border/50 bg-card p-5">
+          <div key={i} className="border-border/50 bg-card rounded-xl border p-5">
             <Skeleton className="size-10 rounded-lg" />
             <Skeleton className="mt-3 h-7 w-28" />
             <Skeleton className="mt-1 h-3 w-20" />
@@ -518,7 +486,7 @@ function CommissionsSkeleton() {
           </div>
         ))}
       </div>
-      <div className="rounded-xl border border-border/50 bg-card">
+      <div className="border-border/50 bg-card rounded-xl border">
         <div className="border-b px-5 py-4">
           <Skeleton className="h-4 w-40" />
         </div>

@@ -66,6 +66,12 @@ import {
   DEFAULT_GIST_REINDEX_PROPS,
 } from "./mocks"
 
+// ===========================================================================
+// Shared visual state tests
+// ===========================================================================
+
+import { describeVisualStates } from "./visual-state-tests"
+
 let mockFetchResponse: FetchResponseFn
 
 // ===========================================================================
@@ -273,99 +279,13 @@ describe("GistReindexButton", () => {
   })
 
   // ── Estados visuais (4 estados do componente) ────────────────────
+  // Extraídos para helper compartilhado — usado também em
+  // gist-degradation-panel.test.tsx para evitar duplicação.
 
-  describe("Estados visuais", () => {
-    it("1. estado inicial: mostra botão 'Executar REINDEX' sem spinner nem resultado", () => {
-      renderButton()
-
-      // Botão principal com texto inicial
-      const btn = screen.getByText("Executar REINDEX")
-      expect(btn).toBeInTheDocument()
-      expect(btn).not.toBeDisabled()
-
-      // Nenhum spinner de reindexação visível
-      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
-      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
-
-      // Nenhum resultado visível
-      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
-
-      // Nenhum indicador de refetch
-      expect(screen.queryByText("Atualizando métricas…")).not.toBeInTheDocument()
-    })
-
-    it("2. reindexando: botão muda texto para 'Reindexando…' e mostra spinner + 'Reindexando índices…'", async () => {
-      // Slow fetch to stay in loading state
-      mockFetchResponse = () => new Promise(() => {}) // never resolves
-
-      renderButton()
-      fireEvent.click(screen.getByText("Executar REINDEX"))
-      fireEvent.click(screen.getByTestId("alert-dialog-action"))
-
-      // Botão principal muda texto
-      expect(screen.getByText("Reindexando…")).toBeInTheDocument()
-      expect(screen.queryByText("Executar REINDEX")).not.toBeInTheDocument()
-
-      // Spinner RefreshCw com animate-spin aparece no indicador de "Reindexando índices…"
-      expect(screen.getByText("Reindexando índices…")).toBeInTheDocument()
-
-      // O ícone RefreshCw está presente com classe animate-spin
-      const spinners = screen.getAllByTestId("lucide-icon")
-      const animatedSpinner = spinners.find((el) =>
-        el.getAttribute("data-class")?.includes("animate-spin"),
-      )
-      expect(animatedSpinner).toBeInTheDocument()
-
-      // Nenhum resultado ainda
-      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
-
-      // Botão de confirmação também muda texto
-      expect(screen.getByText("Executando…")).toBeInTheDocument()
-      expect(screen.queryByText("Sim, executar REINDEX")).not.toBeInTheDocument()
-    })
-
-    it("3. sucesso: mostra resultado com 'sucesso', sem spinner", async () => {
-      renderButton()
-      await clickExecuteReindex()
-
-      // Resultado de sucesso aparece
-      const resultEl = screen.getByText(/sucesso/)
-      expect(resultEl).toBeInTheDocument()
-      expect(resultEl.textContent).toContain("sucesso")
-      expect(resultEl.textContent).toContain("2122ms")
-      expect(resultEl.textContent).toContain("idx_user_location_gist")
-
-      // Botão voltou ao texto inicial
-      expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
-
-      // Nenhum spinner de loading
-      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
-      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
-
-      // Nenhum indicador de refetch (não passamos isRefetching)
-      expect(screen.queryByText("Atualizando métricas…")).not.toBeInTheDocument()
-    })
-
-    it("4. isRefetching: mostra 'Atualizando métricas…' com spinner, sem modo reindexing", () => {
-      renderButton({ isRefetching: true })
-
-      // Indicador de refetch visível
-      expect(screen.getByText("Atualizando métricas…")).toBeInTheDocument()
-
-      // Ícone com animate-spin presente (RefreshCw)
-      const icons = screen.getAllByTestId("lucide-icon")
-      const animatedIcon = icons.find((el) =>
-        el.getAttribute("data-class")?.includes("animate-spin"),
-      )
-      expect(animatedIcon).toBeInTheDocument()
-
-      // Botão principal ainda mostra "Executar REINDEX" (não está reindexando)
-      expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
-      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
-      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
-
-      // Nenhum resultado
-      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
-    })
+  describeVisualStates((overrides) => renderButton(overrides), {
+    setMockFetchResponse: (fn) => {
+      mockFetchResponse = fn as FetchResponseFn
+    },
+    clickExecuteReindex,
   })
 })

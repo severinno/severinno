@@ -50,12 +50,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import {
-  BookingStatusBadge,
-  ErrorState,
-  FreshnessLabel,
-  initials,
-} from "@/components/admin/admin-shared"
+import { BookingStatusBadge, ErrorState, FreshnessLabel, initials } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ---------------------------------------------------------------------------
 // Types — mirrors /api/admin/stats response
@@ -114,43 +110,21 @@ const PAYMENT_STATUS_ORDER: PaymentStatus[] = ["PAID", "PENDING", "REFUNDED"]
 // ---------------------------------------------------------------------------
 
 const PIE_COLORS: Record<PaymentStatus, string> = {
-  PAID: "hsl(160, 84%, 39%)",       // emerald-500
-  PENDING: "hsl(38, 92%, 50%)",     // amber-500
-  REFUNDED: "hsl(240, 6%, 50%)",    // zinc-500
-}
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
+  PAID: "hsl(160, 84%, 39%)", // emerald-500
+  PENDING: "hsl(38, 92%, 50%)", // amber-500
+  REFUNDED: "hsl(240, 6%, 50%)", // zinc-500
 }
 
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
-export function AdminDashboard({
-  onNavigate,
-}: {
-  onNavigate: (view: string) => void
-}) {
+export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => void }) {
   const [range, setRange] = React.useState<DateRange>("30d")
 
-  const {
-    data,
-    isLoading,
-    isError,
-    isFetching,
-    refetch,
-    dataUpdatedAt,
-  } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["admin", "stats", range],
-    queryFn: () =>
-      apiGet<AdminStats>("/api/admin/stats", { range }),
+    queryFn: () => apiGet<AdminStats>("/api/admin/stats", { range }),
     staleTime: 60_000,
   })
 
@@ -171,10 +145,7 @@ export function AdminDashboard({
   }
 
   const totalUsers = Object.values(data.usersByRole).reduce((a, b) => a + b, 0)
-  const totalBookings = Object.values(data.bookingsByStatus).reduce(
-    (a, b) => a + b,
-    0,
-  )
+  const totalBookings = Object.values(data.bookingsByStatus).reduce((a, b) => a + b, 0)
 
   // Bar chart data — bookings by status
   const barData = BOOKING_STATUS_ORDER.map((s) => ({
@@ -208,12 +179,8 @@ export function AdminDashboard({
       {/* Page header with period selector + freshness + refresh */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Visão geral
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Resumo da atividade da plataforma
-          </p>
+          <h1 className="text-foreground text-xl font-bold tracking-tight">Visão geral</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">Resumo da atividade da plataforma</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -227,13 +194,11 @@ export function AdminDashboard({
             disabled={isFetching}
             aria-label="Atualizar dados"
           >
-            <RotateCw
-              className={cn("size-4", isFetching && "animate-spin")}
-            />
+            <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
           </Button>
 
           {/* Segmented period selector */}
-          <div className="inline-flex h-8 items-center rounded-lg border bg-muted/50 p-0.5">
+          <div className="bg-muted/50 inline-flex h-8 items-center rounded-lg border p-0.5">
             {DATE_RANGE_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -258,36 +223,22 @@ export function AdminDashboard({
         aria-label="Indicadores principais"
         className="grid grid-cols-2 gap-4 lg:grid-cols-4"
       >
-        <KpiCard
-          icon={Users}
-          label="Usuários"
-          value={totalUsers.toLocaleString("pt-BR")}
-        />
-        <KpiCard
-          icon={Wrench}
-          label="Prestadores"
-          value={data.providers.toLocaleString("pt-BR")}
-        />
+        <KpiCard icon={Users} label="Usuários" value={totalUsers.toLocaleString("pt-BR")} />
+        <KpiCard icon={Wrench} label="Prestadores" value={data.providers.toLocaleString("pt-BR")} />
         <KpiCard
           icon={CalendarCheck}
           label="Serviços ativos"
           value={data.services.toLocaleString("pt-BR")}
         />
-        <KpiCard
-          icon={DollarSign}
-          label="Receita"
-          value={formatBRL(data.revenue.total)}
-        />
+        <KpiCard icon={DollarSign} label="Receita" value={formatBRL(data.revenue.total)} />
       </section>
 
       {/* Charts */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Bar chart — Bookings by status */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold text-foreground">
-              Agendamentos por status
-            </h2>
+            <h2 className="text-foreground text-sm font-semibold">Agendamentos por status</h2>
           </div>
           <div className="p-4">
             <BarChartSection data={barData} />
@@ -295,9 +246,9 @@ export function AdminDashboard({
         </div>
 
         {/* Pie chart — Revenue by payment status */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold text-foreground">
+            <h2 className="text-foreground text-sm font-semibold">
               Receita por status de pagamento
             </h2>
           </div>
@@ -310,16 +261,10 @@ export function AdminDashboard({
       {/* Recent bookings table + Top providers list */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
-          <RecentBookingsTable
-            bookings={data.recentBookings}
-            onNavigate={onNavigate}
-          />
+          <RecentBookingsTable bookings={data.recentBookings} onNavigate={onNavigate} />
         </div>
         <div className="lg:col-span-2">
-          <TopProvidersList
-            providers={data.topProviders}
-            onNavigate={onNavigate}
-          />
+          <TopProvidersList providers={data.topProviders} onNavigate={onNavigate} />
         </div>
       </section>
     </div>
@@ -330,24 +275,14 @@ export function AdminDashboard({
 // KPI Card
 // ---------------------------------------------------------------------------
 
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-}) {
+function KpiCard({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
-      <span className="flex size-10 items-center justify-center rounded-lg bg-primary/8 text-primary">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
+      <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
         <Icon className="size-5" />
       </span>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-        {value}
-      </p>
-      <p className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
     </div>
@@ -365,7 +300,7 @@ function BarChartSection({
 }) {
   if (data.every((d) => d.count === 0)) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados
       </div>
     )
@@ -373,15 +308,8 @@ function BarChartSection({
 
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart
-        data={data}
-        margin={{ left: 0, right: 0, top: 8, bottom: 0 }}
-      >
-        <CartesianGrid
-          vertical={false}
-          strokeDasharray="3 3"
-          stroke="hsl(var(--border) / 0.5)"
-        />
+      <BarChart data={data} margin={{ left: 0, right: 0, top: 8, bottom: 0 }}>
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
         <XAxis
           dataKey="label"
           tickLine={false}
@@ -403,19 +331,11 @@ function BarChartSection({
           ]}
           contentStyle={TOOLTIP_STYLE}
         />
-        <Bar
-          dataKey="count"
-          radius={[4, 4, 0, 0]}
-          barSize={32}
-        >
+        <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={32}>
           {data.map((d) => (
             <Cell
               key={d.status}
-              fill={
-                d.count > 0
-                  ? "hsl(var(--primary))"
-                  : "hsl(var(--primary) / 0.1)"
-              }
+              fill={d.count > 0 ? "hsl(var(--primary))" : "hsl(var(--primary) / 0.1)"}
             />
           ))}
         </Bar>
@@ -435,7 +355,7 @@ function PieChartSection({
 }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados
       </div>
     )
@@ -457,10 +377,7 @@ function PieChartSection({
               strokeWidth={2}
             >
               {data.map((d) => (
-                <Cell
-                  key={d.status}
-                  fill={PIE_COLORS[d.status]}
-                />
+                <Cell key={d.status} fill={PIE_COLORS[d.status]} />
               ))}
             </Pie>
             <RTooltip
@@ -470,12 +387,10 @@ function PieChartSection({
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-lg font-bold tabular-nums text-foreground">
+          <span className="text-foreground text-lg font-bold tabular-nums">
             {formatBRL(data.reduce((a, d) => a + d.value, 0))}
           </span>
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Total
-          </span>
+          <span className="text-muted-foreground text-[10px] tracking-wide uppercase">Total</span>
         </div>
       </div>
       <ul className="flex flex-1 flex-col gap-2">
@@ -485,10 +400,8 @@ function PieChartSection({
               className="size-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: PIE_COLORS[d.status] }}
             />
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {d.label}
-            </span>
-            <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">
+            <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{d.label}</span>
+            <span className="text-foreground shrink-0 text-xs font-medium tabular-nums">
               {formatBRL(d.value)}
             </span>
           </li>
@@ -512,15 +425,13 @@ function RecentBookingsTable({
   const rows = bookings.slice(0, 5)
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+    <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
       <div className="flex items-center justify-between border-b px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">
-          Agendamentos recentes
-        </h2>
+        <h2 className="text-foreground text-sm font-semibold">Agendamentos recentes</h2>
         <button
           type="button"
           onClick={() => onNavigate("admin.bookings")}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          className="text-primary inline-flex items-center gap-1 text-xs font-medium hover:underline"
         >
           Ver todos
           <ArrowRight className="size-3" />
@@ -528,14 +439,14 @@ function RecentBookingsTable({
       </div>
 
       {rows.length === 0 ? (
-        <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground px-5 py-12 text-center text-sm">
           Nenhum agendamento encontrado.
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="h-10 border-b bg-muted/30 text-xs font-medium text-muted-foreground">
+              <tr className="bg-muted/30 text-muted-foreground h-10 border-b text-xs font-medium">
                 <th className="px-4 font-medium">Cliente</th>
                 <th className="px-4 font-medium">Prestador</th>
                 <th className="px-4 font-medium">Serviço</th>
@@ -547,21 +458,15 @@ function RecentBookingsTable({
               {rows.map((b) => {
                 const status = b.status as BookingStatus
                 return (
-                  <tr
-                    key={b.id}
-                    className="h-12 transition-colors hover:bg-muted/20"
-                  >
+                  <tr key={b.id} className="hover:bg-muted/20 h-12 transition-colors">
                     {/* Client */}
                     <td className="px-4">
                       <div className="flex items-center gap-2">
                         <Avatar className="size-6 shrink-0">
                           {b.client?.avatarUrl ? (
-                            <AvatarImage
-                              src={b.client.avatarUrl}
-                              alt={b.client.name ?? ""}
-                            />
+                            <AvatarImage src={b.client.avatarUrl} alt={b.client.name ?? ""} />
                           ) : null}
-                          <AvatarFallback className="bg-primary/8 text-[10px] font-semibold text-primary">
+                          <AvatarFallback className="bg-primary/8 text-primary text-[10px] font-semibold">
                             {initials(b.client?.name ?? "?")}
                           </AvatarFallback>
                         </Avatar>
@@ -575,12 +480,9 @@ function RecentBookingsTable({
                       <div className="flex items-center gap-2">
                         <Avatar className="size-6 shrink-0">
                           {b.provider?.avatarUrl ? (
-                            <AvatarImage
-                              src={b.provider.avatarUrl}
-                              alt={b.provider.name ?? ""}
-                            />
+                            <AvatarImage src={b.provider.avatarUrl} alt={b.provider.name ?? ""} />
                           ) : null}
-                          <AvatarFallback className="bg-primary/8 text-[10px] font-semibold text-primary">
+                          <AvatarFallback className="bg-primary/8 text-primary text-[10px] font-semibold">
                             {initials(b.provider?.name ?? "?")}
                           </AvatarFallback>
                         </Avatar>
@@ -591,7 +493,7 @@ function RecentBookingsTable({
                     </td>
                     {/* Service */}
                     <td className="px-4">
-                      <span className="max-w-[140px] truncate block text-xs text-muted-foreground">
+                      <span className="text-muted-foreground block max-w-[140px] truncate text-xs">
                         {b.service?.title ?? "—"}
                       </span>
                     </td>
@@ -630,15 +532,13 @@ function TopProvidersList({
   const items = providers.slice(0, 5)
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+    <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
       <div className="flex items-center justify-between border-b px-5 py-4">
-        <h2 className="text-sm font-semibold text-foreground">
-          Prestadores em destaque
-        </h2>
+        <h2 className="text-foreground text-sm font-semibold">Prestadores em destaque</h2>
         <button
           type="button"
           onClick={() => onNavigate("admin.providers")}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          className="text-primary inline-flex items-center gap-1 text-xs font-medium hover:underline"
         >
           Ver todos
           <ArrowRight className="size-3" />
@@ -646,7 +546,7 @@ function TopProvidersList({
       </div>
 
       {items.length === 0 ? (
-        <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground px-5 py-12 text-center text-sm">
           Nenhum prestador encontrado.
         </div>
       ) : (
@@ -655,31 +555,23 @@ function TopProvidersList({
             <li key={p.id}>
               <div className="flex items-center gap-3 px-5 py-3">
                 <Avatar className="size-9 shrink-0">
-                  {p.avatarUrl ? (
-                    <AvatarImage src={p.avatarUrl} alt={p.name} />
-                  ) : null}
-                  <AvatarFallback className="bg-primary/8 text-[11px] font-semibold text-primary">
+                  {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
+                  <AvatarFallback className="bg-primary/8 text-primary text-[11px] font-semibold">
                     {initials(p.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {p.name}
-                  </p>
+                  <p className="text-foreground truncate text-sm font-medium">{p.name}</p>
                   <div className="mt-0.5 flex items-center gap-1.5">
                     <Star className="size-3 fill-amber-400 text-amber-400" />
-                    <span className="text-xs font-medium tabular-nums text-foreground">
+                    <span className="text-foreground text-xs font-medium tabular-nums">
                       {p.rating.toFixed(1)}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      ({p.reviewCount})
-                    </span>
+                    <span className="text-muted-foreground text-xs">({p.reviewCount})</span>
                   </div>
                 </div>
                 {p.city ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {p.city}
-                  </span>
+                  <span className="text-muted-foreground shrink-0 text-xs">{p.city}</span>
                 ) : null}
               </div>
             </li>
@@ -713,10 +605,7 @@ function DashboardSkeleton() {
       {/* 4 KPI cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border/50 bg-card p-5"
-          >
+          <div key={i} className="border-border/50 bg-card rounded-xl border p-5">
             <Skeleton className="size-10 rounded-lg" />
             <Skeleton className="mt-3 h-7 w-24" />
             <Skeleton className="mt-1 h-3 w-16" />
@@ -727,10 +616,7 @@ function DashboardSkeleton() {
       {/* 2 chart cards */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border/50 bg-card"
-          >
+          <div key={i} className="border-border/50 bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
               <Skeleton className="h-4 w-48" />
             </div>
@@ -744,7 +630,7 @@ function DashboardSkeleton() {
       {/* Table + List */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
-          <div className="rounded-xl border border-border/50 bg-card">
+          <div className="border-border/50 bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
               <Skeleton className="h-4 w-40" />
             </div>
@@ -756,7 +642,7 @@ function DashboardSkeleton() {
           </div>
         </div>
         <div className="lg:col-span-2">
-          <div className="rounded-xl border border-border/50 bg-card">
+          <div className="border-border/50 bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
               <Skeleton className="h-4 w-44" />
             </div>

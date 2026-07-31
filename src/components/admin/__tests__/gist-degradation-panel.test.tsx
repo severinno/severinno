@@ -14,11 +14,11 @@
  *
  * Test coverage:
  *   - GistDegradationPanel: null/render states, text content, collapsible
- *   - onReindexSuccess callback: called ONLY on API success,
- *     NEVER on API failure (success:false) or network error
- *   - Prop threading: isRefetching, onReindexSuccess
  *   - Model impact section with formula and ratio
  *   - Corner cases: large P95, zero exceedingCount, high maxModel
+ *   - Integration: onReindexSuccess prop threading to GistReindexButton
+ *     (GistReindexButton already has comprehensive unit tests for the
+ *      callback itself — this file only verifies prop routing)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
@@ -86,12 +86,7 @@ vi.mock("@/lib/geo-benchmark-model", () => ({
 // ===========================================================================
 
 import type { FetchResponseFn } from "./mocks"
-import {
-  buildReindexSuccessResponse,
-  buildReindexFailureResponse,
-  buildReindexSlowResponse,
-  clickExecuteReindex,
-} from "./mocks"
+import { buildReindexSuccessResponse, buildReindexSlowResponse, clickExecuteReindex } from "./mocks"
 
 let mockFetchResponse: FetchResponseFn
 
@@ -100,6 +95,12 @@ let mockFetchResponse: FetchResponseFn
 // ===========================================================================
 
 import { DEFAULT_GIST_DEGRADATION_PROPS } from "@/components/admin/__tests__/mocks"
+
+// ===========================================================================
+// Shared visual state tests
+// ===========================================================================
+
+import { describeVisualStates } from "./visual-state-tests"
 
 const DEFAULT_PROPS = DEFAULT_GIST_DEGRADATION_PROPS
 
@@ -250,9 +251,31 @@ describe("GistDegradationPanel", () => {
     expect(resultEl.textContent).toContain("2122ms")
   })
 
-  // ── onReindexSuccess: success scenario ────────────────────────────
+  // ── Estados visuais (4 estados) — via helper compartilhado ──────
+  // Extraído para visual-state-tests.tsx, usado também em
+  // gist-reindex-button.test.tsx. PanelContext=true faz os testes
+  // expandirem o collapsible antes de interagir com o botão REINDEX.
 
-  it("calls onReindexSuccess when REINDEX returns success:true", async () => {
+  describeVisualStates(
+    (overrides) => {
+      render(<GistDegradationPanel {...DEFAULT_PROPS} {...(overrides as any)} />)
+    },
+    {
+      setMockFetchResponse: (fn) => {
+        mockFetchResponse = fn as FetchResponseFn
+      },
+      clickExecuteReindex,
+    },
+    { panelContext: true },
+  )
+
+  // ── Integration: onReindexSuccess prop threading ──────────────────
+  //
+  // GistReindexButton already has comprehensive unit tests for the callback
+  // (success, failure, network error).  This single integration test verifies
+  // that the panel correctly passes the callback prop to the button.
+
+  it("forwards onReindexSuccess to GistReindexButton (integration)", async () => {
     const onSuccess = vi.fn()
     render(<GistDegradationPanel {...DEFAULT_PROPS} onReindexSuccess={onSuccess} />)
     await clickExecuteReindex()
@@ -260,53 +283,6 @@ describe("GistDegradationPanel", () => {
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalledTimes(1)
     })
-  })
-
-  // ── onReindexSuccess: failure scenario ────────────────────────────
-
-  it("does NOT call onReindexSuccess when REINDEX returns success:false", async () => {
-    mockFetchResponse = () => Promise.resolve(buildReindexFailureResponse("Erro interno"))
-
-    const onSuccess = vi.fn()
-    render(<GistDegradationPanel {...DEFAULT_PROPS} onReindexSuccess={onSuccess} />)
-    await clickExecuteReindex()
-
-    // Wait enough time for any possible call to have happened
-    await waitFor(
-      () => {
-        expect(screen.getByText(/Erro interno/)).toBeInTheDocument()
-      },
-      { timeout: 1000, interval: 10 },
-    )
-
-    // Assert onReindexSuccess was NEVER called
-    expect(onSuccess).not.toHaveBeenCalled()
-  })
-
-  // ── onReindexSuccess: network error scenario ──────────────────────
-
-  it("does NOT call onReindexSuccess when fetch throws a network error", async () => {
-    mockFetchResponse = () => Promise.reject(new Error("NetworkError: Failed to fetch"))
-
-    const onSuccess = vi.fn()
-    render(<GistDegradationPanel {...DEFAULT_PROPS} onReindexSuccess={onSuccess} />)
-    await clickExecuteReindex()
-
-    // Wait for error state to render
-    expect(screen.getByText(/NetworkError/)).toBeInTheDocument()
-
-    // Assert onReindexSuccess was NEVER called
-    expect(onSuccess).not.toHaveBeenCalled()
-  })
-
-  it("shows connection error message when fetch fails", async () => {
-    mockFetchResponse = () => Promise.reject(new Error("NetworkError: Failed to fetch"))
-
-    render(<GistDegradationPanel {...DEFAULT_PROPS} />)
-    await clickExecuteReindex()
-
-    const errorEl = screen.getByText(/NetworkError/)
-    expect(errorEl.textContent).toContain("NetworkError")
   })
 
   // ── isRefetching prop ─────────────────────────────────────────────
@@ -359,117 +335,5 @@ describe("GistDegradationPanel", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} maxModelAtSelectivity={1000} />)
 
     expect(screen.getByText(/0.1×/)).toBeInTheDocument()
-  })
-
-  // ── Estados visuais do GistReindexButton dentro do painel pai ────
-  //
-  // Validates that the 4 visual states defined in GistReindexButton also
-  // function correctly when the button is rendered inside GistDegradationPanel
-  // (the collapsible alert panel that contains the button in its recommendation
-  // section). The CollapsibleContent mock renders children unconditionally,
-  // and the AlertDialog mock renders children unconditionally — both mock
-  // artifacts that make the button accessible without expanding the panel.
-  //
-  // These tests mirror the "Estados visuais" describe block in
-  // gist-reindex-button.test.tsx but use the parent panel props.
-
-  describe("Estados visuais (GistReindexButton dentro do panel pai)", () => {
-    it("1. estado inicial — botão 'Executar REINDEX', sem indicador", () => {
-      render(<GistDegradationPanel {...DEFAULT_PROPS} />)
-
-      // Alert: painel degradado visível
-      expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
-
-      // Botão "Executar REINDEX" presente e habilitado
-      const btn = screen.getByText("Executar REINDEX")
-      expect(btn).toBeInTheDocument()
-      expect(btn).not.toBeDisabled()
-
-      // Nenhum spinner ou indicador visível
-      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
-      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
-      expect(screen.queryByText("Atualizando métricas…")).not.toBeInTheDocument()
-      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
-    })
-
-    it("2. reindexando — botão 'Reindexando…', indicador loading com spinner", async () => {
-      // Fetch nunca resolve para manter estado de loading
-      mockFetchResponse = () => new Promise(() => {})
-
-      render(<GistDegradationPanel {...DEFAULT_PROPS} />)
-
-      // Clicar no botão do REINDEX → abre AlertDialog → clica em confirmar
-      fireEvent.click(screen.getByText("Executar REINDEX"))
-      fireEvent.click(screen.getByTestId("alert-dialog-action"))
-
-      // Botão do trigger alterou texto para "Reindexando…"
-      expect(screen.getByText("Reindexando…")).toBeInTheDocument()
-      expect(screen.queryByText("Executar REINDEX")).not.toBeInTheDocument()
-
-      // Botão de confirmação do dialog mostra "Executando…"
-      expect(screen.getByText("Executando…")).toBeInTheDocument()
-
-      // Indicador de loading visível
-      expect(screen.getByText("Reindexando índices…")).toBeInTheDocument()
-
-      // Spinner com animate-spin presente
-      const spinners = screen.getAllByTestId("lucide-icon")
-      const animatedSpinner = spinners.find((el) =>
-        el.getAttribute("data-class")?.includes("animate-spin"),
-      )
-      expect(animatedSpinner).toBeInTheDocument()
-
-      // Nenhum resultado ainda
-      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
-      expect(screen.queryByText("Sim, executar REINDEX")).not.toBeInTheDocument()
-    })
-
-    it("3. sucesso — indicador verde com resultado da API", async () => {
-      render(<GistDegradationPanel {...DEFAULT_PROPS} />)
-      await clickExecuteReindex()
-
-      // Painel degradado continua visível
-      expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
-
-      // Botão voltou ao texto inicial "Executar REINDEX"
-      expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
-      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
-
-      // Indicador verde de sucesso com detalhes da API
-      const resultEl = screen.getByText(/sucesso/)
-      expect(resultEl).toBeInTheDocument()
-      expect(resultEl.textContent).toContain("sucesso")
-      expect(resultEl.textContent).toContain("2122ms")
-      expect(resultEl.textContent).toContain("idx_user_location_gist")
-
-      // Nenhum spinner de loading
-      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
-      expect(screen.queryByText("Atualizando métricas…")).not.toBeInTheDocument()
-    })
-
-    it("4. isRefetching — indicador 'Atualizando métricas…' com spinner, botão inalterado", () => {
-      render(<GistDegradationPanel {...DEFAULT_PROPS} isRefetching={true} />)
-
-      // Painel degradado visível
-      expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
-
-      // Botão "Executar REINDEX" ainda aparece (não está reindexando)
-      expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
-      expect(screen.queryByText("Reindexando…")).not.toBeInTheDocument()
-      expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
-
-      // Indicador de refetch visível
-      expect(screen.getByText("Atualizando métricas…")).toBeInTheDocument()
-
-      // Ícone com animate-spin presente
-      const icons = screen.getAllByTestId("lucide-icon")
-      const animatedIcon = icons.find((el) =>
-        el.getAttribute("data-class")?.includes("animate-spin"),
-      )
-      expect(animatedIcon).toBeInTheDocument()
-
-      // Nenhum resultado
-      expect(screen.queryByText("sucesso")).not.toBeInTheDocument()
-    })
   })
 })

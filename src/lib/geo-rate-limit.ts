@@ -33,7 +33,6 @@
  * Fallback: in-memory Map when Redis is unavailable. Degraded but functional.
  */
 
-import { NextResponse } from "next/server"
 import { getClient, isRedisAvailable } from "@/lib/redis"
 import { type Redis, type Cluster } from "ioredis"
 import { HttpError } from "@/lib/api-server"
@@ -411,6 +410,19 @@ export function isGeoRateLimitError(
   e: unknown,
 ): e is HttpError & { headers: Record<string, string> } {
   return e instanceof HttpError && e.status === 429
+}
+
+// ── Testing exports (__testing__ prefix) ───────────────────────────────
+//
+// These are exported ONLY for unit tests.  Do NOT use them in production
+// code.  The rate limiter state is managed automatically by
+// checkGeoRateLimit / assertGeoRateLimit and the admin dashboard.
+//
+// See geo-rate-limit.test.ts for usage.
+
+export {
+  resetRateLimiter as __testing__resetRateLimiter,
+  getRateLimitCounters as __testing__getRateLimitCounters,
 }
 
 // ---------------------------------------------------------------------------

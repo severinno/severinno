@@ -270,9 +270,17 @@ export function render(ui: ReactElement): CustomRenderResult {
     asFragment: () => {
       // Clone container children into a fragment for snapshot testing,
       // matching RTL's asFragment() behavior.
+      //
+      // IMPORTANT: we CLONE the nodes (child.cloneNode(true)) instead of
+      // MOVING them (frag.append(node) detaches the node from the container).
+      // Moving breaks cleanup(): root.unmount() later tries to remove the
+      // nodes from the container, which throws NotFoundError — "The node to
+      // be removed is not a child of this node".
       const frag = document.createDocumentFragment()
       if (container) {
-        frag.append(...Array.from(container.childNodes))
+        for (const child of Array.from(container.childNodes)) {
+          frag.appendChild(child.cloneNode(true))
+        }
       }
       return frag
     },

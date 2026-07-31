@@ -4,26 +4,43 @@
  * Sliding-window rate limiter for Next.js Edge Middleware.
  *
  * This is the FIRST line of defense — runs on EVERY request to /api/*
- * before it reaches the route handler.  Lightweight, in-memory only,
- * designed for the Edge Runtime (no Node.js dependencies).
+ * before it reaches the route handler.  Designed for the Edge Runtime.
  *
  * Architecture:
  *
- *   ┌──────────────┐    ┌──────────────────┐    ┌──────────────┐
- *   │  Incoming     │───→│  Sliding Window   │───→│  Allowed?    │
- *   │  /api/* req  │    │  (per IP+route)   │    │  → 429/200  │
- *   └──────────────┘    └──────────────────┘    └──────────────┘
+ *   ┌──────────────┐    ┌────────────────────────┐    ┌──────────────┐
+ *   │  Incoming     │───→│  @upstash/redis REST   │───→│  Allowed?    │
+ *   │  /api/* req  │    │  (distributed, ~5ms)   │    │  → 429/200  │
+ *   └──────────────┘    └──────────┬─────────────┘    └──────────────┘
+ *                                  │ (failover)
+ *                                  ▼
+ *                        ┌──────────────────┐
+ *                        │  In-memory Map    │
+ *                        │  (process-local)  │
+ *                        └──────────────────┘
+ *
+ * When UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN environment
+ * variables are set, the limiter uses Upstash Redis via REST (Edge-compatible,
+ * ~5ms latency) for distributed rate limiting across instances.  Falls back
+ * to the in-memory store when Upstash is unavailable or not configured.
+ *
+ * The sliding window is implemented with Redis INCR + EXPIRE (simpler and
+ * more REST-friendly than sorted sets for the global middleware layer).
  *
  * Route-level rate limiting (rate-limit.ts + geo-rate-limit.ts) provides
- * a second, more precise layer with Redis support.  The middleware handles
- * spikes and DDoS-like traffic before it reaches the application logic.
+ * a second, more precise layer with ioredis support for route handlers.
  *
  * Configuration via env vars (see .env.example):
- *   GLOBAL_RATE_LIMIT_MAX         — Max requests per window (default 100)
- *   GLOBAL_RATE_LIMIT_WINDOW_MS   — Window in ms (default 60_000 = 1 min)
- *   GLOBAL_RATE_LIMIT_BYPASS_IPS  — Comma-separated IPs to bypass (optional)
- *   GLOBAL_RATE_LIMIT_WHITELIST   — Comma-separated route prefixes to skip
+ *   GLOBAL_RATE_LIMIT_MAX             — Max requests per window (default 100)
+ *   GLOBAL_RATE_LIMIT_WINDOW_MS       — Window in ms (default 60_000 = 1 min)
+ *   GLOBAL_RATE_LIMIT_BYPASS_IPS      — Comma-separated IPs to bypass
+ *   GLOBAL_RATE_LIMIT_WHITELIST       — Comma-separated route prefixes to skip
+ *   UPSTASH_REDIS_REST_URL            — Upstash Redis REST URL (optional)
+ *   UPSTASH_REDIS_REST_TOKEN          — Upstash Redis REST token (optional)
  */
+
+import { Redis } from "@upstash/redis/cloudflare"
+import type { Redis as UpstashRedis } from "@upstash/redis"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,17 +64,53 @@ interface SlidingEntry {
 const store = new Map<string, SlidingEntry>()
 
 // Periodic cleanup of stale entries (every 60s — only in Edge/Node runtimes)
+// Uses getConfig().windowMs * 2 so the retention respects custom config values.
 if (typeof setInterval !== "undefined" && typeof process !== "undefined") {
   setInterval(() => {
     const now = Date.now()
+    const { windowMs } = getConfig()
+    const retainWindow = windowMs * 2
     for (const [key, entry] of store) {
-      // Keep entries that are within 2× the maximum window (default 120s)
-      entry.timestamps = entry.timestamps.filter((t) => now - t < 120_000)
+      entry.timestamps = entry.timestamps.filter((t) => now - t < retainWindow)
       if (entry.timestamps.length === 0) {
         store.delete(key)
       }
     }
   }, 60_000).unref?.()
+}
+
+// ---------------------------------------------------------------------------
+// Upstash Redis client (lazy, REST-based, Edge-compatible)
+// ---------------------------------------------------------------------------
+
+let upstashClient: UpstashRedis | null = null
+let upstashConfigured = false
+
+/**
+ * Get or create the Upstash Redis client.
+ *
+ * Returns null when env vars are not set (graceful fallback to in-memory).
+ * The client is created once on first access — subsequent calls reuse it.
+ */
+function getUpstashClient(): UpstashRedis | null {
+  if (upstashClient !== null) return upstashClient
+  if (upstashConfigured) return null // already attempted and failed
+
+  const url = process.env.UPSTASH_REDIS_REST_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+
+  if (!url || !token) {
+    upstashConfigured = true // mark as attempted, don't retry
+    return null
+  }
+
+  try {
+    upstashClient = new Redis({ url, token })
+    return upstashClient
+  } catch {
+    upstashConfigured = true
+    return null
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +125,7 @@ function getConfig() {
   let windowMs = DEFAULT_WINDOW_MS
   let bypassIps: string[] = []
   let whitelistPrefixes: string[] = []
+  let upstashAvailable = false
 
   try {
     const envMax = process.env.GLOBAL_RATE_LIMIT_MAX
@@ -98,11 +152,16 @@ function getConfig() {
         .map((s) => s.trim())
         .filter(Boolean)
     }
+
+    // Check if Upstash is configured (no need to ping — just check env vars)
+    upstashAvailable = !!(
+      process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+    )
   } catch {
     // Silently fall back to defaults
   }
 
-  return { max, windowMs, bypassIps, whitelistPrefixes }
+  return { max, windowMs, bypassIps, whitelistPrefixes, upstashAvailable }
 }
 
 // ---------------------------------------------------------------------------
@@ -137,13 +196,79 @@ function simpleHash(s: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Sliding window check
+// Upstash sliding window (INCR + EXPIRE — REST-friendly)
 // ---------------------------------------------------------------------------
 
-export function checkGlobalRateLimit(
+/**
+ * Check rate limit against Upstash Redis using INCR + EXPIRE.
+ *
+ * Uses a simple counter with TTL approach (not sorted sets) because:
+ *   1. Upstash Redis is REST-based — sorted set operations are more expensive
+ *   2. For global rate limiting, a fixed window with EXPIRE is sufficient
+ *      (the middleware smooths out spikes — precision comes from route handlers)
+ *   3. INCR + EXPIRE is more reliable over REST (atomic, idempotent)
+ *
+ * Key format: `ratelimit:global:{window_start_ms}:{route}:{ip}`
+ * The window_start_ms in the key ensures a new window starts fresh.
+ *
+ * Returns true when the request is allowed, false when blocked.
+ * Returns null when Upstash is unavailable (caller should fall back).
+ */
+
+async function upstashSlidingWindow(
+  key: string,
+  max: number,
+  windowMs: number,
+  now: number,
+): Promise<GlobalRateLimitResult | null> {
+  const client = getUpstashClient()
+  if (!client) return null
+
+  try {
+    // Use a window-rounded key so the counter aligns with wall-clock windows.
+    // This is a fixed-window approach (not sliding), which is acceptable
+    // for the global middleware layer — the tradeoff is smoother spikes at
+    // the cost of minor boundary bursts.
+    const windowKey = Math.floor(now / windowMs) * windowMs
+    const redisKey = `ratelimit:global:${windowKey}:${key}`
+
+    // INCR + EXPIRE in a pipeline would be ideal, but Upstash REST doesn't
+    // support pipelining.  We use INCR and set EXPIRE on the first increment.
+    const count = await client.incr(redisKey)
+
+    // Always set EXPIRE to prevent stale keys.
+    // TTL = 2× window to handle clock skew across instances.
+    await client.expire(redisKey, Math.ceil((windowMs * 2) / 1000))
+
+    if (count <= max) {
+      return {
+        allowed: true,
+        remaining: max - count,
+        reset: windowKey + windowMs,
+        limit: max,
+      }
+    }
+
+    return {
+      allowed: false,
+      remaining: 0,
+      reset: windowKey + windowMs,
+      limit: max,
+    }
+  } catch {
+    // Upstash unavailable — return null so caller falls back to in-memory
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sliding window check (Upstash → in-memory fallback)
+// ---------------------------------------------------------------------------
+
+export async function checkGlobalRateLimit(
   request: Request,
   routePrefix?: string,
-): GlobalRateLimitResult {
+): Promise<GlobalRateLimitResult> {
   const config = getConfig()
   const ip = getClientIp(request)
 
@@ -157,10 +282,21 @@ export function checkGlobalRateLimit(
     }
   }
 
-  // Route-based key normalization — use a short sanitised prefix
+  // Route-based key normalization
   const route = routePrefix ?? extractRoutePrefix(request.url)
   const key = `ratelimit:global:${route}:${ip}`
   const now = Date.now()
+
+  // ── Try Upstash Redis (distributed) ──────────────────────────────────
+  if (config.upstashAvailable) {
+    const upstashResult = await upstashSlidingWindow(key, config.max, config.windowMs, now)
+    if (upstashResult !== null) {
+      return upstashResult
+    }
+    // Upstash failed (or not configured) — fall through to in-memory
+  }
+
+  // ── In-memory fallback (process-local) ───────────────────────────────
   const windowStart = now - config.windowMs
 
   let entry = store.get(key)
@@ -174,8 +310,7 @@ export function checkGlobalRateLimit(
   const count = entry.timestamps.length
   const allowed = count < config.max
 
-  // Only record the request if under the limit — blocked requests don't
-  // consume window capacity.
+  // Only record the request if under the limit
   if (allowed) {
     entry.timestamps.push(now)
   }
@@ -230,11 +365,13 @@ export function globalRateLimitHeaders(result: GlobalRateLimitResult): Record<st
 }
 
 // ---------------------------------------------------------------------------
-// Diagnostics (in-memory only — for admin dashboard)
+// Diagnostics (in-memory + Upstash — for admin dashboard)
 // ---------------------------------------------------------------------------
 
 export type GlobalRateLimitDiagnostics = {
   storeSize: number
+  upstashAvailable: boolean
+  upstashConnected: boolean
   config: ReturnType<typeof getConfig>
   timestamp: number
 }
@@ -242,6 +379,10 @@ export type GlobalRateLimitDiagnostics = {
 export function getGlobalRateLimitDiagnostics(): GlobalRateLimitDiagnostics {
   return {
     storeSize: store.size,
+    upstashAvailable: !!(
+      process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+    ),
+    upstashConnected: upstashClient !== null,
     config: getConfig(),
     timestamp: Date.now(),
   }

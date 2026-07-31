@@ -11,11 +11,15 @@
  * Each state is a separate test. Render once → interact → snapshot on
  * the same component instance. No double-render pattern.
  *
- * NOTE: The Collapsible mock renders CollapsibleContent unconditionally
- * (it ignores the open/closed state). The AlertDialog mock renders
- * children unconditionally (only the `data-open` marker is conditional).
- * Both mock artifacts mean dialog content and collapsible details appear
- * in ALL snapshots regardless of interaction state.
+ * NOTE: The Collapsible mock uses React Context to propagate the `open`
+ * state: CollapsibleContent only renders children when `open && true`.
+ * Since the REINDEX button resides inside CollapsibleContent, states 2–4
+ * must first expand the panel by clicking "Ver detalhes do índice" before
+ * interacting with the REINDEX flow.
+ * The AlertDialog mock renders children unconditionally (only the
+ * `data-open` marker is conditional) — this is a known tradeoff.
+ * Snapshots of state 1 (initial) should NOT contain collapsible content
+ * since the panel hasn't been expanded.
  *
  * Mocks (shared via async vi.mock from ./mocks):
  *   lucide-react, AlertDialog, sonner
@@ -53,25 +57,58 @@ vi.mock("sonner", async () => {
 })
 
 // ===========================================================================
-// Mock Collapsible — div-based stub for jsdom
+// Mock Collapsible — div-based stub with React Context for open state
+// =
+// Uses React.createContext to propagate the `open` prop from Collapsible to
+// CollapsibleContent, so that content only renders when the collapsible is
+// expanded.  This prevents implementation details from leaking into snapshots
+// (previously CollapsibleContent rendered unconditionally).
 // ===========================================================================
 
-vi.mock("@/components/ui/collapsible", () => ({
-  Collapsible: ({ open, onOpenChange, children, className }: any) => (
-    <div data-testid="collapsible" data-open={String(open)} className={className}>
-      {children}
-    </div>
-  ),
-  CollapsibleTrigger: ({ asChild, children }: any) => {
-    if (asChild && React.isValidElement(children)) {
-      return React.cloneElement(children as React.ReactElement<any>)
-    }
-    return <button type="button">{children}</button>
-  },
-  CollapsibleContent: ({ children }: any) => (
-    <div data-testid="collapsible-content">{children}</div>
-  ),
-}))
+vi.mock("@/components/ui/collapsible", () => {
+  // Contextos para propagar `open` e `onOpenChange` do Collapsible
+  // para CollapsibleTrigger (toggle) e CollapsibleContent (visibilidade).
+  // Padrão análogo ao createAlertDialogMock() em mocks.tsx.
+  const CollapsibleOpenContext = React.createContext(false)
+  const CollapsibleToggleContext = React.createContext<(() => void) | undefined>(undefined)
+
+  return {
+    Collapsible: ({ open, onOpenChange, children, className }: any) => (
+      <CollapsibleOpenContext.Provider value={open}>
+        <CollapsibleToggleContext.Provider value={() => onOpenChange?.(!open)}>
+          <div data-testid="collapsible" data-open={String(open)} className={className}>
+            {children}
+          </div>
+        </CollapsibleToggleContext.Provider>
+      </CollapsibleOpenContext.Provider>
+    ),
+    CollapsibleTrigger: ({ asChild, children }: any) => {
+      const toggle = React.useContext(CollapsibleToggleContext)
+      const handleClick = (e: React.MouseEvent) => {
+        toggle?.()
+        // If asChild, also call the child's original onClick
+        if (asChild && React.isValidElement(children)) {
+          ;(children as React.ReactElement<any>).props.onClick?.(e)
+        }
+      }
+      if (asChild && React.isValidElement(children)) {
+        return React.cloneElement(children as React.ReactElement<any>, {
+          onClick: handleClick,
+        })
+      }
+      return (
+        <button type="button" onClick={handleClick}>
+          {children}
+        </button>
+      )
+    },
+    CollapsibleContent: ({ children }: any) => {
+      const open = React.useContext(CollapsibleOpenContext)
+      if (!open) return null
+      return <div data-testid="collapsible-content">{children}</div>
+    },
+  }
+})
 
 // ===========================================================================
 // Mock geo-benchmark-model constants
@@ -140,8 +177,10 @@ describe("GistDegradationPanel — snapshot dos 4 estados visuais", () => {
     expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
     expect(screen.getByText(/performance degradada/)).toBeInTheDocument()
 
-    // Botão "Executar REINDEX" presente
-    expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
+    // Botão "Executar REINDEX" NÃO está visível: ele vive dentro do
+    // CollapsibleContent, que (com o mock baseado em Context) só renderiza
+    // quando o painel está expandido. Estado inicial = colapsado.
+    expect(screen.queryByText("Executar REINDEX")).not.toBeInTheDocument()
 
     // Nenhum indicador de loading ou sucesso
     expect(screen.queryByText("Reindexando índices…")).not.toBeInTheDocument()
@@ -153,12 +192,20 @@ describe("GistDegradationPanel — snapshot dos 4 estados visuais", () => {
   })
 
   // ── 2. Reindexando ────────────────────────────────────────────────
+  //
+  // NOTE: O botão "Executar REINDEX" está dentro de CollapsibleContent.
+  // O mock baseado em Context agora só renderiza o conteúdo quando
+  // o collapsible está expandido, então precisamos clicar em
+  // "Ver detalhes do índice" primeiro para tornar o botão acessível.
 
-  it("2. reindexando — botão 'Reindexando…', indicador loading com spinner", async () => {
+  it("2. reindexando — painel expandido, botão 'Reindexando…', indicador loading com spinner", async () => {
     // Fetch nunca resolve para manter estado de loading
     mockFetchResponse = () => new Promise(() => {})
 
     const { asFragment } = render(<GistDegradationPanel {...DEFAULT_GIST_DEGRADATION_PROPS} />)
+
+    // Expandir collapsible para tornar o botão REINDEX acessível
+    fireEvent.click(screen.getByText("Ver detalhes do índice"))
 
     // Abrir AlertDialog e clicar em confirmar → dispara fetch (nunca resolve)
     fireEvent.click(screen.getByText("Executar REINDEX"))
@@ -174,9 +221,14 @@ describe("GistDegradationPanel — snapshot dos 4 estados visuais", () => {
   })
 
   // ── 3. Sucesso ────────────────────────────────────────────────────
+  //
+  // NOTE: Mesma lógica do estado 2 — expandir collapsible antes de REINDEX.
 
-  it("3. sucesso — indicador verde com resultado da API", async () => {
+  it("3. sucesso — painel expandido, indicador verde com resultado da API", async () => {
     const { asFragment } = render(<GistDegradationPanel {...DEFAULT_GIST_DEGRADATION_PROPS} />)
+
+    // Expandir collapsible e executar REINDEX
+    fireEvent.click(screen.getByText("Ver detalhes do índice"))
     await clickExecuteReindex()
 
     // Sanity: resultado verde, botão voltou ao normal
@@ -188,11 +240,19 @@ describe("GistDegradationPanel — snapshot dos 4 estados visuais", () => {
   })
 
   // ── 4. Refetching ─────────────────────────────────────────────────
+  //
+  // NOTE: O collapsible precisa estar expandido para o botão "Executar REINDEX"
+  // ficar visível (está dentro de CollapsibleContent). O IndicadorDeAtualizacao
+  // com "Atualizando métricas…" é renderizado DENTRO do CollapsibleContent
+  // também (via GistReindexButton), então precisa de expansão.
 
-  it("4. isRefetching — indicador 'Atualizando métricas…' com spinner, botão inalterado", () => {
+  it("4. isRefetching — painel expandido, indicador 'Atualizando métricas…' com spinner", () => {
     const { asFragment } = render(
       <GistDegradationPanel {...DEFAULT_GIST_DEGRADATION_PROPS} isRefetching={true} />,
     )
+
+    // Expandir collapsible para tornar REINDEX button + refetch indicator visíveis
+    fireEvent.click(screen.getByText("Ver detalhes do índice"))
 
     // Sanity: painel degradado visível
     expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()

@@ -68,11 +68,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 import {
   BookingStatusBadge,
@@ -86,7 +82,7 @@ import {
   ResultCount,
   SearchInput,
   TableSkeleton,
-} from "./admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -159,11 +155,7 @@ export function AdminBookings() {
       const client = b.client?.name?.toLowerCase() ?? ""
       const provider = b.provider?.name?.toLowerCase() ?? ""
       const service = b.service?.title?.toLowerCase() ?? ""
-      return (
-        client.includes(query) ||
-        provider.includes(query) ||
-        service.includes(query)
-      )
+      return client.includes(query) || provider.includes(query) || service.includes(query)
     })
   }, [rawItems, query])
 
@@ -196,23 +188,19 @@ export function AdminBookings() {
           setPage(1)
         }}
       >
-        <TabsList className="h-auto flex-wrap gap-1 bg-card/50 border border-border/50 shadow-none p-1">
+        <TabsList className="bg-card/50 border-border/50 h-auto flex-wrap gap-1 border p-1 shadow-none">
           <TabsTrigger
             value="ALL"
-            className="h-8 rounded-md px-3 text-xs font-medium gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-8 gap-1.5 rounded-md px-3 text-xs font-medium"
           >
             Todos
-            <CountBadge
-              loading={statsLoading}
-              count={statusCounts.ALL}
-              active={status === "ALL"}
-            />
+            <CountBadge loading={statsLoading} count={statusCounts.ALL} active={status === "ALL"} />
           </TabsTrigger>
           {(Object.keys(BOOKING_STATUS_LABELS) as BookingStatus[]).map((s) => (
             <TabsTrigger
               key={s}
               value={s}
-              className="h-8 rounded-md px-3 text-xs font-medium gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-8 gap-1.5 rounded-md px-3 text-xs font-medium"
             >
               {BOOKING_STATUS_LABELS[s]}
               <CountBadge
@@ -230,9 +218,7 @@ export function AdminBookings() {
         onClear={clearFilters}
         activeCount={activeFilterCount}
         resultCount={total}
-        resultLabel={
-          total === 1 ? "agendamento no total" : "agendamentos no total"
-        }
+        resultLabel={total === 1 ? "agendamento no total" : "agendamentos no total"}
       >
         <SearchInput
           value={q}
@@ -272,12 +258,7 @@ export function AdminBookings() {
           }
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -285,31 +266,31 @@ export function AdminBookings() {
           }
         />
       ) : (
-        <Card className="rounded-xl border border-border/50 bg-card overflow-hidden">
+        <Card className="border-border/50 bg-card overflow-hidden rounded-xl border">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30 h-10">
-                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Cliente
                     </TableHead>
-                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Prestador
                     </TableHead>
-                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase md:table-cell">
                       Serviço
                     </TableHead>
-                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase lg:table-cell">
                       Agendado para
                     </TableHead>
-                    <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-[11px] font-semibold tracking-wider uppercase">
                       Valor
                     </TableHead>
-                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Status
                     </TableHead>
-                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sm:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase sm:table-cell">
                       Pagamento
                     </TableHead>
                   </TableRow>
@@ -320,18 +301,15 @@ export function AdminBookings() {
                       <TooltipTrigger asChild>
                         <TableRow
                           onClick={() => setDetail(b)}
-                          className="h-12 cursor-pointer border-b border-border/50 hover:bg-muted/20 transition-colors focus-visible:bg-muted/20 focus-visible:outline-none"
+                          className="border-border/50 hover:bg-muted/20 focus-visible:bg-muted/20 h-12 cursor-pointer border-b transition-colors focus-visible:outline-none"
                         >
                           <TableCell className="px-4 py-3">
                             <div className="flex items-center gap-2.5">
                               <Avatar className="size-8 shrink-0">
                                 {b.client?.avatarUrl ? (
-                                  <AvatarImage
-                                    src={b.client.avatarUrl}
-                                    alt={b.client.name ?? ""}
-                                  />
+                                  <AvatarImage src={b.client.avatarUrl} alt={b.client.name ?? ""} />
                                 ) : null}
-                                <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+                                <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-semibold">
                                   {initials(b.client?.name ?? "?")}
                                 </AvatarFallback>
                               </Avatar>
@@ -349,30 +327,24 @@ export function AdminBookings() {
                                     alt={b.provider.name ?? ""}
                                   />
                                 ) : null}
-                                <AvatarFallback className="bg-primary/10 text-[11px] font-semibold text-primary">
+                                <AvatarFallback className="bg-primary/10 text-primary text-[11px] font-semibold">
                                   {initials(b.provider?.name ?? "?")}
                                 </AvatarFallback>
                               </Avatar>
-                              <span className="truncate text-sm">
-                                {b.provider?.name ?? "—"}
-                              </span>
+                              <span className="truncate text-sm">{b.provider?.name ?? "—"}</span>
                             </div>
                           </TableCell>
                           <TableCell className="hidden px-4 py-3 text-sm md:table-cell">
-                            {b.service?.title ?? (
-                              <span className="text-muted-foreground">—</span>
-                            )}
+                            {b.service?.title ?? <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="hidden px-4 py-3 lg:table-cell">
-                            <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                              <CalendarDays className="size-3.5 text-muted-foreground" />
-                              <span className="tabular-nums">
-                                {formatDateTime(b.scheduledAt)}
-                              </span>
+                            <div className="text-foreground flex items-center gap-1.5 text-sm font-medium">
+                              <CalendarDays className="text-muted-foreground size-3.5" />
+                              <span className="tabular-nums">{formatDateTime(b.scheduledAt)}</span>
                             </div>
                           </TableCell>
                           <TableCell className="px-4 py-3 text-right">
-                            <span className="text-sm font-semibold tabular-nums text-foreground">
+                            <span className="text-foreground text-sm font-semibold tabular-nums">
                               {formatBRL(b.amount)}
                             </span>
                           </TableCell>
@@ -383,17 +355,14 @@ export function AdminBookings() {
                           <TableCell className="hidden px-4 py-3 sm:table-cell">
                             <div className="flex flex-col gap-0.5">
                               <PaymentStatusBadge status={b.paymentStatus} />
-                              <span className="text-[10px] text-muted-foreground">
-                                {PAYMENT_METHOD_LABELS[b.paymentMethod] ??
-                                  b.paymentMethod}
+                              <span className="text-muted-foreground text-[10px]">
+                                {PAYMENT_METHOD_LABELS[b.paymentMethod] ?? b.paymentMethod}
                               </span>
                             </div>
                           </TableCell>
                         </TableRow>
                       </TooltipTrigger>
-                      <TooltipContent side="top">
-                        Ver detalhes do agendamento
-                      </TooltipContent>
+                      <TooltipContent side="top">Ver detalhes do agendamento</TooltipContent>
                     </Tooltip>
                   ))}
                 </TableBody>
@@ -401,37 +370,23 @@ export function AdminBookings() {
             </div>
 
             {/* Result count + Pagination (H1 + H7) */}
-            <div className="flex flex-col items-center justify-between gap-2 border-t border-border/50 px-4 py-3 sm:flex-row">
-              <ResultCount
-                page={page}
-                limit={limit}
-                total={total}
-                label="agendamentos"
-              />
-              <Pagination
-                page={page}
-                totalPages={totalPages}
-                onPageChange={setPage}
-              />
+            <div className="border-border/50 flex flex-col items-center justify-between gap-2 border-t px-4 py-3 sm:flex-row">
+              <ResultCount page={page} limit={limit} total={total} label="agendamentos" />
+              <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* H6 — Booking detail dialog */}
-      <Dialog
-        open={!!detail}
-        onOpenChange={(open) => !open && setDetail(null)}
-      >
+      <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CalendarCheck className="size-5 text-primary" />
+              <CalendarCheck className="text-primary size-5" />
               Detalhes do agendamento
             </DialogTitle>
-            <DialogDescription>
-              Informações completas do agendamento selecionado.
-            </DialogDescription>
+            <DialogDescription>Informações completas do agendamento selecionado.</DialogDescription>
           </DialogHeader>
 
           {detail ? (
@@ -457,17 +412,17 @@ export function AdminBookings() {
               </div>
 
               {/* Service + value */}
-              <div className="rounded-lg border border-border/50 bg-muted/20 p-4">
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              <div className="border-border/50 bg-muted/20 rounded-lg border p-4">
+                <p className="text-muted-foreground text-[11px] tracking-wider uppercase">
                   Serviço
                 </p>
-                <p className="mt-0.5 text-sm font-medium text-foreground">
+                <p className="text-foreground mt-0.5 text-sm font-medium">
                   {detail.service?.title ?? "—"}
                 </p>
-                <p className="mt-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+                <p className="text-muted-foreground mt-2 text-[11px] tracking-wider uppercase">
                   Valor
                 </p>
-                <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
+                <p className="text-foreground mt-0.5 text-lg font-bold tabular-nums">
                   {formatBRL(detail.amount)}
                 </p>
               </div>
@@ -482,17 +437,10 @@ export function AdminBookings() {
                 <DetailRow
                   icon={CreditCard}
                   label="Pagamento"
-                  value={
-                    PAYMENT_METHOD_LABELS[detail.paymentMethod] ??
-                    detail.paymentMethod
-                  }
+                  value={PAYMENT_METHOD_LABELS[detail.paymentMethod] ?? detail.paymentMethod}
                 />
                 {detail.address ? (
-                  <DetailRow
-                    icon={MapPin}
-                    label="Endereço"
-                    value={detail.address}
-                  />
+                  <DetailRow icon={MapPin} label="Endereço" value={detail.address} />
                 ) : null}
                 <DetailRow
                   icon={CalendarCheck}
@@ -558,19 +506,15 @@ function DetailField({
 }) {
   return (
     <div className="space-y-1">
-      <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </p>
+      <p className="text-muted-foreground text-[11px] tracking-wider uppercase">{label}</p>
       <div className="flex items-center gap-2">
         <Avatar className="size-7 shrink-0">
           {avatarUrl ? <AvatarImage src={avatarUrl} alt={value} /> : null}
-          <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
+          <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
             {initials(value)}
           </AvatarFallback>
         </Avatar>
-        <span className="truncate text-sm font-medium text-foreground">
-          {value}
-        </span>
+        <span className="text-foreground truncate text-sm font-medium">{value}</span>
       </div>
     </div>
   )
@@ -587,12 +531,10 @@ function DetailRow({
 }) {
   return (
     <div className="flex items-start gap-2.5">
-      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <Icon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
       <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
-        <p className="text-sm text-foreground">{value}</p>
+        <p className="text-muted-foreground text-[11px] tracking-wider uppercase">{label}</p>
+        <p className="text-foreground text-sm">{value}</p>
       </div>
     </div>
   )

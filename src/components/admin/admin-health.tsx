@@ -33,12 +33,9 @@ import { useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
-import { ErrorState } from "@/components/admin/admin-shared"
-import { TierBanner } from "@/components/admin/admin-tier-banner"
+import { DashboardHeader, ErrorState, MetricCard, TierBanner } from "./_shared"
 
 import type { DetailedHealthResponse } from "@/app/api/health/detailed/route"
-import { MetricCard } from "@/components/admin/admin-metric-card"
 
 // ── Status helpers ────────────────────────────────────────────────────────
 

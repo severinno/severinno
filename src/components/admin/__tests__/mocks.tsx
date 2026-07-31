@@ -183,6 +183,43 @@ export function buildReindexSlowResponse(delayMs = 100): Promise<Response> {
 }
 
 // ===========================================================================
+// recharts — pass-through mock for JSDOM + React 19
+// ===========================================================================
+
+/**
+ * Recharts is not SVG-capable under JSDOM (React 19 + recharts 2.x hooks crash
+ * with "Cannot read properties of null (reading 'useRef')"). This mock returns
+ * pass-through placeholders — chart titles/data render outside the SVG.
+ *
+ * Usage in a test file (async-import pattern):
+ *
+ *   vi.mock("recharts", async () => {
+ *     const { createRechartsMock } = await import("./mocks")
+ *     return createRechartsMock()
+ *   })
+ */
+export function createRechartsMock() {
+  const PassThrough = ({ children }: any) => <div>{children}</div>
+  const Leaf = () => null
+  return {
+    ResponsiveContainer: PassThrough,
+    AreaChart: PassThrough,
+    BarChart: PassThrough,
+    LineChart: PassThrough,
+    PieChart: PassThrough,
+    Area: Leaf,
+    Bar: Leaf,
+    Line: Leaf,
+    Pie: Leaf,
+    Cell: Leaf,
+    CartesianGrid: Leaf,
+    XAxis: Leaf,
+    YAxis: Leaf,
+    Tooltip: Leaf,
+  }
+}
+
+// ===========================================================================
 // GistDegradationPanel — shared default props for tests
 // ===========================================================================
 

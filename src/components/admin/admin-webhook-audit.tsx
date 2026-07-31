@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState } from "./_shared"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -109,10 +109,21 @@ const STATUS_CONFIG: Record<string, { icon: LucideIcon; label: string; fg: strin
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status]
-  if (!cfg) return <Badge variant="outline" className="text-[10px]">{status}</Badge>
+  if (!cfg)
+    return (
+      <Badge variant="outline" className="text-[10px]">
+        {status}
+      </Badge>
+    )
   const Icon = cfg.icon
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium", cfg.bg, cfg.fg)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        cfg.bg,
+        cfg.fg,
+      )}
+    >
       <Icon className="size-2.5" />
       {cfg.label}
     </span>
@@ -152,10 +163,22 @@ export function AdminWebhookAudit() {
   const [webhookIdFilter, setWebhookIdFilter] = React.useState("")
 
   // Reset page when filters change
-  React.useEffect(() => { setPage(1) }, [days, eventFilter, statusFilter, webhookIdFilter])
+  React.useEffect(() => {
+    setPage(1)
+  }, [days, eventFilter, statusFilter, webhookIdFilter])
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
-    queryKey: ["admin", "push", "webhooks", "audit", page, days, eventFilter, statusFilter, webhookIdFilter],
+    queryKey: [
+      "admin",
+      "push",
+      "webhooks",
+      "audit",
+      page,
+      days,
+      eventFilter,
+      statusFilter,
+      webhookIdFilter,
+    ],
     queryFn: () => {
       const params = new URLSearchParams()
       params.set("page", String(page))
@@ -194,17 +217,16 @@ export function AdminWebhookAudit() {
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Log de Webhooks
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {data.pagination.total} execução(ões) de regras de webhook — página {data.pagination.page} de {data.pagination.totalPages}
+          <h1 className="text-foreground text-xl font-bold tracking-tight">Log de Webhooks</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">
+            {data.pagination.total} execução(ões) de regras de webhook — página{" "}
+            {data.pagination.page} de {data.pagination.totalPages}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
@@ -229,7 +251,9 @@ export function AdminWebhookAudit() {
           </SelectTrigger>
           <SelectContent>
             {PERIOD_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -286,8 +310,12 @@ export function AdminWebhookAudit() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-1 text-xs text-muted-foreground"
-            onClick={() => { setEventFilter(""); setStatusFilter(""); setWebhookIdFilter("") }}
+            className="text-muted-foreground h-8 gap-1 text-xs"
+            onClick={() => {
+              setEventFilter("")
+              setStatusFilter("")
+              setWebhookIdFilter("")
+            }}
           >
             <FilterX className="size-3.5" />
             Limpar
@@ -300,10 +328,20 @@ export function AdminWebhookAudit() {
         <CardContent className="p-0">
           {data.items.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <Webhook className="size-10 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">Nenhuma execução de webhook encontrada no período</p>
+              <Webhook className="text-muted-foreground/40 size-10" />
+              <p className="text-muted-foreground text-sm">
+                Nenhuma execução de webhook encontrada no período
+              </p>
               {hasActiveFilters && (
-                <Button variant="outline" size="sm" onClick={() => { setEventFilter(""); setStatusFilter(""); setWebhookIdFilter("") }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEventFilter("")
+                    setStatusFilter("")
+                    setWebhookIdFilter("")
+                  }}
+                >
                   Limpar filtros
                 </Button>
               )}
@@ -312,7 +350,7 @@ export function AdminWebhookAudit() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="h-9 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <tr className="text-muted-foreground h-9 border-b text-[10px] font-medium tracking-wider uppercase">
                     <th className="px-3 font-medium">Status</th>
                     <th className="px-3 font-medium">Evento</th>
                     <th className="px-3 font-medium">Título</th>
@@ -325,10 +363,7 @@ export function AdminWebhookAudit() {
                 </thead>
                 <tbody className="divide-y">
                   {data.items.map((record) => (
-                    <tr
-                      key={record.id}
-                      className="h-11 transition-colors hover:bg-muted/20"
-                    >
+                    <tr key={record.id} className="hover:bg-muted/20 h-11 transition-colors">
                       {/* Status */}
                       <td className="px-3">
                         <StatusBadge status={record.status} />
@@ -336,7 +371,7 @@ export function AdminWebhookAudit() {
 
                       {/* Event */}
                       <td className="px-3">
-                        <Badge variant="outline" className="text-[9px] font-mono">
+                        <Badge variant="outline" className="font-mono text-[9px]">
                           {record.event}
                         </Badge>
                       </td>
@@ -344,17 +379,26 @@ export function AdminWebhookAudit() {
                       {/* Title + Body */}
                       <td className="max-w-[250px] px-3">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-medium text-foreground" title={record.title}>
+                          <p
+                            className="text-foreground truncate text-xs font-medium"
+                            title={record.title}
+                          >
                             {record.title}
                           </p>
                           {record.body && (
-                            <p className="truncate text-[10px] text-muted-foreground" title={record.body}>
+                            <p
+                              className="text-muted-foreground truncate text-[10px]"
+                              title={record.body}
+                            >
                               {record.body}
                             </p>
                           )}
                         </div>
                         {record.errorMessage && record.status === "failed" && (
-                          <p className="truncate text-[10px] text-red-500" title={record.errorMessage}>
+                          <p
+                            className="truncate text-[10px] text-red-500"
+                            title={record.errorMessage}
+                          >
                             {record.errorMessage}
                           </p>
                         )}
@@ -362,7 +406,7 @@ export function AdminWebhookAudit() {
 
                       {/* Users found */}
                       <td className="px-3 text-right">
-                        <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+                        <span className="text-muted-foreground inline-flex items-center gap-1 text-xs tabular-nums">
                           <Users className="size-3" />
                           {record.usersFound}
                         </span>
@@ -370,10 +414,14 @@ export function AdminWebhookAudit() {
 
                       {/* Users sent */}
                       <td className="px-3 text-right">
-                        <span className={cn(
-                          "inline-flex items-center gap-1 text-xs tabular-nums",
-                          record.usersSent > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground/50",
-                        )}>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 text-xs tabular-nums",
+                            record.usersSent > 0
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-muted-foreground/50",
+                          )}
+                        >
                           <Smartphone className="size-3" />
                           {record.usersSent}
                         </span>
@@ -382,33 +430,39 @@ export function AdminWebhookAudit() {
                       {/* Users failed */}
                       <td className="px-3 text-right">
                         {record.usersFailed > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-xs tabular-nums text-red-500">
+                          <span className="inline-flex items-center gap-1 text-xs text-red-500 tabular-nums">
                             <XCircle className="size-3" />
                             {record.usersFailed}
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">0</span>
+                          <span className="text-muted-foreground text-xs">0</span>
                         )}
                       </td>
 
                       {/* Execution time */}
                       <td className="px-3 text-right">
                         {record.executionMs !== null ? (
-                          <span className={cn(
-                            "inline-flex items-center gap-1 text-xs tabular-nums",
-                            record.executionMs > 2000 ? "text-amber-500" : record.executionMs > 500 ? "text-amber-500" : "text-muted-foreground",
-                          )}>
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 text-xs tabular-nums",
+                              record.executionMs > 2000
+                                ? "text-amber-500"
+                                : record.executionMs > 500
+                                  ? "text-amber-500"
+                                  : "text-muted-foreground",
+                            )}
+                          >
                             <Clock className="size-3" />
                             {record.executionMs}ms
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </td>
 
                       {/* Created At */}
                       <td className="px-3">
-                        <span className="text-[10px] tabular-nums text-muted-foreground">
+                        <span className="text-muted-foreground text-[10px] tabular-nums">
                           {new Date(record.createdAt).toLocaleDateString("pt-BR", {
                             day: "2-digit",
                             month: "2-digit",
@@ -429,8 +483,9 @@ export function AdminWebhookAudit() {
       {/* ── Pagination ───────────────────────────────────────────────── */}
       {data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {data.pagination.total} registro(s) — página {data.pagination.page} de {data.pagination.totalPages}
+          <p className="text-muted-foreground text-xs">
+            {data.pagination.total} registro(s) — página {data.pagination.page} de{" "}
+            {data.pagination.totalPages}
           </p>
           <div className="flex gap-2">
             <Button
@@ -459,10 +514,11 @@ export function AdminWebhookAudit() {
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-300">
         <p className="font-medium">🔔 Sobre este log</p>
         <p className="mt-1">
-          Cada linha representa uma execução de uma regra de webhook de eventos. Toda vez que um evento do sistema
-          ocorre (agendamento criado, avaliação recebida, etc.), o sistema verifica se há regras ativas para aquele
-          evento e dispara notificações push para os usuários elegíveis. <strong>Sucesso</strong> = todos os pushes
-          foram enviados · <strong>Parcial</strong> = alguns falharam · <strong>Falha</strong> = todos falharam.
+          Cada linha representa uma execução de uma regra de webhook de eventos. Toda vez que um
+          evento do sistema ocorre (agendamento criado, avaliação recebida, etc.), o sistema
+          verifica se há regras ativas para aquele evento e dispara notificações push para os
+          usuários elegíveis. <strong>Sucesso</strong> = todos os pushes foram enviados ·{" "}
+          <strong>Parcial</strong> = alguns falharam · <strong>Falha</strong> = todos falharam.
         </p>
       </div>
     </div>
