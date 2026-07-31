@@ -27,7 +27,7 @@ import { RadiusDensitySelector } from "../radius-density-selector"
 // Shared fixtures
 // ===========================================================================
 
-import { FIXTURE_RADIUS_DENSITY_PROPS } from "./fixtures"
+import { FIXTURE_RADIUS_DENSITY_PROPS } from "./index"
 
 // ===========================================================================
 // Helpers

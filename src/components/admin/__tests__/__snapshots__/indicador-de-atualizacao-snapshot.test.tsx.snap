@@ -1,0 +1,86 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`IndicadorDeAtualizacao — snapshot dos 5 estados visuais > 1. null — spacer oculto (opacity-0, aria-hidden, '—') > indicador-null 1`] = `
+<DocumentFragment>
+  <span
+    aria-hidden="true"
+    class="pointer-events-none inline-flex items-center gap-1.5 text-xs opacity-0 transition-opacity duration-300"
+  >
+    <span
+      data-class="size-3"
+      data-testid="lucide-icon"
+    />
+    <span>
+      —
+    </span>
+  </span>
+</DocumentFragment>
+`;
+
+exports[`IndicadorDeAtualizacao — snapshot dos 5 estados visuais > 2. refetching — spinner + 'Atualizando…' > indicador-refetching 1`] = `
+<DocumentFragment>
+  <span
+    aria-live="polite"
+    class="inline-flex items-center gap-1.5 text-xs opacity-100 transition-opacity duration-300 text-muted-foreground"
+  >
+    <span
+      data-class="size-3 animate-spin"
+      data-testid="lucide-icon"
+    />
+    <span>
+      Atualizando…
+    </span>
+  </span>
+</DocumentFragment>
+`;
+
+exports[`IndicadorDeAtualizacao — snapshot dos 5 estados visuais > 3. reindexing — spinner + 'Reindexando índices…' > indicador-reindexing 1`] = `
+<DocumentFragment>
+  <span
+    aria-live="polite"
+    class="inline-flex items-center gap-1.5 text-xs opacity-100 transition-opacity duration-300 text-muted-foreground"
+  >
+    <span
+      data-class="size-3 animate-spin"
+      data-testid="lucide-icon"
+    />
+    <span>
+      Reindexando índices…
+    </span>
+  </span>
+</DocumentFragment>
+`;
+
+exports[`IndicadorDeAtualizacao — snapshot dos 5 estados visuais > 4. success — check + mensagem verde > indicador-success 1`] = `
+<DocumentFragment>
+  <span
+    aria-live="assertive"
+    class="inline-flex items-center gap-1.5 text-xs opacity-100 transition-opacity duration-300 text-emerald-600 dark:text-emerald-400"
+  >
+    <span
+      data-class="size-3.5 shrink-0"
+      data-testid="lucide-icon"
+    />
+    <span>
+      Operação concluída com sucesso
+    </span>
+  </span>
+</DocumentFragment>
+`;
+
+exports[`IndicadorDeAtualizacao — snapshot dos 5 estados visuais > 5. error — alerta + mensagem vermelha > indicador-error 1`] = `
+<DocumentFragment>
+  <span
+    aria-live="assertive"
+    class="inline-flex items-center gap-1.5 text-xs opacity-100 transition-opacity duration-300 text-red-600 dark:text-red-400"
+  >
+    <span
+      data-class="size-3.5 shrink-0"
+      data-testid="lucide-icon"
+    />
+    <span>
+      Erro na operação
+    </span>
+  </span>
+</DocumentFragment>
+`;

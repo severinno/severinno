@@ -8,6 +8,35 @@ AlertDialog, sonner, fetch, etc.).
 
 ---
 
+## Barrel `index.ts`
+
+O [`index.ts`](./index.ts) re-exporta `mocks.tsx` e `fixtures.ts` como um
+barrel, permitindo import mais curto nos testes:
+
+```typescript
+// Antes — imports separados
+import { DEFAULT_GIST_DEGRADATION_PROPS } from "@/components/admin/__tests__/mocks"
+import { FIXTURE_BENCHMARK } from "./fixtures"
+
+// Depois — barrel único
+import { DEFAULT_GIST_DEGRADATION_PROPS, FIXTURE_BENCHMARK } from "./index"
+```
+
+**⚠️ Atenção — NÃO use o barrel dentro de factories de `vi.mock()`:**
+
+```typescript
+vi.mock("lucide-react", async () => {
+  const { MockIcon } = await import("./mocks") // ← direto, NÃO ./index
+  return { Database: MockIcon }
+})
+```
+
+O Vitest hoista as chamadas `vi.mock()` para o topo do arquivo; importar o
+barrel aí carregaria `fixtures.ts` (que importa `vi` e cria mocks no escopo do
+módulo) antes da hora. Use sempre o import direto `"./mocks"` nas factories.
+
+---
+
 ## Índice
 
 - [Convenção: `vi.mock` assíncrono](#convenção-vimock-assíncrono)

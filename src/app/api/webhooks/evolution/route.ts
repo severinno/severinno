@@ -343,3 +343,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true })
   }
 }
+
+// ---------------------------------------------------------------------------
+// Testing exports (__testing__ prefix)
+// ---------------------------------------------------------------------------
+// Helpers internos exportados apenas para testes diretos — mesmo padrão do
+// redis.ts (__testing__degradeTier). Não fazem parte da API pública; o POST
+// continua chamando as funções internas (vi.mock não intercepta chamadas
+// internas, então os testes de roteamento controlam o comportamento via
+// payload e do mock do db).
+
+export { extractNumber as __testing__extractNumber, findUserByPhone as __testing__findUserByPhone }

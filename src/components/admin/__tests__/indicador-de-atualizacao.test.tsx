@@ -17,7 +17,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest"
 import React from "react"
 import { render, screen, cleanup } from "@/__tests__/test-utils"
-import { IndicadorDeAtualizacao } from "../indicador-de-atualizacao"
+import { IndicadorDeAtualizacao, DEFAULT_LABELS } from "../indicador-de-atualizacao"
 import type { IndicadorDeAtualizacaoProps } from "../indicador-de-atualizacao"
 
 // ===========================================================================
@@ -29,17 +29,6 @@ vi.mock("lucide-react", async () => {
   const { MockIcon } = await import("./mocks")
   return { RefreshCw: MockIcon, CheckCircle2: MockIcon, AlertTriangle: MockIcon }
 })
-
-// ===========================================================================
-// Default labels (mirror the component's internal constants for assertions)
-// ===========================================================================
-
-const LABELS: Record<string, string> = {
-  refetching: "Atualizando…",
-  reindexing: "Reindexando índices…",
-  success: "Operação concluída com sucesso",
-  error: "Erro na operação",
-}
 
 // ===========================================================================
 // Tests
@@ -93,8 +82,8 @@ describe("IndicadorDeAtualizacao", () => {
   it("renders refetching state with spinner and 'Atualizando…' text", () => {
     renderIndicator({ status: "refetching" })
 
-    expect(screen.getByText(LABELS.refetching)).toBeInTheDocument()
-    const container = getContainer(LABELS.refetching)
+    expect(screen.getByText(DEFAULT_LABELS.refetching)).toBeInTheDocument()
+    const container = getContainer(DEFAULT_LABELS.refetching)
     expect(container).toHaveAttribute("aria-live", "polite")
     expect(container).toHaveClass("text-muted-foreground")
     expect(container).toHaveClass("opacity-100")
@@ -107,8 +96,8 @@ describe("IndicadorDeAtualizacao", () => {
   it("renders reindexing state with 'Reindexando índices…' text", () => {
     renderIndicator({ status: "reindexing" })
 
-    expect(screen.getByText(LABELS.reindexing)).toBeInTheDocument()
-    const container = getContainer(LABELS.reindexing)
+    expect(screen.getByText(DEFAULT_LABELS.reindexing)).toBeInTheDocument()
+    const container = getContainer(DEFAULT_LABELS.reindexing)
     expect(container).toHaveAttribute("aria-live", "polite")
     expect(container).toHaveClass("text-muted-foreground")
     expect(container).toHaveClass("opacity-100")
@@ -121,8 +110,8 @@ describe("IndicadorDeAtualizacao", () => {
   it("renders success state with check icon and green text", () => {
     renderIndicator({ status: "success" })
 
-    expect(screen.getByText(LABELS.success)).toBeInTheDocument()
-    const container = getContainer(LABELS.success)
+    expect(screen.getByText(DEFAULT_LABELS.success)).toBeInTheDocument()
+    const container = getContainer(DEFAULT_LABELS.success)
     expect(container).toHaveAttribute("aria-live", "assertive")
     expect(container).toHaveClass("text-emerald-600")
     expect(container).toHaveClass("opacity-100")
@@ -135,8 +124,8 @@ describe("IndicadorDeAtualizacao", () => {
   it("renders error state with alert icon and red text", () => {
     renderIndicator({ status: "error" })
 
-    expect(screen.getByText(LABELS.error)).toBeInTheDocument()
-    const container = getContainer(LABELS.error)
+    expect(screen.getByText(DEFAULT_LABELS.error)).toBeInTheDocument()
+    const container = getContainer(DEFAULT_LABELS.error)
     expect(container).toHaveAttribute("aria-live", "assertive")
     expect(container).toHaveClass("text-red-600")
     expect(container).toHaveClass("opacity-100")
@@ -150,14 +139,14 @@ describe("IndicadorDeAtualizacao", () => {
     renderIndicator({ status: "success", message: "3/3 índices OK" })
 
     expect(screen.getByText("3/3 índices OK")).toBeInTheDocument()
-    expect(screen.queryByText(LABELS.success)).not.toBeInTheDocument()
+    expect(screen.queryByText(DEFAULT_LABELS.success)).not.toBeInTheDocument()
   })
 
   it("renders custom message for error state instead of default", () => {
     renderIndicator({ status: "error", message: "Falha no servidor" })
 
     expect(screen.getByText("Falha no servidor")).toBeInTheDocument()
-    expect(screen.queryByText(LABELS.error)).not.toBeInTheDocument()
+    expect(screen.queryByText(DEFAULT_LABELS.error)).not.toBeInTheDocument()
   })
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -176,7 +165,7 @@ describe("IndicadorDeAtualizacao", () => {
   it("applies optional className in refetching state", () => {
     renderIndicator({ status: "refetching", className: "font-bold" })
 
-    const container = getContainer(LABELS.refetching)
+    const container = getContainer(DEFAULT_LABELS.refetching)
     expect(container).toHaveClass("font-bold")
     expect(container).toHaveClass("opacity-100")
   })
@@ -190,35 +179,35 @@ describe("IndicadorDeAtualizacao", () => {
 
     // Null state: spacer visible
     expect(screen.getByText("—")).toBeInTheDocument()
-    expect(screen.queryByText(LABELS.refetching)).not.toBeInTheDocument()
+    expect(screen.queryByText(DEFAULT_LABELS.refetching)).not.toBeInTheDocument()
 
     // Transition to refetching
     rerender(<IndicadorDeAtualizacao status="refetching" />)
 
     // Refetching state: label visible, spacer gone
-    expect(screen.getByText(LABELS.refetching)).toBeInTheDocument()
+    expect(screen.getByText(DEFAULT_LABELS.refetching)).toBeInTheDocument()
     expect(screen.queryByText("—")).not.toBeInTheDocument()
   })
 
   it("transitions from refetching to success (text changes from 'Atualizando…' to success message)", () => {
     const { rerender } = render(<IndicadorDeAtualizacao status="refetching" />)
 
-    expect(screen.getByText(LABELS.refetching)).toBeInTheDocument()
+    expect(screen.getByText(DEFAULT_LABELS.refetching)).toBeInTheDocument()
 
     rerender(<IndicadorDeAtualizacao status="success" />)
 
-    expect(screen.getByText(LABELS.success)).toBeInTheDocument()
-    expect(screen.queryByText(LABELS.refetching)).not.toBeInTheDocument()
+    expect(screen.getByText(DEFAULT_LABELS.success)).toBeInTheDocument()
+    expect(screen.queryByText(DEFAULT_LABELS.refetching)).not.toBeInTheDocument()
   })
 
   it("transitions from refetching to null (loading → idle)", () => {
     const { rerender } = render(<IndicadorDeAtualizacao status="refetching" />)
 
-    expect(screen.getByText(LABELS.refetching)).toBeInTheDocument()
+    expect(screen.getByText(DEFAULT_LABELS.refetching)).toBeInTheDocument()
 
     rerender(<IndicadorDeAtualizacao status={null} />)
 
     expect(screen.getByText("—")).toBeInTheDocument()
-    expect(screen.queryByText(LABELS.refetching)).not.toBeInTheDocument()
+    expect(screen.queryByText(DEFAULT_LABELS.refetching)).not.toBeInTheDocument()
   })
 })

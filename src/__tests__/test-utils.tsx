@@ -56,8 +56,13 @@ import { createRoot, type Root } from "react-dom/client"
 
 import {
   fireEvent as rtlFireEvent,
+  screen,
+  waitForElementToBeRemoved,
+  within,
   type FireFunction,
   type FireObject,
+  type RenderOptions,
+  type RenderResult,
 } from "@testing-library/react"
 
 function createActWrappedFireEvent(): FireFunction & FireObject {
@@ -88,19 +93,66 @@ function createActWrappedFireEvent(): FireFunction & FireObject {
 
 export const fireEvent = createActWrappedFireEvent()
 
+// ── act-aware waitFor / findByText ─────────────────────────────────────
+// RTL's own waitFor/findByText wrap their ENTIRE polling loop in a single
+// act() call.  With React 19, act() only flushes state updates when the act
+// callback EXITS — so a post-fetch setState resolving inside a long-running
+// polling loop is never flushed until the loop's own timeout, deadlocking
+// (the DOM stays mid-update forever, e.g. stuck on "Reindexando…").
+//
+// These replacements poll with SHORT act() calls per iteration: each check
+// flushes the microtask queue (fetch→json→setState) inside act and returns,
+// so updates land inside act (no "An update to Root was not wrapped in
+// act(...)" warnings) AND the next check sees a fresh DOM.
+
+export async function waitFor<T>(
+  callback: () => T,
+  options?: { timeout?: number; interval?: number },
+): Promise<T> {
+  const timeout = options?.timeout ?? 1000
+  const interval = options?.interval ?? 50
+  const start = Date.now()
+  let lastError: unknown
+
+  for (;;) {
+    try {
+      return await act(async () => {
+        // Yield to the microtask queue so pending fetch→setState chains run
+        // inside this act's scope.
+        await Promise.resolve()
+        return callback()
+      })
+    } catch (err) {
+      lastError = err
+      if (Date.now() - start > timeout) {
+        throw lastError
+      }
+      // Sleep inside act so timer-driven responses (slow fetch mocks) also
+      // resolve inside act, never outside it.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, interval))
+      })
+    }
+  }
+}
+
+/** act-aware findByText — same signature as RTL's screen.findByText. */
+export async function findByText(
+  text: Parameters<typeof screen.getByText>[0],
+  options?: Parameters<typeof screen.getByText>[1],
+  waitForOptions?: { timeout?: number; interval?: number },
+): Promise<HTMLElement> {
+  return waitFor(() => screen.getByText(text, options), waitForOptions)
+}
+
 // Export the project's act (not RTL's — they have different React instances).
-// RTL re-exports are for assertion utilities only: screen, waitFor, within.
+// RTL re-exports are for assertion utilities only: screen, within.
 export { act } from "react"
 
-// Re-export RTL assertion utilities (unmodified)
-export {
-  screen,
-  waitFor,
-  waitForElementToBeRemoved,
-  within,
-  type RenderOptions,
-  type RenderResult,
-} from "@testing-library/react"
+// Re-export RTL assertion utilities (unmodified) — waitFor is replaced by the
+// act-aware version above, so it is intentionally NOT re-exported here.
+export { screen, waitForElementToBeRemoved, within }
+export type { RenderOptions, RenderResult }
 
 // ---------------------------------------------------------------------------
 // Custom renderHook — uses project's React instance (not RTL's)
@@ -160,10 +212,11 @@ export function renderHook<Result, Props extends Record<string, unknown> = Recor
   }
 
   const renderUI = (ui: React.ReactNode) => {
+    // Same as render(): act() flushes synchronously in the test env — no
+    // flushSync inside act (avoids "An update to Root was not wrapped in
+    // act(...)" warnings).
     act(() => {
-      flushSync(() => {
-        hookRoot!.render(ui)
-      })
+      hookRoot!.render(ui)
     })
   }
 
@@ -194,7 +247,7 @@ export function renderHook<Result, Props extends Record<string, unknown> = Recor
     unmount: () => {
       if (hookRoot) {
         try {
-          flushSync(() => {
+          act(() => {
             hookRoot!.unmount()
           })
         } catch {
@@ -241,27 +294,28 @@ export function render(ui: ReactElement): CustomRenderResult {
     document.body.appendChild(container)
   }
 
-  // act() wraps createRoot + flushSync so React 19 recognizes the test
-  // environment and suppresses "An update to Root" warnings.
+  // act() wraps createRoot + render.  React 19's act() flushes synchronously
+  // in test environments (IS_REACT_ACT_ENVIRONMENT=true), so no flushSync is
+  // needed here — in fact, calling flushSync INSIDE act() triggers the
+  // "An update to Root inside a test was not wrapped in act(...)" warning
+  // because flushSync bypasses act's update queue.
   act(() => {
     if (!root) {
       root = createRoot(container!)
     }
-    flushSync(() => {
-      root!.render(ui)
-    })
+    root!.render(ui)
   })
 
   return {
     container,
     baseElement: document.body,
     rerender: (newUi: ReactElement) => {
-      flushSync(() => {
+      act(() => {
         root!.render(newUi)
       })
     },
     unmount: () => {
-      flushSync(() => {
+      act(() => {
         root!.unmount()
       })
       root = null
@@ -304,7 +358,7 @@ export function cleanup(): void {
   // Cleanup hook-specific root (renderHook uses its own container + root)
   if (hookRoot) {
     try {
-      flushSync(() => {
+      act(() => {
         hookRoot!.unmount()
       })
     } catch {
@@ -320,7 +374,7 @@ export function cleanup(): void {
   // Cleanup render root (render() uses its own container + root)
   if (root) {
     try {
-      flushSync(() => {
+      act(() => {
         root!.unmount()
       })
     } catch {

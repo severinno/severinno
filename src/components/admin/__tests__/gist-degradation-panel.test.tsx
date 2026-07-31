@@ -7,10 +7,16 @@
  *   - lucide-react — MockIcon placeholder
  *   - AlertDialog — div-based stub
  *   - sonner toast — silent mock
+ *   - Collapsible — interactive context-based stub (createCollapsibleMock)
  *
  * Mocks (local — unique to this test):
- *   - Collapsible — div-based stub for jsdom
  *   - geo-benchmark-model — deterministic constant values
+ *
+ * NOTE: the shared Collapsible mock is faithful to real Radix —
+ * CollapsibleContent only renders children when the collapsible is expanded.
+ * Tests that read the expanded content (Diagnóstico / Recomendação / Impacto,
+ * the REINDEX button, the refetch indicator) call the expandPanel() helper
+ * first.
  *
  * Test coverage:
  *   - GistDegradationPanel: null/render states, text content, collapsible
@@ -21,8 +27,7 @@
  *      callback itself — this file only verifies prop routing)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import React from "react"
-import { render, screen, fireEvent, waitFor, cleanup } from "@/__tests__/test-utils"
+import { render, screen, fireEvent, waitFor, findByText, cleanup } from "@/__tests__/test-utils"
 import { GistDegradationPanel } from "../gist-degradation-panel"
 
 // ===========================================================================
@@ -51,25 +56,17 @@ vi.mock("sonner", async () => {
 })
 
 // ===========================================================================
-// Mock Collapsible — div-based stub for jsdom (unique to this test)
+// Shared mock Collapsible (interactive, 2 contextos) — via async vi.mock
+// factory from ./mocks, same pattern as lucide-react / alert-dialog / sonner.
+// CollapsibleContent only renders children when `open` is true (like real
+// Radix), so tests that interact with or assert the expanded content must
+// click "Ver detalhes do índice" first — see the expandPanel() helper below.
 // ===========================================================================
 
-vi.mock("@/components/ui/collapsible", () => ({
-  Collapsible: ({ open, onOpenChange, children, className }: any) => (
-    <div data-testid="collapsible" data-open={String(open)} className={className}>
-      {children}
-    </div>
-  ),
-  CollapsibleTrigger: ({ asChild, children }: any) => {
-    if (asChild && React.isValidElement(children)) {
-      return React.cloneElement(children as React.ReactElement<any>)
-    }
-    return <button type="button">{children}</button>
-  },
-  CollapsibleContent: ({ children }: any) => (
-    <div data-testid="collapsible-content">{children}</div>
-  ),
-}))
+vi.mock("@/components/ui/collapsible", async () => {
+  const { createCollapsibleMock } = await import("./mocks")
+  return createCollapsibleMock()
+})
 
 // ===========================================================================
 // Mock geo-benchmark-model constants (unique to this test)
@@ -85,16 +82,15 @@ vi.mock("@/lib/geo-benchmark-model", () => ({
 // Shared imports (FetchResponseFn, built response helpers, clickExecuteReindex)
 // ===========================================================================
 
-import type { FetchResponseFn } from "./mocks"
-import { buildReindexSuccessResponse, buildReindexSlowResponse, clickExecuteReindex } from "./mocks"
+import type { FetchResponseFn } from "./index"
+import {
+  buildReindexSuccessResponse,
+  buildReindexSlowResponse,
+  clickExecuteReindex,
+  DEFAULT_GIST_DEGRADATION_PROPS,
+} from "./index"
 
 let mockFetchResponse: FetchResponseFn
-
-// ===========================================================================
-// Default props
-// ===========================================================================
-
-import { DEFAULT_GIST_DEGRADATION_PROPS } from "@/components/admin/__tests__/mocks"
 
 // ===========================================================================
 // Shared visual state tests
@@ -107,6 +103,16 @@ const DEFAULT_PROPS = DEFAULT_GIST_DEGRADATION_PROPS
 // ===========================================================================
 // Tests
 // ===========================================================================
+
+/**
+ * Expande o collapsible do painel. Com o mock compartilhado (fiel ao Radix),
+ * CollapsibleContent só renderiza quando `open === true` — testes que leem o
+ * conteúdo (Diagnóstico/Recomendação/Impacto) ou interagem com o botão
+ * REINDEX precisam expandir antes.
+ */
+function expandPanel() {
+  fireEvent.click(screen.getByText("Ver detalhes do índice"))
+}
 
 describe("GistDegradationPanel", () => {
   beforeEach(() => {
@@ -150,6 +156,7 @@ describe("GistDegradationPanel", () => {
 
   it("shows the P95 value (90ms) in the alert message", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+    expandPanel()
 
     // O P95 aparece em múltiplos lugares: alerta principal + diagnóstico + impacto
     const p95Texts = screen.getAllByText(/90ms/)
@@ -186,6 +193,7 @@ describe("GistDegradationPanel", () => {
 
   it("renders collapsible content with diagnosis, recommendation, and impact sections", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+    expandPanel()
 
     expect(screen.getByTestId("collapsible-content")).toBeInTheDocument()
     expect(screen.getByText(/Diagnóstico/)).toBeInTheDocument()
@@ -193,8 +201,31 @@ describe("GistDegradationPanel", () => {
     expect(screen.getByText(/Impacto no Modelo/)).toBeInTheDocument()
   })
 
+  it("toggles between 'Ver detalhes do índice' and 'Ocultar detalhes' when clicked", () => {
+    render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+
+    // Estado inicial: colapsado
+    expect(screen.getByText("Ver detalhes do índice")).toBeInTheDocument()
+    expect(screen.queryByText("Ocultar detalhes")).not.toBeInTheDocument()
+    const collapsible = screen.getByTestId("collapsible")
+    expect(collapsible.getAttribute("data-open")).toBe("false")
+
+    // Click no trigger → expande (showIndexDetails=true → label switch + rotate-180)
+    fireEvent.click(screen.getByText("Ver detalhes do índice"))
+    expect(screen.getByText("Ocultar detalhes")).toBeInTheDocument()
+    expect(screen.queryByText("Ver detalhes do índice")).not.toBeInTheDocument()
+    expect(collapsible.getAttribute("data-open")).toBe("true")
+
+    // Click de novo → recolhe
+    fireEvent.click(screen.getByText("Ocultar detalhes"))
+    expect(screen.getByText("Ver detalhes do índice")).toBeInTheDocument()
+    expect(screen.queryByText("Ocultar detalhes")).not.toBeInTheDocument()
+    expect(collapsible.getAttribute("data-open")).toBe("false")
+  })
+
   it("shows the exact P95 excess in the diagnosis section", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+    expandPanel()
 
     // P95 (90ms) - maxModel (35.2ms) = 54.8ms → Math.round → 55ms
     expect(screen.getByText(/55ms/)).toBeInTheDocument()
@@ -202,6 +233,7 @@ describe("GistDegradationPanel", () => {
 
   it("shows the 3 recommendation steps (REINDEX, VACUUM, partition)", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+    expandPanel()
 
     expect(screen.getByText(/REINDEX INDEX CONCURRENTLY/)).toBeInTheDocument()
     expect(screen.getByText(/VACUUM ANALYZE/)).toBeInTheDocument()
@@ -212,6 +244,7 @@ describe("GistDegradationPanel", () => {
 
   it("renders the REINDEX button and confirm dialog opens on click", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+    expandPanel()
 
     expect(screen.getByText("Executar REINDEX")).toBeInTheDocument()
 
@@ -225,6 +258,7 @@ describe("GistDegradationPanel", () => {
     mockFetchResponse = () => buildReindexSlowResponse(100)
 
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+    expandPanel()
     fireEvent.click(screen.getByText("Executar REINDEX"))
     fireEvent.click(screen.getByTestId("alert-dialog-action"))
 
@@ -242,10 +276,11 @@ describe("GistDegradationPanel", () => {
 
   it("shows success result after successful REINDEX", async () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+    expandPanel()
     await clickExecuteReindex()
 
     // The result indicator contains "sucesso"
-    const resultEl = await screen.findByText(/sucesso/)
+    const resultEl = await findByText(/sucesso/)
     expect(resultEl).toBeInTheDocument()
     expect(resultEl.textContent).toContain("sucesso")
     expect(resultEl.textContent).toContain("2122ms")
@@ -278,6 +313,7 @@ describe("GistDegradationPanel", () => {
   it("forwards onReindexSuccess to GistReindexButton (integration)", async () => {
     const onSuccess = vi.fn()
     render(<GistDegradationPanel {...DEFAULT_PROPS} onReindexSuccess={onSuccess} />)
+    expandPanel()
     await clickExecuteReindex()
 
     await waitFor(() => {
@@ -289,12 +325,14 @@ describe("GistDegradationPanel", () => {
 
   it("passes isRefetching to child and shows 'Atualizando métricas…'", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} isRefetching={true} />)
+    expandPanel()
 
     expect(screen.getByText("Atualizando métricas…")).toBeInTheDocument()
   })
 
   it("does NOT show refetching indicator when isRefetching is false", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} isRefetching={false} />)
+    expandPanel()
 
     expect(screen.queryByText("Atualizando métricas…")).not.toBeInTheDocument()
   })
@@ -303,6 +341,7 @@ describe("GistDegradationPanel", () => {
 
   it("renders the model impact section with formula and ratio", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} />)
+    expandPanel()
 
     // "2ms" aparece em múltiplos lugares (alerta principal + fórmula)
     const twoMsTexts = screen.getAllByText(/2ms/)
@@ -319,6 +358,7 @@ describe("GistDegradationPanel", () => {
 
   it("handles very large P95 values correctly", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} p95Mean={9999} />)
+    expandPanel()
 
     // "9999ms" aparece em múltiplos lugares (alerta, diagnóstico, impacto)
     const texts = screen.getAllByText(/9999ms/)
@@ -333,6 +373,7 @@ describe("GistDegradationPanel", () => {
 
   it("handles very high maxModelAtSelectivity for ratio display", () => {
     render(<GistDegradationPanel {...DEFAULT_PROPS} maxModelAtSelectivity={1000} />)
+    expandPanel()
 
     expect(screen.getByText(/0.1×/)).toBeInTheDocument()
   })

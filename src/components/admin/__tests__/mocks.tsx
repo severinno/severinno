@@ -25,7 +25,13 @@
 
 import React from "react"
 import { vi } from "vitest"
-import { screen, fireEvent } from "@testing-library/react"
+// IMPORTANT: use the act-wrapped screen/fireEvent from test-utils, NOT the
+// raw RTL ones.  With the custom render (project React via createRoot),
+// RTL's internal act() cannot flush the project's state updates — raw
+// fireEvent clicks cause "An update to Root was not wrapped in act(...)"
+// warnings.  The shared clickExecuteReindex helper must use the same
+// act-wrapped fireEvent that the test files use.
+import { screen, fireEvent, findByText } from "@/__tests__/test-utils"
 
 // ===========================================================================
 // lucide-react — icon placeholder component
@@ -111,6 +117,80 @@ export function createAlertDialogMock() {
     AlertDialogAction,
     AlertDialogCancel,
   }
+}
+
+// ===========================================================================
+// Collapsible — interactive context-based mock for jsdom
+// ===========================================================================
+
+/**
+ * Interactive mock for @/components/ui/collapsible that mirrors real Radix
+ * behavior:
+ *   - Clicking the trigger calls onOpenChange(!open) — lets components toggle
+ *     their own open state (e.g. the panel's showIndexDetails label ternary
+ *     and rotate-180 arrow).
+ *   - CollapsibleContent only renders children when `open` is true — keeps
+ *     collapsed content (e.g. the REINDEX button inside a panel) out of
+ *     snapshots and forces tests to expand before interacting, exactly like
+ *     real Radix.
+ *
+ * Two React contexts propagate state from Collapsible to its (possibly deeply
+ * nested) CollapsibleTrigger / CollapsibleContent, so the mock works
+ * regardless of nesting depth.
+ *
+ * Usage in a test file (async-import pattern — do NOT use the barrel inside
+ * vi.mock factories):
+ *
+ *   vi.mock("@/components/ui/collapsible", async () => {
+ *     const { createCollapsibleMock } = await import("./mocks")
+ *     return createCollapsibleMock()
+ *   })
+ */
+export function createCollapsibleMock() {
+  // Contextos para propagar `open` e `onOpenChange` do Collapsible
+  // para CollapsibleTrigger (toggle) e CollapsibleContent (visibilidade).
+  // Padrão análogo ao createAlertDialogMock() acima.
+  const CollapsibleOpenContext = React.createContext(false)
+  const CollapsibleToggleContext = React.createContext<(() => void) | undefined>(undefined)
+
+  const Collapsible = ({ open, onOpenChange, children, className }: any) => (
+    <CollapsibleOpenContext.Provider value={open}>
+      <CollapsibleToggleContext.Provider value={() => onOpenChange?.(!open)}>
+        <div data-testid="collapsible" data-open={String(open)} className={className}>
+          {children}
+        </div>
+      </CollapsibleToggleContext.Provider>
+    </CollapsibleOpenContext.Provider>
+  )
+
+  const CollapsibleTrigger = ({ asChild, children }: any) => {
+    const toggle = React.useContext(CollapsibleToggleContext)
+    const handleClick = (e: React.MouseEvent) => {
+      toggle?.()
+      // If asChild, also call the child's original onClick
+      if (asChild && React.isValidElement(children)) {
+        ;(children as React.ReactElement<any>).props.onClick?.(e)
+      }
+    }
+    if (asChild && React.isValidElement(children)) {
+      return React.cloneElement(children as React.ReactElement<any>, {
+        onClick: handleClick,
+      })
+    }
+    return (
+      <button type="button" onClick={handleClick}>
+        {children}
+      </button>
+    )
+  }
+
+  const CollapsibleContent = ({ children }: any) => {
+    const open = React.useContext(CollapsibleOpenContext)
+    if (!open) return null
+    return <div data-testid="collapsible-content">{children}</div>
+  }
+
+  return { Collapsible, CollapsibleTrigger, CollapsibleContent }
 }
 
 // ===========================================================================
@@ -263,5 +343,5 @@ export const DEFAULT_GIST_REINDEX_PROPS: Record<string, never> = {}
 export async function clickExecuteReindex() {
   fireEvent.click(screen.getByText("Executar REINDEX"))
   fireEvent.click(screen.getByTestId("alert-dialog-action"))
-  await screen.findByText(/sucesso|Falha|Erro/, undefined, { timeout: 2000 })
+  await findByText(/sucesso|Falha|Erro/, undefined, { timeout: 2000 })
 }

@@ -42,7 +42,7 @@ export interface IndicadorDeAtualizacaoProps {
 // Labels padrão
 // ---------------------------------------------------------------------------
 
-const DEFAULT_LABELS: Record<NonNullable<IndicadorStatus>, string> = {
+export const DEFAULT_LABELS: Record<NonNullable<IndicadorStatus>, string> = {
   refetching: "Atualizando…",
   reindexing: "Reindexando índices…",
   success: "Operação concluída com sucesso",
