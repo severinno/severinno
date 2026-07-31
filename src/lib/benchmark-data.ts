@@ -55,7 +55,9 @@ export interface BenchmarkData {
 }
 
 // ---------------------------------------------------------------------------
-// Color palette constants (mirrors the component's COLOR_P50/P95/P99)
+// Color palette constants — mirrors src/components/admin/admin-chart-theme.ts
+// (COLOR_P50/P95/P99). Kept here because src/lib must not import from
+// src/components (layer inversion). Update BOTH when changing the palette.
 // ---------------------------------------------------------------------------
 
 export const RATIO_COLOR_FAST = "hsl(160, 84%, 39%)" // PostGIS is ~same speed

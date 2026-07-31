@@ -45,22 +45,12 @@ import {
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState, MetricCard } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import type { ErrorTrendsData } from "@/app/api/admin/errors/route"
-import { MetricCard } from "@/components/admin/admin-metric-card"
 
 // ── Tooltip ───────────────────────────────────────────────────────────────
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
 
 // ── Colors ────────────────────────────────────────────────────────────────
 

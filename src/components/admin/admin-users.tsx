@@ -114,7 +114,7 @@ import {
   SavingPill,
   SearchInput,
   TableSkeleton,
-} from "./admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types — definidos IDÊNTICOS em admin-providers.tsx (H4 consistência).

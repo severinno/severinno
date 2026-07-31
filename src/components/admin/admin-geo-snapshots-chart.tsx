@@ -30,12 +30,11 @@ import {
 
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
+import { DashboardHeader, ErrorState, MetricCard } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState } from "@/components/admin/admin-shared"
 
 import type { SnapshotsSummaryResponse, TimeBucket, GeoServiceName } from "@/types/geo"
-import { MetricCard } from "@/components/admin/admin-metric-card"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -68,16 +67,6 @@ const DAY_PRESETS = [
 // ---------------------------------------------------------------------------
 // Chart tooltip style
 // ---------------------------------------------------------------------------
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
 
 // ---------------------------------------------------------------------------
 // Helpers

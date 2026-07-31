@@ -21,13 +21,13 @@
 import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { AlertTriangle, CheckCircle2, Loader2, MapPin, RefreshCw, Users } from "lucide-react"
-import { RefreshButton } from "@/components/admin/admin-refresh-button"
+import { ErrorState, RefreshButton } from "./_shared"
 import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState } from "@/components/admin/admin-shared"
+
 import { preloadMaplibreGl } from "@/components/shared/provider-mini-map"
 
 import type { CoverageResponse } from "@/app/api/admin/coverage/route"

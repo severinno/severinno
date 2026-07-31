@@ -49,10 +49,7 @@ import { apiGet, apiPost } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -64,11 +61,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatDate } from "@/lib/format"
 
 import {
@@ -80,7 +73,7 @@ import {
   EmptyState,
   errMsg,
   type StatusTone,
-} from "@/components/admin/admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -143,20 +136,14 @@ function lookupHelp(key: string): string | null {
   if (SETTING_HELP[key]) return SETTING_HELP[key]
   const upper = key.toUpperCase()
   // Heurísticas por prefixo
-  if (upper.startsWith("PAYMENT_"))
-    return "Configuração relacionada ao gateway de pagamento."
-  if (upper.startsWith("SMTP_"))
-    return "Configuração do servidor de envio de e-mails (SMTP)."
-  if (upper.startsWith("EMAIL_"))
-    return "Configuração de remetente e provedor de e-mail."
+  if (upper.startsWith("PAYMENT_")) return "Configuração relacionada ao gateway de pagamento."
+  if (upper.startsWith("SMTP_")) return "Configuração do servidor de envio de e-mails (SMTP)."
+  if (upper.startsWith("EMAIL_")) return "Configuração de remetente e provedor de e-mail."
   if (upper.startsWith("NOMINATIM_") || upper.startsWith("GEO_"))
     return "Configuração de geolocalização (endereço, CEP, mapa)."
-  if (upper.startsWith("SITE_"))
-    return "Configuração geral do site (branding, URL, nome)."
-  if (upper.startsWith("SUPPORT_"))
-    return "Canal de atendimento/suporte ao cliente."
-  if (upper.startsWith("WEATHER_"))
-    return "Integração com serviço de previsão do tempo."
+  if (upper.startsWith("SITE_")) return "Configuração geral do site (branding, URL, nome)."
+  if (upper.startsWith("SUPPORT_")) return "Canal de atendimento/suporte ao cliente."
+  if (upper.startsWith("WEATHER_")) return "Integração com serviço de previsão do tempo."
   return null
 }
 
@@ -240,8 +227,7 @@ export function AdminSettings() {
       setEditHistory([])
       queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
     },
-    onError: (e: unknown) =>
-      toast.error(errMsg(e, "Não foi possível salvar as configurações.")),
+    onError: (e: unknown) => toast.error(errMsg(e, "Não foi possível salvar as configurações.")),
   })
 
   const createMutation = useMutation({
@@ -254,8 +240,7 @@ export function AdminSettings() {
       queryClient.invalidateQueries({ queryKey: ["admin", "settings"] })
       setCreateOpen(false)
     },
-    onError: (e: unknown) =>
-      toast.error(errMsg(e, "Não foi possível criar a configuração.")),
+    onError: (e: unknown) => toast.error(errMsg(e, "Não foi possível criar a configuração.")),
   })
 
   // H3 — change tracking registra ordem das edições p/ undo por campo
@@ -325,11 +310,7 @@ export function AdminSettings() {
       <PageSectionHeader
         title="Configurações"
         description="Chaves dinâmicas (estilo .env) que controlam pagamentos, e-mail, geolocalização e mais."
-        action={
-          lastFetched ? (
-            <FreshnessLabel updatedAt={lastFetched} />
-          ) : null
-        }
+        action={lastFetched ? <FreshnessLabel updatedAt={lastFetched} /> : null}
       />
 
       {/* Warning banner — H5 prevenção */}
@@ -339,20 +320,20 @@ export function AdminSettings() {
           Estas configurações afetam todo o sistema. Edite com cuidado.
         </AlertTitle>
         <AlertDescription className="text-xs">
-          Alterações são salvas no banco e aplicadas instantaneamente. Erros
-          podem afetar pagamentos, e-mails e geolocalização.
+          Alterações são salvas no banco e aplicadas instantaneamente. Erros podem afetar
+          pagamentos, e-mails e geolocalização.
         </AlertDescription>
       </Alert>
 
       {/* Toolbar — H7 busca + contagem + H1 freshness + nova */}
-      <div className="flex flex-col gap-3 rounded-xl border border-border/50 bg-card p-3 shadow-none sm:flex-row sm:items-center">
+      <div className="border-border/50 bg-card flex flex-col gap-3 rounded-xl border p-3 shadow-none sm:flex-row sm:items-center">
         <div className="flex flex-1 flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="text-muted-foreground inline-flex items-center gap-1.5 text-xs">
             {isLoading
               ? "Carregando configurações..."
               : `${items.length} configuração(ões) em ${groups.length} grupo(s)`}
             {dirty.size > 0 ? (
-              <span className="ml-1 inline-flex items-center gap-1 font-medium text-primary">
+              <span className="text-primary ml-1 inline-flex items-center gap-1 font-medium">
                 · {dirty.size} pendente(s)
               </span>
             ) : null}
@@ -401,11 +382,7 @@ export function AdminSettings() {
           title="Nenhuma configuração"
           description="Crie a primeira configuração para começar."
           action={
-            <Button
-              size="sm"
-              onClick={() => setCreateOpen(true)}
-              className="gap-1.5"
-            >
+            <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
               <Plus className="size-4" />
               Nova configuração
             </Button>
@@ -433,8 +410,11 @@ export function AdminSettings() {
             const meta = GROUP_META[group] ?? GROUP_META.default
             const GroupIcon = meta.icon
             return (
-              <Card key={group} className="rounded-xl border border-border/50 bg-card shadow-none overflow-hidden">
-                <div className="flex items-center justify-between border-b border-border/50 p-5">
+              <Card
+                key={group}
+                className="border-border/50 bg-card overflow-hidden rounded-xl border shadow-none"
+              >
+                <div className="border-border/50 flex items-center justify-between border-b p-5">
                   <div className="flex items-center gap-3">
                     <span
                       className={cn(
@@ -446,14 +426,11 @@ export function AdminSettings() {
                     </span>
                     <div>
                       <p className="text-base font-semibold">{meta.label}</p>
-                      <p className="text-[11px] text-muted-foreground/70">
-                        {meta.description}
-                      </p>
+                      <p className="text-muted-foreground/70 text-[11px]">{meta.description}</p>
                     </div>
                   </div>
                   <StatusBadge tone="zinc">
-                    {groupItems.length}{" "}
-                    {groupItems.length === 1 ? "chave" : "chaves"}
+                    {groupItems.length} {groupItems.length === 1 ? "chave" : "chaves"}
                   </StatusBadge>
                 </div>
                 <CardContent className="flex flex-col gap-2.5 p-4">
@@ -477,17 +454,14 @@ export function AdminSettings() {
 
       {/* H8 — UM único caminho de salvar: sticky bar (sem botão por linha) */}
       {dirty.size > 0 ? (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/50 bg-background/95 backdrop-blur-sm">
+        <div className="border-border/50 bg-background/95 fixed inset-x-0 bottom-0 z-30 border-t backdrop-blur-sm">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground tabular-nums">
-                {dirty.size}
-              </span>{" "}
+            <p className="text-muted-foreground text-sm">
+              <span className="text-foreground font-medium tabular-nums">{dirty.size}</span>{" "}
               alteração(ões) não salva(s)
               {editHistory.length > 0 ? (
-                <span className="ml-1 text-xs text-muted-foreground">
-                  · última:{" "}
-                  <code className="font-mono">{editHistory[editHistory.length - 1]}</code>
+                <span className="text-muted-foreground ml-1 text-xs">
+                  · última: <code className="font-mono">{editHistory[editHistory.length - 1]}</code>
                 </span>
               ) : null}
             </p>
@@ -502,15 +476,13 @@ export function AdminSettings() {
                 variant="outline"
                 size="sm"
                 onClick={undoLastEdit}
-                disabled={
-                  upsertMutation.isPending || editHistory.length === 0
-                }
+                disabled={upsertMutation.isPending || editHistory.length === 0}
                 className="gap-1.5"
               >
                 <Undo2 className="size-3.5" />
                 Desfazer
                 {editHistory.length > 0 ? (
-                  <span className="ml-0.5 rounded bg-muted px-1 text-[10px] tabular-nums">
+                  <span className="bg-muted ml-0.5 rounded px-1 text-[10px] tabular-nums">
                     {editHistory.length}
                   </span>
                 ) : null}
@@ -520,7 +492,7 @@ export function AdminSettings() {
                 size="sm"
                 onClick={resetAll}
                 disabled={upsertMutation.isPending}
-                className="gap-1.5 text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground gap-1.5"
               >
                 <Trash2 className="size-3.5" />
                 Descartar tudo
@@ -582,9 +554,7 @@ function SettingRow({
     <div
       className={cn(
         "flex flex-col gap-1.5 rounded-lg border p-3 transition-colors",
-        isDirty
-          ? "border-primary/40 bg-primary/5"
-          : "border-border/50 bg-card",
+        isDirty ? "border-primary/40 bg-primary/5" : "border-border/50 bg-card",
       )}
     >
       {/* Linha 1 — chave + badges + updatedAt + Info tooltip (H10) */}
@@ -592,7 +562,7 @@ function SettingRow({
         <div className="flex min-w-0 items-center gap-1.5">
           <Label
             htmlFor={`set-${setting.key}`}
-            className="truncate font-mono text-xs font-medium tracking-tight text-foreground"
+            className="text-foreground truncate font-mono text-xs font-medium tracking-tight"
           >
             {setting.key}
           </Label>
@@ -607,23 +577,20 @@ function SettingRow({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="text-muted-foreground/60 transition-colors hover:text-foreground"
+                  className="text-muted-foreground/60 hover:text-foreground transition-colors"
                   aria-label={`O que é ${setting.key}?`}
                 >
                   <Info className="size-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent
-                side="top"
-                className="max-w-xs text-xs leading-relaxed"
-              >
+              <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
                 {help}
               </TooltipContent>
             </Tooltip>
           ) : null}
         </div>
         {setting.updatedAt ? (
-          <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+          <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
             {formatDate(setting.updatedAt)}
           </span>
         ) : null}
@@ -637,7 +604,7 @@ function SettingRow({
             value={draftValue}
             onChange={(e) => onValueChange(setting.key, e.target.value)}
             type={isSecret && !isRevealed ? "password" : "text"}
-            className="h-8 pr-9 font-mono text-sm border-input/60 rounded-lg"
+            className="border-input/60 h-8 rounded-lg pr-9 font-mono text-sm"
             spellCheck={false}
             autoComplete="off"
           />
@@ -647,26 +614,20 @@ function SettingRow({
                 <button
                   type="button"
                   onClick={() => onToggleReveal(setting.key)}
-                  className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                  className="text-muted-foreground/60 hover:bg-accent hover:text-foreground absolute top-1/2 right-1.5 flex size-8 -translate-y-1/2 items-center justify-center rounded-md transition-colors"
                   aria-label={isRevealed ? "Ocultar valor" : "Mostrar valor"}
                   aria-pressed={isRevealed}
                 >
-                  {isRevealed ? (
-                    <EyeOff className="size-3.5" />
-                  ) : (
-                    <Eye className="size-3.5" />
-                  )}
+                  {isRevealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                 </button>
               </TooltipTrigger>
-              <TooltipContent>
-                {isRevealed ? "Ocultar valor" : "Mostrar valor"}
-              </TooltipContent>
+              <TooltipContent>{isRevealed ? "Ocultar valor" : "Mostrar valor"}</TooltipContent>
             </Tooltip>
           ) : null}
         </div>
         {/* H8 — feedback sutil de "salvo/vazio" sem virar um botão competidor */}
         {isDirty ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/10 px-1.5 py-1 text-[10px] font-medium text-primary">
+          <span className="bg-primary/10 text-primary inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium">
             <Check className="size-3" />
             alterado
           </span>
@@ -674,9 +635,7 @@ function SettingRow({
       </div>
 
       {/* H4 — caption honesto sobre a ausência de endpoint DELETE */}
-      <p className="text-[10px] text-muted-foreground">
-        Para remover, limpe o valor e salve.
-      </p>
+      <p className="text-muted-foreground text-[10px]">Para remover, limpe o valor e salve.</p>
     </div>
   )
 }
@@ -709,15 +668,15 @@ function FlatResultsList({
     )
   }
   return (
-    <Card className="rounded-xl border border-border/50 bg-card shadow-none overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border/50 p-5">
+    <Card className="border-border/50 bg-card overflow-hidden rounded-xl border shadow-none">
+      <div className="border-border/50 flex items-center justify-between border-b p-5">
         <div className="flex items-center gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <span className="bg-primary/10 text-primary flex size-9 shrink-0 items-center justify-center rounded-lg">
             <SettingsIcon className="size-4" />
           </span>
           <div>
             <p className="text-base font-semibold">Resultados da busca</p>
-            <p className="text-[11px] text-muted-foreground/70">
+            <p className="text-muted-foreground/70 text-[11px]">
               {items.length}{" "}
               {items.length === 1 ? "configuração encontrada" : "configurações encontradas"}
             </p>
@@ -783,8 +742,8 @@ function CreateSettingDialog({
         <DialogHeader>
           <DialogTitle>Nova configuração</DialogTitle>
           <DialogDescription>
-            Adicione um novo par chave/valor. A chave deve ter apenas letras
-            maiúsculas, números e underline.
+            Adicione um novo par chave/valor. A chave deve ter apenas letras maiúsculas, números e
+            underline.
           </DialogDescription>
         </DialogHeader>
 
@@ -801,26 +760,21 @@ function CreateSettingDialog({
             <Input
               id="set-key"
               value={key}
-              onChange={(e) =>
-                setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))
-              }
+              onChange={(e) => setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
               placeholder="EX.: PAYMENT_API_KEY"
               className="font-mono"
               autoFocus
             />
             {dupe ? (
-              <p className="text-[11px] text-red-600">
-                Esta chave já existe.
-              </p>
+              <p className="text-[11px] text-red-600">Esta chave já existe.</p>
             ) : help ? (
-              <p className="flex items-start gap-1 text-[11px] text-muted-foreground">
+              <p className="text-muted-foreground flex items-start gap-1 text-[11px]">
                 <Info className="mt-0.5 size-3 shrink-0" />
                 {help}
               </p>
             ) : (
-              <p className="text-[11px] text-muted-foreground">
-                Convenção: <code>GRUPO_NOME</code> (ex.:{" "}
-                <code>PAYMENT_PIX_KEY</code>).
+              <p className="text-muted-foreground text-[11px]">
+                Convenção: <code>GRUPO_NOME</code> (ex.: <code>PAYMENT_PIX_KEY</code>).
               </p>
             )}
           </div>
@@ -884,10 +838,8 @@ const GROUP_TONE: Record<string, StatusTone> = {
 
 function toneToClass(tone: StatusTone): string {
   const map: Record<StatusTone, string> = {
-    emerald:
-      "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
-    amber:
-      "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+    emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+    amber: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
     rose: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
     teal: "bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
     zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",

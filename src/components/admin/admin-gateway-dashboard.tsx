@@ -47,7 +47,8 @@ import {
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { ErrorState, TableSkeleton } from "@/components/admin/admin-shared"
+import { ErrorState, TableSkeleton } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,7 +58,7 @@ type Period = "7d" | "30d" | "90d" | "12m" | "all"
 
 type StatusStat = {
   status: string
-  total: number   // in cents
+  total: number // in cents
   count: number
 }
 
@@ -108,16 +109,6 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: "12m", label: "12 meses" },
   { value: "all", label: "Todo período" },
 ]
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
 
 const STATUS_PIE_COLORS: Record<string, string> = {
   paid: "hsl(160, 84%, 39%)",
@@ -177,8 +168,7 @@ export function AdminGatewayDashboard() {
 
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["admin", "gateway", "stats", period],
-    queryFn: () =>
-      apiGet<GatewayStatsResponse>("/api/admin/gateway/stats", { period }),
+    queryFn: () => apiGet<GatewayStatsResponse>("/api/admin/gateway/stats", { period }),
     staleTime: 30_000,
   })
 
@@ -195,10 +185,10 @@ export function AdminGatewayDashboard() {
   if (isLoading || !data) {
     return (
       <div className="flex flex-col gap-6">
-        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
+        <div className="bg-muted h-8 w-48 animate-pulse rounded" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-28 animate-pulse rounded-xl bg-muted" />
+            <div key={i} className="bg-muted h-28 animate-pulse rounded-xl" />
           ))}
         </div>
         <TableSkeleton rows={6} cols={4} />
@@ -206,7 +196,17 @@ export function AdminGatewayDashboard() {
     )
   }
 
-  const { totalVolume, totalCount, paidCount, conversionRate, averageTicket, byStatus, monthly, methodDistribution, trend } = data
+  const {
+    totalVolume,
+    totalCount,
+    paidCount,
+    conversionRate,
+    averageTicket,
+    byStatus,
+    monthly,
+    methodDistribution,
+    trend,
+  } = data
 
   // Paid value from actual data (more accurate than proportional)
   const paidTotalValue = byStatus.find((s) => s.status === "paid")?.total ?? 0
@@ -220,15 +220,13 @@ export function AdminGatewayDashboard() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight">Gateway de Pagamento</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Métricas agregadas do Lytex — receita, volume de transações e conversão
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {isFetching && (
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
-          )}
+          {isFetching && <Loader2 className="text-muted-foreground size-4 animate-spin" />}
           <Button
             type="button"
             variant="ghost"
@@ -241,7 +239,7 @@ export function AdminGatewayDashboard() {
             <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
           </Button>
 
-          <div className="inline-flex h-8 items-center rounded-lg border bg-muted/50 p-0.5">
+          <div className="bg-muted/50 inline-flex h-8 items-center rounded-lg border p-0.5">
             {PERIOD_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -299,12 +297,10 @@ export function AdminGatewayDashboard() {
       {/* Charts row 1: Monthly volume + Status distribution */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Monthly volume bar chart */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Volume mensal</h2>
-            <p className="text-xs text-muted-foreground">
-              Valor total das faturas geradas por mês
-            </p>
+            <p className="text-muted-foreground text-xs">Valor total das faturas geradas por mês</p>
           </div>
           <div className="p-4">
             <MonthlyVolumeChart data={monthly} />
@@ -312,10 +308,10 @@ export function AdminGatewayDashboard() {
         </div>
 
         {/* Status distribution donut */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Distribuição por status</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Volume financeiro agregado por status da fatura
             </p>
           </div>
@@ -328,10 +324,10 @@ export function AdminGatewayDashboard() {
       {/* Charts row 2: Transaction volume + Conversion trend */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Transaction volume area chart */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Volume de transações</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Quantidade de transações ao longo do tempo
             </p>
           </div>
@@ -341,10 +337,10 @@ export function AdminGatewayDashboard() {
         </div>
 
         {/* Conversion rate trend line chart */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Conversão ao longo do tempo</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Taxa de conversão (pagas / total) por mês
             </p>
           </div>
@@ -357,12 +353,10 @@ export function AdminGatewayDashboard() {
       {/* Payment method distribution + Detailed table */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Payment method bar chart */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Métodos de pagamento</h2>
-            <p className="text-xs text-muted-foreground">
-              Volume por método de pagamento
-            </p>
+            <p className="text-muted-foreground text-xs">Volume por método de pagamento</p>
           </div>
           <div className="p-4">
             <MethodChart data={methodDistribution} />
@@ -370,46 +364,47 @@ export function AdminGatewayDashboard() {
         </div>
 
         {/* Status breakdown table */}
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="border-b px-5 py-4">
             <h2 className="text-sm font-semibold">Detalhamento por status</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Volume e quantidade por status da fatura
             </p>
           </div>
           <div className="overflow-x-auto p-4 pt-2">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b text-muted-foreground">
-                  <th className="pb-2 font-semibold uppercase tracking-wide">Status</th>
-                  <th className="pb-2 text-right font-semibold uppercase tracking-wide">Faturas</th>
-                  <th className="pb-2 text-right font-semibold uppercase tracking-wide">Volume</th>
-                  <th className="pb-2 text-right font-semibold uppercase tracking-wide">%</th>
+                <tr className="text-muted-foreground border-b">
+                  <th className="pb-2 font-semibold tracking-wide uppercase">Status</th>
+                  <th className="pb-2 text-right font-semibold tracking-wide uppercase">Faturas</th>
+                  <th className="pb-2 text-right font-semibold tracking-wide uppercase">Volume</th>
+                  <th className="pb-2 text-right font-semibold tracking-wide uppercase">%</th>
                 </tr>
               </thead>
               <tbody>
                 {byStatus.map((s) => {
                   const pct = totalVolume > 0 ? ((s.total / totalVolume) * 100).toFixed(1) : "0"
                   return (
-                    <tr key={s.status} className="border-b border-border/30 last:border-0">
+                    <tr key={s.status} className="border-border/30 border-b last:border-0">
                       <td className="py-2.5">
                         <div className="flex items-center gap-2">
                           <span
                             className="size-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: STATUS_PIE_COLORS[s.status] ?? "hsl(var(--muted-foreground))" }}
+                            style={{
+                              backgroundColor:
+                                STATUS_PIE_COLORS[s.status] ?? "hsl(var(--muted-foreground))",
+                            }}
                           />
-                          <span className="font-medium">
-                            {STATUS_LABELS[s.status] ?? s.status}
-                          </span>
+                          <span className="font-medium">{STATUS_LABELS[s.status] ?? s.status}</span>
                         </div>
                       </td>
-                      <td className="py-2.5 text-right tabular-nums text-muted-foreground">
+                      <td className="text-muted-foreground py-2.5 text-right tabular-nums">
                         {s.count}
                       </td>
                       <td className="py-2.5 text-right font-semibold tabular-nums">
                         {formatCompactBRL(s.total)}
                       </td>
-                      <td className="py-2.5 text-right tabular-nums text-muted-foreground">
+                      <td className="text-muted-foreground py-2.5 text-right tabular-nums">
                         {pct}%
                       </td>
                     </tr>
@@ -417,9 +412,9 @@ export function AdminGatewayDashboard() {
                 })}
                 {/* Total row */}
                 <tr className="font-semibold">
-                  <td className="pt-2.5 text-foreground">Total</td>
+                  <td className="text-foreground pt-2.5">Total</td>
                   <td className="pt-2.5 text-right tabular-nums">{totalCount}</td>
-                  <td className="pt-2.5 text-right tabular-nums text-foreground">
+                  <td className="text-foreground pt-2.5 text-right tabular-nums">
                     {formatCompactBRL(totalVolume)}
                   </td>
                   <td className="pt-2.5 text-right tabular-nums">100%</td>
@@ -431,28 +426,34 @@ export function AdminGatewayDashboard() {
       </section>
 
       {/* Summary quick stats */}
-      <div className="rounded-xl border border-border/50 bg-gradient-to-r from-primary/5 to-emerald-500/5 p-4">
+      <div className="border-border/50 from-primary/5 rounded-xl border bg-gradient-to-r to-emerald-500/5 p-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Banknote className="size-5 text-primary" />
+          <div className="text-muted-foreground flex items-center gap-2 text-sm">
+            <Banknote className="text-primary size-5" />
             <span>Resumo do período:</span>
           </div>
           <div className="flex flex-wrap gap-6">
             <div className="text-center">
               <p className="text-lg font-bold tabular-nums">{formatCompactBRL(totalVolume)}</p>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Volume total</p>
+              <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
+                Volume total
+              </p>
             </div>
             <div className="text-center">
               <p className="text-lg font-bold tabular-nums">{totalCount}</p>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Faturas</p>
+              <p className="text-muted-foreground text-[10px] tracking-wide uppercase">Faturas</p>
             </div>
             <div className="text-center">
               <p className="text-lg font-bold tabular-nums">{conversionRate}%</p>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Conversão</p>
+              <p className="text-muted-foreground text-[10px] tracking-wide uppercase">Conversão</p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold tabular-nums">{formatCompactBRL(averageTicket * 100)}</p>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Ticket médio</p>
+              <p className="text-lg font-bold tabular-nums">
+                {formatCompactBRL(averageTicket * 100)}
+              </p>
+              <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
+                Ticket médio
+              </p>
             </div>
           </div>
         </div>
@@ -486,17 +487,22 @@ function StatCard({
   }
 
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
       <div className="flex items-center justify-between">
-        <span className={cn("flex size-10 items-center justify-center rounded-lg", accentStyles[accent])}>
+        <span
+          className={cn(
+            "flex size-10 items-center justify-center rounded-lg",
+            accentStyles[accent],
+          )}
+        >
           <Icon className="size-5" />
         </span>
       </div>
       <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="mt-0.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="text-muted-foreground mt-0.5 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
-      <p className="mt-0.5 text-[10px] text-muted-foreground/70">{sub}</p>
+      <p className="text-muted-foreground/70 mt-0.5 text-[10px]">{sub}</p>
     </div>
   )
 }
@@ -504,7 +510,7 @@ function StatCard({
 function MonthlyVolumeChart({ data }: { data: MonthlyItem[] }) {
   if (data.length === 0 || data.every((d) => d.total === 0)) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados no período
       </div>
     )
@@ -534,12 +540,7 @@ function MonthlyVolumeChart({ data }: { data: MonthlyItem[] }) {
           labelFormatter={(l: string) => `Mês: ${l}`}
           contentStyle={TOOLTIP_STYLE}
         />
-        <Bar
-          dataKey="total"
-          radius={[4, 4, 0, 0]}
-          maxBarSize={36}
-          fill="hsl(var(--primary))"
-        />
+        <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={36} fill="hsl(var(--primary))" />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -548,7 +549,7 @@ function MonthlyVolumeChart({ data }: { data: MonthlyItem[] }) {
 function StatusPieChart({ data }: { data: StatusStat[] }) {
   if (data.length === 0) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados no período
       </div>
     )
@@ -579,21 +580,14 @@ function StatusPieChart({ data }: { data: StatusStat[] }) {
               ))}
             </Pie>
             <RTooltip
-              formatter={(v: number, n: string) => [
-                formatBRL(v),
-                STATUS_LABELS[n] ?? n,
-              ]}
+              formatter={(v: number, n: string) => [formatBRL(v), STATUS_LABELS[n] ?? n]}
               contentStyle={TOOLTIP_STYLE}
             />
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-lg font-bold tabular-nums">
-            {formatCompactBRL(totalValue)}
-          </span>
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Total
-          </span>
+          <span className="text-lg font-bold tabular-nums">{formatCompactBRL(totalValue)}</span>
+          <span className="text-muted-foreground text-[10px] tracking-wide uppercase">Total</span>
         </div>
       </div>
 
@@ -604,17 +598,17 @@ function StatusPieChart({ data }: { data: StatusStat[] }) {
             <li key={d.status} className="flex items-center gap-2">
               <span
                 className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: STATUS_PIE_COLORS[d.status] ?? "hsl(var(--muted-foreground))" }}
+                style={{
+                  backgroundColor: STATUS_PIE_COLORS[d.status] ?? "hsl(var(--muted-foreground))",
+                }}
               />
-              <span className="min-w-0 flex-1 text-xs text-muted-foreground">
+              <span className="text-muted-foreground min-w-0 flex-1 text-xs">
                 {STATUS_LABELS[d.status] ?? d.status}
               </span>
-              <span className="text-xs font-medium tabular-nums text-foreground">
+              <span className="text-foreground text-xs font-medium tabular-nums">
                 {formatCompactBRL(d.total)}
               </span>
-              <span className="text-[11px] text-muted-foreground tabular-nums">
-                ({pct}%)
-              </span>
+              <span className="text-muted-foreground text-[11px] tabular-nums">({pct}%)</span>
             </li>
           )
         })}
@@ -626,7 +620,7 @@ function StatusPieChart({ data }: { data: StatusStat[] }) {
 function TransactionVolumeChart({ data }: { data: MonthlyItem[] }) {
   if (data.length === 0 || data.every((d) => d.count === 0)) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados no período
       </div>
     )
@@ -677,7 +671,7 @@ function TransactionVolumeChart({ data }: { data: MonthlyItem[] }) {
 function ConversionTrendChart({ data }: { data: TrendItem[] }) {
   if (data.length === 0 || data.every((d) => d.conversion === 0)) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados no período
       </div>
     )
@@ -723,7 +717,7 @@ function ConversionTrendChart({ data }: { data: TrendItem[] }) {
 function MethodChart({ data }: { data: MethodStat[] }) {
   if (data.length === 0 || data.every((d) => d.total === 0)) {
     return (
-      <div className="flex h-[220px] items-center justify-center text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">
         Sem dados no período
       </div>
     )
@@ -739,10 +733,8 @@ function MethodChart({ data }: { data: MethodStat[] }) {
           const pct = totalValue > 0 ? (d.total / totalValue) * 100 : 0
           return (
             <div key={d.method} className="flex items-center gap-3">
-              <span className="w-20 text-xs font-medium text-muted-foreground">
-                {d.method}
-              </span>
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <span className="text-muted-foreground w-20 text-xs font-medium">{d.method}</span>
+              <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{
@@ -751,10 +743,10 @@ function MethodChart({ data }: { data: MethodStat[] }) {
                   }}
                 />
               </div>
-              <span className="w-24 text-right text-xs font-medium tabular-nums text-foreground">
+              <span className="text-foreground w-24 text-right text-xs font-medium tabular-nums">
                 {formatCompactBRL(d.total)}
               </span>
-              <span className="w-12 text-right text-[11px] text-muted-foreground tabular-nums">
+              <span className="text-muted-foreground w-12 text-right text-[11px] tabular-nums">
                 {pct.toFixed(1)}%
               </span>
             </div>

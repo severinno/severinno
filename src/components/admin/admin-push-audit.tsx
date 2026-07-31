@@ -45,7 +45,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState } from "./_shared"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -121,10 +121,21 @@ const ACTION_CONFIG: Record<string, { icon: LucideIcon; label: string; fg: strin
 
 function ActionBadge({ action }: { action: string }) {
   const cfg = ACTION_CONFIG[action]
-  if (!cfg) return <Badge variant="outline" className="text-[10px]">{action}</Badge>
+  if (!cfg)
+    return (
+      <Badge variant="outline" className="text-[10px]">
+        {action}
+      </Badge>
+    )
   const Icon = cfg.icon
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium", cfg.bg, cfg.fg)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        cfg.bg,
+        cfg.fg,
+      )}
+    >
       <Icon className="size-2.5" />
       {cfg.label}
     </span>
@@ -156,7 +167,9 @@ export function AdminPushAudit() {
   const [typeFilter, setTypeFilter] = React.useState("")
 
   // Reset page when filters change
-  React.useEffect(() => { setPage(1) }, [days, actionFilter, typeFilter])
+  React.useEffect(() => {
+    setPage(1)
+  }, [days, actionFilter, typeFilter])
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["admin", "push", "audit", page, days, actionFilter, typeFilter],
@@ -185,25 +198,27 @@ export function AdminPushAudit() {
 
   if (isLoading || !data) {
     return <AuditSkeleton />
-  }    const hasActiveFilters = actionFilter !== "all" || typeFilter
-    const typeOptions = data.availableTypes ?? []
+  }
+  const hasActiveFilters = actionFilter !== "all" || typeFilter
+  const typeOptions = data.availableTypes ?? []
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
+          <h1 className="text-foreground text-xl font-bold tracking-tight">
             Log de Auditoria — Push
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {data.pagination.total} operaçōes registradas — página {data.pagination.page} de {data.pagination.totalPages}
+          <p className="text-muted-foreground mt-0.5 text-sm">
+            {data.pagination.total} operaçōes registradas — página {data.pagination.page} de{" "}
+            {data.pagination.totalPages}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
@@ -228,7 +243,9 @@ export function AdminPushAudit() {
           </SelectTrigger>
           <SelectContent>
             {PERIOD_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -239,7 +256,9 @@ export function AdminPushAudit() {
           </SelectTrigger>
           <SelectContent>
             {ACTION_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -264,8 +283,11 @@ export function AdminPushAudit() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-1 text-xs text-muted-foreground"
-            onClick={() => { setActionFilter("all"); setTypeFilter("") }}
+            className="text-muted-foreground h-8 gap-1 text-xs"
+            onClick={() => {
+              setActionFilter("all")
+              setTypeFilter("")
+            }}
           >
             <FilterX className="size-3.5" />
             Limpar
@@ -278,10 +300,19 @@ export function AdminPushAudit() {
         <CardContent className="p-0">
           {data.items.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <BellOff className="size-10 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">Nenhuma operação de push registrada no período</p>
+              <BellOff className="text-muted-foreground/40 size-10" />
+              <p className="text-muted-foreground text-sm">
+                Nenhuma operação de push registrada no período
+              </p>
               {hasActiveFilters && (
-                <Button variant="outline" size="sm" onClick={() => { setActionFilter("all"); setTypeFilter("") }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setActionFilter("all")
+                    setTypeFilter("")
+                  }}
+                >
                   Limpar filtros
                 </Button>
               )}
@@ -290,7 +321,7 @@ export function AdminPushAudit() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="h-9 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <tr className="text-muted-foreground h-9 border-b text-[10px] font-medium tracking-wider uppercase">
                     <th className="px-3 font-medium">Ação</th>
                     <th className="px-3 font-medium">Admin</th>
                     <th className="px-3 font-medium">Título</th>
@@ -304,10 +335,7 @@ export function AdminPushAudit() {
                 </thead>
                 <tbody className="divide-y">
                   {data.items.map((record) => (
-                    <tr
-                      key={record.id}
-                      className="h-11 transition-colors hover:bg-muted/20"
-                    >
+                    <tr key={record.id} className="hover:bg-muted/20 h-11 transition-colors">
                       {/* Action */}
                       <td className="px-3">
                         <ActionBadge action={record.action} />
@@ -321,53 +349,75 @@ export function AdminPushAudit() {
                               {record.admin.avatarUrl ? (
                                 <AvatarImage src={record.admin.avatarUrl} alt={record.admin.name} />
                               ) : null}
-                              <AvatarFallback className="text-[8px] font-semibold bg-primary/10 text-primary">
-                                {record.admin.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[8px] font-semibold">
+                                {record.admin.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .slice(0, 2)
+                                  .toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-xs font-medium text-foreground max-w-[140px]">
+                              <p className="text-foreground max-w-[140px] truncate text-xs font-medium">
                                 {record.admin.name}
                               </p>
-                              <p className="truncate text-[10px] text-muted-foreground max-w-[140px]">
+                              <p className="text-muted-foreground max-w-[140px] truncate text-[10px]">
                                 {record.admin.email}
                               </p>
                             </div>
                           </div>
                         ) : (
-                          <span className="text-[10px] text-muted-foreground">Admin removido</span>
+                          <span className="text-muted-foreground text-[10px]">Admin removido</span>
                         )}
                       </td>
 
                       {/* Title */}
                       <td className="max-w-[200px] px-3">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-medium text-foreground" title={record.title}>
+                          <p
+                            className="text-foreground truncate text-xs font-medium"
+                            title={record.title}
+                          >
                             {record.title}
                           </p>
                           {record.body && (
-                            <p className="truncate text-[10px] text-muted-foreground" title={record.body}>
+                            <p
+                              className="text-muted-foreground truncate text-[10px]"
+                              title={record.body}
+                            >
                               {record.body}
                             </p>
                           )}
                         </div>
-            {(record.metadata && typeof (record.metadata as Record<string, unknown>).scheduleId === 'string') && (
-              <p className="text-[9px] text-muted-foreground/60 font-mono truncate" title={String((record.metadata as Record<string, unknown>).scheduleId ?? "")}>
-                Agendamento: {String((record.metadata as Record<string, unknown>).scheduleId ?? "").slice(0,12)}…
-              </p>
-            )}
+                        {record.metadata &&
+                          typeof (record.metadata as Record<string, unknown>).scheduleId ===
+                            "string" && (
+                            <p
+                              className="text-muted-foreground/60 truncate font-mono text-[9px]"
+                              title={String(
+                                (record.metadata as Record<string, unknown>).scheduleId ?? "",
+                              )}
+                            >
+                              Agendamento:{" "}
+                              {String(
+                                (record.metadata as Record<string, unknown>).scheduleId ?? "",
+                              ).slice(0, 12)}
+                              …
+                            </p>
+                          )}
                       </td>
 
                       {/* Type */}
                       <td className="px-3">
-                        <Badge variant="outline" className="text-[9px] font-mono">
+                        <Badge variant="outline" className="font-mono text-[9px]">
                           {record.notificationType}
                         </Badge>
                       </td>
 
                       {/* Recipients */}
                       <td className="px-3 text-right">
-                        <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+                        <span className="text-muted-foreground inline-flex items-center gap-1 text-xs tabular-nums">
                           <Users className="size-3" />
                           {record.recipientCount}
                         </span>
@@ -376,14 +426,14 @@ export function AdminPushAudit() {
                       {/* Sent */}
                       <td className="px-3 text-right">
                         {record.sentCount > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-xs tabular-nums text-emerald-600 dark:text-emerald-400">
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-600 tabular-nums dark:text-emerald-400">
                             <CheckCircle2 className="size-3" />
                             {record.sentCount}
                           </span>
                         ) : record.sentCount === 0 && record.action === "manual_schedule" ? (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-muted-foreground text-xs">—</span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground/50">
+                          <span className="text-muted-foreground/50 inline-flex items-center gap-1 text-xs tabular-nums">
                             <XCircle className="size-3" />
                             {record.sentCount}
                           </span>
@@ -393,12 +443,12 @@ export function AdminPushAudit() {
                       {/* Errors */}
                       <td className="px-3 text-right">
                         {record.errorCount > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-xs tabular-nums text-red-500">
+                          <span className="inline-flex items-center gap-1 text-xs text-red-500 tabular-nums">
                             <XCircle className="size-3" />
                             {record.errorCount}
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">0</span>
+                          <span className="text-muted-foreground text-xs">0</span>
                         )}
                       </td>
 
@@ -409,13 +459,13 @@ export function AdminPushAudit() {
                             {record.directPushCount} direto
                           </span>
                         ) : (
-                          <span className="text-[10px] text-muted-foreground/50">—</span>
+                          <span className="text-muted-foreground/50 text-[10px]">—</span>
                         )}
                       </td>
 
                       {/* Created At */}
                       <td className="px-3">
-                        <span className="text-[10px] tabular-nums text-muted-foreground">
+                        <span className="text-muted-foreground text-[10px] tabular-nums">
                           {new Date(record.createdAt).toLocaleDateString("pt-BR", {
                             day: "2-digit",
                             month: "2-digit",
@@ -436,8 +486,9 @@ export function AdminPushAudit() {
       {/* ── Pagination ───────────────────────────────────────────────── */}
       {data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {data.pagination.total} registro(s) — página {data.pagination.page} de {data.pagination.totalPages}
+          <p className="text-muted-foreground text-xs">
+            {data.pagination.total} registro(s) — página {data.pagination.page} de{" "}
+            {data.pagination.totalPages}
           </p>
           <div className="flex gap-2">
             <Button
@@ -466,9 +517,10 @@ export function AdminPushAudit() {
       <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-800/30 dark:bg-blue-950/20 dark:text-blue-300">
         <p className="font-medium">📋 Log de Auditoria</p>
         <p className="mt-1">
-          Este log registra <strong>todas as operações</strong> de push realizadas por administradores:
-          envios manuais diretos, agendamentos futuros, disparos via cron job e notificações recorrentes.
-          Cada linha mostra <strong>quem</strong> executou a ação, <strong>quando</strong>, para
+          Este log registra <strong>todas as operações</strong> de push realizadas por
+          administradores: envios manuais diretos, agendamentos futuros, disparos via cron job e
+          notificações recorrentes. Cada linha mostra <strong>quem</strong> executou a ação,{" "}
+          <strong>quando</strong>, para
           <strong> quantos</strong> destinatários, e o <strong>resultado</strong> final da operação.
           Fallback = envio direto sem RabbitMQ (quando a fila estava indisponível).
         </p>

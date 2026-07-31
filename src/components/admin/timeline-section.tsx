@@ -27,24 +27,11 @@ import {
 import { cn } from "@/lib/utils"
 import { MetricCard } from "@/components/admin/admin-metric-card"
 import type { GeoMetricsResponse } from "@/app/api/admin/geo-metrics/route"
+import { COLOR_P50, COLOR_P95, COLOR_P99, TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
 
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
-
 // ── Percentile colors ────────────────────────────────────────────────────
-
-const COLOR_P50 = "hsl(160, 84%, 39%)"
-const COLOR_P95 = "hsl(38, 92%, 50%)"
-const COLOR_P99 = "hsl(0, 72%, 51%)"
 
 // ── Props ────────────────────────────────────────────────────────────────
 

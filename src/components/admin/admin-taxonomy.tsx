@@ -61,10 +61,7 @@ import { toast } from "sonner"
 import { apiGet, apiPost, apiPatch, apiDelete, type Category } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -84,11 +81,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 import {
   PageSectionHeader,
@@ -100,7 +93,7 @@ import {
   type StatusTone,
   errMsg,
   slugify,
-} from "@/components/admin/admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -185,13 +178,7 @@ const ICON_BY_NAME = new Map(ICON_OPTIONS.map((o) => [o.name, o.icon]))
  * Usa React.createElement para evitar o lint react-hooks/static-components,
  * que confunde variáveis capitalizadas com declaração de componente.
  */
-function CategoryIcon({
-  name,
-  className,
-}: {
-  name?: string | null
-  className?: string
-}) {
+function CategoryIcon({ name, className }: { name?: string | null; className?: string }) {
   const Icon = name ? ICON_BY_NAME.get(name) : null
   if (!Icon) return null
   return React.createElement(Icon, { className })
@@ -210,13 +197,16 @@ export function AdminTaxonomy() {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = React.useState(false)
   const [editTarget, setEditTarget] = React.useState<CategoryNode | null>(null)
-  const [deleteTarget, setDeleteTarget] = React.useState<CategoryNode | null>(
-    null,
-  )
+  const [deleteTarget, setDeleteTarget] = React.useState<CategoryNode | null>(null)
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set())
   const [pendingToggle, setPendingToggle] = React.useState<PendingToggle>(null)
 
-  const { data: flat, isLoading, isError, refetch } = useQuery({
+  const {
+    data: flat,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["categories", "all"],
     queryFn: () => apiGet<CategoryRow[]>("/api/categories", { includeCount: "true" }),
     staleTime: 30_000,
@@ -235,10 +225,7 @@ export function AdminTaxonomy() {
     const roots = byParent.get(null) ?? []
     const build = (nodes: CategoryNode[]): CategoryNode[] =>
       nodes
-        .sort(
-          (a, b) =>
-            (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name),
-        )
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
         .map((n) => {
           const children = byParent.get(n.id) ?? []
           n.children = build(children)
@@ -256,8 +243,7 @@ export function AdminTaxonomy() {
     }
   }, [tree, expanded.size])
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["categories"] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["categories"] })
 
   const createMutation = useMutation({
     mutationFn: (payload: CategoryPayload) =>
@@ -289,11 +275,7 @@ export function AdminTaxonomy() {
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       apiPatch<{ category: CategoryRow }>(`/api/categories/${id}`, { active }),
     onSuccess: (_d, vars) => {
-      toast.success(
-        vars.active
-          ? "Categoria ativada."
-          : "Categoria desativada.",
-      )
+      toast.success(vars.active ? "Categoria ativada." : "Categoria desativada.")
       invalidate()
       setPendingToggle(null)
     },
@@ -314,8 +296,7 @@ export function AdminTaxonomy() {
       const msg = errMsg(e, "Não foi possível excluir.")
       // H9 — mensagem específica para 409 (vínculos existentes)
       toast.error(msg, {
-        description:
-          "Remova os vínculos (filhos ou serviços) antes de tentar novamente.",
+        description: "Remova os vínculos (filhos ou serviços) antes de tentar novamente.",
       })
     },
   })
@@ -352,13 +333,13 @@ export function AdminTaxonomy() {
       />
 
       {/* Toolbar — H8 minimalismo, agrupa contagem + ações de árvore */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/50 bg-card p-3">
+      <div className="border-border/50 bg-card flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            <FolderTree className="size-3.5 text-primary" />
+          <span className="bg-muted/40 text-muted-foreground inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium">
+            <FolderTree className="text-primary size-3.5" />
             {totalNodes} {totalNodes === 1 ? "categoria" : "categorias"}
           </span>
-          <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
+          <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
             Níveis:
             {([0, 1, 2] as const).map((lv) => (
               <StatusBadge key={lv} tone={LEVEL_META[lv].tone}>
@@ -389,11 +370,7 @@ export function AdminTaxonomy() {
             <ChevronsDownUp className="size-3.5" />
             Recolher tudo
           </Button>
-          <Button
-            size="sm"
-            onClick={() => setCreateOpen(true)}
-            className="h-8 gap-1.5"
-          >
+          <Button size="sm" onClick={() => setCreateOpen(true)} className="h-8 gap-1.5">
             <Plus className="size-4" />
             Nova categoria
           </Button>
@@ -408,7 +385,7 @@ export function AdminTaxonomy() {
           onRetry={() => refetch()}
         />
       ) : (
-        <Card className="overflow-hidden rounded-xl border-border/50 shadow-none">
+        <Card className="border-border/50 overflow-hidden rounded-xl shadow-none">
           <CardContent className="p-0">
             {isLoading ? (
               <div className="flex flex-col gap-2 p-4">
@@ -422,11 +399,7 @@ export function AdminTaxonomy() {
                 title="Nenhuma categoria cadastrada"
                 description="Crie a primeira categoria pai para iniciar a taxonomia."
                 action={
-                  <Button
-                    size="sm"
-                    onClick={() => setCreateOpen(true)}
-                    className="gap-1.5"
-                  >
+                  <Button size="sm" onClick={() => setCreateOpen(true)} className="gap-1.5">
                     <Plus className="size-4" />
                     Criar primeira categoria
                   </Button>
@@ -502,11 +475,8 @@ export function AdminTaxonomy() {
         description={
           <>
             Você está prestes a excluir{" "}
-            <strong className="text-foreground">
-              {deleteTarget?.name}
-            </strong>
-            . Esta ação não pode ser desfeita. Categorias com filhos ou serviços
-            vinculados não podem ser excluídas.
+            <strong className="text-foreground">{deleteTarget?.name}</strong>. Esta ação não pode
+            ser desfeita. Categorias com filhos ou serviços vinculados não podem ser excluídas.
           </>
         }
         confirmLabel={deleteMutation.isPending ? "Excluindo…" : "Excluir"}
@@ -543,14 +513,10 @@ function TreeNode({
   const hasIcon = !!node.icon && ICON_BY_NAME.has(node.icon)
 
   return (
-    <li
-      role="treeitem"
-      aria-expanded={hasChildren ? isOpen : undefined}
-      aria-selected={false}
-    >
+    <li role="treeitem" aria-expanded={hasChildren ? isOpen : undefined} aria-selected={false}>
       <div
         className={cn(
-          "group relative flex flex-wrap items-center gap-2 border-b border-border/50 h-12 transition-colors hover:bg-muted/20 last:border-0",
+          "group border-border/50 hover:bg-muted/20 relative flex h-12 flex-wrap items-center gap-2 border-b transition-colors last:border-0",
           meta.rowAccent,
           !node.active && "opacity-60",
           level === 0 && "pl-3",
@@ -562,7 +528,7 @@ function TreeNode({
         {level > 0 ? (
           <span
             aria-hidden
-            className="pointer-events-none absolute left-0 top-0 h-full border-l border-dashed border-border/50"
+            className="border-border/50 pointer-events-none absolute top-0 left-0 h-full border-l border-dashed"
             style={{ marginLeft: `${(level - 1) * 12 + 14}px` }}
           />
         ) : null}
@@ -574,19 +540,12 @@ function TreeNode({
           aria-label={isOpen ? "Recolher" : "Expandir"}
           disabled={!hasChildren}
           className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
-            hasChildren
-              ? "hover:bg-accent hover:text-foreground"
-              : "cursor-default opacity-30",
+            "text-muted-foreground flex size-6 shrink-0 items-center justify-center rounded-md transition-colors",
+            hasChildren ? "hover:bg-accent hover:text-foreground" : "cursor-default opacity-30",
           )}
         >
           {hasChildren ? (
-            <ChevronRight
-              className={cn(
-                "size-4 transition-transform",
-                isOpen && "rotate-90",
-              )}
-            />
+            <ChevronRight className={cn("size-4 transition-transform", isOpen && "rotate-90")} />
           ) : (
             <span className="size-1.5 rounded-full bg-current opacity-40" />
           )}
@@ -603,16 +562,14 @@ function TreeNode({
                   variant="ghost"
                   size="icon"
                   disabled
-                  className="size-7 text-muted-foreground/40"
+                  className="text-muted-foreground/40 size-7"
                   aria-label="Mover para cima"
                 >
                   <ChevronUp className="size-3.5" />
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              Reordenação disponível em breve
-            </TooltipContent>
+            <TooltipContent side="top">Reordenação disponível em breve</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -622,16 +579,14 @@ function TreeNode({
                   variant="ghost"
                   size="icon"
                   disabled
-                  className="size-7 text-muted-foreground/40"
+                  className="text-muted-foreground/40 size-7"
                   aria-label="Mover para baixo"
                 >
                   <ChevronDown className="size-3.5" />
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent side="top">
-              Reordenação disponível em breve
-            </TooltipContent>
+            <TooltipContent side="top">Reordenação disponível em breve</TooltipContent>
           </Tooltip>
         </div>
 
@@ -639,7 +594,7 @@ function TreeNode({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             {hasIcon ? (
-              <span className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground">
+              <span className="text-muted-foreground flex size-5 shrink-0 items-center justify-center rounded">
                 <CategoryIcon name={node.icon} className="size-4" />
               </span>
             ) : null}
@@ -648,23 +603,19 @@ function TreeNode({
               <span className={cn("size-1.5 rounded-full", meta.dot)} />
               {meta.label}
             </StatusBadge>
-            {!node.active ? (
-              <StatusBadge tone="zinc">Inativa</StatusBadge>
-            ) : null}
+            {!node.active ? <StatusBadge tone="zinc">Inativa</StatusBadge> : null}
             {hasChildren ? (
               <StatusBadge tone="zinc">
-                {node.children!.length}{" "}
-                {node.children!.length === 1 ? "filha" : "filhas"}
+                {node.children!.length} {node.children!.length === 1 ? "filha" : "filhas"}
               </StatusBadge>
             ) : null}
             {typeof node.serviceCount === "number" ? (
               <StatusBadge tone="zinc">
-                {node.serviceCount}{" "}
-                {node.serviceCount === 1 ? "serviço" : "serviços"}
+                {node.serviceCount} {node.serviceCount === 1 ? "serviço" : "serviços"}
               </StatusBadge>
             ) : null}
           </div>
-          <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
+          <p className="text-muted-foreground mt-0.5 truncate font-mono text-[11px]">
             /{node.slug}
             {typeof node.order === "number" ? ` · ordem ${node.order}` : ""}
           </p>
@@ -674,7 +625,7 @@ function TreeNode({
         <div className="flex items-center gap-1.5 pr-1">
           <Label
             htmlFor={`active-${node.id}`}
-            className="hidden text-[11px] text-muted-foreground sm:block"
+            className="text-muted-foreground hidden text-[11px] sm:block"
           >
             Ativa
           </Label>
@@ -703,7 +654,7 @@ function TreeNode({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 text-muted-foreground hover:text-primary"
+                className="text-muted-foreground hover:text-primary size-8"
                 onClick={() => onEdit(node)}
                 aria-label="Editar categoria"
               >
@@ -717,7 +668,7 @@ function TreeNode({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 text-muted-foreground hover:text-red-600"
+                className="text-muted-foreground size-8 hover:text-red-600"
                 onClick={() => onDelete(node)}
                 aria-label="Excluir categoria"
               >
@@ -822,21 +773,15 @@ function CategoryDialog({
   const level = parent ? Math.min(2, parent.level + 1) : 0
 
   // Candidates for parent
-  const parentCandidates = allCategories.filter(
-    (c) => c.level < 2 && c.id !== initial?.id,
-  )
+  const parentCandidates = allCategories.filter((c) => c.level < 2 && c.id !== initial?.id)
 
   const canSubmit =
-    name.trim().length >= 2 &&
-    /^[a-z0-9-]+$/.test(slug) &&
-    slug.length >= 2 &&
-    !submitting
+    name.trim().length >= 2 && /^[a-z0-9-]+$/.test(slug) && slug.length >= 2 && !submitting
 
   // H6 — nome/preview do ícone atual
   const currentIconName = icon === "__none__" ? "" : icon
   const hasCurrentIcon = currentIconName.length > 0 && ICON_BY_NAME.has(currentIconName)
-  const isCustomIcon =
-    currentIconName.length > 0 && !ICON_BY_NAME.has(currentIconName)
+  const isCustomIcon = currentIconName.length > 0 && !ICON_BY_NAME.has(currentIconName)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -874,7 +819,7 @@ function CategoryDialog({
                 placeholder="Ex.: Reparos"
                 required
                 maxLength={80}
-                className="h-9 rounded-lg border-input/60"
+                className="border-input/60 h-9 rounded-lg"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -886,18 +831,14 @@ function CategoryDialog({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      className="text-muted-foreground transition-colors hover:text-foreground"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
                       aria-label="O que é um slug?"
                     >
                       <Info className="size-3.5" />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent
-                    side="right"
-                    className="max-w-xs text-xs leading-relaxed"
-                  >
-                    Identificador único usado nas URLs. Gerado
-                    automaticamente a partir do nome.
+                  <TooltipContent side="right" className="max-w-xs text-xs leading-relaxed">
+                    Identificador único usado nas URLs. Gerado automaticamente a partir do nome.
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -911,9 +852,9 @@ function CategoryDialog({
                 placeholder="reparos"
                 required
                 maxLength={80}
-                className="h-9 rounded-lg border-input/60"
+                className="border-input/60 h-9 rounded-lg"
               />
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-muted-foreground text-[11px]">
                 Apenas letras minúsculas, números e hífens.
               </p>
             </div>
@@ -924,19 +865,15 @@ function CategoryDialog({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cat-parent">Categoria pai</Label>
               <Select value={parentId} onValueChange={setParentId}>
-                <SelectTrigger id="cat-parent" className="rounded-lg border-input/60">
+                <SelectTrigger id="cat-parent" className="border-input/60 rounded-lg">
                   <SelectValue placeholder="Nenhuma (categoria pai)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">
-                    Nenhuma (categoria pai)
-                  </SelectItem>
+                  <SelectItem value="__none__">Nenhuma (categoria pai)</SelectItem>
                   {parentCandidates.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {"—".repeat(c.level)} {c.name}{" "}
-                      <span className="text-muted-foreground">
-                        ({LEVEL_META[c.level]?.label})
-                      </span>
+                      <span className="text-muted-foreground">({LEVEL_META[c.level]?.label})</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -944,19 +881,14 @@ function CategoryDialog({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Nível resultante</Label>
-              <div className="flex h-9 items-center gap-2 rounded-lg border border-input/60 bg-muted/40 px-3">
+              <div className="border-input/60 bg-muted/40 flex h-9 items-center gap-2 rounded-lg border px-3">
                 <StatusBadge tone={LEVEL_META[level]?.tone ?? "sky"}>
                   <span
-                    className={cn(
-                      "size-1.5 rounded-full",
-                      LEVEL_META[level]?.dot ?? "bg-sky-500",
-                    )}
+                    className={cn("size-1.5 rounded-full", LEVEL_META[level]?.dot ?? "bg-sky-500")}
                   />
                   {LEVEL_META[level]?.label ?? "Pai"}
                 </StatusBadge>
-                <span className="text-xs text-muted-foreground">
-                  Nível {level}
-                </span>
+                <span className="text-muted-foreground text-xs">Nível {level}</span>
               </div>
             </div>
           </div>
@@ -966,15 +898,15 @@ function CategoryDialog({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cat-icon">Ícone (opcional)</Label>
               <div className="flex items-center gap-2">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-input/60 bg-muted/40">
+                <span className="border-input/60 bg-muted/40 flex size-9 shrink-0 items-center justify-center rounded-lg border">
                   {hasCurrentIcon ? (
-                    <CategoryIcon name={currentIconName} className="size-4 text-foreground" />
+                    <CategoryIcon name={currentIconName} className="text-foreground size-4" />
                   ) : (
-                    <span className="text-[10px] text-muted-foreground">—</span>
+                    <span className="text-muted-foreground text-[10px]">—</span>
                   )}
                 </span>
                 <Select value={icon} onValueChange={setIcon}>
-                  <SelectTrigger id="cat-icon" className="flex-1 rounded-lg border-input/60">
+                  <SelectTrigger id="cat-icon" className="border-input/60 flex-1 rounded-lg">
                     <SelectValue placeholder="Sem ícone" />
                   </SelectTrigger>
                   <SelectContent>
@@ -984,7 +916,7 @@ function CategoryDialog({
                         <span className="inline-flex items-center gap-2">
                           <CategoryIcon name={opt.name} className="size-4" />
                           {opt.label}
-                          <span className="font-mono text-[10px] text-muted-foreground">
+                          <span className="text-muted-foreground font-mono text-[10px]">
                             {opt.name}
                           </span>
                         </span>
@@ -1002,7 +934,7 @@ function CategoryDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-muted-foreground text-[11px]">
                 Escolha um ícone que represente a categoria.
               </p>
             </div>
@@ -1014,29 +946,25 @@ function CategoryDialog({
                 value={order}
                 onChange={(e) => setOrder(Number(e.target.value))}
                 min={0}
-                className="h-9 rounded-lg border-input/60"
+                className="border-input/60 h-9 rounded-lg"
               />
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-muted-foreground text-[11px]">
                 Posição relativa entre irmãos (menor = antes).
               </p>
             </div>
           </div>
 
           {/* Active toggle */}
-          <div className="flex items-center justify-between rounded-lg border border-border/50 p-3">
+          <div className="border-border/50 flex items-center justify-between rounded-lg border p-3">
             <div>
               <Label htmlFor="cat-active" className="text-sm font-medium">
                 Ativa
               </Label>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-muted-foreground text-[11px]">
                 Categorias inativas não aparecem na vitrine pública.
               </p>
             </div>
-            <Switch
-              id="cat-active"
-              checked={active}
-              onCheckedChange={setActive}
-            />
+            <Switch id="cat-active" checked={active} onCheckedChange={setActive} />
           </div>
 
           <DialogFooter className="gap-2">
@@ -1075,15 +1003,10 @@ function ErrorRetry({ onRetry }: { onRetry: () => void }) {
       <h3 className="mt-4 text-base font-semibold tracking-tight">
         Não foi possível carregar a árvore de categorias
       </h3>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+      <p className="text-muted-foreground mt-1 max-w-sm text-sm">
         Verifique sua conexão e tente novamente.
       </p>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onRetry}
-        className="mt-4 gap-1.5"
-      >
+      <Button variant="outline" size="sm" onClick={onRetry} className="mt-4 gap-1.5">
         Tentar novamente
       </Button>
     </div>

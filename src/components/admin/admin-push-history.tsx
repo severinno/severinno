@@ -48,7 +48,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState } from "./_shared"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -153,10 +153,21 @@ const ACTION_CONFIG: Record<string, { icon: LucideIcon; label: string; fg: strin
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status]
-  if (!cfg) return <Badge variant="outline" className="text-[10px]">{status}</Badge>
+  if (!cfg)
+    return (
+      <Badge variant="outline" className="text-[10px]">
+        {status}
+      </Badge>
+    )
   const Icon = cfg.icon
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium", cfg.bg, cfg.fg)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        cfg.bg,
+        cfg.fg,
+      )}
+    >
       <Icon className="size-2.5" />
       {cfg.label}
     </span>
@@ -179,20 +190,35 @@ const STATUS_OPTIONS = [
   { value: "failed", label: "Falhas" },
 ]
 
-function ActionBadge({ action, actionResult }: { action: string | null; actionResult: string | null }) {
+function ActionBadge({
+  action,
+  actionResult,
+}: {
+  action: string | null
+  actionResult: string | null
+}) {
   if (!action) return null
   const cfg = ACTION_CONFIG[action]
   if (!cfg) {
-    return <Badge variant="outline" className="text-[9px]">{action}: {actionResult ?? "—"}</Badge>
+    return (
+      <Badge variant="outline" className="text-[9px]">
+        {action}: {actionResult ?? "—"}
+      </Badge>
+    )
   }
   const Icon = cfg.icon
   return (
-    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium", cfg.bg, cfg.fg)} title={actionResult ? `Resultado: ${actionResult}` : undefined}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+        cfg.bg,
+        cfg.fg,
+      )}
+      title={actionResult ? `Resultado: ${actionResult}` : undefined}
+    >
       <Icon className="size-2.5" />
       {cfg.label}
-      {actionResult && (
-        <span className="ml-0.5 opacity-70">· {actionResult}</span>
-      )}
+      {actionResult && <span className="ml-0.5 opacity-70">· {actionResult}</span>}
     </span>
   )
 }
@@ -217,14 +243,29 @@ export function AdminPushHistory() {
       setDebouncedSearch(search)
       setPage(1)
     }, 300)
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
   }, [search])
 
   // Reset page when filters change
-  React.useEffect(() => { setPage(1) }, [days, statusFilter, typeFilter, sourceFilter, actionFilter])
+  React.useEffect(() => {
+    setPage(1)
+  }, [days, statusFilter, typeFilter, sourceFilter, actionFilter])
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
-    queryKey: ["admin", "push", "history", page, days, statusFilter, typeFilter, sourceFilter, actionFilter, debouncedSearch],
+    queryKey: [
+      "admin",
+      "push",
+      "history",
+      page,
+      days,
+      statusFilter,
+      typeFilter,
+      sourceFilter,
+      actionFilter,
+      debouncedSearch,
+    ],
     queryFn: () => {
       const params = new URLSearchParams()
       params.set("page", String(page))
@@ -255,7 +296,8 @@ export function AdminPushHistory() {
     return <HistorySkeleton />
   }
 
-  const hasActiveFilters = statusFilter !== "all" || typeFilter || sourceFilter || actionFilter || debouncedSearch
+  const hasActiveFilters =
+    statusFilter !== "all" || typeFilter || sourceFilter || actionFilter || debouncedSearch
   const typeOptions = data.availableTypes ?? []
   const sourceOptions = data.availableSources ?? []
   const actionOptions = data.availableActions ?? []
@@ -265,17 +307,16 @@ export function AdminPushHistory() {
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Histórico de Push
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {data.pagination.total} notificação(ns) enviada(s) — página {data.pagination.page} de {data.pagination.totalPages}
+          <h1 className="text-foreground text-xl font-bold tracking-tight">Histórico de Push</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">
+            {data.pagination.total} notificação(ns) enviada(s) — página {data.pagination.page} de{" "}
+            {data.pagination.totalPages}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
@@ -294,14 +335,14 @@ export function AdminPushHistory() {
 
       {/* ── Filters ─────────────────────────────────────────────────── */}
       <section aria-label="Filtros" className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative max-w-xs min-w-[200px] flex-1">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
           <Input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por título..."
-            className="h-8 w-full rounded-lg border bg-muted/50 pl-8 pr-3 text-xs outline-none placeholder:text-muted-foreground/60 focus:border-primary/50 focus:bg-background"
+            className="bg-muted/50 placeholder:text-muted-foreground/60 focus:border-primary/50 focus:bg-background h-8 w-full rounded-lg border pr-3 pl-8 text-xs outline-none"
           />
         </div>
 
@@ -311,7 +352,9 @@ export function AdminPushHistory() {
           </SelectTrigger>
           <SelectContent>
             {PERIOD_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -322,7 +365,9 @@ export function AdminPushHistory() {
           </SelectTrigger>
           <SelectContent>
             {STATUS_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -379,8 +424,14 @@ export function AdminPushHistory() {
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 gap-1 text-xs text-muted-foreground"
-            onClick={() => { setStatusFilter("all"); setTypeFilter(""); setSourceFilter(""); setActionFilter(""); setSearch("") }}
+            className="text-muted-foreground h-8 gap-1 text-xs"
+            onClick={() => {
+              setStatusFilter("all")
+              setTypeFilter("")
+              setSourceFilter("")
+              setActionFilter("")
+              setSearch("")
+            }}
           >
             <FilterX className="size-3.5" />
             Limpar
@@ -393,10 +444,19 @@ export function AdminPushHistory() {
         <CardContent className="p-0">
           {data.items.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <BellOff className="size-10 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">Nenhuma notificação push encontrada</p>
+              <BellOff className="text-muted-foreground/40 size-10" />
+              <p className="text-muted-foreground text-sm">Nenhuma notificação push encontrada</p>
               {hasActiveFilters && (
-                <Button variant="outline" size="sm" onClick={() => { setStatusFilter("all"); setTypeFilter(""); setSourceFilter(""); setSearch("") }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setStatusFilter("all")
+                    setTypeFilter("")
+                    setSourceFilter("")
+                    setSearch("")
+                  }}
+                >
                   Limpar filtros
                 </Button>
               )}
@@ -405,7 +465,7 @@ export function AdminPushHistory() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="h-9 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <tr className="text-muted-foreground h-9 border-b text-[10px] font-medium tracking-wider uppercase">
                     <th className="px-3 font-medium">Status</th>
                     <th className="px-3 font-medium">Título</th>
                     <th className="px-3 font-medium">Destinatário</th>
@@ -419,10 +479,7 @@ export function AdminPushHistory() {
                 </thead>
                 <tbody className="divide-y">
                   {data.items.map((record) => (
-                    <tr
-                      key={record.id}
-                      className="h-11 transition-colors hover:bg-muted/20"
-                    >
+                    <tr key={record.id} className="hover:bg-muted/20 h-11 transition-colors">
                       {/* Status */}
                       <td className="px-3">
                         <StatusBadge status={record.status} />
@@ -431,17 +488,26 @@ export function AdminPushHistory() {
                       {/* Title + Body */}
                       <td className="max-w-[220px] px-3">
                         <div className="min-w-0">
-                          <p className="truncate text-xs font-medium text-foreground" title={record.title}>
+                          <p
+                            className="text-foreground truncate text-xs font-medium"
+                            title={record.title}
+                          >
                             {record.title}
                           </p>
                           {record.body && (
-                            <p className="truncate text-[10px] text-muted-foreground" title={record.body}>
+                            <p
+                              className="text-muted-foreground truncate text-[10px]"
+                              title={record.body}
+                            >
                               {record.body}
                             </p>
                           )}
                         </div>
                         {record.errorMessage && record.status === "failed" && (
-                          <p className="truncate text-[10px] text-red-500" title={record.errorMessage}>
+                          <p
+                            className="truncate text-[10px] text-red-500"
+                            title={record.errorMessage}
+                          >
                             {record.errorMessage}
                           </p>
                         )}
@@ -455,34 +521,41 @@ export function AdminPushHistory() {
                               {record.user.avatarUrl ? (
                                 <AvatarImage src={record.user.avatarUrl} alt={record.user.name} />
                               ) : null}
-                              <AvatarFallback className="text-[8px] font-semibold bg-primary/10 text-primary">
-                                {record.user.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[8px] font-semibold">
+                                {record.user.name
+                                  .split(" ")
+                                  .map((n) => n[0])
+                                  .join("")
+                                  .slice(0, 2)
+                                  .toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-xs font-medium text-foreground">
+                              <p className="text-foreground truncate text-xs font-medium">
                                 {record.user.name}
                               </p>
-                              <p className="truncate text-[10px] text-muted-foreground">
+                              <p className="text-muted-foreground truncate text-[10px]">
                                 {record.user.email}
                               </p>
                             </div>
                           </div>
                         ) : (
-                          <span className="text-[10px] text-muted-foreground">Usuário removido</span>
+                          <span className="text-muted-foreground text-[10px]">
+                            Usuário removido
+                          </span>
                         )}
                       </td>
 
                       {/* Type */}
                       <td className="px-3">
-                        <Badge variant="outline" className="text-[9px] font-mono">
+                        <Badge variant="outline" className="font-mono text-[9px]">
                           {record.type}
                         </Badge>
                       </td>
 
                       {/* Source */}
                       <td className="px-3">
-                        <span className="text-[10px] capitalize text-muted-foreground">
+                        <span className="text-muted-foreground text-[10px] capitalize">
                           {record.source}
                         </span>
                       </td>
@@ -494,7 +567,7 @@ export function AdminPushHistory() {
 
                       {/* Devices */}
                       <td className="px-3 text-right">
-                        <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+                        <span className="text-muted-foreground inline-flex items-center gap-1 text-xs tabular-nums">
                           <Smartphone className="size-3" />
                           {record.deviceCount}
                         </span>
@@ -503,29 +576,42 @@ export function AdminPushHistory() {
                       {/* Latency */}
                       <td className="px-3 text-right">
                         {record.latencyMs !== null ? (
-                          <span className={cn(
-                            "text-xs tabular-nums",
-                            record.latencyMs > 2000 ? "text-amber-500" : record.latencyMs > 500 ? "text-amber-500" : "text-muted-foreground",
-                          )}>
+                          <span
+                            className={cn(
+                              "text-xs tabular-nums",
+                              record.latencyMs > 2000
+                                ? "text-amber-500"
+                                : record.latencyMs > 500
+                                  ? "text-amber-500"
+                                  : "text-muted-foreground",
+                            )}
+                          >
                             {record.latencyMs}ms
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </td>
 
                       {/* Created At + Clicked */}
                       <td className="px-3">
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-[10px] tabular-nums text-muted-foreground">
+                          <span className="text-muted-foreground text-[10px] tabular-nums">
                             {new Date(record.createdAt).toLocaleDateString("pt-BR", {
-                              day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                              day: "2-digit",
+                              month: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
                             })}
                           </span>
                           {record.clickedAt && (
                             <span className="inline-flex items-center gap-0.5 text-[9px] text-blue-500">
                               <MousePointerClick className="size-2.5" />
-                              Clique {new Date(record.clickedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                              Clique{" "}
+                              {new Date(record.clickedAt).toLocaleTimeString("pt-BR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
                             </span>
                           )}
                         </div>
@@ -542,8 +628,9 @@ export function AdminPushHistory() {
       {/* ── Pagination ───────────────────────────────────────────────── */}
       {data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {data.pagination.total} registro(s) — página {data.pagination.page} de {data.pagination.totalPages}
+          <p className="text-muted-foreground text-xs">
+            {data.pagination.total} registro(s) — página {data.pagination.page} de{" "}
+            {data.pagination.totalPages}
           </p>
           <div className="flex gap-2">
             <Button
@@ -572,11 +659,12 @@ export function AdminPushHistory() {
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-800/30 dark:bg-amber-950/20 dark:text-amber-300">
         <p className="font-medium">📊 Sobre os dados</p>
         <p className="mt-1">
-          Os registros de push são criados automaticamente no banco de dados (PushAnalytics) a cada envio.
-          Status &quot;sent&quot; = notificação entregue ao push service · &quot;clicked&quot; = usuário clicou na notificação ·
-          &quot;bounced&quot; = subscription expirou (410) · &quot;failed&quot; = erro após {3} tentativas de retry.
-          Ações: &quot;Aceito&quot; = provider confirmou agendamento · &quot;Recusado&quot; = provider recusou ·
-          &quot;Visualizado&quot; = usuário abriu sem ação.
+          Os registros de push são criados automaticamente no banco de dados (PushAnalytics) a cada
+          envio. Status &quot;sent&quot; = notificação entregue ao push service ·
+          &quot;clicked&quot; = usuário clicou na notificação · &quot;bounced&quot; = subscription
+          expirou (410) · &quot;failed&quot; = erro após {3} tentativas de retry. Ações:
+          &quot;Aceito&quot; = provider confirmou agendamento · &quot;Recusado&quot; = provider
+          recusou · &quot;Visualizado&quot; = usuário abriu sem ação.
         </p>
       </div>
     </div>

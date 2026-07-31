@@ -98,6 +98,14 @@ vi.stubGlobal(
   })),
 )
 
+// Recharts is not SVG-capable under JSDOM (React 19 + recharts 2.x hooks crash
+// with "Cannot read properties of null (reading 'useRef')"). Shared mock —
+// pass-through placeholders; chart titles/data render outside the SVG.
+vi.mock("recharts", async () => {
+  const { createRechartsMock } = await import("./mocks")
+  return createRechartsMock()
+})
+
 // ---- SUT import (must be after vi.mock) ------------------------------------
 import { AdminDashboard } from "../admin-dashboard"
 

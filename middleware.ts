@@ -83,14 +83,16 @@ function addCorsHeaders(response: NextResponse): void {
 // Middleware handler
 // ---------------------------------------------------------------------------
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname: rawPathname } = request.nextUrl
   // Normalise trailing slash — /api/health/ → /api/health
   const pathname = rawPathname.replace(/\/+$/, "")
 
   // ── OPTIONS preflight ─────────────────────────────────────────────
   if (request.method === "OPTIONS") {
-    const preflight = NextResponse.json({}, { status: 204 })
+    // 204 must have a NULL body per the fetch spec — NextResponse.json({})
+    // would throw "Invalid response status code 204" in strict runtimes.
+    const preflight = new NextResponse(null, { status: 204 })
     addCorsHeaders(preflight)
     return preflight
   }
@@ -111,7 +113,10 @@ export function middleware(request: NextRequest) {
   }
 
   // ── Rate limit check ──────────────────────────────────────────────
-  const result = checkGlobalRateLimit(request)
+  // checkGlobalRateLimit is async (Upstash Redis with in-memory fallback)
+  // — MUST be awaited before accessing .allowed/.reset or passing the
+  // result to globalRateLimitHeaders().
+  const result = await checkGlobalRateLimit(request)
 
   if (!result.allowed) {
     const body = JSON.stringify({

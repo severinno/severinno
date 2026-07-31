@@ -24,10 +24,6 @@ import {
   Timer,
   MapPin,
   Database,
-  GitCompareArrows,
-  Zap,
-  Microscope,
-  FileJson,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {
@@ -35,7 +31,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Legend,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip as RTooltip,
@@ -44,43 +39,28 @@ import {
 } from "recharts"
 
 import { apiGet } from "@/lib/api"
-import { Skeleton } from "@/components/ui/skeleton"
+import {
+  BenchmarkSection,
+  DashboardHeader,
+  ErrorState,
+  formatMs,
+  GeoSkeleton,
+  GiSTSelectivitySection,
+  KpiCard,
+  LatencyBar,
+  latencyColor,
+  MetricCard,
+  TimelineSection,
+} from "./_shared"
+import { COLOR_P50, COLOR_P95, COLOR_P99, TOOLTIP_STYLE } from "./admin-chart-theme"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 
 import type { GeoMetricsResponse } from "@/app/api/admin/geo-metrics/route"
 
-import {
-  buildBenchmarkBarData,
-  getMaxPostgisLatency,
-  ratioColor,
-  generateBenchmarkCsv,
-  downloadFile,
-  printBenchmarkReport,
-} from "@/lib/benchmark-data"
-import { MetricCard, KpiCard } from "@/components/admin/admin-metric-card"
-import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
-import { GiSTSelectivitySection } from "@/components/admin/gist-selectivity-section"
-import { TimelineSection } from "@/components/admin/timeline-section"
-
 // ── Chart tooltip style ──────────────────────────────────────────────────
 
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
-
 // ── Color palette ────────────────────────────────────────────────────────
-
-const COLOR_P50 = "hsl(160, 84%, 39%)"
-const COLOR_P95 = "hsl(38, 92%, 50%)"
-const COLOR_P99 = "hsl(0, 72%, 51%)"
 
 const SERVICE_ICONS: Record<string, React.ElementType> = {
   nominatim: Search,
@@ -95,16 +75,6 @@ const SERVICE_DESC: Record<string, string> = {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-function latencyColor(ms: number): string {
-  if (ms > 1000) return COLOR_P99
-  if (ms > 200) return COLOR_P95
-  return COLOR_P50
-}
-
-function formatMs(ms: number): string {
-  return ms < 1 ? "<1ms" : `${Math.round(ms)}ms`
-}
 
 function errorRateLabel(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`
@@ -535,316 +505,10 @@ export function AdminGeoMetricsDashboard() {
   )
 }
 
-// ── Benchmark Comparison Section ──────────────────────────────────────────
-
-export function BenchmarkSection({
-  benchmark,
-}: {
-  benchmark: NonNullable<GeoMetricsResponse["benchmark"]>
-}) {
-  const barData = buildBenchmarkBarData(benchmark)
-
-  const maxLatency = getMaxPostgisLatency(barData)
-  const [benchUseLog, setBenchUseLog] = React.useState(() => {
-    if (typeof window === "undefined") return true
-    const stored = localStorage.getItem("geo-scale-bench")
-    return stored !== null ? stored === "true" : true
-  })
-
-  return (
-    <section aria-label="Comparação de benchmark" className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Microscope className="size-5 text-purple-500" />
-        <h2 className="text-foreground text-lg font-semibold">
-          Benchmark Real — Haversine JS vs PostGIS
-        </h2>
-      </div>
-
-      {/* ── Export buttons + Scale toggle ──────────────────────────── */}
-      <div className="flex items-center justify-end gap-2">
-        {/* CSV */}
-        <button
-          type="button"
-          onClick={() => {
-            const csv = generateBenchmarkCsv(benchmark)
-            const ts = new Date().toISOString().slice(0, 19).replace(/[:]/g, "-")
-            downloadFile(csv, `benchmark-${ts}.csv`, "text/csv;charset=utf-8")
-          }}
-          className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
-          aria-label="Exportar CSV"
-        >
-          <FileJson className="size-3" />
-          CSV
-        </button>
-
-        {/* PDF / Print */}
-        <button
-          type="button"
-          onClick={() => {
-            printBenchmarkReport(benchmark)
-          }}
-          className="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
-          aria-label="Exportar PDF"
-        >
-          <FileJson className="size-3" />
-          PDF
-        </button>
-
-        <span className="text-muted-foreground text-[10px]">
-          Gráficos: {benchUseLog ? "Log" : "Linear"}
-        </span>
-        <button
-          type="button"
-          onClick={() => {
-            const next = !benchUseLog
-            localStorage.setItem("geo-scale-bench", String(next))
-            setBenchUseLog(next)
-          }}
-          className={cn(
-            "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors",
-            benchUseLog ? "bg-primary border-primary" : "bg-muted border-border",
-          )}
-          role="switch"
-          aria-checked={benchUseLog}
-          aria-label="Alternar escala Log/Linear nos gráficos de benchmark"
-        >
-          <span
-            className={cn(
-              "inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform",
-              benchUseLog ? "translate-x-[18px]" : "translate-x-[2px]",
-            )}
-          />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <MetricCard
-          icon={GitCompareArrows}
-          title={`Latência Média (µs) — Escala ${benchUseLog ? "Log" : "Linear"}`}
-        >
-          <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={barData}
-                layout="vertical"
-                margin={{ left: 100, right: 16, top: 8, bottom: 8 }}
-              >
-                <CartesianGrid
-                  horizontal={false}
-                  strokeDasharray="3 3"
-                  stroke="hsl(var(--border) / 0.5)"
-                />
-                <XAxis
-                  type="number"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                  scale={benchUseLog ? "log" : "linear"}
-                  domain={benchUseLog ? [1, maxLatency * 2] : [0, "auto"]}
-                  tickFormatter={(v: number) =>
-                    v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
-                  }
-                />
-                <YAxis
-                  type="category"
-                  dataKey="label"
-                  tickLine={false}
-                  axisLine={false}
-                  width={100}
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                />
-                <RTooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  formatter={(v: number, n: string) => [
-                    `${v.toFixed(1)}µs`,
-                    n === "haversine" ? "Haversine JS" : "PostGIS",
-                  ]}
-                />
-                <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
-                <Bar
-                  dataKey="haversine"
-                  name="Haversine JS"
-                  fill={COLOR_P50}
-                  radius={[0, 3, 3, 0]}
-                  barSize={12}
-                />
-                <Bar
-                  dataKey="postgis"
-                  name="PostGIS"
-                  fill={COLOR_P99}
-                  radius={[0, 3, 3, 0]}
-                  barSize={12}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </MetricCard>
-
-        {/* Use opsPerSec instead of mean for the throughput chart */}
-        <MetricCard icon={Zap} title="Throughput (ops/sec)">
-          <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={barData}
-                layout="vertical"
-                margin={{ left: 100, right: 16, top: 8, bottom: 8 }}
-              >
-                <CartesianGrid
-                  horizontal={false}
-                  strokeDasharray="3 3"
-                  stroke="hsl(var(--border) / 0.5)"
-                />
-                <XAxis
-                  type="number"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                  scale={benchUseLog ? "log" : "linear"}
-                  domain={benchUseLog ? undefined : [0, "auto"]}
-                  tickFormatter={(v: number) =>
-                    v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
-                  }
-                />
-                <YAxis
-                  type="category"
-                  dataKey="label"
-                  tickLine={false}
-                  axisLine={false}
-                  width={100}
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                />
-                <RTooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  formatter={(v: number, n: string) => [
-                    `${v.toLocaleString()} ops/s`,
-                    n === "haversine_ops" ? "Haversine JS" : n === "postgis_ops" ? "PostGIS" : n,
-                  ]}
-                />
-                <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
-                <Bar
-                  dataKey="haversine_ops"
-                  name="Haversine JS"
-                  fill={COLOR_P50}
-                  radius={[0, 3, 3, 0]}
-                  barSize={12}
-                />
-                <Bar
-                  dataKey="postgis_ops"
-                  name="PostGIS"
-                  fill={COLOR_P99}
-                  radius={[0, 3, 3, 0]}
-                  barSize={12}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </MetricCard>
-
-        <MetricCard icon={BarChart3} title="Razão PostGIS / Haversine">
-          <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={barData}
-                layout="vertical"
-                margin={{ left: 100, right: 16, top: 8, bottom: 8 }}
-              >
-                <CartesianGrid
-                  horizontal={false}
-                  strokeDasharray="3 3"
-                  stroke="hsl(var(--border) / 0.5)"
-                />
-                <XAxis
-                  type="number"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="label"
-                  tickLine={false}
-                  axisLine={false}
-                  width={100}
-                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                />
-                <RTooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  formatter={(v: number) => [`${v}×`, "Razão"]}
-                />
-                <Bar dataKey="ratio" name="Razão" radius={[0, 3, 3, 0]} barSize={20}>
-                  {barData.map((entry) => (
-                    <Cell key={entry.label} fill={ratioColor(entry.ratio)} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="border-border/50 bg-muted/20 mt-3 rounded-lg border p-3">
-            <p className="text-muted-foreground text-xs">
-              <span className="text-foreground font-medium">Análise:</span>{" "}
-              {benchmark.analysis.note}
-            </p>
-            <p className="text-muted-foreground mt-1 text-[10px]">
-              Benchmark executado em {benchmark.meta.platform} ({benchmark.meta.nodeVersion}) —{" "}
-              centro em {benchmark.meta.centerLabel} —{" "}
-              {new Date(benchmark.meta.timestamp).toLocaleDateString("pt-BR")}
-            </p>
-          </div>
-        </MetricCard>
-      </div>
-    </section>
-  )
-}
+// ── BenchmarkSection was extracted to src/components/admin/benchmark-section.tsx ──
 
 // ── Timeline Evolution Section was extracted to src/components/admin/timeline-section.tsx ──
 
-// ── Sub-components ────────────────────────────────────────────────────────
-
-function LatencyBar({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-muted-foreground w-8 text-right text-xs font-medium">{label}</span>
-      <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
-        <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{
-            width: `${pct}%`,
-            backgroundColor: latencyColor(value),
-          }}
-        />
-      </div>
-      <span
-        className="w-14 text-right text-xs font-medium tabular-nums"
-        style={{ color: latencyColor(value) }}
-      >
-        {formatMs(value)}
-      </span>
-    </div>
-  )
-}
-
-// ── Skeleton ──────────────────────────────────────────────────────────────
-
-function GeoSkeleton() {
-  return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <Skeleton className="mb-2 h-6 w-64" />
-          <Skeleton className="h-4 w-48" />
-        </div>
-        <Skeleton className="h-9 w-28 rounded-lg" />
-      </div>
-      <div className="grid grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-24 rounded-xl" />
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-6">
-        <Skeleton className="h-64 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
-      </div>
-    </div>
-  )
-}
+// ── LatencyBar + GeoSkeleton were extracted to:
+//    src/components/admin/geo-latency-bar.tsx
+//    src/components/admin/geo-skeleton.tsx

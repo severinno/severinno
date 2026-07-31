@@ -12,7 +12,7 @@
  *   - IndicadorDeAtualizacao ("Atualizando…" spinner)
  *
  * Usage:
- *   import { DashboardHeader } from "@/components/admin/admin-dashboard-header"
+ *   import { DashboardHeader } from "@/components/admin"
  *
  *   <DashboardHeader
  *     title="Métricas de Geolocalização"

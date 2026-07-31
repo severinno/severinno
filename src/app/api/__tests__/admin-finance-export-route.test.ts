@@ -62,7 +62,8 @@ describe("GET /api/admin/finance/export", () => {
     expect(res.status).toBe(200)
     // Should start with BOM (\uFEFF) for Excel compatibility
     // First line should be the header row
-    // Note: BOM (﻿) is prepended but may not survive NextResponse → text() roundtrip in test env
+    // Note: a BOM character is prepended but may not survive the
+    // NextResponse → text() roundtrip in the test env
     // Skipping charCodeAt(0) assertion — test relies on header content instead
     const lines = text.trim().split("\n")
     expect(lines[0]).toContain("ID")
@@ -87,7 +88,7 @@ describe("GET /api/admin/finance/export", () => {
   })
 
   it("includes transaction data in CSV rows", async () => {
-    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([
+    ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([
       {
         id: "pay-1",
         bookingId: "b-1",
@@ -149,7 +150,7 @@ describe("GET /api/admin/finance/export", () => {
   })
 
   it("escapes values with commas/quotes properly", async () => {
-    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([
+    ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([
       {
         id: "pay-esc",
         bookingId: "b-esc",

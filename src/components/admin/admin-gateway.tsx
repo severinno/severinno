@@ -1,14 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  Banknote,
-  CalendarRange,
-  ExternalLink,
-  SearchX,
-  ShieldQuestion,
-  X,
-} from "lucide-react"
+import { Banknote, CalendarRange, ExternalLink, SearchX, ShieldQuestion, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"
@@ -32,7 +25,7 @@ import {
   ResultCount,
   SearchInput,
   TableSkeleton,
-} from "./admin-shared"
+} from "./_shared"
 
 type LytexInvoice = {
   _id: string
@@ -82,9 +75,7 @@ export function AdminGateway() {
   const isDateActive = dateRange !== "all" || !!customStart || !!customEnd
 
   const activeFilterCount =
-    (search ? 1 : 0) +
-    (statusFilter !== "ALL" ? 1 : 0) +
-    (isDateActive ? 1 : 0)
+    (search ? 1 : 0) + (statusFilter !== "ALL" ? 1 : 0) + (isDateActive ? 1 : 0)
 
   const clearFilters = () => {
     setSearch("")
@@ -112,7 +103,16 @@ export function AdminGateway() {
     return qs ? `&${qs}` : ""
   }
 
-  const queryKey = ["admin-gateway-invoices", page, perPage, search, statusFilter, dateRange, customStart, customEnd]
+  const queryKey = [
+    "admin-gateway-invoices",
+    page,
+    perPage,
+    search,
+    statusFilter,
+    dateRange,
+    customStart,
+    customEnd,
+  ]
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey,
     queryFn: () =>
@@ -137,7 +137,7 @@ export function AdminGateway() {
           <Button
             variant="outline"
             size="sm"
-            className="h-7 text-xs gap-1"
+            className="h-7 gap-1 text-xs"
             onClick={() => refetch()}
           >
             Atualizar
@@ -145,10 +145,7 @@ export function AdminGateway() {
         }
       />
 
-      <FilterBar
-        onClear={clearFilters}
-        activeCount={activeFilterCount}
-      >
+      <FilterBar onClear={clearFilters} activeCount={activeFilterCount}>
         <SearchInput
           placeholder="Buscar por ID, cliente…"
           value={search}
@@ -163,7 +160,7 @@ export function AdminGateway() {
             setStatusFilter(e.target.value)
             setPage(1)
           }}
-          className="h-9 appearance-none rounded-lg border border-input/60 bg-background px-3 pr-8 text-xs font-medium text-muted-foreground outline-none transition-colors hover:border-foreground/20 focus:border-primary/50"
+          className="border-input/60 bg-background text-muted-foreground hover:border-foreground/20 focus:border-primary/50 h-9 appearance-none rounded-lg border px-3 pr-8 text-xs font-medium transition-colors outline-none"
         >
           <option value="ALL">Status: todos</option>
           {Object.entries(STATUS_LABELS).map(([key, label]) => (
@@ -175,7 +172,7 @@ export function AdminGateway() {
 
         {/* ── Date range filter inline ────────────────────────────── */}
         <div className="relative flex items-center gap-1.5">
-          <CalendarRange className="size-3.5 text-muted-foreground shrink-0" />
+          <CalendarRange className="text-muted-foreground size-3.5 shrink-0" />
           <select
             value={dateRange}
             onChange={(e) => {
@@ -186,7 +183,7 @@ export function AdminGateway() {
                 setCustomEnd("")
               }
             }}
-            className="h-9 appearance-none rounded-lg border border-input/60 bg-background px-2.5 pr-7 text-xs font-medium text-muted-foreground outline-none transition-colors hover:border-foreground/20 focus:border-primary/50"
+            className="border-input/60 bg-background text-muted-foreground hover:border-foreground/20 focus:border-primary/50 h-9 appearance-none rounded-lg border px-2.5 pr-7 text-xs font-medium transition-colors outline-none"
           >
             <option value="all">Período: todos</option>
             <option value="today">Hoje</option>
@@ -206,10 +203,10 @@ export function AdminGateway() {
                   setCustomStart(e.target.value)
                   setPage(1)
                 }}
-                className="h-9 rounded-lg border border-input/60 bg-background px-2.5 text-xs text-foreground outline-none transition-colors hover:border-foreground/20 focus:border-primary/50 [color-scheme:var(--color-scheme)]"
+                className="border-input/60 bg-background text-foreground hover:border-foreground/20 focus:border-primary/50 h-9 rounded-lg border px-2.5 text-xs [color-scheme:var(--color-scheme)] transition-colors outline-none"
                 aria-label="Data inicial"
               />
-              <span className="text-xs text-muted-foreground">até</span>
+              <span className="text-muted-foreground text-xs">até</span>
               <input
                 type="date"
                 value={customEnd}
@@ -218,7 +215,7 @@ export function AdminGateway() {
                   setPage(1)
                 }}
                 min={customStart || undefined}
-                className="h-9 rounded-lg border border-input/60 bg-background px-2.5 text-xs text-foreground outline-none transition-colors hover:border-foreground/20 focus:border-primary/50 [color-scheme:var(--color-scheme)]"
+                className="border-input/60 bg-background text-foreground hover:border-foreground/20 focus:border-primary/50 h-9 rounded-lg border px-2.5 text-xs [color-scheme:var(--color-scheme)] transition-colors outline-none"
                 aria-label="Data final"
               />
             </div>
@@ -226,11 +223,7 @@ export function AdminGateway() {
         </div>
 
         {paginate ? (
-          <ResultCount
-            page={paginate.page}
-            limit={perPage}
-            total={paginate.total}
-          />
+          <ResultCount page={paginate.page} limit={perPage} total={paginate.total} />
         ) : null}
       </FilterBar>
 
@@ -244,12 +237,7 @@ export function AdminGateway() {
           title="Nenhuma fatura encontrada."
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -274,12 +262,8 @@ export function AdminGateway() {
               <TableBody>
                 {invoices.map((inv) => (
                   <TableRow key={inv._id}>
-                    <TableCell className="font-mono text-xs">
-                      {inv._id.slice(0, 12)}…
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {inv.client?.name ?? "—"}
-                    </TableCell>
+                    <TableCell className="font-mono text-xs">{inv._id.slice(0, 12)}…</TableCell>
+                    <TableCell className="text-xs">{inv.client?.name ?? "—"}</TableCell>
                     <TableCell className="text-xs font-medium">
                       {formatBRL(inv.totalValue / 100)}
                     </TableCell>
@@ -287,31 +271,22 @@ export function AdminGateway() {
                       <span
                         className={cn(
                           "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-                          STATUS_COLORS[inv.status] ?? "text-gray-600 bg-gray-100",
+                          STATUS_COLORS[inv.status] ?? "bg-gray-100 text-gray-600",
                         )}
                       >
                         {STATUS_LABELS[inv.status] ?? inv.status}
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-muted-foreground text-xs">
                       {inv.paymentMethods?.list?.join(", ") ?? "—"}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-muted-foreground text-xs">
                       {formatDateTime(inv.createdAt)}
                     </TableCell>
                     <TableCell>
                       {inv.linkCheckout && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          asChild
-                        >
-                          <a
-                            href={inv.linkCheckout}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
+                        <Button variant="ghost" size="icon" className="size-7" asChild>
+                          <a href={inv.linkCheckout} target="_blank" rel="noopener noreferrer">
                             <ExternalLink className="size-3.5" />
                           </a>
                         </Button>
@@ -324,11 +299,7 @@ export function AdminGateway() {
           </div>
 
           {paginate && (
-            <Pagination
-              page={paginate.page}
-              totalPages={paginate.pages}
-              onPageChange={setPage}
-            />
+            <Pagination page={paginate.page} totalPages={paginate.pages} onPageChange={setPage} />
           )}
         </>
       )}

@@ -42,8 +42,8 @@ import {
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState } from "@/components/admin/admin-shared"
-import { RefreshButton } from "@/components/admin/admin-refresh-button"
+import { ErrorState, RefreshButton } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import type { BenchmarksResponse, BenchmarkPoint } from "@/app/api/admin/benchmarks/route"
 
@@ -74,16 +74,6 @@ const POSTGIS_LABELS = ["postgis_model_100", "postgis_model_1000", "postgis_mode
 
 const HAV_COLORS = ["hsl(38, 92%, 50%)", "hsl(30, 90%, 55%)", "hsl(20, 85%, 50%)"]
 const PG_COLORS = ["hsl(201, 90%, 48%)", "hsl(190, 80%, 42%)", "hsl(210, 85%, 40%)"]
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
 
 const METRIC_KEYS = ["mean", "ops", "p95"] as const
 type MetricKey = (typeof METRIC_KEYS)[number]

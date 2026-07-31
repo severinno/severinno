@@ -48,7 +48,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState } from "./_shared"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -121,9 +121,7 @@ function MetricCard({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {label}
-        </CardTitle>
+        <CardTitle className="text-muted-foreground text-sm font-medium">{label}</CardTitle>
         <Icon className={cn("size-4", color ?? "text-muted-foreground")} />
       </CardHeader>
       <CardContent>
@@ -145,7 +143,7 @@ function MetricCard({
             </span>
           )}
         </div>
-        {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+        {sub && <p className="text-muted-foreground mt-1 text-xs">{sub}</p>}
       </CardContent>
     </Card>
   )
@@ -169,13 +167,9 @@ function ProgressBar({
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">{label}</span>
-        {showValue && (
-          <span className="font-medium tabular-nums">
-            {clamped.toFixed(1)}%
-          </span>
-        )}
+        {showValue && <span className="font-medium tabular-nums">{clamped.toFixed(1)}%</span>}
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+      <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
         <div
           className={cn("h-full rounded-full transition-all duration-500", color)}
           style={{ width: `${clamped}%` }}
@@ -196,18 +190,16 @@ function TimelineBar({ date, total, max }: { date: string; total: number; max: n
 
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-14 shrink-0 text-right text-muted-foreground tabular-nums">
-        {day}
-      </span>
+      <span className="text-muted-foreground w-14 shrink-0 text-right tabular-nums">{day}</span>
       <div className="flex-1">
-        <div className="h-5 w-full overflow-hidden rounded bg-muted">
+        <div className="bg-muted h-5 w-full overflow-hidden rounded">
           <div
-            className="h-full rounded bg-primary/70 transition-all"
+            className="bg-primary/70 h-full rounded transition-all"
             style={{ width: `${pct}%` }}
           />
         </div>
       </div>
-      <span className="w-8 shrink-0 text-right font-medium tabular-nums text-muted-foreground">
+      <span className="text-muted-foreground w-8 shrink-0 text-right font-medium tabular-nums">
         {total}
       </span>
     </div>
@@ -227,14 +219,12 @@ const ACTION_META: Record<string, { icon: React.ElementType; label: string; colo
 export function AdminPushMetrics() {
   const [days, setDays] = React.useState("30")
 
-  const { data, isLoading, isError, refetch, isFetching, dataUpdatedAt } =
-    useQuery({
-      queryKey: ["admin", "push", "metrics", days],
-      queryFn: () =>
-        apiGet<PushMetrics>(`/api/admin/push/metrics?days=${days}`),
-      staleTime: 30_000,
-      refetchInterval: 60_000,
-    })
+  const { data, isLoading, isError, refetch, isFetching, dataUpdatedAt } = useQuery({
+    queryKey: ["admin", "push", "metrics", days],
+    queryFn: () => apiGet<PushMetrics>(`/api/admin/push/metrics?days=${days}`),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
 
   if (isError) {
     return (
@@ -250,8 +240,7 @@ export function AdminPushMetrics() {
     return <MetricsSkeleton />
   }
 
-  const { overview, timeline, topTypes, topSources, actions, users, averages } =
-    data
+  const { overview, timeline, topTypes, topSources, actions, users, averages } = data
 
   const maxTimeline = Math.max(...timeline.map((t) => t.total), 1)
 
@@ -264,15 +253,12 @@ export function AdminPushMetrics() {
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Métricas de Push
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <h1 className="text-foreground text-xl font-bold tracking-tight">Métricas de Push</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">
             {overview.total} notificação(ns) nos últimos {days} dias
             {dataUpdatedAt && (
               <span className="ml-2 text-xs">
-                · Atualizado{" "}
-                {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
+                · Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
               </span>
             )}
           </p>
@@ -300,9 +286,7 @@ export function AdminPushMetrics() {
             disabled={isFetching}
             aria-label="Atualizar"
           >
-            <RotateCw
-              className={cn("size-4", isFetching && "animate-spin")}
-            />
+            <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
           </Button>
         </div>
       </div>
@@ -393,11 +377,8 @@ export function AdminPushMetrics() {
                   <span className="text-muted-foreground">Enviados</span>
                   <span className="font-medium">{overview.total}</span>
                 </div>
-                <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: "100%" }}
-                  />
+                <div className="bg-muted h-3 w-full overflow-hidden rounded-full">
+                  <div className="bg-primary h-full rounded-full" style={{ width: "100%" }} />
                 </div>
               </div>
 
@@ -406,7 +387,7 @@ export function AdminPushMetrics() {
                   <span className="text-muted-foreground">Entregues</span>
                   <span className="font-medium">{overview.sent}</span>
                 </div>
-                <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+                <div className="bg-muted h-3 w-full overflow-hidden rounded-full">
                   <div
                     className="h-full rounded-full bg-emerald-500"
                     style={{ width: `${sentPct}%` }}
@@ -419,7 +400,7 @@ export function AdminPushMetrics() {
                   <span className="text-muted-foreground">Clicados</span>
                   <span className="font-medium">{overview.clicked}</span>
                 </div>
-                <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+                <div className="bg-muted h-3 w-full overflow-hidden rounded-full">
                   <div
                     className="h-full rounded-full bg-blue-500"
                     style={{ width: `${clickedPct}%` }}
@@ -428,10 +409,8 @@ export function AdminPushMetrics() {
               </div>
             </div>
 
-            <div className="rounded-lg bg-muted/30 p-3 text-xs">
-              <p className="font-medium text-muted-foreground mb-1">
-                Taxas de conversão
-              </p>
+            <div className="bg-muted/30 rounded-lg p-3 text-xs">
+              <p className="text-muted-foreground mb-1 font-medium">Taxas de conversão</p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <p className="text-muted-foreground">Delivery rate</p>
@@ -475,7 +454,7 @@ export function AdminPushMetrics() {
           </CardHeader>
           <CardContent className="space-y-3">
             {actions.length === 0 ? (
-              <p className="py-4 text-center text-xs text-muted-foreground">
+              <p className="text-muted-foreground py-4 text-center text-xs">
                 Nenhuma ação registrada no período
               </p>
             ) : (
@@ -488,20 +467,11 @@ export function AdminPushMetrics() {
                     className="flex items-center justify-between rounded-lg border px-3 py-2 text-xs"
                   >
                     <div className="flex items-center gap-2">
-                      <Icon
-                        className={cn(
-                          "size-4",
-                          meta?.color ?? "text-muted-foreground",
-                        )}
-                      />
+                      <Icon className={cn("size-4", meta?.color ?? "text-muted-foreground")} />
                       <div>
-                        <p className="font-medium">
-                          {meta?.label ?? a.action}
-                        </p>
+                        <p className="font-medium">{meta?.label ?? a.action}</p>
                         {a.actionResult && (
-                          <p className="text-muted-foreground">
-                            {a.actionResult}
-                          </p>
+                          <p className="text-muted-foreground">{a.actionResult}</p>
                         )}
                       </div>
                     </div>
@@ -511,10 +481,10 @@ export function AdminPushMetrics() {
               })
             )}
 
-            <div className="pt-2 text-xs text-muted-foreground">
+            <div className="text-muted-foreground pt-2 text-xs">
               <p>
                 Taxa de ação:{" "}
-                <span className="font-medium text-foreground">
+                <span className="text-foreground font-medium">
                   {overview.actionRate.toFixed(1)}%
                 </span>
               </p>
@@ -533,24 +503,22 @@ export function AdminPushMetrics() {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
-                <Bell className="size-4 text-muted-foreground" />
+                <Bell className="text-muted-foreground size-4" />
                 <span className="font-medium">Alcançados no período</span>
               </div>
               <span className="font-bold tabular-nums">{users.reachable}</span>
             </div>
             <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
-                <Users className="size-4 text-muted-foreground" />
+                <Users className="text-muted-foreground size-4" />
                 <span className="font-medium">Usuários com push ativo</span>
               </div>
-              <span className="font-bold tabular-nums">
-                {users.subscribed}
-              </span>
+              <span className="font-bold tabular-nums">{users.subscribed}</span>
             </div>
 
             <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
-                <Smartphone className="size-4 text-muted-foreground" />
+                <Smartphone className="text-muted-foreground size-4" />
                 <span className="font-medium">Média de dispositivos</span>
               </div>
               <span className="font-bold tabular-nums">
@@ -560,13 +528,11 @@ export function AdminPushMetrics() {
 
             <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-xs">
               <div className="flex items-center gap-2">
-                <Clock className="size-4 text-muted-foreground" />
+                <Clock className="text-muted-foreground size-4" />
                 <span className="font-medium">Latência média</span>
               </div>
               <span className="font-bold tabular-nums">
-                {averages.latencyMs != null
-                  ? `${averages.latencyMs}ms`
-                  : "—"}
+                {averages.latencyMs != null ? `${averages.latencyMs}ms` : "—"}
               </span>
             </div>
           </CardContent>
@@ -582,7 +548,7 @@ export function AdminPushMetrics() {
           </CardHeader>
           <CardContent className="space-y-2">
             {topTypes.length === 0 ? (
-              <p className="py-4 text-center text-xs text-muted-foreground">
+              <p className="text-muted-foreground py-4 text-center text-xs">
                 Nenhum tipo registrado
               </p>
             ) : (
@@ -592,14 +558,12 @@ export function AdminPushMetrics() {
                 return (
                   <div key={t.type} className="space-y-0.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium truncate max-w-[180px]">
+                      <span className="max-w-[180px] truncate font-medium">
                         {i + 1}. {t.type}
                       </span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {t.count}
-                      </span>
+                      <span className="text-muted-foreground tabular-nums">{t.count}</span>
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
                       <div
                         className="h-full rounded-full bg-orange-400/70"
                         style={{ width: `${pct}%` }}
@@ -612,18 +576,11 @@ export function AdminPushMetrics() {
 
             {topSources.length > 0 && (
               <>
-                <h4 className="mt-4 text-xs font-medium text-muted-foreground">
-                  Origens
-                </h4>
+                <h4 className="text-muted-foreground mt-4 text-xs font-medium">Origens</h4>
                 {topSources.map((s) => (
-                  <div
-                    key={s.source}
-                    className="flex items-center justify-between text-xs"
-                  >
-                    <span className="text-muted-foreground capitalize">
-                      {s.source}
-                    </span>
-                    <span className="tabular-nums font-medium">{s.count}</span>
+                  <div key={s.source} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground capitalize">{s.source}</span>
+                    <span className="font-medium tabular-nums">{s.count}</span>
                   </div>
                 ))}
               </>
@@ -642,18 +599,13 @@ export function AdminPushMetrics() {
         </CardHeader>
         <CardContent>
           {timeline.length === 0 ? (
-            <p className="py-6 text-center text-xs text-muted-foreground">
+            <p className="text-muted-foreground py-6 text-center text-xs">
               Nenhum envio no período
             </p>
           ) : (
             <div className="space-y-1">
               {timeline.map((t) => (
-                <TimelineBar
-                  key={t.date}
-                  date={t.date}
-                  total={t.total}
-                  max={maxTimeline}
-                />
+                <TimelineBar key={t.date} date={t.date} total={t.total} max={maxTimeline} />
               ))}
             </div>
           )}
@@ -674,46 +626,24 @@ export function AdminPushMetrics() {
               label="Delivery rate"
               value={`${overview.deliveryRate.toFixed(1)}%`}
               status={
-                overview.deliveryRate > 90
-                  ? "good"
-                  : overview.deliveryRate > 75
-                    ? "warn"
-                    : "bad"
+                overview.deliveryRate > 90 ? "good" : overview.deliveryRate > 75 ? "warn" : "bad"
               }
             />
             <HealthIndicator
               label="Click rate"
               value={`${overview.clickRate.toFixed(1)}%`}
-              status={
-                overview.clickRate > 5
-                  ? "good"
-                  : overview.clickRate > 1
-                    ? "warn"
-                    : "bad"
-              }
+              status={overview.clickRate > 5 ? "good" : overview.clickRate > 1 ? "warn" : "bad"}
             />
             <HealthIndicator
               label="Bounce rate"
               value={`${overview.bounceRate.toFixed(1)}%`}
-              status={
-                overview.bounceRate < 5
-                  ? "good"
-                  : overview.bounceRate < 15
-                    ? "warn"
-                    : "bad"
-              }
+              status={overview.bounceRate < 5 ? "good" : overview.bounceRate < 15 ? "warn" : "bad"}
               invert
             />
             <HealthIndicator
               label="Failure rate"
               value={`${overview.failureRate.toFixed(1)}%`}
-              status={
-                overview.failureRate < 1
-                  ? "good"
-                  : overview.failureRate < 5
-                    ? "warn"
-                    : "bad"
-              }
+              status={overview.failureRate < 1 ? "good" : overview.failureRate < 5 ? "warn" : "bad"}
               invert
             />
           </div>
@@ -752,7 +682,7 @@ function HealthIndicator({
     <div className="rounded-lg border p-3">
       <div className="flex items-center gap-2">
         <div className={cn("size-2.5 rounded-full", dotColor[status])} />
-        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-muted-foreground text-xs">{label}</span>
       </div>
       <p className="mt-1 text-lg font-bold">{value}</p>
       <p

@@ -9,7 +9,7 @@
  * definitions to a single shared file.
  *
  * Usage:
- *   import { MetricCard, KpiCard } from "@/components/admin/admin-metric-card"
+ *   import { MetricCard, KpiCard } from "@/components/admin"
  *
  *   <MetricCard icon={BarChart3} title="Latência (ms)">
  *     <div>content</div>

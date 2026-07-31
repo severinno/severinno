@@ -4,7 +4,7 @@
  * Quick throughput guard-rail for the Haversine distance function.
  *
  * Measures how many times haversineKm can execute per second and
- * fails if throughput drops below 500 000 ops/sec.  This catches
+ * fails if throughput drops below 500 000 ops/sec.  This catches
  * accidental performance regressions (e.g. an extra trig call, a
  * heavier abstraction wrapper) without needing to run the full
  * geo-benchmark pipeline.
@@ -29,8 +29,8 @@ const CENTER_LNG = -46.6333
 /**
  * Minimum acceptable throughput in operations per second.
  *
- * Baseline on Node 22, win32 x64: ~20 M ops/sec for a single call.
- * At 500 k ops/sec the function would need to be ~40× slower.
+ * Baseline on Node 22, win32 x64: ~20 M ops/sec for a single call.
+ * At 500 k ops/sec the function would need to be ~40× slower.
  * This threshold is deliberately generous to avoid flakiness on
  * shared CI runners while still catching catastrophic regressions.
  */
@@ -49,10 +49,7 @@ const WARMUP = 3
 // Helpers
 // ---------------------------------------------------------------------------
 
-function generateProviders(
-  count: number,
-  spreadKm = 50,
-): Array<{ lat: number; lng: number }> {
+function generateProviders(count: number, spreadKm = 50): Array<{ lat: number; lng: number }> {
   const degPerKm = { lat: 1 / 111, lng: 1 / 102 }
   const out: Array<{ lat: number; lng: number }> = []
   for (let i = 0; i < count; i++) {
@@ -107,7 +104,12 @@ describe("haversineKm throughput guard", () => {
       // Single call per iteration (baseline latency)
       const t0 = performance.now()
       for (let j = 0; j < 1000; j++) {
-        grandTotal += haversineKm(CENTER_LAT, CENTER_LNG, -23.5605 + j * 0.0001, -46.6433 + j * 0.0001)
+        grandTotal += haversineKm(
+          CENTER_LAT,
+          CENTER_LNG,
+          -23.5605 + j * 0.0001,
+          -46.6433 + j * 0.0001,
+        )
       }
       const t1 = performance.now()
       samples.push(t1 - t0)
@@ -115,8 +117,7 @@ describe("haversineKm throughput guard", () => {
 
     expect(grandTotal).toBeGreaterThan(0)
 
-    const meanMs =
-      samples.reduce((s, v) => s + v, 0) / samples.length
+    const meanMs = samples.reduce((s, v) => s + v, 0) / samples.length
     const opsPerSec = 1000 / (meanMs / 1000) // 1000 calls per iteration
 
     expect(opsPerSec).toBeGreaterThan(MIN_THROUGHPUT)

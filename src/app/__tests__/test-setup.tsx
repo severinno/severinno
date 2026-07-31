@@ -38,7 +38,7 @@ vi.mock("@tanstack/react-query", () => ({
     error: null,
     refetch: vi.fn(),
   })),
-  useMutation: vi.fn((opts?: { onSuccess?: Function }) => ({
+  useMutation: vi.fn((opts?: { onSuccess?: (data: unknown) => void }) => ({
     mutate: vi.fn((data: unknown) => {
       opts?.onSuccess?.({ user: { id: "1", name: "Test User", role: "CLIENT" } })
     }),
@@ -61,7 +61,7 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/store/auth", () => ({
   useAuthStore: Object.assign(
-    (selector?: Function) => {
+    (selector?: (state: Record<string, unknown>) => unknown) => {
       const store = {
         user: null,
         status: "unauthenticated",
@@ -78,7 +78,7 @@ vi.mock("@/store/auth", () => ({
 
 vi.mock("@/store/ui", () => ({
   useUIStore: Object.assign(
-    (selector?: Function) => {
+    (selector?: (state: Record<string, unknown>) => unknown) => {
       const store = {
         openAuth: vi.fn(),
         openQuote: vi.fn(),
@@ -94,7 +94,7 @@ vi.mock("@/store/ui", () => ({
 
 vi.mock("@/store/geo", () => ({
   useGeoStore: Object.assign(
-    (selector?: Function) => {
+    (selector?: (state: Record<string, unknown>) => unknown) => {
       const store = {
         lat: null,
         lng: null,
@@ -134,7 +134,18 @@ vi.mock("sonner", () => ({
 
 vi.mock("framer-motion", () => {
   const MotionDiv = ({ children, ...props }: any) => {
-    const { initial, animate, exit, transition, whileHover, whileTap, variants, layout, layoutId, ...safe } = props
+    const {
+      initial,
+      animate,
+      exit,
+      transition,
+      whileHover,
+      whileTap,
+      variants,
+      layout,
+      layoutId,
+      ...safe
+    } = props
     return <div {...safe}>{children}</div>
   }
   return {
@@ -158,11 +169,18 @@ vi.mock("framer-motion", () => {
 vi.mock("lucide-react", () => {
   const Icon = ({ children, ...props }: any) => {
     const { size, className, ...safe } = props
-    return <span data-testid="icon" className={className} {...safe}>{children}</span>
+    return (
+      <span data-testid="icon" className={className} {...safe}>
+        {children}
+      </span>
+    )
   }
-  return new Proxy({}, {
-    get: () => Icon,
-  })
+  return new Proxy(
+    {},
+    {
+      get: () => Icon,
+    },
+  )
 })
 
 // ── Mock UI components ───────────────────────────────────────────────────
@@ -180,7 +198,11 @@ vi.mock("@/components/ui/label", () => ({
 }))
 
 vi.mock("@/components/ui/card", () => ({
-  Card: ({ children, ...p }: any) => <div data-testid="card" {...p}>{children}</div>,
+  Card: ({ children, ...p }: any) => (
+    <div data-testid="card" {...p}>
+      {children}
+    </div>
+  ),
   CardHeader: ({ children, ...p }: any) => <div {...p}>{children}</div>,
   CardTitle: ({ children, ...p }: any) => <h2 {...p}>{children}</h2>,
   CardDescription: ({ children, ...p }: any) => <p {...p}>{children}</p>,
