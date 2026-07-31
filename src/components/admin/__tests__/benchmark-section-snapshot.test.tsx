@@ -68,7 +68,7 @@ vi.mock("lucide-react", () => {
 // Shared fixtures
 // ===========================================================================
 
-import { FIXTURE_BENCHMARK, FIXTURE_BAR_DATA } from "./fixtures"
+import { FIXTURE_BENCHMARK, FIXTURE_BAR_DATA } from "./index"
 
 vi.mock("@/lib/benchmark-data", () => ({
   buildBenchmarkBarData: vi.fn(() => FIXTURE_BAR_DATA),

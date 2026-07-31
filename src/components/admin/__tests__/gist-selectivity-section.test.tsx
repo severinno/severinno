@@ -101,7 +101,7 @@ import {
   FIXTURE_NORMAL_HISTORY,
   FIXTURE_DEGRADED_HISTORY,
   FIXTURE_BASELINES,
-} from "./fixtures"
+} from "./index"
 
 // ===========================================================================
 // Helpers

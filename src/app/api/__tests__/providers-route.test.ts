@@ -136,11 +136,10 @@ describe("GET /api/providers", () => {
       return Promise.resolve([{ id: "prov-1" }])
     })
     vi.mocked(db.service.findMany as any).mockResolvedValue(baseProvider.services)
-    vi.mocked(db.booking.groupBy as any)
-      .mockResolvedValue([{ providerId: "prov-1", _count: { id: 3 } }])(
-        vi.mocked(db.user.findMany) as any,
-      )
-      .mockResolvedValue([baseProvider])
+    vi.mocked(db.booking.groupBy as any).mockResolvedValue([
+      { providerId: "prov-1", _count: { id: 3 } },
+    ])
+    vi.mocked(db.user.findMany as any).mockResolvedValue([baseProvider])
   })
 
   it("returns paginated list of active verified providers", async () => {
@@ -244,9 +243,8 @@ describe("GET /api/providers/[id]", () => {
 
   it("returns provider detail with services, reviews, and availability", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.user.findFirst) as any)
-      .mockResolvedValue(baseProvider as any)(vi.mocked(db.favorite.findUnique) as any)
-      .mockResolvedValue(null)
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue(baseProvider as any)
+    ;(vi.mocked(db.favorite.findUnique) as any).mockResolvedValue(null)
 
     const req = createMockRequest({ searchParams: { lat: "-23.55", lng: "-46.63" } })
     const res = await getProvider(req, { params: Promise.resolve({ id: "prov-1" }) })
@@ -293,15 +291,14 @@ describe("POST /api/providers/[id]/favorite", () => {
 
   it("adds favorite and returns favorited: true", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.user.findFirst) as any)
-      .mockResolvedValue({ id: "prov-1" } as any)(vi.mocked(db.favorite.findUnique) as any)
-      .mockResolvedValue(null)(vi.mocked(db.favorite.create) as any)
-      .mockResolvedValue({
-        id: "fav-1",
-        clientId: "client-1",
-        providerId: "prov-1",
-        createdAt: new Date(),
-      } as any)
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue({ id: "prov-1" } as any)
+    ;(vi.mocked(db.favorite.findUnique) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.favorite.create) as any).mockResolvedValue({
+      id: "fav-1",
+      clientId: "client-1",
+      providerId: "prov-1",
+      createdAt: new Date(),
+    } as any)
 
     const req = createMockRequest({ method: "POST" })
     const res = await toggleFavorite(req, { params: Promise.resolve({ id: "prov-1" }) })
@@ -313,15 +310,14 @@ describe("POST /api/providers/[id]/favorite", () => {
 
   it("removes favorite and returns favorited: false", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.user.findFirst) as any)
-      .mockResolvedValue({ id: "prov-1" } as any)(vi.mocked(db.favorite.findUnique) as any)
-      .mockResolvedValue({ id: "fav-1" } as any)(vi.mocked(db.favorite.delete) as any)
-      .mockResolvedValue({
-        id: "fav-1",
-        clientId: "client-1",
-        providerId: "prov-1",
-        createdAt: new Date(),
-      } as any)
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue({ id: "prov-1" } as any)
+    ;(vi.mocked(db.favorite.findUnique) as any).mockResolvedValue({ id: "fav-1" } as any)
+    ;(vi.mocked(db.favorite.delete) as any).mockResolvedValue({
+      id: "fav-1",
+      clientId: "client-1",
+      providerId: "prov-1",
+      createdAt: new Date(),
+    } as any)
 
     const req = createMockRequest({ method: "POST" })
     const res = await toggleFavorite(req, { params: Promise.resolve({ id: "prov-1" }) })

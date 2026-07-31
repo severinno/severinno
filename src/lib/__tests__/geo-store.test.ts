@@ -11,7 +11,7 @@
  * the browser.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest"
 import { create } from "zustand"
 import type { GeoStatus } from "@/store/geo"
 
@@ -127,8 +127,15 @@ function createTestStore() {
             }
 
             set({
-              lat, lng, address: displayName, city, state, district,
-              status: "ready" as GeoStatus, error: null, updatedAt: now,
+              lat,
+              lng,
+              address: displayName,
+              city,
+              state,
+              district,
+              status: "ready" as GeoStatus,
+              error: null,
+              updatedAt: now,
             })
             resolve()
           },
@@ -151,9 +158,16 @@ function createTestStore() {
 
     clear: () =>
       set({
-        lat: null, lng: null, address: null, cep: null,
-        district: null, city: null, state: null,
-        status: "idle" as GeoStatus, error: null, updatedAt: null,
+        lat: null,
+        lng: null,
+        address: null,
+        cep: null,
+        district: null,
+        city: null,
+        state: null,
+        status: "idle" as GeoStatus,
+        error: null,
+        updatedAt: null,
       }),
   }))
 }
@@ -166,13 +180,51 @@ const mockFetch = vi.fn()
 vi.stubGlobal("fetch", mockFetch)
 
 const mockGetCurrentPosition = vi.fn()
+// Stub do navigator com geolocation mockado. O spread é best-effort (só copia
+// propriedades own enumerable — userAgent é getter do prototype no jsdom e
+// NÃO é preservado). A correção real de isolamento entre arquivos no mesmo
+// worker é o afterAll abaixo: o react-dom lê navigator.userAgent na
+// inicialização do módulo, e se o stub vazar para o próximo arquivo o teste
+// quebra com TypeError: reading 'indexOf'. Padrão do codebase — ver
+// client-geo-cache.test.ts, realtime-client.test.ts, etc.
 vi.stubGlobal("navigator", {
+  ...navigator,
   geolocation: { getCurrentPosition: mockGetCurrentPosition },
 })
+
+afterAll(() => vi.unstubAllGlobals())
 
 vi.mock("@/lib/api", () => ({
   fetchReverseGeo: vi.fn().mockRejectedValue(new Error("mocked")),
 }))
+
+// ---------------------------------------------------------------------------
+// Geolocation position helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a minimal, fully-typed GeolocationPosition mock.
+ *
+ * TS >= 5.5 lib.dom requires `toJSON` on GeolocationPosition, so a raw
+ * object literal is not assignable to PositionCallback — this helper keeps
+ * the mock complete and avoids @ts-expect-error directives + `as any` casts.
+ */
+function mkPosition(latitude: number, longitude: number): GeolocationPosition {
+  return {
+    coords: {
+      latitude,
+      longitude,
+      accuracy: 10,
+      altitude: null,
+      altitudeAccuracy: null,
+      heading: null,
+      speed: null,
+      toJSON: () => ({}),
+    },
+    timestamp: Date.now(),
+    toJSON: () => ({}),
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Store instance (fresh for each test group)
@@ -180,14 +232,18 @@ vi.mock("@/lib/api", () => ({
 
 let store: ReturnType<typeof createTestStore>
 
-function s() { return store.getState() }
+function s() {
+  return store.getState()
+}
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("initial state", () => {
-  beforeEach(() => { store = createTestStore() })
+  beforeEach(() => {
+    store = createTestStore()
+  })
 
   it("starts with idle status and null fields", () => {
     expect(s().status).toBe("idle")
@@ -204,7 +260,9 @@ describe("initial state", () => {
 })
 
 describe("setFromCoords", () => {
-  beforeEach(() => { store = createTestStore() })
+  beforeEach(() => {
+    store = createTestStore()
+  })
 
   it("sets lat, lng and transitions to ready", () => {
     s().setFromCoords(-23.5505, -46.6333, "São Paulo")
@@ -232,10 +290,14 @@ describe("setFromCEP", () => {
   it("transitions to geocoding then ready on success", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({
-        cep: "01310-100", street: "Avenida Paulista", district: "Bela Vista",
-        city: "São Paulo", state: "SP",
-      }),
+      json: () =>
+        Promise.resolve({
+          cep: "01310-100",
+          street: "Avenida Paulista",
+          district: "Bela Vista",
+          city: "São Paulo",
+          state: "SP",
+        }),
     })
 
     expect(s().status).toBe("idle")
@@ -257,10 +319,15 @@ describe("setFromCEP", () => {
 
   it("normalises CEP by stripping non-digits", async () => {
     mockFetch.mockResolvedValueOnce({
-      ok: true, json: () => Promise.resolve({
-        cep: "01310-100", street: "Av Paulista",
-        district: "Bela Vista", city: "São Paulo", state: "SP",
-      }),
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          cep: "01310-100",
+          street: "Av Paulista",
+          district: "Bela Vista",
+          city: "São Paulo",
+          state: "SP",
+        }),
     })
 
     await s().setFromCEP("01310-100")
@@ -271,7 +338,8 @@ describe("setFromCEP", () => {
 
   it("sets error status when CEP is not found", async () => {
     mockFetch.mockResolvedValueOnce({
-      ok: false, json: () => Promise.resolve({ error: "CEP não encontrado" }),
+      ok: false,
+      json: () => Promise.resolve({ error: "CEP não encontrado" }),
     })
 
     await s().setFromCEP("00000-000")
@@ -298,18 +366,9 @@ describe("setFromGPS", () => {
   })
 
   it("transitions to locating then ready on GPS success", async () => {
-    mockGetCurrentPosition.mockImplementation(
-      (success: PositionCallback) => {
-        // @ts-expect-error Geolocation test mock type mismatch
-        success({
-          coords: {
-            latitude: -23.5505, longitude: -46.6333, accuracy: 10,
-            altitude: null, altitudeAccuracy: null, heading: null, speed: null,
-          } as any,
-          timestamp: Date.now(),
-        })
-      },
-    )
+    mockGetCurrentPosition.mockImplementation((success: PositionCallback) => {
+      success(mkPosition(-23.5505, -46.6333))
+    })
 
     expect(s().status).toBe("idle")
 
@@ -329,7 +388,10 @@ describe("setFromGPS", () => {
     mockGetCurrentPosition.mockImplementation(
       (_success: PositionCallback, error: PositionErrorCallback) => {
         error({
-          code: 1, PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3,
+          code: 1,
+          PERMISSION_DENIED: 1,
+          POSITION_UNAVAILABLE: 2,
+          TIMEOUT: 3,
           message: "User denied Geolocation",
         })
       },
@@ -346,7 +408,10 @@ describe("setFromGPS", () => {
     mockGetCurrentPosition.mockImplementation(
       (_success: PositionCallback, error: PositionErrorCallback) => {
         error({
-          code: 2, POSITION_UNAVAILABLE: 2, PERMISSION_DENIED: 1, TIMEOUT: 3,
+          code: 2,
+          POSITION_UNAVAILABLE: 2,
+          PERMISSION_DENIED: 1,
+          TIMEOUT: 3,
           message: "Position unavailable",
         })
       },
@@ -362,7 +427,10 @@ describe("setFromGPS", () => {
     mockGetCurrentPosition.mockImplementation(
       (_success: PositionCallback, error: PositionErrorCallback) => {
         error({
-          code: 3, TIMEOUT: 3, PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2,
+          code: 3,
+          TIMEOUT: 3,
+          PERMISSION_DENIED: 1,
+          POSITION_UNAVAILABLE: 2,
           message: "Timeout",
         })
       },
@@ -380,14 +448,7 @@ describe("setFromGPS", () => {
         expect(options.enableHighAccuracy).toBe(true)
         expect(options.timeout).toBe(10000)
         // Must resolve the promise by calling success
-        // @ts-expect-error Geolocation test mock type mismatch
-        success({
-          coords: {
-            latitude: -23.55, longitude: -46.63, accuracy: 10,
-            altitude: null, altitudeAccuracy: null, heading: null, speed: null,
-          } as any,
-          timestamp: Date.now(),
-        })
+        success(mkPosition(-23.55, -46.63))
       },
     )
 
@@ -396,7 +457,9 @@ describe("setFromGPS", () => {
 })
 
 describe("clear action", () => {
-  beforeEach(() => { store = createTestStore() })
+  beforeEach(() => {
+    store = createTestStore()
+  })
 
   it("resets all state to initial values", () => {
     s().setFromCoords(-23.55, -46.63, "São Paulo")

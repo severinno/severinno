@@ -13,3 +13,11 @@ bun run barrel-lint
 
 # Type check — rejeita commit se houver erros de tipo no projeto
 bun run typecheck
+
+# Snapshot guard — roda os testes de snapshot quando .snap ou *snapshot*.test.tsx
+# forem alterados (staged), impedindo snapshots obsoletos de entrar no commit
+STAGED_SNAP=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.snap$|snapshot[^/]*\.test\.tsx$' || true)
+if [ -n "$STAGED_SNAP" ]; then
+  echo "📸 Arquivos de snapshot alterados — rodando bun test:snapshots..."
+  bun test:snapshots
+fi

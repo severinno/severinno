@@ -142,11 +142,10 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
         category: { id: "cat-1", name: "Elétrica" },
       },
     ])
-    vi.mocked(db.booking.groupBy as any)
-      .mockResolvedValue([{ providerId: "prov-1", _count: { id: 3 } }])(
-        vi.mocked(db.user.findMany) as any,
-      )
-      .mockResolvedValue([baseProvider] as any)
+    vi.mocked(db.booking.groupBy as any).mockResolvedValue([
+      { providerId: "prov-1", _count: { id: 3 } },
+    ])
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
   })
 
   // -----------------------------------------------------------------------
@@ -157,21 +156,20 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     // Phase 1a: COUNT with 10km → 3 providers found
     // Phase 1b: IDs with 10km → 3 IDs
     // Phase 2: full data for 3 providers
-    ;(db.$queryRawUnsafe as any)
-      .mockImplementation((sql: string) => {
-        if (sql.includes("COUNT")) {
-          return Promise.resolve([{ total: BigInt(3) }])
-        }
-        if (sql.includes("ST_Distance")) {
-          return Promise.resolve([
-            { id: "prov-1", distance_km: 2.5 },
-            { id: "prov-2", distance_km: 5.1 },
-            { id: "prov-3", distance_km: 8.3 },
-          ])
-        }
-        return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }, { id: "prov-3" }])
-      })(vi.mocked(db.user.findMany) as any)
-      .mockResolvedValue([baseProvider, provider2, provider3])
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("COUNT")) {
+        return Promise.resolve([{ total: BigInt(3) }])
+      }
+      if (sql.includes("ST_Distance")) {
+        return Promise.resolve([
+          { id: "prov-1", distance_km: 2.5 },
+          { id: "prov-2", distance_km: 5.1 },
+          { id: "prov-3", distance_km: 8.3 },
+        ])
+      }
+      return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }, { id: "prov-3" }])
+    })
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider, provider2, provider3])
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -194,30 +192,29 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     // Phase 1a: COUNT with 10km → 0, with 25km → 3
     // Phase 1b: IDs with 25km
     // Phase 2: full data
-    ;(db.$queryRawUnsafe as any)
-      .mockImplementation((sql: string) => {
-        if (sql.includes("COUNT")) {
-          // 10 000m = 10km → 0 providers
-          if (sql.includes("10000")) {
-            return Promise.resolve([{ total: BigInt(0) }])
-          }
-          // 25 000m = 25km → 3 providers
-          if (sql.includes("25000")) {
-            return Promise.resolve([{ total: BigInt(3) }])
-          }
-          // Any other radius → 0 (shouldn't be reached after 25km match)
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("COUNT")) {
+        // 10 000m = 10km → 0 providers
+        if (sql.includes("10000")) {
           return Promise.resolve([{ total: BigInt(0) }])
         }
-        if (sql.includes("ST_Distance")) {
-          return Promise.resolve([
-            { id: "prov-1", distance_km: 15.2 },
-            { id: "prov-2", distance_km: 18.7 },
-            { id: "prov-3", distance_km: 22.1 },
-          ])
+        // 25 000m = 25km → 3 providers
+        if (sql.includes("25000")) {
+          return Promise.resolve([{ total: BigInt(3) }])
         }
-        return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }, { id: "prov-3" }])
-      })(vi.mocked(db.user.findMany) as any)
-      .mockResolvedValue([baseProvider, provider2, provider3])
+        // Any other radius → 0 (shouldn't be reached after 25km match)
+        return Promise.resolve([{ total: BigInt(0) }])
+      }
+      if (sql.includes("ST_Distance")) {
+        return Promise.resolve([
+          { id: "prov-1", distance_km: 15.2 },
+          { id: "prov-2", distance_km: 18.7 },
+          { id: "prov-3", distance_km: 22.1 },
+        ])
+      }
+      return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }, { id: "prov-3" }])
+    })
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider, provider2, provider3])
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -295,30 +292,29 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     // Phase 1a: COUNT with 0km (ST_DWithin 0m) → 0, with 5km → 3
     // Phase 1b: IDs with 5km
     // Phase 2: full data
-    ;(db.$queryRawUnsafe as any)
-      .mockImplementation((sql: string) => {
-        if (sql.includes("COUNT")) {
-          // ST_DWithin with 0 meters (radius=0km) → no matches
-          if (sql.includes(", 0)")) {
-            return Promise.resolve([{ total: BigInt(0) }])
-          }
-          // ST_DWithin with 5000 meters (5km) → 3 providers
-          if (sql.includes("5000")) {
-            return Promise.resolve([{ total: BigInt(3) }])
-          }
-          // Any other radius → 0 (shouldn't be reached)
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
+      if (sql.includes("COUNT")) {
+        // ST_DWithin with 0 meters (radius=0km) → no matches
+        if (sql.includes(", 0)")) {
           return Promise.resolve([{ total: BigInt(0) }])
         }
-        if (sql.includes("ST_Distance")) {
-          return Promise.resolve([
-            { id: "prov-1", distance_km: 2.5 },
-            { id: "prov-2", distance_km: 4.1 },
-            { id: "prov-3", distance_km: 4.8 },
-          ])
+        // ST_DWithin with 5000 meters (5km) → 3 providers
+        if (sql.includes("5000")) {
+          return Promise.resolve([{ total: BigInt(3) }])
         }
-        return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }, { id: "prov-3" }])
-      })(vi.mocked(db.user.findMany) as any)
-      .mockResolvedValue([baseProvider, provider2, provider3])
+        // Any other radius → 0 (shouldn't be reached)
+        return Promise.resolve([{ total: BigInt(0) }])
+      }
+      if (sql.includes("ST_Distance")) {
+        return Promise.resolve([
+          { id: "prov-1", distance_km: 2.5 },
+          { id: "prov-2", distance_km: 4.1 },
+          { id: "prov-3", distance_km: 4.8 },
+        ])
+      }
+      return Promise.resolve([{ id: "prov-1" }, { id: "prov-2" }, { id: "prov-3" }])
+    })
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider, provider2, provider3])
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "0" },
@@ -366,12 +362,11 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
         category: { id: "cat-1", name: "Elétrica" },
       },
     ])
-    vi.mocked(db.booking.groupBy as any)
-      .mockResolvedValue([
-        { providerId: "prov-1", _count: { id: 3 } },
-        { providerId: "prov-2", _count: { id: 7 } },
-      ])(vi.mocked(db.user.findMany) as any)
-      .mockResolvedValue([baseProvider, provider2])
+    vi.mocked(db.booking.groupBy as any).mockResolvedValue([
+      { providerId: "prov-1", _count: { id: 3 } },
+      { providerId: "prov-2", _count: { id: 7 } },
+    ])
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider, provider2])
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -422,11 +417,10 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
       new Error("Services DB connection lost"),
     )
     // Other Phase 2 queries are fine
-    vi.mocked(db.booking.groupBy as any)
-      .mockResolvedValue([{ providerId: "prov-1", _count: { id: 3 } }])(
-        vi.mocked(db.user.findMany) as any,
-      )
-      .mockResolvedValue([baseProvider] as any)
+    vi.mocked(db.booking.groupBy as any).mockResolvedValue([
+      { providerId: "prov-1", _count: { id: 3 } },
+    ])
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -450,24 +444,23 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     })
 
     // Phase 2: booking.groupBy throws
-    vi.mocked(db.service.findMany as any)
-      .mockResolvedValue([
-        {
-          id: "svc-1",
-          title: "Instalação Elétrica",
-          active: true,
-          categoryId: "cat-1",
-          basePrice: 150,
-          unit: "UNIDADE",
-          description: null,
-          photos: [],
-          category: { id: "cat-1", name: "Elétrica" },
-        },
-      ])(vi.mocked(db.booking.groupBy) as any)
-      .mockRejectedValue(new Error("Bookings DB connection lost"))(
-        vi.mocked(db.user.findMany) as any,
-      )
-      .mockResolvedValue([baseProvider] as any)
+    vi.mocked(db.service.findMany as any).mockResolvedValue([
+      {
+        id: "svc-1",
+        title: "Instalação Elétrica",
+        active: true,
+        categoryId: "cat-1",
+        basePrice: 150,
+        unit: "UNIDADE",
+        description: null,
+        photos: [],
+        category: { id: "cat-1", name: "Elétrica" },
+      },
+    ])
+    ;(vi.mocked(db.booking.groupBy) as any).mockRejectedValue(
+      new Error("Bookings DB connection lost"),
+    )
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -523,12 +516,10 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
         category: { id: "cat-1", name: "Elétrica" },
       },
     ])
-    vi.mocked(db.booking.groupBy as any)
-      .mockResolvedValue([{ providerId: "prov-1", _count: { id: 3 } }])(
-        // Provider with user's own coordinates → Haversine distance = 0 km
-        vi.mocked(db.user.findMany) as any,
-      )
-      .mockResolvedValue([baseProvider] as any)
+    vi.mocked(db.booking.groupBy as any).mockResolvedValue([
+      { providerId: "prov-1", _count: { id: 3 } },
+    ])
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -611,12 +602,11 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
         category: { id: "cat-1", name: "Elétrica" },
       },
     ])
-    vi.mocked(db.booking.groupBy as any)
-      .mockResolvedValue([
-        { providerId: "prov-1", _count: { id: 3 } },
-        { providerId: "prov-2", _count: { id: 7 } },
-      ])(vi.mocked(db.user.findMany) as any)
-      .mockResolvedValue([baseProvider, provider2])
+    vi.mocked(db.booking.groupBy as any).mockResolvedValue([
+      { providerId: "prov-1", _count: { id: 3 } },
+      { providerId: "prov-2", _count: { id: 7 } },
+    ])
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider, provider2])
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },

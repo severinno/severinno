@@ -73,11 +73,22 @@ export function describeVisualStates(
   const { setMockFetchResponse, clickExecuteReindex } = deps
   const isPanel = options?.panelContext ?? false
 
+  // Expande o collapsible do painel antes de interagir com o botão REINDEX.
+  // O mock compartilhado de Collapsible é fiel ao Radix: o conteúdo —
+  // incluindo o botão — só renderiza com o painel expandido.
+  const expandIfPanel = () => {
+    if (isPanel) {
+      fireEvent.click(screen.getByText("Ver detalhes do índice"))
+    }
+  }
+
   describe("Estados visuais", () => {
     // ── 1. Initial ──────────────────────────────────────────────────
 
     it("1. estado inicial: mostra botão 'Executar REINDEX' sem spinner nem resultado", () => {
       render()
+
+      expandIfPanel()
 
       // Botão principal com texto inicial
       const btn = screen.getByText("Executar REINDEX")
@@ -103,10 +114,7 @@ export function describeVisualStates(
 
       render()
 
-      // Em panelContext, expandir collapsible antes de interagir com o botão
-      if (isPanel) {
-        fireEvent.click(screen.getByText("Ver detalhes do índice"))
-      }
+      expandIfPanel()
 
       // Clicar no botão do REINDEX → abre AlertDialog → clica em confirmar
       fireEvent.click(screen.getByText("Executar REINDEX"))
@@ -169,10 +177,7 @@ export function describeVisualStates(
     it("4. isRefetching: mostra 'Atualizando métricas…' com spinner, sem modo reindexing", () => {
       render({ isRefetching: true })
 
-      // Em panelContext, expandir collapsible para tornar o botão visível
-      if (isPanel) {
-        fireEvent.click(screen.getByText("Ver detalhes do índice"))
-      }
+      expandIfPanel()
 
       // Indicador de refetch visível
       expect(screen.getByText("Atualizando métricas…")).toBeInTheDocument()

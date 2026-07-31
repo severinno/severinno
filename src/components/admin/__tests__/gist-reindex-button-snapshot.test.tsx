@@ -52,12 +52,12 @@ vi.mock("sonner", async () => {
 // Imports from shared mocks
 // ===========================================================================
 
-import type { FetchResponseFn } from "./mocks"
+import type { FetchResponseFn } from "./index"
 import {
   buildReindexSuccessResponse,
   clickExecuteReindex,
   DEFAULT_GIST_REINDEX_PROPS,
-} from "./mocks"
+} from "./index"
 
 let mockFetchResponse: FetchResponseFn
 

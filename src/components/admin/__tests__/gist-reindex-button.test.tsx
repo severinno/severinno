@@ -22,7 +22,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, waitFor, cleanup } from "@/__tests__/test-utils"
+import { render, screen, fireEvent, waitFor, findByText, cleanup } from "@/__tests__/test-utils"
 import { toast } from "sonner"
 import { GistReindexButton } from "../gist-reindex-button"
 
@@ -57,14 +57,14 @@ vi.mock("sonner", async () => {
 // fresh mock. vi.unstubAllGlobals in afterEach removes the previous mock.
 // ============================================================================
 
-import type { FetchResponseFn } from "./mocks"
+import type { FetchResponseFn } from "./index"
 import {
   buildReindexSuccessResponse,
   buildReindexFailureResponse,
   buildReindexSlowResponse,
   clickExecuteReindex,
   DEFAULT_GIST_REINDEX_PROPS,
-} from "./mocks"
+} from "./index"
 
 // ===========================================================================
 // Shared visual state tests
@@ -201,6 +201,22 @@ describe("GistReindexButton", () => {
     expect(screen.getByText(/deadlock detected/)).toBeInTheDocument()
   })
 
+  it("shows 'erro desconhecido' when API failure has no message", async () => {
+    // Response sem campo `message` → fallback "erro desconhecido" (branch ?? da linha 78)
+    mockFetchResponse = () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ success: false, indexes: [], totalDurationMs: 0 }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+
+    renderButton()
+    await clickExecuteReindex()
+
+    expect(screen.getByText(/erro desconhecido/)).toBeInTheDocument()
+  })
+
   it("does NOT call onReindexSuccess when API returns success:false", async () => {
     mockFetchResponse = () => Promise.resolve(buildReindexFailureResponse())
 
@@ -235,6 +251,17 @@ describe("GistReindexButton", () => {
     await clickExecuteReindex()
 
     expect(screen.getByText(/NetworkError/)).toBeInTheDocument()
+  })
+
+  it("stringifies non-Error rejections in the connection error message", async () => {
+    // Rejeição com valor que não é Error → ramo String(err) da linha 82
+    mockFetchResponse = () => Promise.reject("NetworkError: boom")
+
+    renderButton()
+    await clickExecuteReindex()
+
+    expect(screen.getByText(/Erro de conexão/)).toBeInTheDocument()
+    expect(screen.getByText(/NetworkError: boom/)).toBeInTheDocument()
   })
 
   it("does NOT call onReindexSuccess on network error", async () => {
@@ -275,7 +302,7 @@ describe("GistReindexButton", () => {
     expect(screen.getByText("Executando…")).toBeInTheDocument()
 
     // Wait for completion (message contains "sucesso")
-    await screen.findByText(/sucesso/, undefined, { timeout: 2000 })
+    await findByText(/sucesso/, undefined, { timeout: 2000 })
   })
 
   // ── Estados visuais (4 estados do componente) ────────────────────

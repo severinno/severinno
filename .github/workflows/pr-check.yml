@@ -408,6 +408,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: "Guard: no @ts-nocheck in non-generated files"
+        run: bun run check:ts-nocheck
+
       - name: Type check
         run: bunx tsc --noEmit
 
