@@ -12,9 +12,12 @@ import {
   slugify,
   CATEGORY_SPEC,
   DEFAULT_SETTINGS,
+  buildPatchedSpec,
   categorySlug,
   categoryOrder,
   buildSeedPlan,
+  validateCategorySpec,
+  assertValidCategorySpec,
   type CategorySeedInput,
   type CurrentCategoryRow,
   type CurrentSettingRow,
@@ -110,6 +113,61 @@ describe("DEFAULT_SETTINGS", () => {
   })
 })
 
+describe("buildPatchedSpec", () => {
+  it("retorna CATEGORY_SPEC inalterado quando raw é ausente", () => {
+    expect(buildPatchedSpec(undefined, true)).toBe(CATEGORY_SPEC)
+    expect(buildPatchedSpec("", true)).toBe(CATEGORY_SPEC)
+  })
+
+  it("retorna CATEGORY_SPEC inalterado quando o patch está desabilitado (produção)", () => {
+    const raw = JSON.stringify([{ name: "Reparos", order: 5 }])
+    expect(buildPatchedSpec(raw, false)).toBe(CATEGORY_SPEC)
+  })
+
+  it("aplica icon/order em update in-place (mesmo slug, sem duplicar)", () => {
+    const spec = buildPatchedSpec(
+      JSON.stringify([
+        { name: "Elétrica", icon: "bolt" },
+        { name: "Reparos", order: 5 },
+      ]),
+      true,
+    )
+    expect(spec).toHaveLength(CATEGORY_SPEC.length)
+    const eletrica = spec.find((c) => c.name === "Elétrica")!
+    expect(eletrica.icon).toBe("bolt")
+    expect(categorySlug(eletrica)).toBe("eletrica-reparos")
+    const reparos = spec.find((c) => c.name === "Reparos")!
+    expect(reparos.order).toBe(5)
+    expect(categorySlug(reparos)).toBe("reparos")
+    // itens não patchados permanecem intactos
+    const limpeza = spec.find((c) => c.name === "Limpeza")!
+    expect(limpeza.icon).toBe("sparkles")
+    expect(limpeza.order).toBeUndefined()
+  })
+
+  it("renameTo renomeia o item e reparenta os filhos em cascata (um nível)", () => {
+    const spec = buildPatchedSpec(
+      JSON.stringify([{ name: "Elétrica", renameTo: "Eletricidade" }]),
+      true,
+    )
+    expect(spec).toHaveLength(CATEGORY_SPEC.length)
+    // item renomeado — slug embute o pai
+    const eletricidade = spec.find((c) => c.name === "Eletricidade")!
+    expect(eletricidade.parent).toBe("Reparos")
+    expect(categorySlug(eletricidade)).toBe("eletricidade-reparos")
+    // filhos passam a referenciar o nome novo (cascata)
+    const tomadas = spec.find((c) => c.name === "Tomadas e interruptores")!
+    expect(tomadas.parent).toBe("Eletricidade")
+    expect(categorySlug(tomadas)).toBe("tomadas-e-interruptores-eletricidade")
+    // a árvore patchada continua estruturalmente válida (fail-fast não dispara)
+    expect(() => assertValidCategorySpec(spec)).not.toThrow()
+  })
+
+  it("lança Error para JSON inválido (fail-fast antes de qualquer escrita)", () => {
+    expect(() => buildPatchedSpec("{não é json", true)).toThrow(/SEED_SPEC_PATCH inválido/)
+  })
+})
+
 describe("buildSeedPlan", () => {
   it("banco vazio → tudo create (27 categorias + 9 settings)", () => {
     const plan = buildSeedPlan([], [])
@@ -195,5 +253,90 @@ describe("buildSeedPlan", () => {
     const limpezaAction = plan.categories.find((a) => a.slug === "limpeza")!
     // active não é comparado — então continua unchanged (não há mudanças de estrutura)
     expect(limpezaAction.action).toBe("unchanged")
+  })
+})
+
+describe("validateCategorySpec", () => {
+  it("spec canônico é válido (zero issues)", () => {
+    expect(validateCategorySpec(CATEGORY_SPEC)).toEqual([])
+  })
+
+  it("detecta nomes duplicados (ambiguidade do catByName por nome)", () => {
+    const spec: CategorySeedInput[] = [
+      { name: "Reparos", level: 0 },
+      // segundo "Residencial" — resolução de parent por nome ficaria ambígua
+      { name: "Residencial", parent: "Reparos", level: 1 },
+      { name: "Residencial", parent: "Reparos", level: 1, icon: "x" },
+    ]
+    const issues = validateCategorySpec(spec)
+    expect(issues.some((i) => i.includes("nome duplicado 'Residencial'"))).toBe(true)
+    // assertValidCategorySpec lança (fail-fast antes de qualquer escrita)
+    expect(() => assertValidCategorySpec(spec)).toThrow(/CATEGORY_SPEC inválido/)
+  })
+
+  it("detecta parent inexistente (typo viraria parentId=null silencioso)", () => {
+    const spec: CategorySeedInput[] = [
+      { name: "Reparos", level: 0 },
+      { name: "Elétrica", parent: "Repparos", level: 1 }, // typo
+    ]
+    const issues = validateCategorySpec(spec)
+    expect(issues.some((i) => i.includes("parent inexistente 'Repparos'"))).toBe(true)
+    expect(() => assertValidCategorySpec(spec)).toThrow()
+  })
+
+  it("detecta parent com level >= filho (árvore quebrada)", () => {
+    const spec: CategorySeedInput[] = [
+      { name: "Reparos", level: 0 },
+      { name: "Elétrica", parent: "Reparos", level: 1 },
+      { name: "Tomadas", parent: "Elétrica", level: 1 }, // deveria ser level 2
+    ]
+    const issues = validateCategorySpec(spec)
+    expect(
+      issues.some((i) => i.includes("'Tomadas' (level 1) tem parent 'Elétrica' (level 1)")),
+    ).toBe(true)
+  })
+
+  it("detecta level 0 com parent (pais só podem ser raiz)", () => {
+    const spec: CategorySeedInput[] = [
+      { name: "Reparos", level: 0 },
+      { name: "Limpeza", parent: "Reparos", level: 0 }, // level 0 não pode ter parent
+    ]
+    const issues = validateCategorySpec(spec)
+    expect(issues.some((i) => i.includes("é level 0 mas tem parent"))).toBe(true)
+  })
+
+  it("detecta level > 0 sem parent (filhos só existem sob um pai)", () => {
+    const spec: CategorySeedInput[] = [
+      { name: "Reparos", level: 0 },
+      { name: "Elétrica", level: 1 }, // sem parent
+    ]
+    const issues = validateCategorySpec(spec)
+    expect(issues.some((i) => i.includes("não tem parent"))).toBe(true)
+  })
+
+  it("não acusa falsa colisão quando nomes slugificam igual mas em níveis/país diferentes", () => {
+    // "Pós-Obra" (level 0) e "Pos Obra" (filho de "Pós-Obra") têm nomes que
+    // slugificam para o mesmo token, mas os slugs NÃO colidem porque o filho
+    // herda o slug do pai ("pos-obra-pos-obra" ≠ "pos-obra").
+    const spec: CategorySeedInput[] = [
+      { name: "Pós-Obra", level: 0 },
+      { name: "Pos Obra", parent: "Pós-Obra", level: 1 },
+    ]
+    expect(validateCategorySpec(spec)).toEqual([])
+  })
+
+  it("detecta colisão real de slug (dois filhos do MESMO parent com slugify igual)", () => {
+    const spec: CategorySeedInput[] = [
+      { name: "Reparos", level: 0 },
+      { name: "Pós-Obra", parent: "Reparos", level: 1 },
+      { name: "Pos Obra", parent: "Reparos", level: 1 },
+    ]
+    const issues = validateCategorySpec(spec)
+    expect(issues.some((i) => i.includes("slug duplicado 'pos-obra-reparos'"))).toBe(true)
+    expect(() => assertValidCategorySpec(spec)).toThrow()
+  })
+
+  it("assertValidCategorySpec passa sem lançar no spec canônico", () => {
+    expect(() => assertValidCategorySpec(CATEGORY_SPEC)).not.toThrow()
   })
 })

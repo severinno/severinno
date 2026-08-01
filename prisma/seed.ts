@@ -10,9 +10,29 @@
 import { PrismaClient } from "@prisma/client"
 import { hashPassword } from "../src/lib/crypto"
 import { isDemoAccountsEnabled } from "../src/lib/demo-accounts"
-import { CATEGORY_SPEC, DEFAULT_SETTINGS, categorySlug, categoryOrder } from "./seed-data"
+import {
+  DEFAULT_SETTINGS,
+  buildPatchedSpec,
+  categorySlug,
+  categoryOrder,
+  assertValidCategorySpec,
+  type CategorySeedInput,
+} from "./seed-data"
 
 const db = new PrismaClient()
+
+// ── SEED_SPEC_PATCH: hook de teste p/ cenários de UPDATE e RENAME ────────
+// Mesmo padrão do seed-prod (helper compartilhado buildPatchedSpec em
+// seed-data.ts): permite ao E2E (scripts/test-seed-dev-e2e.ts) validar que o
+// loop de criação de categorias reflete um spec mutado. O seed de dev faz
+// wipe+recreate, então o patch flui direto pela criação — sem órfãs (diferente
+// do upsert do seed-prod). SÓ é aplicado fora de produção: o gate usa o mesmo
+// isDemoAccountsEnabled do guard abaixo — em NODE_ENV=production o SPEC ===
+// CATEGORY_SPEC e o guard de contas demo recusa ANTES de qualquer escrita.
+const SPEC: CategorySeedInput[] = buildPatchedSpec(
+  process.env.SEED_SPEC_PATCH,
+  isDemoAccountsEnabled(),
+)
 
 // São Paulo downtown reference (-23.55, -46.63)
 const SP_LAT = -23.55
@@ -38,6 +58,13 @@ async function main() {
     // rode o seed em produção DEVE falhar, não reportar sucesso.
     throw new Error("Seed recusado: produção não pode criar contas demo")
   }
+
+  // ── Validação estrutural do spec (fail-fast ANTES de qualquer escrita) ──
+  // Mesma proteção do seed-prod: nomes duplicados / parent inexistente /
+  // level incoerente corromperiam a árvore silenciosamente (catByName é
+  // chaveado por nome — um typo viraria parentId=null sem esta validação).
+  // Valida o SPEC efetivo (CATEGORY_SPEC ou o patchado via SEED_SPEC_PATCH).
+  assertValidCategorySpec(SPEC)
 
   // --- wipe (order matters for FKs) -------------------------------
   console.log("   • wiping existing data...")
@@ -273,8 +300,8 @@ async function main() {
   // --- CATEGORIES (3-level tree) ----------------------------------
   console.log("   • creating categories...")
   const catByName: Record<string, { id: string }> = {}
-  // sort so parents come first
-  const sorted = [...CATEGORY_SPEC].sort((a, b) => a.level - b.level)
+  // sort so parents come first (SPEC pode ser o canônico ou o patchado)
+  const sorted = [...SPEC].sort((a, b) => a.level - b.level)
   for (const c of sorted) {
     const parent = c.parent ? catByName[c.parent] : null
     const created = await db.category.create({
