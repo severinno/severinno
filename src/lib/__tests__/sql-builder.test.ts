@@ -53,7 +53,7 @@ describe("buildProviderWhereClause — base filters", () => {
 
 describe("buildProviderWhereClause — PostGIS radius", () => {
   it("adds ST_DWithin clause with correct radius in meters", () => {
-    const [sql, params] = buildProviderWhereClause({
+    const [sql, _params] = buildProviderWhereClause({
       centerGeo: { lat: -23.5505, lng: -46.6333, radiusKm: 10 },
     })
 
@@ -139,7 +139,7 @@ describe("buildProviderWhereClause — full-text search", () => {
   })
 
   it("sanitizes HTML-like characters", () => {
-    const [sql, params] = buildProviderWhereClause({
+    const [_sql, params] = buildProviderWhereClause({
       q: "<script>alert('xss')</script>",
     })
 
@@ -254,11 +254,11 @@ describe("buildProviderWhereClause — combined filters", () => {
     expect(sql).toContain("to_tsquery('portuguese', $3)")
     expect(sql).toContain("IN ($4,$5)")
 
-    expect(params[0]).toBe(-46.63)  // $1 = lng
-    expect(params[1]).toBe(-23.55)  // $2 = lat
-    expect(params[2]).toBe("pintor:*")  // $3 = search
-    expect(params[3]).toBe("cat-a")  // $4
-    expect(params[4]).toBe("cat-b")  // $5
+    expect(params[0]).toBe(-46.63) // $1 = lng
+    expect(params[1]).toBe(-23.55) // $2 = lat
+    expect(params[2]).toBe("pintor:*") // $3 = search
+    expect(params[3]).toBe("cat-a") // $4
+    expect(params[4]).toBe("cat-b") // $5
   })
 
   it("combines radius + search (no category)", () => {

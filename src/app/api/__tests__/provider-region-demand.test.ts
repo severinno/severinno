@@ -165,7 +165,7 @@ describe("GET /api/provider/region-demand — no location configured", () => {
     setSession()
     mockProvider({ lat: null })
 
-    const req = createMockRequest()
+    const _req = createMockRequest()
     const res = await GET()
     const parsed = await parseResponse(res)
 

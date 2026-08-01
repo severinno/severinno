@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { hashPassword } from "@/lib/crypto"
-import { handleError, badRequest } from "@/lib/api-server"
+import { handleError } from "@/lib/api-server"
 import logger from "@/lib/logger"
+import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
 import { withRateLimit } from "@/lib/with-rate-limit"
 
@@ -13,10 +14,7 @@ export const POST = withRateLimit(async (request: Request) => {
     const password = (body.password as string | undefined)?.trim()
 
     if (!token || !password) {
-      return NextResponse.json(
-        { error: "Token e nova senha são obrigatórios." },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "Token e nova senha são obrigatórios." }, { status: 400 })
     }
 
     if (password.length < 6) {
@@ -29,7 +27,7 @@ export const POST = withRateLimit(async (request: Request) => {
     // Find the token
     const resetToken = await db.resetToken.findUnique({
       where: { token },
-      include: { user: { select: { id: true, active: true } } },
+      include: { user: { select: { id: true, active: true, email: true } } },
     })
 
     if (!resetToken) {
@@ -56,6 +54,16 @@ export const POST = withRateLimit(async (request: Request) => {
     if (!resetToken.user.active) {
       return NextResponse.json(
         { error: "Conta desativada. Entre em contato com o suporte." },
+        { status: 400 },
+      )
+    }
+
+    // 🛡️ Contas demo são dev/staging only — mesmo com token válido (criado em
+    // dev contra banco compartilhado, ou por fluxo anterior ao gate), em
+    // produção o reset é recusado. Resposta genérica para não revelar motivo.
+    if (!isDemoAccountsEnabled() && isDemoAccountEmail(resetToken.user.email)) {
+      return NextResponse.json(
+        { error: "Token inválido. Solicite uma nova redefinição de senha." },
         { status: 400 },
       )
     }

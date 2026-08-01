@@ -68,13 +68,11 @@ export type BookingWhereClauseBuilder = (
  *   providerId: "prov-123",
  *   status: "PENDING",
  * })
- * // sql:   "\"deletedAt\" IS NULL AND \"providerId\" = $1 AND \"status\" = $2"
+ * // sql:   ""deletedAt" IS NULL AND "providerId" = $1 AND "status" = $2"
  * // params: ["prov-123", "PENDING"]
  * ```
  */
-export function buildBookingWhereClause(
-  opts: BuildBookingWhereClauseOptions,
-): [string, unknown[]] {
+export function buildBookingWhereClause(opts: BuildBookingWhereClauseOptions): [string, unknown[]] {
   const {
     clientId,
     providerId,
@@ -85,45 +83,45 @@ export function buildBookingWhereClause(
     createdAtBefore,
   } = opts
 
-  const conditions: string[] = [`b.\"deletedAt\" IS NULL`]
+  const conditions: string[] = [`b."deletedAt" IS NULL`]
   const params: unknown[] = []
   let idx = 0
 
   // Client filter
   if (clientId) {
-    conditions.push(`b.\"clientId\" = $${++idx}`)
+    conditions.push(`b."clientId" = $${++idx}`)
     params.push(clientId)
   }
 
   // Provider filter
   if (providerId) {
-    conditions.push(`b.\"providerId\" = $${++idx}`)
+    conditions.push(`b."providerId" = $${++idx}`)
     params.push(providerId)
   }
 
   // Status filter
   if (status) {
-    conditions.push(`b.\"status\" = $${++idx}`)
+    conditions.push(`b."status" = $${++idx}`)
     params.push(status)
   }
 
   // Scheduled date range
   if (scheduledAfter) {
-    conditions.push(`b.\"scheduledAt\" >= $${++idx}::timestamptz`)
+    conditions.push(`b."scheduledAt" >= $${++idx}::timestamptz`)
     params.push(scheduledAfter)
   }
   if (scheduledBefore) {
-    conditions.push(`b.\"scheduledAt\" <= $${++idx}::timestamptz`)
+    conditions.push(`b."scheduledAt" <= $${++idx}::timestamptz`)
     params.push(scheduledBefore)
   }
 
   // Created date range
   if (createdAtAfter) {
-    conditions.push(`b.\"createdAt\" >= $${++idx}::timestamptz`)
+    conditions.push(`b."createdAt" >= $${++idx}::timestamptz`)
     params.push(createdAtAfter)
   }
   if (createdAtBefore) {
-    conditions.push(`b.\"createdAt\" <= $${++idx}::timestamptz`)
+    conditions.push(`b."createdAt" <= $${++idx}::timestamptz`)
     params.push(createdAtBefore)
   }
 

@@ -331,10 +331,15 @@ async function main() {
 
   try {
     // Self-provisioning: a fresh postgis container (POSTGRES_DB vem de
-    // template1) NÃO tem a extensão habilitada — sem ela o checkPostGIS
-    // falha. CREATE EXTENSION IF NOT EXISTS torna o script robusto tanto
-    // para CI quanto para runs locais, sem depender de passo externo.
-    await query("CREATE EXTENSION IF NOT EXISTS postgis")
+    // template1) normalmente NÃO tem a extensão habilitada — sem ela o
+    // checkPostGIS falha. CREATE EXTENSION IF NOT EXISTS torna o script
+    // robusto tanto para CI quanto para runs locais. O docker-postgis pode
+    // carregar a extensão logo após o servidor aceitar conexões (race) — um
+    // erro duplicate key nesse caso significa que ela JÁ ESTÁ presente (o
+    // que é aceitável, não é falha de conexão nem de imagem).
+    await query("CREATE EXTENSION IF NOT EXISTS postgis").catch((e) => {
+      if (!/already exists|duplicate key/i.test(e.message ?? "")) throw e
+    })
     const pgVer = await checkPostGIS()
     console.log(`  PostgreSQL:   ${pgVer}`)
   } catch (e) {

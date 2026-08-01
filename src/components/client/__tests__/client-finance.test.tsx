@@ -98,7 +98,7 @@ vi.mock("@/components/ui/tabs", () => ({
   Tabs: ({
     children,
     value,
-    onValueChange,
+    onValueChange: _onValueChange,
   }: {
     children: React.ReactNode
     value?: string
@@ -194,7 +194,7 @@ vi.mock("@/components/client/client-shared", () => ({
   StatusBadge: ({
     children,
     tone,
-    icon,
+    icon: _icon,
   }: {
     children?: React.ReactNode
     tone?: string

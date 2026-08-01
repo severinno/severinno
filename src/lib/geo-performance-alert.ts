@@ -356,7 +356,7 @@ export function resetPerformanceAlertState(): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createEmptyResult(svc: GeoServiceName): PerformanceCheckResult {
+function createEmptyResult(_svc: GeoServiceName): PerformanceCheckResult {
   return {
     p95: 0,
     threshold: 0,

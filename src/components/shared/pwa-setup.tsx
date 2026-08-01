@@ -17,14 +17,13 @@ import * as React from "react"
 function getStandaloneMode(): "standalone" | "browser" | "unknown" {
   if (typeof window === "undefined") return "unknown"
   if (window.matchMedia("(display-mode: standalone)").matches) return "standalone"
-  if ((window.navigator as any).standalone === true) return "standalone"
+  if ((window.navigator as Navigator & { standalone?: boolean }).standalone === true)
+    return "standalone"
   return "browser"
 }
 
 export function useStandaloneMode() {
-  const [mode, setMode] = React.useState<ReturnType<typeof getStandaloneMode>>(
-    "unknown",
-  )
+  const [mode, setMode] = React.useState<ReturnType<typeof getStandaloneMode>>("unknown")
 
   React.useEffect(() => {
     setMode(getStandaloneMode())

@@ -132,43 +132,43 @@ export const checkoutMachine = setup({
       on: {
         SET_SERVICE: {
           target: "address",
-          actions: "setService" as any,
+          actions: "setService",
         },
       },
     },
     address: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
         SET_ADDRESS: {
           target: "payment",
-          actions: "setAddress" as any,
+          actions: "setAddress",
           guard: "hasAddress",
         },
         SET_SCHEDULE: {
-          actions: "setSchedule" as any,
+          actions: "setSchedule",
         },
         BACK: { target: "cart" },
       },
     },
     payment: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
         SET_PAYMENT: {
           target: "review",
-          actions: "setPayment" as any,
+          actions: "setPayment",
           guard: "hasPayment",
         },
         SET_ADDRESS: {
-          actions: "setAddress" as any,
+          actions: "setAddress",
           guard: "hasAddress",
         },
         BACK: { target: "address" },
       },
     },
     review: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
-        SET_NOTES: { actions: "setNotes" as any },
+        SET_NOTES: { actions: "setNotes" },
         SUBMIT: {
           target: "submitting",
           guard: "hasService",
@@ -178,7 +178,7 @@ export const checkoutMachine = setup({
     },
     submitting: {
       on: {
-        ERROR: { target: "error", actions: "setError" as any },
+        ERROR: { target: "error", actions: "setError" },
       },
       after: {
         "5000": { target: "confirmed" },
@@ -187,14 +187,14 @@ export const checkoutMachine = setup({
     confirmed: {
       type: "final",
       on: {
-        RESET: { target: "cart", actions: "resetContext" as any },
+        RESET: { target: "cart", actions: "resetContext" },
       },
     },
     error: {
       on: {
-        RETRY: { target: "submitting", actions: "clearError" as any },
-        BACK: { target: "review", actions: "clearError" as any },
-        RESET: { target: "cart", actions: "resetContext" as any },
+        RETRY: { target: "submitting", actions: "clearError" },
+        BACK: { target: "review", actions: "clearError" },
+        RESET: { target: "cart", actions: "resetContext" },
       },
     },
   },

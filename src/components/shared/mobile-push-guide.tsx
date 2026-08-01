@@ -5,7 +5,7 @@ import { Bell, Smartphone, MessageCircle, Shield, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isPushSupported, useMobileOS, useStandaloneMode } from "./pwa-setup"
 
-type Platform = "ios" | "android" | "desktop" | null
+type _Platform = "ios" | "android" | "desktop" | null
 
 /**
  * Mobile Push Guide — mostra instruções específicas para ativar notificações
@@ -24,7 +24,7 @@ export function MobilePushGuide() {
   if (!isMobile) return null // Desktop já tem PushToggle no header
 
   return (
-    <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
+    <div className="bg-card text-card-foreground rounded-lg border shadow-sm">
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
@@ -33,21 +33,19 @@ export function MobilePushGuide() {
         <div className="flex items-center gap-3">
           <Smartphone className="size-5 text-emerald-600" />
           <div>
-            <p className="text-sm font-semibold">
-              Notificações no celular
-            </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm font-semibold">Notificações no celular</p>
+            <p className="text-muted-foreground text-xs">
               {pushSupported
                 ? "Seu dispositivo suporta notificações push"
                 : "Ative pelo WhatsApp como alternativa"}
             </p>
           </div>
         </div>
-        <Info className="size-4 text-muted-foreground shrink-0" />
+        <Info className="text-muted-foreground size-4 shrink-0" />
       </button>
 
       {expanded && (
-        <div className="border-t px-4 pb-4 pt-3 space-y-3">
+        <div className="space-y-3 border-t px-4 pt-3 pb-4">
           {/* Web Push disponível */}
           {pushSupported && (
             <div className="space-y-2">
@@ -57,52 +55,44 @@ export function MobilePushGuide() {
               </div>
 
               {os === "ios" && standalone !== "standalone" && (
-                <div className="ml-6 space-y-1 rounded-lg bg-muted/50 p-3 text-xs">
-                  <p className="font-medium text-amber-600">
-                    ⚠️ Notificações no iOS
-                  </p>
+                <div className="bg-muted/50 ml-6 space-y-1 rounded-lg p-3 text-xs">
+                  <p className="font-medium text-amber-600">⚠️ Notificações no iOS</p>
                   <p>
-                    O Safari no iPhone só recebe notificações push se o app
-                    estiver instalado na Tela de Início (PWA).
+                    O Safari no iPhone só recebe notificações push se o app estiver instalado na
+                    Tela de Início (PWA).
                   </p>
-                  <ol className="mt-1 list-decimal pl-4 space-y-0.5 text-muted-foreground">
+                  <ol className="text-muted-foreground mt-1 list-decimal space-y-0.5 pl-4">
                     <li>
                       Toque em <strong>Compartilhar</strong> (📤) no Safari
                     </li>
                     <li>
-                      Role e toque em{" "}
-                      <strong>Adicionar à Tela de Início</strong>
+                      Role e toque em <strong>Adicionar à Tela de Início</strong>
                     </li>
-                    <li>
-                      Adicione e depois ative as notificações no sino 🔔
-                    </li>
+                    <li>Adicione e depois ative as notificações no sino 🔔</li>
                   </ol>
                 </div>
               )}
 
               {os === "android" && (
-                <div className="ml-6 text-xs text-muted-foreground">
+                <div className="text-muted-foreground ml-6 text-xs">
                   <p>
-                    ✅ Notificações push funcionam no Chrome Android. Toque
-                    no sino 🔔 no topo da página para ativar.
+                    ✅ Notificações push funcionam no Chrome Android. Toque no sino 🔔 no topo da
+                    página para ativar.
                   </p>
                 </div>
               )}
 
               {standalone === "standalone" && (
                 <div className="ml-6 text-xs text-emerald-600">
-                  <p>
-                    ✅ App instalado! As notificações push chegam mesmo com
-                    o app fechado.
-                  </p>
+                  <p>✅ App instalado! As notificações push chegam mesmo com o app fechado.</p>
                 </div>
               )}
 
-              <div className="ml-6 flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="text-muted-foreground ml-6 flex items-center gap-2 text-xs">
                 <Shield className="size-3" />
                 <span>
-                  Criptografadas ponta-a-ponta via VAPID. Nenhum dado pessoal
-                  é compartilhado com terceiros.
+                  Criptografadas ponta-a-ponta via VAPID. Nenhum dado pessoal é compartilhado com
+                  terceiros.
                 </span>
               </div>
             </div>
@@ -114,22 +104,22 @@ export function MobilePushGuide() {
               <MessageCircle className="size-4 text-emerald-600" />
               <span className="font-medium">WhatsApp (fallback)</span>
             </div>
-            <div className="ml-6 text-xs text-muted-foreground space-y-1">
+            <div className="text-muted-foreground ml-6 space-y-1 text-xs">
               <p>
-                Se as notificações push não funcionarem no seu dispositivo,
-                você pode receber avisos importantes via WhatsApp.
+                Se as notificações push não funcionarem no seu dispositivo, você pode receber avisos
+                importantes via WhatsApp.
               </p>
               <p>
-                Basta manter seu número de WhatsApp atualizado no seu perfil
-                e ativar a opção nas preferências de notificação.
+                Basta manter seu número de WhatsApp atualizado no seu perfil e ativar a opção nas
+                preferências de notificação.
               </p>
             </div>
           </div>
 
           {/* Comparativo */}
-          <div className="rounded-lg bg-muted/30 p-3 text-xs">
-            <p className="font-medium mb-1">📊 Comparativo de canais</p>
-            <div className="grid grid-cols-3 gap-2 text-center mt-2">
+          <div className="bg-muted/30 rounded-lg p-3 text-xs">
+            <p className="mb-1 font-medium">📊 Comparativo de canais</p>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-center">
               <div className="space-y-1">
                 <p className="font-semibold text-emerald-600">Push</p>
                 <p className="text-muted-foreground">Imediato</p>
@@ -149,9 +139,9 @@ export function MobilePushGuide() {
                 <p className="text-muted-foreground">Não criptografado</p>
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-2">
-              * WhatsApp Messenger é gratuito. Consumo de dados móveis pode
-              ser cobrado pela operadora.
+            <p className="text-muted-foreground mt-2 text-[10px]">
+              * WhatsApp Messenger é gratuito. Consumo de dados móveis pode ser cobrado pela
+              operadora.
             </p>
           </div>
         </div>
@@ -180,7 +170,7 @@ export function MobilePushStatus() {
   if (!os) return null
 
   return (
-    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
       <div
         className={cn(
           "size-2 rounded-full",

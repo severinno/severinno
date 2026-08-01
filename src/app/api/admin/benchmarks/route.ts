@@ -443,7 +443,7 @@ function pct(a: number, b: number): number {
 }
 
 /** Compute diff between two benchmark points. */
-function diffPoint(
+function _diffPoint(
   baseline: BenchmarkPoint | undefined,
   current: BenchmarkPoint | undefined,
 ): BenchmarkDiffEntry["mean"] | null {

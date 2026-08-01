@@ -29,7 +29,6 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -41,15 +40,11 @@ import {
   FormMessage,
   FormDescription,
 } from "@/components/ui/form"
-import {
-  loginSchema,
-  registerSchema,
-  type LoginInput,
-  type RegisterInput,
-} from "@/lib/validators"
+import { loginSchema, registerSchema, type LoginInput, type RegisterInput } from "@/lib/validators"
 import { useUIStore, type AuthModalMode, type AuthModalRole } from "@/store/ui"
 import { useAuthStore, type AuthUser } from "@/store/auth"
 import { useViewStore } from "@/store/view"
+import { isDemoAccountsEnabled } from "@/lib/demo-accounts"
 import { cn } from "@/lib/utils"
 
 /**
@@ -87,18 +82,16 @@ export function AuthModal() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : closeAuth())}>
-      <DialogContent className="sm:max-w-md gap-0 p-0 overflow-hidden">
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md">
         {/* Header — emerald gradient + brand mark */}
-        <div className="relative bg-gradient-to-b from-emerald-50 to-background dark:from-emerald-950/40 px-6 pt-6 pb-4">
+        <div className="to-background relative bg-gradient-to-b from-emerald-50 px-6 pt-6 pb-4 dark:from-emerald-950/40">
           <DialogHeader className="space-y-2">
             <div className="flex items-center gap-2">
-              <div className="inline-flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+              <div className="bg-primary text-primary-foreground inline-flex size-9 items-center justify-center rounded-xl shadow-sm">
                 <Wrench className="size-5" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-muted-foreground leading-tight">
-                  Severinno
-                </p>
+              <div className="min-w-0 flex-1">
+                <p className="text-muted-foreground text-xs leading-tight font-medium">Severinno</p>
                 <DialogTitle className="text-xl leading-tight">
                   {localMode === "login" ? "Entrar" : "Cadastrar"}
                 </DialogTitle>
@@ -119,16 +112,16 @@ export function AuthModal() {
         >
           {/* Pill-style toggle */}
           <div className="px-6 pt-1">
-            <TabsList className="grid w-full grid-cols-2 h-auto bg-muted/60 p-1 rounded-full">
+            <TabsList className="bg-muted/60 grid h-auto w-full grid-cols-2 rounded-full p-1">
               <TabsTrigger
                 value="login"
-                className="rounded-full py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm text-muted-foreground data-[state=active]:font-medium"
+                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground rounded-full py-1.5 data-[state=active]:font-medium data-[state=active]:shadow-sm"
               >
                 Entrar
               </TabsTrigger>
               <TabsTrigger
                 value="register"
-                className="rounded-full py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm text-muted-foreground data-[state=active]:font-medium"
+                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground rounded-full py-1.5 data-[state=active]:font-medium data-[state=active]:shadow-sm"
               >
                 Cadastrar
               </TabsTrigger>
@@ -168,16 +161,22 @@ export function AuthModal() {
  * Demo credentials surfaced on the login form so first-time visitors can try
  * the platform without registering. Each row exposes a "Copiar" button that
  * copies only the e-mail to the clipboard and fires a sonner toast.
+ *
+ * DEV/STAGING ONLY: em produção o array fica vazio (NODE_ENV é substituído
+ * estaticamente pelo bundler) e o bloco demo não é renderizado — uma
+ * credencial de admin permanente com senha conhecida é bloqueador de release.
  */
 const DEMO_ACCOUNTS: ReadonlyArray<{
   email: string
   password: string
   role: string
-}> = [
-  { email: "admin@severinno.com", password: "admin123", role: "Administrador" },
-  { email: "cliente@severinno.com", password: "cliente123", role: "Cliente" },
-  { email: "joao@severinno.com", password: "provider123", role: "Prestador" },
-]
+}> = isDemoAccountsEnabled()
+  ? [
+      { email: "admin@severinno.com", password: "admin123", role: "Administrador" },
+      { email: "cliente@severinno.com", password: "cliente123", role: "Cliente" },
+      { email: "joao@severinno.com", password: "provider123", role: "Prestador" },
+    ]
+  : []
 
 function LoginForm({
   onSuccess,
@@ -191,6 +190,9 @@ function LoginForm({
   const [loading, setLoading] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
   const [showPassword, setShowPassword] = React.useState(false)
+  // Re-avaliado em render-time: em produção o bloco demo é ocultado mesmo
+  // que o array module-level já tenha sido eliminado pelo bundler.
+  const demoAccounts = isDemoAccountsEnabled() ? DEMO_ACCOUNTS : []
 
   const form = useForm<LoginInput>({
     // Cast around Zod 4's `z.coerce.number().optional()` typing, which
@@ -223,10 +225,7 @@ function LoginForm({
 
   return (
     <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="grid gap-4 p-6 pt-4"
-      >
+      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 p-6 pt-4">
         <FormField
           control={form.control}
           name="email"
@@ -235,7 +234,7 @@ function LoginForm({
               <FormLabel className="text-sm font-medium">E-mail</FormLabel>
               <FormControl>
                 <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Mail className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                   <Input
                     type="email"
                     autoComplete="email"
@@ -258,11 +257,7 @@ function LoginForm({
                 <FormLabel className="text-sm font-medium">Senha</FormLabel>
                 <button
                   type="button"
-                  onClick={() =>
-                    toast.info(
-                      "Recuperação de senha disponível em breve.",
-                    )
-                  }
+                  onClick={() => toast.info("Recuperação de senha disponível em breve.")}
                   className="text-xs text-emerald-700 hover:underline dark:text-emerald-400"
                 >
                   Esqueci a senha
@@ -270,26 +265,22 @@ function LoginForm({
               </div>
               <FormControl>
                 <div className="relative">
-                  <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Lock className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                   <Input
                     type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     placeholder="••••••"
-                    className="h-10 pl-9 pr-9 text-sm"
+                    className="h-10 pr-9 pl-9 text-sm"
                     {...field}
                   />
                   <button
                     type="button"
                     tabIndex={-1}
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2 transition-colors"
                     aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                   >
-                    {showPassword ? (
-                      <EyeOff className="size-4" />
-                    ) : (
-                      <Eye className="size-4" />
-                    )}
+                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
               </FormControl>
@@ -304,7 +295,7 @@ function LoginForm({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="text-sm text-destructive"
+              className="text-destructive text-sm"
             >
               {formError}
             </motion.p>
@@ -320,48 +311,45 @@ function LoginForm({
           Entrar
         </Button>
 
-        <details className="group -mt-1">
-          <summary className="flex cursor-pointer list-none items-center justify-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-700 dark:hover:text-emerald-400 [&::-webkit-details-marker]:hidden">
-            Ver credenciais de demonstração
-            <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="mt-2 rounded-lg bg-muted/50 p-3 text-xs">
-            <p className="mb-2 text-muted-foreground">
-              Use estas contas para explorar a plataforma antes de se cadastrar.
-            </p>
-            <ul className="space-y-1.5">
-              {DEMO_ACCOUNTS.map((acc) => (
-                <li
-                  key={acc.email}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-foreground">
-                      {acc.email}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {acc.password} · {acc.role}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(acc.email)
-                      toast.success("E-mail copiado")
-                    }}
-                    className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-emerald-700 dark:hover:text-emerald-400"
-                    aria-label={`Copiar e-mail ${acc.email}`}
-                  >
-                    <Copy className="size-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </details>
+        {demoAccounts.length > 0 && (
+          <details className="group -mt-1">
+            <summary className="text-muted-foreground flex cursor-pointer list-none items-center justify-center gap-1 text-xs transition-colors hover:text-emerald-700 dark:hover:text-emerald-400 [&::-webkit-details-marker]:hidden">
+              Ver credenciais de demonstração
+              <ChevronDown className="size-3 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="bg-muted/50 mt-2 rounded-lg p-3 text-xs">
+              <p className="text-muted-foreground mb-2">
+                Use estas contas para explorar a plataforma antes de se cadastrar.
+              </p>
+              <ul className="space-y-1.5">
+                {demoAccounts.map((acc) => (
+                  <li key={acc.email} className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-foreground truncate font-mono">{acc.email}</p>
+                      <p className="text-muted-foreground">
+                        {acc.password} · {acc.role}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(acc.email)
+                        toast.success("E-mail copiado")
+                      }}
+                      className="text-muted-foreground hover:bg-accent inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors hover:text-emerald-700 dark:hover:text-emerald-400"
+                      aria-label={`Copiar e-mail ${acc.email}`}
+                    >
+                      <Copy className="size-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </details>
+        )}
 
-        <div className="text-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground text-center text-sm">
           Não tem conta?{" "}
           <button
             type="button"
@@ -445,10 +433,7 @@ function RegisterForm({
 
   return (
     <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="grid gap-4 p-6 pt-4"
-      >
+      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 p-6 pt-4">
         {/* Role toggle — large selectable cards */}
         <FormField
           control={form.control}
@@ -458,22 +443,20 @@ function RegisterForm({
               <FormLabel className="text-sm font-medium">Tipo de conta</FormLabel>
               <FormControl>
                 <div className="grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      {
-                        value: "CLIENT" as const,
-                        label: "Cliente",
-                        desc: "Peço serviços",
-                        icon: UserRound,
-                      },
-                      {
-                        value: "PROVIDER" as const,
-                        label: "Prestador",
-                        desc: "Ofereço serviços",
-                        icon: ShieldCheck,
-                      },
-                    ]
-                  ).map((opt) => {
+                  {[
+                    {
+                      value: "CLIENT" as const,
+                      label: "Cliente",
+                      desc: "Peço serviços",
+                      icon: UserRound,
+                    },
+                    {
+                      value: "PROVIDER" as const,
+                      label: "Prestador",
+                      desc: "Ofereço serviços",
+                      icon: ShieldCheck,
+                    },
+                  ].map((opt) => {
                     const active = field.value === opt.value
                     const Icon = opt.icon
                     return (
@@ -486,10 +469,10 @@ function RegisterForm({
                         }}
                         aria-pressed={active}
                         className={cn(
-                          "relative flex flex-col items-start gap-1 rounded-lg border p-3 text-left cursor-pointer transition-all",
+                          "relative flex cursor-pointer flex-col items-start gap-1 rounded-lg border p-3 text-left transition-all",
                           active
-                            ? "scale-[1.02] border-solid border-primary bg-primary/5 shadow-sm ring-1 ring-primary"
-                            : "border-dashed border-input hover:border-primary/40 hover:bg-accent/40",
+                            ? "border-primary bg-primary/5 ring-primary scale-[1.02] border-solid shadow-sm ring-1"
+                            : "border-input hover:border-primary/40 hover:bg-accent/40 border-dashed",
                         )}
                       >
                         <Icon
@@ -500,7 +483,7 @@ function RegisterForm({
                         />
                         <span
                           className={cn(
-                            "absolute right-2 top-2 inline-flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity",
+                            "bg-primary text-primary-foreground absolute top-2 right-2 inline-flex size-5 items-center justify-center rounded-full transition-opacity",
                             active ? "opacity-100" : "opacity-0",
                           )}
                           aria-hidden={!active}
@@ -508,9 +491,7 @@ function RegisterForm({
                           <Check className="size-3" />
                         </span>
                         <span className="text-sm font-medium">{opt.label}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {opt.desc}
-                        </span>
+                        <span className="text-muted-foreground text-xs">{opt.desc}</span>
                       </button>
                     )
                   })}
@@ -531,11 +512,7 @@ function RegisterForm({
               <FormItem className="space-y-1.5">
                 <FormLabel className="text-sm font-medium">Nome completo</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Seu nome"
-                    className="h-10 text-sm"
-                    {...field}
-                  />
+                  <Input placeholder="Seu nome" className="h-10 text-sm" {...field} />
                 </FormControl>
                 <FormMessage className="text-xs" />
               </FormItem>
@@ -549,7 +526,7 @@ function RegisterForm({
                 <FormLabel className="text-sm font-medium">E-mail</FormLabel>
                 <FormControl>
                   <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Mail className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                     <Input
                       type="email"
                       autoComplete="email"
@@ -574,26 +551,22 @@ function RegisterForm({
                 <FormLabel className="text-sm font-medium">Senha</FormLabel>
                 <FormControl>
                   <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Lock className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                     <Input
                       type={showPassword ? "text" : "password"}
                       autoComplete="new-password"
                       placeholder="Mínimo 6 caracteres"
-                      className="h-10 pl-9 pr-9 text-sm"
+                      className="h-10 pr-9 pl-9 text-sm"
                       {...field}
                     />
                     <button
                       type="button"
                       tabIndex={-1}
                       onClick={() => setShowPassword((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                      className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2 transition-colors"
                       aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     >
-                      {showPassword ? (
-                        <EyeOff className="size-4" />
-                      ) : (
-                        <Eye className="size-4" />
-                      )}
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>
                 </FormControl>
@@ -609,24 +582,20 @@ function RegisterForm({
                 <FormLabel className="text-sm font-medium">Confirmar senha</FormLabel>
                 <FormControl>
                   <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Lock className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                     <Input
                       type={showConfirmPassword ? "text" : "password"}
                       autoComplete="new-password"
                       placeholder="Repita a senha"
-                      className="h-10 pl-9 pr-9 text-sm"
+                      className="h-10 pr-9 pl-9 text-sm"
                       {...field}
                     />
                     <button
                       type="button"
                       tabIndex={-1}
                       onClick={() => setShowConfirmPassword((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label={
-                        showConfirmPassword
-                          ? "Ocultar senha"
-                          : "Mostrar senha"
-                      }
+                      className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2 transition-colors"
+                      aria-label={showConfirmPassword ? "Ocultar senha" : "Mostrar senha"}
                     >
                       {showConfirmPassword ? (
                         <EyeOff className="size-4" />
@@ -658,13 +627,9 @@ function RegisterForm({
                   <FormItem className="space-y-1.5">
                     <FormLabel className="text-sm font-medium">CPF / CNPJ</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="000.000.000-00"
-                        className="h-10 text-sm"
-                        {...field}
-                      />
+                      <Input placeholder="000.000.000-00" className="h-10 text-sm" {...field} />
                     </FormControl>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-muted-foreground text-xs">
                       Apenas dígitos ou com pontuação.
                     </p>
                     <FormMessage className="text-xs" />
@@ -678,13 +643,9 @@ function RegisterForm({
                   <FormItem className="space-y-1.5">
                     <FormLabel className="text-sm font-medium">WhatsApp</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="(11) 90000-0000"
-                        className="h-10 text-sm"
-                        {...field}
-                      />
+                      <Input placeholder="(11) 90000-0000" className="h-10 text-sm" {...field} />
                     </FormControl>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-muted-foreground text-xs">
                       Clientes usarão para contato direto.
                     </p>
                     <FormMessage className="text-xs" />
@@ -698,11 +659,7 @@ function RegisterForm({
                   <FormItem className="space-y-1.5">
                     <FormLabel className="text-sm font-medium">Cidade</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="São Paulo"
-                        className="h-10 text-sm"
-                        {...field}
-                      />
+                      <Input placeholder="São Paulo" className="h-10 text-sm" {...field} />
                     </FormControl>
                     <FormMessage className="text-xs" />
                   </FormItem>
@@ -720,9 +677,7 @@ function RegisterForm({
                         placeholder="SP"
                         className="h-10 text-sm uppercase"
                         {...field}
-                        onChange={(e) =>
-                          field.onChange(e.target.value.toUpperCase())
-                        }
+                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                       />
                     </FormControl>
                     <FormMessage className="text-xs" />
@@ -736,10 +691,7 @@ function RegisterForm({
         {isProvider && (
           <FormDescription className="flex items-center gap-2 rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
             <BadgeCheck className="size-4 shrink-0 text-emerald-600" />
-            <span>
-              Como prestador, você poderá cadastrar serviços após verificação
-              do perfil.
-            </span>
+            <span>Como prestador, você poderá cadastrar serviços após verificação do perfil.</span>
           </FormDescription>
         )}
 
@@ -749,7 +701,7 @@ function RegisterForm({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="text-sm text-destructive"
+              className="text-destructive text-sm"
             >
               {formError}
             </motion.p>
@@ -765,7 +717,7 @@ function RegisterForm({
           Criar conta
         </Button>
 
-        <div className="text-center text-sm text-muted-foreground">
+        <div className="text-muted-foreground text-center text-sm">
           Já tem conta?{" "}
           <button
             type="button"

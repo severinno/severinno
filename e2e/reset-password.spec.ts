@@ -8,7 +8,7 @@ import { waitForVitrine } from "./helpers"
 
 const VALID_TOKEN = "valid-reset-token-abc123"
 const EXPIRED_TOKEN = "expired-token"
-const USED_TOKEN = "used-token"
+const _USED_TOKEN = "used-token"
 const INVALID_TOKEN = "invalid-token"
 const NEW_PASSWORD = "novaSenha123"
 
@@ -249,7 +249,9 @@ test.describe("Cenários de Erro", () => {
     await page.locator('button[type="submit"]:has-text("Redefinir")').click()
 
     // Deve mostrar mensagem de erro
-    await expect(page.locator("text=/inválido|erro|Token inválido/i")).toBeVisible({ timeout: 10000 })
+    await expect(page.locator("text=/inválido|erro|Token inválido/i")).toBeVisible({
+      timeout: 10000,
+    })
   })
 
   test("pode tentar novamente após erro no reset", async ({ page }) => {

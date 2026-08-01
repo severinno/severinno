@@ -19,13 +19,9 @@ import {
   Pause,
   Play,
   Archive,
-  Trash2,
   Clock,
   CalendarClock,
-  Users,
-  Bell,
   Loader2,
-  AlertTriangle,
   Info,
 } from "lucide-react"
 
@@ -42,7 +38,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -96,7 +91,7 @@ type RecurringResponse = {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const FREQUENCY_LABELS: Record<string, string> = {
+const _FREQUENCY_LABELS: Record<string, string> = {
   daily: "Diário",
   weekly: "Semanal",
   monthly: "Mensal",
@@ -241,7 +236,7 @@ export function AdminPushRecurring() {
   })
 
   const archiveMutation = useMutation({
-    mutationFn: (id: string) => apiDelete("/api/admin/push/recurring", { id }) as any,
+    mutationFn: (id: string) => apiDelete<unknown>("/api/admin/push/recurring", { id }),
     onSuccess: () => {
       toast.success("Agendamento arquivado.")
       queryClient.invalidateQueries({ queryKey: ["admin", "push", "recurring"] })

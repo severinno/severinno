@@ -191,7 +191,6 @@ export async function GET(request: Request) {
       })
     } else {
       // Group by time bucket and aggregate
-      const buckets = new Map<number, ServiceTimelineData[]>()
       // Initialize per-service accumulators
       const perServiceBuckets = new Map<
         number,

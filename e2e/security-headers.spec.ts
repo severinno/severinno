@@ -87,7 +87,9 @@ const SENSITIVE_HEADERS_TO_REMOVE = ["server", "x-powered-by", "x-aspnet-version
 
 let _behindCaddy: boolean | null = null
 
-async function isBehindCaddy(request: import("@playwright/test").APIRequestContext): Promise<boolean> {
+async function isBehindCaddy(
+  request: import("@playwright/test").APIRequestContext,
+): Promise<boolean> {
   if (_behindCaddy !== null) return _behindCaddy
   try {
     const res = await request.get("/")
@@ -129,11 +131,7 @@ function checkSecurityHeader(
 
 // ── Helper: check header is absent ────────────────────────────────────────
 
-function checkHeaderRemoved(
-  response: APIResponse,
-  headerName: string,
-  endpoint: string,
-) {
+function checkHeaderRemoved(response: APIResponse, headerName: string, endpoint: string) {
   const value = getHeader(response, headerName)
   expect(value, `[${endpoint}] "${headerName}" deve estar removido (sem vazamento)`).toBeNull()
 }
@@ -214,7 +212,9 @@ test.describe("Content-Security-Policy (Caddy)", () => {
   })
 
   for (const { directive, severity } of CSP_DIRECTIVES) {
-    test(`${severity === "CRITICAL" ? "🔴" : severity === "HIGH" ? "🟠" : "🟡"} CSP: ${directive}`, async ({ request }) => {
+    test(`${severity === "CRITICAL" ? "🔴" : severity === "HIGH" ? "🟠" : "🟡"} CSP: ${directive}`, async ({
+      request: _request,
+    }) => {
       test.skip(!behindCaddy, "CSP configurado apenas no Caddyfile.prod (requer Caddy)")
       const csp = getHeader(response, "content-security-policy")
       expect(csp, "Content-Security-Policy presente").toBeDefined()
@@ -379,7 +379,9 @@ test.describe("CORS Headers (API)", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe("Resumo — Todos os Endpoints", () => {
-  test("Report: security headers presentes em /, /api/health, /login, /register", async ({ request }) => {
+  test("Report: security headers presentes em /, /api/health, /login, /register", async ({
+    request,
+  }) => {
     const endpoints = ["/", "/api/health", "/login", "/register"]
     const errors: string[] = []
 

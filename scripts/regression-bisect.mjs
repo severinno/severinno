@@ -138,7 +138,7 @@ function getHeadSha() {
 function sanitizeSha(sha) {
   if (!sha) return ""
   // Allow full SHA (40 hex), short SHA (7+ hex), or ref names with alphanumeric, ., -, /
-  return sha.replace(/[^a-fA-F0-9._\-\/]/g, "")
+  return sha.replace(/[^a-fA-F0-9._\-/]/g, "")
 }
 
 function getShortSha(sha) {
@@ -202,7 +202,7 @@ function bisectRun() {
 
   try {
     run(`node "${scriptPath}" --json "${tmpOut}"`)
-  } catch (e) {
+  } catch (_e) {
     console.log(`  ❌ Benchmark failed at this commit — treating as bad`)
     return 1
   }
@@ -319,7 +319,7 @@ function runBisect() {
     try {
       run(`node "${scriptPath}" --json "${baselinePath}"`)
       console.log(`  ✅ Baseline saved to ${baselinePath}`)
-    } catch (e) {
+    } catch (_e) {
       console.error(`❌ Baseline benchmark failed at good commit ${getShortSha(good)}`)
       run(`git checkout "${startSha}" --quiet 2>/dev/null`)
       if (hasStash) run("git stash pop --quiet 2>/dev/null || true")

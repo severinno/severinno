@@ -14,13 +14,12 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { MapPin, Navigation, Star, Loader2, ChevronRight, Wrench } from "lucide-react"
+import { MapPin, Navigation, Star, ChevronRight, Wrench } from "lucide-react"
 
 import { fetchProviders, type ProviderCard } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
 import { useGeoStore } from "@/store/geo"
-import { useUIStore } from "@/store/ui"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"

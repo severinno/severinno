@@ -6,7 +6,6 @@ import {
   categorySchema,
   bookingSchema,
   reviewSchema,
-  quoteSchema,
   messageSchema,
   availabilitySchema,
 } from "../validators"

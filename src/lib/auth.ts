@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { createHmac, timingSafeEqual } from "crypto"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
+import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
 /**
  * Lightweight HMAC-signed session cookie (no JWT lib).
@@ -116,10 +117,15 @@ async function verifyUserActive(userId: string): Promise<boolean> {
 
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { id: true, role: true, active: true },
+    select: { id: true, role: true, active: true, email: true },
   })
 
-  const active = !!user?.active
+  // 🛡️ Defense-in-depth: contas demo são dev/staging only. Mesmo que uma
+  // sessão exista (criada antes do deploy, banco clonado, etc.), em produção
+  // a conta é tratada como inativa — invalida sessões demo de forma retroativa.
+  const demoBlocked = !isDemoAccountsEnabled() && isDemoAccountEmail(user?.email ?? null)
+
+  const active = !!user?.active && !demoBlocked
   await cacheSet(cacheKey, { active, role: user?.role ?? "" }, 300)
   return active
 }

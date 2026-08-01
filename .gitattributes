@@ -1,0 +1,58 @@
+# Normalização de fim de linha — previne o caveat CRLF vs prettier no lint-staged.
+#
+# PROBLEMA (Windows): com `core.autocrlf=true` e SEM .gitattributes, o git
+# converte LF → CRLF no checkout. O prettier (endOfLine: lf) reescreve LF →
+# o lint-staged re-stage o arquivo → diff espúrio + warning
+# "LF will be replaced by CRLF" a cada operação git.
+#
+# SOLUÇÃO: `eol=lf` força LF no checkout INDEPENDENTE do core.autocrlf,
+# tornando o fim de linha determinístico em todas as plataformas (Windows,
+# Linux, macOS/CI) e eliminando o churn do lint-staged.
+
+# Todos os arquivos de texto: git decide por heurística (binários ficam intactos)
+* text=auto
+
+# Texto processado pelo prettier — sempre LF (determinístico em qualquer plataforma)
+*.md   text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.mjs  text eol=lf
+*.cjs  text eol=lf
+*.js   text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.scss text eol=lf
+*.prisma text eol=lf
+*.sql  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.sh   text eol=lf
+Makefile    text eol=lf
+Caddyfile*  text eol=lf
+Dockerfile* text eol=lf
+
+# Dotfiles/config sem extensão — processados pelo prettier ou hooks executáveis
+.prettierrc        text eol=lf
+.prettierignore    text eol=lf
+.editorconfig      text eol=lf
+.gitignore         text eol=lf
+.gitattributes     text eol=lf
+.dockerignore      text eol=lf
+.barrel-lint-ignore text eol=lf
+.env.*.example     text eol=lf
+.husky/*           text eol=lf
+
+# SVG é XML texto — normaliza EOL mas mantém diffs legíveis (prettier já o ignora)
+*.svg  text eol=lf
+
+# Binários — nunca normalizar (bytes \r fazem parte do formato)
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.gif  binary
+*.tar  binary
+*.db   binary
+
+# Dados OSRM (routing) — binários, nunca normalizar
+osrm-data/** binary

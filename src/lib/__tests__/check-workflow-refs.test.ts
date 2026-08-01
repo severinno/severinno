@@ -1,0 +1,268 @@
+/**
+ * check-workflow-refs.test.ts
+ *
+ * Testes unitários das funções PURAS do scripts/check-workflow-refs.mjs (guard
+ * fail-closed que detecta referências quebradas entre workflows e scripts/ +
+ * package.json + reusable workflows locais).
+ *
+ * Cobre:
+ *   - extractScriptRefs: invocações node/bash/bun scripts/X com número de linha,
+ *     ignora comentários/linhas vazias/${{ }}, não casa menções em texto
+ *   - extractPkgScriptRefs: bun|npm|pnpm|yarn run <entry>, não casa bunx/npx
+ *   - extractWorkflowUses: uses: ./.github/workflows/X.yml
+ *   - checkWorkflowFile: script ausente / entry ausente / workflow ausente /
+ *     workflow sem on: workflow_call → violações; tudo resolvido → []
+ *   - scanWorkflows: mescla múltiplos arquivos
+ */
+
+import { describe, it, expect } from "vitest"
+import {
+  extractScriptRefs,
+  extractPkgScriptRefs,
+  extractWorkflowUses,
+  checkWorkflowFile,
+  scanWorkflows,
+} from "../../../scripts/check-workflow-refs.mjs"
+
+// ── Fixtures ─────────────────────────────────────────────────────────────
+
+/** Contexto com TODOS os artefatos resolvidos. */
+function makeCtx(overrides = {}) {
+  return {
+    scripts: new Set(["geo-benchmark-gist.mjs", "check-utf8.sh", "seed.ts"]),
+    pkgScripts: new Set(["test:seed-prod-e2e", "lint", "db:seed:prod"]),
+    workflows: new Set(["seed-guards.yml", "utf8-check.yml"]),
+    workflowCall: new Set(["seed-guards.yml", "utf8-check.yml"]),
+    ...overrides,
+  }
+}
+
+const WORKFLOW_FULL = `name: PR Check
+jobs:
+  bench:
+    steps:
+      - name: GiST benchmark
+        run: node scripts/geo-benchmark-gist.mjs --providers 500,2000
+      - name: Seed prod E2E
+        run: bun run test:seed-prod-e2e --skip-docker
+      - name: Reusable
+        uses: ./.github/workflows/seed-guards.yml
+`
+
+// ── extractScriptRefs ────────────────────────────────────────────────────
+
+describe("extractScriptRefs", () => {
+  it("detecta invocações node/bash/bun com número de linha", () => {
+    const content = `run: |
+  node scripts/geo-benchmark-gist.mjs
+  bash scripts/check-utf8.sh --ci src/
+  bun scripts/seed.ts
+`
+    const refs = extractScriptRefs(content)
+    expect(refs).toHaveLength(3)
+    expect(refs[0]).toMatchObject({ line: 2, ref: "geo-benchmark-gist.mjs" })
+    expect(refs[1]).toMatchObject({ line: 3, ref: "check-utf8.sh" })
+    expect(refs[2]).toMatchObject({ line: 4, ref: "seed.ts" })
+  })
+
+  it("não casa menções em texto sem invocação (sem prefixo node/bash)", () => {
+    const content = `run: |
+  # veja scripts/geo-benchmark-gist.mjs para detalhes
+  echo "docs em scripts/check-utf8.sh"
+  cat README.md
+`
+    expect(extractScriptRefs(content)).toEqual([])
+  })
+
+  it("ignora comentários e linhas vazias; só-${{ }} não gera ref", () => {
+    const content = `# node scripts/geo-benchmark-gist.mjs
+  run: |
+    node scripts/geo-benchmark-gist.mjs
+    node scripts/\${{ matrix.script }}
+`
+    const refs = extractScriptRefs(content)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ line: 3, ref: "geo-benchmark-gist.mjs" })
+  })
+
+  it("valida ref estática mesmo com expressão ${{ }} na mesma linha", () => {
+    const content = `run: node scripts/geo-benchmark-gist.mjs --providers \${{ matrix.providers }}
+`
+    const refs = extractScriptRefs(content)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ line: 1, ref: "geo-benchmark-gist.mjs" })
+  })
+
+  it("suporta python3 scripts/X", () => {
+    const content = `run: python3 scripts/check_utf8.py --ci src/
+`
+    const refs = extractScriptRefs(content)
+    expect(refs[0]).toMatchObject({ ref: "check_utf8.py" })
+  })
+
+  it("aceita caminho com ./ antes de scripts/", () => {
+    const content = `run: node ./scripts/geo-benchmark-gist.mjs --json\n`
+    const refs = extractScriptRefs(content)
+    expect(refs[0]).toMatchObject({ ref: "geo-benchmark-gist.mjs" })
+  })
+})
+
+// ── extractPkgScriptRefs ─────────────────────────────────────────────────
+
+describe("extractPkgScriptRefs", () => {
+  it("detecta bun|npm|pnpm|yarn run <entry>", () => {
+    const content = `run: |
+  bun run test:seed-prod-e2e --skip-docker
+  npm run lint
+  pnpm run db:seed:prod
+  yarn run test:seed-prod-e2e
+`
+    const refs = extractPkgScriptRefs(content)
+    expect(refs).toHaveLength(4)
+    expect(refs[0]).toMatchObject({ line: 2, ref: "test:seed-prod-e2e" })
+    expect(refs[1]).toMatchObject({ line: 3, ref: "lint" })
+    expect(refs[2]).toMatchObject({ line: 4, ref: "db:seed:prod" })
+    expect(refs[3]).toMatchObject({ line: 5, ref: "test:seed-prod-e2e" })
+  })
+
+  it("não casa bunx/npx (npx-style)", () => {
+    const content = `run: |
+  bunx prisma generate
+  npx playwright install
+  node -e "console.log('ok')"
+`
+    expect(extractPkgScriptRefs(content)).toEqual([])
+  })
+
+  it("menção em prosa sem o padrão <pm> run <entry> não casa", () => {
+    // Prosa que NÃO contém a sequência literal 'bun run X' não casa. (Se a
+    // prosa contiver 'bun run lint' literal, o regex casa por design — é um
+    // guard heurístico; a fixture abaixo evita o padrão exato.)
+    const content = `run: |
+  echo "veja os scripts de lint no package.json"
+  cat scripts/foo.sh
+`
+    expect(extractPkgScriptRefs(content)).toEqual([])
+  })
+
+  it("captura a entry antes de flags/argumentos", () => {
+    const content = `run: bun run test:seed-prod-e2e --skip-docker --skip-cleanup\n`
+    const refs = extractPkgScriptRefs(content)
+    expect(refs[0]).toMatchObject({ ref: "test:seed-prod-e2e" })
+  })
+})
+
+// ── extractWorkflowUses ──────────────────────────────────────────────────
+
+describe("extractWorkflowUses", () => {
+  it("detecta uses: ./.github/workflows/X.yml", () => {
+    const content = `jobs:
+  guards:
+    uses: ./.github/workflows/seed-guards.yml
+  utf8:
+    uses: ./.github/workflows/utf8-check.yml
+`
+    const refs = extractWorkflowUses(content)
+    expect(refs).toHaveLength(2)
+    expect(refs[0]).toMatchObject({ line: 3, ref: "seed-guards.yml" })
+    expect(refs[1]).toMatchObject({ line: 5, ref: "utf8-check.yml" })
+  })
+
+  it("não casa actions externas nem menções em texto (sem prefixo uses:)", () => {
+    const content = `jobs:
+  checkout:
+    uses: actions/checkout@v4
+  comentário:
+    # menção em prosa: ./.github/workflows/seed-guards.yml é usado nos E2Es
+    run: echo "ver ./.github/workflows/seed-guards.yml"
+`
+    const refs = extractWorkflowUses(content)
+    expect(refs).toHaveLength(0)
+  })
+
+  it("detecta ref estática mesmo com expressão ${{ }} na mesma linha", () => {
+    const content = `jobs:
+  guards:
+    uses: ./.github/workflows/seed-guards.yml # \${{ matrix.cond }} descarta
+`
+    const refs = extractWorkflowUses(content)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ line: 3, ref: "seed-guards.yml" })
+  })
+})
+
+// ── checkWorkflowFile ────────────────────────────────────────────────────
+
+describe("checkWorkflowFile", () => {
+  it("workflow com todas as referências resolvidas → sem violações", () => {
+    expect(checkWorkflowFile("pr-check.yml", WORKFLOW_FULL, makeCtx())).toEqual([])
+  })
+
+  it("script ausente em scripts/ → violação kind=script", () => {
+    const content = `run: node scripts/geo-benchmark-gone.mjs\n`
+    const violations = checkWorkflowFile("bench.yml", content, makeCtx())
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      file: "bench.yml",
+      line: 1,
+      kind: "script",
+      ref: "geo-benchmark-gone.mjs",
+    })
+  })
+
+  it("entry ausente em package.json → violação kind=package.json", () => {
+    const content = `run: bun run test:seed-removed-e2e\n`
+    const violations = checkWorkflowFile("bench.yml", content, makeCtx())
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      file: "bench.yml",
+      kind: "package.json",
+      ref: "test:seed-removed-e2e",
+    })
+  })
+
+  it("workflow local ausente → violação kind=workflow", () => {
+    const content = `jobs:\n  g:\n    uses: ./.github/workflows/seed-deleted.yml\n`
+    const violations = checkWorkflowFile("pr-check.yml", content, makeCtx())
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ kind: "workflow", ref: "seed-deleted.yml" })
+  })
+
+  it("workflow existente sem on: workflow_call → violação com detail", () => {
+    const content = `jobs:\n  g:\n    uses: ./.github/workflows/utf8-check.yml\n`
+    const ctx = makeCtx({ workflowCall: new Set(["seed-guards.yml"]) })
+    const violations = checkWorkflowFile("pr-check.yml", content, ctx)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ kind: "workflow", ref: "utf8-check.yml" })
+    expect(violations[0].detail).toContain("workflow_call")
+  })
+
+  it("múltiplas violações no mesmo arquivo são todas reportadas", () => {
+    const content = `run: |
+  node scripts/foo-gone.mjs
+  bun run test:gone
+`
+    const violations = checkWorkflowFile("bad.yml", content, makeCtx())
+    expect(violations).toHaveLength(2)
+    expect(violations.map((v) => v.kind)).toEqual(["script", "package.json"])
+  })
+})
+
+// ── scanWorkflows ────────────────────────────────────────────────────────
+
+describe("scanWorkflows", () => {
+  it("mescla violações de múltiplos arquivos com nome do arquivo", () => {
+    const files = [
+      { name: "bench.yml", content: "run: node scripts/foo-gone.mjs\n" },
+      { name: "ok.yml", content: "run: node scripts/geo-benchmark-gist.mjs\n" },
+      { name: "deploy.yml", content: "run: bun run test:gone\n" },
+    ]
+    const violations = scanWorkflows(files, makeCtx())
+    expect(violations).toHaveLength(2)
+    expect(violations.map((v) => v.file)).toEqual(["bench.yml", "deploy.yml"])
+  })
+
+  it("lista vazia → sem violações", () => {
+    expect(scanWorkflows([], makeCtx())).toEqual([])
+  })
+})

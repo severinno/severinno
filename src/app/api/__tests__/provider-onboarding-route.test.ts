@@ -35,9 +35,9 @@ describe("GET /api/provider/onboarding", () => {
   })
 
   it("returns step 0 when no onboarding data exists", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
 
-    const req = createMockRequest({ method: "GET" })
+    const _req = createMockRequest({ method: "GET" })
     const res = await GET()
     const parsed = await parseResponse(res)
 
@@ -47,7 +47,7 @@ describe("GET /api/provider/onboarding", () => {
   })
 
   it("returns saved step when onboarding data exists", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
       key: "onboarding:user-1",
       value: JSON.stringify({ step: 3, done: false }),
     })
@@ -61,7 +61,7 @@ describe("GET /api/provider/onboarding", () => {
   })
 
   it("returns done=true when onboarding is complete", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
       key: "onboarding:user-1",
       value: JSON.stringify({ step: 5, done: true }),
     })

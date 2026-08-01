@@ -2,15 +2,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import {
-  Users,
-  CalendarCheck,
-  FileText,
-  Star,
-  DollarSign,
-  TrendingUp,
-  RotateCw,
-} from "lucide-react"
+import { Users, CalendarCheck, FileText, Star, TrendingUp, RotateCw } from "lucide-react"
 import { apiGet } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"

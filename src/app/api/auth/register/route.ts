@@ -3,9 +3,10 @@ import { db } from "@/lib/db"
 import { hashPassword } from "@/lib/crypto"
 import { createSession } from "@/lib/auth"
 import { registerSchema } from "@/lib/validators"
-import { handleError } from "@/lib/api-server"
+import { handleError, conflict } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { fireEvent } from "@/lib/event-hub"
+import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
 export async function POST(request: Request) {
   try {
@@ -13,16 +14,20 @@ export async function POST(request: Request) {
     const body = await request.json()
     const data = registerSchema.parse(body)
 
+    // 🛡️ Emails demo são reservados (dev/staging only). Em produção, impedir
+    // que alguém registre uma conta com email demo (ex.: sequestrar
+    // admin@severinno.com como CLIENT para phishing ou confusão).
+    if (!isDemoAccountsEnabled() && isDemoAccountEmail(data.email)) {
+      throw conflict("E-mail já cadastrado")
+    }
+
     // Email must be unique
     const existing = await db.user.findUnique({
       where: { email: data.email.toLowerCase() },
       select: { id: true },
     })
     if (existing) {
-      return NextResponse.json(
-        { error: "E-mail já cadastrado" },
-        { status: 409 },
-      )
+      return NextResponse.json({ error: "E-mail já cadastrado" }, { status: 409 })
     }
 
     const passwordHash = hashPassword(data.password)
@@ -46,7 +51,7 @@ export async function POST(request: Request) {
         state: data.state || null,
         lat: data.lat ?? null,
         lng: data.lng ?? null,
-        bio: isProvider ? (data.bio || null) : null,
+        bio: isProvider ? data.bio || null : null,
         radiusKm: isProvider ? (data.radiusKm ?? null) : null,
         verified: false, // providers require admin verification
         active: true,

@@ -96,7 +96,7 @@ vi.mock("lucide-react", () => ({
 }))
 
 vi.mock("@/components/ui/slider", () => ({
-  Slider: ({ value, onValueChange, min, max, step, className, ...props }: any) => (
+  Slider: ({ value, onValueChange, min, max, step, className: _className, ...props }: any) => (
     <div data-testid="slider" data-value={value?.[0]} data-min={min} data-max={max}>
       <input
         type="range"

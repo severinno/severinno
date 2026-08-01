@@ -66,7 +66,6 @@ vi.mock("@/lib/logger", () => ({
 // ---------------------------------------------------------------------------
 
 import { warmGeoCacheFromLog } from "../geo-startup-warm"
-import type { StartupWarmResult } from "../geo-startup-warm"
 
 // ---------------------------------------------------------------------------
 // Fixtures

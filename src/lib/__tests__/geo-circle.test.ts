@@ -65,11 +65,7 @@ describe("createRadiusGeoJSON", () => {
 
   it("has all vertices within ~5% of the expected radius", () => {
     const result = createRadiusGeoJSON(BASE_LAT, BASE_LNG, RADIUS_KM)
-    const avgRadius = estimatePolygonRadius(
-      result as any,
-      BASE_LAT,
-      BASE_LNG,
-    )
+    const avgRadius = estimatePolygonRadius(result as any, BASE_LAT, BASE_LNG)
 
     // Equirectangular approximation has some distortion at -23° lat,
     // but should be within 5% of the target
@@ -104,11 +100,7 @@ describe("createRadiusGeoJSON", () => {
 
   it("works with a large radius (500km)", () => {
     const result = createRadiusGeoJSON(BASE_LAT, BASE_LNG, 500)
-    const avgRadius = estimatePolygonRadius(
-      result as any,
-      BASE_LAT,
-      BASE_LNG,
-    )
+    const avgRadius = estimatePolygonRadius(result as any, BASE_LAT, BASE_LNG)
 
     // Larger radii have more distortion but should be within 10%
     expect(avgRadius).toBeGreaterThan(450)
@@ -215,46 +207,49 @@ describe("createRadiusGeoJSON fuzzing (100 random inputs)", () => {
 
   it.each([
     // [label, latRange, lngRange, radiusRange, tolerance]
-    ["tropics (−30° to 30°) ±10%", -30, 30, -180, 180, 1, 500, 0.10],
-    ["mid-latitudes (30° to 60°) ±10%", 30, 60, -180, 180, 1, 500, 0.10],
+    ["tropics (−30° to 30°) ±10%", -30, 30, -180, 180, 1, 500, 0.1],
+    ["mid-latitudes (30° to 60°) ±10%", 30, 60, -180, 180, 1, 500, 0.1],
     ["high latitudes (60° to 85°) ±12%", 60, 85, -180, 180, 1, 500, 0.12],
     ["small radii (1–10 km) ±8%", -60, 60, -180, 180, 1, 10, 0.08],
     ["medium radii (10–100 km) ±8%", -60, 60, -180, 180, 10, 100, 0.08],
     ["large radii (100–1000 km) ±15%", -60, 60, -180, 180, 100, 1000, 0.15],
-  ])("all 100 samples within tolerance for %s", (
-    _label,
-    latMin, latMax,
-    lngMin, lngMax,
-    radiusMin, radiusMax,
-    tolerance,
-  ) => {
-    const SAMPLES = 100
-    const results: Array<{ lat: number; lng: number; radius: number; estimated: number; errorPct: number }> = []
+  ])(
+    "all 100 samples within tolerance for %s",
+    (_label, latMin, latMax, lngMin, lngMax, radiusMin, radiusMax, tolerance) => {
+      const SAMPLES = 100
+      const results: Array<{
+        lat: number
+        lng: number
+        radius: number
+        estimated: number
+        errorPct: number
+      }> = []
 
-    for (let i = 0; i < SAMPLES; i++) {
-      const lat = between(latMin, latMax)
-      const lng = between(lngMin, lngMax)
-      const radius = between(radiusMin, radiusMax)
+      for (let i = 0; i < SAMPLES; i++) {
+        const lat = between(latMin, latMax)
+        const lng = between(lngMin, lngMax)
+        const radius = between(radiusMin, radiusMax)
 
-      const polygon = createRadiusGeoJSON(lat, lng, radius)
-      const estimated = estimatePolygonRadius(polygon as any, lat, lng)
-      const errorPct = Math.abs(estimated - radius) / radius
+        const polygon = createRadiusGeoJSON(lat, lng, radius)
+        const estimated = estimatePolygonRadius(polygon as any, lat, lng)
+        const errorPct = Math.abs(estimated - radius) / radius
 
-      if (errorPct > tolerance) {
-        results.push({ lat, lng, radius, estimated, errorPct })
+        if (errorPct > tolerance) {
+          results.push({ lat, lng, radius, estimated, errorPct })
+        }
       }
-    }
 
-    // Collect all failures for a comprehensive report
-    const maxFailures = 3
-    const failures = results.slice(0, maxFailures)
-    const remaining = results.length - failures.length
+      // Collect all failures for a comprehensive report
+      const maxFailures = 3
+      const failures = results.slice(0, maxFailures)
+      const _remaining = results.length - failures.length
 
-    expect(failures).toEqual([])
-  })
+      expect(failures).toEqual([])
+    },
+  )
 
   it("reports aggregate stats for all 600 samples", () => {
-    const aggRand = mulberry32(43) // different seed for independent sampling
+    const _aggRand = mulberry32(43) // different seed for independent sampling
     const SAMPLES = 600
     let totalError = 0
     let maxError = 0
@@ -285,8 +280,8 @@ describe("createRadiusGeoJSON fuzzing (100 random inputs)", () => {
     if (maxError > 0.15) {
       console.warn(
         `[geo-circle fuzz] worst case: lat=${maxErrorCase?.lat.toFixed(2)}, ` +
-        `lng=${maxErrorCase?.lng.toFixed(2)}, radius=${maxErrorCase?.radius}km, ` +
-        `estimated=${maxErrorCase?.estimated.toFixed(1)}km, error=${(maxError * 100).toFixed(1)}%`,
+          `lng=${maxErrorCase?.lng.toFixed(2)}, radius=${maxErrorCase?.radius}km, ` +
+          `estimated=${maxErrorCase?.estimated.toFixed(1)}km, error=${(maxError * 100).toFixed(1)}%`,
       )
     }
   })

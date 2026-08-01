@@ -532,7 +532,7 @@ describe("POST /api/webhooks/lytex — edge cases", () => {
   })
 
   it("JSON inválido no body retorna 200 (catch block)", async () => {
-    const req = createMockRequest({ method: "POST" })
+    const _req = createMockRequest({ method: "POST" })
     // Override body to invalid JSON by accessing Request internals
     // createMockRequest with no body creates an empty GET — use explicit invalid body
     const badReq = new Request("http://localhost:3000/api/webhooks/lytex", {

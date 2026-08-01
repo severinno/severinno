@@ -396,7 +396,7 @@ function runSingle(type) {
   console.log(`\n  ─── ${cfg.label} Benchmark ───────────────────────────────────\n`)
   try {
     execSync(cmd, { stdio: "inherit" })
-  } catch (e) {
+  } catch (_e) {
     return { status: "failed", exitCode: 1, elapsedMs: Math.round(performance.now() - startMs) }
   }
 

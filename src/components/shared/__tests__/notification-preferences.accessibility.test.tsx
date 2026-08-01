@@ -37,7 +37,7 @@ vi.mock("@/components/ui/switch", () => ({
     onCheckedChange,
     "aria-label": ariaLabel,
     disabled,
-    className,
+    className: _className,
   }: {
     checked?: boolean
     onCheckedChange?: (v: boolean) => void

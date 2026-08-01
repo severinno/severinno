@@ -24,13 +24,13 @@ const TEST_DIR = join(API_DIR, "__tests__")
 
 // Routes that are intentionally excluded from testing (infra, config, etc.)
 const EXCLUDED_ROUTES = new Set([
-  "src/app/api/route.ts",           // Root redirect handler
-  "src/app/api/health/route.ts",    // Health check (K8s, not business)
-  "src/app/api/metrics/route.ts",   // Prometheus metrics
-  "src/app/api/sentry/route.ts",    // Sentry tunnel
-  "src/app/api/cron/reminders/route.ts",        // Cron job
-  "src/app/api/cron/commissions-report/route.ts",// Cron job
-  "src/app/api/cron/settlements/route.ts",      // Cron job
+  "src/app/api/route.ts", // Root redirect handler
+  "src/app/api/health/route.ts", // Health check (K8s, not business)
+  "src/app/api/metrics/route.ts", // Prometheus metrics
+  "src/app/api/sentry/route.ts", // Sentry tunnel
+  "src/app/api/cron/reminders/route.ts", // Cron job
+  "src/app/api/cron/commissions-report/route.ts", // Cron job
+  "src/app/api/cron/settlements/route.ts", // Cron job
 ])
 
 // Tests that don't target a specific route (infrastructure tests)
@@ -52,7 +52,7 @@ function routePathToApiPath(routeFile: string): string {
 }
 
 /** Convert a test file name to the route segments it likely covers */
-function testNameToRouteSegments(testFile: string): string[] {
+function _testNameToRouteSegments(testFile: string): string[] {
   // Pattern: "auth-route.test.ts" → ["auth"]
   // Pattern: "bookings-pay-route.test.ts" → ["bookings", "pay"]
   // Pattern: "wallet-history-route.test.ts" → ["provider", "wallet", "history"]
@@ -66,30 +66,30 @@ function testNameToRouteSegments(testFile: string): string[] {
   // IMPORTANT: Do NOT include [param] segments here — routeMatchesTest
   // handles dynamic params by skipping them in the route path.
   const SPECIAL: Record<string, string[]> = {
-    "bookings-pay":           ["bookings", "pay"],
-    "bookings":               ["bookings"],
-    "wallet-history-export":  ["provider", "wallet", "history", "export"],
-    "wallet-history":         ["provider", "wallet", "history"],
-    "wallet-withdraw":        ["provider", "wallet", "withdraw"],
-    "wallet":                 ["provider", "wallet"],
-    "change-password":        ["auth", "change-password"],
-    "forgot-reset-password":  ["auth", "forgot-password", "reset-password"],
+    "bookings-pay": ["bookings", "pay"],
+    bookings: ["bookings"],
+    "wallet-history-export": ["provider", "wallet", "history", "export"],
+    "wallet-history": ["provider", "wallet", "history"],
+    "wallet-withdraw": ["provider", "wallet", "withdraw"],
+    wallet: ["provider", "wallet"],
+    "change-password": ["auth", "change-password"],
+    "forgot-reset-password": ["auth", "forgot-password", "reset-password"],
     "admin-commissions-export": ["admin", "commissions", "export"],
-    "admin-commissions":      ["admin", "commissions"],
-    "geo-cep":                ["geo", "cep"],
-    "geo-reverse":            ["geo", "reverse"],
-    "providers":              ["providers"],
-    "favorites":              ["providers", "favorite"],
-    "notifications":          ["notifications"],
-    "reviews":                ["reviews"],
-    "messages":               ["messages"],
-    "quotes":                 ["quotes"],
-    "tracking":               ["tracking"],
-    "services":               ["services"],
-    "categories":             ["categories"],
-    "auth":                   ["auth"],
-    "availability":           ["availability"],
-    "webhooks-lytex":         ["webhooks", "lytex"],
+    "admin-commissions": ["admin", "commissions"],
+    "geo-cep": ["geo", "cep"],
+    "geo-reverse": ["geo", "reverse"],
+    providers: ["providers"],
+    favorites: ["providers", "favorite"],
+    notifications: ["notifications"],
+    reviews: ["reviews"],
+    messages: ["messages"],
+    quotes: ["quotes"],
+    tracking: ["tracking"],
+    services: ["services"],
+    categories: ["categories"],
+    auth: ["auth"],
+    availability: ["availability"],
+    "webhooks-lytex": ["webhooks", "lytex"],
   }
 
   if (SPECIAL[name]) return SPECIAL[name]
@@ -98,10 +98,7 @@ function testNameToRouteSegments(testFile: string): string[] {
 }
 
 /** Check if a route's directory segments match the test's target segments */
-function routeMatchesTest(
-  routeSegments: string[],
-  testSegments: string[],
-): boolean {
+function _routeMatchesTest(routeSegments: string[], testSegments: string[]): boolean {
   // Test covers routes that START with the test segments
   // e.g. test "bookings" covers "bookings", "bookings/[id]", "bookings/[id]/pay"
   // e.g. test "auth" covers "auth/login", "auth/register", etc.
@@ -127,8 +124,10 @@ function routeMatchesTest(
     if (routeSegments[routeIdx] !== testSegments[testIdx]) {
       // If test has more specific segments that don't match, try skipping route's optional [param]
       // e.g. test "bookings/pay" vs route "bookings/[id]/pay"
-      if (routeIdx + 1 < routeSegments.length &&
-          routeSegments[routeIdx + 1] === testSegments[testIdx]) {
+      if (
+        routeIdx + 1 < routeSegments.length &&
+        routeSegments[routeIdx + 1] === testSegments[testIdx]
+      ) {
         routeIdx++
         continue
       }
@@ -169,8 +168,9 @@ async function main() {
   const ciMode = args.includes("--ci")
 
   // Discover all route files
-  const routeFiles = globSync("**/route.ts", { cwd: API_DIR })
-    .filter((f) => !f.includes("__tests__"))
+  const routeFiles = globSync("**/route.ts", { cwd: API_DIR }).filter(
+    (f) => !f.includes("__tests__"),
+  )
   const totalRoutes = routeFiles.length
 
   // Discover all test files
@@ -180,7 +180,7 @@ async function main() {
   type CoverageEntry = {
     routeFile: string
     apiPath: string
-    coveredBy: string[]  // test file names
+    coveredBy: string[] // test file names
     excluded: boolean
     infraOnly: boolean
   }
@@ -188,9 +188,12 @@ async function main() {
   const coverage: CoverageEntry[] = []
 
   for (const routeFile of routeFiles) {
-    const fullRoutePath = join(API_DIR, routeFile)
+    const _fullRoutePath = join(API_DIR, routeFile)
     const apiPath = routePathToApiPath(routeFile)
-    const routeSegments = routeFile.replace(/\/route\.ts$/, "").replace(/\\/g, "/").split("/")
+    const _routeSegments = routeFile
+      .replace(/\/route\.ts$/, "")
+      .replace(/\\/g, "/")
+      .split("/")
     const excluded = EXCLUDED_ROUTES.has(`src/app/api/${routeFile}`)
 
     const coveredBy: string[] = []
@@ -199,7 +202,7 @@ async function main() {
     for (const testFile of testFiles) {
       // Direct import check (most reliable)
       const importedHandlers = getImportedHandlersFromTest(join(TEST_DIR, testFile))
-      const expectedImportPath = `../${routeFile.replace(/\\/g, "/").replace(/\.ts$/, "")}`
+      const _expectedImportPath = `../${routeFile.replace(/\\/g, "/").replace(/\.ts$/, "")}`
       const normalizedRoute = routeFile.replace(/\\/g, "/")
 
       // Check if the test file imports this route's handler
@@ -211,8 +214,7 @@ async function main() {
         coveredBy.push(testFile)
         continue
       }
-
-        }
+    }
 
     // Mark as infraOnly if the only matching tests are infra-only (cache header) tests
     const coveringInfra = coveredBy.filter((t) => INFRA_TESTS.has(t))
@@ -232,23 +234,29 @@ async function main() {
   const excluded = coverage.filter((c) => c.excluded)
 
   if (outputJson) {
-    console.log(JSON.stringify({
-      totalRoutes,
-      totalTests: testFiles.length,
-      covered: covered.length,
-      coveredInfra: coveredInfra.length,
-      gaps: gaps.length,
-      excluded: excluded.length,
-      coveragePct: Math.round((covered.length / (totalRoutes - excluded.length)) * 100),
-      gapRoutes: gaps.map((g) => ({
-        path: g.apiPath,
-        file: g.routeFile,
-      })),
-      coveredRoutes: covered.map((c) => ({
-        path: c.apiPath,
-        tests: c.coveredBy,
-      })),
-    }, null, 2))
+    console.log(
+      JSON.stringify(
+        {
+          totalRoutes,
+          totalTests: testFiles.length,
+          covered: covered.length,
+          coveredInfra: coveredInfra.length,
+          gaps: gaps.length,
+          excluded: excluded.length,
+          coveragePct: Math.round((covered.length / (totalRoutes - excluded.length)) * 100),
+          gapRoutes: gaps.map((g) => ({
+            path: g.apiPath,
+            file: g.routeFile,
+          })),
+          coveredRoutes: covered.map((c) => ({
+            path: c.apiPath,
+            tests: c.coveredBy,
+          })),
+        },
+        null,
+        2,
+      ),
+    )
     return
   }
 
@@ -264,7 +272,9 @@ async function main() {
   console.log(`  Covered (real):      ${String(covered.length).padStart(3)}`)
   console.log(`  Covered (infra only):${String(coveredInfra.length).padStart(3)}`)
   console.log(`  Gaps:                ${String(gaps.length).padStart(3)}`)
-  console.log(`  Coverage:            ${Math.round((covered.length / (totalRoutes - excluded.length)) * 100)}%`)
+  console.log(
+    `  Coverage:            ${Math.round((covered.length / (totalRoutes - excluded.length)) * 100)}%`,
+  )
   console.log()
 
   if (gaps.length > 0) {
@@ -322,7 +332,9 @@ async function main() {
   for (const [dir, stats] of [...byDir.entries()].sort()) {
     const pct = stats.total > 0 ? Math.round((stats.covered / stats.total) * 100) : 0
     const bar = "▓".repeat(Math.floor(pct / 10)) + "░".repeat(10 - Math.floor(pct / 10))
-    console.log(`    ${bar} ${String(pct).padStart(3)}%  ${dir}/  (${stats.covered}/${stats.total})`)
+    console.log(
+      `    ${bar} ${String(pct).padStart(3)}%  ${dir}/  (${stats.covered}/${stats.total})`,
+    )
   }
   console.log()
 
@@ -331,8 +343,14 @@ async function main() {
     console.log(`  💡 Quick wins (routes with highest risk):\n`)
     const priorityGaps = gaps.filter((g) => {
       const p = g.apiPath.toLowerCase()
-      return p.includes("pay") || p.includes("wallet") || p.includes("finance")
-        || p.includes("withdraw") || p.includes("refund") || p.includes("settlement")
+      return (
+        p.includes("pay") ||
+        p.includes("wallet") ||
+        p.includes("finance") ||
+        p.includes("withdraw") ||
+        p.includes("refund") ||
+        p.includes("settlement")
+      )
     })
     for (const g of priorityGaps) {
       console.log(`      🔴 HIGH PRIORITY: ${g.apiPath}`)

@@ -1,4 +1,4 @@
-import { type Page, type Locator } from "@playwright/test"
+import { type Page } from "@playwright/test"
 
 /**
  * Wait for the vitrine (app shell) to be fully loaded and hydrated.
@@ -18,9 +18,7 @@ export async function waitForVitrine(page: Page) {
   )
   // Wait for a post-hydration element to confirm the app is interactive
   await page
-    .locator(
-      'button:has-text(/entrar|login/i), [class*="Card"], [class*="search"], h1, h2',
-    )
+    .locator('button:has-text(/entrar|login/i), [class*="Card"], [class*="search"], h1, h2')
     .first()
     .waitFor({ state: "visible", timeout: 10000 })
     .catch(() => {})
@@ -43,9 +41,11 @@ export async function fillCEP(page: Page, cep: string) {
  */
 export async function selectDate(page: Page, day: number) {
   // Find a day cell in the calendar that matches and is not disabled
-  const dayButton = page.locator(
-    `button[role="gridcell"]:not([disabled]) button:has-text("${day}"), button:not([disabled]):has-text("${day}")`,
-  ).first()
+  const dayButton = page
+    .locator(
+      `button[role="gridcell"]:not([disabled]) button:has-text("${day}"), button:not([disabled]):has-text("${day}")`,
+    )
+    .first()
   await dayButton.click()
   await page.waitForTimeout(300)
 }
@@ -56,7 +56,10 @@ export async function selectDate(page: Page, day: number) {
  */
 export async function selectTimeSlot(page: Page) {
   // Click the first available time slot (buttons with HH:MM text pattern)
-  const slot = page.getByRole("button").filter({ hasText: /\d{2}:\d{2}/ }).first()
+  const slot = page
+    .getByRole("button")
+    .filter({ hasText: /\d{2}:\d{2}/ })
+    .first()
   await slot.click()
   await page.waitForTimeout(300)
 }
@@ -83,10 +86,7 @@ export async function clickConfirmBooking(page: Page) {
  * Register a new user via the auth modal.
  * Returns the generated email so it can be used for login later.
  */
-export async function registerUser(
-  page: Page,
-  options: { role?: "CLIENT" | "PROVIDER" } = {},
-) {
+export async function registerUser(page: Page, options: { role?: "CLIENT" | "PROVIDER" } = {}) {
   const { role = "CLIENT" } = options
   const email = `e2e-${Date.now()}@test.com`
   const password = "test123456"
@@ -119,7 +119,9 @@ export async function registerUser(
   await confirmInput.fill(password)
 
   // Select role
-  const roleRadio = page.locator(`label:has-text("${role === "CLIENT" ? "Cliente" : "Prestador"}")`).first()
+  const roleRadio = page
+    .locator(`label:has-text("${role === "CLIENT" ? "Cliente" : "Prestador"}")`)
+    .first()
   if (await roleRadio.isVisible()) {
     await roleRadio.click()
   }
@@ -137,7 +139,9 @@ export async function registerUser(
   }
 
   // Submit
-  const submitBtn = page.locator('button[type="submit"]:has-text(/criar|cadastrar|registrar/i)').first()
+  const submitBtn = page
+    .locator('button[type="submit"]:has-text(/criar|cadastrar|registrar/i)')
+    .first()
   await submitBtn.click()
   await page.waitForTimeout(2000)
 
@@ -175,7 +179,9 @@ export async function openBookingModal(page: Page) {
   await page.waitForTimeout(1000)
 
   // Check if booking modal opened
-  const modalTitle = page.locator('h2:has-text("Agendar serviço"), h2:has-text("Agendar serviço")').first()
+  const modalTitle = page
+    .locator('h2:has-text("Agendar serviço"), h2:has-text("Agendar serviço")')
+    .first()
   await modalTitle.waitFor({ state: "visible", timeout: 5000 }).catch(() => {})
 }
 
@@ -194,7 +200,10 @@ export async function completeBookingFlow(page: Page) {
   await page.waitForTimeout(300)
 
   // Select first available time slot
-  const timeSlot = page.getByRole("button").filter({ hasText: /\d{2}:\d{2}/ }).first()
+  const timeSlot = page
+    .getByRole("button")
+    .filter({ hasText: /\d{2}:\d{2}/ })
+    .first()
   await timeSlot.click()
   await page.waitForTimeout(300)
 
@@ -221,6 +230,8 @@ export async function completeBookingFlow(page: Page) {
   await page.waitForTimeout(2000)
 
   // Check if we got redirected or saw a success message
-  const success = page.locator('text=/agendamento confirmado|confirmado com sucesso|Agendamento criado/i').first()
+  const success = page
+    .locator("text=/agendamento confirmado|confirmado com sucesso|Agendamento criado/i")
+    .first()
   return await success.isVisible().catch(() => false)
 }

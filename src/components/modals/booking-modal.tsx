@@ -48,36 +48,18 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Calendar } from "@/components/ui/calendar"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import {
-  apiGet,
-  apiPost,
-  type ProviderDetail,
-  type ProviderService,
-} from "@/lib/api"
-import {
-  SERVICE_UNIT_LABELS,
-  SERVICE_UNIT_SHORT,
-  WEEKDAYS_SHORT,
-} from "@/lib/constants"
+import { apiGet, apiPost, type ProviderDetail, type ProviderService } from "@/lib/api"
+import { SERVICE_UNIT_LABELS, SERVICE_UNIT_SHORT, WEEKDAYS_SHORT } from "@/lib/constants"
 import { formatBRL, formatDate, formatHHmm } from "@/lib/format"
 import { useUIStore } from "@/store/ui"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { GeoAddressForm, type AddressFormValue } from "@/components/forms/geo-address-form"
-import {
-  StepWizard,
-  StepHeader,
-  InfoCard,
-  type StepDef,
-} from "./step-wizard"
+import { StepWizard, StepHeader, InfoCard, type StepDef } from "./step-wizard"
 
 // ---------------------------------------------------------------------------
 // Step definitions — 4 steps
@@ -139,10 +121,18 @@ const initialState = (quantity = 1): BookingFormState => ({
 // Validation helpers
 // ---------------------------------------------------------------------------
 
-function cardNameValid(v: string) { return v.trim().length >= 3 }
-function cardNumberValid(v: string) { return v.replace(/\s/g, "").length >= 13 }
-function cardExpiryValid(v: string) { return /^\d{2}\/\d{2}$/.test(v) }
-function cardCvvValid(v: string) { return /^\d{3,4}$/.test(v) }
+function cardNameValid(v: string) {
+  return v.trim().length >= 3
+}
+function cardNumberValid(v: string) {
+  return v.replace(/\s/g, "").length >= 13
+}
+function cardExpiryValid(v: string) {
+  return /^\d{2}\/\d{2}$/.test(v)
+}
+function cardCvvValid(v: string) {
+  return /^\d{3,4}$/.test(v)
+}
 
 // ---------------------------------------------------------------------------
 // Time slot period grouping
@@ -193,24 +183,21 @@ export function BookingModal() {
   // Fetch provider + services
   const providerQuery = useQuery({
     queryKey: ["provider", providerIdPreset],
-    queryFn: () =>
-      apiGet<ProviderDetail>(`/api/providers/${providerIdPreset}`),
+    queryFn: () => apiGet<ProviderDetail>(`/api/providers/${providerIdPreset}`),
     enabled: open && !!providerIdPreset,
     staleTime: 60 * 1000,
   })
 
   const servicesQuery = useQuery({
     queryKey: ["services-by-provider", providerIdPreset],
-    queryFn: () =>
-      apiGet<ProviderService[]>("/api/services", { providerId: providerIdPreset }),
+    queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId: providerIdPreset }),
     enabled: open && !!providerIdPreset,
     staleTime: 60 * 1000,
   })
 
   const provider = providerQuery.data
   const services = servicesQuery.data ?? []
-  const selectedService =
-    services.find((s) => s.id === serviceIdPreset) ?? services[0]
+  const selectedService = services.find((s) => s.id === serviceIdPreset) ?? services[0]
 
   React.useEffect(() => {
     if (open && selectedService) {
@@ -218,13 +205,10 @@ export function BookingModal() {
     }
   }, [open, selectedService])
 
-  const set = <K extends keyof BookingFormState>(
-    key: K,
-    value: BookingFormState[K],
-  ) => setState((s) => ({ ...s, [key]: value }))
+  const set = <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) =>
+    setState((s) => ({ ...s, [key]: value }))
 
-  const markTouched = (field: string) =>
-    setTouched((prev) => new Set(prev).add(field))
+  const markTouched = (field: string) => setTouched((prev) => new Set(prev).add(field))
 
   // ── Step validation ──
   const step1Valid = !!state.date && !!state.time
@@ -385,13 +369,11 @@ export function BookingModal() {
   })()
 
   // Dynamic dialog sizing: wider on Step 1 for side-by-side calendar layout
-  const dialogSizeClass = step === 1
-    ? "sm:max-w-2xl"
-    : "sm:max-w-lg"
+  const dialogSizeClass = step === 1 ? "sm:max-w-2xl" : "sm:max-w-lg"
 
   // ── Step indicator (reused for desktop custom layout) ──
   const stepIndicator = (
-    <div className="border-b px-4 sm:px-5 py-3">
+    <div className="border-b px-4 py-3 sm:px-5">
       <div className="flex items-center justify-between">
         {STEPS.map((s, i) => {
           const active = step === s.id
@@ -404,11 +386,11 @@ export function BookingModal() {
                 onClick={() => handleStepClick(s.id)}
                 disabled={!done && s.id > step}
                 className={cn(
-                  "flex items-center gap-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-1 py-0.5",
+                  "focus-visible:ring-ring flex items-center gap-1.5 rounded-md px-1 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none",
                   active
-                    ? "text-emerald-700 dark:text-emerald-400 font-semibold"
+                    ? "font-semibold text-emerald-700 dark:text-emerald-400"
                     : done
-                      ? "text-emerald-600 cursor-pointer hover:text-emerald-700"
+                      ? "cursor-pointer text-emerald-600 hover:text-emerald-700"
                       : "text-muted-foreground cursor-default",
                 )}
               >
@@ -417,11 +399,8 @@ export function BookingModal() {
                     "inline-flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-all",
                     active &&
                       "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25",
-                    done &&
-                      "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
-                    !active &&
-                      !done &&
-                      "border-muted-foreground/20 text-muted-foreground",
+                    done && "cursor-pointer border-emerald-600 bg-emerald-600 text-white",
+                    !active && !done && "border-muted-foreground/20 text-muted-foreground",
                   )}
                 >
                   {done ? (
@@ -432,14 +411,12 @@ export function BookingModal() {
                     s.id
                   )}
                 </span>
-                <span className="hidden sm:inline">
-                  {s.shortLabel ?? s.label}
-                </span>
+                <span className="hidden sm:inline">{s.shortLabel ?? s.label}</span>
               </button>
               {i < STEPS.length - 1 && (
-                <div className="flex-1 h-px bg-muted-foreground/15 mx-1 sm:mx-2 relative">
+                <div className="bg-muted-foreground/15 relative mx-1 h-px flex-1 sm:mx-2">
                   <div
-                    className="absolute inset-0 bg-emerald-500 transition-transform origin-left duration-300"
+                    className="absolute inset-0 origin-left bg-emerald-500 transition-transform duration-300"
                     style={{
                       transform:
                         validSteps[STEPS[i + 1]?.id] || step > s.id
@@ -460,7 +437,7 @@ export function BookingModal() {
 
   // ── Footer buttons ──
   const footerButtons = (
-    <div className="border-t bg-background/95 backdrop-blur px-4 sm:px-5 py-2.5 sticky bottom-0">
+    <div className="bg-background/95 sticky bottom-0 border-t px-4 py-2.5 backdrop-blur sm:px-5">
       <div className="flex items-center justify-between gap-2">
         {step > 1 ? (
           <Button
@@ -483,7 +460,7 @@ export function BookingModal() {
             size="sm"
             onClick={handleNext}
             disabled={!validSteps[step]}
-            className="h-9 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+            className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700"
           >
             Continuar
             <ChevronRight className="size-4" />
@@ -494,7 +471,7 @@ export function BookingModal() {
             size="sm"
             onClick={handleSubmit}
             disabled={submitting || !validSteps[step]}
-            className="h-9 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+            className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700"
           >
             {submitting && <Loader2 className="size-3.5 animate-spin" />}
             <Send className="size-3.5" />
@@ -532,10 +509,10 @@ export function BookingModal() {
       <Sheet open={open} onOpenChange={(o) => !o && close()}>
         <SheetContent
           side="bottom"
-          className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
+          className="flex h-[100dvh] max-h-[100dvh] w-full flex-col gap-0 p-0 sm:max-w-full"
           onInteractOutside={(e) => e.preventDefault()}
         >
-          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+          <SheetHeader className="shrink-0 px-4 pt-4 pb-2">
             <SheetTitle className="flex items-center gap-2 text-base">
               <CalendarDays className="size-4 text-emerald-600" />
               Agendar serviço
@@ -555,13 +532,13 @@ export function BookingModal() {
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
         className={cn(
-          "p-0 gap-0 flex flex-col max-h-[90vh] transition-[max-width] duration-300",
+          "flex max-h-[90vh] flex-col gap-0 p-0 transition-[max-width] duration-300",
           dialogSizeClass,
         )}
         onInteractOutside={(e) => e.preventDefault()}
       >
         {/* Header — Nielsen #3: User control */}
-        <DialogHeader className="px-5 pt-4 pb-2 border-b shrink-0">
+        <DialogHeader className="shrink-0 border-b px-5 pt-4 pb-2">
           <DialogTitle className="flex items-center gap-2 text-base">
             <CalendarDays className="size-4 text-emerald-600" />
             Agendar serviço
@@ -575,7 +552,7 @@ export function BookingModal() {
         {stepIndicator}
 
         {/* Step content — scrollable */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-4 sm:px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -616,10 +593,7 @@ function Step1Schedule({
   isDesktop,
 }: {
   state: BookingFormState
-  set: <K extends keyof BookingFormState>(
-    key: K,
-    value: BookingFormState[K],
-  ) => void
+  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void
   availability: ProviderDetail["availability"]
   selectedService?: ProviderService
   provider?: ProviderDetail
@@ -681,20 +655,18 @@ function Step1Schedule({
           {provider?.avatarUrl ? (
             <AvatarImage src={provider.avatarUrl} alt={provider.name} />
           ) : null}
-          <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+          <AvatarFallback className="rounded-md bg-emerald-100 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
             {provider?.name?.[0]?.toUpperCase() ?? "?"}
           </AvatarFallback>
         </Avatar>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{selectedService.title}</p>
-          <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{selectedService.title}</p>
+          <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
             {formatBRL(selectedService.basePrice)} /{" "}
             {SERVICE_UNIT_LABELS[selectedService.unit] ?? "un"}
           </p>
         </div>
-        {state.date && state.time && (
-          <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
-        )}
+        {state.date && state.time && <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />}
       </div>
     </InfoCard>
   ) : null
@@ -716,44 +688,40 @@ function Step1Schedule({
 
   // ── Time slots section (Calendar 03 style — borderless chips) ──
   const timeSlotsSection = (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       {!state.date ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center py-8">
-            <CalendarDays className="mx-auto size-8 text-muted-foreground/20 mb-2" />
-            <p className="text-xs text-muted-foreground">
-              Selecione uma data
-            </p>
-            <p className="text-[11px] text-muted-foreground/50 mt-0.5">
+        <div className="flex flex-1 items-center justify-center">
+          <div className="py-8 text-center">
+            <CalendarDays className="text-muted-foreground/20 mx-auto mb-2 size-8" />
+            <p className="text-muted-foreground text-xs">Selecione uma data</p>
+            <p className="text-muted-foreground/50 mt-0.5 text-[11px]">
               para ver os horários disponíveis
             </p>
           </div>
         </div>
       ) : slots.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="rounded-lg border border-dashed bg-muted/20 px-6 py-5 text-center">
-            <CalendarOff className="mx-auto size-6 text-muted-foreground/30 mb-1.5" />
-            <p className="text-xs font-medium text-muted-foreground">
-              Sem horários neste dia
-            </p>
-            <p className="text-[11px] text-muted-foreground/50 mt-0.5">
+        <div className="flex flex-1 items-center justify-center">
+          <div className="bg-muted/20 rounded-lg border border-dashed px-6 py-5 text-center">
+            <CalendarOff className="text-muted-foreground/30 mx-auto mb-1.5 size-6" />
+            <p className="text-muted-foreground text-xs font-medium">Sem horários neste dia</p>
+            <p className="text-muted-foreground/50 mt-0.5 text-[11px]">
               {WEEKDAYS_SHORT[state.date.getDay()]} — fora do expediente
             </p>
           </div>
         </div>
       ) : (
-        <ScrollArea className="flex-1 -mx-1 px-1">
+        <ScrollArea className="-mx-1 flex-1 px-1">
           <div className="grid gap-3">
             {groupedSlots.map((group) => {
               const PeriodIcon = group.icon
               return (
                 <div key={group.key}>
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <PeriodIcon className="size-3 text-muted-foreground/50" />
-                    <span className="text-[11px] font-medium text-muted-foreground/70 uppercase tracking-wide">
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <PeriodIcon className="text-muted-foreground/50 size-3" />
+                    <span className="text-muted-foreground/70 text-[11px] font-medium tracking-wide uppercase">
                       {group.label}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/40">
+                    <span className="text-muted-foreground/40 text-[10px]">
                       {group.slots.length}
                     </span>
                   </div>
@@ -766,8 +734,8 @@ function Step1Schedule({
                           type="button"
                           onClick={() => set("time", s.value)}
                           className={cn(
-                            "rounded-lg px-2 py-2 text-xs text-center font-medium transition-all duration-150",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1",
+                            "rounded-lg px-2 py-2 text-center text-xs font-medium transition-all duration-150",
+                            "focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:outline-none",
                             active
                               ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
                               : "bg-muted/60 text-muted-foreground hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300",
@@ -789,24 +757,24 @@ function Step1Schedule({
 
   // ── Selected date summary (below calendar, both layouts) ──
   const selectedDateSummary = state.date && (
-    <div className={cn(
-      "mt-2 rounded-lg px-3 py-2 text-center transition-colors duration-200",
-      state.time
-        ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
-        : "bg-muted/40 text-muted-foreground"
-    )}>
+    <div
+      className={cn(
+        "mt-2 rounded-lg px-3 py-2 text-center transition-colors duration-200",
+        state.time
+          ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
+          : "bg-muted/40 text-muted-foreground",
+      )}
+    >
       <p className="text-xs font-semibold">
         {format(state.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
       </p>
       {state.time ? (
-        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium mt-0.5 flex items-center justify-center gap-1">
+        <p className="mt-0.5 flex items-center justify-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
           <Clock className="size-3" />
           {formatHHmm(state.time)}
         </p>
       ) : (
-        <p className="text-[11px] mt-0.5 opacity-60">
-          Escolha o horário →
-        </p>
+        <p className="mt-0.5 text-[11px] opacity-60">Escolha o horário →</p>
       )}
     </div>
   )
@@ -834,9 +802,7 @@ function Step1Schedule({
           </div>
 
           {/* RIGHT: Time slots */}
-          <div className="flex flex-col min-h-0 pl-4">
-            {timeSlotsSection}
-          </div>
+          <div className="flex min-h-0 flex-col pl-4">{timeSlotsSection}</div>
         </div>
       ) : (
         /* ── Mobile: Stacked ── */
@@ -863,10 +829,7 @@ function Step2Details({
   selectedService,
 }: {
   state: BookingFormState
-  set: <K extends keyof BookingFormState>(
-    key: K,
-    value: BookingFormState[K],
-  ) => void
+  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void
   provider?: ProviderDetail
   selectedService?: ProviderService
 }) {
@@ -897,18 +860,16 @@ function Step2Details({
             {provider?.avatarUrl ? (
               <AvatarImage src={provider.avatarUrl} alt={provider.name} />
             ) : null}
-            <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+            <AvatarFallback className="rounded-md bg-emerald-100 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               {provider?.name?.[0]?.toUpperCase() ?? "?"}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{provider?.name}</p>
-            <p className="text-[11px] text-muted-foreground truncate">
-              {selectedService?.title}
-            </p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{provider?.name}</p>
+            <p className="text-muted-foreground truncate text-[11px]">{selectedService?.title}</p>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-[11px] text-muted-foreground">
+          <div className="shrink-0 text-right">
+            <p className="text-muted-foreground text-[11px]">
               {scheduledAt ? formatDate(scheduledAt) : "—"}
             </p>
             <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
@@ -921,7 +882,7 @@ function Step2Details({
       {/* Quantity + estimated total */}
       {selectedService && (
         <div className="flex items-end gap-3">
-          <div className="flex-1 grid gap-1">
+          <div className="grid flex-1 gap-1">
             <Label htmlFor="qty" className="text-xs">
               Quantidade ({SERVICE_UNIT_SHORT[selectedService.unit]})
             </Label>
@@ -936,7 +897,7 @@ function Step2Details({
             />
           </div>
           <div className="pb-0.5">
-            <p className="text-[11px] text-muted-foreground">Total estimado</p>
+            <p className="text-muted-foreground text-[11px]">Total estimado</p>
             <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">
               {formatBRL(estimatedTotal)}
             </p>
@@ -948,14 +909,11 @@ function Step2Details({
 
       {/* Address */}
       <div>
-        <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+        <p className="text-muted-foreground mb-1.5 flex items-center gap-1 text-xs font-medium">
           <MapPin className="size-3.5 text-emerald-600" />
           Endereço do serviço
         </p>
-        <GeoAddressForm
-          value={state.address}
-          onChange={(v) => set("address", v)}
-        />
+        <GeoAddressForm value={state.address} onChange={(v) => set("address", v)} />
       </div>
 
       <Separator />
@@ -971,7 +929,7 @@ function Step2Details({
           rows={2}
           value={state.notes}
           onChange={(e) => set("notes", e.target.value)}
-          className="text-sm resize-none"
+          className="resize-none text-sm"
         />
       </div>
     </div>
@@ -992,10 +950,7 @@ function Step3Payment({
   selectedService,
 }: {
   state: BookingFormState
-  set: <K extends keyof BookingFormState>(
-    key: K,
-    value: BookingFormState[K],
-  ) => void
+  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void
   markTouched: (field: string) => void
   touched: Set<string>
   selectedService?: ProviderService
@@ -1041,9 +996,7 @@ function Step3Payment({
 
       {/* Payment method selection */}
       <div>
-        <p className="text-xs font-medium text-muted-foreground mb-1.5">
-          Forma de pagamento
-        </p>
+        <p className="text-muted-foreground mb-1.5 text-xs font-medium">Forma de pagamento</p>
         <RadioGroup
           value={state.paymentMethod}
           onValueChange={(v) => set("paymentMethod", v as "CARD" | "PIX")}
@@ -1068,19 +1021,21 @@ function Step3Payment({
 
       {/* Card details — Nielsen #5: error prevention with inline validation */}
       {state.paymentMethod === "CARD" ? (
-        <div className="grid gap-2.5 rounded-lg border bg-card px-3 py-3">
+        <div className="bg-card grid gap-2.5 rounded-lg border px-3 py-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium">Dados do cartão</p>
             <Badge
               variant="outline"
-              className="border-amber-400 text-amber-700 text-[10px] px-1.5 py-0 h-5 dark:border-amber-600 dark:text-amber-400"
+              className="h-5 border-amber-400 px-1.5 py-0 text-[10px] text-amber-700 dark:border-amber-600 dark:text-amber-400"
             >
               Demonstração
             </Badge>
           </div>
 
           <div className="grid gap-0.5">
-            <Label htmlFor="cardName" className="text-xs">Nome impresso</Label>
+            <Label htmlFor="cardName" className="text-xs">
+              Nome impresso
+            </Label>
             <div className="relative">
               <Input
                 id="cardName"
@@ -1089,18 +1044,21 @@ function Step3Payment({
                 onChange={(e) => set("cardName", e.target.value.toUpperCase())}
                 onBlur={() => markTouched("cardName")}
                 className={cn(
-                  "h-8 text-sm pr-7",
-                  fieldOk("cardName", cardNameValid(state.cardName)) === false && "border-destructive",
+                  "h-8 pr-7 text-sm",
+                  fieldOk("cardName", cardNameValid(state.cardName)) === false &&
+                    "border-destructive",
                 )}
               />
               {fieldOk("cardName", cardNameValid(state.cardName)) && (
-                <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-emerald-600" />
+                <CheckCircle2 className="absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-emerald-600" />
               )}
             </div>
           </div>
 
           <div className="grid gap-0.5">
-            <Label htmlFor="cardNumber" className="text-xs">Número</Label>
+            <Label htmlFor="cardNumber" className="text-xs">
+              Número
+            </Label>
             <div className="relative">
               <Input
                 id="cardNumber"
@@ -1114,19 +1072,22 @@ function Step3Payment({
                 }}
                 onBlur={() => markTouched("cardNumber")}
                 className={cn(
-                  "h-8 text-sm pr-7",
-                  fieldOk("cardNumber", cardNumberValid(state.cardNumber)) === false && "border-destructive",
+                  "h-8 pr-7 text-sm",
+                  fieldOk("cardNumber", cardNumberValid(state.cardNumber)) === false &&
+                    "border-destructive",
                 )}
               />
               {fieldOk("cardNumber", cardNumberValid(state.cardNumber)) && (
-                <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-emerald-600" />
+                <CheckCircle2 className="absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-emerald-600" />
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-0.5">
-              <Label htmlFor="cardExpiry" className="text-xs">Validade</Label>
+              <Label htmlFor="cardExpiry" className="text-xs">
+                Validade
+              </Label>
               <div className="relative">
                 <Input
                   id="cardExpiry"
@@ -1141,17 +1102,20 @@ function Step3Payment({
                   }}
                   onBlur={() => markTouched("cardExpiry")}
                   className={cn(
-                    "h-8 text-sm pr-7",
-                    fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) === false && "border-destructive",
+                    "h-8 pr-7 text-sm",
+                    fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) === false &&
+                      "border-destructive",
                   )}
                 />
                 {fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) && (
-                  <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-emerald-600" />
+                  <CheckCircle2 className="absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-emerald-600" />
                 )}
               </div>
             </div>
             <div className="grid gap-0.5">
-              <Label htmlFor="cardCvv" className="text-xs">CVV</Label>
+              <Label htmlFor="cardCvv" className="text-xs">
+                CVV
+              </Label>
               <div className="relative">
                 <Input
                   id="cardCvv"
@@ -1159,36 +1123,35 @@ function Step3Payment({
                   placeholder="123"
                   maxLength={4}
                   value={state.cardCvv}
-                  onChange={(e) =>
-                    set("cardCvv", e.target.value.replace(/\D/g, "").slice(0, 4))
-                  }
+                  onChange={(e) => set("cardCvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
                   onBlur={() => markTouched("cardCvv")}
                   className={cn(
-                    "h-8 text-sm pr-7",
-                    fieldOk("cardCvv", cardCvvValid(state.cardCvv)) === false && "border-destructive",
+                    "h-8 pr-7 text-sm",
+                    fieldOk("cardCvv", cardCvvValid(state.cardCvv)) === false &&
+                      "border-destructive",
                   )}
                 />
                 {fieldOk("cardCvv", cardCvvValid(state.cardCvv)) && (
-                  <CheckCircle2 className="absolute right-2 top-1/2 -translate-y-1/2 size-3.5 text-emerald-600" />
+                  <CheckCircle2 className="absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-emerald-600" />
                 )}
               </div>
             </div>
           </div>
 
-          <p className="text-[11px] text-muted-foreground flex items-start gap-1">
-            <ShieldCheck className="size-3 mt-0.5 text-emerald-600 shrink-0" />
+          <p className="text-muted-foreground flex items-start gap-1 text-[11px]">
+            <ShieldCheck className="mt-0.5 size-3 shrink-0 text-emerald-600" />
             Ambiente de demonstração — não use dados reais.
           </p>
         </div>
       ) : (
         /* PIX payment */
-        <div className="grid gap-2.5 rounded-lg border bg-card px-3 py-3">
+        <div className="bg-card grid gap-2.5 rounded-lg border px-3 py-3">
           <p className="text-xs font-medium">Pague com PIX</p>
           <div className="flex flex-col items-center gap-2 py-2">
             <div className="rounded-lg bg-slate-100 p-5 text-center dark:bg-slate-800/50">
               <QrCode className="size-16 text-slate-500 dark:text-slate-300" />
             </div>
-            <p className="text-[11px] text-muted-foreground text-center max-w-xs">
+            <p className="text-muted-foreground max-w-xs text-center text-[11px]">
               Escaneie o QR code ou copie a chave para pagar
             </p>
             <Button
@@ -1197,11 +1160,9 @@ function Step3Payment({
               size="sm"
               className="h-7 text-xs"
               onClick={() => {
-                navigator.clipboard
-                  .writeText("severinno@exemplo.com")
-                  .catch((err) => {
-                    console.warn("[booking-modal] clipboard copy failed:", err)
-                  })
+                navigator.clipboard.writeText("severinno@exemplo.com").catch((err) => {
+                  console.warn("[booking-modal] clipboard copy failed:", err)
+                })
                 toast.success("Chave PIX copiada!")
               }}
             >
@@ -1212,7 +1173,7 @@ function Step3Payment({
             type="button"
             variant="outline"
             size="sm"
-            className="border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40 h-8"
+            className="h-8 border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
             onClick={() => {
               setPaid(true)
               toast.success("Pagamento confirmado. Conclua o agendamento.")
@@ -1277,13 +1238,13 @@ function Step4Confirmation({
             {provider?.avatarUrl ? (
               <AvatarImage src={provider.avatarUrl} alt={provider.name} />
             ) : null}
-            <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-xs dark:bg-emerald-950 dark:text-emerald-300">
+            <AvatarFallback className="rounded-md bg-emerald-100 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               {provider?.name?.[0]?.toUpperCase() ?? "?"}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{provider?.name}</p>
-            <p className="text-xs text-muted-foreground truncate">{selectedService?.title}</p>
+            <p className="truncate text-sm font-medium">{provider?.name}</p>
+            <p className="text-muted-foreground truncate text-xs">{selectedService?.title}</p>
           </div>
         </div>
       </ReviewSection>
@@ -1302,7 +1263,7 @@ function Step4Confirmation({
       {/* Address */}
       <ReviewSection label="Endereço" onEdit={() => goToStep(2)}>
         <div className="flex items-start gap-2 text-sm">
-          <MapPin className="size-4 mt-0.5 shrink-0 text-emerald-600" />
+          <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-600" />
           <span className="text-muted-foreground">
             {state.address.street
               ? `${state.address.street}, ${state.address.number}${
@@ -1330,17 +1291,14 @@ function Step4Confirmation({
           </span>
         </div>
         {state.notes && (
-          <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
-            📝 {state.notes}
-          </p>
+          <p className="text-muted-foreground mt-1.5 line-clamp-2 text-xs">📝 {state.notes}</p>
         )}
       </ReviewSection>
 
       {/* What happens next — Nielsen #10: help & documentation */}
       <InfoCard variant="emerald" className="mt-1">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
-          <Clock className="size-3.5" />
-          O que acontece agora?
+        <h4 className="mb-3 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-400">
+          <Clock className="size-3.5" />O que acontece agora?
         </h4>
         <div className="grid gap-2.5">
           {[
@@ -1349,17 +1307,17 @@ function Step4Confirmation({
             { icon: Clock, label: "Em andamento", desc: "Serviço sendo realizado" },
             { icon: Check, label: "Concluído", desc: "Você avalia o serviço" },
           ].map((item, i) => {
-            const Icon = item.icon
+            const _Icon = item.icon
             return (
               <div key={i} className="flex items-start gap-2.5">
-                <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shrink-0 mt-0.5">
+                <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
                   {i + 1}
                 </span>
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
                     {item.label}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">{item.desc}</p>
+                  <p className="text-muted-foreground text-[11px]">{item.desc}</p>
                 </div>
               </div>
             )
@@ -1368,7 +1326,7 @@ function Step4Confirmation({
       </InfoCard>
 
       {/* Security note */}
-      <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="text-muted-foreground flex items-center justify-center gap-1.5 text-[11px]">
         <ShieldCheck className="size-3.5 text-emerald-600" />
         Ambiente de demonstração — nenhum pagamento será efetivado
       </div>
@@ -1392,14 +1350,14 @@ function ReviewSection({
 }) {
   return (
     <div className="rounded-lg border p-3">
-      <div className="flex items-center justify-between mb-1.5">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="mb-1.5 flex items-center justify-between">
+        <h4 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
           {label}
         </h4>
         <button
           type="button"
           onClick={onEdit}
-          className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium transition-colors"
+          className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 transition-colors hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
         >
           <Pencil className="size-3" />
           Editar
@@ -1434,23 +1392,16 @@ function PaymentOption({
         "flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 transition-all",
         selected
           ? "border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600 dark:bg-emerald-950/30"
-          : "hover:border-emerald-400/50 hover:bg-accent/40",
+          : "hover:bg-accent/40 hover:border-emerald-400/50",
       )}
     >
       <RadioGroupItem value={value} id={`pay-${value}`} className="sr-only" />
-      <Icon
-        className={cn(
-          "size-4",
-          selected ? "text-emerald-600" : "text-muted-foreground",
-        )}
-      />
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium leading-tight">{title}</p>
-        <p className="text-[10px] text-muted-foreground leading-tight">
-          {description}
-        </p>
+      <Icon className={cn("size-4", selected ? "text-emerald-600" : "text-muted-foreground")} />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs leading-tight font-medium">{title}</p>
+        <p className="text-muted-foreground text-[10px] leading-tight">{description}</p>
       </div>
-      {selected && <Check className="size-3.5 text-emerald-600 shrink-0" />}
+      {selected && <Check className="size-3.5 shrink-0 text-emerald-600" />}
     </Label>
   )
 }

@@ -79,7 +79,6 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 import { useFaviconBadge } from "@/hooks/use-favicon-badge"
 import { NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
 import { formatRelative } from "@/lib/format"
@@ -270,7 +269,7 @@ export default function Topbar({
   query,
   onQueryChange,
   categories,
-  activeCategoryId,
+  activeCategoryId: _activeCategoryId,
   onCategorySelect,
   onSearchSubmit,
   sort,

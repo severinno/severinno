@@ -7,6 +7,7 @@ import { saveAndQueueNotification } from "@/lib/notification-queue"
 import { captureError } from "@/lib/sentry"
 import logger from "@/lib/logger"
 import { withRateLimit } from "@/lib/with-rate-limit"
+import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
 export const POST = withRateLimit(async (request: Request) => {
   try {
@@ -30,6 +31,16 @@ export const POST = withRateLimit(async (request: Request) => {
 
     const user = await db.user.findUnique({ where: { email } })
     if (!user) {
+      return NextResponse.json({
+        ok: true,
+        message: "Se o e-mail existir, você receberá as instruções de recuperação.",
+      })
+    }
+
+    // 🛡️ Contas demo são dev/staging only — em produção não enviamos reset
+    // (a credencial é pública; o fluxo de reset não deve ser acionável).
+    // Mesma resposta genérica para não revelar a existência da conta.
+    if (!isDemoAccountsEnabled() && isDemoAccountEmail(user.email)) {
       return NextResponse.json({
         ok: true,
         message: "Se o e-mail existir, você receberá as instruções de recuperação.",

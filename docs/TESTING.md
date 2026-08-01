@@ -213,7 +213,74 @@ npx tsx scripts/coverage-gaps.ts --ci
 npx playwright test e2e/providers-cache.spec.ts --project=chromium
 ```
 
----## Snapshot Management
+---
+
+## Seed E2Es (PostGIS efêmero)
+
+Os seeds têm dois E2Es dedicados que rodam contra um **PostGIS descartável**
+(subido via `docker-compose.test.yml`, dados em `tmpfs` — nada persiste):
+
+| E2E                  | Seed validado         | Checks | Valida                                                                                                      |
+| :------------------- | :-------------------- | :----: | :---------------------------------------------------------------------------------------------------------- |
+| `test:seed-prod-e2e` | `prisma/seed-prod.ts` |  115   | guard de produção, dry-run, árvore (27 cats), settings (9), **zero usuários**, idempotência                 |
+| `test:seed-dev-e2e`  | `prisma/seed.ts`      |  162   | guard anti-destruição (vazio + populado), 9 usuários demo, árvore, bookings/payments/reviews, wipe+recreate |
+
+Ambos cobrem os cenários de **`SEED_SPEC_PATCH`** (update mid-cycle + rename
+mid-cycle + spec inválido): o seed é executado como SUBPROCESSO com o spec
+mutado e a convergência é validada no banco real. Os cenários de update/rename
+usam o helper compartilhado `scripts/seed-e2e-utils.ts` (fonte única dos
+patches + `buildPatchedSpec` do seed-data — sem drift manual entre os E2Es).
+
+### Rodando
+
+```bash
+# Suite completa (start PostGIS → push schema → validação → cleanup)
+bun run test:seed-prod-e2e
+bun run test:seed-dev-e2e
+
+# Flags:
+#   --skip-docker   — reutiliza um PostGIS já de pé (ex.: prod primeiro, dev no MESMO container)
+#   --skip-cleanup  — mantém os containers rodando após o E2E (debug do estado do banco)
+bun run test:seed-prod-e2e --skip-docker --skip-cleanup
+bun run test:seed-dev-e2e --skip-docker
+```
+
+Pré-requisitos:
+
+- Docker (imagem `postgis/postgis:16-3.4`)
+- `bun` + client Prisma gerado (`bunx prisma generate`)
+- Porta `5433` livre (DATABASE_URL default do compose de teste)
+
+### SEED_SPEC_PATCH manualmente em dev
+
+O hook de teste pode ser usado manualmente para validar a convergência do seed
+sem rodar o E2E completo — o formato completo (icon/order/renameTo + gates de
+produção) está documentado em [`docs/SECURITY.md#13`](docs/SECURITY.md).
+
+```bash
+# Update in-place (icon/order — mesmo slug, converge sem duplicar) — seed dev
+SEED_SPEC_PATCH='[{"name":"Elétrica","icon":"bolt"}]' NODE_ENV=development bun run db:seed
+
+# Update in-place — seed prod (exige override — banco efêmero/CI)
+SEED_SPEC_PATCH='[{"name":"Elétrica","icon":"bolt"},{"name":"Reparos","order":5}]' \
+  NODE_ENV=development PROD_SEED_ALLOW_DEV=1 bun prisma/seed-prod.ts
+
+# Rename (muda o nome → muda o slug → CRIA linha nova) — dry-run avisa ANTES
+SEED_SPEC_PATCH='[{"name":"Elétrica","renameTo":"Eletricidade"}]' \
+  NODE_ENV=development PROD_SEED_ALLOW_DEV=1 bun prisma/seed-prod.ts --dry-run
+```
+
+> ⚠️ **Gotcha:** os E2Es **não limpam** `SEED_SPEC_PATCH` do ambiente herdado —
+> os runs canônicos (que restauram os valores originais) herdariam um patch
+> exportado no shell e quebrariam as asserções. Antes de rodar os E2Es:
+>
+> ```bash
+> unset SEED_SPEC_PATCH
+> ```
+
+---
+
+## Snapshot Management
 
 O projeto usa **snapshot tests** do Vitest (`toMatchSnapshot`) para capturar
 a saída renderizada de componentes em diferentes estados visuais.

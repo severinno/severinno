@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
     since.setDate(since.getDate() - days)
 
     // Build where clause dynamically
-    const where: Record<string, unknown> = {
+    const where: Prisma.PushAnalyticsWhereInput = {
       createdAt: { gte: since },
     }
 
@@ -71,13 +72,13 @@ export async function GET(request: Request) {
 
     // Fetch paginated records (user data is fetched separately via userId)
     const records = await db.pushAnalytics.findMany({
-      where: where as any,
+      where,
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * limit,
       take: limit,
     })
 
-    const total = await db.pushAnalytics.count({ where: where as any })
+    const total = await db.pushAnalytics.count({ where })
 
     // Also fetch distinct types and sources for filter dropdowns
     const [types, sources] = await Promise.all([

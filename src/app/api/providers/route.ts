@@ -5,7 +5,7 @@ import {
   DEFAULT_COUNT_CACHE_TTL,
   findEffectiveRadius,
 } from "@/lib/radius-expansion"
-import { fetchProvidersData } from "@/lib/fetch-providers-data"
+import { fetchProvidersData, type FetchProvidersDataDeps } from "@/lib/fetch-providers-data"
 import { fetchUnrestrictedResults } from "@/lib/fetch-unrestricted-results"
 import { buildProviderWhereClause } from "@/lib/sql"
 import {
@@ -56,10 +56,7 @@ export async function GET(request: Request) {
     const latNum = lat ? Number(lat) : null
     const lngNum = lng ? Number(lng) : null
     const hasGeo =
-      latNum !== null &&
-      lngNum !== null &&
-      Number.isFinite(latNum) &&
-      Number.isFinite(lngNum)
+      latNum !== null && lngNum !== null && Number.isFinite(latNum) && Number.isFinite(lngNum)
     const radiusKm = radius ? Number(radius) : null
 
     // Validate sort=distance requires coordinates
@@ -115,10 +112,7 @@ export async function GET(request: Request) {
         buildWhereClause: buildProviderWhereClause,
       })
 
-      const { effectiveRadius, matchCount } = await findEffectiveRadius(
-        radiusKm!,
-        countFn,
-      )
+      const { effectiveRadius, matchCount } = await findEffectiveRadius(radiusKm!, countFn)
 
       if (effectiveRadius !== null) {
         // Providers found at the effective radius
@@ -171,22 +165,28 @@ export async function GET(request: Request) {
           // Providers exist but beyond 100km — return unrestricted with expandedRadius = -1
           const unrestrictedResult = await fetchUnrestrictedResults(
             { fbWhere, fbParams, take, skip, hasGeo, latNum, lngNum },
-      {
-        serviceFindMany: db.service.findMany.bind(db) as any,
-        bookingGroupBy: db.booking.groupBy.bind(db) as any,
-        userFindMany: db.user.findMany.bind(db) as any,
-        queryRawUnsafe: db.$queryRawUnsafe.bind(db),
-      },
-    )
-    return cacheControlPublic(
-      NextResponse.json({
-        ...unrestrictedResult,
-        page,
-        limit,
-      }),
-      60,
-    )
-  }
+            {
+              serviceFindMany: db.service.findMany.bind(
+                db,
+              ) as unknown as FetchProvidersDataDeps["serviceFindMany"],
+              bookingGroupBy: db.booking.groupBy.bind(
+                db,
+              ) as unknown as FetchProvidersDataDeps["bookingGroupBy"],
+              userFindMany: db.user.findMany.bind(
+                db,
+              ) as unknown as FetchProvidersDataDeps["userFindMany"],
+              queryRawUnsafe: db.$queryRawUnsafe.bind(db),
+            },
+          )
+          return cacheControlPublic(
+            NextResponse.json({
+              ...unrestrictedResult,
+              page,
+              limit,
+            }),
+            60,
+          )
+        }
 
         // No providers at all
         return NextResponse.json({
@@ -257,19 +257,21 @@ export async function GET(request: Request) {
       providerIds,
       { hasGeo, latNum, lngNum, centerGeo },
       {
-        serviceFindMany: db.service.findMany.bind(db) as any,
-        bookingGroupBy: db.booking.groupBy.bind(db) as any,
-        userFindMany: db.user.findMany.bind(db) as any,
+        serviceFindMany: db.service.findMany.bind(
+          db,
+        ) as unknown as FetchProvidersDataDeps["serviceFindMany"],
+        bookingGroupBy: db.booking.groupBy.bind(
+          db,
+        ) as unknown as FetchProvidersDataDeps["bookingGroupBy"],
+        userFindMany: db.user.findMany.bind(
+          db,
+        ) as unknown as FetchProvidersDataDeps["userFindMany"],
         queryRawUnsafe: db.$queryRawUnsafe.bind(db),
       },
     )
 
-    return cacheControlPublic(
-      NextResponse.json({ items, total, page, limit, expandedRadius }),
-      60,
-    )
+    return cacheControlPublic(NextResponse.json({ items, total, page, limit, expandedRadius }), 60)
   } catch (e) {
     return handleError(e)
   }
 }
-

@@ -50,13 +50,13 @@
 import { PrismaClient } from "@prisma/client"
 import { isProdSeedAllowed } from "../src/lib/prod-seed"
 import {
-  CATEGORY_SPEC,
   DEFAULT_SETTINGS,
   buildPatchedSpec,
   categorySlug,
   categoryOrder,
   assertValidCategorySpec,
   buildSeedPlan,
+  printPlan,
   type CategorySeedInput,
   type CurrentCategoryRow,
   type CurrentSettingRow,
@@ -107,138 +107,6 @@ async function loadCurrentState(): Promise<{
     })),
     settings: settings.map((s) => ({ key: s.key, value: s.value })),
   }
-}
-
-/** Exibe o plano de dry-run em formato legível para revisão. */
-function printPlan(
-  plan: ReturnType<typeof buildSeedPlan>,
-  current: { categories: CurrentCategoryRow[]; settings: CurrentSettingRow[] },
-  spec: CategorySeedInput[] = CATEGORY_SPEC,
-): void {
-  console.log("")
-  console.log("🧾 DRY-RUN — nenhuma escrita será feita no banco")
-  console.log("")
-
-  console.log(`📂 CATEGORIAS (${spec.length} no spec)`)
-  for (const a of plan.categories) {
-    if (a.action === "create") {
-      console.log(
-        `   ➕ criar    ${a.slug.padEnd(38)} ${a.name.padEnd(26)} level ${a.level} parent=${a.parent ?? "—"} icon=${a.icon ?? "—"} order=${a.order}`,
-      )
-    } else if (a.action === "update") {
-      console.log(
-        `   🔄 atualizar ${a.slug.padEnd(36)} ${a.name.padEnd(26)} mudanças: ${a.changes.join(", ")}`,
-      )
-    } else {
-      console.log(`   ⏹ inalterada ${a.slug.padEnd(35)} ${a.name}`)
-    }
-  }
-
-  console.log("")
-  console.log(`⚙️  SETTINGS (${DEFAULT_SETTINGS.length} no spec)`)
-  for (const a of plan.settings) {
-    if (a.action === "create") {
-      console.log(`   ➕ criar    ${a.key.padEnd(30)} = ${a.value}`)
-    } else if (a.action === "update") {
-      console.log(
-        `   🔄 atualizar ${a.key.padEnd(28)} = ${a.value} (mudanças: ${a.changes.join(", ")})`,
-      )
-    } else {
-      console.log(`   ⏹ inalterado ${a.key.padEnd(27)} = ${a.value}`)
-    }
-  }
-
-  const s = plan.summary
-  console.log("")
-  console.log("📊 RESUMO")
-  console.log(
-    `   Categorias: ${s.categoriesCreate} criar, ${s.categoriesUpdate} atualizar, ${s.categoriesUnchanged} inalteradas (total ${spec.length})`,
-  )
-  console.log(
-    `   Settings:   ${s.settingsCreate} criar, ${s.settingsUpdate} atualizar, ${s.settingsUnchanged} inalterados (total ${DEFAULT_SETTINGS.length})`,
-  )
-
-  const inactive = current.categories.filter((c) => !c.active)
-  if (inactive.length > 0) {
-    console.log("")
-    console.log(
-      `   ℹ️  ${inactive.length} categoria(s) inativa(s) no banco: ${inactive.map((c) => c.name).join(", ")}`,
-    )
-    console.log("      O seed NÃO as reativa (reconcile seguro preserva a desativação do admin).")
-  }
-
-  // ── Renomeações em andamento (nome bate com o spec, slug difere) ──────
-  // Cenário PERIGOSO documentado no header: o slug é derivado do nome, então
-  // renomear uma categoria (ou o parent dela) muda o slug → o upsert cria uma
-  // NOVA linha e a antiga vira órfã, com services ainda apontando para ela.
-  // Aqui detectamos a renomeação na HORA da revisão: uma categoria no banco
-  // cujo nome casa com o spec mas cujo slug não é o canônico do spec.
-  // ⚠️ LIMITAÇÃO: a detecção dispara via FILHOS — o nome deles continua no
-  // spec, mas o slug muda porque embute o slug do pai. Um pai renomeado SEM
-  // filhos é indistinguível de uma categoria removida do spec (sem o spec
-  // anterior não há como saber) — ele só aparece na seção 'Fora do spec'.
-  const specByName = new Map(spec.map((c) => [c.name, c]))
-  // Filhos por nome de parent — para detectar pais renomeados que ficaram
-  // órfãos com filhos ainda apontando para eles no banco.
-  const childrenByParent = new Map<string, number>()
-  for (const c of current.categories) {
-    if (c.parentName) {
-      childrenByParent.set(c.parentName, (childrenByParent.get(c.parentName) ?? 0) + 1)
-    }
-  }
-  const renameSlugs = new Set<string>()
-  const renames: { dbSlug: string; specSlug: string; name: string }[] = []
-  for (const c of current.categories) {
-    const specEntry = specByName.get(c.name)
-    if (!specEntry) continue // nome nem existe no spec — tratado em 'Fora do spec'
-    const canonical = categorySlug(specEntry)
-    if (c.slug !== canonical) {
-      renames.push({ dbSlug: c.slug, specSlug: canonical, name: c.name })
-      renameSlugs.add(c.slug)
-    }
-  }
-  if (renames.length > 0) {
-    console.log("")
-    console.log("   ⚠️  POSSÍVEL RENOMEAÇÃO DETECTADA — atenção antes de rodar:")
-    for (const r of renames) {
-      const kids = childrenByParent.get(r.name) ?? 0
-      console.log(
-        `      • '${r.name}': banco tem slug '${r.dbSlug}', o spec quer '${r.specSlug}'` +
-          (kids > 0 ? ` — ${kids} filho(s) no banco ainda aponta(m) para a linha antiga` : ""),
-      )
-    }
-    console.log(
-      "      O upsert CRIARÁ a linha nova e DEIXARÁ a antiga órfã — services" +
-        " continuam apontando para a antiga. Renomear exige migração manual" +
-        " de parentId/FKs, NUNCA re-run do seed.",
-    )
-  }
-
-  // Entradas extras no banco (fora do spec) — o seed NÃO as toca; só avisa.
-  // Linhas já listadas como renomeação ficam de fora para não duplicar.
-  const specCatSlugs = new Set(spec.map((c) => categorySlug(c)))
-  const extraCats = current.categories.filter(
-    (c) => !specCatSlugs.has(c.slug) && !renameSlugs.has(c.slug),
-  )
-  const specSetKeys = new Set(DEFAULT_SETTINGS.map((s) => s.key))
-  const extraSettings = current.settings.filter((s) => !specSetKeys.has(s.key))
-  if (extraCats.length > 0 || extraSettings.length > 0) {
-    console.log("")
-    console.log(`   ℹ️  Fora do spec (não serão tocadas pelo seed):`)
-    if (extraCats.length > 0) {
-      const extraWithKids = extraCats.map((c) => {
-        const kids = childrenByParent.get(c.name) ?? 0
-        return kids > 0 ? `${c.name} (${kids} filho(s) no banco — possível pai renomeado)` : c.name
-      })
-      console.log(`      • ${extraCats.length} categoria(s) extra(s): ${extraWithKids.join(", ")}`)
-    }
-    if (extraSettings.length > 0) {
-      console.log(
-        `      • ${extraSettings.length} setting(s) extra(s): ${extraSettings.map((s) => s.key).join(", ")}`,
-      )
-    }
-  }
-  console.log("")
 }
 
 async function main() {

@@ -18,7 +18,7 @@
  *   - node_modules, .next, dist, etc.
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs"
+import { readFileSync, writeFileSync, readdirSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
 
 // ---------------------------------------------------------------------------
@@ -27,14 +27,7 @@ import { join, relative, resolve } from "node:path"
 
 const ROOT = resolve(import.meta.dirname, "..")
 const SCAN_DIR = join(ROOT, "src", "components", "vitrine")
-const SETUP_FILE = join(
-  ROOT,
-  "src",
-  "components",
-  "vitrine",
-  "__tests__",
-  "vitrine-a11y-setup.tsx",
-)
+const SETUP_FILE = join(ROOT, "src", "components", "vitrine", "__tests__", "vitrine-a11y-setup.tsx")
 
 // ---------------------------------------------------------------------------
 // File discovery
@@ -209,9 +202,7 @@ function main() {
   } else {
     // Dry run — print to stdout
     console.log(generated)
-    console.error(
-      `\n📋 Dry run — add --save to overwrite ${relative(ROOT, SETUP_FILE)} in place`,
-    )
+    console.error(`\n📋 Dry run — add --save to overwrite ${relative(ROOT, SETUP_FILE)} in place`)
   }
 }
 

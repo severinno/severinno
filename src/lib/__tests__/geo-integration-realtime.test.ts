@@ -45,7 +45,7 @@ vi.hoisted(() => {
   const dir = mkdtempSync(pathJoin(tmpdir(), "geo-intg-"))
   process.env.GEO_METRICS_SNAPSHOTS_DIR = dir
   // Store reference for cleanup in afterAll
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   ;(globalThis as any).__GEO_TEMP_DIR__ = dir
 })
 
@@ -111,7 +111,6 @@ function writeHistoricalSnapshot(
 // ---------------------------------------------------------------------------
 
 afterAll(() => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dir = (globalThis as any).__GEO_TEMP_DIR__ as string | undefined
   if (dir) {
     try {

@@ -38,36 +38,36 @@ const API_ROUTES_GLOB = "src/app/api/**/route.ts"
 // Paths that are intentionally excluded from caching (auth-required,
 // mutating, internal, or real-time)
 const EXCLUDED_PREFIXES = [
-  "/api/admin",        // requireRole — already private/auth
-  "/api/auth",         // authentication endpoints
+  "/api/admin", // requireRole — already private/auth
+  "/api/auth", // authentication endpoints
   "/api/availability", // user-specific availability
-  "/api/bookings",     // user-specific bookings
-  "/api/chat",         // real-time chat
-  "/api/cron",         // internal cron jobs
-  "/api/favorites",    // user-specific favorites
-  "/api/health",       // monitoring (no cache needed)
-  "/api/messages",     // user-specific messages
-  "/api/metrics",      // monitoring
-  "/api/newsletter",   // POST (subscribe)
-  "/api/notifications",// user-specific
-  "/api/provider",     // provider-specific (auth required)
-  "/api/push",         // user-specific push subscriptions
-  "/api/quotes",       // user-specific quotes
+  "/api/bookings", // user-specific bookings
+  "/api/chat", // real-time chat
+  "/api/cron", // internal cron jobs
+  "/api/favorites", // user-specific favorites
+  "/api/health", // monitoring (no cache needed)
+  "/api/messages", // user-specific messages
+  "/api/metrics", // monitoring
+  "/api/newsletter", // POST (subscribe)
+  "/api/notifications", // user-specific
+  "/api/provider", // provider-specific (auth required)
+  "/api/push", // user-specific push subscriptions
+  "/api/quotes", // user-specific quotes
   // /api/reviews/* not listed: GET /api/reviews/recent IS cached.
   // POST /api/reviews won't have cacheControlPublic, so not flagged.
-  "/api/sentry",       // POST sentry errors
+  "/api/sentry", // POST sentry errors
   "/api/services/[id]", // provider-specific service detail
   "/api/stats/activity", // auth required
-  "/api/tracking",     // booking-specific tracking
-  "/api/upload",       // POST upload
-  "/api/users",        // user-specific data
-  "/api/webhooks",     // POST webhooks
+  "/api/tracking", // booking-specific tracking
+  "/api/upload", // POST upload
+  "/api/users", // user-specific data
+  "/api/webhooks", // POST webhooks
 ]
 
 // Some routes are GET but intentionally not cached
 // (list as full paths for clarity)
 const INTENTIONALLY_UNCHACED = [
-  "/api/categories/[id]",  // individual category — currently not cached
+  "/api/categories/[id]", // individual category — currently not cached
 ]
 
 // ---------------------------------------------------------------------------
@@ -102,7 +102,10 @@ function shouldHaveCache(apiPath: string): boolean {
 }
 
 /** Extract TTL values from a route file's cacheControlPublic/Private calls. */
-function extractTtlFromFile(content: string, apiPath: string): { maxAge: number; sMaxage: number | null; type: "public" | "private" } | null {
+function extractTtlFromFile(
+  content: string,
+  _apiPath: string,
+): { maxAge: number; sMaxage: number | null; type: "public" | "private" } | null {
   // Match cacheControlPublic(res, <maxAge>, <sMaxage?>) or cacheControlPrivate(res, <maxAge>)
   const publicMatch = content.match(/cacheControlPublic\([^,]+,\s*(\d+)(?:\s*,\s*(\d+))?/)
   const privateMatch = content.match(/cacheControlPrivate\([^,]+,\s*(\d+)/)
@@ -146,7 +149,8 @@ function main(): void {
     const apiPath = filePathToApiRoute(file)
 
     // Check if this file uses cache functions
-    const hasCache = content.includes("cacheControlPublic") || content.includes("cacheControlPrivate")
+    const hasCache =
+      content.includes("cacheControlPublic") || content.includes("cacheControlPrivate")
     const shouldCache = shouldHaveCache(apiPath)
 
     if (hasCache) {
@@ -160,8 +164,8 @@ function main(): void {
       if (shouldCache && !manifestPaths.has(apiPath as never)) {
         errors.push(
           `❌ MISSING FROM MANIFEST: ${apiPath}\n` +
-          `   Found cacheControlPublic/Private in ${file}\n` +
-          `   Add it to src/lib/cache-manifest.ts`,
+            `   Found cacheControlPublic/Private in ${file}\n` +
+            `   Add it to src/lib/cache-manifest.ts`,
         )
       }
     } else if (shouldCache) {
@@ -171,8 +175,8 @@ function main(): void {
       if (manifestPaths.has(apiPath as never)) {
         errors.push(
           `❌ STALE IN MANIFEST: ${apiPath}\n` +
-          `   Listed in CACHED_ROUTES but no cacheControlPublic/Private found in ${file}\n` +
-          `   Either add cache to the route or remove it from src/lib/cache-manifest.ts`,
+            `   Listed in CACHED_ROUTES but no cacheControlPublic/Private found in ${file}\n` +
+            `   Either add cache to the route or remove it from src/lib/cache-manifest.ts`,
         )
       }
     }
@@ -180,15 +184,15 @@ function main(): void {
 
   // Check for routes in manifest that don't exist in code
   const foundPaths = new Set(foundInCode.map((r) => r.path))
-  for (const [path, entry] of manifestPathToEntry) {
+  for (const [path, _entry] of manifestPathToEntry) {
     if (!foundPaths.has(path)) {
       // It's possible the route file doesn't exist anymore (renamed, deleted)
       const matchingFile = routeFiles.find((f) => filePathToApiRoute(f) === path)
       if (!matchingFile) {
         errors.push(
           `❌ STALE IN MANIFEST: ${path}\n` +
-          `   Listed in CACHED_ROUTES but no corresponding route file found\n` +
-          `   Remove it from src/lib/cache-manifest.ts`,
+            `   Listed in CACHED_ROUTES but no corresponding route file found\n` +
+            `   Remove it from src/lib/cache-manifest.ts`,
         )
       }
     }
@@ -203,24 +207,24 @@ function main(): void {
     if (ttl.maxAge !== manifestEntry.maxAge) {
       errors.push(
         `❌ TTL MISMATCH: ${path}\n` +
-        `   Manifest: maxAge=${manifestEntry.maxAge}, Code: maxAge=${ttl.maxAge}\n` +
-        `   Update src/lib/cache-manifest.ts`,
+          `   Manifest: maxAge=${manifestEntry.maxAge}, Code: maxAge=${ttl.maxAge}\n` +
+          `   Update src/lib/cache-manifest.ts`,
       )
     }
 
     if (ttl.type === "public" && ttl.sMaxage !== null && ttl.sMaxage !== manifestEntry.sMaxage) {
       errors.push(
         `❌ TTL MISMATCH: ${path}\n` +
-        `   Manifest: sMaxage=${manifestEntry.sMaxage}, Code: sMaxage=${ttl.sMaxage}\n` +
-        `   Update src/lib/cache-manifest.ts`,
+          `   Manifest: sMaxage=${manifestEntry.sMaxage}, Code: sMaxage=${ttl.sMaxage}\n` +
+          `   Update src/lib/cache-manifest.ts`,
       )
     }
 
     if (ttl.type !== manifestEntry.type) {
       errors.push(
         `❌ TYPE MISMATCH: ${path}\n` +
-        `   Manifest: ${manifestEntry.type}, Code: ${ttl.type}\n` +
-        `   Update src/lib/cache-manifest.ts`,
+          `   Manifest: ${manifestEntry.type}, Code: ${ttl.type}\n` +
+          `   Update src/lib/cache-manifest.ts`,
       )
     }
   }

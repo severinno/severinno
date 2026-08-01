@@ -114,8 +114,6 @@ jobs:
             echo "  ✅ Output directory: docs/benchmarks/"
           fi
 
-
-
   # ── Benchmark All ───────────────────────────────────────────────────────
   benchmark-all:
     name: Benchmark All Types
@@ -232,16 +230,19 @@ jobs:
             fi
 
             # Run comparison (exit code 1 = regression detected)
-            CMD="node scripts/compare-benchmarks.mjs --threshold $THRESHOLD $FILTER \"$BASELINE\" \"$LATEST\""
+            # Note: ${FILTER:+ $FILTER} keeps the unquoted two-word form
+            # (e.g. "--filter cache") when non-empty, but contributes nothing
+            # when FILTER is "" (4 of 6 types) — preserving original eval semantics.
+            CMD="node scripts/compare-benchmarks.mjs --threshold \"$THRESHOLD\"${FILTER:+ $FILTER} \"$BASELINE\" \"$LATEST\""
             echo ""
             echo "────────────────────────────────────────────────────────────────"
             echo "  Comparing $TYPE..."
             echo "────────────────────────────────────────────────────────────────"
-            eval "$CMD" 2>&1 | tee /tmp/compare-${TYPE}.txt
+            eval "$CMD" 2>&1 | tee "/tmp/compare-${TYPE}.txt"
             COMPARE_EXIT=${PIPESTATUS[0]}
 
             # Capture the diff output
-            DIFF=$(cat /tmp/compare-${TYPE}.txt 2>/dev/null || echo "No diff output.")
+            DIFF=$(cat "/tmp/compare-${TYPE}.txt" 2>/dev/null || echo "No diff output.")
             ALL_OUTPUT+="\n### $TYPE\n\`\`\`\n${DIFF:0:2000}\n\`\`\`\n"
 
             if [ "$COMPARE_EXIT" = "1" ]; then
@@ -249,9 +250,11 @@ jobs:
             fi
           done
 
-          echo "all_output<<EOF" >> "$GITHUB_OUTPUT"
-          printf "%b" "$ALL_OUTPUT" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "all_output<<EOF"
+            printf "%b" "$ALL_OUTPUT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
           if [ ${#REGRESSIONS[@]} -gt 0 ]; then
             echo "regressions=${REGRESSIONS[*]}" >> "$GITHUB_OUTPUT"
@@ -273,26 +276,28 @@ jobs:
           DATE_STR=$(date -u)
 
           SUMMARY="## 📊 Benchmark Semanal — Todos os 6 Tipos
-          
-**Executado em:** ${DATE_STR}
-**Threshold:** ${THRESHOLD}%
-**Regressões:** $([ "$HAS_REGRESSIONS" = "true" ] && echo \"⚠ Sim — ${REGRESSIONS}\" || echo \"✅ Nenhuma\")
 
-### Resultados por Tipo
+          **Executado em:** ${DATE_STR}
+          **Threshold:** ${THRESHOLD}%
+          **Regressões:** $([ "$HAS_REGRESSIONS" = "true" ] && echo \"⚠ Sim — ${REGRESSIONS}\" || echo \"✅ Nenhuma\")
 
-$(cat /tmp/benchmark-run.txt 2>/dev/null | head -30 || echo "Sem resultados.")
+          ### Resultados por Tipo
 
-### Comparação com Baseline
+          $(cat /tmp/benchmark-run.txt 2>/dev/null | head -30 || echo "Sem resultados.")
 
-${{ steps.compare.outputs.all_output }}
+          ### Comparação com Baseline
 
----
+          ${{ steps.compare.outputs.all_output }}
 
-*Gerado automaticamente por Benchmark All Weekly — ${DATE_STR}*"
+          ---
 
-          echo "text<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$SUMMARY" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          *Gerado automaticamente por Benchmark All Weekly — ${DATE_STR}*"
+
+          {
+            echo "text<<EOF"
+            echo "$SUMMARY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       # ── Publish job summary ──────────────────────────────────────────────
       - name: Publish job summary
@@ -391,7 +396,6 @@ ${{ steps.compare.outputs.all_output }}
           REGRESSIONS="${{ steps.compare.outputs.regressions }}"
           THRESHOLD=${{ github.event.inputs.threshold || 10 }}
           PR_NUMBER="${{ steps.find-pr.outputs.pr_number }}"
-          TIMESTAMP=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
 
           echo "has_regressions=true" >> "$GITHUB_OUTPUT"
 
@@ -419,28 +423,12 @@ ${{ steps.compare.outputs.all_output }}
 
             SENTRY_HOST=$(echo "$DSN_URL" | sed 's|https\?://||' | sed 's|/.*||')
 
-            # Build a minimal Sentry envelope JSON
-            EVENT_JSON=$(cat <<EOF | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d))" 2>/dev/null || echo "{}"
-            {
-              "event_id": "$(node -e "process.stdout.write(require('crypto').randomUUID().replace(/-/g,''))")",
-              "message": "[Benchmark] Performance regression detected in: ${REGRESSIONS}",
-              "level": "warning",
-              "logger": "benchmark-all-weekly",
-              "culprit": "benchmark-all-weekly",
-              "timestamp": "$(date -u +%s)",
-              "tags": {
-                "workflow": "benchmark-all-weekly",
-                "threshold": "${THRESHOLD}%",
-                "regression_types": "${REGRESSIONS}",
-                "pr_number": "${PR_NUMBER}"
-              },
-              "extra": {
-                "regression_detail": "${DETAIL}",
-                "run_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-              }
-            }
-            EOF
-            )
+            # Build a minimal Sentry envelope JSON. Uses python3 with env vars
+            # instead of a here-doc (the old <<EOF had an indented terminator
+            # inside the block scalar, which bash never terminated).
+            EVENT_JSON=$(REGRESSIONS="$REGRESSIONS" THRESHOLD="$THRESHOLD" PR_NUMBER="$PR_NUMBER" \
+              DETAIL="$DETAIL" GITHUB_REPOSITORY="${{ github.repository }}" GITHUB_RUN_ID="${{ github.run_id }}" \
+              python3 -c 'import json,os,time,uuid; e={"event_id":uuid.uuid4().hex,"message":"[Benchmark] Performance regression detected in: "+os.environ.get("REGRESSIONS",""),"level":"warning","logger":"benchmark-all-weekly","culprit":"benchmark-all-weekly","timestamp":str(int(time.time())),"tags":{"workflow":"benchmark-all-weekly","threshold":os.environ.get("THRESHOLD","10")+"%","regression_types":os.environ.get("REGRESSIONS",""),"pr_number":os.environ.get("PR_NUMBER","")},"extra":{"regression_detail":os.environ.get("DETAIL",""),"run_url":"https://github.com/"+os.environ.get("GITHUB_REPOSITORY","")+"/actions/runs/"+os.environ.get("GITHUB_RUN_ID","")}}; print(json.dumps(e))' 2>/dev/null || echo "{}")
 
             # Send via curl to Sentry's Store endpoint
             AUTH_HEADER="X-Sentry-Auth: Sentry sentry_version=7, sentry_client=benchmark-ci/0.1.0, sentry_key=${DSN_KEY}"

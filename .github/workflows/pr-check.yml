@@ -82,6 +82,71 @@ jobs:
       - name: Summary
         run: echo "✅ No seed test hooks outside the test workflow allowlist."
 
+  # ── Workflow References Guard ──────────────────────────────────────────
+  # Fast gate (node puro, <1s): falha o PR se qualquer workflow referenciar
+  # um script inexistente (node|bash|bun scripts/X), uma entry removida de
+  # package.json (bun|npm run X) ou um reusable workflow local inexistente
+  # (uses: ./.github/workflows/X.yml sem o arquivo ou sem workflow_call).
+  #
+  # Por que existe: consolidações como a matrix 2×2 do seed-guards.yml
+  # deletam/renomeiam workflows e scripts em lote — uma referência quebrada
+  # só falharia no JOB que a executa (com custo de runner pago e mensagem
+  # confusa). Este guard falha o PR no início com a referência exata.
+  workflow-refs-guard:
+    name: Workflow References Guard (no dangling refs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check workflow → script/package.json/uses references
+        run: node scripts/check-workflow-refs.mjs
+
+      - name: Summary
+        run: echo "✅ No dangling references between workflows and scripts/package.json."
+
+  # ── E2E Counts Guard ──────────────────────────────────────────────────
+  # Fast gate (node puro, <1s): falha o PR se os counts de checks
+  # documentados nos comentários dos workflows (pr-check.yml, seed-guards.yml,
+  # validate-seed-guards-matrix-local.sh) divergirem do EXPECTED_TOTAL
+  # declarado nos E2Es de seed (123 prod / 162 dev — fonte da verdade).
+  #
+  # Por que existe: os counts crescem quando asserções são adicionadas aos
+  # E2Es (o dev E2E passou de 132 → 147 → 162 ao longo dos cenários). Sem
+  # este guard, um dev atualiza o E2E mas esquece o comentário do workflow —
+  # o CI não pega e o número documentado fica errado para sempre. Este guard
+  # fecha o loop: qualquer divergência entre o que está escrito nos workflows
+  # e o EXPECTED_TOTAL do source falha o PR no início com arquivo:linha.
+  # Complemento runtime: cada E2E também valida no final que o total REAL
+  # impresso (📊 Resultados) bate com a própria constante (exit 1 se divergir).
+  e2e-counts-guard:
+    name: E2E Counts Guard (comentários = derivação)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Check documented E2E check counts match the derivation
+        run: node scripts/check-e2e-counts.mjs
+
+      - name: Summary
+        run: echo "✅ Documented E2E counts match the derivation (scripts/seed-e2e-count.ts)."
+
+  # ── Actionlint (workflow syntax) ───────────────────────────────────────
+  actionlint:
+    name: Actionlint (workflow syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run actionlint on all workflows
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
+
+      - name: Summary
+        run: echo "✅ All .github/workflows/*.yml pass actionlint (syntax + shellcheck)."
+
   # ── Fuzz Tests ─────────────────────────────────────────────────────────
   # Runs in parallel with other checks. No external dependencies needed.
   fuzz:
@@ -278,8 +343,32 @@ jobs:
       # 'postgis' (não 'postgres' como nos seed E2Es) — job.services.<id>.
       - name: Enable PostGIS extension
         run: |
-          docker exec ${{ job.services.postgis.id }} \
-            psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis"
+          # O docker-postgis (alpine E full) carrega a extensão no POSTGRES_DB
+          # DEPOIS do servidor aceitar conexões ('Loading PostGIS extensions
+          # into severinno') — o healthcheck passa antes. Um CREATE EXTENSION
+          # IF NOT EXISTS nesse momento RACEIA com o load da imagem e falha
+          # esporadicamente com duplicate key pg_extension_name_index.
+          # Solução: poll até a extensão aparecer (a imagem SEMPRE carrega),
+          # com fallback de criação (IF NOT EXISTS + re-verificação).
+          POSTGIS_READY=0
+          for _ in $(seq 1 30); do
+            if docker exec ${{ job.services.postgis.id }} \
+              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+              POSTGIS_READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$POSTGIS_READY" != "1" ]; then
+            docker exec ${{ job.services.postgis.id }} \
+              psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
+            if ! docker exec ${{ job.services.postgis.id }} \
+              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+              echo "❌ postgis não disponível após espera/fallback"
+              exit 1
+            fi
+          fi
+          echo "✅ postgis disponível"
 
       # ── Run GiST benchmark ────────────────────────────────────────────
       # Reduced scope: 500 + 2000 providers, 5 radii (1,5,10,25,50 km)
@@ -427,7 +516,7 @@ jobs:
   # economia ~1 min/PR vs. jobs separados: 1 pull de imagem + 1 bun install
   # + 1 prisma generate/push em vez de 2 de cada).
   #
-  # ORDEM: prod E2E PRIMEIRO (115 checks — banco limpo, asserta ZERO
+  # ORDEM: prod E2E PRIMEIRO (123 checks — banco limpo, asserta ZERO
   # usuários), dev E2E DEPOIS (162 checks — o wipe+recreate do dev seed não
   # conflita com os dados do prod).
   #

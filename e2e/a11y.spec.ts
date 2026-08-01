@@ -100,9 +100,9 @@ async function collectErrors(
     const url = request.url()
     // Ignore known non-actionable failures
     if (
-      url.includes("favicon.ico") ||           // Next.js dev-mode favicon
-      url.endsWith(".map") ||                    // Source maps
-      url.includes("sockjs-node")              // Webpack HMR
+      url.includes("favicon.ico") || // Next.js dev-mode favicon
+      url.endsWith(".map") || // Source maps
+      url.includes("sockjs-node") // Webpack HMR
     ) {
       return
     }
@@ -119,10 +119,7 @@ function expectNoErrors(
   errors: { consoleErrors: string[]; failedRequests: string[] },
   pageName: string,
 ) {
-  expect(
-    errors.consoleErrors,
-    `${pageName}: console errors found`,
-  ).toHaveLength(0)
+  expect(errors.consoleErrors, `${pageName}: console errors found`).toHaveLength(0)
   expect(
     errors.failedRequests,
     `${pageName}: failed network requests found: ${errors.failedRequests.join(", ")}`,
@@ -133,7 +130,6 @@ function expectNoErrors(
  * Print a readable summary of violations to the Playwright output.
  */
 function printViolations(result: A11yResult, raw: import("axe-core").AxeResults, pageName: string) {
-  // eslint-disable-next-line no-console
   console.log(`
 ╔══════════════════════════════════════════════════╗
 ║  Accessibility Audit — ${pageName.padEnd(27)}║
@@ -148,15 +144,14 @@ function printViolations(result: A11yResult, raw: import("axe-core").AxeResults,
 
   // Print details for each violation
   for (const v of raw.violations) {
-    // eslint-disable-next-line no-console
     console.log(`  [${v.impact?.toUpperCase() ?? "N/A"}] ${v.id}: ${v.help}`)
-    // eslint-disable-next-line no-console
+
     console.log(`         Tags: ${v.tags.join(", ")}`)
-    // eslint-disable-next-line no-console
+
     console.log(`         Help: ${v.helpUrl}`)
-    // eslint-disable-next-line no-console
+
     console.log(`         Elements: ${v.nodes.map((n) => n.target.join(", ")).join(" | ")}`)
-    // eslint-disable-next-line no-console
+
     console.log("")
   }
 }
@@ -252,7 +247,7 @@ test.describe("WCAG Compliance Report", () => {
     }
 
     // Print a consolidated WCAG compliance report
-    // eslint-disable-next-line no-console
+
     console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║  WCAG Compliance Report                                 ║
@@ -261,24 +256,19 @@ test.describe("WCAG Compliance Report", () => {
 ╚══════════════════════════════════════════════════════════╝
 `)
     for (const [pageName, violations] of Object.entries(allViolations)) {
-      // eslint-disable-next-line no-console
       console.log(`\n── ${pageName} ──`)
       if (violations.length === 0) {
-        // eslint-disable-next-line no-console
         console.log("  ✅ No WCAG violations found.")
       } else {
         for (const v of violations) {
-          // eslint-disable-next-line no-console
           console.log(`  [${v.impact?.toUpperCase() ?? "N/A"}] ${v.id}: ${v.help}`)
         }
       }
     }
 
     if (allErrors.length > 0) {
-      // eslint-disable-next-line no-console
       console.log(`\n── Console Errors / Failed Requests ──`)
       for (const { page: pageName, errors: pageErrors } of allErrors) {
-        // eslint-disable-next-line no-console
         console.log(`  ${pageName}: ${pageErrors.join(", ")}`)
       }
     }
@@ -288,12 +278,12 @@ test.describe("WCAG Compliance Report", () => {
       .flat()
       .filter((v) => v.impact === "critical" || v.impact === "serious").length
 
-    expect(totalCritical, `Found ${totalCritical} critical/serious WCAG violations across all pages`).toBe(0)
+    expect(
+      totalCritical,
+      `Found ${totalCritical} critical/serious WCAG violations across all pages`,
+    ).toBe(0)
 
     // Also fail if there are unexpected console/network errors
-    expect(
-      allErrors,
-      `Found ${allErrors.length} pages with errors`,
-    ).toHaveLength(0)
+    expect(allErrors, `Found ${allErrors.length} pages with errors`).toHaveLength(0)
   })
 })

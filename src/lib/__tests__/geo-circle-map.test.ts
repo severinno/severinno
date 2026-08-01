@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import {
-  syncRadiusCircle,
-  removeRadiusCircle,
-  RADIUS_SOURCE_ID,
-  type MapLike,
-} from "../geo-circle"
+import { syncRadiusCircle, removeRadiusCircle, RADIUS_SOURCE_ID, type MapLike } from "../geo-circle"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -14,8 +9,6 @@ import {
 function createMockMap(): MapLike & { setDataCalls: unknown[] } {
   const sourceStore = new Map<string, { setData: ReturnType<typeof vi.fn>; type?: string }>()
   const layerStore = new Map<string, boolean>()
-
-  const setData = vi.fn()
 
   return {
     setDataCalls: [] as unknown[],
@@ -27,9 +20,12 @@ function createMockMap(): MapLike & { setDataCalls: unknown[] } {
     },
 
     addSource(id: string, source: Record<string, unknown>) {
-      sourceStore.set(id, { setData: vi.fn((data: unknown) => {
-        this.setDataCalls.push(data)
-      }), type: source.type as string })
+      sourceStore.set(id, {
+        setData: vi.fn((data: unknown) => {
+          this.setDataCalls.push(data)
+        }),
+        type: source.type as string,
+      })
     },
 
     getLayer(id: string) {

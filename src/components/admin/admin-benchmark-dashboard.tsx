@@ -25,7 +25,6 @@ import {
   Filter,
   GitCompareArrows,
   Activity,
-  RefreshCw,
   MapPin,
   MousePointerClick,
   Gauge,
@@ -1350,10 +1349,10 @@ function GiSTCrossoverTimeline({ history }: { history: GistCrossoverPoint[] }) {
  * JSON files extracted from git).
  */
 function BenchmarkTimelineView({
-  type,
+  type: _type,
   label,
   history,
-  color,
+  color: _color,
 }: {
   type: string
   label: string

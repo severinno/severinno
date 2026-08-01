@@ -10,6 +10,7 @@
  */
 
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, badRequest, notFound } from "@/lib/api-server"
@@ -26,19 +27,19 @@ export async function GET(request: Request) {
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1)
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10) || 20))
 
-    const where: Record<string, unknown> = {}
+    const where: Prisma.RecurringPushScheduleWhereInput = {}
     if (statusFilter && statusFilter !== "all") {
-      where.status = statusFilter
+      where.status = statusFilter as Prisma.RecurringPushScheduleWhereInput["status"]
     }
 
     const [records, total] = await Promise.all([
       db.recurringPushSchedule.findMany({
-        where: where as any,
+        where,
         orderBy: [{ status: "asc" }, { createdAt: "desc" }],
         skip: (page - 1) * limit,
         take: limit,
       }),
-      db.recurringPushSchedule.count({ where: where as any }),
+      db.recurringPushSchedule.count({ where }),
     ])
 
     const totalPages = Math.ceil(total / limit)
@@ -79,7 +80,19 @@ export async function POST(request: Request) {
     const session = await requireRole("ADMIN")
 
     const body = await request.json()
-    const { frequency, time, dayOfWeek, dayOfMonth, title, body: pushBody, pushUrl, type, targetRoles, filterCity, timezone } = body
+    const {
+      frequency,
+      time,
+      dayOfWeek,
+      dayOfMonth,
+      title,
+      body: pushBody,
+      pushUrl,
+      type,
+      targetRoles,
+      filterCity,
+      timezone,
+    } = body
 
     // ── Validation ──────────────────────────────────────────────────────
     if (!frequency || !["daily", "weekly", "monthly"].includes(frequency)) {
@@ -161,7 +174,20 @@ export async function PATCH(request: Request) {
     await requireRole("ADMIN")
 
     const body = await request.json()
-    const { id, status, frequency, time, dayOfWeek, dayOfMonth, title, body: pushBody, pushUrl, type, targetRoles, filterCity } = body
+    const {
+      id,
+      status,
+      frequency,
+      time,
+      dayOfWeek,
+      dayOfMonth,
+      title,
+      body: pushBody,
+      pushUrl,
+      type,
+      targetRoles,
+      filterCity,
+    } = body
 
     if (!id) throw badRequest("id is required")
 
@@ -169,7 +195,7 @@ export async function PATCH(request: Request) {
     if (!existing) throw notFound("Schedule not found")
 
     // Build update payload (only provided fields)
-    const updateData: Record<string, unknown> = {}
+    const updateData: Prisma.RecurringPushScheduleUpdateInput = {}
 
     if (status) {
       if (!["ACTIVE", "PAUSED", "ARCHIVED"].includes(status)) {
@@ -201,10 +227,13 @@ export async function PATCH(request: Request) {
 
     const updated = await db.recurringPushSchedule.update({
       where: { id },
-      data: updateData as any,
+      data: updateData,
     })
 
-    logger.info({ recurringId: updated.id, status: updated.status }, "recurring push schedule updated")
+    logger.info(
+      { recurringId: updated.id, status: updated.status },
+      "recurring push schedule updated",
+    )
 
     return NextResponse.json({
       ok: true,

@@ -20,9 +20,10 @@ import { useEffect, useRef, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
-import { createRadiusGeoJSON, syncRadiusCircle, removeRadiusCircle, RADIUS_SOURCE_ID, type MapLike } from "@/lib/geo-circle"
+import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-circle"
 import { Slider } from "@/components/ui/slider"
 import type { ProviderCard } from "@/lib/api"
+import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl"
 
 type Props = {
   providers: ProviderCard[]
@@ -72,21 +73,29 @@ export default function ProvidersMap({
 
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number"
 
-  const clusterClickHandler = useCallback((e: any) => {
+  const clusterClickHandler = useCallback((e: MapLayerMouseEvent) => {
     const map = mapRef.current
     if (!map || !e.features?.length) return
     const features = map.queryRenderedFeatures(e.point, { layers: ["clusters"] })
     if (!features.length) return
     const clusterId = features[0].properties?.cluster_id
-    const source = map.getSource("providers") as any
-    source.getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
-      if (err) return
-      const geometry = features[0].geometry as any
-      map.easeTo({ center: geometry.coordinates, zoom })
-    })
+    const source = map.getSource("providers") as GeoJSONSource | undefined
+    if (!source || typeof clusterId !== "number") return
+    source
+      .getClusterExpansionZoom(clusterId)
+      .then((zoom) => {
+        const geometry = features[0].geometry
+        if (geometry.type === "Point") {
+          const [lng, lat] = geometry.coordinates
+          map.easeTo({ center: { lng, lat }, zoom })
+        }
+      })
+      .catch(() => {
+        // cluster source may be gone — ignore
+      })
   }, [])
 
-  const clusterMouseHandler = useCallback((e: any) => {
+  const clusterMouseHandler = useCallback((e: MapLayerMouseEvent) => {
     const map = mapRef.current
     if (!map) return
     map.getCanvas().style.cursor = e.features?.length ? "pointer" : ""
@@ -131,10 +140,7 @@ export default function ProvidersMap({
         attributionControl: { compact: true },
       })
 
-      map.addControl(
-        new maplibregl.NavigationControl({ visualizePitch: false }),
-        "top-right",
-      )
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right")
       map.addControl(
         new maplibregl.GeolocateControl({
           positionOptions: { enableHighAccuracy: true },
@@ -176,19 +182,24 @@ export default function ProvidersMap({
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
-    map.on("click", "clusters", clusterClickHandler)
-    map.on("mouseenter", "clusters", clusterMouseHandler)
-    map.on("mouseleave", "clusters", () => { map.getCanvas().style.cursor = "" })
-    map.on("click", "unclustered-point", (e: any) => {
+    const handleClusterLeave = () => {
+      map.getCanvas().style.cursor = ""
+    }
+    const handleUnclusteredClick = (e: MapLayerMouseEvent) => {
       if (!e.features?.length) return
       const id = e.features[0].properties?.id
       if (id) selectRef.current?.(id)
-    })
+    }
+
+    map.on("click", "clusters", clusterClickHandler)
+    map.on("mouseenter", "clusters", clusterMouseHandler)
+    map.on("mouseleave", "clusters", handleClusterLeave)
+    map.on("click", "unclustered-point", handleUnclusteredClick)
     return () => {
-      (map.off as any)("click", "clusters", clusterClickHandler)
-      (map.off as any)("mouseenter", "clusters", clusterMouseHandler)
-      (map.off as any)("mouseleave", "clusters", () => { map.getCanvas().style.cursor = "" })
-      (map.off as any)("click", "unclustered-point")
+      map.off("click", "clusters", clusterClickHandler)
+      map.off("mouseenter", "clusters", clusterMouseHandler)
+      map.off("mouseleave", "clusters", handleClusterLeave)
+      map.off("click", "unclustered-point", handleUnclusteredClick)
     }
   }, [clusterClickHandler, clusterMouseHandler])
 
@@ -202,16 +213,30 @@ export default function ProvidersMap({
       if (cancelled) return
       const useClustering = providers.length > 20
       if (useClustering) {
-        syncClusterSource(map, maplibregl, providers, onSelectProvider, markersRef, clusterSourceAdded)
+        syncClusterSource(
+          map,
+          maplibregl,
+          providers,
+          onSelectProvider,
+          markersRef,
+          clusterSourceAdded,
+        )
       } else {
         removeClusterSource(map, clusterSourceAdded)
         syncProviderMarkers({
-          map, maplibregl, providers, selectedId, onSelectProvider, markersRef,
+          map,
+          maplibregl,
+          providers,
+          selectedId,
+          onSelectProvider,
+          markersRef,
         })
       }
       fitToBounds(map, providers, userLat, userLng)
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [providers, selectedId])
 
   // ---- Sync user location marker + radius circle --------------------------
@@ -230,13 +255,15 @@ export default function ProvidersMap({
         removeRadiusCircle(map as unknown as MapLike)
       }
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [userLat, userLng, radius])
 
   return (
     <div
       className={cn(
-        "relative w-full overflow-hidden rounded-xl border bg-muted",
+        "bg-muted relative w-full overflow-hidden rounded-xl border",
         "h-[400px] md:h-full",
         className,
       )}
@@ -248,8 +275,8 @@ export default function ProvidersMap({
       {/* Radius slider overlay — only when user has location and onRadiusChange is provided */}
       {hasUserLocation && typeof radius === "number" && onRadiusChange ? (
         <div className="absolute bottom-3 left-1/2 z-30 w-[calc(100%-24px)] max-w-xs -translate-x-1/2">
-          <div className="flex items-center gap-3 rounded-xl border bg-background/95 px-4 py-2.5 shadow-lg backdrop-blur-sm">
-            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">
+          <div className="bg-background/95 flex items-center gap-3 rounded-xl border px-4 py-2.5 shadow-lg backdrop-blur-sm">
+            <span className="text-muted-foreground shrink-0 text-[11px] font-semibold tabular-nums">
               {radius} km
             </span>
             <Slider
@@ -273,15 +300,19 @@ export default function ProvidersMap({
 // ---------------------------------------------------------------------------
 
 function buildGeoJSON(providers: ProviderCard[]) {
-  return {
-    type: "FeatureCollection" as const,
-    features: providers
-      .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
-      .map((p) => ({
+  const features = providers.flatMap((p) => {
+    if (typeof p.lat !== "number" || typeof p.lng !== "number") return []
+    return [
+      {
         type: "Feature" as const,
         geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
         properties: { id: p.id },
-      })),
+      },
+    ]
+  })
+  return {
+    type: "FeatureCollection" as const,
+    features,
   }
 }
 
@@ -298,7 +329,7 @@ function syncClusterSource(
   for (const ref of Object.values(registry)) ref.marker.remove()
   markersRef.current = {}
 
-  const source = map.getSource("providers") as any
+  const source = map.getSource("providers") as GeoJSONSource | undefined
   const geojson = buildGeoJSON(providers)
 
   if (source) {
@@ -308,7 +339,7 @@ function syncClusterSource(
 
   map.addSource("providers", {
     type: "geojson",
-    data: geojson as any,
+    data: geojson,
     cluster: true,
     clusterMaxZoom: CLUSTER_MAX_ZOOM,
     clusterRadius: CLUSTER_RADIUS,
@@ -321,16 +352,22 @@ function syncClusterSource(
     filter: ["has", "point_count"],
     paint: {
       "circle-color": [
-        "step", ["get", "point_count"],
-        "rgba(16, 185, 129, 0.85)",  // emerald/500 - <10
-        10, "rgba(5, 150, 105, 0.9)",  // emerald/600 - 10-50
-        50, "rgba(4, 120, 87, 0.95)",  // emerald/700 - 50+
+        "step",
+        ["get", "point_count"],
+        "rgba(16, 185, 129, 0.85)", // emerald/500 - <10
+        10,
+        "rgba(5, 150, 105, 0.9)", // emerald/600 - 10-50
+        50,
+        "rgba(4, 120, 87, 0.95)", // emerald/700 - 50+
       ],
       "circle-radius": [
-        "step", ["get", "point_count"],
-        22,  // <10 providers
-        10, 30,
-        50, 38,
+        "step",
+        ["get", "point_count"],
+        22, // <10 providers
+        10,
+        30,
+        50,
+        38,
       ],
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
@@ -368,14 +405,19 @@ function syncClusterSource(
   clusterSourceAdded.current = true
 }
 
-function removeClusterSource(map: MapLibreMap, clusterSourceAdded: React.MutableRefObject<boolean>) {
+function removeClusterSource(
+  map: MapLibreMap,
+  clusterSourceAdded: React.MutableRefObject<boolean>,
+) {
   if (!clusterSourceAdded.current) return
   try {
     if (map.getLayer("unclustered-point")) map.removeLayer("unclustered-point")
     if (map.getLayer("cluster-count")) map.removeLayer("cluster-count")
     if (map.getLayer("clusters")) map.removeLayer("clusters")
     if (map.getSource("providers")) map.removeSource("providers")
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   clusterSourceAdded.current = false
 }
 
@@ -421,7 +463,9 @@ function fitToBounds(
   ]
   try {
     map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 600 })
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 type MarkerRef = { marker: MarkerInstance; popup: PopupInstance }
@@ -497,11 +541,19 @@ function syncProviderMarkers(opts: {
       e.stopPropagation()
       onSelectProvider?.(provider.id)
     })
-    el.addEventListener("mouseenter", () => { el.style.transform = "translate(-50%, -100%) scale(1.06)" })
-    el.addEventListener("mouseleave", () => { el.style.transform = "translate(-50%, -100%) scale(1)" })
+    el.addEventListener("mouseenter", () => {
+      el.style.transform = "translate(-50%, -100%) scale(1.06)"
+    })
+    el.addEventListener("mouseleave", () => {
+      el.style.transform = "translate(-50%, -100%) scale(1)"
+    })
 
     const popup = new maplibregl.Popup({
-      closeButton: false, closeOnClick: false, offset: 18, className: "map-popup", maxWidth: "260px",
+      closeButton: false,
+      closeOnClick: false,
+      offset: 18,
+      className: "map-popup",
+      maxWidth: "260px",
     }).setHTML(
       `<div class="p-3 text-sm">
         <div class="font-semibold leading-tight">${escapeHtml(provider.name)}</div>
@@ -536,7 +588,10 @@ function syncUserMarker(opts: {
   userMarkerRef: React.RefObject<MarkerInstance | null>
 }) {
   const { map, maplibregl, lat, lng, userMarkerRef } = opts
-  if (userMarkerRef.current) { userMarkerRef.current.remove(); userMarkerRef.current = null }
+  if (userMarkerRef.current) {
+    userMarkerRef.current.remove()
+    userMarkerRef.current = null
+  }
   if (typeof lat !== "number" || typeof lng !== "number") return
 
   const el = document.createElement("div")
@@ -565,7 +620,12 @@ function syncUserMarker(opts: {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
 }
 
 if (typeof document !== "undefined") {

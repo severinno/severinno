@@ -24,8 +24,7 @@
 import pg from "pg"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
-import { measure, generateProviders } from "../src/lib/benchmark-utils.mjs"
+import { generateProviders } from "../src/lib/benchmark-utils.mjs"
 import { haversineKm } from "../src/lib/geo-shared.mjs"
 
 // ---------------------------------------------------------------------------
@@ -107,7 +106,7 @@ const TABLE = "geo_benchmark_providers"
 
 async function setupData(count) {
   const providers = generateProviders(count, 100, CENTER)
-  const centerWKT = `POINT(${CENTER.lng} ${CENTER.lat})`
+  const _centerWKT = `POINT(${CENTER.lng} ${CENTER.lat})`
 
   // Drop & recreate temp table
   await query(`DROP TABLE IF EXISTS "${TABLE}"`)
@@ -183,7 +182,7 @@ async function bench(label, fn, iterations, warmupSeconds = WARMUP_SECONDS) {
 }
 
 /** PostGIS ST_Distance — compute distance for all providers from center. */
-function makePGBenchDistance(count) {
+function makePGBenchDistance(_count) {
   return async () => {
     await query(
       `

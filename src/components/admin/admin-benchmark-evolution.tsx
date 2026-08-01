@@ -45,7 +45,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ErrorState, RefreshButton } from "./_shared"
 import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
-import type { BenchmarksResponse, BenchmarkPoint } from "@/app/api/admin/benchmarks/route"
+import type { BenchmarksResponse } from "@/app/api/admin/benchmarks/route"
 
 // ---------------------------------------------------------------------------
 // Constants — 6 geo benchmarks

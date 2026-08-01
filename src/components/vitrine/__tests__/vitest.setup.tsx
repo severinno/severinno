@@ -76,7 +76,15 @@ export function getMockToast() {
 vi.mock("framer-motion", () => ({
   motion: {
     span: (p: any) => {
-      const { size, color, stroke, strokeWidth, fill, absoluteStrokeWidth, ...safe } = p
+      const {
+        size: _size,
+        color: _color,
+        stroke: _stroke,
+        strokeWidth: _strokeWidth,
+        fill: _fill,
+        absoluteStrokeWidth: _absoluteStrokeWidth,
+        ...safe
+      } = p
       return <span {...safe} />
     },
     div: (p: any) => <div {...p} />,

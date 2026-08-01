@@ -36,7 +36,6 @@ import {
   endOfWeek,
   format,
   isSameDay,
-  startOfMonth,
   startOfWeek,
   startOfYear,
   subDays,
@@ -44,10 +43,7 @@ import {
 import { ptBR } from "date-fns/locale"
 
 import { apiGet } from "@/lib/api"
-import {
-  BOOKING_STATUS_LABELS,
-  type BookingStatus,
-} from "@/lib/constants"
+import { BOOKING_STATUS_LABELS, type BookingStatus } from "@/lib/constants"
 import { formatBRL, formatDateTime, formatTime } from "@/lib/format"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
@@ -55,15 +51,10 @@ import { useViewStore } from "@/store/view"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { StarRatingDisplay } from "@/components/modals/star-rating"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
-import {
-  StatCard,
-} from "@/components/shared/dashboard-shell"
+import { StatCard } from "@/components/shared/dashboard-shell"
 import ProviderGeoAwarenessBadge from "@/components/provider/provider-geo-awareness-badge"
 
 const CHART_TOOLTIP_STYLE = {
@@ -161,14 +152,12 @@ export function ProviderDashboard() {
 
   const bookingsQuery = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "dashboard", "bookings", user?.id],
-    queryFn: async () =>
-      apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
+    queryFn: async () => apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
   })
 
   const quotesQuery = useQuery<{ items: QuoteRequest[]; total: number }>({
     queryKey: ["provider", "dashboard", "quotes", user?.id],
-    queryFn: async () =>
-      apiGet("/api/quotes", { role: "PROVIDER", page: 1, limit: 200 }),
+    queryFn: async () => apiGet("/api/quotes", { role: "PROVIDER", page: 1, limit: 200 }),
   })
 
   const reviewsQuery = useQuery<{ items: Review[]; total: number }>({
@@ -205,9 +194,7 @@ export function ProviderDashboard() {
   const weekStart = startOfWeek(today, { weekStartsOn: 0 })
   const weekEnd = endOfWeek(today, { weekStartsOn: 0 })
 
-  const bookingsToday = bookings.filter((b) =>
-    isSameDay(new Date(b.scheduledAt), today),
-  )
+  const bookingsToday = bookings.filter((b) => isSameDay(new Date(b.scheduledAt), today))
   const bookingsThisWeek = bookings.filter((b) => {
     const d = new Date(b.scheduledAt)
     return d >= weekStart && d <= weekEnd
@@ -215,24 +202,18 @@ export function ProviderDashboard() {
 
   // Pending quote items (PENDING status, awaiting provider response)
   const pendingQuoteItems = quotes.reduce(
-    (acc, q) =>
-      acc + q.items.filter((i) => i.status === "PENDING").length,
+    (acc, q) => acc + q.items.filter((i) => i.status === "PENDING").length,
     0,
   )
 
   // Reviews aggregation
   const avgRating =
-    reviews.length > 0
-      ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
-      : 0
+    reviews.length > 0 ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length : 0
 
   // Revenue: sum of bookings with paymentStatus PAID (confirmed/completed)
   const revenuePaid = bookings
     .filter(
-      (b) =>
-        b.status === "CONFIRMED" ||
-        b.status === "IN_PROGRESS" ||
-        b.status === "COMPLETED",
+      (b) => b.status === "CONFIRMED" || b.status === "IN_PROGRESS" || b.status === "COMPLETED",
     )
     .reduce((acc, b) => acc + b.amount, 0)
 
@@ -242,9 +223,7 @@ export function ProviderDashboard() {
     end: today,
   })
   const bookingsPerDay = last7Days.map((d) => {
-    const count = bookings.filter((b) =>
-      isSameDay(new Date(b.scheduledAt), d),
-    ).length
+    const count = bookings.filter((b) => isSameDay(new Date(b.scheduledAt), d)).length
     return {
       day: format(d, "EEE", { locale: ptBR }),
       agendamentos: count,
@@ -264,9 +243,7 @@ export function ProviderDashboard() {
         return (
           d.getMonth() === m.getMonth() &&
           d.getFullYear() === m.getFullYear() &&
-          (b.status === "CONFIRMED" ||
-            b.status === "IN_PROGRESS" ||
-            b.status === "COMPLETED")
+          (b.status === "CONFIRMED" || b.status === "IN_PROGRESS" || b.status === "COMPLETED")
         )
       })
       .reduce((acc, b) => acc + b.amount, 0)
@@ -279,16 +256,8 @@ export function ProviderDashboard() {
   // Today's agenda: bookings for today (any non-cancelled status).
   // Falls back to next upcoming bookings when there are none today.
   const todays = bookings
-    .filter(
-      (b) =>
-        isSameDay(new Date(b.scheduledAt), today) &&
-        b.status !== "CANCELLED",
-    )
-    .sort(
-      (a, b) =>
-        new Date(a.scheduledAt).getTime() -
-        new Date(b.scheduledAt).getTime(),
-    )
+    .filter((b) => isSameDay(new Date(b.scheduledAt), today) && b.status !== "CANCELLED")
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
   const upcoming = bookings
     .filter(
       (b) =>
@@ -297,28 +266,20 @@ export function ProviderDashboard() {
         b.status !== "COMPLETED" &&
         !isSameDay(new Date(b.scheduledAt), today),
     )
-    .sort(
-      (a, b) =>
-        new Date(a.scheduledAt).getTime() -
-        new Date(b.scheduledAt).getTime(),
-    )
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
     .slice(0, 5)
   const agendaBookings = todays.length > 0 ? todays : upcoming
 
   // Pending quotes (top 5)
   const pendingQuotes = quotes
     .filter((q) => q.items.some((i) => i.status === "PENDING"))
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 5)
 
   // Latest reviews (top 3)
   const latestReviews = reviews.slice(0, 3)
 
-  const loading =
-    bookingsQuery.isLoading || quotesQuery.isLoading || reviewsQuery.isLoading
+  const loading = bookingsQuery.isLoading || quotesQuery.isLoading || reviewsQuery.isLoading
 
   return (
     <div className="space-y-6">
@@ -326,10 +287,9 @@ export function ProviderDashboard() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">
-            Olá, {user?.name?.split(" ")[0] ?? "Prestador"}{" "}
-            <span className="ml-0.5">👋</span>
+            Olá, {user?.name?.split(" ")[0] ?? "Prestador"} <span className="ml-0.5">👋</span>
           </h2>
-          <p className="text-sm capitalize text-muted-foreground">
+          <p className="text-muted-foreground text-sm capitalize">
             {format(today, "EEEE, dd 'de' MMMM", { locale: ptBR })}
           </p>
         </div>
@@ -350,11 +310,7 @@ export function ProviderDashboard() {
           >
             <CalendarDays className="size-3.5" /> Ver agenda
           </Button>
-          <Button
-            size="sm"
-            onClick={() => navigate("provider.services")}
-            className="h-9 gap-1.5"
-          >
+          <Button size="sm" onClick={() => navigate("provider.services")} className="h-9 gap-1.5">
             <Plus className="size-3.5" /> Novo serviço
           </Button>
         </div>
@@ -368,10 +324,10 @@ export function ProviderDashboard() {
               <Banknote className="size-7" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+              <p className="text-xs font-semibold tracking-wider text-emerald-700 uppercase dark:text-emerald-300">
                 Saldo da Carteira
               </p>
-              <p className="text-3xl font-bold tabular-nums tracking-tight text-emerald-900 dark:text-emerald-100">
+              <p className="text-3xl font-bold tracking-tight text-emerald-900 tabular-nums dark:text-emerald-100">
                 {walletQuery.isLoading ? (
                   <span className="inline-block h-9 w-36 animate-pulse rounded bg-emerald-200 dark:bg-emerald-800" />
                 ) : (
@@ -383,9 +339,7 @@ export function ProviderDashboard() {
                 {(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"} realizado
                 {(walletQuery.data?.totalBookings ?? 0) === 1 ? "" : "s"}
                 {walletQuery.data && walletQuery.data.totalBookings > 0 && (
-                  <>
-                    {" "}&middot; Ticket médio {formatBRL(walletQuery.data.avgTicket)}
-                  </>
+                  <> &middot; Ticket médio {formatBRL(walletQuery.data.avgTicket)}</>
                 )}
               </p>
             </div>
@@ -445,7 +399,7 @@ export function ProviderDashboard() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+        <div className="text-muted-foreground flex items-center justify-center py-12 text-sm">
           <Loader2 className="mr-2 size-5 animate-spin" /> Carregando…
         </div>
       ) : (
@@ -456,10 +410,10 @@ export function ProviderDashboard() {
               <CardContent className="p-5">
                 <div className="mb-4 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-md">
                       <CalendarCheck className="size-4" />
                     </span>
-                    <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
                       Agendamentos (últimos 7 dias)
                     </p>
                   </div>
@@ -509,10 +463,10 @@ export function ProviderDashboard() {
               <CardContent className="p-5">
                 <div className="mb-4 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <span className="bg-primary/10 text-primary flex size-7 items-center justify-center rounded-md">
                       <Wallet className="size-4" />
                     </span>
-                    <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
                       Receita por mês
                     </p>
                   </div>
@@ -545,12 +499,14 @@ export function ProviderDashboard() {
                         axisLine={false}
                         tickLine={false}
                         width={48}
-                        tickFormatter={(v) =>
-                          v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
-                        }
+                        tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
                       />
                       <RTooltip
-                        cursor={{ stroke: "var(--primary)", strokeWidth: 1, strokeDasharray: "3 3" }}
+                        cursor={{
+                          stroke: "var(--primary)",
+                          strokeWidth: 1,
+                          strokeDasharray: "3 3",
+                        }}
                         contentStyle={CHART_TOOLTIP_STYLE}
                         formatter={(v: number) => [formatBRL(v), "Receita"]}
                       />
@@ -576,13 +532,11 @@ export function ProviderDashboard() {
               <CardContent className="p-5">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                      {todays.length > 0
-                        ? "Agenda de hoje"
-                        : "Próximos agendamentos"}
+                    <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
+                      {todays.length > 0 ? "Agenda de hoje" : "Próximos agendamentos"}
                     </p>
                     {todays.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-muted-foreground text-xs">
                         {todays.length} agendamento
                         {todays.length === 1 ? "" : "s"} para hoje
                       </p>
@@ -591,7 +545,7 @@ export function ProviderDashboard() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 shrink-0 gap-1 px-2 text-xs text-primary hover:text-primary"
+                    className="text-primary hover:text-primary h-7 shrink-0 gap-1 px-2 text-xs"
                     onClick={() => navigate("provider.agenda")}
                   >
                     Ver agenda <ArrowRight className="size-3" />
@@ -599,48 +553,41 @@ export function ProviderDashboard() {
                 </div>
                 {agendaBookings.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 py-6 text-center">
-                    <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-full">
                       <CalendarDays className="size-5" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Sem agendamentos para hoje.
-                    </p>
+                    <p className="text-muted-foreground text-sm">Sem agendamentos para hoje.</p>
                   </div>
                 ) : (
                   <ul className="grid gap-2">
                     {agendaBookings.map((b) => (
                       <li
                         key={b.id}
-                        className="flex items-center gap-3 rounded-lg border bg-card p-2.5 transition-colors hover:bg-accent/40"
+                        className="bg-card hover:bg-accent/40 flex items-center gap-3 rounded-lg border p-2.5 transition-colors"
                       >
-                        <div className="flex w-12 shrink-0 flex-col items-center justify-center rounded-md bg-primary/10 py-1 text-primary">
-                          <span className="text-sm font-bold tabular-nums leading-none">
+                        <div className="bg-primary/10 text-primary flex w-12 shrink-0 flex-col items-center justify-center rounded-md py-1">
+                          <span className="text-sm leading-none font-bold tabular-nums">
                             {formatTime(b.scheduledAt).slice(0, 2)}h
                           </span>
-                          <span className="text-[10px] tabular-nums leading-none opacity-80">
+                          <span className="text-[10px] leading-none tabular-nums opacity-80">
                             {formatTime(b.scheduledAt).slice(3, 5)}
                           </span>
                         </div>
                         <Avatar className="size-9 shrink-0 border">
                           {b.client.avatarUrl ? (
-                            <AvatarImage
-                              src={b.client.avatarUrl}
-                              alt={b.client.name}
-                            />
+                            <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
                           ) : null}
-                          <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
+                          <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
                             {initials(b.client.name)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium">
-                            {b.client.name}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
+                          <p className="truncate text-sm font-medium">{b.client.name}</p>
+                          <p className="text-muted-foreground truncate text-xs">
                             {b.service.title}
                           </p>
                           {b.address && (
-                            <p className="mt-0.5 flex items-center gap-1 truncate text-[10px] text-muted-foreground">
+                            <p className="text-muted-foreground mt-0.5 flex items-center gap-1 truncate text-[10px]">
                               <MapPin className="size-2.5 shrink-0" />
                               <span className="truncate">{b.address}</span>
                             </p>
@@ -658,13 +605,13 @@ export function ProviderDashboard() {
             <Card className="rounded-xl shadow-sm">
               <CardContent className="p-5">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
                     Orçamentos pendentes
                   </p>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 shrink-0 gap-1 px-2 text-xs text-primary hover:text-primary"
+                    className="text-primary hover:text-primary h-7 shrink-0 gap-1 px-2 text-xs"
                     onClick={() => navigate("provider.quotes")}
                   >
                     Ver todos <ArrowRight className="size-3" />
@@ -675,37 +622,30 @@ export function ProviderDashboard() {
                     <div className="flex size-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
                       <CheckCircle2 className="size-5" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       Tudo em dia — sem orçamentos pendentes.
                     </p>
                   </div>
                 ) : (
                   <ul className="grid gap-2">
                     {pendingQuotes.map((q) => {
-                      const pending = q.items.filter(
-                        (i) => i.status === "PENDING",
-                      ).length
+                      const pending = q.items.filter((i) => i.status === "PENDING").length
                       return (
                         <li
                           key={q.id}
-                          className="flex items-center gap-3 rounded-lg border bg-card p-2.5 transition-colors hover:bg-accent/40"
+                          className="bg-card hover:bg-accent/40 flex items-center gap-3 rounded-lg border p-2.5 transition-colors"
                         >
                           <Avatar className="size-9 shrink-0 border">
                             {q.client.avatarUrl ? (
-                              <AvatarImage
-                                src={q.client.avatarUrl}
-                                alt={q.client.name}
-                              />
+                              <AvatarImage src={q.client.avatarUrl} alt={q.client.name} />
                             ) : null}
                             <AvatarFallback className="bg-amber-500 text-[10px] font-semibold text-white">
                               {initials(q.client.name)}
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">
-                              {q.client.name}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground">
+                            <p className="truncate text-sm font-medium">{q.client.name}</p>
+                            <p className="text-muted-foreground text-[10px]">
                               {formatDateTime(q.createdAt)}
                             </p>
                           </div>
@@ -732,13 +672,13 @@ export function ProviderDashboard() {
             <Card className="rounded-xl shadow-sm">
               <CardContent className="p-5">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  <p className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
                     Últimas avaliações
                   </p>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 shrink-0 gap-1 px-2 text-xs text-primary hover:text-primary"
+                    className="text-primary hover:text-primary h-7 shrink-0 gap-1 px-2 text-xs"
                     onClick={() => navigate("provider.reviews")}
                   >
                     Ver todas <ArrowRight className="size-3" />
@@ -749,40 +689,28 @@ export function ProviderDashboard() {
                     <div className="flex size-10 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                       <Star className="size-5" />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Sem avaliações ainda.
-                    </p>
+                    <p className="text-muted-foreground text-sm">Sem avaliações ainda.</p>
                   </div>
                 ) : (
                   <ul className="grid gap-2">
                     {latestReviews.map((r) => (
-                      <li
-                        key={r.id}
-                        className="rounded-lg border bg-card p-2.5"
-                      >
+                      <li key={r.id} className="bg-card rounded-lg border p-2.5">
                         <div className="flex items-center gap-2">
                           <Avatar className="size-7 shrink-0 border">
                             {r.client.avatarUrl ? (
-                              <AvatarImage
-                                src={r.client.avatarUrl}
-                                alt={r.client.name}
-                              />
+                              <AvatarImage src={r.client.avatarUrl} alt={r.client.name} />
                             ) : null}
-                            <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
+                            <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
                               {initials(r.client.name)}
                             </AvatarFallback>
                           </Avatar>
                           <p className="min-w-0 flex-1 truncate text-sm font-medium">
                             {r.client.name}
                           </p>
-                          <StarRatingDisplay
-                            value={r.rating}
-                            size={12}
-                            showCount={false}
-                          />
+                          <StarRatingDisplay value={r.rating} size={12} showCount={false} />
                         </div>
                         {r.comment && (
-                          <p className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">
+                          <p className="text-muted-foreground mt-1.5 line-clamp-2 text-xs">
                             “{r.comment}”
                           </p>
                         )}

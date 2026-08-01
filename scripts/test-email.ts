@@ -58,7 +58,7 @@ console.log(`   User: ${USER}`)
 console.log("")
 
 try {
-  const ok = await transport.verify()
+  const _ok = await transport.verify()
   console.log(`   ✅ Conexão SMTP estabelecida com sucesso!`)
 } catch (err: any) {
   console.log(`   ❌ Falha na conexão SMTP:`)
@@ -121,7 +121,8 @@ function emailWrapper(bodyHtml: string): string {
 }
 
 function btn(text: string, url?: string): string {
-  if (!url) return `<div style="margin:24px 0;padding:12px 24px;background:${BRAND_PRIMARY};color:#fff;border-radius:8px;text-align:center;font-weight:600;font-size:14px;display:inline-block">${text}</div>`
+  if (!url)
+    return `<div style="margin:24px 0;padding:12px 24px;background:${BRAND_PRIMARY};color:#fff;border-radius:8px;text-align:center;font-weight:600;font-size:14px;display:inline-block">${text}</div>`
   const escaped = url.replace(/"/g, "&quot;")
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0">
     <tr>

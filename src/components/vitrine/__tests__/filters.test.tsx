@@ -94,7 +94,14 @@ vi.mock("@/components/ui/switch", () => ({
 }))
 
 vi.mock("@/components/ui/slider", () => ({
-  Slider: ({ value, onValueChange, min, max, step, "aria-label": ariaLabel }: any) => (
+  Slider: ({
+    value,
+    onValueChange,
+    min: _min,
+    max,
+    step: _step,
+    "aria-label": _ariaLabel,
+  }: any) => (
     <div data-testid="slider" data-value={value?.[0]}>
       <button
         onClick={() => onValueChange?.([Math.min(max, (value?.[0] ?? 0) + 10)])}
@@ -119,7 +126,7 @@ vi.mock("@/components/ui/select", () => ({
 }))
 
 vi.mock("@/components/ui/radio-group", () => ({
-  RadioGroup: ({ children, value, onValueChange }: any) => (
+  RadioGroup: ({ children, value, onValueChange: _onValueChange }: any) => (
     <div data-testid="radio-group" data-value={value}>
       {children}
     </div>

@@ -994,7 +994,7 @@ function CategoryDialog({
 // ---------------------------------------------------------------------------
 // Local error retry (H9)
 // ---------------------------------------------------------------------------
-function ErrorRetry({ onRetry }: { onRetry: () => void }) {
+function _ErrorRetry({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-6 py-14 text-center dark:border-rose-900/50 dark:bg-rose-950/30">
       <div className="flex size-14 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300">

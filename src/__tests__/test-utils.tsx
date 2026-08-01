@@ -339,7 +339,6 @@ export function render(ui: ReactElement): CustomRenderResult {
       return frag
     },
     debug: () => {
-      // eslint-disable-next-line no-console
       console.log(container?.innerHTML ?? "(empty)")
     },
   }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
-import logger from "@/lib/logger"
 import { handleError, badRequest } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
@@ -18,9 +17,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const message = body.message as string | undefined
-    const history = body.history as
-      | Array<{ role: string; content: string }>
-      | undefined
+    const history = body.history as Array<{ role: string; content: string }> | undefined
 
     if (!message?.trim()) throw badRequest("Mensagem é obrigatória.")
 
@@ -66,10 +63,7 @@ Serviços populares: Encanador, Eletricista, Pintor, Diarista, Pedreiro, Jardine
     const response = completion.choices[0]?.message?.content
 
     if (!response) {
-      return NextResponse.json(
-        { error: "Sem resposta do assistente." },
-        { status: 500 },
-      )
+      return NextResponse.json({ error: "Sem resposta do assistente." }, { status: 500 })
     }
 
     return NextResponse.json({ response })

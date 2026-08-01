@@ -113,11 +113,7 @@ function getConfig() {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
-async function evolutionRequest<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
+async function evolutionRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
   const { baseUrl, apiKey } = getConfig()
   const url = `${baseUrl}${path}`
 
@@ -140,15 +136,15 @@ async function evolutionRequest<T>(
   if (!res.ok) {
     const message =
       (parsed &&
-        typeof parsed === "object" &&
-        "message" in parsed &&
-        typeof (parsed as { message?: unknown }).message === "string"
+      typeof parsed === "object" &&
+      "message" in parsed &&
+      typeof (parsed as { message?: unknown }).message === "string"
         ? (parsed as { message: string }).message
         : undefined) ??
       (parsed &&
-        typeof parsed === "object" &&
-        "error" in parsed &&
-        typeof (parsed as { error?: unknown }).error === "string"
+      typeof parsed === "object" &&
+      "error" in parsed &&
+      typeof (parsed as { error?: unknown }).error === "string"
         ? (parsed as { error: string }).error
         : undefined) ??
       `Evolution API error: ${res.status} ${res.statusText}`
@@ -192,11 +188,10 @@ export async function sendText(
   // Garantir que o número tem o formato correto (números apenas)
   const number = to.replace(/\D/g, "")
 
-  return evolutionRequest<{ key: { id: string } }>(
-    "POST",
-    `/message/sendText/${instance}`,
-    { number, text } as EvolutionMessageText,
-  )
+  return evolutionRequest<{ key: { id: string } }>("POST", `/message/sendText/${instance}`, {
+    number,
+    text,
+  } as EvolutionMessageText)
 }
 
 /**
@@ -207,15 +202,13 @@ export async function sendPixPaymentMessage(
   bookingId: string,
   amount: number,
   qrCode?: string,
-  qrCodeImage?: string,
+  _qrCodeImage?: string,
 ): Promise<{ key: { id: string } } | null> {
   const text =
     `🟢 *Pagamento PIX - Severinno*\n\n` +
     `📋 Agendamento: #${bookingId.slice(0, 8)}\n` +
     `💰 Valor: R$ ${amount.toFixed(2)}\n\n` +
-    (qrCode
-      ? `📱 *Código PIX (copia e cola):*\n\`\`\`${qrCode}\`\`\`\n\n`
-      : "") +
+    (qrCode ? `📱 *Código PIX (copia e cola):*\n\`\`\`${qrCode}\`\`\`\n\n` : "") +
     `Após o pagamento, a confirmação é automática! ✅`
 
   return sendText(to, text)
@@ -347,23 +340,15 @@ export async function getConnectionStatus(
   instanceName?: string,
 ): Promise<EvolutionConnectionStatus> {
   const instance = instanceName ?? getConfig().instance
-  return evolutionRequest<EvolutionConnectionStatus>(
-    "GET",
-    `/instance/connectionState/${instance}`,
-  )
+  return evolutionRequest<EvolutionConnectionStatus>("GET", `/instance/connectionState/${instance}`)
 }
 
 /**
  * Obter QR code para conectar WhatsApp.
  */
-export async function getQRCode(
-  instanceName?: string,
-): Promise<{ qrcode: string }> {
+export async function getQRCode(instanceName?: string): Promise<{ qrcode: string }> {
   const instance = instanceName ?? getConfig().instance
-  return evolutionRequest<{ qrcode: string }>(
-    "GET",
-    `/instance/qrcode/${instance}`,
-  )
+  return evolutionRequest<{ qrcode: string }>("GET", `/instance/qrcode/${instance}`)
 }
 
 /**

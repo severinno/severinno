@@ -39,24 +39,11 @@ interface ServiceHealth {
 // If a critical service is down → overall status = "unhealthy"
 // If only non-critical services are down → overall status = "degraded"
 
-const CRITICAL_SERVICES = new Set([
-  "database",
-  "app",
-])
+const CRITICAL_SERVICES = new Set(["database", "app"])
 
-const DEGRADING_SERVICES = new Set([
-  "redis",
-  "rabbitmq",
-  "pgbouncer",
-  "realtime",
-])
+const _DEGRADING_SERVICES = new Set(["redis", "rabbitmq", "pgbouncer", "realtime"])
 
-const INFO_SERVICES = new Set([
-  "caddy",
-  "minio",
-  "disk",
-  "workers",
-])
+const _INFO_SERVICES = new Set(["caddy", "minio", "disk", "workers"])
 
 // ── Cache (15s TTL, same as /api/health) ──────────────────────────────────
 
@@ -65,9 +52,7 @@ let inMemoryCache: { timestamp: number; result: DetailedHealthResponse } | null 
 
 // ── GET ───────────────────────────────────────────────────────────────────
 
-export async function GET(
-  request: Request,
-): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   // Check for Prometheus/OpenMetrics format
   const url = new URL(request.url)
   const format = url.searchParams.get("format") ?? "json"
@@ -95,16 +80,20 @@ export async function GET(
   ])
 
   const services: ServiceHealth[] = results.map((r) =>
-    r.status === "fulfilled" ? r.value : {
-      name: "unknown",
-      status: "unhealthy" as const,
-      latencyMs: null,
-      message: r.reason?.toString() ?? "Unknown error",
-    }
+    r.status === "fulfilled"
+      ? r.value
+      : {
+          name: "unknown",
+          status: "unhealthy" as const,
+          latencyMs: null,
+          message: r.reason?.toString() ?? "Unknown error",
+        },
   )
 
   // Tally
-  let healthy = 0, degraded = 0, unhealthy = 0
+  let healthy = 0,
+    degraded = 0,
+    unhealthy = 0
   for (const s of services) {
     if (s.status === "healthy") healthy++
     else if (s.status === "degraded") degraded++
@@ -146,7 +135,12 @@ export async function GET(
 
   const elapsed = Date.now() - start
   logger.info(
-    { elapsed, status: overallStatus, format, services: services.map((s) => ({ name: s.name, status: s.status })) },
+    {
+      elapsed,
+      status: overallStatus,
+      format,
+      services: services.map((s) => ({ name: s.name, status: s.status })),
+    },
     `detailed health check (${format})`,
   )
 
@@ -452,8 +446,8 @@ async function checkWorkers(): Promise<ServiceHealth> {
     const latency = Math.round(performance.now() - t0)
 
     const workerStatuses = {
-      "email-worker": emailQ.consumerCount > 0 ? "active" as const : "idle" as const,
-      "notification-worker": notifQ.consumerCount > 0 ? "active" as const : "idle" as const,
+      "email-worker": emailQ.consumerCount > 0 ? ("active" as const) : ("idle" as const),
+      "notification-worker": notifQ.consumerCount > 0 ? ("active" as const) : ("idle" as const),
       "search-index-worker": searchQ.consumerCount > 0 ? "active" : "idle",
     }
 
@@ -472,7 +466,10 @@ async function checkWorkers(): Promise<ServiceHealth> {
           notification: notifQ.messageCount,
           "search-index": searchQ.messageCount,
         },
-        note: activeCount === 0 ? "No workers consuming queues — background jobs are stalled" : undefined,
+        note:
+          activeCount === 0
+            ? "No workers consuming queues — background jobs are stalled"
+            : undefined,
       },
     }
   } catch (err) {
@@ -507,7 +504,6 @@ function statusWeight(status: string): number {
 
 function toOpenMetrics(resp: DetailedHealthResponse): string {
   const lines: string[] = []
-
 
   // ── Metadata ───────────────────────────────────────────────────
   lines.push("# HELP severinno_build_info Build metadata for the Severinno app")
@@ -571,7 +567,9 @@ function toOpenMetrics(resp: DetailedHealthResponse): string {
   lines.push("# TYPE severinno_process_cpu_user_seconds_total counter")
   lines.push(`severinno_process_cpu_user_seconds_total ${cpu.user}`)
 
-  lines.push("# HELP severinno_process_cpu_system_seconds_total Total system CPU time in microseconds")
+  lines.push(
+    "# HELP severinno_process_cpu_system_seconds_total Total system CPU time in microseconds",
+  )
   lines.push("# TYPE severinno_process_cpu_system_seconds_total counter")
   lines.push(`severinno_process_cpu_system_seconds_total ${cpu.system}`)
 
@@ -602,7 +600,10 @@ function toOpenMetrics(resp: DetailedHealthResponse): string {
   // Extract RabbitMQ queue depths from the rabbitmq service details
   const rabbitmqSvc = resp.services.find((s) => s.name === "rabbitmq")
   if (rabbitmqSvc?.details?.queues) {
-    const queues = rabbitmqSvc.details.queues as Record<string, { messages: number; consumers: number }>
+    const queues = rabbitmqSvc.details.queues as Record<
+      string,
+      { messages: number; consumers: number }
+    >
     lines.push("# HELP severinno_rabbitmq_queue_messages Number of messages in RabbitMQ queues")
     lines.push("# TYPE severinno_rabbitmq_queue_messages gauge")
     for (const [qName, qData] of Object.entries(queues)) {
@@ -640,9 +641,13 @@ function toOpenMetrics(resp: DetailedHealthResponse): string {
   // Database connection mode
   const dbSvc = resp.services.find((s) => s.name === "database")
   if (dbSvc?.details?.connectionMode) {
-    lines.push("# HELP severinno_database_connection_mode Database connection mode (1=pgbouncer, 0=direct)")
+    lines.push(
+      "# HELP severinno_database_connection_mode Database connection mode (1=pgbouncer, 0=direct)",
+    )
     lines.push("# TYPE severinno_database_connection_mode gauge")
-    lines.push(`severinno_database_connection_mode ${dbSvc.details.connectionMode === "pgbouncer" ? 1 : 0}`)
+    lines.push(
+      `severinno_database_connection_mode ${dbSvc.details.connectionMode === "pgbouncer" ? 1 : 0}`,
+    )
     lines.push("")
   }
 
