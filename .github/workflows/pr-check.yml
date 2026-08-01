@@ -40,8 +40,8 @@ jobs:
 
   # ── Secrets Guard ─────────────────────────────────────────────────────
   # Fast gate: falha o PR se qualquer .env voltar a ser rastreado pelo git
-  # (mesmo padrão do seed-prod-guard — node puro, sem bun install; roda em
-  # <5s em paralelo com os demais checks).
+  # (padrão dos demais guards — node puro, sem bun install; roda em <5s em
+  # paralelo com os demais checks).
   #
   # Contexto: os arquivos .env estiveram rastreados com secrets reais
   # (SESSION_SECRET, VAPID, DB_PASSWORD, S3). A remediação foi rotacionar os
@@ -251,9 +251,9 @@ jobs:
       # A imagem postgis só habilita a extensão em postgres/template_postgis,
       # NÃO no POSTGRES_DB (criado de template1) — sem ela o benchmark falha
       # em checkPostGIS()/geo-benchmark-gist.mjs (exit 1) ao conectar no
-      # database 'severinno'. Mesmo fix do seed-guards (docker exec antes do
-      # passo que usa o banco). ATENÇÃO: o service container deste job é
-      # 'postgis' (não 'postgres' como no seed-guards) — job.services.<id>.
+      # database 'severinno'. Mesmo fix dos E2Es de seed (docker exec antes
+      # do passo que usa o banco). ATENÇÃO: o service container deste job é
+      # 'postgis' (não 'postgres' como nos seed E2Es) — job.services.<id>.
       - name: Enable PostGIS extension
         run: |
           docker exec ${{ job.services.postgis.id }} \
@@ -400,23 +400,33 @@ jobs:
           cat /tmp/gist-crossover-diff.txt 2>/dev/null | grep -E '^(.*provider|⚠|crossover|step)' || true
           exit 1
 
-  # ── Seed Guards (prod + dev E2E mesclados) ─────────────────────────
-  # Valida AMBOS os seeds contra UM ÚNICO PostGIS efêmero (economia de 1
-  # pull de imagem + 1 bun install + 1 generate/push vs os 2 jobs antigos):
-  #   1. prod E2E (85 checks): guard recusa fora de produção, dry-run nada
-  #      escrito, bootstrap categorias+settings, ZERO usuários, idempotente
-  #   2. dev E2E (111 checks): guard recusa em produção, 9 usuários demo,
-  #      árvore completa, wipe+recreate idempotente
-  #
-  # Substitui os antigos seed-prod-guard (grep manual) + seed-prod-bootstrap
-  # — os validators E2E cobrem estritamente mais que as asserções manuais.
+  # ── Seed Prod E2E ──────────────────────────────────────────────────
+  # Valida o seed de PRODUÇÃO (prisma/seed-prod.ts) contra um PostGIS
+  # efêmero: guard recusa fora de produção, dry-run nada escrito, bootstrap
+  # categorias+settings, ZERO usuários, idempotente (110 checks).
   #
   # A definição do job vive no reusable workflow seed-prod-bootstrap.yml —
   # chamado também pelo cron semanal (benchmark-weekly.yml) para revalidar
   # contra um banco efêmero sem duplicar a lógica.
   seed-prod-bootstrap:
-    name: Seed Guards (prod + dev E2E)
+    name: Seed Prod E2E (110 checks)
     uses: ./.github/workflows/seed-prod-bootstrap.yml
+
+  # ── Seed Dev E2E ───────────────────────────────────────────────────
+  # Valida o seed de DESENVOLVIMENTO (prisma/seed.ts) contra um PostGIS
+  # efêmero: guard recusa em produção, 9 usuários demo, árvore completa,
+  # wipe+recreate idempotente + cenários SEED_SPEC_PATCH (147 checks).
+  #
+  # Job PRÓPRIO e em PARALELO — INDEPENDENTE do prod E2E: um PR que quebre
+  # o seed de dev falha aqui mesmo se o prod E2E falhou antes (o dev era
+  # antes gateado no sucesso do prod dentro do job mesclado seed-guards).
+  # O dev E2E roda UMA vez por PR (o seed-prod-bootstrap é prod-only agora).
+  #
+  # A definição do job vive no reusable workflow seed-dev-bootstrap.yml —
+  # chamado também pelo cron semanal (benchmark-weekly.yml).
+  seed-dev-e2e:
+    name: Seed Dev E2E (147 checks)
+    uses: ./.github/workflows/seed-dev-bootstrap.yml
 
   # ── Security Headers ──────────────────────────────────────────────────
   # Verifica CSP, HSTS, X-Frame-Options e demais headers de segurança
