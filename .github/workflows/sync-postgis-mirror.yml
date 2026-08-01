@@ -1,0 +1,76 @@
+# =============================================================================
+# Sync PostGIS Mirror → GHCR
+#
+# Espelha a imagem postgis do Docker Hub para o GHCR (ghcr.io/severinno).
+# Pull a partir do GHCR em GitHub-hosted runners fica dentro da rede do GitHub
+# (mais rápido) e elimina o rate limit anônimo do Docker Hub.
+#
+# Após rodar UMA vez (workflow_dispatch ou no primeiro cron), defina a
+# variável de repositório:
+#   Settings → Secrets and variables → Actions → Variables:
+#     POSTGIS_IMAGE = ghcr.io/severinno/postgis:16-3.4-alpine
+# Os jobs que usam postgis (seed-guards, benchmark-gist) passam a puxar do
+# mirror automaticamente (expressão `vars.POSTGIS_IMAGE || <default>`).
+#
+# ⚠️ Pacotes GHCR criados via GITHUB_TOKEN nascem PRIVADOS por padrão. Se o
+# repositório for público e o pull anônimo for desejado, torne o pacote
+# público em: https://github.com/orgs/severinno/packages (não é bloqueante —
+# runners do GitHub se autenticam com o token do próprio job).
+#
+# Usage:
+#   Rode manualmente (workflow_dispatch) ou aguarde o cron diário.
+#
+# Exit codes:
+#   0 — mirror concluído (crane copy ok)
+#   1 — falha (login ou copy)
+# =============================================================================
+
+name: Sync PostGIS Mirror (GHCR)
+
+on:
+  schedule:
+    # Diário 04:17 UTC — acompanha novas tags do Docker Hub
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  mirror:
+    name: Mirror postgis → GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Para atualizar o crane: troque a versão no URL abaixo seguindo o
+      # padrão go-containerregistry_Linux_x86_64.tar.gz das releases de
+      # https://github.com/google/go-containerregistry/releases
+      - name: Install crane (registry-to-registry copy, preserva digest)
+        run: |
+          curl -sL https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz \
+            | tar xz crane
+          sudo mv crane /usr/local/bin/
+          crane version
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy postgis:16-3.4-alpine → GHCR
+        run: |
+          crane copy postgis/postgis:16-3.4-alpine ghcr.io/${{ github.repository_owner }}/postgis:16-3.4-alpine
+
+      - name: Copy postgis:16-3.4 → GHCR (fallback para quem ainda usa o full)
+        run: |
+          crane copy postgis/postgis:16-3.4 ghcr.io/${{ github.repository_owner }}/postgis:16-3.4 || true
+
+      - name: Verify mirror digest
+        run: |
+          echo "  Mirrored digest (alpine):"
+          crane digest ghcr.io/${{ github.repository_owner }}/postgis:16-3.4-alpine
+          echo "  ✅ Sync completo — defina vars.POSTGIS_IMAGE para usar o mirror"

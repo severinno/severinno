@@ -1,10 +1,28 @@
 # =============================================================================
-# Seed Prod Bootstrap — reusable workflow
+# Seed Guards — reusable workflow (prod + dev E2E)
 #
-# Valida o prisma/seed-prod.ts (seed LEGÍTIMO de produção):
-#   1. Recusa rodar sem NODE_ENV=production (guard obrigatório)
-#   2. Com o override explícito PROD_SEED_ALLOW_DEV=1, popula categorias +
-#      settings e NÃO cria NENHUM usuário (zero contas demo em produção)
+# Valida AMBOS os seeds de uma vez contra UM ÚNICO PostGIS efêmero:
+#   1. prod E2E (test-seed-prod-e2e.ts — 85 checks): guard recusa fora de
+#      produção, dry-run nada escrito, bootstrap categorias+settings,
+#      ZERO usuários, guard contra banco populado, idempotência
+#   2. dev E2E (test-seed-dev-e2e.ts — 111 checks): guard recusa em produção,
+#      9 usuários demo (1 admin + 2 clients + 6 providers), árvore completa
+#      (27 = 3+7+17), 13 services, 4 bookings, wipe+recreate idempotente
+#
+# ORDEM: prod PRIMEIRO (banco limpo → asserta zero usuários), dev DEPOIS
+# (o dev seed faz wipe+recreate, então não conflita com os dados do prod).
+# Substitui os antigos jobs seed-prod-guard (grep manual) + seed-prod-bootstrap
+# — um único service container, um único bun install, um único generate/push.
+#
+# Otimizações de CI aplicadas:
+#   - 1 service container para os 2 E2Es (--skip-docker) → 1 pull de imagem
+#   - Imagem via vars.POSTGIS_IMAGE (default alpine; mire no GHCR com
+#     sync-postgis-mirror.yml para pull mais rápido + sem rate limit Docker Hub)
+#   - Cache do Prisma client keyed no schema.prisma → SKIP_PRISMA_GENERATE=1
+#     em cache hit (pula o generate, ~6s por job)
+#   - Para eliminar o pull de imagem de vez: self-hosted runner com Docker
+#     persistente (imagem já quente localmente) — avaliar se a frequência de
+#     PRs justifica a manutenção do runner.
 #
 # Centralizado aqui (em vez de duplicado) para que PR check e cron semanal
 # validem SEMPRE a mesma definição — sem drift entre os dois contextos.
@@ -14,23 +32,24 @@
 #   - benchmark-weekly.yml  (cron semanal — revalida contra banco efêmero)
 # =============================================================================
 
-name: Seed Prod Bootstrap (reusable)
+name: Seed Guards (reusable)
 
 on:
   workflow_call:
 
 jobs:
-  # ── Seed Prod Bootstrap ────────────────────────────────────────────────
-  # Espelho do seed-prod-guard (que valida o seed de DEV recusar em prod);
-  # este valida o caminho inverso: o seed de PRODUÇÃO funcionar de verdade.
-  seed-prod-bootstrap:
-    name: Seed Prod Bootstrap
+  seed-guards:
+    name: Seed Guards (prod + dev E2E)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
+    # ── Ephemeral PostGIS service container ───────────────────────────
+    # Imagem via vars.POSTGIS_IMAGE com fallback alpine. Para usar o mirror
+    # GHCR (pull mais rápido, sem rate limit): rode sync-postgis-mirror.yml
+    # uma vez e defina vars.POSTGIS_IMAGE=ghcr.io/severinno/postgis:16-3.4-alpine
     services:
       postgres:
-        image: postgis/postgis:16-3.4
+        image: ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine' }}
         env:
           POSTGRES_DB: severinno
           POSTGRES_USER: severinno
@@ -61,100 +80,77 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: bunx prisma generate
+      # ── Cache do Prisma client (keyed no schema + versão do client) ──
+      # Em cache hit, os E2Es rodam com SKIP_PRISMA_GENERATE=1 (o .sh pula
+      # o generate, que é determinístico dado o schema) — economia ~6s/job.
+      # A key inclui bun.lock porque o output gerado depende TAMBÉM da
+      # versão do @prisma/client/engine (um bump sem mudança de schema
+      # invalidaria o cache). restore-keys nunca dispara o skip: o cache-hit
+      # só é 'true' com key exata, então um restore parcial roda o generate.
+      - name: Cache Prisma client
+        id: prisma-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.prisma
+            node_modules/@prisma/client
+          key: prisma-${{ hashFiles('prisma/schema.prisma') }}-${{ hashFiles('bun.lock') }}
+          restore-keys: prisma-
 
-      - name: Push schema to ephemeral DB
+      # ── PostGIS extension no service container ──────────────────────
+      # A imagem postgis só habilita a extensão em postgres/template_postgis,
+      # NÃO no POSTGRES_DB (criado de template1) — sem ela o prisma db push
+      # falha nas colunas Unsupported("geography(Point, 4326)"). Não dá para
+      # usar init-script montado aqui: o service container inicia ANTES do
+      # checkout (workspace vazio) — por isso o docker exec explícito.
+      - name: Enable PostGIS extension
+        run: |
+          docker exec ${{ job.services.postgres.id }} \
+            psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis"
+
+      # ── PROD E2E primeiro ────────────────────────────────────────────
+      # Banco limpo no início do job → o prod E2E asserta ZERO usuários.
+      # O .sh com --skip-docker faz: prisma generate (se cache miss) +
+      # db push (schema) + validator (85 checks).
+      - name: Run seed-prod E2E
+        id: prod
         env:
           DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
-        run: bunx prisma db push --skip-generate
-
-      # ── Guard: seed-prod DEVE recusar fora de produção ────────────────
-      - name: Seed prod must refuse in development
-        id: guard
-        env:
-          NODE_ENV: development
-          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+          SKIP_PRISMA_GENERATE: ${{ steps.prisma-cache.outputs.cache-hit == 'true' && '1' || '0' }}
         run: |
-          set +e
-          bun run db:seed:prod 2>&1 | tee /tmp/seed-prod-refuse.log
-          code=${PIPESTATUS[0]}
-          set -e
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          echo "seed exit code: $code"
+          bun run test:seed-prod-e2e --skip-docker
+          echo "  ✅ Seed prod E2E passou (85 checks)"
 
-      - name: Assert production refusal
-        env:
-          EXIT_CODE: ${{ steps.guard.outputs.exit_code }}
-        run: |
-          if [ "$EXIT_CODE" = "0" ]; then
-            echo "❌ GUARD QUEBRADO: seed-prod RODOU em development (exit 0)."
-            cat /tmp/seed-prod-refuse.log
-            exit 1
-          fi
-          if ! grep -q "Seed de produção recusado" /tmp/seed-prod-refuse.log; then
-            echo "❌ seed-prod falhou sem a mensagem de recusa do guard."
-            cat /tmp/seed-prod-refuse.log
-            exit 1
-          fi
-          echo "✅ Guard validado: seed-prod recusou em development (exit $EXIT_CODE)"
-
-      # ── Bootstrap com override explícito (banco efêmero) ───────────────
-      - name: Seed prod bootstrap with PROD_SEED_ALLOW_DEV=1
-        id: bootstrap
-        env:
-          NODE_ENV: development
-          PROD_SEED_ALLOW_DEV: "1"
-          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
-        run: |
-          bun run db:seed:prod 2>&1 | tee /tmp/seed-prod-bootstrap.log
-          if ! grep -q "Seed de produção concluído" /tmp/seed-prod-bootstrap.log; then
-            echo "❌ seed-prod bootstrap falhou — sem confirmação final."
-            cat /tmp/seed-prod-bootstrap.log
-            exit 1
-          fi
-          echo "✅ seed-prod bootstrap concluído (categorias + settings)"
-
-      # ── Asserção: ZERO usuários, categorias + settings existem ─────────
-      # Usa o Prisma Client (não `prisma db execute`, que não retorna
-      # resultados de SELECT de forma confiável) — falha se houver QUALQUER
-      # usuário criado pelo seed-prod (zero contas demo em produção).
-      - name: Assert zero users created
+      # ── DEV E2E depois ───────────────────────────────────────────────
+      # O dev seed faz wipe+recreate — não conflita com os dados do prod
+      # (que não criou usuários). Guard recusa em produção + 9 usuários demo.
+      # SKIP_DB_PUSH=1: o prod E2E acima já sincronizou o schema no MESMO
+      # container — o dev reutiliza (economia ~9s), sem risco de drift pois
+      # ambos rodam do mesmo commit/schema.
+      # if: gated no sucesso do prod — se o prod falhar ANTES de sincronizar
+      # o schema, rodar o dev com SKIP_DB_PUSH=1 contra banco sem schema
+      # falharia de forma confusa (mascarando o erro real). O summary segue
+      # if: always(), então o report não é afetado.
+      - name: Run seed-dev E2E
+        id: dev
+        if: steps.prod.conclusion == 'success'
         env:
           DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+          SKIP_PRISMA_GENERATE: ${{ steps.prisma-cache.outputs.cache-hit == 'true' && '1' || '0' }}
+          SKIP_DB_PUSH: "1"
         run: |
-          node -e "
-            const { PrismaClient } = require('@prisma/client');
-            const db = new PrismaClient();
-            db.user.count()
-              .then((n) => {
-                console.log('user_count=' + n);
-                if (n > 0) {
-                  console.error('❌ seed-prod criou usuários (esperado ZERO — sem contas demo)');
-                  process.exit(1);
-                }
-                console.log('✅ Nenhum usuário criado pelo seed-prod');
-              })
-              .catch((e) => { console.error(e); process.exit(1); })
-              .finally(() => db.\$disconnect());
-          "
+          bun run test:seed-dev-e2e --skip-docker
+          echo "  ✅ Seed dev E2E passou (111 checks)"
 
       - name: Publish summary
         if: always()
         run: |
           {
-            echo '## 🚀 Seed Prod Bootstrap'
+            echo '## 🛡️ Seed Guards — prod + dev E2E'
             echo ''
             echo '| Check | Result |'
             echo '|---|---|'
-            if [ "${{ steps.guard.conclusion }}" = "success" ]; then
-              echo "| Recusa fora de produção | ✅ (exit ${{ steps.guard.outputs.exit_code }}) |"
-            else
-              echo '| Recusa fora de produção | ⚪ não executado |'
-            fi
-            if [ "${{ steps.bootstrap.conclusion }}" = "success" ]; then
-              echo '| Bootstrap (categorias + settings) | ✅ |'
-            else
-              echo '| Bootstrap (categorias + settings) | ❌ |'
-            fi
+            echo "| Prod E2E (85 checks) | ${{ steps.prod.conclusion == 'success' && '✅' || '❌' }} |"
+            echo "| Dev E2E (111 checks) | ${{ steps.dev.conclusion == 'success' && '✅' || '❌' }} |"
+            echo "| Imagem PostGIS | ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine (default)' }} |"
           } >> "$GITHUB_STEP_SUMMARY"

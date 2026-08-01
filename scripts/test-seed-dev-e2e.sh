@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
 # =============================================================================
-# scripts/test-seed-prod-e2e.sh — Seed Prod E2E (PostGIS efêmero via docker)
+# scripts/test-seed-dev-e2e.sh — Seed Dev E2E (PostGIS efêmero via docker)
 #
-# Executa o prisma/seed-prod.ts (seed de PRODUÇÃO) contra um PostGIS
+# Executa o prisma/seed.ts (seed de DESENVOLVIMENTO) contra um PostGIS
 # descartável e valida:
-#   1. Guard recusa fora de produção
-#   2. Árvore de categorias completa (27 = 3 + 7 + 17)
-#   3. Settings presentes (9 keys)
-#   4. ZERO usuários criados
-#   5. Re-execução idempotente (mesmos counts)
+#   1. Guard recusa em NODE_ENV=production (sem escrever nada — nem em banco vazio)
+#   2. Usuários demo: 9 = 1 admin + 2 clients + 6 providers (emails esperados)
+#   3. Árvore de categorias completa (27 = 3 + 7 + 17)
+#   4. Settings (9), services (13), bookings (4) + payments (4) + reviews (4)
+#   5. Guard contra banco populado não destrói dados (roda antes do wipe)
+#   6. Re-execução idempotente (wipe + recreate → mesmos counts)
 #
 # Pipeline:
 #   1. Start PostGIS via docker-compose.test.yml (tmpfs — dados descartáveis)
 #   2. Wait for container healthy
 #   3. Push Prisma schema (cria as tabelas)
-#   4. Run scripts/test-seed-prod-e2e.ts (validação real)
+#   4. Run scripts/test-seed-dev-e2e.ts (validação real)
 #   5. Clean up (docker compose down -v)
 #
 # Usage:
-#   ./scripts/test-seed-prod-e2e.sh               # Full pipeline
-#   ./scripts/test-seed-prod-e2e.sh --skip-docker  # Skip container start (use existing)
-#   ./scripts/test-seed-prod-e2e.sh --skip-cleanup # Keep containers running after
+#   ./scripts/test-seed-dev-e2e.sh               # Full pipeline
+#   ./scripts/test-seed-dev-e2e.sh --skip-docker  # Skip container start (use existing)
+#   ./scripts/test-seed-dev-e2e.sh --skip-cleanup # Keep containers running after
 #
 # Exit codes:
 #   0 — all E2E checks passed
@@ -86,7 +87,7 @@ info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo "   🧪 SEVERINNO — SEED PROD E2E (PostGIS efêmero)"
+echo "   🧪 SEVERINNO — SEED DEV E2E (PostGIS efêmero)"
 echo "  ═════════════════════════════════════════════════════════════════"
 echo ""
 
@@ -120,16 +121,16 @@ fi
 info "STEP 2: Syncing Prisma schema..."
 cd "$SCRIPT_DIR"      # Ensure Prisma client is generated first (required for @prisma/client types).
       # SKIP_PRISMA_GENERATE=1 pula o generate quando o client já veio do cache
-      # (CI: actions/cache keyed no schema.prisma — economia ~6s por job).
+      # (CI: actions/cache keyed no schema.prisma + bun.lock — economia ~6s por job).
       if [ "${SKIP_PRISMA_GENERATE:-0}" != "1" ]; then
         DATABASE_URL="$DATABASE_URL" bunx prisma generate 2>&1 | tail -5
       else
         info "STEP 2: Skipping prisma generate (SKIP_PRISMA_GENERATE=1 — cache hit)"
       fi
 
-      # SKIP_DB_PUSH=1 pula o push quando o schema já foi sincronizado pelo
-      # E2E anterior no MESMO container (job mesclado seed-guards: o prod
-      # faz o push, o dev reutiliza). O push é idempotente, mas evita ~9s.
+      # SKIP_DB_PUSH=1 pula o push quando o schema já foi sincronizado por um
+      # E2E ANTERIOR no MESMO container (job mesclado seed-guards: o prod faz
+      # o push, o dev reutiliza). O push é idempotente, mas evitar ~9s por job.
       if [ "${SKIP_DB_PUSH:-0}" != "1" ]; then
         # A pipeline na condição do if: com set -euo pipefail, uma pipeline
         # solta que falha abortaria o script ANTES do if (branch de erro =
@@ -146,13 +147,13 @@ cd "$SCRIPT_DIR"      # Ensure Prisma client is generated first (required for @p
       fi
 
 # ═════════════════════════════════════════════════════════════════════════
-# STEP 3 — Run seed-prod E2E validator
+# STEP 3 — Run seed-dev E2E validator
 # ═════════════════════════════════════════════════════════════════════════
 
-info "STEP 3: Running seed-prod E2E validator..."
+info "STEP 3: Running seed-dev E2E validator..."
 
 # Já estamos no SCRIPT_DIR (STEP 2 fez o cd) — sem cd redundante aqui.
-DATABASE_URL="$DATABASE_URL" bun scripts/test-seed-prod-e2e.ts
+DATABASE_URL="$DATABASE_URL" bun scripts/test-seed-dev-e2e.ts
 exit_code=$?
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -161,9 +162,9 @@ exit_code=$?
 
 echo ""
 if [ "$exit_code" -eq 0 ]; then
-  pass "ALL SEED PROD E2E CHECKS PASSED"
+  pass "ALL SEED DEV E2E CHECKS PASSED"
 else
-  fail "Seed prod E2E failed (exit code $exit_code)"
+  fail "Seed dev E2E failed (exit code $exit_code)"
 fi
 
 exit "$exit_code"
