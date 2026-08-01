@@ -7,17 +7,23 @@
 # =============================================================================
 
 services:
-
   # ── PostgreSQL + PostGIS ────────────────────────────────────────────────
+  # Variante alpine: 154 MiB vs ~203 MiB do full — mesmo PostGIS 16-3.4
+  # (validado pelo seed-prod E2E 85/85 + seed-dev E2E 111/111).
   postgis:
-    image: postgis/postgis:16-3.4
+    image: postgis/postgis:16-3.4-alpine
     environment:
       POSTGRES_DB: severinno_test
       POSTGRES_USER: severinno
       POSTGRES_PASSWORD: severinno_test
     ports:
-      - "127.0.0.1:5433:5432"   # 5433 host → 5432 container (avoid conflict with dev DB)
-    tmpfs: /var/lib/postgresql/data   # throw-away data; fresh each run
+      - "127.0.0.1:5433:5432" # 5433 host → 5432 container (avoid conflict with dev DB)
+    tmpfs: /var/lib/postgresql/data # throw-away data; fresh each run
+    # Habilita a extensão PostGIS no POSTGRES_DB (a imagem só ativa em
+    # postgres/template_postgis — sem isso o prisma db push falha nas
+    # colunas Unsupported("geography(Point, 4326)")).
+    volumes:
+      - ./scripts/initdb-postgis.sql:/docker-entrypoint-initdb.d/10-postgis.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U severinno -d severinno_test"]
       interval: 3s
@@ -29,7 +35,7 @@ services:
   redis:
     image: valkey/valkey:7.2-alpine
     ports:
-      - "127.0.0.1:6381:6379"   # 6381 host → 6379 container
+      - "127.0.0.1:6381:6379" # 6381 host → 6379 container
     tmpfs: /data
     command: valkey-server --appendonly no --maxmemory 64mb --maxmemory-policy allkeys-lru
     healthcheck:
@@ -49,8 +55,13 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "bun", "-e",
-        "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 5s
       timeout: 3s
       retries: 5

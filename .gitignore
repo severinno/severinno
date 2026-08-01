@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — secrets NEVER tracked (rotated via scripts/rotate-secrets.mjs)
 .env*
+# ...mas os templates .example são seguros e devem continuar rastreáveis
+!.env.glitchtip.example
 
 # vercel
 .vercel

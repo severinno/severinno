@@ -330,6 +330,11 @@ async function main() {
   // ── Connect ────────────────────────────────────────────────────────────
 
   try {
+    // Self-provisioning: a fresh postgis container (POSTGRES_DB vem de
+    // template1) NÃO tem a extensão habilitada — sem ela o checkPostGIS
+    // falha. CREATE EXTENSION IF NOT EXISTS torna o script robusto tanto
+    // para CI quanto para runs locais, sem depender de passo externo.
+    await query("CREATE EXTENSION IF NOT EXISTS postgis")
     const pgVer = await checkPostGIS()
     console.log(`  PostgreSQL:   ${pgVer}`)
   } catch (e) {
