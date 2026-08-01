@@ -55,6 +55,11 @@ bun run seed
 bun run dev
 ```
 
+> **Seed test hook (`SEED_SPEC_PATCH`):** os seeds aceitam um patch temporário
+> do spec de categorias para validar convergência de update/rename nos E2Es —
+> **só aplica fora de produção** (seed-prod exige `PROD_SEED_ALLOW_DEV=1`).
+> Ver [docs/SECURITY.md#13-seed-test-hooks-seed_spec_patch](docs/SECURITY.md).
+
 ## Architecture
 
 ```

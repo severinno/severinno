@@ -29,6 +29,8 @@ export type CategorySeedInput = {
   parent?: string
   level: number
   icon?: string
+  /** Ordem de exibição explícita (opcional) — sobrescreve o default do level 0. */
+  order?: number
 }
 
 export const CATEGORY_SPEC: CategorySeedInput[] = [
@@ -72,9 +74,72 @@ export function categorySlug(c: CategorySeedInput): string {
   return slugify(c.name) + (c.parent ? "-" + slugify(c.parent) : "")
 }
 
-/** Ordem de exibição no level 0 (pais) — 0 por padrão. */
+/**
+ * Ordem de exibição de uma categoria — 0 por padrão.
+ * Um `order` explícito no spec (ex.: via SEED_SPEC_PATCH no E2E de update)
+ * sobrescreve o default; sem ele, pais seguem a ordem canônica
+ * ["Reparos", "Limpeza", "Reforma"] e demais níveis ficam em 0.
+ */
 export function categoryOrder(c: CategorySeedInput): number {
+  if (c.order !== undefined) return c.order
   return c.level === 0 ? ["Reparos", "Limpeza", "Reforma"].indexOf(c.name) : 0
+}
+
+// ---------------------------------------------------------------------------
+// SEED_SPEC_PATCH — hook de teste para cenários de UPDATE/RENAME (E2E)
+// ---------------------------------------------------------------------------
+// Função compartilhada entre os DOIS seeds (dev wipe+recreate e prod
+// upsert idempotente) — evita divergência no comportamento do hook.
+export type SpecPatchInput = {
+  name: string
+  renameTo?: string
+  icon?: string
+  order?: number
+}
+
+/**
+ * Aplica um patch opcional ao CATEGORY_SPEC (env SEED_SPEC_PATCH — hook de
+ * teste usado pelos E2Es scripts/test-seed-{prod,dev}-e2e.ts). Suporta:
+ *   - icon/order: update in-place (mesmo slug — converge sem duplicar)
+ *   - renameTo: muda o NOME → o slug muda (categoria + filhos herdam o slug
+ *     do pai) → o upsert CRIA a linha nova e a antiga vira órfã. A cascata
+ *     é INTENCIONALMENTE de um nível (árvore fixa de 3 níveis): filhos cujo
+ *     `parent` referenciava o nome antigo passam a referenciar o nome novo —
+ *     senão o assertValidCategorySpec recusaria o spec patchado.
+ * Retorna CATEGORY_SPEC inalterado quando raw é ausente OU enabled é false —
+ * em produção o patch é INERTE (os seeds recusam fora do ambiente de
+ * teste/override ANTES de qualquer escrita no banco). Função PURA e testável.
+ */
+export function buildPatchedSpec(raw: string | undefined, enabled: boolean): CategorySeedInput[] {
+  if (!raw || !enabled) return CATEGORY_SPEC
+  try {
+    const patches = JSON.parse(raw) as SpecPatchInput[]
+    const byName = new Map(patches.map((p) => [p.name, p]))
+    // Renomeação em cascata: nome antigo → nome novo (aplicado ao item e
+    // aos filhos cujo `parent` referenciava o nome antigo).
+    const renameMap = new Map(
+      patches.filter((p) => p.renameTo).map((p) => [p.name, p.renameTo as string]),
+    )
+    return CATEGORY_SPEC.map((c) => {
+      const p = byName.get(c.name)
+      const newName = renameMap.get(c.name) ?? c.name
+      const newParent = c.parent ? (renameMap.get(c.parent) ?? c.parent) : undefined
+      const out: CategorySeedInput = {
+        name: newName,
+        level: c.level,
+        ...(newParent !== undefined ? { parent: newParent } : {}),
+        ...(p?.icon !== undefined
+          ? { icon: p.icon }
+          : c.icon !== undefined
+            ? { icon: c.icon }
+            : {}),
+        ...(p?.order !== undefined ? { order: p.order } : {}),
+      }
+      return out
+    })
+  } catch (e) {
+    throw new Error(`SEED_SPEC_PATCH inválido (JSON): ${e instanceof Error ? e.message : e}`)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +158,103 @@ export const DEFAULT_SETTINGS: SettingSeedInput[] = [
   { key: "platform_fee_percent", value: "10" },
   { key: "quote_default_expiry_hours", value: "72" },
 ]
+
+// ---------------------------------------------------------------------------
+// Validação estrutural do spec — proteção contra corrupção da árvore
+// ---------------------------------------------------------------------------
+// Cenários de produção que estas validações bloqueiam (fail-fast ANTES de
+// qualquer escrita no banco):
+//
+//   1. NOVAS categorias mid-cycle (spec cresce entre deploys): seguro — o
+//      upsert por slug simplesmente cria as novas sem tocar nas existentes.
+//      Nenhuma proteção necessária além do próprio upsert idempotente.
+//
+//   2. RENOMEAR uma categoria: PERIGOSO. O slug é derivado do nome (filhos
+//      herdam o slug do pai), então renomear muda o slug → o upsert cria uma
+//      NOVA linha e a antiga vira órfã (services continuam apontando para a
+//      antiga). Não é bloqueável por validação (é uma decisão de migração),
+//      mas está documentado no header do seed-prod — renomear exige migração
+//      manual de parentId/foreign keys, não re-run do seed.
+//
+//   3. NOMES duplicados no spec: AMBÍGUO. O seed resolve parent por NOME
+//      (catByName) — dois nomes iguais fariam o último vencer silenciosamente
+//      e filhos apontariam para o parent errado. → BLOQUEADO aqui.
+//
+//   4. Parent inexistente (typo no spec): o catByName[c.parent] retornaria
+//      undefined → parentId null SILENCIOSO (categoria órfã no level errado).
+//      → BLOQUEADO aqui (e reforçado no loop de upsert).
+//
+//   5. Parent com level >= filho: quebra a árvore 3-níveis. → BLOQUEADO aqui.
+//
+//   6. level 0 com parent / level > 0 sem parent: inconsistência estrutural
+//      (pais só podem ser raiz; filhos só existem sob um pai). → BLOQUEADO.
+//
+//   7. Slugs duplicados (colisão de slugify, ex.: "Pós-Obra" vs "Pos Obra"):
+//      upsert por slug colidiria. → BLOQUEADO aqui.
+
+/**
+ * Valida a integridade estrutural do CATEGORY_SPEC (ou qualquer spec).
+ * Retorna lista de problemas (vazia = spec válido). Função PURA e testável.
+ */
+export function validateCategorySpec(spec: CategorySeedInput[] = CATEGORY_SPEC): string[] {
+  const issues: string[] = []
+
+  // 1. Nomes únicos — catByName é chaveado por nome EXATO; dois iguais
+  //    tornariam a resolução de parent ambígua (último vence, filhos errados).
+  const nameCount = new Map<string, number>()
+  for (const c of spec) nameCount.set(c.name, (nameCount.get(c.name) ?? 0) + 1)
+  for (const [name, n] of nameCount) {
+    if (n > 1) {
+      issues.push(`nome duplicado '${name}' (${n}x) — resolução de parent por nome ficaria ambígua`)
+    }
+  }
+
+  // 2. Slugs únicos — upsert por slug; colisão de slugify criaria overwrite.
+  const slugCount = new Map<string, number>()
+  for (const c of spec) {
+    const s = categorySlug(c)
+    slugCount.set(s, (slugCount.get(s) ?? 0) + 1)
+  }
+  for (const [slug, n] of slugCount) {
+    if (n > 1) issues.push(`slug duplicado '${slug}' (${n}x) — upsert por slug colidiria`)
+  }
+
+  // 3-6. Árvore bem-formada: parent existe, level menor, coerência level↔parent.
+  const byName = new Map(spec.map((c) => [c.name, c]))
+  for (const c of spec) {
+    if (!c.parent) {
+      if (c.level !== 0) {
+        issues.push(`'${c.name}' é level ${c.level} mas não tem parent (esperado level 0)`)
+      }
+      continue
+    }
+    if (c.level === 0) {
+      issues.push(`'${c.name}' é level 0 mas tem parent '${c.parent}' (pais não podem ter parent)`)
+      continue
+    }
+    const parent = byName.get(c.parent)
+    if (!parent) {
+      issues.push(`'${c.name}' referencia parent inexistente '${c.parent}'`)
+    } else if (parent.level >= c.level) {
+      issues.push(
+        `'${c.name}' (level ${c.level}) tem parent '${c.parent}' (level ${parent.level}) — parent deve ter level menor`,
+      )
+    }
+  }
+
+  return issues
+}
+
+/** Lança Error se o spec tiver qualquer problema estrutural (fail-fast). */
+export function assertValidCategorySpec(spec: CategorySeedInput[] = CATEGORY_SPEC): void {
+  const issues = validateCategorySpec(spec)
+  if (issues.length > 0) {
+    throw new Error(
+      "CATEGORY_SPEC inválido — recusando seed para evitar corrupção da árvore:\n  - " +
+        issues.join("\n  - "),
+    )
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Dry-run plan — o que o seed-prod FARIAM, sem escrever no banco
@@ -168,12 +330,13 @@ export type SeedPlan = {
 export function buildSeedPlan(
   currentCategories: CurrentCategoryRow[],
   currentSettings: CurrentSettingRow[],
+  spec: CategorySeedInput[] = CATEGORY_SPEC,
 ): SeedPlan {
   const catBySlug = new Map(currentCategories.map((c) => [c.slug, c]))
   const setByKey = new Map(currentSettings.map((s) => [s.key, s]))
 
   const categories: CategoryPlanAction[] = []
-  const sorted = [...CATEGORY_SPEC].sort((a, b) => a.level - b.level)
+  const sorted = [...spec].sort((a, b) => a.level - b.level)
 
   for (const c of sorted) {
     const slug = categorySlug(c)
