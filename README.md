@@ -418,3 +418,40 @@ sem perceber o impacto em edge cases.
 serviços cujo P95 iguale exatamente o limiar sejam falsamente marcados como degradados,
 disparando notificações de alerta desnecessárias. O teste #9 serve como guardrail contra essa
 mudança inadvertida.
+
+## Local Workflow Validation (actionlint + act)
+
+Valide os `.github/workflows/*.yml` localmente antes de abrir PR, sem depender do CI.
+O job `actionlint` do `pr-check.yml` roda a mesma verificação no GitHub.
+
+### Actionlint (sintaxe YAML + shellcheck)
+
+```bash
+# Valida todos os workflows (YAML + shellcheck), igual ao job actionlint do pr-check.yml
+MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest
+```
+
+> **Windows/Git Bash:** `MSYS_NO_PATHCONV=1` impede que o Git Bash converta `/repo` para um
+> caminho Windows (senão o volume monta no lugar errado). No Linux/macOS pode omitir.
+
+### Act (executa os jobs localmente)
+
+O binário fica em `tool-results/act/act.exe` (v0.2.89) — baixado de
+[nektos/act releases](https://github.com/nektos/act/releases) (não é rastreado pelo git).
+
+```bash
+# Dry-run: lista o plano de execução SEM executar (a flag é -n, NÃO --dry-run)
+tool-results/act/act.exe -n -W .github/workflows/pr-check.yml -j actionlint
+
+# Execução real de um job (mapeia ubuntu-latest para a imagem que o CI usa)
+tool-results/act/act.exe -W .github/workflows/pr-check.yml -j secrets-guard \
+  -P ubuntu-latest=catthehacker/ubuntu:act-latest
+```
+
+### Bugs conhecidos
+
+| Bug                                         | Sintoma                                                               | Workaround                                                                                                                                                                                                              |
+| :------------------------------------------ | :-------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`--dry-run` não existe**                  | `Error: unknown flag: --dry-run`                                      | Usar `-n`. Atenção: `-n` só mostra o plano e **não** executa os `run:` — não pega erros de runtime (ex: CRLF, comandos ausentes).                                                                                       |
+| **`oven-sh/setup-bun@v2` lento**            | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs | Aceitável para validação pontual; exige rede para o GitHub. Mapear a imagem com `-P ubuntu-latest=catthehacker/ubuntu:act-latest` para usar o toolcache do act.                                                         |
+| **CRLF quebra bash no container (Windows)** | `scripts/check-utf8.sh: set: pipefail\r: invalid option name`         | Com `core.autocrlf=true` + `i/lf w/crlf`, o working tree fica CRLF no Windows; o act copia o working tree para o container Linux. Corrigir com `git config core.autocrlf false` + `git add --renormalize`, ou usar WSL. |
