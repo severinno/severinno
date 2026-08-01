@@ -138,10 +138,7 @@ function psqlEnv(extraDb?: string): Record<string, string> {
  * Uses `-At` for unaligned tab-separated output.
  * The tab separator is passed via PGSQL_TAB env + awk to stay cross-platform.
  */
-function buildPsqlCmd(
-  sql: string,
-  db?: string,
-): string {
+function buildPsqlCmd(sql: string, db?: string): string {
   const database = db ?? ENV.PGDATABASE
   // Escape double-quotes inside SQL for the shell
   const escapedSql = sql.replace(/"/g, '\\"')
@@ -208,11 +205,7 @@ function parsePsqlOutput(output: string): string[][] {
  * Used for fast admin queries (SHOW POOLS, SHOW CONFIG, etc.) where
  * concurrency doesn't matter.
  */
-function psqlQuerySync(
-  sql: string,
-  db?: string,
-  timeoutMs = 10_000,
-): string[][] {
+function psqlQuerySync(sql: string, db?: string, timeoutMs = 10_000): string[][] {
   const cmd = buildPsqlCmd(sql, db)
   const result = execSync(cmd, {
     env: { ...process.env, ...psqlEnv(db) },
@@ -232,7 +225,7 @@ function psqlQuerySync(
 function psqlQueryAsync(
   sql: string,
   timeoutMs: number,
-  label: string,
+  _label: string,
 ): Promise<{ rows: string[][]; latencyMs: number; error?: string }> {
   return new Promise((resolve) => {
     const start = performance.now()
@@ -259,7 +252,11 @@ function psqlQueryAsync(
     )
     // Force kill if timeout
     setTimeout(() => {
-      try { child.kill() } catch { /* ignore */ }
+      try {
+        child.kill()
+      } catch {
+        /* ignore */
+      }
     }, timeoutMs + 1000)
   })
 }
@@ -292,11 +289,7 @@ function getPoolSnapshot(): PgBouncerPoolRow | null {
 function getPgMaxConnections(): number {
   try {
     // Connect DIRECTLY to PostgreSQL (not through PgBouncer) for config
-    const rows = psqlQuerySync(
-      "SHOW max_connections;",
-      undefined,
-      5000,
-    )
+    const rows = psqlQuerySync("SHOW max_connections;", undefined, 5000)
     return Number(rows[0]?.[0] ?? 100)
   } catch {
     return 100 // safe default
@@ -346,9 +339,7 @@ function checkEnvironment(): boolean {
   try {
     const pool = getPoolSnapshot()
     if (pool) {
-      pass(
-        `PgBouncer reachable at ${ENV.PGHOST}:${ENV.PGPORT} (mode: ${pool.pool_mode})`,
-      )
+      pass(`PgBouncer reachable at ${ENV.PGHOST}:${ENV.PGPORT} (mode: ${pool.pool_mode})`)
     } else {
       fail("Could not query PgBouncer SHOW POOLS")
       return false
@@ -375,15 +366,9 @@ function checkEnvironment(): boolean {
   // 4. Get PgBouncer config
   try {
     const config = psqlQuerySync("SHOW CONFIG;", "pgbouncer", 5000)
-    const defaultPoolSize = config.find(
-      (r) => r[0] === "default_pool_size",
-    )
-    const maxClientConn = config.find(
-      (r) => r[0] === "max_client_conn",
-    )
-    const reservePoolSize = config.find(
-      (r) => r[0] === "reserve_pool_size",
-    )
+    const defaultPoolSize = config.find((r) => r[0] === "default_pool_size")
+    const maxClientConn = config.find((r) => r[0] === "max_client_conn")
+    const reservePoolSize = config.find((r) => r[0] === "reserve_pool_size")
     const maxConn = getPgMaxConnections()
 
     console.log(`\n  ── Current Config ────────────────────────────────────────`)
@@ -403,11 +388,7 @@ async function runSingleQuery(timeoutMs = 10_000): Promise<ConnectionResult> {
   const id = randomUUID()
   const start = performance.now()
   try {
-    await psqlQueryAsync(
-      `SELECT /* stress-baseline-${id} */ 1;`,
-      timeoutMs,
-      "baseline",
-    )
+    await psqlQueryAsync(`SELECT /* stress-baseline-${id} */ 1;`, timeoutMs, "baseline")
     const latencyMs = performance.now() - start
     return { connIndex: 0, success: true, latencyMs }
   } catch (err: any) {
@@ -468,7 +449,11 @@ function runConcurrentQueries(
 
       // Safety kill timer per process
       setTimeout(() => {
-        try { child.kill() } catch { /* ignore */ }
+        try {
+          child.kill()
+        } catch {
+          /* ignore */
+        }
       }, timeoutMs + 2000)
     }
   })
@@ -550,10 +535,7 @@ async function runRamp(
   poolSize: number,
 ): Promise<PhaseResult[]> {
   divider("PHASE 2: RAMP TEST")
-  log(
-    "Ramp",
-    `Increasing from 1 to ${maxConns} connections (${stepDurationSec}s per step)`,
-  )
+  log("Ramp", `Increasing from 1 to ${maxConns} connections (${stepDurationSec}s per step)`)
 
   const phases: PhaseResult[] = []
   let queueDetected = false
@@ -578,27 +560,19 @@ async function runRamp(
     const conns = rampSteps[stepIdx]!
     const stepStart = performance.now()
 
-    log(
-      "Ramp",
-      `→ ${conns} concurrent${queueDetected ? " (queue detected)" : ""}...`,
-    )
+    log("Ramp", `→ ${conns} concurrent${queueDetected ? " (queue detected)" : ""}...`)
 
     const results = await runConcurrentQueries(conns, `ramp-${conns}`)
     const poolAfter = getPoolSnapshot()
     const durationMs = performance.now() - stepStart
 
-    const successLatencies = results
-      .filter((r) => r.success)
-      .map((r) => r.latencyMs)
+    const successLatencies = results.filter((r) => r.success).map((r) => r.latencyMs)
     const stats = computeStats(successLatencies)
 
     const hadWaiting = (poolAfter?.cl_waiting ?? 0) > 0
     if (hadWaiting && !queueDetected) {
       queueDetected = true
-      warn(
-        `QUEUE DETECTED at ${conns} connections! ` +
-          `cl_waiting=${poolAfter?.cl_waiting}`,
-      )
+      warn(`QUEUE DETECTED at ${conns} connections! ` + `cl_waiting=${poolAfter?.cl_waiting}`)
     }
 
     phases.push({
@@ -651,9 +625,7 @@ async function runBurst(burstConns: number): Promise<PhaseResult[]> {
   const burstDuration = performance.now() - burstStart
   const afterPool = getPoolSnapshot()
 
-  const successLatencies = results
-    .filter((r) => r.success)
-    .map((r) => r.latencyMs)
+  const successLatencies = results.filter((r) => r.success).map((r) => r.latencyMs)
   const stats = computeStats(successLatencies)
 
   phases.push({
@@ -686,10 +658,7 @@ async function runBurst(burstConns: number): Promise<PhaseResult[]> {
 }
 
 /** Phase 4: Sustain — hold steady load for N seconds. */
-async function runSustain(
-  connCount: number,
-  durationSec: number,
-): Promise<PhaseResult[]> {
+async function runSustain(connCount: number, durationSec: number): Promise<PhaseResult[]> {
   divider("PHASE 4: SUSTAIN TEST")
 
   log("Sustain", `Holding ${connCount} concurrent connections for ${durationSec}s...`)
@@ -705,9 +674,7 @@ async function runSustain(
 
   while (elapsed < durationSec * 1000) {
     const results = await runConcurrentQueries(connCount, "sustain")
-    const batchLatencies = results
-      .filter((r) => r.success)
-      .map((r) => r.latencyMs)
+    const batchLatencies = results.filter((r) => r.success).map((r) => r.latencyMs)
 
     allLatencies.push(...batchLatencies)
     totalFailures += results.length - batchLatencies.length
@@ -843,10 +810,7 @@ function generateReport(
 
   // 4. Failure rate
   const totalFails = allPhases.reduce((sum, p) => sum + p.failCount, 0)
-  const totalQueries = allPhases.reduce(
-    (sum, p) => sum + p.successCount + p.failCount,
-    0,
-  )
+  const totalQueries = allPhases.reduce((sum, p) => sum + p.successCount + p.failCount, 0)
   if (totalFails > 0 && totalQueries > 0) {
     const failRate = (totalFails / totalQueries) * 100
     if (failRate > 1) {
@@ -973,19 +937,15 @@ async function main() {
     Number(args.find((a) => a.startsWith("--max-conns="))?.split("=")[1] ?? 80),
     200,
   )
-  const stepDuration = Number(
-    args.find((a) => a.startsWith("--step="))?.split("=")[1] ?? 5,
-  )
+  const stepDuration = Number(args.find((a) => a.startsWith("--step="))?.split("=")[1] ?? 5)
   const sustainConns = Number(
-    args.find((a) => a.startsWith("--sustain-conns="))?.split("=")[1] ??
-      Math.min(20, maxConns),
+    args.find((a) => a.startsWith("--sustain-conns="))?.split("=")[1] ?? Math.min(20, maxConns),
   )
   const sustainDuration = Number(
     args.find((a) => a.startsWith("--sustain-duration="))?.split("=")[1] ?? 30,
   )
   const burstConns = Number(
-    args.find((a) => a.startsWith("--burst-conns="))?.split("=")[1] ??
-      Math.min(60, maxConns),
+    args.find((a) => a.startsWith("--burst-conns="))?.split("=")[1] ?? Math.min(60, maxConns),
   )
 
   // ── Banner ─────────────────────────────────────────────────────
@@ -1008,14 +968,20 @@ async function main() {
 
     if (pool) {
       console.log(`  Pool:     ${pool.database}`)
-      console.log(`  Clients:  ${pool.cl_active} active, ${pool.cl_waiting} waiting (maxwait: ${pool.maxwait.toFixed(2)}s)`)
-      console.log(`  Servers:  ${pool.sv_active} active, ${pool.sv_idle} idle, ${pool.sv_login} login, ${pool.sv_tested} tested`)
+      console.log(
+        `  Clients:  ${pool.cl_active} active, ${pool.cl_waiting} waiting (maxwait: ${pool.maxwait.toFixed(2)}s)`,
+      )
+      console.log(
+        `  Servers:  ${pool.sv_active} active, ${pool.sv_idle} idle, ${pool.sv_login} login, ${pool.sv_tested} tested`,
+      )
       console.log(`  Mode:     ${pool.pool_mode}`)
     }
     if (stats) {
       console.log(`\n  Queries:  ${stats.total_query_count}`)
       console.log(`  Avg time: ${Number(stats.avg_query_time).toFixed(2)}ms`)
-      console.log(`  Traffic:  ${(Number(stats.total_received) / 1024 / 1024).toFixed(2)}MB recv, ${(Number(stats.total_sent) / 1024 / 1024).toFixed(2)}MB sent`)
+      console.log(
+        `  Traffic:  ${(Number(stats.total_received) / 1024 / 1024).toFixed(2)}MB recv, ${(Number(stats.total_sent) / 1024 / 1024).toFixed(2)}MB sent`,
+      )
     }
     console.log(`  PG max_connections: ${pgMax}`)
     return
@@ -1024,21 +990,21 @@ async function main() {
   // ── Full test sequence ────────────────────────────────────────
   // Read PgBouncer config
   const configRows = psqlQuerySync("SHOW CONFIG;", "pgbouncer", 5000)
-  const defaultPoolSize = Number(
-    configRows.find((r) => r[0] === "default_pool_size")?.[1] ?? 25,
-  )
-  const maxClientConn = Number(
-    configRows.find((r) => r[0] === "max_client_conn")?.[1] ?? 1000,
-  )
-  const reservePoolSize = Number(
-    configRows.find((r) => r[0] === "reserve_pool_size")?.[1] ?? 0,
-  )
+  const defaultPoolSize = Number(configRows.find((r) => r[0] === "default_pool_size")?.[1] ?? 25)
+  const maxClientConn = Number(configRows.find((r) => r[0] === "max_client_conn")?.[1] ?? 1000)
+  const reservePoolSize = Number(configRows.find((r) => r[0] === "reserve_pool_size")?.[1] ?? 0)
   const reservePoolTimeout = Number(
     configRows.find((r) => r[0] === "reserve_pool_timeout")?.[1] ?? 3,
   )
   const pgMaxConnections = getPgMaxConnections()
 
-  const config = { defaultPoolSize, maxClientConn, reservePoolSize, reservePoolTimeout, pgMaxConnections }
+  const config = {
+    defaultPoolSize,
+    maxClientConn,
+    reservePoolSize,
+    reservePoolTimeout,
+    pgMaxConnections,
+  }
 
   let baseline!: PhaseResult
   let rampPhases: PhaseResult[] = []

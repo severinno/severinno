@@ -27,7 +27,7 @@ const db = new PrismaClient()
 const PASS = "\x1b[32m✓\x1b[0m"
 const FAIL = "\x1b[31m✗\x1b[0m"
 const INFO = "\x1b[34m→\x1b[0m"
-const WARN = "\x1b[33m⚠\x1b[0m"
+const _WARN = "\x1b[33m⚠\x1b[0m"
 
 let passed = 0
 let failed = 0
@@ -64,15 +64,17 @@ async function main() {
 
   // IDs específicos para limpeza segura (não usa contains)
   const TEST_IDS = { provider: "test-provider-1", client: "test-client-1" }
-  
+
   await db.pushAnalytics.deleteMany({ where: { userId: TEST_IDS.provider } })
-  await db.notification.deleteMany({ where: { userId: { in: [TEST_IDS.provider, TEST_IDS.client] } } })
+  await db.notification.deleteMany({
+    where: { userId: { in: [TEST_IDS.provider, TEST_IDS.client] } },
+  })
   await db.pushSubscription.deleteMany({ where: { userId: TEST_IDS.provider } })
   const testBookings = await db.booking.findMany({
     where: { clientId: TEST_IDS.client, providerId: TEST_IDS.provider },
     select: { id: true },
   })
-  const bookingIds = testBookings.map(b => b.id)
+  const bookingIds = testBookings.map((b) => b.id)
   await db.payment.deleteMany({ where: { bookingId: { in: bookingIds } } })
   await db.booking.deleteMany({ where: { id: { in: bookingIds } } })
   await db.service.deleteMany({ where: { providerId: TEST_IDS.provider } })
@@ -181,7 +183,10 @@ async function main() {
     },
     include: { service: true, provider: true, client: true, payment: true },
   })
-  assert(booking.status === "PENDING", `Booking criado: #${booking.id.slice(0, 8)} — status: ${booking.status}`)
+  assert(
+    booking.status === "PENDING",
+    `Booking criado: #${booking.id.slice(0, 8)} — status: ${booking.status}`,
+  )
   assert(booking.amount === 120, `Valor correto: R$ ${booking.amount}`)
   assert(!!booking.payment, `Pagamento PENDING criado`)
 
@@ -191,10 +196,14 @@ async function main() {
   console.log(`\n${INFO} FASE 3: Disparando notificações do booking...\n`)
 
   // Importa ACTION_PRESETS real de push.ts (em vez de hardcoded)
-  const { default: webpushModule } = await import("web-push")
-  
+  const { default: _webpushModule } = await import("web-push")
+
   // Notificação in-app direta
-  const dateStr = scheduledAt.toLocaleDateString("pt-BR", { day: "numeric", month: "long", weekday: "short" })
+  const dateStr = scheduledAt.toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "long",
+    weekday: "short",
+  })
   const timeStr = scheduledAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
   const title = `📅 Novo agendamento: ${service.title}`
   const body = `${client.name} agendou para ${dateStr} às ${timeStr}`
@@ -223,7 +232,10 @@ async function main() {
     },
   })
   assert(!!analytics.id, `PushAnalytics criado: status "sent", type: BOOKING_CREATED`)
-  assert(analytics.type === "BOOKING_CREATED", `Tipo BOOKING_CREATED — botões Aceitar/Recusar disponíveis`)
+  assert(
+    analytics.type === "BOOKING_CREATED",
+    `Tipo BOOKING_CREATED — botões Aceitar/Recusar disponíveis`,
+  )
   assert(analytics.source === "auto", `Source: "auto" (disparado automaticamente)`)
 
   // Validação dos botões de ação (mesma lógica de push.ts)
@@ -231,7 +243,7 @@ async function main() {
     { action: "accept", title: "✅ Aceitar" },
     { action: "reject", title: "❌ Recusar" },
   ]
-  console.log(`       ${INFO} Push teria actions: ${actions.map(a => a.title).join(", ")}`)
+  console.log(`       ${INFO} Push teria actions: ${actions.map((a) => a.title).join(", ")}`)
   assert(actions.length === 2, `2 botões de ação: Aceitar + Recusar`)
   assert(actions[0]!.action === "accept", `Botão "accept" → confirma agendamento`)
   assert(actions[1]!.action === "reject", `Botão "reject" → cancela agendamento`)
@@ -316,14 +328,20 @@ async function main() {
     },
   })
 
-  const clientNotifs = await db.notification.count({ where: { userId: client.id, type: "BOOKING_CONFIRMED" } })
+  const clientNotifs = await db.notification.count({
+    where: { userId: client.id, type: "BOOKING_CONFIRMED" },
+  })
   assert(clientNotifs > 0, `Cliente notificado da confirmação (${clientNotifs} notificações)`)
 
-  const providerNotifs = await db.notification.count({ where: { userId: provider.id, type: "BOOKING_CONFIRMED" } })
+  const providerNotifs = await db.notification.count({
+    where: { userId: provider.id, type: "BOOKING_CONFIRMED" },
+  })
   assert(providerNotifs > 0, `Provider notificado da confirmação (${providerNotifs} notificações)`)
 
   console.log(`       ${INFO} Notificações enviadas para ambas as partes ✓`)
-  console.log(`       ${INFO} Em produção, push notification seria enviada com deep link: /dashboard?tab=bookings&booking=${booking.id.slice(0, 8)}`)
+  console.log(
+    `       ${INFO} Em produção, push notification seria enviada com deep link: /dashboard?tab=bookings&booking=${booking.id.slice(0, 8)}`,
+  )
 
   // ──────────────────────────────────────────────────────────────────────────
   // FASE 6 — TESTAR PUSHMONITOR (inline, sem depender do server-only)
@@ -335,7 +353,8 @@ async function main() {
   const FAILURE_THRESHOLD = 10
   const ALERT_COOLDOWN_MS = 5 * 60 * 1000
 
-  const failures: { timestamp: number; userId: string; endpoint: string; errorMessage: string }[] = []
+  const failures: { timestamp: number; userId: string; endpoint: string; errorMessage: string }[] =
+    []
   let lastAlert = 0
 
   function prune() {
@@ -369,7 +388,11 @@ async function main() {
   // Teste: 11 falhas → alerta na 11ª
   let alerted = false
   for (let i = 0; i < 11; i++) {
-    const result = track(provider.id, `https://push.endpoint/test/${i}`, `Simulated failure #${i + 1}`)
+    const result = track(
+      provider.id,
+      `https://push.endpoint/test/${i}`,
+      `Simulated failure #${i + 1}`,
+    )
     if (result.alerted) alerted = true
   }
 
@@ -405,13 +428,15 @@ async function main() {
 
   // Cleanup — mesmos IDs da fase 1
   await db.pushAnalytics.deleteMany({ where: { userId: TEST_IDS.provider } })
-  await db.notification.deleteMany({ where: { userId: { in: [TEST_IDS.provider, TEST_IDS.client] } } })
+  await db.notification.deleteMany({
+    where: { userId: { in: [TEST_IDS.provider, TEST_IDS.client] } },
+  })
   await db.pushSubscription.deleteMany({ where: { userId: TEST_IDS.provider } })
   const remainingBookings = await db.booking.findMany({
     where: { clientId: TEST_IDS.client, providerId: TEST_IDS.provider },
     select: { id: true },
   })
-  const remIds = remainingBookings.map(b => b.id)
+  const remIds = remainingBookings.map((b) => b.id)
   await db.payment.deleteMany({ where: { bookingId: { in: remIds } } })
   await db.booking.deleteMany({ where: { id: { in: remIds } } })
   await db.service.deleteMany({ where: { providerId: TEST_IDS.provider } })

@@ -29,7 +29,7 @@
 
 import { type ReactNode } from "react"
 import { motion } from "framer-motion"
-import { ShimmerStyle, S, createContainer, createItem } from "./loading-base"
+import { ShimmerStyle, createContainer, createItem } from "./loading-base"
 
 /** Re‑exported so loading files need only one import line. */
 export { S, createContainer, createItem } from "./loading-base"
@@ -59,12 +59,7 @@ export function StaggerContainer({
 }) {
   const variants = createContainer(stagger)
   return (
-    <motion.div
-      variants={variants}
-      initial="hidden"
-      animate="show"
-      className={className}
-    >
+    <motion.div variants={variants} initial="hidden" animate="show" className={className}>
       {children}
     </motion.div>
   )

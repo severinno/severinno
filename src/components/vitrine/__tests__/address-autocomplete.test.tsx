@@ -7,7 +7,6 @@ import {
   MOCK_RESULTS,
   mockGeoStore,
   mockFetchGeoSearch,
-  mockFetchReverseGeo,
   getMockToast,
   resetCommonMocks,
   flushDebounce,

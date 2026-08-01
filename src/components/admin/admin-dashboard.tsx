@@ -145,7 +145,7 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
   }
 
   const totalUsers = Object.values(data.usersByRole).reduce((a, b) => a + b, 0)
-  const totalBookings = Object.values(data.bookingsByStatus).reduce((a, b) => a + b, 0)
+  const _totalBookings = Object.values(data.bookingsByStatus).reduce((a, b) => a + b, 0)
 
   // Bar chart data — bookings by status
   const barData = BOOKING_STATUS_ORDER.map((s) => ({

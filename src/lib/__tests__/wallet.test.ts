@@ -35,7 +35,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const PROVIDER_ID = "provider-1"
-const ROUND2 = (v: number) => Math.round(v * 100) / 100
 
 // ---------------------------------------------------------------------------
 // FEE_RATE
@@ -52,16 +51,30 @@ describe("FEE_RATE", () => {
 // ---------------------------------------------------------------------------
 
 describe("computeBaseBalance", () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it("sums COMPLETED bookings into balance with fee deduction", async () => {
     mockDb.booking.findMany.mockResolvedValue([
-      { id: "b1", amount: 200, status: "COMPLETED", paymentStatus: "PAID",
+      {
+        id: "b1",
+        amount: 200,
+        status: "COMPLETED",
+        paymentStatus: "PAID",
         createdAt: new Date("2025-01-15"),
-        service: { title: "Limpeza" }, client: { name: "Maria" } },
-      { id: "b2", amount: 350, status: "COMPLETED", paymentStatus: "PAID",
+        service: { title: "Limpeza" },
+        client: { name: "Maria" },
+      },
+      {
+        id: "b2",
+        amount: 350,
+        status: "COMPLETED",
+        paymentStatus: "PAID",
         createdAt: new Date("2025-02-10"),
-        service: { title: "Pintura" }, client: { name: "João" } },
+        service: { title: "Pintura" },
+        client: { name: "João" },
+      },
     ])
 
     const result = await computeBaseBalance(PROVIDER_ID)
@@ -74,12 +87,24 @@ describe("computeBaseBalance", () => {
 
   it("separates CONFIRMED/IN_PROGRESS into pendingBalance", async () => {
     mockDb.booking.findMany.mockResolvedValue([
-      { id: "b3", amount: 150, status: "CONFIRMED", paymentStatus: "PAID",
+      {
+        id: "b3",
+        amount: 150,
+        status: "CONFIRMED",
+        paymentStatus: "PAID",
         createdAt: new Date("2025-03-01"),
-        service: { title: "Reparo" }, client: { name: "Ana" } },
-      { id: "b4", amount: 100, status: "IN_PROGRESS", paymentStatus: "PAID",
+        service: { title: "Reparo" },
+        client: { name: "Ana" },
+      },
+      {
+        id: "b4",
+        amount: 100,
+        status: "IN_PROGRESS",
+        paymentStatus: "PAID",
         createdAt: new Date("2025-03-05"),
-        service: { title: "Desentupimento" }, client: { name: "Carlos" } },
+        service: { title: "Desentupimento" },
+        client: { name: "Carlos" },
+      },
     ])
 
     const result = await computeBaseBalance(PROVIDER_ID)
@@ -92,9 +117,15 @@ describe("computeBaseBalance", () => {
 
   it("excludes PENDING payment status bookings entirely", async () => {
     mockDb.booking.findMany.mockResolvedValue([
-      { id: "b5", amount: 500, status: "PENDING", paymentStatus: "PENDING",
+      {
+        id: "b5",
+        amount: 500,
+        status: "PENDING",
+        paymentStatus: "PENDING",
         createdAt: new Date("2025-03-10"),
-        service: { title: "Reforma" }, client: { name: "Patrícia" } },
+        service: { title: "Reforma" },
+        client: { name: "Patrícia" },
+      },
     ])
 
     const result = await computeBaseBalance(PROVIDER_ID)
@@ -119,9 +150,15 @@ describe("computeBaseBalance", () => {
 
   it("generates transactions with correct fee and netAmount", async () => {
     mockDb.booking.findMany.mockResolvedValue([
-      { id: "b1", amount: 200, status: "COMPLETED", paymentStatus: "PAID",
+      {
+        id: "b1",
+        amount: 200,
+        status: "COMPLETED",
+        paymentStatus: "PAID",
         createdAt: new Date("2025-01-15"),
-        service: { title: "Limpeza" }, client: { name: "Maria Silva" } },
+        service: { title: "Limpeza" },
+        client: { name: "Maria Silva" },
+      },
     ])
 
     const result = await computeBaseBalance(PROVIDER_ID)
@@ -129,7 +166,7 @@ describe("computeBaseBalance", () => {
     expect(result.transactions).toHaveLength(1)
     const tx = result.transactions[0]
     expect(tx.amount).toBe(200)
-    expect(tx.fee).toBe(30)     // 200 * 0.15
+    expect(tx.fee).toBe(30) // 200 * 0.15
     expect(tx.netAmount).toBe(170) // 200 - 30
     expect(tx.status).toBe("paid")
     expect(tx.clientName).toBe("Maria Silva")
@@ -142,7 +179,9 @@ describe("computeBaseBalance", () => {
 // ---------------------------------------------------------------------------
 
 describe("computeAvailableBalance", () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it("returns earned amount minus fee for COMPLETED bookings", async () => {
     mockDb.booking.findMany.mockResolvedValue([{ amount: 200 }, { amount: 350 }])
@@ -169,9 +208,7 @@ describe("computeAvailableBalance", () => {
 
   it("returns 0 when balance is negative (over-withdrawn)", async () => {
     mockDb.booking.findMany.mockResolvedValue([{ amount: 100 }]) // 100 * 0.85 = 85
-    mockDb.walletTransaction.findMany.mockResolvedValue([
-      { amount: 200, status: "completed" },
-    ])
+    mockDb.walletTransaction.findMany.mockResolvedValue([{ amount: 200, status: "completed" }])
 
     const balance = await computeAvailableBalance(PROVIDER_ID)
 
@@ -193,7 +230,9 @@ describe("computeAvailableBalance", () => {
 // ---------------------------------------------------------------------------
 
 describe("getWithdrawals", () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it("returns total withdrawn and transactions from completed withdrawals", async () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([
@@ -232,16 +271,34 @@ describe("buildWallet", () => {
       completedCount: 2,
       completedSum: 550,
       transactions: [
-        { id: "TXN-B1", bookingId: "b1", amount: 200, fee: 30, netAmount: 170,
-          status: "paid" as const, description: "Limpeza", clientName: "Maria", date: "2025-01-15" },
+        {
+          id: "TXN-B1",
+          bookingId: "b1",
+          amount: 200,
+          fee: 30,
+          netAmount: 170,
+          status: "paid" as const,
+          description: "Limpeza",
+          clientName: "Maria",
+          date: "2025-01-15",
+        },
       ],
     }
 
     const withdrawals = {
       totalWithdrawn: 100,
       withdrawalTxns: [
-        { id: "WTH-1", bookingId: "", amount: 100, fee: 0, netAmount: 100,
-          status: "withdrawn" as const, description: "Saque", clientName: "—", date: "2025-03-01" },
+        {
+          id: "WTH-1",
+          bookingId: "",
+          amount: 100,
+          fee: 0,
+          netAmount: 100,
+          status: "withdrawn" as const,
+          description: "Saque",
+          clientName: "—",
+          date: "2025-03-01",
+        },
       ],
     }
 
@@ -261,8 +318,12 @@ describe("buildWallet", () => {
 
   it("handles empty base (no bookings)", () => {
     const base = {
-      balance: 0, pendingBalance: 0, totalReceived: 0,
-      completedCount: 0, completedSum: 0, transactions: [],
+      balance: 0,
+      pendingBalance: 0,
+      totalReceived: 0,
+      completedCount: 0,
+      completedSum: 0,
+      transactions: [],
     }
     const withdrawals = { totalWithdrawn: 0, withdrawalTxns: [] }
 

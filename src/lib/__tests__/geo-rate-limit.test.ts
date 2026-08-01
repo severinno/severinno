@@ -34,7 +34,6 @@ import {
   getRateLimitCounters,
   isGeoRateLimitError,
   resetRateLimiter,
-  type GeoEndpoint,
   type GeoRateLimitResult,
 } from "@/lib/geo-rate-limit"
 
@@ -204,7 +203,7 @@ describe("getRateLimitDiagnostics", () => {
 
     // Get counters before checking diag (getRateLimitCounters is also
     // called internally by getRateLimitDiagnostics, so they should match)
-    const countersBefore = getRateLimitCounters()
+    const _countersBefore = getRateLimitCounters()
 
     const diag = getRateLimitDiagnostics()
 

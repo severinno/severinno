@@ -23,7 +23,7 @@
  */
 
 import { NextResponse } from "next/server"
-import { execSync } from "child_process"
+import { execSync, type ExecSyncOptionsWithStringEncoding } from "child_process"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -95,13 +95,13 @@ function psqlQuery(sql: string, timeoutMs = 5000): string[][] {
     `-c "${sql.replace(/"/g, '\\"')}"`,
   ].join(" ")
 
-  const result = execSync(cmd, {
+  const execOptions: ExecSyncOptionsWithStringEncoding = {
     env: { ...process.env, ...env },
     encoding: "utf-8",
     timeout: timeoutMs,
     maxBuffer: 1024 * 1024,
-    shell: true,
-  } as any)
+  }
+  const result = execSync(cmd, execOptions)
 
   return result
     .trim()
@@ -125,13 +125,13 @@ function getPgMaxConnections(): number {
       `-c "SHOW max_connections;"`,
     ].join(" ")
 
-    const result = execSync(cmd, {
+    const execOptions: ExecSyncOptionsWithStringEncoding = {
       env: { ...process.env, ...env },
       encoding: "utf-8",
       timeout: 5000,
       maxBuffer: 1024,
-      shell: true,
-    } as any)
+    }
+    const result = execSync(cmd, execOptions)
     return Number(result.trim().split("\n").filter(Boolean)[0] ?? 100)
   } catch {
     return 100
@@ -222,7 +222,7 @@ export async function GET(): Promise<NextResponse<PgBouncerResponse>> {
     inMemoryCache = { timestamp: Date.now(), result: response }
 
     return NextResponse.json(response)
-  } catch (err: any) {
+  } catch (err) {
     const errorResponse: PgBouncerResponse = {
       ok: false,
       pools: [],
@@ -230,7 +230,7 @@ export async function GET(): Promise<NextResponse<PgBouncerResponse>> {
       config: [],
       pgMaxConnections: 0,
       available: false,
-      error: `Erro ao consultar PgBouncer: ${err?.message ?? String(err)}`,
+      error: `Erro ao consultar PgBouncer: ${err instanceof Error ? err.message : String(err)}`,
       cachedAt: new Date().toISOString(),
     }
     return NextResponse.json(errorResponse, { status: 200 }) // 200 even on error (UI handles it)

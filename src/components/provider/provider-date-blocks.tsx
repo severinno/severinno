@@ -3,20 +3,11 @@
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import {
-  CalendarDays,
-  CalendarOff,
-  Trash2,
-  Plus,
-  Loader2,
-  Sun,
-  Umbrella,
-} from "lucide-react"
+import { CalendarDays, CalendarOff, Trash2, Plus, Loader2, Umbrella } from "lucide-react"
 import { format, isSameDay } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
 import { apiGet, apiPost } from "@/lib/api"
-import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -62,9 +53,7 @@ export function ProviderDateBlocks() {
 
   const blocks = blocksQuery.data?.items ?? []
 
-  const selectedBlocks = blocks.filter((b) =>
-    isSameDay(new Date(b.date), selectedDate),
-  )
+  const selectedBlocks = blocks.filter((b) => isSameDay(new Date(b.date), selectedDate))
 
   const handleAdd = async () => {
     if (!selectedDate) {
@@ -114,9 +103,7 @@ export function ProviderDateBlocks() {
 
   // Build blocked date set for calendar highlighting
   const blockedDates = React.useMemo(() => {
-    return blocks
-      .filter((b) => b.allDay)
-      .map((b) => new Date(b.date))
+    return blocks.filter((b) => b.allDay).map((b) => new Date(b.date))
   }, [blocks])
 
   const hasBlocked = blockedDates.length > 0
@@ -126,7 +113,7 @@ export function ProviderDateBlocks() {
       {/* LEFT: Calendar */}
       <Card className="py-0">
         <CardHeader className="border-b py-3">
-          <CardTitle className="text-sm flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
             <CalendarDays className="size-4" />
             Calendário
           </CardTitle>
@@ -151,7 +138,7 @@ export function ProviderDateBlocks() {
             }}
             className="rounded-lg border shadow-sm"
           />
-          <p className="mt-2 text-[11px] text-muted-foreground text-center">
+          <p className="text-muted-foreground mt-2 text-center text-[11px]">
             {hasBlocked
               ? `${blockedDates.length} dia(s) bloqueado(s) no total`
               : "Nenhum bloqueio ativo"}
@@ -164,19 +151,14 @@ export function ProviderDateBlocks() {
         {/* Add new block */}
         <Card className="py-0">
           <CardHeader className="border-b py-3">
-            <CardTitle className="text-sm flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
               <Umbrella className="size-4" />
-              Bloquear{" "}
-              {selectedDate ? format(selectedDate, "dd/MM/yyyy") : "data"}
+              Bloquear {selectedDate ? format(selectedDate, "dd/MM/yyyy") : "data"}
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 p-3">
             <div className="flex items-center gap-2">
-              <Switch
-                id="allDay"
-                checked={allDay}
-                onCheckedChange={setAllDay}
-              />
+              <Switch id="allDay" checked={allDay} onCheckedChange={setAllDay} />
               <Label htmlFor="allDay" className="text-xs">
                 Dia inteiro
               </Label>
@@ -221,15 +203,10 @@ export function ProviderDateBlocks() {
                   placeholder="Ex: Feriado, Folga, Consulta..."
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  className="h-8 text-xs flex-1"
+                  className="h-8 flex-1 text-xs"
                   maxLength={200}
                 />
-                <Button
-                  onClick={handleAdd}
-                  disabled={saving}
-                  size="sm"
-                  className="h-8 gap-1"
-                >
+                <Button onClick={handleAdd} disabled={saving} size="sm" className="h-8 gap-1">
                   {saving ? (
                     <Loader2 className="size-3 animate-spin" />
                   ) : (
@@ -245,19 +222,18 @@ export function ProviderDateBlocks() {
         {/* Existing blocks for selected date */}
         <Card className="py-0">
           <CardHeader className="border-b py-3">
-            <CardTitle className="text-sm flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
               <CalendarOff className="size-4" />
-              Bloqueios em{" "}
-              {format(selectedDate, "dd/MM/yyyy")}
+              Bloqueios em {format(selectedDate, "dd/MM/yyyy")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3">
             {blocksQuery.isLoading ? (
               <div className="flex items-center justify-center py-4">
-                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                <Loader2 className="text-muted-foreground size-4 animate-spin" />
               </div>
             ) : selectedBlocks.length === 0 ? (
-              <p className="py-3 text-center text-xs text-muted-foreground">
+              <p className="text-muted-foreground py-3 text-center text-xs">
                 Nenhum bloqueio nesta data
               </p>
             ) : (
@@ -265,27 +241,27 @@ export function ProviderDateBlocks() {
                 {selectedBlocks.map((b) => (
                   <li
                     key={b.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border bg-card p-2"
+                    className="bg-card flex items-center justify-between gap-2 rounded-lg border p-2"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <Badge
                           variant="outline"
-                          className="text-[10px] px-1.5 py-0 bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900"
+                          className="border-red-200 bg-red-50 px-1.5 py-0 text-[10px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
                         >
-                          {b.allDay ? "Dia inteiro" : `${b.startTime?.slice(0, 5)}-${b.endTime?.slice(0, 5)}`}
+                          {b.allDay
+                            ? "Dia inteiro"
+                            : `${b.startTime?.slice(0, 5)}-${b.endTime?.slice(0, 5)}`}
                         </Badge>
                         {b.reason && (
-                          <span className="text-xs text-muted-foreground truncate">
-                            {b.reason}
-                          </span>
+                          <span className="text-muted-foreground truncate text-xs">{b.reason}</span>
                         )}
                       </div>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-7 text-destructive hover:text-destructive"
+                      className="text-destructive hover:text-destructive size-7"
                       onClick={() => handleDelete(b.id)}
                       aria-label="Remover bloqueio"
                     >

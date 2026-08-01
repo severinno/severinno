@@ -36,7 +36,7 @@ import {
 } from "@/lib/benchmark-data"
 
 import type { GeoMetricsResponse } from "@/app/api/admin/geo-metrics/route"
-import { COLOR_P50, COLOR_P95, COLOR_P99, TOOLTIP_STYLE } from "./admin-chart-theme"
+import { COLOR_P50, COLOR_P99, TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
 

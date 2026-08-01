@@ -424,7 +424,7 @@ vi.mock("../step-wizard", () => ({
       </div>
     </div>
   ),
-  StepHeader: ({ title, description, icon: Icon }: any) => (
+  StepHeader: ({ title, description, icon: _Icon }: any) => (
     <div data-testid="step-header">
       {title && <h3>{title}</h3>}
       {description && <p>{description}</p>}

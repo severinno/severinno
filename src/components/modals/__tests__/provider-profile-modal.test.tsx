@@ -80,7 +80,7 @@ vi.mock("@/hooks/use-mobile", () => ({
 // Dialog
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children, open }: any) => (open ? <div data-testid="dialog">{children}</div> : null),
-  DialogContent: ({ children, showCloseButton, className }: any) => (
+  DialogContent: ({ children, showCloseButton: _showCloseButton, className }: any) => (
     <div data-testid="dialog-content" className={className}>
       {children}
     </div>
@@ -171,7 +171,7 @@ vi.mock("@/components/ui/scroll-area", () => ({
 
 // StarRatingDisplay (used in profile header)
 vi.mock("../star-rating", () => ({
-  StarRatingDisplay: ({ value, count, showCount, size }: any) => (
+  StarRatingDisplay: ({ value, count, showCount, size: _size }: any) => (
     <span data-testid="star-rating" data-value={value} data-count={count}>
       {value?.toFixed(1)} {showCount !== false && count != null ? `(${count})` : ""}
     </span>

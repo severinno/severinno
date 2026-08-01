@@ -12,7 +12,7 @@
  *   - ./geo-metrics-persist → no-op mocks for persistSnapshot, loadPersistedSnapshots
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -41,7 +41,6 @@ import {
   resetGeoMetrics,
   SERVICE_LABELS,
   type GeoServiceMetrics,
-  type GeoMetricsSnapshot,
 } from "../geo-metrics"
 
 // ---------------------------------------------------------------------------

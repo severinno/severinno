@@ -32,7 +32,10 @@ async function setupPushMocks(page: any) {
       const origSubscribe = PushManager.prototype.subscribe
       const origGetSubscription = PushManager.prototype.getSubscription
 
-      PushManager.prototype.subscribe = async function (this: PushManager, options?: PushSubscriptionOptionsInit) {
+      PushManager.prototype.subscribe = async function (
+        this: PushManager,
+        options?: PushSubscriptionOptionsInit,
+      ) {
         try {
           return await origSubscribe.call(this, options)
         } catch {
@@ -51,8 +54,11 @@ async function setupPushMocks(page: any) {
       }
 
       PushManager.prototype.getSubscription = async function (this: PushManager) {
-        try { return await origGetSubscription.call(this) }
-        catch { return null }
+        try {
+          return await origGetSubscription.call(this)
+        } catch {
+          return null
+        }
       }
     },
     { vapidKey: TEST_VAPID_PUBLIC_KEY },
@@ -184,9 +190,9 @@ test.describe("Push Notifications — E2E", () => {
   test("1.2 — botão não aparece quando não autenticado", async ({ page }) => {
     await page.goto("/")
     await waitForVitrine(page)
-    await expect(
-      page.locator('button[title*="Ativar notificações"]'),
-    ).not.toBeVisible({ timeout: 3000 })
+    await expect(page.locator('button[title*="Ativar notificações"]')).not.toBeVisible({
+      timeout: 3000,
+    })
   })
 
   test("1.3 — subscribe salva subscription via POST /api/push/subscribe", async ({ page }) => {
@@ -310,9 +316,7 @@ test.describe("Push Notifications — E2E", () => {
       data: { url: "/dashboard?tab=bookings", notificationId: "e2e-n-1" },
     })
 
-    const captured = await page.evaluate(
-      () => (window as any).__e2e_capturedNotifications || [],
-    )
+    const captured = await page.evaluate(() => (window as any).__e2e_capturedNotifications || [])
 
     expect(captured.length).toBeGreaterThanOrEqual(1)
     expect(captured[0].title).toContain("Novo agendamento")
@@ -334,12 +338,14 @@ test.describe("Push Notifications — E2E", () => {
       ],
       requireInteraction: true,
       tag: "booking-e2e-1",
-      data: { url: "/dashboard?tab=bookings", bookingId: "e2e-booking-1", notificationType: "BOOKING_CREATED" },
+      data: {
+        url: "/dashboard?tab=bookings",
+        bookingId: "e2e-booking-1",
+        notificationType: "BOOKING_CREATED",
+      },
     })
 
-    const captured = await page.evaluate(
-      () => (window as any).__e2e_capturedNotifications || [],
-    )
+    const captured = await page.evaluate(() => (window as any).__e2e_capturedNotifications || [])
 
     expect(captured.length).toBeGreaterThanOrEqual(1)
     expect(captured[0].options.actions.length).toBe(2)
@@ -360,9 +366,7 @@ test.describe("Push Notifications — E2E", () => {
       data: { url: "/" },
     })
 
-    const captured = await page.evaluate(
-      () => (window as any).__e2e_capturedNotifications || [],
-    )
+    const captured = await page.evaluate(() => (window as any).__e2e_capturedNotifications || [])
 
     // Verifica que o SW recebeu e processou o push simulado
     expect(captured.length).toBeGreaterThanOrEqual(1)
@@ -383,7 +387,9 @@ test.describe("Push Notifications — E2E", () => {
 
   // Depende de subscription real no banco — marcado como fixme até ter
   // um seed user com pushSubscription ativa no ambiente de teste.
-  test.fixme("3.2 — POST /api/push/test envia notificação para usuário com subscription", async ({ page }) => {
+  test.fixme("3.2 — POST /api/push/test envia notificação para usuário com subscription", async ({
+    page,
+  }) => {
     await loginAndMock(page, CLIENT_EMAIL, CLIENT_PASSWORD, "CLIENT")
     const res = await page.request.post("/api/push/test", {
       data: { title: "🔔 Teste", body: "Notificação push" },
@@ -391,7 +397,10 @@ test.describe("Push Notifications — E2E", () => {
     expect(res.ok()).toBeTruthy()
   })
 
-  test("3.3 — POST /api/push/action com action=accept no provider", async ({ page, browser }) => {
+  test("3.3 — POST /api/push/action com action=accept no provider", async ({
+    page: _page,
+    browser,
+  }) => {
     const ctx = await (browser as any).newContext()
     await ctx.grantPermissions(["notifications"])
     const providerPage = await ctx.newPage()
@@ -420,7 +429,11 @@ test.describe("Push Notifications — E2E", () => {
       if (request.method() === "POST") {
         clickBody = request.postDataJSON()
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      })
     })
 
     await page.evaluate(async () => {
@@ -462,7 +475,10 @@ test.describe("Push Notifications — E2E", () => {
   // 4. Fluxo Completo
   // =====================================================================
 
-  test("4.1 — booking cria notificação (verificável via API do provider)", async ({ page, browser }) => {
+  test("4.1 — booking cria notificação (verificável via API do provider)", async ({
+    page: _page,
+    browser,
+  }) => {
     const pCtx = await (browser as any).newContext()
     await pCtx.grantPermissions(["notifications"])
     const pPage = await pCtx.newPage()
@@ -528,7 +544,11 @@ test.describe("Push Notifications — E2E", () => {
 
   test("4.2 — toggle push funcional: ativa → desativa → ativa novamente", async ({ page }) => {
     await page.route("**/api/push/subscribe", async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      })
     })
 
     await loginAndMock(page, CLIENT_EMAIL, CLIENT_PASSWORD, "CLIENT")
@@ -683,7 +703,9 @@ test.describe("Push Notifications — E2E", () => {
     expect(body).toHaveProperty("ok", true)
     expect(body).toHaveProperty("processed")
     expect(body).toHaveProperty("results")
-    console.log(`📋 Cron push-scheduled: ${body.processed} notificações processadas, ${body.scheduled} scheduled, ${body.recurring} recurring`)
+    console.log(
+      `📋 Cron push-scheduled: ${body.processed} notificações processadas, ${body.scheduled} scheduled, ${body.recurring} recurring`,
+    )
   })
 
   // =====================================================================

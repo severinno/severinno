@@ -37,6 +37,11 @@
  *  10. RENAME via SEED_SPEC_PATCH no seed dev: o wipe torna o rename SEGURO
  *      (sem órfãs — diferente do upsert do seed-prod), a cascata de um nível
  *      é validada e o re-run canônico restaura o nome original
+ *  11. SEED_SPEC_PATCH inválido (JSON quebrado): o SPEC é derivado NO TOPO do
+ *      módulo (const SPEC = buildPatchedSpec(...)), então um JSON malformado
+ *      lança DURANTE a avaliação do módulo — antes de main() e antes do wipe.
+ *      O seed recusa com erro claro e NENHUMA das 10 tabelas é tocada
+ *      (exercita o throw real do buildPatchedSpec no caminho real)
  *
  * O seed é executado como SUBPROCESSO (`bun prisma/seed.ts`) — o mesmo
  * caminho do CI — para validar o script real, não uma importação em memória.
@@ -44,35 +49,43 @@
 
 import { spawnSync } from "node:child_process"
 import { PrismaClient } from "@prisma/client"
+import { CATEGORY_SPEC, DEFAULT_SETTINGS } from "../prisma/seed-data"
+import { createReporter, validateTree, validateUsers } from "./seed-e2e-common"
+import { deriveExpectedChecks } from "./seed-e2e-count"
 import {
-  CATEGORY_SPEC,
-  DEFAULT_SETTINGS,
-  buildSeedPlan,
-  categorySlug,
-  type CategorySeedInput,
-} from "../prisma/seed-data"
-import { validateTree } from "./seed-e2e-common"
+  UPDATE_PATCH,
+  RENAME_PATCH,
+  assertPatchedUpdatePlan,
+  buildPatchedUpdatePlan,
+  deriveRenameContext,
+  renamedChildSlug,
+} from "./seed-e2e-utils"
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? "postgresql://severinno:severinno_test@localhost:5433/severinno_test"
 
 const db = new PrismaClient()
 
-let passed = 0
-let failed = 0
+// Reporter de asserções compartilhado (seed-e2e-common.ts). Destructure SÓ as
+// funções — passed/failed são getters VIVOS, lidos no summary final via rep.*
+// (um destructuring `const { passed } = rep` congelaria o getter em 0).
+const rep = createReporter()
+// ok/bad are used internally by the shared helpers (validateTree,
+// assertPatchedUpdatePlan, validateUsers) via `rep`; the E2E bodies only
+// assert directly with expect()
+const { expect } = rep
 
-function ok(msg: string) {
-  console.log(`  ✅ ${msg}`)
-  passed++
-}
-function bad(msg: string) {
-  console.log(`  ❌ ${msg}`)
-  failed++
-}
-function expect(cond: boolean, msg: string) {
-  if (cond) ok(msg)
-  else bad(msg)
-}
+// ── Count guard (fonte da verdade DERIVADA) ─────────────────────────────
+// Total de checks que este E2E produz — DERIVADO do código pela
+// scripts/seed-e2e-count.ts (sites de asserção no source + expansão de
+// loops + validateTree + validateUsers + assertPatchedUpdatePlan), NUNCA um
+// literal: se uma asserção for adicionada/removida, o total ajusta sozinho.
+// O guard estático scripts/check-e2e-counts.mjs compara os comentários dos
+// workflows (seed-guards.yml, pr-check.yml, validate-seed-guards-matrix-
+// local.sh) com a derivação (bun scripts/seed-e2e-count.ts --json); o
+// runtime check no final de main() valida que o total REAL impresso (📊
+// Resultados) bate com o esperado derivado.
+export const EXPECTED_TOTAL = deriveExpectedChecks("dev")
 
 /** Roda prisma/seed.ts como subprocesso (mesmo caminho do CI). */
 function runSeed(
@@ -146,41 +159,6 @@ async function getCounts(): Promise<Counts> {
   }
 }
 
-/** Emails demo esperados por role (fonte: prisma/seed.ts). */
-const EXPECTED_EMAILS = {
-  ADMIN: ["admin@severinno.com"],
-  CLIENT: ["cliente@severinno.com", "maria@severinno.com"],
-  PROVIDER: [
-    "carlos@severinno.com",
-    "ricardo@severinno.com",
-    "lima@severinno.com",
-    "fernanda@severinno.com",
-    "pedro@severinno.com",
-    "antonio@severinno.com",
-  ],
-}
-
-/** Valida os usuários demo: 9 = 1 + 2 + 6, roles e emails corretos. */
-async function validateUsers(): Promise<void> {
-  const users = await db.user.findMany({ select: { email: true, role: true } })
-  const byEmail = new Map(users.map((u) => [u.email, u.role]))
-
-  expect(users.length === 9, `total de usuários = 9 (obtido ${users.length})`)
-
-  for (const [role, emails] of Object.entries(EXPECTED_EMAILS)) {
-    for (const email of emails) {
-      expect(byEmail.get(email) === role, `'${email}' existe com role ${role}`)
-    }
-  }
-
-  // Roles no total: 1 ADMIN + 2 CLIENT + 6 PROVIDER
-  const byRole = new Map<string, number>()
-  for (const u of users) byRole.set(u.role, (byRole.get(u.role) ?? 0) + 1)
-  expect(byRole.get("ADMIN") === 1, `1 ADMIN (obtido ${byRole.get("ADMIN") ?? 0})`)
-  expect(byRole.get("CLIENT") === 2, `2 CLIENT (obtido ${byRole.get("CLIENT") ?? 0})`)
-  expect(byRole.get("PROVIDER") === 6, `6 PROVIDER (obtido ${byRole.get("PROVIDER") ?? 0})`)
-}
-
 async function main() {
   console.log("🧪 E2E — prisma/seed.ts (DEV) contra PostGIS efêmero\n")
 
@@ -215,11 +193,11 @@ async function main() {
 
   // ── 3. Usuários demo ─────────────────────────────────────────────────
   console.log("  ── Usuários demo ──")
-  await validateUsers()
+  await validateUsers(db, rep)
 
   // ── 4. Árvore de categorias ──────────────────────────────────────────
   console.log("  ── Árvore de categorias ──")
-  await validateTree(db, { ok, bad, expect })
+  await validateTree(db, rep)
 
   // ── 5. Settings + services + bookings/payments/reviews ───────────────
   console.log("  ── Settings / Services / Bookings ──")
@@ -321,65 +299,13 @@ async function main() {
   // o spec patchado e o re-run canônico restaura o estado original.
   console.log("  ── SEED_SPEC_PATCH no seed dev (update mid-cycle) ──")
 
-  const PATCHES: { name: string; icon?: string; order?: number }[] = [
-    { name: "Elétrica", icon: "bolt" },
-    { name: "Reparos", order: 5 },
-  ]
-  const PATCH = JSON.stringify(PATCHES)
-
   // 9a. buildSeedPlan com o spec PATCHADO contra o estado canônico atual
   //     → deve acusar update (icon/order), nunca create
-  const patchedSpec: CategorySeedInput[] = CATEGORY_SPEC.map((c) => {
-    const p = PATCHES.find((x) => x.name === c.name)
-    if (!p) return c
-    return {
-      ...c,
-      ...(p.icon !== undefined ? { icon: p.icon } : {}),
-      ...(p.order !== undefined ? { order: p.order } : {}),
-    }
-  })
-  // Slugs derivados do spec (nunca hardcoded — robusto a renomeações futuras)
-  const eletricaSlug = categorySlug({ name: "Elétrica", parent: "Reparos", level: 1 })
-  const reparosSlug = categorySlug({ name: "Reparos", level: 0 })
-
-  const currentCats = await db.category.findMany({
-    include: { parent: { select: { name: true } } },
-  })
-  const currentSettings = await db.setting.findMany()
-  const planPatched = buildSeedPlan(
-    currentCats.map((c) => ({
-      slug: c.slug,
-      name: c.name,
-      level: c.level,
-      parentName: c.parent?.name ?? null,
-      icon: c.icon,
-      order: c.order,
-      active: c.active,
-    })),
-    currentSettings.map((s) => ({ key: s.key, value: s.value })),
-    patchedSpec,
-  )
-  expect(
-    planPatched.summary.categoriesCreate === 0,
-    `plano patchado não cria linhas (0 create — obtido ${planPatched.summary.categoriesCreate})`,
-  )
-  const elétricaPlan = planPatched.categories.find((a) => a.slug === eletricaSlug)
-  expect(
-    elétricaPlan?.action === "update" &&
-      elétricaPlan.action === "update" &&
-      elétricaPlan.changes.includes("icon"),
-    "plano detecta update de icon na 'Elétrica'",
-  )
-  const reparosPlan = planPatched.categories.find((a) => a.slug === reparosSlug)
-  expect(
-    reparosPlan?.action === "update" &&
-      reparosPlan.action === "update" &&
-      reparosPlan.changes.includes("order"),
-    "plano detecta update de order na 'Reparos'",
-  )
+  const { plan: planPatched, eletricaSlug, reparosSlug } = await buildPatchedUpdatePlan(db)
+  assertPatchedUpdatePlan(rep, planPatched, eletricaSlug, reparosSlug)
 
   // 9b. Roda o seed de DEV com o patch → o estado CRIADO reflete o patch
-  const patchedRun = runSeed({ NODE_ENV: "development", SEED_SPEC_PATCH: PATCH })
+  const patchedRun = runSeed({ NODE_ENV: "development", SEED_SPEC_PATCH: UPDATE_PATCH })
   expect(patchedRun.status === 0, `seed dev com patch conclui exit 0 (obtido ${patchedRun.status})`)
   const afterPatch = await getCounts()
   expect(
@@ -423,8 +349,7 @@ async function main() {
   // nível é validada e o re-run canônico restaura o nome original.
   console.log("  ── RENAME via SEED_SPEC_PATCH no seed dev ──")
 
-  const RENAME_PATCH = JSON.stringify([{ name: "Elétrica", renameTo: "Eletricidade" }])
-  const eletricidadeSlug = categorySlug({ name: "Eletricidade", parent: "Reparos", level: 1 })
+  const { newSlug: eletricidadeSlug } = deriveRenameContext()
 
   const renameRun = runSeed({ NODE_ENV: "development", SEED_SPEC_PATCH: RENAME_PATCH })
   expect(renameRun.status === 0, `seed dev com rename conclui exit 0 (obtido ${renameRun.status})`)
@@ -445,16 +370,12 @@ async function main() {
 
   // Filho em cascata: o primeiro filho de 'Elétrica' passa a herdar o slug
   // da 'Eletricidade' (slug embute o slug do pai renomeado)
-  const filhosEletrica = CATEGORY_SPEC.filter((c) => c.parent === "Elétrica")
+  const { filhos: filhosEletrica } = deriveRenameContext()
   expect(
     filhosEletrica.length >= 1,
     `'Elétrica' precisa de filho(s) para validar a cascata de rename (obtido ${filhosEletrica.length})`,
   )
-  const filhoNovoSlug = categorySlug({
-    name: filhosEletrica[0].name,
-    parent: "Eletricidade",
-    level: 2,
-  })
+  const filhoNovoSlug = renamedChildSlug(filhosEletrica[0])
   const filhoNovo = await db.category.findUnique({ where: { slug: filhoNovoSlug } })
   expect(
     filhoNovo !== null,
@@ -478,9 +399,74 @@ async function main() {
     `contagem estável pós-restauração (${countsFinal.categories})`,
   )
 
-  console.log(`\n📊 Resultados: ${passed} passed, ${failed} failed, ${passed + failed} total`)
+  // ── 11. SEED_SPEC_PATCH inválido (JSON quebrado) — fail-fast ANTES de ────
+  // qualquer escrita. No seed dev, `const SPEC = buildPatchedSpec(...)` roda
+  // NO TOPO do módulo (linha ~35 do prisma/seed.ts) e o gate do patch usa o
+  // MESMO isDemoAccountsEnabled do guard — em dev o patch está HABILITADO,
+  // então um JSON malformado lança `SEED_SPEC_PATCH inválido (JSON): ...`
+  // DURANTE a avaliação do módulo, antes de main() e antes do wipe. Este
+  // cenário exercita o throw real do buildPatchedSpec no caminho real
+  // (subprocesso) e prova zero-escrita comparando TODAS as 10 tabelas.
+  console.log("  ── SEED_SPEC_PATCH inválido (JSON quebrado — fail-fast) ──")
+
+  const countsBeforeInvalid = await getCounts()
+  const invalidRun = runSeed({
+    NODE_ENV: "development",
+    SEED_SPEC_PATCH: "{não é json",
+  })
+  expect(invalidRun.status !== 0, `seed recusa com patch inválido (exit ${invalidRun.status})`)
+  expect(
+    invalidRun.out.includes("SEED_SPEC_PATCH inválido (JSON)"),
+    "mensagem de JSON inválido presente (throw do buildPatchedSpec)",
+  )
+  expect(
+    !invalidRun.out.includes("Seed completed successfully"),
+    "não reporta sucesso no meio da recusa",
+  )
+  // Zero-escrita: TODAS as 10 tabelas idênticas (o throw é no topo do módulo,
+  // nem o wipe chegou a rodar)
+  const countsAfterInvalid = await getCounts()
+  for (const [k, v] of Object.entries(countsBeforeInvalid)) {
+    expect(
+      countsAfterInvalid[k as keyof Counts] === v,
+      `'${k}' intacto após patch inválido (${v} → ${countsAfterInvalid[k as keyof Counts]})`,
+    )
+  }
+  // O banco segue utilizável: um run dev canônico conclui normalmente
+  const runAfterInvalid = runSeed({ NODE_ENV: "development" })
+  expect(
+    runAfterInvalid.status === 0,
+    `run dev canônico pós-recusa conclui exit 0 (obtido ${runAfterInvalid.status})`,
+  )
+  const countsAfterRecovery = await getCounts()
+  expect(
+    countsAfterRecovery.categories === CATEGORY_SPEC.length,
+    `árvore canônica restaurada após o fluxo (${countsAfterRecovery.categories} categorias)`,
+  )
+
+  console.log(
+    `\n📊 Resultados: ${rep.passed} passed, ${rep.failed} failed, ${rep.total} total (esperado ${EXPECTED_TOTAL} derivado)`,
+  )
+
+  // ── Count guard (runtime) ──────────────────────────────────────────────
+  // O total REAL impresso acima deve bater com o esperado DERIVADO
+  // (EXPECTED_TOTAL = deriveExpectedChecks("dev")). Se a derivação ficar
+  // desatualizada em relação ao código (novo loop dirigido por dados, novo
+  // helper com asserções, etc.), o E2E falha aqui com mensagem clara — e o
+  // guard estático scripts/check-e2e-counts.mjs compara a derivação com os
+  // comentários dos workflows (seed-guards.yml / pr-check.yml /
+  // validate-seed-guards-matrix-local.sh).
+  if (rep.total !== EXPECTED_TOTAL) {
+    console.error(
+      `\n💥 COUNT DRIFT: o E2E produziu ${rep.total} checks, mas a derivação espera ${EXPECTED_TOTAL}. ` +
+        `Atualize a derivação em scripts/seed-e2e-count.ts (ou as asserções) E os comentários dos workflows (ver scripts/check-e2e-counts.mjs).`,
+    )
+    await db.$disconnect()
+    process.exit(1)
+  }
+
   await db.$disconnect()
-  process.exit(failed > 0 ? 1 : 0)
+  process.exit(rep.failed > 0 ? 1 : 0)
 }
 
 main().catch((e) => {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { dateBlockSchema } from "@/lib/validators"
@@ -29,7 +30,7 @@ export const GET = withRateLimit(async (request: Request) => {
       targetProviderId = session.userId
     }
 
-    const where: any = {
+    const where: Prisma.DateBlockWhereInput = {
       providerId: targetProviderId,
     }
 

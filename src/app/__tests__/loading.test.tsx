@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest"
-import { render, within, cleanup } from "@/__tests__/test-utils"
+import { render, cleanup } from "@/__tests__/test-utils"
 import Loading from "../loading"
 
 afterEach(cleanup)

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, notFound, handleError } from "@/lib/api-server"
+import { forbidden, notFound, handleError } from "@/lib/api-server"
 import logger from "@/lib/logger"
 
 type Params = { params: Promise<{ id: string }> }
@@ -24,10 +24,7 @@ export async function DELETE(_request: Request, { params }: Params) {
 
     await db.dateBlock.delete({ where: { id } })
 
-    logger.info(
-      { blockId: id, providerId: session.userId },
-      "date block deleted",
-    )
+    logger.info({ blockId: id, providerId: session.userId }, "date block deleted")
 
     return NextResponse.json({ ok: true })
   } catch (e) {

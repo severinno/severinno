@@ -179,7 +179,10 @@ export async function sendPushNotification(
       url: url || "/",
       data: payloadData,
     })
-    logger.info({ size: serialized.length, payloadId }, "push payload too large — stored server-side")
+    logger.info(
+      { size: serialized.length, payloadId },
+      "push payload too large — stored server-side",
+    )
   } else {
     wirePayload = serialized
   }
@@ -191,8 +194,6 @@ export async function sendPushNotification(
   let failed = 0
 
   for (const sub of subs) {
-    let lastError: Error | null = null
-
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         await webpush.sendNotification(
@@ -200,11 +201,9 @@ export async function sendPushNotification(
           wirePayload,
         )
         succeeded++
-        lastError = null
         break // success — exit retry loop
       } catch (err) {
         const webpushErr = err as { statusCode?: number } & Error
-        lastError = webpushErr
 
         // Permanent failure (410/404) — remove subscription immediately
         if (webpushErr.statusCode === 410 || webpushErr.statusCode === 404) {
@@ -217,14 +216,20 @@ export async function sendPushNotification(
         // Transient failure — retry with backoff
         if (isTransientError(webpushErr) && attempt < MAX_RETRIES - 1) {
           const delay = getBackoffDelay(attempt)
-          logger.warn({ attempt: attempt + 1, delay, err: webpushErr.message }, "push transient failure — retrying")
+          logger.warn(
+            { attempt: attempt + 1, delay, err: webpushErr.message },
+            "push transient failure — retrying",
+          )
           await sleep(delay)
           continue
         }
 
         // Non-transient or max retries exceeded
         failed++
-        logger.error({ err: webpushErr.message, subId: sub.id, attempt: attempt + 1 }, "push permanent failure")
+        logger.error(
+          { err: webpushErr.message, subId: sub.id, attempt: attempt + 1 },
+          "push permanent failure",
+        )
         trackPushFailure(userId, sub.endpoint, `${webpushErr.message ?? ""}`)
         break
       }
@@ -235,17 +240,22 @@ export async function sendPushNotification(
 
   // Update analytics record with final status
   const finalStatus = failed > 0 && succeeded === 0 ? "failed" : succeeded > 0 ? "sent" : "bounced"
-  await db.pushAnalytics.update({
-    where: { id: analytics.id },
-    data: {
-      status: finalStatus,
-      latencyMs,
-      errorMessage: failed > 0 ? `${failed} device(s) failed after ${MAX_RETRIES} retries` : null,
-    },
-  }).catch(() => {})
+  await db.pushAnalytics
+    .update({
+      where: { id: analytics.id },
+      data: {
+        status: finalStatus,
+        latencyMs,
+        errorMessage: failed > 0 ? `${failed} device(s) failed after ${MAX_RETRIES} retries` : null,
+      },
+    })
+    .catch(() => {})
 
   if (failed > 0 || bounced > 0) {
-    logger.warn({ userId, sent: succeeded, bounced, failed, total: subs.length, latencyMs }, "push notification delivery report")
+    logger.warn(
+      { userId, sent: succeeded, bounced, failed, total: subs.length, latencyMs },
+      "push notification delivery report",
+    )
   }
 }
 
@@ -256,8 +266,5 @@ export async function sendPushToMany(
   url?: string,
   opts?: PushOptions & { notificationType?: string; bookingId?: string; source?: string },
 ) {
-  await Promise.allSettled(
-    userIds.map((uid) => sendPushNotification(uid, title, body, url, opts)),
-  )
+  await Promise.allSettled(userIds.map((uid) => sendPushNotification(uid, title, body, url, opts)))
 }
-

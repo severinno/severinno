@@ -25,7 +25,6 @@ import {
   Map as MapIcon,
   Minus,
   Server,
-  Timer,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {

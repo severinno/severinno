@@ -14,7 +14,10 @@ export type TrackingContext = {
 }
 
 export type TrackingEvent =
-  | { type: "ASSIGN"; data: { bookingId: string; providerId: string; clientId: string; scheduledAt: string } }
+  | {
+      type: "ASSIGN"
+      data: { bookingId: string; providerId: string; clientId: string; scheduledAt: string }
+    }
   | { type: "PROVIDER_LOCATION"; data: { lat: number; lng: number } }
   | { type: "SERVICE_LOCATION"; data: { lat: number; lng: number } }
   | { type: "EN_ROUTE"; data: { etdMin: number } }
@@ -112,63 +115,63 @@ export const trackingMachine = setup({
       on: {
         ASSIGN: {
           target: "assigned",
-          actions: "assignBooking" as any,
+          actions: "assignBooking",
         },
       },
     },
     assigned: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
         SERVICE_LOCATION: {
-          actions: "setServiceLocation" as any,
+          actions: "setServiceLocation",
           guard: "hasLocation",
         },
         EN_ROUTE: {
           target: "en_route",
-          actions: "setEtd" as any,
+          actions: "setEtd",
           guard: "hasEtd",
         },
         CANCEL: { target: "cancelled" },
       },
     },
     en_route: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
         PROVIDER_LOCATION: {
-          actions: "setProviderLocation" as any,
+          actions: "setProviderLocation",
         },
         ARRIVED: { target: "arrived" },
         CANCEL: { target: "cancelled" },
       },
     },
     arrived: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
         START: { target: "in_progress" },
         CANCEL: { target: "cancelled" },
       },
     },
     in_progress: {
-      entry: "clearError" as any,
+      entry: "clearError",
       on: {
         COMPLETE: { target: "completed" },
-        ERROR: { target: "error", actions: "setError" as any },
+        ERROR: { target: "error", actions: "setError" },
       },
     },
     completed: {
       type: "final",
       on: {
-        RESET: { target: "idle", actions: "resetAll" as any },
+        RESET: { target: "idle", actions: "resetAll" },
       },
     },
     cancelled: {
       on: {
-        RESET: { target: "idle", actions: "resetAll" as any },
+        RESET: { target: "idle", actions: "resetAll" },
       },
     },
     error: {
       on: {
-        RESET: { target: "idle", actions: "resetAll" as any },
+        RESET: { target: "idle", actions: "resetAll" },
       },
     },
   },

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, afterEach } from "vitest"
 import { cleanup, render, screen } from "@/__tests__/test-utils"
 
 vi.mock("lucide-react", () => ({

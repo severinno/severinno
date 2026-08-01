@@ -823,7 +823,7 @@ type GroupMeta = {
   tone: string
 }
 
-const GROUP_TONE: Record<string, StatusTone> = {
+const _GROUP_TONE: Record<string, StatusTone> = {
   payment: "emerald",
   email: "teal",
   smtp: "teal",

@@ -49,8 +49,8 @@ vi.mock("@/lib/lytex", () => ({
   LytexError: class LytexError extends Error {
     status: number
     constructor(m: string, s = 400) {
-      super(m);
-      this.name = "LytexError";
+      super(m)
+      this.name = "LytexError"
       this.status = s
     }
   },
@@ -74,14 +74,8 @@ vi.mock("@/lib/notification-queue", () => ({
 
 import { HttpError } from "@/lib/api-server"
 import { POST } from "../bookings/[id]/pay/route"
-import {
-  createPixCharge,
-  createCardCharge,
-  pollChargeStatus,
-  LytexError,
-} from "@/lib/lytex"
+import { createPixCharge, createCardCharge, pollChargeStatus, LytexError } from "@/lib/lytex"
 import { assertRateLimit } from "@/lib/rate-limit"
-import { db } from "@/lib/db"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -93,7 +87,13 @@ const PAID_BOOKING = {
   amount: 200,
   paymentMethod: "PIX",
   providerId: "prov-1",
-  client: { id: "client-1", name: "Test", email: "test@test.com", cpfCnpj: "12345678900", whatsapp: "11999999999" },
+  client: {
+    id: "client-1",
+    name: "Test",
+    email: "test@test.com",
+    cpfCnpj: "12345678900",
+    whatsapp: "11999999999",
+  },
   payment: null,
 }
 
@@ -105,7 +105,13 @@ const PENDING_PIX_BOOKING = {
   amount: 200,
   paymentMethod: "PIX",
   providerId: "prov-1",
-  client: { id: "client-1", name: "Test", email: "test@test.com", cpfCnpj: "12345678900", whatsapp: "11999999999" },
+  client: {
+    id: "client-1",
+    name: "Test",
+    email: "test@test.com",
+    cpfCnpj: "12345678900",
+    whatsapp: "11999999999",
+  },
   payment: null,
 }
 
@@ -117,7 +123,13 @@ const PENDING_CARD_BOOKING = {
   amount: 200,
   paymentMethod: "CARD",
   providerId: "prov-1",
-  client: { id: "client-1", name: "Test", email: "test@test.com", cpfCnpj: "12345678900", whatsapp: "11999999999" },
+  client: {
+    id: "client-1",
+    name: "Test",
+    email: "test@test.com",
+    cpfCnpj: "12345678900",
+    whatsapp: "11999999999",
+  },
   payment: null,
 }
 
@@ -140,7 +152,9 @@ function mockRequest(body?: unknown): Request {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("POST /api/bookings/[id]/pay — PIX flow", () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it("reusa QR code existente quando booking já tem cobrança PIX ativa", async () => {
     mockDb.booking.findUnique.mockResolvedValue({
@@ -202,7 +216,9 @@ describe("POST /api/bookings/[id]/pay — PIX flow", () => {
 })
 
 describe("POST /api/bookings/[id]/pay — Card flow", () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it("processa cartão com sucesso quando aprovado imediatamente (status=paid)", async () => {
     mockDb.booking.findUnique.mockResolvedValue(PENDING_CARD_BOOKING)
@@ -296,7 +312,9 @@ describe("POST /api/bookings/[id]/pay — Card flow", () => {
 
   it("retorna badRequest com mensagem Lytex quando LytexError é lançado no cartão", async () => {
     mockDb.booking.findUnique.mockResolvedValue(PENDING_CARD_BOOKING)
-    vi.mocked(createCardCharge).mockRejectedValue(new LytexError("Cartão recusado pela bandeira", 402))
+    vi.mocked(createCardCharge).mockRejectedValue(
+      new LytexError("Cartão recusado pela bandeira", 402),
+    )
 
     const req = createMockRequest({
       method: "POST",
@@ -338,7 +356,9 @@ describe("POST /api/bookings/[id]/pay — Card flow", () => {
 })
 
 describe("POST /api/bookings/[id]/pay — rate limiting", () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it("lança 429 quando rate limit é excedido", async () => {
     mockDb.booking.findUnique.mockResolvedValue(PENDING_PIX_BOOKING)
@@ -366,7 +386,9 @@ describe("POST /api/bookings/[id]/pay — rate limiting", () => {
 })
 
 describe("POST /api/bookings/[id]/pay — validations", () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it("retorna 403 quando cliente tenta pagar booking de outro usuário", async () => {
     const { requireUser } = await import("@/lib/auth")
@@ -426,7 +448,9 @@ describe("POST /api/bookings/[id]/pay — validations", () => {
 })
 
 describe("POST /api/bookings/[id]/pay — LytexError propagation", () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
   it("propaga erro não-Lytex como 500 (não engole exceção inesperada)", async () => {
     mockDb.booking.findUnique.mockResolvedValue(PENDING_PIX_BOOKING)

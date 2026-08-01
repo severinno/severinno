@@ -5,6 +5,7 @@ import { createSession } from "@/lib/auth"
 import { loginSchema } from "@/lib/validators"
 import { handleError, unauthorized } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
 export async function POST(request: Request) {
   try {
@@ -16,6 +17,13 @@ export async function POST(request: Request) {
       where: { email: data.email.toLowerCase() },
     })
     if (!user) {
+      throw unauthorized("E-mail ou senha inválidos")
+    }
+    // 🛡️ Contas demo (dev/staging only): mesmo que o usuário exista no banco
+    // (banco clonado, seed antigo, etc.), em produção o login é recusado — a
+    // credencial admin@severinno.com/admin123 é pública. A mesma mensagem
+    // genérica evita revelar a existência da conta.
+    if (!isDemoAccountsEnabled() && isDemoAccountEmail(user.email)) {
       throw unauthorized("E-mail ou senha inválidos")
     }
     if (!user.active) {

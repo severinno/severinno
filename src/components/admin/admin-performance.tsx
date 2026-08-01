@@ -19,16 +19,12 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
-  Cable,
   Database,
   ExternalLink,
-  Gauge,
-  Globe,
   Server,
   Timer,
   TrendingDown,
   TrendingUp,
-  Zap,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import {

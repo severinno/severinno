@@ -39,9 +39,10 @@ const DEFAULT_OUT_FILE = join(DEFAULT_OUT_DIR, "geo-latest.json")
 const args = process.argv.slice(2)
 const jsonFlag = args.includes("--json")
 const jsonIndex = args.indexOf("--json")
-const jsonFile = jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsWith("--")
-  ? args[jsonIndex + 1]
-  : DEFAULT_OUT_FILE
+const jsonFile =
+  jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsWith("--")
+    ? args[jsonIndex + 1]
+    : DEFAULT_OUT_FILE
 
 // ---------------------------------------------------------------------------
 // Haversine implementation (verbatim from src/lib/geo-shared.ts)
@@ -123,19 +124,19 @@ function simulatedPostgisDistance(count) {
 // ---------------------------------------------------------------------------
 
 function runAll() {
-  const haversine100   = measure(() => haversineAll(CENTER, data100),   200)
-  const haversine1000  = measure(() => haversineAll(CENTER, data1000),  50)
+  const haversine100 = measure(() => haversineAll(CENTER, data100), 200)
+  const haversine1000 = measure(() => haversineAll(CENTER, data1000), 50)
   const haversine10000 = measure(() => haversineAll(CENTER, data10000), 10)
 
-  const pg100   = measure(() => simulatedPostgisDistance(100),   20)
-  const pg1000  = measure(() => simulatedPostgisDistance(1000),  20)
+  const pg100 = measure(() => simulatedPostgisDistance(100), 20)
+  const pg1000 = measure(() => simulatedPostgisDistance(1000), 20)
   const pg10000 = measure(() => simulatedPostgisDistance(10000), 10)
 
   const singleHaversine = measure(() => haversineKm(-23.5505, -46.6333, -23.5605, -46.6433), 5000)
   const singlePg = measure(() => simulatedPostgisDistance(1), 500)
 
   const h100Per = haversine100.mean / 100
-  const h1kPer  = haversine1000.mean / 1000
+  const h1kPer = haversine1000.mean / 1000
   const h10kPer = haversine10000.mean / 10000
   const avgHaversinePerProvider = (h100Per + h1kPer + h10kPer) / 3
 
@@ -150,19 +151,19 @@ function runAll() {
       timestamp: new Date().toISOString(),
     },
     benchmarks: [
-      { name: "Haversine JS   100",  label: "haversine_100",  ...haversine100 },
+      { name: "Haversine JS   100", label: "haversine_100", ...haversine100 },
       { name: "Haversine JS  1 000", label: "haversine_1000", ...haversine1000 },
       { name: "Haversine JS 10 000", label: "haversine_10000", ...haversine10000 },
-      { name: "PostGIS [model]  100",  label: "postgis_model_100",  ...pg100 },
+      { name: "PostGIS [model]  100", label: "postgis_model_100", ...pg100 },
       { name: "PostGIS [model] 1 000", label: "postgis_model_1000", ...pg1000 },
       { name: "PostGIS [model]10 000", label: "postgis_model_10000", ...pg10000 },
-      { name: "haversineKm × 1",      label: "haversine_single",    ...singleHaversine },
-      { name: "PostGIS [model] × 1",  label: "postgis_model_single", ...singlePg },
+      { name: "haversineKm × 1", label: "haversine_single", ...singleHaversine },
+      { name: "PostGIS [model] × 1", label: "postgis_model_single", ...singlePg },
     ],
     analysis: {
       haversineUnitCosts: {
-        at100:   +h100Per.toFixed(4),
-        at1000:  +h1kPer.toFixed(4),
+        at100: +h100Per.toFixed(4),
+        at1000: +h1kPer.toFixed(4),
         at10000: +h10kPer.toFixed(4),
       },
       avgHaversinePerProvider: +avgHaversinePerProvider.toFixed(4),
@@ -222,7 +223,9 @@ console.log(`                         ${uc.at1000.toFixed(4)} µs / provider  (@
 console.log(`                         ${uc.at10000.toFixed(4)} µs / provider  (@ 10 000)`)
 console.log("")
 
-console.log(`  Average Haversine:    ${results.analysis.avgHaversinePerProvider.toFixed(4)} µs / provider`)
+console.log(
+  `  Average Haversine:    ${results.analysis.avgHaversinePerProvider.toFixed(4)} µs / provider`,
+)
 console.log("")
 
 console.log("  ─── Key insight ───────────────────────────────────────────────")
@@ -245,16 +248,20 @@ console.log("")
 console.log("  where s = selectivity (fraction of providers within radius).")
 console.log("")
 
-console.log(`  ${" Providers ".padStart(11)} ${" Radius ".padStart(9)} ${" Selectivity ".padStart(12)} ${" Faster ".padStart(26)}`)
-console.log(`  ${"".padStart(11,"─")} ${"".padStart(9,"─")} ${"".padStart(12,"─")} ${"".padStart(26,"─")}`)
+console.log(
+  `  ${" Providers ".padStart(11)} ${" Radius ".padStart(9)} ${" Selectivity ".padStart(12)} ${" Faster ".padStart(26)}`,
+)
+console.log(
+  `  ${"".padStart(11, "─")} ${"".padStart(9, "─")} ${"".padStart(12, "─")} ${"".padStart(26, "─")}`,
+)
 
 const scenarios = [
-  [   500, "  5 km", " ~4 %",  "PostGIS (saves ~96 % data transfer)"],
-  [   500, " 10 km", "~18 %",  "PostGIS (saves ~82 % data transfer)"],
-  [   500, " 50 km", "~70 %",  "PostGIS (saves ~30 % data transfer)"],
-  [  2000, " 10 km", "~18 %",  "PostGIS (saves ~82 % data transfer)"],
-  [ 10000, "  5 km", " ~4 %",  "PostGIS (saves ~96 % data transfer)"],
-  [ 10000, "100 km", "~95 %",  "Haversine (selectivity too high)"],
+  [500, "  5 km", " ~4 %", "PostGIS (saves ~96 % data transfer)"],
+  [500, " 10 km", "~18 %", "PostGIS (saves ~82 % data transfer)"],
+  [500, " 50 km", "~70 %", "PostGIS (saves ~30 % data transfer)"],
+  [2000, " 10 km", "~18 %", "PostGIS (saves ~82 % data transfer)"],
+  [10000, "  5 km", " ~4 %", "PostGIS (saves ~96 % data transfer)"],
+  [10000, "100 km", "~95 %", "Haversine (selectivity too high)"],
 ]
 
 for (const [n, r, s, faster] of scenarios) {
@@ -263,7 +270,7 @@ for (const [n, r, s, faster] of scenarios) {
 
 console.log("")
 console.log("  Recommendation: keep PostGIS as primary path; Haversine as")
-console.log("  fallback.  For the current scale (hundreds to low-thousands"),
+console.log("  fallback.  For the current scale (hundreds to low-thousands")
 console.log("  of providers) PostGIS is always beneficial because the route")
 console.log("  combines ST_DWithin filtering + ST_Distance in ONE query,")
 console.log("  avoiding a separate round-trip for the distance step.")

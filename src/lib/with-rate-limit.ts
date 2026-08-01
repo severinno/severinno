@@ -1,7 +1,7 @@
 import "server-only"
 import { checkRateLimit, rateLimitHeaders } from "./rate-limit"
 
-type Handler = (request: Request, ...args: any[]) => Promise<Response>
+type Handler<Args extends unknown[] = []> = (request: Request, ...args: Args) => Promise<Response>
 
 /**
  * Higher-order function that wraps a route handler with server-side rate
@@ -10,8 +10,12 @@ type Handler = (request: Request, ...args: any[]) => Promise<Response>
  * @example
  *   export const GET = withRateLimit(async (req) => { ... }, 30, 60_000)
  */
-export function withRateLimit(handler: Handler, max = 30, windowMs = 60_000): Handler {
-  return async (request: Request, ...args: any[]) => {
+export function withRateLimit<Args extends unknown[] = []>(
+  handler: Handler<Args>,
+  max = 30,
+  windowMs = 60_000,
+): Handler<Args> {
+  return async (request: Request, ...args: Args) => {
     const url = new URL(request.url)
     // Use a sanitised pathname as the rate-limit prefix so each endpoint
     // has its own counter. The client IP is extracted automatically by

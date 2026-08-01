@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
     since.setDate(since.getDate() - days)
 
     // Build where clause
-    const where: Record<string, unknown> = {
+    const where: Prisma.PushSendLogWhereInput = {
       createdAt: { gte: since },
     }
 
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     // Fetch paginated records with admin info
     const [records, total] = await Promise.all([
       db.pushSendLog.findMany({
-        where: where as any,
+        where,
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
@@ -67,7 +68,7 @@ export async function GET(request: Request) {
           },
         },
       }),
-      db.pushSendLog.count({ where: where as any }),
+      db.pushSendLog.count({ where }),
     ])
 
     // Fetch available actions and types for filter dropdowns

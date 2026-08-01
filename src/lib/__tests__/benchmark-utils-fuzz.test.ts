@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from "vitest"
 import { measure, type BenchmarkSample } from "../benchmark-utils"
-import { setSeed, seededRandom, randInt, randFloat, pick } from "@/lib/__tests__"
+import { setSeed, randInt, pick } from "@/lib/__tests__"
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -112,10 +112,7 @@ const FUZZ_FNS: Array<{ name: string; fn: () => void }> = [
  * Validate that a BenchmarkSample is structurally sound.
  * Returns `true` if valid, or a string describing the first violation.
  */
-function validateSample(
-  r: BenchmarkSample,
-  label: string,
-): { pass: boolean; reason?: string } {
+function validateSample(r: BenchmarkSample, label: string): { pass: boolean; reason?: string } {
   // Shape check
   if (typeof r.mean !== "number") {
     return { pass: false, reason: `mean is not a number: ${typeof r.mean}` }
@@ -144,24 +141,24 @@ function validateSample(
   }
   if (r.max < r.min) {
     return { pass: false, reason: `max (${r.max}) < min (${r.min})` }
-  }    // opsPerSec sanity (when mean is known finite and function is slow enough
-    // that performance.now() precision noise is manageable).
-    if (Number.isFinite(r.mean) && r.mean > 1) {
-      if (r.opsPerSec <= 0) {
-        return { pass: false, reason: `opsPerSec <= 0 for finite mean: ${r.opsPerSec}` }
-      }
-      // opsPerSec should be roughly 1_000_000 / mean.
-      // Allow 15% tolerance for timing noise (performance.now() precision
-      // can cause ~5-13% variation on fast functions).
-      const expected = Math.round(1_000_000 / r.mean)
-      const ratio = expected > 0 ? r.opsPerSec / expected : 1
-      if (ratio < 0.85 || ratio > 1.15) {
-        return {
-          pass: false,
-          reason: `opsPerSec ${r.opsPerSec} != 1e6/${r.mean}=${expected} (ratio ${ratio.toFixed(3)}) for ${label}`,
-        }
+  } // opsPerSec sanity (when mean is known finite and function is slow enough
+  // that performance.now() precision noise is manageable).
+  if (Number.isFinite(r.mean) && r.mean > 1) {
+    if (r.opsPerSec <= 0) {
+      return { pass: false, reason: `opsPerSec <= 0 for finite mean: ${r.opsPerSec}` }
+    }
+    // opsPerSec should be roughly 1_000_000 / mean.
+    // Allow 15% tolerance for timing noise (performance.now() precision
+    // can cause ~5-13% variation on fast functions).
+    const expected = Math.round(1_000_000 / r.mean)
+    const ratio = expected > 0 ? r.opsPerSec / expected : 1
+    if (ratio < 0.85 || ratio > 1.15) {
+      return {
+        pass: false,
+        reason: `opsPerSec ${r.opsPerSec} != 1e6/${r.mean}=${expected} (ratio ${ratio.toFixed(3)}) for ${label}`,
       }
     }
+  }
 
   return { pass: true }
 }
@@ -225,9 +222,7 @@ describe("measure fuzzing", () => {
     // Report all failures
     const failures = results.filter((r) => r.error)
     if (failures.length > 0) {
-      const details = failures
-        .map((f) => `  ✗ ${f.label}: ${f.error}`)
-        .join("\n")
+      const _details = failures.map((f) => `  ✗ ${f.label}: ${f.error}`).join("\n")
       expect(failures).toEqual([])
     }
   })
@@ -261,7 +256,14 @@ describe("measure fuzzing", () => {
   it("throws for a function that throws (error propagation)", () => {
     setSeed(42)
     for (let i = 0; i < 3; i++) {
-      expect(() => measure(() => { throw new Error("crash") }, randInt(1, 50))).toThrow("crash")
+      expect(() =>
+        measure(
+          () => {
+            throw new Error("crash")
+          },
+          randInt(1, 50),
+        ),
+      ).toThrow("crash")
     }
   })
 })

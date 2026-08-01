@@ -23,7 +23,6 @@ import {
   LayoutDashboard,
   Lock,
   Server,
-  ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
@@ -233,7 +232,7 @@ function calcOverallGrade(layers: LayerInfo[]): number {
   return Math.round((total / layers.length) * 10) / 10
 }
 
-function calcOverallMax(layers: LayerInfo[]): number {
+function _calcOverallMax(layers: LayerInfo[]): number {
   return layers.reduce((sum, l) => sum + l.maxGrade, 0) / layers.length
 }
 
@@ -243,13 +242,13 @@ function getGradeColor(grade: number): string {
   return "text-red-500"
 }
 
-function getGradeBg(grade: number): string {
+function _getGradeBg(grade: number): string {
   if (grade >= 9) return "bg-emerald-50 dark:bg-emerald-950/20"
   if (grade >= 7) return "bg-amber-50 dark:bg-amber-950/20"
   return "bg-red-50 dark:bg-red-950/20"
 }
 
-function getGradeBorder(grade: number): string {
+function _getGradeBorder(grade: number): string {
   if (grade >= 9) return "border-emerald-200 dark:border-emerald-800/30"
   if (grade >= 7) return "border-amber-200 dark:border-amber-800/30"
   return "border-red-200 dark:border-red-800/30"

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Banknote, CalendarRange, ExternalLink, SearchX, ShieldQuestion, X } from "lucide-react"
+import { CalendarRange, ExternalLink, SearchX, X } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"

@@ -46,23 +46,23 @@ jobs:
       - name: Fix byte 0x97 corruption
         id: fix
         run: |
-          python3 scripts/check_utf8.py --fix src/ || echo "FIX_EXIT=$?" >> $GITHUB_ENV
+          python3 scripts/check_utf8.py --fix src/ || echo "FIX_EXIT=$?" >> "$GITHUB_ENV"
 
       # Step 2: Validate no non-fixable issues remain
       - name: Validate remaining UTF-8
         id: validate
         run: |
           python3 scripts/check_utf8.py --dry-run --ci src/
-          echo "CLEAN=true" >> $GITHUB_OUTPUT
+          echo "CLEAN=true" >> "$GITHUB_OUTPUT"
 
       # Step 3: Check if files were modified by --fix
       - name: Check for changes
         id: changes
         run: |
           if git diff --quiet; then
-            echo "HAS_CHANGES=false" >> $GITHUB_OUTPUT
+            echo "HAS_CHANGES=false" >> "$GITHUB_OUTPUT"
           else
-            echo "HAS_CHANGES=true" >> $GITHUB_OUTPUT
+            echo "HAS_CHANGES=true" >> "$GITHUB_OUTPUT"
           fi
 
       # Step 4: Commit and push fixes back to PR branch (same-repo PRs only)

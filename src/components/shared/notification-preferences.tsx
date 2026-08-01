@@ -14,13 +14,12 @@
 
 import * as React from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Bell, BellOff, Loader2, Volume2, Mail, Smartphone, MessageSquare } from "lucide-react"
+import { Bell, Volume2, Mail, MessageSquare } from "lucide-react"
 import { MobilePushGuide } from "@/components/shared/mobile-push-guide"
 import { toast } from "sonner"
 
 import { apiGet, apiPatch } from "@/lib/api"
 import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -108,7 +107,7 @@ export function NotificationPreferences() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Bell className="size-5 text-primary" />
+          <Bell className="text-primary size-5" />
           Preferências de notificação
         </CardTitle>
         <CardDescription>
@@ -119,11 +118,14 @@ export function NotificationPreferences() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-xs font-medium text-muted-foreground">
-                <th className="pb-2 pr-4 font-normal">Tipo de notificação</th>
+              <tr className="text-muted-foreground border-b text-left text-xs font-medium">
+                <th className="pr-4 pb-2 font-normal">Tipo de notificação</th>
                 {CHANNELS.map((ch) => (
-                  <th key={ch.key} className="pb-2 px-3 font-normal text-center">
-                    <span className="inline-flex items-center gap-1">{ch.icon}{ch.label}</span>
+                  <th key={ch.key} className="px-3 pb-2 text-center font-normal">
+                    <span className="inline-flex items-center gap-1">
+                      {ch.icon}
+                      {ch.label}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -132,12 +134,15 @@ export function NotificationPreferences() {
               {NOTIFICATION_TYPES.map((nt) => {
                 const pref = preferences.get(nt.key)
                 return (
-                  <tr key={nt.key} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                    <td className="py-3 pr-4 font-medium text-sm">{nt.label}</td>
+                  <tr
+                    key={nt.key}
+                    className="hover:bg-muted/30 border-b transition-colors last:border-0"
+                  >
+                    <td className="py-3 pr-4 text-sm font-medium">{nt.label}</td>
                     {CHANNELS.map((ch) => {
                       const enabled = pref ? pref[ch.key] : true // default: enabled
                       return (
-                        <td key={ch.key} className="py-3 px-3 text-center">
+                        <td key={ch.key} className="px-3 py-3 text-center">
                           <Switch
                             checked={enabled}
                             onCheckedChange={(checked) => {

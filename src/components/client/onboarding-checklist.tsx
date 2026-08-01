@@ -15,22 +15,13 @@
 
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  ArrowRight,
-  Camera,
-  CheckCircle2,
-  MapPin,
-  Phone,
-  Sparkles,
-  User,
-} from "lucide-react"
+import { ArrowRight, Camera, CheckCircle2, MapPin, Phone, Sparkles, User } from "lucide-react"
 
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { apiGet } from "@/lib/api"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
 
@@ -56,7 +47,7 @@ type Step = {
 export function OnboardingChecklist() {
   const { user } = useAuthStore()
   const navigate = useViewStore((s) => s.navigate)
-  const qc = useQueryClient()
+  const _qc = useQueryClient()
 
   // Fetch the user's full profile to determine completion
   const { data: profile, isLoading } = useQuery<ProfileData>({
@@ -121,14 +112,12 @@ export function OnboardingChecklist() {
             </div>
             <div>
               <CardTitle className="text-base">Complete seu perfil</CardTitle>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 {completedCount} de {totalCount} passos · {pct}%
               </p>
             </div>
           </div>
-          <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-            {pct}%
-          </span>
+          <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{pct}%</span>
         </div>
         <Progress
           value={pct}
@@ -137,9 +126,9 @@ export function OnboardingChecklist() {
         />
       </CardHeader>
       <CardContent className="space-y-2 pt-0">
-        <p className="mb-2 text-xs text-muted-foreground">
-          Um perfil completo ajuda os prestadores a enviarem orçamentos
-          precisos e aumenta sua confiança.
+        <p className="text-muted-foreground mb-2 text-xs">
+          Um perfil completo ajuda os prestadores a enviarem orçamentos precisos e aumenta sua
+          confiança.
         </p>
         {steps.map((step) => (
           <button
@@ -161,11 +150,7 @@ export function OnboardingChecklist() {
                   : "bg-slate-100 text-slate-400 dark:bg-slate-800",
               )}
             >
-              {step.done ? (
-                <CheckCircle2 className="size-4" />
-              ) : (
-                step.icon
-              )}
+              {step.done ? <CheckCircle2 className="size-4" /> : step.icon}
             </span>
             <div className="min-w-0 flex-1">
               <p
@@ -176,21 +161,15 @@ export function OnboardingChecklist() {
               >
                 {step.label}
               </p>
-              <p className="text-xs text-muted-foreground">
-                {step.description}
-              </p>
+              <p className="text-muted-foreground text-xs">{step.description}</p>
             </div>
-            {!step.done && (
-              <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-            )}
+            {!step.done && <ArrowRight className="text-muted-foreground size-4 shrink-0" />}
           </button>
         ))}
 
         {/* Sound & vibration preferences */}
         <div className="mt-4 space-y-2 border-t pt-4">
-          <p className="text-xs font-medium text-muted-foreground">
-            Preferências
-          </p>
+          <p className="text-muted-foreground text-xs font-medium">Preferências</p>
           <PreferenceToggles variant="compact" />
         </div>
       </CardContent>

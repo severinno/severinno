@@ -21,6 +21,7 @@ import {
   syncRadiusHandle,
   removeRadiusHandle,
   makeRadiusEdgeDraggable,
+  type EdgeDragMap,
   type MapLike,
 } from "@/lib/geo-circle"
 import { Slider } from "@/components/ui/slider"
@@ -184,7 +185,7 @@ export default function ProviderMiniMap({
             if (interactive) {
               syncRadiusHandle(mapLike, providerLat, providerLng, radiusKm)
               dragCleanup = makeRadiusEdgeDraggable(
-                map as any,
+                map as unknown as EdgeDragMap,
                 providerLat,
                 providerLng,
                 (newRadius: number) => {
@@ -207,7 +208,7 @@ export default function ProviderMiniMap({
               if (interactive) {
                 syncRadiusHandle(mapLike, providerLat, providerLng, radiusKm)
                 dragCleanup = makeRadiusEdgeDraggable(
-                  map as any,
+                  map as unknown as EdgeDragMap,
                   providerLat,
                   providerLng,
                   (newRadius: number) => {

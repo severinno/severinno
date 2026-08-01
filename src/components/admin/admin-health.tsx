@@ -33,7 +33,7 @@ import { useQuery } from "@tanstack/react-query"
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { DashboardHeader, ErrorState, MetricCard, TierBanner } from "./_shared"
+import { DashboardHeader, ErrorState, MetricCard } from "./_shared"
 
 import type { DetailedHealthResponse } from "@/app/api/health/detailed/route"
 

@@ -41,7 +41,7 @@ vi.mock("amqplib", () => ({
 
 import { publish, consume, close, EXCHANGE } from "../queue"
 import { findBestProvider, findBestProviders, dispatchBooking } from "../dispatch"
-import type { PublishOptions, ConsumeOptions } from "../queue"
+import type { PublishOptions } from "../queue"
 
 vi.mock("../notification-queue", () => ({
   queueNotification: vi.fn(),
@@ -58,7 +58,7 @@ vi.mock("../routing", () => ({
   getMultiRoute: vi.fn(),
 }))
 
-import { queueNotification, saveAndQueueNotification } from "../notification-queue"
+import { saveAndQueueNotification } from "../notification-queue"
 import { getRoute, getMultiRoute } from "../routing"
 
 beforeEach(() => {

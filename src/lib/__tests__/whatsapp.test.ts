@@ -43,7 +43,7 @@ function mockFetch(response: Partial<Response>) {
 // ===========================================================================
 
 describe("sendWhatsApp", () => {
-  const OLD_ENV = { ...process.env }
+  const _OLD_ENV = { ...process.env }
 
   beforeEach(() => {
     vi.clearAllMocks()

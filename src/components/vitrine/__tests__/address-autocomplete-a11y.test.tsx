@@ -19,13 +19,7 @@ import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 import AddressAutocomplete from "../address-autocomplete"
 
-import {
-  MOCK_RESULTS,
-  mockGeoStore,
-  mockFetchGeoSearch,
-  mockFetchReverseGeo,
-  resetCommonMocks,
-} from "./test-utils"
+import { MOCK_RESULTS, mockGeoStore, mockFetchGeoSearch, resetCommonMocks } from "./test-utils"
 
 // ---------------------------------------------------------------------------
 // Lucide icons must be mocked as <svg> (not <span>) so axe doesn't flag

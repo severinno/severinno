@@ -153,8 +153,31 @@ cd "$SCRIPT_DIR"      # Ensure Prisma client is generated first (required for @p
 info "STEP 3: Running seed-dev E2E validator..."
 
 # Já estamos no SCRIPT_DIR (STEP 2 fez o cd) — sem cd redundante aqui.
-DATABASE_URL="$DATABASE_URL" bun scripts/test-seed-dev-e2e.ts
+# Captura a saída completa (não só o exit code) para validar o count real
+# (📊 Resultados) contra a derivação (scripts/seed-e2e-count.ts).
+set +e
+E2E_OUTPUT="$(DATABASE_URL="$DATABASE_URL" bun scripts/test-seed-dev-e2e.ts 2>&1)"
 exit_code=$?
+set -e
+echo "$E2E_OUTPUT"
+
+# ── Count validation (derivação vs real) ────────────────────────────────
+# O E2E imprime "📊 Resultados: N passed, ... (esperado X derivado)". A
+# derivação (bun scripts/seed-e2e-count.ts dev) é a FONTE DA VERDADE: o
+# count REAL impresso deve bater com ela — segunda camada além do runtime
+# drift check interno do E2E (e o guard estático compara os comentários dos
+# workflows com a MESMA derivação).
+REAL_COUNT="$(echo "$E2E_OUTPUT" | sed -n 's/.*Resultados: \([0-9]*\) passed.*/\1/p' | head -1)"
+DERIVED_COUNT="$(bun scripts/seed-e2e-count.ts dev)"
+if [ -z "$REAL_COUNT" ]; then
+  fail "Count validation: não foi possível extrair o count real do output do E2E"
+  exit_code=1
+elif [ "$REAL_COUNT" != "$DERIVED_COUNT" ]; then
+  fail "Count validation: E2E imprimiu $REAL_COUNT checks, derivação espera $DERIVED_COUNT"
+  exit_code=1
+else
+  pass "Count validation: $REAL_COUNT checks == derivação ($DERIVED_COUNT)"
+fi
 
 # ═════════════════════════════════════════════════════════════════════════
 # Result

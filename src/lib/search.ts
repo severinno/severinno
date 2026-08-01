@@ -27,7 +27,12 @@ function createClient(): Client {
     requestTimeout: 10_000,
     // Single-node dev mode — no auth by default
     ...(process.env.OPENSEARCH_USERNAME
-      ? { auth: { username: process.env.OPENSEARCH_USERNAME, password: process.env.OPENSEARCH_PASSWORD! } }
+      ? {
+          auth: {
+            username: process.env.OPENSEARCH_USERNAME,
+            password: process.env.OPENSEARCH_PASSWORD!,
+          },
+        }
       : {}),
   })
 }
@@ -56,7 +61,7 @@ const SHARED_ANALYSIS = {
       tokenizer: "standard",
       filter: [
         "lowercase",
-        "asciifolding",         // são paulo → sao paulo, ótimo → otimo
+        "asciifolding", // são paulo → sao paulo, ótimo → otimo
         "brazilian_stop",
         "brazilian_stemmer",
         "severinno_synonyms",
@@ -242,7 +247,7 @@ export async function ensureIndices(): Promise<void> {
             index: {
               number_of_shards: 1,
               number_of_replicas: process.env.NODE_ENV === "production" ? 1 : 0,
-              analysis: SHARED_ANALYSIS as any,
+              analysis: SHARED_ANALYSIS as unknown as Record<string, unknown>,
             },
           },
           mappings,
@@ -347,14 +352,7 @@ export async function searchProviders(
     must.push({
       multi_match: {
         query: params.q,
-        fields: [
-          "name^3",
-          "serviceTitles^2",
-          "bio",
-          "city",
-          "district",
-          "serviceCategories",
-        ],
+        fields: ["name^3", "serviceTitles^2", "bio", "city", "district", "serviceCategories"],
         type: "best_fields",
         fuzziness: "AUTO",
       },
@@ -368,9 +366,7 @@ export async function searchProviders(
 
   // ── Geo filter ──
   const hasGeo =
-    params.lat !== undefined &&
-    params.lng !== undefined &&
-    params.radiusKm !== undefined
+    params.lat !== undefined && params.lng !== undefined && params.radiusKm !== undefined
 
   const filter: Record<string, unknown>[] = []
 
@@ -429,13 +425,14 @@ export async function searchProviders(
     })
 
     const body = response.body
-    const total = typeof body.hits.total === "number"
-      ? body.hits.total
-      : body.hits.total?.value ?? 0
-    const hits = body.hits.hits.map((h: any) => ({
-      ...h._source,
-      _score: h._score,
-    })) as SearchProviderHit[]
+    const total =
+      typeof body.hits.total === "number" ? body.hits.total : (body.hits.total?.value ?? 0)
+    const hits = body.hits.hits.map(
+      (h: { _source?: Record<string, unknown>; _score?: number }) => ({
+        ...h._source,
+        _score: h._score,
+      }),
+    ) as SearchProviderHit[]
 
     return {
       items: hits,
@@ -490,12 +487,11 @@ export async function searchServices(
     })
 
     const body = response.body
-    const total = typeof body.hits.total === "number"
-      ? body.hits.total
-      : body.hits.total?.value ?? 0
+    const total =
+      typeof body.hits.total === "number" ? body.hits.total : (body.hits.total?.value ?? 0)
 
     return {
-      items: body.hits.hits.map((h: any) => h._source as SearchServiceHit),
+      items: body.hits.hits.map((h: { _source?: unknown }) => h._source as SearchServiceHit),
       total,
       page,
       limit,
@@ -534,19 +530,15 @@ export async function bulkIndex(
   const client = getClient()
   if (!client || documents.length === 0) return
 
-  const body = documents.flatMap((doc) => [
-    { index: { _index: index, _id: doc.id } },
-    doc.body,
-  ])
+  const body = documents.flatMap((doc) => [{ index: { _index: index, _id: doc.id } }, doc.body])
 
   try {
     const response = await client.bulk({ body, refresh: "true" })
     if (response.body.errors) {
-      const errorItems = response.body.items.filter((i: any) => i.index?.error)
-      logger.error(
-        { errorCount: errorItems.length, index },
-        "Bulk index had errors",
+      const errorItems = response.body.items.filter(
+        (i: { index?: { error?: unknown } }) => i.index?.error,
       )
+      logger.error({ errorCount: errorItems.length, index }, "Bulk index had errors")
     }
   } catch (err) {
     logger.error({ err, index }, "Bulk index error")
@@ -556,17 +548,14 @@ export async function bulkIndex(
 /**
  * Delete a document from the index.
  */
-export async function deleteDocument(
-  index: string,
-  id: string,
-): Promise<void> {
+export async function deleteDocument(index: string, id: string): Promise<void> {
   const client = getClient()
   if (!client) return
   try {
     await client.delete({ index, id })
-  } catch (err: any) {
+  } catch (err: unknown) {
     // 404 is fine (document already gone)
-    if (err.statusCode !== 404) {
+    if ((err as { statusCode?: number }).statusCode !== 404) {
       logger.error({ err, index, id }, "OpenSearch delete error")
     }
   }

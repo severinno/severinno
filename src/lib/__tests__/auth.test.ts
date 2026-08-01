@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 vi.mock("../logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -34,13 +34,31 @@ vi.mock("next/headers", () => ({
   headers: () => new Headers(),
 }))
 
-import { createSession, getSession, destroySession, requireUser, requireRole, getOptionalSession } from "../auth"
+import {
+  createSession,
+  getSession,
+  destroySession,
+  requireUser,
+  requireRole,
+  getOptionalSession,
+} from "../auth"
 
-const VALID_USER = { id: "user-1", email: "test@test.com", name: "Test User", role: "CLIENT", active: true, verified: true }
+const VALID_USER = {
+  id: "user-1",
+  email: "test@test.com",
+  name: "Test User",
+  role: "CLIENT",
+  active: true,
+  verified: true,
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
   cookieStore.clear()
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
 })
 
 describe("createSession", () => {
@@ -86,7 +104,9 @@ describe("getSession", () => {
     await createSession("user-1", "CLIENT")
     const existing = cookieStore.get("severinno_session")
     if (existing) {
-      cookieStore.set("severinno_session", { value: existing.value.split(".").slice(0, 3).join(".") + ".BAD" })
+      cookieStore.set("severinno_session", {
+        value: existing.value.split(".").slice(0, 3).join(".") + ".BAD",
+      })
     }
     expect(await getSession()).toBeNull()
   })
@@ -157,6 +177,33 @@ describe("requireRole", () => {
 
   it("throws UNAUTHORIZED when not logged in", async () => {
     await expect(requireRole("CLIENT")).rejects.toThrow("UNAUTHORIZED")
+  })
+})
+
+describe("demo accounts — server-side block (defense-in-depth)", () => {
+  it("trata conta demo como inativa em produção (invalida sessão existente)", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    await createSession("demo-admin-prod", "ADMIN")
+    mockDb.user.findUnique.mockResolvedValue({
+      ...VALID_USER,
+      id: "demo-admin-prod",
+      email: "admin@severinno.com",
+      role: "ADMIN",
+    })
+    await expect(requireUser()).rejects.toThrow("UNAUTHORIZED")
+  })
+
+  it("permite conta demo fora de produção", async () => {
+    vi.stubEnv("NODE_ENV", "test")
+    await createSession("demo-admin-dev", "ADMIN")
+    mockDb.user.findUnique.mockResolvedValue({
+      ...VALID_USER,
+      id: "demo-admin-dev",
+      email: "admin@severinno.com",
+      role: "ADMIN",
+    })
+    const session = await requireUser()
+    expect(session.userId).toBe("demo-admin-dev")
   })
 })
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
-import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { assertRateLimit } from "@/lib/rate-limit"
 import { uploadToS3 } from "@/lib/s3"
 import logger from "@/lib/logger"
 

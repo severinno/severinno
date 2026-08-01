@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import {
-  badRequest,
-  forbidden,
-  handleError,
-  notFound,
-} from "@/lib/api-server"
+import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
 import {
   createPixCharge,
   createCardCharge,
@@ -128,7 +123,7 @@ export async function POST(_request: Request, { params }: Params) {
             lytexStatus: pix.status,
             qrCode: pix.qrCode,
             qrCodeImage: pix.qrCodeImage,
-            lytexRawResponse: pix as any,
+            lytexRawResponse: JSON.parse(JSON.stringify(pix)),
           },
           update: {
             transactionId: pix.transactionId,
@@ -136,14 +131,11 @@ export async function POST(_request: Request, { params }: Params) {
             lytexStatus: pix.status,
             qrCode: pix.qrCode,
             qrCodeImage: pix.qrCodeImage,
-            lytexRawResponse: pix as any,
+            lytexRawResponse: JSON.parse(JSON.stringify(pix)),
           },
         })
 
-        lytexLogger.info(
-          { bookingId: id, lytexId: pix.id },
-          "Pay: PIX gerado com sucesso",
-        )
+        lytexLogger.info({ bookingId: id, lytexId: pix.id }, "Pay: PIX gerado com sucesso")
 
         return NextResponse.json({
           paymentMethod: "PIX",
@@ -169,7 +161,13 @@ export async function POST(_request: Request, { params }: Params) {
       const body = await _request.json().catch(() => ({}))
       const card = body.card
 
-      if (!card?.number || !card?.holderName || !card?.expiryMonth || !card?.expiryYear || !card?.cvv) {
+      if (
+        !card?.number ||
+        !card?.holderName ||
+        !card?.expiryMonth ||
+        !card?.expiryYear ||
+        !card?.cvv
+      ) {
         throw badRequest("Dados do cartão incompletos")
       }
 
@@ -205,7 +203,7 @@ export async function POST(_request: Request, { params }: Params) {
               cardBrand: cardCharge.cardBrand,
               installments: cardCharge.installments,
               paidAt: new Date(),
-              lytexRawResponse: cardCharge as any,
+              lytexRawResponse: JSON.parse(JSON.stringify(cardCharge)),
             },
             update: {
               transactionId: cardCharge.transactionId,
@@ -216,7 +214,7 @@ export async function POST(_request: Request, { params }: Params) {
               installments: cardCharge.installments,
               status: "PAID",
               paidAt: new Date(),
-              lytexRawResponse: cardCharge as any,
+              lytexRawResponse: JSON.parse(JSON.stringify(cardCharge)),
             },
           }),
           db.booking.update({
@@ -257,7 +255,7 @@ export async function POST(_request: Request, { params }: Params) {
             cardLastDigits: cardCharge.cardLastDigits,
             cardBrand: cardCharge.cardBrand,
             installments: cardCharge.installments,
-            lytexRawResponse: cardCharge as any,
+            lytexRawResponse: JSON.parse(JSON.stringify(cardCharge)),
           },
           update: {
             transactionId: cardCharge.transactionId,
@@ -266,7 +264,7 @@ export async function POST(_request: Request, { params }: Params) {
             cardLastDigits: cardCharge.cardLastDigits,
             cardBrand: cardCharge.cardBrand,
             installments: cardCharge.installments,
-            lytexRawResponse: cardCharge as any,
+            lytexRawResponse: JSON.parse(JSON.stringify(cardCharge)),
           },
         })
 
@@ -303,8 +301,7 @@ export async function POST(_request: Request, { params }: Params) {
           cardBrand: cardCharge.cardBrand,
           installments: cardCharge.installments,
           transactionId: cardCharge.transactionId,
-          message:
-            "Pagamento em processamento. A confirmação pode levar alguns instantes.",
+          message: "Pagamento em processamento. A confirmação pode levar alguns instantes.",
         })
       }
 

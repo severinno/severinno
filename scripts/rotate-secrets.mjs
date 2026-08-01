@@ -17,7 +17,9 @@
 //   node scripts/rotate-secrets.mjs --apply            # grava <arquivo>.rotated
 //   node scripts/rotate-secrets.mjs --file .env        # processa um arquivo só
 //   node scripts/rotate-secrets.mjs --check            # CI guard: falha se .env
-//                                                      # ainda estiver no git
+//                                                      # ainda estiver no git OU se
+//                                                      # hooks de teste do seed
+//                                                      # vazarem p/ workflows de prod
 //   node scripts/rotate-secrets.mjs --help
 //
 // Segurança do output:
@@ -27,14 +29,18 @@
 //   - Nunca imprime o valor antigo de nenhum secret.
 //
 // Exit code:
-//   0 — ok (dry-run/apply concluído, ou --check com .env untracked)
+//   0 — ok (dry-run/apply concluído, ou --check com .env untracked e
+//       nenhum hook de teste do seed em workflow de produção)
 //   1 — erro (arquivo não encontrado, web-push indisponível p/ VAPID,
-//       ou --check encontrou .env rastreado)
+//       --check encontrou .env rastreado, ou hooks SEED_SPEC_PATCH /
+//       PROD_SEED_ALLOW_DEV vazaram para workflows de produção)
 // =============================================================================
 
 import { randomBytes } from "node:crypto"
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { execSync } from "node:child_process"
+import { scanWorkflows } from "./check-seed-hooks.mjs"
 
 // ── web-push (dependência de produção) — gera o par VAPID P-256 ───────────
 let webpush = null
@@ -293,8 +299,11 @@ if (args.includes("--help") || args.includes("-h")) {
   process.exit(0)
 }
 
-// ── --check: CI guard ──────────────────────────────────────────────────────
+// ── --check: CI guard (secrets + hooks de teste do seed) ──────────────────
 if (args.includes("--check")) {
+  let failed = false
+
+  // 1. .env ainda rastreado no git
   const tracked = trackedEnvFiles()
   if (tracked.length > 0) {
     console.error(
@@ -302,10 +311,43 @@ if (args.includes("--check")) {
         `   Execute: git rm --cached ${tracked.join(" ")}\n` +
         `   Depois rotacione os secrets: node scripts/rotate-secrets.mjs --apply`,
     )
-    process.exit(1)
+    failed = true
+  } else {
+    console.error("✅ Nenhum arquivo .env rastreado pelo git.")
   }
-  console.error("✅ Nenhum arquivo .env rastreado pelo git.")
-  process.exit(0)
+
+  // 2. Hooks de TESTE do seed em workflows de PRODUÇÃO — SEED_SPEC_PATCH e
+  //    PROD_SEED_ALLOW_DEV são TEST-ONLY (E2Es de seed em banco efêmero). Se
+  //    vazarem para um deploy, o seed de produção pode rodar com spec patchado
+  //    ou com o guard de produção contornado. Reutiliza o scanWorkflows do
+  //    check-seed-hooks.mjs (fail-closed, allowlist de workflows de teste).
+  const workflowDir = join(process.cwd(), ".github", "workflows")
+  let workflows = []
+  try {
+    workflows = readdirSync(workflowDir)
+      .filter((f) => f.endsWith(".yml"))
+      .sort()
+      .map((name) => ({ name, content: readFileSync(join(workflowDir, name), "utf8") }))
+  } catch {
+    // diretório inexistente (ex.: repo minimalista) — nada a verificar
+  }
+  const seedHookViolations = scanWorkflows(workflows)
+  if (seedHookViolations.length > 0) {
+    console.error(`❌ Hook(s) de teste do seed em workflow(s) de produção:`)
+    for (const v of seedHookViolations) {
+      console.error(`   - ${v.file}:${v.line}  ${v.hook}  →  ${v.text}`)
+    }
+    console.error(
+      `\n   SEED_SPEC_PATCH / PROD_SEED_ALLOW_DEV são TEST-ONLY (E2Es de seed).\n` +
+        `   Eles NUNCA devem aparecer em workflows de produção (deploy/release).\n` +
+        `   Ação: remova a referência OU use o guard dedicado: node scripts/check-seed-hooks.mjs`,
+    )
+    failed = true
+  } else {
+    console.error("✅ Nenhum hook de teste do seed em workflows de produção.")
+  }
+
+  process.exit(failed ? 1 : 0)
 }
 
 const apply = args.includes("--apply")

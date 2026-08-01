@@ -33,8 +33,6 @@ import {
   YAxis,
 } from "recharts"
 import {
-  ArrowDown,
-  ArrowUp,
   Banknote,
   ChevronDown,
   ChevronLeft,
@@ -47,7 +45,6 @@ import {
   Loader2,
   QrCode,
   Receipt,
-  Ticket,
   TrendingDown,
   TrendingUp,
   UserCircle,
@@ -196,7 +193,14 @@ export function AdminFinanceDashboard() {
     setExpandedProviders(new Set())
   }, [period])
 
-  const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+    dataUpdatedAt: _dataUpdatedAt,
+  } = useQuery({
     queryKey: ["admin", "finance", period, page],
     queryFn: () =>
       apiGet<FinanceResponse>("/api/admin/finance", {
@@ -227,7 +231,7 @@ export function AdminFinanceDashboard() {
     paymentMethods,
     transactions,
     total,
-    averageTicket,
+    averageTicket: _averageTicket,
     commissionPercent,
     providerStats,
     mrr,
@@ -271,7 +275,7 @@ export function AdminFinanceDashboard() {
   ]
 
   const grandTotal = summary.PAID.total + summary.PENDING.total
-  const mrrUp = mrr.growth >= 0
+  const _mrrUp = mrr.growth >= 0
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -722,7 +726,7 @@ function MonthlyRevenueChart({ data }: { data: MonthlyRevenue[] }) {
   )
 }
 
-function MrrTrendChart({ data, growth }: { data: MrrHistoryItem[]; growth: number }) {
+function MrrTrendChart({ data, growth: _growth }: { data: MrrHistoryItem[]; growth: number }) {
   if (data.length === 0 || data.every((d) => d.total === 0)) {
     return (
       <div className="text-muted-foreground flex h-[220px] items-center justify-center text-xs">

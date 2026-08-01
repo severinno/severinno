@@ -41,7 +41,7 @@ function staticPages(): MetadataRoute.Sitemap {
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Durante build (Docker, sem DB disponível), retorna apenas páginas estáticas
   try {
-    const [providers, categories] = await Promise.all([
+    const [providers, _categories] = await Promise.all([
       db.user.findMany({
         where: { role: "PROVIDER", active: true, slug: { not: null } },
         select: { slug: true, updatedAt: true },

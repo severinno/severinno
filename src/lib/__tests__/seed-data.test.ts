@@ -7,7 +7,7 @@
  * fixam os valores canônicos conhecidos.
  */
 
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import {
   slugify,
   CATEGORY_SPEC,
@@ -16,6 +16,7 @@ import {
   categorySlug,
   categoryOrder,
   buildSeedPlan,
+  printPlan,
   validateCategorySpec,
   assertValidCategorySpec,
   type CategorySeedInput,
@@ -338,5 +339,116 @@ describe("validateCategorySpec", () => {
 
   it("assertValidCategorySpec passa sem lançar no spec canônico", () => {
     expect(() => assertValidCategorySpec(CATEGORY_SPEC)).not.toThrow()
+  })
+})
+
+describe("printPlan", () => {
+  /** Captura console.log durante a execução de fn (printPlan é console-only). */
+  function captureLog(fn: () => void): string[] {
+    const lines: string[] = []
+    const spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+      lines.push(args.map(String).join(" "))
+    })
+    try {
+      fn()
+    } finally {
+      spy.mockRestore()
+    }
+    return lines
+  }
+
+  it("controle negativo: estado canônico não dispara aviso de renomeação", () => {
+    const current = canonicalCurrentState()
+    const plan = buildSeedPlan(current.categories, current.settings)
+    const lines = captureLog(() => printPlan(plan, current))
+    const out = lines.join("\n")
+
+    expect(out).not.toContain("POSSÍVEL RENOMEAÇÃO")
+    // Header do bloco de extras (casing real do printPlan — "categoria(s)"
+    // minúsculo); validar também a linha de settings extras para cobrir
+    // AMBAS as seções "Fora do spec" no controle negativo.
+    expect(out).not.toContain("Fora do spec")
+    expect(out).not.toContain("categoria(s) extra(s)")
+    expect(out).not.toContain("setting(s) extra(s)")
+    expect(out).toContain("DRY-RUN — nenhuma escrita será feita no banco")
+    expect(out).toContain("27 inalteradas")
+  })
+
+  it("renomeação com um único filho mostra a contagem singular", () => {
+    const current = canonicalCurrentState()
+    // "Pintura" (level 1, parent Reparos) tem 3 filhos no spec — remove 2
+    // do estado atual para deixar apenas 1 apontando para ela.
+    // (filtra por NAME: o slug canônico embute o slug do pai, então
+    // "pintura-interna-pintura" ≠ "pintura-interna-reparos".)
+    const pinturaKids = ["Pintura interna", "Pintura externa"]
+    current.categories = current.categories.filter((c) => !pinturaKids.includes(c.name))
+    const pintura = current.categories.find((c) => c.slug === "pintura-reparos")!
+    pintura.slug = "pintura-reforma" // renomeação: parent era "Reforma"
+
+    const plan = buildSeedPlan(current.categories, current.settings)
+    const lines = captureLog(() => printPlan(plan, current))
+    const out = lines.join("\n")
+
+    expect(out).toContain(
+      "• 'Pintura': banco tem slug 'pintura-reforma', o spec quer 'pintura-reparos'",
+    )
+    expect(out).toContain("1 filho(s) no banco ainda aponta(m) para a linha antiga")
+  })
+
+  it.each([
+    // Quantos filhos de "Elétrica" permanecem no estado atual apontando para a
+    // linha antiga — null (sem sufixo), 1, 2 e 3 (todos os filhos do spec).
+    { kids: 0, expected: null },
+    { kids: 1, expected: "1 filho(s) no banco ainda aponta(m) para a linha antiga" },
+    { kids: 2, expected: "2 filho(s) no banco ainda aponta(m) para a linha antiga" },
+    { kids: 3, expected: "3 filho(s) no banco ainda aponta(m) para a linha antiga" },
+  ])("renomeação com $kids filho(s) no banco → contagem correta no aviso", ({ kids, expected }) => {
+    const current = canonicalCurrentState()
+    // Filhos do spec sob "Elétrica" (level 2) — controlam a contagem do aviso.
+    const eletricaKids = ["Tomadas e interruptores", "Curto-circuito", "Quadro elétrico"]
+    // Remove (3 - kids) filhos do estado atual; kids=3 mantém todos.
+    const toRemove = eletricaKids.slice(0, eletricaKids.length - kids)
+    current.categories = current.categories.filter((c) => !toRemove.includes(c.name))
+    // Renomeação: "Elétrica" existe no banco sob um slug antigo.
+    const eletrica = current.categories.find((c) => c.slug === "eletrica-reparos")!
+    eletrica.slug = "eletrica-eletricidade"
+
+    const plan = buildSeedPlan(current.categories, current.settings)
+    const lines = captureLog(() => printPlan(plan, current))
+    const out = lines.join("\n")
+
+    expect(out).toContain("⚠️  POSSÍVEL RENOMEAÇÃO DETECTADA")
+    expect(out).toContain(
+      "• 'Elétrica': banco tem slug 'eletrica-eletricidade', o spec quer 'eletrica-reparos'",
+    )
+    // Aviso de órfã — emitido uma vez, fora do loop de renomeações (vale p/ todos os casos)
+    expect(out).toContain("O upsert CRIARÁ a linha nova e DEIXARÁ a antiga órfã")
+    if (expected !== null) {
+      expect(out).toContain(expected)
+    } else {
+      // kids=0 → printPlan NÃO adiciona o sufixo de contagem
+      expect(out).not.toContain("filho(s) no banco ainda aponta(m)")
+    }
+  })
+
+  it("categoria inativa no banco exibe o aviso 'O seed NÃO as reativa' sem marcar update no plano", () => {
+    const current = canonicalCurrentState()
+    const limpeza = current.categories.find((c) => c.slug === "limpeza")!
+    limpeza.active = false
+
+    const plan = buildSeedPlan(current.categories, current.settings)
+    const lines = captureLog(() => printPlan(plan, current))
+    const out = lines.join("\n")
+
+    // active NÃO é comparado no reconcile → ação continua unchanged, nunca update
+    const limpezaAction = plan.categories.find((a) => a.slug === "limpeza")!
+    expect(limpezaAction.action).toBe("unchanged")
+    expect(plan.summary.categoriesUpdate).toBe(0)
+
+    // Bloco de inativas do printPlan (linhas 482-490 do seed-data.ts)
+    expect(out).toContain("1 categoria(s) inativa(s) no banco: Limpeza")
+    expect(out).toContain(
+      "O seed NÃO as reativa (reconcile seguro preserva a desativação do admin).",
+    )
   })
 })

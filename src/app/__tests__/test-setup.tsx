@@ -39,7 +39,7 @@ vi.mock("@tanstack/react-query", () => ({
     refetch: vi.fn(),
   })),
   useMutation: vi.fn((opts?: { onSuccess?: (data: unknown) => void }) => ({
-    mutate: vi.fn((data: unknown) => {
+    mutate: vi.fn((_data: unknown) => {
       opts?.onSuccess?.({ user: { id: "1", name: "Test User", role: "CLIENT" } })
     }),
     mutateAsync: vi.fn(),
@@ -135,15 +135,15 @@ vi.mock("sonner", () => ({
 vi.mock("framer-motion", () => {
   const MotionDiv = ({ children, ...props }: any) => {
     const {
-      initial,
-      animate,
-      exit,
-      transition,
-      whileHover,
-      whileTap,
-      variants,
-      layout,
-      layoutId,
+      initial: _initial,
+      animate: _animate,
+      exit: _exit,
+      transition: _transition,
+      whileHover: _whileHover,
+      whileTap: _whileTap,
+      variants: _variants,
+      layout: _layout,
+      layoutId: _layoutId,
       ...safe
     } = props
     return <div {...safe}>{children}</div>
@@ -152,11 +152,11 @@ vi.mock("framer-motion", () => {
     motion: {
       div: MotionDiv,
       span: ({ children, ...props }: any) => {
-        const { initial, animate, exit, ...safe } = props
+        const { initial: _initial, animate: _animate, exit: _exit, ...safe } = props
         return <span {...safe}>{children}</span>
       },
       section: ({ children, ...props }: any) => {
-        const { initial, animate, exit, ...safe } = props
+        const { initial: _initial, animate: _animate, exit: _exit, ...safe } = props
         return <section {...safe}>{children}</section>
       },
     },
@@ -168,7 +168,7 @@ vi.mock("framer-motion", () => {
 
 vi.mock("lucide-react", () => {
   const Icon = ({ children, ...props }: any) => {
-    const { size, className, ...safe } = props
+    const { size: _size, className, ...safe } = props
     return (
       <span data-testid="icon" className={className} {...safe}>
         {children}

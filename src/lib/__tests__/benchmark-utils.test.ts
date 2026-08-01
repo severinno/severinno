@@ -104,7 +104,7 @@ describe("measure — edge cases", () => {
 describe("measure — warmup isolation", () => {
   it("warmup calls (3) do not affect sample count", () => {
     let callCount = 0
-    const result = measure(() => {
+    const _result = measure(() => {
       callCount++
     }, 10)
     // 3 warmup + 10 measured = 13 total calls
@@ -112,7 +112,7 @@ describe("measure — warmup isolation", () => {
     expect(callCount).toBe(13)
 
     // Re-run with the same function to verify all measured calls counted
-    const result2 = measure(() => {
+    const _result2 = measure(() => {
       callCount++
     }, 5)
     expect(callCount).toBe(13 + 3 + 5) // 21 total

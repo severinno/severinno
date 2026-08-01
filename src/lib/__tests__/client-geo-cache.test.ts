@@ -29,17 +29,21 @@ const BASE_TIME = 1_700_000_000_000
 // localStorage mock
 // ---------------------------------------------------------------------------
 
-let storage: Record<string, string>
+let _storage: Record<string, string>
 let localStorageMock: Storage
 
 function createMockStorage(throwOnAccess = false): Storage {
   const store: Record<string, string> = {}
   let keys: string[] = []
 
-  const updateKeys = () => { keys = Object.keys(store) }
+  const updateKeys = () => {
+    keys = Object.keys(store)
+  }
 
   return {
-    get length() { return keys.length },
+    get length() {
+      return keys.length
+    },
     key: (index: number) => keys[index] ?? null,
     getItem: (key: string) => {
       if (throwOnAccess) throw new DOMException("localStorage not available", "QuotaExceededError")
@@ -148,7 +152,7 @@ beforeEach(async () => {
   vi.resetModules()
 
   // Fresh localStorage for each test
-  storage = {}
+  _storage = {}
   localStorageMock = createMockStorage()
   vi.stubGlobal("localStorage", localStorageMock)
 
@@ -317,7 +321,14 @@ describe("FIFO eviction", () => {
     storeNCities(100)
     // Re-set the first entry — moves it to back
     mod.setCachedGeo("City-000", [
-      { lat: 0, lng: 0, displayName: "City-000 (refreshed)", type: "city", category: "place", importance: 0.5 },
+      {
+        lat: 0,
+        lng: 0,
+        displayName: "City-000 (refreshed)",
+        type: "city",
+        category: "place",
+        importance: 0.5,
+      },
     ])
 
     // Confirms re-set moves City-000 to the back of the queue order

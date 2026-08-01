@@ -97,9 +97,14 @@ export function estimatePolygonRadius(
 /** Layer / source ID used for the radius circle on the map. */
 export const RADIUS_SOURCE_ID = "radius-circle-source"
 
+/** Minimal GeoJSON source interface (subset used by this module). */
+export interface GeoJsonSourceLike {
+  setData(data: Record<string, unknown>): void
+}
+
 /** Minimal Map-like interface that syncRadiusCircle / removeRadiusCircle use. */
 export interface MapLike {
-  getSource(id: string): Record<string, unknown> | undefined
+  getSource(id: string): GeoJsonSourceLike | undefined
   addSource(id: string, source: Record<string, unknown>): void
   getLayer(id: string): boolean | undefined
   addLayer(layer: Record<string, unknown>): void
@@ -127,13 +132,13 @@ export function syncRadiusCircle(map: MapLike, lat: number, lng: number, radiusK
   const existing = map.getSource(RADIUS_SOURCE_ID)
   if (existing) {
     // Source already exists — just update the data in-place
-    ;(existing as any).setData(geojson as any)
+    existing.setData(geojson)
     return
   }
 
   map.addSource(RADIUS_SOURCE_ID, {
     type: "geojson",
-    data: geojson as any,
+    data: geojson,
   })
 
   // Semi-transparent fill
@@ -228,13 +233,13 @@ export function syncRadiusHandle(map: MapLike, lat: number, lng: number, radiusK
 
   const existing = map.getSource(HANDLE_SOURCE_ID)
   if (existing) {
-    ;(existing as any).setData(geojson as any)
+    existing.setData(geojson)
     return
   }
 
   map.addSource(HANDLE_SOURCE_ID, {
     type: "geojson",
-    data: geojson as any,
+    data: geojson,
   })
 
   map.addLayer({
@@ -249,6 +254,25 @@ export function syncRadiusHandle(map: MapLike, lat: number, lng: number, radiusK
       "circle-opacity": 1,
     },
   })
+}
+
+/** Minimal event object shape used by drag handlers. */
+export interface DragEventLike {
+  point: { x: number; y: number }
+  preventDefault?: () => void
+}
+
+/**
+ * Map subset required for interactive edge dragging: full MapLibre Map
+ * instance (needs on/off/unproject/getCanvas) plus the MapLike source API.
+ */
+export interface EdgeDragMap extends MapLike {
+  getCanvas(): HTMLCanvasElement
+  unproject(point: { x: number; y: number }): { lat: number; lng: number }
+  on(event: string, handler: (e: DragEventLike) => void): void
+  on(event: string, layerId: string, handler: (e: DragEventLike) => void): void
+  off(event: string, handler: (e: DragEventLike) => void): void
+  off(event: string, layerId: string, handler: (e: DragEventLike) => void): void
 }
 
 /** Remove the drag handle layer + source. */
@@ -280,7 +304,7 @@ export function removeRadiusHandle(map: MapLike): void {
  * @returns         A cleanup function that removes all event handlers.
  */
 export function makeRadiusEdgeDraggable(
-  map: any,
+  map: EdgeDragMap,
   centerLat: number,
   centerLng: number,
   onDragEnd: (newRadiusKm: number) => void,
@@ -288,7 +312,7 @@ export function makeRadiusEdgeDraggable(
   let isDragging = false
   let finalRadius = 0
 
-  const onMouseDown = (e: any) => {
+  const onMouseDown = (e: DragEventLike) => {
     e.preventDefault?.()
     isDragging = true
     if (map.getCanvas) map.getCanvas().style.cursor = "grabbing"
@@ -299,7 +323,7 @@ export function makeRadiusEdgeDraggable(
     )
   }
 
-  const onMouseMove = (e: any) => {
+  const onMouseMove = (e: DragEventLike) => {
     if (!isDragging) return
     const coords = map.unproject(e.point)
     const newRadius = Math.round(
@@ -342,24 +366,23 @@ export function makeRadiusEdgeDraggable(
 
   // (mouseleave on global map is handled by onMouseUp, so onMouseLeaveG is unused)
 
-  // Attach — use direct (map as any).on/off since MapLike doesn't include event methods
-  const m = map as any
-  m.on("mousedown", HANDLE_LAYER_ID, onMouseDown)
-  m.on("mousemove", onMouseMove)
-  m.on("mouseup", onMouseUp)
-  m.on("mouseleave", onMouseUp)
-  m.on("mouseenter", HANDLE_LAYER_ID, onMouseEnterH)
-  m.on("mouseleave", HANDLE_LAYER_ID, onMouseLeaveH)
+  // Attach event handlers
+  map.on("mousedown", HANDLE_LAYER_ID, onMouseDown)
+  map.on("mousemove", onMouseMove)
+  map.on("mouseup", onMouseUp)
+  map.on("mouseleave", onMouseUp)
+  map.on("mouseenter", HANDLE_LAYER_ID, onMouseEnterH)
+  map.on("mouseleave", HANDLE_LAYER_ID, onMouseLeaveH)
 
   return () => {
     try {
-      m.off("mousedown", HANDLE_LAYER_ID, onMouseDown)
-      m.off("mousemove", onMouseMove)
-      m.off("mouseup", onMouseUp)
-      m.off("mouseleave", onMouseUp)
-      m.off("mouseenter", HANDLE_LAYER_ID, onMouseEnterH)
-      m.off("mouseleave", HANDLE_LAYER_ID, onMouseLeaveH)
-      if (m.getCanvas) m.getCanvas().style.cursor = ""
+      map.off("mousedown", HANDLE_LAYER_ID, onMouseDown)
+      map.off("mousemove", onMouseMove)
+      map.off("mouseup", onMouseUp)
+      map.off("mouseleave", onMouseUp)
+      map.off("mouseenter", HANDLE_LAYER_ID, onMouseEnterH)
+      map.off("mouseleave", HANDLE_LAYER_ID, onMouseLeaveH)
+      if (map.getCanvas) map.getCanvas().style.cursor = ""
     } catch {
       // map may be destroyed
     }

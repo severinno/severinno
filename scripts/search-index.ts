@@ -15,14 +15,7 @@
  */
 
 import { PrismaClient } from "@prisma/client"
-import {
-  getClient,
-  ensureIndices,
-  deleteIndices,
-  bulkIndex,
-  INDICES,
-} from "../src/lib/search"
-import logger from "../src/lib/logger"
+import { getClient, ensureIndices, deleteIndices, bulkIndex, INDICES } from "../src/lib/search"
 
 const db = new PrismaClient()
 
@@ -145,7 +138,7 @@ async function indexCategories(): Promise<number> {
 
 async function main() {
   const args = process.argv.slice(2)
-  const shouldDelete = args.includes("--delete")
+  const _shouldDelete = args.includes("--delete")
   const shouldRefresh = args.includes("--refresh")
 
   // Validate OpenSearch connection

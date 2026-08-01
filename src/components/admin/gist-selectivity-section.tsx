@@ -49,7 +49,6 @@ import type { GeoMetricsResponse } from "@/app/api/admin/geo-metrics/route"
 import {
   POSTGIS_FIXED_US,
   POSTGIS_PER_ROW_US,
-  PROVIDER_COUNTS,
   computeProviderCounts,
   computeSelectivityPoints,
   computeCrossovers,
@@ -84,6 +83,24 @@ export interface GiSTSelectivitySectionProps {
   baselines: Record<string, number>
   onReindexSuccess?: () => void
   isRefetching?: boolean
+}
+
+// ── Recharts Customized prop shapes (intersection dots) ───────────────────
+
+type FormattedGraphicalItem = {
+  item?: { props?: { dataKey?: string } }
+  points?: Array<{ x: number; y: number }>
+}
+
+type IntersectionDot = {
+  key: string
+  value: number
+  label: string
+  isPostGIS: boolean
+  color: string
+  count: number
+  cx: number
+  cy: number
 }
 
 // ---------------------------------------------------------------------------
@@ -794,12 +811,16 @@ export function GiSTSelectivitySection({
               {/* Interactive intersection dots */}
               {refLineIndex >= 0 && intersectionCurves.length > 0 && (
                 <Customized
-                  component={({ formattedGraphicalItems }: any) => {
+                  component={({
+                    formattedGraphicalItems,
+                  }: {
+                    formattedGraphicalItems?: FormattedGraphicalItem[]
+                  }) => {
                     if (!formattedGraphicalItems) return null
-                    const dots = intersectionCurves
+                    const dots: IntersectionDot[] = intersectionCurves
                       .map((curve) => {
                         const item = formattedGraphicalItems.find(
-                          (fi: any) => fi.item?.props?.dataKey === curve.key,
+                          (fi) => fi.item?.props?.dataKey === curve.key,
                         )
                         if (!item?.points?.[refLineIndex]) return null
                         return {
@@ -808,46 +829,43 @@ export function GiSTSelectivitySection({
                           cy: item.points[refLineIndex].y,
                         }
                       })
-                      .filter(Boolean)
+                      .filter((d): d is IntersectionDot => d !== null)
 
                     if (dots.length === 0) return null
 
                     return (
                       <g className="intersection-dots">
-                        {dots.map(
-                          (d: any) =>
-                            d && (
-                              <g key={d.key}>
-                                <circle
-                                  cx={d.cx}
-                                  cy={d.cy}
-                                  r={7}
-                                  fill="hsl(var(--background))"
-                                  stroke={d.color}
-                                  strokeWidth={2.5}
-                                  style={{
-                                    cursor: "pointer",
-                                    transition: "r 150ms ease, stroke-width 150ms ease",
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.r = "9px"
-                                    e.currentTarget.style.strokeWidth = "3px"
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.r = "7px"
-                                    e.currentTarget.style.strokeWidth = "2.5px"
-                                  }}
-                                />
-                                <circle
-                                  cx={d.cx}
-                                  cy={d.cy}
-                                  r={3}
-                                  fill={d.color}
-                                  className="pointer-events-none"
-                                />
-                              </g>
-                            ),
-                        )}
+                        {dots.map((d) => (
+                          <g key={d.key}>
+                            <circle
+                              cx={d.cx}
+                              cy={d.cy}
+                              r={7}
+                              fill="hsl(var(--background))"
+                              stroke={d.color}
+                              strokeWidth={2.5}
+                              style={{
+                                cursor: "pointer",
+                                transition: "r 150ms ease, stroke-width 150ms ease",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.r = "9px"
+                                e.currentTarget.style.strokeWidth = "3px"
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.r = "7px"
+                                e.currentTarget.style.strokeWidth = "2.5px"
+                              }}
+                            />
+                            <circle
+                              cx={d.cx}
+                              cy={d.cy}
+                              r={3}
+                              fill={d.color}
+                              className="pointer-events-none"
+                            />
+                          </g>
+                        ))}
                       </g>
                     )
                   }}

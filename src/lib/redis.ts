@@ -137,7 +137,7 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
         // while the rest continues to serve.
       })
       clusterClient.on("+node", (node: unknown) => {
-        console.info(`[redis] cluster node added: ${JSON.stringify(node)}`)
+        logger.info({ node: JSON.stringify(node) }, "[redis] cluster node added")
       })
       clusterClient.on("-node", (node: unknown) => {
         console.warn(`[redis] cluster node removed: ${JSON.stringify(node)}`)
@@ -461,7 +461,7 @@ async function tryRecoverTier(): Promise<void> {
           console.warn(`[redis] cluster node error (${JSON.stringify(node)}): ${err.message}`)
         })
         clusterClient.on("+node", (node: unknown) => {
-          console.info(`[redis] cluster node added: ${JSON.stringify(node)}`)
+          logger.info({ node: JSON.stringify(node) }, "[redis] cluster node added")
         })
         clusterClient.on("-node", (node: unknown) => {
           console.warn(`[redis] cluster node removed: ${JSON.stringify(node)}`)
@@ -493,7 +493,7 @@ async function tryRecoverTier(): Promise<void> {
 
       activeTier = targetTier
       everConnected = true
-      console.info(`[redis] recovered to ${targetTier} (was at lower tier)`)
+      logger.info({ targetTier }, "[redis] recovered tier")
 
       // If we recovered to standalone and cluster was the original config,
       // we'll wait for the next tick to try cluster recovery

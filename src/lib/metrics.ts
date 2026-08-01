@@ -83,7 +83,6 @@ export async function getBusinessMetrics(days = 30): Promise<BusinessMetrics> {
 
     const clients = userCounts.find((u) => u.role === "CLIENT")
     const providers = userCounts.find((u) => u.role === "PROVIDER")
-    const admins = userCounts.find((u) => u.role === "ADMIN")
     const totalUsers = userCounts.reduce((acc, u) => acc + u._count.id, 0)
 
     const verifiedProviders = await db.user.count({
@@ -110,9 +109,10 @@ export async function getBusinessMetrics(days = 30): Promise<BusinessMetrics> {
     const totalQuotes = quoteCounts
     const conversionRate = totalQuotes > 0 ? +(totalBookings / totalQuotes).toFixed(3) : null
     const quoteToBookingRate = totalQuotes > 0 ? +(quoteBookings / totalQuotes).toFixed(3) : null
-    const avgBookingValue = totalBookings > 0 && paymentAgg._sum.amount
-      ? +(paymentAgg._sum.amount / totalBookings).toFixed(2)
-      : null
+    const avgBookingValue =
+      totalBookings > 0 && paymentAgg._sum.amount
+        ? +(paymentAgg._sum.amount / totalBookings).toFixed(2)
+        : null
 
     return {
       periodStart: since.toISOString(),

@@ -51,6 +51,17 @@ vi.mock("@/lib/db", () => ({
   },
 }))
 
+// Demo-accounts gate — controlável por teste (prod vs dev)
+let _demoEnabled = true
+
+vi.mock("@/lib/demo-accounts", () => ({
+  isDemoAccountsEnabled: vi.fn(() => _demoEnabled),
+  isDemoAccountEmail: (email: string | null | undefined) =>
+    ["admin@severinno.com", "cliente@severinno.com", "joao@severinno.com"].includes(
+      (email ?? "").toLowerCase(),
+    ),
+}))
+
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { POST as login } from "../auth/login/route"
@@ -92,6 +103,15 @@ const mockUser = {
   updatedAt: new Date("2025-01-01"),
 } as any
 
+// Payload mínimo de cadastro (reusado nos describes de register)
+const clientPayload = {
+  name: "Maria Souza",
+  email: "maria@example.com",
+  password: "123456",
+  confirmPassword: "123456",
+  role: "CLIENT",
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("POST /api/auth/login", () => {
@@ -100,6 +120,7 @@ describe("POST /api/auth/login", () => {
     ;(vi.mocked(db.user.findUnique) as any).mockReset()
     vi.mocked(verifyPassword).mockReturnValue(true)
     _mockSession = null
+    _demoEnabled = true
   })
 
   it("returns user on successful login", async () => {
@@ -172,19 +193,70 @@ describe("POST /api/auth/login", () => {
   })
 })
 
+describe("POST /api/auth/login — contas demo (prod vs dev)", () => {
+  beforeEach(() => {
+    ;(vi as any).clearAllMocks()
+    ;(vi.mocked(db.user.findUnique) as any).mockReset()
+    vi.mocked(verifyPassword).mockReturnValue(true)
+    _mockSession = null
+    _demoEnabled = true
+  })
+
+  const demoAdmin = {
+    ...mockUser,
+    email: "admin@severinno.com",
+    role: "ADMIN",
+  } as any
+
+  it("permite login de conta demo em dev/test", async () => {
+    _demoEnabled = true
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(demoAdmin)
+
+    const res = await login(
+      createMockRequest({
+        method: "POST",
+        body: { email: "admin@severinno.com", password: "admin123" },
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect(createSession).toHaveBeenCalledWith("user-1", "ADMIN")
+  })
+
+  it("bloqueia login de conta demo em produção (401)", async () => {
+    _demoEnabled = false
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(demoAdmin)
+
+    const res = await login(
+      createMockRequest({
+        method: "POST",
+        body: { email: "admin@severinno.com", password: "admin123" },
+      }),
+    )
+    expect(res.status).toBe(401)
+    expect(createSession).not.toHaveBeenCalled()
+  })
+
+  it("permite login de usuário comum em produção", async () => {
+    _demoEnabled = false
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(mockUser)
+
+    const res = await login(
+      createMockRequest({
+        method: "POST",
+        body: { email: "joao@example.com", password: "123456" },
+      }),
+    )
+    expect(res.status).toBe(200)
+    expect(createSession).toHaveBeenCalled()
+  })
+})
+
 describe("POST /api/auth/register", () => {
   beforeEach(() => {
     ;(vi as any).clearAllMocks()
     _mockSession = null
+    _demoEnabled = true
   })
-
-  const clientPayload = {
-    name: "Maria Souza",
-    email: "maria@example.com",
-    password: "123456",
-    confirmPassword: "123456",
-    role: "CLIENT",
-  }
 
   it("creates a client user and returns 201", async () => {
     ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
@@ -269,6 +341,52 @@ describe("POST /api/auth/register", () => {
     })
     const res = await register(req)
     expect(res.status).toBe(400)
+  })
+})
+
+describe("POST /api/auth/register — emails demo (prod vs dev)", () => {
+  beforeEach(() => {
+    ;(vi as any).clearAllMocks()
+    _mockSession = null
+    _demoEnabled = true
+  })
+
+  it("bloqueia cadastro com email demo em produção (409)", async () => {
+    _demoEnabled = false
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
+
+    const res = await register(
+      createMockRequest({
+        method: "POST",
+        body: { ...clientPayload, email: "admin@severinno.com" },
+      }),
+    )
+    const parsed = await parseResponse(res)
+    expect(parsed.status).toBe(409)
+    expect(parsed.body).toEqual({ error: "E-mail já cadastrado" })
+    expect(db.user.create).not.toHaveBeenCalled()
+  })
+
+  it("permite cadastro com email demo em dev/test", async () => {
+    _demoEnabled = true
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.user.create) as any).mockResolvedValue({
+      id: "user-2",
+      name: "Maria Souza",
+      email: "cliente@severinno.com",
+      role: "CLIENT",
+      avatarUrl: null,
+    } as any)
+
+    const res = await register(
+      createMockRequest({
+        method: "POST",
+        body: { ...clientPayload, email: "cliente@severinno.com" },
+      }),
+    )
+    const parsed = await parseResponse(res)
+    expect(parsed.status).toBe(201)
+    expect(db.user.create).toHaveBeenCalled()
   })
 })
 

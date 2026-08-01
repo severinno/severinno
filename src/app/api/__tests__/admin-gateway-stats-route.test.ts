@@ -14,13 +14,15 @@ import { NextRequest } from "next/server"
 
 // ---- Mock data builders ---------------------------------------------------
 
-function buildInvoice(overrides: Partial<{
-  _id: string
-  status: string
-  totalValue: number
-  createdAt: string
-  paymentMethods: { list: string[] }
-}> = {}) {
+function buildInvoice(
+  overrides: Partial<{
+    _id: string
+    status: string
+    totalValue: number
+    createdAt: string
+    paymentMethods: { list: string[] }
+  }> = {},
+) {
   return {
     _id: overrides._id ?? `inv-${Math.random().toString(36).slice(2, 8)}`,
     _hashId: "hash-" + Math.random().toString(36).slice(2, 8),
@@ -34,7 +36,7 @@ function buildInvoice(overrides: Partial<{
   }
 }
 
-function buildPaginatedResponse(invoices: ReturnType<typeof buildInvoice>[]) {
+function _buildPaginatedResponse(invoices: ReturnType<typeof buildInvoice>[]) {
   return {
     results: invoices,
     paginate: {
@@ -243,7 +245,11 @@ describe("GET /api/admin/gateway/stats — method distribution", () => {
     expect(body.methodDistribution).toHaveLength(2)
     // PIX: 50000 + 20000 = 70000
     // CARD: 30000 + 20000 = 50000
-    expect(body.methodDistribution.find((m: { method: string }) => m.method === "PIX")?.total).toBe(70000)
-    expect(body.methodDistribution.find((m: { method: string }) => m.method === "CARD")?.total).toBe(50000)
+    expect(body.methodDistribution.find((m: { method: string }) => m.method === "PIX")?.total).toBe(
+      70000,
+    )
+    expect(
+      body.methodDistribution.find((m: { method: string }) => m.method === "CARD")?.total,
+    ).toBe(50000)
   })
 })

@@ -23,17 +23,8 @@
  */
 
 import * as React from "react"
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query"
-import {
-  ArrowLeft,
-  Loader2,
-  MessageSquare,
-  Send,
-} from "lucide-react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { ArrowLeft, Loader2, MessageSquare, Send } from "lucide-react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
@@ -49,10 +40,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import {
-  EmptyState,
-  SectionTitle,
-} from "@/components/shared/dashboard-shell"
+import { SectionTitle } from "@/components/shared/dashboard-shell"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,12 +105,8 @@ export function ClientMessages() {
   const params = useViewStore((s) => s.params) as { with?: string }
   const qc = useQueryClient()
 
-  const [selectedPeerId, setSelectedPeerId] = React.useState<string | null>(
-    params.with ?? null,
-  )
-  const [mobileThreadOpen, setMobileThreadOpen] = React.useState(
-    !!params.with,
-  )
+  const [selectedPeerId, setSelectedPeerId] = React.useState<string | null>(params.with ?? null)
+  const [mobileThreadOpen, setMobileThreadOpen] = React.useState(!!params.with)
 
   // Conversations list
   const conversationsQuery = useQuery<ConversationsResponse>({
@@ -134,8 +118,7 @@ export function ClientMessages() {
   // Active thread
   const threadQuery = useQuery<ThreadResponse>({
     queryKey: ["messages", "thread", selectedPeerId],
-    queryFn: () =>
-      apiGet<ThreadResponse>("/api/messages", { with: selectedPeerId }),
+    queryFn: () => apiGet<ThreadResponse>("/api/messages", { with: selectedPeerId }),
     enabled: !!selectedPeerId,
     refetchInterval: 15_000,
   })
@@ -144,24 +127,21 @@ export function ClientMessages() {
   const { on, isConnected } = useRealtime()
   React.useEffect(() => {
     if (!user?.id) return
-    const off1 = on<{ fromId: string; toId: string; content: string }>(
-      "message:new",
-      (data) => {
-        // Invalidate the conversations list so ordering/unread update.
-        qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
-        if (data?.fromId && data.fromId === selectedPeerId) {
-          // Active thread — invalidate the thread (server marks read on GET).
-          qc.invalidateQueries({
-            queryKey: ["messages", "thread", selectedPeerId],
-          })
-        } else if (data?.fromId && data.toId === user.id) {
-          // Other conversation — toast + invalidate its thread if cached.
-          toast.info("Nova mensagem recebida.", {
-            description: data.content?.slice(0, 80),
-          })
-        }
-      },
-    )
+    const off1 = on<{ fromId: string; toId: string; content: string }>("message:new", (data) => {
+      // Invalidate the conversations list so ordering/unread update.
+      qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
+      if (data?.fromId && data.fromId === selectedPeerId) {
+        // Active thread — invalidate the thread (server marks read on GET).
+        qc.invalidateQueries({
+          queryKey: ["messages", "thread", selectedPeerId],
+        })
+      } else if (data?.fromId && data.toId === user.id) {
+        // Other conversation — toast + invalidate its thread if cached.
+        toast.info("Nova mensagem recebida.", {
+          description: data.content?.slice(0, 80),
+        })
+      }
+    })
     return () => {
       off1()
     }
@@ -170,8 +150,7 @@ export function ClientMessages() {
   // ---- Send message ------------------------------------------------------------
   const [draft, setDraft] = React.useState("")
   const sendMutation = useMutation({
-    mutationFn: (vars: { toId: string; content: string }) =>
-      apiPost("/api/messages", vars),
+    mutationFn: (vars: { toId: string; content: string }) => apiPost("/api/messages", vars),
     onSuccess: () => {
       setDraft("")
       qc.invalidateQueries({
@@ -204,19 +183,11 @@ export function ClientMessages() {
 
   return (
     <div className="space-y-4">
-      <SectionTitle
-        title="Mensagens"
-        description="Converse com seus prestadores."
-      />
+      <SectionTitle title="Mensagens" description="Converse com seus prestadores." />
 
       <Card className="grid h-[70vh] grid-cols-1 overflow-hidden py-0 md:grid-cols-[20rem_1fr]">
         {/* Conversation list */}
-        <div
-          className={cn(
-            "flex flex-col border-r",
-            mobileThreadOpen && "hidden md:flex",
-          )}
-        >
+        <div className={cn("flex flex-col border-r", mobileThreadOpen && "hidden md:flex")}>
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
             <p className="text-sm font-semibold">Conversas</p>
             <Badge
@@ -238,16 +209,15 @@ export function ClientMessages() {
 
           <ScrollArea className="flex-1">
             {conversationsQuery.isLoading ? (
-              <div className="flex items-center justify-center gap-2 p-6 text-xs text-muted-foreground">
+              <div className="text-muted-foreground flex items-center justify-center gap-2 p-6 text-xs">
                 <Loader2 className="size-4 animate-spin" />
                 Carregando…
               </div>
             ) : conversations.length === 0 ? (
               <div className="flex flex-col items-center gap-2 p-6 text-center">
-                <MessageSquare className="size-6 text-muted-foreground/60" />
-                <p className="text-xs text-muted-foreground">
-                  Nenhuma conversa ainda. Inicie uma conversa a partir do
-                  perfil de um prestador.
+                <MessageSquare className="text-muted-foreground/60 size-6" />
+                <p className="text-muted-foreground text-xs">
+                  Nenhuma conversa ainda. Inicie uma conversa a partir do perfil de um prestador.
                 </p>
               </div>
             ) : (
@@ -260,20 +230,15 @@ export function ClientMessages() {
                         type="button"
                         onClick={() => handleSelectPeer(c.peerId)}
                         className={cn(
-                          "flex w-full items-center gap-3 px-3 py-2.5 text-left outline-none transition-colors",
-                          active
-                            ? "bg-primary/10"
-                            : "hover:bg-accent/50",
+                          "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors outline-none",
+                          active ? "bg-primary/10" : "hover:bg-accent/50",
                         )}
                       >
                         <Avatar className="size-9 shrink-0">
                           {c.peer?.avatarUrl ? (
-                            <AvatarImage
-                              src={c.peer.avatarUrl}
-                              alt={c.peer.name}
-                            />
+                            <AvatarImage src={c.peer.avatarUrl} alt={c.peer.name} />
                           ) : null}
-                          <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
+                          <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
                             {initials(c.peer?.name)}
                           </AvatarFallback>
                         </Avatar>
@@ -282,16 +247,14 @@ export function ClientMessages() {
                             <p className="truncate text-sm font-medium">
                               {c.peer?.name ?? "Usuário"}
                             </p>
-                            <span className="shrink-0 text-[10px] text-muted-foreground">
+                            <span className="text-muted-foreground shrink-0 text-[10px]">
                               {formatRelative(c.lastAt)}
                             </span>
                           </div>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {c.lastMessage}
-                          </p>
+                          <p className="text-muted-foreground truncate text-xs">{c.lastMessage}</p>
                         </div>
                         {c.unreadCount > 0 ? (
-                          <span className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+                          <span className="bg-primary text-primary-foreground ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
                             {c.unreadCount}
                           </span>
                         ) : null}
@@ -305,20 +268,13 @@ export function ClientMessages() {
         </div>
 
         {/* Thread */}
-        <div
-          className={cn(
-            "flex flex-col",
-            !mobileThreadOpen && "hidden md:flex",
-          )}
-        >
+        <div className={cn("flex flex-col", !mobileThreadOpen && "hidden md:flex")}>
           {!selectedPeerId || !peer ? (
             <div className="flex flex-1 items-center justify-center p-6 text-center">
               <div className="space-y-2">
-                <MessageSquare className="mx-auto size-10 text-muted-foreground/60" />
-                <p className="text-sm font-medium">
-                  Selecione uma conversa
-                </p>
-                <p className="mx-auto max-w-xs text-xs text-muted-foreground">
+                <MessageSquare className="text-muted-foreground/60 mx-auto size-10" />
+                <p className="text-sm font-medium">Selecione uma conversa</p>
+                <p className="text-muted-foreground mx-auto max-w-xs text-xs">
                   Escolha um prestador na lista ao lado para ver as mensagens.
                 </p>
               </div>
@@ -337,16 +293,14 @@ export function ClientMessages() {
                   <ArrowLeft className="size-4" />
                 </Button>
                 <Avatar className="size-9">
-                  {peer.avatarUrl ? (
-                    <AvatarImage src={peer.avatarUrl} alt={peer.name} />
-                  ) : null}
-                  <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
+                  {peer.avatarUrl ? <AvatarImage src={peer.avatarUrl} alt={peer.name} /> : null}
+                  <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
                     {initials(peer.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{peer.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">
+                  <p className="text-muted-foreground truncate text-xs">
                     {peer.role === "PROVIDER" ? "Prestador" : peer.role}
                   </p>
                 </div>
@@ -356,12 +310,12 @@ export function ClientMessages() {
               <ScrollArea className="flex-1">
                 <div className="flex flex-col gap-2 p-3">
                   {threadQuery.isLoading ? (
-                    <div className="flex items-center justify-center gap-2 p-6 text-xs text-muted-foreground">
+                    <div className="text-muted-foreground flex items-center justify-center gap-2 p-6 text-xs">
                       <Loader2 className="size-4 animate-spin" />
                       Carregando mensagens…
                     </div>
                   ) : messages.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-muted-foreground">
+                    <div className="text-muted-foreground p-6 text-center text-xs">
                       Nenhuma mensagem ainda. Diga olá!
                     </div>
                   ) : (
@@ -370,28 +324,21 @@ export function ClientMessages() {
                       return (
                         <div
                           key={m.id}
-                          className={cn(
-                            "flex",
-                            mine ? "justify-end" : "justify-start",
-                          )}
+                          className={cn("flex", mine ? "justify-end" : "justify-start")}
                         >
                           <div
                             className={cn(
                               "max-w-[78%] rounded-2xl px-3 py-2 text-sm",
                               mine
-                                ? "rounded-br-sm bg-primary text-primary-foreground"
-                                : "rounded-bl-sm border bg-card text-card-foreground",
+                                ? "bg-primary text-primary-foreground rounded-br-sm"
+                                : "bg-card text-card-foreground rounded-bl-sm border",
                             )}
                           >
-                            <p className="whitespace-pre-line break-words">
-                              {m.content}
-                            </p>
+                            <p className="break-words whitespace-pre-line">{m.content}</p>
                             <p
                               className={cn(
                                 "mt-1 text-right text-[10px] tabular-nums",
-                                mine
-                                  ? "text-primary-foreground/70"
-                                  : "text-muted-foreground",
+                                mine ? "text-primary-foreground/70" : "text-muted-foreground",
                               )}
                             >
                               {formatDateTime(m.createdAt)}

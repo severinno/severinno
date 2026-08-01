@@ -11,7 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextResponse } from "next/server"
-import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
+import { createMockRequest } from "@/lib/__tests__/helpers/api-test-utils"
 
 /*
  * NOTE on the user request: "verifica que handleError não é chamado quando

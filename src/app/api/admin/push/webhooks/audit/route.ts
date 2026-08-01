@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
     since.setDate(since.getDate() - days)
 
     // Build where clause
-    const where: Record<string, unknown> = {
+    const where: Prisma.WebhookExecutionLogWhereInput = {
       createdAt: { gte: since },
     }
 
@@ -53,12 +54,12 @@ export async function GET(request: Request) {
     // Fetch paginated records
     const [records, total] = await Promise.all([
       db.webhookExecutionLog.findMany({
-        where: where as any,
+        where,
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: limit,
       }),
-      db.webhookExecutionLog.count({ where: where as any }),
+      db.webhookExecutionLog.count({ where }),
     ])
 
     // Fetch available events, statuses, and webhook rules for filter dropdowns

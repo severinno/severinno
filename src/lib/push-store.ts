@@ -16,7 +16,7 @@
  */
 
 import "server-only"
-import { cacheSet, cacheGet, getClient } from "@/lib/redis"
+import { getClient } from "@/lib/redis"
 import logger from "./logger"
 
 const PAYLOAD_TTL = 300 // 5 minutes
@@ -26,32 +26,28 @@ const memoryStore = new Map<string, { payload: Record<string, unknown>; expiresA
 
 // Periodically clean up expired in-memory entries
 if (typeof setInterval !== "undefined") {
+  // unref: timer de limpeza não deve segurar o processo vivo — sem unref,
+  // qualquer teste que importe push-store trava o worker do vitest no final.
   setInterval(() => {
     const now = Date.now()
     for (const [key, val] of memoryStore) {
       if (now > val.expiresAt) memoryStore.delete(key)
     }
-  }, 60_000)
+  }, 60_000).unref?.()
 }
 
 /**
  * Store a rich payload and return its reference ID.
  * The ID is a short random string that fits easily in a 4KB push payload.
  */
-export async function storePayload(
-  payload: Record<string, unknown>,
-): Promise<string> {
+export async function storePayload(payload: Record<string, unknown>): Promise<string> {
   const id = generateId()
 
   // Try Redis first
   try {
     const client = getClient()
     if (client && client.status === "ready") {
-      await client.setex(
-        `push:payload:${id}`,
-        PAYLOAD_TTL,
-        JSON.stringify(payload),
-      )
+      await client.setex(`push:payload:${id}`, PAYLOAD_TTL, JSON.stringify(payload))
       logger.debug({ id, size: JSON.stringify(payload).length }, "push payload stored in Redis")
       return id
     }
@@ -64,7 +60,10 @@ export async function storePayload(
     payload,
     expiresAt: Date.now() + PAYLOAD_TTL * 1000,
   })
-  logger.debug({ id, size: JSON.stringify(payload).length }, "push payload stored in memory (Redis unavailable)")
+  logger.debug(
+    { id, size: JSON.stringify(payload).length },
+    "push payload stored in memory (Redis unavailable)",
+  )
   return id
 }
 
@@ -72,9 +71,7 @@ export async function storePayload(
  * Retrieve a rich payload by its reference ID.
  * Returns null if expired or not found.
  */
-export async function getPayload(
-  id: string,
-): Promise<Record<string, unknown> | null> {
+export async function getPayload(id: string): Promise<Record<string, unknown> | null> {
   // Try Redis first
   try {
     const client = getClient()

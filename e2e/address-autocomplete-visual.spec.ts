@@ -58,7 +58,7 @@ const MOCK_SEARCH_RESULTS = [
   },
 ]
 
-const MOCK_REVERSE_RESULT = {
+const _MOCK_REVERSE_RESULT = {
   street: "Avenida Paulista",
   district: "Bela Vista",
   city: "São Paulo",

@@ -105,7 +105,7 @@ describe("handleError", () => {
 
   it("returns 500 for non-Error thrown values", async () => {
     const res = handleError("string error")
-    const body = await res.json()
+    const _body = await res.json()
     expect(res.status).toBe(500)
   })
 })
@@ -188,7 +188,6 @@ describe("USER_PUBLIC_SELECT", () => {
     expect(USER_PUBLIC_SELECT).not.toHaveProperty("passwordHash")
   })
 })
-
 
 // ---------------------------------------------------------------------------
 // cacheControlPrivate

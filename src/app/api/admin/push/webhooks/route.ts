@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { handleError, badRequest, notFound } from "@/lib/api-server"
+import { handleError, badRequest } from "@/lib/api-server"
 import logger from "@/lib/logger"
 
 /**
@@ -126,15 +126,18 @@ export async function POST(request: Request) {
 
     logger.info({ adminId: session.userId, event, title: webhook.title }, "event webhook created")
 
-    return NextResponse.json({
-      ok: true,
-      webhook: {
-        ...webhook,
-        targetRoles: webhook.targetRoles as string[],
-        createdAt: webhook.createdAt.toISOString(),
-        updatedAt: webhook.updatedAt.toISOString(),
+    return NextResponse.json(
+      {
+        ok: true,
+        webhook: {
+          ...webhook,
+          targetRoles: webhook.targetRoles as string[],
+          createdAt: webhook.createdAt.toISOString(),
+          updatedAt: webhook.updatedAt.toISOString(),
+        },
       },
-    }, { status: 201 })
+      { status: 201 },
+    )
   } catch (e) {
     return handleError(e)
   }

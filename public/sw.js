@@ -314,7 +314,7 @@ self.addEventListener("notificationclick", (event) => {
   const action = event.action
   const baseUrl = data.url || "/"
   const bookingId = data.bookingId
-  const notifType = data.notificationType
+  const _notifType = data.notificationType
   const notificationId = data.notificationId
 
   // ── Report click to server (fire-and-forget) ─────────────────────────

@@ -1,9 +1,5 @@
 import { test, expect, type Page } from "@playwright/test"
-import {
-  waitForVitrine,
-  registerUser,
-  openBookingModal,
-} from "./helpers"
+import { waitForVitrine, registerUser, openBookingModal } from "./helpers"
 import { setupApiMocks } from "./mocks"
 
 // ---------------------------------------------------------------------------
@@ -14,9 +10,7 @@ import { setupApiMocks } from "./mocks"
  * Busca por prestadores no campo de pesquisa.
  */
 async function searchProviders(page: Page, query: string) {
-  const searchInput = page
-    .getByPlaceholder(/buscar|pesquisar|procurar/i)
-    .first()
+  const searchInput = page.getByPlaceholder(/buscar|pesquisar|procurar/i).first()
   if (await searchInput.isVisible()) {
     await searchInput.fill(query)
     await searchInput.press("Enter")
@@ -51,14 +45,17 @@ async function verifyPixPayment(page: Page) {
   // 2) Código PIX (copia e cola)
   // 3) Tela de confirmação com link para pagamento
   const pixElements = [
-    page.locator('text=/PIX|pix|QR Code|qr code|Código PIX|Pagamento pendente/i'),
+    page.locator("text=/PIX|pix|QR Code|qr code|Código PIX|Pagamento pendente/i"),
     page.locator('[class*="qrcode" i], [class*="qr-code" i]'),
     page.locator('img[alt*="pix" i], img[alt*="QR" i]'),
-    page.locator('text=/pagamento confirmado|agendamento confirmado/i'),
+    page.locator("text=/pagamento confirmado|agendamento confirmado/i"),
   ]
 
   for (const el of pixElements) {
-    const visible = await el.first().isVisible().catch(() => false)
+    const visible = await el
+      .first()
+      .isVisible()
+      .catch(() => false)
     if (visible) return true
   }
 
@@ -70,9 +67,9 @@ async function verifyPixPayment(page: Page) {
     return true
   } catch {
     // Sem navegação — tenta buscar elementos no DOM
-    const success = page.locator(
-      'text=/agendamento confirmado|confirmado com sucesso|pagamento|PIX|QR Code/i',
-    ).first()
+    const success = page
+      .locator("text=/agendamento confirmado|confirmado com sucesso|pagamento|PIX|QR Code/i")
+      .first()
     return await success.isVisible({ timeout: 2000 }).catch(() => false)
   }
 }
@@ -82,18 +79,16 @@ async function verifyPixPayment(page: Page) {
  */
 async function navigateToClientBookings(page: Page) {
   // Procura por link/botão que leva ao painel do cliente
-  const clientPanel = page.locator(
-    'a[href*="client"], button:has-text(/painel|meus agendamentos|minha conta/i)',
-  ).first()
+  const clientPanel = page
+    .locator('a[href*="client"], button:has-text(/painel|meus agendamentos|minha conta/i)')
+    .first()
   if (await clientPanel.isVisible().catch(() => false)) {
     await clientPanel.click()
     await page.waitForTimeout(1500)
   }
 
   // Verifica se está na página de agendamentos do cliente
-  const bookingsTitle = page.locator(
-    'text=/Meus Agendamentos|Agendamentos|Meus Serviços/i',
-  ).first()
+  const bookingsTitle = page.locator("text=/Meus Agendamentos|Agendamentos|Meus Serviços/i").first()
   await bookingsTitle.waitFor({ state: "visible", timeout: 5000 }).catch(() => {})
 }
 
@@ -128,24 +123,18 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
 
   test("2. abre perfil do prestador e visualiza serviços", async ({ page }) => {
     // Tenta abrir o perfil do primeiro prestador
-    const providerCard = page
-      .locator('[class*="Card"], [class*="card"]')
-      .first()
+    const providerCard = page.locator('[class*="Card"], [class*="card"]').first()
     if (await providerCard.isVisible().catch(() => false)) {
       await providerCard.click()
       await page.waitForTimeout(1000)
 
       // Verifica se algo abriu (modal de perfil ou navegação)
-      const profileContent = page.locator(
-        'text=/Serviços|Avaliações|Sobre|Agendar/i',
-      ).first()
+      const profileContent = page.locator("text=/Serviços|Avaliações|Sobre|Agendar/i").first()
       const profileOpened = await profileContent.isVisible().catch(() => false)
 
       if (profileOpened) {
         // Verifica que há abas/tabs no perfil
-        const tabs = page.locator(
-          'button:has-text(/Serviços|Sobre|Avaliações|Expediente/i)',
-        )
+        const tabs = page.locator("button:has-text(/Serviços|Sobre|Avaliações|Expediente/i)")
         const tabCount = await tabs.count()
         expect(tabCount).toBeGreaterThanOrEqual(1)
       }
@@ -160,9 +149,11 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
     await page.waitForTimeout(1000)
 
     // Verifica que o modal de agendamento abriu com o título correto
-    const modalTitles = page.locator(
-      'h2:has-text("Agendar"), [class*="title"]:has-text("Agendar"), text=/Agendar serviço/i',
-    ).first()
+    const modalTitles = page
+      .locator(
+        'h2:has-text("Agendar"), [class*="title"]:has-text("Agendar"), text=/Agendar serviço/i',
+      )
+      .first()
     await expect(modalTitles).toBeVisible({ timeout: 5000 })
   })
 
@@ -170,24 +161,20 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
     await openBookingModal(page)
 
     // Verifica que o calendário está visível
-    const calendar = page.locator(
-      '[class*="rdp"], [class*="calendar"], table:has([role="gridcell"])',
-    ).first()
+    const calendar = page
+      .locator('[class*="rdp"], [class*="calendar"], table:has([role="gridcell"])')
+      .first()
     await expect(calendar).toBeVisible({ timeout: 5000 })
 
     // Seleciona uma data disponível
-    const dayButton = page.locator(
-      'button[role="gridcell"]:not([disabled])',
-    ).first()
+    const dayButton = page.locator('button[role="gridcell"]:not([disabled])').first()
     const dayExists = await dayButton.isVisible().catch(() => false)
     if (dayExists) {
       await dayButton.click()
       await page.waitForTimeout(500)
 
       // Verifica se horários aparecem
-      const timeSlots = page.locator(
-        'button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)',
-      )
+      const timeSlots = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)")
       const timeCount = await timeSlots.count()
       if (timeCount > 0) {
         // Seleciona o primeiro horário disponível
@@ -239,22 +226,18 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
     await page.waitForTimeout(500)
 
     // Verifica se há opção de pagamento PIX
-    const pixOption = page.locator(
-      'text=/PIX|pix/i, [value="PIX"], label:has-text("PIX")',
-    ).first()
+    const pixOption = page.locator('text=/PIX|pix/i, [value="PIX"], label:has-text("PIX")').first()
     const pixVisible = await pixOption.isVisible().catch(() => false)
     if (pixVisible) {
       // Marca PIX se não estiver selecionado
-      const pixRadio = page.locator(
-        'input[value="PIX"], [data-value="PIX"], label:has-text("PIX")',
-      ).first()
+      const pixRadio = page
+        .locator('input[value="PIX"], [data-value="PIX"], label:has-text("PIX")')
+        .first()
       await pixRadio.click().catch(() => {})
       await page.waitForTimeout(300)
     } else {
       // Se não achou PIX explicitamente, procura por forma de pagamento
-      const paymentSection = page.locator(
-        'text=/pagamento|forma de pagamento|Pagamento/i',
-      ).first()
+      const paymentSection = page.locator("text=/pagamento|forma de pagamento|Pagamento/i").first()
       await paymentSection.waitFor({ state: "visible", timeout: 3000 }).catch(() => {})
     }
   })
@@ -278,23 +261,17 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
     await page.waitForTimeout(1000)
 
     // PASSO 3: Verifica que o modal abriu
-    const modal = page.locator(
-      'h2:has-text("Agendar"), text=/Agendar serviço/i',
-    ).first()
+    const modal = page.locator('h2:has-text("Agendar"), text=/Agendar serviço/i').first()
     const modalOpened = await modal.isVisible({ timeout: 5000 }).catch(() => false)
 
     if (modalOpened) {
       // PASSO 4: Step 1 — seleciona data e horário
-      const dayButton = page.locator(
-        'button[role="gridcell"]:not([disabled])',
-      ).first()
+      const dayButton = page.locator('button[role="gridcell"]:not([disabled])').first()
       if (await dayButton.isVisible().catch(() => false)) {
         await dayButton.click()
         await page.waitForTimeout(300)
 
-        const timeSlot = page.locator(
-          'button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)',
-        ).first()
+        const timeSlot = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)").first()
         if (await timeSlot.isVisible().catch(() => false)) {
           await timeSlot.click()
           await page.waitForTimeout(300)
@@ -317,9 +294,7 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
       await page.waitForTimeout(500)
 
       // PASSO 8: Confirma o agendamento
-      const confirmBtn = page.locator(
-        'button:has-text("Confirmar")',
-      ).first()
+      const confirmBtn = page.locator('button:has-text("Confirmar")').first()
       if (await confirmBtn.isVisible().catch(() => false)) {
         await confirmBtn.click()
         await page.waitForTimeout(2000)
@@ -332,8 +307,8 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
 })
 
 test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
-  let userEmail = ""
-  let userPassword = "test123456"
+  let _userEmail = ""
+  let _userPassword = "test123456"
 
   test.beforeEach(async ({ page }) => {
     await setupApiMocks(page, { authenticated: true })
@@ -344,13 +319,16 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
   test("8. registro → login → booking completo", async ({ page }) => {
     // PASSO 1: Registrar novo usuário
     const creds = await registerUser(page, { role: "CLIENT" })
-    userEmail = creds.email
-    userPassword = creds.password
+    _userEmail = creds.email
+    _userPassword = creds.password
     await page.waitForTimeout(1000)
 
     // PASSO 2: Verificar que está logado
     const loginBtn = page.getByRole("button", { name: /entrar|login|criar conta/i }).first()
-    const loggedIn = await loginBtn.isVisible().then(v => !v).catch(() => true)
+    const loggedIn = await loginBtn
+      .isVisible()
+      .then((v) => !v)
+      .catch(() => true)
     expect(loggedIn).toBe(true)
 
     // PASSO 3: Navegar de volta pra landing se necessário
@@ -363,23 +341,17 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
 
     // PASSO 5: Verificar que o modal NÃO mostra banner de login
     // (usuário já está autenticado)
-    const authBanner = page.locator(
-      'text=/faça login|faça cadastro|crie sua conta/i',
-    ).first()
+    const authBanner = page.locator("text=/faça login|faça cadastro|crie sua conta/i").first()
     const authBannerVisible = await authBanner.isVisible().catch(() => false)
     expect(authBannerVisible).toBe(false)
 
     // PASSO 6: Step 1 — selecionar data + horário
-    const dayBtn = page.locator(
-      'button[role="gridcell"]:not([disabled])',
-    ).first()
+    const dayBtn = page.locator('button[role="gridcell"]:not([disabled])').first()
     if (await dayBtn.isVisible().catch(() => false)) {
       await dayBtn.click()
       await page.waitForTimeout(300)
 
-      const timeSlot = page.locator(
-        'button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)',
-      ).first()
+      const timeSlot = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)").first()
       const timeVisible = await timeSlot.isVisible().catch(() => false)
       if (timeVisible) {
         await timeSlot.click()
@@ -402,9 +374,7 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
     await page.waitForTimeout(500)
 
     // PASSO 9: Confirmar agendamento
-    const confirmBtn = page.locator(
-      'button:has-text("Confirmar")',
-    ).first()
+    const confirmBtn = page.locator('button:has-text("Confirmar")').first()
     const canConfirm = await confirmBtn.isVisible().catch(() => false)
     if (canConfirm) {
       await confirmBtn.click()
@@ -418,7 +388,7 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
   test("9. login existente → booking + PIX + verificar no painel", async ({ page }) => {
     // PASSO 1: Criar e logar com um novo usuário
     const creds = await registerUser(page, { role: "CLIENT" })
-    userEmail = creds.email
+    _userEmail = creds.email
     await page.waitForTimeout(500)
 
     // PASSO 2: Voltar pra landing
@@ -430,16 +400,12 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
     await page.waitForTimeout(500)
 
     // PASSO 4: Preencher agendamento
-    const dayBtn = page.locator(
-      'button[role="gridcell"]:not([disabled])',
-    ).first()
+    const dayBtn = page.locator('button[role="gridcell"]:not([disabled])').first()
     if (await dayBtn.isVisible().catch(() => false)) {
       await dayBtn.click()
       await page.waitForTimeout(300)
 
-      const timeSlot = page.locator(
-        'button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)',
-      ).first()
+      const timeSlot = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)").first()
       if (await timeSlot.isVisible().catch(() => false)) {
         await timeSlot.click()
         await page.waitForTimeout(300)
@@ -472,9 +438,7 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
         await navigateToClientBookings(page)
 
         // PASSO 8: Verificar que o agendamento aparece no painel
-        const bookingInPanel = page.locator(
-          'text=/agendamento|pendente|PIX|pagamento/i',
-        ).first()
+        const bookingInPanel = page.locator("text=/agendamento|pendente|PIX|pagamento/i").first()
         const found = await bookingInPanel.isVisible({ timeout: 5000 }).catch(() => false)
         if (!found) {
           console.log("ℹ️ Agendamento não encontrado no painel — pode não estar implementado")
@@ -511,15 +475,11 @@ test.describe("Fluxo de Pagamento PIX", () => {
     await page.waitForTimeout(1000)
 
     // Step 1: Data + horário
-    const dayBtn = page.locator(
-      'button[role="gridcell"]:not([disabled])',
-    ).first()
+    const dayBtn = page.locator('button[role="gridcell"]:not([disabled])').first()
     if (await dayBtn.isVisible().catch(() => false)) {
       await dayBtn.click()
       await page.waitForTimeout(300)
-      const timeSlot = page.locator(
-        'button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)',
-      ).first()
+      const timeSlot = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)").first()
       if (await timeSlot.isVisible().catch(() => false)) {
         await timeSlot.click()
         await page.waitForTimeout(300)
@@ -540,9 +500,9 @@ test.describe("Fluxo de Pagamento PIX", () => {
     await page.waitForTimeout(500)
 
     // Verificar que PIX está visível e selecionado
-    const pixRadio = page.locator(
-      'input[value="PIX"], [data-value="PIX"], label:has-text("PIX")',
-    ).first()
+    const pixRadio = page
+      .locator('input[value="PIX"], [data-value="PIX"], label:has-text("PIX")')
+      .first()
     if (await pixRadio.isVisible().catch(() => false)) {
       await pixRadio.click().catch(() => {})
       await page.waitForTimeout(300)
@@ -585,14 +545,12 @@ test.describe("Fluxo de Agendamento — Casos de Erro e Validação", () => {
 
     // Verifica se ainda está no step 1 (validação impediu avanço)
     // ou se mostra mensagem de erro
-    const calendarStillVisible = page.locator(
-      '[class*="calendar"], [class*="rdp"]',
-    ).first()
+    const calendarStillVisible = page.locator('[class*="calendar"], [class*="rdp"]').first()
     const isVisible = await calendarStillVisible.isVisible().catch(() => false)
 
-    const errorMessage = page.locator(
-      'text=/selecione|obrigatório|inválido|preencha|escolha/i',
-    ).first()
+    const errorMessage = page
+      .locator("text=/selecione|obrigatório|inválido|preencha|escolha/i")
+      .first()
     const hasError = await errorMessage.isVisible().catch(() => false)
 
     // Pelo menos uma das condições deve ser verdadeira
@@ -614,9 +572,7 @@ test.describe("Fluxo de Agendamento — Casos de Erro e Validação", () => {
       await page.waitForTimeout(1500)
 
       // Verifica se aparece mensagem de erro
-      const cepError = page.locator(
-        'text=/não encontrado|inválido|erro/i',
-      ).first()
+      const cepError = page.locator("text=/não encontrado|inválido|erro/i").first()
       const hasError = await cepError.isVisible({ timeout: 3000 }).catch(() => false)
       if (hasError) {
         await expect(cepError).toBeVisible()
@@ -633,18 +589,16 @@ test.describe("Fluxo de Agendamento — Casos de Erro e Validação", () => {
     await page.waitForTimeout(500)
 
     // Verifica se há campo de quantidade
-    const qtyInput = page.locator(
-      'input[type="number"], input[inputmode="numeric"], label:has-text(/quantidade/i)',
-    ).first()
+    const qtyInput = page
+      .locator('input[type="number"], input[inputmode="numeric"], label:has-text(/quantidade/i)')
+      .first()
     if (await qtyInput.isVisible().catch(() => false)) {
       // Tenta valor negativo (ignorado por validação HTML5 min/mínimo)
       await qtyInput.fill("-1")
       await page.waitForTimeout(300)
 
       // Verifica validação
-      const errorMsg = page.locator(
-        'text=/mínimo|inválido|deve ser|obrigatório/i',
-      ).first()
+      const errorMsg = page.locator("text=/mínimo|inválido|deve ser|obrigatório/i").first()
       const hasError = await errorMsg.isVisible().catch(() => false)
       if (hasError) {
         await expect(errorMsg).toBeVisible()
@@ -665,16 +619,16 @@ test.describe("Navegação e UX do Booking", () => {
     await page.waitForTimeout(500)
 
     // Verifica se há indicador de etapas (step indicator, progress bar, etc.)
-    const stepIndicator = page.locator(
-      '[class*="step"], [class*="progress"], li:has-text(/1|2|3|4/), [role="tablist"]',
-    ).first()
+    const stepIndicator = page
+      .locator('[class*="step"], [class*="progress"], li:has-text(/1|2|3|4/), [role="tablist"]')
+      .first()
     const hasIndicator = await stepIndicator.isVisible().catch(() => false)
 
     if (hasIndicator) {
       // Verifica que o passo atual está destacado
-      const activeStep = page.locator(
-        '[class*="active"], [aria-selected="true"], [data-active="true"]',
-      ).first()
+      const activeStep = page
+        .locator('[class*="active"], [aria-selected="true"], [data-active="true"]')
+        .first()
       await expect(activeStep).toBeVisible({ timeout: 3000 })
     }
 
@@ -686,9 +640,9 @@ test.describe("Navegação e UX do Booking", () => {
     await page.waitForTimeout(500)
 
     // Fecha o modal
-    const closeBtn = page.locator(
-      'button[aria-label="Close"], button[aria-label="Fechar"], button:has(svg.lucide-x)',
-    ).first()
+    const closeBtn = page
+      .locator('button[aria-label="Close"], button[aria-label="Fechar"], button:has(svg.lucide-x)')
+      .first()
     if (await closeBtn.isVisible().catch(() => false)) {
       await closeBtn.click()
       await page.waitForTimeout(500)
@@ -705,9 +659,7 @@ test.describe("Navegação e UX do Booking", () => {
       await page.waitForTimeout(500)
 
       // Verifica que o modal abriu novamente no passo 1 (estado inicial)
-      const calendar = page.locator(
-        '[class*="calendar"], [class*="rdp"]',
-      ).first()
+      const calendar = page.locator('[class*="calendar"], [class*="rdp"]').first()
       await expect(calendar).toBeVisible({ timeout: 5000 })
     }
   })
@@ -717,9 +669,9 @@ test.describe("Navegação e UX do Booking", () => {
     await page.waitForTimeout(500)
 
     // Verifica se o modal tem scroll
-    const modalContent = page.locator(
-      '[class*="content"], [class*="dialog"], [role="dialog"]',
-    ).first()
+    const modalContent = page
+      .locator('[class*="content"], [class*="dialog"], [role="dialog"]')
+      .first()
     const hasScroll = await modalContent
       .evaluate((el) => el.scrollHeight > el.clientHeight)
       .catch(() => false)
@@ -733,7 +685,7 @@ test.describe("Navegação e UX do Booking", () => {
     // Se estiver no mobile, verifica se o modal é fullscreen
     const isMobile = await page.evaluate(() => window.innerWidth < 768)
     if (isMobile) {
-      const isFullscreen = await modalContent
+      const _isFullscreen = await modalContent
         .evaluate((el) => {
           const rect = el.getBoundingClientRect()
           return rect.width >= window.innerWidth * 0.9

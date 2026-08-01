@@ -80,3 +80,5 @@ test-results/
 
 # AI agent skills and configurations
 .agents/
+# Freebuff agent tool outputs (act binary, lint/tsc reports) — never commit
+tool-results/

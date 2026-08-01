@@ -33,16 +33,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import {
-  Banknote,
-  DollarSign,
-  Loader2,
-  Percent,
-  RotateCw,
-  TrendingDown,
-  TrendingUp,
-  Zap,
-} from "lucide-react"
+import { Banknote, DollarSign, Loader2, Percent, RotateCw, TrendingUp, Zap } from "lucide-react"
 
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"

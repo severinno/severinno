@@ -25,12 +25,12 @@ import { ErrorState, RefreshButton } from "./_shared"
 import { useQuery } from "@tanstack/react-query"
 
 import { apiGet } from "@/lib/api"
-import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 
 import { preloadMaplibreGl } from "@/components/shared/provider-mini-map"
 
 import type { CoverageResponse } from "@/app/api/admin/coverage/route"
+import type { Map as MapLibreMap, GeoJSONSource, ExpressionSpecification } from "maplibre-gl"
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -114,7 +114,7 @@ function circleGeoJSON(
 
 export function AdminCoverageMap() {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<any>(null)
+  const mapRef = useRef<MapLibreMap | null>(null)
   const initRef = useRef(false)
   const fitDoneRef = useRef(false)
   const [mapReady, setMapReady] = useState(false)
@@ -190,7 +190,11 @@ export function AdminCoverageMap() {
             type: "fill",
             source: "coverage-grid",
             paint: {
-              "fill-color": ["step", ["get", "density"], ...DENSITY_COLORS_STOPS] as any,
+              "fill-color": [
+                "step",
+                ["get", "density"],
+                ...DENSITY_COLORS_STOPS,
+              ] as unknown as ExpressionSpecification,
               "fill-opacity": 0.6,
             },
           })
@@ -263,7 +267,7 @@ export function AdminCoverageMap() {
       const { providers, grid, bounds } = data
 
       // Update provider circles via setData (source already exists from init)
-      const circleSrc = map.getSource("provider-circles")
+      const circleSrc = map.getSource("provider-circles") as GeoJSONSource | undefined
       if (circleSrc) {
         const circleFeatures: Record<string, unknown>[] = []
         for (const p of providers) {
@@ -272,30 +276,30 @@ export function AdminCoverageMap() {
             properties: { name: p.name, id: p.id },
           })
         }
-        ;(circleSrc as any).setData({
+        circleSrc.setData({
           type: "FeatureCollection",
           features: circleFeatures,
-        })
+        } as unknown as GeoJSON.GeoJSON)
       }
 
       // Update grid data via setData
-      const gridSrc = map.getSource("coverage-grid")
+      const gridSrc = map.getSource("coverage-grid") as GeoJSONSource | undefined
       if (gridSrc) {
-        ;(gridSrc as any).setData(buildGridFeatureCollection(grid))
+        gridSrc.setData(buildGridFeatureCollection(grid) as unknown as GeoJSON.GeoJSON)
       }
 
       // Update provider markers via setData
-      const markerSrc = map.getSource("provider-markers")
+      const markerSrc = map.getSource("provider-markers") as GeoJSONSource | undefined
       if (markerSrc) {
         const markers = providers.map((p) => ({
           type: "Feature" as const,
           geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
           properties: { name: p.name, radius: p.radiusKm, city: p.city },
         }))
-        ;(markerSrc as any).setData({
+        markerSrc.setData({
           type: "FeatureCollection",
           features: markers,
-        })
+        } as unknown as GeoJSON.GeoJSON)
       }
 
       // Fit bounds only on the first meaningful data load

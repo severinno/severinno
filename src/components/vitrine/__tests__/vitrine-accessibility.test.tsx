@@ -11,7 +11,7 @@
 import "./vitrine-a11y-setup"
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, cleanup } from "@/__tests__/test-utils"
+import { render } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 import * as React from "react"
 
@@ -263,7 +263,7 @@ vi.mock("@/components/ui/switch", () => ({
 }))
 
 vi.mock("@/components/ui/slider", () => ({
-  Slider: ({ value, onValueChange, ...p }: any) => (
+  Slider: ({ value, onValueChange: _onValueChange, ...p }: any) => (
     <div role="slider" aria-valuenow={value?.[0]} {...p} />
   ),
 }))
@@ -281,7 +281,7 @@ vi.mock("@/components/ui/select", () => ({
 }))
 
 vi.mock("@/components/ui/radio-group", () => ({
-  RadioGroup: ({ children, value, ...p }: any) => (
+  RadioGroup: ({ children, value: _value, ...p }: any) => (
     <div role="radiogroup" {...p}>
       {children}
     </div>
@@ -356,7 +356,7 @@ vi.mock("next/image", () => ({
   __esModule: true,
   default: (p: any) => {
     // Filter Next.js-only boolean props that aren't valid HTML img attributes
-    const { fill, priority, ...safe } = p
+    const { fill: _fill, priority: _priority, ...safe } = p
     return <img {...safe} />
   },
 }))
@@ -371,7 +371,7 @@ vi.mock("@/lib/utils", () => ({
 
 vi.mock("@/lib/format", () => ({
   formatBRL: (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`,
-  formatRelative: (d: Date) => "há 2 dias",
+  formatRelative: (_d: Date) => "há 2 dias",
 }))
 
 vi.mock("@/lib/geo-client", () => ({

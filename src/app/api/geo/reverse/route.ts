@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { reverseGeocode } from "@/lib/geo"
-import { cacheControlPublic, handleError } from "@/lib/api-server"
+import { cacheControlPublic } from "@/lib/api-server"
 
 // Public: reverse geocode lat/lng via Nominatim (OSM).
 // Returns a flat object (UI: `apiGet<{ street?, district?, city?, state?, cep? }>`).

@@ -11,7 +11,7 @@ test.describe("Home page", () => {
 
   test("shows category showcase", async ({ page }) => {
     await page.goto("/")
-    const categorySection = page.locator("text=/Categorias|Serviços/i").first()
+    const _categorySection = page.locator("text=/Categorias|Serviços/i").first()
     await expect(page.locator("header, main")).toBeVisible()
   })
 

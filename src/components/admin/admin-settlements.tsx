@@ -17,8 +17,6 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   DollarSign,
   Handshake,
@@ -41,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -116,7 +114,7 @@ const PERIOD_TYPE_OPTIONS: { value: PeriodType; label: string }[] = [
   { value: "WEEKLY", label: "Semanal" },
 ]
 
-const SETTLEMENT_STATUS_STYLES: Record<PeriodStatus, string> = {
+const _SETTLEMENT_STATUS_STYLES: Record<PeriodStatus, string> = {
   PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   FINALIZED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
 }
