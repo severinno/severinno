@@ -1,0 +1,160 @@
+# =============================================================================
+# Seed Prod Bootstrap — reusable workflow
+#
+# Valida o prisma/seed-prod.ts (seed LEGÍTIMO de produção):
+#   1. Recusa rodar sem NODE_ENV=production (guard obrigatório)
+#   2. Com o override explícito PROD_SEED_ALLOW_DEV=1, popula categorias +
+#      settings e NÃO cria NENHUM usuário (zero contas demo em produção)
+#
+# Centralizado aqui (em vez de duplicado) para que PR check e cron semanal
+# validem SEMPRE a mesma definição — sem drift entre os dois contextos.
+#
+# Chamado por:
+#   - pr-check.yml          (a cada pull request)
+#   - benchmark-weekly.yml  (cron semanal — revalida contra banco efêmero)
+# =============================================================================
+
+name: Seed Prod Bootstrap (reusable)
+
+on:
+  workflow_call:
+
+jobs:
+  # ── Seed Prod Bootstrap ────────────────────────────────────────────────
+  # Espelho do seed-prod-guard (que valida o seed de DEV recusar em prod);
+  # este valida o caminho inverso: o seed de PRODUÇÃO funcionar de verdade.
+  seed-prod-bootstrap:
+    name: Seed Prod Bootstrap
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: severinno
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: Push schema to ephemeral DB
+        env:
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+        run: bunx prisma db push --skip-generate
+
+      # ── Guard: seed-prod DEVE recusar fora de produção ────────────────
+      - name: Seed prod must refuse in development
+        id: guard
+        env:
+          NODE_ENV: development
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+        run: |
+          set +e
+          bun run db:seed:prod 2>&1 | tee /tmp/seed-prod-refuse.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "seed exit code: $code"
+
+      - name: Assert production refusal
+        env:
+          EXIT_CODE: ${{ steps.guard.outputs.exit_code }}
+        run: |
+          if [ "$EXIT_CODE" = "0" ]; then
+            echo "❌ GUARD QUEBRADO: seed-prod RODOU em development (exit 0)."
+            cat /tmp/seed-prod-refuse.log
+            exit 1
+          fi
+          if ! grep -q "Seed de produção recusado" /tmp/seed-prod-refuse.log; then
+            echo "❌ seed-prod falhou sem a mensagem de recusa do guard."
+            cat /tmp/seed-prod-refuse.log
+            exit 1
+          fi
+          echo "✅ Guard validado: seed-prod recusou em development (exit $EXIT_CODE)"
+
+      # ── Bootstrap com override explícito (banco efêmero) ───────────────
+      - name: Seed prod bootstrap with PROD_SEED_ALLOW_DEV=1
+        id: bootstrap
+        env:
+          NODE_ENV: development
+          PROD_SEED_ALLOW_DEV: "1"
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+        run: |
+          bun run db:seed:prod 2>&1 | tee /tmp/seed-prod-bootstrap.log
+          if ! grep -q "Seed de produção concluído" /tmp/seed-prod-bootstrap.log; then
+            echo "❌ seed-prod bootstrap falhou — sem confirmação final."
+            cat /tmp/seed-prod-bootstrap.log
+            exit 1
+          fi
+          echo "✅ seed-prod bootstrap concluído (categorias + settings)"
+
+      # ── Asserção: ZERO usuários, categorias + settings existem ─────────
+      # Usa o Prisma Client (não `prisma db execute`, que não retorna
+      # resultados de SELECT de forma confiável) — falha se houver QUALQUER
+      # usuário criado pelo seed-prod (zero contas demo em produção).
+      - name: Assert zero users created
+        env:
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+        run: |
+          node -e "
+            const { PrismaClient } = require('@prisma/client');
+            const db = new PrismaClient();
+            db.user.count()
+              .then((n) => {
+                console.log('user_count=' + n);
+                if (n > 0) {
+                  console.error('❌ seed-prod criou usuários (esperado ZERO — sem contas demo)');
+                  process.exit(1);
+                }
+                console.log('✅ Nenhum usuário criado pelo seed-prod');
+              })
+              .catch((e) => { console.error(e); process.exit(1); })
+              .finally(() => db.\$disconnect());
+          "
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🚀 Seed Prod Bootstrap'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            if [ "${{ steps.guard.conclusion }}" = "success" ]; then
+              echo "| Recusa fora de produção | ✅ (exit ${{ steps.guard.outputs.exit_code }}) |"
+            else
+              echo '| Recusa fora de produção | ⚪ não executado |'
+            fi
+            if [ "${{ steps.bootstrap.conclusion }}" = "success" ]; then
+              echo '| Bootstrap (categorias + settings) | ✅ |'
+            else
+              echo '| Bootstrap (categorias + settings) | ❌ |'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
