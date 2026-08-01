@@ -9,8 +9,9 @@
 # variável de repositório:
 #   Settings → Secrets and variables → Actions → Variables:
 #     POSTGIS_IMAGE = ghcr.io/severinno/postgis:16-3.4-alpine
-# Os jobs que usam postgis (seed-guards, benchmark-gist) passam a puxar do
-# mirror automaticamente (expressão `vars.POSTGIS_IMAGE || <default>`).
+# Os jobs que usam postgis (seed-prod-bootstrap, seed-dev-e2e, benchmark-gist)
+# passam a puxar do mirror automaticamente (expressão
+# `vars.POSTGIS_IMAGE || <default>`).
 #
 # ⚠️ Pacotes GHCR criados via GITHUB_TOKEN nascem PRIVADOS por padrão. Se o
 # repositório for público e o pull anônimo for desejado, torne o pacote
