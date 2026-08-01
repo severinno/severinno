@@ -19,12 +19,28 @@ jobs:
   utf8-check:
     uses: ./.github/workflows/utf8-check.yml
 
+  # Seed Test Hooks Guard ------------------------------------------------
+  # Fail-closed gate ANTES de tocar produção: SEED_SPEC_PATCH e
+  # PROD_SEED_ALLOW_DEV são hooks TEST-ONLY (E2Es de seed contra banco
+  # efêmero). Se aparecerem neste workflow de produção (ou em qualquer
+  # workflow fora do allowlist de teste), o guard falha e o deploy não roda
+  # — impedindo que o seed de produção rode com spec patchado ou com o
+  # guard de produção contornado.
+  seed-hooks-guard:
+    name: Seed Test Hooks Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check no seed test hooks in non-test workflows
+        run: node scripts/check-seed-hooks.mjs
+
   # Docker Build & Test (local, no push) ----------------------------------
   # Builds the image locally and runs a health-check smoke test to catch
   # runtime regressions before the image is pushed to the registry.
   docker-test:
     name: Docker Build & Test
-    needs: [utf8-check]
+    needs: [utf8-check, seed-hooks-guard]
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

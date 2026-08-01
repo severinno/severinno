@@ -60,6 +60,28 @@ jobs:
       - name: Summary
         run: echo "✅ No .env files tracked in git."
 
+  # ── Seed Test Hooks Guard ─────────────────────────────────────────────
+  # Fast gate (node puro, <1s): falha o PR se SEED_SPEC_PATCH ou
+  # PROD_SEED_ALLOW_DEV aparecerem em qualquer workflow FORA do allowlist
+  # de teste (scripts/check-seed-hooks.mjs — fail-closed).
+  #
+  # Por que existe: esses hooks são TEST-ONLY (E2Es de seed contra banco
+  # efêmero). Se vazarem para um workflow de produção (deploy.yml,
+  # release-deploy.yml, ou um workflow novo), o seed de produção pode rodar
+  # com spec patchado ou com o guard de produção contornado — o pipeline de
+  # deploy precisa bloquear isso antes de tocar o servidor.
+  seed-hooks-guard:
+    name: Seed Test Hooks Guard (no prod leak)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check no seed test hooks in non-test workflows
+        run: node scripts/check-seed-hooks.mjs
+
+      - name: Summary
+        run: echo "✅ No seed test hooks outside the test workflow allowlist."
+
   # ── Fuzz Tests ─────────────────────────────────────────────────────────
   # Runs in parallel with other checks. No external dependencies needed.
   fuzz:
@@ -400,33 +422,38 @@ jobs:
           cat /tmp/gist-crossover-diff.txt 2>/dev/null | grep -E '^(.*provider|⚠|crossover|step)' || true
           exit 1
 
-  # ── Seed Prod E2E ──────────────────────────────────────────────────
-  # Valida o seed de PRODUÇÃO (prisma/seed-prod.ts) contra um PostGIS
-  # efêmero: guard recusa fora de produção, dry-run nada escrito, bootstrap
-  # categorias+settings, ZERO usuários, idempotente (110 checks).
+  # ── Seed Guards E2E (prod + dev em UM service container) ───────────
+  # Valida os DOIS seeds contra UM ÚNICO PostGIS efêmero (sugestão #1 —
+  # economia ~1 min/PR vs. jobs separados: 1 pull de imagem + 1 bun install
+  # + 1 prisma generate/push em vez de 2 de cada).
   #
-  # A definição do job vive no reusable workflow seed-prod-bootstrap.yml —
-  # chamado também pelo cron semanal (benchmark-weekly.yml) para revalidar
-  # contra um banco efêmero sem duplicar a lógica.
-  seed-prod-bootstrap:
-    name: Seed Prod E2E (110 checks)
-    uses: ./.github/workflows/seed-prod-bootstrap.yml
-
-  # ── Seed Dev E2E ───────────────────────────────────────────────────
-  # Valida o seed de DESENVOLVIMENTO (prisma/seed.ts) contra um PostGIS
-  # efêmero: guard recusa em produção, 9 usuários demo, árvore completa,
-  # wipe+recreate idempotente + cenários SEED_SPEC_PATCH (147 checks).
+  # ORDEM: prod E2E PRIMEIRO (115 checks — banco limpo, asserta ZERO
+  # usuários), dev E2E DEPOIS (162 checks — o wipe+recreate do dev seed não
+  # conflita com os dados do prod).
   #
-  # Job PRÓPRIO e em PARALELO — INDEPENDENTE do prod E2E: um PR que quebre
-  # o seed de dev falha aqui mesmo se o prod E2E falhou antes (o dev era
-  # antes gateado no sucesso do prod dentro do job mesclado seed-guards).
-  # O dev E2E roda UMA vez por PR (o seed-prod-bootstrap é prod-only agora).
+  # Independência PRESERVADA: o step do dev roda com if: always() — um PR
+  # que quebre o seed de dev é detectado MESMO se o prod E2E falhar antes
+  # (mesmo comportamento do antigo job seed-dev-e2e dedicado, sem o custo
+  # de container/imagem extras). SKIP_DB_PUSH no dev é condicional ao
+  # sucesso do prod (schema já pushado → pula; prod falhou → dev faz push).
   #
-  # A definição do job vive no reusable workflow seed-dev-bootstrap.yml —
-  # chamado também pelo cron semanal (benchmark-weekly.yml).
-  seed-dev-e2e:
-    name: Seed Dev E2E (147 checks)
-    uses: ./.github/workflows/seed-dev-bootstrap.yml
+  # A definição do job vive no reusable workflow seed-guards.yml — chamado
+  # também pelo cron semanal (benchmark-weekly.yml) para revalidar contra
+  # um banco efêmero sem duplicar a lógica.
+  #
+  # O reusable workflow define TRÊS jobs: (1) seed-guards — MATRIX 2×2
+  # seed×imagem: prod e dev E2E rodam contra as DUAS variantes do PostGIS
+  # (alpine + full — 4 combinações: prod×alpine, prod×full, dev×alpine,
+  # dev×full), validando a compatibilidade de ambas as imagens em PRs, não só
+  # em cron/deploy; (2) seed-prod-e2e-dev-env — o prod E2E com
+  # PROD_SEED_ALLOW_DEV=1 NO AMBIENTE do job (container próprio), cobrindo o
+  # fluxo de override de banco efêmero em dev que o CI de produção não
+  # exercita (a produção roda NODE_ENV=production sem override);
+  # (3) mutation-seed-dev-e2e — MUTATION TEST: introduz um bug conhecido no
+  # prisma/seed.ts, roda o dev E2E e exige que ele FALHE (guard cego → falha).
+  seed-guards:
+    name: Seed Guards (prod + dev E2E)
+    uses: ./.github/workflows/seed-guards.yml
 
   # ── Security Headers ──────────────────────────────────────────────────
   # Verifica CSP, HSTS, X-Frame-Options e demais headers de segurança

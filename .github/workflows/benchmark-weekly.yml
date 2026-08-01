@@ -287,22 +287,12 @@ jobs:
             docs/benchmarks/geo-real-baseline.json
           retention-days: 90
 
-  # ── Seed Prod E2E (semanal) ──────────────────────────────────────────
-  # Revalida SEMANALMENTE que o seed de produção continua funcional contra
-  # um banco efêmero — espelho do PR check.
+  # ── Seed Guards E2E (semanal) ────────────────────────────────────────
+  # Revalida SEMANALMENTE que os DOIS seeds (prod + dev) continuam
+  # funcionais contra um banco efêmero — espelho do PR check.
   #
-  # A definição do job vive no reusable workflow seed-prod-bootstrap.yml
+  # A definição do job vive no reusable workflow seed-guards.yml
   # (o mesmo usado pelo pr-check) — sem duplicação de lógica.
-  seed-prod-bootstrap:
-    name: Seed Prod E2E (semanal)
-    uses: ./.github/workflows/seed-prod-bootstrap.yml
-
-  # ── Seed Dev E2E (semanal) ──────────────────────────────────────────
-  # Revalida SEMANALMENTE que o seed de desenvolvimento continua funcional
-  # contra um banco efêmero — espelho do PR check.
-  #
-  # A definição do job vive no reusable workflow seed-dev-bootstrap.yml
-  # (o mesmo usado pelo pr-check) — sem duplicação de lógica.
-  seed-dev-e2e:
-    name: Seed Dev E2E (semanal)
-    uses: ./.github/workflows/seed-dev-bootstrap.yml
+  seed-guards:
+    name: Seed Guards (semanal)
+    uses: ./.github/workflows/seed-guards.yml

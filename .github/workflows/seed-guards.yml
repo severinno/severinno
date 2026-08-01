@@ -1,0 +1,392 @@
+# =============================================================================
+# Seed Guards E2E — reusable workflow (MATRIX 2×2 seed×imagem + dev-env
+# em container próprio)
+#
+# MATRIX 2×2: consolida os DOIS E2Es de seed (prod + dev) em uma matrix que
+# também varia a imagem do PostGIS — cada célula roda UM E2E contra UMA imagem
+# (4 combinações independentes):
+#   prod×alpine, prod×full, dev×alpine, dev×full
+# Objetivo: validar a compatibilidade de AMBAS as variantes da imagem em PRs,
+# não só em cron/deploy — o full é a MESMA imagem que o deploy.yml usa.
+#   1. prod E2E (test-seed-prod-e2e.ts — 115 checks): guard recusa fora de
+#      produção, dry-run nada escrito, bootstrap categorias+settings, ZERO
+#      usuários, idempotência, cenários SEED_SPEC_PATCH (update + rename)
+#   2. dev E2E (test-seed-dev-e2e.ts — 162 checks): guard recusa em produção,
+#      9 usuários demo, árvore completa, wipe+recreate idempotente, guard
+#      ENTRE re-execuções, cenários SEED_SPEC_PATCH
+#   3. prod E2E dev-env (job seed-prod-e2e-dev-env — container PRÓPRIO): roda
+#      o prod E2E COMPLETO com PROD_SEED_ALLOW_DEV=1 presente no AMBIENTE do
+#      job (NODE_ENV=development) — o fluxo de override de banco efêmero em
+#      dev que o CI de produção nunca exercita (ver detalhes no job)
+#   4. MUTATION TEST (job mutation-seed-dev-e2e — container PRÓPRIO): prova
+#      que o guard do seed dev pega regressões — introduz um bug CONHECIDO
+#      no prisma/seed.ts, roda o dev E2E e exige que ele FALHE pela asserção
+#      certa (guarda cego → job falha)
+#
+# Cada célula tem SEU próprio container (banco limpo — o prod asserta ZERO
+# usuários; o dev faz wipe+recreate). Sem acoplamento nem ordem entre células:
+# o `if: always()` e o SKIP_DB_PUSH condicional do desenho antigo (prod→dev no
+# mesmo container) foram eliminados — cada célula é independente.
+#
+# Independência PRESERVADA: o step do dev roda com `if: always()` — um PR
+# que quebre o seed de dev é detectado MESMO se o prod E2E falhar antes
+# (mesmo comportamento do antigo job seed-dev-e2e dedicado, sem o custo de
+# um container + imagem + bun install extras). SKIP_DB_PUSH no dev é
+# condicional ao sucesso do prod: se o prod fez o push, o dev pula (~9s);
+# se o prod falhou antes do push, o dev faz o próprio push (robustez).
+#
+# Otimizações de CI aplicadas:
+#   - vars.POSTGIS_IMAGE (default alpine; mire no GHCR com
+#     sync-postgis-mirror.yml para pull mais rápido + sem rate limit Docker Hub)
+#   - Cache do Prisma client keyed no schema.prisma + bun.lock →
+#     SKIP_PRISMA_GENERATE=1 em cache hit (pula o generate, ~6s)
+#   - A matrix compartilha o cache do Prisma client entre as 4 combinações
+#     (mesma key em todas — em runs subsequentes, todas pulam o generate)
+#
+# Centralizado aqui (em vez de duplicado) para que PR check e cron semanal
+# validem SEMPRE a mesma definição — sem drift entre os dois contextos.
+#
+# Chamado por:
+#   - pr-check.yml          (a cada pull request)
+#   - benchmark-weekly.yml  (cron semanal — revalida contra banco efêmero)
+# =============================================================================
+
+name: Seed Guards E2E (reusable)
+
+on:
+  workflow_call:
+
+jobs:
+  seed-guards:
+    name: Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # ── MATRIX 2×2: seed (prod/dev) × imagem (alpine/full) ──────────
+    # Consolida os DOIS E2Es de seed (prod + dev) em uma matrix que também
+    # varia a imagem do PostGIS — cada célula roda UM E2E contra UMA imagem,
+    # com SEU próprio service container (4 combinações independentes):
+    #   prod×alpine, prod×full, dev×alpine, dev×full
+    # Objetivo: validar a compatibilidade de AMBAS as variantes da imagem em
+    # PRs (não só em cron/deploy). O full é a MESMA imagem que o deploy.yml
+    # usa; o alpine é o default mais leve (~154 MiB).
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - seed: prod
+            variant: alpine
+          - seed: prod
+            variant: full
+          - seed: dev
+            variant: alpine
+          - seed: dev
+            variant: full
+
+    # ── Ephemeral PostGIS service container (UM por combinação) ─────
+    # Imagem resolvida por matrix.variant: alpine usa vars.POSTGIS_IMAGE
+    # (fallback Docker Hub; aponte para o mirror GHCR com
+    # sync-postgis-mirror.yml), full usa a imagem oficial postgis/postgis:16-3.4
+    # (a MESMA que o deploy.yml usa — compatibilidade garantida com prod).
+    services:
+      postgres:
+        image: ${{ matrix.variant == 'full' && 'postgis/postgis:16-3.4' || (vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine') }}
+        env:
+          POSTGRES_DB: severinno
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # ── Cache do Prisma client (keyed no schema + versão do client) ──
+      # Em cache hit, os E2Es rodam com SKIP_PRISMA_GENERATE=1 (o .sh pula
+      # o generate, que é determinístico dado o schema) — economia ~6s.
+      # restore-keys nunca dispara o skip: o cache-hit só é 'true' com key
+      # exata, então um restore parcial roda o generate.
+      - name: Cache Prisma client
+        id: prisma-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.prisma
+            node_modules/@prisma/client
+          key: prisma-${{ hashFiles('prisma/schema.prisma') }}-${{ hashFiles('bun.lock') }}
+          restore-keys: prisma-
+
+      # ── PostGIS extension no service container ──────────────────────
+      # A imagem postgis só habilita a extensão em postgres/template_postgis,
+      # NÃO no POSTGRES_DB (criado de template1) — sem ela o prisma db push
+      # falha nas colunas Unsupported("geography(Point, 4326)"). Não dá para
+      # usar init-script montado aqui: o service container inicia ANTES do
+      # checkout (workspace vazio) — por isso o docker exec explícito.
+      - name: Enable PostGIS extension
+        run: |
+          docker exec ${{ job.services.postgres.id }} \
+            psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis"
+
+      # ── E2E da célula (prod ou dev) ─────────────────────────────────
+      # Cada célula roda UM E2E em um container EXCLUSIVO da combinação
+      # (banco limpo próprio — o prod asserta ZERO usuários; o dev faz
+      # wipe+recreate). Sem acoplamento nem ordem entre células.
+      # O .sh com --skip-docker faz: prisma generate (se cache miss) +
+      # db push (schema) + validator (prod: 115 checks; dev: 162 checks).
+      - name: Run seed-${{ matrix.seed }} E2E
+        id: e2e
+        env:
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+          SKIP_PRISMA_GENERATE: ${{ steps.prisma-cache.outputs.cache-hit == 'true' && '1' || '0' }}
+        run: |
+          if [ "${{ matrix.seed }}" = "prod" ]; then
+            bun run test:seed-prod-e2e --skip-docker
+            echo "  ✅ Seed prod E2E passou (115 checks)"
+          else
+            bun run test:seed-dev-e2e --skip-docker
+            echo "  ✅ Seed dev E2E passou (162 checks)"
+          fi
+
+      # ── Publish summary ─────────────────────────────────────────────
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🛡️ Seed Guards E2E'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Seed | ${{ matrix.seed }} |"
+            echo "| Variante imagem | ${{ matrix.variant }} |"
+            echo "| E2E (${{ matrix.seed == 'prod' && '115' || '162' }} checks) | ${{ steps.e2e.conclusion == 'success' && '✅' || '❌' }} |"
+            echo "| Imagem PostGIS | ${{ matrix.variant == 'full' && 'postgis/postgis:16-3.4' || (vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine') }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── MUTATION TEST — o guard do seed dev pega regressões? ─────────────
+  # Introduz um bug CONHECIDO no prisma/seed.ts (muta o email do admin),
+  # roda o seed-dev E2E e exige que ele FALHE pela asserção certa:
+  #   ❌ 'admin@severinno.com' existe com role ADMIN
+  # Se o E2E PASSAR com o seed mutado (exit 0), o guard está CEGO — uma
+  # asserção foi removida/enfraquecida em scripts/test-seed-dev-e2e.ts — e
+  # o job falha. Script: scripts/test-mutation-seed-dev-e2e.sh (restaura o
+  # seed via backup em trap, nunca git checkout).
+  mutation-seed-dev-e2e:
+    name: Mutation Test (seed dev E2E pega regressões?)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine' }}
+        env:
+          POSTGRES_DB: severinno
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Cache Prisma client
+        id: prisma-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.prisma
+            node_modules/@prisma/client
+          key: prisma-${{ hashFiles('prisma/schema.prisma') }}-${{ hashFiles('bun.lock') }}
+          restore-keys: prisma-
+
+      - name: Enable PostGIS extension
+        run: |
+          docker exec ${{ job.services.postgres.id }} \
+            psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis"
+
+      # ── Mutation test ──────────────────────────────────────────────
+      # O script muta prisma/seed.ts (sed), roda o E2E contra o seed
+      # mutado e valida que ele FALHA pela asserção esperada. O seed é
+      # restaurado do backup em trap (o working tree do runner volta limpo).
+      - name: Run mutation test (seed dev E2E deve FALHAR)
+        id: mutation
+        env:
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+          SKIP_PRISMA_GENERATE: ${{ steps.prisma-cache.outputs.cache-hit == 'true' && '1' || '0' }}
+        run: |
+          bun run test:mutation-seed-dev-e2e --skip-docker
+          echo "  ✅ Mutation test passou — o guard detectou a mutação"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🧬 Mutation Test — seed dev E2E'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Mutação detectada | ${{ steps.mutation.conclusion == 'success' && '✅ guard saudável' || '❌ guard CEGO' }} |"
+            echo "| Imagem PostGIS | ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine (default)' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── PROD E2E — variante dev-env (override PROD_SEED_ALLOW_DEV=1) ────
+  # Cobre o cenário que o CI de PRODUÇÃO NÃO exercita: o seed-prod rodando
+  # FORA de produção com o override explícito (PROD_SEED_ALLOW_DEV=1) — o
+  # fluxo documentado no header do prisma/seed-prod.ts para validar contra
+  # um banco efêmero em dev/CI.
+  #
+  # Diferença vs. o job seed-guards acima: lá o override é SIMULADO
+  # internamente pelo runSeed() do E2E (que remove a env herdada por chamada
+  # para manter o guard honesto). Aqui o override está presente no AMBIENTE
+  # do job, validando que:
+  #   1. isProdSeedAllowed(development, "1") permite (o override funciona);
+  #   2. O E2E permanece honesto MESMO com a env presente (runSeed a remove
+  #      no teste de recusa — o guard não é mascarado pela env do job);
+  #   3. O comando documentado de dev funciona end-to-end:
+  #      PROD_SEED_ALLOW_DEV=1 NODE_ENV=development bun run db:seed:prod
+  #
+  # Container PRÓPRIO (não reusa o do job seed-guards): o prod E2E exige
+  # banco LIMPO (asserta ZERO usuários + counts canônicos) e o dev E2E faz
+  # wipe+recreate com usuários demo — compartilhar o container quebraria as
+  # asserções do prod E2E.
+  seed-prod-e2e-dev-env:
+    name: Seed Prod E2E (dev-env override)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine' }}
+        env:
+          POSTGRES_DB: severinno
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Cache Prisma client
+        id: prisma-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.prisma
+            node_modules/@prisma/client
+          key: prisma-${{ hashFiles('prisma/schema.prisma') }}-${{ hashFiles('bun.lock') }}
+          restore-keys: prisma-
+
+      - name: Enable PostGIS extension
+        run: |
+          docker exec ${{ job.services.postgres.id }} \
+            psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis"
+
+      # ── Prod E2E com override no AMBIENTE (não só simulado) ──────────
+      # PROD_SEED_ALLOW_DEV=1 presente no env do step → o E2E roda no fluxo
+      # de dev/CI. O guard de recusa continua honesto: runSeed() remove a env
+      # herdada antes de cada chamada (higiene de env do E2E).
+      - name: Run seed-prod E2E (override no env do job)
+        id: e2e
+        env:
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+          NODE_ENV: development
+          PROD_SEED_ALLOW_DEV: "1"
+          SKIP_PRISMA_GENERATE: ${{ steps.prisma-cache.outputs.cache-hit == 'true' && '1' || '0' }}
+        run: |
+          bun run test:seed-prod-e2e --skip-docker
+          echo "  ✅ Seed prod E2E (dev-env) passou — 115 checks"
+
+      # ── Smoke do fluxo documentado de override ────────────────────────
+      # O comando EXATO que um dev roda contra banco efêmero em dev
+      # (documentado no header do prisma/seed-prod.ts):
+      #   PROD_SEED_ALLOW_DEV=1 NODE_ENV=development bun run db:seed:prod
+      # Valida que o script do package.json + a env var do job fluem até o
+      # guard isProdSeedAllowed() e o seed conclui (exit 0 + confirmação).
+      - name: Smoke — db:seed:prod com override (dev)
+        id: smoke
+        env:
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+          NODE_ENV: development
+          PROD_SEED_ALLOW_DEV: "1"
+        run: |
+          OUT=$(bun run db:seed:prod 2>&1)
+          echo "$OUT"
+          if ! echo "$OUT" | grep -q "Seed de produção concluído"; then
+            echo "❌ db:seed:prod não concluiu com override — veja output acima"
+            exit 1
+          fi
+          echo "  ✅ Override flow validado (exit 0 + confirmação final)"
+
+      # ── Publish summary ─────────────────────────────────────────────
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🛡️ Seed Prod E2E — dev-env (override PROD_SEED_ALLOW_DEV=1)'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Prod E2E (115 checks, override no env) | ${{ steps.e2e.conclusion == 'success' && '✅' || '❌' }} |"
+            echo "| Smoke db:seed:prod com override | ${{ steps.smoke.conclusion == 'success' && '✅' || '❌' }} |"
+            echo "| Imagem PostGIS | ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine (default)' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
