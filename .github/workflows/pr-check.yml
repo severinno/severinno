@@ -363,6 +363,163 @@ jobs:
           cat /tmp/gist-crossover-diff.txt 2>/dev/null | grep -E '^(.*provider|⚠|crossover|step)' || true
           exit 1
 
+  # ── Production Seed Guard ─────────────────────────────────────────────
+  # Valida a proteção da Ação 2 (docs/SECURITY.md): o seed NÃO pode rodar
+  # em produção — deve recusar ANTES de qualquer escrita, para nunca criar
+  # admin@severinno.com/admin123 nem destruir um banco produtivo.
+  #
+  # Roda `NODE_ENV=production bun run db:seed` contra um Postgres efêmero
+  # e FALHA se o seed NÃO recusar (exit 0 = guard removido/quebrado).
+  #
+  # Sanity em development no MESMO banco efêmero: se o banco estiver
+  # quebrado o job falha — sem falso positivo (a recusa em prod só é válida
+  # se em dev o seed funciona de verdade).
+  seed-prod-guard:
+    name: Seed Guard (production refusal)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # ── Ephemeral PostGIS service container ───────────────────────────
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: severinno
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      # ── Push schema so the ephemeral DB is functional ────────────────
+      - name: Push schema to ephemeral DB
+        env:
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+        run: bunx prisma db push --skip-generate
+
+      # ── Sanity: seed MUST succeed in development ─────────────────────
+      # Proves the DB is functional, so a production refusal is attributable
+      # to the guard (action 2) and not to a broken environment.
+      - name: Sanity — seed succeeds in development
+        id: sanity
+        env:
+          NODE_ENV: development
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+        run: |
+          bun run db:seed 2>&1 | tee /tmp/seed-dev.log
+          if ! grep -q "Seed completed successfully" /tmp/seed-dev.log; then
+            echo "❌ Dev seed falhou — banco efêmero não funcional; teste inválido."
+            cat /tmp/seed-dev.log
+            exit 1
+          fi
+          echo "✅ Sanity ok — banco efêmero funcional, seed roda em development"
+
+      # ── The guard: seed MUST refuse in production ────────────────────
+      # Capture the exit code without failing the step (refusal = exit 1
+      # by design); the next step asserts the refusal happened.
+      - name: Production seed must be refused
+        id: guard
+        env:
+          NODE_ENV: production
+          DATABASE_URL: postgresql://severinno:severinno_dev@localhost:5432/severinno
+        run: |
+          set +e
+          bun run db:seed 2>&1 | tee /tmp/seed-prod.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "seed exit code: $code"
+
+      # ── Assert the refusal is real and early ─────────────────────────
+      - name: Assert production refusal
+        env:
+          EXIT_CODE: ${{ steps.guard.outputs.exit_code }}
+        run: |
+          if [ "$EXIT_CODE" = "0" ]; then
+            echo "❌ GUARD QUEBRADO: seed RODOU em produção (exit 0)."
+            echo "   O seed criaria admin@severinno.com/admin123 em produção!"
+            cat /tmp/seed-prod.log
+            exit 1
+          fi
+          if ! grep -q "Seed recusado" /tmp/seed-prod.log; then
+            echo "❌ Seed falhou em produção sem a mensagem de recusa do guard."
+            cat /tmp/seed-prod.log
+            exit 1
+          fi
+          if grep -q "wiping existing data" /tmp/seed-prod.log; then
+            echo "❌ Guard posicionado errado: o wipe rodou ANTES da recusa."
+            cat /tmp/seed-prod.log
+            exit 1
+          fi
+          echo "✅ Guard validado: seed recusou em produção (exit $EXIT_CODE) antes de qualquer escrita"
+
+      - name: Publish summary
+        if: always()
+        env:
+          EXIT_CODE: ${{ steps.guard.outputs.exit_code }}
+        run: |
+          {
+            echo '## 🛡️ Seed Production Guard'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            if [ "${{ steps.guard.conclusion }}" = "success" ]; then
+              if [ "$EXIT_CODE" != "0" ]; then
+                echo '| Seed recusa em produção | ✅ |'
+              else
+                echo '| Seed recusa em produção | ❌ |'
+              fi
+            else
+              echo '| Seed recusa em produção | ⚪ não executado |'
+            fi
+            if [ "${{ steps.sanity.outcome }}" = "success" ]; then
+              echo '| Sanity em development | ✅ |'
+            else
+              echo '| Sanity em development | ❌ |'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Production Seed Bootstrap Guard ────────────────────────────────────
+  # Valida o prisma/seed-prod.ts (seed LEGÍTIMO de produção):
+  #   1. Recusa rodar sem NODE_ENV=production (guard obrigatório)
+  #   2. Com o override explícito PROD_SEED_ALLOW_DEV=1, popula categorias +
+  #      settings e NÃO cria NENHUM usuário (zero contas demo em produção)
+  #
+  # Espelho do seed-prod-guard (que valida o seed de DEV recusar em prod);
+  # este valida o caminho inverso: o seed de PRODUÇÃO funcionar de verdade.
+  #
+  # A definição do job vive no reusable workflow seed-prod-bootstrap.yml —
+  # chamado também pelo cron semanal (benchmark-weekly.yml) para revalidar
+  # o seed de produção contra um banco efêmero sem duplicar a lógica.
+  seed-prod-bootstrap:
+    name: Seed Prod Bootstrap
+    uses: ./.github/workflows/seed-prod-bootstrap.yml
+
   # ── Security Headers ──────────────────────────────────────────────────
   # Verifica CSP, HSTS, X-Frame-Options e demais headers de segurança
   # via curl. Roda no checkout sem dependências além de curl (pré-instalado).

@@ -9,6 +9,8 @@
 
 import { PrismaClient } from "@prisma/client"
 import { hashPassword } from "../src/lib/crypto"
+import { isDemoAccountsEnabled } from "../src/lib/demo-accounts"
+import { CATEGORY_SPEC, DEFAULT_SETTINGS, categorySlug, categoryOrder } from "./seed-data"
 
 const db = new PrismaClient()
 
@@ -20,17 +22,22 @@ function jitter(base: number, delta: number): number {
   return Number((base + (Math.random() * 2 - 1) * delta).toFixed(5))
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-}
-
 async function main() {
   console.log("🌱 Severinno seed — starting...")
+
+  // ── Guard: nunca semear contas demo em produção ─────────────────
+  // admin@severinno.com/admin123 é uma credencial CONHECIDA — criá-la em
+  // produção é bloqueador de release (ver docs/SECURITY.md). O guard roda
+  // ANTES do wipe para nunca destruir um banco de produção.
+  if (!isDemoAccountsEnabled()) {
+    console.error(
+      "❌ Seed recusado: produção não pode criar contas demo (admin@severinno.com/admin123).",
+    )
+    console.error("   Rode o seed apenas em development/test (NODE_ENV !== production).")
+    // Throw (não return): o catch abaixo faz process.exit(1) — CI/deploy que
+    // rode o seed em produção DEVE falhar, não reportar sucesso.
+    throw new Error("Seed recusado: produção não pode criar contas demo")
+  }
 
   // --- wipe (order matters for FKs) -------------------------------
   console.log("   • wiping existing data...")
@@ -226,11 +233,20 @@ async function main() {
         lat: jitter(SP_LAT, 0.03),
         lng: jitter(SP_LNG, 0.03),
         radiusKm: p.radiusKm,
-        whatsapp: "(11) 9" + Math.floor(1000 + Math.random() * 8999) + "-" +
+        whatsapp:
+          "(11) 9" +
+          Math.floor(1000 + Math.random() * 8999) +
+          "-" +
           Math.floor(1000 + Math.random() * 8999),
-        phone: "(11) 3" + Math.floor(1000 + Math.random() * 8999) + "-" +
+        phone:
+          "(11) 3" +
+          Math.floor(1000 + Math.random() * 8999) +
+          "-" +
           Math.floor(1000 + Math.random() * 8999),
-        cpfCnpj: "0" + String(Math.floor(100000000 + Math.random() * 89999999)) + "-" +
+        cpfCnpj:
+          "0" +
+          String(Math.floor(100000000 + Math.random() * 89999999)) +
+          "-" +
           String(Math.floor(10 + Math.random() * 89)),
       },
     })
@@ -256,53 +272,19 @@ async function main() {
 
   // --- CATEGORIES (3-level tree) ----------------------------------
   console.log("   • creating categories...")
-  type CatInput = { name: string; parent?: string; level: number; icon?: string }
-  const catSpec: CatInput[] = [
-    // pais
-    { name: "Reparos", level: 0, icon: "wrench" },
-    { name: "Limpeza", level: 0, icon: "sparkles" },
-    { name: "Reforma", level: 0, icon: "hammer" },
-    // filhas
-    { name: "Elétrica", parent: "Reparos", level: 1, icon: "zap" },
-    { name: "Hidráulica", parent: "Reparos", level: 1, icon: "droplet" },
-    { name: "Pintura", parent: "Reparos", level: 1, icon: "brush" },
-    { name: "Residencial", parent: "Limpeza", level: 1, icon: "home" },
-    { name: "Pós-Obra", parent: "Limpeza", level: 1, icon: "broom" },
-    { name: "Pisos", parent: "Reforma", level: 1, icon: "square" },
-    { name: "Alvenaria", parent: "Reforma", level: 1, icon: "brick" },
-    // subcategorias (level 2)
-    { name: "Tomadas e interruptores", parent: "Elétrica", level: 2 },
-    { name: "Curto-circuito", parent: "Elétrica", level: 2 },
-    { name: "Quadro elétrico", parent: "Elétrica", level: 2 },
-    { name: "Desentupimento", parent: "Hidráulica", level: 2 },
-    { name: "Vazamento", parent: "Hidráulica", level: 2 },
-    { name: "Caixa de descarga", parent: "Hidráulica", level: 2 },
-    { name: "Pintura interna", parent: "Pintura", level: 2 },
-    { name: "Pintura externa", parent: "Pintura", level: 2 },
-    { name: "Textura e grafiato", parent: "Pintura", level: 2 },
-    { name: "Limpeza geral", parent: "Residencial", level: 2 },
-    { name: "Organização", parent: "Residencial", level: 2 },
-    { name: "Limpeza pós-obra", parent: "Pós-Obra", level: 2 },
-    { name: "Assentamento de piso", parent: "Pisos", level: 2 },
-    { name: "Rejunte", parent: "Pisos", level: 2 },
-    { name: "Pequenas reformas", parent: "Alvenaria", level: 2 },
-    { name: "Contrapiso", parent: "Alvenaria", level: 2 },
-    { name: "Poda de árvores", parent: "Alvenaria", level: 2 }, // for jardineiro fallback
-  ]
-
   const catByName: Record<string, { id: string }> = {}
   // sort so parents come first
-  const sorted = [...catSpec].sort((a, b) => a.level - b.level)
+  const sorted = [...CATEGORY_SPEC].sort((a, b) => a.level - b.level)
   for (const c of sorted) {
     const parent = c.parent ? catByName[c.parent] : null
     const created = await db.category.create({
       data: {
         name: c.name,
-        slug: slugify(c.name) + (c.parent ? "-" + slugify(c.parent) : ""),
+        slug: categorySlug(c),
         parentId: parent?.id ?? null,
         level: c.level,
         icon: c.icon ?? null,
-        order: c.level === 0 ? ["Reparos", "Limpeza", "Reforma"].indexOf(c.name) : 0,
+        order: categoryOrder(c),
         active: true,
       },
     })
@@ -446,8 +428,7 @@ async function main() {
       providerKey: "Pedreiro",
       subCat: "Contrapiso",
       title: "Execução de contrapiso",
-      description:
-        "Preparo e execução de contrapiso nivelado para posterior assentamento de piso.",
+      description: "Preparo e execução de contrapiso nivelado para posterior assentamento de piso.",
       basePrice: 60,
       unit: "METRO_QUADRADO",
       photoSeed: "service-13",
@@ -484,12 +465,8 @@ async function main() {
   console.log("   • creating bookings + reviews...")
   const encanador = providers["Encanador"]
   const eletricista = providers["Eletricista"]
-  const encanadorServices = createdServices.filter(
-    (s) => s.providerId === encanador.id,
-  )
-  const eletricistaServices = createdServices.filter(
-    (s) => s.providerId === eletricista.id,
-  )
+  const encanadorServices = createdServices.filter((s) => s.providerId === encanador.id)
+  const eletricistaServices = createdServices.filter((s) => s.providerId === eletricista.id)
 
   const now = Date.now()
   const daysAgo = (n: number) => new Date(now - n * 24 * 60 * 60 * 1000)
@@ -502,7 +479,8 @@ async function main() {
       scheduledAt: daysAgo(20),
       amount: 120,
       rating: 5,
-      comment: "Excelente trabalho! Resolveu o vazamento rapidamente e ainda me deu dicas de manutenção.",
+      comment:
+        "Excelente trabalho! Resolveu o vazamento rapidamente e ainda me deu dicas de manutenção.",
     },
     {
       client: client2,
@@ -597,18 +575,7 @@ async function main() {
 
   // --- SETTINGS ---------------------------------------------------
   console.log("   • creating settings...")
-  const settings = [
-    { key: "site_name", value: "Severinno" },
-    { key: "site_tagline", value: "Marketplace de serviços com geolocalização" },
-    { key: "support_email", value: "suporte@severinno.com" },
-    { key: "payment_pix_key", value: "suporte@severinno.com" },
-    { key: "nominatim_enabled", value: "true" },
-    { key: "viacep_enabled", value: "true" },
-    { key: "default_search_radius_km", value: "15" },
-    { key: "platform_fee_percent", value: "10" },
-    { key: "quote_default_expiry_hours", value: "72" },
-  ]
-  for (const s of settings) {
+  for (const s of DEFAULT_SETTINGS) {
     await db.setting.create({
       data: { key: s.key, value: s.value, updatedBy: admin.id },
     })
@@ -633,7 +600,7 @@ async function main() {
       WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
     `)
     console.log("   ✅ PostGIS locations synced")
-  } catch (e) {
+  } catch (_e) {
     // PostGIS may not be available (e.g. SQLite) — non-fatal
     console.log("   ⚠️  PostGIS sync skipped (extension not available)")
   }
@@ -644,7 +611,7 @@ async function main() {
   console.log(`   • Categories: ${Object.keys(catByName).length} (3-level tree)`)
   console.log(`   • Services:  ${createdServices.length}`)
   console.log(`   • Bookings:  ${bookings.length} (all completed, with reviews)`)
-  console.log(`   • Settings:  ${settings.length}`)
+  console.log(`   • Settings:  ${DEFAULT_SETTINGS.length}`)
   console.log("")
   console.log("   🔑 Login credentials:")
   console.log("      admin@severinno.com   / admin123")

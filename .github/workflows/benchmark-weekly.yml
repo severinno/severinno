@@ -286,3 +286,13 @@ jobs:
             docs/benchmarks/geo-real-latest.json
             docs/benchmarks/geo-real-baseline.json
           retention-days: 90
+
+  # ── Seed Prod Bootstrap (semanal) ─────────────────────────────────────
+  # Revalida SEMANALMENTE que o prisma/seed-prod.ts (seed de produção)
+  # continua funcional contra um banco efêmero — espelho do PR check.
+  #
+  # A definição do job vive no reusable workflow seed-prod-bootstrap.yml
+  # (o mesmo usado pelo pr-check) — sem duplicação de lógica.
+  seed-prod-bootstrap:
+    name: Seed Prod Bootstrap (semanal)
+    uses: ./.github/workflows/seed-prod-bootstrap.yml
