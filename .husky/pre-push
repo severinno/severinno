@@ -1,6 +1,8 @@
 set -euo pipefail
 
 bash scripts/check-utf8.sh --dry-run --ci src/
+bash scripts/check-crlf.sh --ci
+bash scripts/check-blob-crlf.sh --ci
 
 # ── Smart skip: só roda testes se arquivos-fonte foram alterados ──────────
 # Determina quais arquivos mudaram em relação ao upstream ou commit anterior

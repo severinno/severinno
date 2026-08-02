@@ -4,6 +4,19 @@
 # Substitui oven-sh/setup-bun@v2, que re-downloada o release LATEST em TODOS
 # os jobs (~25-35s/job), mesmo quando o Bun já está instalado na imagem.
 #
+# FONTE ÚNICA DA VERSÃO: repository variable BUN_VERSION (vars.BUN_VERSION).
+# Todos os workflows passam `bun-version: ${{ vars.BUN_VERSION }}` no input e
+# o sync-bun-mirror.yml usa a mesma variável no env — trocar o Bun = alterar
+# a variável em UM lugar (Settings → Secrets and variables → Actions).
+#
+# Por que NÃO há `default:` no input:
+#   - Metadata de action (action.yml) é ESTÁTICA — `default: ${{ ... }}` NÃO
+#     é avaliado pelo GitHub (seria o literal "${{ vars.BUN_VERSION }}"). Um
+#     default literal (ex.: "1.3.14") criaria um SEGUNDO ponto de verdade,
+#     com risco de drift vs. a variável.
+#   - A resolução acontece em RUNTIME no step 'Resolve Bun version':
+#     input do caller → vars.BUN_VERSION → erro claro se ambos ausentes.
+#
 # Estratégia em 3 camadas (da mais rápida para a mais lenta):
 #
 #   1. PRE-INSTALLED fast path — se `bun` já estiver no PATH com a versão
@@ -16,19 +29,17 @@
 #      cache real do GitHub) ou tier 3 (download ~5-10s em cache frio).
 #   2. actions/cache restore — caso contrário, restaura o binário do release
 #      EXATO de actions/cache (key = bun-<versão>-<os>-<arch>) (~1-2s).
-#   3. COLD-CACHE download — só em cache miss, baixa o zip do release direto
-#      do GitHub releases (~5-10s) e o salva no cache para os próximos jobs.
-#
-# Por que pinar a versão em vez de 'latest':
-#   - 'latest' é um alvo móvel: a key do cache nunca seria estável e o CI
-#     flutuaria entre versões. Pinar 1.3.14 (a versão usada localmente pelos
-#     devs) dá toolchain idêntico em todos os jobs e cache key determinística.
-#   - Se a imagem já tiver exatamente a versão pinada, o fast path a usa.
+#   3. COLD-CACHE download — só em cache miss, puxa do mirror GHCR
+#      (ghcr.io/<owner>/bun:<versão>, sincronizado por sync-bun-mirror.yml)
+#      via docker pull + docker create/cp (~1-3s, sem rate limit do GitHub
+#      Releases) e o salva no cache para os próximos jobs. Se o mirror ainda
+#      não existir ou o docker não estiver disponível, faz fallback para o
+#      download direto do release do GitHub (~5-10s).
 #
 # Usage:
 #   - uses: ./.github/actions/setup-bun
 #     with:
-#       bun-version: 1.3.14   # opcional (default: 1.3.14)
+#       bun-version: ${{ vars.BUN_VERSION }}   # opcional — resolve de vars.BUN_VERSION se omitido
 # =============================================================================
 
 name: Setup Bun (fast-path + cached)
@@ -36,20 +47,38 @@ description: >-
   Sets up Bun with three tiers — pre-installed fast path, actions/cache
   restore keyed on the exact version, and a direct GitHub release download
   only on cold cache miss. Replaces oven-sh/setup-bun@v2 (~25-35s re-download
-  per job).
+  per job). Version source: repository variable BUN_VERSION (vars.BUN_VERSION).
 
 inputs:
   bun-version:
     description: >-
-      Exact Bun version to use (e.g. 1.3.14). Used both as the version to
-      install and as the actions/cache key, so pinning gives a stable,
-      deterministic toolchain across all jobs.
+      Exact Bun version to use (e.g. 1.3.14). FONTE ÚNICA: repository
+      variable BUN_VERSION (vars.BUN_VERSION) — workflows pass
+      `bun-version: ${{ vars.BUN_VERSION }}`. Sem default no metadata (não
+      avalia ${{ }}); se o input for omitido, resolve de vars.BUN_VERSION no
+      step 'Resolve Bun version'; se ambos ausentes, falha com instruções.
     required: false
-    default: "1.3.14"
 
 runs:
   using: composite
   steps:
+    # ── Resolve a versão (input do caller → vars.BUN_VERSION → erro) ─────
+    # Metadata de action é estática — a resolução do "default" precisa
+    # acontecer aqui, em runtime, lendo a repository variable. O guard
+    # scripts/check-bun-mirror.mjs falha se um default literal voltar.
+    - name: Resolve Bun version
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION="${{ inputs.bun-version || vars.BUN_VERSION }}"
+        if [ -z "$VERSION" ]; then
+          echo "::error::Bun version não resolvida — defina a repository variable BUN_VERSION (Settings → Secrets and variables → Actions, ex.: gh variable set BUN_VERSION 1.3.14) ou passe bun-version no with:."
+          exit 1
+        fi
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "✅ Bun ${VERSION} (fonte: ${{ inputs.bun-version != '' && 'input' || 'vars.BUN_VERSION' }})"
+
     # ── Tier 1: pre-installed fast path ─────────────────────────────────
     - name: Detect pre-installed Bun
       id: detect
@@ -67,7 +96,7 @@ runs:
         fi
 
     - name: Use pre-installed Bun (fast path)
-      if: steps.detect.outputs.found == 'true' && steps.detect.outputs.version == inputs.bun-version
+      if: steps.detect.outputs.found == 'true' && steps.detect.outputs.version == steps.resolve.outputs.version
       shell: bash
       run: |
         echo "✅ Usando Bun pré-instalado: $(bun --version) (0s, sem download)"
@@ -75,20 +104,24 @@ runs:
     # ── Tier 2: restore from cache ──────────────────────────────────────
     - name: Restore Bun release from cache
       id: cache
-      if: steps.detect.outputs.found == 'false' || steps.detect.outputs.version != inputs.bun-version
+      if: steps.detect.outputs.found == 'false' || steps.detect.outputs.version != steps.resolve.outputs.version
       uses: actions/cache@v4
       with:
         path: ~/.bun
-        key: bun-${{ inputs.bun-version }}-${{ runner.os }}-${{ runner.arch }}
+        key: bun-${{ steps.resolve.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
 
-    # ── Tier 3: cold-cache download (direct GitHub release) ─────────────
+    # ── Tier 3: cold-cache download (GHCR mirror → GitHub release fallback) ─
+    # Prioridade: mirror GHCR ghcr.io/<owner>/bun:<versão> (imagem scratch com
+    # o binário em /bun, sincronizada por sync-bun-mirror.yml). O mirror só
+    # serve linux/x64; demais plataformas e fallbacks vão direto ao release.
     - name: Download Bun release (cold cache)
-      if: (steps.detect.outputs.found == 'false' || steps.detect.outputs.version != inputs.bun-version) && steps.cache.outputs.cache-hit != 'true'
+      if: (steps.detect.outputs.found == 'false' || steps.detect.outputs.version != steps.resolve.outputs.version) && steps.cache.outputs.cache-hit != 'true'
       shell: bash
       env:
-        BUN_VERSION: ${{ inputs.bun-version }}
+        BUN_VERSION: ${{ steps.resolve.outputs.version }}
         RUNNER_OS: ${{ runner.os }}
         RUNNER_ARCH: ${{ runner.arch }}
+        GHCR_OWNER: ${{ github.repository_owner }}
       run: |
         set -euo pipefail
 
@@ -105,27 +138,55 @@ runs:
           *) echo "::error::arch não suportado: $RUNNER_ARCH" >&2; exit 1 ;;
         esac
 
-        URL="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-${OS}-${ARCH}.zip"
-        echo "::group::Baixando Bun ${BUN_VERSION} (${OS}-${ARCH})"
-        echo "URL: ${URL}"
         mkdir -p "$HOME/.bun/bin"
+        BUN_BIN="$HOME/.bun/bin/bun"
+
+        # ── 3a. Mirror GHCR (linux/x64 apenas) ───────────────────────────
+        # Pull da imagem scratch (docker create + docker cp extrai /bun).
+        # Se o mirror ainda não rodou ou o docker está indisponível, cai no
+        # fallback 3b (release direto) — o mirror é otimização, não requisito.
+        if [ "$OS" = "linux" ] && [ "$ARCH" = "x64" ] && command -v docker >/dev/null 2>&1; then
+          MIRROR="ghcr.io/${GHCR_OWNER}/bun:${BUN_VERSION}"
+          echo "::group::Puxando Bun ${BUN_VERSION} do mirror GHCR (${MIRROR})"
+          if docker pull "$MIRROR" >/dev/null 2>&1; then
+            CID="$(docker create "$MIRROR" 2>/dev/null || true)"
+            if [ -n "$CID" ] && docker cp "$CID:/bun" "$BUN_BIN" >/dev/null 2>&1; then
+              chmod +x "$BUN_BIN" 2>/dev/null || true
+              echo "  ✅ Mirror GHCR ok — bun $( "$BUN_BIN" --version 2>/dev/null || echo '?' )"
+              docker rm -f "$CID" >/dev/null 2>&1 || true
+              ln -sf "$BUN_BIN" "$HOME/.bun/bin/bunx"
+              echo "bunx -> $(readlink -f "$HOME/.bun/bin/bunx" 2>/dev/null || echo "$HOME/.bun/bin/bunx")"
+              echo "::endgroup::"
+              echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+              exit 0
+            fi
+            [ -n "$CID" ] && docker rm -f "$CID" >/dev/null 2>&1 || true
+          fi
+          echo "  ⚠️ Mirror GHCR indisponível (${MIRROR}) — fallback p/ GitHub Releases"
+          echo "::endgroup::"
+        fi
+
+        # ── 3b. Fallback: download direto do GitHub Releases ─────────────
+        URL="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-${OS}-${ARCH}.zip"
+        echo "::group::Baixando Bun ${BUN_VERSION} (${OS}-${ARCH}) do GitHub Releases"
+        echo "URL: ${URL}"
         curl -fsSL "$URL" -o "$RUNNER_TEMP/bun.zip"
         unzip -qo "$RUNNER_TEMP/bun.zip" -d "$HOME/.bun"
 
         # O zip extrai para uma pasta (ex.: bun-linux-x64/bun) — normaliza
         # para o layout do instalador oficial: ~/.bun/bin/bun (mesmo caminho
         # usado pelo actions/cache acima, mantendo a key compatível).
-        find "$HOME/.bun" -type f -name bun -exec mv -f {} "$HOME/.bun/bin/bun" \; 2>/dev/null || true
-        chmod +x "$HOME/.bun/bin/bun" 2>/dev/null || true
+        find "$HOME/.bun" -type f -name bun -exec mv -f {} "$BUN_BIN" \; 2>/dev/null || true
+        chmod +x "$BUN_BIN" 2>/dev/null || true
 
         # CRÍTICO: o zip do release contém APENAS o binário `bun` — o `bunx`
         # é um symlink criado pelo instalador oficial. Sem ele, steps que
         # usam `bunx` (ex.: bunx prisma generate, bunx tsc) falham com
         # exit 127 (command not found). Verificado em at: check job real
         # morreu em 'Generate Prisma client' exatamente por isso.
-        ln -sf "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx"
+        ln -sf "$BUN_BIN" "$HOME/.bun/bin/bunx"
 
-        "$HOME/.bun/bin/bun" --version
+        "$BUN_BIN" --version
         echo "bunx -> $(readlink -f "$HOME/.bun/bin/bunx" 2>/dev/null || echo "$HOME/.bun/bin/bunx")"
         echo "::endgroup::"
 

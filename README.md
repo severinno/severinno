@@ -454,6 +454,48 @@ serviços cujo P95 iguale exatamente o limiar sejam falsamente marcados como deg
 disparando notificações de alerta desnecessárias. O teste #9 serve como guardrail contra essa
 mudança inadvertida.
 
+## Bun Toolchain — Fonte Única (repository variable BUN_VERSION)
+
+A versão do Bun usada no CI vive **em UM lugar**: a repository variable
+`BUN_VERSION` (Settings → Secrets and variables → Actions). Trocar o Bun =
+alterar a variável em um único ponto — nada de editar 40+ ocorrências.
+
+```bash
+# Definir / atualizar a versão (uma única vez por bump):
+gh variable set BUN_VERSION 1.3.14
+```
+
+Como a versão flui:
+
+| Onde                                    | Como lê a versão                                               |
+| --------------------------------------- | -------------------------------------------------------------- |
+| Workflows (`bun-version:` no setup-bun) | `${{ vars.BUN_VERSION }}`                                      |
+| Cache keys `bun-`/`prisma-`             | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`            |
+| Mirror GHCR (`sync-bun-mirror.yml` env) | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                         |
+| Composite action `setup-bun`            | resolve em runtime: `inputs.bun-version \|\| vars.BUN_VERSION` |
+| Act local (`.actrc`)                    | `--var BUN_VERSION=<versão>` (espelho local da variável)       |
+
+Por que o action não tem `default:` no input? Metadata de action (`action.yml`)
+é **estática** — `default: ${{ ... }}` NÃO é avaliado (seria o literal
+`"${{ vars.BUN_VERSION }}"`). Um default literal (ex.: `1.3.14`) criaria um
+segundo ponto de verdade com risco de drift. A resolução acontece em runtime
+no step _Resolve Bun version_, com erro claro se nem input nem variável
+existirem.
+
+O guard `scripts/check-bun-mirror.mjs` (PR Check + `utf8-check.yml`) falha se:
+
+- o mirror `sync-bun-mirror.yml` tiver `BUN_VERSION` **literal** em vez da variável;
+- o action `setup-bun` tiver `default:` literal (metadata não avalia `${{ }}`);
+- o action não referenciar `${{ vars.BUN_VERSION }}` no step de resolve;
+- qualquer workflow tiver versão literal do Bun (`bun-version: 1.3.14`,
+  `bun-1.3.14-...`, `BUN_VERSION: "1.3.14"`);
+- cache keys `bun-`/`prisma-` não referenciarem `${{ vars.BUN_VERSION }}`;
+- o `.actrc` não definir `BUN_VERSION` (o act local quebraria).
+
+> ⚠️ **`.actrc` local**: mantenha `--var BUN_VERSION=<versão>` em sincronia com
+> a repository variable do GitHub. O act não lê as variables do repositório —
+> o arquivo é o espelho local. Veja `### Act (executa os jobs localmente)`.
+
 ## Local Workflow Validation (actionlint + act)
 
 Valide os `.github/workflows/*.yml` localmente antes de abrir PR, sem depender do CI.
@@ -488,5 +530,5 @@ tool-results/act/act.exe -W .github/workflows/pr-check.yml -j secrets-guard \
 | Bug                                         | Sintoma                                                               | Workaround                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | :------------------------------------------ | :-------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **`--dry-run` não existe**                  | `Error: unknown flag: --dry-run`                                      | Usar `-n`. Atenção: `-n` só mostra o plano e **não** executa os `run:` — não pega erros de runtime (ex: CRLF, comandos ausentes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **`oven-sh/setup-bun@v2` lento**            | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs | **Confirmado (repro em 2 runs consecutivos do mesmo job):** run #1 = 35.5s, run #2 = 24.2s, ambos com `cache-hit=false` explícito no output do setup-bun → re-download a cada execução, sem cache de layers nem de release. Exit 0 (é lentidão, não falha). Aceitável para validação pontual; exige rede para o GitHub. Mapear a imagem com `-P ubuntu-latest=catthehacker/ubuntu:act-latest`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **`oven-sh/setup-bun@v2` lento**            | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs | **Confirmado (comportamento do action EXTERNO antigo, medido ANTES da migração):** 2 execuções consecutivas do job `e2e-counts-guard` no act — run #1 = 35.5s, run #2 = 24.2s, ambos com `cache-hit=false` explícito no output do setup-bun → re-download a cada execução, sem cache de layers nem de release. Exit 0 (é lentidão, não falha).<br>**Repro automatizado:** `bun run repro:setup-bun` (scripts/act-repro-setup-bun.sh) — roda o job 2×, extrai a duração do step setup-bun e o cache-hit de cada run, e asserta o comportamento esperado (cache-miss em todas = bug; cache-hit na última = fix). Use num checkout ANTERIOR ao commit de migração para reproduzir o bug. **Hoje o bug não é reproduzível em `main`:** o job usa o composite local `.github/actions/setup-bun` (cache keyed na versão) — ver `scripts/check-bun-mirror.mjs`. Na época era aceitável para validação pontual; exigia rede para o GitHub.                                                                                                                                                                                                          |
 | **CRLF quebra bash no container (Windows)** | `scripts/check-utf8.sh: line 20: set: pipefail: invalid option name`  | **Causa raiz (confirmada):** `core.autocrlf=true` deixa o working tree CRLF (`i/lf w/crlf`) em **todos os 41 `.sh`** — o checkout ocorreu antes de `.gitattributes` declarar `eol=lf`, então o atributo nunca foi aplicado aos arquivos já presentes. O act copia o working tree para o container Linux → bash falha em `set -euo pipefail`. **Fix aplicado:** normalizar os `.sh` para LF no disco (o blob já era LF → **zero diff** no git) + `git add --renormalize` para sincronizar o stat cache do index (sem mudar conteúdo). **Evidência pós-fix no act:** exit 0 — 748 arquivos escaneados, "Status: OK -- all valid UTF-8". Alternativa: `git config core.autocrlf false` + `git add --renormalize`, ou WSL. **Proteção anti-regressão:** `scripts/check-crlf.sh` (working tree) + `scripts/check-blob-crlf.sh` (blob commitado — `i/crlf`/`i/mixed` via `git ls-files --eol`) rodam no pre-commit e no `utf8-check.yml`, falhando se qualquer `.sh` voltar a ter CRLF. **Fix reutilizável:** `scripts/normalize-crlf.sh` aplica a normalização em qualquer checkout/worktree (`.sh`/`.ts`/`.md` → LF + `git add --renormalize`). |

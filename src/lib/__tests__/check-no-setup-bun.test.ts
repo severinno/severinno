@@ -59,7 +59,7 @@ describe("findSetupBunRefs", () => {
   })
 
   it("não confunde com o action local ./.github/actions/setup-bun", () => {
-    const content = `- uses: ./.github/actions/setup-bun\n  with:\n    bun-version: 1.3.14\n`
+    const content = `- uses: ./.github/actions/setup-bun\n  with:\n    bun-version: \${{ vars.BUN_VERSION }}\n`
     expect(findSetupBunRefs(content)).toEqual([])
   })
 

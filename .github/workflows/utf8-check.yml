@@ -32,6 +32,14 @@
 #      (~25-35s/job). All workflows must use the local composite action
 #      ./.github/actions/setup-bun (pre-installed fast path + actions/cache
 #      keyed on the pinned version). See scripts/check-no-setup-bun.mjs.
+#
+#   5. Bun mirror: fails if the GHCR mirror workflow (sync-bun-mirror.yml)
+#      is missing, its BUN_VERSION doesn't reference the repository variable
+#      vars.BUN_VERSION (single source), the setup-bun action pins a literal
+#      default (metadata can't evaluate ${{ }}), a literal Bun version
+#      appears anywhere in workflows, the action's cold-cache tier no longer
+#      references the mirror (ghcr.io/<owner>/bun:<version>), or .actrc
+#      doesn't define BUN_VERSION (act local). See scripts/check-bun-mirror.mjs.
 # =============================================================================
 
 name: UTF-8 Check
@@ -62,8 +70,14 @@ jobs:
       - name: Run single-line out= assignment guard on scripts/
         run: bash scripts/check-single-line-out-assign.sh --ci
 
+      - name: Run encoding-guards badge guard (README badge ↔ table)
+        run: node scripts/check-encoding-guards-badge.mjs
+
       - name: Run no-setup-bun guard on workflows
         run: node scripts/check-no-setup-bun.mjs
+
+      - name: Run bun-mirror guard (GHCR mirror ↔ action version)
+        run: node scripts/check-bun-mirror.mjs
 
       - name: Summary
         run: echo "All source files validated as valid UTF-8, LF line endings, and clean shell assignments."

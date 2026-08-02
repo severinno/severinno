@@ -1,0 +1,14 @@
+# =============================================================================
+# .actrc — config local do nektos/act (v0.2.89)
+#
+# Espelha a repository variable BUN_VERSION do GitHub para execuções LOCAIS
+# do act: workflows que usam `${{ vars.BUN_VERSION }}` (setup-bun, cache
+# keys, sync-bun-mirror) resolvem a versão aqui quando rodados fora do CI.
+#
+# ⚠️ Mantenha em sincronia com a repository variable BUN_VERSION do GitHub
+# (Settings → Secrets and variables → Actions). A FONTE ÚNICA de verdade
+# para o CI é a variável; este arquivo é apenas o espelho local (o act não
+# lê as variables do repositório sem --var). O guard scripts/check-bun-mirror
+# .mjs falha se este arquivo sumir ou perder a linha BUN_VERSION.
+# =============================================================================
+--var BUN_VERSION=1.3.14
