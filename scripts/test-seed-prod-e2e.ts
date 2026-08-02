@@ -32,6 +32,11 @@
  *      DURANTE a avaliação do módulo, antes de main() e antes de qualquer
  *      upsert — zero-escrita comprovada nas 3 tabelas; banco segue utilizável
  *      (um run canônico conclui normalmente após a recusa)
+ *  11. SEED_SPEC_PATCH com nome DESCONHECIDO (JSON válido) — entradas fora do
+ *      spec são IGNORADAS sem erro: o buildPatchedSpec casa por NOME, então
+ *      um name que não existe no CATEGORY_SPEC (typo, remanescente de spec
+ *      antigo) não afeta nada; o seed roda NORMALMENTE (exit 0), sem recusa,
+ *      sem mensagem de spec inválido e sem criar linhas novas
  *
  * O seed é executado como SUBPROCESSO (`bun prisma/seed-prod.ts`) — o mesmo
  * caminho do CI — para validar o script real, não uma importação em memória.
@@ -455,6 +460,52 @@ async function main() {
       countsAfterRecovery.users === countsBeforeBroken.users,
     `árvore inalterada pelo fluxo de recusa (cats ${countsBeforeBroken.categories}→${countsAfterRecovery.categories}, settings ${countsBeforeBroken.settings}→${countsAfterRecovery.settings}, users ${countsBeforeBroken.users}→${countsAfterRecovery.users})`,
   )
+
+  // ── 11. SEED_SPEC_PATCH com nome DESCONHECIDO — entradas fora do spec ───
+  // são IGNORADAS sem erro. JSON VÁLIDO, mas o name não existe no
+  // CATEGORY_SPEC (typo de "Elétrica", ou categoria que ainda não existe).
+  // O buildPatchedSpec casa por NOME — entradas sem correspondência não
+  // afetam nada (nem icon/order, nem renameTo). Contraste com o cenário 10
+  // (JSON quebrado → recusa) e com o 9 (spec estruturalmente inválido →
+  // recusa): aqui NÃO há erro, o seed roda normalmente e NADA é criado.
+  console.log("  ── SEED_SPEC_PATCH com nome desconhecido (ignorado sem erro) ──")
+
+  // Patch com 2 entradas desconhecidas: um typo ("Elétricaa" não casa com
+  // "Elétrica") e um nome que não existe no spec com renameTo — nenhuma deve
+  // ter efeito (nem criar linha, nem renomear nada).
+  const UNKNOWN_NAME_PATCH = JSON.stringify([
+    { name: "Elétricaa", icon: "ghost" },
+    { name: "Categoria Fantasma", renameTo: "Outra Fantasma" },
+  ])
+  const countsBeforeUnknown = await getCounts()
+  const unknownRun = runSeed({
+    NODE_ENV: "development",
+    PROD_SEED_ALLOW_DEV: "1",
+    SEED_SPEC_PATCH: UNKNOWN_NAME_PATCH,
+  })
+  expect(
+    unknownRun.status === 0,
+    `patch com nome desconhecido NÃO recusa (exit ${unknownRun.status})`,
+  )
+  expect(
+    !unknownRun.out.includes("CATEGORY_SPEC inválido"),
+    "sem mensagem de spec inválido (entradas desconhecidas são ignoradas)",
+  )
+  expect(
+    unknownRun.out.includes("Seed de produção concluído"),
+    "seed conclui NORMALMENTE com o patch desconhecido",
+  )
+  const countsAfterUnknown = await getCounts()
+  expect(
+    countsAfterUnknown.categories === countsBeforeUnknown.categories &&
+      countsAfterUnknown.settings === countsBeforeUnknown.settings &&
+      countsAfterUnknown.users === countsBeforeUnknown.users,
+    `nenhuma linha criada pelo patch desconhecido (cats ${countsBeforeUnknown.categories}→${countsAfterUnknown.categories}, settings ${countsBeforeUnknown.settings}→${countsAfterUnknown.settings}, users ${countsBeforeUnknown.users}→${countsAfterUnknown.users})`,
+  )
+  // A categoria "fantasma" do patch NÃO foi criada no banco (o spec derivado
+  // ignora entradas desconhecidas — nada entra no upsert).
+  const ghostRow = await db.category.findUnique({ where: { slug: "categoria-fantasma" } })
+  expect(ghostRow === null, "categoria desconhecida não é criada no banco")
 
   console.log(
     `\n📊 Resultados: ${rep.passed} passed, ${rep.failed} failed, ${rep.total} total (esperado ${EXPECTED_TOTAL} derivado)`,

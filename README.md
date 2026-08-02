@@ -13,7 +13,7 @@
   </a>
   <img src="https://img.shields.io/badge/utf8--check-748%20files%20%E2%9C%85-2ea44f" alt="UTF-8: 748 files">
   <img src="https://img.shields.io/badge/tests-74%20unit%20%7C%20160%20e2e%20%E2%9C%85-2ea44f" alt="Tests: 74 unit | 160 E2E">
-  <img src="https://img.shields.io/badge/encoding%20guards-4%2F4%20active%20%E2%9C%85-2ea44f" alt="Encoding guards: 4/4 active">
+  <img src="https://img.shields.io/badge/encoding%20guards-7%2F7%20active%20%E2%9C%85-2ea44f" alt="Encoding guards: 7/7 active">
   <img src="https://img.shields.io/badge/coverage-57%25%20(45%2F79)-bfa100" alt="Coverage: 57%">
 </p>
 
@@ -388,14 +388,49 @@ bun run e2e
 
 Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:
 
-|      Camada       | Gatilho                    | Comando                                                | Tempo |     Bloqueia?     |
-| :---------------: | -------------------------- | ------------------------------------------------------ | :---: | :---------------: |
-| 🏠 **Pre-commit** | `git commit`               | `scripts/check-utf8.sh --dry-run --ci src/`            |  ~2s  |     ✅ Exit 1     |
-|  🚀 **Pre-push**  | `git push`                 | `scripts/check-utf8.sh --dry-run --ci src/`            |  ~2s  |     ✅ Exit 1     |
-|   🔄 **CI/CD**    | Push para `main`/`develop` | `scripts/check-utf8.sh --ci src/` (via `ci.yml`)       | <10s  | ✅ Bloqueia build |
-|  📋 **PR Check**  | `pull_request` para `main` | `scripts/check-utf8.sh --ci src/` (via `pr-check.yml`) | <10s  | ✅ Bloqueia merge |
+|         Camada          | Gatilho                    | Comando                                                                        | Tempo |     Bloqueia?     |
+| :---------------------: | -------------------------- | ------------------------------------------------------------------------------ | :---: | :---------------: |
+|    🏠 **Pre-commit**    | `git commit`               | `scripts/check-utf8.sh --dry-run --ci src/`                                    |  ~2s  |     ✅ Exit 1     |
+|     🚀 **Pre-push**     | `git push`                 | `scripts/check-utf8.sh --dry-run --ci src/`                                    |  ~2s  |     ✅ Exit 1     |
+|      🔄 **CI/CD**       | Push para `main`/`develop` | `scripts/check-utf8.sh --ci src/` (via `ci.yml`)                               | <10s  | ✅ Bloqueia build |
+|     📋 **PR Check**     | `pull_request` para `main` | `scripts/check-utf8.sh --ci src/` (via `pr-check.yml`)                         | <10s  | ✅ Bloqueia merge |
+|    🔒 **CRLF Guard**    | `git commit` + push/PR     | `scripts/check-crlf.sh --ci` (pre-commit + `utf8-check.yml`)                   |  <1s  |     ✅ Exit 1     |
+|    📦 **Blob CRLF**     | `git commit` + push/PR     | `scripts/check-blob-crlf.sh --ci` (pre-commit + `utf8-check.yml`)              |  <1s  |     ✅ Exit 1     |
+| 🧨 **Single-line out=** | `git commit` + push/PR     | `scripts/check-single-line-out-assign.sh --ci` (pre-commit + `utf8-check.yml`) |  <1s  |     ✅ Exit 1     |
 
 **748 arquivos escaneados** (`.ts` + `.tsx`) em cada execução — zero corrupção encontrada.
+
+**CRLF Guard** (`scripts/check-crlf.sh`): complementa o `check-utf8.sh` verificando
+se **qualquer `.sh`/`.bash` trackeado** tem CRLF no working tree. Git Bash tolera
+CRLF, mas containers Linux (act/CI) quebram com `set: pipefail: invalid option
+name` — o guard bloqueia o commit/PR antes que isso chegue ao CI.
+
+**Normalizador** (`scripts/normalize-crlf.sh`): aplica o fix de uma vez em
+qualquer novo checkout/worktree — converte `.sh`/`.ts`/`.md` trackeados com CRLF
+para LF no working tree e roda `git add --renormalize` (mudanças reais
+unstaged são preservadas, nunca stageadas). Uso: `./scripts/normalize-crlf.sh`
+(`--check` para falhar se houver CRLF, `--dry-run` para listar sem modificar).
+
+**Blob CRLF Guard** (`scripts/check-blob-crlf.sh`): complementa o guard de
+working tree verificando a EOL do **blob commitado** (coluna `i/` de
+`git ls-files --eol`). Um `.sh` commitado com CRLF no blob reproduz CRLF em
+**todo checkout futuro, em qualquer branch** — mesmo com working tree limpo.
+O guard falha (exit 1) se algum blob `.sh`/`.bash` tiver `i/crlf` ou `i/mixed`.
+`--fix` roda `git add --renormalize` nos ofensores (revisar `git diff --cached`
+e commitar).
+
+**Single-line out= Guard** (`scripts/check-single-line-out-assign.sh`): falha
+(exit 1) se um `.sh`/`.bash` trackeado sob `scripts/` tiver o padrão
+`comando "..." out=$(...)` numa ÚNICA linha. Numa linha, o `out=` vira
+ARGUMENTO POSICIONAL do comando (não atribuição): `out` nunca é setado e `$?`
+captura o comando errado — o script quebra em silêncio enquanto a string de
+count (ex.: `"128 checks"`) ainda passa no `check-e2e-counts.mjs` (falso
+positivo). A forma correta são DUAS linhas:
+
+```bash
+cell "Rodando prod E2E (128 checks)..."
+out=$(cd "$SCRIPT_DIR" && bun run test:seed-prod-e2e 2>&1)
+```
 
 > 📖 Veja [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md) para lições aprendidas sobre:
 >
@@ -450,8 +485,8 @@ tool-results/act/act.exe -W .github/workflows/pr-check.yml -j secrets-guard \
 
 ### Bugs conhecidos
 
-| Bug                                         | Sintoma                                                               | Workaround                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| :------------------------------------------ | :-------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`--dry-run` não existe**                  | `Error: unknown flag: --dry-run`                                      | Usar `-n`. Atenção: `-n` só mostra o plano e **não** executa os `run:` — não pega erros de runtime (ex: CRLF, comandos ausentes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| **`oven-sh/setup-bun@v2` lento**            | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs | **Confirmado (repro em 2 runs consecutivos do mesmo job):** run #1 = 35.5s, run #2 = 24.2s, ambos com `cache-hit=false` explícito no output do setup-bun → re-download a cada execução, sem cache de layers nem de release. Exit 0 (é lentidão, não falha). Aceitável para validação pontual; exige rede para o GitHub. Mapear a imagem com `-P ubuntu-latest=catthehacker/ubuntu:act-latest`.                                                                                                                                                                                                                                                                                                                         |
-| **CRLF quebra bash no container (Windows)** | `scripts/check-utf8.sh: line 20: set: pipefail: invalid option name`  | **Causa raiz (confirmada):** `core.autocrlf=true` deixa o working tree CRLF (`i/lf w/crlf`) em **todos os 41 `.sh`** — o checkout ocorreu antes de `.gitattributes` declarar `eol=lf`, então o atributo nunca foi aplicado aos arquivos já presentes. O act copia o working tree para o container Linux → bash falha em `set -euo pipefail`. **Fix aplicado:** normalizar os `.sh` para LF no disco (o blob já era LF → **zero diff** no git) + `git add --renormalize` para sincronizar o stat cache do index (sem mudar conteúdo). **Evidência pós-fix no act:** exit 0 — 748 arquivos escaneados, "Status: OK -- all valid UTF-8". Alternativa: `git config core.autocrlf false` + `git add --renormalize`, ou WSL. |
+| Bug                                         | Sintoma                                                               | Workaround                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| :------------------------------------------ | :-------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`--dry-run` não existe**                  | `Error: unknown flag: --dry-run`                                      | Usar `-n`. Atenção: `-n` só mostra o plano e **não** executa os `run:` — não pega erros de runtime (ex: CRLF, comandos ausentes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **`oven-sh/setup-bun@v2` lento**            | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs | **Confirmado (repro em 2 runs consecutivos do mesmo job):** run #1 = 35.5s, run #2 = 24.2s, ambos com `cache-hit=false` explícito no output do setup-bun → re-download a cada execução, sem cache de layers nem de release. Exit 0 (é lentidão, não falha). Aceitável para validação pontual; exige rede para o GitHub. Mapear a imagem com `-P ubuntu-latest=catthehacker/ubuntu:act-latest`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **CRLF quebra bash no container (Windows)** | `scripts/check-utf8.sh: line 20: set: pipefail: invalid option name`  | **Causa raiz (confirmada):** `core.autocrlf=true` deixa o working tree CRLF (`i/lf w/crlf`) em **todos os 41 `.sh`** — o checkout ocorreu antes de `.gitattributes` declarar `eol=lf`, então o atributo nunca foi aplicado aos arquivos já presentes. O act copia o working tree para o container Linux → bash falha em `set -euo pipefail`. **Fix aplicado:** normalizar os `.sh` para LF no disco (o blob já era LF → **zero diff** no git) + `git add --renormalize` para sincronizar o stat cache do index (sem mudar conteúdo). **Evidência pós-fix no act:** exit 0 — 748 arquivos escaneados, "Status: OK -- all valid UTF-8". Alternativa: `git config core.autocrlf false` + `git add --renormalize`, ou WSL. **Proteção anti-regressão:** `scripts/check-crlf.sh` (working tree) + `scripts/check-blob-crlf.sh` (blob commitado — `i/crlf`/`i/mixed` via `git ls-files --eol`) rodam no pre-commit e no `utf8-check.yml`, falhando se qualquer `.sh` voltar a ter CRLF. **Fix reutilizável:** `scripts/normalize-crlf.sh` aplica a normalização em qualquer checkout/worktree (`.sh`/`.ts`/`.md` → LF + `git add --renormalize`). |

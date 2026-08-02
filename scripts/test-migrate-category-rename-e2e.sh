@@ -22,7 +22,10 @@
 #      sob Reparos — slug novo embute o parent novo, filhos com slug novo
 #   11. Guards --move-to: raiz não pode ser movida; parent inexistente;
 #      ciclo (mover um pai para baixo do próprio filho)
+#   12. SEED_SPEC_PATCH malformado no env NÃO interfere: a migração roda
+#      normal (exit 0) e renomeia de verdade (linha nova + antiga desativada)
 #
+
 # Pipeline:
 #   1. Start PostGIS via docker-compose.test.yml (tmpfs — dados descartáveis)
 #   2. Wait for container healthy

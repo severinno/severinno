@@ -451,4 +451,62 @@ describe("printPlan", () => {
       "O seed NÃO as reativa (reconcile seguro preserva a desativação do admin).",
     )
   })
+
+  it("2 categorias inativas (Limpeza + Pós-Obra) → contagem plural e join por vírgula no aviso", () => {
+    const current = canonicalCurrentState()
+    // Duas categorias de níveis diferentes (level 0 + level 1): Limpeza (pai)
+    // e Pós-Obra (filha de Limpeza — slug canônico "pos-obra-limpeza").
+    const limpeza = current.categories.find((c) => c.slug === "limpeza")!
+    limpeza.active = false
+    const posObra = current.categories.find((c) => c.slug === "pos-obra-limpeza")!
+    posObra.active = false
+
+    const plan = buildSeedPlan(current.categories, current.settings)
+    const lines = captureLog(() => printPlan(plan, current))
+    const out = lines.join("\n")
+
+    // active NÃO é comparado no reconcile → ambas continuam unchanged, nunca update
+    const limpezaAction = plan.categories.find((a) => a.slug === "limpeza")!
+    expect(limpezaAction.action).toBe("unchanged")
+    expect(plan.summary.categoriesUpdate).toBe(0)
+
+    // Contagem PLURAL (2) + join por vírgula na ordem do estado atual
+    // (Limpeza vem antes de Pós-Obra na árvore canônica do spec)
+    expect(out).toContain("2 categoria(s) inativa(s) no banco: Limpeza, Pós-Obra")
+    expect(out).toContain(
+      "O seed NÃO as reativa (reconcile seguro preserva a desativação do admin).",
+    )
+    // A contagem é derivada do filter (!active), não hardcoded — garante que
+    // o join não lista categorias ATIVAS por engano.
+    expect(out).not.toContain("Limpeza, Pós-Obra, Reforma")
+  })
+
+  it("categoria extra no banco com filhos ainda apontando exibe o sufixo 'possível pai renomeado'", () => {
+    // Cenário PERIGOSO real: o spec renomeia "Elétrica" → "Eletricidade"
+    // (SEED_SPEC_PATCH renameTo) mas o banco AINDA tem a linha antiga
+    // "Elétrica" (slug "eletrica-reparos") e os 3 filhos apontando para ela
+    // via parentName. O nome antigo não existe mais no spec → cai em 'Fora do
+    // spec'; como há filhos apontando, o printPlan deve anexar o sufixo.
+    const patchedSpec = buildPatchedSpec(
+      JSON.stringify([{ name: "Elétrica", renameTo: "Eletricidade" }]),
+      true,
+    )
+    const current = canonicalCurrentState()
+
+    const plan = buildSeedPlan(current.categories, current.settings, patchedSpec)
+    const lines = captureLog(() => printPlan(plan, current, patchedSpec))
+    const out = lines.join("\n")
+
+    // "Elétrica" (nome antigo) está fora do spec E tem 3 filhos no banco
+    // apontando para ela → sufixo com contagem plural + "possível pai renomeado".
+    expect(out).toContain(
+      "1 categoria(s) extra(s): Elétrica (3 filho(s) no banco — possível pai renomeado)",
+    )
+    // Os FILHOS (Tomadas etc.) têm nome no spec → são renomeações, NÃO extras:
+    // o bloco de renomeação dispara e eles ficam fora da listagem de extras.
+    expect(out).toContain("⚠️  POSSÍVEL RENOMEAÇÃO DETECTADA")
+    expect(out).not.toContain("Tomadas e interruptores (")
+    // Header do bloco de extras (casing real do printPlan)
+    expect(out).toContain("Fora do spec (não serão tocadas pelo seed)")
+  })
 })

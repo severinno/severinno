@@ -20,6 +20,7 @@ import {
   extractScriptRefs,
   extractPkgScriptRefs,
   extractWorkflowUses,
+  extractActionUses,
   checkWorkflowFile,
   scanWorkflows,
 } from "../../../scripts/check-workflow-refs.mjs"
@@ -33,6 +34,7 @@ function makeCtx(overrides = {}) {
     pkgScripts: new Set(["test:seed-prod-e2e", "lint", "db:seed:prod"]),
     workflows: new Set(["seed-guards.yml", "utf8-check.yml"]),
     workflowCall: new Set(["seed-guards.yml", "utf8-check.yml"]),
+    actions: new Set(["setup-bun"]),
     ...overrides,
   }
 }
@@ -47,6 +49,10 @@ jobs:
         run: bun run test:seed-prod-e2e --skip-docker
       - name: Reusable
         uses: ./.github/workflows/seed-guards.yml
+      - name: Bun setup
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.3.14
 `
 
 // ── extractScriptRefs ────────────────────────────────────────────────────
@@ -191,6 +197,32 @@ describe("extractWorkflowUses", () => {
   })
 })
 
+// ── extractActionUses ────────────────────────────────────────────────────
+
+describe("extractActionUses", () => {
+  it("detecta uses: ./.github/actions/<name>", () => {
+    const content = `jobs:
+  check:
+    steps:
+      - uses: ./.github/actions/setup-bun
+`
+    const refs = extractActionUses(content)
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ line: 4, ref: "setup-bun" })
+  })
+
+  it("não casa actions externas (actions/checkout) nem reusable workflows", () => {
+    const content = `jobs:
+  c:
+    steps:
+      - uses: actions/checkout@v4
+  g:
+    uses: ./.github/workflows/seed-guards.yml
+`
+    expect(extractActionUses(content)).toEqual([])
+  })
+})
+
 // ── checkWorkflowFile ────────────────────────────────────────────────────
 
 describe("checkWorkflowFile", () => {
@@ -235,6 +267,18 @@ describe("checkWorkflowFile", () => {
     expect(violations).toHaveLength(1)
     expect(violations[0]).toMatchObject({ kind: "workflow", ref: "utf8-check.yml" })
     expect(violations[0].detail).toContain("workflow_call")
+  })
+
+  it("action local ausente em .github/actions/ → violação kind=action", () => {
+    const content = `steps:\n  - uses: ./.github/actions/setup-bun-gone\n`
+    const violations = checkWorkflowFile("pr-check.yml", content, makeCtx())
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ kind: "action", ref: "setup-bun-gone" })
+  })
+
+  it("action local resolvido → sem violação", () => {
+    const content = `steps:\n  - uses: ./.github/actions/setup-bun\n`
+    expect(checkWorkflowFile("pr-check.yml", content, makeCtx())).toEqual([])
   })
 
   it("múltiplas violações no mesmo arquivo são todas reportadas", () => {
