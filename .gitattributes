@@ -1,0 +1,4 @@
+# Normalizacao de fim de linha - previne regressao CRLF (bug pipefail no CI/act)
+* text=auto
+
+*.sh text eol=lf
