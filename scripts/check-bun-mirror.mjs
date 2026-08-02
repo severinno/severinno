@@ -47,10 +47,17 @@
 //      invalidaria esse cache.
 //
 //      A lista de prefixos é CONFIGURÁVEL (DEFAULT_CACHE_KEY_RULES):
-//      adicione { prefix, version } para validar cache keys de OUTRAS
-//      toolchains com o mesmo padrão — ex.: um futuro cache keyed em
-//      'next-' entra como { prefix: "next", version: "15" }, forçando
-//      next-15-... na key.
+//      adicione { prefix, version, paths } para validar cache keys de
+//      OUTRAS toolchains com o mesmo padrão — ex.: um futuro cache keyed em
+//      'next-' entra como { prefix: "next", version: "15", paths: [".next"] },
+//      forçando next-15-... na key E o path .next no bloco.
+//   7b. TODO bloco actions/cache com key de toolchain configurada FECHA o
+//      par key↔path: o `path:` declarado precisa casar com a toolchain da
+//      key (bun → node_modules / ~/.bun; prisma → node_modules/.prisma +
+//      node_modules/@prisma/client). Um path de OUTRA toolchain (ex.:
+//      node_modules/.prisma com key bun-...) ou um path desconhecido é
+//      VIOLAÇÃO — a key sem o path certo quebraria o cache (restore de
+//      toolchain errada).
 //   8. NENHUM literal de versão do Bun nos workflows (bun-version: 1.3.14,
 //      BUN_VERSION: "1.3.14", bun-1.3.14-...) — o guard caça versões
 //      hardcoded para que a variável continue sendo a única fonte.
@@ -69,10 +76,13 @@
 //      (omitir o input ou usar literal é violação — sem ele o action falha
 //      em runtime com mensagem confusa). No modo --staged, call sites cuja
 //      linha `uses:` foi adicionada pelo diff são avaliados também.
+//  12. Arquivos de workflow são escaneados nas DUAS extensões (.yml E .yaml)
+//      — um workflow com extensão alternativa não escapa dos checks de
+//      cache key/literal/call site/par key↔path (global E staged).
 //
 // Escopo: lê .github/workflows/sync-bun-mirror.yml + .github/actions/
 // setup-bun/action.yml + Dockerfile.bun-mirror + TODOS os .github/workflows/*.yml
-// (cache keys + literais) + .actrc. Node puro, sem deps, <1s.
+// E *.yaml (cache keys + literais) + .actrc. Node puro, sem deps, <1s.
 // =============================================================================
 
 import { readFileSync, existsSync, readdirSync } from "node:fs"
@@ -89,6 +99,33 @@ export const BUN_VERSION_VAR = "${{ vars.BUN_VERSION }}"
  * (checkStagedSetupBunCallSites), sem drift entre as duas janelas.
  */
 export const CALL_SITE_WINDOW = 6
+
+/**
+ * Janela (em linhas) do bloco `with:` de um actions/cache — cobre o caso
+ * multi-path (`path: |` + linhas indentadas) seguido de key/restore-keys.
+ * Compartilhada entre o scan global (checkCachePaths) e o scan de diff
+ * (checkStagedCachePaths), sem drift entre as duas janelas.
+ */
+export const CACHE_BLOCK_WINDOW = 14
+
+/**
+ * Regex de detecção da linha `uses: actions/cache` — casa AMBAS as formas
+ * reais: o item de lista `- uses: actions/cache@v4` (padrão em todos os
+ * workflows) e a forma aninhada `        uses: actions/cache@v4` (sem dash,
+ * dentro de um step com name). Compartilhada entre o scan global
+ * (checkCachePaths) e o scan de diff (checkStagedCachePaths), sem drift
+ * entre as duas — um fix aqui vale para ambas.
+ */
+export const CACHE_USES_RE = /^\s*(?:-\s+)?uses:\s+actions\/cache/
+
+/**
+ * Regex de arquivo de workflow do GitHub Actions — casa AMBAS as extensões
+ * válidas (.yml e .yaml). Compartilhada entre o scan global (checkCacheKeys,
+ * checkCachePaths, checkNoLiteralBunVersion, checkSetupBunCallSites) e o
+ * parser de diff (parseDiffLines) — um workflow com extensão alternativa
+ * não escapa dos checks, e um fix aqui vale para todos os scans, sem drift.
+ */
+export const WORKFLOW_FILE_RE = /\.ya?ml$/
 
 /**
  * Extrai o valor de uma env var no topo de um workflow (ex.: BUN_VERSION).
@@ -157,17 +194,33 @@ export function hasGhcrMirrorRef(actionContent) {
 
 /**
  * Regras de cache key por toolchain: cada prefixo (ex.: bun, prisma) com a
- * versão que a key DEVE incluir. Para bun/prisma a "versão" é a REFERÊNCIA
+ * versão que a key DEVE incluir E os paths que o bloco actions/cache DEVE
+ * cachear (fecha o par key↔path). Para bun/prisma a "versão" é a REFERÊNCIA
  * da repository variable (${{ vars.BUN_VERSION }}) — um literal é violação.
- * Lista CONFIGURÁVEL — para validar cache keys de outra toolchain, adicione
- * { prefix, version } aqui (ex.: um futuro cache keyed em 'next-' entraria
- * como { prefix: "next", version: "15" }).
  *
- * @returns {{ prefix: string, version: string }[]}
+ * paths: caminhos que um bloco com key '<prefixo>-...' deve declarar em
+ * `path:` (exata match após trim). Multi-path (`path: |`) é suportado — a
+ * validação passa se PELO MENOS UM path da lista for um dos paths da regra.
+ * A direção inversa também vale: um path que é de OUTRA toolchain com key de
+ * outra é violação (ex.: path node_modules/.prisma com key bun-...).
+ *
+ * Lista CONFIGURÁVEL — para validar cache keys de outra toolchain, adicione
+ * { prefix, version, paths } aqui (ex.: um futuro cache keyed em 'next-'
+ * entraria como { prefix: "next", version: "15", paths: [".next"] }).
+ *
+ * @returns {{ prefix: string, version: string, paths: string[] }[]}
  */
 export const DEFAULT_CACHE_KEY_RULES = () => [
-  { prefix: "bun", version: BUN_VERSION_VAR },
-  { prefix: "prisma", version: BUN_VERSION_VAR },
+  {
+    prefix: "bun",
+    version: BUN_VERSION_VAR,
+    paths: ["node_modules", "~/.bun"],
+  },
+  {
+    prefix: "prisma",
+    version: BUN_VERSION_VAR,
+    paths: ["node_modules/.prisma", "node_modules/@prisma/client"],
+  },
 ]
 
 /**
@@ -218,8 +271,181 @@ export function checkCacheKeyLine(file, lineNo, content, rules) {
 }
 
 /**
- * Varre .github/workflows/*.yml e falha se alguma cache key (key: ou
- * restore-keys:) com prefixo de uma toolchain CONFIGURADA (rules) não
+ * Extrai o PREFIXO de uma cache key (ex.: 'bun' de 'bun-${{ vars.BUN_VERSION }}-...').
+ * Usa match NÃO-guloso: em uma key literal ('prisma-1.3.14-...') o prefixo
+ * é 'prisma' (o literal é violação de OUTRO check — aqui só identificamos
+ * a toolchain). Retorna null se a key não tiver o formato '<prefixo>-...'.
+ *
+ * @param {string} keyValue  valor cru da key (ex.: 'bun-...')
+ * @returns {string|null}
+ */
+export function extractCacheKeyPrefix(keyValue) {
+  const m = String(keyValue).match(/^([a-zA-Z0-9_.-]+?)-/)
+  return m ? m[1] : null
+}
+
+/**
+ * Parseia as linhas do bloco `with:` de um actions/cache (após a linha
+ * `uses: actions/cache`) e extrai os paths declarados e o prefixo da key.
+ * Suporta `path:` simples (ex.: 'path: node_modules') e multi-linha
+ * ('path: |' seguido de linhas mais indentadas — ex.: prisma client).
+ *
+ * @param {string[]} blockLines  linhas do bloco (incluindo with:/path:/key:)
+ * @returns {{ paths: string[], keyPrefix: string|null }}
+ */
+export function parseCacheBlock(blockLines) {
+  const paths = []
+  let keyPrefix = null
+  let multiIndent = -1
+  for (const line of blockLines) {
+    const indent = line.match(/^\s*/)[0].length
+    const trimmed = line.trim()
+    if (trimmed === "" || trimmed.startsWith("#")) continue
+    if (multiIndent >= 0) {
+      // coleciona linhas MAIS indentadas que o `path: |` — até a indentação
+      // voltar ao nível da key (mesmo nível do path:)
+      if (indent <= multiIndent) {
+        multiIndent = -1
+      } else {
+        paths.push(trimmed)
+        continue
+      }
+    }
+    const pathM = line.match(/^\s*path:\s*(.+?)\s*$/)
+    if (pathM) {
+      const v = pathM[1].trim()
+      if (v === "|" || v === ">" || v === ">-") {
+        multiIndent = indent
+        continue
+      }
+      paths.push(v.replace(/^["']|["']$/g, ""))
+      continue
+    }
+    const keyM = line.match(/^\s*key:\s*(.+?)\s*$/)
+    if (keyM) {
+      keyPrefix = extractCacheKeyPrefix(keyM[1].trim())
+    }
+  }
+  return { paths, keyPrefix }
+}
+
+/**
+ * Valida UM bloco actions/cache (linhas após o `uses:`) contra as regras —
+ * FECHA o par key↔path:
+ *   - a key tem prefixo de toolchain configurada → o bloco DEVE declarar
+ *     pelo menos um path daquela toolchain;
+ *   - um path declarado que pertence a OUTRA toolchain (ex.:
+ *     node_modules/.prisma com key bun-...) é violação;
+ *   - um path desconhecido de TODAS as toolchains com key configurada é
+ *     violação (não é um path da toolchain);
+ *   - regra sem `paths` (toolchain custom) → só valida a key (não o path).
+ *
+ * @param {string} file         nome do arquivo
+ * @param {number} usesLineNo   linha do `uses:` (1-based)
+ * @param {string[]} blockLines linhas do bloco após o uses
+ * @param {{ prefix: string, version: string, paths?: string[] }[]} rules
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkCachePathBlock(file, usesLineNo, blockLines, rules) {
+  if (rules.length === 0) return []
+  const { paths, keyPrefix } = parseCacheBlock(blockLines)
+  if (!keyPrefix) return [] // sem key reconhecível — o check de key/literal já cobre
+  const rule = rules.find((r) => r.prefix === keyPrefix)
+  if (!rule) return [] // toolchain não configurada — nada a validar
+  const expected = rule.paths || []
+  const violations = []
+
+  // Regra custom SEM paths (ex.: { prefix: "next", version: "15" }) → valida
+  // só a key (checkCacheKeys), nunca o path — sem paths declarados não há
+  // contrato de path a impor.
+  if (expected.length === 0) return []
+
+  if (paths.length === 0) {
+    violations.push(
+      `${file}:${usesLineNo}: bloco actions/cache '${keyPrefix}-...' SEM path declarado — declare um dos paths da toolchain (${expected.join(", ")})`,
+    )
+    return violations
+  }
+
+  // 1º: path(s) de OUTRA toolchain → violação SEMPRE (fecha o par) — mesmo
+  // quando o bloco também cacheia um path correto da toolchain da key (ex.:
+  // bun key com node_modules + node_modules/.prisma: o .prisma sob key bun
+  // derrota o keying por schema hash).
+  const foreign = paths.filter(
+    (p) => !expected.includes(p) && rules.some((r) => r !== rule && (r.paths || []).includes(p)),
+  )
+  if (foreign.length > 0) {
+    // owners distintos (Set) — ex.: dois paths da mesma toolchain não
+    // duplicam a sugestão 'use key prisma-... ou prisma-...'
+    const owners = [
+      ...new Set(foreign.map((p) => rules.find((r) => (r.paths || []).includes(p))?.prefix)),
+    ].map((pfx) => `${pfx}-...`)
+    violations.push(
+      `${file}:${usesLineNo}: cache '${keyPrefix}-...' com path(s) [${foreign.join(", ")}] que pertence(m) à toolchain ${[
+        ...new Set(
+          rules
+            .filter((r) => r !== rule && (r.paths || []).some((p) => foreign.includes(p)))
+            .map((r) => r.prefix),
+        ),
+      ]
+        .map((p) => `'${p}'`)
+        .join(" e ")} — feche o par key↔path (use key '${owners.join(" ou ")}' ou mude o path)`,
+    )
+    return violations
+  }
+
+  // 2º: nenhum path de outra toolchain — passa se PELO MENOS UM path da
+  // toolchain da key existir (multi-path parcial é ok).
+  if (paths.some((p) => expected.includes(p))) return []
+
+  // 3º: path desconhecido de TODAS as toolchains com key configurada → violação.
+  violations.push(
+    `${file}:${usesLineNo}: cache '${keyPrefix}-...' com path(s) [${paths.join(", ")}] que não batem com a toolchain ${keyPrefix} (esperado: ${expected.join(", ")})`,
+  )
+  return violations
+}
+
+/**
+ * Varre .github/workflows/*.yml e *.yaml e valida o par key↔path de TODO
+ * bloco actions/cache cuja key tem prefixo de toolchain configurada — fecha
+ * a conexão entre a key (que já é validada por checkCacheKeys) e o path que
+ * o bloco realmente cacheia.
+ *
+ * @param {string} workflowsDir  diretório .github/workflows
+ * @param {{ prefix: string, version: string, paths?: string[] }[]} rules
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkCachePaths(workflowsDir, rules) {
+  const violations = []
+  if (!existsSync(workflowsDir) || rules.length === 0) return violations
+
+  for (const file of readdirSync(workflowsDir).filter((f) => WORKFLOW_FILE_RE.test(f))) {
+    const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      if (line.trim() === "" || line.trim().startsWith("#")) continue
+      if (!line.match(CACHE_USES_RE)) continue
+      const usesIndent = line.match(/^\s*/)[0].length
+      const block = []
+      for (let j = i + 1; j < lines.length && block.length < CACHE_BLOCK_WINDOW; j++) {
+        const l = lines[j]
+        const indent = l.match(/^\s*/)[0].length
+        const t = l.trim()
+        if (t === "") continue
+        // novo step no MESMO nível ou mais raso (indent <= uses) termina o bloco
+        if (indent <= usesIndent && (/^\s*-\s+/.test(l) || !/^\s{2,}/.test(l))) break
+        block.push(l)
+      }
+      const v = checkCachePathBlock(file, i + 1, block, rules)
+      if (v.length > 0) violations.push(...v)
+    }
+  }
+  return violations
+}
+
+/**
+ * Varre .github/workflows/*.yml e *.yaml e falha se alguma cache key (key:
+ * ou restore-keys:) com prefixo de uma toolchain CONFIGURADA (rules) não
  * incluir a versão daquela regra. Para bun/prisma a versão é a referência
  * `${{ vars.BUN_VERSION }}` — um literal (ex.: bun-1.3.14-) NÃO casa e é
  * reportado como violação (trocar a variável não invalidaria esse cache).
@@ -232,7 +458,7 @@ export function checkCacheKeys(workflowsDir, rules) {
   const violations = []
   if (!existsSync(workflowsDir)) return violations
 
-  for (const file of readdirSync(workflowsDir).filter((f) => f.endsWith(".yml"))) {
+  for (const file of readdirSync(workflowsDir).filter((f) => WORKFLOW_FILE_RE.test(f))) {
     const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
     lines.forEach((content, i) => {
       const v = checkCacheKeyLine(file, i + 1, content, rules)
@@ -287,7 +513,7 @@ export function checkNoLiteralBunVersion(workflowsDir) {
   const violations = []
   if (!existsSync(workflowsDir)) return violations
 
-  for (const file of readdirSync(workflowsDir).filter((f) => f.endsWith(".yml"))) {
+  for (const file of readdirSync(workflowsDir).filter((f) => WORKFLOW_FILE_RE.test(f))) {
     const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
     lines.forEach((content, i) => {
       const v = checkLiteralBunLine(file, i + 1, content)
@@ -366,7 +592,7 @@ export function checkSetupBunCallSites(workflowsDir) {
   const violations = []
   if (!existsSync(workflowsDir)) return violations
 
-  for (const file of readdirSync(workflowsDir).filter((f) => f.endsWith(".yml"))) {
+  for (const file of readdirSync(workflowsDir).filter((f) => WORKFLOW_FILE_RE.test(f))) {
     const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
@@ -383,14 +609,16 @@ export function checkSetupBunCallSites(workflowsDir) {
 
 /**
  * Parseia um diff unificado (git diff --cached local, ou PR base...HEAD no
- * CI) e devolve TODAS as linhas que aparecem no diff por arquivo .yml do
- * diretório .github/workflows — ADICIONADAS (prefixo '+') E de CONTEXTO
- * (prefixo ' ') — com o número de linha correspondente NO NOVO arquivo e
- * a flag `added`. O contexto é necessário para o checkStagedSetupBunCallSites:
- * na migração de action (ex.: oven-sh/setup-bun@v2 → ./.github/actions/setup-bun)
- * a linha `uses:` é ADICIONADA mas `with:`/`bun-version:` ficam como
- * CONTEXTO no diff — um parser só-de-adicionadas veria o call site SEM o
- * bun-version e geraria falso positivo. Arquivos não-.yml são ignorados.
+ * CI) e devolve TODAS as linhas que aparecem no diff por arquivo de workflow
+ * (.yml OU .yaml) do diretório .github/workflows — ADICIONADAS (prefixo '+') E
+ * de CONTEXTO (prefixo ' ') — com o número de linha correspondente NO NOVO
+ * arquivo e a flag `added`. O contexto é necessário para o
+ * checkStagedSetupBunCallSites: na migração de action (ex.:
+ * oven-sh/setup-bun@v2 → ./.github/actions/setup-bun) a linha `uses:` é
+ * ADICIONADA mas `with:`/`bun-version:` ficam como CONTEXTO no diff — um
+ * parser só-de-adicionadas veria o call site SEM o bun-version e geraria
+ * falso positivo. Arquivos sem extensão de workflow (.yml/.yaml) são
+ * ignorados.
  *
  * @param {string} diffText  saída de `git diff ... -- .github/workflows`
  * @returns {Map<string, {lineNo: number, content: string, added: boolean}[]>}
@@ -403,8 +631,9 @@ export function parseDiffLines(diffText) {
   for (const line of diffText.split("\n")) {
     if (line.startsWith("+++ ")) {
       // "+++ b/.github/workflows/pr-check.yml" → caminho do arquivo NOVO
+      // (aceita .yml E .yaml — extensão alternativa não escapa do scan)
       const path = line.slice(4).replace(/^b\//, "")
-      currentFile = path.endsWith(".yml") ? path : null
+      currentFile = WORKFLOW_FILE_RE.test(path) ? path : null
       lineNo = 0
       continue
     }
@@ -434,8 +663,8 @@ export function parseDiffLines(diffText) {
 
 /**
  * Parseia um diff e devolve apenas as linhas ADICIONADAS (prefixo '+') por
- * arquivo .yml — camada fina sobre parseDiffLines (o parser rico) para os
- * checks por linha (cache keys e literais).
+ * arquivo de workflow (.yml/.yaml) — camada fina sobre parseDiffLines (o
+ * parser rico) para os checks por linha (cache keys e literais).
  *
  * @param {string} diffText  saída de `git diff ... -- .github/workflows`
  * @returns {Map<string, {lineNo: number, content: string}[]>}
@@ -490,6 +719,41 @@ export function checkStagedLiterals(diffText) {
 }
 
 /**
+ * Valida o par key↔path dos blocos actions/cache nas linhas de um diff —
+ * detecta blocos de cache NOVOS (linha `uses: actions/cache` ADICIONADA)
+ * cujo path não bate com a toolchain da key. Só blocos cuja linha `uses:`
+ * foi adicionada pelo diff são avaliados (violações pré-existentes do base
+ * não poluem o PR). Usa o parser RICO (parseDiffLines): o path/key podem
+ * estar em linhas de CONTEXTO do mesmo bloco.
+ *
+ * @param {string} diffText  saída de git diff
+ * @param {{ prefix: string, version: string, paths?: string[] }[]} rules
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkStagedCachePaths(diffText, rules) {
+  const violations = []
+  if (rules.length === 0) return violations
+  for (const [file, lines] of parseDiffLines(diffText)) {
+    for (let i = 0; i < lines.length; i++) {
+      const { lineNo, content, added } = lines[i]
+      if (!added) continue // só blocos INTRODUZIDOS por este diff
+      if (content.trim() === "" || content.trim().startsWith("#")) continue
+      if (!content.match(CACHE_USES_RE)) continue
+
+      // Janela de até CACHE_BLOCK_WINDOW linhas depois do uses (mesma do
+      // scan global) — varre adicionadas E contexto do mesmo arquivo.
+      const following = []
+      for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CACHE_BLOCK_WINDOW; j++) {
+        following.push(lines[j].content)
+      }
+      const v = checkCachePathBlock(file, lineNo, following, rules)
+      if (v.length > 0) violations.push(...v)
+    }
+  }
+  return violations
+}
+
+/**
  * Checa call sites do setup-bun nas linhas de um diff — detecta call sites
  * SEM input bun-version (ou com literal) INTRODUZIDOS pelo próprio PR antes
  * do merge. Só call sites cuja linha `uses:` foi ADICIONADA pelo diff são
@@ -528,16 +792,19 @@ export function checkStagedSetupBunCallSites(diffText) {
 
 /**
  * Valida que um ref de git passado via --base é um nome de ref SEGURO
- * (charset refname do git: letras, dígitos, ., _, /, -). Proteção contra
- * metacharacters de shell — mesmo usando execFileSync (sem shell), o ref
- * entra no nome da range (ex.: origin/main...HEAD) e um valor malicioso
- * como `main; rm -rf /` quebraria o comando ou executaria algo.
+ * (charset refname do git + operadores de revisão: letras, dígitos, ., _, /,
+ * -, ~ e ^ — ex.: origin/main, HEAD~1, v1.0^2). Proteção contra
+ * metacharacters de shell: `~` e `^` são INOCUOS aqui porque o ref só entra
+ * numa range de `git diff` via execFileSync (array de args, SEM shell), e a
+ * proteção real contra ranges/injeção é o check `..` (ex.: main..other) e o
+ * prefixo `-` (ex.: -f). Um valor malicioso como `main; rm -rf /` ou
+ * `$(whoami)` falha o charset ANTES de chegar ao git.
  *
  * @param {string} ref
  * @returns {boolean}
  */
 export function isValidGitRef(ref) {
-  return /^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(ref) && !ref.includes("..") && !ref.startsWith("-")
+  return /^[a-zA-Z0-9][a-zA-Z0-9._/~^-]*$/.test(ref) && !ref.includes("..") && !ref.startsWith("-")
 }
 
 /**
@@ -673,21 +940,23 @@ function main() {
       ...checkStagedCacheKeys(diffText, DEFAULT_CACHE_KEY_RULES()),
       ...checkStagedLiterals(diffText),
       ...checkStagedSetupBunCallSites(diffText),
+      ...checkStagedCachePaths(diffText, DEFAULT_CACHE_KEY_RULES()),
     ]
     if (violations.length > 0) {
       console.error(
-        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site do Bun:\n`,
+        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site/par key↔path do Bun:\n`,
       )
       for (const v of violations) console.error(`   - ${v}`)
       console.error(
-        `\n   Cache keys, literais e call sites introduzidos por este diff precisam usar a fonte única` +
-          `\n   ${BUN_VERSION_VAR} — um literal (bun-1.3.14-...) não seria invalidado` +
-          `\n   pela troca da variável.`,
+        `\n   Cache keys, literais, call sites e pares key↔path introduzidos por este diff precisam usar a` +
+          `\n   fonte única ${BUN_VERSION_VAR} — um literal (bun-1.3.14-...) não seria` +
+          `\n   invalidado pela troca da variável, e um path de outra toolchain` +
+          `\n   (ex.: node_modules/.prisma com key bun-...) quebraria o cache.`,
       )
       process.exit(1)
     }
     console.log(
-      `✅ Diff ok — nenhuma cache key/literal/call site do Bun introduzido` +
+      `✅ Diff ok — nenhuma cache key/literal/call site/par key↔path do Bun introduzido` +
         (base ? ` (vs base ${base})` : ` (staged)`),
     )
     process.exit(0)
@@ -704,6 +973,7 @@ function main() {
 
   const workflowsDir = join(cwd, ".github", "workflows")
   violations.push(...checkCacheKeys(workflowsDir, DEFAULT_CACHE_KEY_RULES()))
+  violations.push(...checkCachePaths(workflowsDir, DEFAULT_CACHE_KEY_RULES()))
   violations.push(...checkNoLiteralBunVersion(workflowsDir))
   violations.push(...checkSetupBunCallSites(workflowsDir))
   violations.push(...checkActrc(join(cwd, ".actrc")))
@@ -716,7 +986,8 @@ function main() {
         `\n   (Settings → Secrets and variables → Actions). Workflows passam` +
         `\n   'bun-version: ${BUN_VERSION_VAR}', o mirror usa a mesma variável e` +
         `\n   o action resolve em runtime. Sem literais em lugar nenhum — trocar` +
-        `\n   o Bun = alterar a variável em UM lugar.`,
+        `\n   o Bun = alterar a variável em UM lugar. E o par key↔path de cada` +
+        `\n   bloco actions/cache precisa fechar (path da toolchain correta).`,
     )
     process.exit(1)
   }

@@ -178,6 +178,26 @@ jobs:
       - name: Summary
         run: echo "✅ No stale bun cache keys/literals introduced by this PR diff."
 
+  # ── Bun Literal Mutation Guard ───────────────────────────────────────
+  # Prova que o check-bun-mirror REALMENTE pega regressões de drift: num
+  # repo fixture temporário, confirma que o guard passa com a fonte única
+  # (${{ vars.BUN_VERSION }}) e depois MUTA para um literal (bun-version:
+  # 1.3.14), exigindo FALHA (exit 1) pela asserção do literal. Se o guard
+  # passar com o literal (exit 0), está CEGO — uma checagem foi
+  # removida/enfraquecida — e o job falha (exit 1). Node-puro, <1s, sem
+  # docker (espelho do mutation-seed-dev-e2e para o guard do Bun).
+  bun-literal-mutation-guard:
+    name: Bun literal mutation guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — literal bun-version deve FALHAR
+        run: bash scripts/test-mutation-bun-literal.sh
+
+      - name: Summary
+        run: echo "✅ Bun guard detects literal version drift (mutation test passed)."
+
   # ── E2E Counts Guard ──────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se os counts de checks
   # documentados nos comentários dos workflows (pr-check.yml, seed-guards.yml,

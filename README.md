@@ -283,11 +283,40 @@ docker compose --profile routing up -d osrm
 
 Scripts de diagnóstico da infraestrutura Docker, localizados em `scripts/`.
 
-| Script                 | Plataforma  | O que verifica                                                                   |
-| ---------------------- | ----------- | -------------------------------------------------------------------------------- |
-| `diagnose-docker.ps1`  | Windows     | Port bindings, healthchecks, redes, Hyper-V, conflitos de porta, recursos Docker |
-| `diagnose-docker.sh`   | Linux / Mac | Mesmo que o .ps1, exceto Hyper-V (Windows-only)                                  |
-| `diagnose-completo.sh` | Linux / Mac | Tudo do `diagnose-docker.sh` + workers (RabbitMQ), filas, PostgreSQL, Redis, E2E |
+| Script                   | Plataforma  | O que verifica                                                                                                      |
+| ------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| `diagnose-docker.ps1`    | Windows     | Port bindings, healthchecks, redes, Hyper-V, conflitos de porta, recursos Docker                                    |
+| `diagnose-docker.sh`     | Linux / Mac | Mesmo que o .ps1, exceto Hyper-V (Windows-only)                                                                     |
+| `diagnose-completo.sh`   | Linux / Mac | Tudo do `diagnose-docker.sh` + workers (RabbitMQ), filas, PostgreSQL, Redis, E2E                                    |
+| `audit-secret-leaks.mjs` | Node        | Varre `git log -p --all` por segredos vazados no histórico (chaves privadas, `sk-*`, tokens, atribuições de `.env`) |
+
+### audit-secret-leaks — segredos vazados no histórico do git
+
+Um segredo commitado uma vez fica no histórico **para sempre** — mesmo após
+`git rm --cached` — então a única remediação real é **rotacionar** o valor
+(via `scripts/rotate-secrets.mjs`). Este script **audita** o histórico para
+responder _quais commits expõem o quê_:
+
+```bash
+bun run audit:secret-leaks                  # audita todo o histórico
+node scripts/audit-secret-leaks.mjs --since origin/main   # só commits novos
+node scripts/audit-secret-leaks.mjs --max-count 100       # limita commits
+node scripts/audit-secret-leaks.mjs --json                # saída JSON
+node scripts/audit-secret-leaks.mjs --check               # exit 1 se achar
+node scripts/audit-secret-leaks.mjs --include-tests       # inclui fixtures
+```
+
+**Detecta:** chaves privadas (RSA/EC/OPENSSH/PGP), tokens com prefixo
+(`sk-*`, `sk_live_*`, `ghp_*`, `github_pat_*`, `xox*`, `AKIA*`) e atribuições
+de secrets em `.env` (`SESSION_SECRET=`, `DB_PASSWORD=`, `API_KEY=`, …).
+Fixtures de teste (`sk-test-...`, `__tests__`, `test-fixtures`, `.example`)
+são ignoradas por padrão (`--include-tests` para incluí-las).
+
+**Segurança:** o output **mascara** os segredos (8 primeiros caracteres +
+`…`) — nunca imprime o valor completo. A auditoria não é um CI guard padrão
+(o histórico não muda em PRs normais); é uma ferramenta de operação — rode
+após onboarding, antes de tornar o repo público, ou em incident response de
+vazamento.
 
 ### diagnose-docker (Windows / Linux / Mac)
 
@@ -360,6 +389,7 @@ docker compose up -d app realtime postgis redis rabbitmq email-worker notificati
 | [`docs/PUSH_NOTIFICATIONS.md`](docs/PUSH_NOTIFICATIONS.md) | Sistema de push notifications (Web Push, agendamento, webhooks) |
 | [`docs/SECURITY.md`](docs/SECURITY.md)                     | Medidas de segurança (CSP, rate limiting, criptografia, Docker) |
 | [`docs/TESTING.md`](docs/TESTING.md)                       | Guia de testes (Vitest + Playwright, padrões de mock)           |
+| [`docs/BUN_BUMP.md`](docs/BUN_BUMP.md)                     | Procedimento completo de bump do Bun (variável + mirrors GHCR)  |
 | [`docs/postgis-guide.md`](docs/postgis-guide.md)           | Guia de PostGIS (geolocalização, consultas espaciais)           |
 | [`lytex-integration.md`](lytex-integration.md)             | Integração com Lytex Pagamentos (PIX + Cartão)                  |
 | [`Arquitetura_Software.md`](Arquitetura_Software.md)       | Arquitetura de software do sistema                              |
@@ -518,10 +548,15 @@ Os hooks locais (`.husky/`) formam uma cadeia de validação em camadas: o
 **pre-push** revalida os fast gates que o CI roda (`utf8-check.yml`) e os
 testes da branch (via smart-skip) antes de expor o push ao remoto.
 
-Os **10 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
+Os **11 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
 `scripts/run-encoding-guards.sh` — a **fonte única** da lista, chamada por
 ambos os hooks. Adicionar um guard novo = editar esse script em UM lugar,
 sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
+
+> O guard `check-hooks-symmetry.mjs` (linha "Hooks symmetry" acima) valida
+> que esta tabela bate com o conteúdo REAL de `.husky/pre-commit` e
+> `.husky/pre-push` — adicionar um guard novo a um hook sem documentá-lo
+> aqui falha o CI (`utf8-check.yml`) e o commit/push locais.
 
 | Validação                                                 | Pre-commit |   Pre-push    |
 | :-------------------------------------------------------- | :--------: | :-----------: |
@@ -534,9 +569,12 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Docs repro marker (`check-readme-repro-marker.mjs`)       |     ✅     |      ✅       |
 | Setup-bun externo (`check-no-setup-bun.mjs`)              |     ✅     |      ✅       |
 | Fonte única Bun (`check-bun-mirror.mjs`)                  |     ✅     |      ✅       |
+| Bun staged diff (`check-bun-mirror.mjs --staged`)         |     ✅     |       —       |
 | Ícones lucide (`scan-lucide-icons.mjs --check`)           |     ✅     |      ✅       |
+| Hooks symmetry (`check-hooks-symmetry.mjs`)               |     ✅     |      ✅       |
 | Format + lint (lint-staged: prettier + eslint --fix)      |     ✅     |       —       |
 | Imports diretos (check:direct-rtl-import + barrel-lint)   |     ✅     |       —       |
+| Barrel lint (`barrel-lint`)                               |     ✅     |       —       |
 | Typecheck (`tsc --noEmit`)                                |     ✅     |       —       |
 | Snapshots (quando `.snap`/snapshot tests alterados)       |  ✅ cond.  |       —       |
 | Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)    |     —      | ✅ smart-skip |
@@ -606,11 +644,70 @@ O guard `scripts/check-bun-mirror.mjs` (PR Check + `utf8-check.yml`) falha se:
 - qualquer workflow tiver versão literal do Bun (`bun-version: 1.3.14`,
   `bun-1.3.14-...`, `BUN_VERSION: "1.3.14"`);
 - cache keys `bun-`/`prisma-` não referenciarem `${{ vars.BUN_VERSION }}`;
+- o `path:` de um bloco actions/cache não fechar o par key↔path da toolchain
+  (bun → `node_modules`/`~/.bun`; prisma → `node_modules/.prisma` +
+  `node_modules/@prisma/client`) — ex.: path de outra toolchain sob a key
+  errada, path desconhecido ou bloco sem path;
 - o `.actrc` não definir `BUN_VERSION` (o act local quebraria).
+
+### A regra real do Prisma (exemplo vivo)
+
+A cache key do client Prisma nos workflows (ex.: `seed-guards.yml`) é o
+**exemplo mais completo** de como a regra se materializa — a versão do Bun
+fica no **1º segmento da key**, antes do hash do schema:
+
+```yaml
+# seed-guards.yml (jobs seed-prod-e2e / seed-dev-e2e / migrate-category-rename-e2e)
+# cacheia node_modules/.prisma + node_modules/@prisma/client
+key: prisma-${{ vars.BUN_VERSION }}-${{ hashFiles('prisma/schema.prisma') }}-${{ hashFiles('bun.lock') }}
+restore-keys: prisma-${{ vars.BUN_VERSION }}-
+```
+
+Em runtime a key resolve para algo como `prisma-1.3.14-a1b2c3d-9f8e7d`.
+**Por que a versão do Bun entra na key do Prisma?** O client é **GERADO com
+a toolchain do Bun** (`bunx prisma generate` dentro do job). Se o Bun subir
+mas o `schema.prisma` não mudar, o hash do schema permanece igual — sem a
+versão na key, o cache serviria um client gerado por **outra versão do Bun**
+(toolchain errada, silenciosamente). O guard `check-bun-mirror.mjs` falha o
+PR se qualquer key `prisma-`/`bun-` não referenciar `${{ vars.BUN_VERSION }}`
+— é essa proteção que mantém o exemplo vivo sempre correto.
+
+**Fluxo de bump do Bun (ex.: 1.3.14 → 1.3.15):** — procedimento completo e
+auditável (comandos `gh` + re-sync dos mirrors + troubleshooting) em
+[docs/BUN_BUMP.md](docs/BUN_BUMP.md).
+
+| #   | Passo                           | O que fazer                                                                                                                 | Edita algo?                                        |
+| --- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1   | **Variável**                    | `gh variable set BUN_VERSION 1.3.15`                                                                                        | ✅ única edição OBRIGATÓRIA no CI (fonte única)    |
+| 2   | **Mirrors GHCR**                | re-dispatch `sync-bun-mirror.yml` + `sync-ubuntu-bun-mirror.yml` (leem `vars.BUN_VERSION`; o cron semanal roda sozinho)     | ❌ leem a variável — só re-rodar                   |
+| 3   | **Cache keys `prisma-`/`bun-`** | nada — derivam de `${{ vars.BUN_VERSION }}`; as keys antigas viram cache miss automaticamente (toolchain nova ≠ chave nova) | ❌ automático (é exatamente o que o guard protege) |
+| 4   | **`action.yml`**                | nada — sem `default:`, resolve do input `bun-version` em runtime                                                            | ❌ metadata estática                               |
+| 5   | **`.actrc` local**              | `--var BUN_VERSION=1.3.15` (espelho local para o act)                                                                       | ✅ local apenas                                    |
+| 6   | **Call sites do setup-bun**     | nada — todos passam `bun-version: ${{ vars.BUN_VERSION }}` (o guard exige)                                                  | ❌ automático                                      |
+
+A 1ª execução do CI após o bump roda com **cache miss em todas as keys
+`bun-*`/`prisma-*`** (custo único de ~20-30s por job) e re-popula o cache
+com as chaves novas — o preço deliberado de nunca servir toolchain errada
+de cache. O guard `check-bun-mirror.mjs` **falha o PR por DRIFT**, não por
+bump "esquecido": se alguém contornar a fonte única (ex.: hardcodar uma
+versão literal num workflow/key em vez de `${{ vars.BUN_VERSION }}`, ou
+atualizar a variável deixando um literal antigo para trás), o guard detecta
+a inconsistência e bloqueia o merge — é essa a proteção que mantém o exemplo
+vivo sempre correto.
 
 > ⚠️ **`.actrc` local**: mantenha `--var BUN_VERSION=<versão>` em sincronia com
 > a repository variable do GitHub. O act não lê as variables do repositório —
 > o arquivo é o espelho local. Veja `### Act (executa os jobs localmente)`.
+>
+> **Drift de VALOR no `.actrc` (job semanal `actrc-sync`):** o guard estático
+> `check-bun-mirror.mjs` só valida que o `.actrc` DEFINE `BUN_VERSION` — o
+> VALOR é impossível de conferir estaticamente (a variável remota só existe em
+> runtime). O job `actrc-sync` do `benchmark-weekly.yml` compara o `.actrc` do
+> working tree com `vars.BUN_VERSION` (via `scripts/check-actrc-sync.mjs
+--expected "${{ vars.BUN_VERSION }}"`) e emite `::warning::` (NÃO-bloqueante)
+> se divergirem — o act local passaria a testar uma versão diferente da
+> produção sem o guard estático perceber. Variável ausente no repositório
+> também vira `::warning::` (exit 0), não falha o job.
 
 ## Local Workflow Validation (actionlint + act)
 
