@@ -54,6 +54,11 @@ import {
   normalizeBunVersionValue,
   checkStagedCacheKeys,
   checkStagedLiterals,
+  checkCachePaths,
+  checkCachePathBlock,
+  checkStagedCachePaths,
+  parseCacheBlock,
+  extractCacheKeyPrefix,
   isValidGitRef,
   DEFAULT_CACHE_KEY_RULES,
   BUN_VERSION_VAR,
@@ -269,6 +274,14 @@ describe("checkSetupBunCallSites", () => {
   it("diretório inexistente → zero violações", () => {
     expect(checkSetupBunCallSites(join(makeDir(), "nope"))).toEqual([])
   })
+
+  it("escaneia arquivos .yaml (extensão alternativa) — call site sem input → violação", () => {
+    const dir = makeWorkflowsDir({ "a.yaml": `      - uses: ./.github/actions/setup-bun\n` })
+    const v = checkSetupBunCallSites(dir)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:1")
+    expect(v[0]).toContain("SEM input bun-version")
+  })
 })
 
 // ── hasGhcrMirrorRef ──────────────────────────────────────────────────────
@@ -392,21 +405,322 @@ describe("validateMirror", () => {
 // ── DEFAULT_CACHE_KEY_RULES ──────────────────────────────────────────────
 
 describe("DEFAULT_CACHE_KEY_RULES", () => {
-  it("usa a referência da repository variable (não literal) para bun e prisma", () => {
+  it("usa a referência da repository variable (não literal) para bun e prisma, com os paths da toolchain", () => {
     expect(DEFAULT_CACHE_KEY_RULES()).toEqual([
-      { prefix: "bun", version: "${{ vars.BUN_VERSION }}" },
-      { prefix: "prisma", version: "${{ vars.BUN_VERSION }}" },
+      { prefix: "bun", version: "${{ vars.BUN_VERSION }}", paths: ["node_modules", "~/.bun"] },
+      {
+        prefix: "prisma",
+        version: "${{ vars.BUN_VERSION }}",
+        paths: ["node_modules/.prisma", "node_modules/@prisma/client"],
+      },
     ])
   })
 
-  it("é uma lista CONFIGURÁVEL — novas toolchains entram como { prefix, version }", () => {
+  it("é uma lista CONFIGURÁVEL — novas toolchains entram como { prefix, version, paths }", () => {
     const rules = [
-      { prefix: "bun", version: "${{ vars.BUN_VERSION }}" },
-      { prefix: "prisma", version: "${{ vars.BUN_VERSION }}" },
-      { prefix: "next", version: "15" },
+      { prefix: "bun", version: "${{ vars.BUN_VERSION }}", paths: ["node_modules"] },
+      { prefix: "prisma", version: "${{ vars.BUN_VERSION }}", paths: ["node_modules/.prisma"] },
+      { prefix: "next", version: "15", paths: [".next"] },
     ]
     expect(rules).toHaveLength(3)
-    expect(rules[2]).toEqual({ prefix: "next", version: "15" })
+    expect(rules[2]).toEqual({ prefix: "next", version: "15", paths: [".next"] })
+  })
+})
+
+// ── extractCacheKeyPrefix ────────────────────────────────────────────────
+
+describe("extractCacheKeyPrefix", () => {
+  it("extrai o prefixo de uma key com referência à variável", () => {
+    expect(extractCacheKeyPrefix("bun-${{ vars.BUN_VERSION }}-...")).toBe("bun")
+    expect(extractCacheKeyPrefix("prisma-${{ vars.BUN_VERSION }}-...")).toBe("prisma")
+  })
+
+  it("extrai o prefixo mesmo de key literal (o literal é violação de OUTRO check)", () => {
+    expect(extractCacheKeyPrefix("bun-1.3.14-${{ hashFiles('bun.lock') }}")).toBe("bun")
+    expect(extractCacheKeyPrefix("prisma-1.3.14-foo")).toBe("prisma")
+  })
+
+  it("retorna null sem o formato '<prefixo>-'", () => {
+    expect(extractCacheKeyPrefix("node_modules")).toBeNull()
+    expect(extractCacheKeyPrefix("")).toBeNull()
+  })
+})
+
+// ── parseCacheBlock ──────────────────────────────────────────────────────
+
+describe("parseCacheBlock", () => {
+  it("path simples + key → paths e keyPrefix", () => {
+    const { paths, keyPrefix } = parseCacheBlock([
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}`,
+      `          restore-keys: bun-\${{ vars.BUN_VERSION }}-`,
+    ])
+    expect(paths).toEqual(["node_modules"])
+    expect(keyPrefix).toBe("bun")
+  })
+
+  it("path multi-linha (prisma client) → todos os paths e keyPrefix prisma", () => {
+    const { paths, keyPrefix } = parseCacheBlock([
+      `        with:`,
+      `          path: |`,
+      `            node_modules/.prisma`,
+      `            node_modules/@prisma/client`,
+      `          key: prisma-\${{ vars.BUN_VERSION }}-\${{ hashFiles('prisma/schema.prisma') }}`,
+      `          restore-keys: prisma-\${{ vars.BUN_VERSION }}-`,
+    ])
+    expect(paths).toEqual(["node_modules/.prisma", "node_modules/@prisma/client"])
+    expect(keyPrefix).toBe("prisma")
+  })
+
+  it("ignora comentários e linhas vazias dentro do bloco", () => {
+    const { paths, keyPrefix } = parseCacheBlock([
+      `        # comentário`,
+      ``,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-ok`,
+    ])
+    expect(paths).toEqual(["node_modules"])
+    expect(keyPrefix).toBe("bun")
+  })
+
+  it("sem key → keyPrefix null", () => {
+    const { paths, keyPrefix } = parseCacheBlock([`        with:`, `          path: node_modules`])
+    expect(paths).toEqual(["node_modules"])
+    expect(keyPrefix).toBeNull()
+  })
+})
+
+// ── checkCachePathBlock ──────────────────────────────────────────────────
+
+describe("checkCachePathBlock", () => {
+  const rules = DEFAULT_CACHE_KEY_RULES()
+
+  it("bloco bun com path node_modules → zero violações (par fecha)", () => {
+    const block = [
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}`,
+    ]
+    expect(checkCachePathBlock("a.yml", 1, block, rules)).toEqual([])
+  })
+
+  it("bloco prisma com path multi-linha (client) → zero violações", () => {
+    const block = [
+      `        with:`,
+      `          path: |`,
+      `            node_modules/.prisma`,
+      `            node_modules/@prisma/client`,
+      `          key: prisma-\${{ vars.BUN_VERSION }}-\${{ hashFiles('prisma/schema.prisma') }}`,
+    ]
+    expect(checkCachePathBlock("a.yml", 1, block, rules)).toEqual([])
+  })
+
+  it("bloco prisma com path multi-linha INCOMPLETO (só .prisma) → zero violações (pelo menos um casa)", () => {
+    const block = [
+      `        with:`,
+      `          path: |`,
+      `            node_modules/.prisma`,
+      `          key: prisma-\${{ vars.BUN_VERSION }}-x`,
+    ]
+    expect(checkCachePathBlock("a.yml", 1, block, rules)).toEqual([])
+  })
+
+  it("path de OUTRA toolchain (prisma path com key bun) → violação fechando o par", () => {
+    const block = [
+      `        with:`,
+      `          path: |`,
+      `            node_modules/.prisma`,
+      `            node_modules/@prisma/client`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}`,
+    ]
+    const v = checkCachePathBlock("a.yml", 1, block, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("node_modules/.prisma")
+    expect(v[0]).toContain("'prisma'")
+  })
+
+  it("bloco bun com path correto + path de OUTRA toolchain (node_modules + .prisma) → violação mesmo com own match (fecha o par)", () => {
+    const block = [
+      `        with:`,
+      `          path: |`,
+      `            node_modules`,
+      `            node_modules/.prisma`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+    ]
+    const v = checkCachePathBlock("a.yml", 1, block, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("node_modules/.prisma")
+    expect(v[0]).toContain("'prisma'")
+  })
+
+  it("path desconhecido com key de toolchain configurada → violação (esperado: paths da regra)", () => {
+    const block = [
+      `        with:`,
+      `          path: ~/.cache/something`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+    ]
+    const v = checkCachePathBlock("a.yml", 1, block, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("~/.cache/something")
+    expect(v[0]).toContain("node_modules, ~/.bun")
+  })
+
+  it("bloco SEM path declarado → violação", () => {
+    const block = [`        with:`, `          key: bun-\${{ vars.BUN_VERSION }}-x`]
+    const v = checkCachePathBlock("a.yml", 1, block, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("SEM path declarado")
+  })
+
+  it("key com prefixo NÃO configurado → zero violações (regra não existe)", () => {
+    const block = [
+      `        with:`,
+      `          path: whatever`,
+      `          key: other-\${{ github.sha }}`,
+    ]
+    expect(checkCachePathBlock("a.yml", 1, block, rules)).toEqual([])
+  })
+
+  it("regra SEM paths (toolchain custom) → valida só a key, não o path", () => {
+    const custom = [{ prefix: "next", version: "15" }]
+    const block = [`        with:`, `          path: .next/cache`, `          key: next-15-x`]
+    expect(checkCachePathBlock("a.yml", 1, block, custom)).toEqual([])
+  })
+
+  it("regras vazias → zero violações (scan desligado)", () => {
+    const block = [`        with:`, `          path: node_modules`, `          key: bun-x`]
+    expect(checkCachePathBlock("a.yml", 1, block, [])).toEqual([])
+  })
+})
+
+// ── checkCachePaths (scan global de blocos) ─────────────────────────────
+
+describe("checkCachePaths", () => {
+  function makeWorkflowsDir(files: Record<string, string>): string {
+    const dir = join(makeDir(), "workflows")
+    mkdirSync(dir)
+    for (const [name, content] of Object.entries(files)) {
+      writeFileSync(join(dir, name), content)
+    }
+    return dir
+  }
+
+  it("todos os blocos com par key↔path fechado → zero violações", () => {
+    const dir = makeWorkflowsDir({
+      "a.yml": `      - uses: actions/cache@v4\n        with:\n          path: node_modules\n          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n          restore-keys: bun-\${{ vars.BUN_VERSION }}-\n`,
+      "b.yml": `      - uses: actions/cache@v4\n        with:\n          path: |\n            node_modules/.prisma\n            node_modules/@prisma/client\n          key: prisma-\${{ vars.BUN_VERSION }}-\${{ hashFiles('prisma/schema.prisma') }}\n          restore-keys: prisma-\${{ vars.BUN_VERSION }}-\n`,
+    })
+    expect(checkCachePaths(dir, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("bloco com path de outra toolchain → violação com arquivo:linha", () => {
+    const dir = makeWorkflowsDir({
+      "a.yml": `      - uses: actions/cache@v4\n        with:\n          path: |\n            node_modules/.prisma\n            node_modules/@prisma/client\n          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n          restore-keys: bun-\${{ vars.BUN_VERSION }}-\n`,
+    })
+    const v = checkCachePaths(dir, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+  })
+
+  it("ignora uses de OUTRAS actions (não actions/cache)", () => {
+    const dir = makeWorkflowsDir({
+      "a.yml": `      - uses: actions/checkout@v4\n      - uses: ./.github/actions/setup-bun\n        with:\n          bun-version: \${{ vars.BUN_VERSION }}\n`,
+    })
+    expect(checkCachePaths(dir, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("ignora comentários que citam actions/cache em prosa", () => {
+    const dir = makeWorkflowsDir({
+      "a.yml": `# usamos actions/cache em todos os jobs\n`,
+    })
+    expect(checkCachePaths(dir, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("diretório inexistente → zero violações", () => {
+    expect(checkCachePaths(join(makeDir(), "nope"), DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("escaneia arquivos .yaml — bloco com path de outra toolchain → violação com arquivo:linha", () => {
+    const dir = makeWorkflowsDir({
+      "a.yaml": `      - uses: actions/cache@v4\n        with:\n          path: |\n            node_modules/.prisma\n            node_modules/@prisma/client\n          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n          restore-keys: bun-\${{ vars.BUN_VERSION }}-\n`,
+    })
+    const v = checkCachePaths(dir, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:1")
+  })
+})
+
+// ── checkStagedCachePaths (blocos introduzidos pelo diff) ───────────────
+
+describe("checkStagedCachePaths", () => {
+  it("bloco NOVO com par key↔path quebrado → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,4 +1,4 @@\n` +
+      `+      - uses: actions/cache@v4\n` +
+      `+        with:\n` +
+      `+          path: node_modules/.prisma\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    const v = checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+  })
+
+  it("bloco NOVO com par key↔path fechado → zero violações", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,4 +1,4 @@\n` +
+      `+      - uses: actions/cache@v4\n` +
+      `+        with:\n` +
+      `+          path: node_modules\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    expect(checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("bloco PRÉ-EXISTENTE (uses é contexto, não adicionado) não polui o diff", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,2 +1,2 @@\n` +
+      `       - uses: actions/cache@v4\n` +
+      `+          other: true\n`
+    expect(checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("migração de bloco: uses ADICIONADO + path/key em CONTEXTO → valida com o parser rico", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `-      - uses: oven-sh/setup-bun@v2\n` +
+      `+      - uses: actions/cache@v4\n` +
+      `        with:\n` +
+      `          path: node_modules\n` +
+      `          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    expect(checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("arquivo não-.yml → zero violações", () => {
+    const diff =
+      `+++ b/src/lib/foo.ts\n` + `@@ -1,3 +1,3 @@\n` + `+      - uses: actions/cache@v4\n`
+    expect(checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("bloco NOVO com par key↔path quebrado em arquivo .yaml → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yaml\n` +
+      `@@ -1,4 +1,4 @@\n` +
+      `+      - uses: actions/cache@v4\n` +
+      `+        with:\n` +
+      `+          path: node_modules/.prisma\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    const v = checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:1")
+  })
+
+  it("diff vazio → zero violações", () => {
+    expect(checkStagedCachePaths("", DEFAULT_CACHE_KEY_RULES())).toEqual([])
   })
 })
 
@@ -505,6 +819,30 @@ describe("checkCacheKeys", () => {
   it("diretório inexistente → zero violações (fail-open no scan, fail-closed no mirror)", () => {
     expect(checkCacheKeys(join(makeDir(), "nope"), DEFAULT_CACHE_KEY_RULES())).toEqual([])
   })
+
+  it("escaneia arquivos .yaml — key literal em .yaml → violação com arquivo:linha", () => {
+    const dir = makeWorkflowsDir({ "a.yaml": literalKey })
+    const v = checkCacheKeys(dir, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(2)
+    expect(v[0]).toContain("a.yaml:4")
+    expect(v[0]).toContain("bun-1.3.14-")
+  })
+
+  it("regras de OUTRAS toolchains valem em .yaml (next-14 → violação)", () => {
+    const rules = [
+      { prefix: "bun", version: "${{ vars.BUN_VERSION }}" },
+      { prefix: "prisma", version: "${{ vars.BUN_VERSION }}" },
+      { prefix: "next", version: "15" },
+    ]
+    const dir = makeWorkflowsDir({
+      "a.yaml": `          key: next-14-\${{ hashFiles('next.lock') }}\n`,
+    })
+    const v = checkCacheKeys(dir, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:1")
+    expect(v[0]).toContain("next-14-")
+    expect(v[0]).toContain("fonte única 15")
+  })
 })
 
 // ── checkNoLiteralBunVersion ─────────────────────────────────────────────
@@ -564,6 +902,16 @@ describe("checkNoLiteralBunVersion", () => {
 
   it("diretório inexistente → zero violações", () => {
     expect(checkNoLiteralBunVersion(join(makeDir(), "nope"))).toEqual([])
+  })
+
+  it("escaneia arquivos .yaml — literal bun-version em .yaml → violação", () => {
+    const dir = makeWorkflowsDir({
+      "a.yaml": `        with:\n          bun-version: 1.3.14\n`,
+    })
+    const v = checkNoLiteralBunVersion(dir)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:2")
+    expect(v[0]).toContain("1.3.14")
   })
 })
 
@@ -680,6 +1028,18 @@ describe("parseDiffAddedLines", () => {
     expect(parseDiffAddedLines(diff).size).toBe(0)
   })
 
+  it("aceita arquivos .yaml no diff (extensão alternativa não escapa)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yaml\n` +
+      `@@ -1,1 +1,1 @@\n` +
+      `+          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n`
+    const added = parseDiffAddedLines(diff)
+    expect(added.size).toBe(1)
+    expect(added.has(".github/workflows/a.yaml")).toBe(true)
+    // e o check staged detecta a violação da key no .yaml
+    expect(checkStagedCacheKeys(diff, DEFAULT_CACHE_KEY_RULES())).toHaveLength(1)
+  })
+
   it("diff vazio → mapa vazio", () => {
     expect(parseDiffAddedLines("")).toEqual(new Map())
   })
@@ -719,6 +1079,17 @@ describe("parseDiffLines", () => {
       `+          added: true\n`
     expect(parseDiffLines(diff).size).toBe(0)
   })
+
+  it("aceita arquivos .yaml no parser rico (adicionadas + contexto)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yaml\n` +
+      `@@ -1,2 +1,2 @@\n` +
+      `           context: true\n` +
+      `+          added: true\n`
+    const lines = parseDiffLines(diff).get(".github/workflows/a.yaml")!
+    expect(lines).toHaveLength(2)
+    expect(lines[1].added).toBe(true)
+  })
 })
 
 // ── isValidGitRef / gitDiffWorkflows (validação de ref do --base) ───────
@@ -730,11 +1101,22 @@ describe("isValidGitRef", () => {
     expect(isValidGitRef("refs/tags/v1.3.14")).toBe(true)
   })
 
+  it("aceita operadores de REVISÃO git (HEAD~1, HEAD^, v1.0~2) — refs legítimas do --base", () => {
+    // `~`/`^` são INOCUOS: o ref só entra numa range de `git diff` via
+    // execFileSync (array, sem shell); a proteção real é o `..` e o `-`.
+    expect(isValidGitRef("HEAD~1")).toBe(true)
+    expect(isValidGitRef("HEAD~")).toBe(true)
+    expect(isValidGitRef("HEAD^")).toBe(true)
+    expect(isValidGitRef("HEAD^2")).toBe(true)
+    expect(isValidGitRef("v1.0~2")).toBe(true)
+  })
+
   it("rejeita metacharacters de shell e refs perigosas", () => {
     expect(isValidGitRef("main; rm -rf /")).toBe(false)
     expect(isValidGitRef("$(whoami)")).toBe(false)
     expect(isValidGitRef("-f")).toBe(false)
     expect(isValidGitRef("main..other")).toBe(false)
+    expect(isValidGitRef("HEAD~1;rm -rf /")).toBe(false)
     expect(isValidGitRef("")).toBe(false)
   })
 })
@@ -781,6 +1163,16 @@ describe("checkStagedCacheKeys", () => {
       `+          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n`
     expect(checkStagedCacheKeys(diff, DEFAULT_CACHE_KEY_RULES())).toEqual([])
   })
+
+  it("key literal em arquivo .yaml adicionado pelo diff → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yaml\n` +
+      `@@ -1,1 +1,1 @@\n` +
+      `+          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n`
+    const v = checkStagedCacheKeys(diff, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:1")
+  })
 })
 
 describe("checkStagedLiterals", () => {
@@ -804,6 +1196,15 @@ describe("checkStagedLiterals", () => {
 
   it("diff vazio → zero violações", () => {
     expect(checkStagedLiterals("")).toEqual([])
+  })
+
+  it("literal em arquivo .yaml adicionado → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yaml\n` + `@@ -1,1 +1,1 @@\n` + `+          bun-version: 1.3.14\n`
+    const v = checkStagedLiterals(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:1")
+    expect(v[0]).toContain("1.3.14")
   })
 })
 
@@ -912,6 +1313,19 @@ describe("checkStagedSetupBunCallSites", () => {
       `@@ -1,3 +1,3 @@\n` +
       `+      - uses: ./.github/actions/setup-bun\n`
     expect(checkStagedSetupBunCallSites(diff)).toEqual([])
+  })
+
+  it("call site NOVO sem input em arquivo .yaml → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yaml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `+        with:\n` +
+      `+          cache: '~/.bun'\n`
+    const v = checkStagedSetupBunCallSites(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:1")
+    expect(v[0]).toContain("SEM input bun-version")
   })
 
   it("arquivo NOVO inteiro (@@ -0,0 +1,N @@) com call site sem input → violação", () => {

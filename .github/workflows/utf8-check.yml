@@ -95,5 +95,8 @@ jobs:
       - name: Run README repro-marker guard (stale docs for fixed bugs)
         run: node scripts/check-readme-repro-marker.mjs
 
+      - name: Run hooks-symmetry guard (README Git Hooks table ↔ .husky/*)
+        run: node scripts/check-hooks-symmetry.mjs
+
       - name: Summary
         run: echo "All source files validated as valid UTF-8, LF line endings, locked CRLF scope (.sh/.bash only), and clean shell assignments."

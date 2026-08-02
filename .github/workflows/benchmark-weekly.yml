@@ -342,6 +342,32 @@ jobs:
           path: /tmp/bench-setup-bun.json
           if-no-files-found: ignore
 
+  # ── .actrc ↔ vars.BUN_VERSION sync (semanal) ────────────────────────
+  # Revalida SEMANALMENTE que o espelho LOCAL do act (.actrc) está em
+  # sincronia com a repository variable BUN_VERSION do GitHub.
+  #
+  # O guard estático scripts/check-bun-mirror.mjs só valida que o .actrc
+  # DEFINE BUN_VERSION — o VALOR é impossível de conferir estaticamente (a
+  # variável remota só existe em runtime no Actions). Se um dev trocar a
+  # repository variable e esquecer o .actrc, o act local testa uma versão
+  # DIFERENTE da produção sem o guard estático perceber. Este job passa o
+  # valor REAL de vars.BUN_VERSION via --expected e o script emite
+  # ::warning:: (NÃO-bloqueante — drift de dev experience, não bug de CI).
+  actrc-sync:
+    name: .actrc ↔ vars.BUN_VERSION (aviso)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Compara o .actrc do working tree com vars.BUN_VERSION ────────
+      # Node puro (sem deps) — não precisa de bun para o aviso. O exit 0
+      # em divergência é INTENCIONAL: ::warning:: não quebra o CI.
+      - name: Comparar .actrc com vars.BUN_VERSION
+        run: |
+          node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}"
+
   # ── Seed Guards E2E (semanal) ────────────────────────────────────────
   # Revalida SEMANALMENTE que os DOIS seeds (prod + dev) continuam
   # funcionais contra um banco efêmero — espelho do PR check.

@@ -1,6 +1,12 @@
 set -euo pipefail
 
-# 9 guards de encoding/CI compartilhados com o pre-push (fonte única —
+# Bun guard STAGED — detecta cache keys/literais velhos no que está STAGED
+# (git diff --cached) ANTES do guard global: se o commit introduzir uma key
+# antiga (ex.: bun-1.3.14-...) ou literal, falha aqui com a mensagem do diff,
+# mesmo que o working tree global já esteja migrado. Node puro, <1s.
+node scripts/check-bun-mirror.mjs --staged
+
+# 10 guards de encoding/CI compartilhados com o pre-push (fonte única —
 # adicionar um guard novo = editar scripts/run-encoding-guards.sh em UM lugar)
 bash scripts/run-encoding-guards.sh
 bun x lint-staged

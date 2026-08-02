@@ -19,6 +19,7 @@
 #   8. check-no-setup-bun.mjs   — sem oven-sh/setup-bun@v2 nos workflows
 #   9. check-bun-mirror.mjs     — fonte única Bun (vars.BUN_VERSION) ok
 #  10. scan-lucide-icons.mjs    — ícones lucide do vitrine sincronizados
+#  11. check-hooks-symmetry.mjs  — tabela '## Git Hooks' do README ↔ hooks reais
 #
 # Usage:
 #   bash scripts/run-encoding-guards.sh
@@ -40,5 +41,6 @@ node scripts/check-readme-repro-marker.mjs
 node scripts/check-no-setup-bun.mjs
 node scripts/check-bun-mirror.mjs
 node scripts/scan-lucide-icons.mjs --check
+node scripts/check-hooks-symmetry.mjs
 
-echo "✅ Todos os 10 guards de encoding/CI passaram (run-encoding-guards.sh)."
+echo "✅ Todos os 11 guards de encoding/CI passaram (run-encoding-guards.sh)."
