@@ -668,11 +668,11 @@ no act, o composite do log SEMPRE inclui o overhead do próprio act (~11s
 warm / ~30s cold na 1ª execução de actions), então não é métrica do
 setup-bun em si:
 
-| Ambiente                                              | Tier engajado                     | Tempo observado                                                                                                       |
-| ----------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| act + imagem default `catthehacker/ubuntu:act-latest` | tier-2 (cache EMULADO pelo act)   | composite ~33s — `Restore Bun release from cache [21.22s]` (o act emula o actions/cache sem o serviço real do GitHub) |
-| act + imagem custom `ubuntu-bun`                      | tier-1 (fast path, zero download) | steps ~0.4-0.6s cada; composite ~11s warm (overhead do próprio act)                                                   |
-| CI real do GitHub (hosted runner)                     | tier-2 (cache REAL do GitHub)     | **~1-2s esperado — o ganho real** (antes, `oven-sh/setup-bun@v2`: ~25-35s)                                            |
+| Ambiente                                              | Tier engajado                     | Tempo observado                                                                                                                                                                              |
+| ----------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| act + imagem default `catthehacker/ubuntu:act-latest` | tier-2 (cache EMULADO pelo act)   | composite ~33s — `Restore Bun release from cache [21.22s]` (o act emula o actions/cache sem o serviço real do GitHub)                                                                        |
+| act + imagem custom `ubuntu-bun`                      | tier-1 (fast path, zero download) | steps ~0.4-0.6s cada; composite ~11s warm (overhead do próprio act)                                                                                                                          |
+| CI real do GitHub (hosted runner)                     | tier-2 (cache REAL do GitHub)     | **~1-2s esperado — o ganho real** (antes, `oven-sh/setup-bun@v2`: ~25-35s). Medir com `scripts/bench-setup-bun.sh` (ver [abaixo](#medição-real-do-setup-bun-no-ci-scriptsbench-setup-bunsh)) |
 
 O marcador `✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)` confirma
 que o tier-1 ENGAGOU (0s = sem download), mas a linha
@@ -728,6 +728,68 @@ git** — arquivos NOVOS/untracked (ex.: uma action local recém-criada) não
 são visíveis e o act falha com `failed to read 'action.yml'... file does not
 exist`, mesmo com o arquivo presente no disco. Use `-b`/`--bind` para montar
 o working tree real (untracked inclusos) — é o que o exemplo acima usa.
+
+### Medição real do setup-bun no CI (`scripts/bench-setup-bun.sh`)
+
+O act **emula** o actions/cache sem o serviço real do GitHub — o tempo do
+setup-bun medido localmente (~33s catthehacker / ~11s custom) **NÃO é o do
+CI real**. O `scripts/bench-setup-bun.sh` automatiza a medição REAL:
+
+1. Dispara o workflow `bench-setup-bun.yml` no repo real N× via
+   `workflow_dispatch` (run #1 = **cache frio**, run #2+ = **cache quente**).
+2. Espera concluir (polling com filtro de precisão ms na `created_at`).
+3. Lê a duração do step `./.github/actions/setup-bun` da **jobs API** — o span
+   do 1º ao último sub-step RODADO (`status == "completed"`; steps skipped têm
+   timestamps nulos e são filtrados — evita NaN no run cold), precisão ms via
+   `scripts/bench-setup-bun-span.mjs` (lógica pura testada em
+   `src/lib/__tests__/bench-setup-bun-span.test.ts`).
+4. Detecta o tier (1/2/3) pelo log do run e imprime a tabela comparativa
+   real vs act (~33s) + gap warm/cold. Saída JSON opcional (`--json`).
+
+**Fluxo completo (auth → push → medição → cleanup):**
+
+```bash
+# 1. Auth — OBRIGATÓRIO completar NO ambiente do worktree (device flow)
+gh auth login                    # conta com acesso ao repo real
+gh auth status                   # confirmar "Logged in to github.com"
+gh api repos/<owner>/<repo>      # exit 0 = acesso ok (404 = conta sem acesso)
+
+# 2. Fonte única da versão — precisa existir no repo real
+#    Settings → Secrets and variables → Actions → BUN_VERSION=1.3.14
+gh variable set BUN_VERSION 1.3.14
+
+# 3. Push de uma branch que contenha o bench-setup-bun.yml
+#    (workflow_dispatch exige o arquivo num ref REMOTO para o dispatch funcionar)
+git push origin <branch>
+
+# 4. Medição (o preflight valida os passos 1-3 sozinho, exit 2 se faltar algo)
+./scripts/bench-setup-bun.sh                     # ciclo completo cold→warm
+./scripts/bench-setup-bun.sh --dry-run           # só valida pré-requisitos
+./scripts/bench-setup-bun.sh --runs 3 --json out.json   # N runs + JSON
+./scripts/bench-setup-bun.sh --ref main          # dispatch em outro ref
+
+# 5. Cleanup pós-medição
+#    - remover o trigger `push:` do bench-setup-bun.yml (deixar só workflow_dispatch)
+#    - deletar a branch remota de medição
+#    (feito no fluxo original: commit a271e5c + git push origin --delete <branch>)
+```
+
+**Exit codes:** `0` runs executados e timings extraídos · `1` algum run falhou
+ou timing não encontrado · `2` usage/auth/setup error (mensagem clara do que
+falta) · `3` `vars.BUN_VERSION` ausente — mensagem detalhada com a URL direta
+(`https://github.com/<owner>/<repo>/settings/variables/actions`) + comando
+`gh variable set BUN_VERSION 1.3.14 -R <repo>` para criar a variável, em vez
+de falhar obscuro · `4` **API bloqueada** — quando o `gh` está sem acesso ao
+repo mas o **git SSH alcança o remoto**, o preflight confirma o workflow no
+ref via `git ls-remote`/`git fetch`/`git ls-tree` (fallback SSH) e reporta com
+clareza que o **único bloqueio restante é a API** (workflow_dispatch + jobs
+API — o SSH não cobre). Env overrides: `BENCH_GH_REPO`, `BENCH_REF`,
+`BENCH_RUNS`, `BENCH_TIMEOUT_S`.
+
+**O que a tabela diz:** run #1 (cold) = tier-3 download real (~5-10s); run #2
+(warm) = tier-2 cache REAL do GitHub (~1-2s) — **este é o número que fecha a
+comparação** vs os ~33s do act emulado (gap ≈ 30×), provando que a emulação
+local é o gargalo, não a migração do setup-bun.
 
 ### Bugs conhecidos
 
