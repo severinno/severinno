@@ -123,6 +123,61 @@ jobs:
       - name: Summary
         run: echo "✅ All workflows use ./.github/actions/setup-bun (cached)."
 
+  # ── Bun Mirror Guard ─────────────────────────────────────────────────
+  # Fast gate (node puro, <1s): falha o PR se a FONTE ÚNICA da versão do
+  # Bun for violada. A versão vive APENAS na repository variable
+  # vars.BUN_VERSION (Settings → Secrets and variables → Actions): workflows
+  # passam 'bun-version: ${{ vars.BUN_VERSION }}', o sync-bun-mirror.yml usa
+  # a mesma variável no env, e o composite action setup-bun resolve a versão
+  # em runtime (metadata de action NÃO avalia ${{ }}, então default literal é
+  # proibido). O guard falha se: mirror ausente, mirror com BUN_VERSION
+  # literal, action com default literal, action sem referência à variável,
+  # tier 3 (cold cache) sem ref ao mirror GHCR, qualquer literal de versão
+  # do Bun em workflows (bun-version: 1.3.14, bun-1.3.14-...), ou .actrc
+  # sem BUN_VERSION (act local).
+  #
+  # Por que existe: trocar o Bun deve ser ALTERAR A VARIÁVEL EM UM LUGAR.
+  # Antes, a versão estava espalhada em 40+ ocorrências (bun-version:,
+  # cache keys bun-/prisma-, mirror env, default do action) — o drift entre
+  # elas quebrava a key do cache silenciosamente. O guard falha o PR no
+  # início com a violação exata (arquivo:linha).
+  bun-mirror-guard:
+    name: Bun Mirror Guard (fonte única vars.BUN_VERSION)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check bun single-source + GHCR mirror consistency
+        run: node scripts/check-bun-mirror.mjs
+
+      - name: Summary
+        run: echo "✅ Bun version single-source (vars.BUN_VERSION) + GHCR mirror in sync."
+
+  # ── Bun Mirror Guard (staged diff) ──────────────────────────────────
+  # Fast gate (node puro, <1s): roda o check de cache keys e literais do
+  # Bun contra o DIFF DO PR (git diff origin/main...HEAD) em vez do working
+  # tree inteiro — detecta keys antigas (ex.: bun-1.3.14-...) ou literais
+  # INTRODUZIDOS PELO PR antes do merge, mesmo que o restante do
+  # repositório já esteja migrado. Só linhas ADICIONADAS (+ no diff) são
+  # avaliadas — violações pré-existentes do base não poluem o PR.
+  #
+  # Requer fetch-depth: 0 para o git diff base...HEAD funcionar (mesmo
+  # padrão do job benchmark). Local/pre-commit: node scripts/check-bun-mirror.mjs
+  # --staged usa git diff --cached.
+  bun-mirror-staged-guard:
+    name: Bun Mirror Guard (staged diff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed for origin/main...HEAD diff
+
+      - name: Check bun single-source on the PR diff
+        run: node scripts/check-bun-mirror.mjs --staged --base origin/main
+
+      - name: Summary
+        run: echo "✅ No stale bun cache keys/literals introduced by this PR diff."
+
   # ── E2E Counts Guard ──────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se os counts de checks
   # documentados nos comentários dos workflows (pr-check.yml, seed-guards.yml,
@@ -145,7 +200,7 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.3.14
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Check documented E2E check counts match the derivation
         run: node scripts/check-e2e-counts.mjs
@@ -178,14 +233,14 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.3.14
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: bun-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
 
       - name: Install deps
         run: bun install --frozen-lockfile
@@ -216,14 +271,14 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.3.14
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: bun-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
 
       - name: Install deps
         run: bun install --frozen-lockfile
@@ -343,14 +398,14 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.3.14
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: bun-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
 
       - name: Install deps
         run: bun install --frozen-lockfile
@@ -592,14 +647,14 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.3.14
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: bun-${{ hashFiles('bun.lock') }}
-          restore-keys: bun-
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
 
       - name: Install deps
         run: bun install --frozen-lockfile

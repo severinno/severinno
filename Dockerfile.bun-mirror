@@ -1,0 +1,29 @@
+# =============================================================================
+# Dockerfile.bun-mirror
+#
+# Imagem scratch MÍNIMA que carrega o binário do Bun em /bun — espelhada no
+# GHCR como ghcr.io/<owner>/bun:<versão> pelo workflow
+# .github/workflows/sync-bun-mirror.yml.
+#
+# O composite action ./.github/actions/setup-bun (tier 3, cold cache) puxa
+# DESTA imagem via `docker pull` + `docker create`/`docker cp` quando ela
+# existe — o pull fica dentro da rede do GitHub (mais rápido e SEM o rate
+# limit anônimo do GitHub Releases). Se a imagem não existir ainda (mirror
+# ainda não rodou) ou o docker não estiver disponível, o action faz fallback
+# para o download direto do release.
+#
+# Build (contexto = diretório contendo o binário extraído do release zip):
+#   docker build -f Dockerfile.bun-mirror -t ghcr.io/<owner>/bun:<versão> <ctx>
+#
+# A versão vem da repository variable BUN_VERSION (vars.BUN_VERSION) — o
+# workflow sync-bun-mirror.yml monta a tag dinamicamente.
+#
+# Exit codes:
+#   0 — build ok
+#   1 — binário `bun` ausente no contexto (falha do COPY)
+# =============================================================================
+FROM scratch
+COPY bun /bun
+# CMD nunca é executado (o action usa docker create + docker cp); existe para
+# manter a imagem "runnable" em caso de uso manual (bun --help).
+CMD ["/bun", "--help"]

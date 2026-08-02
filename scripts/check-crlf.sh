@@ -18,6 +18,21 @@
 # This guard complements check-utf8.sh (encoding) and runs in the same CI
 # workflow (.github/workflows/utf8-check.yml) plus the pre-commit hook.
 #
+# ESCOPO INTENCIONAL (.sh/.bash apenas — NÃO estender para .ts/.tsx):
+#   - .sh/.bash: CRLF quebra bash em containers Linux (act/CI) — o working
+#     tree é copiado para o container, então o CRLF no disco vira falha
+#     funcional (`set: pipefail: invalid option name`). Guard necessário.
+#   - .ts/.tsx: CRLF NÃO quebra nada (tsc/next/bun/vitest aceitam CRLF); os
+#     blobs são 100% LF (`.gitattributes` `*.ts text eol=lf` força LF no
+#     checkout e no commit — fato invariante); prettier (endOfLine: lf) +
+#     lint-staged normalizam no commit; e o git NÃO enxerga o CRLF do working
+#     tree (ex.: num checkout Windows pré-normalização, a maioria dos .ts
+#     aparece w/crlf no disco enquanto o git status não os marca — o clean
+#     filter normaliza na comparação). Um guard de working tree para .ts/.tsx
+#     falharia em CADA checkout Windows sem proteger nada — ruído puro. O
+#     artefato de checkout é corrigido uma vez com ./scripts/normalize-crlf.sh
+#     (já cobre .ts/.md).
+#
 # Usage:
 #   ./scripts/check-crlf.sh              # check; exit 1 on any CRLF found
 #   ./scripts/check-crlf.sh --ci         # same (explicit CI mode)

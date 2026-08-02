@@ -52,7 +52,7 @@ jobs:
       - name: Bun setup
         uses: ./.github/actions/setup-bun
         with:
-          bun-version: 1.3.14
+          bun-version: \${{ vars.BUN_VERSION }}
 `
 
 // ── extractScriptRefs ────────────────────────────────────────────────────
