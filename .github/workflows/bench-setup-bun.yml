@@ -15,7 +15,9 @@
 # Para um run com cache quente, rode o workflow 2× (o 1º popula o cache
 # `~/.bun` keyed `bun-<versão>-<os>-<arch>`).
 #
-# Trigger: workflow_dispatch (manual) + push nesta branch de medição.
+# Trigger: APENAS workflow_dispatch (manual). O trigger de push foi removido
+# após a medição inicial (08/2026) — a branch de medição foi removida em
+# seguida, e não queremos re-rodar o bench em pushes futuros.
 # Uso (com token autenticado):
 #   gh workflow run bench-setup-bun.yml --ref <branch>
 #
@@ -26,9 +28,6 @@ name: Bench Setup-Bun (real CI)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - freebuff/new-thread-thms5x3m7xt8k4
 
 permissions:
   contents: read
