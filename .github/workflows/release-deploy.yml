@@ -85,7 +85,15 @@ jobs:
           bun-version: ${{ vars.BUN_VERSION }}
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
-      - run: bunx tsc --noEmit
+
+      # O heap default do Node (~1.4GB) é insuficiente para o tsc neste
+      # codebase — o processo crasha com 'JavaScript heap out of memory'
+      # (SIGABRT exit 134, não erro de tipo). Reproduzido e validado em
+      # 08/2026: com 4096MB o typecheck passa limpo em ~2min.
+      - name: Type check
+        run: bunx tsc --noEmit
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
   test:
     name: Tests
