@@ -20,6 +20,11 @@
 #      ('set: pipefail: invalid option name'). See scripts/check-crlf.sh.
 #      The BLOB CRLF guard (check-blob-crlf.sh) additionally fails on
 #      i/crlf or i/mixed in committed blobs.
+#      CRLF SCOPE guard (check-crlf-scope.mjs): locks the intentional
+#      decision that the CRLF guards scan ONLY *.sh/*.bash — never
+#      .ts/.tsx (CRLF in .ts/.tsx breaks nothing; blobs are 100% LF via
+#      .gitattributes; prettier+lint-staged normalize on commit). Fails if
+#      someone extends the git ls-files pathspecs of the CRLF guards.
 #
 #   3. Single-line out=: fails if a tracked .sh/.bash under scripts/ has
 #      `command "..." out=$(...)` on ONE line — `out=` becomes a positional
@@ -40,6 +45,11 @@
 #      appears anywhere in workflows, the action's cold-cache tier no longer
 #      references the mirror (ghcr.io/<owner>/bun:<version>), or .actrc
 #      doesn't define BUN_VERSION (act local). See scripts/check-bun-mirror.mjs.
+#
+#   6. README repro marker: fails if the README mentions repro commands of
+#      bugs ALREADY FIXED without a temporal marker (e.g. "hoje não é
+#      reproduzível em main") — prevents stale docs when a bug is migrated.
+#      See scripts/check-readme-repro-marker.mjs.
 # =============================================================================
 
 name: UTF-8 Check
@@ -64,6 +74,9 @@ jobs:
       - name: Run CRLF guard on tracked .sh/.bash files (working tree)
         run: bash scripts/check-crlf.sh --ci
 
+      - name: Run CRLF scope guard (CRLF guards scan only *.sh/*.bash)
+        run: node scripts/check-crlf-scope.mjs
+
       - name: Run BLOB CRLF guard on tracked .sh/.bash files (committed)
         run: bash scripts/check-blob-crlf.sh --ci
 
@@ -79,5 +92,8 @@ jobs:
       - name: Run bun-mirror guard (GHCR mirror ↔ action version)
         run: node scripts/check-bun-mirror.mjs
 
+      - name: Run README repro-marker guard (stale docs for fixed bugs)
+        run: node scripts/check-readme-repro-marker.mjs
+
       - name: Summary
-        run: echo "All source files validated as valid UTF-8, LF line endings, and clean shell assignments."
+        run: echo "All source files validated as valid UTF-8, LF line endings, locked CRLF scope (.sh/.bash only), and clean shell assignments."

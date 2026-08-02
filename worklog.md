@@ -5,18 +5,42 @@ Stack adaptada ao ambiente: Next.js 16 + Prisma (SQLite) + MapLibre + shadcn/ui 
 Arquitetura-alvo (PostGIS/RabbitMQ/OSRM) referenciada na doc arquitetural; MVP entrega funcionalidade equivalente nesta stack.
 
 Convenções:
+
 - Apenas a rota `/` é visível (SPA com view-switching via Zustand).
 - Cor primária: emerald (serviços/confiança) — NUNCA indigo/azul.
 - APIs em `src/app/api/**` (não server actions).
 - z-ai-web-dev-sdk apenas no backend.
 
+---
+
+Task ID: CRLF-NORM
+Agent: orchestrator (normalização de checkout)
+Task: Normalizar o working tree deste checkout — converter os 415 .ts/.tsx com w/crlf para LF. O artefato de checkout (w/crlf) some sem tocar no histórico (blobs i/lf intocados).
+
+Work Log:
+
+- Diagnóstico: `git ls-files --eol '*.ts' '*.tsx'` → 415 arquivos `w/crlf`, 406 `w/lf`; TODOS os blobs `i/lf` (checkout Windows pré-.gitattributes — o atributo `*.ts text eol=lf` já garantia LF no blob/commit).
+- Rodou `NORMALIZE_CRLF_EXTS=".ts .tsx" ./scripts/normalize-crlf.sh --dry-run` → confirmou exatamente 415 arquivos.
+- Rodou o fix real (mesma var de escopo): converteu os 415 w/crlf → LF no disco e executou `git add --renormalize` nos 415 (só EOL-only vira renormalize — conteúdo real preservado unstaged).
+- Pós-fix: `git ls-files --eol '*.ts' '*.tsx'` → 821/821 `w/lf` (zero w/crlf); `NORMALIZE_CRLF_EXTS=".ts .tsx" ./scripts/normalize-crlf.sh --check` → exit 0.
+- Prova de que o histórico NÃO foi tocado: `git diff --quiet -- src/app/layout.tsx` e `src/lib/geo.ts` → limpos (zero diff — blob LF + working tree LF = nada a comparar).
+- Únicas mudanças .ts/.tsx no status: as EDIÇÕES REAIS desta thread — 2 modificados (check-blob-crlf.test.ts +57, check-crlf.test.ts +68 — testes de CRLF/escopo adicionados) e 2 novos (check-crlf-scope.test.ts, check-readme-repro-marker.test.ts) — todos preservados unstaged pelo renormalize.
+- Escopo: .ts/.tsx apenas (conforme pedido). Os .md (README.md, docs/*.md, worklog.md) seguem w/crlf no disco (blobs i/lf) — deliberadamente não tocados aqui; o mesmo vale para qualquer artefato de checkout não-escopado (a normalização completa de um checkout usa o default `.sh .ts .md` de `normalize-crlf.sh`).
+
+Stage Summary:
+
+- **Antes**: 415 .ts/.tsx `w/crlf` (todos `i/lf`). **Depois**: 821/821 `w/lf` — zero CRLF no working tree de .ts/.tsx.
+- **Histórico intocado**: nenhum blob alterado; `git status` .ts/.tsx mostra só as edições reais da thread (2 M + 2 untracked novos).
+- **Guard**: `normalize-crlf.sh --check` (escopo .ts/.tsx) → exit 0.
 
 ---
+
 Task ID: 2
 Agent: general-purpose (websocket mini-service)
 Task: Set up WebSocket mini-service (port 3003, path /) with socket.io for realtime messaging/booking/quote/tracking events; provide singleton React client hook; start service in background and verify.
 
 Work Log:
+
 - Read worklog.md and examples/websocket/server.ts + examples/websocket/frontend.tsx to lock the exact Caddy-friendly pattern (path "/", XTransformPort query param).
 - Created `/home/z/my-project/mini-services/realtime/` as an independent bun project.
 - Wrote `package.json` (deps: socket.io; scripts: dev=`bun --hot index.ts`).
@@ -42,6 +66,7 @@ Work Log:
 - Did NOT touch src/app/page.tsx, src/app/layout.tsx, Prisma, or other agents' files.
 
 Stage Summary:
+
 - Files created:
   - `/home/z/my-project/mini-services/realtime/package.json`
   - `/home/z/my-project/mini-services/realtime/index.ts`
@@ -56,11 +81,13 @@ Stage Summary:
 - Status: RUNNING (verified by HTTP 200 on polling endpoint + integration smoke test PASS).
 
 ---
+
 Task ID: 1
 Agent: full-stack-developer (foundation)
 Task: Construir a fundação do Severinno Marketplace SaaS — Prisma schema (SQLite, sem enum nativo), seed com 1 admin + 2 clients + 6 providers + categorias 3-níveis + services + bookings/reviews, design system emerald, Zustand stores (auth/geo/view/ui) e lib utilities (crypto scrypt, auth HMAC cookie, geo ViaCEP/Nominatim/haversine, format pt-BR, constants, validators Zod 4).
 
 Work Log:
+
 - Leu worklog.md, package.json, schema.prisma atual, layout.tsx, globals.css, db.ts, tsconfig.json, eslint.config.mjs, dev.log e page.tsx (não modificado).
 - Criou `prisma/schema.prisma` com 13 modelos marketplace (User, Category, Service, ProviderAvailability, QuoteRequest, QuoteItem, Booking, Review, Favorite, Message, Notification, Payment, Setting), todos enums como String + comentário, indexes nas colunas de busca.
 - Rodou `bunx prisma db push --accept-data-loss` → ok; `bun run db:generate` → ok (Prisma 6.19.2).
@@ -79,6 +106,7 @@ Work Log:
 - Rodou `bunx eslint` nos meus arquivos — zero erros. Único erro de lint restante no projeto está em `src/hooks/use-realtime.ts` (não meu, regra `react-hooks/refs`).
 
 Stage Summary:
+
 - **Schema**: `prisma/schema.prisma` — 13 modelos, SQLite-safe (sem enum), indexes em campos de busca. Pushed + Prisma Client gerado.
 - **Seed**: `bun run db:seed` (idempotente). Logins: admin@severinno.com/admin123, cliente@severinno.com/cliente123, maria@severinno.com/cliente123, [provider]@severinno.com/provider123.
 - **Design system**: `src/app/globals.css` — primary emerald, scrollbar custom, `.map-popup` MapLibre.
@@ -89,11 +117,13 @@ Stage Summary:
 - **Caveats**: (a) `src/lib/geo.ts` importa `server-only` — não usar em client components. (b) `src/hooks/use-realtime.ts` tem erro lint `react-hooks/refs` (fora do escopo Task 1). (c) `src/app/page.tsx` intencionalmente não modificado. (d) zod 4 API: `z.enum([...], { message })` em vez de `errorMap`.
 
 ---
+
 Task ID: 3
 Agent: full-stack-developer (api routes)
 Task: Criar TODAS as rotas de API backend do Severinno Marketplace SaaS (Fase 1 / MVP) sob `src/app/api/**` usando Next.js 16 App Router route handlers + Prisma (SQLite) + Zod, alinhadas ao contrato esperado pela UI (foundation `src/lib/api.ts`).
 
 Work Log:
+
 - Leu worklog.md, agent-ctx/1-foundation.md, prisma/schema.prisma, src/lib/{auth,crypto,geo,constants,validators,db}.ts e os componentes UI que consomem a API (vitrine/, modals/) para inferir o contrato de resposta esperado por `apiGet<T>`.
 - Descobriu que `src/lib/api.ts` é o **wrapper tipado client-side** da foundation (apiGet/apiPost/apiPatch/apiDelete + tipos ProviderCard/ProviderDetail/ProviderService/Category/PagedResult/FavoriteResponse/CepResult) — NÃO deve ser tocado.
 - Criou `src/lib/api-server.ts` (novo) com helpers server-only: HttpError, handleError (mapeia UNAUTHORIZED→401, FORBIDDEN→403, ZodError→400, HttpError→status), badRequest/unauthorized/forbidden/notFound/conflict, parsePagination, USER_PUBLIC_SELECT, publicUser, getCategoryDescendants (BFS sobre a árvore de categorias).
@@ -108,6 +138,7 @@ Work Log:
 - NÃO tocou em src/app/page.tsx, src/app/layout.tsx, src/components/**, src/store/**, src/hooks/**, ou qualquer lib da foundation (src/lib/auth/crypto/geo/constants/validators/db/format.ts e o client-side src/lib/api.ts).
 
 Stage Summary:
+
 - **Arquivos criados**:
   - `src/lib/api-server.ts` — helpers server-only (HttpError, handleError, badRequest/unauthorized/forbidden/notFound/conflict, parsePagination, USER_PUBLIC_SELECT, publicUser, getCategoryDescendants).
   - `src/app/api/auth/{register,login,logout,me}/route.ts` — auth completo (POST register/login/logout, GET me).
@@ -139,11 +170,13 @@ Stage Summary:
   - `public/uploads/` não é versionado em prod (precisaria de CDN/object storage).
 
 ---
+
 Task ID: 5
 Agent: full-stack-developer (flow modals)
 Task: Construir os Flow Modals do Severinno Marketplace SaaS (Fase 1/MVP): Quote flow, Booking flow, Provider Profile modal, Auth modal e bits compartilhados (star-rating, file-photos, address-form) + orchestrator modals-host. Next.js 16 + shadcn/ui + Tailwind 4 + react-hook-form + Zod 4 + TanStack Query + framer-motion. Primary emerald, pt-BR, mobile-first.
 
 Work Log:
+
 - Leu worklog.md + agent-ctx/1-foundation.md para entender stores (useAuthStore/useGeoStore/useUIStore/useViewStore), libs (format/constants/validators) e componentes shadcn disponíveis.
 - Verificou que `src/lib/api.ts` já existia (parallel agent) com apiGet/apiPost/apiPatch/apiDelete + fetchProviderDetail/fetchProviders/fetchCategories/toggleFavorite/fetchCep + tipos ProviderCard/ProviderDetail/ProviderService/ProviderAvailability/ProviderReview/Category/CepResult. Estendeu `ProviderService` com `description?` e `photos?` para refletir o contrato real.
 - Criou `src/components/modals/star-rating.tsx`: StarRatingDisplay (clip-based, meia estrela via % width) + StarRatingInput (radiogroup ARIA, teclado ←→↑↓ e 1–5, hover preview).
@@ -159,6 +192,7 @@ Work Log:
 - Verificação final: `bun run lint` → 0 erros nos meus arquivos (2 erros pre-existing em use-realtime.ts não meu). `bunx tsc --noEmit` → 0 erros nos meus arquivos (2 erros pre-existing em vitrine/providers-map.tsx não meu). Dev server log mostra /api/providers, /api/categories, /api/upload, /api/messages, /api/bookings funcionando.
 
 Stage Summary:
+
 - **Modais criados** (todos client components, SSR-safe):
   - `src/components/modals/star-rating.tsx` — StarRatingDisplay + StarRatingInput
   - `src/components/modals/file-photos.tsx` — FilePhotos uploader (FormData via fetch, fallback object URL)
@@ -180,11 +214,13 @@ Stage Summary:
   (h) Share usa navigator.share quando disponível, senão clipboard.
 
 ---
+
 Task ID: 4
 Agent: full-stack-developer (vitrine) [completed files; verification record added by orchestrator after agent cancellation]
 Task: Build the public storefront (vitrine) with MapLibre map, provider cards, filters, hero, topbar, footer.
 
 Work Log:
+
 - Installed maplibre-gl.
 - Created src/lib/api.ts (typed fetch wrapper + shared API types: ProviderCard, Service, etc.).
 - Created src/components/vitrine/{topbar,hero,category-showcase,how-it-works,filters,provider-card,providers-map,vitrine-results,vitrine}.tsx
@@ -193,17 +229,20 @@ Work Log:
 - All fetches RELATIVE via TanStack Query.
 
 Stage Summary:
+
 - Vitrine complete and lint-clean (0 eslint errors).
 - Components: Topbar (search+GPS+auth), Hero (emerald gradient + search), CategoryShowcase, HowItWorks, Filters (3-level category cascade + radius + sort), ProviderCard (cover+avatar+rating+distance+accordion services+Orçamento/Agendar), ProvidersMap (maplibre), VitrineResults (list/map toggle + pagination), Vitrine orchestrator.
 - Sticky footer at src/components/shared/footer.tsx.
 - Caveat: providers-map.tsx had pre-existing tsc notes (per Task 5 agent) — to be re-checked in final verification.
 
 ---
+
 Task ID: 7
 Agent: full-stack-developer (provider panel)
 Task: Construir o PAINEL DO PRESTADOR do Severinno Marketplace SaaS (Fase 1 / MVP): 10 views (dashboard, expediente, agenda, bookings, quotes, services, finance, messages, reviews, profile) + orquestrador provider-panel + 3 rotas API (availability GET/POST, availability/[id] DELETE, users/me GET/PATCH) + shared MessagesView. Next.js 16 + shadcn/ui + Tailwind 4 + recharts + react-hook-form + Zod 4 + TanStack Query. Primary emerald, pt-BR, mobile-first.
 
 Work Log:
+
 - Leu worklog.md + agent-ctx/1-foundation.md + stores (auth/view/ui) + libs (api, api-server, auth, validators, constants, format) + rotas API existentes (services, bookings, quotes, messages, notifications, reviews, categories, auth/me) + componentes shared (footer) + modais (file-photos, star-rating, address-form) + hooks (use-realtime, use-mobile) + UI primitives (sidebar, card, avatar, button, table, tabs, dialog, alert-dialog, dropdown-menu, popover, switch, input, textarea, select, slider, scroll-area, separator, tooltip, pagination).
 - Confirmou que `src/app/api/users/me/route.ts` NÃO existia → criou. Confirmou que `src/app/api/availability/*` NÃO existia → criou as 2 rotas.
 - Confirmou que `src/components/shared/dashboard-shell.tsx` foi criado EM PARALELO pelo Task 6 (Client Panel) — e eles sobrescreveram minha versão inicial com uma API diferente (`panelLabel` + `panelIcon` em vez de `headerLabel`). Adaptei o `provider-panel.tsx` para respeitar o contrato final deles (read-first, never-overwrite respeitado).
@@ -237,6 +276,7 @@ Work Log:
 - Não tocou em src/app/page.tsx, src/app/layout.tsx, vitrine, modais, stores, foundation lib, ou arquivos do painel client/admin.
 
 Stage Summary:
+
 - **Views criadas** (`src/components/provider/`):
   - `provider-dashboard.tsx` — overview com KPIs + 2 charts (recharts) + 3 listas recentes
   - `provider-expediente.tsx` — gerenciamento de disponibilidade semanal (7 dias, add/remove slots, ativo toggle, copiar para dias úteis)
@@ -268,40 +308,48 @@ Stage Summary:
   (j) Mapa nos detalhes de booking é um link externo para OpenStreetMap (sem maplibre inline para manter o bundle leve).
 
 ---
+
 Task ID: 6
 Agent: full-stack-developer (client panel) [files complete; agent stopped during reporting — record added by orchestrator]
 Task: Build the Client panel (dashboard, bookings, quotes, services, finance, messages, reviews, favorites, profile).
 
 Work Log:
+
 - Created src/components/shared/dashboard-shell.tsx (sidebar + topbar + notifications + user dropdown, reusable by all panels).
 - Created 11 files in src/components/client/: client-dashboard, client-bookings, client-quotes, client-services, client-finance, client-reviews, client-favorites, client-messages, client-profile, client-panel (orchestrator), review-dialog.
 - client-panel maps useViewStore.view ('client.*') to views; nav items with lucide icons + emerald accent.
 
 Stage Summary:
+
 - DashboardShell at src/components/shared/dashboard-shell.tsx (API: navItems, currentView, title, subtitle, breadcrumbs, user, onNavigate, panelLabel, panelIcon).
 - Client panel complete. 11 views. Uses TanStack Query + realtime hook for messages/notifications.
 - review-dialog for post-completion reviews.
 
 ---
+
 Task ID: 8
 Agent: full-stack-developer (admin panel) [files complete; agent stopped during reporting — record added by orchestrator]
 Task: Build the Admin panel (dashboard, taxonomy tree, users, providers, services, bookings, settings).
 
 Work Log:
+
 - Created 8 files in src/components/admin/: admin-dashboard, admin-taxonomy (3-level tree, flagship), admin-users, admin-providers, admin-services, admin-bookings, admin-settings (.env-like config console), admin-panel (orchestrator).
 - admin-panel maps useViewStore.view ('admin.*') to views; nav: Visão geral, Taxonomia, Usuários, Prestadores, Serviços, Agendamentos, Configurações.
 
 Stage Summary:
+
 - Admin panel complete. 8 views.
 - Flagship: admin-taxonomy.tsx (3-level autoconfigurable category tree with pai›filha›subcategoria, inline edit, delete with 409 guard, service counts).
 - admin-settings.tsx: dynamic .env-like configuration console (grouped by prefix, inline edit, add/delete).
 
 ---
+
 Task ID: 9
 Agent: orchestrator (main route integration)
 Task: Integrate all surfaces into the single / route (SPA view-switching) + app shell + footer.
 
 Work Log:
+
 - Rewrote src/app/page.tsx as the AppShell: hydration gate (useSyncExternalStore), initial fetchMe, view-based routing (vitrine / client.* / provider.* / admin.*), auth guard for panel views (gated on mounted+initialized to avoid hydration race), realtime room join on auth, global ModalsHost mount.
 - Fixed use-realtime.ts lint errors (react-hooks/refs + set-state-in-effect) by removing the exposed `socket` ref and extracting socket-status sync into a callback.
 - Added src/types/css-modules.d.ts for maplibre-gl CSS import.
@@ -309,47 +357,56 @@ Work Log:
 - Fixed auth-modal navigation: LoginForm now navigates by role (was missing entirely); RegisterForm now handles ADMIN role (was hardcoding client/provider). Removed redundant fetchMe() after login that could null out the user.
 
 Stage Summary:
+
 - Single / route fully functional: vitrine (default), client/provider/admin panels via view-switching.
 - Auth guard robust against hydration timing (mounted gate).
 - Post-login navigation routes to the correct panel per role.
 
 ---
+
 Task ID: 10
 Agent: orchestrator (E2E verification)
 Task: End-to-end browser verification of all surfaces and flows.
 
 Work Log:
+
 - Verified with Agent Browser + VLM (image analysis):
-  * Vitrine: topbar (logo, search, GPS, Entrar/Cadastrar, category nav), hero (emerald gradient, search, trust badges), 6 provider cards (cover, avatar, rating stars, distance, services accordion, Orçamento/Agendar buttons), footer (sticky, all sections, Open Source attribution).
-  * Provider profile modal: cover, avatar, name, 5.0 rating, 4 tabs (Serviços/Sobre/Avaliações/Expediente), service list, Pedir orçamento/Agendar buttons.
-  * Auth modal: login/register tabs, email/password, role toggle.
-  * Admin panel: dashboard with KPIs (9 usuários, R$ 720 receita, 4 agendamentos), sidebar, charts. Taxonomy tree (3-level: Reparos→Elétrica/Hidráulica/Pintura, +Nova categoria, edit/delete/toggle). Settings console.
-  * Client panel: dashboard with KPIs (agendamentos, orçamentos, serviços, total investido), charts, all 9 nav items.
-  * Provider panel: dashboard with KPIs (hoje, orçamentos pendentes, avaliação, receita), all 10 nav items. Services CRUD with 3-level category cascade, title/description/price/unit/photo upload.
+  - Vitrine: topbar (logo, search, GPS, Entrar/Cadastrar, category nav), hero (emerald gradient, search, trust badges), 6 provider cards (cover, avatar, rating stars, distance, services accordion, Orçamento/Agendar buttons), footer (sticky, all sections, Open Source attribution).
+  - Provider profile modal: cover, avatar, name, 5.0 rating, 4 tabs (Serviços/Sobre/Avaliações/Expediente), service list, Pedir orçamento/Agendar buttons.
+  - Auth modal: login/register tabs, email/password, role toggle.
+  - Admin panel: dashboard with KPIs (9 usuários, R$ 720 receita, 4 agendamentos), sidebar, charts. Taxonomy tree (3-level: Reparos→Elétrica/Hidráulica/Pintura, +Nova categoria, edit/delete/toggle). Settings console.
+  - Client panel: dashboard with KPIs (agendamentos, orçamentos, serviços, total investido), charts, all 9 nav items.
+  - Provider panel: dashboard with KPIs (hoje, orçamentos pendentes, avaliação, receita), all 10 nav items. Services CRUD with 3-level category cascade, title/description/price/unit/photo upload.
 - Lint: 0 errors. Dev log: clean (all 200s, no errors). Realtime service: accepting connections.
 
 Stage Summary:
+
 - FASE 1 (MVP) fully verified end-to-end. All 3 personas (Cliente, Prestador, Admin) functional. Vitrine with MapLibre-ready map, provider cards, quote/booking flows, realtime service running on port 3003.
 
 ---
+
 Task ID: F0
 Agent: orchestrator (frontend focus — auth fix)
 Task: Fix auth store persistence race condition causing guard to fire on reload after cookie-based login.
 
 Work Log:
+
 - Root cause: `initialized: true` was persisted, so on reload the guard saw initialized=true + user=null (when login happened via cookie, not store) and reset the view to vitrine + opened auth modal.
 - Fix: removed `initialized` from the persist partialize. Now `initialized` always starts false on mount and flips to true only after fetchMe() verifies the session cookie. The guard in page.tsx (gated on `mounted && initialized`) waits for this before evaluating.
 - Verified: client.dashboard view now persists across reload after cookie login.
 
 Stage Summary:
+
 - Auth guard race condition resolved. Panel navigation now robust.
 
 ---
+
 Task ID: F1
 Agent: frontend-styling-expert (vitrine polish)
 Task: Polish the vitrine (storefront) visual design — topbar, hero, category showcase, how-it-works, provider card, filters, vitrine-results, footer — to production-polished level. Edit existing files surgically; preserve all component APIs, props, exports, and data logic.
 
 Work Log:
+
 - src/components/vitrine/topbar.tsx: tighter sticky header (`bg-background/80 backdrop-blur-md`), emerald pill location chip (`bg-emerald-50 text-emerald-700 border-emerald-200`) with prominent mobile shortcut button; aligned Entrar (ghost) and Cadastrar (default) at same h-9 size sm; category nav now relative with fade-edge gradients; pills tightened (h-8, hover:text-primary); mobile sheet auth reordered (Entrar outline, Cadastrar primary, both h-11); mobile location uses emerald outline card; logo button shrinks correctly.
 - src/components/vitrine/hero.tsx: stronger typographic hierarchy (`text-3xl md:text-5xl font-bold tracking-tight` title + `font-light` subtitle on emerald-50/90); gradient extended to teal-800; search card is pure white `rounded-2xl shadow-2xl p-2` with `h-12` left-aligned inputs and prominent `h-12` emerald Buscar button; GPS link is now a subtle `text-emerald-50 hover:text-white hover:underline` pill (LocateFixed icon); trust badges get larger `size-8 bg-white/10 ring-1 ring-white/15` circles and `text-sm` labels; section padding tightened to `py-12 md:py-16`.
 - src/components/vitrine/category-showcase.tsx: section title bumped to `text-2xl md:text-3xl`; cards now `min-w-[140px]` and flex (horizontal scroll) on mobile → grid on sm+; emerald circle icons (`bg-emerald-50 text-emerald-700`); shadow-sm baseline + hover lift + emerald-300 hover border + `bg-emerald-50/40` hover tint.
@@ -361,6 +418,7 @@ Work Log:
 - src/components/shared/footer.tsx: converted to dark `bg-slate-900 text-slate-300 border-t border-slate-800`; brand text white, body text `slate-400 hover:text-white`, headers `slate-500`; social icons `border-slate-700 hover:border-primary hover:text-primary`; bottom bar `border-slate-800 mt-8 pt-6 text-xs text-slate-500` with MapLibre/OSM links `slate-400 hover:text-white`; tightened gaps to gap-2.5 between links.
 
 Stage Summary:
+
 - All 9 owned files surgically polished; component APIs (props/exports), data logic, query hooks, mutations and event handlers untouched.
 - `bunx tsc --noEmit` — 0 errors in src/components/vitrine/** and src/components/shared/footer.tsx (only pre-existing baseline errors in examples/ and skills/ remain).
 - `bun run lint` — passes with 0 errors.
@@ -369,11 +427,13 @@ Stage Summary:
 - Caveats: framer-motion was NOT introduced (existing components use CSS transitions for hover lifts; kept performance predictable). Providers-map.tsx was NOT touched (outside owned scope). No API/data changes.
 
 ---
+
 Task ID: F3
 Agent: full-stack-developer (modals polish)
 Task: Refine visual design, layout density, transitions, and form UX of all flow modals (auth, provider profile, quote, booking) plus shared bits (file-photos, address-form, star-rating, modals-host) to a production-polished level. Emerald primary, pt-BR, mobile-first, Nielsen heuristics.
 
 Work Log:
+
 - src/components/modals/auth-modal.tsx: rebuilt header with brand mark (emerald gradient + Wrench tile), pill-style tab toggle (rounded-full, active = bg-primary text-primary-foreground), Mail/Lock icons inside h-10 inputs, full-width h-11 emerald submit buttons, role toggle as large selectable cards (icon + label + description, selected = border-primary bg-primary/5 ring-1 ring-primary), inline helper text, animated form-level error messages via framer-motion, provider fields helper badges reformatted as an emerald-tinted alert.
 - src/components/modals/provider-profile-modal.tsx: cover with gradient overlay, avatar border-4 border-card + shadow-sm, name text-xl font-bold, distance now uses Navigation icon, custom action row (close X + share + favorite) so Dialog default close is hidden via showCloseButton={false}; on mobile Sheet default close hidden via [&_[data-slot=sheet-close]]:hidden; pill-style scrollable tabs (active = bg-primary text-primary-foreground); ReviewsTab now shows big-number summary + 5★→1★ distribution bars + reviews list; HoursTab adds a status column (Aberto/Fechado badge) and "hoje" highlight on current weekday; AboutTab adds a small radius visual (concentric circles) and uses uppercase section labels; service cards show price as text-emerald-700 font-semibold (no longer a Badge).
 - src/components/modals/quote-modal.tsx: dialog header subtitle changed to "Solicite orçamentos de um ou mais serviços."; new auth-gate alert (amber-50 bg, amber-200 border) with "Entrar / Cadastrar" button shown when user is not authenticated; ItemCard padding standardized to rounded-xl border p-4; "Adicionar item" button uses border-dashed border-primary/30 hover:border-primary hover:bg-primary/5; AddressForm wrapped in rounded-xl border bg-card p-4; sticky footer button is h-11 emerald; footer count now uses unique provider count via Set; button label changed to "Enviar orçamentos".
@@ -384,6 +444,7 @@ Work Log:
 - src/components/modals/modals-host.tsx: untouched (no design changes needed; only mounts the four modals).
 
 Stage Summary:
+
 - Visual: pill tabs, large role/payment cards, polished header/cover with custom action buttons, distribution bars on reviews, status badges on expediente, drag-drop photo zone — all aligned to emerald primary and shadcn tokens.
 - Form UX: consistent h-10 inputs + text-sm, h-11 emerald submit buttons, helper text, inline error text, animated transitions (framer-motion for tab/form errors and step changes preserved), auth gate visible on quote flow, GPS button visually prominent.
 - Mobile: provider profile uses full-screen Sheet on mobile with the default close hidden (custom close X lives in the cover); other modals keep standard Sheet close.
@@ -391,11 +452,13 @@ Stage Summary:
 - Caveats: Did not change any component APIs (props, exports, store actions, API calls). The drag-drop FilePhotos uses native HTML5 drag events (works on desktop; mobile falls back to tap-to-pick). Booking step 1 calendar selection color comes from --primary (emerald) via shadcn Calendar tokens — no override needed.
 
 ---
+
 Task ID: F2
 Agent: frontend-styling-expert (dashboard polish)
 Task: Polish the three dashboard panels (client / provider / admin) and the shared DashboardShell to a production-polished level — KPI cards, charts, spacing, hierarchy, sidebar/topbar, notifications dropdown.
 
 Work Log:
+
 - `src/components/shared/dashboard-shell.tsx`:
   - Added `next-themes` `useTheme` import + `framer-motion` `motion` import; added Sun/Moon + CheckCheck icons (removed unused LocateFixed).
   - Sidebar nav: `SidebarMenuButton` now uses `size="lg"` with `rounded-lg`, emerald-tinted active state (`!bg-primary/10 !text-primary font-medium`) + a `size-1` left emerald indicator bar; icons `size-4`, labels `text-sm`; group label uppercase tracking.
@@ -433,14 +496,17 @@ Work Log:
   - Added page header (title + subtitle) for hierarchy.
 
 Stage Summary:
+
 - All four files lint clean (`bun run lint` → 0 errors) and type-check clean (`bunx tsc --noEmit` reports no errors in `src/components/{client,provider,admin,shared}/`).
 
 ---
+
 Task ID: Memory System
 Agent: Buffy (AI coding assistant)
 Task: Configurar sistema de memória persistente para retomar contexto entre threads.
 
 Work Log:
+
 - Criou `.agents/memory/` com 5 arquivos de memória persistente:
   - `MEMORY.md`: índice central com entradas para projeto, stack, user, decisions e topic files
   - `project-conventions.md`: stack completo, design system, estrutura de diretórios, regras de código, credenciais de teste
@@ -449,6 +515,7 @@ Work Log:
   - `session-history.md`: resumo de todas as 14 sessões/tasks anteriores + esta sessão
 
 Stage Summary:
+
 - Sistema de memória persistente configurado em `.agents/memory/`.
 - Agora qualquer agente que iniciar uma nova thread pode ler `.agents/memory/MEMORY.md` para obter contexto completo do projeto.
 - worklog.md mantido como registro detalhado de cada task.

@@ -38,14 +38,20 @@ import {
   extractEnvVersion,
   extractActionDefault,
   hasVarsBunVersionRef,
+  hasBunVersionInputRef,
   hasGhcrMirrorRef,
   validateMirror,
   checkCacheKeys,
   checkNoLiteralBunVersion,
+  checkSetupBunCallSites,
   checkActrc,
   checkCacheKeyLine,
   checkLiteralBunLine,
   parseDiffAddedLines,
+  parseDiffLines,
+  checkStagedSetupBunCallSites,
+  checkSetupBunCallSite,
+  normalizeBunVersionValue,
   checkStagedCacheKeys,
   checkStagedLiterals,
   isValidGitRef,
@@ -152,6 +158,116 @@ describe("hasVarsBunVersionRef", () => {
 
   it("não casa texto vazio", () => {
     expect(hasVarsBunVersionRef("")).toBe(false)
+  })
+})
+
+// ── hasBunVersionInputRef ─────────────────────────────────────────────────
+
+describe("hasBunVersionInputRef", () => {
+  it("detecta a referência ao input no step de resolve (novo contrato)", () => {
+    const content = `VERSION="\${{ inputs.bun-version }}"`
+    expect(hasBunVersionInputRef(content)).toBe(true)
+  })
+
+  it("a antiga forma runtime (com || vars) TAMBÉM casa — contém inputs.bun-version", () => {
+    // A forma `inputs.bun-version || vars.BUN_VERSION` contém a substring
+    // `inputs.bun-version`, então o validateMirror passa — o guard NÃO
+    // força a migração do operador || (gap documentado; a enforceção real
+    // do contrato é o checkSetupBunCallSites + a documentação no action).
+    const content = `VERSION="\${{ inputs.bun-version || vars.BUN_VERSION }}"`
+    expect(hasBunVersionInputRef(content)).toBe(true)
+  })
+
+  it("não casa texto sem referência ao input", () => {
+    expect(hasBunVersionInputRef(`VERSION="\${{ vars.BUN_VERSION }}"`)).toBe(false)
+    expect(hasBunVersionInputRef("echo hello")).toBe(false)
+    expect(hasBunVersionInputRef("")).toBe(false)
+  })
+})
+
+// ── checkSetupBunCallSites ────────────────────────────────────────────────
+
+describe("checkSetupBunCallSites", () => {
+  function makeWorkflowsDir(files: Record<string, string>): string {
+    const dir = join(makeDir(), "workflows")
+    mkdirSync(dir)
+    for (const [name, content] of Object.entries(files)) {
+      writeFileSync(join(dir, name), content)
+    }
+    return dir
+  }
+
+  const okCallSite = `      - uses: ./.github/actions/setup-bun\n        with:\n          bun-version: \${{ vars.BUN_VERSION }}\n`
+
+  it("call site com bun-version: ${{ vars.BUN_VERSION }} → zero violações", () => {
+    const dir = makeWorkflowsDir({ "a.yml": okCallSite })
+    expect(checkSetupBunCallSites(dir)).toEqual([])
+  })
+
+  it("call site SEM input bun-version → violação (fail-closed)", () => {
+    const dir = makeWorkflowsDir({ "a.yml": `      - uses: ./.github/actions/setup-bun\n` })
+    const v = checkSetupBunCallSites(dir)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("SEM input bun-version")
+    expect(v[0]).toContain("vars.BUN_VERSION")
+  })
+
+  it("call site com literal (bun-version: 1.3.14) → violação (use a variável)", () => {
+    const dir = makeWorkflowsDir({
+      "a.yml": `      - uses: ./.github/actions/setup-bun\n        with:\n          bun-version: 1.3.14\n`,
+    })
+    const v = checkSetupBunCallSites(dir)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("bun-version='1.3.14'")
+    expect(v[0]).toContain("vars.BUN_VERSION")
+  })
+
+  it("múltiplos call sites: um bom + um sem input → só o mau é reportado", () => {
+    // okCallSite ocupa linhas 1-3 (uses, with, bun-version); o `\n` extra
+    // cria a linha 4 vazia; o segundo uses fica na linha 5.
+    const dir = makeWorkflowsDir({
+      "a.yml": okCallSite + `\n      - uses: ./.github/actions/setup-bun\n`,
+    })
+    const v = checkSetupBunCallSites(dir)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:5")
+  })
+
+  it("ignora outros usos de action (não setup-bun)", () => {
+    const dir = makeWorkflowsDir({
+      "a.yml": `      - uses: actions/checkout@v4\n`,
+    })
+    expect(checkSetupBunCallSites(dir)).toEqual([])
+  })
+
+  it("ignora comentários que citam o uses em prosa (falso positivo)", () => {
+    const dir = makeWorkflowsDir({
+      "a.yml": `# usamos ./.github/actions/setup-bun em todos os jobs\n`,
+    })
+    expect(checkSetupBunCallSites(dir)).toEqual([])
+  })
+
+  it('aceita bun-version com aspas (ex.: "${{ vars.BUN_VERSION }}")', () => {
+    const dir = makeWorkflowsDir({
+      "a.yml": `      - uses: ./.github/actions/setup-bun\n        with:\n          bun-version: "\${{ vars.BUN_VERSION }}"\n`,
+    })
+    expect(checkSetupBunCallSites(dir)).toEqual([])
+  })
+
+  it("aceita comentário inline no bun-version (# nota)", () => {
+    const dir = makeWorkflowsDir({
+      "a.yml":
+        `      - uses: ./.github/actions/setup-bun\n` +
+        `        with:\n` +
+        `          bun-version: \${{ vars.BUN_VERSION }} # fonte única\n`,
+    })
+    expect(checkSetupBunCallSites(dir)).toEqual([])
+  })
+
+  it("diretório inexistente → zero violações", () => {
+    expect(checkSetupBunCallSites(join(makeDir(), "nope"))).toEqual([])
   })
 })
 
@@ -569,6 +685,42 @@ describe("parseDiffAddedLines", () => {
   })
 })
 
+// ── parseDiffLines (parser rico: adicionadas + contexto) ────────────────
+
+describe("parseDiffLines", () => {
+  it("inclui linhas ADICIONADAS e de CONTEXTO com flag added", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `-          removed: true\n` +
+      `           context: true\n` +
+      `+          added: true\n`
+    const lines = parseDiffLines(diff).get(".github/workflows/a.yml")!
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toEqual({ lineNo: 1, content: "          context: true", added: false })
+    expect(lines[1]).toEqual({ lineNo: 2, content: "          added: true", added: true })
+  })
+
+  it("parseDiffAddedLines continua retornando SÓ adicionadas (delega no rico)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `           context: true\n` +
+      `+          added: true\n`
+    const lines = parseDiffAddedLines(diff).get(".github/workflows/a.yml")!
+    expect(lines).toEqual([{ lineNo: 2, content: "          added: true" }])
+  })
+
+  it("arquivo não-.yml → zero linhas (nem contexto)", () => {
+    const diff =
+      `+++ b/src/lib/foo.ts\n` +
+      `@@ -1,2 +1,2 @@\n` +
+      `           context: true\n` +
+      `+          added: true\n`
+    expect(parseDiffLines(diff).size).toBe(0)
+  })
+})
+
 // ── isValidGitRef / gitDiffWorkflows (validação de ref do --base) ───────
 
 describe("isValidGitRef", () => {
@@ -652,6 +804,171 @@ describe("checkStagedLiterals", () => {
 
   it("diff vazio → zero violações", () => {
     expect(checkStagedLiterals("")).toEqual([])
+  })
+})
+
+// ── checkStagedSetupBunCallSites (call sites introduzidos pelo diff) ────
+
+describe("checkStagedSetupBunCallSites", () => {
+  it("call site NOVO sem input bun-version → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `+        with:\n` +
+      `+          cache: '~/.bun'\n`
+    const v = checkStagedSetupBunCallSites(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("SEM input bun-version")
+  })
+
+  it("call site NOVO com bun-version: ${{ vars.BUN_VERSION }} → zero violações", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `+        with:\n` +
+      `+          bun-version: \${{ vars.BUN_VERSION }}\n`
+    expect(checkStagedSetupBunCallSites(diff)).toEqual([])
+  })
+
+  it("call site NOVO com literal bun-version: 1.3.14 → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `+        with:\n` +
+      `+          bun-version: 1.3.14\n`
+    const v = checkStagedSetupBunCallSites(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("bun-version='1.3.14'")
+  })
+
+  it("call site PRÉ-EXISTENTE (uses é contexto, não adicionado) não polui o diff", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,2 +1,2 @@\n` +
+      `       - uses: ./.github/actions/setup-bun\n` +
+      `+          other: true\n`
+    expect(checkStagedSetupBunCallSites(diff)).toEqual([])
+  })
+
+  it("migração de action: uses ADICIONADO + bun-version em CONTEXTO → zero violações", () => {
+    // oven-sh/setup-bun@v2 → ./.github/actions/setup-bun: o diff adiciona só
+    // a linha uses; with:/bun-version: são CONTEXTO. Só o parser rico vê o
+    // bun-version correto (sem ele, falso positivo 'SEM input').
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `-      - uses: oven-sh/setup-bun@v2\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `        with:\n` +
+      `          bun-version: \${{ vars.BUN_VERSION }}\n`
+    expect(checkStagedSetupBunCallSites(diff)).toEqual([])
+  })
+
+  it("migração de action com bun-version LITERAL em contexto → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `-      - uses: oven-sh/setup-bun@v2\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `        with:\n` +
+      `          bun-version: 1.3.14\n`
+    const v = checkStagedSetupBunCallSites(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("bun-version='1.3.14'")
+  })
+
+  it("ignora comentários que citam o uses em prosa", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,1 +1,1 @@\n` +
+      `+      # usamos ./.github/actions/setup-bun em todos os jobs\n`
+    expect(checkStagedSetupBunCallSites(diff)).toEqual([])
+  })
+
+  it("múltiplos call sites: um com bun-version + um sem → só o mau é reportado", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,6 +1,6 @@\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `+        with:\n` +
+      `+          bun-version: \${{ vars.BUN_VERSION }}\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `+        with:\n` +
+      `+          cache: '~/.bun'\n`
+    const v = checkStagedSetupBunCallSites(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:4")
+  })
+
+  it("arquivo não-.yml → zero violações", () => {
+    const diff =
+      `+++ b/src/lib/foo.ts\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `+      - uses: ./.github/actions/setup-bun\n`
+    expect(checkStagedSetupBunCallSites(diff)).toEqual([])
+  })
+
+  it("arquivo NOVO inteiro (@@ -0,0 +1,N @@) com call site sem input → violação", () => {
+    // Arquivo .yml criado do zero: TODAS as linhas são '+', incluindo o
+    // call site sem bun-version — o staged check precisa pegar esse caso
+    // (a numeração começa em 1 no arquivo novo).
+    const diff =
+      `diff --git a/.github/workflows/new.yml b/.github/workflows/new.yml\n` +
+      `new file mode 100644\n` +
+      `--- /dev/null\n` +
+      `+++ b/.github/workflows/new.yml\n` +
+      `@@ -0,0 +1,4 @@\n` +
+      `+name: Novo\n` +
+      `+jobs:\n` +
+      `+      - uses: ./.github/actions/setup-bun\n` +
+      `+        with:\n`
+    const v = checkStagedSetupBunCallSites(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("new.yml:3")
+    expect(v[0]).toContain("SEM input bun-version")
+  })
+
+  it("diff vazio → zero violações", () => {
+    expect(checkStagedSetupBunCallSites("")).toEqual([])
+  })
+})
+
+// ── checkSetupBunCallSite / normalizeBunVersionValue (nível de call site) ─
+
+describe("checkSetupBunCallSite", () => {
+  it("following com bun-version correto → null", () => {
+    expect(
+      checkSetupBunCallSite("a.yml", 1, [
+        `        with:`,
+        `          bun-version: \${{ vars.BUN_VERSION }}`,
+      ]),
+    ).toBeNull()
+  })
+
+  it("following SEM bun-version → mensagem de violação", () => {
+    const v = checkSetupBunCallSite("a.yml", 1, [`        with:`, `          cache: '~/.bun'`])
+    expect(v).toContain("a.yml:1")
+    expect(v).toContain("SEM input bun-version")
+  })
+
+  it("following com literal → mensagem apontando o literal", () => {
+    const v = checkSetupBunCallSite("a.yml", 1, [`        with:`, `          bun-version: 1.3.14`])
+    expect(v).toContain("bun-version='1.3.14'")
+  })
+})
+
+describe("normalizeBunVersionValue", () => {
+  it("remove aspas e comentário inline", () => {
+    expect(normalizeBunVersionValue(`"\${{ vars.BUN_VERSION }}" # nota`)).toBe(
+      "${{ vars.BUN_VERSION }}",
+    )
+    expect(normalizeBunVersionValue(`\${{ vars.BUN_VERSION }}`)).toBe("${{ vars.BUN_VERSION }}")
   })
 })
 
