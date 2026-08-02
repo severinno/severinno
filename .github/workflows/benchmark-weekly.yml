@@ -287,6 +287,61 @@ jobs:
             docs/benchmarks/geo-real-baseline.json
           retention-days: 90
 
+  # ── Setup-bun warm cache guard (semanal) ────────────────────────────
+  # Revalida SEMANALMENTE o tier-2 do setup-bun (cache REAL do GitHub):
+  # roda o bench-setup-bun.sh (cold→warm: run #1 cache frio, run #2 cache
+  # quente) e falha se o warm cache exceder o limiar (default 10s, esperado
+  # ~1-2s). Se o tier-2 regredir silenciosamente (cache key quebrada, warm
+  # volta a baixar no tier-3 ~5-10s), o setup-bun continua FUNCIONANDO — só
+  # fica mais lento — e o pr-check (que mede correção, não performance) não
+  # percebe. Este guard é a rede de segurança periódica.
+  #
+  # O dispatch exige que o bench-setup-bun.yml exista no ref padrão (main).
+  # O guard (scripts/check-setup-bun-warm.mjs) é o GATE — exit 1 falha o job.
+  setup-bun-warm:
+    name: Setup-bun warm cache (limiar 10s)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      # workflow_dispatch + jobs API (medir o run do bench) exigem actions.
+      actions: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Roda a medição real (cold→warm) e salva o JSON ───────────────
+      # gh usa o token padrão do run (GITHUB_TOKEN) para dispatch + jobs API.
+      # BENCH_TIMEOUT_S=300 (5min/run): menor que o timeout do job — se um
+      # run estagnar, o script (não o wall-clock) é quem decide o verdict e
+      # o job falha com a mensagem clara do guard, não com 'timed out'.
+      - name: Rodar bench-setup-bun (cold→warm)
+        env:
+          BENCH_TIMEOUT_S: 300
+        run: |
+          ./scripts/bench-setup-bun.sh \
+            --repo "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}" \
+            --runs 2 \
+            --json /tmp/bench-setup-bun.json
+
+      # ── GATE: warm cache dentro do limiar? ───────────────────────────
+      - name: Guard warm cache (limiar 10s)
+        run: |
+          node scripts/check-setup-bun-warm.mjs \
+            --json /tmp/bench-setup-bun.json \
+            --max 10
+
+      # ── Evidência como artifact (debug de falhas) ────────────────────
+      - name: Upload bench JSON (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-setup-bun-warm
+          path: /tmp/bench-setup-bun.json
+          if-no-files-found: ignore
+
   # ── Seed Guards E2E (semanal) ────────────────────────────────────────
   # Revalida SEMANALMENTE que os DOIS seeds (prod + dev) continuam
   # funcionais contra um banco efêmero — espelho do PR check.
