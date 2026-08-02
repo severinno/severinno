@@ -1,0 +1,64 @@
+# =============================================================================
+# Bench Setup-Bun (real GitHub CI)
+#
+# Mede o tempo REAL do step setup-bun (.github/actions/setup-bun) num runner
+# GitHub-hosted, usando EXATAMENTE o mesmo `uses:` + `bun-version` do job
+# `check` do pr-check.yml. Serve para comparar com a emulação local do act
+# (composite ~29-33s na imagem catthehacker default — o act EMULA o
+# actions/cache; o tier-1 fast path nem dispara porque a imagem não embarca
+# bun). O objetivo é validar que a emulação local é o gargalo, não a
+# migração do setup-bun: no CI real o tier-2 (cache real do GitHub) roda em
+# ~1-2s e o tier-3 (cold download) em ~5-10s apenas na primeira execução.
+#
+# Medição: a duração do step setup-bun vem da API de jobs do GitHub
+# (steps[].started_at/completed_at) — não é preciso instrumentar o workflow.
+# Para um run com cache quente, rode o workflow 2× (o 1º popula o cache
+# `~/.bun` keyed `bun-<versão>-<os>-<arch>`).
+#
+# Trigger: workflow_dispatch (manual) + push nesta branch de medição.
+# Uso (com token autenticado):
+#   gh workflow run bench-setup-bun.yml --ref <branch>
+#
+# Exit codes: nenhum gate — job de MEDIÇÃO apenas (não falha o repo).
+# =============================================================================
+
+name: Bench Setup-Bun (real CI)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - freebuff/new-thread-thms5x3m7xt8k4
+
+permissions:
+  contents: read
+  # actions: write é necessário para o tier-2 do setup-bun (actions/cache):
+  # save exige actions: write, e a comparação cold→warm precisa salvar o cache
+  # do 1º run para o 2º medir com cache quente. Sem isso o cache restore/save
+  # falha com 403 (permissions explícitas zeram escopos não listados).
+  actions: write
+
+env:
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
+
+# Re-push da branch de medição cancela o run anterior (evita fila dupla).
+concurrency:
+  group: bench-setup-bun-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    name: Setup-bun real (GitHub-hosted runner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── MESMO uso do job check do pr-check.yml ────────────────────────
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Verify bun
+        run: bun --version
