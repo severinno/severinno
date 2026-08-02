@@ -1,6 +1,10 @@
 set -euo pipefail
 
 bash scripts/check-utf8.sh --dry-run --ci src/
+bash scripts/check-crlf.sh --ci
+bash scripts/check-blob-crlf.sh --ci
+bash scripts/check-single-line-out-assign.sh --ci
+node scripts/check-no-setup-bun.mjs
 node scripts/scan-lucide-icons.mjs --check
 bun x lint-staged
 

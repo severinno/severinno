@@ -1,5 +1,5 @@
 # =============================================================================
-# utf8-check — Reusable UTF-8 encoding validation workflow
+# utf8-check — Reusable UTF-8 encoding + line-ending validation workflow
 #
 # Call from other workflows via:
 #
@@ -7,13 +7,31 @@
 #     utf8-check:
 #       uses: ./.github/workflows/utf8-check.yml
 #
-# Validates all .ts/.tsx source files against UTF-8 encoding to prevent
-# Windows-1252 byte-0x97 corruption (common on Brazilian Windows setups).
-# Uses Python's UTF-8 decoder (equivalent to iconv -f utf-8) with safe
-# byte-0x97 detection that avoids false positives on valid multi-byte
-# sequences (e.g. emoji like 🔗 = F0 9F 94 97).
+# Four fast gates (each <10s, no deps beyond python3/bash/node pre-installed):
 #
-# Fast gate: <10s, no dependencies beyond python3 (pre-installed on runners).
+#   1. UTF-8: validates all .ts/.tsx source files against UTF-8 encoding to
+#      prevent Windows-1252 byte-0x97 corruption (common on Brazilian Windows
+#      setups). Uses Python's UTF-8 decoder (equivalent to iconv -f utf-8)
+#      with safe byte-0x97 detection that avoids false positives on valid
+#      multi-byte sequences (e.g. emoji like 🔗 = F0 9F 94 97).
+#
+#   2. CRLF: fails if any tracked .sh/.bash file has CRLF in the working
+#      tree. Git Bash tolerates CRLF, but Linux containers (act/CI) do not
+#      ('set: pipefail: invalid option name'). See scripts/check-crlf.sh.
+#      The BLOB CRLF guard (check-blob-crlf.sh) additionally fails on
+#      i/crlf or i/mixed in committed blobs.
+#
+#   3. Single-line out=: fails if a tracked .sh/.bash under scripts/ has
+#      `command "..." out=$(...)` on ONE line — `out=` becomes a positional
+#      argument (never set), so the script silently breaks while count
+#      strings still pass the check-e2e-counts guard. See
+#      scripts/check-single-line-out-assign.sh.
+#
+#   4. No setup-bun: fails if any workflow uses oven-sh/setup-bun@v2 — the
+#      external action re-downloads the LATEST Bun release on every job
+#      (~25-35s/job). All workflows must use the local composite action
+#      ./.github/actions/setup-bun (pre-installed fast path + actions/cache
+#      keyed on the pinned version). See scripts/check-no-setup-bun.mjs.
 # =============================================================================
 
 name: UTF-8 Check
@@ -35,5 +53,17 @@ jobs:
       - name: Run UTF-8 validation on all .ts and .tsx files
         run: bash scripts/check-utf8.sh --ci src/
 
+      - name: Run CRLF guard on tracked .sh/.bash files (working tree)
+        run: bash scripts/check-crlf.sh --ci
+
+      - name: Run BLOB CRLF guard on tracked .sh/.bash files (committed)
+        run: bash scripts/check-blob-crlf.sh --ci
+
+      - name: Run single-line out= assignment guard on scripts/
+        run: bash scripts/check-single-line-out-assign.sh --ci
+
+      - name: Run no-setup-bun guard on workflows
+        run: node scripts/check-no-setup-bun.mjs
+
       - name: Summary
-        run: echo "All source files validated as valid UTF-8 encoding."
+        run: echo "All source files validated as valid UTF-8, LF line endings, and clean shell assignments."

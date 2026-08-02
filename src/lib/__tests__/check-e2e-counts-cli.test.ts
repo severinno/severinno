@@ -15,7 +15,7 @@
  *   - count documentado divergente da derivação → exit 1 com arquivo:linha
  *   - count documentado igual → exit 0
  *   - derivação FALHA (stub com saída inválida) → exit 1 (fail-closed)
- *   - repo real do projeto → exit 0 (derivação real: prod=115, dev=162)
+ *   - repo real do projeto → exit 0 (derivação real: prod=128, dev=162)
  *
  * Usage:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/check-e2e-counts-cli.test.ts
@@ -138,7 +138,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     expect(out).toContain("não é JSON válido")
   })
 
-  it("repo real do projeto → exit 0 (derivação real prod=123, dev=162)", () => {
+  it("repo real do projeto → exit 0 (derivação real prod=128, dev=162)", () => {
     const { status, out } = runGuard(process.cwd())
     expect(status).toBe(0)
     expect(out).toContain("sincronizados")

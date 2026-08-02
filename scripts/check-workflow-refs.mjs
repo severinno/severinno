@@ -12,6 +12,8 @@
 //      → verifica que a entry EXISTE em package.json > scripts
 //   3. Reusable workflows — `uses: ./.github/workflows/X.yml`
 //      → verifica que X.yml EXISTE e tem `on: workflow_call`
+//   4. Composite actions locais — `uses: ./.github/actions/<name>`
+//      → verifica que .github/actions/<name>/action.yml EXISTE
 //
 // Por que existe: consolidações como a matrix 2×2 do seed-guards.yml deletam
 // e renomeiam workflows/scripts em lote (ex.: seed-dev-bootstrap.yml →
@@ -40,7 +42,7 @@
 //   1 — pelo menos uma referência quebrada (fail)
 // =============================================================================
 
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -57,6 +59,9 @@ const PKG_RUN_RE = /\b(?:bun|npm|pnpm|yarn)\b\s+run\s+([A-Za-z0-9_:.-]+)/g
 
 /** Reusable workflow local: `uses: ./.github/workflows/<file>.yml`. */
 const USES_LOCAL_RE = /uses:\s*\.\/\.github\/workflows\/([A-Za-z0-9_.-]+\.yml)/g
+
+/** Composite action local: `uses: ./.github/actions/<name>`. */
+const USES_ACTION_RE = /uses:\s*\.\/\.github\/actions\/([A-Za-z0-9_.-]+)/g
 
 /**
  * Expressão DINÂMICA do GitHub Actions (`${{ ... }}`) — não resolvível
@@ -142,11 +147,32 @@ export function extractWorkflowUses(content) {
 }
 
 /**
+ * Extrai os composite actions locais (`uses: ./.github/actions/<name>`).
+ *
+ * @param {string} content  conteúdo do workflow
+ * @returns {{ line: number, ref: string, text: string }[]}  ref = nome da action
+ */
+export function extractActionUses(content) {
+  const refs = []
+  const lines = content.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim()
+    const scan = scannableLine(trimmed)
+    if (scan === null) continue
+    // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
+    for (const m of scan.matchAll(USES_ACTION_RE)) {
+      refs.push({ line: i + 1, ref: m[1], text: trimmed.slice(0, 80) })
+    }
+  }
+  return refs
+}
+
+/**
  * Verifica UM arquivo de workflow contra o contexto de artefatos disponíveis.
  *
  * @param {string} name     nome do workflow (ex.: "pr-check.yml")
  * @param {string} content  conteúdo do workflow
- * @param {{ scripts: Set<string>, pkgScripts: Set<string>, workflows: Set<string>, workflowCall: Set<string> }} ctx
+ * @param {{ scripts: Set<string>, pkgScripts: Set<string>, workflows: Set<string>, workflowCall: Set<string>, actions: Set<string> }} ctx
  * @returns {{ file: string, line: number, kind: string, ref: string, text: string, detail?: string }[]}
  */
 export function checkWorkflowFile(name, content, ctx) {
@@ -185,6 +211,12 @@ export function checkWorkflowFile(name, content, ctx) {
     }
   }
 
+  for (const r of extractActionUses(content)) {
+    if (!ctx.actions.has(r.ref)) {
+      violations.push({ file: name, line: r.line, kind: "action", ref: r.ref, text: r.text })
+    }
+  }
+
   return violations
 }
 
@@ -192,7 +224,7 @@ export function checkWorkflowFile(name, content, ctx) {
  * Escaneia um conjunto de arquivos de workflow de uma vez.
  *
  * @param {{ name: string, content: string }[]} files
- * @param {{ scripts: Set<string>, pkgScripts: Set<string>, workflows: Set<string>, workflowCall: Set<string> }} ctx
+ * @param {{ scripts: Set<string>, pkgScripts: Set<string>, workflows: Set<string>, workflowCall: Set<string>, actions: Set<string> }} ctx
  * @returns {{ file: string, line: number, kind: string, ref: string, text: string, detail?: string }[]}
  */
 export function scanWorkflows(files, ctx) {
@@ -234,12 +266,22 @@ function main() {
   const pkgScripts = readPkgScripts(cwd)
   const workflows = new Set(names)
 
+  // Composite actions locais: .github/actions/<name>/action.yml existentes
+  // (diretório pode não existir — ex.: repositório sem actions locais; nesse
+  // caso qualquer `uses: ./.github/actions/X` é dangling e é reportado).
+  const actionsDir = join(cwd, ".github", "actions")
+  const actions = new Set(
+    existsSync(actionsDir)
+      ? listDir(actionsDir).filter((d) => existsSync(join(actionsDir, d, "action.yml")))
+      : [],
+  )
+
   const files = names.map((n) => ({ name: n, content: readFileSync(join(wfDir, n), "utf8") }))
   // Reusa o conteúdo já lido (não re-lê os arquivos para o check de workflow_call)
   const workflowCall = new Set(
     files.filter((f) => /workflow_call/.test(f.content)).map((f) => f.name),
   )
-  const violations = scanWorkflows(files, { scripts, pkgScripts, workflows, workflowCall })
+  const violations = scanWorkflows(files, { scripts, pkgScripts, workflows, workflowCall, actions })
 
   if (violations.length > 0) {
     console.error(`❌ Referência(s) quebrada(s) entre workflows e scripts/package.json:\n`)

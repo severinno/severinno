@@ -82,3 +82,7 @@ test-results/
 .agents/
 # Freebuff agent tool outputs (act binary, lint/tsc reports) — never commit
 tool-results/
+
+# Python bytecode (check_crlf.py / check_blob_crlf.py compile cache)
+__pycache__/
+*.pyc

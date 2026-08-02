@@ -15,6 +15,13 @@
 # Portas DEDICADAS no host (15432–15435) para não colidir com Postgres local
 # (5432) nem com o docker-compose.test.yml (5433).
 #
+# Defense-in-depth: após cada célula, o output capturado é validado NÃO-VAZIO.
+# Se o padrão de linha única `cell "..." out=$(...)` voltar, o `out=` vira
+# argumento posicional → `out` fica vazio e `code` captura o exit do echo (0),
+# reportando PASS sem o E2E ter rodado (falso positivo). Output vazio ⇒ célula
+# falha (FAIL(empty-output)). Guard complementar: scripts/check-single-line-
+# out-assign.sh (pre-commit + utf8-check.yml).
+#
 # Usage:
 #   ./scripts/validate-seed-guards-matrix-local.sh
 #
@@ -133,7 +140,7 @@ run_cell() {
   # 4. E2E da célula (--skip-docker usa o container existente)
   local out code
   if [ "$seed" = "prod" ]; then
-    cell "Rodando prod E2E (123 checks)..."
+    cell "Rodando prod E2E (128 checks)..."
     out=$(cd "$SCRIPT_DIR" && DATABASE_URL="$url" bun run test:seed-prod-e2e --skip-docker 2>&1)
   else
     cell "Rodando dev E2E (162 checks)..."
@@ -142,6 +149,17 @@ run_cell() {
   code=$?
 
   echo "$out" | tail -12
+
+  # Defense-in-depth contra regressão do padrão de linha única (o guard
+  # check-single-line-out-assign.sh impede o colapso `cell "..." out=$(...)`,
+  # mas se ele voltar o `out=` vira ARGUMENTO POSICIONAL): `out` fica VAZIO e
+  # `code` captura o exit do echo (0) → a célula reportaria PASS sem o E2E ter
+  # rodado. Output vazio = falso positivo garantido — falha a célula.
+  if [ -z "$out" ]; then
+    fail "output da célula VAZIO — o E2E não rodou (possível regressão do padrão de linha única)"
+    RESULT["$label"]="FAIL(empty-output)"
+    return 1
+  fi
 
   if [ "$code" -eq 0 ]; then
     pass "E2E passou (exit 0)"

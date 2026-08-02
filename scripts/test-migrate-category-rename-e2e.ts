@@ -29,6 +29,11 @@
  *      sob "Reparos" — slug novo embute o parent novo, filhos com slug novo
  *   10. Guards --move-to: raiz não pode ser movida; parent inexistente;
  *      ciclo (mover um pai para baixo do próprio filho)
+ *  11. SEED_SPEC_PATCH malformado no env NÃO interfere na migração: o
+ *      migrate-category-rename.mjs NÃO lê esse env (só NODE_ENV e
+ *      PROD_SEED_ALLOW_DEV), então um patch quebrado no ambiente do operador
+ *      (sobra de teste de seed) é INERTE — a migração roda normal (exit 0),
+ *      renomeia de verdade e não crasha
  *
  * O script é executado como SUBPROCESSO (`node scripts/migrate-category-rename.mjs`)
  * — o mesmo caminho do operador em produção.
@@ -412,6 +417,52 @@ async function main() {
     `guards --move-to não corrompem nada (${afterMig4.categories} → ${afterGuards.categories})`,
   )
 
+  // ── 11. SEED_SPEC_PATCH malformado no env NÃO interfere na migração ────
+  // O operador pode ter um SEED_SPEC_PATCH quebrado no ambiente (sobra de um
+  // teste de seed, ex.: `export SEED_SPEC_PATCH='{não é json'`). O
+  // migrate-category-rename.mjs NÃO lê esse env (só NODE_ENV e
+  // PROD_SEED_ALLOW_DEV — confirmado no source do script) — o patch malformado
+  // deve ser COMPLETAMENTE inerte: a migração roda normalmente (exit 0),
+  // renomeia de verdade (linha nova + antiga desativada) e não crasha.
+  // Contraste com o seed-prod, onde o mesmo env malformado RECUSA no topo
+  // do módulo (cenário 10 do test-seed-prod-e2e.ts).
+  console.log(
+    "  ── Migração 5: Residencial → 'Residencial premium' (env SEED_SPEC_PATCH quebrado) ──",
+  )
+  const mig5 = runMigration(
+    ["--from", "residencial-limpeza", "--to", "Residencial premium", "--yes"],
+    { PROD_SEED_ALLOW_DEV: "1", NODE_ENV: "development", SEED_SPEC_PATCH: "{não é json" },
+  )
+  expect(
+    mig5.status === 0,
+    `migração 5 conclui exit 0 mesmo com patch quebrado no env (obtido ${mig5.status})`,
+  )
+  expect(
+    mig5.out.includes("Migração concluída"),
+    "migração conclui normalmente (o env malformado não crasha nem interfere)",
+  )
+
+  const residencialNova = await findCat("residencial-premium-limpeza")
+  expect(
+    residencialNova !== null,
+    "nova linha 'Residencial premium' criada (slug 'residencial-premium-limpeza')",
+  )
+  if (residencialNova) {
+    expect(residencialNova.active === true, "nova linha ativa")
+    expect(residencialNova.level === 1, `level 1 preservado (obtido ${residencialNova.level})`)
+  }
+  const residencialAntiga = await findCat("residencial-limpeza")
+  expect(
+    residencialAntiga !== null && residencialAntiga.active === false,
+    "linha antiga 'residencial-limpeza' desativada (nunca apagada)",
+  )
+
+  const afterMig5 = await getCounts()
+  expect(
+    afterMig5.categories === afterGuards.categories + 1,
+    `+1 categoria na migração 5 (${afterGuards.categories} → ${afterMig5.categories})`,
+  )
+
   // ── 7. Consistência: slugs canônicos batem com o seed-data ────────────
   console.log("  ── Consistência da árvore migrada ──")
   const migradas = [
@@ -419,6 +470,7 @@ async function main() {
     "desentupimento-profissional-hidraulica",
     "pintura-reforma",
     "pisos-e-revestimentos-reparos",
+    "residencial-premium-limpeza",
   ]
   for (const slug of migradas) {
     const c = await findCat(slug)

@@ -1,0 +1,153 @@
+# =============================================================================
+# Setup Bun (fast-path + cached release)
+#
+# Substitui oven-sh/setup-bun@v2, que re-downloada o release LATEST em TODOS
+# os jobs (~25-35s/job), mesmo quando o Bun já está instalado na imagem.
+#
+# Estratégia em 3 camadas (da mais rápida para a mais lenta):
+#
+#   1. PRE-INSTALLED fast path — se `bun` já estiver no PATH com a versão
+#      pedida (imagem que embarca Bun — ex.: runner auto-hospedado ou
+#      imagem custom), usa como está: ZERO download, ZERO cache I/O.
+#      ATENÇÃO (verificado em 08/2026): NEM os runners GitHub-hosted
+#      ubuntu-24.04 (manifest oficial sem Bun) NEM a imagem catthehacker/act
+#      embarcam Bun — o fast path só dispara em imagens que realmente o
+#      incluem. Nos runners padrão o fluxo real é tier 2 (cache ~1-2s no
+#      cache real do GitHub) ou tier 3 (download ~5-10s em cache frio).
+#   2. actions/cache restore — caso contrário, restaura o binário do release
+#      EXATO de actions/cache (key = bun-<versão>-<os>-<arch>) (~1-2s).
+#   3. COLD-CACHE download — só em cache miss, baixa o zip do release direto
+#      do GitHub releases (~5-10s) e o salva no cache para os próximos jobs.
+#
+# Por que pinar a versão em vez de 'latest':
+#   - 'latest' é um alvo móvel: a key do cache nunca seria estável e o CI
+#     flutuaria entre versões. Pinar 1.3.14 (a versão usada localmente pelos
+#     devs) dá toolchain idêntico em todos os jobs e cache key determinística.
+#   - Se a imagem já tiver exatamente a versão pinada, o fast path a usa.
+#
+# Usage:
+#   - uses: ./.github/actions/setup-bun
+#     with:
+#       bun-version: 1.3.14   # opcional (default: 1.3.14)
+# =============================================================================
+
+name: Setup Bun (fast-path + cached)
+description: >-
+  Sets up Bun with three tiers — pre-installed fast path, actions/cache
+  restore keyed on the exact version, and a direct GitHub release download
+  only on cold cache miss. Replaces oven-sh/setup-bun@v2 (~25-35s re-download
+  per job).
+
+inputs:
+  bun-version:
+    description: >-
+      Exact Bun version to use (e.g. 1.3.14). Used both as the version to
+      install and as the actions/cache key, so pinning gives a stable,
+      deterministic toolchain across all jobs.
+    required: false
+    default: "1.3.14"
+
+runs:
+  using: composite
+  steps:
+    # ── Tier 1: pre-installed fast path ─────────────────────────────────
+    - name: Detect pre-installed Bun
+      id: detect
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v bun >/dev/null 2>&1; then
+          FOUND_VERSION="$(bun --version 2>/dev/null || true)"
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "version=${FOUND_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Bun já instalado no runner (${FOUND_VERSION}) — fast path"
+        else
+          echo "found=false" >> "$GITHUB_OUTPUT"
+          echo "version=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Use pre-installed Bun (fast path)
+      if: steps.detect.outputs.found == 'true' && steps.detect.outputs.version == inputs.bun-version
+      shell: bash
+      run: |
+        echo "✅ Usando Bun pré-instalado: $(bun --version) (0s, sem download)"
+
+    # ── Tier 2: restore from cache ──────────────────────────────────────
+    - name: Restore Bun release from cache
+      id: cache
+      if: steps.detect.outputs.found == 'false' || steps.detect.outputs.version != inputs.bun-version
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun
+        key: bun-${{ inputs.bun-version }}-${{ runner.os }}-${{ runner.arch }}
+
+    # ── Tier 3: cold-cache download (direct GitHub release) ─────────────
+    - name: Download Bun release (cold cache)
+      if: (steps.detect.outputs.found == 'false' || steps.detect.outputs.version != inputs.bun-version) && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        BUN_VERSION: ${{ inputs.bun-version }}
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
+      run: |
+        set -euo pipefail
+
+        # Mapeia runner.os/arch → nome do asset do release bun-<os>-<arch>.zip
+        case "$RUNNER_OS" in
+          Linux)   OS=linux ;;
+          macOS)   OS=darwin ;;
+          Windows) OS=windows ;;
+          *) echo "::error::OS não suportado: $RUNNER_OS" >&2; exit 1 ;;
+        esac
+        case "$RUNNER_ARCH" in
+          X64)   ARCH=x64 ;;
+          ARM64) ARCH=aarch64 ;;
+          *) echo "::error::arch não suportado: $RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+
+        URL="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-${OS}-${ARCH}.zip"
+        echo "::group::Baixando Bun ${BUN_VERSION} (${OS}-${ARCH})"
+        echo "URL: ${URL}"
+        mkdir -p "$HOME/.bun/bin"
+        curl -fsSL "$URL" -o "$RUNNER_TEMP/bun.zip"
+        unzip -qo "$RUNNER_TEMP/bun.zip" -d "$HOME/.bun"
+
+        # O zip extrai para uma pasta (ex.: bun-linux-x64/bun) — normaliza
+        # para o layout do instalador oficial: ~/.bun/bin/bun (mesmo caminho
+        # usado pelo actions/cache acima, mantendo a key compatível).
+        find "$HOME/.bun" -type f -name bun -exec mv -f {} "$HOME/.bun/bin/bun" \; 2>/dev/null || true
+        chmod +x "$HOME/.bun/bin/bun" 2>/dev/null || true
+
+        # CRÍTICO: o zip do release contém APENAS o binário `bun` — o `bunx`
+        # é um symlink criado pelo instalador oficial. Sem ele, steps que
+        # usam `bunx` (ex.: bunx prisma generate, bunx tsc) falham com
+        # exit 127 (command not found). Verificado em at: check job real
+        # morreu em 'Generate Prisma client' exatamente por isso.
+        ln -sf "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx"
+
+        "$HOME/.bun/bin/bun" --version
+        echo "bunx -> $(readlink -f "$HOME/.bun/bin/bunx" 2>/dev/null || echo "$HOME/.bun/bin/bunx")"
+        echo "::endgroup::"
+
+        # Adiciona ao PATH do job (e das próximas ações)
+        echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+    # ── Garante bunx em restores de cache ANTIGOS (pré-fix) ─────────────
+    # Caches salvos antes do symlink bunx existir restaurariam ~/.bun sem o
+    # bunx, quebrando `bunx ...` mesmo com o tier 3 corrigido. Este passo é
+    # idempotente e barato (~ms) — só cria o symlink se estiver faltando.
+    - name: Ensure bunx symlink (cached installs)
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -x "$HOME/.bun/bin/bun" ] && [ ! -e "$HOME/.bun/bin/bunx" ]; then
+          ln -sf "$HOME/.bun/bin/bun" "$HOME/.bun/bin/bunx"
+          echo "::notice::bunx symlink criado (cache antigo sem bunx)"
+        fi
+
+    # ── PATH para o binário restaurado do cache ─────────────────────────
+    - name: Add cached Bun to PATH
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
