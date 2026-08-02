@@ -9,8 +9,10 @@
 // FONTE ÚNICA: a versão pinada do Bun vive na repository variable
 // vars.BUN_VERSION (Settings → Secrets and variables → Actions). Todos os
 // workflows passam `bun-version: ${{ vars.BUN_VERSION }}`, o sync-bun-mirror
-// usa a mesma variável no env, e o action resolve a versão em runtime
-// (metadata de action NÃO avalia ${{ }}, então o default é proibido). Trocar
+// usa a mesma variável no env, e o composite action resolve a versão DO
+// INPUT (callers passam o valor resolvido no workflow — vars NÃO resolve
+// dentro de composite action no act 0.2.89, ver header do action.yml).
+// Metadata de action NÃO avalia ${{ }}, então o default é proibido. Trocar
 // o Bun = alterar a variável em UM lugar.
 //
 // Usage:
@@ -31,8 +33,11 @@
 //   3. O action.yml (setup-bun) NÃO tem default literal para bun-version
 //      (metadata de action é estática — um default literal nunca poderia
 //      casar com a variável e viraria drift silencioso). A versão resolve
-//      em runtime de inputs.bun-version || vars.BUN_VERSION.
-//   4. O action.yml referencia ${{ vars.BUN_VERSION }} (o step de resolve).
+//      em runtime do input bun-version (que os callers resolvem de
+//      vars.BUN_VERSION no workflow).
+//   4. O action.yml referencia ${{ inputs.bun-version }} no step de resolve
+//      (o composite NÃO lê vars internamente — act 0.2.89 não resolve vars
+//      em composite actions; o valor entra via input).
 //   5. O action.yml (tier 3, cold cache) referencia o mirror GHCR
 //      (ghcr.io/<owner>/bun:<versão>) — sem reverter para download direto.
 //   6. O Dockerfile.bun-mirror existe (senão o mirror quebra no cron/CI).
@@ -51,12 +56,19 @@
 //      hardcoded para que a variável continue sendo a única fonte.
 //   9. O .actrc local define BUN_VERSION (sem ele, o act local roda com
 //      vars.BUN_VERSION vazia e o setup-bun falha em runtime).
-//  10. (modo --staged) As cache keys e literais do Bun INTRODUZIDAS pelo
-//      diff em questão (git diff --cached local, ou PR base...HEAD no CI)
-//      seguem a fonte única — uma key antiga (bun-1.3.14-...) adicionada
-//      pelo próprio PR falha antes do merge, mesmo que o working tree
-//      global já esteja certo. Só linhas ADICIONADAS (+ no diff) são
-//      avaliadas — violações pré-existentes do base não poluem o PR.
+//  10. (modo --staged) Cache keys, literais e CALL SITES do setup-bun
+//      INTRODUZIDOS pelo diff em questão (git diff --cached local, ou PR
+//      base...HEAD no CI) seguem a fonte única — uma key antiga
+//      (bun-1.3.14-...) ou um call site sem bun-version adicionado pelo
+//      próprio PR falha antes do merge, mesmo que o working tree global já
+//      esteja certo. Só linhas ADICIONADAS (+ no diff) são avaliadas —
+//      violações pré-existentes do base não poluem o PR (no call site, o
+//      bun-version pode estar numa linha de CONTEXTO — ex.: migração de
+//      oven-sh/setup-bun@v2 — por isso o check usa o parser rico).
+//  11. TODO call site do setup-bun passa `bun-version: ${{ vars.BUN_VERSION }}`
+//      (omitir o input ou usar literal é violação — sem ele o action falha
+//      em runtime com mensagem confusa). No modo --staged, call sites cuja
+//      linha `uses:` foi adicionada pelo diff são avaliados também.
 //
 // Escopo: lê .github/workflows/sync-bun-mirror.yml + .github/actions/
 // setup-bun/action.yml + Dockerfile.bun-mirror + TODOS os .github/workflows/*.yml
@@ -70,6 +82,13 @@ import { execFileSync } from "node:child_process"
 
 /** Referência da repository variable — a FONTE ÚNICA da versão do Bun. */
 export const BUN_VERSION_VAR = "${{ vars.BUN_VERSION }}"
+
+/**
+ * Janela (em linhas) após um `uses:` para procurar o `bun-version:` —
+ * compartilhada entre o scan global (checkSetupBunCallSites) e o scan de diff
+ * (checkStagedSetupBunCallSites), sem drift entre as duas janelas.
+ */
+export const CALL_SITE_WINDOW = 6
 
 /**
  * Extrai o valor de uma env var no topo de um workflow (ex.: BUN_VERSION).
@@ -105,9 +124,25 @@ export function extractActionDefault(content, input = "bun-version") {
  * Casa AMBAS as formas — a referência pura (`${{ vars.BUN_VERSION }}`) e a
  * resolução runtime (`${{ inputs.bun-version || vars.BUN_VERSION }}`) — o
  * ponto é validar que o action REALMENTE lê a variável em algum lugar.
+ *
+ * NOTA (08/2026): o runtime do action NÃO usa mais vars (resolve do input
+ * — act 0.2.89 não resolve vars em composite actions). Esta função continua
+ * exportada para testes/backwards-compat: ela casa também menções em prosa
+ * (header do action.yml), então NÃO é usada pelo validateMirror — o contrato
+ * real é hasBunVersionInputRef + checkSetupBunCallSites.
  */
 export function hasVarsBunVersionRef(actionContent) {
   return /\bvars\.BUN_VERSION\b/.test(actionContent)
+}
+
+/**
+ * O action.yml referencia o input bun-version no step de resolve?
+ * (novo contrato: o composite resolve a versão DO INPUT, que os callers
+ * resolvem de vars.BUN_VERSION no workflow — vars não resolve dentro de
+ * composite action no act 0.2.89)
+ */
+export function hasBunVersionInputRef(actionContent) {
+  return /\binputs\.bun-version\b/.test(actionContent)
 }
 
 /** O action.yml referencia o mirror GHCR no tier 3? (ghcr.io/.../bun:<ver>) */
@@ -263,16 +298,104 @@ export function checkNoLiteralBunVersion(workflowsDir) {
 }
 
 /**
+ * Normaliza o valor de um `bun-version:` (ex.: aceita aspas e descarta
+ * comentário inline) — tratamento ÚNICO compartilhado entre o scan global
+ * (checkSetupBunCallSites) e o scan de diff (checkStagedSetupBunCallSites).
+ *
+ * ORDEM IMPORTANTE: o comentário inline é removido ANTES das aspas — num
+ * valor `"${{ vars.BUN_VERSION }}" # nota`, remover as aspas primeiro
+ * deixaria a aspas final remanescente (`" # nota` impede o match `["']$`).
+ *
+ * @param {string} raw  valor cru do YAML (ex.: '"${{ vars.BUN_VERSION }}" # nota')
+ * @returns {string} valor normalizado
+ */
+export function normalizeBunVersionValue(raw) {
+  return raw
+    .trim()
+    .replace(/\s*#.*$/, "")
+    .replace(/^["']|["']$/g, "")
+    .trim()
+}
+
+/**
+ * Checa UM call site do setup-bun: a partir da linha `uses:` (file:lineNo),
+ * varre as linhas SEGUINTES (janela ~6) procurando `bun-version:`. Retorna
+ * a violação como string, ou null se o call site estiver correto. Função de
+ * NÍVEL DE CALL SITE compartilhada entre o scan global (checkSetupBunCallSites)
+ * e o scan de diff (checkStagedSetupBunCallSites) — uma única fonte da
+ * lógica, sem drift.
+ *
+ * @param {string} file           nome do arquivo
+ * @param {number} lineNo         linha do `uses:` (1-based)
+ * @param {string[]} following    conteúdo das linhas seguintes (janela)
+ * @returns {string|null}
+ */
+export function checkSetupBunCallSite(file, lineNo, following) {
+  let found = null
+  for (const l of following) {
+    const m = l.match(/^\s*bun-version\s*:\s*(.+?)\s*$/)
+    if (m) {
+      found = normalizeBunVersionValue(m[1])
+      break
+    }
+  }
+  if (found === null) {
+    return `${file}:${lineNo}: call site do setup-bun SEM input bun-version — passe 'bun-version: ${BUN_VERSION_VAR}' (o composite resolve só do input; vars não resolve em composite no act 0.2.89)`
+  }
+  if (found !== BUN_VERSION_VAR) {
+    return `${file}:${lineNo}: call site do setup-bun com bun-version='${found}' — use a fonte única ${BUN_VERSION_VAR} (literal é violação)`
+  }
+  return null
+}
+
+/**
+ * Verifica que TODO call site do composite action setup-bun passa o input
+ * bun-version com a fonte única (${{ vars.BUN_VERSION }}).
+ *
+ * Por que existe (08/2026): o composite action resolve a versão APENAS do
+ * input bun-version — vars não resolve dentro de composite action no act
+ * 0.2.89 (erro 'Unknown Variable Access vars'), então o valor é resolvido
+ * no WORKFLOW (onde vars funciona) e entra via input. Se um call site
+ * omitir o input ou usar literal, o action falha em runtime com mensagem
+ * confusa (ou usa versão errada) — este scan pega no PR, antes do merge.
+ *
+ * @param {string} workflowsDir  diretório .github/workflows
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkSetupBunCallSites(workflowsDir) {
+  const violations = []
+  if (!existsSync(workflowsDir)) return violations
+
+  for (const file of readdirSync(workflowsDir).filter((f) => f.endsWith(".yml"))) {
+    const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      // Ignora comentários — uma prosa '# uses: ./.github/actions/setup-bun'
+      // não é um call site real (mesmo guard de check-no-setup-bun.mjs).
+      if (line.trim() === "" || line.trim().startsWith("#")) continue
+      if (!line.includes("uses: ./.github/actions/setup-bun")) continue
+      const v = checkSetupBunCallSite(file, i + 1, lines.slice(i + 1, i + 1 + CALL_SITE_WINDOW))
+      if (v) violations.push(v)
+    }
+  }
+  return violations
+}
+
+/**
  * Parseia um diff unificado (git diff --cached local, ou PR base...HEAD no
- * CI) e devolve as linhas ADICIONADAS (prefixo '+') por arquivo .yml do
- * diretório .github/workflows, com o número de linha correspondente NO NOVO
- * arquivo (para mensagens arquivo:linha). Linhas de contexto/remoção e
- * arquivos não-.yml são ignorados.
+ * CI) e devolve TODAS as linhas que aparecem no diff por arquivo .yml do
+ * diretório .github/workflows — ADICIONADAS (prefixo '+') E de CONTEXTO
+ * (prefixo ' ') — com o número de linha correspondente NO NOVO arquivo e
+ * a flag `added`. O contexto é necessário para o checkStagedSetupBunCallSites:
+ * na migração de action (ex.: oven-sh/setup-bun@v2 → ./.github/actions/setup-bun)
+ * a linha `uses:` é ADICIONADA mas `with:`/`bun-version:` ficam como
+ * CONTEXTO no diff — um parser só-de-adicionadas veria o call site SEM o
+ * bun-version e geraria falso positivo. Arquivos não-.yml são ignorados.
  *
  * @param {string} diffText  saída de `git diff ... -- .github/workflows`
- * @returns {Map<string, {lineNo: number, content: string}[]>}
+ * @returns {Map<string, {lineNo: number, content: string, added: boolean}[]>}
  */
-export function parseDiffAddedLines(diffText) {
+export function parseDiffLines(diffText) {
   const perFile = new Map()
   let currentFile = null
   let lineNo = 0
@@ -295,14 +418,33 @@ export function parseDiffAddedLines(diffText) {
     const ch = line[0]
     if (ch === "+") {
       if (!perFile.has(currentFile)) perFile.set(currentFile, [])
-      perFile.get(currentFile).push({ lineNo, content: line.slice(1) })
+      perFile.get(currentFile).push({ lineNo, content: line.slice(1), added: true })
       lineNo++
     } else if (ch === "-") {
       // linha removida — não existe no arquivo novo
     } else if (ch === " ") {
-      lineNo++ // linha de contexto — conta no arquivo novo
+      if (!perFile.has(currentFile)) perFile.set(currentFile, [])
+      perFile.get(currentFile).push({ lineNo, content: line.slice(1), added: false })
+      lineNo++
     }
     // demais metadados (diff --git, index, \ No newline...) são ignorados
+  }
+  return perFile
+}
+
+/**
+ * Parseia um diff e devolve apenas as linhas ADICIONADAS (prefixo '+') por
+ * arquivo .yml — camada fina sobre parseDiffLines (o parser rico) para os
+ * checks por linha (cache keys e literais).
+ *
+ * @param {string} diffText  saída de `git diff ... -- .github/workflows`
+ * @returns {Map<string, {lineNo: number, content: string}[]>}
+ */
+export function parseDiffAddedLines(diffText) {
+  const perFile = new Map()
+  for (const [file, lines] of parseDiffLines(diffText)) {
+    const added = lines.filter((l) => l.added).map(({ lineNo, content }) => ({ lineNo, content }))
+    if (added.length > 0) perFile.set(file, added)
   }
   return perFile
 }
@@ -341,6 +483,43 @@ export function checkStagedLiterals(diffText) {
   for (const [file, lines] of parseDiffAddedLines(diffText)) {
     for (const { lineNo, content } of lines) {
       const v = checkLiteralBunLine(file, lineNo, content)
+      if (v) violations.push(v)
+    }
+  }
+  return violations
+}
+
+/**
+ * Checa call sites do setup-bun nas linhas de um diff — detecta call sites
+ * SEM input bun-version (ou com literal) INTRODUZIDOS pelo próprio PR antes
+ * do merge. Só call sites cuja linha `uses:` foi ADICIONADA pelo diff são
+ * avaliados (violações pré-existentes do base não poluem o PR). Usa o parser
+ * RICO (parseDiffLines): o `bun-version:` pode estar numa linha de CONTEXTO
+ * — ex.: migração de oven-sh/setup-bun@v2 → ./.github/actions/setup-bun, que
+ * adiciona só a linha `uses:` e mantém `with:`/`bun-version:` como contexto.
+ *
+ * @param {string} diffText  saída de git diff
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkStagedSetupBunCallSites(diffText) {
+  const violations = []
+  for (const [file, lines] of parseDiffLines(diffText)) {
+    for (let i = 0; i < lines.length; i++) {
+      const { lineNo, content, added } = lines[i]
+      if (!added) continue // só call sites INTRODUZIDOS por este diff
+      if (content.trim() === "" || content.trim().startsWith("#")) continue
+      if (!content.includes("uses: ./.github/actions/setup-bun")) continue
+
+      // Janela de até CALL_SITE_WINDOW linhas depois do uses (mesma do
+      // checkSetupBunCallSites global) — varre adicionadas E contexto do
+      // mesmo arquivo. O limite por lineNo (não por índice) é necessário
+      // porque o parser só inclui linhas que aparecem no diff (gaps entre
+      // hunks ficam de fora).
+      const following = []
+      for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CALL_SITE_WINDOW; j++) {
+        following.push(lines[j].content)
+      }
+      const v = checkSetupBunCallSite(file, lineNo, following)
       if (v) violations.push(v)
     }
   }
@@ -444,13 +623,13 @@ export function validateMirror(workflowPath, actionPath, dockerfilePath) {
   const actionDefault = extractActionDefault(act)
   if (actionDefault) {
     violations.push(
-      `${actionPath}: default='${actionDefault}' é um LITERAL — metadata de action NÃO avalia ${{}}, então nunca casaria com a variável. Remova o default; a versão resolve em runtime de inputs.bun-version || vars.BUN_VERSION.`,
+      `${actionPath}: default='${actionDefault}' é um LITERAL — metadata de action NÃO avalia \${{ }}, então nunca casaria com a variável. Remova o default; a versão resolve em runtime do input bun-version (que os callers resolvem de ${BUN_VERSION_VAR} no workflow).`,
     )
   }
 
-  if (!hasVarsBunVersionRef(act)) {
+  if (!hasBunVersionInputRef(act)) {
     violations.push(
-      `${actionPath}: não referencia ${BUN_VERSION_VAR} — o step 'Resolve Bun version' deve resolver a versão da repository variable`,
+      `${actionPath}: não referencia 'inputs.bun-version' no step 'Resolve Bun version' — o composite resolve a versão DO INPUT (callers passam bun-version: ${BUN_VERSION_VAR} no workflow; vars não resolve dentro de composite action no act 0.2.89)`,
     )
   }
 
@@ -493,19 +672,22 @@ function main() {
     const violations = [
       ...checkStagedCacheKeys(diffText, DEFAULT_CACHE_KEY_RULES()),
       ...checkStagedLiterals(diffText),
+      ...checkStagedSetupBunCallSites(diffText),
     ]
     if (violations.length > 0) {
-      console.error(`❌ Diff com ${violations.length} violação(ões) de cache key/literal do Bun:\n`)
+      console.error(
+        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site do Bun:\n`,
+      )
       for (const v of violations) console.error(`   - ${v}`)
       console.error(
-        `\n   Cache keys e literais introduzidos por este diff precisam usar a fonte única` +
+        `\n   Cache keys, literais e call sites introduzidos por este diff precisam usar a fonte única` +
           `\n   ${BUN_VERSION_VAR} — um literal (bun-1.3.14-...) não seria invalidado` +
           `\n   pela troca da variável.`,
       )
       process.exit(1)
     }
     console.log(
-      `✅ Diff ok — nenhuma cache key/literal do Bun introduzido` +
+      `✅ Diff ok — nenhuma cache key/literal/call site do Bun introduzido` +
         (base ? ` (vs base ${base})` : ` (staged)`),
     )
     process.exit(0)
@@ -523,6 +705,7 @@ function main() {
   const workflowsDir = join(cwd, ".github", "workflows")
   violations.push(...checkCacheKeys(workflowsDir, DEFAULT_CACHE_KEY_RULES()))
   violations.push(...checkNoLiteralBunVersion(workflowsDir))
+  violations.push(...checkSetupBunCallSites(workflowsDir))
   violations.push(...checkActrc(join(cwd, ".actrc")))
 
   if (violations.length > 0) {

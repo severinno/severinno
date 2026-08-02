@@ -1,0 +1,59 @@
+# =============================================================================
+# Dockerfile.ubuntu-bun — runner image com Bun PRÉ-INSTALADO (tier-1 fast path)
+#
+# Por que existe: o composite action ./.github/actions/setup-bun tem 3 tiers:
+#   1. PRE-INSTALLED fast path — se `bun` já estiver no PATH com a versão
+#      pedida, usa como está: ZERO download, ZERO cache I/O (~0-2s).
+#   2. actions/cache restore (~1-2s).
+#   3. COLD-CACHE download do mirror GHCR (~1-3s) ou GitHub Releases (~5-10s).
+#
+# ATENÇÃO (verificado em 08/2026): NEM os runners GitHub-hosted ubuntu-24.04
+# NEM a imagem catthehacker/act embarcam Bun — o tier-1 NUNCA dispara nelas.
+# Esta imagem EMBARCA bun na versão pinada, ativando o fast path de verdade:
+# o job `check` do act roda o setup-bun em ~0-2s em vez de ~25-35s
+# (oven-sh/setup-bun@v2) ou ~1-2s (tier 2). É o ganho MÁXIMO possível.
+#
+# Base: catthehacker/ubuntu:act-latest — a mesma imagem que o act local mapeia
+# para ubuntu-latest (README → Local Workflow Validation), com node 24 (para
+# JS actions como actions/checkout e actions/cache) + bash + curl/unzip.
+#
+# FONTE ÚNICA DA VERSÃO: repository variable BUN_VERSION (vars.BUN_VERSION).
+# O build recebe a versão via --build-arg BUN_VERSION (o workflow
+# sync-ubuntu-bun-mirror.yml passa ${{ vars.BUN_VERSION }}). Build local:
+#   docker build --build-arg BUN_VERSION=1.3.14 -f Dockerfile.ubuntu-bun \
+#     -t ghcr.io/<owner>/ubuntu-bun:1.3.14 .
+#
+# Uso no act (fast path real):
+#   tool-results/act/act.exe -W .github/workflows/pr-check.yml -j check \
+#     -P ubuntu-latest=ghcr.io/<owner>/ubuntu-bun:<versão>
+#
+# Exit codes:
+#   0 — build ok (bun --version confirma a versão embarcada)
+#   1 — download/extração do binário falhou
+# =============================================================================
+FROM catthehacker/ubuntu:act-latest
+
+# Versão do Bun — FONTE ÚNICA: vars.BUN_VERSION (passada pelo workflow do
+# mirror). Sem default literal aqui para não criar segundo ponto de verdade:
+# o build SEM --build-arg falha (fail-fast) com instruções.
+ARG BUN_VERSION
+
+RUN set -euo pipefail \
+  && if [ -z "${BUN_VERSION}" ]; then \
+       echo "::error::--build-arg BUN_VERSION obrigatório (FONTE ÚNICA: vars.BUN_VERSION, ex.: docker build --build-arg BUN_VERSION=1.3.14)" >&2; \
+       exit 1; \
+     fi \
+  && echo "  Baixando bun v${BUN_VERSION} (linux-x64) do GitHub Releases..." \
+  && curl -fsSL -o /tmp/bun.zip \
+       "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" \
+  && unzip -qo /tmp/bun.zip -d /tmp/bun-extract \
+  && find /tmp/bun-extract -type f -name bun -exec mv -f {} /usr/local/bin/bun \; \
+  && chmod +x /usr/local/bin/bun \
+  && ln -sf /usr/local/bin/bun /usr/local/bin/bunx \
+  && rm -rf /tmp/bun.zip /tmp/bun-extract \
+  && echo "  bun embarcado: $(bun --version)" \
+  && test "$(bun --version)" = "${BUN_VERSION}" \
+  && echo "  ✅ Tier-1 pronto: bun ${BUN_VERSION} no PATH (fast path do setup-bun)"
+
+# CMD mantém o container vivo para o act (bash é o shell padrão dos steps).
+CMD ["/bin/bash"]

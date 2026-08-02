@@ -1,0 +1,129 @@
+# =============================================================================
+# Tier-1 Fastpath Guard (act)
+#
+# Validação PERIÓDICA do tier-1 fast path do composite action
+# ./.github/actions/setup-bun usando a imagem custom
+# ghcr.io/<owner>/ubuntu-bun:<versão> (bun PRÉ-INSTALADO).
+#
+# POR QUE: se o tier-1 regredir silenciosamente (imagem para de embarcar bun,
+# o passo 'Detect pre-installed Bun' quebra, ou a versão embarcada diverge de
+# vars.BUN_VERSION), o setup-bun continua FUNCIONANDO — só fica mais lento
+# (~25-35s do oven-sh/setup-bun@v2 antigo, ~1-2s do tier 2). O pr-check mede
+# correção, não performance — não percebe a regressão. Este guard re-executa
+# o MESMO job `check` do pr-check.yml via act com a imagem custom e falha se:
+#   - o marcador 'Usando Bun pré-instalado' não aparecer no log (tier-1 não
+#     engajou — caiu p/ tier 2/3), OU
+#   - a duração do passo 'Use pre-installed Bun (fast path)' > threshold
+#     (default 5s — o passo mede ~0.44-0.46s com o fast path ativo).
+#
+# Semântica do verdict:
+#   - O step do act captura o exit code MAS NÃO falha o job — o guard
+#     (scripts/check-tier1-fastpath.mjs) é o GATE. Motivo: o job check roda a
+#     suite completa (bun install + prisma + lint + tsc + testes unitários) e
+#     pode exceder o timeout do step mesmo com o tier-1 perfeito. A evidência
+#     do setup-bun (passo #2 do job) aparece nos primeiros ~30s do log.
+#   - Se act falhar ANTES do setup-bun (ex.: imagem não publicada), o log não
+#     tem evidência → guard reporta INCONCLUSIVO → FAIL (correto).
+#   - Se act falhar DEPOIS do setup-bun, a evidência existe → guard decide.
+#
+# ⚠️ A imagem precisa estar PÚBLICA no GHCR (pull sem auth do act local e do
+# CI). O sync-ubuntu-bun-mirror.yml (cron 05:34 seg) publica a imagem — este
+# guard roda DEPOIS (06:15 seg) para validar o mirror recém-publicado.
+#
+# Usage:
+#   workflow_dispatch (manual) ou cron semanal automático.
+#
+# Exit codes (do guard):
+#   0 — tier-1 engajado e dentro do threshold (PASS)
+#   1 — regressão do tier-1 (marker ausente / lento / drift de versão)
+#   2 — uso inválido do guard (não deve acontecer no CI)
+# =============================================================================
+
+name: Tier-1 Fastpath Guard (act)
+
+on:
+  schedule:
+    # Semanal segunda 06:15 UTC — DEPOIS do mirror (05:34) para validar a
+    # imagem recém-publicada. Idempotente e determinístico.
+    - cron: "15 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write # upload-artifact@v4 (log do act) em caso de falha do guard
+
+env:
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
+
+concurrency:
+  group: tier1-fastpath-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Tier-1 Fastpath (act -j check, imagem custom)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Valida a repository variable (fail-fast com mensagem clara) ──
+      - name: Validate BUN_VERSION variable
+        run: |
+          set -euo pipefail
+          if [ -z "${BUN_VERSION}" ]; then
+            echo "::error::Repository variable BUN_VERSION não definida — crie em Settings → Secrets and variables → Actions (ex.: gh variable set BUN_VERSION 1.3.14)."
+            exit 1
+          fi
+          echo "  ✅ BUN_VERSION=${BUN_VERSION}"
+
+      # ── Instala o act pinado (mesma versão do ambiente local) ─────────
+      # Sem setup-bun aqui de propósito: o objetivo é testar o setup-bun
+      # DENTRO do act, não usar o setup-bun para testar o setup-bun.
+      - name: Install act (v0.2.89)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/act.tar.gz \
+            "https://github.com/nektos/act/releases/download/v0.2.89/act_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/act.tar.gz -C /tmp act
+          /tmp/act --version
+
+      # ── Re-executa o job check com a imagem custom ────────────────────
+      # `-P ubuntu-latest=ghcr.io/.../ubuntu-bun:<versão>` força o act a usar
+      # a imagem com bun PRÉ-INSTALADO (tier-1). Sem --pull=false: no CI a
+      # imagem é REMOTA (GHCR público) e precisa ser puxada. O timeout do
+      # step limita o custo do job completo (suite de testes) — a evidência
+      # do setup-bun já está no log nesse ponto.
+      - name: Run act -j check (imagem custom)
+        id: act
+        run: |
+          set +e
+          timeout 900 /tmp/act -b \
+            -W .github/workflows/pr-check.yml \
+            -j check \
+            -P "ubuntu-latest=ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${BUN_VERSION}" \
+            --var "BUN_VERSION=${BUN_VERSION}" \
+            --secret "GITHUB_TOKEN=${{ github.token }}" \
+            > /tmp/act-check.log 2>&1
+          ACT_EXIT=$?
+          echo "ACT_EXIT=${ACT_EXIT}" >> "$GITHUB_OUTPUT"
+          echo "  act exit: ${ACT_EXIT} (o guard decide o verdict)"
+          echo "  log: /tmp/act-check.log ($(wc -l < /tmp/act-check.log) linhas)"
+
+      # ── GATE: o guard decide PASS/FAIL baseado na evidência tier-1 ────
+      - name: Guard tier-1 fast path (threshold 5s)
+        run: |
+          node scripts/check-tier1-fastpath.mjs \
+            --log /tmp/act-check.log \
+            --threshold 5 \
+            --version "${{ env.BUN_VERSION }}"
+
+      # ── Log do act como artifact (debug de falhas) ────────────────────
+      - name: Upload act log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: act-check-tier1-log
+          path: /tmp/act-check.log
+          if-no-files-found: ignore

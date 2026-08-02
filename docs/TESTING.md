@@ -194,6 +194,12 @@ beforeEach(() => {
 
 ## CLI Commands
 
+> **Hooks locais (pre-commit vs pre-push):** o `pre-commit` roda a stack
+> completa de qualidade (guards de encoding + lint-staged + barrel-lint +
+> typecheck + snapshots condicionais); o `pre-push` revalida os fast gates que
+> o CI roda (`utf8-check.yml`) e os testes da branch (smart-skip). Tabela de
+> simetria → [README: Git Hooks](../README.md#git-hooks--pre-commit-vs-pre-push-simetria).
+
 ```bash
 # Rodar todos os unitários
 npx vitest run

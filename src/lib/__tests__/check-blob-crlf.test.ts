@@ -20,6 +20,9 @@
  *     guard passa
  *   - repo sem .sh/.bash → exit 0
  *   - extensão .bash também é escaneada
+ *   - blob CRLF injetado via git hash-object -w --literally + update-index
+ *     --cacheinfo (plumbing — não depende de autocrlf) → detecta i/crlf
+ *     e --fix renormaliza para i/lf
  */
 
 import { describe, it, expect, afterEach } from "vitest"
@@ -128,6 +131,60 @@ describe("check-blob-crlf.sh (blob CRLF)", () => {
     expect(fix.status).toBe(0)
 
     expect(indexEol(dir, "fixme.sh")).toBe("lf")
+    expect(run(dir).status).toBe(0)
+  })
+})
+
+// ── Blob CRLF injetado via hash-object --literally (plumbing) ───────────────
+
+describe("check_blob_crlf.py (blob CRLF injetado via hash-object --literally)", () => {
+  /**
+   * Injeta um blob com bytes LITERAIS de CRLF direto no index, sem depender
+   * de autocrlf: `git hash-object -w --literally` grava o objeto blob com os
+   * bytes exatos (--literally ignora validação/filtros) e
+   * `git update-index --add --cacheinfo` o registra no index — simulando
+   * fielmente um `.sh` COMMITADO com CRLF no blob (i/crlf), o cenário que o
+   * guard foi criado para pegar (reproduz CRLF em todo checkout futuro).
+   */
+  function injectCrlfBlob(dir: string, file: string): void {
+    const content = Buffer.from("#!/usr/bin/env bash\r\necho hi\r\n", "utf8")
+    // 1. Blob com os bytes CRLF exatos (--stdin evita dependência do arquivo)
+    const hash = execFileSync("git", ["hash-object", "-w", "--literally", "--stdin"], {
+      cwd: dir,
+      input: content,
+    })
+      .toString()
+      .trim()
+    // 2. Registra o blob no index como se tivesse sido commitado assim
+    execFileSync("git", ["update-index", "--add", "--cacheinfo", `100644,${hash},${file}`], {
+      cwd: dir,
+    })
+    // 3. Working tree com os mesmos bytes (para o --fix/renormalize operar)
+    writeFileSync(join(dir, file), content)
+  }
+
+  it("detecta i/crlf do blob injetado (exit 1 + arquivo listado)", () => {
+    const dir = makeRepo()
+    injectCrlfBlob(dir, "literal.sh")
+
+    expect(indexEol(dir, "literal.sh")).toBe("crlf")
+    const res = run(dir)
+    expect(res.status).toBe(1)
+    expect(res.stdout).toContain("FAILED")
+    expect(res.stdout).toContain("literal.sh")
+  })
+
+  it("--fix renormaliza o blob injetado → i/lf e guard passa", () => {
+    const dir = makeRepo()
+    injectCrlfBlob(dir, "literal.sh")
+    expect(run(dir).status).toBe(1)
+
+    // fix documentado: .gitattributes declara eol=lf + git add --renormalize
+    writeFileSync(join(dir, ".gitattributes"), "*.sh text eol=lf\n*.bash text eol=lf\n")
+    const fix = run(dir, ["--fix"])
+    expect(fix.status).toBe(0)
+
+    expect(indexEol(dir, "literal.sh")).toBe("lf")
     expect(run(dir).status).toBe(0)
   })
 })
