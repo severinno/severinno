@@ -50,6 +50,20 @@ const LOG_VERSION_DRIFT = [
   "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [450ms]",
 ].join("\n")
 
+// Cenário catthehacker default (act EMULA o actions/cache): tier-1 nem
+// engaja (sem bun pré-instalado na imagem) e o cache restore é LENTO (~21s
+// medidos em 08/2026). O marcador está ausente e o passo fast-path também —
+// o que o --tier2 adiciona é o sinal QUANTITATIVO do cache emulado.
+const LOG_CATTHEHACKER_DEFAULT = [
+  "[PR Check/check]   ✅  Success - Main Resolve Bun version [464.4688ms]",
+  "[PR Check/check]   ✅  Success - Main Detect pre-installed Bun [625.9247ms]",
+  "[PR Check/check]   ⬇  Skip - Main Use pre-installed Bun (fast path)",
+  "[PR Check/check]   ✅  Success - Main Restore Bun release from cache [21.22s]",
+  "[PR Check/check]   | Cache restored from key: bun-1.3.14-Linux-X64",
+  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [22.4s]",
+  "[PR Check/check]   ✅  Success - Complete job",
+].join("\n")
+
 // Regressão coberta pela ampliação: marcador tier-1 PRESENTE mas tier-2
 // (cache restore) também engajou — ex.: echo do marcador duplicado/movido,
 // ou condição invertida que segue imprimindo o marcador. Antes passava (o
@@ -154,6 +168,23 @@ describe("extractFastPathEvidence", () => {
   it("tolerante a CRLF e linhas vazias", () => {
     const ev = extractFastPathEvidence(LOG_TIER1_FAST.replace(/\n/g, "\r\n"))
     expect(ev.markerVersion).toBe("1.3.14")
+  })
+
+  it("extrai a duração do passo tier-2 (Restore Bun release from cache)", () => {
+    const ev = extractFastPathEvidence(LOG_TIER2_CACHE)
+    expect(ev.tier2RestoreDurationSeconds).toBeCloseTo(1.234, 6)
+  })
+
+  it("tier2RestoreDurationSeconds é null quando o passo não rodou (tier-1 puro)", () => {
+    const ev = extractFastPathEvidence(LOG_TIER1_FAST)
+    expect(ev.tier2RestoreDurationSeconds).toBeNull()
+  })
+
+  it("extrai a duração do cache emulado no cenário catthehacker default", () => {
+    const ev = extractFastPathEvidence(LOG_CATTHEHACKER_DEFAULT)
+    expect(ev.tier2RestoreDurationSeconds).toBeCloseTo(21.22, 6)
+    expect(ev.markerVersion).toBeNull()
+    expect(ev.fastPathDurationSeconds).toBeNull()
   })
 })
 
@@ -349,6 +380,48 @@ describe("checkTier1Fastpath", () => {
     expect(r.actExit).toBeNull()
     expect(r.reasons.some((x) => x.includes("ANTES do setup-bun"))).toBe(false)
   })
+
+  // ── Regra 8: threshold do cache EMULADO (--tier2) ───────────────────────
+  it("sem --tier2 não checa o cache emulado (backwards-compat)", () => {
+    const r = checkTier1Fastpath(LOG_CATTHEHACKER_DEFAULT)
+    expect(r.tier2ThresholdSeconds).toBeNull()
+    // falha por marker ausente, NÃO pela regra 8 (threshold null)
+    expect(r.reasons.some((x) => x.includes("cache emulado"))).toBe(false)
+  })
+
+  it("FAIL quando o cache emulado excede o threshold --tier2", () => {
+    const r = checkTier1Fastpath(LOG_CATTHEHACKER_DEFAULT, { tier2ThresholdSeconds: 15 })
+    expect(r.pass).toBe(false)
+    expect(r.tier2ThresholdSeconds).toBe(15)
+    expect(
+      r.reasons.some((x) => x.includes("cache emulado (tier-2) 21.220s > threshold 15s")),
+    ).toBe(true)
+  })
+
+  it("PASS na regra 8 quando o cache emulado fica dentro do threshold (outras regras decidem)", () => {
+    // tier-2 dentro do threshold NÃO dispara a regra 8; o FAIL (se houver)
+    // vem das outras regras (aqui: marker ausente em LOG_CATTHEHACKER_DEFAULT).
+    const r = checkTier1Fastpath(LOG_CATTHEHACKER_DEFAULT, { tier2ThresholdSeconds: 30 })
+    expect(r.reasons.some((x) => x.includes("cache emulado"))).toBe(false)
+    // O verdict global ainda é FAIL — mas por marker ausente (regra 1), não
+    // pela regra 8. O contrato tier-1 é quem domina neste cenário.
+    expect(r.reasons.some((x) => x.includes("marcador"))).toBe(true)
+  })
+
+  it("regra 8 NÃO dispara quando o tier-2 não rodou (imagem custom — tier-1 engajou)", () => {
+    const r = checkTier1Fastpath(LOG_TIER1_FAST, { tier2ThresholdSeconds: 5 })
+    expect(r.pass).toBe(true)
+    expect(r.tier2RestoreDurationSeconds).toBeNull()
+    expect(r.reasons).toEqual([])
+  })
+
+  it("regra 8 não dispara quando o tier-2 rodou rápido em log com marcador tier-1", () => {
+    // LOG_MARKER_WITH_TIER2 tem restore de 1.234s — abaixo de qualquer
+    // threshold razoável; a regra 8 não adiciona razão (as regras 1/5 dominam).
+    const r = checkTier1Fastpath(LOG_MARKER_WITH_TIER2, { tier2ThresholdSeconds: 10 })
+    expect(r.reasons.some((x) => x.includes("cache emulado"))).toBe(false)
+    expect(r.reasons.some((x) => x.includes("tier-2 EXPLÍCITO"))).toBe(true)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -356,7 +429,7 @@ describe("checkTier1Fastpath", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseArgs", () => {
-  it("parse completo (log + threshold + version + act-exit)", () => {
+  it("parse completo (log + threshold + version + act-exit + tier2)", () => {
     const args = parseArgs([
       "--log",
       "/tmp/act.log",
@@ -366,13 +439,44 @@ describe("parseArgs", () => {
       "1.3.14",
       "--act-exit",
       "124",
+      "--tier2",
+      "15",
     ])
-    expect(args).toEqual({ log: "/tmp/act.log", threshold: 7, version: "1.3.14", actExit: 124 })
+    expect(args).toEqual({
+      log: "/tmp/act.log",
+      threshold: 7,
+      version: "1.3.14",
+      actExit: 124,
+      tier2: 15,
+    })
   })
 
-  it("defaults (threshold 5, version null, actExit null)", () => {
+  it("defaults (threshold 5, version null, actExit null, tier2 null)", () => {
     const args = parseArgs(["--log", "/tmp/act.log"])
-    expect(args).toEqual({ log: "/tmp/act.log", threshold: 5, version: null, actExit: null })
+    expect(args).toEqual({
+      log: "/tmp/act.log",
+      threshold: 5,
+      version: null,
+      actExit: null,
+      tier2: null,
+    })
+  })
+
+  it("parseia --tier2 com decimal", () => {
+    const args = parseArgs(["--log", "/tmp/act.log", "--tier2", "21.5"])
+    expect(args.tier2).toBe(21.5)
+  })
+
+  it("rejeita --tier2 inválido (não-numérico, zero, negativo, sem valor, sufixo)", () => {
+    expect(parseArgs(["--log", "x", "--tier2", "abc"]).error).toBeTruthy()
+    expect(parseArgs(["--log", "x", "--tier2", "0"]).error).toBeTruthy()
+    expect(parseArgs(["--log", "x", "--tier2", "-3"]).error).toBeTruthy()
+    expect(parseArgs(["--log", "x", "--tier2"]).error).toBeTruthy()
+    // parseFloat("15abc") === 15 passaria finite/>0 em silêncio — o regex
+    // /^\d+(\.\d+)?$/ do raw string rejeita sufixo não-numérico (mesmo
+    // padrão do --act-exit).
+    expect(parseArgs(["--log", "x", "--tier2", "15abc"]).error).toBeTruthy()
+    expect(parseArgs(["--log", "x", "--tier2", "1.5.5"]).error).toBeTruthy()
   })
 
   it("parseia --act-exit 0 (exit code válido)", () => {

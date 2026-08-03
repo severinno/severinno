@@ -7,7 +7,7 @@
 ## Sumário
 
 1. [Transport Security](#1-transport-security)
-2. [Content Security Policy](#2-content-security-policy)
+2. [Content Security Policy](#2-content-security-policy-csp)
 3. [Authentication & Sessions](#3-authentication--sessions)
 4. [Password Storage](#4-password-storage)
 5. [Rate Limiting](#5-rate-limiting)

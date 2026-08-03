@@ -50,6 +50,36 @@
 #      bugs ALREADY FIXED without a temporal marker (e.g. "hoje não é
 #      reproduzível em main") — prevents stale docs when a bug is migrated.
 #      See scripts/check-readme-repro-marker.mjs.
+#
+#   7. README anchors: fails if an internal link [text](#slug) in the README
+#      doesn't resolve to a real heading, using the EXACT github-slugger
+#      algorithm (accented chars kept, em dash removed, spaces→hyphens, no
+#      collapse) — catches a heading renamed without updating its links.
+#      See scripts/check-readme-anchors.mjs.
+#
+#   8. UTF-8 scope: fails if check-utf8.sh or check_utf8.py is called WITHOUT
+#      the 'src/' directory argument, or with a different directory — locks
+#      the intentional decision that the UTF-8 scanner only walks src/ (not
+#      node_modules/, .next/, or other dirs). Mirror of the CRLF scope guard.
+#      See scripts/check-utf8-scope.mjs.
+#
+#   9. README TOC: fails if a section TOC (index) of the README points to a
+#      nonexistent heading, OR a new direct child heading of a section that
+#      declares a TOC is left out of the index — bidirectional, catching
+#      stale TOC links AND incomplete indexes when headings are added or
+#      renamed. Reuses the github-slugger from check-readme-anchors.mjs.
+#      See scripts/check-readme-toc.mjs.
+#
+#  10. README images: fails if any image in the README doesn't resolve — a
+#      RELATIVE path must exist on disk (GitHub renders relative to the
+#      markdown file), http(s) URLs must be syntactically valid (scheme +
+#      host; --network additionally does a real HEAD per URL, but that mode
+#      is opt-in and out of this fast gate), and unsupported schemes
+#      (mailto:, ftp:) are violations. data: URIs and {owner}/{repo} template
+#      placeholders are intentionally exempt (never broken in the rendered
+#      page). Covers BOTH markdown `![alt](src)` and HTML `<img src=...>`
+#      syntaxes, fence-aware (images inside code blocks don't count).
+#      See scripts/check-readme-images.mjs.
 # =============================================================================
 
 name: UTF-8 Check
@@ -70,6 +100,9 @@ jobs:
 
       - name: Run UTF-8 validation on all .ts and .tsx files
         run: bash scripts/check-utf8.sh --ci src/
+
+      - name: Run UTF-8 scope guard (check-utf8 only walks src/)
+        run: node scripts/check-utf8-scope.mjs
 
       - name: Run CRLF guard on tracked .sh/.bash files (working tree)
         run: bash scripts/check-crlf.sh --ci
@@ -94,6 +127,15 @@ jobs:
 
       - name: Run README repro-marker guard (stale docs for fixed bugs)
         run: node scripts/check-readme-repro-marker.mjs
+
+      - name: Run README anchors guard (internal #slug links ↔ real headings)
+        run: node scripts/check-readme-anchors.mjs
+
+      - name: Run README TOC guard (section indexes ↔ headings, forward + reverse + label)
+        run: node scripts/check-readme-toc.mjs
+
+      - name: Run README images guard (images ↔ existing files / valid URLs)
+        run: node scripts/check-readme-images.mjs
 
       - name: Run hooks-symmetry guard (README Git Hooks table ↔ .husky/*)
         run: node scripts/check-hooks-symmetry.mjs

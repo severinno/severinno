@@ -18,12 +18,23 @@
 // DISTINTAS da versão global — a tabela já documenta a variante staged como
 // linha própria.
 //
+// A validação é BIDIRECIONAL:
+//   → (forward)  guard real dos hooks SEM a linha correspondente na tabela =
+//                drift de doc (guard novo não documentado) — exit 1.
+//   ← (reverse)  linha da tabela SEM guard real invocado por NENHUM hook =
+//                linha STALE (guard removido dos hooks, linha esquecida) —
+//                exit 1. Linhas DESCRITIVAS (sem chave de script, ex.:
+//                'Snapshots (cond.)') são exceções documentadas em
+//                DESCRIPTIVE_ROW_EXCEPTIONS — cada exceção carrega uma
+//                ÂNCORA de hook que DEVE existir nos hooks (se o bloco
+//                documentado sumir, a linha vira stale e falha).
+//
 // Usage:
 //   node scripts/check-hooks-symmetry.mjs       # check; exit 1 on drift
 //
 // Exit codes:
 //   0 — tabela sincronizada com os hooks (pass)
-//   1 — guard invocado num hook sem a linha correspondente na tabela
+//   1 — guard sem linha na tabela OU linha da tabela sem guard real
 //   2 — infra: hook/README ausente (fail-closed)
 // =============================================================================
 
@@ -59,6 +70,39 @@ const ROW_KEY_BY_DESC = {
   "barrel lint": "barrel-lint",
   typecheck: "typecheck",
 }
+
+/**
+ * Preixo de chave SINTÉTICA para linhas DESCRITIVAS da tabela — linhas que
+ * documentam blocos dos hooks que NÃO são um guard `scripts/X` nem um
+ * comando mapeado (ex.: 'Snapshots (quando .snap/snapshot tests alterados)',
+ * que é um bloco condicional inline do pre-commit). A reverse exige que toda
+ * linha descritiva esteja documentada em DESCRIPTIVE_ROW_EXCEPTIONS — se a
+ * exceção sumir (ou a âncora de hook sumir), a linha vira stale e falha.
+ */
+const DESCRIPTIVE_KEY_PREFIX = "@desc:"
+
+/**
+ * Exceções DOCUMENTADAS para linhas descritivas da tabela — cada uma tem:
+ *   - descNeedle:  substring (case-insensitive) da DESCRIÇÃO da linha na
+ *                  tabela (ex.: "snapshots" casa 'Snapshots (quando ...)');
+ *   - hookAnchor:  substring que DEVE existir em .husky/pre-commit e/ou
+ *                  .husky/pre-push (case-sensitive) — a prova de que a linha
+ *                  descreve um BLOCO REAL do hook. Se o bloco for removido
+ *                  do hook, a âncora some e a linha descritiva vira stale.
+ *
+ * Regra: adicionar uma linha descritiva nova à tabela = adicionar a exceção
+ * AQUI com a âncora do bloco correspondente; remover o bloco do hook =
+ * remover a exceção E a linha (o guard falha enquanto a âncora faltar).
+ */
+export const DESCRIPTIVE_ROW_EXCEPTIONS = [
+  {
+    // 'Snapshots (cond.)' — bloco condicional inline do pre-commit:
+    // STAGED_SNAP=$(git diff --cached ... | grep -E '\.snap$|snapshot...') e
+    // só roda `bun test:snapshots` quando há arquivos de snapshot alterados.
+    descNeedle: "snapshots",
+    hookAnchor: "bun test:snapshots",
+  },
+]
 
 /** Comandos diretos dos hooks que não são `node|bash scripts/...`. */
 const HOOK_KEY_BY_CMD = {
@@ -157,13 +201,15 @@ export function extractReadmeRows(readmeContent) {
       if (cells.length < 3) continue
       const [desc, preCommit, prePush] = cells
       const key = rowKeyFromDesc(desc)
-      if (key) {
-        rows.set(key, {
-          desc,
-          preCommit: preCommit !== "—",
-          prePush: prePush !== "—",
-        })
-      }
+      // Linhas DESCRITIVAS (sem chave de script) entram com chave sintética
+      // @desc: — a reverse as valida contra DESCRIPTIVE_ROW_EXCEPTIONS. Sem
+      // isso, uma linha descritiva STALE (bloco removido do hook) ficaria
+      // invisível para o guard.
+      rows.set(key ?? `${DESCRIPTIVE_KEY_PREFIX}${desc}`, {
+        desc,
+        preCommit: preCommit !== "—",
+        prePush: prePush !== "—",
+      })
     } else if (inTable) {
       // fim da tabela — evita contagem de uma segunda tabela abaixo
       break
@@ -194,6 +240,60 @@ export function rowKeyFromDesc(desc) {
  * @param {Map<string, {desc: string, preCommit: boolean, prePush: boolean}>} rows
  * @returns {string[]} violações (vazio = sincronizado)
  */
+/**
+ * Validação REVERSA: toda linha da tabela DEVE corresponder a um guard real
+ * invocado por algum hook (pre-commit, pre-push ou runner compartilhado) —
+ * detecta linhas STALE (guard removido dos hooks mas linha esquecida na
+ * tabela). Linhas DESCRITIVAS (chave `@desc:`) são válidas apenas se
+ * estiverem em DESCRIPTIVE_ROW_EXCEPTIONS E a âncora de hook existir nos
+ * hooks reais.
+ *
+ * @param {{ preCommit: string[], prePush: string[], shared: string[] }} actual
+ * @param {Map<string, {desc: string, preCommit: boolean, prePush: boolean}>} rows
+ * @param {string} preCommitContent  conteúdo de .husky/pre-commit (para âncoras)
+ * @param {string} prePushContent    conteúdo de .husky/pre-push (para âncoras)
+ * @returns {string[]} violações (vazio = sincronizado)
+ */
+export function checkReverseSymmetry(
+  actual,
+  rows,
+  preCommitContent,
+  prePushContent,
+  exceptions = DESCRIPTIVE_ROW_EXCEPTIONS,
+) {
+  const violations = []
+  const real = new Set([...actual.shared, ...actual.preCommit, ...actual.prePush])
+  const hooksJoined = `${preCommitContent}\n${prePushContent}`
+
+  for (const [key, row] of rows) {
+    if (!key.startsWith(DESCRIPTIVE_KEY_PREFIX)) {
+      // linha com chave de guard — precisa existir em ALGUM hook real
+      if (!real.has(key)) {
+        violations.push(
+          `linha '${row.desc}' (guard '${key}') sem guard real em NENHUM hook — linha stale (guarde removido ou linha órfã); remova a linha ou re-adicione o guard`,
+        )
+      }
+      continue
+    }
+    // linha DESCRITIVA — precisa de exceção documentada com âncora real
+    const lower = row.desc.toLowerCase()
+    const exc = exceptions.find((e) => lower.includes(e.descNeedle.toLowerCase()))
+    if (!exc) {
+      violations.push(
+        `linha descritiva '${row.desc}' sem exceção em DESCRIPTIVE_ROW_EXCEPTIONS — ou é linha stale, ou documente a exceção com a âncora do bloco no hook`,
+      )
+      continue
+    }
+    if (!hooksJoined.includes(exc.hookAnchor)) {
+      violations.push(
+        `linha descritiva '${row.desc}' (exceção '${exc.descNeedle}') com âncora '${exc.hookAnchor}' AUSENTE dos hooks — bloco removido? linha stale`,
+      )
+    }
+  }
+
+  return violations
+}
+
 export function checkSymmetry(actual, rows) {
   const violations = []
 
@@ -256,14 +356,20 @@ function main() {
     process.exit(2)
   }
 
-  const violations = checkSymmetry(
-    {
-      preCommit: [...preCommit.keys()],
-      prePush: [...prePush.keys()],
-      shared,
-    },
-    rows,
-  )
+  const preCommitContent = readFileSync(preCommitPath, "utf8")
+  const prePushContent = readFileSync(prePushPath, "utf8")
+  const actual = {
+    preCommit: [...preCommit.keys()],
+    prePush: [...prePush.keys()],
+    shared,
+  }
+
+  const violations = [
+    // forward: guard real sem linha na tabela
+    ...checkSymmetry(actual, rows),
+    // reverse: linha da tabela sem guard real (stale) / descritiva sem âncora
+    ...checkReverseSymmetry(actual, rows, preCommitContent, prePushContent),
+  ]
 
   if (violations.length > 0) {
     console.error(
@@ -271,15 +377,17 @@ function main() {
     )
     for (const v of violations) console.error(`   - ${v}`)
     console.error(
-      `\n   Adicionar um guard novo a .husky/pre-commit ou pre-push exige a linha` +
-        `\n   correspondente na tabela '## Git Hooks' do README — é a doc que` +
-        `\n   previne o drift de simetria entre os hooks.`,
+      `\n   A simetria é BIDIRECIONAL: adicionar um guard novo a .husky/pre-commit` +
+        `\n   ou pre-push exige a linha correspondente na tabela; e remover um guard` +
+        `\n   dos hooks exige remover a linha (linha órfã = stale, falha o CI).` +
+        `\n   Linhas descritivas (ex.: Snapshots) exigem exceção com âncora em` +
+        `\n   DESCRIPTIVE_ROW_EXCEPTIONS.`,
     )
     process.exit(1)
   }
 
   console.log(
-    `✅ Tabela '## Git Hooks' sincronizada com os hooks reais (${shared.length} compartilhados).`,
+    `✅ Tabela '## Git Hooks' sincronizada com os hooks reais (${shared.length} compartilhados + reverse ok).`,
   )
   process.exit(0)
 }

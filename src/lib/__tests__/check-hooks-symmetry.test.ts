@@ -17,6 +17,10 @@
  *     lint-staged, imports) e por script na descrição
  *   - checkSymmetry: pass quando sync; falha com guard novo sem linha;
  *     falha com linha sem o ✅ na coluna do hook; falha com chave desconhecida
+ *   - checkReverseSymmetry: pass quando toda linha corresponde a um guard
+ *     real; falha com linha STALE (chave sem guard em nenhum hook); falha
+ *     com linha descritiva sem exceção documentada; falha com exceção cuja
+ *     âncora de hook sumiu; aceita exceções custom via parâmetro
  *
  * Usage:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/check-hooks-symmetry.test.ts
@@ -29,6 +33,8 @@ import {
   extractReadmeRows,
   rowKeyFromDesc,
   checkSymmetry,
+  checkReverseSymmetry,
+  DESCRIPTIVE_ROW_EXCEPTIONS,
 } from "../../../scripts/check-hooks-symmetry.mjs"
 
 // ── Fixtures (parciais e suficientes para as funções puras) ──────────────
@@ -89,6 +95,7 @@ const README_TABLE = `## Git Hooks — Pre-commit vs Pre-push (simetria)
 | Imports diretos (check:direct-rtl-import + barrel-lint)   |     ✅     |       —       |
 | Barrel lint (\`barrel-lint\`)                               |     ✅     |       —       |
 | Typecheck (\`tsc --noEmit\`)                                |     ✅     |       —       |
+| Snapshots (quando .snap/snapshot tests alterados)         |  ✅ cond.  |       —       |
 | Testes unitários + fuzz (\`test:unit\`/\`fuzz:ci\`/\`fuzz\`)    |     —      | ✅ smart-skip |
 
 ## Regression Guards
@@ -172,7 +179,49 @@ describe("extractReadmeRows", () => {
     expect(rows.get("test:unit")).toMatchObject({ preCommit: false, prePush: true })
     expect(rows.get("barrel-lint")).toMatchObject({ preCommit: true, prePush: false })
     // para na seção seguinte — '## Regression Guards' não vira linha
-    expect(rows.size).toBe(10)
+    expect(rows.size).toBe(11) // 10 guard + 1 descritiva (Snapshots)
+  })
+
+  it("inclui linha descritiva (Snapshots) com chave sintética @desc:", () => {
+    const rows = extractReadmeRows(README_TABLE)
+    const descKey = [...rows.keys()].find((k) => k.startsWith("@desc:"))
+    expect(descKey).toBeTruthy()
+    expect(descKey).toContain("Snapshots")
+    expect(rows.get(descKey!)).toMatchObject({
+      preCommit: true, // ✅ cond.
+      prePush: false,
+    })
+  })
+
+  it("robusto a conversão parágrafo→heading ANTES da tabela: linhas não mudam", () => {
+    // um parágrafo de introdução vira `### ...` (heading) entre a seção e a
+    // tabela — o extractor só conta linhas `|`, então o Map permanece com 11
+    // entradas (10 guards + 1 descritiva)
+    const content = README_TABLE.replace(
+      "## Git Hooks — Pre-commit vs Pre-push (simetria)",
+      "## Git Hooks — Pre-commit vs Pre-push (simetria)\n\n### Introdução (convertido de parágrafo)",
+    )
+    const rows = extractReadmeRows(content)
+    expect(rows.size).toBe(11)
+    expect(rows.get("check-utf8.sh")).toMatchObject({ preCommit: true, prePush: true })
+  })
+
+  it("robusto a conversão parágrafo→heading DEPOIS da tabela: linhas não mudam", () => {
+    const content = README_TABLE.replace(
+      "## Regression Guards",
+      "### Nota pós-tabela (convertida de parágrafo)\n\n## Regression Guards",
+    )
+    expect(extractReadmeRows(content).size).toBe(11)
+  })
+
+  it("robusto a heading com a MESMA aparência de linha de tabela fora dela", () => {
+    // heading convertido que CONTÉM um pipe — começa com `#`, não com `|`,
+    // então não entra na contagem de linhas da tabela
+    const content = README_TABLE.replace(
+      "## Git Hooks — Pre-commit vs Pre-push (simetria)",
+      "## Git Hooks — Pre-commit vs Pre-push (simetria)\n\n### Pipe | no texto",
+    )
+    expect(extractReadmeRows(content).size).toBe(11)
   })
 })
 
@@ -221,5 +270,152 @@ describe("checkSymmetry", () => {
     )
     expect(violations.length).toBe(2) // pre-commit + pre-push
     expect(violations[0]).toContain("check-ghost.mjs")
+  })
+})
+
+// ── checkReverseSymmetry ─────────────────────────────────────────────────
+
+/**
+ * `actual` completo do fixture: todos os guards reais invocados pelos hooks
+ * (runner compartilhado + pre-commit + pre-push) — espelha o que o main()
+ * monta a partir de extractHookGuards/extractRunnerGuards.
+ */
+const ACTUAL = {
+  shared: ["check-utf8.sh", "check-crlf.sh", "check-bun-mirror.mjs", "scan-lucide-icons.mjs"],
+  preCommit: [
+    "check-bun-mirror.mjs --staged",
+    "lint-staged",
+    "check-direct-rtl-import",
+    "barrel-lint",
+    "typecheck",
+  ],
+  prePush: ["test:unit"],
+}
+
+/** Content do pre-commit com o bloco condicional de snapshots (âncora). */
+const PRE_COMMIT_WITH_SNAPSHOTS = `set -euo pipefail
+node scripts/check-bun-mirror.mjs --staged
+bun x lint-staged
+bun run typecheck
+
+STAGED_SNAP=$(git diff --cached --name-only | grep -E '\\.snap$' || true)
+if [ -n "$STAGED_SNAP" ]; then
+  bun test:snapshots
+fi
+`
+
+const PRE_PUSH_EMPTY = `set -euo pipefail
+bash scripts/run-encoding-guards.sh
+`
+
+describe("checkReverseSymmetry", () => {
+  it("passa quando toda linha (guard + descritiva) corresponde a um guard real", () => {
+    const rows = extractReadmeRows(README_TABLE)
+    const violations = checkReverseSymmetry(ACTUAL, rows, PRE_COMMIT_WITH_SNAPSHOTS, PRE_PUSH_EMPTY)
+    expect(violations).toEqual([])
+  })
+
+  it("falha com linha STALE: chave de guard sem guard real em NENHUM hook", () => {
+    // linha com chave de script que não existe em nenhum hook (runner,
+    // pre-commit, pre-push) → stale
+    const fakeRows = new Map([
+      [
+        "check-ghost.mjs",
+        {
+          desc: "Ghost guard (`check-ghost.mjs`)",
+          preCommit: true,
+          prePush: false,
+        },
+      ],
+    ])
+    const violations = checkReverseSymmetry(ACTUAL, fakeRows, "", "")
+    expect(violations.length).toBe(1)
+    expect(violations[0]).toContain("check-ghost.mjs")
+    expect(violations[0]).toContain("stale")
+  })
+
+  it("falha com linha descritiva SEM exceção documentada", () => {
+    const fakeRows = new Map([
+      [
+        "@desc:Minificação (`minify:check`)",
+        { desc: "Minificação (`minify:check`)", preCommit: true, prePush: false },
+      ],
+    ])
+    const violations = checkReverseSymmetry(ACTUAL, fakeRows, "", "")
+    expect(violations.length).toBe(1)
+    expect(violations[0]).toContain("DESCRIPTIVE_ROW_EXCEPTIONS")
+    expect(violations[0]).toContain("Minificação")
+  })
+
+  it("falha quando a âncora do bloco documentado SUMIR dos hooks (stale)", () => {
+    const fakeRows = new Map([
+      [
+        "@desc:Snapshots (quando .snap/snapshot tests alterados)",
+        {
+          desc: "Snapshots (quando .snap/snapshot tests alterados)",
+          preCommit: true,
+          prePush: false,
+        },
+      ],
+    ])
+    // pre-commit SEM o bloco bun test:snapshots — a âncora sumiu
+    const preCommitWithoutSnap = PRE_COMMIT_WITH_SNAPSHOTS.replace(
+      "bun test:snapshots",
+      "bun test:other",
+    )
+    const violations = checkReverseSymmetry(ACTUAL, fakeRows, preCommitWithoutSnap, PRE_PUSH_EMPTY)
+    expect(violations.length).toBe(1)
+    expect(violations[0]).toContain("bun test:snapshots")
+    expect(violations[0]).toContain("stale")
+  })
+
+  it("passa com exceção descritiva cuja âncora existe no hook", () => {
+    const fakeRows = new Map([
+      [
+        "@desc:Snapshots (quando .snap/snapshot tests alterados)",
+        {
+          desc: "Snapshots (quando .snap/snapshot tests alterados)",
+          preCommit: true,
+          prePush: false,
+        },
+      ],
+    ])
+    const violations = checkReverseSymmetry(
+      ACTUAL,
+      fakeRows,
+      PRE_COMMIT_WITH_SNAPSHOTS,
+      PRE_PUSH_EMPTY,
+    )
+    expect(violations).toEqual([])
+  })
+
+  it("aceita exceções custom via parâmetro (ex.: nova linha descritiva)", () => {
+    const fakeRows = new Map([
+      [
+        "@desc:Fuzz de cache (`cache:fuzz`)",
+        { desc: "Fuzz de cache (`cache:fuzz`)", preCommit: false, prePush: true },
+      ],
+    ])
+    const customExceptions = [
+      ...DESCRIPTIVE_ROW_EXCEPTIONS,
+      { descNeedle: "fuzz de cache", hookAnchor: "bun run fuzz" },
+    ]
+    const violations = checkReverseSymmetry(
+      ACTUAL,
+      fakeRows,
+      PRE_COMMIT_WITH_SNAPSHOTS,
+      `bun run fuzz`,
+      customExceptions,
+    )
+    expect(violations).toEqual([])
+    // sem a exceção custom, a mesma linha falharia
+    const violationsNoCustom = checkReverseSymmetry(
+      ACTUAL,
+      fakeRows,
+      PRE_COMMIT_WITH_SNAPSHOTS,
+      `bun run fuzz`,
+    )
+    expect(violationsNoCustom.length).toBe(1)
+    expect(violationsNoCustom[0]).toContain("DESCRIPTIVE_ROW_EXCEPTIONS")
   })
 })

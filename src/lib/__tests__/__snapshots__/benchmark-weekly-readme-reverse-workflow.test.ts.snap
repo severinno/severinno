@@ -1,0 +1,22 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`benchmark-weekly.yml — job readme-reverse-audit (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+{
+  "name": "README reverse semantics (baseline)",
+  "runs-on": "ubuntu-latest",
+  "steps": [
+    {
+      "uses": "actions/checkout@v4",
+    },
+    {
+      "name": "Auditar links do README (--reverse) vs baseline",
+      "run": "node scripts/check-readme-reverse-baseline.mjs",
+    },
+    {
+      "name": "Summary",
+      "run": "echo "✅ Nenhum drift semântico de links no README (baseline docs/security/readme-reverse-baseline.json)."",
+    },
+  ],
+  "timeout-minutes": 5,
+}
+`;

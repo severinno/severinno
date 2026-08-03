@@ -6,7 +6,7 @@ set -euo pipefail
 # mesmo que o working tree global já esteja migrado. Node puro, <1s.
 node scripts/check-bun-mirror.mjs --staged
 
-# 10 guards de encoding/CI compartilhados com o pre-push (fonte única —
+# 15 guards de encoding/CI compartilhados com o pre-push (fonte única —
 # adicionar um guard novo = editar scripts/run-encoding-guards.sh em UM lugar)
 bash scripts/run-encoding-guards.sh
 bun x lint-staged

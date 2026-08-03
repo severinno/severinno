@@ -20,7 +20,10 @@
 #
 # MÉTRICA: wall-time do `act` inteiro por run (date +%s%3N, em ms) — inclui o
 # overhead do próprio act + start do container. run1 = cold (primeira
-# execução da sessão, ~30s observado); runs 2..N = warm (~11s observado).
+# execução da sessão — ~7-30s dependendo do estado de warm-up do docker/act,
+# ~30s na 1ª sessão fria, ~5-7s com docker já aquecido); runs 2..N = warm
+# (~5-11s observado). NÃO trate os números da header como esperados — a
+# medição é o que o bench imprime.
 # Runs que FALHAM (exit != 0) NÃO entram nas estatísticas/delta — aparecem
 # como FAIL na tabela e o bench termina em exit 1, invalidando a medição.
 # O job secrets-guard é o mesmo usado na medição manual documentada no README.
@@ -38,6 +41,7 @@
 #   ./scripts/act-startup-bench.sh                  # 5 runs × 2 imagens default
 #   ./scripts/act-startup-bench.sh -n 3             # 3 runs × 2 imagens
 #   ./scripts/act-startup-bench.sh --assert-pct 30  # falha se ALGUMA exceder a 1ª em +30%
+#   ACT_BIN=/caminho/act ./scripts/act-startup-bench.sh  # binário alternativo (ex.: act Linux no CI)
 #   ./scripts/act-startup-bench.sh --image 'alpine|act-bench-alpine:local' \
 #                                   --image 'ubuntu-bun|ghcr.io/severinno/ubuntu-bun:1.3.14'
 #                                                   # lista custom (1ª imagem = baseline)
@@ -57,7 +61,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
-ACT="$REPO_ROOT/tool-results/act/act.exe"
+# Binário do act: ACT_BIN permite apontar para um binário alternativo (ex.:
+# o act Linux baixado no CI — o default é o act.exe local do Windows em
+# tool-results/act/). Usado pelo job semanal act-startup-bench do
+# benchmark-weekly.yml.
+ACT="${ACT_BIN:-$REPO_ROOT/tool-results/act/act.exe}"
 WORKFLOW_DIR="$REPO_ROOT/.github/workflows"
 JOB="secrets-guard"   # sem setup-bun → isola só o overhead de startup
 RUNS=5
@@ -66,9 +74,15 @@ RUN_TIMEOUT=300       # s por execução (secrets-guard é ~11-33s; folga alta)
 
 # Imagens comparadas — passamos -P explícito em TODAS (apples-to-apples),
 # mesmo a default, para a medição não depender do mapeamento implícito do act.
-IMG_LABEL=("catthehacker:act-latest" "ubuntu-bun:1.3.14")
+# A tag da custom ubuntu-bun é DERIVADA do .actrc (--var BUN_VERSION=... —
+# fonte única LOCAL da versão do Bun): a cada bump de BUN_VERSION o bench
+# compara a imagem NOVA automaticamente, sem editar este script. Fallback
+# 1.3.14 se o .actrc não tiver a linha (o pre-flight STEP 1 valida o arquivo).
+ACTRC_BUN="$(sed -n 's/^--var BUN_VERSION=//p' "$REPO_ROOT/.actrc" 2>/dev/null | head -1 || true)"
+ACTRC_BUN="${ACTRC_BUN:-1.3.14}"
+IMG_LABEL=("catthehacker:act-latest" "ubuntu-bun:$ACTRC_BUN")
 IMG_ID=("default" "custom")
-IMG_TAG=("catthehacker/ubuntu:act-latest" "ghcr.io/severinno/ubuntu-bun:1.3.14")
+IMG_TAG=("catthehacker/ubuntu:act-latest" "ghcr.io/severinno/ubuntu-bun:$ACTRC_BUN")
 IMG_ARGS=()   # --image 'label|tag' repetível — substitui a lista acima (1ª = baseline)
 
 GREEN='\033[0;32m'
@@ -171,7 +185,7 @@ command -v docker >/dev/null 2>&1 || {
   fail "docker não está no PATH."
   exit 1
 }
-docker version --format '{{.ServerVersion}}' >/dev/null 2>&1 || {
+docker version --format '{{.Server.Version}}' >/dev/null 2>&1 || {
   fail "daemon docker não responde (Docker Desktop rodando?)."
   exit 1
 }
@@ -299,6 +313,7 @@ for idx in "${!IMG_TAG[@]}"; do
   id="${IMG_ID[$idx]}"
   fvals="$TMP_DIR/values-$id.txt"
   fexits="$TMP_DIR/exits-$id.txt"
+  frun="$TMP_DIR/runs-$id.txt"   # par ms|exit por run DESTA imagem (não o da última!)
   IFS='|' read -r min med avg <<< "${VALUES[$id]}"
   wmed="$(warm_median "$fvals")"
   printf '%-22s' "${IMG_LABEL[$idx]}"
@@ -336,7 +351,7 @@ if [ "$NIMGS" -gt 1 ]; then
       "$RUNS" "$cwmed" "$bwmed" "$(pct_diff "$cwmed" "$bwmed")"
   done
 fi
-echo "    (nota: o cold ~30s do README é o run1 da 1ª imagem — o run1 das"
+echo "    (nota: o cold do README (~30s na 1ª sessão) é o run1 da 1ª imagem — o run1 das"
 echo "     demais já tem o act aquecido; a comparação run1×run1 segue justa"
 echo "     para o overhead de container entre as imagens.)"
 echo ""

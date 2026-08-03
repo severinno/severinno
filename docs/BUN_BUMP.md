@@ -135,6 +135,58 @@ A 1ª execução roda com **cache miss em todas as keys `bun-*`/`prisma-*`**
 o preço deliberado de nunca servir toolchain errada de cache. É esperado e
 não é regressão.
 
+### 3.6 — Validar localmente antes de commitar (guarda `--staged` do pre-commit)
+
+O pre-commit agora começa com o guard **`--staged`** (`node
+scripts/check-bun-mirror.mjs --staged`) como **PRIMEIRO passo** — antes dos 11
+guards de encoding, do lint-staged e do typecheck. Ele inspeciona `git diff
+--cached` e **aborta o commit** se o diff introduzir cache key antiga
+(`bun-1.3.14-...`), literal de versão do Bun, call site do setup-bun sem
+`bun-version:` ou par key↔path quebrado — mesmo que o working tree global já
+esteja migrado.
+
+Overhead medido (bench local, 2026-08-03):
+
+- caminho feliz: ~320–800ms por commit (~0,3–0,7% do hook completo de ~115s);
+- caminho de rejeição: commit abortado em **~3s** com a lista exata das
+  violações — nenhum guard caro (encoding/typecheck) chega a rodar.
+
+Simulação manual (repo local, não toca no histórico):
+
+```bash
+# 1. Cria um workflow temporário com key antiga e dá git add (staged)
+cat > .github/workflows/tmp-bench-literal.yml <<'EOF'
+name: Bench Temp
+on:
+  workflow_dispatch:
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-1.3.14-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-1.3.14-
+EOF
+git add .github/workflows/tmp-bench-literal.yml
+
+# 2. Tenta o commit — o pre-commit DEVE rejeitar (exit 1, 4 violações)
+#    e o HEAD permanece intacto (nenhum commit é criado)
+git commit -m "bench: pre-commit literal key"
+# ❌ Diff com 4 violação(ões) de cache key/literal/...
+# husky - pre-commit script failed (code 1)
+
+# 3. Limpa o arquivo temporário (working tree volta ao estado anterior)
+git reset -q HEAD -- .github/workflows/tmp-bench-literal.yml
+rm -f .github/workflows/tmp-bench-literal.yml
+```
+
+> **Nota:** o guard `--staged` só enxerga o que está **staged** (`git add`).
+> Com nada staged, `node scripts/check-bun-mirror.mjs --staged` retorna
+> `✅ Diff ok` — a simulação acima é o que prova o caminho de rejeição real.
+
 ---
 
 ## 4. O que NÃO precisa ser editado
@@ -177,13 +229,14 @@ ${{ vars.BUN_VERSION }}` (omitir o input ou usar literal é violação — o
     scan é GLOBAL, não só staged);
 11. (modo `--staged` / PR diff) cache keys, literais, call sites e pares
     key↔path **introduzidos pelo diff** não seguirem a fonte única — uma key
-    antiga adicionada pelo próprio PR falha antes do merge.
+    antiga adicionada pelo próprio PR falha antes do merge. O pre-commit
+    local executa este modo como **primeiro passo** (ver seção 3.6).
 
 Validação local antes de abrir PR:
 
 ```bash
 node scripts/check-bun-mirror.mjs            # invariantes globais
-node scripts/check-bun-mirror.mjs --staged   # diff staged
+node scripts/check-bun-mirror.mjs --staged   # diff staged (1º passo do pre-commit)
 node scripts/check-actrc-sync.mjs --expected "$(gh variable get BUN_VERSION -R <owner>/<repo> || echo 1.3.14)"  # .actrc vs variável real
 ```
 

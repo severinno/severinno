@@ -318,6 +318,34 @@ são ignoradas por padrão (`--include-tests` para incluí-las).
 após onboarding, antes de tornar o repo público, ou em incident response de
 vazamento.
 
+> **Guard semanal de baseline** (`scripts/check-secret-leaks-baseline.mjs`, job
+> `secret-leaks-audit` do `benchmark-weekly.yml`): roda a auditoria contra o
+> histórico completo (`git log -p --all`, `fetch-depth: 0`) e compara com o
+> baseline commitado [`docs/security/secret-leaks-baseline.json`](docs/security/secret-leaks-baseline.json)
+> — **141 achados conhecidos** (2026-08). Falha (exit 1) **somente se achados
+> NOVOS aparecerem**, por assinatura `commit+file+line+id+key` (não por count:
+> linha trocada com count igual ainda é detectada como novo; achado removido
+> por reescrita de história não falha). O count do baseline é **derivado**, nunca
+> literal: `node scripts/check-secret-leaks-baseline.mjs --update` regenera o
+> arquivo a partir do audit real (mesmo princípio do badge de encoding guards).
+> Após remediar um vazamento novo (rotação), rode `--update` para adotar o novo
+> estado como baseline. Fail-closed: baseline ausente = exit 2 com instrução.
+
+> **Guard semanal de drift semântico do README** (`scripts/check-readme-reverse-baseline.mjs`, job
+> `readme-reverse-audit` do `benchmark-weekly.yml`): roda o `check-readme-anchors.mjs --reverse`
+> (links que RESOLVEM mas apontam para o heading semanticamente errado — o
+> forward não vê) e compara com o baseline commitado
+> [`docs/security/readme-reverse-baseline.json`](docs/security/readme-reverse-baseline.json)
+> — **0 achados conhecidos** (2026-08, o README passa `--reverse` limpo). Falha (exit 1)
+> **somente se achados NOVOS aparecerem**, por assinatura `file+slug+label`
+> (não por count; a linha NÃO participa — o README cresce e as linhas migram
+> a cada edição, então comparar por linha geraria falso alarme). O count do
+> baseline é **derivado**, nunca literal: `node scripts/check-readme-reverse-baseline.mjs --update`
+> regenera o arquivo a partir do guard real. O job é **semanal por design** —
+> drift semântico não bloqueia PRs (o forward já é gate no CI/hooks); o
+> `--reverse-strict` (mais agressivo, flagia prosa single-token) fica fora do
+> CI. Fail-closed: baseline ausente = exit 2 com instrução.
+
 ### diagnose-docker (Windows / Linux / Mac)
 
 Diagnóstico básico da infraestrutura:
@@ -418,35 +446,48 @@ bun run e2e
 
 Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:
 
-> **Índice da seção:** a decisão de escopo **`.sh`-only** dos guards CRLF (por
-> que `.ts`/`.tsx` ficam de fora) está documentada logo abaixo →
-> [Por que `.sh`-only? (decisão ESCOPO INTENCIONAL)](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional)
+**Índice da seção (8 sub-blocos):**
 
-|         Camada          | Gatilho                    | Comando                                                                        | Tempo |     Bloqueia?     |
-| :---------------------: | -------------------------- | ------------------------------------------------------------------------------ | :---: | :---------------: |
-|    🏠 **Pre-commit**    | `git commit`               | `scripts/check-utf8.sh --dry-run --ci src/`                                    |  ~2s  |     ✅ Exit 1     |
-|     🚀 **Pre-push**     | `git push`                 | `scripts/check-utf8.sh --dry-run --ci src/`                                    |  ~2s  |     ✅ Exit 1     |
-|      🔄 **CI/CD**       | Push para `main`/`develop` | `scripts/check-utf8.sh --ci src/` (via `ci.yml`)                               | <10s  | ✅ Bloqueia build |
-|     📋 **PR Check**     | `pull_request` para `main` | `scripts/check-utf8.sh --ci src/` (via `pr-check.yml`)                         | <10s  | ✅ Bloqueia merge |
-|    🔒 **CRLF Guard**    | `git commit` + push/PR     | `scripts/check-crlf.sh --ci` (pre-commit + `utf8-check.yml`)                   |  <1s  |     ✅ Exit 1     |
-|    📦 **Blob CRLF**     | `git commit` + push/PR     | `scripts/check-blob-crlf.sh --ci` (pre-commit + `utf8-check.yml`)              |  <1s  |     ✅ Exit 1     |
-|    🎯 **CRLF Scope**    | `git commit` + push/PR     | `scripts/check-crlf-scope.mjs` (pre-commit + `utf8-check.yml`)                 |  <1s  |     ✅ Exit 1     |
-| 🧨 **Single-line out=** | `git commit` + push/PR     | `scripts/check-single-line-out-assign.sh --ci` (pre-commit + `utf8-check.yml`) |  <1s  |     ✅ Exit 1     |
+- [CRLF Guard](#crlf-guard) — working tree `.sh`/`.bash`
+- [Normalizador](#normalizador) — fix de uma vez em novos checkouts
+- [Blob CRLF Guard](#blob-crlf-guard) — blobs commitados (`i/` EOL)
+- [CRLF Scope Guard](#crlf-scope-guard) — escopo travado em `.sh`/`.bash`
+- [UTF-8 Scope Guard](#utf-8-scope-guard) — escopo do check-utf8 travado em `src/`
+- [Por que `.sh`-only? (decisão ESCOPO INTENCIONAL)](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional)
+- [Auditoria histórica de blobs CRLF](#auditoria-histórica-de-blobs-crlf) — histórico completo (`rev-list --all`)
+- [Single-line out= Guard](#single-line-out-guard) — `cmd "..." out=$(...)` em 1 linha
+
+|       Camada       | Gatilho                    | Comando                                                           | Tempo |     Bloqueia?     |
+| :----------------: | -------------------------- | ----------------------------------------------------------------- | :---: | :---------------: |
+| 🏠 **Pre-commit**  | `git commit`               | `scripts/check-utf8.sh --dry-run --ci src/`                       |  ~2s  |     ✅ Exit 1     |
+|  🚀 **Pre-push**   | `git push`                 | `scripts/check-utf8.sh --dry-run --ci src/`                       |  ~2s  |     ✅ Exit 1     |
+|    🔄 **CI/CD**    | Push para `main`/`develop` | `scripts/check-utf8.sh --ci src/` (via `ci.yml`)                  | <10s  | ✅ Bloqueia build |
+|  📋 **PR Check**   | `pull_request` para `main` | `scripts/check-utf8.sh --ci src/` (via `pr-check.yml`)            | <10s  | ✅ Bloqueia merge |
+| 🔒 **CRLF Guard**  | `git commit` + push/PR     | `scripts/check-crlf.sh --ci` (pre-commit + `utf8-check.yml`)      |  <1s  |     ✅ Exit 1     |
+|  📦 **Blob CRLF**  | `git commit` + push/PR     | `scripts/check-blob-crlf.sh --ci` (pre-commit + `utf8-check.yml`) |  <1s  |     ✅ Exit 1     |
+| 🎯 **CRLF Scope**  | `git commit` + push/PR     | `scripts/check-crlf-scope.mjs` (pre-commit + `utf8-check.yml`)    |  <1s  |     ✅ Exit 1     |     | 🧨 **Single-line out=** | `git commit` + push/PR | `scripts/check-single-line-out-assign.sh --ci` (pre-commit + `utf8-check.yml`) | <1s | ✅ Exit 1 |
+| 🎯 **UTF-8 Scope** | `git commit` + push/PR     | `scripts/check-utf8-scope.mjs` (pre-commit + `utf8-check.yml`)    |  <1s  |     ✅ Exit 1     |
 
 **748 arquivos escaneados** (`.ts` + `.tsx`) em cada execução — zero corrupção encontrada.
 
-**CRLF Guard** (`scripts/check-crlf.sh`): complementa o `check-utf8.sh` verificando
+### CRLF Guard
+
+`scripts/check-crlf.sh` — complementa o `check-utf8.sh` verificando
 se **qualquer `.sh`/`.bash` trackeado** tem CRLF no working tree. Git Bash tolera
 CRLF, mas containers Linux (act/CI) quebram com `set: pipefail: invalid option
 name` — o guard bloqueia o commit/PR antes que isso chegue ao CI.
 
-**Normalizador** (`scripts/normalize-crlf.sh`): aplica o fix de uma vez em
+### Normalizador
+
+`scripts/normalize-crlf.sh` — aplica o fix de uma vez em
 qualquer novo checkout/worktree — converte `.sh`/`.ts`/`.md` trackeados com CRLF
 para LF no working tree e roda `git add --renormalize` (mudanças reais
 unstaged são preservadas, nunca stageadas). Uso: `./scripts/normalize-crlf.sh`
 (`--check` para falhar se houver CRLF, `--dry-run` para listar sem modificar).
 
-**Blob CRLF Guard** (`scripts/check-blob-crlf.sh`): complementa o guard de
+### Blob CRLF Guard
+
+`scripts/check-blob-crlf.sh` — complementa o guard de
 working tree verificando a EOL do **blob commitado** (coluna `i/` de
 `git ls-files --eol`). Um `.sh` commitado com CRLF no blob reproduz CRLF em
 **todo checkout futuro, em qualquer branch** — mesmo com working tree limpo.
@@ -454,11 +495,22 @@ O guard falha (exit 1) se algum blob `.sh`/`.bash` tiver `i/crlf` ou `i/mixed`.
 `--fix` roda `git add --renormalize` nos ofensores (revisar `git diff --cached`
 e commitar).
 
-**CRLF Scope Guard** (`scripts/check-crlf-scope.mjs`): **trava a decisão de
+### CRLF Scope Guard
+
+`scripts/check-crlf-scope.mjs` — **trava a decisão de
 escopo** dos guards CRLF no código — eles escaneiam **APENAS `*.sh`/`*.bash`**,
 nunca `.ts`/`.tsx`. O guard falha (exit 1) se alguém estender os pathspecs do
 `git ls-files` dos guards CRLF para qualquer outra extensão (ex.: `'*.ts'`
 `'*.tsx'`), ou se o filtro de extensão for removido por completo.
+
+### UTF-8 Scope Guard
+
+`scripts/check-utf8-scope.mjs` — **trava a decisão de
+escopo** do check-utf8.sh: as chamadas a `check-utf8.sh`/`check_utf8.py` devem
+SEMPRE receber `src/` como argumento de diretório. O guard falha (exit 1) se
+o argumento for removido (varredura sem diretório — potencialmente varrendo
+`node_modules/` ou `.next/`) ou trocado para outro diretório. Espelho do
+`check-crlf-scope.mjs`.
 
 ### Por que o guard de CRLF é `.sh`-only (decisão ESCOPO INTENCIONAL)
 
@@ -489,16 +541,62 @@ text eol=lf`) força LF no checkout e no commit; e a auditoria histórica
 > vez com `./scripts/normalize-crlf.sh` (não com um guard). Decisão completa
 > no header do `check-crlf.sh` (ESCOPO INTENCIONAL).
 
-**Auditoria histórica de blobs `.sh`** (`scripts/audit_blob_crlf_history.py`,
-`bun run audit:blob-crlf-history`): varre TODO o histórico alcançável
-(`git rev-list --all --objects`) e detecta qualquer blob `.sh`/`.bash` cujo
-conteúdo contenha CR (0x0D) — um registro permanente de que nenhum commit
-passado reintroduzirá CRLF em checkouts futuros.
+### Auditoria histórica de blobs CRLF
 
-> **Estado histórico (auditado em 2026-08):** 61 blobs `.sh` únicos no
-> histórico (rev-list --all) — **0 com CRLF**. Ref por ref: `HEAD` 51,
-> `main` 41, `v0.3.0-cache-mvp` 26, `v0.4.0` 41, `release/v0.4.0` 41 —
-> todos `i/lf`. **Correção retroativa NÃO é necessária**.
+`scripts/audit_blob_crlf_history.py` (`bun run audit:blob-crlf-history`) —
+varre TODO o histórico alcançável
+(`git rev-list --all --objects`) e detecta qualquer blob cujo conteúdo
+contenha CR (0x0D) — um registro permanente de que nenhum commit passado
+reintroduzirá CRLF em checkouts futuros.
+
+#### Dois escopos (extendido 2026-08)
+
+- `bun run audit:blob-crlf-history` — **GATE** (default): apenas `.sh`/`.bash`
+  (CRLF QUEBRA bash em containers Linux; exit 1 = falha no CI).
+- `bun run audit:blob-crlf-history:all-text` — **REPORT** (`--all-text`):
+  TODOS os tipos com `eol=lf` no `.gitattributes` (`.md`/`.ts`/`.tsx`/`.mjs`/
+  `.cjs`/`.js`/`.json`/`.css`/`.scss`/`.prisma`/`.sql`/`.yml`/`.yaml`/`.sh`/
+  `.bash`/`.svg`) — mapeia o alcance real de CRLF em blobs commitados
+  ANTES do `.gitattributes` sem virar gate (CRLF nesses tipos não quebra
+  toolchain; prettier normaliza no commit). Exit 0 sempre.
+- `--extensions .md,.ts` — lista explícita em modo GATE (exit 1 se achar).
+
+> **Alerta semanal (`--all-text`, job `blob-crlf-all-text-alert` do `benchmark-weekly.yml`):**
+> roda o audit em modo **REPORT** (`--all-text` — exit 0 sempre, CRLF em tipos
+> benignos não é gate) e **grepa o output pelo sentinel `'com CRLF'`**: se o
+> mapeamento revelar CRLF em qualquer tipo `text eol=lf` do `.gitattributes`, o
+> job falha com aviso (incidente visível no Actions em vez de mapeamento
+> silencioso).
+>
+> **Validação manual do alerta** (fixture git real + REPORT + réplica do gate,
+> sem depender do cron) — o procedimento passo a passo está em
+> [docs/TESTING.md — Auditoria de CRLF no histórico, run manual do alerta](docs/TESTING.md#auditoria-de-crlf-no-histórico--run-manual-do-alerta---all-text),
+> e automatizado em **1 comando** (roda no CI — job `all-text-alert-validation`
+> do pr-check — e localmente):
+>
+> ```bash
+> bun run test:validate-all-text-alert
+> ```
+>
+> O fluxo cria dois fixtures git reais (`autocrlf=false`): um **limpo** (`.md`
+> LF + `.gitattributes` — o sentinel NÃO pode aparecer, senão seria falso
+> positivo) e um **achado** (blob `.md` CRLF commitado ANTES do
+> `.gitattributes` — o sentinel DEVE aparecer, senão o grep do job estaria
+> cego) — e replica o gate do job (`grep -Fq 'com CRLF'`). A semântica do
+> alerta também está travada em teste unitário (`src/lib/__tests__/validate-all-text-alert.test.ts`).
+
+> **Estado histórico (auditado em 2026-08, com a própria ferramenta):**
+> **Gate `.sh`/`.bash`:** 69 blobs únicos no histórico — **0 com CRLF**.
+> **`--all-text` (tipos `text eol=lf` do `.gitattributes` — lista DERIVADA
+> do arquivo em runtime, não hardcoded; um tipo novo adicionado ao
+> `.gitattributes` entra automaticamente na auditoria):** **2.962 blobs**
+> únicos (sufixos `.md`/`.ts`/`.tsx`/`.mjs`/`.cjs`/`.js`/`.json`/`.css`/
+> `.scss`/`.prisma`/`.sql`/`.yml`/`.yaml`/`.sh`/`.svg`/`.bash` + nomes
+> exatos/globs sem extensão: `Makefile`, `Caddyfile*`, `Dockerfile*`,
+> `.prettierrc`, `.husky/*`, `.env.*.example`) — **0 com CRLF**. Ou seja:
+> o `.gitattributes` já protege todo o histórico; nenhum blob de texto
+> commitado tem CRLF. **Correção retroativa NÃO é necessária** em nenhum
+> escopo.
 >
 > **Por que não usar `grep $'\r'`:** no Git Bash/Windows, `grep -q $'\r'`
 > **falha silenciosamente** (exit 0 mesmo em arquivo CRLF — tradução de
@@ -527,7 +625,9 @@ passado reintroduzirá CRLF em checkouts futuros.
 > defesa de primeira linha — impede que o problema SEJA introduzido, em vez
 > de depender de reescrita retroativa.
 
-**Single-line out= Guard** (`scripts/check-single-line-out-assign.sh`): falha
+### Single-line out= Guard
+
+`scripts/check-single-line-out-assign.sh` — falha
 (exit 1) se um `.sh`/`.bash` trackeado sob `scripts/` tiver o padrão
 `comando "..." out=$(...)` numa ÚNICA linha. Numa linha, o `out=` vira
 ARGUMENTO POSICIONAL do comando (não atribuição): `out` nunca é setado e `$?`
@@ -540,7 +640,9 @@ cell "Rodando prod E2E (128 checks)..."
 out=$(cd "$SCRIPT_DIR" && bun run test:seed-prod-e2e 2>&1)
 ```
 
-**Escopo deliberado (`scripts/` only, travado em teste):** a convenção de
+#### Escopo deliberado (scripts/ only, travado em teste)
+
+A convenção de
 helpers `cell "..." + out=$(...)` vive em `scripts/` (E2Es de seed/CI), e o
 escopo é travado em teste — `check-single-line-out-assign.test.ts` ignora
 `.sh`/`.bash` fora de `scripts/` e `.ts`. Diferente do CRLF, estender a TODOS
@@ -559,7 +661,7 @@ Os hooks locais (`.husky/`) formam uma cadeia de validação em camadas: o
 **pre-push** revalida os fast gates que o CI roda (`utf8-check.yml`) e os
 testes da branch (via smart-skip) antes de expor o push ao remoto.
 
-Os **11 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
+Os **15 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
 `scripts/run-encoding-guards.sh` — a **fonte única** da lista, chamada por
 ambos os hooks. Adicionar um guard novo = editar esse script em UM lugar,
 sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
@@ -570,18 +672,27 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 
 > O guard `check-hooks-symmetry.mjs` (linha "Hooks symmetry" acima) valida
 > que esta tabela bate com o conteúdo REAL de `.husky/pre-commit` e
-> `.husky/pre-push` — adicionar um guard novo a um hook sem documentá-lo
-> aqui falha o CI (`utf8-check.yml`) e o commit/push locais.
+> `.husky/pre-push` — nas DUAS direções: adicionar um guard novo a um hook
+> sem documentá-lo aqui falha o CI (`utf8-check.yml`) e o commit/push
+> locais; e **remover um guard dos hooks deixando a linha órfã na tabela
+> também falha** (linha stale). Linhas descritivas sem chave de script (ex.:
+> "Snapshots (cond.)") são exceções documentadas no guard com a âncora do
+> bloco real (`bun test:snapshots`) — se o bloco sumir do hook, a linha vira
+> stale e falha igual.
 
 | Validação                                                 | Pre-commit |   Pre-push    |
 | :-------------------------------------------------------- | :--------: | :-----------: |
 | UTF-8 (`check-utf8.sh --dry-run --ci src/`)               |     ✅     |      ✅       |
+| Escopo UTF-8 (`check-utf8-scope.mjs`)                     |     ✅     |      ✅       |
 | CRLF working tree (`check-crlf.sh --ci`)                  |     ✅     |      ✅       |
 | Escopo CRLF (`check-crlf-scope.mjs`)                      |     ✅     |      ✅       |
 | CRLF blob commitado (`check-blob-crlf.sh --ci`)           |     ✅     |      ✅       |
 | Single-line `out=` (`check-single-line-out-assign.sh`)    |     ✅     |      ✅       |
 | Badge encoding guards (`check-encoding-guards-badge.mjs`) |     ✅     |      ✅       |
 | Docs repro marker (`check-readme-repro-marker.mjs`)       |     ✅     |      ✅       |
+| Âncoras README (`check-readme-anchors.mjs`)               |     ✅     |      ✅       |
+| TOC README (`check-readme-toc.mjs`)                       |     ✅     |      ✅       |
+| Imagens README (`check-readme-images.mjs`)                |     ✅     |      ✅       |
 | Setup-bun externo (`check-no-setup-bun.mjs`)              |     ✅     |      ✅       |
 | Fonte única Bun (`check-bun-mirror.mjs`)                  |     ✅     |      ✅       |
 | Bun staged diff (`check-bun-mirror.mjs --staged`)         |     ✅     |       —       |
@@ -686,6 +797,40 @@ versão na key, o cache serviria um client gerado por **outra versão do Bun**
 (toolchain errada, silenciosamente). O guard `check-bun-mirror.mjs` falha o
 PR se qualquer key `prisma-`/`bun-` não referenciar `${{ vars.BUN_VERSION }}`
 — é essa proteção que mantém o exemplo vivo sempre correto.
+
+#### Cobertura das cache keys (auditoria 08/2026)
+
+Auditoria manual + guard mecânico (`node scripts/check-bun-mirror.mjs` →
+exit 0, zero violações) de TODAS as cache keys de toolchain nos workflows:
+**14 keys `bun-` + 4 keys `prisma-` + 17 `restore-keys` — 100% com a versão
+do Bun na key** (diretamente via `${{ vars.BUN_VERSION }}` ou via o resolve
+do input no composite; nenhum literal, nenhum prefixo sem versão).
+
+| Prefixo              | Onde (workflows)                                                                                                                                                         | Qtd `key:` | Key (padrão)                                                                                           | Versão na key?                                      | Status  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- | ------- |
+| `bun-`               | `benchmark-all-weekly` (1) · `benchmark-auto-baseline` (1) · `benchmark-gist-weekly` (1) · `benchmark-weekly` (1) · `e2e-cache` (1) · `pr-check` (4) · `seed-guards` (4) | 13         | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}`                                             | ✅ `vars.BUN_VERSION`                               | ✅ OK   |
+| `bun-`               | `.github/actions/setup-bun/action.yml` (tier-2, cache interno)                                                                                                           | 1          | `bun-${{ steps.resolve.outputs.version }}-${{ runner.os }}-${{ runner.arch }}`                         | ✅ resolve do input (que vem de `vars.BUN_VERSION`) | ✅ OK   |
+| `prisma-`            | `seed-guards` (4)                                                                                                                                                        | 4          | `prisma-${{ vars.BUN_VERSION }}-${{ hashFiles('prisma/schema.prisma') }}-${{ hashFiles('bun.lock') }}` | ✅ `vars.BUN_VERSION`                               | ✅ OK   |
+| `restore-keys`       | mesmos blocos acima (13 `bun-` + 4 `prisma-`)                                                                                                                            | —          | `bun-${{ vars.BUN_VERSION }}-` / `prisma-${{ vars.BUN_VERSION }}-`                                     | ✅ `vars.BUN_VERSION`                               | ✅ OK   |
+| `turbo`              | — (não usado no projeto — zero refs em `package.json`/`next.config.ts`/workflows)                                                                                        | 0          | n/a                                                                                                    | n/a                                                 | ⚪ n/a  |
+| `secrets.DEPLOY_KEY` | `deploy.yml` (2) · `release-deploy.yml` (2) · `ci.yml` (2, comentado)                                                                                                    | —          | `key: ${{ secrets.DEPLOY_KEY }}` (SSH deploy key do `appleboy/ssh-action`, NÃO é actions/cache)        | n/a (não é cache)                                   | ⚪ fora |
+
+**Notas da auditoria:**
+
+- `turbo` **não existe** no projeto (nem como dependência, nem como cache) —
+  se um dia entrar, a regra vale igual: `turbo-${{ vars.BUN_VERSION }}-...`
+  via `DEFAULT_CACHE_KEY_RULES` do guard (configurável por prefixo).
+- As `key:` do `appleboy/ssh-action` (`secrets.DEPLOY_KEY`) **não são cache**
+  — são chaves SSH; o guard ignora (só valida `actions/cache@v4`).
+- O par key↔path também é validado: `bun-` → `node_modules`/`~/.bun`;
+  `prisma-` → `node_modules/.prisma` + `node_modules/@prisma/client` — um
+  path de toolchain errada sob a key errada é violação (regra 7b do guard).
+- A key interna do tier-2 (`setup-bun/action.yml`, `steps.resolve.outputs.
+version`) está FORA do escopo de scan do guard (só `.github/workflows/`)
+  — verificada manualmente nesta auditoria; um drift futuro ali não seria
+  pego mecanicamente (vale monitorar em bump de versão).
+- O `--staged` do guard cobre keys **introduzidas pelo próprio PR** — uma key
+  antiga adicionada no diff falha antes do merge.
 
 **Fluxo de bump do Bun (ex.: 1.3.14 → 1.3.15):** — procedimento completo e
 auditável (comandos `gh` + re-sync dos mirrors + troubleshooting) em
@@ -820,6 +965,13 @@ exemplo acima).
 > `docker run --rm <img> /bin/true` para o startup puro; e
 > `act -b -W .github/workflows/pr-check.yml -j secrets-guard` (com e sem
 > `-P ubuntu-latest=...ubuntu-bun:1.3.14 --pull=false`) para o job completo.
+>
+> **Automatizado** (revalidar a cada bump da imagem — nova versão do mirror
+> ubuntu-bun → rodar de novo): `bun run bench:act-startup`
+> (`scripts/act-startup-bench.sh` — roda o `secrets-guard` N vezes em cada
+> imagem, `--pull=false`, e imprime a tabela de delta cold/warm; suporta
+> `-n N`, `--assert-pct P` para falhar se alguma imagem exceder a baseline
+> além do percentual, e `--image 'label|tag'` para testar candidatas).
 
 #### Limitação act 0.2.89 — composite actions não resolvem `vars`
 
@@ -905,14 +1057,15 @@ local é o gargalo, não a migração do setup-bun.
 
 ### Bugs conhecidos
 
-| Bug                                                   | Sintoma                                                                                                                                                                                                                                | Workaround                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| :---------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`--dry-run` não existe**                            | `Error: unknown flag: --dry-run`                                                                                                                                                                                                       | Usar `-n`. Atenção: `-n` só mostra o plano e **não** executa os `run:` — não pega erros de runtime (ex: CRLF, comandos ausentes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **`oven-sh/setup-bun@v2` lento**                      | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs                                                                                                                                                                  | **Confirmado (comportamento do action EXTERNO antigo, medido ANTES da migração):** 2 execuções consecutivas do job `e2e-counts-guard` no act — run #1 = 35.5s, run #2 = 24.2s, ambos com `cache-hit=false` explícito no output do setup-bun → re-download a cada execução, sem cache de layers nem de release. Exit 0 (é lentidão, não falha). (Uma captura posterior na mesma máquina deu 11.66s/13.53s — durações variam por máquina/rede; o invariante é `cache-hit=false` em todas — ver [Evidência empírica](#evidência-empírica-log-real-do-act--bug-do-setup-bun).)<br>**Repro automatizado:** `bun run repro:setup-bun` (scripts/act-repro-setup-bun.sh) — roda o job 2×, extrai a duração do step setup-bun e o cache-hit de cada run, e asserta o comportamento esperado (cache-miss em todas = bug; cache-hit na última = fix). Use num checkout ANTERIOR ao commit de migração para reproduzir o bug. **Hoje o bug não é reproduzível em `main`:** o job usa o composite local `.github/actions/setup-bun` (cache keyed na versão) — ver `scripts/check-bun-mirror.mjs`. Na época era aceitável para validação pontual; exigia rede para o GitHub. |
-| **Fast path (tier-1) não dispara no catthehacker**    | No act com a imagem default `catthehacker/ubuntu:act-latest` o tier-1 NUNCA engaja — a imagem não embarca bun — e o act **emula** o actions/cache com espera (~21s medidos: `Restore Bun release from cache [21.22s]`, composite ~33s) | Usar a imagem custom `ghcr.io/<owner>/ubuntu-bun:<versão>` com `-P ubuntu-latest=... --pull=false` para exercitar o tier-1 de verdade. **O ganho real (~1-2s) aparece no CI do GitHub** (tier-2 com cache REAL do GitHub; tier-1 só em runner com bun pré-instalado) — a expectativa de 0-2s no act é incorreta: o composite inclui o overhead do próprio act (~11s warm).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **act 0.2.89 não resolve `vars` em composite action** | `Unknown Variable Access vars` ao parsear o `action.yml` — e `expressions are not allowed here` para o token vazio `${{ }}` em descrição                                                                                               | Resolver a versão **no workflow** e passar via input `bun-version` (o composite lê só inputs); o guard `check-bun-mirror.mjs` exige `bun-version: ${{ vars.BUN_VERSION }}` em todo call site. Workflow-level `${{ vars.BUN_VERSION }}` funciona no act. Ver [Imagem custom](#imagem-custom-com-bun-pré-instalado-tier-1-fast-path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **Actions locais untracked invisíveis**               | `failed to read 'action.yml'... file does not exist` para actions recém-criadas                                                                                                                                                        | Usar `-b`/`--bind` (monta o working tree real, untracked inclusos) em vez do volume padrão copiado do HEAD.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **CRLF quebra bash no container (Windows)**           | `scripts/check-utf8.sh: line 20: set: pipefail: invalid option name`                                                                                                                                                                   | **Causa raiz (confirmada):** `core.autocrlf=true` deixa o working tree CRLF (`i/lf w/crlf`) em **todos os 41 `.sh`** — o checkout ocorreu antes de `.gitattributes` declarar `eol=lf`, então o atributo nunca foi aplicado aos arquivos já presentes. O act copia o working tree para o container Linux → bash falha em `set -euo pipefail`. **Fix aplicado:** normalizar os `.sh` para LF no disco (o blob já era LF → **zero diff** no git) + `git add --renormalize` para sincronizar o stat cache do index (sem mudar conteúdo). **Evidência pós-fix no act:** exit 0 — 748 arquivos escaneados, "Status: OK -- all valid UTF-8". Alternativa: `git config core.autocrlf false` + `git add --renormalize`, ou WSL. **Proteção anti-regressão:** `scripts/check-crlf.sh` (working tree) + `scripts/check-blob-crlf.sh` (blob commitado — `i/crlf`/`i/mixed` via `git ls-files --eol`) rodam no pre-commit e no `utf8-check.yml`, falhando se qualquer `.sh` voltar a ter CRLF. **Fix reutilizável:** `scripts/normalize-crlf.sh` aplica a normalização em qualquer checkout/worktree (`.sh`/`.ts`/`.md` → LF + `git add --renormalize`).                    |
+| Bug                                                         | Sintoma                                                                                                                                                                                                                                | Workaround                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| :---------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`--dry-run` não existe**                                  | `Error: unknown flag: --dry-run`                                                                                                                                                                                                       | Usar `-n`. Atenção: `-n` só mostra o plano e **não** executa os `run:` — não pega erros de runtime (ex: CRLF, comandos ausentes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **`oven-sh/setup-bun@v2` lento**                            | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs                                                                                                                                                                  | **Confirmado (comportamento do action EXTERNO antigo, medido ANTES da migração):** 2 execuções consecutivas do job `e2e-counts-guard` no act — run #1 = 35.5s, run #2 = 24.2s, ambos com `cache-hit=false` explícito no output do setup-bun → re-download a cada execução, sem cache de layers nem de release. Exit 0 (é lentidão, não falha). (Uma captura posterior na mesma máquina deu 11.66s/13.53s — durações variam por máquina/rede; o invariante é `cache-hit=false` em todas — ver [Evidência empírica](#evidência-empírica-log-real-do-act--bug-do-setup-bun).)<br>**Repro automatizado:** `bun run repro:setup-bun` (scripts/act-repro-setup-bun.sh) — roda o job 2×, extrai a duração do step setup-bun e o cache-hit de cada run, e asserta o comportamento esperado (cache-miss em todas = bug; cache-hit na última = fix). Use num checkout ANTERIOR ao commit de migração para reproduzir o bug. **Hoje o bug não é reproduzível em `main`:** o job usa o composite local `.github/actions/setup-bun` (cache keyed na versão) — ver `scripts/check-bun-mirror.mjs`. Na época era aceitável para validação pontual; exigia rede para o GitHub. |
+| **Fast path (tier-1) não dispara no catthehacker**          | No act com a imagem default `catthehacker/ubuntu:act-latest` o tier-1 NUNCA engaja — a imagem não embarca bun — e o act **emula** o actions/cache com espera (~21s medidos: `Restore Bun release from cache [21.22s]`, composite ~33s) | Usar a imagem custom `ghcr.io/<owner>/ubuntu-bun:<versão>` com `-P ubuntu-latest=... --pull=false` para exercitar o tier-1 de verdade. **O ganho real (~1-2s) aparece no CI do GitHub** (tier-2 com cache REAL do GitHub; tier-1 só em runner com bun pré-instalado) — a expectativa de 0-2s no act é incorreta: o composite inclui o overhead do próprio act (~11s warm).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **act 0.2.89 não resolve `vars` em composite action**       | `Unknown Variable Access vars` ao parsear o `action.yml` — e `expressions are not allowed here` para o token vazio `${{ }}` em descrição                                                                                               | Resolver a versão **no workflow** e passar via input `bun-version` (o composite lê só inputs); o guard `check-bun-mirror.mjs` exige `bun-version: ${{ vars.BUN_VERSION }}` em todo call site. Workflow-level `${{ vars.BUN_VERSION }}` funciona no act. Ver [Imagem custom](#imagem-custom-com-bun-pré-instalado-tier-1-fast-path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **Actions locais untracked invisíveis**                     | `failed to read 'action.yml'... file does not exist` para actions recém-criadas                                                                                                                                                        | Usar `-b`/`--bind` (monta o working tree real, untracked inclusos) em vez do volume padrão copiado do HEAD.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **CRLF quebra bash no container (Windows)**                 | `scripts/check-utf8.sh: line 20: set: pipefail: invalid option name`                                                                                                                                                                   | **Causa raiz (confirmada):** `core.autocrlf=true` deixa o working tree CRLF (`i/lf w/crlf`) em **todos os 41 `.sh`** — o checkout ocorreu antes de `.gitattributes` declarar `eol=lf`, então o atributo nunca foi aplicado aos arquivos já presentes. O act copia o working tree para o container Linux → bash falha em `set -euo pipefail`. **Fix aplicado:** normalizar os `.sh` para LF no disco (o blob já era LF → **zero diff** no git) + `git add --renormalize` para sincronizar o stat cache do index (sem mudar conteúdo). **Evidência pós-fix no act:** exit 0 — 748 arquivos escaneados, "Status: OK -- all valid UTF-8". Alternativa: `git config core.autocrlf false` + `git add --renormalize`, ou WSL. **Proteção anti-regressão:** `scripts/check-crlf.sh` (working tree) + `scripts/check-blob-crlf.sh` (blob commitado — `i/crlf`/`i/mixed` via `git ls-files --eol`) rodam no pre-commit e no `utf8-check.yml`, falhando se qualquer `.sh` voltar a ter CRLF. **Fix reutilizável:** `scripts/normalize-crlf.sh` aplica a normalização em qualquer checkout/worktree (`.sh`/`.ts`/`.md` → LF + `git add --renormalize`).                    |
+| **`gh auth login` "fantasma" (device flow nunca completa)** | `gh auth status` sempre "not logged in" e o `bench-setup-bun.sh` sai com **exit 4 (API bloqueada)** mesmo depois de rodar o login — o processo do device flow fica vivo aguardando, mas nada acontece                                  | **Confirmado (08/2026):** o device flow do `gh` exige autorização **humana no navegador** — rodar o fluxo num ambiente sem interação deixa o processo pendurado até o código expirar (~15 min por código) e o token **nunca é gravado**. Evidência da investigação (3 ocasiões de device flow + polling de ~40 min): `hosts.yml` **ausente** em `%AppData%\GitHub CLI\` (o arquivo só é criado quando a autorização completa), repo **privado** (API 404 sem token), `GH_TOKEN`/`GITHUB_TOKEN` **vazios** no ambiente e `.env*` sem token. **Lição para futuros devs:** `gh auth login` **DEVE ser completado NO ambiente do worktree** — abrir `https://github.com/login/device`, digitar o código e autorizar a conta com acesso ao repo (`repo,workflow`). O fluxo não completa sozinho, não herda auth de outro checkout/worktree, e o código expira em ~15 min (reiniciar com código novo se passar disso). O `bench-setup-bun.sh --dry-run` valida o auth antes de gastar um run — ver o passo 1 do [fluxo de medição](#medição-real-do-setup-bun-no-ci-scriptsbench-setup-bunsh).                                                                       |
 
 #### Evidência empírica (log real do act — bug do setup-bun)
 
