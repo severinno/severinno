@@ -50,6 +50,7 @@ import {
   parseDiffAddedLines,
   parseDiffLines,
   checkStagedSetupBunCallSites,
+  checkStagedRemovedBunVersion,
   checkSetupBunCallSite,
   normalizeBunVersionValue,
   checkStagedCacheKeys,
@@ -1048,7 +1049,7 @@ describe("parseDiffAddedLines", () => {
 // ── parseDiffLines (parser rico: adicionadas + contexto) ────────────────
 
 describe("parseDiffLines", () => {
-  it("inclui linhas ADICIONADAS e de CONTEXTO com flag added", () => {
+  it("inclui linhas ADICIONADAS, de CONTEXTO e REMOVIDAS com flags", () => {
     const diff =
       `+++ b/.github/workflows/a.yml\n` +
       `@@ -1,3 +1,3 @@\n` +
@@ -1056,9 +1057,12 @@ describe("parseDiffLines", () => {
       `           context: true\n` +
       `+          added: true\n`
     const lines = parseDiffLines(diff).get(".github/workflows/a.yml")!
-    expect(lines).toHaveLength(2)
-    expect(lines[0]).toEqual({ lineNo: 1, content: "          context: true", added: false })
-    expect(lines[1]).toEqual({ lineNo: 2, content: "          added: true", added: true })
+    expect(lines).toHaveLength(3)
+    // REMOVIDA não incrementa lineNo (não existe no arquivo novo) — fica no
+    // mesmo lineNo do contexto seguinte.
+    expect(lines[0]).toEqual({ lineNo: 1, content: "          removed: true", removed: true })
+    expect(lines[1]).toEqual({ lineNo: 1, content: "          context: true", added: false })
+    expect(lines[2]).toEqual({ lineNo: 2, content: "          added: true", added: true })
   })
 
   it("parseDiffAddedLines continua retornando SÓ adicionadas (delega no rico)", () => {
@@ -1089,6 +1093,34 @@ describe("parseDiffLines", () => {
     const lines = parseDiffLines(diff).get(".github/workflows/a.yaml")!
     expect(lines).toHaveLength(2)
     expect(lines[1].added).toBe(true)
+  })
+
+  it("diff MULTI-arquivo: header '--- a/<próximo>' NÃO vira remoção espúria do arquivo anterior", () => {
+    // Bug latente pego no review: sem o guard `--- `, num diff com DOIS
+    // arquivos o header `--- a/b.yml` (que vem ANTES do `+++ b/b.yml` que
+    // reseta currentFile) seria empurrado como `removed: true` do arquivo a.
+    const diff =
+      `diff --git a/.github/workflows/a.yml b/.github/workflows/a.yml\n` +
+      `--- a/.github/workflows/a.yml\n` +
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,2 +1,1 @@\n` +
+      `-          removed: true\n` +
+      `           context: true\n` +
+      `diff --git a/.github/workflows/b.yml b/.github/workflows/b.yml\n` +
+      `--- a/.github/workflows/b.yml\n` +
+      `+++ b/.github/workflows/b.yml\n` +
+      `@@ -1,1 +1,1 @@\n` +
+      `+          added: true\n`
+    const perFile = parseDiffLines(diff)
+    // a.yml: só a REMOVIDA + o CONTEXTO (sem linhas espúrias do header b)
+    const a = perFile.get(".github/workflows/a.yml")!
+    expect(a).toHaveLength(2)
+    expect(a[0]).toEqual({ lineNo: 1, content: "          removed: true", removed: true })
+    expect(a[1]).toEqual({ lineNo: 1, content: "          context: true", added: false })
+    // b.yml: só a ADICIONADA
+    const b = perFile.get(".github/workflows/b.yml")!
+    expect(b).toHaveLength(1)
+    expect(b[0]).toEqual({ lineNo: 1, content: "          added: true", added: true })
   })
 })
 
@@ -1350,6 +1382,80 @@ describe("checkStagedSetupBunCallSites", () => {
 
   it("diff vazio → zero violações", () => {
     expect(checkStagedSetupBunCallSites("")).toEqual([])
+  })
+})
+
+// ── checkStagedRemovedBunVersion (REMOÇÃO do input de call site sobrevivente) ─
+
+describe("checkStagedRemovedBunVersion", () => {
+  it("REMOÇÃO do input bun-version de call site que SOBREVIVEU (uses contexto) → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,2 @@\n` +
+      `       - uses: ./.github/actions/setup-bun\n` +
+      `         with:\n` +
+      `-          bun-version: \${{ vars.BUN_VERSION }}\n`
+    const v = checkStagedRemovedBunVersion(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:3")
+    expect(v[0]).toContain("REMOÇÃO")
+    expect(v[0]).toContain("uses: linha 1")
+  })
+
+  it("call site INTEIRO removido (uses também é '-') → zero violações (step deletado)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +0,0 @@\n` +
+      `-      - uses: ./.github/actions/setup-bun\n` +
+      `-        with:\n` +
+      `-          bun-version: \${{ vars.BUN_VERSION }}\n`
+    expect(checkStagedRemovedBunVersion(diff)).toEqual([])
+  })
+
+  it("migração literal→vars (removido + adicionado na janela) → zero violações (trocou o valor)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `       - uses: ./.github/actions/setup-bun\n` +
+      `         with:\n` +
+      `-          bun-version: 1.3.14\n` +
+      `+          bun-version: \${{ vars.BUN_VERSION }}\n`
+    expect(checkStagedRemovedBunVersion(diff)).toEqual([])
+  })
+
+  it("bun-version removido mas de OUTRA action (não setup-bun) → zero violações", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,2 +1,1 @@\n` +
+      `       - uses: actions/checkout@v4\n` +
+      `-          bun-version: 1.3.14\n`
+    expect(checkStagedRemovedBunVersion(diff)).toEqual([])
+  })
+
+  it("arquivo não-.yml → zero violações", () => {
+    const diff =
+      `+++ b/src/lib/foo.ts\n` +
+      `@@ -1,2 +1,1 @@\n` +
+      `       - uses: ./.github/actions/setup-bun\n` +
+      `-          bun-version: 1.3.14\n`
+    expect(checkStagedRemovedBunVersion(diff)).toEqual([])
+  })
+
+  it("REMOÇÃO em arquivo .yaml → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yaml\n` +
+      `@@ -1,3 +1,2 @@\n` +
+      `       - uses: ./.github/actions/setup-bun\n` +
+      `         with:\n` +
+      `-          bun-version: \${{ vars.BUN_VERSION }}\n`
+    const v = checkStagedRemovedBunVersion(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:3")
+    expect(v[0]).toContain("REMOÇÃO")
+  })
+
+  it("diff vazio → zero violações", () => {
+    expect(checkStagedRemovedBunVersion("")).toEqual([])
   })
 })
 

@@ -51,6 +51,7 @@ on:
 permissions:
   contents: read
   actions: write # upload-artifact@v4 (log do act) em caso de falha do guard
+  packages: read # pull da imagem privada ghcr.io/<owner>/ubuntu-bun (auth do runner)
 
 env:
   BUN_VERSION: ${{ vars.BUN_VERSION }}
@@ -112,12 +113,16 @@ jobs:
           echo "  log: /tmp/act-check.log ($(wc -l < /tmp/act-check.log) linhas)"
 
       # ── GATE: o guard decide PASS/FAIL baseado na evidência tier-1 ────
+      # --act-exit recebe o exit code do act (steps.act.outputs.ACT_EXIT): se
+      # o act morreu ANTES do setup-bun (exit != 0 sem evidência no log — ex.:
+      # imagem não publicada), o guard FALHA com diagnóstico claro (regra 7).
       - name: Guard tier-1 fast path (threshold 5s)
         run: |
           node scripts/check-tier1-fastpath.mjs \
             --log /tmp/act-check.log \
             --threshold 5 \
-            --version "${{ env.BUN_VERSION }}"
+            --version "${{ env.BUN_VERSION }}" \
+            --act-exit "${{ steps.act.outputs.ACT_EXIT }}"
 
       # ── Log do act como artifact (debug de falhas) ────────────────────
       - name: Upload act log (on failure)

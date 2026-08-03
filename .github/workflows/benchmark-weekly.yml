@@ -342,7 +342,34 @@ jobs:
           path: /tmp/bench-setup-bun.json
           if-no-files-found: ignore
 
-  # ── .actrc ↔ vars.BUN_VERSION sync (semanal) ────────────────────────
+  # ── Blob CRLF history audit (semanal) ─────────────────────────────
+  # Garante o zero-CRLF NO HISTÓRICO, não só no índice atual. O guard de
+  # blob (check-blob-crlf.sh) inspeciona o index/HEAD — um blob CRLF
+  # commitado NO PASSADO (ex.: antes do .gitattributes) reproduz CRLF em
+  # todo checkout futuro daquele commit. scripts/audit-blob-crlf-history.sh
+  # varre TODOS os blobs de .sh/.bash de TODOS os commits via
+  # `git cat-file --batch` (wrapper python — byte-exato, robusto no MSYS) e
+  # falha o job se QUALQUER blob histórico tiver CRLF.
+  #
+  # Requer o histórico completo (fetch-depth: 0). Node/Bun não são
+  # necessários — o wrapper só precisa de git + python3.
+  blob-crlf-history-audit:
+    name: Blob CRLF history (zero-CRLF)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
+
+      # ── GATE: nenhum blob histórico de .sh/.bash pode ter CRLF ──────
+      # Exit 1 do wrapper = CRLF encontrado no histórico → job falha.
+      - name: Auditar blobs CRLF em todo o histórico
+        run: |
+          bash scripts/audit-blob-crlf-history.sh
+
+      # ── .actrc ↔ vars.BUN_VERSION sync (semanal) ────────────────────────
   # Revalida SEMANALMENTE que o espelho LOCAL do act (.actrc) está em
   # sincronia com a repository variable BUN_VERSION do GitHub.
   #

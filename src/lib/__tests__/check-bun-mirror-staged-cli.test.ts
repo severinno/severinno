@@ -115,6 +115,30 @@ jobs:
           bun-version: 1.3.14
 `
 
+/** Call site do setup-bun OK (fonte única) — baseline para testar a REMOÇÃO. */
+const OK_CALL_SITE = `name: Fake
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: \${{ vars.BUN_VERSION }}
+`
+
+/** Call site SEM o input bun-version — a REMOÇÃO do input (regressão). */
+const MISSING_CALL_SITE = `name: Fake
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          cache: '~/.bun'
+`
+
 afterEach(() => {
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
@@ -160,6 +184,51 @@ describe("check-bun-mirror.mjs --staged — integração do main() com git real"
     expect(out).toContain("violação(ões)")
     expect(out).toContain("deploy.yml:")
     expect(out).toContain("bun-version='1.3.14'")
+  })
+
+  it("exit 1: REMOÇÃO do input bun-version de um call site PRÉ-EXISTENTE (regressão)", () => {
+    // Call site OK COMMITADO (baseline) → working tree SEM o bun-version
+    // (removido) → staged. O diff mostra a linha `- bun-version:` como
+    // REMOVIDA com o `uses:` de CONTEXTO — o check de ADIÇÃO não vê (só
+    // avalia uses adicionado), então o checkStagedRemovedBunVersion é o que
+    // pega a regressão introduzida pelo diff.
+    const dir = makeRepo()
+    addWorkflow(dir, "deploy.yml", OK_CALL_SITE)
+    commitAll(dir, "baseline") // HEAD com call site OK
+    addWorkflow(dir, "deploy.yml", MISSING_CALL_SITE)
+    stage(dir, ".github/workflows/deploy.yml")
+
+    const { status, out } = runStaged(dir)
+    expect(status).toBe(1)
+    expect(out).toContain("violação(ões)")
+    expect(out).toContain("deploy.yml:")
+    expect(out).toContain("REMOÇÃO")
+    expect(out).toContain("bun-version")
+  })
+
+  it("exit 0: REMOÇÃO do STEP INTEIRO (call site removido) não é regressão", () => {
+    // Call site inteiro (uses + with + bun-version) REMOVIDO — remover o
+    // step/job é legítimo (ex.: job eliminado). Só a remoção do INPUT de um
+    // call site que SOBREVIVE é regressão.
+    const dir = makeRepo()
+    addWorkflow(dir, "deploy.yml", OK_CALL_SITE)
+    commitAll(dir, "baseline")
+    addWorkflow(
+      dir,
+      "deploy.yml",
+      `name: Fake
+jobs:
+  other:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+`,
+    )
+    stage(dir, ".github/workflows/deploy.yml")
+
+    const { status, out } = runStaged(dir)
+    expect(status).toBe(0)
+    expect(out).toContain("Diff ok")
   })
 
   it("exit 0: --base HEAD sem diff (controle — baseline COMMITADO idêntico)", () => {

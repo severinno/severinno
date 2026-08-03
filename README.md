@@ -418,6 +418,10 @@ bun run e2e
 
 Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:
 
+> **Índice da seção:** a decisão de escopo **`.sh`-only** dos guards CRLF (por
+> que `.ts`/`.tsx` ficam de fora) está documentada logo abaixo →
+> [Por que `.sh`-only? (decisão ESCOPO INTENCIONAL)](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional)
+
 |         Camada          | Gatilho                    | Comando                                                                        | Tempo |     Bloqueia?     |
 | :---------------------: | -------------------------- | ------------------------------------------------------------------------------ | :---: | :---------------: |
 |    🏠 **Pre-commit**    | `git commit`               | `scripts/check-utf8.sh --dry-run --ci src/`                                    |  ~2s  |     ✅ Exit 1     |
@@ -456,8 +460,8 @@ nunca `.ts`/`.tsx`. O guard falha (exit 1) se alguém estender os pathspecs do
 `git ls-files` dos guards CRLF para qualquer outra extensão (ex.: `'*.ts'`
 `'*.tsx'`), ou se o filtro de extensão for removido por completo.
 
-> **Por que o guard de CRLF é `.sh`-only (decisão ESCOPO INTENCIONAL)**
->
+### Por que o guard de CRLF é `.sh`-only (decisão ESCOPO INTENCIONAL)
+
 > O guard existe para bloquear o único cenário em que CRLF causa **falha
 > funcional**: `.sh`/`.bash` com CRLF no working tree quebram bash em
 > containers Linux (`set: pipefail: invalid option name`). Estender o escopo
@@ -536,6 +540,13 @@ cell "Rodando prod E2E (128 checks)..."
 out=$(cd "$SCRIPT_DIR" && bun run test:seed-prod-e2e 2>&1)
 ```
 
+**Escopo deliberado (`scripts/` only, travado em teste):** a convenção de
+helpers `cell "..." + out=$(...)` vive em `scripts/` (E2Es de seed/CI), e o
+escopo é travado em teste — `check-single-line-out-assign.test.ts` ignora
+`.sh`/`.bash` fora de `scripts/` e `.ts`. Diferente do CRLF, estender a TODOS
+os `.sh` seria inofensivo (sem falso positivo), então não há guard dedicado
+como o `check-crlf-scope.mjs` — apenas o teste fixa o contrato.
+
 > 📖 Veja [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md) para lições aprendidas sobre:
 >
 > - **Next.js Vary injection** — App Router prepends seus próprios valores Vary
@@ -552,6 +563,10 @@ Os **11 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
 `scripts/run-encoding-guards.sh` — a **fonte única** da lista, chamada por
 ambos os hooks. Adicionar um guard novo = editar esse script em UM lugar,
 sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
+
+> Por que os guards CRLF escaneiam só `.sh` (e não `.ts`)? — a decisão de
+> escopo está documentada em
+> [Encoding Guards → Por que `.sh`-only?](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional).
 
 > O guard `check-hooks-symmetry.mjs` (linha "Hooks symmetry" acima) valida
 > que esta tabela bate com o conteúdo REAL de `.husky/pre-commit` e
