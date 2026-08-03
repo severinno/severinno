@@ -38,7 +38,74 @@ jobs:
       - name: Summary
         run: echo "All .ts files validated as valid UTF-8 encoding."
 
-  # ── Secrets Guard ─────────────────────────────────────────────────────
+  # ── Blob CRLF History Audit (PR) ─────────────────────────────────────
+  # Zero-CRLF NO HISTÓRICO revalidado a CADA PR (não só no cron semanal —
+  # o job blob-crlf-history-audit do benchmark-weekly.yml só roda na cron).
+  #
+  # Por quê: o guard de blob (check-blob-crlf.sh) inspeciona o index/HEAD —
+  # um blob .sh/.bash CRLF commitado NO PASSADO (ex.: antes do
+  # .gitattributes) reproduz CRLF em todo checkout futuro daquele commit.
+  # scripts/audit-blob-crlf-history.sh varre TODOS os blobs de TODOS os
+  # commits via `git cat-file --batch` (wrapper python — byte-exato,
+  # robusto no MSYS) e falha o job se QUALQUER blob histórico tiver CRLF.
+  # Um PR que committe um .sh CRLF (autocrlf desabilitado, commit fora do
+  # .gitattributes) só seria pego semanas depois sem este job.
+  #
+  # Requer o histórico completo (fetch-depth: 0). Node/Bun não são
+  # necessários — só git + python3 (pré-instalados no runner). Espelho do
+  # job semanal (blob-crlf-history-audit em benchmark-weekly.yml) —
+  # alterações no script/args DEVEM ser replicadas nos dois lugares.
+  blob-crlf-history-audit:
+    name: Blob CRLF history (zero-CRLF)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
+
+      # ── GATE: nenhum blob histórico de .sh/.bash pode ter CRLF ──────
+      # Exit 1 do wrapper = CRLF encontrado no histórico → job falha.
+      - name: Auditar blobs CRLF em todo o histórico
+        run: |
+          bash scripts/audit-blob-crlf-history.sh
+
+      # ── Unit test do parser --all-text (Python direto) ─────────────
+      # python3 pré-instalado no runner (zero deps, unittest stdlib): trava
+      # o parse do load_all_text_patterns com um .gitattributes FAKE em
+      # memória (comentário, espaçamento múltiplo, 'eol=lf text' invertido,
+      # '*.MD' maiúsculo, binary/text=auto, nomes exatos sem extensão) —
+      # além dos testes de integração vitest, que só exercitam o parser via
+      # fixture de repo git real. Onde o audit roda, o parser é testado.
+      - name: Testar parser load_all_text_patterns (unittest)
+        run: python3 scripts/test_audit_blob_crlf_history.py -v
+
+      - name: Summary
+        run: echo "✅ Zero-CRLF no histórico revalidado (audit de todos os blobs .sh/.bash)."
+
+  # ── All-Text Alert Validation (fixture → audit → gate) ────────────────
+  # Prova o fluxo do job semanal blob-crlf-all-text-alert (benchmark-weekly.yml)
+  # ponta-a-ponta em CADA PR, sem depender do cron: cria fixtures git reais
+  # (o mesmo procedimento do docs/TESTING.md automatizado por
+  # scripts/validate-all-text-alert.sh), roda o REPORT --all-text e replica o
+  # gate do job (grep -Fq 'com CRLF' → found_crlf). Falha se o sentinel NÃO
+  # aparecer com um blob CRLF commitado (guard cega) ou se aparecer no estado
+  # limpo (falso positivo). O contrato do job é travado em teste unitário
+  # (benchmark-weekly-all-text-crlf-workflow.test.ts) e a consistência
+  # produtor↔job pelo check-sentinel-producer.mjs — mas nenhum RODA o audit
+  # contra um blob CRLF real. Bash + git + python3 (pré-instalados), <5s.
+  all-text-alert-validation:
+    name: All-text alert validation (fixture → gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate all-text alert fixture + gate replica
+        run: bash scripts/validate-all-text-alert.sh
+
+      - name: Summary
+        run: echo "✅ All-text alert gate catches a CRLF blob and ignores a clean history."
   # Fast gate: falha o PR se qualquer .env voltar a ser rastreado pelo git
   # (padrão dos demais guards — node puro, sem bun install; roda em <5s em
   # paralelo com os demais checks).
@@ -104,6 +171,38 @@ jobs:
 
       - name: Summary
         run: echo "✅ No dangling references between workflows and scripts/package.json."
+
+  # ── Sentinel Producer Guard ────────────────────────────────────────────
+  # Fast gate (node puro, <1s): GENERALIZA a consistência produtor↔job de
+  # sentinels — verifica que TODO `grep -Fq '<sentinel>' <file>` nos
+  # workflows (e actions) tem o sentinel emitido pelo PRODUTOR do <file>
+  # (script .sh/.mjs/.ts/.py, com chase de delegação .sh→.py — ex.:
+  # audit-blob-crlf-history.sh → audit_blob_crlf_history.py) OU inline no
+  # próprio workflow (echo "S" > file).
+  #
+  # Por que existe: o teste específico do sentinel 'com CRLF'
+  # (benchmark-weekly-all-text-crlf-workflow.test.ts) bloqueava o drift
+  # daquele ÚNICO sentinel — mas um FUTURO grep -Fq adicionado a um
+  # workflow SEM o produtor emitir a string criaria uma guarda CEGA
+  # (found_* nunca acende; 'não achou' vira falso positivo de 'limpo') sem
+  # nenhum teste novo por sentinel. Este guard cobre TODOS os sentinels
+  # automaticamente: se o produtor reformular a frase (ou um grep novo
+  # apontar para string que o script não emite), o PR falha no início com
+  # workflow:linha, o sentinel e o produtor.
+  #
+  # CI-only (espelha o workflow-refs-guard — não entra nos hooks, pois a
+  # tabela de simetria do README é de encoding guards). Node puro, sem deps.
+  sentinel-producer-guard:
+    name: Sentinel Producer Guard (grep -Fq ↔ produtor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check every grep -Fq sentinel has a matching producer
+        run: node scripts/check-sentinel-producer.mjs
+
+      - name: Summary
+        run: echo "✅ All workflow grep -Fq sentinels are emitted by their producer scripts."
 
   # ── No setup-bun Guard ────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se qualquer workflow voltar a usar
@@ -178,25 +277,69 @@ jobs:
       - name: Summary
         run: echo "✅ No stale bun cache keys/literals introduced by this PR diff."
 
-  # ── Bun Literal Mutation Guard ───────────────────────────────────────
-  # Prova que o check-bun-mirror REALMENTE pega regressões de drift: num
-  # repo fixture temporário, confirma que o guard passa com a fonte única
-  # (${{ vars.BUN_VERSION }}) e depois MUTA para um literal (bun-version:
-  # 1.3.14), exigindo FALHA (exit 1) pela asserção do literal. Se o guard
-  # passar com o literal (exit 0), está CEGO — uma checagem foi
-  # removida/enfraquecida — e o job falha (exit 1). Node-puro, <1s, sem
-  # docker (espelho do mutation-seed-dev-e2e para o guard do Bun).
-  bun-literal-mutation-guard:
-    name: Bun literal mutation guard
+  # ── Mutation Guards MASTER (consolidado) ────────────────────────────
+  # Roda os 5 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
+  # scripts granulares (que continuam sendo a fonte única de
+  # fixtures/mutações/asserções de cada guard):
+  #   bun-literal    → test-mutation-bun-literal.sh
+  #                    (bun-version LITERAL em workflow deve FALHAR)
+  #   bun-removal    → test-mutation-bun-removal.sh
+  #                    (REMOÇÃO do input bun-version --staged deve FALHAR)
+  #   hooks-symmetry → test-mutation-hooks-symmetry.sh
+  #                    (guard novo no pre-commit + linha stale devem FALHAR)
+  #   readme         → test-mutation-readme-guards.sh (matriz ANINHADA:
+  #                    anchors + toc + images — 1 sub-test, sem re-rodada)
+  #   utf8-scope     → test-mutation-utf8-scope.sh
+  #                    (call site sem src/ deve FALHAR)
+  # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
+  # completo do script granular + verdict por sub-test + tabela final —
+  # granularidade de diagnóstico preservada. Exit final agregado: 0 se
+  # TODOS passarem, 1 se QUALQUER sub-test falhar (guard cego / asserção
+  # quebrada).
+  #
+  # ANTES eram 5 jobs (bun-literal + bun-removal + hooks-symmetry + readme
+  # + utf8-scope), cada um com o overhead de setup do container/checkout —
+  # consolidar reduz o setup por job sem perder a granularidade
+  # (--scenario <id> roda um sub-test isolado para diagnóstico local).
+  # Node-puro, <6s total, sem docker.
+  mutation-guards:
+    name: Mutation guards master (5 node-pure mutation tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Mutation test — literal bun-version deve FALHAR
-        run: bash scripts/test-mutation-bun-literal.sh
+      - name: Mutation tests — todos os guards devem FALHAR nas mutações
+        run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ Bun guard detects literal version drift (mutation test passed)."
+        run: echo "✅ All 5 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README, UTF-8 escopo)."
+
+  # ── Hooks Symmetry Guard (dedicado) ─────────────────────────────────
+  # Fast gate (node puro, <1s): roda o guard REAL de simetria
+  # (scripts/check-hooks-symmetry.mjs — bidirecional) no PR, em paralelo com
+  # os demais fast gates.
+  #
+  # Por que dedicado: o mesmo guard também roda no reusable utf8-check.yml
+  # (chamado por ci/deploy/e2e-cache/release-deploy), mas o PR-check só
+  # chamava o mutation test (que prova SENSIBILIDADE do guard em repo
+  # fixture) — o guard REAL nunca era executado contra o working tree do PR
+  # (o job inline utf8-check roda apenas check-utf8.sh). Um PR que quebre a
+  # tabela '## Git Hooks' do README (forward: guard nos hooks sem linha, ou
+  # reverse: linha stale sem guard real) passaria no CI. Este job fecha o
+  # ciclo: detecção end-to-end (guard real) + prova de sensibilidade
+  # (mutation test) no mesmo workflow.
+  hooks-symmetry-guard:
+    name: Hooks Symmetry Guard (README ↔ hooks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check README Git Hooks table ↔ real hooks (bidirectional)
+        run: node scripts/check-hooks-symmetry.mjs
+
+      - name: Summary
+        run: echo "✅ README '## Git Hooks' table in sync with .husky/* + run-encoding-guards.sh."
 
   # ── Tier-1 Fastpath Guard (PR, paths) ───────────────────────────────
   # Gate OPCIONAL (dry, sem cron): detecta regressão do tier-1 fast path
@@ -821,5 +964,11 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
+      # ── Unit tests ──────────────────────────────────────────────────
+      # Cobertura do contrato de escopo CRLF revalidada a CADA PR: o glob
+      # do test:unit (src/**/*.test.{ts,tsx}) inclui check-blob-crlf.test.ts
+      # (12 testes — blob CRLF via hash-object --literally, --fix, e o
+      # contrato de escopo .ts-fora) e check-crlf.test.ts. O job dedicado
+      # blob-crlf-history-audit (acima) cobre o zero-CRLF do histórico.
       - name: Unit tests
         run: bun run test:unit

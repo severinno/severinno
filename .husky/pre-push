@@ -1,8 +1,13 @@
 set -euo pipefail
 
-# 10 guards de encoding/CI compartilhados com o pre-commit (fonte única —
+# 15 guards de encoding/CI compartilhados com o pre-commit (fonte única —
 # adicionar um guard novo = editar scripts/run-encoding-guards.sh em UM lugar)
 bash scripts/run-encoding-guards.sh
+
+# CLI tests dos guards (check-bun-mirror, e2e-counts, workflow-refs, badge) —
+# spawnam as CLIs reais via child_process; rápidos e rodam SEMPRE, como os
+# encoding guards (independem do smart-skip de source files)
+bun run test:guards
 
 # ── Smart skip: só roda testes se arquivos-fonte foram alterados ──────────
 # Determina quais arquivos mudaram em relação ao upstream ou commit anterior

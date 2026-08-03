@@ -52,12 +52,19 @@
 //      'next-' entra como { prefix: "next", version: "15", paths: [".next"] },
 //      forçando next-15-... na key E o path .next no bloco.
 //   7b. TODO bloco actions/cache com key de toolchain configurada FECHA o
-//      par key↔path: o `path:` declarado precisa casar com a toolchain da
-//      key (bun → node_modules / ~/.bun; prisma → node_modules/.prisma +
-//      node_modules/@prisma/client). Um path de OUTRA toolchain (ex.:
-//      node_modules/.prisma com key bun-...) ou um path desconhecido é
+//      par key↔path (nas DUAS direções): o `path:` declarado precisa casar
+//      com a toolchain da key (bun → node_modules / ~/.bun; prisma →
+//      node_modules/.prisma + node_modules/@prisma/client), E o
+//      `restore-keys:` também — um restore-keys com prefixo de OUTRA
+//      toolchain configurada (ex.: key bun-... + restore-keys prisma-...)
+//      buscaria o cache da toolchain errada. Um path de OUTRA toolchain
+//      (ex.: node_modules/.prisma com key bun-...) ou um path desconhecido é
 //      VIOLAÇÃO — a key sem o path certo quebraria o cache (restore de
-//      toolchain errada).
+//      toolchain errada). No modo --staged, a REMOÇÃO do path:/key: de um
+//      bloco actions/cache que SOBREVIVE no novo arquivo é violação de
+//      regressão (checkStagedRemovedCacheBlockFields) — espelha o
+//      checkStagedRemovedBunVersion: remover o path/key deixa o bloco sem o
+//      par key↔path, quebrando o cache no restore.
 //   8. NENHUM literal de versão do Bun nos workflows (bun-version: 1.3.14,
 //      BUN_VERSION: "1.3.14", bun-1.3.14-...) — o guard caça versões
 //      hardcoded para que a variável continue sendo a única fonte.
@@ -66,12 +73,21 @@
 //  10. (modo --staged) Cache keys, literais e CALL SITES do setup-bun
 //      INTRODUZIDOS pelo diff em questão (git diff --cached local, ou PR
 //      base...HEAD no CI) seguem a fonte única — uma key antiga
-//      (bun-1.3.14-...) ou um call site sem bun-version adicionado pelo
-//      próprio PR falha antes do merge, mesmo que o working tree global já
-//      esteja certo. Só linhas ADICIONADAS (+ no diff) são avaliadas —
-//      violações pré-existentes do base não poluem o PR (no call site, o
-//      bun-version pode estar numa linha de CONTEXTO — ex.: migração de
-//      oven-sh/setup-bun@v2 — por isso o check usa o parser rico).
+//      (bun-1.3.14-...), uma key de OUTRA toolchain configurada (ex.:
+//      next-14-... se 'next' entrar no DEFAULT_CACHE_KEY_RULES) ou um call
+//      site sem bun-version adicionado pelo próprio PR falha antes do merge,
+//      mesmo que o working tree global já esteja certo. Só linhas ADICIONADAS
+//      (+ no diff) são avaliadas — violações pré-existentes do base não
+//      poluem o PR (no call site, o bun-version pode estar numa linha de
+//      CONTEXTO — ex.: migração de oven-sh/setup-bun@v2 — por isso o check
+//      usa o parser rico).
+//      REGRESSÃO INVERSA (checkStagedRemovedLiterals): um literal REMOVIDO
+//      pelo diff (linha `-` — o PR está migrando aquele literal para a fonte
+//      única) com OUTRO literal SOBREVIVENTE na mesma região (janela
+//      CACHE_BLOCK_WINDOW) é violação — a migração ficou incompleta: o PR
+//      tocou a família de literais mas deixou um para trás. O checkStagedLiterals
+//      (só linhas +) não pega um literal de CONTEXTO; este check espelha o
+//      checkStagedRemovedCacheBlockFields para a família de literais.
 //  11. TODO call site do setup-bun passa `bun-version: ${{ vars.BUN_VERSION }}`
 //      (omitir o input ou usar literal é violação — sem ele o action falha
 //      em runtime com mensagem confusa). No modo --staged, call sites cuja
@@ -110,6 +126,19 @@ export const CALL_SITE_WINDOW = 6
  * (checkStagedCachePaths), sem drift entre as duas janelas.
  */
 export const CACHE_BLOCK_WINDOW = 14
+
+/**
+ * Contexto de linhas pedido ao `git diff` (flag -U) no modo --staged/--base.
+ * O default do git é 3 linhas — INSUFICIENTE para os checks de REMOÇÃO com
+ * janela (checkStagedRemovedLiterals, checkStagedRemovedCacheBlockFields,
+ * checkStagedRemovedBunVersion): um literal/path/input SOBREVIVENTE a poucas
+ * linhas de distância da mudança não apareceria no diff como contexto e o
+ * check não o enxergaria (falso negativo — a migração incompleta passaria
+ * despercebida). -U20 garante que QUALQUER linha dentro da janela
+ * CACHE_BLOCK_WINDOW (14) ao redor de uma mudança esteja visível no diff,
+ * tanto antes (sobreviventes que precedem a remoção) quanto depois.
+ */
+export const DIFF_CONTEXT = 20
 
 /**
  * Regex de detecção da linha `uses: actions/cache` — casa AMBAS as formas
@@ -289,28 +318,40 @@ export function extractCacheKeyPrefix(keyValue) {
 
 /**
  * Parseia as linhas do bloco `with:` de um actions/cache (após a linha
- * `uses: actions/cache`) e extrai os paths declarados e o prefixo da key.
- * Suporta `path:` simples (ex.: 'path: node_modules') e multi-linha
- * ('path: |' seguido de linhas mais indentadas — ex.: prisma client).
+ * `uses: actions/cache`) e extrai os paths declarados, o prefixo da key E os
+ * prefixos dos restore-keys. Suporta `path:` simples (ex.: 'path:
+ * node_modules') e multi-linha ('path: |' seguido de linhas mais indentadas
+ * — ex.: prisma client) — e o mesmo para `restore-keys: |` (lista de
+ * fallbacks, cada linha um prefixo próprio). O restore-keys é lido para o
+ * checkCachePathBlock fechar o par key↔path TAMBÉM na direção do restore
+ * (ex.: key bun + restore-keys prisma = inconsistência).
  *
- * @param {string[]} blockLines  linhas do bloco (incluindo with:/path:/key:)
- * @returns {{ paths: string[], keyPrefix: string|null }}
+ * @param {string[]} blockLines  linhas do bloco (incluindo with:/path:/key:/restore-keys:)
+ * @returns {{ paths: string[], keyPrefix: string|null, restorePrefixes: string[] }}
  */
 export function parseCacheBlock(blockLines) {
   const paths = []
+  const restorePrefixes = []
   let keyPrefix = null
   let multiIndent = -1
+  let multiKind = null // "path" | "restore" — qual campo multi-linha está sendo coletado
   for (const line of blockLines) {
     const indent = line.match(/^\s*/)[0].length
     const trimmed = line.trim()
     if (trimmed === "" || trimmed.startsWith("#")) continue
     if (multiIndent >= 0) {
-      // coleciona linhas MAIS indentadas que o `path: |` — até a indentação
-      // voltar ao nível da key (mesmo nível do path:)
+      // coleciona linhas MAIS indentadas que o `path: |` / `restore-keys: |`
+      // — até a indentação voltar ao nível do campo (mesmo nível do path:)
       if (indent <= multiIndent) {
         multiIndent = -1
+        multiKind = null
       } else {
-        paths.push(trimmed)
+        if (multiKind === "path") {
+          paths.push(trimmed)
+        } else if (multiKind === "restore") {
+          const p = extractCacheKeyPrefix(trimmed)
+          if (p) restorePrefixes.push(p)
+        }
         continue
       }
     }
@@ -319,6 +360,7 @@ export function parseCacheBlock(blockLines) {
       const v = pathM[1].trim()
       if (v === "|" || v === ">" || v === ">-") {
         multiIndent = indent
+        multiKind = "path"
         continue
       }
       paths.push(v.replace(/^["']|["']$/g, ""))
@@ -327,20 +369,35 @@ export function parseCacheBlock(blockLines) {
     const keyM = line.match(/^\s*key:\s*(.+?)\s*$/)
     if (keyM) {
       keyPrefix = extractCacheKeyPrefix(keyM[1].trim())
+      continue
+    }
+    const restM = line.match(/^\s*restore-keys:\s*(.+?)\s*$/)
+    if (restM) {
+      const v = restM[1].trim()
+      if (v === "|" || v === ">" || v === ">-") {
+        multiIndent = indent
+        multiKind = "restore"
+        continue
+      }
+      const p = extractCacheKeyPrefix(v)
+      if (p) restorePrefixes.push(p)
     }
   }
-  return { paths, keyPrefix }
+  return { paths, keyPrefix, restorePrefixes }
 }
 
 /**
  * Valida UM bloco actions/cache (linhas após o `uses:`) contra as regras —
- * FECHA o par key↔path:
+ * FECHA o par key↔path (nas DUAS direções: path E restore-keys):
  *   - a key tem prefixo de toolchain configurada → o bloco DEVE declarar
  *     pelo menos um path daquela toolchain;
  *   - um path declarado que pertence a OUTRA toolchain (ex.:
  *     node_modules/.prisma com key bun-...) é violação;
  *   - um path desconhecido de TODAS as toolchains com key configurada é
  *     violação (não é um path da toolchain);
+ *   - um restore-keys com prefixo de OUTRA toolchain CONFIGURADA (ex.: key
+ *     bun-... + restore-keys prisma-...) é violação — o restore buscaria o
+ *     cache da toolchain errada; prefixos desconhecidos não têm contrato;
  *   - regra sem `paths` (toolchain custom) → só valida a key (não o path).
  *
  * @param {string} file         nome do arquivo
@@ -351,17 +408,34 @@ export function parseCacheBlock(blockLines) {
  */
 export function checkCachePathBlock(file, usesLineNo, blockLines, rules) {
   if (rules.length === 0) return []
-  const { paths, keyPrefix } = parseCacheBlock(blockLines)
+  const { paths, keyPrefix, restorePrefixes } = parseCacheBlock(blockLines)
   if (!keyPrefix) return [] // sem key reconhecível — o check de key/literal já cobre
   const rule = rules.find((r) => r.prefix === keyPrefix)
   if (!rule) return [] // toolchain não configurada — nada a validar
   const expected = rule.paths || []
   const violations = []
 
+  // ── 0º: restore-keys de OUTRA toolchain → inconsistência do par (direção
+  // do restore) — ex.: key bun-... + restore-keys prisma-... restaura o cache
+  // da toolchain errada. Só prefixos de toolchains CONFIGURADAS são
+  // reportados (um restore-keys com prefixo desconhecido não tem contrato).
+  const foreignRestores = [
+    ...new Set(restorePrefixes.filter((p) => p !== keyPrefix && rules.some((r) => r.prefix === p))),
+  ]
+  if (foreignRestores.length > 0) {
+    violations.push(
+      `${file}:${usesLineNo}: restore-keys '${foreignRestores
+        .map((p) => `${p}-...`)
+        .join(
+          ", ",
+        )}' de OUTRA toolchain — feche o par key↔path (restore-keys deve casar com a toolchain '${keyPrefix}-...' da key)`,
+    )
+  }
+
   // Regra custom SEM paths (ex.: { prefix: "next", version: "15" }) → valida
   // só a key (checkCacheKeys), nunca o path — sem paths declarados não há
-  // contrato de path a impor.
-  if (expected.length === 0) return []
+  // contrato de path a impor. A violação do restore-keys (0º) ainda vale.
+  if (expected.length === 0) return violations
 
   if (paths.length === 0) {
     violations.push(
@@ -398,8 +472,9 @@ export function checkCachePathBlock(file, usesLineNo, blockLines, rules) {
   }
 
   // 2º: nenhum path de outra toolchain — passa se PELO MENOS UM path da
-  // toolchain da key existir (multi-path parcial é ok).
-  if (paths.some((p) => expected.includes(p))) return []
+  // toolchain da key existir (multi-path parcial é ok). Se o restore-keys já
+  // gerou violação (0º), ela é preservada mesmo com paths corretos.
+  if (paths.some((p) => expected.includes(p))) return violations
 
   // 3º: path desconhecido de TODAS as toolchains com key configurada → violação.
   violations.push(
@@ -698,9 +773,12 @@ export function parseDiffAddedLines(diffText) {
 
 /**
  * Checa as cache keys das linhas ADICIONADAS de um diff (git diff --cached
- * local, ou PR base...HEAD no CI) contra as regras — detecta keys antigas
- * (ex.: bun-1.3.14-...) introduzidas PELO PR antes do merge, mesmo que o
- * working tree global já esteja migrado. Só linhas ADICIONADAS são
+ * local, ou PR base...HEAD no CI) contra TODAS as toolchains configuradas
+ * (rules — o DEFAULT_CACHE_KEY_RULES é a fonte: hoje bun + prisma, mas
+ * qualquer { prefix, version } adicionado à lista vale TAMBÉM no staged, ex.:
+ * um futuro 'next' com version '15') — detecta keys antigas (ex.:
+ * bun-1.3.14-... ou next-14-...) introduzidas PELO PR antes do merge, mesmo
+ * que o working tree global já esteja migrado. Só linhas ADICIONADAS são
  * avaliadas — violações pré-existentes do base não poluem o PR.
  *
  * @param {string} diffText  saída de git diff
@@ -867,6 +945,139 @@ export function checkStagedRemovedBunVersion(diffText) {
 }
 
 /**
+ * Checa a REMOÇÃO do path: OU da key: de blocos actions/cache nas linhas de
+ * um diff — a regressão OPOSTA à do checkStagedCachePaths: um bloco que
+ * SOBREVIVE no arquivo novo (linha `uses: actions/cache` presente como
+ * contexto OU adicionada) mas que PERDEU o `path:` ou a `key:` — o campo foi
+ * REMOVIDO pelo PR (linha `-` no diff). Sem este check, remover o path/key
+ * de um bloco pré-existente passaria no guard: o check de adição só avalia
+ * blocos cuja linha `uses:` foi ADICIONADA.
+ *
+ * NÃO reporta quando:
+ *   - o bloco INTEIRO foi removido (a linha `uses:` também é `-` — o step
+ *     deixou de existir, não há contrato a impor);
+ *   - um `path:`/`key:` SOBREVIVE na janela (adicionado ou contexto) — ex.:
+ *     troca de path node_modules → node_modules/.prisma (a linha antiga é
+ *     `-`, a nova é `+`) — o bloco TROCOU o valor, não perdeu o campo.
+ *
+ * O `restore-keys:` NÃO é alvo: ele é opcional por natureza (fallback do
+ * cache) — remover restore-keys não quebra o par key↔path; só path/key são
+ * obrigatórios para o restore funcionar.
+ *
+ * LIMITAÇÃO (intencional): a REMOÇÃO só é detectada na linha `path:` em si —
+ * remover apenas as sub-linhas indentadas de um `path: |` sobrevivente
+ * (deixando `path: |` sem filhos, i.e. lista vazia de paths) escapa do
+ * check, pois nenhuma linha REMOVIDA com prefixo `path:` existe na janela
+ * para disparar a detecção (o header `path: |` sobrevive e não casa o
+ * regex de remoção). Diferente do parseCacheBlock global, que coleta os
+ * filhos indentados e detectaria a lista vazia como 'SEM path declarado' —
+ * o scan de remoção é por linha-cabeçalho. Se um dia essa variante
+ * aparecer, ampliar o regex para também exigir pelo menos um filho
+ * indentado após um `path: |` removido.
+ * @param {string} diffText  saída de git diff
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkStagedRemovedCacheBlockFields(diffText) {
+  const violations = []
+  for (const [file, lines] of parseDiffLines(diffText)) {
+    for (let i = 0; i < lines.length; i++) {
+      const { lineNo, content, removed } = lines[i]
+      // âncora: bloco actions/cache que SOBREVIVE no novo arquivo (uses
+      // presente — contexto ou adicionado). `uses:` REMOVIDO = bloco inteiro
+      // removido (step deletado) — sem contrato a impor.
+      if (removed) continue
+      if (content.trim() === "" || content.trim().startsWith("#")) continue
+      if (!content.match(CACHE_USES_RE)) continue
+
+      // Janela seguinte (mesma do checkStagedCachePaths) — procura um
+      // `path:`/`key:` REMOVIDO e, na MESMA janela, um SOBREVIVENTE.
+      const following = []
+      for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CACHE_BLOCK_WINDOW; j++) {
+        following.push(lines[j])
+      }
+
+      // path removido sem path sobrevivente na janela → bloco sem path
+      const removedPath = following.find((l) => l.removed && /^\s*path:/.test(l.content))
+      if (removedPath) {
+        const survivingPath = following.some((l) => !l.removed && /^\s*path:/.test(l.content))
+        if (!survivingPath) {
+          violations.push(
+            `${file}:${removedPath.lineNo}: REMOÇÃO do campo path: do bloco actions/cache (uses: linha ${lineNo}) — o bloco SOBREVIVEU sem path; declare um dos paths da toolchain (ex.: node_modules) do par key↔path`,
+          )
+        }
+      }
+
+      // key removida sem key sobrevivente na janela → bloco sem key
+      const removedKey = following.find((l) => l.removed && /^\s*key:/.test(l.content))
+      if (removedKey) {
+        const survivingKey = following.some((l) => !l.removed && /^\s*key:/.test(l.content))
+        if (!survivingKey) {
+          violations.push(
+            `${file}:${removedKey.lineNo}: REMOÇÃO do campo key: do bloco actions/cache (uses: linha ${lineNo}) — o bloco SOBREVIVEU sem key; adicione de volta a key da toolchain (ex.: bun-${BUN_VERSION_VAR}-...) do par key↔path`,
+          )
+        }
+      }
+    }
+  }
+  return violations
+}
+
+/**
+ * Checa a migração INCOMPLETA de literais nas linhas de um diff — a
+ * regressão OPOSTA à do checkStagedLiterals (que só vê linhas ADICIONADAS):
+ * um literal (bun-version: 1.3.14, BUN_VERSION: "1.3.14", bun-1.3.14-...)
+ * REMOVIDO pelo diff (linha `-`) — o PR está migrando aquele literal para a
+ * fonte única — enquanto OUTRO literal SOBREVIVE na mesma região (linha de
+ * contexto ou adicionada, dentro da janela) — a migração ficou pela METADE:
+ * o PR tocou a família de literais (removeu um) mas deixou outro para trás.
+ *
+ * Por que o checkStagedLiterals não basta: ele só avalia linhas ADICIONADAS
+ * (+ no diff). Um bun-version literal que SOBREVIVE como CONTEXTO (não foi
+ * adicionado pelo PR) escapa dele — e o PR claramente está migrando a região
+ * (removeu a key literal ao lado), então o sobrevivente é um ponto esquecido.
+ *
+ * NÃO reporta quando:
+ *   - NENHUM literal foi removido (um literal pré-existente de contexto, sem
+ *     atividade de migração na região, não é responsabilidade do PR);
+ *   - o literal removido e o sobrevivente estão LONGES (fora da janela
+ *     CACHE_BLOCK_WINDOW) — sem evidência de que são a MESMA migração;
+ *   - o bloco/step INTEIRO foi removido (sem literal sobrevivente na região).
+ *
+ * @param {string} diffText  saída de git diff
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkStagedRemovedLiterals(diffText) {
+  const violations = []
+  for (const [file, lines] of parseDiffLines(diffText)) {
+    for (let i = 0; i < lines.length; i++) {
+      const anchor = lines[i]
+      // âncora: literal REMOVIDO pelo diff (linha `-`) — o PR está migrando
+      if (!anchor.removed) continue
+      if (anchor.content.trim() === "" || anchor.content.trim().startsWith("#")) continue
+      if (checkLiteralBunLine(file, anchor.lineNo, anchor.content) === null) continue
+
+      // região (mesma janela do cache block) em AMBAS as direções — um
+      // literal SOBREVIVENTE na região = migração incompleta
+      const surviving = lines.find(
+        (l, j) =>
+          j !== i &&
+          !l.removed &&
+          Math.abs((l.lineNo ?? anchor.lineNo) - anchor.lineNo) <= CACHE_BLOCK_WINDOW &&
+          l.content.trim() !== "" &&
+          !l.content.trim().startsWith("#") &&
+          checkLiteralBunLine(file, l.lineNo ?? anchor.lineNo, l.content) !== null,
+      )
+      if (!surviving) continue
+
+      violations.push(
+        `${file}:${surviving.lineNo}: literal do Bun SOBREVIVE ao lado de literal REMOVIDO (linha ${anchor.lineNo}) — migração incompleta para a fonte única ${BUN_VERSION_VAR}; remova o literal sobrevivente ou migre para a variável`,
+      )
+    }
+  }
+  return violations
+}
+
+/**
  * Valida que um ref de git passado via --base é um nome de ref SEGURO
  * (charset refname do git + operadores de revisão: letras, dígitos, ., _, /,
  * -, ~ e ^ — ex.: origin/main, HEAD~1, v1.0^2). Proteção contra
@@ -890,14 +1101,19 @@ export function isValidGitRef(ref) {
  * exit code). Usa execFileSync (array de args, SEM shell) — sem risco de
  * injeção a partir do valor de --base.
  *
+ * Passa `-U${DIFF_CONTEXT}` para EXPANDIR o contexto do diff além do
+ * default de 3 linhas — requisito dos checks de REMOÇÃO com janela (ver
+ * DIFF_CONTEXT): um literal/path/input sobrevivente fora do contexto de 3
+ * linhas não apareceria no diff e a regressão passaria despercebida.
+ *
  * @param {string|null} base  ref base (ex.: "origin/main"); null = staged
  * @returns {string|null} texto do diff ou null (infra failure)
  */
 export function gitDiffWorkflows(base) {
   if (base !== null && !isValidGitRef(base)) return null
   const args = base
-    ? ["diff", `${base}...HEAD`, "--", ".github/workflows"]
-    : ["diff", "--cached", "--", ".github/workflows"]
+    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", ".github/workflows"]
+    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", ".github/workflows"]
   try {
     return execFileSync("git", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 })
   } catch {
@@ -1018,14 +1234,16 @@ function main() {
       ...checkStagedSetupBunCallSites(diffText),
       ...checkStagedRemovedBunVersion(diffText),
       ...checkStagedCachePaths(diffText, DEFAULT_CACHE_KEY_RULES()),
+      ...checkStagedRemovedCacheBlockFields(diffText),
+      ...checkStagedRemovedLiterals(diffText),
     ]
     if (violations.length > 0) {
       console.error(
-        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site/remoção de input/par key↔path do Bun:\n`,
+        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site/remoção de input/remoção de path-key/par key↔path do Bun:\n`,
       )
       for (const v of violations) console.error(`   - ${v}`)
       console.error(
-        `\n   Cache keys, literais, call sites, pares key↔path introduzidos por este diff precisam usar a` +
+        `\n   Cache keys, literais, call sites e pares key↔path introduzidos por este diff precisam usar a` +
           `\n   fonte única ${BUN_VERSION_VAR} — um literal (bun-1.3.14-...) não seria` +
           `\n   invalidado pela troca da variável, e um path de outra toolchain` +
           `\n   (ex.: node_modules/.prisma com key bun-...) quebraria o cache. E` +

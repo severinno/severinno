@@ -342,6 +342,84 @@ jobs:
           path: /tmp/bench-setup-bun.json
           if-no-files-found: ignore
 
+  # ── Act startup bench (semanal) ──────────────────────────────────────
+  # Revalida SEMANALMENTE que o fast path (tier-1) da imagem custom
+  # ubuntu-bun continua compensando: roda o act-startup-bench.sh (5 runs do
+  # secrets-guard × 2 imagens — catthehacker default vs ubuntu-bun custom)
+  # com --assert-pct 30 e FALHA se a custom exceder a baseline catthehacker
+  # em mais de 30% de startup. O pr-check mede CORREÇÃO, não performance —
+  # se o startup da custom regredir silenciosamente (imagem inchou, base
+  # mudou, bump de BUN_VERSION com re-sync mais pesado), o tier-1 continua
+  # FUNCIONANDO — só fica mais lento — e nenhum guard de correção percebe.
+  # Este guard é a rede de segurança periódica do fast path a cada bump.
+  #
+  # O act roda DENTRO do runner (docker disponível): baixamos o binário
+  # Linux do release v0.2.89 (mesma versão da validação local — o default
+  # do script é o act.exe do Windows; ACT_BIN aponta para o Linux) e puxamos
+  # as DUAS imagens antes (o act usa --pull=false — sem re-download por
+  # run). A tag da custom vem de vars.BUN_VERSION (fonte única) via --image.
+  act-startup-bench:
+    name: Act startup bench (delta 30%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      # ── act Linux (v0.2.89 — mesma da validação local no Windows) ────
+      # O script aceita ACT_BIN para apontar para um binário alternativo;
+      # sem ele, tenta tool-results/act/act.exe (não existe no runner).
+      - name: Baixar act (Linux)
+        run: |
+          mkdir -p "$RUNNER_TEMP/act-bin"
+          curl -fsSL -o /tmp/act.tar.gz \
+            https://github.com/nektos/act/releases/download/v0.2.89/act_Linux_x86_64.tar.gz
+          tar -xzf /tmp/act.tar.gz -C "$RUNNER_TEMP/act-bin"
+          "$RUNNER_TEMP/act-bin/act" --version
+
+      # ── Imagens locais (o act roda --pull=false) ─────────────────────
+      # A custom segue a fonte única vars.BUN_VERSION — o pull falha cedo
+      # se o mirror ubuntu-bun não foi re-sincronizado após o bump.
+      - name: Puxar imagens do bench
+        run: |
+          docker pull catthehacker/ubuntu:act-latest
+          docker pull ghcr.io/severinno/ubuntu-bun:${{ vars.BUN_VERSION }}
+
+      # ── GATE: startup da custom dentro de +30% da baseline ───────────
+      # --image explicita as DUAS imagens (a 1ª = baseline = catthehacker);
+      # --assert-pct 30 falha o job se a custom exceder a baseline em >30%
+      # (warm-med). 5 runs por imagem (default do script) ~ 5-10 min.
+      # O log é capturado (tee) — a tabela de delta vira artifact quando o
+      # assert falha, para debug da regressão (mesma simetria do setup-bun-warm).
+      - name: Bench startup act (assert delta 30%)
+        env:
+          ACT_BIN: "${{ runner.temp }}/act-bin/act"
+        run: |
+          # pipefail EXPLÍCITO (o default do runner já o liga, mas o contrato
+          # fica auto-documentado e imune a um override futuro de shell): o
+          # tee é o último do pipe — sem pipefail, o exit 0 do tee mascararia
+          # a falha do bun run/assert e o job passaria falso-positivo.
+          set -eo pipefail
+          bun run bench:act-startup --assert-pct 30 \
+            --image "catthehacker|catthehacker/ubuntu:act-latest" \
+            --image "ubuntu-bun|ghcr.io/severinno/ubuntu-bun:${{ vars.BUN_VERSION }}" \
+            2>&1 | tee /tmp/act-startup-bench.log
+
+      # ── Evidência como artifact (debug de falhas) ────────────────────
+      # Tabela de delta completa do bench — útil quando a asserção 30%
+      # dispara: mostra run-a-run + cold/warm de ambas as imagens.
+      - name: Upload bench log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: act-startup-bench
+          path: /tmp/act-startup-bench.log
+          if-no-files-found: ignore
+
   # ── Blob CRLF history audit (semanal) ─────────────────────────────
   # Garante o zero-CRLF NO HISTÓRICO, não só no índice atual. O guard de
   # blob (check-blob-crlf.sh) inspeciona o index/HEAD — um blob CRLF
@@ -369,7 +447,135 @@ jobs:
         run: |
           bash scripts/audit-blob-crlf-history.sh
 
-      # ── .actrc ↔ vars.BUN_VERSION sync (semanal) ────────────────────────
+  # ── Blob CRLF all-text REPORT → alerta semanal de ALCANCE ───────────
+  # O modo --all-text do audit é REPORT (exit 0 SEMPRE — CRLF em .md/.ts/
+  # .yml não quebra toolchain; prettier normaliza). O job usa o REPORT para
+  # MAPEAR o alcance real de CRLF em blobs commitados antes do
+  # .gitattributes e, como ALERTA PERIÓDICO, grepa o output por
+  # 'com CRLF' — se o mapeamento revelar CRLF em qualquer tipo com eol=lf,
+  # o job falha com aviso claro (vira incidente visível no Actions antes de
+  # afetar checkouts futuros), em vez de um mapeamento silencioso.
+  #
+  # DIFERENÇA vs o job blob-crlf-history-audit (GATE .sh/.bash): este
+  # audita os tipos do .gitattributes com 'text eol=lf' (--all-text — a
+  # lista é DERIVADA do arquivo em runtime, não hardcoded: um tipo novo
+  # adicionado ao .gitattributes entra automaticamente no alerta) e NÃO
+  # bloqueia o repo inteiro por um blob .md — falha só para chamar atenção
+  # ao escopo. Se o histórico estiver limpo, o sentinel 'com CRLF' não
+  # aparece e o job passa silenciosamente.
+  #
+  # Requer o histórico completo (fetch-depth: 0). Node/Bun não são
+  # necessários — só git + python3, como o job irmão acima.
+  blob-crlf-all-text-alert:
+    name: Blob CRLF all-text (alcance, aviso)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
+
+      # ── REPORT (--all-text): exit 0 sempre — o gatilho é o grep ──────
+      # A saída do report com achados contém 'N bloco(s) com CRLF no
+      # histórico' — o sentinel 'com CRLF' só existe nesse caso (o estado
+      # limpo imprime 'sem CRLF no histórico'). Fail if found → alerta.
+      - name: Auditar blobs CRLF em todos os tipos do .gitattributes (REPORT)
+        id: alltext
+        run: |
+          set +e
+          bash scripts/audit-blob-crlf-history.sh --all-text | tee all-text-report.txt
+          report_exit=${PIPESTATUS[0]}
+          set -e
+          echo "report_exit=$report_exit" >> "$GITHUB_OUTPUT"
+          if grep -Fq 'com CRLF' all-text-report.txt; then
+            echo "found_crlf=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found_crlf=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── ALERTA: achados no REPORT OU falha do audit → falha com aviso.
+      # O report_exit está no gate: exit 2 (erro de git / stream cat-file
+      # truncado) SEM o sentinel 'com CRLF' não pode passar como limpo —
+      # 'não achado' não é evidência de 'limpo' (mesma classe de falso
+      # positivo que o repo bloqueia em act-repro-setup-bun/STEP_MISSING).
+      - name: Alertar sobre CRLF ou falha do audit (--all-text)
+        if: steps.alltext.outputs.report_exit != '0' || steps.alltext.outputs.found_crlf == 'true'
+        run: |
+          if [ "${{ steps.alltext.outputs.report_exit }}" != "0" ]; then
+            echo "::error::Audit --all-text FALHOU (exit ${{ steps.alltext.outputs.report_exit }}) — 'não encontrou CRLF' em uma auditoria quebrada não é evidência de limpo; veja o log do passo anterior."
+          else
+            echo "::warning::CRLF encontrado no histórico em tipos além de .sh/.bash (veja all-text-report.txt)"
+            echo "::error::Alcance do CRLF cresceu — revise all-text-report.txt e decida a correção retroativa (README: Auditoria histórica)."
+          fi
+          exit 1
+
+      - name: Summary (histórico limpo em todos os tipos)
+        if: steps.alltext.outputs.report_exit == '0' && steps.alltext.outputs.found_crlf != 'true'
+        run: echo "✅ Nenhum CRLF no histórico em nenhum tipo do .gitattributes (--all-text)."
+
+      # ── Secret leaks baseline (semanal) ────────────────────────────────
+  # Revalida SEMANALMENTE que nenhum segredo NOVO entrou no histórico do
+  # git. O histórico JÁ tem vazamentos conhecidos (baseline commitado
+  # docs/security/secret-leaks-baseline.json — 141 achados em 2026-08; a
+  # remediação é filter-repo + rotação, operação deliberada, não CI). Este
+  # guard falha SOMENTE se achados NOVOS aparecerem (comparação por
+  # assinatura commit+file+line+id+key) — alertando sobre vazamentos
+  # futuros antes de virarem incidente.
+  #
+  # Node puro (sem bun/docker) — o audit usa git log -p --all + regex.
+  # Requer o histórico completo (fetch-depth: 0), como o blob-crlf-history.
+  # Baseline regenerável: node scripts/check-secret-leaks-baseline.mjs --update
+  secret-leaks-audit:
+    name: Secret leaks (baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # histórico completo — o audit varre git log -p --all
+
+      # ── GATE: nenhum achado NOVO além do baseline commitado ──────────
+      # Exit 1 = achados novos detectados → job falha (vazamento futuro).
+      - name: Auditar segredos no histórico vs baseline
+        run: node scripts/check-secret-leaks-baseline.mjs
+
+      - name: Summary
+        run: echo "✅ Nenhum segredo novo no histórico (baseline docs/security/secret-leaks-baseline.json)."
+
+  # ── README reverse semantic audit (semanal) ────────────────────────
+  # Revalida SEMANALMENTE que nenhum DRIFT SEMÂNTICO de links do README
+  # apareceu. O forward (link quebrado) já é gate no CI/hooks; o --reverse
+  # pega o caso que o forward NÃO vê: um link que RESOLVE mas aponta para o
+  # heading semanticamente errado (ex.: [CRLF Guard](#normalizador) com um
+  # heading 'Normalizador' existente). O pr-check NÃO roda --reverse (0
+  # falsos positivos é exigência de PR); este job é a rede de segurança
+  # periódica que alerta SEM bloquear PRs.
+  #
+  # Node puro (sem bun/docker) — o guard spawna check-readme-anchors.mjs
+  # --reverse --json e compara com o baseline commitado
+  # docs/security/readme-reverse-baseline.json. Falha SOMENTE em achados
+  # NOVOS (por assinatura file+slug+label — a linha NÃO participa: o README
+  # cresce e as linhas migram). Baseline regenerável:
+  # node scripts/check-readme-reverse-baseline.mjs --update
+  readme-reverse-audit:
+    name: README reverse semantics (baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── GATE: nenhum achado NOVO além do baseline commitado ──────────
+      # Exit 1 = drift semântico novo detectado → job falha (alerta).
+      - name: Auditar links do README (--reverse) vs baseline
+        run: node scripts/check-readme-reverse-baseline.mjs
+
+      - name: Summary
+        run: echo "✅ Nenhum drift semântico de links no README (baseline docs/security/readme-reverse-baseline.json)."
+
+  # ── .actrc ↔ vars.BUN_VERSION sync (semanal) ────────────────────────
   # Revalida SEMANALMENTE que o espelho LOCAL do act (.actrc) está em
   # sincronia com a repository variable BUN_VERSION do GitHub.
   #

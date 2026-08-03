@@ -286,6 +286,116 @@ SEED_SPEC_PATCH='[{"name":"Elétrica","renameTo":"Eletricidade"}]' \
 
 ---
 
+## Auditoria de CRLF no histórico — run manual do alerta (`--all-text`)
+
+O job semanal `blob-crlf-all-text-alert` do `benchmark-weekly.yml` roda o audit
+em modo **REPORT** (`--all-text` — exit 0 sempre, CRLF em tipos benignos não é
+gate) e **grepa o output pelo sentinel `'com CRLF'`**: se o mapeamento revelar
+CRLF em qualquer tipo `text eol=lf` do `.gitattributes`, o job falha com aviso
+(vira incidente visível no Actions em vez de mapeamento silencioso).
+
+> **🚀 Fluxo automatizado em 1 comando:** o procedimento completo abaixo
+> (fixture git real + REPORT + réplica do gate) está automatizado em
+> `scripts/validate-all-text-alert.sh` — roda no CI (job `all-text-alert-validation`
+> do `pr-check.yml`) e localmente:
+>
+> ```bash
+> bun run test:validate-all-text-alert
+> ```
+>
+> O script cria os dois fixtures (limpo + blob CRLF commitado antes do
+> `.gitattributes`), roda o `--all-text` contra cada um e replica o gate do
+> job (grep do sentinel) — **falha se o sentinel não aparecer no achado**
+> (guard cega) ou aparecer no limpo (falso positivo). O manual abaixo fica
+> como referência do mecanismo para debug/entendimento.
+
+Para validar o fluxo completo **sem depender do cron** (procedimento manual —
+a versão automatizada é o script acima):
+
+### 1. Estado normal (histórico limpo)
+
+```bash
+bun run audit:blob-crlf-history:all-text
+# → OK — N blobs únicos sem CRLF no histórico (rev-list --all; escopo: ...).  (exit 0)
+# O sentinel 'com CRLF' NÃO aparece → o job passaria silenciosamente.
+```
+
+### 2. Simular um achado (blob `.md` CRLF num repo fixture)
+
+O audit roda contra o diretório da env `CHECK_CRLF_ROOT` (default: a raiz do
+repo — o wrapper `scripts/audit-blob-crlf-history.sh` faz `cd` para ela). O
+fixture precisa ser um repo git REAL com `autocrlf=false` (para o blob guardar
+os bytes CRLF) e o blob CRLF commitado **ANTES** do `.gitattributes` — com o
+`.gitattributes` já no working tree, o git **normaliza CRLF→LF no check-in** e
+o blob sairia LF (é exatamente o cenário que o audit existe para pegar):
+
+```bash
+FIX=$(mktemp -d)
+git -C "$FIX" init -q
+git -C "$FIX" config user.email t@t
+git -C "$FIX" config user.name t
+git -C "$FIX" config core.autocrlf false   # preserva os bytes CRLF no blob
+
+# Blob .md CRLF commitado ANTES do .gitattributes (o cenário real)
+printf '# Titulo\r\n\r\nCorpo\r\n' > "$FIX/fake.md"
+git -C "$FIX" add fake.md
+git -C "$FIX" commit -qm 'adiciona fake.md CRLF'
+
+# .gitattributes no working tree = fonte da derivação do --all-text
+printf '*.md text eol=lf\n' > "$FIX/.gitattributes"
+
+# REPORT contra o fixture → o sentinel aparece (exit 0 — REPORT não é gate)
+CHECK_CRLF_ROOT="$FIX" bash scripts/audit-blob-crlf-history.sh --all-text
+# → 1 bloco(s) com CRLF no histórico (escopo: ...).
+
+# Replica o GATE do job CI (grep do sentinel → o job ALERTARIA):
+set +e
+CHECK_CRLF_ROOT="$FIX" bash scripts/audit-blob-crlf-history.sh --all-text \
+  | tee /tmp/all-text-report.txt
+report_exit=${PIPESTATUS[0]}
+set -e
+echo "report_exit=$report_exit"
+if grep -Fq 'com CRLF' /tmp/all-text-report.txt; then
+  echo "found_crlf=true → o job dispararia o ::error:: (blob: $(head -1 /tmp/all-text-report.txt))"
+else
+  echo "found_crlf=false"
+fi
+
+rm -rf "$FIX"   # cleanup
+```
+
+> **Por que `report_exit` será 0 nesta simulação:** o `--all-text` é REPORT
+> (exit 0 sempre, mesmo com achados) — o branch `report_exit != '0'` do ALERTA
+> só dispara em falha de infraestrutura (ex.: stream do `cat-file` truncado,
+> exit 2). O gatilho ATIVO deste fixture é o grep do sentinel (`found_crlf`),
+> que é o caminho que o job usa para virar incidente visível — replicar o
+> branch de infra exigiria um fixture com erro de git, fora do escopo desta
+> validação.
+
+> **Modo GATE (`--extensions .md`) no mesmo fixture:** o mesmo procedimento com
+> `--extensions .md` no lugar de `--all-text` valida o gate real (exit 1 + o
+> blob listado) — espelho do teste `--extensions .md detecta .md CRLF com exit 1`.
+>
+> **Cobertura automatizada deste fluxo:** o procedimento do fixture vive em
+> `src/lib/__tests__/audit-blob-crlf-history.test.ts` (git init + autocrlf=false
+>
+> - commit CRLF antes do `.gitattributes` + `CHECK_CRLF_ROOT`); o contrato do
+>   **job CI** (condicionais `report_exit`/`found_crlf`, complementaridade lógica
+>   do Summary e o sentinel source-coupled com o produtor) em
+>   `src/lib/__tests__/benchmark-weekly-all-text-crlf-workflow.test.ts`.
+>   **A SEMÂNTICA do alerta** (sentinel 'com CRLF' AUSENTE no limpo — falso
+>   positivo — e PRESENTE no achado — guard cega) está travada em
+>   `src/lib/__tests__/validate-all-text-alert.test.ts` — o MESMO procedimento
+>   dos dois cenários acima via CLI real (spawn do wrapper com `CHECK_CRLF_ROOT`
+>   num repo git temporário, fail-fast de bytes CRLF no blob), para rodar no
+>   pre-push/suite unitária sem depender do bash script nem do cron.
+>
+> **Contexto completo** (dois escopos, estado histórico 0 blobs CRLF, correção
+> retroativa com `git filter-repo`) →
+> [README: Auditoria histórica de blobs CRLF](../README.md#auditoria-histórica-de-blobs-crlf).
+
+---
+
 ## Snapshot Management
 
 O projeto usa **snapshot tests** do Vitest (`toMatchSnapshot`) para capturar

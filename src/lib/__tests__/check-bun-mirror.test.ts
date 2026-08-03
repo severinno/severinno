@@ -51,6 +51,8 @@ import {
   parseDiffLines,
   checkStagedSetupBunCallSites,
   checkStagedRemovedBunVersion,
+  checkStagedRemovedCacheBlockFields,
+  checkStagedRemovedLiterals,
   checkSetupBunCallSite,
   normalizeBunVersionValue,
   checkStagedCacheKeys,
@@ -490,6 +492,54 @@ describe("parseCacheBlock", () => {
     expect(paths).toEqual(["node_modules"])
     expect(keyPrefix).toBeNull()
   })
+
+  it("restore-keys simples → restorePrefixes com o prefixo da toolchain", () => {
+    const { restorePrefixes } = parseCacheBlock([
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+      `          restore-keys: bun-\${{ vars.BUN_VERSION }}-`,
+    ])
+    expect(restorePrefixes).toEqual(["bun"])
+  })
+
+  it("restore-keys de OUTRA toolchain (prisma sob key bun) → prefixo capturado (o check do par decide)", () => {
+    const { keyPrefix, restorePrefixes } = parseCacheBlock([
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+      `          restore-keys: prisma-\${{ vars.BUN_VERSION }}-`,
+    ])
+    expect(keyPrefix).toBe("bun")
+    expect(restorePrefixes).toEqual(["prisma"])
+  })
+
+  it("restore-keys multi-linha (|) → todos os prefixos (lista de fallbacks)", () => {
+    const { restorePrefixes } = parseCacheBlock([
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+      `          restore-keys: |`,
+      `            bun-\${{ vars.BUN_VERSION }}-`,
+      `            prisma-\${{ vars.BUN_VERSION }}-`,
+    ])
+    expect(restorePrefixes).toEqual(["bun", "prisma"])
+  })
+
+  it("restore-keys sem prefixo de toolchain reconhecível → ignorado", () => {
+    const { restorePrefixes } = parseCacheBlock([
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+      `          restore-keys: \${{ hashFiles('bun.lock') }}-`,
+    ])
+    expect(restorePrefixes).toEqual([])
+  })
+
+  it("sem restore-keys → restorePrefixes vazio", () => {
+    const { restorePrefixes } = parseCacheBlock([`        with:`, `          path: node_modules`])
+    expect(restorePrefixes).toEqual([])
+  })
 })
 
 // ── checkCachePathBlock ──────────────────────────────────────────────────
@@ -593,6 +643,98 @@ describe("checkCachePathBlock", () => {
   it("regras vazias → zero violações (scan desligado)", () => {
     const block = [`        with:`, `          path: node_modules`, `          key: bun-x`]
     expect(checkCachePathBlock("a.yml", 1, block, [])).toEqual([])
+  })
+
+  // ── Restore-keys: o par key↔path fecha TAMBÉM na direção do restore ────
+
+  it("restore-keys de OUTRA toolchain (key bun + restore-keys prisma) → violação fechando o par", () => {
+    const block = [
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}`,
+      `          restore-keys: prisma-\${{ vars.BUN_VERSION }}-`,
+    ]
+    const v = checkCachePathBlock("a.yml", 1, block, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("restore-keys 'prisma-...'")
+    expect(v[0]).toContain("feche o par key↔path")
+  })
+
+  it("restore-keys da MESMA toolchain da key (bun+bun) → zero violações", () => {
+    const block = [
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}`,
+      `          restore-keys: bun-\${{ vars.BUN_VERSION }}-`,
+    ]
+    expect(checkCachePathBlock("a.yml", 1, block, rules)).toEqual([])
+  })
+
+  it("restore-keys com prefixo NÃO configurado → zero violações (sem contrato)", () => {
+    const block = [
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+      `          restore-keys: other-\${{ github.sha }}`,
+    ]
+    expect(checkCachePathBlock("a.yml", 1, block, rules)).toEqual([])
+  })
+
+  it("restore-keys multi-linha: um prefixo de outra toolchain entre os fallbacks → violação", () => {
+    const block = [
+      `        with:`,
+      `          path: node_modules`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+      `          restore-keys: |`,
+      `            bun-\${{ vars.BUN_VERSION }}-`,
+      `            prisma-\${{ vars.BUN_VERSION }}-`,
+    ]
+    const v = checkCachePathBlock("a.yml", 1, block, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("restore-keys 'prisma-...'")
+  })
+
+  it("restore-keys de outra toolchain + path de outra toolchain → AMBAS as violações (0º e 1º)", () => {
+    const block = [
+      `        with:`,
+      `          path: |`,
+      `            node_modules`,
+      `            node_modules/.prisma`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-x`,
+      `          restore-keys: prisma-\${{ vars.BUN_VERSION }}-`,
+    ]
+    const v = checkCachePathBlock("a.yml", 1, block, rules)
+    expect(v.length).toBe(2)
+    expect(v.some((x) => x.includes("restore-keys 'prisma-...'"))).toBe(true)
+    expect(v.some((x) => x.includes("path(s)"))).toBe(true)
+  })
+
+  it("regra custom SEM paths: restore-keys de outra toolchain configurada AINDA é violação (0º vale sem paths)", () => {
+    // Regra custom (next) SEM paths + DEFAULT (bun/prisma CONFIGURADAS) — o
+    // restore-keys prisma sob key next é violação mesmo sem contrato de path
+    // para a regra next (a 0º roda antes do early-return custom).
+    const rules = [...DEFAULT_CACHE_KEY_RULES(), { prefix: "next", version: "15" }]
+    const block = [
+      `        with:`,
+      `          path: .next/cache`,
+      `          key: next-15-x`,
+      `          restore-keys: prisma-\${{ vars.BUN_VERSION }}-`,
+    ]
+    const v = checkCachePathBlock("a.yml", 1, block, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("restore-keys 'prisma-...'")
+  })
+
+  it("regra custom SEM paths: restore-keys da MESMA toolchain → zero violações", () => {
+    const custom = [{ prefix: "next", version: "15" }]
+    const block = [
+      `        with:`,
+      `          path: .next/cache`,
+      `          key: next-15-x`,
+      `          restore-keys: next-15-`,
+    ]
+    expect(checkCachePathBlock("a.yml", 1, block, custom)).toEqual([])
   })
 })
 
@@ -718,6 +860,73 @@ describe("checkStagedCachePaths", () => {
     const v = checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())
     expect(v.length).toBe(1)
     expect(v[0]).toContain("a.yaml:1")
+  })
+
+  it("bloco NOVO com key bun + restore-keys prisma → violação (0º fecha o par no diff)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,5 +1,5 @@\n` +
+      `+      - uses: actions/cache@v4\n` +
+      `+        with:\n` +
+      `+          path: node_modules\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n` +
+      `+          restore-keys: prisma-\${{ vars.BUN_VERSION }}-\n`
+    const v = checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("restore-keys 'prisma-...'")
+    expect(v[0]).toContain("feche o par key↔path")
+  })
+
+  it("bloco NOVO com key bun + restore-keys bun → zero violações (par fecha nas duas direções)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,5 +1,5 @@\n` +
+      `+      - uses: actions/cache@v4\n` +
+      `+        with:\n` +
+      `+          path: node_modules\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n` +
+      `+          restore-keys: bun-\${{ vars.BUN_VERSION }}-\n`
+    expect(checkStagedCachePaths(diff, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("bloco NOVO com key de toolchain CUSTOM (next) + path de OUTRA toolchain → violação (regra configurada)", () => {
+    // path: node_modules pertence à toolchain bun (DEFAULT) — sob key next-15
+    // é path estranho → violação do par. A mensagem usa 'cache next-...'
+    // (keyPrefix + '...'), nunca a key completa.
+    const rules = [
+      ...DEFAULT_CACHE_KEY_RULES(),
+      { prefix: "next", version: "15", paths: [".next"] },
+    ]
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,5 +1,5 @@\n` +
+      `+      - uses: actions/cache@v4\n` +
+      `+        with:\n` +
+      `+          path: node_modules\n` +
+      `+          key: next-15-\${{ hashFiles('next.lock') }}\n`
+    const v = checkStagedCachePaths(diff, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("cache 'next-...'")
+    expect(v[0]).toContain("node_modules")
+  })
+
+  it("bloco NOVO com key de toolchain CUSTOM (next) + path certo (.next) → zero violações", () => {
+    // path match é EXATO (expected.includes(p) após trim) — '.next' casa,
+    // '.next/cache' NÃO (cairia no passo 3 como path desconhecido).
+    const rules = [
+      ...DEFAULT_CACHE_KEY_RULES(),
+      { prefix: "next", version: "15", paths: [".next"] },
+    ]
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,5 +1,5 @@\n` +
+      `+      - uses: actions/cache@v4\n` +
+      `+        with:\n` +
+      `+          path: .next\n` +
+      `+          key: next-15-\${{ hashFiles('next.lock') }}\n`
+    expect(checkStagedCachePaths(diff, rules)).toEqual([])
   })
 
   it("diff vazio → zero violações", () => {
@@ -1205,6 +1414,62 @@ describe("checkStagedCacheKeys", () => {
     expect(v.length).toBe(1)
     expect(v[0]).toContain("a.yaml:1")
   })
+
+  // ── OUTRAS toolchains configuráveis (DEFAULT_CACHE_KEY_RULES) ─────────
+
+  it("key prisma literal ADICIONADA pelo diff → violação (não só bun)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,1 +1,1 @@\n` +
+      `+          key: prisma-1.3.14-\${{ hashFiles('prisma/schema.prisma') }}\n`
+    const v = checkStagedCacheKeys(diff, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("prisma-1.3.14-")
+    expect(v[0]).toContain("sem a fonte única")
+  })
+
+  it("key de toolchain CUSTOM (next-14) ADICIONADA pelo diff → violação pela regra configurada", () => {
+    const rules = [...DEFAULT_CACHE_KEY_RULES(), { prefix: "next", version: "15" }]
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,1 +1,1 @@\n` +
+      `+          key: next-14-\${{ hashFiles('next.lock') }}\n`
+    const v = checkStagedCacheKeys(diff, rules)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:1")
+    expect(v[0]).toContain("next-14-")
+    expect(v[0]).toContain("fonte única 15")
+  })
+
+  it("key de toolchain CUSTOM com a versão certa (next-15) → zero violações", () => {
+    const rules = [...DEFAULT_CACHE_KEY_RULES(), { prefix: "next", version: "15" }]
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,1 +1,1 @@\n` +
+      `+          key: next-15-\${{ hashFiles('next.lock') }}\n`
+    expect(checkStagedCacheKeys(diff, rules)).toEqual([])
+  })
+
+  it("sem regra para o prefixo (other-...) → zero violações (toolchain não configurada)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,1 +1,1 @@\n` +
+      `+          key: other-\${{ hashFiles('lock') }}\n`
+    expect(checkStagedCacheKeys(diff, DEFAULT_CACHE_KEY_RULES())).toEqual([])
+  })
+
+  it("key literal bun E prisma no MESMO diff → 2 violações (todas as toolchains configuradas)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,2 +1,2 @@\n` +
+      `+          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n` +
+      `+          key: prisma-1.3.14-\${{ hashFiles('prisma/schema.prisma') }}\n`
+    const v = checkStagedCacheKeys(diff, DEFAULT_CACHE_KEY_RULES())
+    expect(v.length).toBe(2)
+    expect(v.some((x) => x.includes("bun-1.3.14-"))).toBe(true)
+    expect(v.some((x) => x.includes("prisma-1.3.14-"))).toBe(true)
+  })
 })
 
 describe("checkStagedLiterals", () => {
@@ -1459,8 +1724,230 @@ describe("checkStagedRemovedBunVersion", () => {
   })
 })
 
-// ── checkSetupBunCallSite / normalizeBunVersionValue (nível de call site) ─
+// ── checkStagedRemovedCacheBlockFields (REMOÇÃO do path:/key: de bloco sobrevivente) ─
 
+describe("checkStagedRemovedCacheBlockFields", () => {
+  it("REMOÇÃO do path: de bloco actions/cache que SOBREVIVEU (uses contexto) → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,2 @@\n` +
+      `       - uses: actions/cache@v4\n` +
+      `         with:\n` +
+      `-          path: node_modules\n`
+    const v = checkStagedRemovedCacheBlockFields(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:3")
+    expect(v[0]).toContain("REMOÇÃO do campo path:")
+    expect(v[0]).toContain("uses: linha 1")
+  })
+
+  it("REMOÇÃO da key: de bloco actions/cache que SOBREVIVEU → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,2 @@\n` +
+      `       - uses: actions/cache@v4\n` +
+      `         with:\n` +
+      `-          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    const v = checkStagedRemovedCacheBlockFields(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:3")
+    expect(v[0]).toContain("REMOÇÃO do campo key:")
+    expect(v[0]).toContain("uses: linha 1")
+  })
+
+  it("bloco INTEIRO removido (uses também é '-') → zero violações (step deletado)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +0,0 @@\n` +
+      `-      - uses: actions/cache@v4\n` +
+      `-        with:\n` +
+      `-          path: node_modules\n` +
+      `-          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    expect(checkStagedRemovedCacheBlockFields(diff)).toEqual([])
+  })
+
+  it("troca de path (removido + adicionado na janela) → zero violações (trocou o valor)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,4 +1,4 @@\n` +
+      `       - uses: actions/cache@v4\n` +
+      `         with:\n` +
+      `-          path: node_modules\n` +
+      `+          path: node_modules/.prisma\n`
+    expect(checkStagedRemovedCacheBlockFields(diff)).toEqual([])
+  })
+
+  it("path removido mas de OUTRA action (não actions/cache) → zero violações", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,2 +1,1 @@\n` +
+      `       - uses: actions/checkout@v4\n` +
+      `-          path: node_modules\n`
+    expect(checkStagedRemovedCacheBlockFields(diff)).toEqual([])
+  })
+
+  it("arquivo não-.yml → zero violações", () => {
+    const diff =
+      `+++ b/src/lib/foo.ts\n` +
+      `@@ -1,2 +1,1 @@\n` +
+      `       - uses: actions/cache@v4\n` +
+      `-          path: node_modules\n`
+    expect(checkStagedRemovedCacheBlockFields(diff)).toEqual([])
+  })
+
+  it("REMOÇÃO em arquivo .yaml → violação", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yaml\n` +
+      `@@ -1,3 +1,2 @@\n` +
+      `       - uses: actions/cache@v4\n` +
+      `         with:\n` +
+      `-          path: node_modules\n`
+    const v = checkStagedRemovedCacheBlockFields(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yaml:3")
+    expect(v[0]).toContain("REMOÇÃO do campo path:")
+  })
+
+  it("restore-keys: removido NÃO é violação (campo opcional — fallback do cache)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,3 +1,2 @@\n` +
+      `       - uses: actions/cache@v4\n` +
+      `         with:\n` +
+      `-          restore-keys: bun-\${{ vars.BUN_VERSION }}-\n`
+    expect(checkStagedRemovedCacheBlockFields(diff)).toEqual([])
+  })
+
+  it("path e key removidos no mesmo bloco → 2 violações", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,4 +1,2 @@\n` +
+      `       - uses: actions/cache@v4\n` +
+      `         with:\n` +
+      `-          path: node_modules\n` +
+      `-          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    const v = checkStagedRemovedCacheBlockFields(diff)
+    expect(v.length).toBe(2)
+    expect(v.some((x) => x.includes("REMOÇÃO do campo path:"))).toBe(true)
+    expect(v.some((x) => x.includes("REMOÇÃO do campo key:"))).toBe(true)
+  })
+
+  it("diff vazio → zero violações", () => {
+    expect(checkStagedRemovedCacheBlockFields("")).toEqual([])
+  })
+}) // ── checkStagedRemovedLiterals (REMOÇÃO de literal + literal sobrevivente = migração incompleta) ─
+
+describe("checkStagedRemovedLiterals", () => {
+  it("literal REMOVIDO (key bun-1.3.14-...) + literal SOBREVIVENTE (bun-version) na janela → violação", () => {
+    // O PR migrou a key literal para a fonte única, mas o bun-version literal
+    // do call site SOBREVIVE como contexto — a migração ficou incompleta.
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,8 +1,8 @@\n` +
+      `       - uses: ./.github/actions/setup-bun\n` +
+      `         with:\n` +
+      `           bun-version: 1.3.14\n` +
+      `-          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    const v = checkStagedRemovedLiterals(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml:3")
+    expect(v[0]).toContain("SOBREVIVE ao lado de literal REMOVIDO")
+    expect(v[0]).toContain("migração incompleta")
+  })
+
+  it("literal REMOVIDO sem nenhum sobrevivente na janela → zero violações (migração completa)", () => {
+    // A key literal foi removida E o bun-version também foi migrado — nada
+    // sobrevive na região.
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,8 +1,8 @@\n` +
+      `-          bun-version: 1.3.14\n` +
+      `+          bun-version: \${{ vars.BUN_VERSION }}\n` +
+      `-          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}\n`
+    expect(checkStagedRemovedLiterals(diff)).toEqual([])
+  })
+
+  it("literal SOBREVIVENTE sem literal removido (nenhuma migração na região) → zero violações", () => {
+    // bun-version literal é CONTEXTO pré-existente, mas NENHUM literal foi
+    // removido pelo diff — o PR não está migrando esta região.
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,5 +1,5 @@\n` +
+      `       - uses: ./.github/actions/setup-bun\n` +
+      `         with:\n` +
+      `           bun-version: 1.3.14\n` +
+      `+          other: true\n`
+    expect(checkStagedRemovedLiterals(diff)).toEqual([])
+  })
+
+  it("literal removido e sobrevivente FORA da janela (CACHE_BLOCK_WINDOW) → zero violações", () => {
+    // Removido na linha 2, sobrevivente na linha 25 — distância > 14 (janela).
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,30 +1,30 @@\n` +
+      `-          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-x\n` +
+      `       # contexto\n`.repeat(20) +
+      `           bun-version: 1.3.14\n`
+    expect(checkStagedRemovedLiterals(diff)).toEqual([])
+  })
+
+  it("bloco INTEIRO removido (sem sobrevivente na região) → zero violações", () => {
+    // O step inteiro (com a key literal) foi removido — sem literal que
+    // sobreviva, não há migração incompleta.
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,4 +0,0 @@\n` +
+      `-      - uses: actions/cache@v4\n` +
+      `-        with:\n` +
+      `-          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n`
+    expect(checkStagedRemovedLiterals(diff)).toEqual([])
+  })
+
+  it("detecta REMOÇÃO de bun-version literal com key literal sobrevivente (direção inversa)", () => {
+    // Inverso do cenário 1: o bun-version foi migrado, mas a key literal
+    // sobrevive no bloco de cache — mesma migração incompleta.
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,8 +1,8 @@\n` +
+      `-          bun-version: 1.3.14\n` +
+      `+          bun-version: \${{ vars.BUN_VERSION }}\n` +
+      `       - uses: actions/cache@v4\n` +
+      `         with:\n` +
+      `           key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n`
+    const v = checkStagedRemovedLiterals(diff)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("a.yml")
+    expect(v[0]).toContain("migração incompleta")
+  })
+
+  it("ignora comentários e linhas em prosa (não são literal)", () => {
+    const diff =
+      `+++ b/.github/workflows/a.yml\n` +
+      `@@ -1,5 +1,5 @@\n` +
+      `-          # key: bun-1.3.14-x (comentário — não é literal)\n` +
+      `+          ok: true\n`
+    expect(checkStagedRemovedLiterals(diff)).toEqual([])
+  })
+
+  it("diff vazio → zero violações", () => {
+    expect(checkStagedRemovedLiterals("")).toEqual([])
+  })
+
+  it("arquivo não-.yml → zero violações", () => {
+    const diff =
+      `+++ b/src/lib/foo.ts\n` +
+      `@@ -1,3 +1,3 @@\n` +
+      `-          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}\n` +
+      `+          key: bun-\${{ vars.BUN_VERSION }}-x\n` +
+      `           bun-version: 1.3.14\n`
+    expect(checkStagedRemovedLiterals(diff)).toEqual([])
+  })
+})
+
+// ── checkSetupBunCallSite / normalizeBunVersionValue (nível de call site) ─
 describe("checkSetupBunCallSite", () => {
   it("following com bun-version correto → null", () => {
     expect(

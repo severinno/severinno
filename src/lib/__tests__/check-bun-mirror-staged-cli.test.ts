@@ -139,6 +139,42 @@ jobs:
           cache: '~/.bun'
 `
 
+/** Workflow com key LITERAL + call site com literal bun-version (base da migração). */
+const LITERAL_KEY_AND_CALL = `name: Fake
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.3.14
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-1.3.14-\${{ hashFiles('bun.lock') }}
+          restore-keys: bun-1.3.14-
+`
+
+/** Migração INCOMPLETA: key literal migrada para vars, mas bun-version literal SOBREVIVE. */
+const PARTIAL_MIGRATION = `name: Fake
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: 1.3.14
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}
+          restore-keys: bun-\${{ vars.BUN_VERSION }}-
+`
+
 afterEach(() => {
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
@@ -231,6 +267,62 @@ jobs:
     expect(out).toContain("Diff ok")
   })
 
+  it("exit 1: key literal REMOVIDA + bun-version literal SOBREVIVENTE na janela (migração incompleta)", () => {
+    // Baseline com key + call site LITERAIS COMMITADO → working tree migra
+    // SÓ a key para vars (o bun-version: 1.3.14 do call site SOBREVIVE como
+    // CONTEXTO no diff) → staged. O checkStagedLiterals (só linhas +) não vê
+    // o bun-version de contexto; o checkStagedRemovedLiterals é o que pega a
+    // migração incompleta introduzida pelo diff.
+    const dir = makeRepo()
+    addWorkflow(dir, "deploy.yml", LITERAL_KEY_AND_CALL)
+    commitAll(dir, "baseline") // HEAD com literais
+    addWorkflow(dir, "deploy.yml", PARTIAL_MIGRATION)
+    stage(dir, ".github/workflows/deploy.yml")
+
+    const { status, out } = runStaged(dir)
+    expect(status).toBe(1)
+    expect(out).toContain("violação(ões)")
+    expect(out).toContain("deploy.yml:")
+    expect(out).toContain("SOBREVIVE ao lado de literal REMOVIDO")
+    expect(out).toContain("migração incompleta")
+    // TRAVA o -U${DIFF_CONTEXT}: a âncora é a key literal REMOVIDA (linha 14
+    // do fixture) — se o contexto do git diff voltar ao default de 3 linhas,
+    // o bun-version sobrevivente (linha 9) some do diff e este teste falha.
+    expect(out).toContain("linha 14")
+  })
+
+  it("exit 0: MIGRAÇÃO COMPLETA (key E bun-version literais migrados) não é regressão", () => {
+    // A migração remove os DOIS literais — nenhum sobrevive na região.
+    const dir = makeRepo()
+    addWorkflow(dir, "deploy.yml", LITERAL_KEY_AND_CALL)
+    commitAll(dir, "baseline")
+    addWorkflow(
+      dir,
+      "deploy.yml",
+      `name: Fake
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: \${{ vars.BUN_VERSION }}
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}
+          restore-keys: bun-\${{ vars.BUN_VERSION }}-
+`,
+    )
+    stage(dir, ".github/workflows/deploy.yml")
+
+    const { status, out } = runStaged(dir)
+    expect(status).toBe(0)
+    expect(out).toContain("Diff ok")
+  })
+
   it("exit 0: --base HEAD sem diff (controle — baseline COMMITADO idêntico)", () => {
     // Baseline com key válida COMMITADA → depois staged idêntico (sem diff).
     const dir = makeRepo()
@@ -255,6 +347,30 @@ jobs:
     // de sucesso o faz) — valida a violação real detectada no diff do base.
     expect(out).toContain("fake.yml:")
     expect(out).toContain("bun-1.3.14")
+  })
+
+  it("exit 1: --staged --base HEAD~1 — key antiga (bun-1.3.14-) ADICIONADA ao diff → mensagem clara", () => {
+    // Espelho do unit checkStagedCacheKeys ("key antiga ADICIONADA pelo diff
+    // → violação") no nível CLI real: baseline COMMITADO com key VÁLIDA
+    // (HEAD~1), HEAD troca key+restore-keys para o literal antigo (mesmo
+    // conteúdo do LITERAL_KEY já definido) — o diff base...HEAD mostra as
+    // linhas como ADICIONADAS. Só linhas adicionadas são avaliadas, e a
+    // violação aparece com arquivo:linha + a mensagem da fonte única
+    // ("sem a fonte única").
+    const dir = makeRepo()
+    addWorkflow(dir, "fake.yml", VALID_KEY)
+    commitAll(dir, "baseline") // HEAD~1 = key válida (fonte única)
+    addWorkflow(dir, "fake.yml", LITERAL_KEY) // key + restore-keys literais
+    commitAll(dir, "regressão") // HEAD = literal — diff HEAD~1...HEAD a vê
+
+    const { status, out } = runStaged(dir, ["--base", "HEAD~1"])
+    expect(status).toBe(1)
+    expect(out).toContain("violação(ões)")
+    expect(out).toContain("fake.yml:")
+    expect(out).toContain("bun-1.3.14")
+    // Contrato de MENSAGEM CLARA: aponta a fonte única e a correção
+    expect(out).toContain("sem a fonte única")
+    expect(out).toContain("vars.BUN_VERSION")
   })
 
   it("exit 2: --base com ref INVÁLIDA (metacharacter de shell)", () => {

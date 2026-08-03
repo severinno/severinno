@@ -79,6 +79,32 @@ describe("extractGuardRows", () => {
       /seção '## Encoding Guards' não encontrada/,
     )
   })
+
+  it("robusto a conversão parágrafo→heading ANTES da tabela: count não muda", () => {
+    // um parágrafo de introdução vira `### ...` (heading) entre a seção e a
+    // tabela — o extractor só conta linhas `|`, então o count permanece 7
+    const content = README_7_GUARDS.replace(
+      "Quatro camadas de proteção previnem que arquivos com encoding corrompido cheguem ao repositório:",
+      "### Camadas de proteção (convertido de parágrafo)",
+    )
+    expect(extractGuardRows(content)).toHaveLength(7)
+  })
+
+  it("robusto a conversão parágrafo→heading DEPOIS da tabela: count não muda", () => {
+    // bloco pós-tabela convertido em heading (antes era texto solto "**748...")
+    const content = README_7_GUARDS.replace("**748 arquivos escaneados**", "### Nota pós-tabela")
+    expect(extractGuardRows(content)).toHaveLength(7)
+  })
+
+  it("robusto a heading com a MESMA aparência de linha de tabela fora da tabela", () => {
+    // heading convertido que CONTÉM um pipe no texto — ainda começa com `#`,
+    // não com `|`, então não é contado como linha de guard
+    const content = README_7_GUARDS.replace(
+      "Quatro camadas de proteção previnem que arquivos com encoding corrompido cheguem ao repositório:",
+      "### Camadas | com pipe no texto",
+    )
+    expect(extractGuardRows(content)).toHaveLength(7)
+  })
 })
 
 // ── extractBadge ──────────────────────────────────────────────────────────

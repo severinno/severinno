@@ -16,7 +16,10 @@
 //   - a duração do passo 'Use pre-installed Bun (fast path)' > threshold, OU
 //   - o log mostrar engajamento EXPLÍCITO de tier-2 (cache restore) ou
 //     tier-3 (download) — cobre a regressão que MUDA o tier mas MANTÉM o
-//     marcador tier-1 no log (ex.: echo do marcador duplicado/movido).
+//     marcador tier-1 no log (ex.: echo do marcador duplicado/movido), OU
+//   - (--tier2) a duração do passo 'Restore Bun release from cache' >
+//     threshold — cobre o cenário catthehacker default, onde o act EMULA
+//     o actions/cache (~21s medidos em 08/2026) e o tier-1 nem engaja.
 //
 // ATENÇÃO (evidência empírica, act 0.2.89): a linha
 //   `Success - Main ./.github/actions/setup-bun [X.XXs]` (duração do COMPOSITE)
@@ -28,12 +31,13 @@
 //   O composite total é reportado apenas como informativo.
 //
 // Usage:
-//   node scripts/check-tier1-fastpath.mjs --log <act-log> [--threshold <s>] [--version <v>] [--act-exit <code>]
+//   node scripts/check-tier1-fastpath.mjs --log <act-log> [--threshold <s>] [--version <v>] [--act-exit <code>] [--tier2 <s>]
 //
 // Exit codes:
 //   0 — PASS (tier-1 engajado e dentro do threshold)
 //   1 — FAIL (regressão do tier-1: marker ausente, lento, drift de versão,
-//       tier-2/3 explícito, OU act falhou antes do setup-bun)
+//       tier-2/3 explícito, cache emulado lento (--tier2), OU act falhou
+//       antes do setup-bun)
 //   2 — uso inválido (--log obrigatório, --threshold > 0)
 //
 // Semântica do --act-exit (exit code do act, capturado no step 'Run act' como
@@ -82,10 +86,19 @@ export function extractFastPathEvidence(logText) {
     l.includes("Success - Main Use pre-installed Bun (fast path)"),
   )
   const compositeLine = lines.find((l) => l.includes("Success - Main ./.github/actions/setup-bun"))
+  // Passo do tier-2 (cache restore) — presente no cenário catthehacker default
+  // (act EMULA o actions/cache, ~21s medidos em 08/2026) e quando o tier-1
+  // não engaja. Mede a duração para o --tier2 (regra 8).
+  const tier2RestoreLine = lines.find((l) =>
+    l.includes("Success - Main Restore Bun release from cache"),
+  )
   return {
     markerVersion: markerLine ? parseMarkerVersion(markerLine) : null,
     fastPathDurationSeconds: fastPathLine ? extractDurationFromLine(fastPathLine) : null,
     compositeDurationSeconds: compositeLine ? extractDurationFromLine(compositeLine) : null,
+    tier2RestoreDurationSeconds: tier2RestoreLine
+      ? extractDurationFromLine(tier2RestoreLine)
+      : null,
   }
 }
 
@@ -144,25 +157,36 @@ export function extractTierEngagement(logText) {
  *   6. tier-3 (download) engajado EXPLICITAMENTE no log
  *   7. actExit informado e != 0 e SEM evidência do setup-bun no log (act
  *      falhou ANTES do setup-bun — imagem não publicada, erro de infra)
+ *   8. tier2ThresholdSeconds informado e o passo 'Restore Bun release from
+ *      cache' engajou com duração > threshold (cache EMULADO do act lento —
+ *      cenário catthehacker default, ~21s; a regra NÃO dispara quando o
+ *      tier-2 não rodou, ex.: tier-1 engajou na imagem custom)
  *
  * @param {string} logText
- * @param {{thresholdSeconds?: number, expectedVersion?: string | null, actExit?: number | null}} [options]
+ * @param {{thresholdSeconds?: number, expectedVersion?: string | null, actExit?: number | null, tier2ThresholdSeconds?: number | null}} [options]
  * @returns {{
  *   pass: boolean,
  *   reasons: string[],
  *   markerVersion: string | null,
  *   fastPathDurationSeconds: number | null,
  *   compositeDurationSeconds: number | null,
+ *   tier2RestoreDurationSeconds: number | null,
  *   tier2Engaged: boolean,
  *   tier3Engaged: boolean,
  *   actExit: number | null,
  *   thresholdSeconds: number,
+ *   tier2ThresholdSeconds: number | null,
  *   expectedVersion: string | null,
  * }}
  */
 export function checkTier1Fastpath(
   logText,
-  { thresholdSeconds = 5, expectedVersion = null, actExit = null } = {},
+  {
+    thresholdSeconds = 5,
+    expectedVersion = null,
+    actExit = null,
+    tier2ThresholdSeconds = null,
+  } = {},
 ) {
   const ev = extractFastPathEvidence(logText)
   const tiers = extractTierEngagement(logText)
@@ -209,6 +233,31 @@ export function checkTier1Fastpath(
       `act exit code ${actExit} ≠ 0 e SEM evidência do setup-bun no log — act falhou ANTES do setup-bun (imagem ghcr.io/<owner>/ubuntu-bun não publicada/disponível? erro de infra no job? veja o log do act)`,
     )
   }
+  // Regra 8 — threshold do cache EMULADO (tier-2). Só dispara quando o passo
+  // RODOU e a duração é mensurável: no cenário catthehacker default (~21s) o
+  // tier-1 nem engaja (regra 1/5 já falham) e esta regra adiciona o sinal
+  // QUANTITATIVO do cache emulado; na imagem custom o tier-2 é skipped e a
+  // regra não dispara (N/A — a regra 1 é quem garante o contrato tier-1).
+  //
+  // NOTA DE SEMÂNTICA: a regra 8 NUNCA muda o verdict sozinha — ela exige
+  // tier2Engaged=true, e a regra 5 já falha em QUALQUER engajamento do
+  // tier-2 (e a regra 1 no caso catthehacker, marker ausente). --tier2 é um
+  // DIAGNÓSTICO QUANTITATIVO adicional (a razão específica do cache lento),
+  // não um novo modo de falha independente. Tier-2 "aceitável quando rápido"
+  // exigiria relaxar a regra 5 — deliberadamente NÃO feito aqui.
+  if (
+    tier2ThresholdSeconds !== null &&
+    tiers.tier2Engaged &&
+    // tier-2 engajado mas duração não encontrada → regra 8 SILENCIOSA de
+    // propósito: a regra 5 já falha (tier-2 explícito); sem duração não há
+    // o que comparar com o threshold.
+    ev.tier2RestoreDurationSeconds !== null &&
+    ev.tier2RestoreDurationSeconds > tier2ThresholdSeconds
+  ) {
+    reasons.push(
+      `cache emulado (tier-2) ${ev.tier2RestoreDurationSeconds.toFixed(3)}s > threshold ${tier2ThresholdSeconds}s — 'Restore Bun release from cache' lento (act emula o actions/cache)`,
+    )
+  }
 
   return {
     pass: reasons.length === 0,
@@ -216,10 +265,12 @@ export function checkTier1Fastpath(
     markerVersion: ev.markerVersion,
     fastPathDurationSeconds: ev.fastPathDurationSeconds,
     compositeDurationSeconds: ev.compositeDurationSeconds,
+    tier2RestoreDurationSeconds: ev.tier2RestoreDurationSeconds,
     tier2Engaged: tiers.tier2Engaged,
     tier3Engaged: tiers.tier3Engaged,
     actExit,
     thresholdSeconds,
+    tier2ThresholdSeconds,
     expectedVersion,
   }
 }
@@ -229,13 +280,17 @@ export function checkTier1Fastpath(
 // ---------------------------------------------------------------------------
 
 const USAGE = `Uso:
-  node scripts/check-tier1-fastpath.mjs --log <act-log> [--threshold <s>] [--version <v>] [--act-exit <code>]
+  node scripts/check-tier1-fastpath.mjs --log <act-log> [--threshold <s>] [--version <v>] [--act-exit <code>] [--tier2 <s>]
 
   --log        (obrigatório) arquivo com o output do act (job que usa setup-bun)
   --threshold  duração máxima do passo fast-path em segundos (default: 5)
   --version    versão esperada do bun (default: nenhum — não checa drift)
   --act-exit   exit code do act (steps.act.outputs.ACT_EXIT). != 0 sem evidência
                do setup-bun = act falhou antes do setup-bun → FAIL (regra 7)
+  --tier2      threshold do cache EMULADO (tier-2) em segundos (default:
+               nenhum — não checa). Falha quando 'Restore Bun release from
+               cache' engaja com duração > threshold (cenário catthehacker
+               default, ~21s medidos; N/A quando o tier-2 não rodou)
   -h, --help   mostra esta ajuda
 
 Exit codes: 0 = PASS, 1 = FAIL, 2 = uso inválido`
@@ -249,12 +304,13 @@ Exit codes: 0 = PASS, 1 = FAIL, 2 = uso inválido`
  *   threshold?: number,
  *   version?: string | null,
  *   actExit?: number | null,
+ *   tier2?: number | null,
  *   error?: string,
  *   help?: boolean,
  * }}
  */
 export function parseArgs(argv) {
-  const out = { log: null, threshold: 5, version: null, actExit: null }
+  const out = { log: null, threshold: 5, version: null, actExit: null, tier2: null }
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case "--log": {
@@ -285,6 +341,18 @@ export function parseArgs(argv) {
         if (!/^\d+$/.test(raw))
           return { error: `--act-exit deve ser um inteiro >= 0 (obtido: '${raw}')` }
         out.actExit = parseInt(raw, 10)
+        break
+      }
+      case "--tier2": {
+        // Valida o RAW string antes de parseFloat (mesmo padrão do --act-exit):
+        // parseFloat("15abc") === 15 passaria a checagem de finite/>0 em
+        // silêncio — o regex /^\d+(\.\d+)?$/ rejeita sufixo não-numérico,
+        // e o `Number(raw) <= 0` rejeita "0"/"0.0" (o regex os ACEITARIA).
+        const raw = argv[++i]
+        if (raw === undefined) return { error: `--tier2 exige um valor` }
+        if (!/^\d+(\.\d+)?$/.test(raw) || Number(raw) <= 0)
+          return { error: `--tier2 deve ser um número > 0 (obtido: '${raw}')` }
+        out.tier2 = parseFloat(raw)
         break
       }
       case "-h":
@@ -321,6 +389,7 @@ function main() {
     thresholdSeconds: args.threshold,
     expectedVersion: args.version,
     actExit: args.actExit,
+    tier2ThresholdSeconds: args.tier2,
   })
 
   console.log("=== Tier-1 Fastpath Guard (setup-bun) ===")
@@ -331,12 +400,16 @@ function main() {
   console.log(
     `  composite setup-bun:  ${result.compositeDurationSeconds === null ? "não encontrado" : `${result.compositeDurationSeconds.toFixed(3)}s`} (informativo — inclui overhead do act)`,
   )
-  console.log(`  tier-2 (cache):       ${result.tier2Engaged ? "ENGAGED ❌" : "não engajado"}`)
+  console.log(
+    `  tier-2 (cache):       ${result.tier2Engaged ? "ENGAGED ❌" : "não engajado"}${result.tier2RestoreDurationSeconds === null ? "" : ` — restore ${result.tier2RestoreDurationSeconds.toFixed(3)}s`}`,
+  )
   console.log(`  tier-3 (download):    ${result.tier3Engaged ? "ENGAGED ❌" : "não engajado"}`)
   console.log(
     `  act exit:            ${result.actExit === null ? "não informado" : result.actExit}`,
   )
   console.log(`  threshold:           ${result.thresholdSeconds}s`)
+  if (result.tier2ThresholdSeconds !== null)
+    console.log(`  threshold tier-2:    ${result.tier2ThresholdSeconds}s`)
   if (result.expectedVersion) console.log(`  versão esperada:     ${result.expectedVersion}`)
 
   if (result.pass) {

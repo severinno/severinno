@@ -15,6 +15,7 @@
  *   - forma correta (2 linhas: cell "..." / out=$(...)) → exit 0
  *   - padrão quebrado (1 linha) → exit 1 + file:line no output
  *   - .sh FORA de scripts/ → ignorado (escopo é scripts/)
+ *   - .sh NA RAIZ do repo com o padrão quebrado → ignorado (escopo é scripts/, não a raiz)
  *   - .ts com o padrão → ignorado (só .sh/.bash)
  *   - sem .sh trackeado → exit 0
  *   - argumento inválido → exit 2
@@ -107,6 +108,23 @@ describe("check-single-line-out-assign.sh (temp git repo)", () => {
 
     const res = runGuard(dir)
     expect(res.status).toBe(0)
+  })
+
+  it("ignora .sh NA RAIZ do repo com o padrão quebrado (escopo é scripts/, não a raiz)", () => {
+    // O contrato do README (seção Single-line out= Guard): o escopo é
+    // `scripts/` — .sh/.bash fora dele (inclusive na RAIZ) são ignorados.
+    // O guard usa `git ls-files 'scripts/'` (nunca a raiz), então um
+    // broken.sh na raiz com o padrão exato NÃO pode falhar o check.
+    const dir = makeRepo()
+    addTracked(
+      dir,
+      "broken.sh",
+      'cell "Rodando prod E2E (128 checks)..." out=$(cd /tmp && ls 2>&1)\n',
+    )
+
+    const res = runGuard(dir)
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("nothing to check")
   })
 
   it("ignora .ts com o padrão (só .sh/.bash são varridos)", () => {
