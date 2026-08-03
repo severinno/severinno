@@ -3,6 +3,7 @@ import {
   checkTier1Fastpath,
   extractDurationFromLine,
   extractFastPathEvidence,
+  extractTierEngagement,
   parseArgs,
   parseMarkerVersion,
 } from "../../../scripts/check-tier1-fastpath.mjs"
@@ -47,6 +48,39 @@ const LOG_SLOW_FASTPATH = [
 const LOG_VERSION_DRIFT = [
   "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.4.0 (0s, sem download)",
   "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [450ms]",
+].join("\n")
+
+// Regressão coberta pela ampliação: marcador tier-1 PRESENTE mas tier-2
+// (cache restore) também engajou — ex.: echo do marcador duplicado/movido,
+// ou condição invertida que segue imprimindo o marcador. Antes passava (o
+// guard só olhava a presença do marcador); agora deve FALHAR.
+const LOG_MARKER_WITH_TIER2 = [
+  "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
+  "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [461.9667ms]",
+  "[PR Check/check]   ✅  Success - Main Restore Bun release from cache [1.234s]",
+  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [2.1s]",
+].join("\n")
+
+// Mesma regressão via tier-3: marcador presente + download explícito.
+const LOG_MARKER_WITH_TIER3 = [
+  "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
+  "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [461.9667ms]",
+  "[PR Check/check]   ✅  Success - Main Download Bun release (cold cache) [7.42s]",
+  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [8.3s]",
+].join("\n")
+
+// Tier-3 engajado com o padrão REAL do act 0.2.89 em logs não-TTY: a linha
+// 'Success - Main Download Bun release (cold cache)' (os grupos internos
+// ::group:: do action são CONSUMIDOS pelo act e não aparecem literalmente).
+// NOTA: em um log tier-3 real, o step de restore do tier-2 roda ANTES com
+// cache-miss ("Success - Main Restore Bun release from cache" + "Cache not
+// found") — ou seja, logs genuínos de tier-3 costumam disparar AMBOS os
+// flags. Este fixture isola a detecção de tier-3 para teste unitário do
+// extractor; o verdict já lida com as duas razões juntas sem conflito.
+const LOG_TIER3_STEP_ONLY = [
+  "[PR Check/check]   | Cache not found for input keys: bun-1.3.14-Linux-X64",
+  "[PR Check/check]   ✅  Success - Main Download Bun release (cold cache) [7.42s]",
+  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [8.3s]",
 ].join("\n")
 
 // ---------------------------------------------------------------------------
@@ -124,6 +158,57 @@ describe("extractFastPathEvidence", () => {
 })
 
 // ---------------------------------------------------------------------------
+// extractTierEngagement
+// ---------------------------------------------------------------------------
+
+describe("extractTierEngagement", () => {
+  it("log tier-1 puro: nenhum tier inferior engajado", () => {
+    expect(extractTierEngagement(LOG_TIER1_FAST)).toEqual({
+      tier2Engaged: false,
+      tier3Engaged: false,
+    })
+  })
+
+  it("detecta tier-2 pela linha de success do cache restore", () => {
+    expect(extractTierEngagement(LOG_MARKER_WITH_TIER2).tier2Engaged).toBe(true)
+  })
+
+  it("detecta tier-3 pela linha de success do download", () => {
+    expect(extractTierEngagement(LOG_MARKER_WITH_TIER3).tier3Engaged).toBe(true)
+  })
+
+  it("detecta tier-3 pela linha de success do download (padrão real act não-TTY)", () => {
+    const t = extractTierEngagement(LOG_TIER3_STEP_ONLY)
+    expect(t.tier3Engaged).toBe(true)
+    expect(t.tier2Engaged).toBe(false)
+  })
+
+  it("texto de grupo interno NÃO conta como engajamento (act consome ::group::)", () => {
+    const log = [
+      "[PR Check/check]   | ::group::Puxando Bun 1.3.14 do mirror GHCR (ghcr.io/owner/bun:1.3.14)",
+      "[PR Check/check]   |   ✅ Mirror GHCR ok — bun 1.3.14",
+      "[PR Check/check]   | ::endgroup::",
+    ].join("\n")
+    const t = extractTierEngagement(log)
+    expect(t.tier3Engaged).toBe(false)
+    expect(t.tier2Engaged).toBe(false)
+  })
+
+  it("linha 'Skip' de tier-2 NÃO conta como engajamento", () => {
+    const log = [
+      "[PR Check/check]   ⬇  Skip - Main Restore Bun release from cache",
+      "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [1.9s]",
+    ].join("\n")
+    expect(extractTierEngagement(log).tier2Engaged).toBe(false)
+  })
+
+  it("linha 'Skip' de tier-3 NÃO conta como engajamento", () => {
+    const log = ["[PR Check/check]   ⬇  Skip - Main Download Bun release (cold cache)"].join("\n")
+    expect(extractTierEngagement(log).tier3Engaged).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // checkTier1Fastpath — o verdict do guard
 // ---------------------------------------------------------------------------
 
@@ -185,6 +270,85 @@ describe("checkTier1Fastpath", () => {
     expect(r.pass).toBe(false)
     expect(r.reasons.some((x) => x.includes("INCONCLUSIVO"))).toBe(true)
   })
+
+  it("FAIL quando marcador tier-1 presente MAS tier-2 engajou explicitamente (regressão de tier)", () => {
+    const r = checkTier1Fastpath(LOG_MARKER_WITH_TIER2)
+    expect(r.pass).toBe(false)
+    expect(r.tier2Engaged).toBe(true)
+    expect(r.reasons.some((x) => x.includes("tier-2 EXPLÍCITO"))).toBe(true)
+  })
+
+  it("FAIL quando marcador tier-1 presente MAS tier-3 engajou explicitamente", () => {
+    const r = checkTier1Fastpath(LOG_MARKER_WITH_TIER3)
+    expect(r.pass).toBe(false)
+    expect(r.tier3Engaged).toBe(true)
+    expect(r.reasons.some((x) => x.includes("tier-3 EXPLÍCITO"))).toBe(true)
+  })
+
+  it("FAIL quando tier-3 engajou (linha de success do download no log real)", () => {
+    const r = checkTier1Fastpath(LOG_TIER3_STEP_ONLY)
+    expect(r.pass).toBe(false)
+    expect(r.tier3Engaged).toBe(true)
+    expect(r.reasons.some((x) => x.includes("tier-3 EXPLÍCITO"))).toBe(true)
+  })
+
+  it("grupos internos sozinhos NÃO disparam FAIL (não são evidência no act)", () => {
+    const log = [
+      "[PR Check/check]   | ::group::Puxando Bun 1.3.14 do mirror GHCR (ghcr.io/owner/bun:1.3.14)",
+      "[PR Check/check]   | ::endgroup::",
+      "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
+      "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [450ms]",
+    ].join("\n")
+    const r = checkTier1Fastpath(log)
+    expect(r.pass).toBe(true)
+    expect(r.tier3Engaged).toBe(false)
+  })
+
+  it("tier-2/tier-3 engajados = false no log tier-1 puro (sem ruído no PASS)", () => {
+    const r = checkTier1Fastpath(LOG_TIER1_FAST)
+    expect(r.tier2Engaged).toBe(false)
+    expect(r.tier3Engaged).toBe(false)
+  })
+
+  // ── Regra 7: act exit code (act falhou antes do setup-bun) ──────────────
+  it("PASS com actExit=0 e evidência do tier-1 (sem ruído)", () => {
+    const r = checkTier1Fastpath(LOG_TIER1_FAST, { actExit: 0 })
+    expect(r.pass).toBe(true)
+    expect(r.actExit).toBe(0)
+    expect(r.reasons).toEqual([])
+  })
+
+  it("FAIL quando actExit != 0 e SEM evidência do setup-bun (act morreu antes)", () => {
+    const r = checkTier1Fastpath(LOG_NO_EVIDENCE, { actExit: 1 })
+    expect(r.pass).toBe(false)
+    expect(r.reasons.some((x) => x.includes("act exit code 1 ≠ 0"))).toBe(true)
+    expect(r.reasons.some((x) => x.includes("ANTES do setup-bun"))).toBe(true)
+  })
+
+  it("PASS quando actExit != 0 MAS com evidência do setup-bun (act morreu depois)", () => {
+    // act falhou DEPOIS do setup-bun (ex.: suite completa do job check) — a
+    // evidência tier-1 existe e o guard decide por ela (mesma semântica do
+    // periódico), então actExit != 0 não vira FAIL.
+    const r = checkTier1Fastpath(LOG_TIER1_FAST, { actExit: 124 })
+    expect(r.pass).toBe(true)
+    expect(r.actExit).toBe(124)
+  })
+
+  it("PASS quando actExit != 0 e evidência é só tier-2/tier-3 no log", () => {
+    // Evidência do setup-bun existe (composite + restore/download) — act exit
+    // não dispara a regra 7; o FAIL vem das regras 5/6 (tier-2/3 explícito).
+    const r = checkTier1Fastpath(LOG_TIER2_CACHE, { actExit: 2 })
+    expect(r.pass).toBe(false)
+    expect(r.actExit).toBe(2)
+    expect(r.reasons.some((x) => x.includes("ANTES do setup-bun"))).toBe(false)
+    expect(r.reasons.some((x) => x.includes("tier-2 EXPLÍCITO"))).toBe(true)
+  })
+
+  it("actExit default null não dispara a regra 7", () => {
+    const r = checkTier1Fastpath(LOG_NO_EVIDENCE)
+    expect(r.actExit).toBeNull()
+    expect(r.reasons.some((x) => x.includes("ANTES do setup-bun"))).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -192,14 +356,35 @@ describe("checkTier1Fastpath", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseArgs", () => {
-  it("parse completo (log + threshold + version)", () => {
-    const args = parseArgs(["--log", "/tmp/act.log", "--threshold", "7", "--version", "1.3.14"])
-    expect(args).toEqual({ log: "/tmp/act.log", threshold: 7, version: "1.3.14" })
+  it("parse completo (log + threshold + version + act-exit)", () => {
+    const args = parseArgs([
+      "--log",
+      "/tmp/act.log",
+      "--threshold",
+      "7",
+      "--version",
+      "1.3.14",
+      "--act-exit",
+      "124",
+    ])
+    expect(args).toEqual({ log: "/tmp/act.log", threshold: 7, version: "1.3.14", actExit: 124 })
   })
 
-  it("defaults (threshold 5, version null)", () => {
+  it("defaults (threshold 5, version null, actExit null)", () => {
     const args = parseArgs(["--log", "/tmp/act.log"])
-    expect(args).toEqual({ log: "/tmp/act.log", threshold: 5, version: null })
+    expect(args).toEqual({ log: "/tmp/act.log", threshold: 5, version: null, actExit: null })
+  })
+
+  it("parseia --act-exit 0 (exit code válido)", () => {
+    const args = parseArgs(["--log", "/tmp/act.log", "--act-exit", "0"])
+    expect(args.actExit).toBe(0)
+  })
+
+  it("rejeita --act-exit inválido (negativo, não-inteiro, sem valor)", () => {
+    expect(parseArgs(["--log", "x", "--act-exit", "-1"]).error).toBeTruthy()
+    expect(parseArgs(["--log", "x", "--act-exit", "abc"]).error).toBeTruthy()
+    expect(parseArgs(["--log", "x", "--act-exit", "1.5"]).error).toBeTruthy()
+    expect(parseArgs(["--log", "x", "--act-exit"]).error).toBeTruthy()
   })
 
   it("rejeita threshold inválido", () => {

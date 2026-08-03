@@ -189,6 +189,73 @@ describe("check_blob_crlf.py (blob CRLF injetado via hash-object --literally)", 
   })
 })
 
+// ── Contrato de escopo (.ts FORA — decisão ESCOPO INTENCIONAL) ────────────
+//
+// O ESCOPO vive no pathspec DO DETECTOR: `check_blob_crlf.py._scan()` roda
+// `git ls-files --eol -z -- "*.sh" "*.bash"` — é ELE quem decide quais
+// blobs são inspecionados (o wrapper .sh só delega e interpreta o exit).
+// Este describe trava esse contrato em teste — o ESPELHO do "contrato de
+// escopo" do check-crlf.test.ts, mas no nível do BLOB: um .ts com blob CRLF
+// injetado via hash-object --literally NÃO aparece no output do guard de
+// blob (nem falha o exit code) — nem quando o detector é chamado direto,
+// porque o filtro por extensão está na própria chamada de git ls-files.
+
+describe("contrato de escopo (.ts fora do guard de blob)", () => {
+  const TS_CONTENT = Buffer.from("export const a = 1;\r\nexport const b = 2;\r\n", "utf8")
+
+  /** Injeta um blob com os bytes LITERAIS dados (CRLF ou não) via plumbing. */
+  function injectBlob(dir: string, file: string, content: Buffer): void {
+    const hash = execFileSync("git", ["hash-object", "-w", "--literally", "--stdin"], {
+      cwd: dir,
+      input: content,
+    })
+      .toString()
+      .trim()
+    execFileSync("git", ["update-index", "--add", "--cacheinfo", `100644,${hash},${file}`], {
+      cwd: dir,
+    })
+    writeFileSync(join(dir, file), content)
+  }
+
+  it("detector chamado direto também NÃO vê o .ts (pathspec vive no _scan do python)", () => {
+    const dir = makeRepo()
+    injectBlob(dir, "component.ts", TS_CONTENT)
+
+    // O blob .ts realmente tem CRLF (i/crlf) — o git enxerga o problema...
+    expect(indexEol(dir, "component.ts")).toBe("crlf")
+    // ...mas o filtro `git ls-files --eol -z -- "*.sh" "*.bash"` do _scan()
+    // exclui a extensão: chamado direto (sem o wrapper), exit 0, sem o .ts.
+    const res = spawnSync("python3", [resolve(process.cwd(), "scripts/check_blob_crlf.py")], {
+      cwd: dir,
+      encoding: "utf8",
+    })
+    expect(res.status).toBe(0)
+    expect(res.stdout).not.toContain("component.ts")
+  })
+
+  it("guard .sh exit 0 com .ts blob CRLF — o .ts NÃO aparece no output", () => {
+    const dir = makeRepo()
+    injectBlob(dir, "component.ts", TS_CONTENT)
+
+    expect(indexEol(dir, "component.ts")).toBe("crlf")
+    const res = run(dir)
+    expect(res.status).toBe(0)
+    expect(res.stdout).not.toContain("component.ts")
+  })
+
+  it("com .sh E .ts blob CRLF, o guard lista SÓ o .sh — .ts nunca chega ao detector", () => {
+    const dir = makeRepo()
+    const SH_CONTENT = Buffer.from("#!/usr/bin/env bash\r\necho hi\r\n", "utf8")
+    injectBlob(dir, "run.sh", SH_CONTENT)
+    injectBlob(dir, "component.ts", TS_CONTENT)
+
+    const res = run(dir)
+    expect(res.status).toBe(1)
+    expect(res.stdout).toContain("run.sh")
+    expect(res.stdout).not.toContain("component.ts")
+  })
+})
+
 // ── Edge cases ───────────────────────────────────────────────────────────
 
 describe("check-blob-crlf.sh (edge)", () => {

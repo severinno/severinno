@@ -13,7 +13,10 @@
 // o pr-check (que mede correção, não performance) não percebe. Este guard
 // re-executa `act -j check` com a imagem custom e FALHA se:
 //   - o marcador tier-1 'Usando Bun pré-instalado' não aparecer no log, OU
-//   - a duração do passo 'Use pre-installed Bun (fast path)' > threshold.
+//   - a duração do passo 'Use pre-installed Bun (fast path)' > threshold, OU
+//   - o log mostrar engajamento EXPLÍCITO de tier-2 (cache restore) ou
+//     tier-3 (download) — cobre a regressão que MUDA o tier mas MANTÉM o
+//     marcador tier-1 no log (ex.: echo do marcador duplicado/movido).
 //
 // ATENÇÃO (evidência empírica, act 0.2.89): a linha
 //   `Success - Main ./.github/actions/setup-bun [X.XXs]` (duração do COMPOSITE)
@@ -25,42 +28,38 @@
 //   O composite total é reportado apenas como informativo.
 //
 // Usage:
-//   node scripts/check-tier1-fastpath.mjs --log <act-log> [--threshold <s>] [--version <v>]
+//   node scripts/check-tier1-fastpath.mjs --log <act-log> [--threshold <s>] [--version <v>] [--act-exit <code>]
 //
 // Exit codes:
 //   0 — PASS (tier-1 engajado e dentro do threshold)
-//   1 — FAIL (regressão do tier-1: marker ausente, lento ou drift de versão)
+//   1 — FAIL (regressão do tier-1: marker ausente, lento, drift de versão,
+//       tier-2/3 explícito, OU act falhou antes do setup-bun)
 //   2 — uso inválido (--log obrigatório, --threshold > 0)
+//
+// Semântica do --act-exit (exit code do act, capturado no step 'Run act' como
+// steps.act.outputs.ACT_EXIT):
+//   - act exit != 0 E SEM evidência do setup-bun no log → act falhou ANTES do
+//     setup-bun (ex.: imagem não publicada, erro de infra, setup do job) →
+//     FAIL com diagnóstico claro (regra 7).
+//   - act exit != 0 MAS com evidência do setup-bun → act falhou DEPOIS (suite
+//     completa do job check: bun install/prisma/lint/tsc/testes) — a evidência
+//     existe e o guard decide por ela (mesma semântica do periódico).
 //
 // Saída: relatório + exit code (0 = PASS, 1 = FAIL, 2 = uso inválido).
 // =============================================================================
 
 import { readFileSync, existsSync } from "node:fs"
 import { pathToFileURL } from "node:url"
+import { extractDurationFromLine } from "./check-setup-bun-common.mjs"
 
 // ---------------------------------------------------------------------------
 // Helpers puros (exportados para teste unitário)
 // ---------------------------------------------------------------------------
 
-/**
- * Converte a duração `[461.9667ms]` / `[10.9823953s]` / `[589.4µs]` de uma
- * linha de log do act para segundos. Retorna null se a linha não tiver
- * duração com uma das unidades suportadas.
- */
-export function extractDurationFromLine(line) {
-  const m = String(line).match(/\[([\d.]+)(ms|µs|s)\]/)
-  if (!m) return null
-  const value = parseFloat(m[1])
-  if (!Number.isFinite(value)) return null
-  switch (m[2]) {
-    case "ms":
-      return value / 1000
-    case "µs":
-      return value / 1_000_000
-    default:
-      return value
-  }
-}
+// extractDurationFromLine vive em check-setup-bun-common.mjs (fonte única,
+// compartilhada com o check-tier2-cache-restore.mjs). Re-exportada aqui para
+// manter o contrato público deste guard e o teste unitário existente.
+export { extractDurationFromLine }
 
 /**
  * Extrai a versão do marcador `Usando Bun pré-instalado: <v>` da linha, ou
@@ -91,30 +90,92 @@ export function extractFastPathEvidence(logText) {
 }
 
 /**
+ * Detecta engajamento EXPLÍCITO dos tiers inferiores no log do act.
+ *
+ * Além do marcador tier-1, o guard também falha quando o log prova que o
+ * setup-bun usou tier-2 (cache restore) ou tier-3 (download) — cobrindo a
+ * regressão que MUDA o tier mas MANTÉM o marcador tier-1 no log (ex.: echo
+ * do marcador duplicado/movido, ou condição invertida que segue imprimindo
+ * o marcador).
+ *
+ * Marcadores confiáveis (evidência empírica, act 0.2.89, logs não-TTY):
+ *   tier-2: 'Success - Main Restore Bun release from cache'
+ *   tier-3: 'Success - Main Download Bun release (cold cache)'
+ *
+ * Por que NÃO usar os grupos internos do action ('Puxando Bun ... do mirror
+ * GHCR' / 'Baixando Bun ... do GitHub Releases'): o act 0.2.89 CONSOBE os
+ * workflow commands ::group::/::endgroup:: e não os ecoa literalmente em
+ * output não-TTY (verificado 08/2026: 0 ocorrências nos logs capturados,
+ * mesmo em runs que engajaram cache). Os únicos sinais presentes no log são
+ * as linhas 'Success/Skip - Main <step name>', que o act imprime mesmo para
+ * steps com if: condicional.
+ *
+ * NOTA: a linha 'Skip - Main ...' NÃO conta como engajamento (o step não
+ * rodou — condição if: false é o comportamento esperado no tier-1).
+ *
+ * @param {string} logText
+ * @returns {{ tier2Engaged: boolean, tier3Engaged: boolean }}
+ */
+export function extractTierEngagement(logText) {
+  const lines = String(logText).split(/\r?\n/)
+  let tier2Engaged = false
+  let tier3Engaged = false
+  for (const line of lines) {
+    if (line.includes("Success - Main Restore Bun release from cache")) {
+      tier2Engaged = true
+    }
+    if (line.includes("Success - Main Download Bun release (cold cache)")) {
+      tier3Engaged = true
+    }
+  }
+  return { tier2Engaged, tier3Engaged }
+}
+
+/**
  * Verdict do guard. Recebe o texto do log + opções e devolve
- * { pass, reasons, ...evidencia, thresholdSeconds, expectedVersion }.
+ * { pass, reasons, ...evidencia, tier2Engaged, tier3Engaged, thresholdSeconds, expectedVersion }.
  *
  * Regras (falha se QUALQUER uma):
  *   1. marcador 'Usando Bun pré-instalado' ausente → tier-1 não engajou
  *   2. duração do passo fast-path ausente → INCONCLUSIVO (não medível)
  *   3. duração do passo fast-path > thresholdSeconds
  *   4. expectedVersion informado e marcador ≠ expectedVersion (drift)
+ *   5. tier-2 (cache restore) engajado EXPLICITAMENTE no log
+ *   6. tier-3 (download) engajado EXPLICITAMENTE no log
+ *   7. actExit informado e != 0 e SEM evidência do setup-bun no log (act
+ *      falhou ANTES do setup-bun — imagem não publicada, erro de infra)
  *
  * @param {string} logText
- * @param {{thresholdSeconds?: number, expectedVersion?: string | null}} [options]
+ * @param {{thresholdSeconds?: number, expectedVersion?: string | null, actExit?: number | null}} [options]
  * @returns {{
  *   pass: boolean,
  *   reasons: string[],
  *   markerVersion: string | null,
  *   fastPathDurationSeconds: number | null,
  *   compositeDurationSeconds: number | null,
+ *   tier2Engaged: boolean,
+ *   tier3Engaged: boolean,
+ *   actExit: number | null,
  *   thresholdSeconds: number,
  *   expectedVersion: string | null,
  * }}
  */
-export function checkTier1Fastpath(logText, { thresholdSeconds = 5, expectedVersion = null } = {}) {
+export function checkTier1Fastpath(
+  logText,
+  { thresholdSeconds = 5, expectedVersion = null, actExit = null } = {},
+) {
   const ev = extractFastPathEvidence(logText)
+  const tiers = extractTierEngagement(logText)
   const reasons = []
+
+  // Evidência de que o setup-bun RODOU no log (qualquer sinal serve): sem ela
+  // e com act exit != 0, o act morreu antes do setup-bun (regra 7).
+  const setupBunEvidence =
+    ev.markerVersion !== null ||
+    ev.fastPathDurationSeconds !== null ||
+    ev.compositeDurationSeconds !== null ||
+    tiers.tier2Engaged ||
+    tiers.tier3Engaged
 
   if (!ev.markerVersion) {
     reasons.push(
@@ -133,6 +194,21 @@ export function checkTier1Fastpath(logText, { thresholdSeconds = 5, expectedVers
   if (expectedVersion && ev.markerVersion && ev.markerVersion !== expectedVersion) {
     reasons.push(`marcador ${ev.markerVersion} ≠ esperado ${expectedVersion} (drift de versão)`)
   }
+  if (tiers.tier2Engaged) {
+    reasons.push(
+      "tier-2 EXPLÍCITO no log — 'Restore Bun release from cache' engajou (cache restore usado no lugar do fast path pré-instalado)",
+    )
+  }
+  if (tiers.tier3Engaged) {
+    reasons.push(
+      "tier-3 EXPLÍCITO no log — 'Download Bun release (cold cache)' engajou (download usado no lugar do fast path pré-instalado)",
+    )
+  }
+  if (typeof actExit === "number" && actExit !== 0 && !setupBunEvidence) {
+    reasons.push(
+      `act exit code ${actExit} ≠ 0 e SEM evidência do setup-bun no log — act falhou ANTES do setup-bun (imagem ghcr.io/<owner>/ubuntu-bun não publicada/disponível? erro de infra no job? veja o log do act)`,
+    )
+  }
 
   return {
     pass: reasons.length === 0,
@@ -140,6 +216,9 @@ export function checkTier1Fastpath(logText, { thresholdSeconds = 5, expectedVers
     markerVersion: ev.markerVersion,
     fastPathDurationSeconds: ev.fastPathDurationSeconds,
     compositeDurationSeconds: ev.compositeDurationSeconds,
+    tier2Engaged: tiers.tier2Engaged,
+    tier3Engaged: tiers.tier3Engaged,
+    actExit,
     thresholdSeconds,
     expectedVersion,
   }
@@ -150,11 +229,13 @@ export function checkTier1Fastpath(logText, { thresholdSeconds = 5, expectedVers
 // ---------------------------------------------------------------------------
 
 const USAGE = `Uso:
-  node scripts/check-tier1-fastpath.mjs --log <act-log> [--threshold <s>] [--version <v>]
+  node scripts/check-tier1-fastpath.mjs --log <act-log> [--threshold <s>] [--version <v>] [--act-exit <code>]
 
   --log        (obrigatório) arquivo com o output do act (job que usa setup-bun)
   --threshold  duração máxima do passo fast-path em segundos (default: 5)
   --version    versão esperada do bun (default: nenhum — não checa drift)
+  --act-exit   exit code do act (steps.act.outputs.ACT_EXIT). != 0 sem evidência
+               do setup-bun = act falhou antes do setup-bun → FAIL (regra 7)
   -h, --help   mostra esta ajuda
 
 Exit codes: 0 = PASS, 1 = FAIL, 2 = uso inválido`
@@ -167,12 +248,13 @@ Exit codes: 0 = PASS, 1 = FAIL, 2 = uso inválido`
  *   log?: string | null,
  *   threshold?: number,
  *   version?: string | null,
+ *   actExit?: number | null,
  *   error?: string,
  *   help?: boolean,
  * }}
  */
 export function parseArgs(argv) {
-  const out = { log: null, threshold: 5, version: null }
+  const out = { log: null, threshold: 5, version: null, actExit: null }
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case "--log": {
@@ -192,6 +274,17 @@ export function parseArgs(argv) {
         const v = argv[++i]
         if (v === undefined) return { error: `--version exige um valor` }
         out.version = v
+        break
+      }
+      case "--act-exit": {
+        // Valida o RAW string antes de parseInt: parseInt("1.5") === 1 passaria
+        // a checagem de inteiro — o regex /^\d+$/ rejeita frações, negativos
+        // e não-numéricos de forma correta e cobre o caso sem valor.
+        const raw = argv[++i]
+        if (raw === undefined) return { error: `--act-exit exige um valor` }
+        if (!/^\d+$/.test(raw))
+          return { error: `--act-exit deve ser um inteiro >= 0 (obtido: '${raw}')` }
+        out.actExit = parseInt(raw, 10)
         break
       }
       case "-h":
@@ -227,6 +320,7 @@ function main() {
   const result = checkTier1Fastpath(logText, {
     thresholdSeconds: args.threshold,
     expectedVersion: args.version,
+    actExit: args.actExit,
   })
 
   console.log("=== Tier-1 Fastpath Guard (setup-bun) ===")
@@ -236,6 +330,11 @@ function main() {
   )
   console.log(
     `  composite setup-bun:  ${result.compositeDurationSeconds === null ? "não encontrado" : `${result.compositeDurationSeconds.toFixed(3)}s`} (informativo — inclui overhead do act)`,
+  )
+  console.log(`  tier-2 (cache):       ${result.tier2Engaged ? "ENGAGED ❌" : "não engajado"}`)
+  console.log(`  tier-3 (download):    ${result.tier3Engaged ? "ENGAGED ❌" : "não engajado"}`)
+  console.log(
+    `  act exit:            ${result.actExit === null ? "não informado" : result.actExit}`,
   )
   console.log(`  threshold:           ${result.thresholdSeconds}s`)
   if (result.expectedVersion) console.log(`  versão esperada:     ${result.expectedVersion}`)

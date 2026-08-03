@@ -75,7 +75,10 @@
 //  11. TODO call site do setup-bun passa `bun-version: ${{ vars.BUN_VERSION }}`
 //      (omitir o input ou usar literal é violação — sem ele o action falha
 //      em runtime com mensagem confusa). No modo --staged, call sites cuja
-//      linha `uses:` foi adicionada pelo diff são avaliados também.
+//      linha `uses:` foi adicionada pelo diff são avaliados — E a REMOÇÃO
+//      do input bun-version de um call site que SOBREVIVEU (linha `uses:`
+//      de contexto/adicionada + `bun-version:` removido no diff) é
+//      violação de regressão (checkStagedRemovedBunVersion).
 //  12. Arquivos de workflow são escaneados nas DUAS extensões (.yml E .yaml)
 //      — um workflow com extensão alternativa não escapa dos checks de
 //      cache key/literal/call site/par key↔path (global E staged).
@@ -610,15 +613,18 @@ export function checkSetupBunCallSites(workflowsDir) {
 /**
  * Parseia um diff unificado (git diff --cached local, ou PR base...HEAD no
  * CI) e devolve TODAS as linhas que aparecem no diff por arquivo de workflow
- * (.yml OU .yaml) do diretório .github/workflows — ADICIONADAS (prefixo '+') E
- * de CONTEXTO (prefixo ' ') — com o número de linha correspondente NO NOVO
- * arquivo e a flag `added`. O contexto é necessário para o
- * checkStagedSetupBunCallSites: na migração de action (ex.:
+ * (.yml OU .yaml) do diretório .github/workflows — ADICIONADAS (prefixo '+'),
+ * de CONTEXTO (prefixo ' ') e REMOVIDAS (prefixo '-') — com o número de linha
+ * correspondente NO NOVO arquivo e as flags `added`/`removed`. O contexto é
+ * necessário para o checkStagedSetupBunCallSites: na migração de action (ex.:
  * oven-sh/setup-bun@v2 → ./.github/actions/setup-bun) a linha `uses:` é
  * ADICIONADA mas `with:`/`bun-version:` ficam como CONTEXTO no diff — um
  * parser só-de-adicionadas veria o call site SEM o bun-version e geraria
- * falso positivo. Arquivos sem extensão de workflow (.yml/.yaml) são
- * ignorados.
+ * falso positivo. As REMOVIDAS (sem incrementar lineNo — não existem no
+ * arquivo novo) são necessárias para o checkStagedRemovedBunVersion detectar
+ * a remoção do input bun-version de um call site que SOBREVIVEU. Headers
+ * `--- a/<path>` do arquivo ANTIGO são ignorados (não são linhas removidas).
+ * Arquivos sem extensão de workflow (.yml/.yaml) são ignorados.
  *
  * @param {string} diffText  saída de `git diff ... -- .github/workflows`
  * @returns {Map<string, {lineNo: number, content: string, added: boolean}[]>}
@@ -643,6 +649,13 @@ export function parseDiffLines(diffText) {
       lineNo = m ? Number(m[1]) : 0
       continue
     }
+    if (line.startsWith("--- ")) {
+      // "--- a/<path>" — header do arquivo ANTIGO no diff; NÃO é uma linha
+      // REMOVIDA. Sem este guard, num diff multi-arquivo o `--- a/<próximo>`
+      // (antes do `+++` que reseta currentFile) cairia como `removed: true`
+      // espúrio do arquivo ANTERIOR.
+      continue
+    }
     if (!currentFile) continue
     const ch = line[0]
     if (ch === "+") {
@@ -650,7 +663,12 @@ export function parseDiffLines(diffText) {
       perFile.get(currentFile).push({ lineNo, content: line.slice(1), added: true })
       lineNo++
     } else if (ch === "-") {
-      // linha removida — não existe no arquivo novo
+      // linha REMOVIDA — não existe no arquivo novo; incluída com `removed:
+      // true` SEM incrementar lineNo (ela não ocupa posição no arquivo novo)
+      // para o checkStagedRemovedBunVersion detectar a remoção do input
+      // bun-version de um call site que SOBREVIVEU no novo arquivo.
+      if (!perFile.has(currentFile)) perFile.set(currentFile, [])
+      perFile.get(currentFile).push({ lineNo, content: line.slice(1), removed: true })
     } else if (ch === " ") {
       if (!perFile.has(currentFile)) perFile.set(currentFile, [])
       perFile.get(currentFile).push({ lineNo, content: line.slice(1), added: false })
@@ -741,9 +759,12 @@ export function checkStagedCachePaths(diffText, rules) {
       if (!content.match(CACHE_USES_RE)) continue
 
       // Janela de até CACHE_BLOCK_WINDOW linhas depois do uses (mesma do
-      // scan global) — varre adicionadas E contexto do mesmo arquivo.
+      // scan global) — varre adicionadas E contexto do mesmo arquivo. Linhas
+      // REMOVIDAS são puladas — um path/key removido não pertence ao bloco
+      // sobrevivente que está sendo validado.
       const following = []
       for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CACHE_BLOCK_WINDOW; j++) {
+        if (lines[j].removed) continue
         following.push(lines[j].content)
       }
       const v = checkCachePathBlock(file, lineNo, following, rules)
@@ -778,13 +799,68 @@ export function checkStagedSetupBunCallSites(diffText) {
       // checkSetupBunCallSites global) — varre adicionadas E contexto do
       // mesmo arquivo. O limite por lineNo (não por índice) é necessário
       // porque o parser só inclui linhas que aparecem no diff (gaps entre
-      // hunks ficam de fora).
+      // hunks ficam de fora). Linhas REMOVIDAS são puladas — um bun-version
+      // removido não é um input que sobrevive no novo arquivo (um call site
+      // adicionado junto com a remoção do bun-version seria falso negativo).
       const following = []
       for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CALL_SITE_WINDOW; j++) {
+        if (lines[j].removed) continue
         following.push(lines[j].content)
       }
       const v = checkSetupBunCallSite(file, lineNo, following)
       if (v) violations.push(v)
+    }
+  }
+  return violations
+}
+
+/**
+ * Checa a REMOÇÃO do input bun-version de call sites do setup-bun nas linhas
+ * de um diff — a regressão OPOSTA à do checkStagedSetupBunCallSites: um call
+ * site que SOBREVIVE no arquivo novo (linha `uses:` presente como contexto OU
+ * adicionada) mas que PERDEU o `bun-version:` — o input foi REMOVIDO pelo PR
+ * (linha `-` no diff). Sem este check, remover o input de um call site
+ * pré-existente passaria no guard: o check de adição só avalia call sites
+ * cuja linha `uses:` foi ADICIONADA.
+ *
+ * NÃO reporta quando:
+ *   - o call site INTEIRO foi removido (a linha `uses:` também é `-` — o
+ *     step deixou de existir, não há contrato a impor);
+ *   - um `bun-version:` SOBREVIVE na janela (adicionado ou contexto) — ex.:
+ *     migração literal→vars (a linha antiga é `-`, a nova é `+`) — o call
+ *     site TROCOU o valor, não perdeu o input.
+ *
+ * @param {string} diffText  saída de git diff
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkStagedRemovedBunVersion(diffText) {
+  const violations = []
+  for (const [file, lines] of parseDiffLines(diffText)) {
+    for (let i = 0; i < lines.length; i++) {
+      const { lineNo, content, removed } = lines[i]
+      // âncora: call site que SOBREVIVE no novo arquivo (uses presente —
+      // contexto ou adicionado). `uses:` REMOVIDO = step inteiro removido.
+      if (removed) continue
+      if (content.trim() === "" || content.trim().startsWith("#")) continue
+      if (!content.includes("uses: ./.github/actions/setup-bun")) continue
+
+      // Janela seguinte (mesma do checkStagedSetupBunCallSites) — procura um
+      // `bun-version:` REMOVIDO e, na MESMA janela, um SOBREVIVENTE.
+      const following = []
+      for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CALL_SITE_WINDOW; j++) {
+        following.push(lines[j])
+      }
+
+      const removedBun = following.find((l) => l.removed && /^\s*bun-version\s*:/.test(l.content))
+      if (!removedBun) continue
+      const survivingBun = following.some(
+        (l) => !l.removed && /^\s*bun-version\s*:/.test(l.content),
+      )
+      if (survivingBun) continue // trocou o valor (literal→vars), não perdeu o input
+
+      violations.push(
+        `${file}:${removedBun.lineNo}: REMOÇÃO do input bun-version do call site do setup-bun (uses: linha ${lineNo}) — o call site SOBREVIVEU sem o input; adicione de volta 'bun-version: ${BUN_VERSION_VAR}'`,
+      )
     }
   }
   return violations
@@ -940,23 +1016,26 @@ function main() {
       ...checkStagedCacheKeys(diffText, DEFAULT_CACHE_KEY_RULES()),
       ...checkStagedLiterals(diffText),
       ...checkStagedSetupBunCallSites(diffText),
+      ...checkStagedRemovedBunVersion(diffText),
       ...checkStagedCachePaths(diffText, DEFAULT_CACHE_KEY_RULES()),
     ]
     if (violations.length > 0) {
       console.error(
-        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site/par key↔path do Bun:\n`,
+        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site/remoção de input/par key↔path do Bun:\n`,
       )
       for (const v of violations) console.error(`   - ${v}`)
       console.error(
-        `\n   Cache keys, literais, call sites e pares key↔path introduzidos por este diff precisam usar a` +
+        `\n   Cache keys, literais, call sites, pares key↔path introduzidos por este diff precisam usar a` +
           `\n   fonte única ${BUN_VERSION_VAR} — um literal (bun-1.3.14-...) não seria` +
           `\n   invalidado pela troca da variável, e um path de outra toolchain` +
-          `\n   (ex.: node_modules/.prisma com key bun-...) quebraria o cache.`,
+          `\n   (ex.: node_modules/.prisma com key bun-...) quebraria o cache. E` +
+          `\n   REMOVER o input bun-version de um call site que sobreviveu é` +
+          `\n   regressão — o action falharia em runtime sem a versão.`,
       )
       process.exit(1)
     }
     console.log(
-      `✅ Diff ok — nenhuma cache key/literal/call site/par key↔path do Bun introduzido` +
+      `✅ Diff ok — nenhuma cache key/literal/call site/remoção de input/par key↔path do Bun introduzido` +
         (base ? ` (vs base ${base})` : ` (staged)`),
     )
     process.exit(0)

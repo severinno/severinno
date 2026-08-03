@@ -198,6 +198,130 @@ jobs:
       - name: Summary
         run: echo "✅ Bun guard detects literal version drift (mutation test passed)."
 
+  # ── Tier-1 Fastpath Guard (PR, paths) ───────────────────────────────
+  # Gate OPCIONAL (dry, sem cron): detecta regressão do tier-1 fast path
+  # do setup-bun ANTES do merge, apenas quando o PR tocar o composite
+  # action ./.github/actions/setup-bun/ ou o Dockerfile.ubuntu-bun.
+  #
+  # POR QUE: o guard periódico (tier1-fastpath-guard.yml) roda SÓ na cron
+  # semanal — uma mudança de PR que quebre o tier-1 (imagem para de
+  # embarcar bun, o passo 'Detect pre-installed Bun' quebra, ou a versão
+  # embarcada diverge de vars.BUN_VERSION) só seria detectada DIAS depois,
+  # com o setup-bun silenciosamente mais lento (tier 2/3) — o pr-check
+  # mede correção, não performance, e não percebe a regressão. Este job
+  # re-executa o MESMO `act -j check` com a imagem custom
+  # (ghcr.io/<owner>/ubuntu-bun:<versão>, bun PRÉ-INSTALADO) e gateia no
+  # marcador 'Usando Bun pré-instalado' + threshold do passo fast-path
+  # (scripts/check-tier1-fastpath.mjs).
+  #
+  # DRY vs periódico: sem schedule (roda no PR via paths), sem
+  # upload-artifact (não precisa de actions: write), só o guard decide
+  # (exit 0/1). Custo: ~15 min de act só quando os paths mudam — o preço
+  # de travar o tier-1 antes do merge.
+  #
+  # ⚠️ Imagem no GHCR: pacote PRIVADO (verificado 08/2026: pull anônimo
+  # local retorna 'denied'). No CI o pull do act usa o auth automático do
+  # runner — exige GITHUB_TOKEN com 'packages: read' (garantir no
+  # permissions dos workflows; o periódico tier1-fastpath-guard.yml já
+  # tem). Pública só é necessária para reprodução local/externa.
+  # ⚠️ Os 4 steps pesados espelham o tier1-fastpath-guard.yml (periódico) —
+  # alterações no act/args do guard DEVEM ser replicadas nos dois lugares.
+  tier1-fastpath-guard:
+    name: Tier-1 Fastpath Guard (setup-bun changes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed for origin/main...HEAD diff
+
+      # ── Path filter: steps pesados só rodam quando o PR toca o setup-bun
+      # action ou o Dockerfile.ubuntu-bun (mesmo padrão de diff dos jobs
+      # benchmark/geo — sem action externa de paths).
+      # Falha LOUD se o diff não puder ser calculado: um guard que pula em
+      # silêncio (changed=false por erro de git) trairia o propósito.
+      - name: Detect tier-1 relevant changes
+        id: changes
+        run: |
+          set -euo pipefail
+          if ! git diff --name-only origin/main...HEAD > /tmp/pr-diff.txt 2>/tmp/pr-diff.err; then
+            echo "::error::não foi possível calcular o diff origin/main...HEAD"
+            cat /tmp/pr-diff.err
+            exit 1
+          fi
+          if grep -qE '^(\.github/actions/setup-bun/|Dockerfile\.ubuntu-bun)' /tmp/pr-diff.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "  ✅ PR toca setup-bun/Dockerfile.ubuntu-bun — rodando guard"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "  ℹ️ PR não toca setup-bun/Dockerfile.ubuntu-bun — guard pulado"
+          fi
+
+      # ── Valida a repository variable (fail-fast com mensagem clara) ──
+      - name: Validate BUN_VERSION variable
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          if [ -z "${{ vars.BUN_VERSION }}" ]; then
+            echo "::error::Repository variable BUN_VERSION não definida — crie em Settings → Secrets and variables → Actions (ex.: gh variable set BUN_VERSION 1.3.14)."
+            exit 1
+          fi
+          echo "  ✅ BUN_VERSION=${{ vars.BUN_VERSION }}"
+
+      # ── Instala o act pinado (mesma versão do ambiente local) ────────
+      # Sem setup-bun aqui de propósito: o objetivo é testar o setup-bun
+      # DENTRO do act, não usar o setup-bun para testar o setup-bun.
+      - name: Install act (v0.2.89)
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/act.tar.gz \
+            "https://github.com/nektos/act/releases/download/v0.2.89/act_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/act.tar.gz -C /tmp act
+          /tmp/act --version
+
+      # ── Re-executa o job check com a imagem custom (tier-1) ──────────
+      # O timeout do step limita o custo do job completo — a evidência do
+      # setup-bun (passo #2) já está no log nos primeiros ~30s; o guard
+      # decide o verdict, não o exit do act (mesma semântica do periódico).
+      - name: Run act -j check (imagem custom)
+        if: steps.changes.outputs.changed == 'true'
+        id: act
+        run: |
+          set +e
+          timeout 900 /tmp/act -b \
+            -W .github/workflows/pr-check.yml \
+            -j check \
+            -P "ubuntu-latest=ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${{ vars.BUN_VERSION }}" \
+            --var "BUN_VERSION=${{ vars.BUN_VERSION }}" \
+            --secret "GITHUB_TOKEN=${{ github.token }}" \
+            > /tmp/act-check.log 2>&1
+          ACT_EXIT=$?
+          echo "ACT_EXIT=${ACT_EXIT}" >> "$GITHUB_OUTPUT"
+          echo "  act exit: ${ACT_EXIT} (o guard decide o verdict)"
+          echo "  log: /tmp/act-check.log ($(wc -l < /tmp/act-check.log) linhas)"
+
+      # ── GATE: o guard decide PASS/FAIL baseado na evidência tier-1 ───
+      # --act-exit recebe o exit code do act (steps.act.outputs.ACT_EXIT): se
+      # o act morreu ANTES do setup-bun (exit != 0 sem evidência no log — ex.:
+      # imagem não publicada), o guard FALHA com diagnóstico claro (regra 7).
+      - name: Guard tier-1 fast path (threshold 5s)
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          node scripts/check-tier1-fastpath.mjs \
+            --log /tmp/act-check.log \
+            --threshold 5 \
+            --version "${{ vars.BUN_VERSION }}" \
+            --act-exit "${{ steps.act.outputs.ACT_EXIT }}"
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.changes.outputs.changed }}" = "true" ]; then
+            echo "✅ Tier-1 fast path validated on the custom image (setup-bun change)."
+          else
+            echo "ℹ️ Skipped — PR does not touch setup-bun action or Dockerfile.ubuntu-bun."
+          fi
+
   # ── E2E Counts Guard ──────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se os counts de checks
   # documentados nos comentários dos workflows (pr-check.yml, seed-guards.yml,
