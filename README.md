@@ -766,6 +766,40 @@ gates), mas seguem node-puro e sem docker. ⚠️ Timing REAL do GitHub Actions
 não medido aqui (gh sem auth neste ambiente — ver "auth fantasma" em Bugs
 conhecidos); o act é o proxy local.
 
+**Overhead do job `mutation-coord-update` (seed-guards.yml, contrato coordenado)** —
+diferente do master `mutation-guards` (node-puro), este job roda o **vitest REAL
+6× (controle + 5 cenários A–E: doc prod 128→N, anchor 128→129, derivação 128→127,
+independência com piso do guard neutralizado e doc dev 162→N) + o guard estático
+6×**. ⚠️ A premissa antiga de "3 execuções de vitest (controle + 2 cenários)" está
+**OBSOLETA** desde o cenário E (08/2026): o contrato cresceu para 5 cenários = 6
+runs. Medido 08/2026:
+
+| Item (job mutation-coord-update)                   | Local (Windows, node frio) | act + ubuntu-bun (container) | CI real (GH hosted) |
+| :------------------------------------------------- | :------------------------: | :--------------------------: | :-----------------: |
+| payload do mutation test (6 vitest + 6 guard runs) |          **51s**           |      **4m37.6s** (step)      |   ~35-45s (est.)¹   |
+| setup-bun (composite, tier-1 na imagem custom)     |             —              |            13.5s             |        ~1-2s        |
+| Cache node_modules (restore+save)                  |             —              |            17.4s*            |        ~1-2s        |
+| bun install (warm, cache hit)                      |             7s             |            12.8s*            |        ~2-5s        |
+
+*Overhead de EMULAÇÃO do act (actions/cache emulado + bind mount `/mnt/c`) — o
+GitHub Actions real não paga esses custos.
+
+¹ O payload de 51s local (6 runs de vitest ≈ 8.5s/run a frio) sobe para 4m37.6s
+no act por overhead de EMULAÇÃO (bind mount `/mnt/c` + docker cp); no GitHub
+Actions real (FS nativo + cache warm) a estimativa é ~35-45s — **pendente de
+medição real** (gh sem auth neste ambiente, ver "auth fantasma" em Bugs
+conhecidos). Quando autenticado:
+`gh run list --workflow=seed-guards.yml --limit 1` → `gh run view <id> --json
+jobs --jq '.jobs[] | select(.name | contains("contrato")) | .steps[] |
+select(.name | contains("Run mutation test")) | {name, startedAt, completedAt}'`.
+
+Comparando com os fast gates: os 16 guards somam ≈ **3.2s** de mediana; o payload
+do mutation-coord-update (51s local) é **~16× mais caro que TODA a classe de fast
+gates junta** — por design: cada cenário roda vitest real + guard estático (não é
+node-puro como o master `mutation-guards`). É o item mais caro dos mutation tests
+por PR, mas roda apenas no `seed-guards.yml` (reusable, chamado no PR-check), não
+no pre-push.
+
 > **Por que o pre-push não repete typecheck/lint-staged?** O pre-commit já os
 > rodou em cada commit da branch — reexecutá-los no push seria redundante. O
 > pre-push cobre exatamente o gap entre "commitei local" e "o CI vai rodar":

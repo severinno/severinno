@@ -602,3 +602,158 @@ Stage Summary:
 - **Arquivos**: scripts/test-mutation-coord-update.sh (novo) · package.json (script test:mutation-coord-update) · .github/workflows/seed-guards.yml (job mutation-coord-update).
 - **Validação**: mutation test real exit 0 (controle OK → mutação DETECTADA "piso prod violado" → 2 failed/20 passed no run mutado → SCAN_FILES restaurados) · bash -n OK · check-mutation-jobs exit 0 (16 mutation tests cobertos) · check-e2e-counts exit 0 (prod=128, dev=162) · prettier --ignore-unknown OK · CRLF 0 · 2 rodadas de review (SHIP).
 - **Estado**: contrato de atualização coordenada enforced — um PR que atualize SÓ os comentários dos workflows falha o seed-e2e-count.test.ts no CI, obrigando doc + anchor a andarem juntos.
+
+---
+
+Stage: MUTATION-COORD-UPDATE-B (direção inversa)
+Agent: orchestrator
+Task: Estender o mutation test do contrato coordenado para a DIREÇÃO INVERSA — mutar SÓ a âncora do teste (.toBe(128)→.toBe(129)) sem tocar a doc dos workflows, provando o contrato nas 2 direções em um único script.
+
+Work Log:
+
+- **Cenário A (já existia)**: doc dos workflows 128→N (SCAN_FILES) → teste deve FALHAR com "piso prod violado" (sites de prod somem da extração).
+- **Cenário B (novo)**: muta SÓ a âncora de sanidade do teste (`.toBe(128)` → `.toBe(129)` no seed-e2e-count.test.ts) com backup + sed in-place; verifica que a doc ficou INTACTA ("128 checks" presente — a falha tem que vir só da âncora, isolando a causa); roda o vitest real e exige FALHA com "anchor prod desatualizado" (a derivação real continua 128, o literal esperado virou 129). Fail-fast se o padrão `.toBe(128)` não existir (teste refatorado → mensagem clara em vez de guard cego).
+- **Refactor do script**: restore dividido em restore_scan/restore_anchor/restore_all (backup keys scan-$i e anchor); helper expect_failure() compartilhado com o veredicto de 3 casos (exit 0 = guard cego; falhou mas asserção errada = infra; asserção certa = detectado); restore_scan explícito entre cenários (B precisa da doc íntegra); restore_anchor explícito antes das mensagens finais (claim verdadeiro no print; trap EXIT redundante e seguro).
+- **Wiring**: seed-guards.yml — job mutation-coord-update renomeado para "contrato coordenado — doc↔anchor, 2 direções", comentário e Publish summary com 2 linhas (A e B). Script name inalterado → check-mutation-jobs continua cobrindo (16 tests).
+
+Stage Summary:
+
+- **Arquivos**: scripts/test-mutation-coord-update.sh (2 direções) · .github/workflows/seed-guards.yml (job + summary 2 direções).
+- **Validação**: mutation test real exit 0 (controle OK → A detectado "piso prod violado" → B detectado "anchor prod desatualizado" → todos os arquivos restaurados; git status só mostra os 2 arquivos intencionais) · bash -n OK · prettier --ignore-unknown OK · CRLF 0 · check-mutation-jobs exit 0 (16 cobertos) · check-e2e-counts exit 0 · 2 rodadas de review (SHIP + nit de restore aplicado).
+- **Estado**: contrato de atualização coordenada enforced nas 2 direções — doc sem anchor e anchor sem doc falham o seed-e2e-count.test.ts no CI, obrigando os dois lados a andarem juntos em qualquer bump.
+
+---
+
+Stage: MUTATION-COORD-2ELOS (guard estático + vitest)
+Agent: orchestrator
+Task: Fechar os DOIS elos da cadeia de validação no mesmo mutation test — rodar o guard estático check-e2e-counts.mjs contra a doc mutada e exigir que ele FALHE com exit 1, além do vitest.
+
+Work Log:
+
+- **Achado empírico ANTES do fix**: o guard estático NÃO falhava na doc generalizada 128→N — a extração (extractDocumentedCounts) perdia TODOS os sites de prod ("N checks" não casa `\d+ checks`), zero sites encontrados = zero violações no checkCounts → exit 0 ("✅ sincronizados") com a doc esvaziada. Blind spot REAL: só o piso do vitest pegava.
+- **Guard estendido**: MIN_DOCUMENTED_SITES={prod:8, dev:6} (MESMO piso do seed-e2e-count.test.ts) + função pura checkSitePisos(documented, minimums) → main() agrega allDocumented nos SCAN_FILES e sai com exit 1 ("piso por alvo violado") quando um alvo fica abaixo do piso. Mensagem de ação clara (restaure o site ou ajuste o piso se a simplificação foi legítima/deliberada).
+- **Mutation test com 2 elos**: GUARD_CMD=(node scripts/check-e2e-counts.mjs) + expect_failure reusado (mensagem CEGO generalizada para "a validação passou" — antes dizia "seed-e2e-count.test.ts passou", enganoso quando o GUARD é quem passa). CONTROLE roda vitest E guard (ambos exit 0); CENÁRIO A exige que AMBOS falhem (vitest 'piso prod violado' + guard 'piso por alvo violado'); CENÁRIO B exige que o guard PASSE com a doc íntegra (exit 0) — isolando a causa da falha na âncora e provando que o guard não quebrou (falha de A vem SÓ da doc mutada).
+- **Wiring**: seed-guards.yml job mutation-coord-update — comentário + step name atualizados ("2 direções, 2 elos"). Script name inalterado → check-mutation-jobs continua cobrindo (16).
+- **Fixtures do checkSitePisos**: os 2 testes que falharam primeiro passavam só sites de prod — o checkSitePisos valida AMBOS os alvos (alvo ausente = found 0 = violação); fixtures corrigidas com dev no piso para isolar a violação de prod.
+
+Stage Summary:
+
+- **Arquivos**: scripts/check-e2e-counts.mjs (piso + header) · src/lib/**tests**/check-e2e-counts.test.ts (+4 testes) · scripts/test-mutation-coord-update.sh (2 elos) · .github/workflows/seed-guards.yml (comentário).
+- **Validação**: mutation test exit 0 ×3 (controle vitest+guard pass → A: ambos falham com seus pisos → B: vitest falha 'anchor prod desatualizado' + guard exit 0 → arquivos restaurados; git status só com os 4 arquivos intencionais) · vitest 37 passados (2 suites) · guard real exit 0 · node --check OK · prettier --ignore-unknown OK · CRLF 0 nos 4 arquivos · check-mutation-jobs exit 0 (16 cobertos) · 3 rodadas de review (SHIP).
+- **Estado**: os 2 elos da cadeia agora concordam — um PR que generaliza a doc dos workflows falha o guard estático (piso) E o teste de integração (piso) no mesmo mutation test; a âncora mutada falha o vitest com o guard passando (causa isolada).
+
+---
+
+Stage: MUTATION-COORD-MEASURE (overhead por PR)
+Agent: orchestrator
+Task: Medir o tempo real do job mutation-coord-update (payload) e documentar o overhead por PR na seção de mutation tests do docs/GUARDS.md.
+
+Work Log:
+
+- **Limitação honesta**: gh NÃO está autenticado neste worktree ("auth fantasma" já documentado; repo privado → API sem token dá 404). Timings reais do GitHub Actions não puderam ser buscados — o padrão do repo (README) é act como proxy CI com caveat explícito. O job roda em ubuntu-latest (NÃO usa a imagem ubuntu-bun — essa é só do tier-1 local/act), então não há pull de imagem custom no CI deste job.
+- **Medições locais (Windows host)**: payload do mutation test = **21s** total (3 vitest: controle 5.0s + A 3.4s + B 3.4s + 3 guard runs ~0.3-0.4s cada) · bun install warm = 7s · guard isolado ~320-408ms.
+- **Proxy act (imagem catthehacker em cache)**: checkout 24.6s* · setup-bun composite 36.6s* (cache emulado 26.0s) · cache node_modules 19.0s* · bun install 5m58s* (frio, emulado) · **payload mutation test 17.1s** · summary 0.8s. O act travou no "Post Cache node_modules" (tar do cache emulado — overhead pós-step que não existe no CI real). * = overhead de emulação.
+- **Número confiável**: payload do mutation test **~17-21s por PR** (17.1s container / 21s local) — os demais componentes (checkout/setup-bun/cache/install) são os mesmos de qualquer job com bun install (~1-2s cada no CI real).
+- **Doc**: docs/GUARDS.md seção 3 (Mutation tests) ganhou sub-bloco "Overhead por PR do job mutation-coord-update (medido 08/2026)" com tabela Local × act × CI real, caveats de emulação (marcados * e nota ¹ do setup-bun tier-2) e o aviso de auth fantasma.
+
+Stage Summary:
+
+- **Arquivo**: docs/GUARDS.md (sub-bloco de overhead na seção 3).
+- **Validação**: prettier --ignore-unknown OK · CRLF 0 · check-readme-anchors docs/GUARDS.md exit 0 (15 headings, forward) · check-readme-toc exit 0 · review SHIP.
+- **Estado**: overhead por PR documentado com evidência (payload 17-21s) e sem overclaim — timings reais do GH Actions pendentes de gh auth (comando de medição documentado no padrão do repo).
+
+---
+
+Stage: BARREL-LINT-PRE-LINTSTAGED
+Agent: orchestrator
+Task: Mover o barrel-lint (guard de headers Usage/Exit codes nas 50 primeiras linhas) para ANTES do lint-staged no pre-commit — a violação de header pega com arquivo:linha cedo, sem o prettier já ter reformatado o working tree.
+
+Work Log:
+
+- **Problema**: no commit anterior o barrel-lint travou o commit com 3 scripts sem header válido — mas rodava DEPOIS do lint-staged (o prettier já tinha reformatado o working tree quando o erro aparecia). Pedido: reordenar para falhar cedo.
+- **Mudança**: .husky/pre-commit — `bun run barrel-lint` movido de depois para ANTES do `bun x lint-staged` (ordem: staged bun-guard → staged mutation-jobs → run-encoding-guards → barrel-lint → lint-staged → direct-rtl-import → typecheck → snapshot). Comentário atualizado com o rationale.
+- **Prova imediata do valor**: o barrel-lint reordenado pegou de cara uma violação REAL pré-existente — scripts/test-mutation-coord-update.sh com o bloco Usage/Exit codes além da linha 50 (a prosa dos 2 elos empurrou o bloco para baixo; mesma classe de erro que travou o commit anterior). Corrigido movendo o bloco para logo após o título (conteúdo idêntico, posição correta — padrão dos outros scripts corrigidos).
+- **Sem impacto de simetria**: o check-hooks-symmetry é order-independent (presença, não ordem) — tabela README continua batendo (16 compartilhados + reverse OK).
+
+Stage Summary:
+
+- **Arquivos**: .husky/pre-commit (reordenação) · scripts/test-mutation-coord-update.sh (header Usage/Exit codes movido para o topo).
+- **Validação**: bash -n OK (ambos) · bun run barrel-lint exit 0 (antes exit 3 com a violação do coord-update — o reorder provou o valor imediatamente) · check-hooks-symmetry exit 0 · CRLF 0 · prettier --ignore-unknown OK · mutation test exit 0 (header movido não quebrou nada; arquivos restaurados) · review SHIP.
+- **Estado**: violação de header agora falha o pre-commit ANTES do lint-staged, com arquivo:linha — o dev corrige sobre o working tree limpo, não sobre arquivos já formatados pelo prettier.
+
+## MUTATION-COORD-CENARIO-C — triângulo doc↔anchor↔código fechado (08/2026)
+
+- scripts/test-mutation-coord-update.sh: +CENÁRIO C — muta a DERIVAÇÃO de verdade
+  (sed comenta a 1ª asserção `expect(` real do scripts/test-seed-prod-e2e.ts via
+  `0,/^[[:space:]]*expect(/s//\/\/ MUTATION-C: expect(/` → prod cai 128→127). Doc
+  dos workflows E âncora do teste verificados INTACTOS (isolamento) → vitest deve
+  falhar com "cada count documentado bate" E guard estático com "divergente(s)
+  entre workflows e derivação" (2 elos). restore_derivation + trap EXIT.
+- Header/pipeline/exit-codes/banner atualizados para o triângulo de 3 direções.
+- .github/workflows/seed-guards.yml: job mutation-coord-update renomeado para
+  "doc↔anchor↔código, 3 direções"; comentário, step e summary com a linha C.
+- Validação: mutation test exit 0 (A piso 2 elos, B sanidade guard passa, C
+  derivação 2 elos), vitest 37/37, barrel-lint 0, prettier 0, CRLF 0, review SHIP.
+
+## MUTATION-COORD-CENARIO-D — independência do teste vs guard (08/2026)
+
+- scripts/test-mutation-coord-update.sh: +CENÁRIO D (4º) — prova que o vitest
+  do seed-e2e-count NÃO depende do guard estático: muta a doc (128→N, como em
+  A) E neutraliza o piso do guard (GUARD_PISO_PATTERN { prod: 8, dev: 6 } →
+  { prod: 0, dev: 6 } via sed no check-e2e-counts.mjs). Com piso zero e sem
+  sites de prod para divergir, o guard fica CEGO (exit 0, verificado) mas o
+  vitest CONTINUA falhando ("piso prod violado") — o piso do TESTE é próprio
+  (hardcoded ≥ 8 no seed-e2e-count.test.ts), não herdado do guard.
+- restore_guard + trap EXIT; header/pipeline/banner/result para 4 cenários.
+- .github/workflows/seed-guards.yml: job renomeado "4 cenários"; comentário,
+  step e summary com a linha D (independência).
+- Validação: mutation test exit 0 ×2 (A piso 2 elos, B sanidade guard passa,
+  C derivação 2 elos, D independência guard cego), vitest 37/37, barrel-lint 0,
+  prettier 0, CRLF 0, guard real exit 0 com piso restaurado, review SHIP ×2.
+
+## MUTATION-COORD-CENARIO-E — contrato estendido ao count de DEV (08/2026)
+
+- scripts/test-mutation-coord-update.sh: +CENÁRIO E (5º) — o contrato de
+  atualização coordenada agora vale para AMBOS os counts: além de prod (128,
+  cenário A), o DEV (162) também é auditado. MUTATION_SED_DEV ("162 checks"
+  → "N checks" + ternary '162' → 'N') ataca SÓ os sites de dev (5
+  literais + o ternary dev do seed-guards.yml L211); prod ("128 checks") e a
+  âncora dev (.toBe(162)) ficam INTACTAS (isolamento verificado) → vitest
+  falha com "piso dev violado" (hardcoded ≥ 6 no seed-e2e-count.test.ts) E
+  guard falha com "piso por alvo violado" (dev 0 < 6) — os 2 elos no par.
+- Header/pipeline/banner/result para 5 cenários; fail-fast "162 checks".
+- .github/workflows/seed-guards.yml: bullet (E), job "5 cenários", step,
+  summary com a linha E (contrato p/ prod E dev).
+- Validação: mutation test exit 0 ×2 (5 cenários, pós-prettier), vitest 37/37,
+  barrel-lint 0, prettier 0, CRLF 0, guard real exit 0, 162 restaurado,
+  review SHIP ×2. Prosa "162 checks" no comentário (E) confirmada INERTE
+  (nenhum TARGET_PATTERN extrai; guard/vitest exit 0).
+- MUTATION-COORD-ACT-CI (08/2026): rodado o job mutation-coord-update via act com a
+  imagem ubuntu-bun:1.3.14. O run REVELOU um bug real de portabilidade: no container
+  (GITHUB_ACTIONS=true) o reporter padrão do vitest vira o github-actions, que
+  URL-encodea o TITLE do ::error (espaços → %20); o EXPECTED_FAILURE_DERIVATION
+  ('cada count documentado bate') é o NOME do teste (no title), então o grep do
+  cenário C não achava a asserção (cenários A/B/D/E falham por mensagens no body,
+  não-encoded). FIX: VITEST_CMD ganhou --reporter=basic (determinístico em qualquer
+  ambiente — testado com decoy: nome literal 3x, 0 %20, mesmo com GITHUB_ACTIONS).
+- Validação pós-fix: mutation test exit 0 local com GITHUB_ACTIONS=true (5 cenários,
+  arquivos restaurados) E no container via act (log '✅ Mutation test passou',
+  summary com os 5 cenários ✅, step 'Success [4m37.56s]'; o job foi morto pelo
+  timeout de 900s SÓ no Post Cache emulado — tar do bind mount, pós-step, não existe
+  no CI real). setup-bun atingiu tier-1 fast path ('Bun já instalado no runner').
+- GUARDS.md (seção 3): tabela de overhead atualizada do estado stale ('2 direções',
+  3 vitest runs, 17.1s) para o real de 5 cenários: local medido 51s, act/ubuntu-bun
+  4m37.6s (overhead de emulação /mnt/c documentado), CI real ~35-45s (estimado, a
+  medir com gh). Prettier reflow fundiu uma linha da tabela — corrigido e revalidado
+  (8 linhas × 6 campos, prettier 0, CRLF 0, anchors/toc/images 0). Review SHIP ×4.
+- README-MUTATION-COORD-CI (08/2026): pedido de medir o tempo REAL do job
+  mutation-coord-update no CI via gh run view. MEDIÇÃO BLOQUEADA e confirmada:
+  gh sem auth (hosts.yml ausente — auth fantasma), repo PRIVADO (API sem auth →
+  404), nenhum GH/GITHUB_TOKEN em .env/env. Premissa do pedido ('3 execuções de
+  vitest: controle + 2 cenários') estava OBSOLETA — o job roda 5 cenários (A–E)
+  = 6 runs de vitest + 6 do guard (corrigido na doc). Entregue a parte
+  documentável: bloco novo no README (seção Git Hooks) 'Overhead do job
+  mutation-coord-update' com local 51s (medido), act+ubuntu-bun 4m37.6s (step),
+  CI real '~35-45s (est.)¹ pendente de medição real' + one-liner gh para quando
+  autenticado + comparação ~16× vs 16 fast gates (3.2s). Prettier 0, CRLF 0,
+  anchors/toc/images 0, hooks-symmetry 0, badge 0. Review SHIP ×2.
