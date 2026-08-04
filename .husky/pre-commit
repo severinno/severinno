@@ -18,14 +18,20 @@ node scripts/check-mutation-jobs.mjs --staged
 # 15 guards de encoding/CI compartilhados com o pre-push (fonte única —
 # adicionar um guard novo = editar scripts/run-encoding-guards.sh em UM lugar)
 bash scripts/run-encoding-guards.sh
+
+# Barrel lint — valida imports diretos (barrels) E headers de scripts
+# (Usage + Exit code nas 50 primeiras linhas). Roda ANTES do lint-staged
+# para que a violação de header seja pega com arquivo:linha cedo, sem o
+# prettier já ter reformatado o working tree (o lint-staged roda por último
+# na cadeia de formatação — se o barrel falhasse depois, o dev corrigiria
+# sobre arquivos já modificados).
+bun run barrel-lint
+
 bun x lint-staged
 
 # Direct RTL import check — impede import de @testing-library/react
 # em arquivos .test.* (devem usar @/__tests__/test-utils)
 bun run check:direct-rtl-import
-
-# Barrel lint — detecta exports quebrados em arquivos de barrel (index.ts)
-bun run barrel-lint
 
 # Type check — rejeita commit se houver erros de tipo no projeto
 bun run typecheck

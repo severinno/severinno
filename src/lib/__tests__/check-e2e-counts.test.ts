@@ -22,6 +22,8 @@ import {
   extractDocumentedCounts,
   parseDerivedJson,
   checkCounts,
+  checkSitePisos,
+  MIN_DOCUMENTED_SITES,
 } from "../../../scripts/check-e2e-counts.mjs"
 
 // ── Fixtures (linhas reais dos workflows) ────────────────────────────────
@@ -132,5 +134,74 @@ describe("checkCounts", () => {
     const violations = checkCounts(documented, expected)
     expect(violations).toHaveLength(1)
     expect(violations[0].expected).toBeUndefined()
+  })
+})
+
+// ── checkSitePisos ──────────────────────────────────────────────────────
+// Piso de sites documentados por alvo — a proteção contra PERDA de extração
+// (site some silenciosamente da doc → o checkCounts não vê violação porque
+// zero sites encontrados = zero validações). MESMO piso do
+// seed-e2e-count.test.ts (prod ≥ 8, dev ≥ 6). O mutation test
+// test-mutation-coord-update.sh prova o cenário end-to-end: doc 128→N →
+// todos os sites de prod somem da extração → este piso falha o guard com
+// exit 1 (o vitest também falha pelo piso — os 2 elos concordam).
+
+describe("checkSitePisos", () => {
+  it("ambos os alvos acima do piso → nenhuma violação", () => {
+    const documented = Array.from({ length: 8 }, (_, i) => ({
+      target: "prod",
+      line: i + 1,
+      count: 128,
+      text: "p",
+    })).concat(
+      Array.from({ length: 6 }, (_, i) => ({ target: "dev", line: i + 20, count: 162, text: "d" })),
+    )
+    expect(checkSitePisos(documented)).toEqual([])
+  })
+
+  it("prod abaixo do piso (site sumiu) → violação com found/minimum", () => {
+    // dev precisa estar no/abaixo do piso para isolar a violação de prod — o
+    // checkSitePisos valida AMBOS os alvos (alvo ausente = found 0 = violação).
+    const documented = Array.from({ length: 3 }, (_, i) => ({
+      target: "prod",
+      line: i + 1,
+      count: 128,
+      text: "p",
+    })).concat(
+      Array.from({ length: 6 }, (_, i) => ({ target: "dev", line: i + 20, count: 162, text: "d" })),
+    )
+    const violations = checkSitePisos(documented)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      target: "prod",
+      found: 3,
+      minimum: MIN_DOCUMENTED_SITES.prod,
+    })
+  })
+
+  it("alvo com ZERO sites → violação (cenário da doc generalizada 128→N)", () => {
+    // dev no piso (6 sites); prod AUSENTE (0 sites — todos sumiram da extração).
+    const documented = Array.from({ length: 6 }, (_, i) => ({
+      target: "dev",
+      line: i + 1,
+      count: 162,
+      text: "d",
+    }))
+    const violations = checkSitePisos(documented)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      target: "prod",
+      found: 0,
+      minimum: MIN_DOCUMENTED_SITES.prod,
+    })
+  })
+
+  it("minimums customizáveis (override por alvo)", () => {
+    const documented = [{ target: "prod", line: 1, count: 128, text: "p" }]
+    const violations = checkSitePisos(documented, { prod: 1, dev: 0 })
+    expect(violations).toEqual([])
+    const violations2 = checkSitePisos(documented, { prod: 2 })
+    expect(violations2).toHaveLength(1)
+    expect(violations2[0]).toMatchObject({ target: "prod", found: 1, minimum: 2 })
   })
 })

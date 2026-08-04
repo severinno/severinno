@@ -30,6 +30,12 @@
 //   - .github/workflows/seed-guards.yml         (comentários + echos da matrix)
 //   - scripts/validate-seed-guards-matrix-local.sh
 //
+// PISO de sites por alvo (MIN_DOCUMENTED_SITES, prod ≥ 8 / dev ≥ 6): além
+// de validar cada count ENCONTRADO, o guard falha se sites documentados
+// SOMEM da extração (ex.: reformatar o ternary, generalizar "128 checks" →
+// "N checks") — mesma proteção do piso do seed-e2e-count.test.ts, fechando
+// a brecha onde uma doc esvaziada passaria sem violações.
+//
 // Usage:
 //   node scripts/check-e2e-counts.mjs
 //
@@ -57,6 +63,20 @@ export const SCAN_FILES = [
   ".github/workflows/seed-guards.yml",
   "scripts/validate-seed-guards-matrix-local.sh",
 ]
+
+/**
+ * Piso de sites documentados por alvo (prod ≥ 8, dev ≥ 6 — MESMO valor do
+ * teste "piso de sites documentados por alvo" do seed-e2e-count.test.ts).
+ *
+ * Por quê: checkCounts só valida counts que a extração ENCONTRA. Se um site
+ * for silenciosamente PERDIDO (ex.: reformatar o ternary da matrix, ou — o
+ * cenário do mutation test — generalizar "128 checks" → "N checks"), a
+ * extração encolhe, zero violações são encontradas e o guard passaria com a
+ * doc esvaziada. Este piso falha o guard quando um alvo fica com menos sites
+ * do que o mínimo — fechando a mesma brecha que o piso do teste de
+ * integração cobre do lado do vitest (os 2 elos da cadeia agora concordam).
+ */
+export const MIN_DOCUMENTED_SITES = { prod: 8, dev: 6 }
 
 /**
  * Padrões que ligam um count documentado ao SEU alvo (prod|dev). A dedupe
@@ -179,6 +199,29 @@ export function checkCounts(documented, expected) {
   return violations
 }
 
+/**
+ * Verifica o PISO de sites documentados por alvo — a proteção contra PERDA
+ * de extração (site some silenciosamente → a contagem de sites encolhe).
+ *
+ * @param {{ target: string, line: number, count: number, text: string }[]} documented
+ * @param {Record<string, number>} minimums  piso por alvo (default MIN_DOCUMENTED_SITES)
+ * @returns {{ target: string, found: number, minimum: number }[]}
+ */
+export function checkSitePisos(documented, minimums = MIN_DOCUMENTED_SITES) {
+  const foundByTarget = {}
+  for (const d of documented) {
+    foundByTarget[d.target] = (foundByTarget[d.target] ?? 0) + 1
+  }
+  const violations = []
+  for (const [target, minimum] of Object.entries(minimums)) {
+    const found = foundByTarget[target] ?? 0
+    if (found < minimum) {
+      violations.push({ target, found, minimum })
+    }
+  }
+  return violations
+}
+
 // ---------------------------------------------------------------------------
 // Main — roda a derivação + escaneia workflows/script local
 // ---------------------------------------------------------------------------
@@ -208,11 +251,36 @@ function main() {
 
   // ── Escaneia os arquivos que documentam counts ────────────────────────
   const violations = []
+  const allDocumented = []
   for (const rel of SCAN_FILES) {
     const documented = extractDocumentedCounts(readText(rel))
+    allDocumented.push(...documented)
     for (const v of checkCounts(documented, expected)) {
       violations.push({ file: rel, ...v })
     }
+  }
+
+  // Piso de sites por alvo: pega a PERDA de extração que o checkCounts não vê
+  // (sites que SOMEM da doc — não divergem — como o cenário do mutation test
+  // "doc 128→N"). Mesmo piso do seed-e2e-count.test.ts (prod ≥ 8, dev ≥ 6).
+  const pisoViolations = checkSitePisos(allDocumented)
+
+  if (pisoViolations.length > 0) {
+    console.error(
+      `❌ Site(s) documentado(s) de checks SUMIRAM da extração (piso por alvo violado):\n`,
+    )
+    for (const v of pisoViolations) {
+      console.error(
+        `   - alvo=${v.target}: encontrados ${v.found} sites documentados, mínimo ${v.minimum}`,
+      )
+    }
+    console.error(
+      `\n   Ação: um site documentado foi removido ou reformatado nos SCAN_FILES` +
+        `\n   (ex.: o ternary da matrix, um comentário "N checks", um echo).` +
+        `\n   Restaure o site (ou ajuste o piso em MIN_DOCUMENTED_SITES se a doc` +
+        `\n   foi LEGITIMAMENTE simplificada — deliberado e documentado).`,
+    )
+    process.exit(1)
   }
 
   if (violations.length > 0) {

@@ -73,6 +73,60 @@ pr-check (um mutation novo sem job = falha).
 
 **Onde roda:** CI (pr-check), local (`bash scripts/test-mutation-guards.sh`).
 
+#### Overhead por PR do job `mutation-coord-update` (medido 08/2026)
+
+O job roda em `ubuntu-latest` (hosted runner — **NÃO** usa a imagem custom
+`ubuntu-bun`; essa imagem é só para o tier-1 local/act). O custo real por PR é
+dominado pelo **payload do mutation test**: 5 cenários (controle + A + B + C + D
+
+- E) = 6 runs de vitest + 6 runs do guard estático (`check-e2e-counts.mjs`,
+  ~0.3-0.4s cada). Medido no act com a imagem `ubuntu-bun:1.3.14` (08/2026):
+
+| Componente do job                      | Local (Windows, node frio) | act (ubuntu-bun, container) | CI real (GH hosted) |
+| :------------------------------------- | :------------------------: | :-------------------------: | :-----------------: |
+| checkout@v4                            |             —              |            49ms             |    ~1-2s (real)     |
+| setup-bun (composite, tier-1)          |             —              |     13.5s (fast path)¹      |  ~1-2s (esperado)¹  |
+| Cache node_modules (restore+save)      |             —              |           17.4s*            |    ~1-2s (real)     |
+| bun install (warm, cache hit)          |             7s             |           12.8s*            |  ~2-5s (esperado)   |
+| **Mutation test payload (5 cenários)** |          **51s**           |        **4m37.6s***         | ~35-45s (estimado)² |
+| Publish summary                        |             —              |            0.6s             |         <1s         |
+
+¹ Na imagem ubuntu-bun o setup-bun atinge o **tier-1 fast path** (log: `Bun já
+instalado no runner (1.3.14) — fast path`) — os 13.5s do act são o overhead de
+EMULAÇÃO do composite (docker exec), não download/cache; no CI real o tier-1 não
+existe (runner hosted), então o setup-bun real é o tier-2 com cache REAL do
+GitHub (~1-2s esperado — ver a tabela de medição do setup-bun no README).
+
+*Overhead de EMULAÇÃO do act: docker cp do worktree no checkout + bind mount
+lento (`/mnt/c` no Docker Desktop) + actions/cache emulado. É por isso que o
+payload do mutation test dispara de ~21s (local) para 4m37s no act: cada um dos 6
+runs de vitest paga I/O de bind mount (SSD do host → ext4 do container, ~46s por
+run emulado vs ~3.4-5.0s local). O act ainda travou no "Post Cache node_modules"
+(tar do cache emulado) após o step do mutation test — overhead pós-step que não
+existe no CI real. O GitHub Actions real usa filesystem nativo do runner, então o
+payload esperado no CI é da ordem do local (~21s, escalando com os 5 cenários).
+
+² Estimado por extrapolação do local medido (51s com 6 vitest runs + 6 guard runs
+≈ ~8s/run de vitest a frio no runner hosted) — a medir com `gh` autenticado (ver
+abaixo). O step do mutation test roda no CI com bun install WARM (cache real do
+GitHub), então a I/O não é o gargalo; a expectativa é o payload ficar no mesmo
+patamar do local (dezenas de segundos, não minutos).
+
+⚠️ Timing REAL do GitHub Actions não medido aqui (gh sem auth neste ambiente — ver
+"auth fantasma" em Bugs conhecidos); o act é o proxy local, no padrão do README. O
+número confiável é o **payload do mutation test no container: 4m37.6s** (o step
+`Run mutation test` completou `✅ Success` com os 5 cenários; o job só foi morto
+depois, no Post Cache emulado). No CI real, com cache warm e FS nativo, o payload
+esperado é ~21-25s (ver nota ²).
+
+Quando o `gh` estiver autenticado, medir o CI real é um one-liner:
+`gh run list --workflow=seed-guards.yml --limit 1` → pegar o run id →
+`gh run view <id> --json jobs --jq '.jobs[] | select(.name | contains("contrato")) | .steps[] | select(.name | contains("Run mutation test")) | {name, startedAt, completedAt}'`
+— o passo `Run mutation test (contrato coordenado — 5 cenários, 2 elos)` dá o
+tempo real do payload; os steps `actions/checkout@v4` e `setup-bun` dão o overhead
+fixo do job (troque o filtro do `.steps[]` pelo nome do step desejado). Atualize a
+tabela acima quando medir.
+
 ---
 
 ## 4. README/docs guards — `check-readme-anchors`, `check-readme-toc`, `check-readme-images`, `check-readme-reverse-baseline`, `check-readme-repro-marker`
