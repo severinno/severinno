@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 9 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 10 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -30,6 +30,9 @@
 #   mutation-jobs  → scripts/test-mutation-mutation-jobs.sh
 #                    script órfão (forward) + matriz quebrada (reverse) do
 #                    check-mutation-jobs devem FALHAR
+#   workflow-refs  → scripts/test-mutation-workflow-refs.sh
+#                    alvo TRANSITIVO de entry deletado (workflow bun run →
+#                    scripts/X) + entry órfã do --pkg-internal devem FALHAR
 #   utf8-scope     → scripts/test-mutation-utf8-scope.sh
 #                    call site sem src/ deve FALHAR
 #
@@ -68,6 +71,7 @@ SUBTESTS=(
   "docs-anchor|Docs — âncora quebrada em docs/*.md (fixture com docs/)|scripts/test-mutation-readme-docs-anchor.sh"
   "producer-sent|Produtor — sentinel 'com CRLF' removido do audit all-text|scripts/test-mutation-producer-sentinel.sh"
   "mutation-jobs|Mutation-jobs — script órfão + matriz quebrada|scripts/test-mutation-mutation-jobs.sh"
+  "workflow-refs|Workflow-refs — alvo transitivo deletado + entry órfã|scripts/test-mutation-workflow-refs.sh"
   "utf8-scope|UTF-8 — call site sem src/|scripts/test-mutation-utf8-scope.sh"
 )
 
@@ -225,5 +229,5 @@ fi
 
 pass "MUTATION TESTS PASSED — os guards (bun literal, bun remoção, hooks simetria,"
 pass "README anchors/toc/images + reverse, docs anchor, produtor sentinel,"
-pass "mutation-jobs, UTF-8 escopo) detectam todas as mutações."
+pass "mutation-jobs, workflow-refs, UTF-8 escopo) detectam todas as mutações."
 exit 0

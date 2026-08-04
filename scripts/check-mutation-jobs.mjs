@@ -3,6 +3,19 @@
 // =============================================================================
 // check-mutation-jobs.mjs
 //
+// Usage:
+//   node scripts/check-mutation-jobs.mjs                   # scan global
+//   node scripts/check-mutation-jobs.mjs --staged          # git diff --cached
+//   node scripts/check-mutation-jobs.mjs --staged --base origin/main  # diff PR
+//
+// Exit codes:
+//   0 — todo mutation test tem job correspondente (pass)
+//   1 — mutation test órfão OU ref quebrada (matriz ou workflow) (global);
+//       script test-mutation-*.sh NOVO sem job OU run: de workflow NOVO com
+//       ref quebrada (--staged)
+//   2 — infra: scripts/ ou .github/workflows/ ausente (fail-closed);
+//       --base inválido ou git diff indisponível (--staged)
+//
 // CI guard (fast gate, <1s, node-puro) que valida que TODO mutation test de
 // guard (scripts/test-mutation-*.sh) tem o job correspondente no CI —
 // falhando se um NOVO script de mutation test for adicionado sem ser wireado
@@ -34,30 +47,23 @@
 //
 // Modo --staged (espelho do check-bun-mirror --staged): avalia SÓ o diff em
 // questão (git diff --cached local, ou --base <ref> → git diff <ref>...HEAD
-// no CI) e falha se ele INTRODUZIR um test-mutation-*.sh NOVO sem cobertura
-// (sem ref direta num workflow run: nem na matriz do master). Violações
-// pré-existentes do base não poluem o PR; um script novo sem wire falha
+// no CI) sobre AMBOS os caminhos do escopo (scripts/ E .github/workflows/) e
+// falha se ele INTRODUZIR um test-mutation-*.sh NOVO sem cobertura (sem ref
+// direta num workflow run: nem na matriz do master) — forward — OU um run:
+// de workflow NOVO (linha ADICIONADA pelo diff) apontando para um
+// test-mutation-*.sh INEXISTENTE em scripts/ — reverse, fechando o par nos
+// dois lados TAMBÉM no staged. Violações pré-existentes do base não poluem
+// o PR; um script novo sem wire ou uma ref de workflow quebrada nova falha
 // ANTES do merge mesmo que o working tree global já esteja consistente.
-// Reusa DIFF_CONTEXT/isValidGitRef do check-bun-mirror.mjs (fonte única).
-//
-// Usage:
-//   node scripts/check-mutation-jobs.mjs                   # scan global
-//   node scripts/check-mutation-jobs.mjs --staged          # git diff --cached
-//   node scripts/check-mutation-jobs.mjs --staged --base origin/main  # diff PR
-//
-// Exit codes:
-//   0 — todo mutation test tem job correspondente (pass)
-//   1 — mutation test órfão OU ref quebrada (matriz ou workflow) (global);
-//       test-mutation-*.sh NOVO sem job (--staged)
-//   2 — infra: scripts/ ou .github/workflows/ ausente (fail-closed);
-//       --base inválido ou git diff indisponível (--staged)
+// Reusa DIFF_CONTEXT/isValidGitRef/parseDiffLines do check-bun-mirror.mjs
+// (fonte única).
 // =============================================================================
 
 import { execFileSync } from "node:child_process"
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { DIFF_CONTEXT, isValidGitRef } from "./check-bun-mirror.mjs"
+import { DIFF_CONTEXT, isValidGitRef, parseDiffLines } from "./check-bun-mirror.mjs"
 
 /**
  * Invocação com PREFIXO de comando (`bash scripts/test-mutation-X.sh`): exige
@@ -235,18 +241,20 @@ export function checkMutationJobs({ scripts, directRefs, matrixRefs }) {
 
 /**
  * Roda `git diff --cached` (staged local) ou `git diff <base>...HEAD`
- * (CI — PR vs base) limitado a scripts/ — espelho do gitDiffWorkflows do
+ * (CI — PR vs base) limitado ao ESCOPO do guard: scripts/ (scripts de
+ * mutation test novos) E .github/workflows/ (run: de workflow novos — o
+ * reverse fechado no staged). Espelho do gitDiffWorkflows do
  * check-bun-mirror. Retorna null se git indisponível / sem repositório /
  * ref base inválida (o caller decide o exit code).
  *
  * @param {string|null} base  ref base (ex.: "origin/main"); null = staged
  * @returns {string|null} texto do diff ou null (infra failure)
  */
-export function gitDiffMutationScripts(base) {
+export function gitDiffMutationScope(base) {
   if (base !== null && !isValidGitRef(base)) return null
   const args = base
-    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", "scripts/"]
-    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", "scripts/"]
+    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", "scripts/", ".github/workflows/"]
+    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", "scripts/", ".github/workflows/"]
   try {
     return execFileSync("git", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 })
   } catch {
@@ -277,25 +285,74 @@ export function parseDiffAddedMutationScripts(diffText) {
 }
 
 /**
- * Checa os test-mutation-*.sh NOVOS de um diff contra a cobertura ATUAL
- * (refs diretas + matrizes transitivas): um script novo introduzido pelo PR
- * precisa de job — sem isso o mutation test nunca roda no CI. Violações
- * pré-existentes do base NÃO poluem o PR (só o que o diff ADICIONA é
- * avaliado — espelho do checkStagedCacheKeys).
+ * Extrai os refs a scripts de mutation test das linhas ADICIONADAS de um diff
+ * (run: single-line e bloco, com mapeamento bun run → package.json) — só o
+ * que o diff INTRODUZ. Reusa parseDiffLines (fonte única do parser de diff
+ * do check-bun-mirror): apenas arquivos .yml/.yaml são incluídos (scripts/ é
+ * naturalmente filtrado), e as linhas são marcadas added/removed/contexto.
+ *
+ * A reconstrução do pseudo-conteúdo com SÓ as linhas adicionadas preserva a
+ * indentação original (linhas do diff), então o parser de bloco (run: |) do
+ * extractWorkflowRunRefs funciona naturalmente sobre o que o diff adicionou.
+ * Refs pré-existentes do base (linhas de contexto/removidas) NÃO poluem o PR
+ * — só o que o PR INTRODUZ é avaliado (espelho do checkStagedCacheKeys).
  *
  * @param {string} diffText  saída de git diff
- * @param {{scripts: string[], directRefs: string[], matrixRefs: Record<string,string[]>}} state
+ * @param {Record<string,string>} pkgScripts  scripts de package.json
+ * @returns {string[]} nomes de arquivos test-mutation-*.sh (sem duplicatas)
+ */
+export function parseDiffAddedWorkflowRefs(diffText, pkgScripts = {}) {
+  const refs = new Set()
+  for (const [, lines] of parseDiffLines(diffText)) {
+    const addedContent = lines
+      .filter((l) => l.added)
+      .map((l) => l.content)
+      .join("\n")
+    for (const ref of extractWorkflowRunRefs(addedContent, pkgScripts)) refs.add(ref)
+  }
+  return [...refs]
+}
+
+/**
+ * Checa os test-mutation-*.sh NOVOS de um diff contra a cobertura ATUAL
+ * (refs diretas + matrizes transitivas) E os run: de workflow NOVOS contra
+ * os scripts EXISTENTES — o par forward+reverse fechado no modo --staged:
+ *   → (forward)  um script test-mutation-*.sh novo introduzido pelo PR
+ *                precisa de job — sem isso o mutation test nunca roda no CI.
+ *   ← (reverse)  um run: de workflow NOVO (linha adicionada pelo diff)
+ *                apontando para script INEXISTENTE em scripts/ é ref
+ *                quebrada introduzida pelo próprio PR (par fechado com o
+ *                checkMutationJobs global, que cobre o working tree inteiro).
+ * Violações pré-existentes do base NÃO poluem o PR (só o que o diff ADICIONA
+ * é avaliado — espelho do checkStagedCacheKeys).
+ *
+ * @param {string} diffText  saída de git diff
+ * @param {{scripts: string[], directRefs: string[], matrixRefs: Record<string,string[]>, pkgScripts: Record<string,string>}} state
  * @returns {string[]} violações (vazio = ok)
  */
 export function checkStagedMutationJobs(diffText, state) {
-  const newScripts = parseDiffAddedMutationScripts(diffText)
-  if (newScripts.length === 0) return []
-  const { covered } = computeCoverage(state)
   const violations = []
-  for (const s of newScripts) {
-    if (!covered.has(s)) {
+  const scriptSet = new Set(state.scripts)
+  const pkgScripts = state.pkgScripts ?? {}
+
+  // ── forward — script NOVO sem cobertura ────────────────────────────────
+  const newScripts = parseDiffAddedMutationScripts(diffText)
+  if (newScripts.length > 0) {
+    const { covered } = computeCoverage(state)
+    for (const s of newScripts) {
+      if (!covered.has(s)) {
+        violations.push(
+          `mutation script '${s}' NOVO neste diff SEM job correspondente em NENHUM workflow (nem via matriz do master) — wire-o num job de .github/workflows/*.yml ou adicione à matriz do test-mutation-guards.sh ANTES do merge`,
+        )
+      }
+    }
+  }
+
+  // ── reverse — run: de workflow NOVO apontando para script INEXISTENTE ──
+  for (const r of parseDiffAddedWorkflowRefs(diffText, pkgScripts)) {
+    if (!scriptSet.has(r)) {
       violations.push(
-        `mutation script '${s}' NOVO neste diff SEM job correspondente em NENHUM workflow (nem via matriz do master) — wire-o num job de .github/workflows/*.yml ou adicione à matriz do test-mutation-guards.sh ANTES do merge`,
+        `workflow referencia '${r}' que NÃO existe em scripts/ — ref quebrada de workflow introduzida por este diff (renomeou/removeu o script?)`,
       )
     }
   }
@@ -346,7 +403,7 @@ function collectRepoState() {
     if (existsSync(p)) matrixRefs[name] = extractMatrixRefs(readFileSync(p, "utf8"), arrayName)
   }
 
-  return { scripts, directRefs: [...directRefs], matrixRefs }
+  return { scripts, directRefs: [...directRefs], matrixRefs, pkgScripts }
 }
 
 function main() {
@@ -367,7 +424,7 @@ function main() {
   // test-mutation-*.sh NOVOS são avaliados — violações pré-existentes do
   // base não poluem o PR, e um script novo sem wire falha ANTES do merge.
   if (staged) {
-    const diffText = gitDiffMutationScripts(base)
+    const diffText = gitDiffMutationScope(base)
     if (diffText === null) {
       console.error(
         `❌ Modo --staged: git diff indisponível` +
@@ -378,17 +435,23 @@ function main() {
     const state = collectRepoState()
     const violations = checkStagedMutationJobs(diffText, state)
     if (violations.length > 0) {
-      console.error(`❌ Diff com ${violations.length} mutation test(s) NOVO(s) sem job:\n`)
+      console.error(
+        `❌ Diff com ${violations.length} violação(ões) de cobertura de mutation tests:\n`,
+      )
       for (const v of violations) console.error(`   - ${v}`)
       console.error(
-        `\n   Um test-mutation-*.sh NOVO precisa de cobertura: ref direta (run:) num` +
-          `\n   workflow OU entrada na matriz do master — sem isso o mutation test` +
-          `\n   nunca roda no CI e o guard que ele prova fica sem cobertura end-to-end.`,
+        `\n   O diff INTRODUZ uma violação do par de cobertura de mutation tests:` +
+          `\n   • script test-mutation-*.sh NOVO sem job (ref direta num run: de` +
+          `\n     workflow OU entrada na matriz do master);` +
+          `\n   • run: de workflow NOVO apontando para script INEXISTENTE em` +
+          `\n     scripts/ (ref quebrada introduzida por este diff).` +
+          `\n   Sem isso o mutation test nunca roda no CI e o guard que ele` +
+          `\n   prova fica sem cobertura end-to-end.`,
       )
       process.exit(1)
     }
     console.log(
-      `✅ Diff ok — nenhum test-mutation-*.sh novo sem job` +
+      `✅ Diff ok — nenhuma violação de cobertura de mutation tests (script órfão nem ref de workflow quebrada)` +
         (base ? ` (vs base ${base})` : ` (staged)`),
     )
     process.exit(0)

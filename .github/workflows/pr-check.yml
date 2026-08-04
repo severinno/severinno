@@ -160,6 +160,12 @@ jobs:
   # deletam/renomeiam workflows e scripts em lote — uma referência quebrada
   # só falharia no JOB que a executa (com custo de runner pago e mensagem
   # confusa). Este guard falha o PR no início com a referência exata.
+  #
+  # --pkg-internal adiciona a consistência INTERNA do package.json: TODA
+  # entry que invoca scripts/X (mesmo sem workflow referenciando — ex.:
+  # hooks locais/manuais `bun run <entry>`) deve ter X existente em
+  # scripts/. Um script deletado com a entry órfã de workflow quebraria o
+  # hook local no runtime sem este modo.
   workflow-refs-guard:
     name: Workflow References Guard (no dangling refs)
     runs-on: ubuntu-latest
@@ -167,10 +173,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check workflow → script/package.json/uses references
-        run: node scripts/check-workflow-refs.mjs
+        run: node scripts/check-workflow-refs.mjs --pkg-internal
 
       - name: Summary
-        run: echo "✅ No dangling references between workflows and scripts/package.json."
+        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets)."
 
   # ── Sentinel Producer Guard ────────────────────────────────────────────
   # Fast gate (node puro, <1s): GENERALIZA a consistência produtor↔job de
@@ -279,12 +285,17 @@ jobs:
 
   # ── Mutation Jobs Guard (staged diff) ───────────────────────────────
   # Fast gate (node puro, <1s): roda o check de cobertura de mutation tests
-  # contra o DIFF DO PR (git diff origin/main...HEAD) em vez do working tree
-  # inteiro — detecta um test-mutation-*.sh NOVO INTRODUZIDO PELO PR sem job
-  # (sem ref direta num workflow run: nem na matriz do master) antes do
-  # merge, mesmo que o restante do repositório já esteja consistente. Só
-  # arquivos NOVOS (new file mode) são avaliados — violações pré-existentes
-  # do base não poluem o PR.
+  # contra o DIFF DO PR (git diff origin/main...HEAD — escopo scripts/ E
+  # .github/workflows/) em vez do working tree inteiro — detecta antes do
+  # merge, mesmo que o restante do repositório já esteja consistente:
+  #   → (forward)  um test-mutation-*.sh NOVO introduzido pelo PR sem job
+  #                (sem ref direta num workflow run: nem na matriz do master);
+  #   ← (reverse)  um run: de workflow NOVO (linha adicionada pelo diff)
+  #                apontando para test-mutation-*.sh INEXISTENTE em scripts/
+  #                (ref quebrada introduzida pelo próprio PR — o par fecha
+  #                nos dois lados, espelhando o scan global).
+  # Só o que o diff ADICIONA é avaliado (linhas `+`) — violações
+  # pré-existentes do base não poluem o PR.
   #
   # Requer fetch-depth: 0 para o git diff base...HEAD funcionar (mesmo
   # padrão do bun-mirror-staged-guard). Local/pre-commit: node
@@ -301,10 +312,10 @@ jobs:
         run: node scripts/check-mutation-jobs.mjs --staged --base origin/main
 
       - name: Summary
-        run: echo "✅ No orphan test-mutation-*.sh introduced by this PR diff."
+        run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 9 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 10 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -328,6 +339,10 @@ jobs:
   #   mutation-jobs  → test-mutation-mutation-jobs.sh
   #                    (script órfão forward + matriz quebrada reverse do
   #                    check-mutation-jobs devem FALHAR)
+  #   workflow-refs  → test-mutation-workflow-refs.sh
+  #                    (alvo TRANSITIVO de entry deletado — workflow bun run
+  #                    → scripts/X — + entry órfã do --pkg-internal devem
+  #                    FALHAR: prova o par transitivo end-to-end no CI)
   #   utf8-scope     → test-mutation-utf8-scope.sh
   #                    (call site sem src/ deve FALHAR)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
@@ -342,7 +357,7 @@ jobs:
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (9 node-pure mutation tests)
+    name: Mutation guards master (10 node-pure mutation tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -351,7 +366,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 9 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, UTF-8 escopo)."
+        run: echo "✅ All 10 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo)."
 
   # ── Hooks Symmetry Guard (dedicado) ─────────────────────────────────
   # Fast gate (node puro, <1s): roda o guard REAL de simetria
@@ -631,6 +646,42 @@ jobs:
 
       - name: Summary
         run: echo "✅ Documented E2E counts match the derivation (scripts/seed-e2e-count.ts)."
+
+  # ── Seed Count Literals Guard ───────────────────────────────────────
+  # Fast gate (node puro, <2s): varre TODO o repo — scripts/, docs/,
+  # .github/ — por literais de count de seed em CONTEXTO ("N checks" ou o
+  # ternary da matrix do seed-guards.yml) que NÃO batam com a derivação
+  # real (bun scripts/seed-e2e-count.ts --json → {prod: 128, dev: 162}).
+  #
+  # Por que existe: o incidente do "count drifted" (doc dizia 128, âncora de
+  # teste esperava 123) mostrou que um literal órfão pode sobreviver a um
+  # bump do seed sem ninguém perceber — o e2e-counts-guard cobre os
+  # workflows e o script local, mas NÃO varre docs/ nem todos os scripts/.
+  # Este guard fecha o buraco: QUALQUER literal "N checks" fora do conjunto
+  # válido {prod, dev} (ex.: um 123 esquecido numa doc após a derivação
+  # passar para 128) falha o PR na hora, com arquivo:linha.
+  #
+  # Contexto evita falso positivo: número PRECEDIDO por espaço/pontuação
+  # (nunca hífen — "UTF-8 check" não casa), 2-3 dígitos (counts de seed),
+  # e o ternary ancorado em 'prod' + '}} checks' (o `&& '1'` do
+  # SKIP_PRISMA_GENERATE é single-digit e não casa). Mock data (CVC "123",
+  # endereços, rgba, senhas) e prosa histórica sem "checks" adjacente não
+  # são flags.
+  seed-count-literals-guard:
+    name: Seed Count Literals Guard (scripts/docs/.github = derivação)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Check seed count literals across scripts/, docs/, .github/
+        run: node scripts/check-seed-count-literals.mjs
+
+      - name: Summary
+        run: echo "✅ No orphan seed-count literals outside the derivation (scripts/seed-e2e-count.ts)."
 
   # ── Actionlint (workflow syntax) ───────────────────────────────────────
   actionlint:

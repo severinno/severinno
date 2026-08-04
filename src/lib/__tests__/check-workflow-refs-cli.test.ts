@@ -28,8 +28,8 @@ const SCRIPT = join(process.cwd(), "scripts", "check-workflow-refs.mjs")
 const ROOT_TMP = mkdtempSync(join(tmpdir(), "cwf-refs-"))
 
 /** Roda `check-workflow-refs.mjs` num cwd arbitrário (CLI real). */
-function runGuard(cwd: string): { status: number | null; out: string } {
-  const res = spawnSync(process.execPath, [SCRIPT], {
+function runGuard(cwd: string, extra: string[] = []): { status: number | null; out: string } {
+  const res = spawnSync(process.execPath, [SCRIPT, ...extra], {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -97,6 +97,37 @@ describe("check-workflow-refs.mjs — CLI real (fast gate)", () => {
     expect(out).toContain("[package.json] test:seed-removed-e2e")
   })
 
+  it("TRANSITIVO: entry EXISTE mas o script alvo está ausente → exit 1", () => {
+    // espelho do par fechado do check-mutation-jobs: a entry existe em
+    // package.json, mas o scripts/X que ela invoca não existe — o run: bun
+    // run <entry> falharia no runtime; o guard pega no PR
+    const dir = makeFakeRepo("t5-pkg-transitive", {
+      workflows: {
+        "pr.yml": `name: PR\njobs:\n  c:\n    steps:\n      - run: bun run test:seed-prod-e2e\n`,
+      },
+      scripts: [], // scripts/ vazio — o alvo test-seed-prod-e2e.sh NÃO existe
+      pkgScripts: { "test:seed-prod-e2e": "bash scripts/test-seed-prod-e2e.sh" },
+    })
+    const { status, out } = runGuard(dir)
+    expect(status).toBe(1)
+    expect(out).toContain("[package.json] test:seed-prod-e2e")
+    expect(out).toContain("test-seed-prod-e2e.sh")
+    expect(out).toContain("NÃO existe")
+  })
+
+  it("TRANSITIVO: entry existe E o script alvo existe → exit 0 (par fechado)", () => {
+    const dir = makeFakeRepo("t6-pkg-transitive-ok", {
+      workflows: {
+        "pr.yml": `name: PR\njobs:\n  c:\n    steps:\n      - run: bun run test:seed-prod-e2e\n`,
+      },
+      scripts: ["test-seed-prod-e2e.sh"], // o alvo EXISTE
+      pkgScripts: { "test:seed-prod-e2e": "bash scripts/test-seed-prod-e2e.sh" },
+    })
+    const { status, out } = runGuard(dir)
+    expect(status).toBe(0)
+    expect(out).toContain("Nenhuma referência quebrada")
+  })
+
   it("uses: local apontando para arquivo inexistente → exit 1", () => {
     const dir = makeFakeRepo("t3-uses", {
       workflows: {
@@ -125,6 +156,52 @@ describe("check-workflow-refs.mjs — CLI real (fast gate)", () => {
 
   it("repo real do projeto → exit 0 (nenhuma referência quebrada hoje)", () => {
     const { status, out } = runGuard(process.cwd())
+    expect(status).toBe(0)
+    expect(out).toContain("Nenhuma referência quebrada")
+  })
+
+  it("--pkg-internal: entry de package.json invoca script DELETADO (sem workflow referenciando) → exit 1", () => {
+    // o modo valida TODAS as entries que invocam scripts/ — mesmo sem NENHUM
+    // workflow referenciando a entry (escopo: hooks locais/manuais bun run)
+    const dir = makeFakeRepo("t7-pkg-internal", {
+      workflows: {
+        "ok.yml": `name: OK\njobs:\n  c:\n    steps:\n      - run: echo ok\n`,
+      },
+      scripts: [], // scripts/ vazio — o alvo test-seed-prod-e2e.sh NÃO existe
+      pkgScripts: { "test:seed-prod-e2e": "bash scripts/test-seed-prod-e2e.sh" },
+    })
+    const { status, out } = runGuard(dir, ["--pkg-internal"])
+    expect(status).toBe(1)
+    expect(out).toContain("package.json")
+    expect(out).toContain("test:seed-prod-e2e")
+    expect(out).toContain("test-seed-prod-e2e.sh")
+    expect(out).toContain("NÃO existe")
+  })
+
+  it("--pkg-internal: todas as entries com alvo existente → exit 0", () => {
+    const dir = makeFakeRepo("t8-pkg-internal-ok", {
+      workflows: {
+        "ok.yml": `name: OK\njobs:\n  c:\n    steps:\n      - run: echo ok\n`,
+      },
+      scripts: ["test-seed-prod-e2e.sh"], // o alvo EXISTE
+      pkgScripts: { "test:seed-prod-e2e": "bash scripts/test-seed-prod-e2e.sh" },
+    })
+    const { status, out } = runGuard(dir, ["--pkg-internal"])
+    expect(status).toBe(0)
+    expect(out).toContain("Nenhuma referência quebrada")
+  })
+
+  it("SEM --pkg-internal: entry órfã com script deletado NÃO falha (modo é opt-in)", () => {
+    // o modo default é workflow-only — uma entry que NENHUM workflow
+    // referencia (órfã de workflow) com alvo deletado passa SEM a flag
+    const dir = makeFakeRepo("t9-pkg-default-skip", {
+      workflows: {
+        "ok.yml": `name: OK\njobs:\n  c:\n    steps:\n      - run: echo ok\n`,
+      },
+      scripts: [],
+      pkgScripts: { "test:seed-prod-e2e": "bash scripts/test-seed-prod-e2e.sh" },
+    })
+    const { status, out } = runGuard(dir) // SEM --pkg-internal
     expect(status).toBe(0)
     expect(out).toContain("Nenhuma referência quebrada")
   })

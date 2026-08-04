@@ -47,6 +47,11 @@ import {
   checkActrc,
   checkCacheKeyLine,
   checkLiteralBunLine,
+  checkDockerfileBunLine,
+  checkDockerfiles,
+  checkNoForeignLockfiles,
+  DOCKERFILES,
+  FOREIGN_LOCKFILES,
   parseDiffAddedLines,
   parseDiffLines,
   checkStagedSetupBunCallSites,
@@ -2020,5 +2025,134 @@ describe("checkLiteralBunLine", () => {
       checkLiteralBunLine("a.yml", 2, `          bun-version: \${{ vars.BUN_VERSION }}`),
     ).toBeNull()
     expect(checkLiteralBunLine("a.yml", 2, `# bun-version: 1.3.14`)).toBeNull()
+  })
+})
+
+// ── checkDockerfileBunLine ───────────────────────────────────────────────
+
+describe("checkDockerfileBunLine", () => {
+  it("npm install -g bun@1.2 literal → violação (o drift que o guard caça)", () => {
+    const v = checkDockerfileBunLine(
+      "Dockerfile",
+      17,
+      "RUN npm install -g bun@1.2 && bun install --frozen-lockfile",
+    )
+    expect(v).toContain("1.2")
+    expect(v).toContain("Dockerfile:17")
+  })
+
+  it("FROM oven/bun:1 (tag flutuante) → violação", () => {
+    const v = checkDockerfileBunLine("Dockerfile.worker", 9, "FROM oven/bun:1 AS deps")
+    expect(v).toContain("1")
+  })
+
+  it("FROM oven/bun:1.3.14 (literal completo) → violação", () => {
+    const v = checkDockerfileBunLine("Dockerfile.worker", 9, "FROM oven/bun:1.3.14 AS deps")
+    expect(v).toContain("1.3.14")
+  })
+
+  it("bun@${BUN_VERSION} (padrão correto via ARG) → null", () => {
+    expect(
+      checkDockerfileBunLine("Dockerfile", 22, "RUN npm install -g bun@${BUN_VERSION}"),
+    ).toBeNull()
+  })
+
+  it("curl bun-v${BUN_VERSION} (padrão correto do Dockerfile.ubuntu-bun) → null", () => {
+    expect(
+      checkDockerfileBunLine(
+        "Dockerfile.ubuntu-bun",
+        9,
+        `RUN curl -fsSL -o /tmp/bun.zip \\` +
+          `"https://github.com/oven-sh/bun/releases/download/bun-v\${BUN_VERSION}/bun-linux-x64.zip"`,
+      ),
+    ).toBeNull()
+  })
+
+  it("curl bun-v1.3.14 literal → violação (padrão de download regredido)", () => {
+    const v = checkDockerfileBunLine(
+      "Dockerfile.ubuntu-bun",
+      9,
+      `RUN curl -fsSL -o /tmp/bun.zip \\` +
+        `"https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-x64.zip"`,
+    )
+    expect(v).toContain("1.3.14")
+    expect(v).toContain("Dockerfile.ubuntu-bun:9")
+  })
+
+  it("curl bun-v1.2 (versão curta) literal → violação", () => {
+    const v = checkDockerfileBunLine(
+      "Dockerfile.ubuntu-bun",
+      9,
+      `https://github.com/oven-sh/bun/releases/download/bun-v1.2/bun-linux-x64.zip`,
+    )
+    expect(v).toContain("1.2")
+  })
+
+  it("prosa com 'bun-vendor' NÃO casa o padrão curl (sem dígitos) → null", () => {
+    expect(
+      checkDockerfileBunLine("Dockerfile", 5, "RUN apt-get install -y bun-vendor-lib"),
+    ).toBeNull()
+  })
+
+  it("FROM oven/bun:${BUN_VERSION} → null (fonte única)", () => {
+    expect(
+      checkDockerfileBunLine("Dockerfile.worker", 11, "FROM oven/bun:${BUN_VERSION} AS deps"),
+    ).toBeNull()
+  })
+
+  it("FROM oven/bun:${BUN_VERSION}-slim → null (sufixo da tag via ARG)", () => {
+    expect(
+      checkDockerfileBunLine(
+        "Dockerfile.realtime",
+        9,
+        "FROM oven/bun:${BUN_VERSION}-slim AS runner",
+      ),
+    ).toBeNull()
+  })
+
+  it("tag com DEFAULT do ARG (${BUN_VERSION:-x}) → null (edge do startsWith exato)", () => {
+    expect(
+      checkDockerfileBunLine("Dockerfile", 5, "FROM oven/bun:${BUN_VERSION:-1.3.14} AS runner"),
+    ).toBeNull()
+  })
+
+  it("comentário com literal → null (ignorado)", () => {
+    expect(checkDockerfileBunLine("Dockerfile", 1, "# bun@1.2 era drift")).toBeNull()
+  })
+
+  it("linha sem bun → null", () => {
+    expect(checkDockerfileBunLine("Dockerfile", 1, "FROM node:22-alpine AS deps")).toBeNull()
+  })
+})
+
+// ── checkDockerfiles ─────────────────────────────────────────────────────
+
+describe("checkDockerfiles", () => {
+  it("repo real: NENHUM Dockerfile da lista tem literal (invariante 13)", () => {
+    const violations = checkDockerfiles(process.cwd())
+    expect(violations).toEqual([])
+  })
+
+  it("lista DOCKERFILES cobre os 4 Dockerfiles que pinam/instalam bun", () => {
+    expect(DOCKERFILES).toContain("Dockerfile")
+    expect(DOCKERFILES).toContain("Dockerfile.worker")
+    expect(DOCKERFILES).toContain("Dockerfile.ubuntu-bun")
+    expect(DOCKERFILES).toContain("mini-services/realtime/Dockerfile")
+  })
+})
+
+// ── checkNoForeignLockfiles ──────────────────────────────────────────────
+
+describe("checkNoForeignLockfiles", () => {
+  it("repo real: NENHUM lockfile npm/pnpm presente (invariante 14 — só bun.lock)", () => {
+    const violations = checkNoForeignLockfiles(process.cwd())
+    expect(violations).toEqual([])
+  })
+
+  it("FOREIGN_LOCKFILES cobre raiz + mini-services/realtime + pnpm-workspace", () => {
+    expect(FOREIGN_LOCKFILES).toContain("package-lock.json")
+    expect(FOREIGN_LOCKFILES).toContain("pnpm-lock.yaml")
+    expect(FOREIGN_LOCKFILES).toContain("mini-services/realtime/package-lock.json")
+    expect(FOREIGN_LOCKFILES).toContain("pnpm-workspace.yaml")
   })
 })

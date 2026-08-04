@@ -83,7 +83,7 @@ echo ""
 
 info "STEP 1: Criando repo fixture temporário em $TMP_DIR..."
 
-mkdir -p "$TMP_DIR/.github/workflows" "$TMP_DIR/.github/actions/setup-bun"
+mkdir -p "$TMP_DIR/.github/workflows" "$TMP_DIR/.github/actions/setup-bun" "$TMP_DIR/mini-services/realtime"
 
 # Mirror workflow válido (env.BUN_VERSION = ${{ vars.BUN_VERSION }} — fonte única)
 cat > "$TMP_DIR/.github/workflows/sync-bun-mirror.yml" <<'EOF'
@@ -115,6 +115,28 @@ runs:
 EOF
 
 printf 'FROM scratch\nCOPY bun /bun\n' > "$TMP_DIR/Dockerfile.bun-mirror"
+
+# Invariante 13: TODOS os Dockerfiles da lista DOCKERFILES devem existir e
+# usar o padrão ARG (sem literal) — senão o checkDockerfiles falha por motivo
+# ALHEIO à mutação (o CONTROLE exigiria exit 0 num fixture incompleto).
+cat > "$TMP_DIR/Dockerfile" <<'EOF'
+ARG BUN_VERSION
+FROM node:22-alpine
+RUN npm install -g bun@${BUN_VERSION}
+EOF
+cat > "$TMP_DIR/Dockerfile.worker" <<'EOF'
+ARG BUN_VERSION
+FROM oven/bun:${BUN_VERSION}
+EOF
+cat > "$TMP_DIR/Dockerfile.ubuntu-bun" <<'EOF'
+ARG BUN_VERSION
+RUN curl -fsSL -o /tmp/bun.zip \
+  "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip"
+EOF
+cat > "$TMP_DIR/mini-services/realtime/Dockerfile" <<'EOF'
+ARG BUN_VERSION
+FROM oven/bun:${BUN_VERSION}
+EOF
 printf -- '--var BUN_VERSION=1.3.14\n' > "$TMP_DIR/.actrc"
 
 pass "Fixture criado (mirror + action + Dockerfile + .actrc)"

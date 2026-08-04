@@ -16,7 +16,8 @@
  * adicionada/removida sem atualizar os comentários dos workflows, este
  * teste falha com arquivo:linha e o guard estático (check-e2e-counts.mjs)
  * também. (Histórico: o teste antigo hardcodava prod=115/dev=162 e ficou
- * stale quando o cenário 10 levou prod a 123 — a integração abaixo fecha o gap.)
+ * stale quando o cenário 10 levou prod a 123 e depois subiu a 128 (workflows
+ * atualizados) — a integração abaixo fecha o gap.)
  *
  * Mutation test (describe no final): prova o contrato "ajusta sozinho" —
  * injeta/remove asserções numa CÓPIA do source (via sourceOverride, o mesmo
@@ -128,7 +129,8 @@ describe("helpers compartilhados (validateTree/validateUsers/plan)", () => {
 //
 // History: o teste antigo hardcodava prod=115/dev=162 e ficou STALE quando o
 // cenário 10 levou prod a 123 — o guard passava, mas o unit test não
-// acompanhava. A integração abaixo elimina os literais: os counts esperados
+// acompanhava. Depois o E2E subiu prod para 128 (workflows atualizados) e a
+// âncora seguiu. A integração abaixo elimina os literais: os counts esperados
 // vêm dos workflows reais via extractDocumentedCounts.
 
 describe("deriveExpectedChecks reproduz os counts documentados (fonte da verdade)", () => {
@@ -181,7 +183,7 @@ describe("deriveExpectedChecks reproduz os counts documentados (fonte da verdade
     ).toBeGreaterThanOrEqual(6)
   })
 
-  it("sanidade: prod=123 e dev=162 no estado atual (anchor do valor)", () => {
+  it("sanidade: prod=128 e dev=162 no estado atual (anchor do valor)", () => {
     // Âncora explícita do valor ATUAL da derivação. NÃO é contra drift da
     // extração (isso é o piso acima) — é para forçar atualização COORDENADA:
     // se a derivação mudar legitimamente (novo cenário), os comentários dos
@@ -191,7 +193,7 @@ describe("deriveExpectedChecks reproduz os counts documentados (fonte da verdade
     expect(
       deriveExpectedChecks("prod"),
       "anchor prod desatualizado: atualize os comentários dos workflows e este anchor juntos (derivação legítima mudou)",
-    ).toBe(123)
+    ).toBe(128)
     expect(
       deriveExpectedChecks("dev"),
       "anchor dev desatualizado: atualize os comentários dos workflows e este anchor juntos (derivação legítima mudou)",
@@ -208,7 +210,7 @@ describe("deriveExpectedChecks reproduz os counts documentados (fonte da verdade
 // errado), este teste falha ANTES de qualquer drift silencioso no CI.
 
 describe("mutation — a derivação ajusta sozinha (contrato SEED_SPEC_PATCH)", () => {
-  it("injetar 1 asserção expect() no E2E prod → count sobe +1 (123→124-style)", () => {
+  it("injetar 1 asserção expect() no E2E prod → count sobe +1 (128→129-style)", () => {
     const anchor = 'console.log("  ── Guard (recusa fora de produção) ──")'
     // Precondição explícita: se o E2E refatorar o anchor, a falha diz QUAL
     // anchor quebrou (o expect(mutated).not.toBe seria genérico demais).

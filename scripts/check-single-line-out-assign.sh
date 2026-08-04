@@ -15,6 +15,20 @@
 #     cell "Rodando prod E2E (128 checks)..."
 #     out=$(cd "$SCRIPT_DIR" && ... 2>&1)
 #
+# CONTRATO DE COUNTS: o exemplo "128 checks" (acima) é um count de seed
+# REAL — a derivação scripts/seed-e2e-count.ts dá prod=128, dev=162 hoje
+# (snapshot com "hoje" de propósito: a prosa sem "checks" adjacente não é
+# flag do guard, igual à prosa histórica do GUARDS.md), e "Rodando prod E2E
+# (128 checks)..." é a string exata do validate-seed-guards-matrix-local.sh
+# (grep: `grep -n 'Rodando prod E2E' scripts/validate-seed-guards-matrix-local.sh`).
+# É um ref VIVO, não uma ilustração genérica: scripts/check-seed-count-literals.mjs
+# varre TODO o repo (scripts/, docs/, .github/) e FALHA se qualquer literal
+# "N checks" sair do conjunto válido {prod, dev}. Num bump do seed (ex.:
+# prod→130), este exemplo DEVE ser atualizado junto com os workflows — o
+# guard pega a divergência com arquivo:linha antes do merge (ref auditado,
+# nunca órfão). O bloco de correção no fim do script usa "N checks" de
+# propósito (sem dígito) para não virar um segundo ref a sincronizar.
+#
 # Detection uses plain grep -E (files are LF-enforced by the CRLF guards, so
 # MSYS grep text-mode is safe here). Scope: tracked .sh/.bash under scripts/
 # (recursive) — the same tree where the count/echo helpers live.

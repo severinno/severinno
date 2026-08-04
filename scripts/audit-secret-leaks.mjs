@@ -44,20 +44,32 @@ import { execFileSync } from "node:child_process"
 import { pathToFileURL } from "node:url"
 
 // ── Padrões de segredos ───────────────────────────────────────────────────
-// Cada entrada: { id, label, re } — o regex DEVE capturar um grupo (a parte
+// Cada entrada: { id, severity, re } — o regex DEVE capturar um grupo (a parte
 // a mascarar). Adicionar um padrão novo = adicionar uma linha aqui.
+// severity: "alta" | "média" | "baixa" — usada pelo guard semanal
+// (check-secret-leaks-baseline.mjs --min-severity) para falhar em QUALQUER
+// achado novo de classificação alta, não só no total.
 
-/** Chaves privadas (header PEM ou corpo base64 do OPENSSH). */
-const PRIVATE_KEY_RE =
-  /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|-----BEGIN OPENSSH PRIVATE KEY-----|-----BEGIN PGP PRIVATE KEY BLOCK-----)/
+/** Chaves privadas (header PEM ou corpo base64 do OPENSSH). — severidade ALTA */
+const PRIVATE_KEY_RE = {
+  id: "chave privada",
+  severity: "alta",
+  re: /(-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|-----BEGIN OPENSSH PRIVATE KEY-----|-----BEGIN PGP PRIVATE KEY BLOCK-----)/,
+}
 
-/** Tokens com prefixo reconhecível (mín. 16 chars de payload). */
-const PREFIX_TOKEN_RE =
-  /\b(sk-[A-Za-z0-9_-]{16,}|sk_live_[A-Za-z0-9]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|gho_[A-Za-z0-9]{36,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b/
+/** Tokens com prefixo reconhecível (mín. 16 chars de payload). — severidade ALTA */
+const PREFIX_TOKEN_RE = {
+  id: "token com prefixo",
+  severity: "alta",
+  re: /\b(sk-[A-Za-z0-9_-]{16,}|sk_live_[A-Za-z0-9]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}|gho_[A-Za-z0-9]{36,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b/,
+}
 
-/** Atribuições de secrets em .env / código (chave conhecida + valor não-trivial). */
-const SECRET_ASSIGN_RE =
-  /\b(SESSION_SECRET|DB_PASSWORD|POSTGRES_PASSWORD|DATABASE_URL|DIRECT_URL|SECRET_KEY|API[_-]?KEY|ACCESS_KEY|SECRET_ACCESS_KEY|CLIENT_SECRET|PRIVATE_KEY|TOKEN|PASSWORD|PASSWD)\b[^\n=]{0,20}=["']?([^"'\s]{12,})/
+/** Atribuições de secrets em .env / código (chave conhecida + valor não-trivial). — severidade MÉDIA */
+const SECRET_ASSIGN_RE = {
+  id: "atribuição de secret",
+  severity: "média",
+  re: /\b(SESSION_SECRET|DB_PASSWORD|POSTGRES_PASSWORD|DATABASE_URL|DIRECT_URL|SECRET_KEY|API[_-]?KEY|ACCESS_KEY|SECRET_ACCESS_KEY|CLIENT_SECRET|PRIVATE_KEY|TOKEN|PASSWORD|PASSWD)\b[^\n=]{0,20}=["']?([^"'\s]{12,})/,
+}
 
 /** Arquivos de fixture/exemplo que contêm segredos FALSOS (teste) — ignorados por padrão. */
 function isFixturePath(filePath) {
@@ -105,12 +117,11 @@ export function parseHunkHeader(line) {
  * @param {string} logPatch  saída de git log -p --all
  * @param {{ includeTests?: boolean, patterns?: object[] }} opts
  * @returns {Array<{commit: string, file: string, line: number, id: string,
- *                  label: string, masked: string, key?: string}>}
+ *                  severity: string, masked: string, key?: string}>}
  */
 export function scanHistory(logPatch, opts = {}) {
   const { includeTests = false, patterns } = opts
   const allPatterns = patterns ?? [PRIVATE_KEY_RE, PREFIX_TOKEN_RE, SECRET_ASSIGN_RE]
-  const labels = ["chave privada", "token com prefixo", "atribuição de secret"]
 
   const findings = []
   let commit = null
@@ -143,7 +154,11 @@ export function scanHistory(logPatch, opts = {}) {
       lineNo++
       const content = rawLine.slice(1)
       for (let i = 0; i < allPatterns.length; i++) {
-        const m = content.match(allPatterns[i])
+        const pat = allPatterns[i]
+        // Backward-compat: aceita tanto o formato NOVO ({id, severity, re})
+        // quanto o ANTIGO (regex cru passado via opts.patterns) — pat.re ?? pat.
+        const re = pat.re ?? pat
+        const m = content.match(re)
         if (!m) continue
         // Convenção de grupos: m[1] = CHAVE (ex.: DB_PASSWORD), m[2] = VALOR
         // — mas só quando o padrão tem 2 grupos. Padrões de 1 grupo (token
@@ -156,7 +171,8 @@ export function scanHistory(logPatch, opts = {}) {
           commit,
           file,
           line: lineNo,
-          id: labels[i],
+          id: pat.id,
+          severity: pat.severity,
           masked: maskSecret(value),
           key,
         })
@@ -187,11 +203,16 @@ USO:
   node scripts/audit-secret-leaks.mjs --include-tests     inclui fixtures/testes
   node scripts/audit-secret-leaks.mjs --help
 
-PADRÕES DETECTADOS:
-  - chaves privadas (RSA / EC / OPENSSH / PGP)
+PADRÕES DETECTADOS (com severidade p/ o guard semanal):
+  - chaves privadas (RSA / EC / OPENSSH / PGP) — severidade ALTA
   - tokens com prefixo (sk-*, sk_live_*, sk-proj-*, ghp_*, github_pat_*, xox*,
-    AKIA*)
+    AKIA*) — severidade ALTA
   - atribuições de secrets (SESSION_SECRET=, DB_PASSWORD=, API_KEY=, TOKEN=, …)
+    — severidade MÉDIA
+
+SEVERIDADE: cada achado carrega severity (alta/média/baixa) no JSON — o guard
+semanal check-secret-leaks-baseline.mjs --min-severity alta falha em QUALQUER
+achado NOVO de severidade alta, não só no total.
 
 SEGURANÇA: o output mascarada os segredos (8 primeiros chars + "…"). Para
 remediar um achado, ROTACIONE o valor (scripts/rotate-secrets.mjs) — apagar do

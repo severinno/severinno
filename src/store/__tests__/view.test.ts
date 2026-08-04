@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import { useViewStore } from "../view"
+import { useViewStore, HISTORY_LIMIT } from "../view"
 
 // Reset store before each test
 beforeEach(() => {
@@ -89,5 +89,47 @@ describe("useViewStore", () => {
   it("canGoBack returns true when history is not empty", () => {
     useViewStore.getState().navigate("client.dashboard")
     expect(useViewStore.getState().canGoBack()).toBe(true)
+  })
+
+  it("navigate para a MESMA view com os MESMOS params NÃO duplica histórico (dedupe)", () => {
+    const store = useViewStore.getState()
+    store.navigate("client.dashboard", { userId: "123" })
+    store.navigate("client.dashboard", { userId: "123" })
+
+    const state = useViewStore.getState()
+    expect(state.history).toHaveLength(1)
+    expect(state.history[0]).toEqual({ view: "vitrine", params: {} })
+  })
+
+  it("mesma view com params DIFERENTES empilha (não dedupe falso positivo)", () => {
+    const store = useViewStore.getState()
+    store.navigate("client.dashboard", { userId: "123" })
+    store.navigate("client.dashboard", { userId: "456" })
+
+    expect(useViewStore.getState().history).toHaveLength(2)
+  })
+
+  it("navegação repetida para a mesma view NÃO empilha a entrada de volta", () => {
+    const store = useViewStore.getState()
+    store.navigate("client.dashboard")
+    store.navigate("client.dashboard")
+    store.back()
+
+    // back() volta para vitrine — sem entradas duplicadas no meio
+    expect(useViewStore.getState().view).toBe("vitrine")
+    expect(useViewStore.getState().history).toHaveLength(0)
+  })
+
+  it("histórico é CAPADO em HISTORY_LIMIT (localStorage não cresce sem limite)", () => {
+    const store = useViewStore.getState()
+    for (let i = 0; i < HISTORY_LIMIT + 20; i++) {
+      store.navigate(`client.view-${i}`, { i })
+    }
+    const state = useViewStore.getState()
+    expect(state.history.length).toBe(HISTORY_LIMIT)
+    // A entrada mais antiga (vitrine) foi descartada — a pilha começa na
+    // navegação nº 20 (0-based): a entrada pushada pela navigate #20 carrega
+    // a view ANTERIOR (client.view-19). O cap mantém as 50 mais recentes.
+    expect(state.history[0].view).toBe("client.view-19")
   })
 })

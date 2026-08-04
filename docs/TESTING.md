@@ -228,7 +228,7 @@ Os seeds têm dois E2Es dedicados que rodam contra um **PostGIS descartável**
 
 | E2E                  | Seed validado         | Checks | Valida                                                                                                      |
 | :------------------- | :-------------------- | :----: | :---------------------------------------------------------------------------------------------------------- |
-| `test:seed-prod-e2e` | `prisma/seed-prod.ts` |  115   | guard de produção, dry-run, árvore (27 cats), settings (9), **zero usuários**, idempotência                 |
+| `test:seed-prod-e2e` | `prisma/seed-prod.ts` |  128   | guard de produção, dry-run, árvore (27 cats), settings (9), **zero usuários**, idempotência                 |
 | `test:seed-dev-e2e`  | `prisma/seed.ts`      |  162   | guard anti-destruição (vazio + populado), 9 usuários demo, árvore, bookings/payments/reviews, wipe+recreate |
 
 Ambos cobrem os cenários de **`SEED_SPEC_PATCH`** (update mid-cycle + rename

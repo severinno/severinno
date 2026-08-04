@@ -322,6 +322,62 @@ jobs:
             echo "| Imagem PostGIS | ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine (default)' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # ── MUTATION TEST — contrato de atualização COORDENADA dos counts ──
+  # Prova que o seed-e2e-count.test.ts pega o cenário exato do bug
+  # histórico: atualizar SÓ os comentários dos workflows (128→N) sem tocar
+  # a âncora do teste. O script muta os SCAN_FILES (pr-check.yml,
+  # seed-guards.yml, validate-seed-guards-matrix-local.sh) IN-PLACE no
+  # working tree (é assim que o teste de integração lê os arquivos via
+  # process.cwd() — uma cópia em temp quebraria a premissa) com backup +
+  # trap EXIT de restauração, e exige que o teste FALHE pelo piso de sites
+  # (prod ≥ 8). Roda vitest REAL (precisa de node_modules) — por isso NÃO
+  # vai na matriz node-pura do master mutation-guards; este job com bun
+  # install é o home do contrato. Sem postgis: o teste é unitário (só
+  # derivação + leitura dos SCAN_FILES), não toca banco.
+  mutation-coord-update:
+    name: Mutation Test (workflows 128→N deve FALHAR o teste)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # ── Mutation test ──────────────────────────────────────────────
+      # O script muta a doc dos workflows (128→N) em in-place com backup
+      # + trap, roda o vitest real no seed-e2e-count.test.ts e exige que
+      # ele FALHE pelo piso — se o teste passar com a doc generalizada, o
+      # contrato não está enforced e o job falha.
+      - name: Run mutation test (contrato coordenado)
+        id: mutation
+        run: |
+          bun run test:mutation-coord-update
+          echo "  ✅ Mutation test passou — o contrato de atualização coordenada está enforced"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🧬 Mutation Test — contrato de atualização coordenada (counts)'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Doc 128→N detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced' || '❌ guard CEGO' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── PROD E2E — variante dev-env (override PROD_SEED_ALLOW_DEV=1) ────
   # Cobre o cenário que o CI de PRODUÇÃO NÃO exercita: o seed-prod rodando
   # FORA de produção com o override explícito (PROD_SEED_ALLOW_DEV=1) — o

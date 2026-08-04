@@ -2,7 +2,7 @@
  * scripts/seed-e2e-count.ts
  *
  * FONTE DA VERDADE dos counts de checks dos E2Es de seed — DERIVA o total
- * esperado do CÓDIGO (sem nenhum literal hardcoded como 115/162):
+ * esperado do CÓDIGO (sem nenhum literal hardcoded como 128/162):
  *
  *   prod  → scripts/test-seed-prod-e2e.ts
  *   dev   → scripts/test-seed-dev-e2e.ts
@@ -29,9 +29,9 @@
  *     comparar os counts documentados nos workflows com a derivação.
  *
  * Usage:
- *   bun scripts/seed-e2e-count.ts prod    # imprime 115
+ *   bun scripts/seed-e2e-count.ts prod    # imprime 128
  *   bun scripts/seed-e2e-count.ts dev     # imprime 162
- *   bun scripts/seed-e2e-count.ts --json  # imprime {"prod":115,"dev":162}
+ *   bun scripts/seed-e2e-count.ts --json  # imprime {"prod":128,"dev":162}
  *
  * Exit codes:
  *   0 — derivação concluída (imprime o(s) número(s))
