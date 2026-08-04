@@ -17,15 +17,19 @@
  *      no job (step renomeado, gate trocado, sentinel mudado) exige revisão
  *      consciente do snapshot — impede drift silencioso entre o que o CI
  *      executa e o que este teste espera.
- *   2. GATE — o passo único (GATE) roda `node scripts/check-readme-reverse-
+ *   2. GATE — o passo (GATE) roda `node scripts/check-readme-reverse-
  *      baseline.mjs` SEM flags: exit 1 do guard = achados novos → job falha.
  *      A rede de segurança é o próprio guard (node puro, sem bun).
- *   3. Refs contra o check-workflow-refs — extractScriptRefs roda no
+ *   3. ISSUE — step seguinte (if: always()) roda `node scripts/readme-
+ *      reverse-issue.mjs` com GH_TOKEN: publica achados novos como GitHub
+ *      Issues (label readme-drift) em vez de só falhar o job. O job declara
+ *      permissions: issues: write (gh issue create).
+ *   4. Refs contra o check-workflow-refs — extractScriptRefs roda no
  *      conteúdo REAL, e cada ref é validada contra o repo real. Uma
  *      referência quebrada no workflow falha este teste ANTES do CI.
- *   4. Trigger — schedule semanal + workflow_dispatch, NENHUM push/pr (o
+ *   5. Trigger — schedule semanal + workflow_dispatch, NENHUM push/pr (o
  *      job é periódico de propósito: drift semântico NÃO bloqueia PRs).
- *   5. Baseline derivado — o snapshot do baseline (docs/security/
+ *   6. Baseline derivado — o snapshot do baseline (docs/security/
  *      readme-reverse-baseline.json) existe e tem findings: [] (o README
  *      atual passa --reverse limpo). Se o README ganhar um drift deliberado,
  *      o --update regenera o arquivo E este teste precisa do snapshot novo.
@@ -72,6 +76,7 @@ const parsed = yaml.load(content) as {
 
 const job = parsed.jobs?.[JOB_KEY]
 const steps = job?.steps ?? []
+const permissions = (job as { permissions?: Record<string, string> } | undefined)?.permissions ?? {}
 
 /** Contexto real do repo (mesmos artefatos que o guard valida em main()). */
 const ctx = (() => {
@@ -89,9 +94,14 @@ describe("benchmark-weekly.yml — job readme-reverse-audit (sintaxe YAML + snap
     expect(job).toMatchSnapshot()
   })
 
-  it("estrutura mínima: job com 3 steps (checkout, GATE, Summary)", () => {
+  it("estrutura mínima: job com 4 steps (checkout, GATE, ISSUE, Summary)", () => {
     expect(job?.name).toBe("README reverse semantics (baseline)")
-    expect(steps.length).toBe(3)
+    expect(steps.length).toBe(4)
+  })
+
+  it("permissions: issues: write (gh issue create precisa do token com escopo de issues)", () => {
+    expect(permissions.contents).toBe("read")
+    expect(permissions.issues).toBe("write")
   })
 
   it("triggers: schedule semanal + workflow_dispatch (nenhum push/pr)", () => {
@@ -135,7 +145,26 @@ describe("benchmark-weekly.yml — gate do readme-reverse-audit", () => {
   })
 })
 
-// ── 3. Refs de script contra o repo real ────────────────────────────────
+// ── 3. ISSUE (publica achados novos como tickets) ────────────────────────
+
+describe("benchmark-weekly.yml — step de issue do readme-reverse-audit", () => {
+  it("step ISSUE roda node scripts/readme-reverse-issue.mjs com if: always() e GH_TOKEN", () => {
+    const issue = steps.find((s) => s.name?.startsWith("Publicar achados"))
+    expect(issue).toBeDefined()
+    expect(issue?.if).toBe("always()") // roda também quando o GATE falhou
+    expect(issue?.run).toContain("node scripts/readme-reverse-issue.mjs")
+    const env = (issue as { env?: Record<string, string> } | undefined)?.env ?? {}
+    expect(env.GH_TOKEN).toBe("${{ github.token }}")
+  })
+
+  it("o script readme-reverse-issue.mjs existe em scripts/ (ref resolve)", () => {
+    expect(ctx.scripts.has("readme-reverse-issue.mjs")).toBe(true)
+    const refs = extractScriptRefs(content)
+    expect(refs.map((r) => r.ref)).toContain("readme-reverse-issue.mjs")
+  })
+})
+
+// ── 4. Refs de script contra o repo real ────────────────────────────────
 
 describe("benchmark-weekly.yml — refs do readme-reverse-audit", () => {
   it("o guard referenciado existe em scripts/ (ref resolve no repo real)", () => {
@@ -146,7 +175,7 @@ describe("benchmark-weekly.yml — refs do readme-reverse-audit", () => {
   })
 })
 
-// ── 4. Baseline commitado e derivado ────────────────────────────────────
+// ── 5. Baseline commitado e derivado ────────────────────────────────────
 
 describe("readme-reverse-baseline.json — baseline commitado", () => {
   it("baseline existe e é JSON válido com findings (derivado, não literal)", () => {

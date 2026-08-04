@@ -344,7 +344,25 @@ vazamento.
 > regenera o arquivo a partir do guard real. O job é **semanal por design** —
 > drift semântico não bloqueia PRs (o forward já é gate no CI/hooks); o
 > `--reverse-strict` (mais agressivo, flagia prosa single-token) fica fora do
-> CI. Fail-closed: baseline ausente = exit 2 com instrução.
+> CI como gate. Fail-closed: baseline ausente = exit 2 com instrução.
+>
+> **Ticket acionável (não só falha):** quando o guard acha achados NOVOS, o
+> job `readme-reverse-audit` publica **uma GitHub Issue por achado** via
+> `scripts/readme-reverse-issue.mjs` (`gh issue create`, label `readme-drift`,
+> `permissions: issues: write`) — o link, o heading atual e a sugestão do
+> heading correto viram um ticket. **Dedup por assinatura** `file+slug+label`
+> (a MESMA do baseline, importada sem drift) contra issues abertas: a issue
+> vira o estado da dívida até ser fechada — sem duplicata a cada run semanal.
+> Preview local sem criar nada: `node scripts/readme-reverse-issue.mjs --dry-run`
+> (ou com `--report <arquivo.json>` para um report pré-gerado, sem rede).
+>
+> **Alerta audível (não-gate) do strict:** o job `readme-reverse-strict-alert`
+> do pr-check.yml (workflow_dispatch) roda o `--reverse-strict` com
+> `--prose-allowlist abaixo,acima,seguir,aqui,fluxo` e emite `::warning::` por
+> achado sem bloquear o merge. A allowlist exime palavras de prosa comum que o
+> strict flagaria como falso positivo (medido 08/2026: o label 'abaixo' →
+> heading legítimo) — a renomeação single-token REAL continua pega (token
+> permitido que exista como heading em outro lugar → regra 4 com sugestão).
 
 ### diagnose-docker (Windows / Linux / Mac)
 
@@ -661,7 +679,7 @@ Os hooks locais (`.husky/`) formam uma cadeia de validação em camadas: o
 **pre-push** revalida os fast gates que o CI roda (`utf8-check.yml`) e os
 testes da branch (via smart-skip) antes de expor o push ao remoto.
 
-Os **15 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
+Os **16 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
 `scripts/run-encoding-guards.sh` — a **fonte única** da lista, chamada por
 ambos os hooks. Adicionar um guard novo = editar esse script em UM lugar,
 sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
@@ -680,34 +698,73 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 > bloco real (`bun test:snapshots`) — se o bloco sumir do hook, a linha vira
 > stale e falha igual.
 
-| Validação                                                 | Pre-commit |   Pre-push    |
-| :-------------------------------------------------------- | :--------: | :-----------: |
-| UTF-8 (`check-utf8.sh --dry-run --ci src/`)               |     ✅     |      ✅       |
-| Escopo UTF-8 (`check-utf8-scope.mjs`)                     |     ✅     |      ✅       |
-| CRLF working tree (`check-crlf.sh --ci`)                  |     ✅     |      ✅       |
-| Escopo CRLF (`check-crlf-scope.mjs`)                      |     ✅     |      ✅       |
-| CRLF blob commitado (`check-blob-crlf.sh --ci`)           |     ✅     |      ✅       |
-| Single-line `out=` (`check-single-line-out-assign.sh`)    |     ✅     |      ✅       |
-| Badge encoding guards (`check-encoding-guards-badge.mjs`) |     ✅     |      ✅       |
-| Docs repro marker (`check-readme-repro-marker.mjs`)       |     ✅     |      ✅       |
-| Âncoras README (`check-readme-anchors.mjs`)               |     ✅     |      ✅       |
-| TOC README (`check-readme-toc.mjs`)                       |     ✅     |      ✅       |
-| Imagens README (`check-readme-images.mjs`)                |     ✅     |      ✅       |
-| Setup-bun externo (`check-no-setup-bun.mjs`)              |     ✅     |      ✅       |
-| Fonte única Bun (`check-bun-mirror.mjs`)                  |     ✅     |      ✅       |
-| Bun staged diff (`check-bun-mirror.mjs --staged`)         |     ✅     |       —       |
-| Ícones lucide (`scan-lucide-icons.mjs --check`)           |     ✅     |      ✅       |
-| Hooks symmetry (`check-hooks-symmetry.mjs`)               |     ✅     |      ✅       |
-| Format + lint (lint-staged: prettier + eslint --fix)      |     ✅     |       —       |
-| Imports diretos (check:direct-rtl-import + barrel-lint)   |     ✅     |       —       |
-| Barrel lint (`barrel-lint`)                               |     ✅     |       —       |
-| Typecheck (`tsc --noEmit`)                                |     ✅     |       —       |
-| Snapshots (quando `.snap`/snapshot tests alterados)       |  ✅ cond.  |       —       |
-| Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)    |     —      | ✅ smart-skip |
+| Validação                                                      | Pre-commit |   Pre-push    |
+| :------------------------------------------------------------- | :--------: | :-----------: |
+| UTF-8 (`check-utf8.sh --dry-run --ci src/`)                    |     ✅     |      ✅       |
+| Escopo UTF-8 (`check-utf8-scope.mjs`)                          |     ✅     |      ✅       |
+| CRLF working tree (`check-crlf.sh --ci`)                       |     ✅     |      ✅       |
+| Escopo CRLF (`check-crlf-scope.mjs`)                           |     ✅     |      ✅       |
+| CRLF blob commitado (`check-blob-crlf.sh --ci`)                |     ✅     |      ✅       |
+| Single-line `out=` (`check-single-line-out-assign.sh`)         |     ✅     |      ✅       |
+| Badge encoding guards (`check-encoding-guards-badge.mjs`)      |     ✅     |      ✅       |
+| Docs repro marker (`check-readme-repro-marker.mjs`)            |     ✅     |      ✅       |
+| Âncoras README (`check-readme-anchors.mjs`)                    |     ✅     |      ✅       |
+| TOC README (`check-readme-toc.mjs`)                            |     ✅     |      ✅       |
+| Imagens README (`check-readme-images.mjs`)                     |     ✅     |      ✅       |
+| Setup-bun externo (`check-no-setup-bun.mjs`)                   |     ✅     |      ✅       |
+| Fonte única Bun (`check-bun-mirror.mjs`)                       |     ✅     |      ✅       |
+| Bun staged diff (`check-bun-mirror.mjs --staged`)              |     ✅     |       —       |
+| Ícones lucide (`scan-lucide-icons.mjs --check`)                |     ✅     |      ✅       |
+| Hooks symmetry (`check-hooks-symmetry.mjs`)                    |     ✅     |      ✅       |
+| Mutation jobs CI (`check-mutation-jobs.mjs`)                   |     ✅     |      ✅       |
+| Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`) |     ✅     |       —       |
+| Format + lint (lint-staged: prettier + eslint --fix)           |     ✅     |       —       |
+| Imports diretos (check:direct-rtl-import + barrel-lint)        |     ✅     |       —       |
+| Barrel lint (`barrel-lint`)                                    |     ✅     |       —       |
+| Typecheck (`tsc --noEmit`)                                     |     ✅     |       —       |
+| Snapshots (quando `.snap`/snapshot tests alterados)            |  ✅ cond.  |       —       |
+| Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)         |     —      | ✅ smart-skip |
 
-**Overhead medido:** a seção de guards do pre-push ≈ **6.5s** (dominada por
-`check-single-line-out-assign` ~3s); os testes entram apenas quando
-arquivos-fonte mudaram (docs/config pulam via smart-skip).
+**Overhead medido** (`bash scripts/bench-encoding-guards.sh` — 5 runs, mediana
+por guard): o TOTAL dos 16 guards ≈ **3.2s**, dominado por `check-blob-crlf`
+(~0.59s), `check-utf8` (~0.56s) e `check-crlf` (~0.55s) — os três varrem
+blobs/.ts/.sh inteiros. O `check-readme-toc` (README de 54 headings) custa
+~**0.23s** — tão rápido quanto os demais guards de README (~0.22-0.25s); o
+`check-single-line-out-assign` caiu de ~3s para ~0.46s (otimização
+single-grep). Os testes entram apenas quando arquivos-fonte mudaram
+(docs/config pulam via smart-skip).
+
+**Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
+rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
+9 sub-tests node-puro via `scripts/test-mutation-guards.sh` (bun literal,
+bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
+anchor, produtor sentinel, mutation-jobs e UTF-8 escopo). ⚠️ Não existe um
+job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda dentro da
+matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc + images, 1
+sub-test do master). Custo medido em 08/2026 (Windows host, worktree local):
+
+| Item                                      | Local (Windows, node frio) | act (proxy CI, container) |
+| :---------------------------------------- | :------------------------: | :-----------------------: |
+| cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
+| matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
+| master `mutation-guards` (9 sub-tests)    |        ≈ **15.8s**¹        |     **step ≈ 4.4s**¹      |
+| checkout@v4                               |             —              |          32.2s*           |
+| Summary                                   |             —              |           0.5s            |
+
+O gap 4.4s vs 15.8s no master sugere que o node no container roda mais rápido
+que o Windows local (warm cache/FS — não é causa provada, é observação).
+¹Medido com 5 sub-tests em 08/2026; os 4 sub-tests adicionados desde então
+(README reverse, docs anchor, produtor sentinel, mutation-jobs) são scripts
+bash/node-puros rápidos e o custo da matriz não foi re-medido — a ordem de
+grandeza se mantém.
+*O checkout de 32s no act é overhead de EMULAÇÃO (docker cp do worktree
+inteiro) — o GitHub Actions real faz checkout em ~1-2s. Comparando com os
+fast gates: cada guard <1s (o `check-readme-toc` real ≈ 0.23s); o runner dos
+16 guards ≈ 3.2s de mediana. Ou seja, os mutation tests são o item mais caro
+dessa classe no PR-check (~4.4s de step no container vs ~3.2s dos 16 fast
+gates), mas seguem node-puro e sem docker. ⚠️ Timing REAL do GitHub Actions
+não medido aqui (gh sem auth neste ambiente — ver "auth fantasma" em Bugs
+conhecidos); o act é o proxy local.
 
 > **Por que o pre-push não repete typecheck/lint-staged?** O pre-commit já os
 > rodou em cada commit da branch — reexecutá-los no push seria redundante. O

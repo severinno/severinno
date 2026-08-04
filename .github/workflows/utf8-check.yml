@@ -140,5 +140,8 @@ jobs:
       - name: Run hooks-symmetry guard (README Git Hooks table ↔ .husky/*)
         run: node scripts/check-hooks-symmetry.mjs
 
+      - name: Run mutation-jobs guard (every test-mutation-*.sh has a CI job)
+        run: node scripts/check-mutation-jobs.mjs
+
       - name: Summary
         run: echo "All source files validated as valid UTF-8, LF line endings, locked CRLF scope (.sh/.bash only), and clean shell assignments."

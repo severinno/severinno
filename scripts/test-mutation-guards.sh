@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 5 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 9 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -19,6 +19,17 @@
 #                    guard novo no pre-commit + linha stale devem FALHAR
 #   readme         → scripts/test-mutation-readme-guards.sh  (matriz aninhada:
 #                    anchors + toc + images — 1 sub-test, 0 re-rodada dupla)
+#   readme-reverse → scripts/test-mutation-readme-reverse.sh
+#                    drift SEMÂNTICO do README (baseline reverse) deve FALHAR
+#   docs-anchor    → scripts/test-mutation-readme-docs-anchor.sh
+#                    âncora quebrada em docs/*.md (fixture COM docs/) deve
+#                    FALHAR — cobre o scan default dos docs (discoverDocTargets)
+#   producer-sent  → scripts/test-mutation-producer-sentinel.sh
+#                    sentinel 'com CRLF' REMOVIDO do audit_blob_crlf_history.py
+#                    (cópia em temp) deve FALHAR o validate-all-text-alert.test.ts
+#   mutation-jobs  → scripts/test-mutation-mutation-jobs.sh
+#                    script órfão (forward) + matriz quebrada (reverse) do
+#                    check-mutation-jobs devem FALHAR
 #   utf8-scope     → scripts/test-mutation-utf8-scope.sh
 #                    call site sem src/ deve FALHAR
 #
@@ -53,6 +64,10 @@ SUBTESTS=(
   "bun-removal|Bun --staged — remoção do input bun-version|scripts/test-mutation-bun-removal.sh"
   "hooks-symmetry|Hooks — guard novo no pre-commit + linha stale|scripts/test-mutation-hooks-symmetry.sh"
   "readme|README — anchors + toc + images (matriz aninhada)|scripts/test-mutation-readme-guards.sh"
+  "readme-reverse|README — drift semântico (baseline reverse) deve FALHAR|scripts/test-mutation-readme-reverse.sh"
+  "docs-anchor|Docs — âncora quebrada em docs/*.md (fixture com docs/)|scripts/test-mutation-readme-docs-anchor.sh"
+  "producer-sent|Produtor — sentinel 'com CRLF' removido do audit all-text|scripts/test-mutation-producer-sentinel.sh"
+  "mutation-jobs|Mutation-jobs — script órfão + matriz quebrada|scripts/test-mutation-mutation-jobs.sh"
   "utf8-scope|UTF-8 — call site sem src/|scripts/test-mutation-utf8-scope.sh"
 )
 
@@ -209,5 +224,6 @@ if [ "${#FAILED_LIST[@]}" -gt 0 ]; then
 fi
 
 pass "MUTATION TESTS PASSED — os guards (bun literal, bun remoção, hooks simetria,"
-pass "README anchors/toc/images, UTF-8 escopo) detectam todas as mutações."
+pass "README anchors/toc/images + reverse, docs anchor, produtor sentinel,"
+pass "mutation-jobs, UTF-8 escopo) detectam todas as mutações."
 exit 0

@@ -19,6 +19,8 @@
  *       - exit 1 quando um link semanticamente errado é adicionado
  *       - --update regenera o baseline (count atual)
  *       - exit 2 quando o baseline está ausente (fail-closed)
+ *       - exit 2 quando o README tem link QUEBRADO (forward) — fail-closed
+ *         no input inválido, DISTINTO do exit 1 (achados novos de drift)
  *
  * Usage:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/check-readme-reverse-baseline.test.ts
@@ -233,13 +235,14 @@ describe("check-readme-reverse-baseline.mjs — CLI real", () => {
     expect(check.status).toBe(0)
   })
 
-  it("FILTRO type==='reverse': README com link QUEBRADO (forward-only) → exit 0 — o job semanal não é gate de PR", () => {
-    // Um link quebrado (forward: `#nao-existe` sem heading) é bug de PR — já
-    // é gate no CI/hooks. O baseline guard filtra `type === 'reverse'` e o
-    // forward NÃO participa do baseline: o job semanal só se importa com o
-    // drift SEMÂNTICO (reverse). Este teste trava o contrato do filtro — se
-    // o filtro for removido, o job semanal passaria a falhar em links
-    // quebrados (falso alarme) e este teste pegaria.
+  it("FAIL-CLOSED no FORWARD: README com link QUEBRADO (forward-only) → exit 2 com mensagem clara (infra ≠ exit 1)", () => {
+    // Um link quebrado (forward: `#nao-existe` sem heading) invalida o audit
+    // de drift semântico — o input está quebrado, o guard NÃO pode comparar
+    // reverse sobre um README com link morto. Fail-closed: EXIT 2 (infra),
+    // DISTINTO do exit 1 (achados novos de drift — que criam issue no job
+    // semanal). O forward já é gate de PR (utf8-check/hooks); chegar aqui =
+    // o working tree/PR mergeado quebrou um link — alerta de infra, não
+    // silêncio. Este teste trava a assinatura de falha: exit 2, NÃO 1.
     const BROKEN_README = [
       "## Encoding Guards",
       "",
@@ -266,13 +269,26 @@ describe("check-readme-reverse-baseline.mjs — CLI real", () => {
     expect(anchorsOut.count).toBe(1)
     expect(anchorsOut.findings[0]).toMatchObject({ type: "forward", slug: "nao-existe" })
 
-    const upd = runCheck(dir, ["--baseline", "baseline.json", "--update"])
-    expect(upd.status).toBe(0)
-    // o baseline nasce com 0 achados reverse (o broken é forward-only)
-    expect(JSON.parse(readFileSync(join(dir, "baseline.json"), "utf8")).count).toBe(0)
+    // o baseline existe (vazio) — a falha NÃO é por baseline ausente, é pelo
+    // input inválido (link quebrado): exit 2 com a mensagem clara que lista
+    // o link morto e explica a distinção exit 2 vs exit 1.
+    writeFileSync(
+      join(dir, "baseline.json"),
+      JSON.stringify({ count: 0, updatedAt: "2026-01-01", findings: [] }),
+      "utf8",
+    )
 
     const check = runCheck(dir, ["--baseline", "baseline.json"])
-    expect(check.status).toBe(0)
-    expect(check.stdout).toContain("nenhum NOVO")
+    expect(check.status).toBe(2)
+    expect(check.stderr).toContain("QUEBRADO")
+    expect(check.stderr).toContain("[CRLF Guard](#nao-existe)")
+    expect(check.stderr).toContain("DISTINTO do exit 1")
+
+    // --update TAMBÉM falha-closed no input quebrado (a checagem do forward
+    // roda ANTES do branch de update): não se regenera baseline de um README
+    // com link morto — o fail-closed do forward vale para os dois modos.
+    const upd = runCheck(dir, ["--baseline", "baseline.json", "--update"])
+    expect(upd.status).toBe(2)
+    expect(upd.stderr).toContain("QUEBRADO")
   })
 })

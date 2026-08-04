@@ -37,25 +37,17 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest"
-import { execFileSync, spawnSync } from "node:child_process"
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { spawnSync } from "node:child_process"
+import { resolve } from "node:path"
+import {
+  makeRepo,
+  commitCrlfFile,
+  commitLfFile,
+  writeGitattributes,
+  cleanupTmpDirs,
+} from "@/lib/__tests__"
 
 const AUDIT = resolve(process.cwd(), "scripts/audit-blob-crlf-history.sh")
-
-const tmpDirs: string[] = []
-
-/** autocrlf=false: `git add` NÃO normaliza — blob guarda os bytes crus (CRLF). */
-function makeRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "hist-crlf-"))
-  tmpDirs.push(dir)
-  execFileSync("git", ["init", "-q"], { cwd: dir })
-  execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir })
-  execFileSync("git", ["config", "user.name", "t"], { cwd: dir })
-  execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: dir })
-  return dir
-}
 
 function run(repoDir: string, args: string[] = []) {
   return spawnSync("bash", [AUDIT, ...args], {
@@ -65,42 +57,8 @@ function run(repoDir: string, args: string[] = []) {
   })
 }
 
-/** Cria um arquivo com bytes CRLF e commita (blob fica CRLF com autocrlf=false). */
-function commitCrlfFile(
-  dir: string,
-  name: string,
-  content = "#!/usr/bin/env bash\r\necho hi\r\n",
-): void {
-  // mkdir do pai (ex.: .husky/pre-commit precisa do dir .husky) — path
-  // ancorado do .gitattributes casa o caminho completo, não só o basename.
-  // recursive:true num dir já existente é no-op — seguro para nomes na raiz.
-  mkdirSync(join(dir, dirname(name)), { recursive: true })
-  writeFileSync(join(dir, name), content)
-  execFileSync("git", ["add", name], { cwd: dir })
-  execFileSync("git", ["commit", "-qm", `add ${name}`], { cwd: dir })
-}
-
-/** Cria um arquivo LF e commita (controle limpo). */
-function commitLfFile(dir: string, name: string, content = "#!/usr/bin/env bash\necho hi\n"): void {
-  writeFileSync(join(dir, name), content)
-  execFileSync("git", ["add", name], { cwd: dir })
-  execFileSync("git", ["commit", "-qm", `add ${name}`], { cwd: dir })
-}
-
-/**
- * Escreve um .gitattributes na raiz do fixture (não precisa de commit — o
- * --all-text DERIVA a lista lendo o arquivo do working tree via cwd).
- * Conteúdo default espelha o padrão `*.ext text eol=lf` do repo real.
- */
-function writeGitattributes(
-  dir: string,
-  content = "*.md text eol=lf\n*.ts text eol=lf\n*.yml text eol=lf\n*.sh text eol=lf\n",
-): void {
-  writeFileSync(join(dir, ".gitattributes"), content)
-}
-
 afterEach(() => {
-  for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  cleanupTmpDirs()
 })
 
 // ── Gate default (.sh/.bash) ─────────────────────────────────────────────

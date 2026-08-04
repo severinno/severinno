@@ -559,18 +559,41 @@ jobs:
   # NOVOS (por assinatura file+slug+label — a linha NÃO participa: o README
   # cresce e as linhas migram). Baseline regenerável:
   # node scripts/check-readme-reverse-baseline.mjs --update
+  #
+  # ISSUE ACIONÁVEL: quando o GATE falha (achados novos), o step seguinte
+  # (if: always()) roda scripts/readme-reverse-issue.mjs — publica UMA issue
+  # por achado novo (gh issue create, label readme-drift) com o link + a
+  # sugestão do heading correto, transformando o "job falhou" (alerta mudo)
+  # em ticket. Dedup por assinatura file+slug+label contra issues abertas —
+  # a issue vira o estado da dívida até ser fechada (sem duplicata a cada
+  # run semanal). Requer permissions: issues: write.
   readme-reverse-audit:
     name: README reverse semantics (baseline)
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write # gh issue create para achados novos de drift semântico
 
     steps:
       - uses: actions/checkout@v4
 
       # ── GATE: nenhum achado NOVO além do baseline commitado ──────────
-      # Exit 1 = drift semântico novo detectado → job falha (alerta).
+      # Exit 1 = drift semântico novo detectado → job falha (alerta). O step
+      # de issue roda DEPOIS (if: always()) — exatamente quando o GATE falha
+      # é que o ticket precisa existir.
       - name: Auditar links do README (--reverse) vs baseline
         run: node scripts/check-readme-reverse-baseline.mjs
+
+      # ── ISSUE: publica achados novos como tickets acionáveis ─────────
+      # if: always() — roda também quando o GATE falhou (que é o caso com
+      # achados novos). O script re-spawna o baseline em REPORT mode (--json),
+      # deduplica por assinatura e cria as issues (GH_TOKEN do runner).
+      - name: Publicar achados novos como GitHub Issues
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/readme-reverse-issue.mjs
 
       - name: Summary
         run: echo "✅ Nenhum drift semântico de links no README (baseline docs/security/readme-reverse-baseline.json)."

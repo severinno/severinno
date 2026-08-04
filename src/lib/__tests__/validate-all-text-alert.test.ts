@@ -43,27 +43,28 @@
  */
 
 import { describe, it, expect, afterEach } from "vitest"
-import { execFileSync, spawnSync } from "node:child_process"
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { spawnSync } from "node:child_process"
+import { resolve } from "node:path"
+import {
+  makeRepo,
+  commitCrlfFile,
+  commitLfFile,
+  writeGitattributes,
+  blobHasCr,
+  cleanupTmpDirs,
+} from "@/lib/__tests__"
 
-const AUDIT = resolve(process.cwd(), "scripts/audit-blob-crlf-history.sh")
+/**
+ * Wrapper auditado — DEFAULT é o real do repo; override por AUDIT_SCRIPT
+ * permite o mutation test (test-mutation-producer-sentinel.sh) rodar ESTE
+ * teste contra uma CÓPIA MUTADA do produtor (sentinel removido) e provar a
+ * regressão com o próprio vitest, sem tocar no arquivo real. O default
+ * preserva o comportamento atual (zero mudança p/ CI/hooks).
+ */
+const AUDIT =
+  process.env.AUDIT_SCRIPT ?? resolve(process.cwd(), "scripts/audit-blob-crlf-history.sh")
 /** Sentinel do job CI blob-crlf-all-text-alert (grep -Fq 'com CRLF'). */
 const SENTINEL = "com CRLF"
-
-const tmpDirs: string[] = []
-
-/** autocrlf=false: `git add` NÃO normaliza — blob guarda os bytes crus (CRLF). */
-function makeRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "alltext-alert-"))
-  tmpDirs.push(dir)
-  execFileSync("git", ["init", "-q"], { cwd: dir })
-  execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir })
-  execFileSync("git", ["config", "user.name", "t"], { cwd: dir })
-  execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: dir })
-  return dir
-}
 
 /** Roda o wrapper real --all-text contra o fixture via CHECK_CRLF_ROOT. */
 function runReport(repoDir: string) {
@@ -74,29 +75,8 @@ function runReport(repoDir: string) {
   })
 }
 
-/** Commit de um arquivo CRLF (blob fica CRLF com autocrlf=false). */
-function commitCrlfFile(dir: string, name: string, content: string): void {
-  writeFileSync(join(dir, name), content)
-  execFileSync("git", ["add", name], { cwd: dir })
-  execFileSync("git", ["commit", "-qm", `add ${name} CRLF`], { cwd: dir })
-}
-
-/** Commit de um arquivo LF (controle limpo). */
-function commitLfFile(dir: string, name: string, content: string): void {
-  writeFileSync(join(dir, name), content)
-  execFileSync("git", ["add", name], { cwd: dir })
-  execFileSync("git", ["commit", "-qm", `add ${name} LF`], { cwd: dir })
-}
-
-/** Byte-check direto do blob: tem CR (0x0D)? (git cat-file — sem pipe MSYS). */
-function blobHasCr(dir: string, path: string): boolean {
-  // execFileSync já retorna Buffer — .includes(0x0d) é o byte-check do CR
-  const blob = execFileSync("git", ["cat-file", "blob", `HEAD:${path}`], { cwd: dir })
-  return blob.includes(0x0d)
-}
-
 afterEach(() => {
-  for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  cleanupTmpDirs()
 })
 
 // ── Cenário 1 — CONTROLE: histórico limpo (LF) → sentinel NÃO aparece ────
@@ -106,7 +86,7 @@ describe("validate-all-text-alert (Cenário 1 — CONTROLE: histórico limpo)", 
     const dir = makeRepo()
     // .gitattributes + fake.md LF commitados juntos (igual ao script — LF
     // não há nada a normalizar; blob fica LF).
-    writeFileSync(join(dir, ".gitattributes"), "*.md text eol=lf\n")
+    writeGitattributes(dir, "*.md text eol=lf\n")
     commitLfFile(dir, "fake.md", "# Titulo\n\nCorpo LF\n")
 
     // Fail-fast do CONTROLE: o blob é LF (nada de CR) — a mutação NÃO aplicou.
@@ -131,7 +111,7 @@ describe("validate-all-text-alert (Cenário 2 — ACHADO: blob .md CRLF)", () =>
     // CRLF commitado no passado com autocrlf off, atributo adicionado DEPOIS).
     commitCrlfFile(dir, "fake.md", "# Titulo\r\n\r\nCorpo CRLF\r\n")
     // .gitattributes no working tree = fonte da derivação do --all-text
-    writeFileSync(join(dir, ".gitattributes"), "*.md text eol=lf\n")
+    writeGitattributes(dir, "*.md text eol=lf\n")
 
     // Fail-fast: o blob commitado REALMENTE tem bytes CRLF (mutação aplicou)
     expect(blobHasCr(dir, "fake.md")).toBe(true)
