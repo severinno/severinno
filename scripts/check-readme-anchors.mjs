@@ -18,6 +18,10 @@
 //   node scripts/check-readme-anchors.mjs --reverse  # forward + reverse
 //   node scripts/check-readme-anchors.mjs --reverse-strict  # + strict
 //   node scripts/check-readme-anchors.mjs --reverse-strict --min-label-len 3
+//   node scripts/check-readme-anchors.mjs --reverse-strict \
+//       --prose-allowlist abaixo,acima,seguir,aqui,fluxo  # exime prosa
+//   node scripts/check-readme-anchors.mjs --reverse-strict \
+//       --min-suggestion-sim 0.3  # limiar da sugestão do heading (default 0.4)
 //   node scripts/check-readme-anchors.mjs --reverse --json  # report JSON
 //   COM target (SÓ os alvos são escaneados):
 //   node scripts/check-readme-anchors.mjs --reverse docs/x.md
@@ -47,8 +51,10 @@
 //     bash `# 1. Install dependencies` no Quick Start) NÃO são headings; links
 //     dentro de fences também não contam;
 //   - spans de código inline (\`...\`) são ignorados na extração de links;
-//   - links para OUTROS arquivos (`docs/x.md#anchor`) e URLs externas são
-//     ignorados — só links puros `#slug` são validados;
+//   - links CROSS-DOC (`[x](docs/API.md#anchor)`) SÃO validados: o arquivo
+//     alvo deve existir (relativo ao diretório do arquivo atual) e a âncora
+//     deve resolver para um heading real dele (mesmo algoritmo de slug);
+//   - URLs externas são ignoradas — só `#slug` puro e `caminho.md#anchor`;
 //   - imagens `![alt](#...)` são ignoradas (caractere anterior ao `[` é `!`);
 //   - links REFERENCE-STYLE (`[ref]: #slug`) NÃO são validados — o README não
 //     usa este formato hoje, mas um futuro ref-style bypassaria o guard;
@@ -66,7 +72,7 @@
 // =============================================================================
 
 import { readFileSync, readdirSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 /**
@@ -92,6 +98,17 @@ const HEADING_RE = /^#{1,6}\s+(.+?)\s*$/
 
 /** Regex de link inline markdown: `[label](#slug)` — slug sem espaço/`)`. */
 const LINK_RE = /\[([^\]]*)\]\(#([^)\s]+)\)/g
+
+/**
+ * Regex de link CROSS-DOC inline: `[label](caminho/arquivo.md#anchor)` —
+ * alvo terminando em `.md` seguido de `#anchor`. O `[^)#\s]+` captura o
+ * caminho relativo (com `/`, `.` e `-`), e o `[^)\s]+` a âncora.
+ *
+ * ÂNCORA com `#` interno (ex.: `sub/dir.md#x#y`) captura `x#y` inteiro e
+ * FALHA por design: o slugger REMOVE `#` (classe de pontuação), então
+ * nenhum heading real contém `#` — um link com `#` na âncora é inválido.
+ */
+const CROSS_DOC_LINK_RE = /\[([^\]]*)\]\(([^)#\s]+\.md)#([^)\s]+)\)/g
 
 /**
  * Extrai os headings do conteúdo, ignorando linhas dentro de fences (```).
@@ -158,6 +175,97 @@ export function extractInternalLinks(content) {
 }
 
 /**
+ * Extrai os links CROSS-DOC (`[label](caminho/arquivo.md#anchor)`) do
+ * conteúdo — o gap de referências entre arquivos (ex.: `docs/API.md#anchor`
+ * citado pelo README). Mesmas regras de extração do extractInternalLinks
+ * (fences, spans de código inline e imagens ignorados) mais o filtro de URL:
+ * alvos externos (`https://...`, `//...`) NÃO são arquivos locais do repo e
+ * ficam fora — só caminhos RELATIVOS terminando em `.md` com âncora entram.
+ *
+ * @param {string} content
+ * @returns {{ line: number, target: string, anchor: string, label: string }[]}
+ */
+export function extractCrossDocLinks(content) {
+  const links = []
+  let inFence = false
+  const lines = content.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+    if (trimmed.startsWith("```")) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+    const noInlineCode = line.replace(/`[^`]*`/g, "")
+    CROSS_DOC_LINK_RE.lastIndex = 0
+    let m
+    while ((m = CROSS_DOC_LINK_RE.exec(noInlineCode)) !== null) {
+      // imagem `![alt](...)`: o `!` fica FORA do `[...]` (caractere anterior)
+      if (m.index > 0 && noInlineCode[m.index - 1] === "!") continue
+      // URL externa (http/https/protocolo:// ou //) — não é arquivo local
+      if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(m[2])) continue
+      links.push({ line: i + 1, target: m[2], anchor: m[3], label: m[1].trim() })
+    }
+  }
+  return links
+}
+
+/**
+ * Valida os links CROSS-DOC contra o arquivo alvo: resolve a âncora contra
+ * os headings do arquivo destino (mesmo algoritmo de slug) e falha se o
+ * ARQUIVO não existir ou a âncora não existir nele. `readTarget` recebe o
+ * caminho relativo (ex.: `docs/API.md`, `../README.md`) e devolve o conteúdo
+ * do arquivo ou `null` (arquivo ausente).
+ *
+ * DEDUP por alvo: o mesmo arquivo pode ser linkado várias vezes no conteúdo
+ * (ex.: `[a](docs/x.md#x) [b](docs/x.md#y)`); readTarget é chamado UMA vez
+ * por alvo (Map interno) — o cache do main() é complementar (atravessa
+ * arquivos diferentes linkando o mesmo alvo).
+ *
+ * @param {string} content  conteúdo do arquivo ONDE os links aparecem
+ * @param {(target: string) => string | null} readTarget  resolver do alvo
+ * @returns {{ line: number, target: string, anchor: string, label: string, reason: "file-missing" | "anchor-missing", closest?: string, distance?: number }[]}
+ */
+export function checkCrossDocLinks(content, readTarget) {
+  const links = extractCrossDocLinks(content)
+  const violations = []
+  const targetCache = new Map()
+  for (const link of links) {
+    let targetContent = targetCache.get(link.target)
+    if (targetContent === undefined) {
+      targetContent = readTarget(link.target)
+      targetCache.set(link.target, targetContent)
+    }
+    if (targetContent === null) {
+      violations.push({ ...link, reason: "file-missing" })
+      continue
+    }
+    const headings = extractHeadings(targetContent)
+    const slugs = new Set(headings.map((h) => h.slug))
+    if (!slugs.has(link.anchor)) {
+      // sugere o heading mais próximo (mesmo contrato do checkAnchors)
+      let best = null
+      let bestDist = Infinity
+      for (const h of headings) {
+        const d = levenshtein(link.anchor, h.slug)
+        if (d < bestDist) {
+          bestDist = d
+          best = h
+        }
+      }
+      violations.push({
+        ...link,
+        reason: "anchor-missing",
+        closest: best ? best.slug : undefined,
+        distance: best ? bestDist : undefined,
+      })
+    }
+  }
+  return violations
+}
+
+/**
  * Distância de Levenshtein (para sugerir o heading mais próximo quando um
  * link quebra — ajuda a achar o heading renomeado).
  *
@@ -181,6 +289,27 @@ export function levenshtein(a, b) {
     }
   }
   return dp[a.length][b.length]
+}
+
+/**
+ * Similaridade de TOKENS (0..1) para a sugestão do strict:
+ * 1 − Levenshtein normalizado pela maior string (1 − dist/maxLen). 1 =
+ * idênticos, 0 = completamente diferentes. Usada para sugerir o heading
+ * mais provável quando o label single-token NÃO existe em nenhum heading
+ * (ex.: heading 'Guard' renomeado para 'Gate' →
+ * tokenSimilarity('guard','gate') = 1 − 3/5 = 0.4). Ao contrário do jaccard
+ * (similaridade de PRESENÇA entre conjuntos de tokens — inútil quando o
+ * token do label não está em nenhum heading: seria 0 para todos), esta é a
+ * métrica de PARECENÇA entre o token do label e cada token de cada heading.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {number} 0..1
+ */
+export function tokenSimilarity(a, b) {
+  const maxLen = Math.max(a.length, b.length)
+  if (maxLen === 0) return 1 // ambos vazios = idênticos
+  return 1 - levenshtein(a, b) / maxLen
 }
 
 /**
@@ -362,22 +491,64 @@ export function jaccard(a, b) {
  * curtos (ex.: 'OK', 'CI', 'X' — len < threshold) são tratados como
  * genéricos legítimos e permitidos.
  *
- * TRADE-OFF DOCUMENTADO: o strict sinaliza também PROSA de um token
- * (ex.: 'abaixo', 'acima' — palavras longas que não são headings). É o
- * preço intencional de pegar renomeações de headings single-token
+ * SUGESTÃO do strict (opts.minSuggestionSim — CLI --min-suggestion-sim,
+ * default 0.4): quando o label single-token NÃO existe em NENHUM heading, o
+ * guard sugere o heading mais provável por similaridade de TOKENS do label
+ * contra TODOS os tokens de TODOS os headings (tokenSimilarity — Levenshtein
+ * normalizado 0..1, ex.: 'guard' → 'gate' = 0.4). A melhor similaridade
+ * acima do limiar vira suggestion (slug do heading); abaixo, suggestion é
+ * null — o render emite 'nenhum heading corresponde'. Ao contrário da regra
+ * 4 (que só considera headings que CONTÊM o label inteiro), a sugestão do
+ * strict varre todos os headings mesmo sem o token — cobre renomeação que
+ * elimina o token (ex.: 'Guard' → 'Gate').
+ *
+ * PROSE ALLOWLIST (opts.proseAllowlist — CLI --prose-allowlist
+ * <palavras,separadas>): atenua o trade-off do strict. Palavras de prosa
+ * COMUM (ex.: 'abaixo', 'acima', 'seguir', 'aqui', 'fluxo') que o strict
+ * flagaria como falso positivo são eximidas — o token permitido NÃO dispara
+ * a violação strict e cai na regra 3 (prosa → exento) como no modo normal.
+ * A renomeação single-token REAL continua pega: um token permitido que
+ * EXISTE como heading em outro lugar segue indo para a regra 4 (violação
+ * com sugestão) — a allowlist só exime prosa, não renomeação. Palavras
+ * permitidas são normalizadas (lowercase + trim). Default: vazio (comporta-
+ * mento strict atual preservado — opt-in por flag).
+ *
+ * BLIND SPOT INERENTE (documentado): uma palavra na allowlist que JÁ FOI um
+ * heading real, renomeado para um texto SEM o token (e nenhum outro heading
+ * carrega o token), fica eximida do strict — o mesmo blind spot de qualquer
+ * allowlist: a lista assume que a palavra é prosa, então uma renomeação que
+ * elimina o token é aceita. A regra 4 (sugestão) cobre apenas o caso do
+ * token ainda existir em outro heading. Escolher a allowlist = declarar
+ * 'esta palavra é prosa, não heading' — o preço da eliminação de falso
+ * positivo.
+ *
+ * TRADE-OFF DOCUMENTADO: SEM allowlist, o strict sinaliza também PROSA de
+ * um token (ex.: 'abaixo', 'acima' — palavras longas que não são headings).
+ * É o preço intencional de pegar renomeações de headings single-token
  * (ex.: '### Guard' renomeado para '### Gate' deixa o label 'Guard' sem
  * correspondência em NENHUM heading — escapava no modo normal). Por isso o
  * modo é OPT-IN e NÃO está no CI (utf8-check/hooks/pre-push): rodar strict
- * no README real acusa os links de prosa ('abaixo') — esperado.
+ * no README real acusa os links de prosa ('abaixo') — esperado; a allowlist
+ * é o mecanismo para rodar strict no CI sem o ruído de prosa (ver job
+ * readme-reverse-strict-alert no pr-check.yml).
  *
  * @param {object[]} headings  de extractHeadings (line, level, slug, text)
  * @param {{ line: number, slug: string, label: string }[]} links  links
  *        internos OU entradas de TOC — qualquer fonte com {line, slug, label}
- * @param {{ strict?: boolean, minSingleTokenLen?: number }} [opts]
- * @returns {object[]} violações {line, slug, label, heading, suggestion}
+ * @param {{ strict?: boolean, minSingleTokenLen?: number, proseAllowlist?: string[], minSuggestionSim?: number }} [opts]
+ * @returns {object[]} violações {line, slug, label, heading, suggestion, suggestionSim}
  */
 export function checkLinkLabelSemantics(headings, links, opts = {}) {
-  const { strict = false, minSingleTokenLen = 3 } = opts
+  const {
+    strict = false,
+    minSingleTokenLen = 3,
+    proseAllowlist = [],
+    minSuggestionSim = 0.4,
+  } = opts
+  // Palavras de prosa eximidas do strict — normalizadas (lowercase + trim):
+  // o token de label já sai lowercase do tokenize, então a comparação é
+  // case-insensitive por construção.
+  const allowedProse = new Set(proseAllowlist.map((w) => w.trim().toLowerCase()).filter(Boolean))
   const bySlug = new Map(headings.map((h) => [h.slug, h]))
   const tokensBySlug = new Map(headings.map((h) => [h.slug, new Set(tokenize(h.text))]))
   const violations = []
@@ -401,17 +572,49 @@ export function checkLinkLabelSemantics(headings, links, opts = {}) {
       strict &&
       labelTokens.length === 1 &&
       labelTokens[0].length >= minSingleTokenLen &&
-      !resolvedTokens.has(labelTokens[0])
+      !resolvedTokens.has(labelTokens[0]) &&
+      // PROSE ALLOWLIST: token de prosa comum (ex.: 'abaixo') não dispara o
+      // strict — cai na regra 3 (prosa → exento). Renomeação real continua
+      // pega: se o token permitido existir como heading em outro lugar, a
+      // regra 4 sinaliza com sugestão.
+      !allowedProse.has(labelTokens[0])
     ) {
       const token = labelTokens[0]
       const existsElsewhere = headings.some((h) => tokensBySlug.get(h.slug).has(token))
       if (!existsElsewhere) {
+        // SUGESTÃO: o token não existe em NENHUM heading — mas o heading
+        // renomeado pode ter tokens PARECIDOS (ex.: 'Guard' → 'Gate'). A
+        // sugestão é o heading com a melhor tokenSimilarity do label contra
+        // TODOS os tokens de TODOS os headings (não só os que contêm o
+        // token — nenhum contém). Acima do limiar minSuggestionSim →
+        // suggestion=slug do heading; abaixo → suggestion=null (render
+        // emite 'nenhum heading corresponde').
+        //
+        // O heading RESOLVIDO é EXCLUÍDO dos candidatos: sugerir o próprio
+        // alvo seria contraditório ('aponta para o heading errado?
+        // (sugestão: '#guardian')' quando o link JÁ aponta para #guardian —
+        // ex.: label 'Guard' → #guardian, heading 'Guardian' tem token
+        // 'guardian', sim 0.625). A sugestão só tem sentido como ALTERNATIVA.
+        let bestSim = 0
+        let bestHeading = null
+        for (const h of headings) {
+          if (h.slug === link.slug) continue // resolved não é candidato
+          for (const t of tokensBySlug.get(h.slug)) {
+            const sim = tokenSimilarity(token, t)
+            if (sim > bestSim) {
+              bestSim = sim
+              bestHeading = h
+            }
+          }
+        }
         violations.push({
           line: link.line,
           slug: link.slug,
           label: link.label,
           heading: heading.text,
           strict: true,
+          suggestion: bestHeading && bestSim >= minSuggestionSim ? bestHeading.slug : null,
+          suggestionSim: bestSim,
         })
         continue
       }
@@ -465,10 +668,10 @@ export function checkLinkLabelSemantics(headings, links, opts = {}) {
  * heading ERRADO — o label "CRLF Guard" corresponde a outro heading.
  *
  * @param {string} content
- * @param {{ strict?: boolean, minSingleTokenLen?: number }} [opts]  mesmo
- *        contrato do checkLinkLabelSemantics (CLI: --reverse-strict e
- *        --min-label-len)
- * @returns {object[]} violações {line, slug, label, heading, suggestion}
+ * @param {{ strict?: boolean, minSingleTokenLen?: number, proseAllowlist?: string[], minSuggestionSim?: number }} [opts]
+ *        mesmo contrato do checkLinkLabelSemantics (CLI: --reverse-strict,
+ *        --min-label-len, --prose-allowlist e --min-suggestion-sim)
+ * @returns {object[]} violações {line, slug, label, heading, suggestion, suggestionSim}
  */
 export function checkAnchorSemantics(content, opts = {}) {
   return checkLinkLabelSemantics(extractHeadings(content), extractInternalLinks(content), opts)
@@ -511,6 +714,8 @@ function main() {
   let reverseStrict = false
   let minLabelLen = 3
   let json = false
+  let proseAllowlist = []
+  let minSuggestionSim = 0.4
   const targets = []
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
@@ -522,6 +727,22 @@ function main() {
       const next = args[i + 1]
       if (next !== undefined && /^\d+$/.test(next)) {
         minLabelLen = Number(next)
+        i++ // consome o valor
+      }
+    } else if (a === "--prose-allowlist") {
+      const next = args[i + 1]
+      if (next !== undefined) {
+        // lista separada por vírgula: --prose-allowlist abaixo,acima,seguir
+        proseAllowlist = next
+          .split(",")
+          .map((w) => w.trim())
+          .filter(Boolean)
+        i++ // consome o valor
+      }
+    } else if (a === "--min-suggestion-sim") {
+      const next = args[i + 1]
+      if (next !== undefined && /^(0(\.\d+)?|1(\.0+)?)$/.test(next)) {
+        minSuggestionSim = Number(next)
         i++ // consome o valor
       }
     } else if (a === "--json") {
@@ -539,6 +760,22 @@ function main() {
   const allViolations = []
   let headingCount = 0
 
+  // Cache de arquivos-alvo cross-doc (abs → conteúdo|null) — evita re-ler o
+  // mesmo alvo quando vários arquivos linkam para ele (ex.: README.md e
+  // docs/TESTING.md ambos apontando para ../README.md).
+  const targetCache = new Map()
+  const readTargetCached = (abs) => {
+    if (targetCache.has(abs)) return targetCache.get(abs)
+    let content = null
+    try {
+      content = readFileSync(abs, "utf8")
+    } catch {
+      /* arquivo ausente → null (violação file-missing) */
+    }
+    targetCache.set(abs, content)
+    return content
+  }
+
   for (const target of resolvedTargets) {
     const path = join(process.cwd(), target)
     let content
@@ -551,8 +788,34 @@ function main() {
     for (const v of checkAnchors(content)) {
       allViolations.push({ file: target, type: "forward", ...v })
     }
+    // CROSS-DOC: links para OUTROS arquivos .md (`docs/API.md#anchor`)
+    // resolvidos RELATIVO ao diretório do arquivo atual — o README na raiz
+    // linka `docs/x.md`, um doc em docs/ linka `../README.md`. Violações
+    // saem como type "forward" (link quebrado) para o FAIL-CLOSED do
+    // check-readme-reverse-baseline.mjs (weekly) pegá-las — um link morto
+    // cross-doc também é input inválido para o audit de drift semântico.
+    const baseDir = dirname(path)
+    for (const v of checkCrossDocLinks(content, (rel) => readTargetCached(resolve(baseDir, rel)))) {
+      // slug = `alvo#âncora` para o JSON/FAIL-CLOSED do
+      // check-readme-reverse-baseline.mjs renderizar algo significativo
+      // (ele imprime `[label](#f.slug)` no relatório de links quebrados).
+      allViolations.push({
+        file: target,
+        type: "forward",
+        kind: "cross-doc",
+        slug: `${v.target}#${v.anchor}`,
+        ...v,
+      })
+    }
     if (reverseMode) {
-      const opts = reverseStrict ? { strict: true, minSingleTokenLen: minLabelLen } : {}
+      const opts = reverseStrict
+        ? {
+            strict: true,
+            minSingleTokenLen: minLabelLen,
+            proseAllowlist,
+            minSuggestionSim,
+          }
+        : {}
       for (const v of checkAnchorSemantics(content, opts)) {
         allViolations.push({ file: target, type: "reverse", ...v })
       }
@@ -574,17 +837,35 @@ function main() {
   if (allViolations.length > 0) {
     console.error(`❌ Link(s) interno(s) do README inválido(s) (${allViolations.length}):\n`)
     for (const v of allViolations) {
-      if (v.type === "forward") {
+      if (v.type === "forward" && v.kind === "cross-doc") {
+        const label = v.label ? ` [${v.label}]` : ""
+        if (v.reason === "file-missing") {
+          console.error(
+            `   - ${v.file}:${v.line} [cross-doc]${label}: '${v.target}#${v.anchor}' — ARQUIVO '${v.target}' NÃO existe (link morto)\n`,
+          )
+        } else {
+          const close = v.closest
+            ? `\n     → heading mais próximo em '${v.target}': '#${v.closest}' (distância ${v.distance})`
+            : `\n     → nenhum heading encontrado em '${v.target}' — link órfão?`
+          console.error(
+            `   - ${v.file}:${v.line} [cross-doc]${label}: '${v.target}#${v.anchor}' — âncora '#${v.anchor}' NÃO existe em '${v.target}'${close}\n`,
+          )
+        }
+      } else if (v.type === "forward") {
         const label = v.label ? ` [${v.label}]` : ""
         const close = v.closest
           ? `\n     → heading mais próximo: '#${v.closest}' (distância ${v.distance})`
           : "\n     → nenhum heading encontrado — link órfão?"
         console.error(`   - ${v.file}:${v.line} [forward]${label}: '#${v.slug}'${close}\n`)
       } else if (v.strict) {
+        const suggestion =
+          v.suggestion !== null && v.suggestion !== undefined
+            ? ` (sugestão: '#${v.suggestion}' — similaridade ${v.suggestionSim.toFixed(2)})`
+            : ` (nenhum heading corresponde — melhor similaridade ${v.suggestionSim.toFixed(2)} abaixo do limiar ${minSuggestionSim})`
         console.error(
           `   - ${v.file}:${v.line} [reverse-strict] [${v.label}]: '#${v.slug}'` +
             ` (heading: '${v.heading}') — label de UM token não-stopword que NÃO` +
-            ` existe em NENHUM heading do doc; aponta para o heading errado?\n`,
+            ` existe em NENHUM heading do doc; aponta para o heading errado?${suggestion}\n`,
         )
       } else {
         console.error(

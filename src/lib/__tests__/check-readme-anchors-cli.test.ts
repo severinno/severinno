@@ -243,6 +243,141 @@ describe("check-readme-anchors.mjs CLI (--reverse-strict)", () => {
     expect(res.status).toBe(0)
     expect(res.stdout ?? "").toContain("forward + reverse-strict")
   })
+
+  it("--reverse-strict --prose-allowlist: prosa single-token EXIMIDA → exit 0 (falso positivo eliminado)", () => {
+    // O cenário REAL: label 'abaixo' (prosa, len 6) aponta para heading
+    // legítimo — o strict SEM allowlist acusaria (exit 1); com 'abaixo' na
+    // allowlist o token cai na regra 3 (prosa → exento) e o guard passa.
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [abaixo](#crlf-guard)",
+      "- [CRLF Guard](#crlf-guard)",
+      "",
+      "### CRLF Guard",
+    ].join("\n")
+    writeFileSync(join(makeTmpDir(), "README.md"), content, "utf8")
+    const res = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        "--reverse-strict",
+        "--prose-allowlist",
+        "abaixo,acima,seguir,aqui,fluxo",
+        "README.md",
+      ],
+      { cwd: tmpDirs[tmpDirs.length - 1], encoding: "utf8" },
+    )
+    expect(res.status).toBe(0)
+    expect(res.stdout ?? "").toContain("forward + reverse-strict")
+  })
+
+  it("--reverse-strict SEM allowlist: a mesma prosa single-token → exit 1 (contraste)", () => {
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [abaixo](#crlf-guard)",
+      "- [CRLF Guard](#crlf-guard)",
+      "",
+      "### CRLF Guard",
+    ].join("\n")
+    writeFileSync(join(makeTmpDir(), "README.md"), content, "utf8")
+    const res = spawnSync(process.execPath, [SCRIPT, "--reverse-strict", "README.md"], {
+      cwd: tmpDirs[tmpDirs.length - 1],
+      encoding: "utf8",
+    })
+    expect(res.status).toBe(1)
+    expect(res.stderr ?? "").toContain("[reverse-strict]")
+  })
+
+  it("--reverse-strict: renomeação com token PARECIDO → exit 1 com sugestão por similaridade", () => {
+    // 'Guard' aponta para #normalizador; nenhum heading tem 'guard', mas
+    // 'Guardian' tem 'guardian' → tokenSimilarity('guard','guardian') = 1 −
+    // 3/8 = 0.625 ≥ 0.4 → sugestão '#guardian' impressa com a similaridade
+    // (toFixed(2) → '0.63'). Seção 'Seção' de propósito: um 'Encoding
+    // Guards' roubaria a sugestão ('guard'→'guards' sim 0.83).
+    const content = [
+      "## Seção",
+      "",
+      "- [Guard](#normalizador)",
+      "",
+      "### Guardian",
+      "### Normalizador",
+    ].join("\n")
+    writeFileSync(join(makeTmpDir(), "README.md"), content, "utf8")
+    const res = spawnSync(process.execPath, [SCRIPT, "--reverse-strict", "README.md"], {
+      cwd: tmpDirs[tmpDirs.length - 1],
+      encoding: "utf8",
+    })
+    expect(res.status).toBe(1)
+    expect(res.stderr ?? "").toContain("[reverse-strict]")
+    expect(res.stderr ?? "").toContain("sugestão: '#guardian'")
+    expect(res.stderr ?? "").toContain("similaridade 0.63")
+  })
+
+  it("--reverse-strict: melhor similaridade ABAIXO do limiar → 'nenhum heading corresponde'", () => {
+    // 'Guard' vs 'Normalizador' — nenhum token parecido (sim 0 < 0.4) → o
+    // render emite 'nenhum heading corresponde' com a melhor similaridade.
+    // Seção neutra: 'Encoding Guards' roubaria a sugestão (sim 0.83).
+    const content = ["## Seção", "", "- [Guard](#normalizador)", "", "### Normalizador"].join("\n")
+    writeFileSync(join(makeTmpDir(), "README.md"), content, "utf8")
+    const res = spawnSync(process.execPath, [SCRIPT, "--reverse-strict", "README.md"], {
+      cwd: tmpDirs[tmpDirs.length - 1],
+      encoding: "utf8",
+    })
+    expect(res.status).toBe(1)
+    expect(res.stderr ?? "").toContain("[reverse-strict]")
+    expect(res.stderr ?? "").toContain("nenhum heading corresponde")
+  })
+
+  it("--reverse-strict --min-suggestion-sim 0.7: candidato razoável (0.625) fica abaixo → 'nenhum heading corresponde'", () => {
+    // Limiar configurável: 'guard'→'guardian' = 0.625 < 0.7 → sugere null
+    // mesmo com candidato razoável.
+    const content = [
+      "## Seção",
+      "",
+      "- [Guard](#normalizador)",
+      "",
+      "### Guardian",
+      "### Normalizador",
+    ].join("\n")
+    writeFileSync(join(makeTmpDir(), "README.md"), content, "utf8")
+    const res = spawnSync(
+      process.execPath,
+      [SCRIPT, "--reverse-strict", "--min-suggestion-sim", "0.7", "README.md"],
+      { cwd: tmpDirs[tmpDirs.length - 1], encoding: "utf8" },
+    )
+    expect(res.status).toBe(1)
+    expect(res.stderr ?? "").toContain("nenhum heading corresponde")
+  })
+
+  it("--reverse-strict --prose-allowlist: renomeação single-token REAL continua exit 1", () => {
+    // 'guard' NÃO está na allowlist — o token não existe em nenhum heading
+    // (heading renomeado 'Gate') → o strict segue flagrando a renomeação
+    // real, mesmo com a allowlist presente. Prova que a allowlist só exime
+    // prosa, não renomeação.
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [Guard](#gate)", // heading 'Gate' não tem o token 'guard'
+      "",
+      "### Gate",
+    ].join("\n")
+    writeFileSync(join(makeTmpDir(), "README.md"), content, "utf8")
+    const res = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        "--reverse-strict",
+        "--prose-allowlist",
+        "abaixo,acima,seguir,aqui,fluxo",
+        "README.md",
+      ],
+      { cwd: tmpDirs[tmpDirs.length - 1], encoding: "utf8" },
+    )
+    expect(res.status).toBe(1)
+    expect(res.stderr ?? "").toContain("[reverse-strict]")
+  })
 })
 
 describe("check-readme-anchors.mjs CLI (default sem target — auto-descoberta docs/*.md)", () => {
@@ -299,6 +434,71 @@ describe("check-readme-anchors.mjs CLI (default sem target — auto-descoberta d
     })
     expect(explicit.status).toBe(0)
     expect(res.status).toBe(1) // default SEM target pega o docs/ quebrado
+  })
+})
+
+describe("check-readme-anchors.mjs CLI (links cross-doc docs/*.md#anchor)", () => {
+  it("exit 0 — [X](docs/api.md#anchor) resolve para heading real do alvo (acentos preservados)", () => {
+    const dir = makeTmpDir()
+    const res = runCliDefault(dir, {
+      "README.md": "# Main\n\nVeja [API](docs/api.md#seção-x).\n",
+      "docs/api.md": "# API\n\n## Seção X\n",
+    })
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("✅")
+  })
+
+  it("exit 1 — âncora NÃO existe no arquivo alvo → [cross-doc] com linha e alvo", () => {
+    const dir = makeTmpDir()
+    const res = runCliDefault(dir, {
+      "README.md": "# Main\n\nVeja [API](docs/api.md#seção-y).\n",
+      "docs/api.md": "# API\n\n## Seção X\n",
+    })
+    expect(res.status).toBe(1)
+    expect(res.stderr).toContain("README.md:3")
+    expect(res.stderr).toContain("[cross-doc]")
+    expect(res.stderr).toContain("docs/api.md#seção-y")
+    expect(res.stderr).toContain("NÃO existe em 'docs/api.md'")
+    expect(res.stderr).toContain("#seção-x") // sugestão do heading mais próximo
+  })
+
+  it("exit 1 — ARQUIVO alvo NÃO existe → [cross-doc] com mensagem de arquivo", () => {
+    const dir = makeTmpDir()
+    const res = runCliDefault(dir, {
+      "README.md": "# Main\n\nVeja [Ghost](docs/ghost.md#x).\n",
+    })
+    expect(res.status).toBe(1)
+    expect(res.stderr).toContain("[cross-doc]")
+    expect(res.stderr).toContain("ARQUIVO 'docs/ghost.md' NÃO existe")
+  })
+
+  it("exit 0 — link ../README.md#anchor a partir de docs/ resolve relativo", () => {
+    const dir = makeTmpDir()
+    const res = runCliDefault(dir, {
+      "README.md": "# Main\n\n## Seção Raiz\n",
+      "docs/foo.md": "# Foo\n\nVolta ao [Raiz](../README.md#seção-raiz).\n",
+    })
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("✅")
+  })
+
+  it("exit 0 — link cross-doc para o PRÓPRIO arquivo (README.md#x) resolve", () => {
+    const dir = makeTmpDir()
+    const res = runCliDefault(dir, {
+      "README.md": "# Main\n\n## Seção\n\n[Self](README.md#seção).\n",
+    })
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("✅")
+  })
+
+  it("exit 1 — ARQUIVO alvo sem âncora (docs/x.md sem #) NÃO é validado (contrato: só file#anchor)", () => {
+    // link de arquivo SEM âncora (`docs/api.md`) fica FORA do escopo — o
+    // regex exige `.md#anchor`. O guard NÃO falha por um .md citado sem #.
+    const dir = makeTmpDir()
+    const res = runCliDefault(dir, {
+      "README.md": "# Main\n\nVeja [API](docs/api.md).\n",
+    })
+    expect(res.status).toBe(0)
   })
 })
 

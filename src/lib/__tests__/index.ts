@@ -9,6 +9,8 @@
  *     fuzz-utils           — seeded PRNG, fuzz generators, validators
  *     api-test-utils       — createMockRequest, parseResponse
  *     cache-test-utils     — expectCacheHeaders, expectNoCacheHeaders
+ *     crlf-git-fixture     — makeRepo/commitCrlfFile/commitLfFile/blobHasCr
+ *                            (fixture git temporário com blobs CRLF/LF)
  *
  * Test files should import from this barrel instead of reaching into
  * implementation modules directly, keeping the public API surface
@@ -41,17 +43,22 @@ export {
   validateRadii,
 } from "./fuzz-utils"
 
-export {
-  createMockRequest,
-  parseResponse,
-  type MockRequestOptions,
-} from "./helpers/api-test-utils"
+export { createMockRequest, parseResponse, type MockRequestOptions } from "./helpers/api-test-utils"
 
 export {
   expectCacheHeaders,
   expectPrivateCacheHeaders,
   expectNoCacheHeaders,
 } from "./helpers/cache-test-utils"
+
+export {
+  makeRepo,
+  cleanupTmpDirs,
+  commitCrlfFile,
+  commitLfFile,
+  writeGitattributes,
+  blobHasCr,
+} from "./helpers/crlf-git-fixture"
 
 // Re-export from the vitrine barrel instead of reaching into
 // the implementation module directly.

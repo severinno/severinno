@@ -3,8 +3,20 @@
 // =============================================================================
 // check-readme-toc.mjs
 //
+// Usage:
+//   SEM target (default): escaneia README.md + TODOS os docs/*.md
+//   (auto-descoberta via discoverDocTargets — a MESMA do guard de âncoras,
+//   importada por reuso: paridade TOTAL de documentação):
+//   node scripts/check-readme-toc.mjs            # README.md + docs/*.md
+//   COM target (SÓ os alvos são escaneados):
+//   node scripts/check-readme-toc.mjs docs/x.md  # escaneia outro(s)
+//
+// Exit codes:
+//   0 — TOCs consistentes (links resolvem + filhos diretos listados)
+//   1 — pelo menos um link de TOC quebrado OU heading fora do índice
+//
 // CI guard (fast gate, <1s, node-puro) que valida os TOCs (índices de seção)
-// do README nas TRÊS direções:
+// do README e de docs/*.md nas TRÊS direções:
 //
 //   → (forward)  todo link `- [label](#slug)` de um bloco de TOC DEVE resolver
 //                para um heading real — mesmo algoritmo github-slugger do
@@ -16,6 +28,14 @@
 //                (pai+2+) são EXENTOS: o índice cobre só os sub-blocos diretos
 //                (ex.: o mini-índice de 8 sub-blocos da seção '## Encoding
 //                Guards' lista os `###`, mas não os `####` aninhados).
+//   ✗ (deep-only) um TOC que NÃO indexa nenhum filho direto (pai+1) falha —
+//                ex.: índice SÓ com `####` sob uma seção `##` (pulando os
+//                `###`) ou só com o próprio nível da seção. O padrão do repo
+//                é nível ÚNICO (o mini-índice lista os filhos diretos); TOC
+//                deep-only não tem uso real no repo (0 no scan de README +
+//                docs/). Um índice MISTO (### + ####) continua OK: a presença
+//                de UM filho direto satisfaz o guard e o `####` vira link
+//                cruzado (forward apenas).
 //   ≡ (label)    o LABEL de cada bullet do TOC deve corresponder
 //                SEMANTICAMENTE ao heading para onde aponta — mesma regra do
 //                guard de âncoras (checkLinkLabelSemantics, reutilizada por
@@ -43,21 +63,20 @@
 // seção vai do pai até o próximo heading de nível <= pai.level (exclusivo).
 // Se o bloco não tiver pai (topo do arquivo), só a direção forward aplica.
 //
-// Usage:
-//   node scripts/check-readme-toc.mjs            # escaneia README.md
-//   node scripts/check-readme-toc.mjs docs/x.md  # escaneia outro(s)
-//
-// Exit codes:
-//   0 — TOCs consistentes (links resolvem + filhos diretos listados)
-//   1 — pelo menos um link de TOC quebrado OU heading fora do índice
 // =============================================================================
 
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-// Reuso do slugger (github-slugger) e da extração de headings do guard de
-// âncoras — o contrato dos dois guards NUNCA diverge (mesma fonte).
-import { extractHeadings, levenshtein, checkLinkLabelSemantics } from "./check-readme-anchors.mjs"
+// Reuso do slugger (github-slugger), da extração de headings e da
+// auto-descoberta de docs/*.md do guard de âncoras — o contrato dos dois
+// guards NUNCA diverge (mesma fonte).
+import {
+  extractHeadings,
+  levenshtein,
+  checkLinkLabelSemantics,
+  discoverDocTargets,
+} from "./check-readme-anchors.mjs"
 
 /** Linha de bullet link puro: `- [label](#slug)` (slug sem espaço/`)`). */
 const TOC_ENTRY_RE = /^\s*-\s+\[([^\]]*)\]\(#([^)\s]+)\)/
@@ -154,15 +173,15 @@ export function resolveIndexedLevel(block, headings) {
   // nível mais profundo (ex.: link cruzado para um `####`), o min ainda é o
   // nível da seção dona. (Um link para um nível MAIS RASO deslocaria o min,
   // mas isso não ocorre em TOC de seção bem-formado.)
-  //
-  // TOC MULTI-NÍVEL (contrato travado em teste): um índice MISTO (### + ####)
-  // NÃO muda a heurística — o min (nível mais raso) é o nível-alvo do reverse
-  // e os `####` do índice são tratados como links cruzados (forward apenas),
-  // NÃO como nível indexado: a completude dos filhos diretos (`###`) continua
-  // exigida mesmo com entradas profundas no TOC, e um `####` fora do índice
-  // permanece exento. Um TOC SÓ de `####` (deep-only) tem min = 4 e exigiria
-  // a completude dos `####` — comportamento documentado, não suportado como
-  // padrão do repo.
+  ////   TOC MULTI-NÍVEL (contrato travado em teste): um índice MISTO (### + ####)
+  //   NÃO muda a heurística — o min (nível mais raso) é o nível-alvo do reverse
+  //   e os `####` do índice são tratados como links cruzados (forward apenas),
+  //   NÃO como nível indexado: a completude dos filhos diretos (`###`) continua
+  //   exigida mesmo com entradas profundas no TOC, e um `####` fora do índice
+  //   permanece exento. Um TOC SÓ de `####` (deep-only, min = 4) é REJEITADO
+  //   pelo guard (violação type 'deep-only' — sem entrada no nível pai+1): o
+  //   repo não usa esse padrão e o reverse não deve exigir completude em
+  //   profundidade num índice que pula os filhos diretos.
   const slugToLevel = new Map(headings.map((h) => [h.slug, h.level]))
   let min = null
   for (const e of block.entries) {
@@ -190,6 +209,7 @@ export function resolveIndexedLevel(block, headings) {
 export function checkToc(content) {
   const headings = extractHeadings(content)
   const slugSet = new Set(headings.map((h) => h.slug))
+  const slugToLevel = new Map(headings.map((h) => [h.slug, h.level]))
   const blocks = extractTocBlocks(content)
   const violations = []
 
@@ -240,6 +260,32 @@ export function checkToc(content) {
         ? nearestHeadingAbove(headings, block.line)
         : nearestHeadingAboveBelow(headings, block.line, indexedLevel)
     if (!parent) continue // TOC no topo do arquivo — sem seção para cobrir
+
+    // deep-only guard: o TOC de uma seção DEVE indexar ao menos um filho
+    // direto (nível pai+1). Um índice que lista SÓ níveis mais profundos
+    // (ex.: #### sob ## sem ###) ou SÓ o próprio nível da seção pula os
+    // filhos diretos — o padrão de nível único quebra e o reverse (que usa o
+    // min como nível-alvo) deixaria os filhos diretos fora do escopo
+    // silenciosamente. O repo NÃO usa TOC deep-only (0 no scan real de
+    // README + docs/); suporte multi-nível de verdade exigiria documentar a
+    // exceção dos níveis intermediários — sem caso real, o guard rejeita.
+    const directChildLevel = parent.level + 1
+    const indexesDirectChild = block.entries.some(
+      (e) => slugToLevel.get(e.slug) === directChildLevel,
+    )
+    // indexedLevel === null (TODAS as entradas quebradas) NÃO dispara o
+    // deep-only: o forward já acusa os links e não dá para saber o nível
+    // "intencionado" do TOC — um TOC 100% quebrado não é deep-only.
+    if (indexedLevel !== null && !indexesDirectChild) {
+      violations.push({
+        type: "deep-only",
+        line: block.line,
+        slug: block.entries[0].slug,
+        label: block.entries[0].label,
+        section: parent.text,
+        level: indexedLevel,
+      })
+    }
     const requiredLevel = indexedLevel ?? parent.level + 1
     const sectionEnd = headings.find((h) => h.line > parent.line && h.level <= parent.level)
     const endLine = sectionEnd ? sectionEnd.line : Number.POSITIVE_INFINITY
@@ -264,7 +310,15 @@ export function checkToc(content) {
 export const DEFAULT_PATH = "README.md"
 
 function main() {
-  const targets = process.argv.slice(2).length > 0 ? process.argv.slice(2) : [DEFAULT_PATH]
+  // Default: README.md + TODOS os docs/*.md (auto-descoberta) — espelha o
+  // guard de âncoras (discoverDocTargets importado, mesma fonte): paridade
+  // total de documentação, um TOC inconsistente em QUALQUER doc falha o PR.
+  // Targets explícitos sobreescrevem (compat: CLI tests passam 'README.md').
+  const explicitTargets = process.argv.slice(2)
+  const targets =
+    explicitTargets.length > 0
+      ? explicitTargets
+      : [DEFAULT_PATH, ...discoverDocTargets(process.cwd())]
   const allViolations = []
   let blockCount = 0
   let headingCount = 0
@@ -280,12 +334,12 @@ function main() {
     }
     const violations = checkToc(content)
     for (const v of violations) allViolations.push({ file: target, ...v })
-    if (blockCount === 0) blockCount = extractTocBlocks(content).length
-    if (headingCount === 0) headingCount = extractHeadings(content).length
+    blockCount += extractTocBlocks(content).length
+    headingCount += extractHeadings(content).length
   }
 
   if (allViolations.length > 0) {
-    console.error(`❌ TOC(s) do README inconsistentes (${allViolations.length}):\n`)
+    console.error(`❌ TOC(s) inconsistentes (${allViolations.length}):\n`)
     for (const v of allViolations) {
       if (v.type === "forward") {
         const close = v.closest
@@ -297,6 +351,13 @@ function main() {
           `   - ${v.file}:${v.line} [label do TOC] [${v.label}]: '#${v.slug}'` +
             ` (heading: '${v.heading}') — o label corresponde a outro heading` +
             ` (sugestão: '#${v.suggestion}'); aponta para o heading errado?\n`,
+        )
+      } else if (v.type === "deep-only") {
+        console.error(
+          `   - ${v.file}:${v.line} [TOC deep-only] '${v.label}' (nível ${v.level}) na seção` +
+            ` '${v.section}' — o índice NÃO lista nenhum filho direto (pai+1); o padrão` +
+            ` do repo é nível único: adicione ao menos um bullet apontando para um heading` +
+            ` de nível ${v.level - 1 > 0 ? v.level - 1 : 1} (filho direto da seção)\n`,
         )
       } else {
         console.error(
@@ -314,7 +375,7 @@ function main() {
   }
 
   console.log(
-    `✅ TOCs do README consistentes (${targets.join(", ")}; ${blockCount} TOC(s), ${headingCount} headings, forward + reverse + label ok).`,
+    `✅ TOCs consistentes (${targets.join(", ")}; ${blockCount} TOC(s), ${headingCount} headings, forward + reverse + label ok).`,
   )
   process.exit(0)
 }

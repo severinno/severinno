@@ -277,8 +277,34 @@ jobs:
       - name: Summary
         run: echo "✅ No stale bun cache keys/literals introduced by this PR diff."
 
+  # ── Mutation Jobs Guard (staged diff) ───────────────────────────────
+  # Fast gate (node puro, <1s): roda o check de cobertura de mutation tests
+  # contra o DIFF DO PR (git diff origin/main...HEAD) em vez do working tree
+  # inteiro — detecta um test-mutation-*.sh NOVO INTRODUZIDO PELO PR sem job
+  # (sem ref direta num workflow run: nem na matriz do master) antes do
+  # merge, mesmo que o restante do repositório já esteja consistente. Só
+  # arquivos NOVOS (new file mode) são avaliados — violações pré-existentes
+  # do base não poluem o PR.
+  #
+  # Requer fetch-depth: 0 para o git diff base...HEAD funcionar (mesmo
+  # padrão do bun-mirror-staged-guard). Local/pre-commit: node
+  # scripts/check-mutation-jobs.mjs --staged usa git diff --cached.
+  mutation-jobs-staged-guard:
+    name: Mutation Jobs Guard (staged diff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed for origin/main...HEAD diff
+
+      - name: Check mutation test coverage on the PR diff
+        run: node scripts/check-mutation-jobs.mjs --staged --base origin/main
+
+      - name: Summary
+        run: echo "✅ No orphan test-mutation-*.sh introduced by this PR diff."
+
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 5 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 9 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -290,6 +316,18 @@ jobs:
   #                    (guard novo no pre-commit + linha stale devem FALHAR)
   #   readme         → test-mutation-readme-guards.sh (matriz ANINHADA:
   #                    anchors + toc + images — 1 sub-test, sem re-rodada)
+  #   readme-reverse → test-mutation-readme-reverse.sh
+  #                    (drift SEMÂNTICO do README — baseline reverse — deve
+  #                    FALHAR com exit 1 exato, sem depender do cron)
+  #   docs-anchor    → test-mutation-readme-docs-anchor.sh
+  #                    (âncora quebrada em docs/*.md — fixture COM docs/ —
+  #                    deve FALHAR: cobre o scan default dos docs)
+  #   producer-sent  → test-mutation-producer-sentinel.sh
+  #                    (sentinel 'com CRLF' removido do audit all-text —
+  #                    cópia em temp — deve FALHAR o validate-all-text-alert)
+  #   mutation-jobs  → test-mutation-mutation-jobs.sh
+  #                    (script órfão forward + matriz quebrada reverse do
+  #                    check-mutation-jobs devem FALHAR)
   #   utf8-scope     → test-mutation-utf8-scope.sh
   #                    (call site sem src/ deve FALHAR)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
@@ -302,9 +340,9 @@ jobs:
   # + utf8-scope), cada um com o overhead de setup do container/checkout —
   # consolidar reduz o setup por job sem perder a granularidade
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
-  # Node-puro, <6s total, sem docker.
+  # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (5 node-pure mutation tests)
+    name: Mutation guards master (9 node-pure mutation tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -313,7 +351,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 5 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README, UTF-8 escopo)."
+        run: echo "✅ All 9 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, UTF-8 escopo)."
 
   # ── Hooks Symmetry Guard (dedicado) ─────────────────────────────────
   # Fast gate (node puro, <1s): roda o guard REAL de simetria
@@ -340,6 +378,105 @@ jobs:
 
       - name: Summary
         run: echo "✅ README '## Git Hooks' table in sync with .husky/* + run-encoding-guards.sh."
+
+  # ── Mutation Jobs Guard (dedicado) ──────────────────────────────────
+  # Fast gate (node puro, <1s): roda o guard REAL de cobertura de mutation
+  # tests (scripts/check-mutation-jobs.mjs) no PR — todo
+  # scripts/test-mutation-*.sh DEVE ter um job correspondente no CI (via run:
+  # direto num workflow OU na matriz SUBTESTS/SCENARIOS do master, que este
+  # job roda).
+  #
+  # O guard é BIDIRECIONAL (par fechado nos dois lados): além do forward
+  # (script órfão sem job), o reverse também falha quando um run: direto de
+  # workflow OU uma entrada da matriz referencia um test-mutation-*.sh
+  # INEXISTENTE em scripts/ (ref quebrada — arquivo fantasma).
+  #
+  # Por que dedicado: o job mutation-guards roda o MASTER (que orquestra os
+  # mutation tests node-puro EXISTENTES), mas não valida que um NOVO
+  # test-mutation-*.sh adicionado num PR foi wireado num job — um PR que
+  # adicione o script sem o job passaria no CI e o mutation test nunca
+  # rodaria. Este job fecha o ciclo: script órfão = PR vermelho, antes do
+  # merge (e o mesmo guard roda no reusable utf8-check.yml + hooks locais).
+  mutation-jobs-guard:
+    name: Mutation Jobs Guard (test-mutation-*.sh ↔ CI jobs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check every test-mutation-*.sh has a CI job (transitive)
+        run: node scripts/check-mutation-jobs.mjs
+
+      - name: Summary
+        run: echo "✅ Every scripts/test-mutation-*.sh is wired to a CI job (direct or via master matrix)."
+
+  # ── README Reverse-Strict Alert (workflow_dispatch, NÃO-bloqueante) ──
+  # Alerta AUDÍVEL do modo opt-in --reverse-strict do check-readme-anchors.mjs:
+  # roda via workflow_dispatch (manual/periódico) contra o README.md e emite
+  # ::warning:: para CADA achado — SEM falhar o PR (exit 0 sempre).
+  #
+  # POR QUE NÃO É GATE: o --reverse-strict fecha a brecha da heurística
+  # single-token (labels de UM token não-stopword) e, por isso, acusa
+  # FALSOS POSITIVOS de prosa (ex.: o label 'abaixo' → heading legítimo —
+  # medido 08/2026: 1 achado no README real, 0 no --reverse). Gate no PR
+  # quebraria por prosa; este job transforma o modo em alerta periódico:
+  # ::warning:: no Actions, sem bloquear o merge. O --json (REPORT mode)
+  # exit 0 SEMPRE — o caller (aqui o job) decide o gate (nenhum: só emite
+  # warning).
+  readme-reverse-strict-alert:
+    name: "README Reverse-Strict Alert (::warning::, não-bloqueante)"
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # PROSE ALLOWLIST: exime palavras de prosa comum ('abaixo', 'acima',
+      # 'seguir', 'aqui', 'fluxo') que o strict flagaria como falso positivo
+      # (medido 08/2026: 1 achado no README real SEM allowlist — o label
+      # 'abaixo' → heading legítimo). A renomeação single-token REAL continua
+      # pega: token permitido que exista como heading em outro lugar → regra 4
+      # (violação com sugestão). Bump do guard deve manter esta lista em
+      # sincronia com a doc do check-readme-anchors.mjs.
+      - name: Run reverse-strict check (REPORT mode — exit 0 sempre)
+        run: >
+          node scripts/check-readme-anchors.mjs
+          --reverse-strict
+          --prose-allowlist abaixo,acima,seguir,aqui,fluxo
+          --json README.md
+          > /tmp/reverse-strict-report.json
+
+      - name: "Emit ::warning:: per finding (não falha o PR)"
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+          const reportPath = "/tmp/reverse-strict-report.json";
+          if (!fs.existsSync(reportPath) || fs.statSync(reportPath).size === 0) {
+            // Guard falhou antes de escrever o report (ex.: erro no parse do
+            // README). Job dispatch-only e não-bloqueante: emite ::warning::
+            // e termina limpo em vez de ir a vermelho.
+            console.log(
+              "::warning::report reverse-strict vazio/ausente — guard falhou antes de escrever (job dispatch-only, não-bloqueante).",
+            );
+            process.exit(0);
+          }
+          const { count, findings } = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+          if (count === 0) {
+            console.log("✅ Nenhum achado reverse-strict no README.md.");
+          } else {
+            console.log(`⚠️ ${count} achado(s) reverse-strict (não-bloqueante):`);
+            for (const f of findings) {
+              const kind = f.strict ? "reverse-strict" : "reverse";
+              const msg = `${kind}: label "${f.label}" → #${f.slug} (heading: "${f.heading}")`
+                .replace(/%/g, "%25")
+                .replace(/\r/g, "%0D")
+                .replace(/\n/g, "%0A")
+                .replace(/::/g, ":");
+              console.log(`::warning file=${f.file},line=${f.line}::${msg}`);
+            }
+          }
+          NODE
+
+      - name: Summary
+        run: echo "✅ README reverse-strict alert done (warnings emitted, PR not blocked)."
 
   # ── Tier-1 Fastpath Guard (PR, paths) ───────────────────────────────
   # Gate OPCIONAL (dry, sem cron): detecta regressão do tier-1 fast path
@@ -968,7 +1105,13 @@ jobs:
       # Cobertura do contrato de escopo CRLF revalidada a CADA PR: o glob
       # do test:unit (src/**/*.test.{ts,tsx}) inclui check-blob-crlf.test.ts
       # (12 testes — blob CRLF via hash-object --literally, --fix, e o
-      # contrato de escopo .ts-fora) e check-crlf.test.ts. O job dedicado
-      # blob-crlf-history-audit (acima) cobre o zero-CRLF do histórico.
+      # contrato de escopo .ts-fora), check-crlf.test.ts e
+      # validate-all-text-alert.test.ts (a semântica do alerta all-text —
+      # sentinel 'com CRLF' presente no achado, ausente no limpo — roda via
+      # spawn do wrapper real num repo git temp, sem depender do bash script
+      # nem do cron). O job dedicado blob-crlf-history-audit (acima) cobre o
+      # zero-CRLF do histórico; o all-text-alert-validation (acima) o gate
+      # via bash script. Este job revalida a MESMA semântica em vitest a cada
+      # PR (e no pre-push via test:unit do smart-skip quando fonte mudou).
       - name: Unit tests
         run: bun run test:unit

@@ -17,6 +17,20 @@
 // é exigência de PR); este job semanal é a rede de segurança periódica que
 // alerta sobre drift semântico SEM bloquear PRs.
 //
+// FAIL-CLOSED no FORWARD: apesar de o forward ser gate de PR, um link
+// QUEBRADO no working tree do audit NÃO é ignorado silenciosamente — um
+// README com link morto é INPUT INVÁLIDO para a comparação de drift
+// semântico. O guard falha com EXIT 2 (infra) e mensagem clara listando os
+// links quebrados, DISTINTO do exit 1 (achados novos de drift, que criam
+// issues). O job semanal distingue: exit 1 = dívida de drift → issue; exit 2
+// = README quebrado → corrigir o link primeiro (nada de issue para link
+// morto — o forward não é drift semântico). Vale para TODOS os modos:
+//   - check e --update: ambos falham-closed (não se regenera baseline de um
+//     README com link morto — a checagem roda ANTES do branch de update);
+//   - --json: exit 2 SEM JSON no stdout (o runBaselineReport do
+//     readme-reverse-issue.mjs lança com o stderr — se imprimíssemos um
+//     report com newFindings: [] o step de issue daria falso verde).
+//
 // Comparação por ASSINATURA (file+slug+label), não por count: o label e o
 // slug do link são a identidade estável do achado (a LINHA não participa —
 // diferente do secret-leaks, onde commit+line são imutáveis na história; o
@@ -34,7 +48,7 @@
 //   0 — nenhum achado NOVO (ou --update aplicado)
 //   1 — achados NOVOS detectados (fail-closed)
 //   2 — infra: guard de âncoras falhou / baseline ausente (sem --update) /
-//       flag inválida
+//       flag inválida / link QUEBRADO no README (forward — input inválido)
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
@@ -156,6 +170,29 @@ function main() {
     current = JSON.parse(audit.stdout)
   } catch {
     console.error("❌ check-readme-reverse-baseline: guard retornou JSON inválido")
+    process.exit(2)
+  }
+
+  // ── FAIL-CLOSED no FORWARD: link QUEBRADO invalida o audit ───────────
+  // Um README com link quebrado (forward: o slug não resolve) NÃO pode ser
+  // auditado para drift semântico — o input está inválido. Falha com EXIT 2
+  // (infra), DISTINTO do exit 1 (achados novos de drift): o job semanal cria
+  // issues só no exit 1; no exit 2 o README precisa ser corrigido primeiro.
+  // O forward já é gate de PR (utf8-check/hooks); chegar aqui significa que
+  // o working tree/PR mergeado quebrou um link — alerta de infra, não
+  // silêncio (antes este caso saía com '0 achado(s) reverse' — falso verde).
+  const forwardFindings = (current.findings ?? []).filter((f) => f.type === "forward")
+  if (forwardFindings.length > 0) {
+    console.error(
+      `❌ check-readme-reverse-baseline: ${forwardFindings.length} link(s) QUEBRADO(s) no README (forward) — o audit de drift semântico NÃO roda com link quebrado:`,
+    )
+    for (const f of forwardFindings) {
+      console.error(`   • ${f.file}:${f.line}  [${f.label}](#${f.slug})`)
+    }
+    console.error(
+      `\n   O forward (link quebrado) é gate de PR — corrija o link ANTES do audit.` +
+        `\n   Exit 2 = INFRA (input inválido), DISTINTO do exit 1 (achados novos de drift).`,
+    )
     process.exit(2)
   }
 

@@ -3,6 +3,10 @@
 exports[`benchmark-weekly.yml — job readme-reverse-audit (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
   "name": "README reverse semantics (baseline)",
+  "permissions": {
+    "contents": "read",
+    "issues": "write",
+  },
   "runs-on": "ubuntu-latest",
   "steps": [
     {
@@ -11,6 +15,14 @@ exports[`benchmark-weekly.yml — job readme-reverse-audit (sintaxe YAML + snaps
     {
       "name": "Auditar links do README (--reverse) vs baseline",
       "run": "node scripts/check-readme-reverse-baseline.mjs",
+    },
+    {
+      "env": {
+        "GH_TOKEN": "\${{ github.token }}",
+      },
+      "if": "always()",
+      "name": "Publicar achados novos como GitHub Issues",
+      "run": "node scripts/readme-reverse-issue.mjs",
     },
     {
       "name": "Summary",

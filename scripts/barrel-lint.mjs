@@ -12,7 +12,7 @@
  *   @/lib/sql            —  re-exports from sql-builder, sql-booking-builder,
  *                            sql-service-builder
  *   @/lib/__tests__      —  re-exports from fuzz-utils, helpers/api-test-utils,
- *                            helpers/cache-test-utils
+ *                            helpers/cache-test-utils, helpers/crlf-git-fixture
  *
  * Violations flagged:
  *   - import ... from "@/lib/distance-fallback"
@@ -68,6 +68,7 @@ const FORBIDDEN_IMPORTS = [
   "@/lib/__tests__/fuzz-utils",
   "@/lib/__tests__/helpers/api-test-utils",
   "@/lib/__tests__/helpers/cache-test-utils",
+  "@/lib/__tests__/helpers/crlf-git-fixture",
 ]
 
 /**
@@ -94,6 +95,7 @@ const EXCLUDE_PATTERNS = [
   "src/lib/__tests__/fuzz-utils.ts",
   "src/lib/__tests__/helpers/api-test-utils.ts",
   "src/lib/__tests__/helpers/cache-test-utils.ts",
+  "src/lib/__tests__/helpers/crlf-git-fixture.ts",
 ]
 
 // ---------------------------------------------------------------------------

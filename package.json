@@ -102,6 +102,7 @@
     "benchmark:all:quick": "node scripts/run-benchmark.mjs --type all --json --skip-db",
     "repro:setup-bun": "bash scripts/act-repro-setup-bun.sh",
     "bench:act-startup": "bash scripts/act-startup-bench.sh",
+    "bench:encoding-guards": "bash scripts/bench-encoding-guards.sh",
     "benchmark:gist": "node scripts/run-benchmark.mjs --type gist",
     "benchmark:gist:json": "node scripts/run-benchmark.mjs --type gist --json",
     "benchmark:gist:save": "node scripts/run-benchmark.mjs --type gist --save",

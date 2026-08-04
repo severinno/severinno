@@ -36,11 +36,13 @@ import {
   rmSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import {
   slugify,
   extractHeadings,
   extractInternalLinks,
+  extractCrossDocLinks,
+  checkCrossDocLinks,
   checkAnchors,
   checkAnchorSemantics,
   tokenize,
@@ -188,6 +190,138 @@ describe("extractInternalLinks", () => {
     const links = extractInternalLinks(content)
     expect(links).toHaveLength(1)
     expect(links[0].slug).toBe("real")
+  })
+})
+
+// ── extractCrossDocLinks (links `caminho/arquivo.md#anchor`) ───────────────
+
+describe("extractCrossDocLinks", () => {
+  it("extrai [label](docs/foo.md#anchor) com linha, alvo, âncora e label", () => {
+    const links = extractCrossDocLinks("Veja [API](docs/api.md#secao-x).")
+    expect(links).toHaveLength(1)
+    expect(links[0]).toMatchObject({
+      line: 1,
+      target: "docs/api.md",
+      anchor: "secao-x",
+      label: "API",
+    })
+  })
+
+  it("extrai caminhos RELATIVOS de docs/ (../README.md) e subdirs", () => {
+    const links = extractCrossDocLinks(
+      "[Raiz](../README.md#secao-raiz) e [deep](sub/dir.md#x#y) e [ponto](./a.b.md#c)",
+    )
+    expect(links.map((l) => l.target)).toEqual(["../README.md", "sub/dir.md", "./a.b.md"])
+  })
+
+  it("ignora URLs externas (https://, //) mesmo com .md#", () => {
+    const links = extractCrossDocLinks(
+      "[u](https://x.com/foo.md#z) [w](//cdn.example.com/bar.md#y) [ok](docs/a.md#b)",
+    )
+    expect(links).toHaveLength(1)
+    expect(links[0].target).toBe("docs/a.md")
+  })
+
+  it("ignora imagens ![alt](docs/x.md#y), fences e spans de código inline", () => {
+    const content = [
+      "![img](docs/a.md#fig)",
+      "```text",
+      "[fake](docs/b.md#nao)",
+      "```",
+      "`[code](docs/c.md#span)`",
+      "[real](docs/d.md#ok)",
+    ].join("\n")
+    const links = extractCrossDocLinks(content)
+    expect(links).toHaveLength(1)
+    expect(links[0]).toMatchObject({ line: 6, target: "docs/d.md", anchor: "ok" })
+  })
+
+  it("NÃO captura links puros #slug (são do extractInternalLinks)", () => {
+    const links = extractCrossDocLinks("[x](#secao) [y](docs/a.md#b)")
+    expect(links).toHaveLength(1)
+    expect(links[0].target).toBe("docs/a.md")
+  })
+})
+
+// ── checkCrossDocLinks (arquivo + âncora existem no alvo) ─────────────────
+
+describe("checkCrossDocLinks", () => {
+  it("alvo com âncora resolvendo → sem violações (slug PRESERVA acento — como o GitHub)", () => {
+    const resolver = (target: string) => {
+      if (target === "docs/api.md") return "# API\n\n## Seção X\n"
+      return null
+    }
+    // `## Seção X` → slug `seção-x` (o slugger NÃO remove ç/ã) — o link real
+    // do repo usa o mesmo padrão (#auditoria-histórica-de-blobs-crlf)
+    expect(checkCrossDocLinks("[API](docs/api.md#seção-x)", resolver)).toEqual([])
+  })
+
+  it("ARQUIVO inexistente → violação file-missing", () => {
+    const violations = checkCrossDocLinks("[Ghost](docs/ghost.md#x)", () => null)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      target: "docs/ghost.md",
+      anchor: "x",
+      reason: "file-missing",
+    })
+  })
+
+  it("âncora inexistente no alvo → violação anchor-missing com sugestão do heading mais próximo", () => {
+    const resolver = (target: string) => {
+      if (target === "docs/api.md") return "# API\n\n## Seção X\n"
+      return null
+    }
+    const violations = checkCrossDocLinks("[API](docs/api.md#seção-y)", resolver)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      target: "docs/api.md",
+      anchor: "seção-y",
+      reason: "anchor-missing",
+    })
+    // sugere o heading mais próximo: `seção-x` (1 edição de `seção-y`)
+    expect((violations[0] as { closest: string }).closest).toBe("seção-x")
+  })
+
+  it("âncora usa o MESMO algoritmo de slug (duplicados -1, acentos)", () => {
+    const resolver = (target: string) => {
+      if (target === "docs/api.md") return "## X\n## X\n## Auditoria histórica\n"
+      return null
+    }
+    expect(
+      checkCrossDocLinks("[a](docs/api.md#x-1) [b](docs/api.md#auditoria-histórica)", resolver),
+    ).toEqual([])
+  })
+
+  it("resolver é chamado UMA vez por alvo (dedup interno — o mesmo alvo linkado N vezes não re-lê)", () => {
+    let calls = 0
+    const resolver = (target: string) => {
+      calls++
+      if (target === "docs/api.md") return "## X\n"
+      return null
+    }
+    // 3 links para o MESMO alvo → 1 chamada (Map interno por target); o
+    // cache do main() é complementar (atravessa arquivos linkando o mesmo)
+    checkCrossDocLinks("[a](docs/api.md#x) [b](docs/api.md#x) [c](docs/api.md#x)", resolver)
+    expect(calls).toBe(1)
+  })
+
+  it("regressão REAL: links cross-doc do README e de docs/*.md resolvem (ground truth)", () => {
+    const root = process.cwd()
+    const readmePath = join(root, "README.md")
+    if (!existsSync(readmePath)) return // ambiente sem o README — pula
+    const files = ["README.md", ...discoverDocTargets(root)]
+    for (const f of files) {
+      const content = readFileSync(join(root, f), "utf8")
+      const violations = checkCrossDocLinks(content, (rel) => {
+        const abs = resolve(dirname(join(root, f)), rel)
+        try {
+          return readFileSync(abs, "utf8")
+        } catch {
+          return null
+        }
+      })
+      expect(violations, `${f}: ${JSON.stringify(violations)}`).toEqual([])
+    }
   })
 })
 
@@ -340,13 +474,11 @@ describe("checkAnchorSemantics (strict)", () => {
   })
 
   it("STRICT: label single-token sem o token em nenhum heading → violação strict", () => {
-    const content = [
-      "## Encoding Guards",
-      "",
-      "- [Guard](#normalizador)",
-      "",
-      "### Normalizador",
-    ].join("\n")
+    // ATENÇÃO ao fixture: 'guard' é 1 edição de 'guards' — um heading
+    // 'Encoding Guards' na seção ROUBARIA a sugestão (sim 0.83 ≥ 0.4). A
+    // seção é 'Seção' (token sem parentesco) para provar o caso abaixo do
+    // limiar com suggestionSim 0.
+    const content = ["## Seção", "", "- [Guard](#normalizador)", "", "### Normalizador"].join("\n")
     const violations = checkAnchorSemantics(content, { strict: true })
     expect(violations).toHaveLength(1)
     expect(violations[0]).toMatchObject({
@@ -356,8 +488,12 @@ describe("checkAnchorSemantics (strict)", () => {
       heading: "Normalizador",
       strict: true,
     })
-    // sem sugestão (nenhum heading contém o token — nada a sugerir)
-    expect((violations[0] as { suggestion?: string }).suggestion).toBeUndefined()
+    // sugestão: nenhum heading tem token parecido com 'guard' — a melhor
+    // similaridade (levenshtein('guard','normalizador') = 10 → sim ≈ 0.17)
+    // fica ABAIXO do limiar 0.4 → suggestion null. O contrato travado é
+    // 'abaixo do limiar → null', não um valor exato (depende do Levenshtein).
+    expect((violations[0] as { suggestion: string | null }).suggestion).toBeNull()
+    expect((violations[0] as { suggestionSim: number }).suggestionSim).toBeLessThan(0.4)
   })
 
   it("STRICT: token CURTO (< minSingleTokenLen default 3) é genérico legítimo → permitido", () => {
@@ -430,6 +566,175 @@ describe("checkAnchorSemantics (strict)", () => {
       "\n",
     )
     expect(checkAnchorSemantics(content, { strict: true })).toEqual([])
+  })
+})
+
+// ── checkAnchorSemantics (strict + prose allowlist: --prose-allowlist) ────
+
+describe("checkAnchorSemantics (strict + proseAllowlist)", () => {
+  it("allowlist exime token de PROSA que o strict flagaria (falso positivo eliminado)", () => {
+    // O cenário REAL medido 08/2026: o label 'abaixo' (prosa, len 6 >= 3) no
+    // README aponta para um heading legítimo — o strict SEM allowlist acusa;
+    // com ['abaixo'] na allowlist o token cai na regra 3 (prosa → exento).
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [abaixo](#crlf-guard)", // prosa de um token
+      "- [CRLF Guard](#crlf-guard)",
+      "",
+      "### CRLF Guard",
+    ].join("\n")
+    expect(checkAnchorSemantics(content, { strict: true, proseAllowlist: ["abaixo"] })).toEqual([])
+  })
+
+  it("SEM allowlist o mesmo token continua sinalizado (comportamento strict preservado)", () => {
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [abaixo](#crlf-guard)",
+      "- [CRLF Guard](#crlf-guard)",
+      "",
+      "### CRLF Guard",
+    ].join("\n")
+    const violations = checkAnchorSemantics(content, { strict: true })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ label: "abaixo", strict: true })
+  })
+
+  it("allowlist é case-insensitive e faz trim (normalização)", () => {
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [Abaixo](#crlf-guard)", // label com maiúscula — tokenize lowercases
+      "",
+      "### CRLF Guard",
+    ].join("\n")
+    // allowlist com maiúscula + espaços ao redor deve eximir igualmente
+    expect(checkAnchorSemantics(content, { strict: true, proseAllowlist: ["  Abaixo  "] })).toEqual(
+      [],
+    )
+  })
+
+  it("STRICT + sugestão: heading renomeado com token PARECIDO → suggestion pelo tokenSimilarity", () => {
+    // 'Guard' aponta para #normalizador; nenhum heading tem o token 'guard',
+    // mas 'Guardian' tem token 'guardian' — tokenSimilarity('guard',
+    // 'guardian') = 1 − 3/8 = 0.625 ≥ limiar 0.4 → suggestion 'guardian'.
+    // Prova que a sugestão varre TODOS os headings (não só os que contêm o
+    // token — nenhum contém 'guard'). Seção neutra de propósito ('Seção'):
+    // um 'Encoding Guards' roubaria a sugestão (sim 'guard'→'guards' 0.83).
+    const content = [
+      "## Seção",
+      "",
+      "- [Guard](#normalizador)",
+      "",
+      "### Guardian",
+      "### Normalizador",
+    ].join("\n")
+    const violations = checkAnchorSemantics(content, { strict: true })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      line: 3,
+      slug: "normalizador",
+      label: "Guard",
+      heading: "Normalizador",
+      strict: true,
+      suggestion: "guardian",
+    })
+    expect((violations[0] as { suggestionSim: number }).suggestionSim).toBeCloseTo(1 - 3 / 8, 5)
+  })
+
+  it("STRICT + sugestão: heading RESOLVIDO é excluído dos candidatos (sugestão só como alternativa)", () => {
+    // '[Guard](#guardian)' com heading 'Guardian' (token 'guardian', sim
+    // 'guard'→'guardian' = 0.625 ≥ 0.4) — sugerir '#guardian' seria
+    // contraditório ('aponta para o heading errado? (sugestão: #guardian)'
+    // quando o link JÁ aponta para #guardian). O resolved é excluído; a
+    // melhor ALTERNATIVA é 'Gate' (sim 'guard'→'gate' = 1 − 3/5 = 0.4 ≥ 0.4).
+    const content = ["## Seção", "", "- [Guard](#guardian)", "", "### Guardian", "### Gate"].join(
+      "\n",
+    )
+    const violations = checkAnchorSemantics(content, { strict: true })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      line: 3,
+      slug: "guardian",
+      label: "Guard",
+      heading: "Guardian",
+      strict: true,
+      suggestion: "gate",
+    })
+    expect((violations[0] as { suggestionSim: number }).suggestionSim).toBeCloseTo(1 - 3 / 5, 5)
+  })
+
+  it("STRICT + sugestão abaixo do limiar custom (minSuggestionSim 0.7) → suggestion null", () => {
+    // tokenSimilarity('guard','guardian') = 0.625 < 0.7 → 'nenhum heading
+    // corresponde' apesar do candidato razoável — limiar configurável.
+    const content = [
+      "## Seção",
+      "",
+      "- [Guard](#normalizador)",
+      "",
+      "### Guardian",
+      "### Normalizador",
+    ].join("\n")
+    const violations = checkAnchorSemantics(content, {
+      strict: true,
+      minSuggestionSim: 0.7,
+    })
+    expect(violations).toHaveLength(1)
+    expect((violations[0] as { suggestion: string | null }).suggestion).toBeNull()
+  })
+
+  it("token da allowlist que EXISTE como heading em outro lugar → regra 4 sinaliza com sugestão (renomeação real continua pega)", () => {
+    // 'fluxo' está na allowlist — mas existe um heading 'Fluxo de medição' em
+    // outro lugar. O strict NÃO dispara (allowedProse), porém a regra 4
+    // (label casa com outro heading) acusa com sugestão — a allowlist só
+    // exime prosa, não renomeação apontando para heading existente.
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [fluxo](#normalizador)",
+      "",
+      "### Fluxo de medição",
+      "### Normalizador",
+    ].join("\n")
+    const violations = checkAnchorSemantics(content, {
+      strict: true,
+      proseAllowlist: ["fluxo"],
+    })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      slug: "normalizador",
+      label: "fluxo",
+      heading: "Normalizador",
+      suggestion: "fluxo-de-medição",
+    })
+    // não é a violação strict (tem sugestão e não carrega a flag)
+    expect((violations[0] as { strict?: boolean }).strict).toBeUndefined()
+  })
+
+  it("token CURTO (< minSingleTokenLen) continua genérico mesmo com allowlist vazia (regra preservada)", () => {
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [OK](#normalizador)", // 2 chars < 3 — nunca passa pelo strict
+      "",
+      "### Normalizador",
+    ].join("\n")
+    expect(checkAnchorSemantics(content, { strict: true })).toEqual([])
+  })
+
+  it("allowlist default vazio → mesmo comportamento do strict atual (retrocompatibilidade)", () => {
+    const content = [
+      "## Encoding Guards",
+      "",
+      "- [Guard](#normalizador)",
+      "",
+      "### Normalizador",
+    ].join("\n")
+    // SEM a chave proseAllowlist no opts — contrato antigo preservado
+    const violations = checkAnchorSemantics(content, { strict: true })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ label: "Guard", strict: true })
   })
 })
 
