@@ -79,6 +79,7 @@ jobs:
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ secrets.SENTRY_ORG }}
             SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
+            BUN_VERSION=${{ vars.BUN_VERSION }}
 
       - name: Start container
         run: |
@@ -148,6 +149,7 @@ jobs:
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
             SENTRY_ORG=${{ secrets.SENTRY_ORG }}
             SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
+            BUN_VERSION=${{ vars.BUN_VERSION }}
 
       - name: Build and push worker image
         uses: docker/build-push-action@v6
@@ -158,6 +160,8 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            BUN_VERSION=${{ vars.BUN_VERSION }}
 
   migrate:
     needs: build

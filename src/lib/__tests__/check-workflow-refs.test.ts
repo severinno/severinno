@@ -19,6 +19,9 @@ import { describe, it, expect } from "vitest"
 import {
   extractScriptRefs,
   extractPkgScriptRefs,
+  extractPkgScriptTarget,
+  checkPkgInternalTargets,
+  pkgEntryLine,
   extractWorkflowUses,
   extractActionUses,
   checkWorkflowFile,
@@ -158,6 +161,99 @@ describe("extractPkgScriptRefs", () => {
   })
 })
 
+// ── extractPkgScriptTarget ───────────────────────────────────────────────
+
+describe("extractPkgScriptTarget", () => {
+  it("extrai o alvo scripts/X de uma entry que invoca script", () => {
+    expect(extractPkgScriptTarget("bash scripts/test-seed-prod-e2e.sh --skip-docker")).toBe(
+      "test-seed-prod-e2e.sh",
+    )
+    expect(extractPkgScriptTarget("node scripts/run-benchmark.mjs --type geo")).toBe(
+      "run-benchmark.mjs",
+    )
+    expect(extractPkgScriptTarget("bun scripts/seed.ts")).toBe("seed.ts")
+  })
+
+  it("aceita caminho com ./ antes de scripts/", () => {
+    expect(extractPkgScriptTarget("bash ./scripts/check-utf8.sh --ci src/")).toBe("check-utf8.sh")
+  })
+
+  it("retorna null para entry SEM invocação de scripts/ (não há alvo a validar)", () => {
+    expect(extractPkgScriptTarget("eslint .")).toBeNull()
+    expect(extractPkgScriptTarget("bunx prisma generate")).toBeNull()
+    expect(extractPkgScriptTarget("next build")).toBeNull()
+  })
+
+  it("retorna null para valor vazio/undefined", () => {
+    expect(extractPkgScriptTarget("")).toBeNull()
+    expect(extractPkgScriptTarget(undefined)).toBeNull()
+  })
+})
+
+// ── checkPkgInternalTargets (consistência INTERNA do package.json) ───────
+
+describe("checkPkgInternalTargets", () => {
+  it("entry que invoca scripts/X DELETADO → violação (mesmo sem workflow referenciando)", () => {
+    const violations = checkPkgInternalTargets(
+      {
+        "test:seed-prod-e2e": "bash scripts/test-seed-prod-e2e.sh --skip-docker",
+        "check:lint": "eslint .",
+      },
+      new Set(["geo-benchmark-gist.mjs"]), // test-seed-prod-e2e.sh AUSENTE
+    )
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      file: "package.json",
+      kind: "package.json",
+      ref: "test:seed-prod-e2e",
+    })
+    expect(violations[0].detail).toContain("test-seed-prod-e2e.sh")
+    expect(violations[0].detail).toContain("NÃO existe")
+  })
+
+  it("entry que invoca scripts/X EXISTENTE → sem violação", () => {
+    const violations = checkPkgInternalTargets(
+      { "bench:geo": "node scripts/run-benchmark.mjs --type geo" },
+      new Set(["run-benchmark.mjs"]),
+    )
+    expect(violations).toEqual([])
+  })
+
+  it("entry SEM invocação de scripts/ (eslint/bunx/next) → sem alvo a validar", () => {
+    const violations = checkPkgInternalTargets(
+      { lint: "eslint .", "db:generate": "bunx prisma generate", build: "next build" },
+      new Set([]),
+    )
+    expect(violations).toEqual([])
+  })
+
+  it("entries vazias → sem violações", () => {
+    expect(checkPkgInternalTargets({}, new Set(["x.mjs"]))).toEqual([])
+  })
+})
+
+// ── pkgEntryLine ──────────────────────────────────────────────────────────
+
+describe("pkgEntryLine", () => {
+  it("encontra a linha (1-based) da entry no texto cru", () => {
+    const raw = `{\n  "scripts": {\n    "test:seed-prod-e2e": "bash scripts/test-seed-prod-e2e.sh",\n    "lint": "eslint ."\n  }\n}\n`
+    expect(pkgEntryLine(raw, "test:seed-prod-e2e")).toBe(3)
+    expect(pkgEntryLine(raw, "lint")).toBe(4)
+  })
+
+  it("retorna 0 para entry inexistente (defensivo)", () => {
+    expect(pkgEntryLine('{"scripts":{}}', "nope")).toBe(0)
+    expect(pkgEntryLine("", "nope")).toBe(0)
+  })
+
+  it('NÃO casa valor de string que contenha "<entry>" escapado — só a posição de CHAVE', () => {
+    // a entry `lint` real está na linha 4; a linha 2 tem um VALOR que
+    // contém \"lint\" escapado (JSON) — o match deve ser SÓ na chave
+    const raw = `{\n  "scripts": {\n    "a": "echo \\"lint\\" && x",\n    "lint": "eslint ."\n  }\n}\n`
+    expect(pkgEntryLine(raw, "lint")).toBe(4)
+  })
+})
+
 // ── extractWorkflowUses ──────────────────────────────────────────────────
 
 describe("extractWorkflowUses", () => {
@@ -251,6 +347,46 @@ describe("checkWorkflowFile", () => {
       kind: "package.json",
       ref: "test:seed-removed-e2e",
     })
+  })
+
+  it("TRANSITIVO: entry EXISTE mas o alvo scripts/X não → violação kind=package.json com detail", () => {
+    // espelho do mapeamento bun run do check-mutation-jobs: a entry existe,
+    // mas o script que ela invoca foi deletado — o run: falharia no runtime
+    const content = `run: bun run test:seed-prod-e2e\n`
+    const ctx = makeCtx({
+      pkgScripts: new Set(["test:seed-prod-e2e", "lint"]),
+      // lint ('eslint .') NÃO invoca scripts/ — o readPkgScripts real filtra
+      // esse target (extractPkgScriptTarget → null); fora do Map, como na
+      // produção. Um 'bun run lint' nunca geraria violação transitiva.
+      pkgTargets: new Map([["test:seed-prod-e2e", "test-seed-prod-e2e.sh"]]),
+      scripts: new Set(["geo-benchmark-gist.mjs", "check-utf8.sh"]), // alvo AUSENTE
+    })
+    const violations = checkWorkflowFile("bench.yml", content, ctx)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      file: "bench.yml",
+      kind: "package.json",
+      ref: "test:seed-prod-e2e",
+    })
+    expect(violations[0].detail).toContain("test-seed-prod-e2e.sh")
+    expect(violations[0].detail).toContain("NÃO existe")
+  })
+
+  it("TRANSITIVO: entry existe E o alvo existe → sem violação (par fechado)", () => {
+    const content = `run: bun run test:seed-prod-e2e\n`
+    const ctx = makeCtx({
+      pkgScripts: new Set(["test:seed-prod-e2e"]),
+      pkgTargets: new Map([["test:seed-prod-e2e", "test-seed-prod-e2e.sh"]]),
+      scripts: new Set(["geo-benchmark-gist.mjs", "test-seed-prod-e2e.sh"]),
+    })
+    expect(checkWorkflowFile("bench.yml", content, ctx)).toEqual([])
+  })
+
+  it("TRANSITIVO: sem pkgTargets no ctx (legacy) → não gera violação transitiva", () => {
+    // ctx SEM o campo pkgTargets (compat com fixtures antigas): o optional
+    // chaining cai para undefined — só a checagem de entry existir vale
+    const content = `run: bun run lint\n`
+    expect(checkWorkflowFile("bench.yml", content, makeCtx())).toEqual([])
   })
 
   it("workflow local ausente → violação kind=workflow", () => {

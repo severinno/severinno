@@ -6,11 +6,13 @@ set -euo pipefail
 # mesmo que o working tree global já esteja migrado. Node puro, <1s.
 node scripts/check-bun-mirror.mjs --staged
 
-# Mutation-jobs STAGED — detecta um test-mutation-*.sh NOVO no que está
-# STAGED (git diff --cached) ANTES do guard global: se o commit introduzir
-# um script de mutation test sem wire em NENHUM job/matriz, falha aqui com a
-# mensagem do diff, mesmo que o working tree global já esteja consistente.
-# Espelho do bun-mirror --staged. Node puro, <1s.
+# Mutation-jobs STAGED — avalia o par de cobertura de mutation tests no que
+# está STAGED (git diff --cached, escopo scripts/ E .github/workflows/) ANTES
+# do guard global: se o commit introduzir um script de mutation test sem wire
+# em NENHUM job/matriz (forward) OU um run: de workflow novo apontando para
+# script inexistente (reverse), falha aqui com a mensagem do diff, mesmo que o
+# working tree global já esteja consistente. Espelho do bun-mirror --staged.
+# Node puro, <1s.
 node scripts/check-mutation-jobs.mjs --staged
 
 # 15 guards de encoding/CI compartilhados com o pre-push (fonte única —

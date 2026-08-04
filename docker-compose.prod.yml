@@ -110,7 +110,6 @@ secrets:
 # ============================================================================
 
 services:
-
   # ── Caddy (Reverse Proxy + SSL Automatico) ────────────────────────────
   # HTTPS automatico via Let's Encrypt / ZeroSSL.
   # Unico servico exposto para o mundo (portas 80 e 443).
@@ -145,8 +144,8 @@ services:
       - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-      - caddy_logs:/var/log/caddy                # Volume Docker (fallback persistente)
-      - /var/log/caddy:/var/log/caddy            # Bind mount (fail2ban no host)
+      - caddy_logs:/var/log/caddy # Volume Docker (fallback persistente)
+      - /var/log/caddy:/var/log/caddy # Bind mount (fail2ban no host)
     networks:
       - frontend
       - backend
@@ -290,11 +289,11 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
-      - SYS_NICE         # Necessario para RabbitMQ definir prioridade de E/S
+      - SYS_NICE # Necessario para RabbitMQ definir prioridade de E/S
     read_only: true
     tmpfs:
       - /tmp:size=64M
-      - /var/log/rabbitmq:size=32M   # Logs internos em RAM (RabbitMQ 4-alpine usa /var/log/rabbitmq)
+      - /var/log/rabbitmq:size=32M # Logs internos em RAM (RabbitMQ 4-alpine usa /var/log/rabbitmq)
     expose:
       - "5672"
       - "15672"
@@ -342,7 +341,7 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
-      - SYS_CHROOT        # MinIO usa chroot para isolamento de disco
+      - SYS_CHROOT # MinIO usa chroot para isolamento de disco
     tmpfs:
       - /tmp:size=128M
     command: server /data --console-address ":9001"
@@ -489,6 +488,8 @@ services:
     build:
       context: ./mini-services/realtime
       dockerfile: Dockerfile
+      args:
+        BUN_VERSION: ${BUN_VERSION:-1.3.14}
     image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/realtime:latest
     restart: unless-stopped
     security_opt:
@@ -512,8 +513,13 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "bun", "-e",
-        "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -766,7 +772,13 @@ services:
       # Usa node:net (disponivel no Bun) para tentar conexao TCP.
       # NOTA: Nao usa HTTP management (porta 15672) porque a imagem
       # rabbitmq:4-alpine nao inclui o plugin de management por padrao.
-      test: ["CMD", "bun", "-e", "require('net').connect(5672,'rabbitmq').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).setTimeout(5000,()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "require('net').connect(5672,'rabbitmq').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).setTimeout(5000,()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       start_period: 30s
@@ -836,7 +848,13 @@ services:
       # Usa node:net (disponivel no Bun) para tentar conexao TCP.
       # NOTA: Nao usa HTTP management (porta 15672) porque a imagem
       # rabbitmq:4-alpine nao inclui o plugin de management por padrao.
-      test: ["CMD", "bun", "-e", "require('net').connect(5672,'rabbitmq').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).setTimeout(5000,()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "require('net').connect(5672,'rabbitmq').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).setTimeout(5000,()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       start_period: 30s
@@ -897,7 +915,13 @@ services:
       # Usa node:net (disponivel no Bun) para tentar conexao TCP real.
       # Se PgBouncer estiver aceitando conexoes, o worker consegue
       # acessar o banco de dados para consultar a fila de reindex.
-      test: ["CMD", "bun", "-e", "require('net').connect(6432,'pgbouncer').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).setTimeout(5000,()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "require('net').connect(6432,'pgbouncer').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1)).setTimeout(5000,()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 10s
       start_period: 30s
@@ -958,7 +982,11 @@ services:
     networks:
       - backend
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${GLITCHTIP_DB_USER:-glitchtip} -d ${GLITCHTIP_DB_NAME:-glitchtip}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${GLITCHTIP_DB_USER:-glitchtip} -d ${GLITCHTIP_DB_NAME:-glitchtip}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5

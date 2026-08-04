@@ -32,6 +32,7 @@ import {
   computeCoverage,
   checkMutationJobs,
   parseDiffAddedMutationScripts,
+  parseDiffAddedWorkflowRefs,
   checkStagedMutationJobs,
 } from "../../../scripts/check-mutation-jobs.mjs"
 
@@ -308,6 +309,112 @@ describe("checkMutationJobs", () => {
   })
 })
 
+// ── Modo --staged: parseDiffAddedWorkflowRefs ───────────────────────────
+
+describe("parseDiffAddedWorkflowRefs", () => {
+  it("extrai run: de workflow NOVO adicionado pelo diff (new file)", () => {
+    const diff = `diff --git a/.github/workflows/new-guard.yml b/.github/workflows/new-guard.yml
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/.github/workflows/new-guard.yml
+@@ -0,0 +1,4 @@
++jobs:
++  mutation-guards:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Mutation tests
++        run: bash scripts/test-mutation-ghost.sh
+`
+    const refs = parseDiffAddedWorkflowRefs(diff)
+    expect(refs).toEqual(["test-mutation-ghost.sh"])
+  })
+
+  it("extrai run: ADICIONADO a um workflow existente (linha + no diff)", () => {
+    const diff = `diff --git a/.github/workflows/pr-check.yml b/.github/workflows/pr-check.yml
+index 123..456 100644
+--- a/.github/workflows/pr-check.yml
++++ b/.github/workflows/pr-check.yml
+@@ -5,6 +5,7 @@
+     runs-on: ubuntu-latest
+     steps:
+       - name: Mutation tests
+         run: bash scripts/test-mutation-guards.sh
++      - name: New broken ref
++        run: bash scripts/test-mutation-fantasma.sh
+`
+    const refs = parseDiffAddedWorkflowRefs(diff)
+    expect(refs).toEqual(["test-mutation-fantasma.sh"])
+  })
+
+  it("NÃO conta run: pré-existente (linha de CONTEXTO) — só o que o diff adiciona", () => {
+    const diff = `diff --git a/.github/workflows/pr-check.yml b/.github/workflows/pr-check.yml
+index 123..456 100644
+--- a/.github/workflows/pr-check.yml
++++ b/.github/workflows/pr-check.yml
+@@ -5,6 +5,7 @@
+     runs-on: ubuntu-latest
+     steps:
+       - name: Mutation tests
+         run: bash scripts/test-mutation-guards.sh
++      - name: Unrelated change
++        run: echo ok
+`
+    // o run: de contexto (guards) NÃO é adicionado — só 'echo ok' (sem ref)
+    const refs = parseDiffAddedWorkflowRefs(diff)
+    expect(refs).toEqual([])
+  })
+
+  it("mapeia bun run test:mutation-X via package.json nas linhas adicionadas", () => {
+    const diff = `diff --git a/.github/workflows/seed-guards.yml b/.github/workflows/seed-guards.yml
+index 123..456 100644
+--- a/.github/workflows/seed-guards.yml
++++ b/.github/workflows/seed-guards.yml
+@@ -5,6 +5,7 @@
+     runs-on: ubuntu-latest
+     steps:
++      - name: Mutation seed e2e
++        run: bun run test:mutation-seed-dev-e2e --skip-docker
+`
+    const pkgScripts = {
+      "test:mutation-seed-dev-e2e": "bash scripts/test-mutation-seed-dev-e2e.sh",
+    }
+    const refs = parseDiffAddedWorkflowRefs(diff, pkgScripts)
+    expect(refs).toEqual(["test-mutation-seed-dev-e2e.sh"])
+  })
+
+  it("extrai refs de run: em bloco (|) adicionado pelo diff", () => {
+    const diff = `diff --git a/.github/workflows/seed-guards.yml b/.github/workflows/seed-guards.yml
+index 123..456 100644
+--- a/.github/workflows/seed-guards.yml
++++ b/.github/workflows/seed-guards.yml
+@@ -5,6 +5,7 @@
+     runs-on: ubuntu-latest
+     steps:
++      - name: Mutation seed e2e
++        run: |
++          bash scripts/test-mutation-seed-dev-e2e.sh
++          echo done
+`
+    const refs = parseDiffAddedWorkflowRefs(diff)
+    expect(refs).toEqual(["test-mutation-seed-dev-e2e.sh"])
+  })
+
+  it("ignora diffs de scripts/ (não são .yml/.yaml) e diff vazio", () => {
+    const diff = `diff --git a/scripts/test-mutation-ghost.sh b/scripts/test-mutation-ghost.sh
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/scripts/test-mutation-ghost.sh
+@@ -0,0 +1,2 @@
++#!/usr/bin/env bash
++exit 0
+`
+    expect(parseDiffAddedWorkflowRefs(diff)).toEqual([])
+    expect(parseDiffAddedWorkflowRefs("")).toEqual([])
+  })
+})
+
 // ── Modo --staged: parseDiffAddedMutationScripts ─────────────────────────
 
 describe("parseDiffAddedMutationScripts", () => {
@@ -338,6 +445,7 @@ describe("checkStagedMutationJobs", () => {
     matrixRefs: {
       "test-mutation-guards.sh": ["test-mutation-real.sh", "test-mutation-ghost.sh"],
     },
+    pkgScripts: {}, // sem mapeamento bun run no fixture (estado do checkStagedMutationJobs)
   }
 
   it("script NOVO sem cobertura (nem direta nem na matriz) → violação", () => {
@@ -345,6 +453,7 @@ describe("checkStagedMutationJobs", () => {
       scripts: ["test-mutation-guards.sh", "test-mutation-real.sh", "test-mutation-ghost.sh"],
       directRefs: ["test-mutation-guards.sh"],
       matrixRefs: { "test-mutation-guards.sh": ["test-mutation-real.sh"] },
+      pkgScripts: {},
     }
     const violations = checkStagedMutationJobs(DIFF_NEW_SCRIPT, state)
     expect(violations.length).toBe(1)
@@ -363,6 +472,112 @@ describe("checkStagedMutationJobs", () => {
 
   it("diff vazio → sem violação", () => {
     expect(checkStagedMutationJobs("", coveredState)).toEqual([])
+  })
+
+  it("REVERSE: run: de workflow NOVO no diff apontando para script INEXISTENTE → violação", () => {
+    const state = {
+      scripts: ["test-mutation-guards.sh", "test-mutation-real.sh"],
+      directRefs: ["test-mutation-guards.sh"],
+      matrixRefs: { "test-mutation-guards.sh": ["test-mutation-real.sh"] },
+      pkgScripts: {},
+    }
+    const diff = `diff --git a/.github/workflows/pr-check.yml b/.github/workflows/pr-check.yml
+index 123..456 100644
+--- a/.github/workflows/pr-check.yml
++++ b/.github/workflows/pr-check.yml
+@@ -5,6 +5,7 @@
+     runs-on: ubuntu-latest
+     steps:
+       - name: Mutation tests
+         run: bash scripts/test-mutation-guards.sh
++      - name: New broken ref
++        run: bash scripts/test-mutation-fantasma.sh
+`
+    const violations = checkStagedMutationJobs(diff, state)
+    expect(violations.length).toBe(1)
+    expect(violations[0]).toContain("test-mutation-fantasma.sh")
+    expect(violations[0]).toContain("workflow referencia")
+    expect(violations[0]).toContain("NÃO existe em scripts/")
+  })
+
+  it("REVERSE: run: de workflow NOVO apontando para script EXISTENTE → sem violação", () => {
+    const state = {
+      scripts: ["test-mutation-guards.sh", "test-mutation-real.sh"],
+      directRefs: ["test-mutation-guards.sh"],
+      matrixRefs: { "test-mutation-guards.sh": ["test-mutation-real.sh"] },
+      pkgScripts: {},
+    }
+    const diff = `diff --git a/.github/workflows/pr-check.yml b/.github/workflows/pr-check.yml
+index 123..456 100644
+--- a/.github/workflows/pr-check.yml
++++ b/.github/workflows/pr-check.yml
+@@ -5,6 +5,7 @@
+     runs-on: ubuntu-latest
+     steps:
+       - name: Mutation tests
+         run: bash scripts/test-mutation-guards.sh
++      - name: New valid ref
++        run: bash scripts/test-mutation-real.sh
+`
+    expect(checkStagedMutationJobs(diff, state)).toEqual([])
+  })
+
+  it("REVERSE: run: pré-existente (contexto) para script inexistente NÃO polui o PR", () => {
+    const state = {
+      scripts: ["test-mutation-guards.sh", "test-mutation-real.sh"],
+      directRefs: ["test-mutation-guards.sh"],
+      matrixRefs: { "test-mutation-guards.sh": ["test-mutation-real.sh"] },
+      pkgScripts: {},
+    }
+    // o run: de contexto (fantasma) existia NO BASE — o diff só adiciona
+    // 'echo ok' sem ref; o staged NÃO deve acusar o fantasma pré-existente
+    const diff = `diff --git a/.github/workflows/pr-check.yml b/.github/workflows/pr-check.yml
+index 123..456 100644
+--- a/.github/workflows/pr-check.yml
++++ b/.github/workflows/pr-check.yml
+@@ -5,6 +5,7 @@
+     runs-on: ubuntu-latest
+     steps:
+       - name: Mutation tests
+         run: bash scripts/test-mutation-fantasma.sh
++      - name: Unrelated
++        run: echo ok
+`
+    expect(checkStagedMutationJobs(diff, state)).toEqual([])
+  })
+
+  it("forward + reverse juntos no MESMO diff → ambas as violações reportadas", () => {
+    const state = {
+      scripts: ["test-mutation-guards.sh", "test-mutation-real.sh"],
+      directRefs: ["test-mutation-guards.sh"],
+      matrixRefs: { "test-mutation-guards.sh": ["test-mutation-real.sh"] },
+      pkgScripts: {},
+    }
+    const diff = `${DIFF_NEW_SCRIPT}
+diff --git a/.github/workflows/pr-check.yml b/.github/workflows/pr-check.yml
+index 123..456 100644
+--- a/.github/workflows/pr-check.yml
++++ b/.github/workflows/pr-check.yml
+@@ -5,6 +5,7 @@
+     runs-on: ubuntu-latest
+     steps:
+       - name: Mutation tests
+         run: bash scripts/test-mutation-guards.sh
++      - name: New broken ref
++        run: bash scripts/test-mutation-fantasma.sh
+`
+    const violations = checkStagedMutationJobs(diff, state)
+    expect(violations.length).toBe(2)
+    expect(
+      violations.some(
+        (v) => v.includes("NOVO neste diff SEM job") && v.includes("test-mutation-ghost.sh"),
+      ),
+    ).toBe(true)
+    expect(
+      violations.some(
+        (v) => v.includes("workflow referencia") && v.includes("test-mutation-fantasma.sh"),
+      ),
+    ).toBe(true)
   })
 })
 

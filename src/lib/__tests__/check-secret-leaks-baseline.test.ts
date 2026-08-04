@@ -35,6 +35,9 @@ import {
   buildBaseline,
   parseBaseline,
   findNewFindings,
+  severityRank,
+  splitBySeverity,
+  SEVERITY_ORDER,
 } from "../../../scripts/check-secret-leaks-baseline.mjs"
 
 /** Forma mínima dos achados do baseline (props restantes opcionais). */
@@ -136,6 +139,56 @@ describe("buildBaseline / parseBaseline", () => {
   })
 })
 
+// ── severityRank / splitBySeverity (o filtro de severidade) ───────────────
+
+describe("severityRank", () => {
+  it("ordena baixa < média < alta", () => {
+    expect(severityRank("baixa")).toBe(0)
+    expect(severityRank("média")).toBe(1)
+    expect(severityRank("alta")).toBe(2)
+  })
+
+  it("severidade desconhecida/ausente é tratada como ALTA (fail-closed — nunca escapa do gate)", () => {
+    expect(severityRank(undefined)).toBe(2)
+    expect(severityRank("??")).toBe(2)
+  })
+
+  it("SEVERITY_ORDER tem as 3 severidades", () => {
+    expect(SEVERITY_ORDER).toEqual(["baixa", "média", "alta"])
+  })
+})
+
+describe("splitBySeverity", () => {
+  const alta = { commit: "a", id: "token com prefixo", severity: "alta" }
+  const media = { commit: "b", id: "atribuição de secret", severity: "média" }
+  const semSev = { commit: "c", id: "atribuição de secret" } // sem severity → média
+
+  it("min=baixa (default): TODO achado novo bloqueia (comportamento histórico)", () => {
+    const { blocking, warnings } = splitBySeverity([alta, media, semSev], "baixa")
+    expect(blocking).toHaveLength(3)
+    expect(warnings).toHaveLength(0)
+  })
+
+  it("min=alta: ALTA e desconhecida bloqueiam (fail-closed); só MÉDIA vira aviso", () => {
+    const { blocking, warnings } = splitBySeverity([alta, media, semSev], "alta")
+    expect(blocking).toHaveLength(2)
+    expect(blocking[0]).toBe(alta)
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toBe(media)
+  })
+
+  it("min=média: ALTA e MÉDIA bloqueiam, baixa vira aviso", () => {
+    const baixa = { commit: "d", id: "x", severity: "baixa" }
+    const { blocking, warnings } = splitBySeverity([alta, media, baixa], "média")
+    expect(blocking).toHaveLength(2)
+    expect(warnings).toHaveLength(1)
+  })
+
+  it("lista vazia → nada bloqueia", () => {
+    expect(splitBySeverity([], "alta")).toEqual({ blocking: [], warnings: [] })
+  })
+})
+
 // ── findNewFindings (a regra do guard) ────────────────────────────────────
 
 describe("findNewFindings", () => {
@@ -228,5 +281,41 @@ describe("check-secret-leaks-baseline.mjs — CLI real", () => {
 
     const check = runCheck(dir, ["--baseline", "base.json"])
     expect(check.status).toBe(0)
+  })
+
+  it("--min-severity alta: achado NOVO de severidade média NÃO falha (aviso)", () => {
+    const dir = makeRepo()
+    // atribuição de secret (severidade MÉDIA)
+    commitFile(dir, "a.env", "DB_PASSWORD=supersecretpassword123\n", "adds")
+    runCheck(dir, ["--baseline", "base.json", "--update"])
+
+    // MUTAÇÃO: mais um secret de severidade MÉDIA
+    commitFile(dir, "b.env", "SESSION_SECRET=anothersecretvalue999\n", "adds 2nd media")
+    const check = runCheck(dir, ["--baseline", "base.json", "--min-severity", "alta"])
+    expect(check.status).toBe(0)
+    expect(check.stderr).toContain("severidade abaixo")
+  })
+
+  it("--min-severity alta: achado NOVO de severidade ALTA falha (exit 1)", () => {
+    const dir = makeRepo()
+    // atribuição de secret (severidade MÉDIA) no baseline
+    commitFile(dir, "a.env", "DB_PASSWORD=supersecretpassword123\n", "adds")
+    runCheck(dir, ["--baseline", "base.json", "--update"])
+
+    // MUTAÇÃO: token sk- (severidade ALTA) commitado novo
+    commitFile(dir, "tok.txt", "api key: sk-test-newsecrettoken000\n", "adds alta token")
+    const check = runCheck(dir, ["--baseline", "base.json", "--min-severity", "alta"])
+    expect(check.status).toBe(1)
+    expect(check.stderr).toContain("NOVO")
+    expect(check.stderr).toContain("(alta)")
+    expect(check.stderr).toContain("tok.txt")
+  })
+
+  it("--min-severity inválido → exit 2 (flag inválida)", () => {
+    const dir = makeRepo()
+    commitFile(dir, "a.env", "DB_PASSWORD=supersecretpassword123\n", "adds")
+    const res = runCheck(dir, ["--baseline", "base.json", "--min-severity", "crítica"])
+    expect(res.status).toBe(2)
+    expect(res.stderr).toContain("--min-severity")
   })
 })

@@ -10,10 +10,19 @@
 //      → verifica que scripts/X EXISTE em scripts/
 //   2. package.json — `run:` invocando `bun|npm|pnpm|yarn run <entry>`
 //      → verifica que a entry EXISTE em package.json > scripts
+//      → E, se a entry invocar `scripts/X`, verifica que scripts/X EXISTE
+//        (par TRANSITIVO fechado — espelho do `bun run test:mutation-X` do
+//        check-mutation-jobs.mjs: entry apontando para script deletado
+//        falharia no runtime do job; o guard pega no review)
 //   3. Reusable workflows — `uses: ./.github/workflows/X.yml`
 //      → verifica que X.yml EXISTE e tem `on: workflow_call`
 //   4. Composite actions locais — `uses: ./.github/actions/<name>`
 //      → verifica que .github/actions/<name>/action.yml EXISTE
+//   5. Consistência INTERNA do package.json (modo --pkg-internal) — TODA
+//      entry que invoca `scripts/X` deve ter X existente em scripts/, MESMO
+//      que nenhum workflow a referencie. Cobre hooks locais e runs manuais
+//      `bun run <entry>`: um script deletado quebraria o hook local no
+//      runtime, e o scan workflow-only não enxerga entries órfãs de workflow.
 //
 // Por que existe: consolidações como a matrix 2×2 do seed-guards.yml deletam
 // e renomeiam workflows/scripts em lote (ex.: seed-dev-bootstrap.yml →
@@ -35,8 +44,8 @@
 // que NÃO está ligado ao CI e não cobre scripts/ nem package.json.
 //
 // Usage:
-//   node scripts/check-workflow-refs.mjs
-//
+//   node scripts/check-workflow-refs.mjs                 # workflow-only scan
+//   node scripts/check-workflow-refs.mjs --pkg-internal  # + interna do pkg
 // Exit codes:
 //   0 — nenhuma referência quebrada (pass)
 //   1 — pelo menos uma referência quebrada (fail)
@@ -56,6 +65,16 @@ const SCRIPT_INVOKE_RE =
 
 /** Entry de package.json: `bun|npm|pnpm|yarn run <entry>`. */
 const PKG_RUN_RE = /\b(?:bun|npm|pnpm|yarn)\b\s+run\s+([A-Za-z0-9_:.-]+)/g
+
+/**
+ * Alvo de scripts/ DENTRO do valor de uma entry de package.json (ex.: o
+ * valor `bash scripts/test-seed-prod-e2e.sh --skip-docker` → alvo
+ * `test-seed-prod-e2e.sh`). Não-global (sem /g) de propósito — usado com
+ * .exec()/.match() repetidamente; um regex /g compartilhado com lastIndex
+ * avançando entre chamadas produziria falsos negativos intermitentes.
+ */
+const PKG_TARGET_RE =
+  /\b(?:node|bun|bash|sh|python3|python)\b\s+(?:\.\/)?scripts\/([A-Za-z0-9_./-]+)/
 
 /** Reusable workflow local: `uses: ./.github/workflows/<file>.yml`. */
 const USES_LOCAL_RE = /uses:\s*\.\/\.github\/workflows\/([A-Za-z0-9_.-]+\.yml)/g
@@ -168,11 +187,79 @@ export function extractActionUses(content) {
 }
 
 /**
+ * Extrai o ALVO de scripts/ do valor de uma entry de package.json — ex.: o
+ * valor `bash scripts/test-seed-prod-e2e.sh --skip-docker` → alvo
+ * `test-seed-prod-e2e.sh`. Retorna null quando a entry não invoca scripts/
+ * (ex.: `eslint .`, `bunx prisma generate`) — não há alvo a validar.
+ *
+ * @param {string|null|undefined} entryValue  valor cru da entry (ex.: "bash
+ *   scripts/foo.sh --ci"; null/undefined são normalizados para "" — a
+ *   função é defensiva de propósito, validada no teste unitário)
+ * @returns {string|null} nome do script alvo (sem scripts/) ou null
+ */
+export function extractPkgScriptTarget(entryValue) {
+  const m = String(entryValue ?? "").match(PKG_TARGET_RE)
+  return m ? m[1] : null
+}
+
+/**
+ * Consistência INTERNA do package.json (modo --pkg-internal): TODA entry
+ * cujo valor invoca `scripts/X` deve ter X existente em scripts/ — MESMO que
+ * NENHUM workflow a referencie. O checkWorkflowFile só avalia entries
+ * REFERENCIADAS por um workflow (escopo workflow→artefato); uma entry órfã
+ * de workflow (ex.: usada por hook local `bun run <entry>` ou manualmente)
+ * com o script deletado quebraria no runtime SEM este modo.
+ *
+ * @param {Record<string,string>} pkgEntries  package.json > scripts (entry → valor)
+ * @param {Set<string>} scripts               nomes existentes em scripts/
+ * @returns {{ file: string, line: number, kind: string, ref: string, text: string, detail: string }[]}
+ */
+export function checkPkgInternalTargets(pkgEntries = {}, scripts) {
+  const violations = []
+  for (const [entry, value] of Object.entries(pkgEntries)) {
+    const target = extractPkgScriptTarget(value)
+    if (!target) continue // entry sem invocação de scripts/ — sem alvo a validar
+    if (scripts.has(target)) continue
+    violations.push({
+      file: "package.json",
+      line: 0, // main() preenche a linha real (pkgEntryLine) antes de imprimir
+      kind: "package.json",
+      ref: entry,
+      detail: `entry '${entry}' invoca scripts/${target} que NÃO existe (consistência INTERNA — mesmo sem workflow referenciando)`,
+      text: value,
+    })
+  }
+  return violations
+}
+
+/**
+ * Linha (1-based) da CHAVE `"<entry>":` no texto cru do package.json — para
+ * o diagnóstico do modo --pkg-internal apontar arquivo:linha como o restante
+ * do guard (falha de infra não é possível: o JSON já foi parseado com sucesso).
+ * Casa SÓ a posição de chave (`"<entry>"\s*:`) — um valor que contenha a
+ * string `"<entry>"` escapada (ex.: `"a": "echo \"lint\" && ..."` com a
+ * entry `lint` real em outra linha) não pode gerar falso match de linha.
+ *
+ * @param {string} rawText  conteúdo cru do package.json
+ * @param {string} entry    nome da entry
+ * @returns {number} linha 1-based (0 se não encontrada — defensivo)
+ */
+export function pkgEntryLine(rawText, entry) {
+  const lines = String(rawText ?? "").split(/\r?\n/)
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const keyRe = new RegExp(`"${escapeRe(entry)}"\\s*:`)
+  for (let i = 0; i < lines.length; i++) {
+    if (keyRe.test(lines[i])) return i + 1
+  }
+  return 0
+}
+
+/**
  * Verifica UM arquivo de workflow contra o contexto de artefatos disponíveis.
  *
  * @param {string} name     nome do workflow (ex.: "pr-check.yml")
  * @param {string} content  conteúdo do workflow
- * @param {{ scripts: Set<string>, pkgScripts: Set<string>, workflows: Set<string>, workflowCall: Set<string>, actions: Set<string> }} ctx
+ * @param {{ scripts: Set<string>, pkgScripts: Set<string>, pkgTargets?: Map<string,string>, workflows: Set<string>, workflowCall: Set<string>, actions: Set<string> }} ctx
  * @returns {{ file: string, line: number, kind: string, ref: string, text: string, detail?: string }[]}
  */
 export function checkWorkflowFile(name, content, ctx) {
@@ -191,6 +278,22 @@ export function checkWorkflowFile(name, content, ctx) {
         line: r.line,
         kind: "package.json",
         ref: r.ref,
+        text: r.text,
+      })
+      continue
+    }
+    // Par TRANSITIVO fechado (espelho do check-mutation-jobs): a entry EXISTE,
+    // mas o ALVO dela (scripts/X) não — `run: bun run <entry>` falharia no
+    // runtime do job com 'bash: scripts/X: No such file'. Só avalia entries
+    // REFERENCIADAS pelo workflow (o escopo do guard é workflow→artefato).
+    const target = ctx.pkgTargets?.get(r.ref)
+    if (target && !ctx.scripts.has(target)) {
+      violations.push({
+        file: name,
+        line: r.line,
+        kind: "package.json",
+        ref: r.ref,
+        detail: `entry '${r.ref}' aponta para scripts/${target} que NÃO existe`,
         text: r.text,
       })
     }
@@ -224,7 +327,7 @@ export function checkWorkflowFile(name, content, ctx) {
  * Escaneia um conjunto de arquivos de workflow de uma vez.
  *
  * @param {{ name: string, content: string }[]} files
- * @param {{ scripts: Set<string>, pkgScripts: Set<string>, workflows: Set<string>, workflowCall: Set<string>, actions: Set<string> }} ctx
+ * @param {{ scripts: Set<string>, pkgScripts: Set<string>, pkgTargets?: Map<string,string>, workflows: Set<string>, workflowCall: Set<string>, actions: Set<string> }} ctx
  * @returns {{ file: string, line: number, kind: string, ref: string, text: string, detail?: string }[]}
  */
 export function scanWorkflows(files, ctx) {
@@ -245,11 +348,24 @@ function listDir(dir) {
   }
 }
 
-/** Lê as entries de package.json > scripts (exit 1 se package.json ilegível). */
+/**
+ * Lê as entries de package.json > scripts (exit 1 se package.json ilegível)
+ * e devolve: os NOMES das entries (Set), o ALVO de scripts/ de cada entry
+ * que invoca scripts/ (Map<entry, alvo>), as entries CRUAS (entry → valor,
+ * para o modo --pkg-internal) e o texto cru (para linha de diagnóstico).
+ */
 function readPkgScripts(cwd) {
   try {
-    const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"))
-    return new Set(Object.keys(pkg.scripts || {}))
+    const rawText = readFileSync(join(cwd, "package.json"), "utf8")
+    const pkg = JSON.parse(rawText)
+    const entries = pkg.scripts || {}
+    const pkgScripts = new Set(Object.keys(entries))
+    const pkgTargets = new Map()
+    for (const [entry, value] of Object.entries(entries)) {
+      const target = extractPkgScriptTarget(value)
+      if (target) pkgTargets.set(entry, target)
+    }
+    return { pkgScripts, pkgTargets, pkgEntries: entries, rawText }
   } catch (e) {
     console.error(`❌ Não foi possível ler package.json: ${e.message}`)
     process.exit(1)
@@ -257,13 +373,16 @@ function readPkgScripts(cwd) {
 }
 
 function main() {
+  const args = process.argv.slice(2)
+  const pkgInternal = args.includes("--pkg-internal")
+
   const cwd = process.cwd()
   const wfDir = join(cwd, ".github", "workflows")
 
   // ── Contexto: artefatos disponíveis ──────────────────────────────────
   const names = listDir(wfDir).filter((f) => f.endsWith(".yml"))
   const scripts = new Set(listDir(join(cwd, "scripts")))
-  const pkgScripts = readPkgScripts(cwd)
+  const { pkgScripts, pkgTargets, pkgEntries, rawText } = readPkgScripts(cwd)
   const workflows = new Set(names)
 
   // Composite actions locais: .github/actions/<name>/action.yml existentes
@@ -281,7 +400,24 @@ function main() {
   const workflowCall = new Set(
     files.filter((f) => /workflow_call/.test(f.content)).map((f) => f.name),
   )
-  const violations = scanWorkflows(files, { scripts, pkgScripts, workflows, workflowCall, actions })
+  const violations = scanWorkflows(files, {
+    scripts,
+    pkgScripts,
+    pkgTargets,
+    workflows,
+    workflowCall,
+    actions,
+  })
+
+  // ── Modo --pkg-internal: consistência INTERNA do package.json ────────
+  // Valida TODAS as entries que invocam scripts/ (mesmo sem workflow
+  // referenciando — hooks locais/manuais). Preenche a linha real da entry no
+  // package.json para o diagnóstico apontar arquivo:linha (como o restante).
+  if (pkgInternal) {
+    for (const v of checkPkgInternalTargets(pkgEntries, scripts)) {
+      violations.push({ ...v, line: pkgEntryLine(rawText, v.ref) || 0 })
+    }
+  }
 
   if (violations.length > 0) {
     console.error(`❌ Referência(s) quebrada(s) entre workflows e scripts/package.json:\n`)

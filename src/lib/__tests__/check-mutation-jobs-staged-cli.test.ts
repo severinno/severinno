@@ -6,11 +6,14 @@
  * contra um repositório git TEMPORÁRIO REAL (git init + git add + git commit),
  * validando o CONTRATO DE EXIT CODES do main() no caminho staged:
  *
- *   exit 0  — diff staged sem test-mutation-*.sh NOVO, ou script novo JÁ
- *             wireado na matriz do master (coberto no MESMO diff)
+ *   exit 0  — diff staged sem test-mutation-*.sh NOVO, script novo JÁ
+ *             wireado na matriz do master (coberto no MESMO diff), ou run:
+ *             de workflow NOVO apontando para script EXISTENTE
  *   exit 1  — diff staged com test-mutation-*.sh NOVO SEM cobertura (sem ref
- *             direta num workflow run: nem na matriz do master)
- *   exit 2  — infra: `--base` inválido (gitDiffMutationScripts retorna null)
+ *             direta num workflow run: nem na matriz do master) — forward —
+ *             OU um run: de workflow NOVO (linha adicionada pelo diff)
+ *             apontando para test-mutation-*.sh INEXISTENTE — reverse
+ *   exit 2  — infra: `--base` inválido (gitDiffMutationScope retorna null)
  *             ou fora de repositório git (git diff --cached falha)
  *
  * Diferente do check-mutation-jobs.test.ts (que cobre as funções PURAS com
@@ -145,8 +148,8 @@ describe("check-mutation-jobs.mjs --staged — integração do main() com git re
 
     const { status, out } = runStaged(dir)
     expect(status).toBe(1)
-    // mensagem do main() staged: '❌ Diff com N mutation test(s) NOVO(s) sem job'
-    expect(out).toContain("NOVO(s) sem job")
+    // mensagem do main() staged generalizada: '❌ Diff com N violação(ões)...'
+    expect(out).toContain("violação(ões) de cobertura")
     expect(out).toContain("test-mutation-orphan.sh")
     expect(out).toContain("SEM job correspondente")
   })
@@ -175,7 +178,7 @@ describe("check-mutation-jobs.mjs --staged — integração do main() com git re
 
     const { status, out } = runStaged(dir, ["--base", "HEAD~1"])
     expect(status).toBe(1)
-    expect(out).toContain("NOVO(s) sem job")
+    expect(out).toContain("violação(ões) de cobertura")
     expect(out).toContain("test-mutation-orphan.sh")
     expect(out).toContain("SEM job correspondente")
   })
@@ -194,11 +197,71 @@ describe("check-mutation-jobs.mjs --staged — integração do main() com git re
     const dir = makeRepo()
     buildFixture(dir)
 
-    // isValidGitRef rejeita `;` — gitDiffMutationScripts retorna null → exit 2.
+    // isValidGitRef rejeita `;` — gitDiffMutationScope retorna null → exit 2.
     const { status, out } = runStaged(dir, ["--base", "main; rm -rf /"])
     expect(status).toBe(2)
     expect(out).toContain("git diff indisponível")
     expect(out).toContain("main; rm -rf /")
+  })
+
+  it("exit 1: run: de workflow NOVO staged referencia script INEXISTENTE (reverse)", () => {
+    const dir = makeRepo()
+    buildFixture(dir)
+    commitAll(dir, "baseline") // workflow baseline com ref válida (guards)
+
+    // mutação: adiciona um step com run: a script INEXISTENTE em scripts/
+    writeFileSync(
+      join(dir, ".github", "workflows", "pr-check.yml"),
+      `name: PR Check\njobs:\n  mutation-guards:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Mutation tests\n        run: bash scripts/test-mutation-guards.sh\n      - name: Broken ref (novo)\n        run: bash scripts/test-mutation-fantasma.sh\n`,
+      "utf8",
+    )
+    stage(dir, ".github/workflows/pr-check.yml")
+
+    const { status, out } = runStaged(dir)
+    expect(status).toBe(1)
+    // mensagem do main() staged generalizada: '❌ Diff com N violação(ões)...'
+    expect(out).toContain("violação(ões) de cobertura")
+    expect(out).toContain("test-mutation-fantasma.sh")
+    expect(out).toContain("workflow referencia")
+    expect(out).toContain("NÃO existe em scripts/")
+  })
+
+  it("exit 0: run: de workflow NOVO staged referencia script EXISTENTE (par fechado)", () => {
+    const dir = makeRepo()
+    buildFixture(dir)
+    commitAll(dir, "baseline")
+
+    // adiciona um step com run: a script QUE EXISTE (real) — sem violação
+    writeFileSync(
+      join(dir, ".github", "workflows", "pr-check.yml"),
+      `name: PR Check\njobs:\n  mutation-guards:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Mutation tests\n        run: bash scripts/test-mutation-guards.sh\n      - name: Valid ref (novo)\n        run: bash scripts/test-mutation-real.sh\n`,
+      "utf8",
+    )
+    stage(dir, ".github/workflows/pr-check.yml")
+
+    const { status, out } = runStaged(dir)
+    expect(status).toBe(0)
+    expect(out).toContain("Diff ok")
+  })
+
+  it("exit 1: --base HEAD~1 — run: de workflow quebrado COMMITADO entre base e HEAD", () => {
+    const dir = makeRepo()
+    buildFixture(dir)
+    commitAll(dir, "baseline") // HEAD~1 = workflow com ref válida
+
+    // mutação commitada como HEAD: workflow ganha run: a script fantasma
+    writeFileSync(
+      join(dir, ".github", "workflows", "pr-check.yml"),
+      `name: PR Check\njobs:\n  mutation-guards:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Mutation tests\n        run: bash scripts/test-mutation-guards.sh\n      - name: Broken ref (commitado)\n        run: bash scripts/test-mutation-fantasma.sh\n`,
+      "utf8",
+    )
+    commitAll(dir, "broken-ref")
+
+    const { status, out } = runStaged(dir, ["--base", "HEAD~1"])
+    expect(status).toBe(1)
+    expect(out).toContain("test-mutation-fantasma.sh")
+    expect(out).toContain("workflow referencia")
+    expect(out).toContain("NÃO existe em scripts/")
   })
 
   it("exit 2: --base com ref que não existe no repo (git diff falha)", () => {

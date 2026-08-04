@@ -536,8 +536,14 @@ jobs:
         with:
           fetch-depth: 0 # histórico completo — o audit varre git log -p --all
 
-      # ── GATE: nenhum achado NOVO além do baseline commitado ──────────
-      # Exit 1 = achados novos detectados → job falha (vazamento futuro).
+      # ── GATE: QUALQUER achado NOVO falha o job (default) ──────────────
+      # O default (sem --min-severity) falha em QUALQUER achado novo por
+      # assinatura — incluindo TODOS os de severidade ALTA (chaves privadas,
+      # tokens), que é o pedido do parecer. Não passamos --min-severity alta
+      # aqui: isso ENFRAQUECERIA o gate (achados novos de severidade média
+      # deixariam de falhar). A classificação de severidade (alta/média) fica
+      # disponível via --min-severity para quem quiser RELAXAR o gate
+      # deliberadamente (ex.: tolerar ruído médio), não para o default.
       - name: Auditar segredos no histórico vs baseline
         run: node scripts/check-secret-leaks-baseline.mjs
 

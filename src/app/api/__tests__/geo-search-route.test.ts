@@ -10,6 +10,10 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/redis", () => ({
   withCache: vi.fn((_key: string, fn: () => Promise<any>) => fn()),
   getCacheStats: vi.fn(() => ({ hits: 0, misses: 0, total: 0, hitRatio: null })),
+  // geo-rate-limit.ts importa isRedisAvailable/getClient — sem estas chaves
+  // o `isRedisAvailable()` vira 'undefined is not a function' → 500 em tudo.
+  isRedisAvailable: vi.fn(() => false), // cai no fallback in-memory (ok p/ teste)
+  getClient: vi.fn(() => null),
 }))
 
 vi.mock("@/lib/geo", () => ({
@@ -34,9 +38,7 @@ describe("GET /api/geo/search", () => {
   })
 
   it("returns search results for a free-form query", async () => {
-    const mockResults = [
-      { lat: "-23.5505", lon: "-46.6333", display_name: "São Paulo, Brazil" },
-    ]
+    const mockResults = [{ lat: "-23.5505", lon: "-46.6333", display_name: "São Paulo, Brazil" }]
     vi.mocked(geocodeSearch).mockResolvedValue(mockResults as any)
 
     const req = createMockRequest({

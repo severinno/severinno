@@ -126,6 +126,7 @@ index 000..111
     const f = scanHistory(LOG)
     expect(f.length).toBeGreaterThan(0)
     expect(f[0].id).toBe("token com prefixo")
+    expect(f[0].severity).toBe("alta")
     expect(f[0].masked.startsWith("sk-t")).toBe(true)
     expect(f[0].masked).toContain("chars")
     expect(f[0].file).toBe("config/settings.json")
@@ -144,6 +145,7 @@ diff --git a/secrets/id_rsa b/secrets/id_rsa
     const f = scanHistory(log)
     expect(f.length).toBeGreaterThan(0)
     expect(f[0].id).toBe("chave privada")
+    expect(f[0].severity).toBe("alta")
   })
 
   it("detecta atribuição de secret estilo .env", () => {
@@ -156,6 +158,7 @@ diff --git a/.env b/.env
     const f = scanHistory(log)
     expect(f.length).toBe(1)
     expect(f[0].id).toBe("atribuição de secret")
+    expect(f[0].severity).toBe("média")
     expect(f[0].key).toBe("DB_PASSWORD")
   })
 

@@ -9,7 +9,7 @@
 // total de checks de cada E2E a partir do CÓDIGO — sites de asserção +
 // loops dirigidos por dados + helpers compartilhados).
 //
-//   scripts/seed-e2e-count.ts  →  {"prod": 115, "dev": 162}  (bun --json)
+//   scripts/seed-e2e-count.ts  →  {"prod": 128, "dev": 162}  (bun --json)
 //
 // Por que derivação em vez de literal: antes o guard lia `EXPECTED_TOTAL =
 // 115` via regex no source do E2E. Agora os E2Es calculam o próprio total
@@ -60,8 +60,7 @@ export const SCAN_FILES = [
 
 /**
  * Padrões que ligam um count documentado ao SEU alvo (prod|dev). A dedupe
- * remove sobreposições (ex.: uma linha com "prod E2E (test-seed-prod-e2e.ts
- * — 115 checks)" casa 2×, mas com o MESMO count → vira 1 registro).
+ * remove sobreposições (ex.: uma linha com "prod E2E (test-seed-prod-e2e.ts *   — 128 checks)" casa 2×, mas com o MESMO count → vira 1 registro).
  */
 const TARGET_PATTERNS = [
   // Filename explícito do source
@@ -73,7 +72,7 @@ const TARGET_PATTERNS = [
   // "prod: N checks" / "dev: N checks" (seed-guards.yml — linha do validator)
   { target: "prod", re: /\bprod:\s*(\d+)\s+checks?/g },
   { target: "dev", re: /\bdev:\s*(\d+)\s+checks?/g },
-  // Ternary da matrix (seed-guards.yml L205): seed == 'prod' && '115' || '162'
+  // Ternary da matrix (seed-guards.yml L205): seed == 'prod' && '128' || '162'
   // ATENÇÃO: o padrão dev depende da formatação exata `'162' }} checks` — se
   // o echo for reformatado, o count dev deixa de ser validado (site perdido,
   // não violação). Mantenha o formato quando editar a linha do summary.

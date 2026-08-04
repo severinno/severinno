@@ -98,10 +98,25 @@
 //  12. Arquivos de workflow são escaneados nas DUAS extensões (.yml E .yaml)
 //      — um workflow com extensão alternativa não escapa dos checks de
 //      cache key/literal/call site/par key↔path (global E staged).
+//  13. NENHUM Dockerfile do repo pinava versão LITERAL do Bun (bun@1.2,
+//      FROM oven/bun:1, bun@1.3.14, bun-v1.3.14 na URL de download do
+//      Dockerfile.ubuntu-bun) — a versão nos Dockerfiles só pode vir
+//      do build-arg BUN_VERSION (mesmo padrão do Dockerfile.ubuntu-bun:
+//      ARG BUN_VERSION + \${BUN_VERSION}; o workflow passa
+//      --build-arg BUN_VERSION=${{ vars.BUN_VERSION }}). Um literal criaria
+//      um segundo ponto de verdade quando a variável for trocada.
+//      O checkDockerfileBunLine cobre as TRÊS formas: npm install -g bun@,
+//      FROM oven/bun: e o curl bun-v<ver> (releases/download).
+//  14. O repo usa APENAS bun.lock como lockfile — package-lock.json e
+//      pnpm-lock.yaml (raiz e mini-services/*) são proibidos (a unificação
+//      é travada: um `npm install` acidental regenera o npm lockfile e o
+//      guard falha no PR).
 //
 // Escopo: lê .github/workflows/sync-bun-mirror.yml + .github/actions/
 // setup-bun/action.yml + Dockerfile.bun-mirror + TODOS os .github/workflows/*.yml
-// E *.yaml (cache keys + literais) + .actrc. Node puro, sem deps, <1s.
+// E *.yaml (cache keys + literais) + .actrc + Dockerfiles (Dockerfile,
+// Dockerfile.worker, Dockerfile.ubuntu-bun, mini-services/realtime/Dockerfile)
+// + lockfiles estrangeiros. Node puro, sem deps, <1s.
 // =============================================================================
 
 import { readFileSync, existsSync, readdirSync } from "node:fs"
@@ -158,6 +173,36 @@ export const CACHE_USES_RE = /^\s*(?:-\s+)?uses:\s+actions\/cache/
  * não escapa dos checks, e um fix aqui vale para todos os scans, sem drift.
  */
 export const WORKFLOW_FILE_RE = /\.ya?ml$/
+
+/**
+ * Dockerfiles do repo que PINAM/instalam o Bun — todos escaneados por
+ * versões LITERAIS (invariante 13). O Dockerfile.ubuntu-bun usa o padrão
+ * correto (ARG BUN_VERSION + \${BUN_VERSION}); os demais são obrigados ao
+ * mesmo padrão pelo guard. Se um Dockerfile NOVO pinar bun, ADICIONE-O aqui
+ * (lista explícita — um Dockerfile fora da lista escaparia do check).
+ */
+export const DOCKERFILES = [
+  "Dockerfile",
+  "Dockerfile.worker",
+  "Dockerfile.ubuntu-bun",
+  "Dockerfile.bun-mirror",
+  "mini-services/realtime/Dockerfile",
+]
+
+/**
+ * Lockfiles ESTRANGEIROS proibidos — o repo usa APENAS bun.lock (fonte
+ * única de deps). Se um lockfile npm/pnpm aparecer (ex.: `npm install`
+ * acidental na raiz ou num mini-service), o guard falha (invariante 14).
+ */
+export const FOREIGN_LOCKFILES = [
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "mini-services/realtime/package-lock.json",
+  // pnpm-workspace.yaml NÃO é lockfile, mas é config pnpm — foi removido na
+  // unificação em bun.lock; incluído aqui para o guard pegar a re-introdução
+  // (um `pnpm install` acidental regenera o lockfile E o workspace config).
+  "pnpm-workspace.yaml",
+]
 
 /**
  * Extrai o valor de uma env var no topo de um workflow (ex.: BUN_VERSION).
@@ -1145,6 +1190,96 @@ export function checkActrc(actrcPath) {
 }
 
 /**
+ * Checa UMA linha de um Dockerfile contra versões LITERAIS do Bun — casa
+ * `npm install -g bun@1.2`, `FROM oven/bun:1`, `FROM oven/bun:1.3.14` etc.
+ * A versão nos Dockerfiles só pode vir do build-arg BUN_VERSION
+ * (\${BUN_VERSION}) — um literal cria um segundo ponto de verdade.
+ * Retorna a violação ou null.
+ *
+ * @param {string} file     nome do Dockerfile (ex.: "Dockerfile")
+ * @param {number} lineNo   número da linha (1-based)
+ * @param {string} content  conteúdo da linha
+ * @returns {string|null}
+ */
+export function checkDockerfileBunLine(file, lineNo, content) {
+  if (content.trim().startsWith("#")) return null // ignora comentários
+  // Casa bun@<tag>, FROM oven/bun:<tag> E o padrão curl de download
+  // (bun-v<tag> — ex.: Dockerfile.ubuntu-bun baixa de
+  // .../releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip) — a tag
+  // literal (1.2, 1, 1.3.14, 1-slim) é violação; \${BUN_VERSION} é o padrão
+  // correto. O padrão curl só casa versão semântica/dígitos (bun-v1.2,
+  // bun-v1.3.14) — nunca \${BUN_VERSION} (não é dígito) nem prosa como
+  // 'bun-vendor'.
+  const m = content.match(/(?:npm install -g bun@|FROM oven\/bun:)([^\s"'\\]+)/)
+  if (!m) {
+    const curlM = content.match(/bun-v(\d+(?:\.\d+)*)/)
+    if (!curlM) return null
+    return `${file}:${lineNo}: versão do Bun '${curlM[1]}' em '${curlM[0].trim()}' é um LITERAL no Dockerfile — use a fonte única via ARG (ex.: 'bun-v\${BUN_VERSION}' na URL de download; o workflow passa --build-arg BUN_VERSION=${BUN_VERSION_VAR})`
+  }
+  const tag = m[1]
+  // Permite a fonte única em TODAS as formas válidas do ARG: \${BUN_VERSION},
+  // \${BUN_VERSION}-slim (sufixo — o prefixo exato \${BUN_VERSION} casa),
+  // \${BUN_VERSION:-x} (DEFAULT — o prefixo \${BUN_VERSION: casa) e $BUN_VERSION
+  // (sem chaves). Prefixos EXPLÍCITOS (não includes): um typo como
+  // \${BUN_VERSIONX} é flagrado como literal (includes aceitaria silencioso).
+  if (
+    tag.startsWith("${BUN_VERSION}") ||
+    tag.startsWith("${BUN_VERSION:") ||
+    tag.startsWith("$BUN_VERSION")
+  )
+    return null
+  return `${file}:${lineNo}: versão do Bun '${tag}' em '${m[0].trim()}' é um LITERAL no Dockerfile — use a fonte única via ARG (ex.: 'npm install -g bun@\${BUN_VERSION}' ou 'FROM oven/bun:\${BUN_VERSION}'; o workflow passa --build-arg BUN_VERSION=${BUN_VERSION_VAR})`
+}
+
+/**
+ * Varre TODOS os Dockerfiles da lista DOCKERFILES por versões LITERAIS do
+ * Bun (invariante 13) — o padrão correto é ARG BUN_VERSION + \${BUN_VERSION}
+ * (como o Dockerfile.ubuntu-bun). Um Dockerfile novo que pinar bun sem
+ * entrar na lista escaparia — a lista é explícita de propósito.
+ *
+ * @param {string} cwd  diretório do repo
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkDockerfiles(cwd) {
+  const violations = []
+  for (const rel of DOCKERFILES) {
+    const p = join(cwd, rel)
+    if (!existsSync(p)) {
+      violations.push(
+        `Dockerfile ausente da lista DOCKERFILES: ${rel} (sem ele, um Dockerfile que pinar bun escaparia do guard)`,
+      )
+      continue
+    }
+    const lines = readFileSync(p, "utf8").split("\n")
+    lines.forEach((l, i) => {
+      const v = checkDockerfileBunLine(rel, i + 1, l)
+      if (v) violations.push(v)
+    })
+  }
+  return violations
+}
+
+/**
+ * Verifica que NENHUM lockfile estrangeiro (npm/pnpm) existe no repo
+ * (invariante 14) — a unificação em bun.lock é travada: um `npm install`
+ * acidental na raiz ou num mini-service regenera o lockfile e o guard falha.
+ *
+ * @param {string} cwd  diretório do repo
+ * @returns {string[]} lista de violações (vazia = ok)
+ */
+export function checkNoForeignLockfiles(cwd) {
+  const violations = []
+  for (const rel of FOREIGN_LOCKFILES) {
+    if (existsSync(join(cwd, rel))) {
+      violations.push(
+        `${rel} presente — o repo usa APENAS bun.lock como fonte única de deps; remova o lockfile/config npm/pnpm (um 'npm install'/'pnpm install' acidental o regenera)`,
+      )
+    }
+  }
+  return violations
+}
+
+/**
  * Valida as invariantes a partir dos caminhos reais.
  * @returns {string[]} lista de violações (vazia = ok)
  */
@@ -1274,6 +1409,8 @@ function main() {
   violations.push(...checkNoLiteralBunVersion(workflowsDir))
   violations.push(...checkSetupBunCallSites(workflowsDir))
   violations.push(...checkActrc(join(cwd, ".actrc")))
+  violations.push(...checkDockerfiles(cwd))
+  violations.push(...checkNoForeignLockfiles(cwd))
 
   if (violations.length > 0) {
     console.error(`❌ Fonte única do Bun com ${violations.length} violação(ões):\n`)

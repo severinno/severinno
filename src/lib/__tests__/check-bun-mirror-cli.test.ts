@@ -48,15 +48,19 @@ function runGuard(cwd: string): { status: number | null; out: string } {
  * Cria um repo fake com o MÍNIMO para o validateMirror passar (senão o guard
  * falharia por motivo ALHEIO ao cache key↔path — o teste quer isolar o scan
  * de keys): mirror com env.BUN_VERSION = vars.BUN_VERSION, action sem default
- * + ref a inputs.bun-version + ref ao mirror GHCR, Dockerfile presente e
- * .actrc definindo BUN_VERSION.
+ * + ref a inputs.bun-version + ref ao mirror GHCR, TODOS os 5 Dockerfiles da
+ * lista DOCKERFILES (invariante 13: checkDockerfiles falha se um estiver
+ * ausente — um fixture sem eles falharia por motivo alheio) e .actrc
+ * definindo BUN_VERSION.
  */
 function makeBaseRepo(name: string): string {
   const dir = join(ROOT_TMP, name)
   const wfDir = join(dir, ".github", "workflows")
   const actionDir = join(dir, ".github", "actions", "setup-bun")
+  const realtimeDir = join(dir, "mini-services", "realtime")
   mkdirSync(wfDir, { recursive: true })
   mkdirSync(actionDir, { recursive: true })
+  mkdirSync(realtimeDir, { recursive: true })
 
   writeFileSync(
     join(wfDir, "sync-bun-mirror.yml"),
@@ -90,6 +94,29 @@ runs:
     "utf8",
   )
   writeFileSync(join(dir, "Dockerfile.bun-mirror"), "FROM scratch\nCOPY bun /bun\n", "utf8")
+  // Invariante 13: TODOS os Dockerfiles da lista DOCKERFILES devem existir e
+  // usar o padrão ARG (sem literal). Fixtures válidos = os 4 restantes com
+  // \${BUN_VERSION} (o checkDockerfileBunLine não deve flagrar nenhum).
+  writeFileSync(
+    join(dir, "Dockerfile"),
+    "ARG BUN_VERSION\nFROM node:22-alpine\nRUN npm install -g bun@${BUN_VERSION}\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(dir, "Dockerfile.worker"),
+    "ARG BUN_VERSION\nFROM oven/bun:${BUN_VERSION}\n",
+    "utf8",
+  )
+  writeFileSync(
+    join(dir, "Dockerfile.ubuntu-bun"),
+    `ARG BUN_VERSION\nRUN curl -fsSL -o /tmp/bun.zip \\\n  "https://github.com/oven-sh/bun/releases/download/bun-v\${BUN_VERSION}/bun-linux-x64.zip"\n`,
+    "utf8",
+  )
+  writeFileSync(
+    join(realtimeDir, "Dockerfile"),
+    "ARG BUN_VERSION\nFROM oven/bun:${BUN_VERSION}\n",
+    "utf8",
+  )
   writeFileSync(join(dir, ".actrc"), `--var BUN_VERSION=1.3.14\n`, "utf8")
   return dir
 }

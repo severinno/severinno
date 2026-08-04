@@ -519,3 +519,86 @@ Stage Summary:
 - Sistema de memória persistente configurado em `.agents/memory/`.
 - Agora qualquer agente que iniciar uma nova thread pode ler `.agents/memory/MEMORY.md` para obter contexto completo do projeto.
 - worklog.md mantido como registro detalhado de cada task.
+
+---
+
+Task ID: MEDIO-PRAZO-3A
+Agent: Buffy (orchestrator — parecer + 3 ações recomendadas)
+Task: Executar as 3 ações de médio prazo recomendadas no parecer técnico: (1) consolidar o meta-tooling com doc do "porquê" de cada família de guard, (2) revisar o useViewStore (performance/histórico), (3) ampliar a auditoria de segredos com classificação de severidade.
+
+Work Log:
+
+- **Ação 1 — Consolidação do meta-tooling**: criado `docs/GUARDS.md` catalogando as famílias de guard de `scripts/` (check-_, test-mutation-_, audit-_, validate-_, run-*) com o "porquê" de cada uma: encoding/cache (check-bun-mirror, check-crlf, check-blob-crlf, check-utf8, check-single-line-out-assign, normalize-crlf), doc-symmetry (check-encoding-guards-badge, check-hooks-symmetry, check-readme-anchors/toc/images, check-mutation-jobs, check-workflow-refs), segredos (audit-secret-leaks + check-secret-leaks-baseline), infra (check-tier1-fastpath, check-tier2-cache-restore, check-e2e-counts) e benchs (act-startup-bench, bench-setup-bun). Seção 7 documenta a correção da premissa do parecer: o guard semanal de segredos NÃO gateia só o total — gateia por assinatura (qualquer achado novo falha, incluindo todos os de severidade alta); o `--min-severity` é opt-out para quem quiser relaxar deliberadamente.
+- **Ação 2 — Revisão do useViewStore** (`src/store/view.ts`): adicionado `HISTORY_LIMIT = 50` com cap FIFO do histórico (impede crescimento ilimitado em navegação longa) e dedupe de navegação repetida (navigate para a MESMA view + mesmos params é no-op, evitando entradas duplicadas no histórico e re-renders desnecessários). `sameViewAndParams` compara params shallowly (objetos/arrays nunca colidem — sem falso-positivo de dedupe). Testes adicionados em `src/store/__tests__/view.test.ts` (cap + dedupe, incluindo o math exato do off-by-one `client.view-19`). Sem mudança de API — nenhum call site tocado.
+- **Ação 3 — Severidade na auditoria de segredos**:
+  - `scripts/audit-secret-leaks.mjs`: patterns refatorados para objetos `{ id, severity, re }` (PRIVATE_KEY/PREFIX_TOKEN = alta, SECRET_ASSIGN = média); `scanHistory` usa `pat.re` com backward-compat (`pat.re ?? pat`); findings agora carregam `severity`; JSDoc `@returns` e HELP atualizados; campo `label` removido (redundante com `id`) após review.
+  - `scripts/check-secret-leaks-baseline.mjs`: novos exports `SEVERITY_ORDER`, `severityRank` (severidade desconhecida → ALTA fail-closed — padrão novo no audit nunca escapa do gate) e `splitBySeverity(newFindings, minSeverity) → { blocking, warnings }`; flag `--min-severity` (default `baixa` = comportamento histórico: QUALQUER achado novo falha); `buildBaseline` persiste severidade; JSON output adiciona `minSeverity`/`blockingCount`/`blocking`; output texto distingue blocking vs warnings (warnings exit 0).
+  - `.github/workflows/benchmark-weekly.yml`: job secret-leaks-audit RODA NO DEFAULT (sem `--min-severity alta` — o review provou que isso ENFRAQUECERIA o gate para achados médios; o default já falha em qualquer achado novo, incluindo todos os altos, que é exatamente o pedido do parecer). Comentário no YAML explica a correção da premissa.
+  - `docs/security/secret-leaks-baseline.json` regenerado com `--update`: count 141 preservado, TODOS os findings agora carregam `severity`, sem drift de commit/line (diff severity-only).
+  - Testes: `src/lib/__tests__/audit-secret-leaks.test.ts` e `check-secret-leaks-baseline.test.ts` ganharam asserções de severidade (incluindo `severityRank(undefined) = ALTA` fail-closed e `splitBySeverity` com `--min-severity alta`).
+
+Stage Summary:
+
+- **Ação 1**: `docs/GUARDS.md` criado — catálogo de famílias de guard com o "porquê" de cada uma (156 scripts explicados por família, não por script).
+- **Ação 2**: `src/store/view.ts` — `HISTORY_LIMIT = 50` + dedupe de navegação; API intacta; testes novos verdes.
+- **Ação 3**: auditoria com severidade (alta/média), guard com `--min-severity` fail-closed, baseline 141 findings com severidade, job semanal no default (gate mais forte) — premissa do parecer corrigida na doc.
+- **Validação**: vitest 3 suítes (audit-secret-leaks 20 + check-secret-leaks-baseline 18 + view 15 = 53/53) ✓ · tsc --noEmit 0 erros ✓ · prettier 0 nos 8 arquivos ✓ · guards reais (hooks-symmetry, badge, workflow-refs, mutation-jobs) exit 0 ✓ · guard real default e --min-severity alta exit 0 ✓ · 3 rodadas de code review (pontos críticos aplicados: job revertido para default, fail-safe invertido p/ ALTA, backward-compat do patterns, cleanup do label).
+
+---
+
+Task ID: SEED-COUNT-LITERALS
+Agent: Buffy (orchestrator — guard de refs órfãos de counts)
+Task: Criar um guard (padrão check-e2e-counts) que varre TODO o repo — scripts/, docs/, .github/ — por literais 115/123 de counts de seed que não batam com a derivação real, evitando que um bump futuro deixe outro ref órfão como a âncora ficou.
+
+Work Log:
+
+- **Contexto**: a derivação real dá prod=128, dev=162 (bun scripts/seed-e2e-count.ts --json); o check-e2e-counts.mjs cobre SÓ os workflows + script local (SCAN_FILES explícito), mas não varre docs/ nem todos os scripts/ — o incidente histórico (doc dizia 128, âncora de teste esperava 123) deixou um literal órfão sem ninguém perceber. Audit: únicos refs numéricos "N checks" no repo são 128/162 (UTF-8 checks não têm número); prosa histórica do GUARDS.md ("doc dizia 128, âncora esperava 123") não tem "checks" adjacente.
+- **Guard criado** (`scripts/check-seed-count-literals.mjs`): varre scripts/, docs/, .github/ recursivamente (TEXT_EXTS + SKIP_DIRS node_modules/.git/tool-results/etc) extraindo literais de count EM CONTEXTO e validando contra o conjunto {prod, dev} da derivação. REUSA runDerivation do check-e2e-counts.mjs (fonte única — um só ponto de derivação, nunca literal). Fail-closed: derivação indisponível → exit 1.
+- **Padrões anti-falso-positivo** (3 rodadas de review): (1) principal `/(?:^|[^\w-])(\d{2,})\s+checks?\b/gi` — prefixo `[^\w-]` bloqueia "UTF-8 check" (hífen) e números colados; `\d{2,}` bloqueia single-digit ("run 3 checks", flag '1') e deixa teto aberto p/ counts de 4+ dígitos num bump futuro; (2)+(3) ternary ESPECÍFICO da matrix `'prod' && '(\d{2,})'` e `|| '(\d{2,})' }} checks` — ternaries genéricos (SKIP_PRISMA_GENERATE `&& '1'`) não casam. Mock data (CVC 123, endereços, rgba, senhas) e prosa histórica sem "checks" adjacente não são flags.
+- **Self-scan tripwire evitado**: o guard varre scripts/ (inclui a si mesmo) — o header usa "N checks" genérico (não "128 checks") para um bump futuro não transformar a doc do guard num tripwire (nota documentada no header).
+- **Testes**: `src/lib/__tests__/check-seed-count-literals.test.ts` (7 unit: extract + checkLiterals + fixtures de falsos positivos UTF-8/ternary '1'/mock/prosa) e `check-seed-count-literals-cli.test.ts` (6 CLI: fake repos com stub da derivação — docs stale exit 1, workflow stale exit 1, clean+noise exit 0, derivação falha/JSON inválido fail-closed, repo real exit 0). Bugs reais pegos no caminho: padrão ternary casando `'prod' && '1'` e asserção CLI errada ("divergente" vs "fora da derivação") + escape `\${{` em template literals (esbuild).
+- **Wiring**: package.json `check:seed-count-literals`; pr-check.yml job novo `seed-count-literals-guard` (logo após e2e-counts-guard, com setup-bun + node script); docs/GUARDS.md seção 5 atualizada (check-e2e-counts + check-seed-count-literals).
+
+Stage Summary:
+
+- **Guard**: `scripts/check-seed-count-literals.mjs` — varre scripts/, docs/, .github/ por literais de count em contexto fora de {prod: 128, dev: 162}; exit 0 sincronizado / 1 com arquivo:linha + Ação (ou fail-closed se a derivação falhar).
+- **Testes**: 13 novos (7 unit + 6 CLI) + regressão check-e2e-counts 8+8 → 29/29 verdes. tsc 0, prettier 0 (6 arquivos), CRLF 0, node --check OK.
+- **Validação**: guard real exit 0 ("Counts de seed sincronizados em scripts, docs, .github (prod=128, dev=162)") · check-e2e-counts exit 0 (comentário novo do job não confunde os TARGET_PATTERNS) · check-workflow-refs exit 0 · mutation-jobs exit 0 · hooks-symmetry exit 0 · 3 rodadas de code review (fixes: \d{2,3}→\d{2,} teto aberto, self-scan tripwire do header, \${{ escapes).
+
+---
+
+Task ID: SINGLE-LINE-CONTRATO
+Agent: Buffy (orchestrator — contrato do último ref de count não auditado)
+Task: Conferir se o exemplo '128 checks' nos comentários do check-single-line-out-assign.sh (L11/L15) reflete o estado atual dos workflows e documentar o contrato — fechando o último ref de count não auditado.
+
+Work Log:
+
+- **Verificação**: a derivação real dá prod=128, dev=162; `validate-seed-guards-matrix-local.sh` (L143) tem a string exata `cell "Rodando prod E2E (128 checks)..."` — o exemplo do header é ATUAL (não drift). Extração direta via check-seed-count-literals.mjs: 4 literais 128 no arquivo (L11/L15/header novo/fim), zero violações contra {128, 162}.
+- **Contrato documentado**: novo bloco 'CONTRATO DE COUNTS' no header do check-single-line-out-assign.sh — o exemplo "128 checks" é um ref VIVO (não ilustração genérica): o check-seed-count-literals.mjs varre TODO o repo e falha se qualquer literal "N checks" sair do conjunto válido {prod, dev}; num bump do seed, o exemplo DEVE ser atualizado junto com os workflows. O bloco de correção no fim do script usa "N checks" genérico de propósito (sem dígito, evita segundo ref a sincronizar).
+- **Decisões do review**: referência grep-able (`grep -n 'Rodando prod E2E' scripts/validate-seed-guards-matrix-local.sh`) em vez de "(L143)" hardcoded (drift); parenthetical documentando que o snapshot "hoje" é deliberado — prosa sem "checks" adjacente não é flag (igual à prosa histórica do GUARDS.md).
+
+Stage Summary:
+
+- **Arquivo**: scripts/check-single-line-out-assign.sh — header com bloco CONTRATO DE COUNTS (ref vivo auditado, atualizar em bump).
+- **Validação**: bash -n OK · guard real exit 0 (4×128, zero violações) · CRLF 0 · prettier 0 · review SHIP.
+- **Estado**: todos os refs de count do repo agora são auditados — os workflows pelo check-e2e-counts, e TODO o repo (scripts/, docs/, .github/) pelo check-seed-count-literals (incluindo os exemplos de doc deste guard).
+
+---
+
+Stage: MUTATION-COORD-UPDATE
+Agent: orchestrator
+Task: Mutation test do contrato de atualização COORDENADA dos counts de seed — prova que o seed-e2e-count.test.ts pega o cenário exato do bug histórico (atualizar SÓ os comentários dos workflows 128→N sem tocar a âncora do teste).
+
+Work Log:
+
+- **Problema**: o incidente 123/128 (anchor stale) mostrou que a doc dos workflows e o anchor do teste precisam ser atualizados JUNTOS num bump — mas não havia prova end-to-end de que a atualização unilateral é pega. O mutation-seed-dev-e2e prova sensibilidade do E2E ao seed; faltava provar a sensibilidade do seed-e2e-count.test.ts à generalização da doc.
+- **Script novo**: scripts/test-mutation-coord-update.sh (padrão seed-dev-e2e: backup + trap EXIT com cp, NUNCA git checkout) — CONTROLE (vitest real no seed-e2e-count.test.ts deve passar, exit 0) → mutação in-place dos 3 SCAN_FILES (pr-check.yml, seed-guards.yml, validate-seed-guards-matrix-local.sh): "128 checks"→"N checks" + ternary '128'→'N' (fail-fast se o padrão não existir) → MUTAÇÃO (deve FALHAR com "piso prod violado" — o piso de sites prod ≥ 8 quebra quando os sites somem da extração; o anchor de valor 128 NÃO muda, a derivação é do código). Exit 0 = mutação detectada; 1 = guard cego ou infra.
+- **Por que o piso falha**: extractDocumentedCounts perde os sites de prod quando a doc vira "N checks" → o teste "piso de sites documentados por alvo" falha com arquivo:linha. A âncora de sanidade (prod=128) continua passando (vem do código) — prova que o contrato é coordenado, não duplicado.
+- **Wiring**: package.json "test:mutation-coord-update" (após test:mutation-seed-dev-e2e) + job mutation-coord-update no seed-guards.yml (checkout + setup-bun + cache node_modules + bun install + run + summary). NÃO vai na matriz node-pura do master mutation-guards (roda vitest real, precisa de node_modules). Sem postgis: teste unitário, não toca banco.
+- **Decisões do review**: wording do comentário do job corrigido — "em cópia" → "IN-PLACE no working tree (é assim que o teste lê os arquivos via process.cwd(); cópia em temp quebraria a premissa)".
+
+Stage Summary:
+
+- **Arquivos**: scripts/test-mutation-coord-update.sh (novo) · package.json (script test:mutation-coord-update) · .github/workflows/seed-guards.yml (job mutation-coord-update).
+- **Validação**: mutation test real exit 0 (controle OK → mutação DETECTADA "piso prod violado" → 2 failed/20 passed no run mutado → SCAN_FILES restaurados) · bash -n OK · check-mutation-jobs exit 0 (16 mutation tests cobertos) · check-e2e-counts exit 0 (prod=128, dev=162) · prettier --ignore-unknown OK · CRLF 0 · 2 rodadas de review (SHIP).
+- **Estado**: contrato de atualização coordenada enforced — um PR que atualize SÓ os comentários dos workflows falha o seed-e2e-count.test.ts no CI, obrigando doc + anchor a andarem juntos.
