@@ -71,6 +71,16 @@ export default function ProvidersMap({
   const selectRef = useRef(onSelectProvider)
   selectRef.current = onSelectProvider
 
+  // Refs para o fit inicial — o effect de init do mapa roda UMA vez (deps []);
+  // ler providers/coords via ref evita recriar o mapa quando o query refetch
+  // entrega um array novo (o sync de markers abaixo é quem acompanha updates).
+  const providersRef = useRef(providers)
+  providersRef.current = providers
+  const userLatRef = useRef(userLat)
+  userLatRef.current = userLat
+  const userLngRef = useRef(userLng)
+  userLngRef.current = userLng
+
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number"
 
   const clusterClickHandler = useCallback((e: MapLayerMouseEvent) => {
@@ -153,10 +163,11 @@ export default function ProvidersMap({
       map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left")
 
       map.on("load", () => {
-        fitToBounds(map, providers, userLat, userLng)
+        fitToBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
       })
       window.setTimeout(() => {
-        if (mapRef.current) fitToBounds(mapRef.current, providers, userLat, userLng)
+        if (mapRef.current)
+          fitToBounds(mapRef.current, providersRef.current, userLatRef.current, userLngRef.current)
       }, 50)
 
       mapRef.current = map
@@ -217,7 +228,7 @@ export default function ProvidersMap({
           map,
           maplibregl,
           providers,
-          onSelectProvider,
+          selectRef.current,
           markersRef,
           clusterSourceAdded,
         )
@@ -228,7 +239,7 @@ export default function ProvidersMap({
           maplibregl,
           providers,
           selectedId,
-          onSelectProvider,
+          onSelectProvider: selectRef.current,
           markersRef,
         })
       }
@@ -237,7 +248,7 @@ export default function ProvidersMap({
     return () => {
       cancelled = true
     }
-  }, [providers, selectedId])
+  }, [providers, selectedId, userLat, userLng])
 
   // ---- Sync user location marker + radius circle --------------------------
   useEffect(() => {
@@ -258,7 +269,7 @@ export default function ProvidersMap({
     return () => {
       cancelled = true
     }
-  }, [userLat, userLng, radius])
+  }, [userLat, userLng, radius, hasUserLocation])
 
   return (
     <div

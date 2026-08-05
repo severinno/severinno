@@ -51,7 +51,7 @@ export function ProviderDateBlocks() {
     queryFn: async () => apiGet("/api/availability/blocks"),
   })
 
-  const blocks = blocksQuery.data?.items ?? []
+  const blocks = React.useMemo(() => blocksQuery.data?.items ?? [], [blocksQuery.data?.items])
 
   const selectedBlocks = blocks.filter((b) => isSameDay(new Date(b.date), selectedDate))
 

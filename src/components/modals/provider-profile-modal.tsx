@@ -1,4 +1,5 @@
 "use client"
+import Image from "next/image"
 
 /**
  * ProviderProfileModal — compact, clean, minimalist redesign.
@@ -595,11 +596,13 @@ function ServiceCard({
       <div className="flex items-center gap-3 p-3">
         {/* Photo thumbnail */}
         {photos.length > 0 ? (
-          <div className="bg-muted size-12 shrink-0 overflow-hidden rounded-md">
-            <img
+          <div className="bg-muted relative size-12 shrink-0 overflow-hidden rounded-md">
+            <Image
               src={photos[0]}
               alt={service.title}
-              className="size-full object-cover"
+              fill
+              sizes="48px"
+              className="object-cover"
               loading="lazy"
             />
           </div>

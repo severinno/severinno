@@ -1,4 +1,5 @@
 "use client"
+import Image from "next/image"
 
 /**
  * AdminServices — all services across providers (read-mostly).
@@ -239,7 +240,7 @@ export function AdminServices() {
   })
 
   // ---- Derived: sort + paginate client-side --------------------------------
-  const allItems = data?.items ?? []
+  const allItems = React.useMemo(() => data?.items ?? [], [data?.items])
   const total = allItems.length
 
   const sortedItems = React.useMemo(() => {
@@ -525,9 +526,15 @@ export function AdminServices() {
                       >
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="bg-muted flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border">
+                            <div className="bg-muted relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border">
                               {photo ? (
-                                <img src={photo} alt={s.title} className="size-full object-cover" />
+                                <Image
+                                  src={photo}
+                                  alt={s.title}
+                                  fill
+                                  sizes="40px"
+                                  className="object-cover"
+                                />
                               ) : (
                                 <ImageIcon className="text-muted-foreground size-4" />
                               )}

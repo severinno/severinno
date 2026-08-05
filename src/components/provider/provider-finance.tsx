@@ -166,7 +166,7 @@ export function ProviderFinance() {
     queryFn: async () => apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
   })
 
-  const allBookings = query.data?.items ?? []
+  const allBookings = React.useMemo(() => query.data?.items ?? [], [query.data?.items])
 
   const filtered = React.useMemo(() => {
     const m = Number(month)

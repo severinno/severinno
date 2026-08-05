@@ -173,6 +173,7 @@ export function FilePhotos({
               className="group bg-muted relative aspect-square overflow-hidden rounded-lg border"
             >
               {/* img element used intentionally for runtime-provided URLs */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={url}
                 alt={`Foto ${i + 1}`}

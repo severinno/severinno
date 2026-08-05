@@ -56,9 +56,6 @@ export const ALLOWED_UTF8_SCOPE_DIR = "src"
 const CALL_RE =
   /(?:^|\s|\|\|\s)(?:bash\s+scripts\/check-utf8\.sh|python3\s+scripts\/check_utf8\.py|scripts\/check-utf8\.sh|scripts\/check_utf8\.py|check-utf8\.sh|check_utf8\.py)(?:\s|$|\|)/
 
-/** Regex que extrai o argumento de diretório (após flags, antes de pipe/;/$). */
-const DIR_ARG_RE = /(?:^|\s)(src\/?|[a-zA-Z._/-]+)\s*(?:[;&|]|$|&&)/
-
 /** Linha de código (não comentário)? Comentários são `#`/`//`/`*` iniciais. */
 export function isCommentLine(line) {
   const t = line.trim()
@@ -131,7 +128,7 @@ export function extractUtf8CallSites(content) {
       if (t === "scripts/check-utf8.sh" || t === "scripts/check_utf8.py") continue
       if (t === "bash" || t === "python3" || t === "||") continue
       if (t === "echo" || t === "printf") continue
-      if (/^[\|&>;]/.test(t)) continue
+      if (/^[|&>;]/.test(t)) continue
       // operadores
       if (t === "&&" || t === "|" || t === ">" || t === ">>" || t === "2>&1") continue
       dir = t.replace(/\/$/, "") // remove trailing slash

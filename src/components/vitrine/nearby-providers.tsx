@@ -84,6 +84,10 @@ export default function NearbyProviders() {
   const visibleProviders = expanded ? providers : providers.slice(0, COLLAPSED_COUNT)
 
   // ── Infinite scroll: IntersectionObserver on sentinel ───────────────
+  // fetchNextPage é estável no objeto do query — destructure para a dep ser
+  // a função estável, não o objeto nearbyQuery (que muda de identidade a cada
+  // refetch e recriaria o observer desnecessariamente).
+  const fetchNextPage = nearbyQuery.fetchNextPage
   React.useEffect(() => {
     const el = sentinelRef.current
     if (!el || !expanded || !hasNext || isFetchingNext) return
@@ -91,14 +95,14 @@ export default function NearbyProviders() {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting && hasNext && !isFetchingNext) {
-          nearbyQuery.fetchNextPage()
+          fetchNextPage()
         }
       },
       { rootMargin: "200px" },
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [expanded, hasNext, isFetchingNext, nearbyQuery.fetchNextPage])
+  }, [expanded, hasNext, isFetchingNext, fetchNextPage])
 
   if (!hasLocation || (providers.length === 0 && !isLoading)) {
     return null

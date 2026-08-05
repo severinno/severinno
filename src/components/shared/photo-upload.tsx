@@ -51,6 +51,7 @@ export function PhotoUpload({
         )}
       >
         {currentUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- URL runtime (upload/blob)
           <img src={currentUrl} alt="" className="size-full object-cover" />
         ) : (
           <Camera className="text-muted-foreground size-5" />

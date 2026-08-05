@@ -1,0 +1,45 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pr-check.yml — job lint-guard (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+{
+  "name": "Lint Guard (prettier + eslint zero)",
+  "runs-on": "ubuntu-latest",
+  "steps": [
+    {
+      "uses": "actions/checkout@v4",
+    },
+    {
+      "uses": "./.github/actions/setup-bun",
+      "with": {
+        "bun-version": "\${{ vars.BUN_VERSION }}",
+      },
+    },
+    {
+      "name": "Cache node_modules",
+      "uses": "actions/cache@v4",
+      "with": {
+        "key": "bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}",
+        "path": "node_modules",
+        "restore-keys": "bun-\${{ vars.BUN_VERSION }}-",
+      },
+    },
+    {
+      "name": "Install deps",
+      "run": "bun install --frozen-lockfile",
+    },
+    {
+      "name": "Check prettier formatting (all matched files)",
+      "run": "npx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'
+",
+    },
+    {
+      "name": "Check eslint (max-warnings 0)",
+      "run": "npx eslint . --max-warnings 0",
+    },
+    {
+      "name": "Summary",
+      "run": "echo "✅ All files formatted (prettier) and zero eslint warnings/errors."",
+    },
+  ],
+}
+`;

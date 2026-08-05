@@ -322,6 +322,7 @@ export function GiSTSelectivitySection({
     snapPct,
     maxModelAtSelectivity,
     exceedingCount,
+    scaledCounts.length,
   ])
 
   /** Format provider count: 1000 → "1k", 10000 → "10k", etc. */

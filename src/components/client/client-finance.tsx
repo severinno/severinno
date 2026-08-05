@@ -157,7 +157,7 @@ function providerInitials(name?: string | null): string {
 export function ClientFinance() {
   const { isConnected, status } = useRealtimeFinance()
 
-  const now = new Date()
+  const now = React.useMemo(() => new Date(), [])
   const [tab, setTab] = React.useState("ALL")
   const [year, setYear] = React.useState<string>(String(now.getFullYear()))
   const [month, setMonth] = React.useState<string>("ALL") // "ALL" or 0..11

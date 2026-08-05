@@ -707,6 +707,62 @@ jobs:
       - name: Summary
         run: echo "✅ All .github/workflows/*.yml pass actionlint (syntax + shellcheck)."
 
+  # ── Lint Guard (prettier + eslint zero) ──────────────────────────────
+  # Fase 3/4 do parecer (lint/prettier zero): falha o PR se QUALQUER
+  # arquivo do repo estiver fora do padrão do prettier OU se o eslint
+  # emitir QUALQUER warning/erro (--max-warnings 0).
+  #
+  # Por que existe: formatação e lint eram feitos só no hook local
+  # (pre-commit lint-staged) — um PR criado fora do ambiente local (web
+  # editor, squash, CI-only) ou um warning introduzido por um arquivo que
+  # o lint-staged não cobre (diretório novo, extensão nova) passaria sem
+  # revisão. Este job fecha o loop: prettier --check + eslint
+  # --max-warnings 0 no working tree completo do PR, com arquivo:linha
+  # na falha.
+  #
+  # Prettier cobre TODO o repo (src/, scripts/, docs/, prisma/,
+  # .github/workflows/*.yml, configs raiz) via .prettierignore (artefatos
+  # gerados/runtime excluídos — lhci-reports, tool-results, secrets,
+  # download, upload, agent-ctx, *.pid, *.err). O escopo abaixo é o mesmo
+  # validado localmente na Fase 3 — `prettier --check .` puro não
+  # funcina (glob errors em *.prisma/*.sql na raiz), então o escopo é
+  # explícito.
+  lint-guard:
+    name: Lint Guard (prettier + eslint zero)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Check prettier formatting (all matched files)
+        run: >
+          npx prettier --check --ignore-unknown
+          'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'
+
+      - name: Check eslint (max-warnings 0)
+        run: npx eslint . --max-warnings 0
+
+      # CONTRATO REPO-WIDE (não PR-scope): eslint . --max-warnings 0 cobre
+      # TODO o repo — um warning introduzido em QUALQUER arquivo (mesmo via
+      # merge de base com warning, sem o PR tocar o arquivo) falha o job.
+      # Semântica intencional da Fase 3/4: zero warnings é contrato duro.
+
+      - name: Summary
+        run: echo "✅ All files formatted (prettier) and zero eslint warnings/errors."
+
   # ── Fuzz Tests ─────────────────────────────────────────────────────────
   # Runs in parallel with other checks. No external dependencies needed.
   fuzz:

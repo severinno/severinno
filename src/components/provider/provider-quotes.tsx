@@ -1,6 +1,6 @@
 "use client"
-
 import * as React from "react"
+import Image from "next/image"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
@@ -221,11 +221,13 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
           {item.photos && item.photos.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {item.photos.map((p, i) => (
-                <img
+                <Image
                   key={i}
                   src={p}
                   alt={`Foto ${i + 1}`}
-                  className="size-12 rounded border object-cover"
+                  width={48}
+                  height={48}
+                  className="rounded border object-cover"
                 />
               ))}
             </div>
@@ -412,7 +414,7 @@ export function ProviderQuotes() {
       }),
   })
 
-  const requests = query.data?.items ?? []
+  const requests = React.useMemo(() => query.data?.items ?? [], [query.data?.items])
 
   const counts = React.useMemo(() => {
     const c: Record<string, number> = {

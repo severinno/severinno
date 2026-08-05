@@ -42,7 +42,7 @@ export function ScheduleBookingDialog({ open, onOpenChange, quote }: ScheduleDia
       setAddress(quote.address)
       setScheduledAt("")
     }
-  }, [open, quote?.id])
+  }, [open, quote])
 
   const bookMutation = useMutation({
     mutationFn: () =>

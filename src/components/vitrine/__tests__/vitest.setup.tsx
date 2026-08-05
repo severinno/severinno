@@ -26,8 +26,15 @@ export const mockGeoStore: Record<string, unknown> = {
 }
 
 vi.mock("@/store/geo", () => ({
+  // selector é OPCIONAL — semântica real do Zustand: useGeoStore() sem
+  // argumento devolve o estado INTEIRO (vários componentes do repo — ex.:
+  // geo-awareness-badge, provider-profile-modal, topbar, hero, vitrine —
+  // chamam sem selector). O mock antigo exigia selector e lançava
+  // 'selector is not a function' em toda suíte jsdom que renderizasse
+  // esses componentes (pré-existente, descoberto na varredura da Fase 4).
   useGeoStore: Object.assign(
-    (selector: (s: typeof mockGeoStore) => unknown) => selector(mockGeoStore),
+    (selector?: (s: typeof mockGeoStore) => unknown) =>
+      selector ? selector(mockGeoStore) : mockGeoStore,
     {
       getState: () => mockGeoStore,
       setState: (partial: Record<string, unknown>) => Object.assign(mockGeoStore, partial),
