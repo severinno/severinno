@@ -23,17 +23,11 @@ export async function POST(
     })
 
     if (!settlement) {
-      return NextResponse.json(
-        { error: "Repasse não encontrado." },
-        { status: 404 },
-      )
+      return NextResponse.json({ error: "Repasse não encontrado." }, { status: 404 })
     }
 
     if (settlement.status === "PAID") {
-      return NextResponse.json(
-        { error: "Este repasse já foi pago." },
-        { status: 409 },
-      )
+      return NextResponse.json({ error: "Este repasse já foi pago." }, { status: 409 })
     }
 
     const updated = await db.providerSettlement.update({

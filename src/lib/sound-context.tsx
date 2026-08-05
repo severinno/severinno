@@ -98,11 +98,7 @@ export function SoundProvider({
     [soundEnabled, vibrateEnabled, enabled],
   )
 
-  return (
-    <SoundContext.Provider value={value}>
-      {children}
-    </SoundContext.Provider>
-  )
+  return <SoundContext.Provider value={value}>{children}</SoundContext.Provider>
 }
 
 /**

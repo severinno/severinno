@@ -57,9 +57,7 @@ describe("User search_vector (full-text search)", () => {
     // COALESCE(NEW.district, '') || ' ' ||
     // COALESCE(NEW.street, '')
     const expectedFields = ["name", "bio", "city", "district", "street"]
-    const triggerFields = [
-      "name", "bio", "city", "district", "street"
-    ]
+    const triggerFields = ["name", "bio", "city", "district", "street"]
     expect(triggerFields).toEqual(expectedFields)
   })
 })
@@ -106,14 +104,12 @@ describe("Soft delete filters", () => {
   })
 
   it("providers query filters by deletedAt IS NULL", async () => {
-    (vi.mocked(db.$queryRawUnsafe) as any).mockResolvedValue([{ total: 5 }])
+    ;(vi.mocked(db.$queryRawUnsafe) as any).mockResolvedValue([{ total: 5 }])
 
     await db.$queryRawUnsafe(
-      `SELECT COUNT(*) FROM "User" u WHERE u.role = 'PROVIDER' AND u."deletedAt" IS NULL`
+      `SELECT COUNT(*) FROM "User" u WHERE u.role = 'PROVIDER' AND u."deletedAt" IS NULL`,
     )
 
-    expect(db.$queryRawUnsafe).toHaveBeenCalledWith(
-      expect.stringContaining('"deletedAt" IS NULL')
-    )
+    expect(db.$queryRawUnsafe).toHaveBeenCalledWith(expect.stringContaining('"deletedAt" IS NULL'))
   })
 })

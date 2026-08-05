@@ -228,5 +228,3 @@ describe("bookingCompletedHtml", () => {
     expect(html).not.toContain("undefined")
   })
 })
-
-

@@ -20,9 +20,11 @@ export function DashboardPageClient() {
     }
     if (user && status === "authenticated") {
       const view =
-        user.role === "ADMIN" ? "admin.dashboard" :
-        user.role === "PROVIDER" ? "provider.dashboard" :
-        "client.dashboard"
+        user.role === "ADMIN"
+          ? "admin.dashboard"
+          : user.role === "PROVIDER"
+            ? "provider.dashboard"
+            : "client.dashboard"
       navigate(view)
     }
   }, [status, user, navigate])
@@ -30,15 +32,13 @@ export function DashboardPageClient() {
   if (status === "loading" || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        <Loader2 className="text-muted-foreground size-8 animate-spin" />
       </div>
     )
   }
 
   const Panel =
-    user.role === "ADMIN" ? AdminPanel :
-    user.role === "PROVIDER" ? ProviderPanel :
-    ClientPanel
+    user.role === "ADMIN" ? AdminPanel : user.role === "PROVIDER" ? ProviderPanel : ClientPanel
 
   return <Panel />
 }

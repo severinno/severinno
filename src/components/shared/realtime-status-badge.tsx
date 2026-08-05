@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 /**
  * RealtimeStatusBadge — Live-connection indicator for real-time features.
@@ -22,9 +22,9 @@
  *   <RealtimeStatusBadge status={status} isConnected={isConnected} />
  */
 
-import * as React from 'react'
-import { cn } from '@/lib/utils'
-import type { ConnectionStatus } from '@/hooks/use-realtime'
+import * as React from "react"
+import { cn } from "@/lib/utils"
+import type { ConnectionStatus } from "@/hooks/use-realtime"
 
 // ---------------------------------------------------------------------------
 // Props
@@ -34,7 +34,7 @@ interface RealtimeStatusBadgeProps {
   status: ConnectionStatus
   isConnected: boolean
   /** Size variant. Default "sm" fits inside a header row. */
-  size?: 'sm' | 'md'
+  size?: "sm" | "md"
   /** Optional extra class names. */
   className?: string
 }
@@ -48,28 +48,28 @@ const STATUS_CONFIG: Record<
   { label: string; dotColor: string; dotPulse: boolean }
 > = {
   connected: {
-    label: 'Ao vivo',
-    dotColor: 'bg-emerald-500',
+    label: "Ao vivo",
+    dotColor: "bg-emerald-500",
     dotPulse: true,
   },
   connecting: {
-    label: 'Conectando\u2026',
-    dotColor: 'bg-amber-400',
+    label: "Conectando\u2026",
+    dotColor: "bg-amber-400",
     dotPulse: true,
   },
   reconnecting: {
-    label: 'Reconectando\u2026',
-    dotColor: 'bg-amber-400',
+    label: "Reconectando\u2026",
+    dotColor: "bg-amber-400",
     dotPulse: true,
   },
   disconnected: {
-    label: 'Offline',
-    dotColor: 'bg-muted-foreground/40',
+    label: "Offline",
+    dotColor: "bg-muted-foreground/40",
     dotPulse: false,
   },
   error: {
-    label: 'Erro',
-    dotColor: 'bg-rose-500',
+    label: "Erro",
+    dotColor: "bg-rose-500",
     dotPulse: false,
   },
 }
@@ -81,7 +81,7 @@ const STATUS_CONFIG: Record<
 export function RealtimeStatusBadge({
   status,
   isConnected,
-  size = 'sm',
+  size = "sm",
   className,
 }: RealtimeStatusBadgeProps) {
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.disconnected
@@ -93,13 +93,13 @@ export function RealtimeStatusBadge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border font-medium leading-none transition-colors',
+        "inline-flex items-center gap-1.5 rounded-full border leading-none font-medium transition-colors",
         // Size
-        size === 'sm' ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs',
+        size === "sm" ? "px-2 py-1 text-[10px]" : "px-2.5 py-1.5 text-xs",
         // Tone — muted border unless connected
         isConnected
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300'
-          : 'border-border/60 bg-muted/40 text-muted-foreground',
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300"
+          : "border-border/60 bg-muted/40 text-muted-foreground",
         className,
       )}
       title={config.label}
@@ -109,10 +109,10 @@ export function RealtimeStatusBadge({
       {/* Pulsing dot */}
       <span
         className={cn(
-          'inline-block rounded-full',
-          size === 'sm' ? 'size-1.5' : 'size-2',
+          "inline-block rounded-full",
+          size === "sm" ? "size-1.5" : "size-2",
           config.dotColor,
-          dotPulse && 'animate-pulse',
+          dotPulse && "animate-pulse",
         )}
         aria-hidden="true"
       />

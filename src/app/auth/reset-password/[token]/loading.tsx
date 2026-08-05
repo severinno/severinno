@@ -3,8 +3,8 @@ import { LoadingShell, StaggerContainer, StaggerItem, S } from "@/app/loading-sh
 export default function Loading() {
   return (
     <LoadingShell>
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 to-background p-4 dark:from-emerald-950/20">
-        <div className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-lg">
+      <div className="to-background flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 p-4 dark:from-emerald-950/20">
+        <div className="bg-card w-full max-w-md rounded-2xl border p-8 shadow-lg">
           <StaggerContainer stagger={0.06}>
             {/* Icon + title + subtitle */}
             <StaggerItem y={10} duration={0.35} className="mb-6 text-center">

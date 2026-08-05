@@ -67,7 +67,8 @@ const FAQS: FAQItem[] = [
     question: "Como funciona o Severinno?",
     answer:
       "O Severinno conecta você a prestadores de serviço verificados próximos à sua localização. Você busca o serviço, compara avaliações reais de outros clientes, pede orçamento grátis e agenda — tudo pela plataforma. O pagamento só é liberado após você confirmar a conclusão do serviço.",
-    example: "Ex: Maria precisava de um eletricista. Buscou na plataforma, comparou 3 profissionais e contratou o mais bem avaliado — tudo em 5 minutos.",
+    example:
+      "Ex: Maria precisava de um eletricista. Buscou na plataforma, comparou 3 profissionais e contratou o mais bem avaliado — tudo em 5 minutos.",
     popular: true,
   },
   {
@@ -84,7 +85,8 @@ const FAQS: FAQItem[] = [
     question: "Como os prestadores são verificados?",
     answer:
       "Todos os prestadores passam por um processo de verificação que inclui validação de documento de identidade (RG/CPF/CNPJ), comprovante de endereço e confirmação de telefone. O selo 'Verificado' no perfil indica que essa validação foi concluída. Prestadores não verificados não aparecem na vitrine pública.",
-    example: "Ex: João contratou um encanador e viu o selo de verificação no perfil — sinal de que os documentos foram validados pela equipe.",
+    example:
+      "Ex: João contratou um encanador e viu o selo de verificação no perfil — sinal de que os documentos foram validados pela equipe.",
   },
   {
     id: "faq-4",
@@ -114,7 +116,8 @@ const FAQS: FAQItem[] = [
     question: "Como funciona o pagamento?",
     answer:
       "O pagamento é feito pela plataforma após a conclusão do serviço. Você pode pagar com cartão de crédito, PIX ou boleto. O valor só é repassado ao prestador depois que você marca o serviço como concluído — garantindo sua satisfação.",
-    example: "Ex: Você paga R$ 150 pelo serviço. O valor fica retido até você confirmar que ficou satisfeito. Só então o prestador recebe.",
+    example:
+      "Ex: Você paga R$ 150 pelo serviço. O valor fica retido até você confirmar que ficou satisfeito. Só então o prestador recebe.",
   },
   {
     id: "faq-8",
@@ -148,31 +151,36 @@ const CATEGORY_META: Record<
     label: "Geral",
     icon: <HelpCircle className="size-3.5" />,
     color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
   payment: {
     label: "Pagamento",
     icon: <CreditCard className="size-3.5" />,
     color: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
   scheduling: {
     label: "Agendamento",
     icon: <Calendar className="size-3.5" />,
     color: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
   providers: {
     label: "Prestadores",
     icon: <UserCheck className="size-3.5" />,
     color: "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
   safety: {
     label: "Segurança",
     icon: <ShieldCheck className="size-3.5" />,
     color: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
-    activeColor: "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
+    activeColor:
+      "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-700",
   },
 }
 
@@ -198,19 +206,14 @@ export default function FAQ() {
     if (query.trim()) {
       const q = query.toLowerCase()
       result = result.filter(
-        (f) =>
-          f.question.toLowerCase().includes(q) ||
-          f.answer.toLowerCase().includes(q),
+        (f) => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q),
       )
     }
     return result
   }, [query, activeCategory])
 
   // Popular questions for quick links (H6, H7)
-  const popularFaqs = React.useMemo(
-    () => FAQS.filter((f) => f.popular),
-    [],
-  )
+  const popularFaqs = React.useMemo(() => FAQS.filter((f) => f.popular), [])
 
   // Count by category in current filtered set (H1)
   const categoryCounts = React.useMemo(() => {
@@ -220,9 +223,7 @@ export default function FAQ() {
       if (query.trim()) {
         const q = query.toLowerCase()
         subset = subset.filter(
-          (f) =>
-            f.question.toLowerCase().includes(q) ||
-            f.answer.toLowerCase().includes(q),
+          (f) => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q),
         )
       }
       if (subset.length > 0) counts[cat] = subset.length
@@ -256,26 +257,22 @@ export default function FAQ() {
   return (
     <section
       id="faq"
-      className="relative scroll-mt-20 bg-gradient-to-b from-background to-muted/30 py-16 sm:py-20"
+      className="from-background to-muted/30 relative scroll-mt-20 bg-gradient-to-b py-16 sm:py-20"
     >
       {/* Decorative dot pattern */}
       <div
         aria-hidden
         className="absolute inset-0 opacity-[0.03]"
         style={{
-          backgroundImage:
-            "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
+          backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
           backgroundSize: "24px 24px",
         }}
       />
 
-      <div
-        ref={ref}
-        className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
-      >
+      <div ref={ref} className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
           {/* ============ LEFT: heading + search + categories + popular + CTA ============ */}
-          <div className="lg:sticky lg:top-24 lg:self-start space-y-6">
+          <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
             {/* Heading */}
             <motion.div
               initial={{ opacity: 0, y: 24 }}
@@ -286,15 +283,13 @@ export default function FAQ() {
                 <HelpCircle className="size-3.5" />
                 Perguntas frequentes
               </span>
-              <h2 className="mt-4 text-balance text-3xl font-bold tracking-tight sm:text-4xl">
+              <h2 className="mt-4 text-3xl font-bold tracking-tight text-balance sm:text-4xl">
                 Tire suas dúvidas antes de{" "}
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  contratar
-                </span>
+                <span className="text-emerald-600 dark:text-emerald-400">contratar</span>
               </h2>
-              <p className="mt-3 text-pretty text-muted-foreground">
-                Reunimos as perguntas mais comuns sobre como o Severinno
-                funciona — do cadastro ao pagamento.
+              <p className="text-muted-foreground mt-3 text-pretty">
+                Reunimos as perguntas mais comuns sobre como o Severinno funciona — do cadastro ao
+                pagamento.
               </p>
             </motion.div>
 
@@ -305,27 +300,24 @@ export default function FAQ() {
               transition={{ duration: 0.5, delay: 0.1 }}
               className="relative"
             >
-              <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar nas dúvidas…"
-                className={cn(
-                  "pl-9 pr-10",
-                  query.trim() && "pr-20",
-                )}
+                className={cn("pr-10 pl-9", query.trim() && "pr-20")}
                 aria-label="Buscar nas perguntas frequentes"
               />
               {/* Clear button — H3: user control */}
               {query.trim() && (
                 <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1">
-                  <span className="text-xs text-muted-foreground tabular-nums">
+                  <span className="text-muted-foreground text-xs tabular-nums">
                     {filtered.length}
                   </span>
                   <button
                     type="button"
                     onClick={handleClearSearch}
-                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-6 items-center justify-center rounded-md transition-colors"
                     aria-label="Limpar busca"
                   >
                     <X className="size-3.5" />
@@ -340,7 +332,7 @@ export default function FAQ() {
               animate={visible ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.5, delay: 0.15 }}
             >
-              <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase">
                 Filtrar por categoria
               </p>
               <div className="flex flex-wrap gap-2">
@@ -377,7 +369,7 @@ export default function FAQ() {
               animate={visible ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.5, delay: 0.2 }}
             >
-              <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <p className="text-muted-foreground mb-2 text-xs font-medium tracking-wider uppercase">
                 Perguntas mais frequentes
               </p>
               <ul className="space-y-1.5">
@@ -386,7 +378,7 @@ export default function FAQ() {
                     <button
                       type="button"
                       onClick={() => handlePopularClick(faq.id)}
-                      className="group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className="group text-muted-foreground hover:bg-muted hover:text-foreground flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors"
                     >
                       <ArrowRight className="size-3 shrink-0 text-emerald-500 transition-transform group-hover:translate-x-0.5" />
                       <span className="line-clamp-1">{faq.question}</span>
@@ -401,7 +393,7 @@ export default function FAQ() {
               initial={{ opacity: 0, y: 16 }}
               animate={visible ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.5, delay: 0.25 }}
-              className="rounded-2xl border bg-card p-5 shadow-sm"
+              className="bg-card rounded-2xl border p-5 shadow-sm"
             >
               <div className="flex items-start gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -409,9 +401,9 @@ export default function FAQ() {
                 </div>
                 <div>
                   <p className="font-semibold">Ainda tem dúvidas?</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Cadastre-se grátis e converse diretamente com prestadores
-                    verificados. Sem compromisso.
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    Cadastre-se grátis e converse diretamente com prestadores verificados. Sem
+                    compromisso.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
@@ -421,12 +413,7 @@ export default function FAQ() {
                     >
                       Cadastrar grátis
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9 gap-1.5"
-                      asChild
-                    >
+                    <Button variant="outline" size="sm" className="h-9 gap-1.5" asChild>
                       <a href="#faq">
                         <MessageCircle className="size-3.5" />
                         Fale conosco
@@ -448,19 +435,18 @@ export default function FAQ() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
-                  className="flex flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/20 px-6 py-16 text-center"
+                  className="bg-muted/20 flex flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-16 text-center"
                 >
-                  <Search className="size-10 text-muted-foreground/50" />
+                  <Search className="text-muted-foreground/50 size-10" />
                   <p className="mt-4 text-base font-semibold">
                     Nenhuma dúvida encontrada
                     {query && (
-                      <span className="font-normal text-muted-foreground">
-                        {" "}para "{query}"
-                      </span>
+                      <span className="text-muted-foreground font-normal"> para "{query}"</span>
                     )}
                   </p>
-                  <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                    Tente usar palavras-chave diferentes, navegue pelas categorias acima ou entre em contato com nosso suporte.
+                  <p className="text-muted-foreground mt-2 max-w-sm text-sm">
+                    Tente usar palavras-chave diferentes, navegue pelas categorias acima ou entre em
+                    contato com nosso suporte.
                   </p>
                   <div className="mt-5 flex flex-wrap justify-center gap-2">
                     <Button
@@ -500,23 +486,19 @@ export default function FAQ() {
                         key={faq.id}
                         id={faq.id}
                         initial={{ opacity: 0, y: 12 }}
-                        animate={
-                          visible ? { opacity: 1, y: 0 } : {}
-                        }
+                        animate={visible ? { opacity: 1, y: 0 } : {}}
                         transition={{ duration: 0.4, delay: idx * 0.05 }}
                       >
                         <AccordionItem
                           value={faq.id}
-                          className="overflow-hidden rounded-xl border bg-card px-5 shadow-sm transition-colors hover:border-emerald-200 data-[state=open]:border-emerald-300 data-[state=open]:shadow-md dark:hover:border-emerald-800/50 dark:data-[state=open]:border-emerald-700"
+                          className="bg-card overflow-hidden rounded-xl border px-5 shadow-sm transition-colors hover:border-emerald-200 data-[state=open]:border-emerald-300 data-[state=open]:shadow-md dark:hover:border-emerald-800/50 dark:data-[state=open]:border-emerald-700"
                         >
                           <AccordionTrigger className="hover:no-underline">
                             <div className="flex items-start gap-3 py-1 text-left">
                               <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                                 {String(idx + 1).padStart(2, "0")}
                               </span>
-                              <span className="flex-1 text-base font-semibold">
-                                {faq.question}
-                              </span>
+                              <span className="flex-1 text-base font-semibold">{faq.question}</span>
                               <Badge
                                 variant="outline"
                                 className={cn(
@@ -529,11 +511,11 @@ export default function FAQ() {
                               </Badge>
                             </div>
                           </AccordionTrigger>
-                          <AccordionContent className="pb-5 pt-1 text-sm leading-relaxed text-muted-foreground">
-                            <div className="pl-10 space-y-3">
+                          <AccordionContent className="text-muted-foreground pt-1 pb-5 text-sm leading-relaxed">
+                            <div className="space-y-3 pl-10">
                               <p>{faq.answer}</p>
                               {faq.example && (
-                                <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs italic text-muted-foreground/80 dark:bg-muted/30">
+                                <p className="bg-muted/50 text-muted-foreground/80 dark:bg-muted/30 rounded-lg px-3 py-2 text-xs italic">
                                   {faq.example}
                                 </p>
                               )}
@@ -549,7 +531,7 @@ export default function FAQ() {
 
             {/* H1: Visibility of system status — counter */}
             <div className="mt-6 flex items-center justify-between">
-              <p className="text-xs text-muted-foreground tabular-nums">
+              <p className="text-muted-foreground text-xs tabular-nums">
                 {filtered.length} de {FAQS.length} dúvidas
                 {query && ` encontradas`}
                 {activeCategory && ` em ${CATEGORY_META[activeCategory].label}`}
@@ -560,7 +542,7 @@ export default function FAQ() {
                   const section = document.getElementById("faq")
                   if (section) section.scrollIntoView({ behavior: "smooth" })
                 }}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
+                className="text-muted-foreground inline-flex items-center gap-1 text-xs transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
                 aria-label="Voltar ao topo da seção"
               >
                 <ChevronUp className="size-3" />

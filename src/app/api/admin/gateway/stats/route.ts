@@ -44,11 +44,16 @@ type Period = "7d" | "30d" | "90d" | "12m" | "all"
 function computeDateFilter(period: Period): Date | null {
   const now = new Date()
   switch (period) {
-    case "7d":  return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    case "30d": return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    case "90d": return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-    case "12m": return new Date(now.getFullYear() - 1, now.getMonth(), 1)
-    case "all": return null
+    case "7d":
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    case "30d":
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    case "90d":
+      return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+    case "12m":
+      return new Date(now.getFullYear() - 1, now.getMonth(), 1)
+    case "all":
+      return null
   }
 }
 
@@ -145,8 +150,24 @@ export async function GET(request: Request) {
       .sort((a, b) => b.total - a.total)
 
     // --- Monthly aggregation ---
-    const monthMap = new Map<string, { total: number; count: number; paid: number; paidCount: number }>()
-    const monthNames = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+    const monthMap = new Map<
+      string,
+      { total: number; count: number; paid: number; paidCount: number }
+    >()
+    const monthNames = [
+      "Jan",
+      "Fev",
+      "Mar",
+      "Abr",
+      "Mai",
+      "Jun",
+      "Jul",
+      "Ago",
+      "Set",
+      "Out",
+      "Nov",
+      "Dez",
+    ]
 
     for (const inv of filtered) {
       const d = new Date(inv.createdAt)
@@ -215,9 +236,7 @@ export async function GET(request: Request) {
     const conversionRate = totalCount > 0 ? Math.round((paidCount / totalCount) * 1000) / 10 : 0
 
     const totalValueCents = filtered.reduce((s, i) => s + i.totalValue, 0)
-    const averageTicket = paidCount > 0
-      ? Math.round((totalValueCents / paidCount) * 100) / 100
-      : 0
+    const averageTicket = paidCount > 0 ? Math.round((totalValueCents / paidCount) * 100) / 100 : 0
 
     // --- Payment method distribution ---
     const methodMap = new Map<string, { total: number; count: number }>()

@@ -20,11 +20,7 @@ import { useBalancePulse } from "@/lib/use-balance-pulse"
 import { useCoinSound } from "@/lib/use-coin-sound"
 import { useViewStore } from "@/store/view"
 
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 // ---------------------------------------------------------------------------
 // Component
@@ -45,7 +41,7 @@ export function WalletBalancePill() {
 
   if (isLoading) {
     return (
-      <div className="flex h-7 w-20 animate-pulse items-center justify-center rounded-md bg-muted/50" />
+      <div className="bg-muted/50 flex h-7 w-20 animate-pulse items-center justify-center rounded-md" />
     )
   }
 
@@ -81,8 +77,8 @@ export function WalletBalancePill() {
           </div>
           <div className="border-t pt-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-medium text-foreground">Total</span>
-              <span className="font-bold text-foreground">
+              <span className="text-foreground font-medium">Total</span>
+              <span className="text-foreground font-bold">
                 {formatBRL(data.balance + data.pendingBalance)}
               </span>
             </div>

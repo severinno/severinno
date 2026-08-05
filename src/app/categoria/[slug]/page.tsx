@@ -18,7 +18,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     if (!category) return {}
     return {
       title: `${category.name} — Profissionais em ${category.name} — Severinno`,
-      description: category.description ?? `Encontre os melhores profissionais de ${category.name}. Agende serviços online com facilidade.`,
+      description:
+        category.description ??
+        `Encontre os melhores profissionais de ${category.name}. Agende serviços online com facilidade.`,
       openGraph: {
         title: `${category.name} — Severinno`,
         description: category.description ?? `Encontre profissionais de ${category.name}.`,

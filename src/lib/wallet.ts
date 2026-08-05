@@ -173,7 +173,10 @@ export function buildWallet(
   base: Awaited<ReturnType<typeof computeBaseBalance>>,
   withdrawals: Awaited<ReturnType<typeof getWithdrawals>>,
 ): SimulatedWallet {
-  const adjustedBalance = Math.max(0, Math.round((base.balance - withdrawals.totalWithdrawn) * 100) / 100)
+  const adjustedBalance = Math.max(
+    0,
+    Math.round((base.balance - withdrawals.totalWithdrawn) * 100) / 100,
+  )
 
   const allTxns = [...withdrawals.withdrawalTxns, ...base.transactions].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),

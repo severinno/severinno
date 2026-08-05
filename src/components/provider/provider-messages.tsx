@@ -10,8 +10,7 @@ import { useViewStore } from "@/store/view"
  */
 export function ProviderMessages() {
   const params = useViewStore((s) => s.params)
-  const peerId =
-    typeof params?.peerId === "string" ? (params.peerId as string) : undefined
+  const peerId = typeof params?.peerId === "string" ? (params.peerId as string) : undefined
 
   return (
     <MessagesView

@@ -40,8 +40,11 @@ export async function GET(request: Request) {
     const lngNum = lng ? Number(lng) : undefined
     const radiusKm = radius ? Number(radius) : undefined
 
-    const hasGeo = latNum !== undefined && lngNum !== undefined &&
-      Number.isFinite(latNum) && Number.isFinite(lngNum)
+    const hasGeo =
+      latNum !== undefined &&
+      lngNum !== undefined &&
+      Number.isFinite(latNum) &&
+      Number.isFinite(lngNum)
 
     const result = await searchProviders({
       q,
@@ -54,14 +57,17 @@ export async function GET(request: Request) {
       limit,
     })
 
-    return cacheControlPublic(NextResponse.json({
-      items: result.items,
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-      took: result.took,
-      engine: "opensearch",
-    }), 30)
+    return cacheControlPublic(
+      NextResponse.json({
+        items: result.items,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        took: result.took,
+        engine: "opensearch",
+      }),
+      30,
+    )
   } catch (e) {
     return handleError(e)
   }

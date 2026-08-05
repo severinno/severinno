@@ -26,7 +26,13 @@ import { db } from "@/lib/db"
 
 function resetDbMocks() {
   ;(db.setting as any) = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
-  ;(db.settlementPeriod as any) = { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() }
+  ;(db.settlementPeriod as any) = {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(),
+  }
   ;(db.payment as any) = { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }
 }
 
@@ -48,8 +54,14 @@ describe("GET /api/cron/settlements", () => {
     vi.mocked(db.setting.findUnique).mockResolvedValue(null)
     vi.mocked(db.settlementPeriod.findFirst).mockResolvedValue(null)
     vi.mocked(db.payment.findMany).mockResolvedValue([
-      { amount: 50000, booking: { providerId: "prov-1", provider: { name: "Paulo", email: "paulo@test.com" } } },
-      { amount: 30000, booking: { providerId: "prov-2", provider: { name: "Maria", email: "maria@test.com" } } },
+      {
+        amount: 50000,
+        booking: { providerId: "prov-1", provider: { name: "Paulo", email: "paulo@test.com" } },
+      },
+      {
+        amount: 30000,
+        booking: { providerId: "prov-2", provider: { name: "Maria", email: "maria@test.com" } },
+      },
     ] as any)
     vi.mocked(db.settlementPeriod.create).mockResolvedValue({
       id: "cron-sp-1",

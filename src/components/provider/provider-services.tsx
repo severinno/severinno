@@ -17,11 +17,7 @@ import {
 } from "lucide-react"
 
 import { apiDelete, apiGet, apiPatch, apiPost, type Category } from "@/lib/api"
-import {
-  SERVICE_UNITS,
-  SERVICE_UNIT_LABELS,
-  type ServiceUnit,
-} from "@/lib/constants"
+import { SERVICE_UNITS, SERVICE_UNIT_LABELS, type ServiceUnit } from "@/lib/constants"
 import { serviceSchema, type ServiceInput } from "@/lib/validators"
 import { formatBRL } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -93,10 +89,7 @@ type ProviderService = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function categoryPathChips(
-  cat: ServiceCategory | null | undefined,
-  all: Category[],
-): Category[] {
+function categoryPathChips(cat: ServiceCategory | null | undefined, all: Category[]): Category[] {
   if (!cat) return []
   const chain: Category[] = []
   let current: Category | undefined = cat
@@ -104,9 +97,7 @@ function categoryPathChips(
   while (current && !guard.has(current.id)) {
     guard.add(current.id)
     chain.unshift(current)
-    current = current.parentId
-      ? all.find((c) => c.id === current?.parentId)
-      : undefined
+    current = current.parentId ? all.find((c) => c.id === current?.parentId) : undefined
   }
   return chain
 }
@@ -136,10 +127,7 @@ function ServiceFormDialog({
   const [photos, setPhotos] = React.useState<string[]>([])
 
   // Level-0 categories (pais)
-  const level0 = React.useMemo(
-    () => categories.filter((c) => c.level === 0),
-    [categories],
-  )
+  const level0 = React.useMemo(() => categories.filter((c) => c.level === 0), [categories])
   // Level-1 (filhas) given selected pai
   const level1 = React.useMemo(
     () => categories.filter((c) => c.level === 1 && c.parentId === parentCatId),
@@ -170,12 +158,8 @@ function ServiceFormDialog({
     if (service) {
       // Find category and walk up to determine pai → filha → sub
       const sub = categories.find((c) => c.id === service.categoryId)
-      const filha = sub?.parentId
-        ? categories.find((c) => c.id === sub?.parentId)
-        : null
-      const pai = filha?.parentId
-        ? categories.find((c) => c.id === filha?.parentId)
-        : null
+      const filha = sub?.parentId ? categories.find((c) => c.id === sub?.parentId) : null
+      const pai = filha?.parentId ? categories.find((c) => c.id === filha?.parentId) : null
 
       setParentCatId(pai?.id ?? "")
       setChildCatId(filha?.id ?? "")
@@ -245,16 +229,13 @@ function ServiceFormDialog({
 
   const watchedPrice = useWatch({ control: form.control, name: "basePrice" })
   const currentPrice = service?.basePrice ?? 0
-  const priceLowerThanCurrent =
-    isEdit && Number(watchedPrice) < currentPrice
+  const priceLowerThanCurrent = isEdit && Number(watchedPrice) < currentPrice
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? "Editar serviço" : "Novo serviço"}
-          </DialogTitle>
+          <DialogTitle>{isEdit ? "Editar serviço" : "Novo serviço"}</DialogTitle>
           <DialogDescription>
             {isEdit
               ? "Atualize as informações do seu serviço."
@@ -267,7 +248,7 @@ function ServiceFormDialog({
             {/* Category cascade */}
             <div className="grid gap-3">
               <div className="text-sm font-medium">Categoria</div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-xs">
                 Escolha pai → filha → subcategoria. A subcategoria é obrigatória.
               </p>
               <div className="grid gap-3 sm:grid-cols-3">
@@ -311,11 +292,7 @@ function ServiceFormDialog({
                 <FormItem>
                   <FormLabel>Título</FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder="Ex.: Instalação de tomadas"
-                      maxLength={80}
-                      {...field}
-                    />
+                    <Input placeholder="Ex.: Instalação de tomadas" maxLength={80} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -336,9 +313,7 @@ function ServiceFormDialog({
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>
-                    Mínimo 10 caracteres. Máximo 1200.
-                  </FormDescription>
+                  <FormDescription>Mínimo 10 caracteres. Máximo 1200.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -358,26 +333,20 @@ function ServiceFormDialog({
                         min={0}
                         {...field}
                         value={field.value ?? 0}
-                        onChange={(e) =>
-                          field.onChange(Number(e.target.value))
-                        }
+                        onChange={(e) => field.onChange(Number(e.target.value))}
                       />
                     </FormControl>
                     {isEdit ? (
                       <FormDescription>
-                        Preço atual: {formatBRL(currentPrice)}. Só é permitido
-                        reajustar para cima.
+                        Preço atual: {formatBRL(currentPrice)}. Só é permitido reajustar para cima.
                       </FormDescription>
                     ) : (
-                      <FormDescription>
-                        Preço mínimo sugerido para seus clientes.
-                      </FormDescription>
+                      <FormDescription>Preço mínimo sugerido para seus clientes.</FormDescription>
                     )}
                     {priceLowerThanCurrent && (
-                      <p className="flex items-center gap-1 text-xs text-destructive">
-                        <AlertTriangle className="size-3" />
-                        O novo preço é menor que o atual e será recusado pelo
-                        servidor.
+                      <p className="text-destructive flex items-center gap-1 text-xs">
+                        <AlertTriangle className="size-3" />O novo preço é menor que o atual e será
+                        recusado pelo servidor.
                       </p>
                     )}
                     <FormMessage />
@@ -391,10 +360,7 @@ function ServiceFormDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unidade</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione…" />
@@ -426,10 +392,7 @@ function ServiceFormDialog({
                     </FormDescription>
                   </div>
                   <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
                 </FormItem>
               )}
@@ -444,18 +407,12 @@ function ServiceFormDialog({
             />
 
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  !subCatId || priceLowerThanCurrent || form.formState.isSubmitting
-                }
+                disabled={!subCatId || priceLowerThanCurrent || form.formState.isSubmitting}
               >
                 {form.formState.isSubmitting ? (
                   <Loader2 className="mr-2 size-4 animate-spin" />
@@ -487,14 +444,8 @@ function CategorySelect({
 }) {
   return (
     <div className="grid gap-1.5">
-      <label className="text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
-      <Select
-        value={value}
-        onValueChange={onChange}
-        disabled={disabled || options.length === 0}
-      >
+      <label className="text-muted-foreground text-xs font-medium">{label}</label>
+      <Select value={value} onValueChange={onChange} disabled={disabled || options.length === 0}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
@@ -549,8 +500,8 @@ function DeleteServiceDialog({
           <AlertDialogTitle>Excluir serviço?</AlertDialogTitle>
           <AlertDialogDescription>
             Tem certeza que deseja excluir{" "}
-            <strong className="text-foreground">{service?.title}</strong>?
-            Esta ação não pode ser desfeita.
+            <strong className="text-foreground">{service?.title}</strong>? Esta ação não pode ser
+            desfeita.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -595,17 +546,12 @@ function ServiceCard({
   const photo = service.photos?.[0]
   const chips = categoryPathChips(service.category, categories)
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md">
-      <div className="relative aspect-video w-full overflow-hidden bg-muted">
+    <div className="bg-card flex flex-col overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md">
+      <div className="bg-muted relative aspect-video w-full overflow-hidden">
         {photo ? (
-          <img
-            src={photo}
-            alt={service.title}
-            className="size-full object-cover"
-            loading="lazy"
-          />
+          <img src={photo} alt={service.title} className="size-full object-cover" loading="lazy" />
         ) : (
-          <div className="flex size-full items-center justify-center bg-muted text-muted-foreground">
+          <div className="bg-muted text-muted-foreground flex size-full items-center justify-center">
             <Wrench className="size-8" />
           </div>
         )}
@@ -624,29 +570,26 @@ function ServiceCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-4">
-        <p className="line-clamp-2 text-sm font-semibold leading-tight">
-          {service.title}
-        </p>
+        <p className="line-clamp-2 text-sm leading-tight font-semibold">{service.title}</p>
 
         {chips.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+          <div className="text-muted-foreground flex flex-wrap items-center gap-1 text-[10px]">
             {chips.map((c, i) => (
               <span key={c.id} className="inline-flex items-center gap-1">
                 {i > 0 && <ChevronRight className="size-2.5" />}
-                <span className="rounded bg-muted px-1.5 py-0.5 font-medium">
-                  {c.name}
-                </span>
+                <span className="bg-muted rounded px-1.5 py-0.5 font-medium">{c.name}</span>
               </span>
             ))}
           </div>
         )}
 
         <p className="mt-auto text-sm">
-          <span className="text-lg font-bold tabular-nums text-primary">
+          <span className="text-primary text-lg font-bold tabular-nums">
             {formatBRL(service.basePrice)}
           </span>
-          <span className="text-xs text-muted-foreground">
-            {" "}/ {SERVICE_UNIT_LABELS[service.unit]}
+          <span className="text-muted-foreground text-xs">
+            {" "}
+            / {SERVICE_UNIT_LABELS[service.unit]}
           </span>
         </p>
 
@@ -658,7 +601,7 @@ function ServiceCard({
               disabled={toggling}
               aria-label="Ativar/desativar serviço"
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               {service.active ? "Ativo" : "Inativo"}
             </span>
           </div>
@@ -674,7 +617,7 @@ function ServiceCard({
             <Button
               variant="ghost"
               size="icon"
-              className="size-8 text-destructive hover:text-destructive"
+              className="text-destructive hover:text-destructive size-8"
               onClick={onDelete}
               aria-label="Excluir"
             >
@@ -772,9 +715,9 @@ export function ProviderServices() {
       </div>
 
       {/* Toolbar / filters bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3">
+      <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border p-3">
         <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -782,13 +725,10 @@ export function ProviderServices() {
             className="pl-8"
           />
         </div>
-        <p className="text-xs text-muted-foreground tabular-nums">
+        <p className="text-muted-foreground text-xs tabular-nums">
           {filtered.length} serviço{filtered.length === 1 ? "" : "s"}
         </p>
-        <Button
-          onClick={openNew}
-          className="ml-auto gap-1.5"
-        >
+        <Button onClick={openNew} className="ml-auto gap-1.5">
           <Plus className="size-4" /> Novo serviço
         </Button>
       </div>
@@ -797,24 +737,19 @@ export function ProviderServices() {
       {servicesQuery.isLoading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-64 animate-pulse rounded-xl border bg-muted/30"
-            />
+            <div key={i} className="bg-muted/30 h-64 animate-pulse rounded-xl border" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
             <Wrench className="size-6" />
           </div>
           <div>
             <p className="text-sm font-semibold">
-              {search
-                ? "Nenhum serviço encontrado"
-                : "Você ainda não tem serviços cadastrados"}
+              {search ? "Nenhum serviço encontrado" : "Você ainda não tem serviços cadastrados"}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-xs">
               {search
                 ? "Tente outro termo de busca."
                 : "Cadastre seu primeiro serviço para aparecer na vitrine."}
@@ -849,11 +784,7 @@ export function ProviderServices() {
         categories={categoriesQuery.data ?? []}
       />
 
-      <DeleteServiceDialog
-        service={deleting}
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-      />
+      <DeleteServiceDialog service={deleting} open={deleteOpen} onOpenChange={setDeleteOpen} />
     </div>
   )
 }
@@ -868,10 +799,8 @@ function SummaryCard({
   accent?: "emerald"
 }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <p className="text-xs uppercase tracking-wider text-muted-foreground">
-        {label}
-      </p>
+    <div className="bg-card rounded-xl border p-4">
+      <p className="text-muted-foreground text-xs tracking-wider uppercase">{label}</p>
       <p
         className={cn(
           "mt-1 text-2xl font-bold tabular-nums",

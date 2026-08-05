@@ -29,9 +29,7 @@ type AuthState = {
 
   // actions
   login: (payload: LoginPayload) => Promise<{ ok: boolean; error?: string }>
-  register: (
-    payload: RegisterPayload,
-  ) => Promise<{ ok: boolean; error?: string }>
+  register: (payload: RegisterPayload) => Promise<{ ok: boolean; error?: string }>
   logout: () => Promise<void>
   fetchMe: () => Promise<void>
   setUser: (user: AuthUser | null) => void
@@ -87,10 +85,7 @@ export const useAuthStore = create<AuthState>()(
       register: async (payload) => {
         set({ status: "loading", error: null })
         try {
-          const data = await apiPost<{ user: AuthUser }>(
-            "/api/auth/register",
-            payload,
-          )
+          const data = await apiPost<{ user: AuthUser }>("/api/auth/register", payload)
           if (!data?.user) {
             const msg = "Não foi possível criar a conta."
             set({ status: "unauthenticated", error: msg })

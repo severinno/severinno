@@ -2,12 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { providerProfileSchema } from "@/lib/validators"
-import {
-  forbidden,
-  handleError,
-  USER_PUBLIC_SELECT,
-  syncServiceSearch,
-} from "@/lib/api-server"
+import { forbidden, handleError, USER_PUBLIC_SELECT, syncServiceSearch } from "@/lib/api-server"
 
 // GET: current authenticated user (full public profile)
 export async function GET() {
@@ -45,36 +40,22 @@ export async function PATCH(request: Request) {
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.bio !== undefined ? { bio: data.bio || null } : {}),
-        ...(data.whatsapp !== undefined
-          ? { whatsapp: data.whatsapp || null }
-          : {}),
+        ...(data.whatsapp !== undefined ? { whatsapp: data.whatsapp || null } : {}),
         ...(data.phone !== undefined ? { phone: data.phone || null } : {}),
-        ...(data.avatarUrl !== undefined
-          ? { avatarUrl: data.avatarUrl || null }
-          : {}),
-        ...(data.coverUrl !== undefined
-          ? { coverUrl: data.coverUrl || null }
-          : {}),
+        ...(data.avatarUrl !== undefined ? { avatarUrl: data.avatarUrl || null } : {}),
+        ...(data.coverUrl !== undefined ? { coverUrl: data.coverUrl || null } : {}),
         ...(data.cep !== undefined ? { cep: data.cep || null } : {}),
         ...(data.street !== undefined ? { street: data.street || null } : {}),
         ...(data.number !== undefined ? { number: data.number || null } : {}),
-        ...(data.complement !== undefined
-          ? { complement: data.complement || null }
-          : {}),
-        ...(data.district !== undefined
-          ? { district: data.district || null }
-          : {}),
+        ...(data.complement !== undefined ? { complement: data.complement || null } : {}),
+        ...(data.district !== undefined ? { district: data.district || null } : {}),
         ...(data.city !== undefined ? { city: data.city || null } : {}),
         ...(data.state !== undefined ? { state: data.state || null } : {}),
         ...(data.lat !== undefined ? { lat: data.lat } : {}),
         ...(data.lng !== undefined ? { lng: data.lng } : {}),
         ...(data.radiusKm !== undefined ? { radiusKm: data.radiusKm } : {}),
-        ...(data.soundEnabled !== undefined
-          ? { soundEnabled: data.soundEnabled }
-          : {}),
-        ...(data.vibrateEnabled !== undefined
-          ? { vibrateEnabled: data.vibrateEnabled }
-          : {}),
+        ...(data.soundEnabled !== undefined ? { soundEnabled: data.soundEnabled } : {}),
+        ...(data.vibrateEnabled !== undefined ? { vibrateEnabled: data.vibrateEnabled } : {}),
       },
       select: USER_PUBLIC_SELECT,
     })

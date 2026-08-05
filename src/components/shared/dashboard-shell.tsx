@@ -43,10 +43,7 @@ import { cn } from "@/lib/utils"
 import { APP_NAME, ROLE_LABELS, NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
 import { formatRelative } from "@/lib/format"
 import { apiGet, apiPatch } from "@/lib/api"
-import {
-  useTransactionNotificationSound,
-  useWelcomeSound,
-} from "@/lib/use-coin-sound"
+import { useTransactionNotificationSound, useWelcomeSound } from "@/lib/use-coin-sound"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { MuteIndicator } from "@/components/shared/mute-indicator"
@@ -55,10 +52,7 @@ import { VibrationIndicator } from "@/components/shared/vibration-indicator"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import {
   DropdownMenu,
@@ -68,12 +62,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import {
   Sidebar,
   SidebarContent,
@@ -170,7 +159,9 @@ const NOTIFICATION_ROUTES: Record<string, string> = {
 }
 
 /** Agrupa notificações por período: Hoje, Ontem, Esta semana, Este mês, Anterior */
-function groupNotificationsByDate(items: NotificationItem[]): Array<{ label: string; items: NotificationItem[] }> {
+function groupNotificationsByDate(
+  items: NotificationItem[],
+): Array<{ label: string; items: NotificationItem[] }> {
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const yesterday = new Date(today)
@@ -246,11 +237,9 @@ const cardMotion = {
 // Shared nav item styles — used by both desktop SidebarMenuButton and mobile Sheet
 // ---------------------------------------------------------------------------
 
-const NAV_ITEM_ACTIVE =
-  "!bg-primary/5 !text-foreground font-medium hover:!bg-primary/8"
+const NAV_ITEM_ACTIVE = "!bg-primary/5 !text-foreground font-medium hover:!bg-primary/8"
 
-const NAV_ITEM_INACTIVE =
-  "!text-muted-foreground hover:!bg-accent/60 hover:!text-foreground"
+const NAV_ITEM_INACTIVE = "!text-muted-foreground hover:!bg-accent/60 hover:!text-foreground"
 
 const NAV_ICON_ACTIVE = "!text-primary"
 
@@ -296,9 +285,7 @@ export function DashboardShell({
 
   const markAllReadMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      await Promise.all(
-        ids.map((id) => apiPatch(`/api/notifications/${id}/read`)),
-      )
+      await Promise.all(ids.map((id) => apiPatch(`/api/notifications/${id}/read`)))
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["notifications"] })
@@ -326,16 +313,12 @@ export function DashboardShell({
   const sidebarHeader = (
     <SidebarHeader className="pb-0">
       <div className="flex items-center gap-3 px-3 pt-3 pb-4">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+        <span className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
           <PanelIcon className="size-[18px]" />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold tracking-tight text-foreground">
-            {APP_NAME}
-          </p>
-          <p className="truncate text-[11px] font-medium text-muted-foreground/70">
-            {panelLabel}
-          </p>
+          <p className="text-foreground truncate text-sm font-bold tracking-tight">{APP_NAME}</p>
+          <p className="text-muted-foreground/70 truncate text-[11px] font-medium">{panelLabel}</p>
         </div>
       </div>
       <SidebarSeparator className="mx-3 w-auto" />
@@ -345,7 +328,7 @@ export function DashboardShell({
   // ---- Sidebar nav (desktop) -----------------------------------------------
   const navList = (
     <SidebarGroup>
-      <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground/70 px-3 h-7">
+      <SidebarGroupLabel className="text-muted-foreground/70 h-7 px-3 text-[11px] font-medium tracking-wider uppercase">
         Navegação
       </SidebarGroupLabel>
       <SidebarGroupContent>
@@ -373,7 +356,7 @@ export function DashboardShell({
                   />
                   <span className="truncate text-[14px]">{item.label}</span>
                   {item.badge != null && item.badge !== 0 ? (
-                    <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+                    <span className="bg-primary text-primary-foreground ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
                       {item.badge}
                     </span>
                   ) : null}
@@ -390,24 +373,19 @@ export function DashboardShell({
   const sidebarFooter = (
     <SidebarFooter className="mt-auto">
       <SidebarSeparator className="mx-3 w-auto" />
-      <div className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5">
+      <div className="border-border/50 flex items-center gap-3 rounded-lg border p-2.5">
         <Avatar className="size-8 shrink-0">
-          {user?.avatarUrl ? (
-            <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
-          ) : null}
-          <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
+          {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} /> : null}
+          <AvatarFallback className="bg-primary text-primary-foreground text-[11px] font-semibold">
             {initials(user?.name)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium leading-tight text-foreground">
+          <p className="text-foreground truncate text-[13px] leading-tight font-medium">
             {user?.name ?? "Visitante"}
           </p>
           {user?.role ? (
-            <Badge
-              variant="secondary"
-              className="mt-1 h-4 px-1.5 text-[10px] font-medium"
-            >
+            <Badge variant="secondary" className="mt-1 h-4 px-1.5 text-[10px] font-medium">
               {ROLE_LABELS[user.role]}
             </Badge>
           ) : null}
@@ -415,7 +393,7 @@ export function DashboardShell({
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+          className="text-muted-foreground size-8 shrink-0 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
           onClick={() => logout()}
           aria-label="Sair"
           title="Sair"
@@ -436,7 +414,7 @@ export function DashboardShell({
         type="button"
         onClick={() => handleNav(item.view)}
         className={cn(
-          "flex h-10 w-full min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-normal outline-none transition-colors duration-150",
+          "flex h-10 w-full min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-normal transition-colors duration-150 outline-none",
           active
             ? "bg-primary/5 text-foreground font-medium"
             : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -450,7 +428,7 @@ export function DashboardShell({
         />
         <span className="truncate text-[14px]">{item.label}</span>
         {item.badge != null && item.badge !== 0 ? (
-          <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+          <span className="bg-primary text-primary-foreground ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
             {item.badge}
           </span>
         ) : null}
@@ -461,24 +439,19 @@ export function DashboardShell({
   // ---- Mobile sidebar user footer -------------------------------------------
   const mobileFooter = (
     <div className="border-t">
-      <div className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5">
+      <div className="border-border/50 flex items-center gap-3 rounded-lg border p-2.5">
         <Avatar className="size-8 shrink-0">
-          {user?.avatarUrl ? (
-            <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
-          ) : null}
-          <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
+          {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} /> : null}
+          <AvatarFallback className="bg-primary text-primary-foreground text-[11px] font-semibold">
             {initials(user?.name)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium leading-tight text-foreground">
+          <p className="text-foreground truncate text-[13px] leading-tight font-medium">
             {user?.name ?? "Visitante"}
           </p>
           {user?.role ? (
-            <Badge
-              variant="secondary"
-              className="mt-1 h-4 px-1.5 text-[10px] font-medium"
-            >
+            <Badge variant="secondary" className="mt-1 h-4 px-1.5 text-[10px] font-medium">
               {ROLE_LABELS[user.role]}
             </Badge>
           ) : null}
@@ -486,7 +459,7 @@ export function DashboardShell({
         <Button
           variant="ghost"
           size="icon"
-          className="size-8 shrink-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+          className="text-muted-foreground size-8 shrink-0 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
           onClick={() => {
             setMobileOpen(false)
             logout()
@@ -500,18 +473,11 @@ export function DashboardShell({
   )
 
   return (
-    <SidebarProvider
-      style={{ "--sidebar-width": "16.25rem" } as React.CSSProperties}
-    >
-      <div
-        className={cn(
-          "flex min-h-svh w-full flex-col bg-background",
-          className,
-        )}
-      >
+    <SidebarProvider style={{ "--sidebar-width": "16.25rem" } as React.CSSProperties}>
+      <div className={cn("bg-background flex min-h-svh w-full flex-col", className)}>
         <div className="flex flex-1">
           {/* Desktop sidebar */}
-          <Sidebar collapsible="icon" className="border-r border-border/50">
+          <Sidebar collapsible="icon" className="border-border/50 border-r">
             {sidebarHeader}
             <SidebarContent>{navList}</SidebarContent>
             {sidebarFooter}
@@ -521,22 +487,22 @@ export function DashboardShell({
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetContent
               side="left"
-              className="w-[80vw] border-r border-border/50 p-0 sm:max-w-sm"
+              className="border-border/50 w-[80vw] border-r p-0 sm:max-w-sm"
             >
               <SheetHeader className="sr-only">
                 <SheetTitle>{panelLabel}</SheetTitle>
               </SheetHeader>
               <div className="flex h-full flex-col">
                 {/* Mobile header — same design as desktop */}
-                <div className="flex items-center gap-3 border-b border-border/50 px-4 py-4">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                <div className="border-border/50 flex items-center gap-3 border-b px-4 py-4">
+                  <span className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
                     <PanelIcon className="size-[18px]" />
                   </span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-bold tracking-tight text-foreground">
+                    <p className="text-foreground truncate text-sm font-bold tracking-tight">
                       {APP_NAME}
                     </p>
-                    <p className="truncate text-[11px] font-medium text-muted-foreground/70">
+                    <p className="text-muted-foreground/70 truncate text-[11px] font-medium">
                       {panelLabel}
                     </p>
                   </div>
@@ -544,7 +510,7 @@ export function DashboardShell({
                 {/* Mobile nav */}
                 <ScrollArea className="flex-1">
                   <div className="flex flex-col gap-px p-3">
-                    <p className="mb-2 px-3 text-[11px] uppercase tracking-wider font-medium text-muted-foreground/70">
+                    <p className="text-muted-foreground/70 mb-2 px-3 text-[11px] font-medium tracking-wider uppercase">
                       Navegação
                     </p>
                     {mobileNavItems}
@@ -565,14 +531,14 @@ export function DashboardShell({
           {/* Main inset */}
           <SidebarInset>
             {/* Topbar */}
-            <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border/50 bg-background/80 backdrop-blur-md px-4 supports-[backdrop-filter]:bg-background/60 lg:px-6">
+            <header className="border-border/50 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30 flex h-14 items-center border-b px-4 backdrop-blur-md lg:px-6">
               {/* Left section */}
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 {/* Mobile menu button */}
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-9 text-muted-foreground hover:text-foreground lg:hidden"
+                  className="text-muted-foreground hover:text-foreground size-9 lg:hidden"
                   onClick={() => setMobileOpen(true)}
                   aria-label="Abrir menu"
                 >
@@ -580,14 +546,14 @@ export function DashboardShell({
                 </Button>
 
                 {/* Desktop sidebar trigger */}
-                <SidebarTrigger className="hidden size-9 text-muted-foreground hover:text-foreground lg:flex" />
+                <SidebarTrigger className="text-muted-foreground hover:text-foreground hidden size-9 lg:flex" />
 
                 {/* Title block */}
                 <div className="min-w-0">
                   {breadcrumbs && breadcrumbs.length > 0 ? (
                     <nav
                       aria-label="Trilha de navegação"
-                      className="flex items-center gap-1 text-xs text-muted-foreground"
+                      className="text-muted-foreground flex items-center gap-1 text-xs"
                     >
                       {breadcrumbs.map((b, i) => (
                         <React.Fragment key={i}>
@@ -595,7 +561,7 @@ export function DashboardShell({
                             <button
                               type="button"
                               onClick={b.onClick}
-                              className="outline-none transition-colors hover:text-foreground focus-visible:underline"
+                              className="hover:text-foreground transition-colors outline-none focus-visible:underline"
                             >
                               {b.label}
                             </button>
@@ -603,17 +569,17 @@ export function DashboardShell({
                             <span>{b.label}</span>
                           )}
                           {i < breadcrumbs.length - 1 ? (
-                            <ChevronRight className="size-3 text-muted-foreground/50" />
+                            <ChevronRight className="text-muted-foreground/50 size-3" />
                           ) : null}
                         </React.Fragment>
                       ))}
                     </nav>
                   ) : null}
-                  <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+                  <h1 className="text-foreground truncate text-lg font-semibold tracking-tight">
                     {title}
                   </h1>
                   {subtitle ? (
-                    <p className="hidden truncate text-sm text-muted-foreground md:block">
+                    <p className="text-muted-foreground hidden truncate text-sm md:block">
                       {subtitle}
                     </p>
                   ) : null}
@@ -635,15 +601,13 @@ export function DashboardShell({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-9 text-muted-foreground hover:text-foreground"
-                  onClick={() =>
-                    setTheme(resolvedTheme === "dark" ? "light" : "dark")
-                  }
+                  className="text-muted-foreground hover:text-foreground size-9"
+                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
                   aria-label="Alternar tema"
                   title="Alternar tema"
                 >
-                  <Sun className="size-[18px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                  <Moon className="absolute size-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                  <Sun className="size-[18px] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
+                  <Moon className="absolute size-[18px] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
                 </Button>
 
                 {/* Notifications */}
@@ -658,24 +622,21 @@ export function DashboardShell({
                 />
 
                 {/* Divider before user avatar */}
-                <Separator orientation="vertical" className="mx-1.5 h-5 bg-border/50" />
+                <Separator orientation="vertical" className="bg-border/50 mx-1.5 h-5" />
 
                 {/* User dropdown */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="flex items-center gap-1.5 rounded-full p-0.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                      className="hover:bg-accent focus-visible:ring-ring flex items-center gap-1.5 rounded-full p-0.5 transition outline-none focus-visible:ring-2"
                       aria-label="Menu da conta"
                     >
                       <Avatar className="size-8">
                         {user?.avatarUrl ? (
-                          <AvatarImage
-                            src={user.avatarUrl}
-                            alt={user.name ?? ""}
-                          />
+                          <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
                         ) : null}
-                        <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
+                        <AvatarFallback className="bg-primary text-primary-foreground text-[11px] font-semibold">
                           {initials(user?.name)}
                         </AvatarFallback>
                       </Avatar>
@@ -684,14 +645,11 @@ export function DashboardShell({
                   <DropdownMenuContent align="end" className="w-60">
                     <DropdownMenuLabel className="flex flex-col gap-1">
                       <span className="truncate">{user?.name}</span>
-                      <span className="truncate text-xs font-normal text-muted-foreground">
+                      <span className="text-muted-foreground truncate text-xs font-normal">
                         {user?.email}
                       </span>
                       {user?.role ? (
-                        <Badge
-                          variant="secondary"
-                          className="mt-1 w-fit text-[10px]"
-                        >
+                        <Badge variant="secondary" className="mt-1 w-fit text-[10px]">
                           {ROLE_LABELS[user.role]}
                         </Badge>
                       ) : null}
@@ -714,10 +672,7 @@ export function DashboardShell({
                       Voltar à vitrine
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={() => logout()}
-                    >
+                    <DropdownMenuItem variant="destructive" onSelect={() => logout()}>
                       <LogOut className="size-4" />
                       Sair
                     </DropdownMenuItem>
@@ -728,19 +683,16 @@ export function DashboardShell({
 
             {/* Main scroll area */}
             <main className="flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">
-                {children}
-              </div>
+              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">{children}</div>
 
               {/* Thin copyright bar */}
-              <footer className="mt-auto border-t border-border/50">
-                <div className="mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-1 px-6 py-3 text-xs text-muted-foreground sm:flex-row">
+              <footer className="border-border/50 mt-auto border-t">
+                <div className="text-muted-foreground mx-auto flex w-full max-w-7xl flex-col items-center justify-between gap-1 px-6 py-3 text-xs sm:flex-row">
                   <p>
-                    © {new Date().getFullYear()} {APP_NAME}. Todos os direitos
-                    reservados.
+                    © {new Date().getFullYear()} {APP_NAME}. Todos os direitos reservados.
                   </p>
                   <p className="flex items-center gap-1.5">
-                    <MapPin className="size-3 text-primary" />
+                    <MapPin className="text-primary size-3" />
                     Marketplace de serviços com geolocalização
                   </p>
                 </div>
@@ -776,25 +728,20 @@ function NotificationsBell({
   markingAll: boolean
   onNavigate: (view: string) => void
 }) {
-  const unreadIds = React.useMemo(
-    () => items.filter((n) => !n.read).map((n) => n.id),
-    [items],
-  )
+  const unreadIds = React.useMemo(() => items.filter((n) => !n.read).map((n) => n.id), [items])
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          className="relative size-9 text-muted-foreground hover:text-foreground"
-          aria-label={`Notificações${
-            unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""
-          }`}
+          className="text-muted-foreground hover:text-foreground relative size-9"
+          aria-label={`Notificações${unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""}`}
         >
           <Bell className="size-[18px]" />
           {unreadCount > 0 ? (
             <span
-              className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground ring-2 ring-background"
+              className="bg-primary text-primary-foreground ring-background absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold ring-2"
               aria-hidden
             >
               {unreadCount > 9 ? "9+" : unreadCount}
@@ -802,17 +749,14 @@ function NotificationsBell({
           ) : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        className="w-80 gap-0 p-0"
-      >
+      <DropdownMenuContent align="end" className="w-80 gap-0 p-0">
         <div className="flex items-center justify-between border-b px-3 py-2.5">
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold">Notificações</p>
             {unreadCount > 0 ? (
               <Badge
                 variant="secondary"
-                className="h-5 bg-primary/10 px-1.5 text-[10px] font-semibold text-primary"
+                className="bg-primary/10 text-primary h-5 px-1.5 text-[10px] font-semibold"
               >
                 {unreadCount} nova{unreadCount > 1 ? "s" : ""}
               </Badge>
@@ -823,7 +767,7 @@ function NotificationsBell({
               type="button"
               onClick={() => onMarkAllRead(unreadIds)}
               disabled={markingAll}
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary transition-colors hover:text-primary/80 disabled:opacity-50"
+              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-[11px] font-medium transition-colors disabled:opacity-50"
             >
               {markingAll ? (
                 <Loader2 className="size-3 animate-spin" />
@@ -837,24 +781,22 @@ function NotificationsBell({
 
         <ScrollArea className="max-h-80">
           {isLoading ? (
-            <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+            <div className="text-muted-foreground flex items-center justify-center gap-2 p-8 text-sm">
               <Loader2 className="size-4 animate-spin" />
               Carregando…
             </div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center gap-2 p-8 text-center">
-              <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <span className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
                 <Bell className="size-5" />
               </span>
-              <p className="text-sm text-muted-foreground">
-                Você não tem notificações.
-              </p>
+              <p className="text-muted-foreground text-sm">Você não tem notificações.</p>
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
               {groupNotificationsByDate(items).map((group) => (
                 <div key={group.label}>
-                  <div className="sticky top-0 z-10 bg-popover px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  <div className="bg-popover text-muted-foreground sticky top-0 z-10 px-3 py-1.5 text-[10px] font-medium tracking-wider uppercase">
                     {group.label}
                   </div>
                   <ul className="divide-y">
@@ -867,7 +809,7 @@ function NotificationsBell({
                           className={cn(
                             "relative flex gap-3 px-3 py-2.5 transition-colors",
                             !n.read && "bg-primary/5",
-                            targetRoute && "cursor-pointer hover:bg-accent/50",
+                            targetRoute && "hover:bg-accent/50 cursor-pointer",
                           )}
                           onClick={() => {
                             if (targetRoute) {
@@ -887,21 +829,19 @@ function NotificationsBell({
                           <span
                             className={cn(
                               "mt-1.5 size-2 shrink-0 rounded-full",
-                              n.read ? "bg-transparent ring-1 ring-border" : "bg-primary",
+                              n.read ? "ring-border bg-transparent ring-1" : "bg-primary",
                             )}
                             aria-hidden
                           />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-baseline justify-between gap-2">
-                              <p className="text-sm font-medium leading-tight">
-                                {n.title}
-                              </p>
-                              <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                              <p className="text-sm leading-tight font-medium">{n.title}</p>
+                              <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
                                 {formatRelative(n.createdAt)}
                               </span>
                             </div>
                             {n.body ? (
-                              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                              <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
                                 {n.body}
                               </p>
                             ) : null}
@@ -909,7 +849,7 @@ function NotificationsBell({
                               {typeLabel ? (
                                 <Badge
                                   variant="outline"
-                                  className="h-4 px-1.5 text-[10px] font-medium text-muted-foreground"
+                                  className="text-muted-foreground h-4 px-1.5 text-[10px] font-medium"
                                 >
                                   {typeLabel}
                                 </Badge>
@@ -921,7 +861,7 @@ function NotificationsBell({
                                     e.stopPropagation()
                                     onMarkRead(n.id)
                                   }}
-                                  className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline"
+                                  className="text-primary inline-flex items-center gap-1 text-[10px] font-medium hover:underline"
                                 >
                                   <Check className="size-3" />
                                   Marcar como lida
@@ -961,22 +901,15 @@ export function EmptyState({
   className?: string
 }) {
   return (
-    <Card
-      className={cn(
-        "border-dashed bg-muted/30 py-10 text-center",
-        className,
-      )}
-    >
+    <Card className={cn("bg-muted/30 border-dashed py-10 text-center", className)}>
       <CardContent className="flex flex-col items-center gap-3">
-        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-full">
           <Icon className="size-7" />
         </div>
         <div className="space-y-1">
           <p className="text-base font-semibold">{title}</p>
           {description ? (
-            <p className="mx-auto max-w-md text-sm text-muted-foreground">
-              {description}
-            </p>
+            <p className="text-muted-foreground mx-auto max-w-md text-sm">{description}</p>
           ) : null}
         </div>
         {action}
@@ -1017,15 +950,10 @@ export function StatCard({
       animate={cardMotion.animate}
       transition={{ delay: index * 0.05, duration: 0.25, ease: "easeOut" }}
     >
-      <Card className="rounded-xl bg-card shadow-sm transition-shadow hover:shadow-md">
+      <Card className="bg-card rounded-xl shadow-sm transition-shadow hover:shadow-md">
         <CardContent className="p-5">
           <div className="flex items-start justify-between gap-3">
-            <span
-              className={cn(
-                "flex size-10 items-center justify-center rounded-lg",
-                toneClass,
-              )}
-            >
+            <span className={cn("flex size-10 items-center justify-center rounded-lg", toneClass)}>
               <Icon className="size-5" />
             </span>
             {trend ? (
@@ -1041,15 +969,11 @@ export function StatCard({
               </span>
             ) : null}
           </div>
-          <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-            {value}
-          </p>
-          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+          <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wide uppercase">
             {label}
           </p>
-          {hint ? (
-            <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-          ) : null}
+          {hint ? <p className="text-muted-foreground mt-1 text-xs">{hint}</p> : null}
         </CardContent>
       </Card>
     </motion.div>
@@ -1068,13 +992,11 @@ export function SectionTitle({
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="text-base font-semibold tracking-tight text-foreground md:text-lg">
+        <h2 className="text-foreground text-base font-semibold tracking-tight md:text-lg">
           {title}
         </h2>
         {description ? (
-          <p className="truncate text-xs text-muted-foreground">
-            {description}
-          </p>
+          <p className="text-muted-foreground truncate text-xs">{description}</p>
         ) : null}
       </div>
       {action}

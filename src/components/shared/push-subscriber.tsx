@@ -75,9 +75,10 @@ export function PushToggle() {
           }),
         })
         setSubscribed(true)
-        toast.success(isMobile
-          ? "Notificações push ativadas! ✅ As notificações chegam mesmo com o app fechado."
-          : "Notificações push ativadas!",
+        toast.success(
+          isMobile
+            ? "Notificações push ativadas! ✅ As notificações chegam mesmo com o app fechado."
+            : "Notificações push ativadas!",
         )
       }
     } catch {
@@ -108,12 +109,16 @@ export function PushToggle() {
               ? "Instale o app para ativar notificações"
               : "Ativar notificações"
         }
-        className={cn(needsIOSInstall && "opacity-50 cursor-not-allowed")}
+        className={cn(needsIOSInstall && "cursor-not-allowed opacity-50")}
       >
         {loading ? (
           <Loader2 className="size-4 animate-spin" />
         ) : subscribed ? (
-          isMobile ? <BellRing className="size-4" /> : <Bell className="size-4" />
+          isMobile ? (
+            <BellRing className="size-4" />
+          ) : (
+            <Bell className="size-4" />
+          )
         ) : (
           <BellOff className="size-4" />
         )}
@@ -121,7 +126,7 @@ export function PushToggle() {
 
       {/* Mobile status label */}
       {isMobile && (
-        <span className="text-xs text-muted-foreground hidden sm:inline">
+        <span className="text-muted-foreground hidden text-xs sm:inline">
           {subscribed
             ? isStandalone
               ? "Push ativo (PWA)"

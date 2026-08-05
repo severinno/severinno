@@ -22,59 +22,58 @@ export function useGeoTracking() {
     trackingDataRef.current = null
   }, [])
 
-  const startTracking = useCallback((bookingId: string, clientId: string) => {
-    if (typeof window === "undefined" || !navigator.geolocation) {
-      setError("Geolocalização não suportada neste dispositivo.")
-      return
-    }
+  const startTracking = useCallback(
+    (bookingId: string, clientId: string) => {
+      if (typeof window === "undefined" || !navigator.geolocation) {
+        setError("Geolocalização não suportada neste dispositivo.")
+        return
+      }
 
-    stopTracking()
-    setError(null)
-    setIsTracking(true)
-    trackingDataRef.current = { bookingId, clientId }
+      stopTracking()
+      setError(null)
+      setIsTracking(true)
+      trackingDataRef.current = { bookingId, clientId }
 
-    const successCallback = (position: GeolocationPosition) => {
-      const { latitude, longitude } = position.coords
-      setCurrentPosition([longitude, latitude])
+      const successCallback = (position: GeolocationPosition) => {
+        const { latitude, longitude } = position.coords
+        setCurrentPosition([longitude, latitude])
 
-      const now = Date.now()
-      // Throttle emission to once every 5 seconds
-      if (now - lastEmitTimeRef.current >= 5000) {
-        if (trackingDataRef.current && isConnected) {
-          sendTrackingPosition({
-            bookingId: trackingDataRef.current.bookingId,
-            clientId: trackingDataRef.current.clientId,
-            lat: latitude,
-            lng: longitude,
-          })
-          lastEmitTimeRef.current = now
+        const now = Date.now()
+        // Throttle emission to once every 5 seconds
+        if (now - lastEmitTimeRef.current >= 5000) {
+          if (trackingDataRef.current && isConnected) {
+            sendTrackingPosition({
+              bookingId: trackingDataRef.current.bookingId,
+              clientId: trackingDataRef.current.clientId,
+              lat: latitude,
+              lng: longitude,
+            })
+            lastEmitTimeRef.current = now
+          }
         }
       }
-    }
 
-    const errorCallback = (err: GeolocationPositionError) => {
-      let msg = "Erro ao acessar localização."
-      if (err.code === err.PERMISSION_DENIED) {
-        msg = "Permissão de localização negada pelo usuário."
-      } else if (err.code === err.POSITION_UNAVAILABLE) {
-        msg = "Posição de localização indisponível."
-      } else if (err.code === err.TIMEOUT) {
-        msg = "Tempo limite atingido ao obter localização."
+      const errorCallback = (err: GeolocationPositionError) => {
+        let msg = "Erro ao acessar localização."
+        if (err.code === err.PERMISSION_DENIED) {
+          msg = "Permissão de localização negada pelo usuário."
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          msg = "Posição de localização indisponível."
+        } else if (err.code === err.TIMEOUT) {
+          msg = "Tempo limite atingido ao obter localização."
+        }
+        setError(msg)
+        stopTracking()
       }
-      setError(msg)
-      stopTracking()
-    };
 
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      successCallback,
-      errorCallback,
-      {
+      watchIdRef.current = navigator.geolocation.watchPosition(successCallback, errorCallback, {
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 0,
-      }
-    )
-  }, [sendTrackingPosition, isConnected, stopTracking])
+      })
+    },
+    [sendTrackingPosition, isConnected, stopTracking],
+  )
 
   useEffect(() => {
     return () => {

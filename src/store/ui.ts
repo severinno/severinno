@@ -60,24 +60,18 @@ export const useUIStore = create<UIState>()((set) => ({
   authModal: { open: false, mode: "login", role: "CLIENT" },
   sidebarOpen: false,
 
-  openQuote: (opts) =>
-    set((s) => ({ quoteModal: { ...s.quoteModal, open: true, ...opts } })),
+  openQuote: (opts) => set((s) => ({ quoteModal: { ...s.quoteModal, open: true, ...opts } })),
   closeQuote: () => set((s) => ({ quoteModal: { ...s.quoteModal, open: false } })),
 
-  openBooking: (opts) =>
-    set((s) => ({ bookingModal: { ...s.bookingModal, open: true, ...opts } })),
-  closeBooking: () =>
-    set((s) => ({ bookingModal: { ...s.bookingModal, open: false } })),
+  openBooking: (opts) => set((s) => ({ bookingModal: { ...s.bookingModal, open: true, ...opts } })),
+  closeBooking: () => set((s) => ({ bookingModal: { ...s.bookingModal, open: false } })),
 
-  openProvider: (providerId) =>
-    set(() => ({ providerModal: { open: true, providerId } })),
-  closeProvider: () =>
-    set((s) => ({ providerModal: { ...s.providerModal, open: false } })),
+  openProvider: (providerId) => set(() => ({ providerModal: { open: true, providerId } })),
+  closeProvider: () => set((s) => ({ providerModal: { ...s.providerModal, open: false } })),
 
   openAuth: (mode = "login", role = "CLIENT") =>
     set(() => ({ authModal: { open: true, mode, role } })),
-  closeAuth: () =>
-    set((s) => ({ authModal: { ...s.authModal, open: false } })),
+  closeAuth: () => set((s) => ({ authModal: { ...s.authModal, open: false } })),
 
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

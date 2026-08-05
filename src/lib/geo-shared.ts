@@ -15,12 +15,7 @@ function toRad(deg: number): number {
 /**
  * Haversine distance in kilometers between two lat/lng points.
  */
-export function haversineKm(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): number {
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const dLat = toRad(lat2 - lat1)
   const dLng = toRad(lng2 - lng1)
   const a =

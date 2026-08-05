@@ -61,9 +61,7 @@ function loadHistory(): CoverageSnapshot[] {
 }
 
 function saveHistory(history: CoverageSnapshot[]): void {
-  const sorted = [...history].sort(
-    (a, b) => a.date.localeCompare(b.date),
-  )
+  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date))
   writeFileSync(HISTORY_FILE, JSON.stringify(sorted, null, 2) + "\n", "utf-8")
 }
 
@@ -107,8 +105,18 @@ const Y_TICKS = [0, 25, 50, 75, 100]
 function formatDate(iso: string): string {
   const d = new Date(iso + "T00:00:00")
   const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
   ]
   return `${months[d.getMonth()]} ${d.getDate()}`
 }
@@ -122,15 +130,13 @@ function generateChart(history: CoverageSnapshot[]): string {
   }
 
   const latestPct = history[history.length - 1].pct
-  const lineColor =
-    latestPct >= 80 ? "#2ea44f" : latestPct >= 50 ? "#bfa100" : "#cb2431"
+  const lineColor = latestPct >= 80 ? "#2ea44f" : latestPct >= 50 ? "#bfa100" : "#cb2431"
   const gridColor = "#e9ecef"
   const textColor = "#868e96"
   const axisColor = "#adb5bd"
 
   // Map percentage (0..100) to Y pixel (bottom..top)
-  const yPos = (pct: number): number =>
-    PAD_TOP + PLOT_HEIGHT - (pct / 100) * PLOT_HEIGHT
+  const yPos = (pct: number): number => PAD_TOP + PLOT_HEIGHT - (pct / 100) * PLOT_HEIGHT
 
   // Spread points evenly along the X-axis
   const xPos = (index: number): number => {
@@ -178,7 +184,8 @@ function generateChart(history: CoverageSnapshot[]): string {
   const xLabels = points
     .filter((_, i) => i % xLabelStep === 0)
     .map(
-      (p) => `    <text x="${p.x}" y="${CHART_HEIGHT - 12}" text-anchor="middle" fill="${textColor}" font-family="DejaVu Sans,Verdana,sans-serif" font-size="11">${p.date}</text>`,
+      (p) =>
+        `    <text x="${p.x}" y="${CHART_HEIGHT - 12}" text-anchor="middle" fill="${textColor}" font-family="DejaVu Sans,Verdana,sans-serif" font-size="11">${p.date}</text>`,
     )
     .join("\n")
 

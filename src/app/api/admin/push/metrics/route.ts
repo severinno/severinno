@@ -50,7 +50,9 @@ export async function GET(request: Request) {
     })
 
     // ── Timeline — envios por dia ────────────────────────────────────────
-    const timeline = await db.$queryRawUnsafe<Array<{ date: string; total: bigint; clicked: bigint; bounced: bigint; failed: bigint }>>(
+    const timeline = await db.$queryRawUnsafe<
+      Array<{ date: string; total: bigint; clicked: bigint; bounced: bigint; failed: bigint }>
+    >(
       `SELECT
          DATE(pa."createdAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo') AS date,
          COUNT(*)::bigint AS total,

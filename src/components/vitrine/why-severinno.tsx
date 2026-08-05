@@ -46,17 +46,8 @@ import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
 import { cn } from "@/lib/utils"
 
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from "@/components/ui/tooltip"
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -137,8 +128,7 @@ const FEATURES: Feature[] = [
   {
     icon: Star,
     title: "Avaliações reais",
-    description:
-      "Apenas clientes que concluíram o serviço podem avaliar. Sem falsas avaliações.",
+    description: "Apenas clientes que concluíram o serviço podem avaliar. Sem falsas avaliações.",
     bullets: [
       "Avaliação pós-conclusão apenas",
       "Sistema anti-fraude integrado",
@@ -151,8 +141,7 @@ const FEATURES: Feature[] = [
   {
     icon: MapPin,
     title: "Próximo de você",
-    description:
-      "Geolocalização inteligente mostra os melhores prestadores na sua região.",
+    description: "Geolocalização inteligente mostra os melhores prestadores na sua região.",
     bullets: [
       "Busca por CEP ou GPS",
       "Filtro de raio (1–50 km)",
@@ -167,14 +156,9 @@ const FEATURES: Feature[] = [
     title: "Suporte humano",
     description:
       "Equipe disponível para mediar disputas, tirar dúvidas e garantir uma experiência justa.",
-    bullets: [
-      "Suporte por chat e e-mail",
-      "Mediação de disputas",
-      "Base de conhecimento completa",
-    ],
+    bullets: ["Suporte por chat e e-mail", "Mediação de disputas", "Base de conhecimento completa"],
     accent: "from-green-500 to-emerald-700",
-    tooltip:
-      "Nossa equipe de suporte está disponível para ajudar com qualquer dúvida ou problema.",
+    tooltip: "Nossa equipe de suporte está disponível para ajudar com qualquer dúvida ou problema.",
   },
 ]
 
@@ -224,10 +208,7 @@ export default function WhySeverinno() {
   const stats = statsQuery.data
 
   return (
-    <section
-      id="por-que"
-      className="relative scroll-mt-20 bg-background"
-    >
+    <section id="por-que" className="bg-background relative scroll-mt-20">
       {/* ================================================================
           TOP — Full-width emerald gradient stats bar (H1, H6)
           ================================================================ */}
@@ -235,7 +216,7 @@ export default function WhySeverinno() {
         {/* Decorative mesh blobs */}
         <div aria-hidden className="pointer-events-none absolute inset-0">
           <div className="absolute top-0 left-1/4 size-64 rounded-full bg-white/5 blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 size-56 rounded-full bg-teal-400/10 blur-3xl" />
+          <div className="absolute right-1/4 bottom-0 size-56 rounded-full bg-teal-400/10 blur-3xl" />
         </div>
 
         <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
@@ -261,13 +242,10 @@ export default function WhySeverinno() {
         {/* Subtle gradient to muted at bottom */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-b from-transparent to-muted/30"
+          className="to-muted/30 pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-b from-transparent"
         />
 
-        <div
-          ref={ref}
-          className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
-        >
+        <div ref={ref} className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Heading */}
           <div className="mx-auto max-w-2xl text-center">
             <motion.span
@@ -283,22 +261,20 @@ export default function WhySeverinno() {
               initial={{ opacity: 0, y: 16 }}
               animate={visible ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.5, delay: 0.15 }}
-              className="mt-4 text-balance text-3xl font-bold tracking-tight sm:text-4xl"
+              className="mt-4 text-3xl font-bold tracking-tight text-balance sm:text-4xl"
             >
               Confiança em cada{" "}
-              <span className="text-emerald-600 dark:text-emerald-400">
-                agendamento
-              </span>
+              <span className="text-emerald-600 dark:text-emerald-400">agendamento</span>
             </motion.h2>
             <motion.p
               initial={{ opacity: 0, y: 16 }}
               animate={visible ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="mt-4 text-pretty text-muted-foreground"
+              className="text-muted-foreground mt-4 text-pretty"
             >
-              Mais que um diretório de serviços — um ecossistema pensado para
-              proteger você e o prestador. Da verificação ao pagamento, cada
-              etapa foi desenhada para a sua tranquilidade.
+              Mais que um diretório de serviços — um ecossistema pensado para proteger você e o
+              prestador. Da verificação ao pagamento, cada etapa foi desenhada para a sua
+              tranquilidade.
             </motion.p>
 
             {/* H7 — Quick link to FAQ */}
@@ -310,7 +286,7 @@ export default function WhySeverinno() {
             >
               <a
                 href="#faq"
-                className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-emerald-600 transition-colors hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
               >
                 <HelpCircle className="size-3" />
                 Pular para FAQ
@@ -321,12 +297,7 @@ export default function WhySeverinno() {
           {/* Feature grid (H8 — 3×2 minimalism) */}
           <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map((feature, idx) => (
-              <FeatureCard
-                key={feature.title}
-                feature={feature}
-                index={idx}
-                visible={visible}
-              />
+              <FeatureCard key={feature.title} feature={feature} index={idx} visible={visible} />
             ))}
           </div>
         </div>
@@ -340,10 +311,10 @@ export default function WhySeverinno() {
           initial={{ opacity: 0, y: 16 }}
           animate={visible ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5, delay: 0.4 }}
-          className="flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-4 text-center shadow-sm"
+          className="bg-card flex flex-wrap items-center justify-center gap-2 rounded-xl border p-4 text-center shadow-sm"
         >
           <ShieldAlert className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <p className="text-sm font-medium text-foreground">
+          <p className="text-foreground text-sm font-medium">
             Garantia Severinno:{" "}
             <span className="text-muted-foreground font-normal">
               seu dinheiro de volta se o serviço não for bem-feito.
@@ -351,7 +322,7 @@ export default function WhySeverinno() {
           </p>
           <a
             href="#faq"
-            className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
+            className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 transition-colors hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
           >
             Saiba mais
             <ArrowRight className="size-3" />
@@ -396,16 +367,10 @@ function LiveStatItem({
         {isLoading ? (
           <Skeleton className="inline-block h-8 w-16 rounded bg-white/20" />
         ) : (
-          <AnimatedNumber
-            target={value}
-            decimals={item.decimals}
-            suffix={item.suffix}
-          />
+          <AnimatedNumber target={value} decimals={item.decimals} suffix={item.suffix} />
         )}
       </div>
-      <p className="text-xs font-medium text-emerald-100 sm:text-sm">
-        {item.label}
-      </p>
+      <p className="text-xs font-medium text-emerald-100 sm:text-sm">{item.label}</p>
     </motion.div>
   )
 }
@@ -429,9 +394,7 @@ function AnimatedNumber({
     <span ref={ref} className="tabular-nums">
       {decimals > 0 ? value.toFixed(decimals) : value.toLocaleString("pt-BR")}
       {suffix && (
-        <span className="ml-1 text-lg font-normal text-emerald-200 sm:text-xl">
-          {suffix}
-        </span>
+        <span className="ml-1 text-lg font-normal text-emerald-200 sm:text-xl">{suffix}</span>
       )}
     </span>
   )
@@ -462,7 +425,7 @@ function FeatureCard({
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <div
           className={cn(
-            "group relative overflow-hidden rounded-2xl border bg-card p-6 shadow-sm transition-all duration-300",
+            "group bg-card relative overflow-hidden rounded-2xl border p-6 shadow-sm transition-all duration-300",
             "hover:-translate-y-1 hover:border-emerald-300 hover:shadow-lg",
             "dark:hover:border-emerald-800/60",
           )}
@@ -481,7 +444,7 @@ function FeatureCard({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="mt-1 rounded-full p-1 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                    className="text-muted-foreground/50 hover:text-muted-foreground mt-1 rounded-full p-1 transition-colors"
                     aria-label={`Saiba mais sobre ${feature.title}`}
                   >
                     <HelpCircle className="size-4" />
@@ -494,25 +457,20 @@ function FeatureCard({
             </TooltipProvider>
           </div>
 
-          <h3 className="mt-4 text-lg font-semibold leading-tight">
-            {feature.title}
-          </h3>
-          <p className="mt-2 text-sm leading-relaxed text-muted-foreground line-clamp-2">
+          <h3 className="mt-4 text-lg leading-tight font-semibold">{feature.title}</h3>
+          <p className="text-muted-foreground mt-2 line-clamp-2 text-sm leading-relaxed">
             {feature.description}
           </p>
 
           {/* H3 — Expandable "Saiba mais" */}
           <CollapsibleTrigger asChild>
             <button
-              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 transition-colors"
+              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-emerald-600 transition-colors hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
               aria-expanded={isOpen}
             >
               {isOpen ? "Menos detalhes" : "Saiba mais"}
               <ChevronDown
-                className={cn(
-                  "size-3 transition-transform duration-200",
-                  isOpen && "rotate-180",
-                )}
+                className={cn("size-3 transition-transform duration-200", isOpen && "rotate-180")}
               />
             </button>
           </CollapsibleTrigger>
@@ -530,7 +488,7 @@ function FeatureCard({
                   {feature.bullets.map((bullet) => (
                     <li
                       key={bullet}
-                      className="flex items-start gap-2 text-xs text-muted-foreground"
+                      className="text-muted-foreground flex items-start gap-2 text-xs"
                     >
                       <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                       <span>{bullet}</span>
@@ -545,7 +503,7 @@ function FeatureCard({
           <div
             aria-hidden
             className={cn(
-              "pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-gradient-to-br opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-20",
+              "pointer-events-none absolute -top-8 -right-8 size-24 rounded-full bg-gradient-to-br opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-20",
               feature.accent,
             )}
           />

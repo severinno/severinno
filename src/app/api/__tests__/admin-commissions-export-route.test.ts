@@ -140,9 +140,15 @@ describe("GET /api/admin/commissions/export", () => {
     expect(csv).toContain("=== REPASSES POR PRESTADOR ===")
     // No providers listed
     const linesAfterProviders = csv.split("REPASSES POR PRESTADOR")[1]
-    const providerLines = linesAfterProviders!.split("\r\n").filter(
-      (l) => l && !l.trim().startsWith("Prestador") && !l.trim().startsWith("=") && !l.startsWith("\uFEFF"),
-    )
+    const providerLines = linesAfterProviders!
+      .split("\r\n")
+      .filter(
+        (l) =>
+          l &&
+          !l.trim().startsWith("Prestador") &&
+          !l.trim().startsWith("=") &&
+          !l.startsWith("\uFEFF"),
+      )
     expect(providerLines).toHaveLength(0)
   })
 

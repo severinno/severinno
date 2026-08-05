@@ -30,10 +30,7 @@ export async function GET(request: Request) {
       ...(role ? { role } : {}),
       ...(q
         ? {
-            OR: [
-              { name: { contains: q } },
-              { email: { contains: q } },
-            ],
+            OR: [{ name: { contains: q } }, { email: { contains: q } }],
           }
         : {}),
     }

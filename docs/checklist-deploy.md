@@ -30,25 +30,25 @@
 > **Tempo estimado:** 15 min
 > **Responsável:** Quem tiver acesso admin ao repositório
 
-| # | Item | ❓ Status | 📋 Como Fazer |
-|:-:|:-----|:---------:|:--------------|
-| 1.1 | 📦 **Criar repositório** `severinno/severinno` | 🔲 | `https://github.com/new` → Nome: `severinno` → **Private** |
-| 1.2 | 🔑 **Adicionar chave SSH do VPS** | 🔲 | `Settings → SSH and GPG keys → New SSH key` |
-| 1.3 | 🔐 **Configurar GitHub Secrets** | 🔲 | `Settings → Secrets and variables → Actions` |
+|  #  | Item                                           | ❓ Status | 📋 Como Fazer                                              |
+| :-: | :--------------------------------------------- | :-------: | :--------------------------------------------------------- |
+| 1.1 | 📦 **Criar repositório** `severinno/severinno` |    🔲     | `https://github.com/new` → Nome: `severinno` → **Private** |
+| 1.2 | 🔑 **Adicionar chave SSH do VPS**              |    🔲     | `Settings → SSH and GPG keys → New SSH key`                |
+| 1.3 | 🔐 **Configurar GitHub Secrets**               |    🔲     | `Settings → Secrets and variables → Actions`               |
 
-| Secret | Valor | Obrigatório |
-|:-------|:------|:-----------:|
-| `DEPLOY_HOST` | IP do VPS | ✅ |
-| `DEPLOY_USER` | Usuário SSH do VPS | ✅ |
-| `DEPLOY_KEY` | Chave privada SSH | ✅ |
+| Secret              | Valor                               | Obrigatório |
+| :------------------ | :---------------------------------- | :---------: |
+| `DEPLOY_HOST`       | IP do VPS                           |     ✅      |
+| `DEPLOY_USER`       | Usuário SSH do VPS                  |     ✅      |
+| `DEPLOY_KEY`        | Chave privada SSH                   |     ✅      |
 | `SENTRY_AUTH_TOKEN` | Token de autenticação (source maps) | ❌ Opcional |
-| `SENTRY_ORG` | Organização no Sentry | ❌ Opcional |
-| `SENTRY_PROJECT` | Projeto no Sentry | ❌ Opcional |
+| `SENTRY_ORG`        | Organização no Sentry               | ❌ Opcional |
+| `SENTRY_PROJECT`    | Projeto no Sentry                   | ❌ Opcional |
 
-| # | Item | ❓ Status | 📋 Como Fazer |
-|:-:|:-----|:---------:|:--------------|
-| 1.4 | 🚀 **Push do release branch + tag** | 🔲 | `git push origin release/v0.4.0 --tags` |
-| 1.5 | 🤖 **CI/CD acionado automaticamente** | 🔲 | `Actions` → workflow `Release & Deploy` |
+|  #  | Item                                  | ❓ Status | 📋 Como Fazer                           |
+| :-: | :------------------------------------ | :-------: | :-------------------------------------- |
+| 1.4 | 🚀 **Push do release branch + tag**   |    🔲     | `git push origin release/v0.4.0 --tags` |
+| 1.5 | 🤖 **CI/CD acionado automaticamente** |    🔲     | `Actions` → workflow `Release & Deploy` |
 
 ---
 
@@ -59,13 +59,13 @@
 
 ### 📦 Requisitos Mínimos
 
-| Recurso | Mínimo | Recomendado |
-|:--------|:------:|:-----------:|
-| **vCPU** | 2 | 4 |
-| **RAM** | 4 GB | 8 GB |
-| **SSD** | 50 GB | 100 GB |
-| **SO** | Ubuntu 24.04 LTS | Ubuntu 24.04 LTS |
-| **Docker** | 24+ | 27+ |
+| Recurso    |      Mínimo      |   Recomendado    |
+| :--------- | :--------------: | :--------------: |
+| **vCPU**   |        2         |        4         |
+| **RAM**    |       4 GB       |       8 GB       |
+| **SSD**    |      50 GB       |      100 GB      |
+| **SO**     | Ubuntu 24.04 LTS | Ubuntu 24.04 LTS |
+| **Docker** |       24+        |       27+        |
 
 ### 📋 Passo a Passo
 
@@ -154,11 +154,11 @@ openssl rand -base64 32 > secrets/glitchtip_secret_key.secret
 
 ### 🔑 Secrets que Precisam de Input Manual
 
-| # | Secret | Como Gerar | Importante |
-|:-:|:-------|:-----------|:-----------|
+|  #   | Secret                        | Como Gerar                         | Importante                                           |
+| :--: | :---------------------------- | :--------------------------------- | :--------------------------------------------------- |
 | 3.10 | 🔐 `vapid_private_key.secret` | `npx web-push generate-vapid-keys` | Guardar **private key** + **public key** para `.env` |
-| 3.11 | 🔐 `smtp_pass.secret` | Senha SMTP do provedor de email | Mailtrap, SendGrid, AWS SES, etc. |
-| 3.12 | 🔐 `evolution_api_key.secret` | Painel Evolution API | Se usar WhatsApp |
+| 3.11 | 🔐 `smtp_pass.secret`         | Senha SMTP do provedor de email    | Mailtrap, SendGrid, AWS SES, etc.                    |
+| 3.12 | 🔐 `evolution_api_key.secret` | Painel Evolution API               | Se usar WhatsApp                                     |
 
 ### 📄 Configurar `.env` de Produção
 
@@ -175,17 +175,17 @@ grep -n "<MUDE_AQUI>" .env.production.local || echo "✅ Todas preenchidas!"
 
 📖 **Variáveis obrigatórias no `.env.production.local`:**
 
-| Categoria | Variável | Exemplo | Fonte |
-|:----------|:---------|:--------|:------|
-| **Domínio** | `NEXT_PUBLIC_APP_URL` | `https://severinno.com.br` | Domínio |
-| **Domínio** | `NEXT_PUBLIC_SITE_URL` | `https://severinno.com.br` | Domínio |
-| **Domínio** | `NEXT_PUBLIC_WS_URL` | `wss://severinno.com.br` | Domínio |
-| **Banco** | `DATABASE_URL` | `postgresql://severinno@pgbouncer:6432/severinno` | Via PgBouncer |
-| **Banco** | `DIRECT_URL` | `postgresql://severinno@postgres:5432/severinno` | Direto (Prisma Migrate) |
-| **VAPID** | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | `BC...` | `secrets/vapid_private_key.secret` |
-| **GlitchTip** | `SENTRY_DSN` | `https://key@glitchtip.severinno.com.br/id` | Após setup do GlitchTip |
-| **S3** | `S3_ENDPOINT` | `http://minio:9000` | Interno (MinIO) |
-| **RabbitMQ** | `RABBITMQ_URL` | `amqp://severinno:pass@rabbitmq:5672` | `secrets/rabbitmq_pass.secret` |
+| Categoria     | Variável                       | Exemplo                                           | Fonte                              |
+| :------------ | :----------------------------- | :------------------------------------------------ | :--------------------------------- |
+| **Domínio**   | `NEXT_PUBLIC_APP_URL`          | `https://severinno.com.br`                        | Domínio                            |
+| **Domínio**   | `NEXT_PUBLIC_SITE_URL`         | `https://severinno.com.br`                        | Domínio                            |
+| **Domínio**   | `NEXT_PUBLIC_WS_URL`           | `wss://severinno.com.br`                          | Domínio                            |
+| **Banco**     | `DATABASE_URL`                 | `postgresql://severinno@pgbouncer:6432/severinno` | Via PgBouncer                      |
+| **Banco**     | `DIRECT_URL`                   | `postgresql://severinno@postgres:5432/severinno`  | Direto (Prisma Migrate)            |
+| **VAPID**     | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | `BC...`                                           | `secrets/vapid_private_key.secret` |
+| **GlitchTip** | `SENTRY_DSN`                   | `https://key@glitchtip.severinno.com.br/id`       | Após setup do GlitchTip            |
+| **S3**        | `S3_ENDPOINT`                  | `http://minio:9000`                               | Interno (MinIO)                    |
+| **RabbitMQ**  | `RABBITMQ_URL`                 | `amqp://severinno:pass@rabbitmq:5672`             | `secrets/rabbitmq_pass.secret`     |
 
 ---
 
@@ -194,11 +194,11 @@ grep -n "<MUDE_AQUI>" .env.production.local || echo "✅ Todas preenchidas!"
 > **Tempo estimado:** 5 min (propagação: até 24h)
 > **Local:** Painel do provedor de domínio (registro.br, Cloudflare, etc.)
 
-| # | Item | Tipo | TTL | Valor |
-|:-:|:-----|:----:|:---:|:------|
-| 4.1 | 🌐 **Domínio principal** | `A` | 300s | `IP_DO_VPS` |
-| 4.2 | 🌐 **Subdomínio www** | `CNAME` | 300s | `severinno.com.br` |
-| 4.3 | 🌐 **Subdomínio GlitchTip** | `A` | 300s | `IP_DO_VPS` |
+|  #  | Item                        |  Tipo   | TTL  | Valor              |
+| :-: | :-------------------------- | :-----: | :--: | :----------------- |
+| 4.1 | 🌐 **Domínio principal**    |   `A`   | 300s | `IP_DO_VPS`        |
+| 4.2 | 🌐 **Subdomínio www**       | `CNAME` | 300s | `severinno.com.br` |
+| 4.3 | 🌐 **Subdomínio GlitchTip** |   `A`   | 300s | `IP_DO_VPS`        |
 
 ```
 severinno.com.br.       A     300   <IP_DO_VPS>
@@ -254,6 +254,7 @@ git push origin v0.4.0
 ```
 
 **Pipeline:**
+
 1. ✅ UTF-8 check (paralelo)
 2. ✅ Quality gate (paralelo)
 3. ✅ Lint (paralelo)
@@ -287,6 +288,7 @@ curl -sI https://severinno.com.br | grep -E "^(strict|content-security|x-|permis
 ```
 
 Esperado:
+
 ```
 strict-transport-security: max-age=31536000; includeSubDomains; preload
 x-content-type-options: nosniff
@@ -381,15 +383,15 @@ logrotate -f /etc/logrotate.d/caddy
 > **Tempo estimado:** Contínuo
 > **Após:** Deploy em produção
 
-| # | Item | Ferramenta | Como Verificar |
-|:-:|:-----|:-----------|:---------------|
-| 7.1 | 📊 **Dashboard admin** | `/admin` no app | Status dos serviços, push analytics, performance |
-| 7.2 | 🔥 **Error tracking** | GlitchTip | `glitchtip.severinno.com.br` |
-| 7.3 | 💾 **Backups** | Cron + pg_dump | `ls -lah /var/backups/severinno/postgres/` |
-| 7.4 | 📝 **Logs do Caddy** | fail2ban | `tail -f /var/log/caddy/severinno-access.log` |
-| 7.5 | 🔐 **SSL renovação** | Automático (Caddy) | Certificates em `/data/caddy` |
-| 7.6 | 🐳 **Docker health** | Healthchecks | `docker ps --format "table {{.Names}}\t{{.Status}}"` |
-| 7.7 | 📈 **Recursos** | `htop`, `df -h` | CPU, RAM, disco |
+|  #  | Item                   | Ferramenta         | Como Verificar                                       |
+| :-: | :--------------------- | :----------------- | :--------------------------------------------------- |
+| 7.1 | 📊 **Dashboard admin** | `/admin` no app    | Status dos serviços, push analytics, performance     |
+| 7.2 | 🔥 **Error tracking**  | GlitchTip          | `glitchtip.severinno.com.br`                         |
+| 7.3 | 💾 **Backups**         | Cron + pg_dump     | `ls -lah /var/backups/severinno/postgres/`           |
+| 7.4 | 📝 **Logs do Caddy**   | fail2ban           | `tail -f /var/log/caddy/severinno-access.log`        |
+| 7.5 | 🔐 **SSL renovação**   | Automático (Caddy) | Certificates em `/data/caddy`                        |
+| 7.6 | 🐳 **Docker health**   | Healthchecks       | `docker ps --format "table {{.Names}}\t{{.Status}}"` |
+| 7.7 | 📈 **Recursos**        | `htop`, `df -h`    | CPU, RAM, disco                                      |
 
 ---
 
@@ -426,20 +428,20 @@ logrotate -f /etc/logrotate.d/caddy
 
 ## 📊 Estimativa de Recursos
 
-| Serviço | vCPU | RAM | Disco |
-|:--------|:----:|:---:|:-----:|
-| Caddy | 0.5 | 256 MB | ~1 GB (logs) |
-| PostgreSQL | 1.0 | 1 GB | Dados + backup |
-| PgBouncer | 0.5 | 256 MB | — |
-| Redis | 0.5 | 256 MB | — |
-| RabbitMQ | 0.5 | 512 MB | — |
-| MinIO | 0.5 | 512 MB | ~5 GB (S3) |
-| App (Next.js) | 1.0 | 1 GB | — |
-| Realtime | 0.5 | 256 MB | — |
-| 3 Workers | 1.5 | 768 MB | — |
-| **Core total** | **~6.5** | **~4.8 GB** | **~6 GB** |
-| GlitchTip stack | 2.0 | 2 GB | ~2 GB |
-| **Total c/ GlitchTip** | **~8.5** | **~6.8 GB** | **~8 GB** |
+| Serviço                |   vCPU   |     RAM     |     Disco      |
+| :--------------------- | :------: | :---------: | :------------: |
+| Caddy                  |   0.5    |   256 MB    |  ~1 GB (logs)  |
+| PostgreSQL             |   1.0    |    1 GB     | Dados + backup |
+| PgBouncer              |   0.5    |   256 MB    |       —        |
+| Redis                  |   0.5    |   256 MB    |       —        |
+| RabbitMQ               |   0.5    |   512 MB    |       —        |
+| MinIO                  |   0.5    |   512 MB    |   ~5 GB (S3)   |
+| App (Next.js)          |   1.0    |    1 GB     |       —        |
+| Realtime               |   0.5    |   256 MB    |       —        |
+| 3 Workers              |   1.5    |   768 MB    |       —        |
+| **Core total**         | **~6.5** | **~4.8 GB** |   **~6 GB**    |
+| GlitchTip stack        |   2.0    |    2 GB     |     ~2 GB      |
+| **Total c/ GlitchTip** | **~8.5** | **~6.8 GB** |   **~8 GB**    |
 
 > 💡 **Recomendação:** VPS com **4 vCPU / 8 GB RAM / 100 GB SSD** para rodar tudo com GlitchTip.
 

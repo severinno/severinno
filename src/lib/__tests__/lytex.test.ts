@@ -54,7 +54,13 @@ function verifySig(payload: Record<string, unknown>, secret: string): boolean {
 }
 
 type Customer = { name: string; email: string; cpfCnpj: string; phone?: string }
-type Card = { number: string; holderName: string; expiryMonth: string; expiryYear: string; cvv: string }
+type Card = {
+  number: string
+  holderName: string
+  expiryMonth: string
+  expiryYear: string
+  cvv: string
+}
 
 /**
  * Simula createPixCharge: constroi URL + body, chama fetch, trata resposta.
@@ -175,22 +181,41 @@ function mockFetchError() {
 }
 
 const customer = { name: "João Silva", email: "joao@email.com", cpfCnpj: "123.456.789-00" }
-const card = { number: "4111111111111111", holderName: "JOAO SILVA", expiryMonth: "12", expiryYear: "2028", cvv: "123" }
+const card = {
+  number: "4111111111111111",
+  holderName: "JOAO SILVA",
+  expiryMonth: "12",
+  expiryYear: "2028",
+  cvv: "123",
+}
 
 const pixResp = {
-  id: "lytx_pix_001", status: "pending", transactionId: "tx_pix_001",
-  qrCode: "00020101021226...pix", qrCodeImage: "https://api.lytex.com.br/qr/pix.png",
-  amount: 150, expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+  id: "lytx_pix_001",
+  status: "pending",
+  transactionId: "tx_pix_001",
+  qrCode: "00020101021226...pix",
+  qrCodeImage: "https://api.lytex.com.br/qr/pix.png",
+  amount: 150,
+  expiresAt: new Date(Date.now() + 3600_000).toISOString(),
 }
 
 const cardResp = {
-  id: "lytx_card_001", status: "paid", transactionId: "tx_card_001",
-  cardLastDigits: "4444", cardBrand: "visa", installments: 1, amount: 150,
+  id: "lytx_card_001",
+  status: "paid",
+  transactionId: "tx_card_001",
+  cardLastDigits: "4444",
+  cardBrand: "visa",
+  installments: 1,
+  amount: 150,
 }
 
 const queryResp = {
-  id: "lytx_c_001", status: "paid", transactionId: "tx_001",
-  externalReference: "booking:abc123", amount: 150, paidAmount: 150,
+  id: "lytx_c_001",
+  status: "paid",
+  transactionId: "tx_001",
+  externalReference: "booking:abc123",
+  amount: 150,
+  paidAmount: 150,
   paidAt: new Date().toISOString(),
 }
 
@@ -213,7 +238,8 @@ describe("parseExternalReference", () => {
   })
   it("funciona com IDs longos (cuid)", () => {
     expect(parseRef("booking:cm8k5xvzq0000abc123xyz")).toEqual({
-      type: "booking", id: "cm8k5xvzq0000abc123xyz",
+      type: "booking",
+      id: "cm8k5xvzq0000abc123xyz",
     })
   })
 })
@@ -411,12 +437,14 @@ describe("pollChargeStatus (waitingPayment)", () => {
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ ...queryResp, status: "waitingPayment" }), {
-          status: 200, headers: { "content-type": "application/json" },
+          status: 200,
+          headers: { "content-type": "application/json" },
         }),
       )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ ...queryResp, status: "paid" }), {
-          status: 200, headers: { "content-type": "application/json" },
+          status: 200,
+          headers: { "content-type": "application/json" },
         }),
       )
 
@@ -426,10 +454,11 @@ describe("pollChargeStatus (waitingPayment)", () => {
   })
 
   it("retorna último status após esgotar tentativas", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      () => Promise.resolve(
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
         new Response(JSON.stringify({ ...queryResp, status: "waitingPayment" }), {
-          status: 200, headers: { "content-type": "application/json" },
+          status: 200,
+          headers: { "content-type": "application/json" },
         }),
       ),
     )

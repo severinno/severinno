@@ -20,7 +20,12 @@ const { mockFavorites } = vi.hoisted(() => ({
         lat: -23.5,
         lng: -46.6,
         services: [
-          { id: "svc-1", title: "Limpeza", active: true, category: { id: "cat-1", name: "Doméstico", slug: "domestico" } },
+          {
+            id: "svc-1",
+            title: "Limpeza",
+            active: true,
+            category: { id: "cat-1", name: "Doméstico", slug: "domestico" },
+          },
         ],
         reviewsReceived: [{ rating: 5 }, { rating: 4 }],
         _count: { bookingsAsProvider: 0 },
@@ -42,7 +47,12 @@ const { mockFavorites } = vi.hoisted(() => ({
         lat: -23.55,
         lng: -46.65,
         services: [
-          { id: "svc-2", title: "Pintura", active: true, category: { id: "cat-2", name: "Reforma", slug: "reforma" } },
+          {
+            id: "svc-2",
+            title: "Pintura",
+            active: true,
+            category: { id: "cat-2", name: "Reforma", slug: "reforma" },
+          },
         ],
         reviewsReceived: [{ rating: 5 }],
         _count: { bookingsAsProvider: 0 },
@@ -123,10 +133,12 @@ describe("GET /api/favorites", () => {
   })
 
   it("returns rating 0 when provider has no reviews", async () => {
-    const noReviews = [{
-      ...mockFavorites[0],
-      provider: { ...mockFavorites[0].provider, reviewsReceived: [] },
-    }]
+    const noReviews = [
+      {
+        ...mockFavorites[0],
+        provider: { ...mockFavorites[0].provider, reviewsReceived: [] },
+      },
+    ]
     mockDb.favorite.findMany.mockResolvedValue(noReviews)
     const response = await GET(createMockRequest())
     const data = await response.json()

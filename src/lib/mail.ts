@@ -19,11 +19,7 @@ function createTransport() {
   })
 }
 
-export async function sendMail(opts: {
-  to: string
-  subject: string
-  html: string
-}): Promise<void> {
+export async function sendMail(opts: { to: string; subject: string; html: string }): Promise<void> {
   const transport = createTransport()
   if (!transport) {
     logger.warn({ to: opts.to, subject: opts.subject }, "mail not sent (no SMTP config)")
@@ -94,7 +90,8 @@ function emailWrapper(bodyHtml: string): string {
 }
 
 function btnPrimary(text: string, url?: string): string {
-  if (!url) return `<div style="margin:24px 0;padding:12px 24px;background:${BRAND_PRIMARY};color:#fff;border-radius:8px;text-align:center;font-weight:600;font-size:14px;display:inline-block">${text}</div>`
+  if (!url)
+    return `<div style="margin:24px 0;padding:12px 24px;background:${BRAND_PRIMARY};color:#fff;border-radius:8px;text-align:center;font-weight:600;font-size:14px;display:inline-block">${text}</div>`
   const escaped = url.replace(/"/g, "&quot;")
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0">
     <tr>
@@ -281,8 +278,7 @@ export function paymentConfirmedHtml(opts: {
   paymentMethod: string
   scheduledAt: string
 }): string {
-  const methodLabel =
-    opts.paymentMethod === "PIX" ? "PIX" : "Cartão de crédito"
+  const methodLabel = opts.paymentMethod === "PIX" ? "PIX" : "Cartão de crédito"
   const body = `
     <h2 style="margin:0 0 8px;color:#111827;font-size:20px">Pagamento confirmado! 🎉</h2>
     <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.5">
@@ -400,10 +396,7 @@ export function passwordResetHtml(opts: {
 
 // ── Password changed (security alert) ───────────────────────────────────
 
-export function passwordChangedHtml(opts: {
-  userName: string
-  email: string
-}): string {
+export function passwordChangedHtml(opts: { userName: string; email: string }): string {
   const body = `
     <h2 style="margin:0 0 8px;color:#111827;font-size:20px">Senha alterada 🔐</h2>
     <p style="margin:0 0 24px;color:#6b7280;font-size:14px;line-height:1.5">
@@ -491,7 +484,12 @@ export type CommissionReportData = {
   bookingCount: number
   completedCount: number
   providerCount: number
-  topProviders: Array<{ name: string; grossRevenue: number; commission: number; netEarnings: number }>
+  topProviders: Array<{
+    name: string
+    grossRevenue: number
+    commission: number
+    netEarnings: number
+  }>
 }
 
 export function commissionReportHtml(data: CommissionReportData): string {
@@ -549,7 +547,9 @@ export function commissionReportHtml(data: CommissionReportData): string {
       <strong>${data.bookingCount}</strong> bookings PAID no período
     </p>
 
-    ${data.topProviders.length > 0 ? `
+    ${
+      data.topProviders.length > 0
+        ? `
     <h3 style="margin:24px 0 12px;color:#111827;font-size:15px">🥇 Top Prestadores</h3>
     <table style="width:100%;border-collapse:collapse">
       <thead>
@@ -562,7 +562,9 @@ export function commissionReportHtml(data: CommissionReportData): string {
       </thead>
       <tbody>${providerRows}</tbody>
     </table>
-    ` : ""}
+    `
+        : ""
+    }
 
     <p style="margin:24px 0 0;color:#6b7280;font-size:13px">
       📈 Acesse o painel admin para ver o relatório completo com gráficos mensais.

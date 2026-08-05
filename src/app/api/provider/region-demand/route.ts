@@ -45,12 +45,7 @@ export async function GET() {
       },
     })
 
-    if (
-      !provider ||
-      !provider.lat ||
-      !provider.lng ||
-      !provider.radiusKm
-    ) {
+    if (!provider || !provider.lat || !provider.lng || !provider.radiusKm) {
       return NextResponse.json({
         total: 0,
         bookings: 0,
@@ -132,17 +127,11 @@ export async function GET() {
     ])
 
     const bookings = allBookings.filter(
-      (b) =>
-        b.lat !== null &&
-        b.lng !== null &&
-        haversineKm(lat, lng, b.lat, b.lng) <= radiusKm,
+      (b) => b.lat !== null && b.lng !== null && haversineKm(lat, lng, b.lat, b.lng) <= radiusKm,
     ).length
 
     const quotes = allQuotes.filter(
-      (q) =>
-        q.lat !== null &&
-        q.lng !== null &&
-        haversineKm(lat, lng, q.lat, q.lng) <= radiusKm,
+      (q) => q.lat !== null && q.lng !== null && haversineKm(lat, lng, q.lat, q.lng) <= radiusKm,
     ).length
 
     return NextResponse.json({

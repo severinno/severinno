@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import {
-  badRequest,
-  forbidden,
-  handleError,
-  notFound,
-} from "@/lib/api-server"
+import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
 import { refundCharge, getCharge, lytexLogger } from "@/lib/lytex"
 import { notifyBookingStatus } from "@/lib/notifications"
 
@@ -84,14 +79,12 @@ export async function PATCH(request: Request, { params }: Params) {
     const allowed = isAdmin
       ? ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
       : isProvider
-        ? PROVIDER_NEXT[booking.status] ?? []
+        ? (PROVIDER_NEXT[booking.status] ?? [])
         : isClient
-          ? CLIENT_NEXT[booking.status] ?? []
+          ? (CLIENT_NEXT[booking.status] ?? [])
           : []
     if (!allowed.includes(next)) {
-      throw badRequest(
-        `Transição não permitida: ${booking.status} → ${next}`,
-      )
+      throw badRequest(`Transição não permitida: ${booking.status} → ${next}`)
     }
 
     // Side effects on CONFIRM / CANCELLED
@@ -127,10 +120,7 @@ export async function PATCH(request: Request, { params }: Params) {
             )
           }
         } catch (e) {
-          lytexLogger.error(
-            { err: e, bookingId: id },
-            "Cancel: erro ao estornar no Lytex",
-          )
+          lytexLogger.error({ err: e, bookingId: id }, "Cancel: erro ao estornar no Lytex")
           // Se falhou, ainda atualiza o status local (reembolso manual pode ser necessário)
         }
       }
@@ -166,21 +156,11 @@ export async function PATCH(request: Request, { params }: Params) {
     const serviceName = updated.service?.title ?? "Serviço"
 
     // Notificar o cliente
-    notifyBookingStatus(
-      updated.clientId,
-      id,
-      newStatus,
-      serviceName,
-    ).catch(() => {})
+    notifyBookingStatus(updated.clientId, id, newStatus, serviceName).catch(() => {})
 
     // Notificar o provider (se não for o mesmo que o cliente)
     if (updated.clientId !== updated.providerId) {
-      notifyBookingStatus(
-        updated.providerId,
-        id,
-        newStatus,
-        serviceName,
-      ).catch(() => {})
+      notifyBookingStatus(updated.providerId, id, newStatus, serviceName).catch(() => {})
     }
 
     return NextResponse.json({ booking: updated })

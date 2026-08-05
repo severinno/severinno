@@ -11,22 +11,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import {
-  eachMonthOfInterval,
-  format,
-  isSameMonth,
-  startOfYear,
-  endOfMonth,
-} from "date-fns"
+import { eachMonthOfInterval, format, isSameMonth, startOfYear, endOfMonth } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import {
-  CheckCircle2,
-  Clock,
-  CreditCard,
-  RotateCcw,
-  Wallet,
-  XCircle,
-} from "lucide-react"
+import { CheckCircle2, Clock, CreditCard, RotateCcw, Wallet, XCircle } from "lucide-react"
 
 import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
 import { RealtimeStatusBadge } from "@/components/shared/realtime-status-badge"
@@ -99,12 +86,7 @@ const PAY_BADGE_STYLES: Record<PaymentStatus, string> = {
 }
 
 function PayStatusBadge({ status }: { status: PaymentStatus }) {
-  const Icon =
-    status === "PAID"
-      ? CheckCircle2
-      : status === "PENDING"
-        ? Clock
-        : RotateCcw
+  const Icon = status === "PAID" ? CheckCircle2 : status === "PENDING" ? Clock : RotateCcw
   return (
     <Badge
       className={cn(
@@ -158,9 +140,7 @@ function FinanceStatCard({
           <Icon className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            {label}
-          </p>
+          <p className="text-muted-foreground text-xs tracking-wider uppercase">{label}</p>
           <p className="truncate text-xl font-bold tabular-nums">{value}</p>
         </div>
       </CardContent>
@@ -183,8 +163,7 @@ export function ProviderFinance() {
 
   const query = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "finance", user?.id],
-    queryFn: async () =>
-      apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
+    queryFn: async () => apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
   })
 
   const allBookings = query.data?.items ?? []
@@ -231,11 +210,7 @@ export function ProviderFinance() {
   })
   const chartData = yearMonths.map((m) => {
     const total = allBookings
-      .filter(
-        (b) =>
-          isSameMonth(new Date(b.scheduledAt), m) &&
-          b.paymentStatus === "PAID",
-      )
+      .filter((b) => isSameMonth(new Date(b.scheduledAt), m) && b.paymentStatus === "PAID")
       .reduce((acc, b) => acc + b.amount, 0)
     return {
       month: format(m, "MMM", { locale: ptBR }),
@@ -255,21 +230,18 @@ export function ProviderFinance() {
   return (
     <div className="grid gap-8">
       {/* Live status badge */}
-      <RealtimeStatusBadge
-        status={status}
-        isConnected={isConnected}
-      />
+      <RealtimeStatusBadge status={status} isConnected={isConnected} />
 
       {/* Wallet */}
       <ProviderWallet />
 
       {/* Yearly summary heading */}
       <div className="-mb-2 flex items-center gap-3">
-        <div className="h-px flex-1 bg-border" />
-        <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="bg-border h-px flex-1" />
+        <span className="text-muted-foreground shrink-0 text-xs font-semibold tracking-wider uppercase">
           Resumo do ano
         </span>
-        <div className="h-px flex-1 bg-border" />
+        <div className="bg-border h-px flex-1" />
       </div>
 
       {/* Summary */}
@@ -297,22 +269,13 @@ export function ProviderFinance() {
       {/* Chart */}
       <Card className="rounded-xl shadow-sm">
         <CardHeader className="border-b py-3">
-          <CardTitle className="text-sm">
-            Receita por mês ({now.getFullYear()})
-          </CardTitle>
+          <CardTitle className="text-sm">Receita por mês ({now.getFullYear()})</CardTitle>
         </CardHeader>
         <CardContent className="p-3">
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
-              >
-                <CartesianGrid
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                  vertical={false}
-                />
+              <BarChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                 <XAxis
                   dataKey="month"
                   tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
@@ -324,20 +287,14 @@ export function ProviderFinance() {
                   axisLine={false}
                   tickLine={false}
                   width={48}
-                  tickFormatter={(v) =>
-                    v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
-                  }
+                  tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
                 />
                 <RTooltip
                   cursor={{ fill: "var(--accent)", opacity: 0.5 }}
                   contentStyle={CHART_TOOLTIP_STYLE}
                   formatter={(v: number) => [formatBRL(v), "Receita"]}
                 />
-                <Bar
-                  dataKey="receita"
-                  fill="var(--primary)"
-                  radius={[4, 4, 0, 0]}
-                />
+                <Bar dataKey="receita" fill="var(--primary)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -345,7 +302,7 @@ export function ProviderFinance() {
       </Card>
 
       {/* Filters bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3">
+      <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border p-3">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="Status" />
@@ -382,16 +339,11 @@ export function ProviderFinance() {
           </SelectContent>
         </Select>
         {isDirty && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearFilters}
-            className="h-9 gap-1.5 text-xs"
-          >
+          <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9 gap-1.5 text-xs">
             <XCircle className="size-3.5" /> Limpar
           </Button>
         )}
-        <p className="ml-auto text-xs text-muted-foreground tabular-nums">
+        <p className="text-muted-foreground ml-auto text-xs tabular-nums">
           {filtered.length} transação{filtered.length === 1 ? "" : "ões"}
         </p>
       </div>
@@ -399,77 +351,65 @@ export function ProviderFinance() {
       {/* Table */}
       <Card className="rounded-xl shadow-sm">
         <CardHeader className="border-b py-3">
-          <CardTitle className="text-sm">
-            Transações ({filtered.length})
-          </CardTitle>
+          <CardTitle className="text-sm">Transações ({filtered.length})</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center">
-              <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-full">
                 <Wallet className="size-5" />
               </div>
-              <p className="text-sm text-muted-foreground">
-                Nenhuma transação neste período.
-              </p>
+              <p className="text-muted-foreground text-sm">Nenhuma transação neste período.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 h-11 hover:bg-muted/50">
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 h-11">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Data
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Cliente
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase sm:table-cell">
                       Serviço
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground md:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase md:table-cell">
                       Método
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Status
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
                       Valor
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((b) => (
-                    <TableRow
-                      key={b.id}
-                      className="h-14 transition-colors hover:bg-muted/30"
-                    >
-                      <TableCell className="text-xs tabular-nums text-muted-foreground">
+                    <TableRow key={b.id} className="hover:bg-muted/30 h-14 transition-colors">
+                      <TableCell className="text-muted-foreground text-xs tabular-nums">
                         {formatDate(b.scheduledAt)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Avatar className="size-7 border">
                             {b.client.avatarUrl ? (
-                              <AvatarImage
-                                src={b.client.avatarUrl}
-                                alt={b.client.name}
-                              />
+                              <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
                             ) : null}
-                            <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">
+                            <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
                               {initials(b.client.name)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="truncate text-sm">
-                            {b.client.name}
-                          </span>
+                          <span className="truncate text-sm">{b.client.name}</span>
                         </div>
                       </TableCell>
                       <TableCell className="hidden max-w-[200px] truncate text-sm sm:table-cell">
                         {b.service.title}
                       </TableCell>
                       <TableCell className="hidden text-sm md:table-cell">
-                        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                        <span className="text-muted-foreground inline-flex items-center gap-1.5">
                           <CreditCard className="size-3" />
                           {PAYMENT_METHOD_LABELS[b.paymentMethod]}
                         </span>

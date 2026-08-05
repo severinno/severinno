@@ -105,13 +105,17 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     checkPostGIS(),
   ])
 
-  const database = results[0].status === "fulfilled" ? results[0].value : "error" as const
-  const redis = results[1].status === "fulfilled" ? results[1].value : "error" as const
-  const nominatimStatus = results[2].status === "fulfilled" ? results[2].value.status : "error" as const
-  const viacepStatus = results[3].status === "fulfilled" ? results[3].value.status : "error" as const
-  const postgisStatus = results[4].status === "fulfilled" ? results[4].value.status : "error" as const
+  const database = results[0].status === "fulfilled" ? results[0].value : ("error" as const)
+  const redis = results[1].status === "fulfilled" ? results[1].value : ("error" as const)
+  const nominatimStatus =
+    results[2].status === "fulfilled" ? results[2].value.status : ("error" as const)
+  const viacepStatus =
+    results[3].status === "fulfilled" ? results[3].value.status : ("error" as const)
+  const postgisStatus =
+    results[4].status === "fulfilled" ? results[4].value.status : ("error" as const)
 
-  const nominatimDetail = results[2].status === "fulfilled" ? results[2].value.detail : "unreachable"
+  const nominatimDetail =
+    results[2].status === "fulfilled" ? results[2].value.detail : "unreachable"
   const viacepDetail = results[3].status === "fulfilled" ? results[3].value.detail : "unreachable"
   const postgisDetail = results[4].status === "fulfilled" ? results[4].value.detail : "unreachable"
 
@@ -160,23 +164,20 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
 
     const sentry = await getSentry()
     if (sentry?.captureMessage) {
-      sentry.captureMessage(
-        `Geo service(s) degraded: ${failedChecks.join(", ")}`,
-        {
-          level: "warning",
-          extra: {
-            failedChecks,
-            nominatim: nominatimDetail,
-            viacep: viacepDetail,
-            postgis: postgisDetail,
-            uptime: process.uptime(),
-          },
-          tags: {
-            source: "health-check",
-            type: "geo-degraded",
-          },
+      sentry.captureMessage(`Geo service(s) degraded: ${failedChecks.join(", ")}`, {
+        level: "warning",
+        extra: {
+          failedChecks,
+          nominatim: nominatimDetail,
+          viacep: viacepDetail,
+          postgis: postgisDetail,
+          uptime: process.uptime(),
         },
-      )
+        tags: {
+          source: "health-check",
+          type: "geo-degraded",
+        },
+      })
     }
   }
 
@@ -220,19 +221,16 @@ async function checkRedis(): Promise<ServiceStatus> {
 /** Check Nominatim API availability. */
 async function checkNominatim(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
-    const res = await fetch(
-      "https://nominatim.openstreetmap.org/status.php?format=json",
-      {
-        headers: {
-          "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
-        },
-        signal: AbortSignal.timeout(5000),
+    const res = await fetch("https://nominatim.openstreetmap.org/status.php?format=json", {
+      headers: {
+        "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
       },
-    )
+      signal: AbortSignal.timeout(5000),
+    })
     if (!res.ok) {
       return { status: "error", detail: `HTTP ${res.status}` }
     }
-    const data = await res.json() as { status?: number; message?: string }
+    const data = (await res.json()) as { status?: number; message?: string }
     // Nominatim status: 0=OK, 1=degraded, 2=down
     if (data.status === 0) {
       return { status: "ok", detail: "online" }
@@ -247,14 +245,13 @@ async function checkNominatim(): Promise<{ status: ServiceStatus; detail: string
 async function checkViaCEP(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
     // Use a well-known CEP (CEP da Rua Augusta, SP)
-    const res = await fetch(
-      "https://viacep.com.br/ws/01310100/json/",
-      { signal: AbortSignal.timeout(5000) },
-    )
+    const res = await fetch("https://viacep.com.br/ws/01310100/json/", {
+      signal: AbortSignal.timeout(5000),
+    })
     if (!res.ok) {
       return { status: "error", detail: `HTTP ${res.status}` }
     }
-    const data = await res.json() as { erro?: boolean }
+    const data = (await res.json()) as { erro?: boolean }
     if (data.erro) {
       return { status: "error", detail: "unexpected error response" }
     }

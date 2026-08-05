@@ -195,18 +195,15 @@ function BookingDetailsDialog({
           <div className="flex items-center gap-3">
             <Avatar className="size-10 border">
               {booking.client.avatarUrl ? (
-                <AvatarImage
-                  src={booking.client.avatarUrl}
-                  alt={booking.client.name}
-                />
+                <AvatarImage src={booking.client.avatarUrl} alt={booking.client.name} />
               ) : null}
-              <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                 {initials(booking.client.name)}
               </AvatarFallback>
             </Avatar>
             <div>
               <p className="text-sm font-semibold">{booking.client.name}</p>
-              <p className="text-xs text-muted-foreground">Cliente</p>
+              <p className="text-muted-foreground text-xs">Cliente</p>
             </div>
           </div>
 
@@ -230,7 +227,7 @@ function BookingDetailsDialog({
                 >
                   {PAYMENT_STATUS_LABELS[booking.paymentStatus]}
                 </Badge>
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <span className="text-muted-foreground flex items-center gap-1 text-xs">
                   <CreditCard className="size-3" />
                   {PAYMENT_METHOD_LABELS[booking.paymentMethod]}
                 </span>
@@ -238,33 +235,30 @@ function BookingDetailsDialog({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Valor</span>
-              <span className="font-semibold tabular-nums text-primary">
+              <span className="text-primary font-semibold tabular-nums">
                 {formatBRL(booking.amount)}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Data</span>
               <span className="font-medium tabular-nums">
-                {formatDate(booking.scheduledAt)} às{" "}
-                {formatTime(booking.scheduledAt)}
+                {formatDate(booking.scheduledAt)} às {formatTime(booking.scheduledAt)}
               </span>
             </div>
           </div>
 
           <div className="grid gap-2 rounded-lg border p-3 text-sm">
             <div className="flex items-start gap-2">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+              <MapPin className="text-primary mt-0.5 size-4 shrink-0" />
               <div>
-                <p className="text-xs text-muted-foreground">Endereço</p>
+                <p className="text-muted-foreground text-xs">Endereço</p>
                 <p className="font-medium">{booking.address}</p>
-                <p className="text-xs text-muted-foreground">
-                  CEP: {booking.cep}
-                </p>
+                <p className="text-muted-foreground text-xs">CEP: {booking.cep}</p>
                 <a
                   href={mapsUrl}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                  className="text-primary mt-1 inline-flex items-center gap-1 text-xs font-medium hover:underline"
                 >
                   <MapPin className="size-3" /> Abrir no mapa
                 </a>
@@ -274,26 +268,19 @@ function BookingDetailsDialog({
 
           {booking.notes && (
             <div className="grid gap-1 rounded-lg border p-3 text-sm">
-              <p className="text-xs text-muted-foreground">
-                Observações do cliente
-              </p>
+              <p className="text-muted-foreground text-xs">Observações do cliente</p>
               <p className="text-foreground">{booking.notes}</p>
             </div>
           )}
 
           {booking.status === "CONFIRMED" && (
-            <p className="text-xs text-muted-foreground">
-              Apenas o cliente pode concluir o agendamento após a execução do
-              serviço.
+            <p className="text-muted-foreground text-xs">
+              Apenas o cliente pode concluir o agendamento após a execução do serviço.
             </p>
           )}
         </div>
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onMessage(booking.clientId)}
-            className="gap-1.5"
-          >
+          <Button variant="outline" onClick={() => onMessage(booking.clientId)} className="gap-1.5">
             <MessageSquare className="size-4" /> Enviar mensagem
           </Button>
           <Button onClick={() => onOpenChange(false)}>Fechar</Button>
@@ -319,8 +306,7 @@ export function ProviderBookings() {
   // Fetch all bookings once for tab counts + table data
   const allQuery = useQuery<{ items: Booking[]; total: number }>({
     queryKey: ["provider", "bookings", "all"],
-    queryFn: async () =>
-      apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
+    queryFn: async () => apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
   })
 
   const allBookings = allQuery.data?.items ?? []
@@ -341,12 +327,9 @@ export function ProviderBookings() {
   }, [allBookings])
 
   const filtered = React.useMemo(() => {
-    const list =
-      tab === "all" ? allBookings : allBookings.filter((b) => b.status === tab)
+    const list = tab === "all" ? allBookings : allBookings.filter((b) => b.status === tab)
     return [...list].sort(
-      (a, b) =>
-        new Date(b.scheduledAt).getTime() -
-        new Date(a.scheduledAt).getTime(),
+      (a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime(),
     )
   }, [allBookings, tab])
 
@@ -359,11 +342,7 @@ export function ProviderBookings() {
     setPage(1)
   }, [tab])
 
-  const updateStatus = async (
-    booking: Booking,
-    next: BookingStatus,
-    label: string,
-  ) => {
+  const updateStatus = async (booking: Booking, next: BookingStatus, label: string) => {
     setActioningId(booking.id)
     try {
       await apiPatch(`/api/bookings/${booking.id}`, { status: next })
@@ -393,14 +372,10 @@ export function ProviderBookings() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="w-full overflow-x-auto sm:w-auto">
           {STATUS_TABS.map((t) => (
-            <TabsTrigger
-              key={t.value}
-              value={t.value}
-              className="flex-1 gap-1.5 sm:flex-none"
-            >
+            <TabsTrigger key={t.value} value={t.value} className="flex-1 gap-1.5 sm:flex-none">
               {t.label}
               {counts[t.value] > 0 && (
-                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-semibold text-primary tabular-nums">
+                <span className="bg-primary/15 text-primary ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
                   {counts[t.value]}
                 </span>
               )}
@@ -412,20 +387,17 @@ export function ProviderBookings() {
       {allQuery.isLoading ? (
         <div className="grid gap-3">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-14 animate-pulse rounded-xl border bg-muted/30"
-            />
+            <div key={i} className="bg-muted/30 h-14 animate-pulse rounded-xl border" />
           ))}
         </div>
       ) : pageItems.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
             <CalendarCheck className="size-6" />
           </div>
           <div>
             <p className="text-sm font-semibold">Nenhum agendamento aqui</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-xs">
               Quando um cliente agendar, ele aparecerá nesta lista.
             </p>
           </div>
@@ -436,23 +408,23 @@ export function ProviderBookings() {
           <div className="hidden overflow-hidden rounded-xl border md:block">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/50 h-11 hover:bg-muted/50">
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <TableRow className="bg-muted/50 hover:bg-muted/50 h-11">
+                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Cliente
                   </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Serviço
                   </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Agendado para
                   </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Status
                   </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                     Pagamento
                   </TableHead>
-                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
                     Valor
                   </TableHead>
                   <TableHead className="w-12" />
@@ -460,26 +432,18 @@ export function ProviderBookings() {
               </TableHeader>
               <TableBody>
                 {pageItems.map((b) => (
-                  <TableRow
-                    key={b.id}
-                    className="h-14 transition-colors hover:bg-muted/30"
-                  >
+                  <TableRow key={b.id} className="hover:bg-muted/30 h-14 transition-colors">
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Avatar className="size-8 border">
                           {b.client.avatarUrl ? (
-                            <AvatarImage
-                              src={b.client.avatarUrl}
-                              alt={b.client.name}
-                            />
+                            <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
                           ) : null}
-                          <AvatarFallback className="bg-primary text-[10px] text-primary-foreground">
+                          <AvatarFallback className="bg-primary text-primary-foreground text-[10px]">
                             {initials(b.client.name)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="truncate text-sm font-medium">
-                          {b.client.name}
-                        </span>
+                        <span className="truncate text-sm font-medium">{b.client.name}</span>
                       </div>
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate text-sm">
@@ -490,7 +454,7 @@ export function ProviderBookings() {
                         <span className="text-sm font-medium tabular-nums">
                           {formatDate(b.scheduledAt)}
                         </span>
-                        <span className="text-xs text-muted-foreground tabular-nums">
+                        <span className="text-muted-foreground text-xs tabular-nums">
                           às {formatTime(b.scheduledAt)}
                         </span>
                       </div>
@@ -508,7 +472,7 @@ export function ProviderBookings() {
                         >
                           {PAYMENT_STATUS_LABELS[b.paymentStatus]}
                         </Badge>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-muted-foreground text-[10px]">
                           {PAYMENT_METHOD_LABELS[b.paymentMethod]}
                         </span>
                       </div>
@@ -522,15 +486,9 @@ export function ProviderBookings() {
                         actioning={actioningId === b.id}
                         onDetail={() => openDetail(b)}
                         onMessage={() => messageClient(b.clientId)}
-                        onConfirm={() =>
-                          updateStatus(b, "CONFIRMED", "Confirmado")
-                        }
-                        onStart={() =>
-                          updateStatus(b, "IN_PROGRESS", "Iniciado")
-                        }
-                        onCancel={() =>
-                          updateStatus(b, "CANCELLED", "Cancelado")
-                        }
+                        onConfirm={() => updateStatus(b, "CONFIRMED", "Confirmado")}
+                        onStart={() => updateStatus(b, "IN_PROGRESS", "Iniciado")}
+                        onCancel={() => updateStatus(b, "CANCELLED", "Cancelado")}
                       />
                     </TableCell>
                   </TableRow>
@@ -574,9 +532,7 @@ export function ProviderBookings() {
               <PaginationNext
                 onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                 aria-disabled={page === pageCount}
-                className={cn(
-                  page === pageCount && "pointer-events-none opacity-50",
-                )}
+                className={cn(page === pageCount && "pointer-events-none opacity-50")}
               />
             </PaginationItem>
           </PaginationContent>
@@ -640,12 +596,7 @@ function BookingActions({
       )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            aria-label="Mais ações"
-          >
+          <Button variant="ghost" size="icon" className="size-8" aria-label="Mais ações">
             <MoreVertical className="size-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -711,25 +662,20 @@ function BookingCard({
       <div className="flex items-center gap-3">
         <Avatar className="size-10 border">
           {booking.client.avatarUrl ? (
-            <AvatarImage
-              src={booking.client.avatarUrl}
-              alt={booking.client.name}
-            />
+            <AvatarImage src={booking.client.avatarUrl} alt={booking.client.name} />
           ) : null}
-          <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+          <AvatarFallback className="bg-primary text-primary-foreground text-xs">
             {initials(booking.client.name)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="font-medium leading-tight">{booking.client.name}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {booking.service.title}
-          </p>
+          <p className="leading-tight font-medium">{booking.client.name}</p>
+          <p className="text-muted-foreground mt-0.5 truncate text-xs">{booking.service.title}</p>
         </div>
         <StatusBadge status={booking.status} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <span className="flex items-center gap-1 tabular-nums">
           <Clock className="size-3" />
           {formatDate(booking.scheduledAt)} às {formatTime(booking.scheduledAt)}
@@ -742,7 +688,7 @@ function BookingCard({
 
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold tabular-nums text-primary">
+          <span className="text-primary text-sm font-semibold tabular-nums">
             {formatBRL(booking.amount)}
           </span>
           <Badge

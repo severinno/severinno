@@ -71,11 +71,7 @@ function pruneWindow(): void {
  *
  * Safe to call from any server context (API route, worker, queue consumer).
  */
-export function trackPushFailure(
-  userId: string,
-  endpoint: string,
-  errorMessage: string,
-): void {
+export function trackPushFailure(userId: string, endpoint: string, errorMessage: string): void {
   const now = Date.now()
 
   // Record the failure
@@ -88,7 +84,13 @@ export function trackPushFailure(
   const count = recentFailures.length
 
   logger.warn(
-    { userId, endpoint: endpoint.slice(0, 30) + "…", errorMessage, failureCount: count, windowMinutes: WINDOW_MS / 60_000 },
+    {
+      userId,
+      endpoint: endpoint.slice(0, 30) + "…",
+      errorMessage,
+      failureCount: count,
+      windowMinutes: WINDOW_MS / 60_000,
+    },
     "push failure tracked",
   )
 

@@ -28,7 +28,10 @@ async function logPushAction(
         where: { id: recent.id },
         data: { action, actionResult, clickedAt: new Date(), status: "clicked" },
       })
-      logger.info({ analyticsId: recent.id, userId, action, actionResult, bookingId }, "push action logged")
+      logger.info(
+        { analyticsId: recent.id, userId, action, actionResult, bookingId },
+        "push action logged",
+      )
     } else {
       // Sem PushAnalytics prévio — cria um registro de ação avulso
       await db.pushAnalytics.create({
@@ -146,7 +149,13 @@ export async function POST(request: Request) {
       await logPushAction(session.userId, bookingId, "reject", "CANCELLED")
 
       // Notify client
-      await notifyBookingStatus(booking.clientId, bookingId, "CANCELLED", booking.service.title, "O prestador recusou o agendamento.")
+      await notifyBookingStatus(
+        booking.clientId,
+        bookingId,
+        "CANCELLED",
+        booking.service.title,
+        "O prestador recusou o agendamento.",
+      )
 
       return NextResponse.json({
         ok: true,

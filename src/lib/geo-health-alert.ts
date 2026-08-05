@@ -354,9 +354,7 @@ export async function evaluateGeoHealth(checks: GeoHealthInput): Promise<GeoHeal
               consecutiveFailures: s.consecutiveFailures,
               duration,
               detail: check.detail,
-              firstDegradedAt: s.firstDegradedAt
-                ? new Date(s.firstDegradedAt).toISOString()
-                : null,
+              firstDegradedAt: s.firstDegradedAt ? new Date(s.firstDegradedAt).toISOString() : null,
             },
           }).catch(() => {
             // Notification is best-effort — don't block the health check

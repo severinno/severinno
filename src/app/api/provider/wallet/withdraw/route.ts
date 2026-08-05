@@ -29,10 +29,7 @@ export async function POST(request: Request) {
 
     // Minimum withdrawal
     if (withdrawAmount < 10) {
-      return NextResponse.json(
-        { error: "Saque mínimo de R$ 10,00." },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "Saque mínimo de R$ 10,00." }, { status: 400 })
     }
 
     // Maximum withdrawal

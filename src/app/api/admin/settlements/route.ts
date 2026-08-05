@@ -180,16 +180,14 @@ export async function POST(request: Request) {
         providerCount: providerMap.size,
         transactionCount,
         providers: {
-          create: Array.from(providerMap.entries()).map(
-            ([providerId, ps]) => ({
-              providerId,
-              status: "PENDING",
-              totalAmount: ROUND2(ps.totalAmount),
-              commission: ROUND2(ps.commission),
-              netAmount: ROUND2(ps.netAmount),
-              transactionCount: ps.count,
-            }),
-          ),
+          create: Array.from(providerMap.entries()).map(([providerId, ps]) => ({
+            providerId,
+            status: "PENDING",
+            totalAmount: ROUND2(ps.totalAmount),
+            commission: ROUND2(ps.commission),
+            netAmount: ROUND2(ps.netAmount),
+            transactionCount: ps.count,
+          })),
         },
       },
       include: {

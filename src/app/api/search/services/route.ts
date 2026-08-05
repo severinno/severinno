@@ -23,22 +23,22 @@ export async function GET(request: Request) {
     const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit") ?? "20") || 20))
 
     if (!q) {
-      return NextResponse.json(
-        { error: "Parâmetro 'q' é obrigatório" },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "Parâmetro 'q' é obrigatório" }, { status: 400 })
     }
 
     const result = await searchServices(q, page, limit)
 
-    return cacheControlPublic(NextResponse.json({
-      items: result.items,
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-      took: result.took,
-      engine: "opensearch",
-    }), 30)
+    return cacheControlPublic(
+      NextResponse.json({
+        items: result.items,
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        took: result.took,
+        engine: "opensearch",
+      }),
+      30,
+    )
   } catch (e) {
     return handleError(e)
   }

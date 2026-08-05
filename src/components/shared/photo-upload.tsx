@@ -15,7 +15,13 @@ type Props = {
   size?: "sm" | "md" | "lg"
 }
 
-export function PhotoUpload({ currentUrl, onUploaded, type = "avatar", className, size = "md" }: Props) {
+export function PhotoUpload({
+  currentUrl,
+  onUploaded,
+  type = "avatar",
+  className,
+  size = "md",
+}: Props) {
   const { upload, uploading } = useUpload()
   const inputRef = React.useRef<HTMLInputElement>(null)
 
@@ -41,16 +47,16 @@ export function PhotoUpload({ currentUrl, onUploaded, type = "avatar", className
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
         className={cn(
-          "relative flex items-center justify-center rounded-full overflow-hidden border-2 border-dashed border-muted-foreground/30 transition-all hover:border-primary size-full",
+          "border-muted-foreground/30 hover:border-primary relative flex size-full items-center justify-center overflow-hidden rounded-full border-2 border-dashed transition-all",
         )}
       >
         {currentUrl ? (
           <img src={currentUrl} alt="" className="size-full object-cover" />
         ) : (
-          <Camera className="size-5 text-muted-foreground" />
+          <Camera className="text-muted-foreground size-5" />
         )}
         {uploading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-full">
+          <div className="bg-background/60 absolute inset-0 flex items-center justify-center rounded-full">
             <Loader2 className="size-5 animate-spin" />
           </div>
         )}

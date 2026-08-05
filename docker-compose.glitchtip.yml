@@ -51,7 +51,11 @@ services:
     volumes:
       - glitchtip_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${GLITCHTIP_DB_USER:-glitchtip} -d ${GLITCHTIP_DB_NAME:-glitchtip}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${GLITCHTIP_DB_USER:-glitchtip} -d ${GLITCHTIP_DB_NAME:-glitchtip}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5

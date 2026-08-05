@@ -3,7 +3,8 @@ import { LoginPageClient } from "./login-page-client"
 
 export const metadata: Metadata = {
   title: "Entrar — Severinno",
-  description: "Entre na sua conta Severinno para acessar o painel, gerenciar agendamentos e solicitar orçamentos.",
+  description:
+    "Entre na sua conta Severinno para acessar o painel, gerenciar agendamentos e solicitar orçamentos.",
   openGraph: {
     title: "Entrar — Severinno",
     description: "Entre na sua conta para acessar o painel.",

@@ -13,10 +13,7 @@ import logger from "@/lib/logger"
  * Body:
  *   action — "cancel" (unico suportado por enquanto)
  */
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("ADMIN")
     const { id } = await params

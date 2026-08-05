@@ -1,11 +1,7 @@
 "use client"
 
 import { ThemeProvider } from "next-themes"
-import {
-  QueryClient,
-  QueryClientProvider,
-  type QueryClientConfig,
-} from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, type QueryClientConfig } from "@tanstack/react-query"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { SoundProvider } from "@/lib/sound-context"
 import { RealtimeProvider } from "@/components/shared/realtime-provider"
@@ -69,17 +65,10 @@ export function Providers({ children }: { children: ReactNode }) {
   }, [client])
 
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="light"
-      enableSystem
-      disableTransitionOnChange
-    >
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={client}>
         <SoundProvider>
-          <RealtimeProvider>
-            {children}
-          </RealtimeProvider>
+          <RealtimeProvider>{children}</RealtimeProvider>
           <SonnerToaster position="top-right" richColors closeButton />
         </SoundProvider>
       </QueryClientProvider>

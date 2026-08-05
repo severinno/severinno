@@ -2,12 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { reviewSchema } from "@/lib/validators"
-import {
-  badRequest,
-  forbidden,
-  handleError,
-  notFound,
-} from "@/lib/api-server"
+import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { fireEvent } from "@/lib/event-hub"
 
@@ -95,13 +90,17 @@ export async function POST(request: Request) {
     })
 
     // 🔔 Fire event webhook for review.created — scoped to the provider who was reviewed
-    fireEvent("review.created", {
-      clientName: review.client.name,
-      providerName: review.booking?.provider?.name ?? "",
-      serviceName: review.booking?.service?.title ?? "",
-      rating: String(review.rating),
-      comment: review.comment ?? "",
-    }, { scopedUserIds: [booking.providerId] }).catch(() => {})
+    fireEvent(
+      "review.created",
+      {
+        clientName: review.client.name,
+        providerName: review.booking?.provider?.name ?? "",
+        serviceName: review.booking?.service?.title ?? "",
+        rating: String(review.rating),
+        comment: review.comment ?? "",
+      },
+      { scopedUserIds: [booking.providerId] },
+    ).catch(() => {})
 
     return NextResponse.json({ review }, { status: 201 })
   } catch (e) {

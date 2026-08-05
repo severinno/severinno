@@ -29,10 +29,7 @@ export default function Loading() {
         </StaggerContainer>
 
         {/* ── About / Bio ──────────────────────────────────────────── */}
-        <div
-          className="mb-10 space-y-3"
-          style={{ animation: "fadeSlideUp 0.4s 0.2s both" }}
-        >
+        <div className="mb-10 space-y-3" style={{ animation: "fadeSlideUp 0.4s 0.2s both" }}>
           <S className="h-5 w-32" />
           <S className="h-4 w-full" />
           <S className="h-4 w-5/6" />
@@ -40,18 +37,12 @@ export default function Loading() {
         </div>
 
         {/* ── Services section ────────────────────────────────────── */}
-        <div
-          className="mb-6"
-          style={{ animation: "fadeSlideUp 0.4s 0.3s both" }}
-        >
+        <div className="mb-6" style={{ animation: "fadeSlideUp 0.4s 0.3s both" }}>
           <S className="mb-4 h-6 w-40" />
           <div className="grid gap-4 sm:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                style={{ animation: `fadeSlideUp 0.3s ${0.35 + i * 0.06}s both` }}
-              >
-                <div className="rounded-xl border border-border/50 bg-card p-5">
+              <div key={i} style={{ animation: `fadeSlideUp 0.3s ${0.35 + i * 0.06}s both` }}>
+                <div className="border-border/50 bg-card rounded-xl border p-5">
                   <S className="mb-3 h-5 w-3/4" />
                   <S className="mb-2 h-3 w-full" />
                   <S className="mb-2 h-3 w-4/5" />
@@ -66,16 +57,11 @@ export default function Loading() {
         </div>
 
         {/* ── Reviews section ─────────────────────────────────────── */}
-        <div
-          style={{ animation: "fadeSlideUp 0.4s 0.45s both" }}
-        >
+        <div style={{ animation: "fadeSlideUp 0.4s 0.45s both" }}>
           <S className="mb-4 h-6 w-36" />
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="rounded-xl border border-border/50 bg-card p-4"
-              >
+              <div key={i} className="border-border/50 bg-card rounded-xl border p-4">
                 <div className="flex items-center gap-3">
                   <S className="size-9 shrink-0 rounded-full" />
                   <div className="flex-1 space-y-2">

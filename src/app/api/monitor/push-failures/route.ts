@@ -72,9 +72,7 @@ export async function GET() {
           status: f.status,
           error: f.errorMessage,
           devices: f.deviceCount,
-          ago: Math.round(
-            (Date.now() - f.createdAt.getTime()) / 1000,
-          ) + "s",
+          ago: Math.round((Date.now() - f.createdAt.getTime()) / 1000) + "s",
         })),
       },
     }

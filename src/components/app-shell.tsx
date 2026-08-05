@@ -29,9 +29,7 @@ const ClientPanel = dynamic(() =>
 const ProviderPanel = dynamic(() =>
   import("@/components/provider/provider-panel").then((m) => m.ProviderPanel),
 )
-const AdminPanel = dynamic(() =>
-  import("@/components/admin/admin-panel").then((m) => m.AdminPanel),
-)
+const AdminPanel = dynamic(() => import("@/components/admin/admin-panel").then((m) => m.AdminPanel))
 const ModalsHost = dynamic(
   () => import("@/components/modals/modals-host").then((m) => m.ModalsHost),
   { ssr: false },
@@ -121,7 +119,7 @@ export default function AppShell() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="bg-background flex min-h-screen flex-col">
       {content}
       <ModalsHost />
     </div>

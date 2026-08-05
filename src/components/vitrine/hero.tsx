@@ -115,12 +115,7 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; color: string; bg
 // Component
 // ---------------------------------------------------------------------------
 
-export default function Hero({
-  query,
-  onQueryChange,
-  onSearchSubmit,
-  resultsAnchorId,
-}: HeroProps) {
+export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnchorId }: HeroProps) {
   const { city } = useGeoStore()
   const openAuth = useUIStore((s) => s.openAuth)
 
@@ -183,9 +178,21 @@ export default function Hero({
         }}
       />
       {/* Animated mesh blobs */}
-      <div aria-hidden className="absolute -top-24 -right-24 size-72 animate-pulse rounded-full bg-emerald-400/30 blur-3xl" style={{ animationDuration: "6s" }} />
-      <div aria-hidden className="absolute -bottom-32 -left-20 size-80 animate-pulse rounded-full bg-teal-300/20 blur-3xl" style={{ animationDuration: "7s", animationDelay: "1.5s" }} />
-      <div aria-hidden className="absolute top-1/3 right-1/4 size-56 animate-pulse rounded-full bg-emerald-300/15 blur-3xl" style={{ animationDuration: "8s", animationDelay: "0.8s" }} />
+      <div
+        aria-hidden
+        className="absolute -top-24 -right-24 size-72 animate-pulse rounded-full bg-emerald-400/30 blur-3xl"
+        style={{ animationDuration: "6s" }}
+      />
+      <div
+        aria-hidden
+        className="absolute -bottom-32 -left-20 size-80 animate-pulse rounded-full bg-teal-300/20 blur-3xl"
+        style={{ animationDuration: "7s", animationDelay: "1.5s" }}
+      />
+      <div
+        aria-hidden
+        className="absolute top-1/3 right-1/4 size-56 animate-pulse rounded-full bg-emerald-300/15 blur-3xl"
+        style={{ animationDuration: "8s", animationDelay: "0.8s" }}
+      />
 
       <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8 lg:py-20">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
@@ -193,7 +200,7 @@ export default function Hero({
           <div className="flex flex-col items-start">
             {/* H1 — Status badges */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur ring-1 ring-white/20">
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium ring-1 ring-white/20 backdrop-blur">
                 <BadgeCheck className="size-3.5" />
                 Marketplace de serviços verificados
               </span>
@@ -215,24 +222,23 @@ export default function Hero({
             </div>
 
             {/* H2 — Linguagem do mundo real */}
-            <h1 className="mt-5 text-balance text-3xl font-bold leading-[1.1] tracking-tight sm:text-4xl md:text-5xl">
+            <h1 className="mt-5 text-3xl leading-[1.1] font-bold tracking-tight text-balance sm:text-4xl md:text-5xl">
               Prestadores de serviço verificados,{" "}
               <span className="text-emerald-200">perto de você.</span>
             </h1>
-            <p className="mt-4 max-w-xl text-pretty text-sm font-light text-emerald-50/90 sm:text-base md:text-lg">
-              Compare avaliações reais, peça orçamento grátis e agende —
-              encanador, eletricista, pintor e mais. Você escolhe o
-              profissional.
+            <p className="mt-4 max-w-xl text-sm font-light text-pretty text-emerald-50/90 sm:text-base md:text-lg">
+              Compare avaliações reais, peça orçamento grátis e agende — encanador, eletricista,
+              pintor e mais. Você escolhe o profissional.
             </p>
 
             {/* Search bar */}
             <form
               onSubmit={handleSearch}
-              className="mt-7 w-full max-w-xl rounded-2xl bg-white p-2 text-foreground shadow-2xl ring-1 ring-black/5"
+              className="text-foreground mt-7 w-full max-w-xl rounded-2xl bg-white p-2 shadow-2xl ring-1 ring-black/5"
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div className="relative flex-1">
-                  <Search className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Search className="text-muted-foreground absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
                   <Input
                     value={query}
                     onChange={(e) => onQueryChange(e.target.value)}
@@ -263,15 +269,13 @@ export default function Hero({
 
             {/* Popular service chips */}
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium text-emerald-100/80">
-                Mais buscados:
-              </span>
+              <span className="text-xs font-medium text-emerald-100/80">Mais buscados:</span>
               {POPULAR_SERVICES.map((s) => (
                 <button
                   key={s.label}
                   type="button"
                   onClick={() => handlePopularClick(s.label)}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white ring-1 ring-white/15 transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white ring-1 ring-white/15 transition-colors hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
                 >
                   <span aria-hidden>{s.emoji}</span>
                   {s.label}
@@ -303,9 +307,21 @@ export default function Hero({
 
             {/* Trust badges */}
             <ul className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-emerald-50">
-              <TrustBadge icon={<BadgeCheck className="size-4" />} title="Prestadores verificados" tooltip="Documentos validados e identidade confirmada" />
-              <TrustBadge icon={<Star className="size-4" />} title="Avaliações reais" tooltip="Avaliações de clientes após a conclusão do serviço" />
-              <TrustBadge icon={<ShieldCheck className="size-4" />} title="Pagamento seguro" tooltip="Pagamento só é liberado após você marcar como concluído" />
+              <TrustBadge
+                icon={<BadgeCheck className="size-4" />}
+                title="Prestadores verificados"
+                tooltip="Documentos validados e identidade confirmada"
+              />
+              <TrustBadge
+                icon={<Star className="size-4" />}
+                title="Avaliações reais"
+                tooltip="Avaliações de clientes após a conclusão do serviço"
+              />
+              <TrustBadge
+                icon={<ShieldCheck className="size-4" />}
+                title="Pagamento seguro"
+                tooltip="Pagamento só é liberado após você marcar como concluído"
+              />
             </ul>
           </div>
 
@@ -323,11 +339,32 @@ export default function Hero({
 
         {/* ============ Social proof bar ============ */}
         {stats && (
-          <div className="mt-12 grid grid-cols-2 gap-4 rounded-2xl bg-white/10 px-6 py-5 backdrop-blur ring-1 ring-white/15 sm:grid-cols-4 sm:gap-0">
-            <StatItem icon={<Users className="size-5" />} value={stats.providers} label="Prestadores verificados" accent />
-            <StatItem icon={<Wrench className="size-5" />} value={stats.services} label="Serviços cadastrados" accent />
-            <StatItem icon={<CheckCircle2 className="size-5" />} value={stats.completedBookings} label="Serviços concluídos" accent />
-            <StatItem icon={<Star className="size-5" />} value={stats.avgRating || "—"} label="Nota média das avaliações" suffix={stats.avgRating ? "★" : undefined} accent />
+          <div className="mt-12 grid grid-cols-2 gap-4 rounded-2xl bg-white/10 px-6 py-5 ring-1 ring-white/15 backdrop-blur sm:grid-cols-4 sm:gap-0">
+            <StatItem
+              icon={<Users className="size-5" />}
+              value={stats.providers}
+              label="Prestadores verificados"
+              accent
+            />
+            <StatItem
+              icon={<Wrench className="size-5" />}
+              value={stats.services}
+              label="Serviços cadastrados"
+              accent
+            />
+            <StatItem
+              icon={<CheckCircle2 className="size-5" />}
+              value={stats.completedBookings}
+              label="Serviços concluídos"
+              accent
+            />
+            <StatItem
+              icon={<Star className="size-5" />}
+              value={stats.avgRating || "—"}
+              label="Nota média das avaliações"
+              suffix={stats.avgRating ? "★" : undefined}
+              accent
+            />
           </div>
         )}
       </div>
@@ -379,7 +416,7 @@ function LiveActivityPanel({
   return (
     <div className="relative">
       {/* ── Main activity feed card ── */}
-      <div className="rounded-3xl bg-white/10 p-5 backdrop-blur-md ring-1 ring-white/20 shadow-2xl">
+      <div className="rounded-3xl bg-white/10 p-5 shadow-2xl ring-1 ring-white/20 backdrop-blur-md">
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -398,7 +435,7 @@ function LiveActivityPanel({
         </div>
 
         {/* Activity list */}
-        <div className="space-y-2.5 max-h-[400px] overflow-y-auto scrollbar-thin pr-1">
+        <div className="scrollbar-thin max-h-[400px] space-y-2.5 overflow-y-auto pr-1">
           {isLoading ? (
             // Skeleton loading
             Array.from({ length: 5 }).map((_, i) => (
@@ -418,7 +455,11 @@ function LiveActivityPanel({
             </div>
           ) : (
             visibleActivities.map((activity, i) => (
-              <ActivityCard key={`${activity.type}-${activity.userName}-${i}`} activity={activity} index={i} />
+              <ActivityCard
+                key={`${activity.type}-${activity.userName}-${i}`}
+                activity={activity}
+                index={i}
+              />
             ))
           )}
         </div>
@@ -451,7 +492,9 @@ function LiveActivityPanel({
             transition={{ duration: 0.35, ease: "easeOut" }}
             className="absolute -bottom-4 -left-4 z-10 flex items-center gap-2.5 rounded-2xl bg-white px-4 py-3 shadow-2xl ring-1 ring-black/5"
           >
-            <span className="text-lg" aria-hidden>{activities[toastIndex % activities.length].emoji}</span>
+            <span className="text-lg" aria-hidden>
+              {activities[toastIndex % activities.length].emoji}
+            </span>
             <div className="leading-tight">
               <p className="text-xs font-semibold text-slate-900">
                 {activities[toastIndex % activities.length].userName}{" "}
@@ -461,7 +504,7 @@ function LiveActivityPanel({
                 {activities[toastIndex % activities.length].target}
               </p>
             </div>
-            <span className="ml-2 text-[10px] text-slate-400 whitespace-nowrap">
+            <span className="ml-2 text-[10px] whitespace-nowrap text-slate-400">
               {activities[toastIndex % activities.length].timeAgo}
             </span>
           </motion.div>
@@ -508,25 +551,28 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
             className="size-10 rounded-full object-cover ring-2 ring-white/20"
           />
         ) : (
-          <div className={cn("flex size-10 items-center justify-center rounded-full ring-1 ring-white/10", meta.bg)}>
+          <div
+            className={cn(
+              "flex size-10 items-center justify-center rounded-full ring-1 ring-white/10",
+              meta.bg,
+            )}
+          >
             <Icon className={cn("size-4", meta.color)} />
           </div>
         )}
         {/* Activity type badge */}
-        <span className="absolute -bottom-1 -right-1 flex size-5 items-center justify-center rounded-full bg-white/20 text-[10px] ring-1 ring-white/10">
+        <span className="absolute -right-1 -bottom-1 flex size-5 items-center justify-center rounded-full bg-white/20 text-[10px] ring-1 ring-white/10">
           {activity.emoji}
         </span>
       </div>
 
       {/* Content */}
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-snug text-white/90">
+        <p className="text-sm leading-snug font-medium text-white/90">
           <span className="font-semibold">{activity.userName}</span>{" "}
           <span className="text-emerald-200/80">{activity.action}</span>
         </p>
-        <p className="mt-0.5 truncate text-xs text-emerald-100/60">
-          {activity.target}
-        </p>
+        <p className="mt-0.5 truncate text-xs text-emerald-100/60">{activity.target}</p>
         {activity.rating && (
           <div className="mt-1 flex items-center gap-0.5">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -534,9 +580,7 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
                 key={i}
                 className={cn(
                   "size-3",
-                  i < (activity.rating ?? 0)
-                    ? "fill-amber-400 text-amber-400"
-                    : "text-white/20",
+                  i < (activity.rating ?? 0) ? "fill-amber-400 text-amber-400" : "text-white/20",
                 )}
               />
             ))}
@@ -570,7 +614,7 @@ function TrustBadge({
       <span className="flex size-6 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15">
         {icon}
       </span>
-      <span className="whitespace-nowrap font-medium">{title}</span>
+      <span className="font-medium whitespace-nowrap">{title}</span>
     </li>
   )
 }
@@ -596,28 +640,18 @@ function StatItem({
 
   return (
     <div className="flex items-center gap-3 sm:border-l sm:border-white/20 sm:px-6 sm:first:border-l-0 sm:first:pl-0 sm:last:pr-0">
-      <span className={cn(
-        "flex size-11 shrink-0 items-center justify-center rounded-xl ring-1",
-        accent
-          ? "bg-emerald-400/20 ring-emerald-300/30"
-          : "bg-white/10 ring-white/15",
-      )}>
+      <span
+        className={cn(
+          "flex size-11 shrink-0 items-center justify-center rounded-xl ring-1",
+          accent ? "bg-emerald-400/20 ring-emerald-300/30" : "bg-white/10 ring-white/15",
+        )}
+      >
         {icon}
       </span>
       <div className="leading-tight">
         <p className="text-2xl font-bold tracking-tight text-white">
-          {isNumeric ? (
-            <span ref={ref}>
-              {animatedValue.toLocaleString("pt-BR")}
-            </span>
-          ) : (
-            value
-          )}
-          {suffix && (
-            <span className="ml-1 text-sm font-normal text-emerald-200">
-              {suffix}
-            </span>
-          )}
+          {isNumeric ? <span ref={ref}>{animatedValue.toLocaleString("pt-BR")}</span> : value}
+          {suffix && <span className="ml-1 text-sm font-normal text-emerald-200">{suffix}</span>}
         </p>
         <p className="text-xs text-emerald-100/80">{label}</p>
       </div>

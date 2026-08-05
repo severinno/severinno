@@ -18,12 +18,7 @@ import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { TransactionRow } from "./wallet-row"
 
@@ -113,32 +108,25 @@ export function TransactionHistory({
   const [dateStart, setDateStart] = React.useState("")
   const [dateEnd, setDateEnd] = React.useState("")
 
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isError,
-  } = useInfiniteQuery<HistoryResponse>({
-    queryKey: ["provider", "wallet", "history", filter, dateStart, dateEnd],
-    queryFn: async ({ pageParam }) => {
-      const params: Record<string, string | number> = {
-        page: pageParam as number,
-        limit: 20,
-      }
-      if (filter !== "all") {
-        params.type = filter
-      }
-      if (dateStart) params.dateStart = dateStart
-      if (dateEnd) params.dateEnd = dateEnd
-      return apiGet("/api/provider/wallet/history", params)
-    },
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) =>
-      lastPage.hasMore ? lastPage.page + 1 : undefined,
-    enabled: open,
-  })
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
+    useInfiniteQuery<HistoryResponse>({
+      queryKey: ["provider", "wallet", "history", filter, dateStart, dateEnd],
+      queryFn: async ({ pageParam }) => {
+        const params: Record<string, string | number> = {
+          page: pageParam as number,
+          limit: 20,
+        }
+        if (filter !== "all") {
+          params.type = filter
+        }
+        if (dateStart) params.dateStart = dateStart
+        if (dateEnd) params.dateEnd = dateEnd
+        return apiGet("/api/provider/wallet/history", params)
+      },
+      initialPageParam: 1,
+      getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+      enabled: open,
+    })
 
   const loadMore = React.useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) {
@@ -157,10 +145,7 @@ export function TransactionHistory({
     return `/api/provider/wallet/history/export${qs ? `?${qs}` : ""}`
   }, [filter, dateStart, dateEnd])
 
-  const allTransactions = React.useMemo(
-    () => data?.pages.flatMap((p) => p.items) ?? [],
-    [data],
-  )
+  const allTransactions = React.useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data])
 
   const total = data?.pages[0]?.total ?? 0
 
@@ -175,7 +160,7 @@ export function TransactionHistory({
         </DialogHeader>
 
         {/* Filter tabs */}
-        <div className="flex flex-wrap gap-1.5 rounded-lg bg-muted/30 p-1">
+        <div className="bg-muted/30 flex flex-wrap gap-1.5 rounded-lg p-1">
           {FILTERS.map((f) => (
             <button
               key={f.key}
@@ -195,21 +180,21 @@ export function TransactionHistory({
         </div>
 
         {/* Date range filter */}
-        <div className="flex items-center gap-2 rounded-lg bg-muted/30 px-3 py-2">
-          <Calendar className="size-3.5 shrink-0 text-muted-foreground" />
+        <div className="bg-muted/30 flex items-center gap-2 rounded-lg px-3 py-2">
+          <Calendar className="text-muted-foreground size-3.5 shrink-0" />
           <input
             type="date"
             value={dateStart}
             onChange={(e) => setDateStart(e.target.value)}
-            className="h-7 w-[130px] rounded-md border bg-background px-2 text-xs text-foreground shadow-sm"
+            className="bg-background text-foreground h-7 w-[130px] rounded-md border px-2 text-xs shadow-sm"
             aria-label="Data inicial"
           />
-          <span className="text-xs text-muted-foreground">até</span>
+          <span className="text-muted-foreground text-xs">até</span>
           <input
             type="date"
             value={dateEnd}
             onChange={(e) => setDateEnd(e.target.value)}
-            className="h-7 w-[130px] rounded-md border bg-background px-2 text-xs text-foreground shadow-sm"
+            className="bg-background text-foreground h-7 w-[130px] rounded-md border px-2 text-xs shadow-sm"
             aria-label="Data final"
           />
           {(dateStart || dateEnd) && (
@@ -219,7 +204,7 @@ export function TransactionHistory({
                 setDateStart("")
                 setDateEnd("")
               }}
-              className="ml-auto text-xs text-primary hover:text-primary/80"
+              className="text-primary hover:text-primary/80 ml-auto text-xs"
             >
               Limpar
             </button>
@@ -227,7 +212,7 @@ export function TransactionHistory({
         </div>
 
         {/* Summary bar */}
-        <div className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <div className="bg-muted/30 text-muted-foreground flex items-center justify-between rounded-lg px-3 py-2 text-xs">
           <span>
             {total} transaç{total === 1 ? "ão" : "ões"}
             {filter !== "all" && (
@@ -241,7 +226,7 @@ export function TransactionHistory({
               <a
                 href={exportUrl}
                 download
-                className="inline-flex items-center gap-1 text-xs text-primary transition-colors hover:text-primary/80"
+                className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs transition-colors"
               >
                 <Download className="size-3" />
                 CSV
@@ -259,11 +244,11 @@ export function TransactionHistory({
         <Separator />
 
         {/* Transaction list */}
-        <div className="max-h-[60vh] overflow-y-auto space-y-2 pr-1">
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
           {isLoading ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
-              <Loader2 className="size-6 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Carregando extrato…</p>
+              <Loader2 className="text-muted-foreground size-6 animate-spin" />
+              <p className="text-muted-foreground text-sm">Carregando extrato…</p>
             </div>
           ) : isError ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
@@ -274,10 +259,10 @@ export function TransactionHistory({
             </div>
           ) : allTransactions.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
-              <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-full">
                 <Wallet className="size-5" />
               </div>
-              <p className="text-sm text-muted-foreground">Nenhuma transação encontrada.</p>
+              <p className="text-muted-foreground text-sm">Nenhuma transação encontrada.</p>
             </div>
           ) : (
             <>
@@ -289,14 +274,14 @@ export function TransactionHistory({
               <div ref={sentinelRef} className="h-4" />
 
               {isFetchingNextPage && (
-                <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                <div className="text-muted-foreground flex items-center justify-center gap-2 py-4 text-sm">
                   <Loader2 className="size-4 animate-spin" />
                   Carregando mais transações…
                 </div>
               )}
 
               {!hasNextPage && allTransactions.length > 0 && (
-                <div className="py-4 text-center text-xs text-muted-foreground">
+                <div className="text-muted-foreground py-4 text-center text-xs">
                   {allTransactions.length < total
                     ? `Mostrando ${allTransactions.length} de ${total} transações`
                     : "Todas as transações carregadas."}

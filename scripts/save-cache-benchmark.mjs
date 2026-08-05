@@ -11,25 +11,20 @@
  *   node scripts/save-cache-benchmark.mjs custom   # → docs/benchmarks/cache-custom.json
  */
 
-import { execSync } from "node:child_process";
-import { join, dirname } from "node:path";
-import { mkdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process"
+import { join, dirname } from "node:path"
+import { mkdirSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 
-const OUT_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "docs",
-  "benchmarks",
-);
+const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "benchmarks")
 
-const tag = process.argv[2] ?? new Date().toISOString().slice(0, 10);
-const outFile = join(OUT_DIR, `cache-${tag}.json`);
+const tag = process.argv[2] ?? new Date().toISOString().slice(0, 10)
+const outFile = join(OUT_DIR, `cache-${tag}.json`)
 
-mkdirSync(OUT_DIR, { recursive: true });
+mkdirSync(OUT_DIR, { recursive: true })
 
 // Run benchmark in JSON mode
 execSync(
   `node "${join(dirname(fileURLToPath(import.meta.url)), "cache-benchmark.mjs")}" --json "${outFile}"`,
   { stdio: "inherit" },
-);
+)

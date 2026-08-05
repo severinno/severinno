@@ -3,15 +3,7 @@
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import {
-  Clock,
-  Loader2,
-  Plus,
-  Save,
-  Trash2,
-  Copy,
-  AlertCircle,
-} from "lucide-react"
+import { Clock, Loader2, Plus, Save, Trash2, Copy, AlertCircle } from "lucide-react"
 import { apiGet, apiPost } from "@/lib/api"
 import { WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -99,11 +91,7 @@ export function ProviderExpediente() {
   const overlapWarning = React.useMemo(() => {
     for (let i = 0; i < slots.length; i++) {
       for (let j = i + 1; j < slots.length; j++) {
-        if (
-          slots[i].active &&
-          slots[j].active &&
-          overlaps(slots[i], slots[j])
-        ) {
+        if (slots[i].active && slots[j].active && overlaps(slots[i], slots[j])) {
           return true
         }
       }
@@ -125,9 +113,7 @@ export function ProviderExpediente() {
   }
 
   const updateSlot = (localId: string, patch: Partial<Slot>) => {
-    setSlots((prev) =>
-      prev.map((s) => (s.localId === localId ? { ...s, ...patch } : s)),
-    )
+    setSlots((prev) => prev.map((s) => (s.localId === localId ? { ...s, ...patch } : s)))
   }
 
   const removeSlot = (localId: string) => {
@@ -205,30 +191,16 @@ export function ProviderExpediente() {
     <div className="grid gap-6">
       {/* Header / quick actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          Configure os horários que você atende. Os clientes verão essa
-          disponibilidade ao agendar.
+        <p className="text-muted-foreground text-sm">
+          Configure os horários que você atende. Os clientes verão essa disponibilidade ao agendar.
         </p>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={copyToWeekdays}
-            className="gap-1.5"
-          >
+          <Button variant="outline" size="sm" onClick={copyToWeekdays} className="gap-1.5">
             <Copy className="size-3.5" />
             Copiar para dias úteis
           </Button>
-          <Button
-            onClick={save}
-            disabled={saving || !hydrated}
-            className="gap-1.5"
-          >
-            {saving ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}
+          <Button onClick={save} disabled={saving || !hydrated} className="gap-1.5">
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             Salvar expediente
           </Button>
         </div>
@@ -239,9 +211,8 @@ export function ProviderExpediente() {
           <AlertCircle className="size-4" />
           <AlertTitle>Horários sobrepostos</AlertTitle>
           <AlertDescription>
-            Há janelas de horário ativas sobrepostas no mesmo dia. Os clientes
-            podem agendar em qualquer horário dentro dessas janelas — considere
-            ajustar para evitar confusão.
+            Há janelas de horário ativas sobrepostas no mesmo dia. Os clientes podem agendar em
+            qualquer horário dentro dessas janelas — considere ajustar para evitar confusão.
           </AlertDescription>
         </Alert>
       )}
@@ -249,10 +220,7 @@ export function ProviderExpediente() {
       {availQuery.isLoading && !hydrated ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
           {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <div
-              key={i}
-              className="h-40 animate-pulse rounded-xl border bg-muted/30"
-            />
+            <div key={i} className="bg-muted/30 h-40 animate-pulse rounded-xl border" />
           ))}
         </div>
       ) : (
@@ -268,7 +236,7 @@ export function ProviderExpediente() {
                 key={dayIdx}
                 className={cn(
                   "flex flex-col overflow-hidden py-0",
-                  isTodayCard && "ring-2 ring-primary/60",
+                  isTodayCard && "ring-primary/60 ring-2",
                 )}
               >
                 <div
@@ -293,7 +261,7 @@ export function ProviderExpediente() {
                       >
                         {WEEKDAYS_SHORT[dayIdx]}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">
+                      <p className="text-muted-foreground text-[10px]">
                         {isOpen
                           ? `${daySlots.filter((s) => s.active).length} janela(s)`
                           : "Fechado"}
@@ -301,17 +269,13 @@ export function ProviderExpediente() {
                     </div>
                   </div>
                   {isTodayCard && (
-                    <Badge className="bg-primary/15 text-[10px] text-primary">
-                      Hoje
-                    </Badge>
+                    <Badge className="bg-primary/15 text-primary text-[10px]">Hoje</Badge>
                   )}
                 </div>
                 <CardContent className="flex flex-1 flex-col gap-2 p-3">
                   {daySlots.length === 0 ? (
                     <div className="flex flex-1 items-center justify-center py-3 text-center">
-                      <p className="text-[11px] text-muted-foreground">
-                        Sem expediente
-                      </p>
+                      <p className="text-muted-foreground text-[11px]">Sem expediente</p>
                     </div>
                   ) : (
                     <ul className="grid gap-1.5">
@@ -328,7 +292,7 @@ export function ProviderExpediente() {
                             )}
                           >
                             <div className="flex items-center gap-1.5">
-                              <Clock className="size-3 shrink-0 text-muted-foreground" />
+                              <Clock className="text-muted-foreground size-3 shrink-0" />
                               <Input
                                 type="time"
                                 value={slot.startTime}
@@ -355,7 +319,7 @@ export function ProviderExpediente() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="ml-auto size-6 text-destructive hover:text-destructive"
+                                className="text-destructive hover:text-destructive ml-auto size-6"
                                 onClick={() => removeSlot(slot.localId)}
                                 aria-label="Remover horário"
                               >
@@ -363,16 +327,14 @@ export function ProviderExpediente() {
                               </Button>
                             </div>
                             {invalid && (
-                              <p className="text-[10px] text-destructive">
+                              <p className="text-destructive text-[10px]">
                                 Início deve ser anterior ao fim
                               </p>
                             )}
                             <div className="flex items-center justify-between">
                               <Switch
                                 checked={slot.active}
-                                onCheckedChange={(v) =>
-                                  updateSlot(slot.localId, { active: v })
-                                }
+                                onCheckedChange={(v) => updateSlot(slot.localId, { active: v })}
                                 aria-label="Ativo"
                                 className={cn(!slot.active && "opacity-60")}
                               />
@@ -396,7 +358,7 @@ export function ProviderExpediente() {
                     variant="ghost"
                     size="sm"
                     onClick={() => addSlot(dayIdx)}
-                    className="mt-auto h-7 gap-1 text-xs text-primary hover:text-primary"
+                    className="text-primary hover:text-primary mt-auto h-7 gap-1 text-xs"
                   >
                     <Plus className="size-3" />
                     Adicionar horário
@@ -408,22 +370,14 @@ export function ProviderExpediente() {
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">
-        Dica: o servidor valida que cada janela tenha início anterior ao fim.
-        Sobreposições no mesmo dia são permitidas mas geram aviso visual.
+      <p className="text-muted-foreground text-xs">
+        Dica: o servidor valida que cada janela tenha início anterior ao fim. Sobreposições no mesmo
+        dia são permitidas mas geram aviso visual.
       </p>
 
       <div className="flex justify-end">
-        <Button
-          onClick={save}
-          disabled={saving || !hydrated}
-          className="gap-1.5"
-        >
-          {saving ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Save className="size-4" />
-          )}
+        <Button onClick={save} disabled={saving || !hydrated} className="gap-1.5">
+          {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
           Salvar expediente
         </Button>
       </div>

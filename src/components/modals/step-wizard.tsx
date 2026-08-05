@@ -71,9 +71,9 @@ export function StepWizard({
   const progressPct = (completedCount / steps.length) * 100
 
   return (
-    <div className={cn("flex flex-col min-h-0", className)}>
+    <div className={cn("flex min-h-0 flex-col", className)}>
       {/* ── Step Indicator Bar ── */}
-      <div className="shrink-0 border-b px-4 sm:px-5 py-3">
+      <div className="shrink-0 border-b px-4 py-3 sm:px-5">
         {/* Step circles + labels */}
         <div className="flex items-center justify-between">
           {steps.map((s, i) => {
@@ -87,11 +87,11 @@ export function StepWizard({
                   onClick={() => onStepClick(s.id)}
                   disabled={!done && s.id > currentStep}
                   className={cn(
-                    "flex items-center gap-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md px-1 py-0.5",
+                    "focus-visible:ring-ring flex items-center gap-1.5 rounded-md px-1 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none",
                     active
-                      ? "text-emerald-700 dark:text-emerald-400 font-semibold"
+                      ? "font-semibold text-emerald-700 dark:text-emerald-400"
                       : done
-                        ? "text-emerald-600 cursor-pointer hover:text-emerald-700"
+                        ? "cursor-pointer text-emerald-600 hover:text-emerald-700"
                         : "text-muted-foreground cursor-default",
                   )}
                 >
@@ -100,11 +100,8 @@ export function StepWizard({
                       "inline-flex size-7 items-center justify-center rounded-full border-2 text-xs font-bold transition-all",
                       active &&
                         "border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/25",
-                      done &&
-                        "border-emerald-600 bg-emerald-600 text-white cursor-pointer",
-                      !active &&
-                        !done &&
-                        "border-muted-foreground/20 text-muted-foreground",
+                      done && "cursor-pointer border-emerald-600 bg-emerald-600 text-white",
+                      !active && !done && "border-muted-foreground/20 text-muted-foreground",
                     )}
                   >
                     {done ? (
@@ -115,14 +112,12 @@ export function StepWizard({
                       s.id
                     )}
                   </span>
-                  <span className="hidden sm:inline">
-                    {s.shortLabel ?? s.label}
-                  </span>
+                  <span className="hidden sm:inline">{s.shortLabel ?? s.label}</span>
                 </button>
                 {i < steps.length - 1 && (
-                  <div className="flex-1 h-px bg-muted-foreground/15 mx-1 sm:mx-2 relative">
+                  <div className="bg-muted-foreground/15 relative mx-1 h-px flex-1 sm:mx-2">
                     <div
-                      className="absolute inset-0 bg-emerald-500 transition-transform origin-left duration-300"
+                      className="absolute inset-0 origin-left bg-emerald-500 transition-transform duration-300"
                       style={{
                         transform:
                           validSteps[steps[i + 1]?.id] || currentStep > s.id
@@ -140,7 +135,7 @@ export function StepWizard({
         </div>
 
         {/* Thin progress bar — Nielsen #1: visibility of system status */}
-        <div className="mt-2.5 h-1 w-full rounded-full bg-muted-foreground/10 overflow-hidden">
+        <div className="bg-muted-foreground/10 mt-2.5 h-1 w-full overflow-hidden rounded-full">
           <div
             className="h-full rounded-full bg-emerald-500 transition-all duration-500 ease-out"
             style={{ width: `${Math.max(progressPct, (currentStep / steps.length) * 100)}%` }}
@@ -149,8 +144,8 @@ export function StepWizard({
       </div>
 
       {/* ── Step Content ── */}
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="px-4 sm:px-5 py-4">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="px-4 py-4 sm:px-5">
           <AnimatePresence mode="wait">
             <motion.div
               key={currentStep}
@@ -166,7 +161,7 @@ export function StepWizard({
       </ScrollArea>
 
       {/* ── Sticky Footer — Nielsen #3: user control & freedom ── */}
-      <div className="shrink-0 sticky bottom-0 border-t bg-background/95 backdrop-blur px-4 sm:px-5 py-2.5">
+      <div className="bg-background/95 sticky bottom-0 shrink-0 border-t px-4 py-2.5 backdrop-blur sm:px-5">
         <div className="flex items-center justify-between gap-2">
           {/* Back button */}
           {!isFirst ? (
@@ -192,7 +187,7 @@ export function StepWizard({
               size="sm"
               onClick={onNext}
               disabled={!currentStepValid}
-              className="h-9 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+              className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700"
             >
               {nextLabel}
               <ChevronRight className="size-4" />
@@ -203,7 +198,7 @@ export function StepWizard({
               size="sm"
               onClick={onSubmit}
               disabled={submitting || !currentStepValid}
-              className="h-9 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
+              className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700"
             >
               {submitting && <Loader2 className="size-3.5 animate-spin" />}
               {submitLabel ?? "Confirmar"}
@@ -232,13 +227,11 @@ export function StepHeader({
 }) {
   return (
     <div className={cn("mb-4", className)}>
-      <h3 className="text-sm font-semibold flex items-center gap-2">
+      <h3 className="flex items-center gap-2 text-sm font-semibold">
         {Icon && <Icon className="size-4 text-emerald-600" />}
         {title}
       </h3>
-      {description && (
-        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-      )}
+      {description && <p className="text-muted-foreground mt-0.5 text-xs">{description}</p>}
     </div>
   )
 }
@@ -259,10 +252,14 @@ export function ValidationHint({
 }) {
   if (!touched) return null
   if (error) {
-    return <p className="text-xs text-destructive mt-1">{error}</p>
+    return <p className="text-destructive mt-1 text-xs">{error}</p>
   }
   if (ok) {
-    return <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1"><Check className="size-3" /> OK</p>
+    return (
+      <p className="mt-1 flex items-center gap-1 text-xs text-emerald-600">
+        <Check className="size-3" /> OK
+      </p>
+    )
   }
   return null
 }

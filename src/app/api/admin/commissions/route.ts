@@ -8,11 +8,11 @@ import { FEE_RATE } from "@/lib/wallet"
 type CommissionSummary = {
   year: number
   // Totals
-  grossRevenue: number       // Soma de todos os bookings PAID
-  platformCommission: number  // 15% do gross
-  providerEarnings: number    // 85% do gross
-  bookingCount: number        // Total de bookings PAID
-  completedCount: number      // Apenas COMPLETED
+  grossRevenue: number // Soma de todos os bookings PAID
+  platformCommission: number // 15% do gross
+  providerEarnings: number // 85% do gross
+  bookingCount: number // Total de bookings PAID
+  completedCount: number // Apenas COMPLETED
 
   // Monthly breakdown (selected year)
   monthly: Array<{
@@ -77,14 +77,17 @@ export async function GET(request: Request) {
     // Totals
     let grossRevenue = 0
     let completedCount = 0
-    const providerMap = new Map<string, {
-      id: string
-      name: string
-      avatarUrl: string | null
-      bookingCount: number
-      grossRevenue: number
-      completedCount: number
-    }>()
+    const providerMap = new Map<
+      string,
+      {
+        id: string
+        name: string
+        avatarUrl: string | null
+        bookingCount: number
+        grossRevenue: number
+        completedCount: number
+      }
+    >()
 
     for (const b of bookings) {
       grossRevenue += b.amount

@@ -23,18 +23,14 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 // MapLibre is client-only — dynamic import with ssr:false
-const RadiusMap = dynamic(
-  () =>
-    import("./radius-map-inner").then((mod) => mod.RadiusMapInner),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[300px] items-center justify-center rounded-xl border bg-muted">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    ),
-  },
-)
+const RadiusMap = dynamic(() => import("./radius-map-inner").then((mod) => mod.RadiusMapInner), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-muted flex h-[300px] items-center justify-center rounded-xl border">
+      <Loader2 className="text-muted-foreground size-6 animate-spin" />
+    </div>
+  ),
+})
 
 type Props = {
   /** Latitude do prestador */
@@ -74,14 +70,12 @@ export default function RadiusPreviewMap({
     if (typeof navigator === "undefined" || !navigator.geolocation) return
     setLocating(true)
     try {
-      const pos = await new Promise<GeolocationPosition>(
-        (resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-          })
-        },
-      )
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+        })
+      })
       const newLat = pos.coords.latitude
       const newLng = pos.coords.longitude
       onLocationChange?.(newLat, newLng)
@@ -104,26 +98,17 @@ export default function RadiusPreviewMap({
   return (
     <div className={cn("grid gap-3", className)}>
       {/* Map */}
-      <div
-        className="relative overflow-hidden rounded-xl border"
-        style={{ height }}
-      >
+      <div className="relative overflow-hidden rounded-xl border" style={{ height }}>
         {hasLocation && lat != null && lng != null ? (
-          <RadiusMap
-            lat={lat}
-            lng={lng}
-            radius={radius}
-          />
+          <RadiusMap lat={lat} lng={lng} radius={radius} />
         ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 bg-muted/30">
-            <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-              <MapPin className="size-6 text-muted-foreground" />
+          <div className="bg-muted/30 flex h-full flex-col items-center justify-center gap-3">
+            <div className="bg-muted flex size-12 items-center justify-center rounded-full">
+              <MapPin className="text-muted-foreground size-6" />
             </div>
             <div className="text-center">
-              <p className="text-sm font-medium text-muted-foreground">
-                Localização não definida
-              </p>
-              <p className="text-xs text-muted-foreground/70">
+              <p className="text-muted-foreground text-sm font-medium">Localização não definida</p>
+              <p className="text-muted-foreground/70 text-xs">
                 Use sua localização atual para ver o mapa
               </p>
             </div>
@@ -151,10 +136,8 @@ export default function RadiusPreviewMap({
       {/* Radius slider */}
       <div className="grid gap-2">
         <div className="flex items-center justify-between">
-          <Label className="text-xs font-medium text-muted-foreground">
-            Raio de atendimento
-          </Label>
-          <span className="text-sm font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+          <Label className="text-muted-foreground text-xs font-medium">Raio de atendimento</Label>
+          <span className="text-sm font-semibold text-emerald-700 tabular-nums dark:text-emerald-400">
             {radius} km
           </span>
         </div>
@@ -168,7 +151,7 @@ export default function RadiusPreviewMap({
           className="[&>span:first-child]:h-2 [&>span:first-child]:bg-emerald-100 [&>span:first-child_span]:bg-emerald-600 [&>span:last-child]:size-4 [&>span:last-child]:border-emerald-600"
           aria-label="Raio de atendimento em quilômetros"
         />
-        <div className="flex justify-between text-[10px] text-muted-foreground">
+        <div className="text-muted-foreground flex justify-between text-[10px]">
           <span>1 km</span>
           <span>50 km</span>
           <span>100 km</span>
@@ -176,11 +159,11 @@ export default function RadiusPreviewMap({
       </div>
 
       {/* Info text */}
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         <MapPin className="mr-0.5 inline size-3 align-text-top text-emerald-600" />
         Você atenderá clientes num raio de até{" "}
-        <strong className="text-foreground">{radius} km</strong> da sua
-        localização. Quanto maior o raio, mais clientes poderão te encontrar.
+        <strong className="text-foreground">{radius} km</strong> da sua localização. Quanto maior o
+        raio, mais clientes poderão te encontrar.
       </p>
     </div>
   )

@@ -84,9 +84,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       toId: string
       content: string
     }>("message:new", (data) => {
-      const preview = data.content.length > 60
-        ? data.content.slice(0, 60) + "…"
-        : data.content
+      const preview = data.content.length > 60 ? data.content.slice(0, 60) + "…" : data.content
       toast("Nova mensagem", {
         description: preview,
         duration: 5000,

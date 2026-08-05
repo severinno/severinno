@@ -15,11 +15,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import {
-  Loader2,
-  MessageSquareQuote,
-  Star,
-} from "lucide-react"
+import { Loader2, MessageSquareQuote, Star } from "lucide-react"
 
 import { apiGet } from "@/lib/api"
 import { formatDate } from "@/lib/format"
@@ -29,17 +25,9 @@ import { useViewStore } from "@/store/view"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import {
-  StarRatingDisplay,
-} from "@/components/modals/star-rating"
-import {
-  EmptyState,
-  StatCard,
-} from "@/components/shared/dashboard-shell"
-import {
-  PageHeader,
-  StatusBadge,
-} from "@/components/client/client-shared"
+import { StarRatingDisplay } from "@/components/modals/star-rating"
+import { EmptyState, StatCard } from "@/components/shared/dashboard-shell"
+import { PageHeader, StatusBadge } from "@/components/client/client-shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -120,10 +108,7 @@ export function ClientReviews() {
         })
       }
     }
-    return list.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   }, [query.data])
 
   const avgRating = React.useMemo(() => {
@@ -146,20 +131,12 @@ export function ClientReviews() {
           label="Serviços avaliados"
           value={reviews.length}
           tone="primary"
-          hint={
-            reviews.length === 0
-              ? "Avaliações ajudam a comunidade"
-              : "Obrigado por contribuir"
-          }
+          hint={reviews.length === 0 ? "Avaliações ajudam a comunidade" : "Obrigado por contribuir"}
         />
         <StatCard
           icon={Star}
           label="Nota média dada"
-          value={
-            reviews.length === 0
-              ? "—"
-              : `${avgRating.toFixed(1)} ★`
-          }
+          value={reviews.length === 0 ? "—" : `${avgRating.toFixed(1)} ★`}
           tone="amber"
           hint={
             reviews.length === 0
@@ -171,7 +148,7 @@ export function ClientReviews() {
 
       {/* List */}
       {query.isLoading ? (
-        <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+        <div className="text-muted-foreground flex items-center justify-center gap-2 p-10 text-sm">
           <Loader2 className="size-5 animate-spin" />
           Carregando avaliações…
         </div>
@@ -181,10 +158,7 @@ export function ClientReviews() {
           title="Você ainda não avaliou nenhum serviço"
           description="Avaliações ajudam outros clientes a encontrarem bons profissionais e reconhecem o trabalho dos prestadores. Quando você concluir um serviço, avalie-o aqui."
           action={
-            <Button
-              onClick={() => navigate("client.bookings")}
-              className="mt-2 gap-2"
-            >
+            <Button onClick={() => navigate("client.bookings")} className="mt-2 gap-2">
               Ver agendamentos
             </Button>
           }
@@ -192,11 +166,7 @@ export function ClientReviews() {
       ) : (
         <div className="grid gap-3">
           {reviews.map((r) => (
-            <ReviewCard
-              key={r.id}
-              review={r}
-              onViewProvider={() => openProvider(r.provider.id)}
-            />
+            <ReviewCard key={r.id} review={r} onViewProvider={() => openProvider(r.provider.id)} />
           ))}
         </div>
       )}
@@ -208,13 +178,7 @@ export function ClientReviews() {
 // ReviewCard
 // ---------------------------------------------------------------------------
 
-function ReviewCard({
-  review,
-  onViewProvider,
-}: {
-  review: ReviewRow
-  onViewProvider: () => void
-}) {
+function ReviewCard({ review, onViewProvider }: { review: ReviewRow; onViewProvider: () => void }) {
   const provider = review.provider
   const initials = providerInitials(provider.name)
 
@@ -225,14 +189,14 @@ function ReviewCard({
           <button
             type="button"
             onClick={onViewProvider}
-            className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="focus-visible:ring-ring shrink-0 rounded-full outline-none focus-visible:ring-2"
             aria-label={`Ver perfil de ${provider.name}`}
           >
             <Avatar className="size-11 border">
               {provider.avatarUrl ? (
                 <AvatarImage src={provider.avatarUrl} alt={provider.name} />
               ) : null}
-              <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
                 {initials || "P"}
               </AvatarFallback>
             </Avatar>
@@ -243,40 +207,29 @@ function ReviewCard({
               <button
                 type="button"
                 onClick={onViewProvider}
-                className="truncate text-sm font-semibold hover:text-primary focus-visible:underline"
+                className="hover:text-primary truncate text-sm font-semibold focus-visible:underline"
               >
                 {provider.name}
               </button>
-              <span className="text-xs text-muted-foreground tabular-nums">
+              <span className="text-muted-foreground text-xs tabular-nums">
                 {formatDate(review.createdAt)}
               </span>
             </div>
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {review.service.title}
-            </p>
+            <p className="text-muted-foreground mt-0.5 truncate text-sm">{review.service.title}</p>
 
             <div className="mt-2">
-              <StarRatingDisplay
-                value={review.rating}
-                size={16}
-                showCount={false}
-              />
+              <StarRatingDisplay value={review.rating} size={16} showCount={false} />
             </div>
 
             {review.comment ? (
-              <p className="mt-2 whitespace-pre-line text-sm text-foreground/80">
+              <p className="text-foreground/80 mt-2 text-sm whitespace-pre-line">
                 {review.comment}
               </p>
             ) : (
-              <p className="mt-2 text-xs italic text-muted-foreground">
-                Sem comentário.
-              </p>
+              <p className="text-muted-foreground mt-2 text-xs italic">Sem comentário.</p>
             )}
 
-            <StatusBadge
-              tone="zinc"
-              className="mt-3 text-[10px]"
-            >
+            <StatusBadge tone="zinc" className="mt-3 text-[10px]">
               Avaliação imutável (MVP)
             </StatusBadge>
           </div>

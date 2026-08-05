@@ -45,17 +45,9 @@ import { useViewStore } from "@/store/view"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
-import {
-  StarRatingDisplay,
-} from "@/components/modals/star-rating"
-import {
-  EmptyState,
-} from "@/components/shared/dashboard-shell"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { StarRatingDisplay } from "@/components/modals/star-rating"
+import { EmptyState } from "@/components/shared/dashboard-shell"
 import {
   PageHeader,
   StatusBadge,
@@ -186,8 +178,7 @@ export function ClientServices() {
     else if (tab === "CANCELLED") list = cancelled
     else list = [...completed, ...cancelled]
     return [...list].sort(
-      (a, b) =>
-        new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime(),
+      (a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime(),
     )
   }, [tab, completed, cancelled])
 
@@ -201,11 +192,7 @@ export function ClientServices() {
         title="Serviços contratados"
         subtitle="Histórico dos serviços que você contratou."
         action={
-          <Button
-            variant="outline"
-            onClick={() => navigate("vitrine")}
-            className="h-10 gap-2"
-          >
+          <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
             <MapPin className="size-4" />
             Buscar prestadores
           </Button>
@@ -214,23 +201,17 @@ export function ClientServices() {
 
       {/* Status tabs with counts */}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex w-full flex-wrap justify-start gap-1 h-auto p-1 sm:w-auto">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-auto">
           {TABS.map((t) => {
             const count = counts[t.key as keyof typeof counts] ?? 0
             const active = tab === t.key
             return (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="h-8 flex-shrink-0 gap-1.5"
-              >
+              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
                 {t.label}
                 <span
                   className={cn(
                     "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground",
+                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
@@ -242,7 +223,7 @@ export function ClientServices() {
       </Tabs>
 
       {/* Result count */}
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         {isLoading
           ? "Carregando…"
           : total === 0
@@ -251,7 +232,7 @@ export function ClientServices() {
       </p>
 
       {isLoading ? (
-        <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+        <div className="text-muted-foreground flex items-center justify-center gap-2 p-10 text-sm">
           <Loader2 className="size-5 animate-spin" />
           Carregando serviços…
         </div>
@@ -273,10 +254,7 @@ export function ClientServices() {
                 : "Explore prestadores verificados e contrate seu primeiro serviço."
           }
           action={
-            <Button
-              onClick={() => navigate("vitrine")}
-              className="mt-2 gap-2"
-            >
+            <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
               <MapPin className="size-4" />
               Buscar prestadores
             </Button>
@@ -302,7 +280,7 @@ export function ClientServices() {
 
       {total > PAGE_SIZE ? (
         <div className="flex flex-col items-center justify-between gap-2 border-t pt-3 sm:flex-row">
-          <p className="text-xs text-muted-foreground tabular-nums">
+          <p className="text-muted-foreground text-xs tabular-nums">
             Página {page} de {totalPages} · {total} serviços
           </p>
           <div className="flex items-center gap-1">
@@ -316,7 +294,7 @@ export function ClientServices() {
               <ChevronLeft className="size-4" />
               Anterior
             </Button>
-            <span className="px-2 text-xs text-muted-foreground tabular-nums">
+            <span className="text-muted-foreground px-2 text-xs tabular-nums">
               {page} / {totalPages}
             </span>
             <Button
@@ -362,14 +340,14 @@ function ServiceHistoryCard({
           <button
             type="button"
             onClick={onViewProvider}
-            className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="focus-visible:ring-ring shrink-0 rounded-full outline-none focus-visible:ring-2"
             aria-label={`Ver perfil de ${provider.name}`}
           >
             <Avatar className="size-11 border">
               {provider.avatarUrl ? (
                 <AvatarImage src={provider.avatarUrl} alt={provider.name} />
               ) : null}
-              <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
                 {initials || "P"}
               </AvatarFallback>
             </Avatar>
@@ -380,106 +358,71 @@ function ServiceHistoryCard({
               <button
                 type="button"
                 onClick={onViewProvider}
-                className="truncate text-sm font-semibold hover:text-primary focus-visible:underline"
+                className="hover:text-primary truncate text-sm font-semibold focus-visible:underline"
               >
                 {provider.name}
               </button>
-              <StatusBadge
-                tone={bookingTone(status)}
-                icon={bookingIcon(status)}
-              >
+              <StatusBadge tone={bookingTone(status)} icon={bookingIcon(status)}>
                 {BOOKING_STATUS_LABELS[status]}
               </StatusBadge>
             </div>
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-0.5 truncate text-sm">
               {booking.service.title}
-              <span className="ml-1 text-xs">
-                ({SERVICE_UNIT_SHORT[booking.service.unit]})
-              </span>
+              <span className="ml-1 text-xs">({SERVICE_UNIT_SHORT[booking.service.unit]})</span>
             </p>
-            <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
+            <p className="text-muted-foreground mt-1 inline-flex items-center gap-1 text-xs tabular-nums">
               <CalendarDays className="size-3.5" />
-              {isCompleted ? "Concluído" : "Cancelado"} em{" "}
-              {formatDate(booking.scheduledAt)} ·{" "}
+              {isCompleted ? "Concluído" : "Cancelado"} em {formatDate(booking.scheduledAt)} ·{" "}
               {PAYMENT_METHOD_LABELS[booking.paymentMethod as PaymentMethod]}
             </p>
           </div>
 
           <div className="shrink-0 text-right">
-            <p className="text-xs text-muted-foreground">
-              {isCompleted ? "Pago" : "Valor"}
-            </p>
-            <p className="text-sm font-semibold tabular-nums">
-              {formatBRL(booking.amount)}
-            </p>
+            <p className="text-muted-foreground text-xs">{isCompleted ? "Pago" : "Valor"}</p>
+            <p className="text-sm font-semibold tabular-nums">{formatBRL(booking.amount)}</p>
           </div>
         </div>
 
         {review ? (
-          <div className="mt-3 rounded-lg border bg-muted/30 p-3">
+          <div className="bg-muted/30 mt-3 rounded-lg border p-3">
             <div className="flex items-center justify-between gap-2">
-              <StarRatingDisplay
-                value={review.rating}
-                size={14}
-                showCount={false}
-              />
-              <span className="text-xs text-muted-foreground tabular-nums">
+              <StarRatingDisplay value={review.rating} size={14} showCount={false} />
+              <span className="text-muted-foreground text-xs tabular-nums">
                 {formatDate(review.createdAt)}
               </span>
             </div>
             {review.comment ? (
-              <p className="mt-1.5 line-clamp-3 text-xs text-muted-foreground">
-                {review.comment}
-              </p>
+              <p className="text-muted-foreground mt-1.5 line-clamp-3 text-xs">{review.comment}</p>
             ) : null}
           </div>
         ) : isCompleted ? (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
             <Star className="size-4 shrink-0" />
             <span>
-              Serviço concluído sem avaliação. Avaliações ajudam outros
-              clientes e o prestador.
+              Serviço concluído sem avaliação. Avaliações ajudam outros clientes e o prestador.
             </span>
           </div>
         ) : null}
       </CardContent>
 
       {isCompleted ? (
-        <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onViewProvider}
-            className="h-9 gap-1.5"
-          >
+        <div className="bg-muted/30 flex items-center gap-2 border-t px-4 py-2.5">
+          <Button variant="outline" size="sm" onClick={onViewProvider} className="h-9 gap-1.5">
             <MapPin className="size-4" />
             Ver prestador
           </Button>
-          <Button
-            size="sm"
-            onClick={onRebook}
-            className="ml-auto h-9 gap-1.5"
-          >
+          <Button size="sm" onClick={onRebook} className="ml-auto h-9 gap-1.5">
             <RotateCcw className="size-4" />
             Contratar novamente
           </Button>
         </div>
       ) : (
-        <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2.5">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onViewProvider}
-            className="h-9 gap-1.5"
-          >
+        <div className="bg-muted/30 flex items-center gap-2 border-t px-4 py-2.5">
+          <Button variant="outline" size="sm" onClick={onViewProvider} className="h-9 gap-1.5">
             <MapPin className="size-4" />
             Ver prestador
           </Button>
-          <Button
-            size="sm"
-            onClick={onRebook}
-            className="ml-auto h-9 gap-1.5"
-          >
+          <Button size="sm" onClick={onRebook} className="ml-auto h-9 gap-1.5">
             <RotateCcw className="size-4" />
             Contratar novamente
           </Button>

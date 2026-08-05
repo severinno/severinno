@@ -37,7 +37,10 @@ export async function GET(request: Request) {
       },
     })
 
-    logger.info({ found: dueNotifications.length }, "cron scheduled-push: processing due notifications")
+    logger.info(
+      { found: dueNotifications.length },
+      "cron scheduled-push: processing due notifications",
+    )
 
     const results: Array<{
       id: string
@@ -69,7 +72,13 @@ export async function GET(request: Request) {
           where: { id: notification.id },
           data: { status: "FAILED", errorCount: userIds.length },
         })
-        results.push({ id: notification.id, title: notification.title, status: "FAILED", sentCount: 0, errorCount: userIds.length })
+        results.push({
+          id: notification.id,
+          title: notification.title,
+          status: "FAILED",
+          sentCount: 0,
+          errorCount: userIds.length,
+        })
         continue
       }
 
@@ -89,7 +98,10 @@ export async function GET(request: Request) {
             userId: uid,
             context: "cron scheduled-push send",
           })
-          logger.error({ err, scheduledId: notification.id, userId: uid }, "scheduled push: send failed")
+          logger.error(
+            { err, scheduledId: notification.id, userId: uid },
+            "scheduled push: send failed",
+          )
         }
       }
 
@@ -114,7 +126,13 @@ export async function GET(request: Request) {
       })
 
       logger.info(
-        { scheduledId: notification.id, title: notification.title, status: finalStatus, sentCount, errorCount },
+        {
+          scheduledId: notification.id,
+          title: notification.title,
+          status: finalStatus,
+          sentCount,
+          errorCount,
+        },
         "scheduled push: processed",
       )
     }

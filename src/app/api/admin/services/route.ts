@@ -21,19 +21,12 @@ export async function GET(request: Request) {
     const where = {
       ...(q
         ? {
-            OR: [
-              { title: { contains: q } },
-              { description: { contains: q } },
-            ],
+            OR: [{ title: { contains: q } }, { description: { contains: q } }],
           }
         : {}),
       ...(providerId ? { providerId } : {}),
       ...(categoryId ? { categoryId } : {}),
-      ...(active === "true"
-        ? { active: true }
-        : active === "false"
-          ? { active: false }
-          : {}),
+      ...(active === "true" ? { active: true } : active === "false" ? { active: false } : {}),
     }
 
     const [items, total] = await Promise.all([

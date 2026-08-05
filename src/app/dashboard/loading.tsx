@@ -3,9 +3,9 @@ import { LoadingShell, S } from "@/app/loading-shell"
 export default function Loading() {
   return (
     <LoadingShell>
-      <div className="flex min-h-screen flex-col bg-background">
+      <div className="bg-background flex min-h-screen flex-col">
         {/* ── Topbar skeleton ──────────────────────────────────── */}
-        <div className="border-b bg-card px-4 py-3">
+        <div className="bg-card border-b px-4 py-3">
           <div className="mx-auto flex max-w-7xl items-center justify-between">
             <div className="flex items-center gap-4">
               <S className="h-7 w-28" />
@@ -48,7 +48,7 @@ export default function Loading() {
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div
                     key={i}
-                    className="rounded-xl border border-border/50 bg-card p-5"
+                    className="border-border/50 bg-card rounded-xl border p-5"
                     style={{ animation: `fadeSlideUp 0.35s ${0.1 + i * 0.06}s both` }}
                   >
                     <div className="flex items-center justify-between">
@@ -63,7 +63,7 @@ export default function Loading() {
 
               {/* Table / list */}
               <div
-                className="mt-6 rounded-xl border border-border/50 bg-card p-5"
+                className="border-border/50 bg-card mt-6 rounded-xl border p-5"
                 style={{ animation: "fadeSlideUp 0.35s 0.35s both" }}
               >
                 <S className="mb-4 h-5 w-36" />

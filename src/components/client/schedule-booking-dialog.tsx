@@ -62,10 +62,7 @@ export function ScheduleBookingDialog({ open, onOpenChange, quote }: ScheduleDia
     },
   })
 
-  const totalQuoted = (quote?.items ?? []).reduce(
-    (acc, i) => acc + (i.price ?? 0),
-    0,
-  )
+  const totalQuoted = (quote?.items ?? []).reduce((acc, i) => acc + (i.price ?? 0), 0)
 
   const minDate = new Date()
   minDate.setDate(minDate.getDate() + 1)
@@ -85,18 +82,16 @@ export function ScheduleBookingDialog({ open, onOpenChange, quote }: ScheduleDia
 
         <div className="space-y-4">
           {quote ? (
-            <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+            <div className="bg-muted/30 rounded-lg border p-3 text-sm">
               <p className="font-medium">{quote.provider.name}</p>
-              <p className="text-xs text-muted-foreground">
-                Total: {formatBRL(totalQuoted)}
-              </p>
+              <p className="text-muted-foreground text-xs">Total: {formatBRL(totalQuoted)}</p>
             </div>
           ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="scheduledAt">Data e horário</Label>
             <div className="relative">
-              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <CalendarDays className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
                 id="scheduledAt"
                 type="datetime-local"
@@ -111,7 +106,7 @@ export function ScheduleBookingDialog({ open, onOpenChange, quote }: ScheduleDia
           <div className="space-y-2">
             <Label htmlFor="address">Endereço</Label>
             <div className="relative">
-              <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <MapPin className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
                 id="address"
                 value={address}
@@ -131,11 +126,7 @@ export function ScheduleBookingDialog({ open, onOpenChange, quote }: ScheduleDia
           >
             Cancelar
           </Button>
-          <Button
-            onClick={() => bookMutation.mutate()}
-            disabled={!canSubmit}
-            className="gap-2"
-          >
+          <Button onClick={() => bookMutation.mutate()} disabled={!canSubmit} className="gap-2">
             {bookMutation.isPending ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (

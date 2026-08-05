@@ -11,17 +11,24 @@ import { FEE_RATE } from "@/lib/wallet"
 
 function monthName(monthIndex: number): string {
   const months = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+    "Janeiro",
+    "Fevereiro",
+    "Março",
+    "Abril",
+    "Maio",
+    "Junho",
+    "Julho",
+    "Agosto",
+    "Setembro",
+    "Outubro",
+    "Novembro",
+    "Dezembro",
   ]
   return months[monthIndex] ?? "Desconhecido"
 }
 
 /** Compute commission data for a given year/month. */
-async function getCommissionData(
-  year: number,
-  month: number,
-): Promise<CommissionReportData> {
+async function getCommissionData(year: number, month: number): Promise<CommissionReportData> {
   const monthStart = new Date(year, month, 1)
   const monthEnd = new Date(year, month + 1, 1)
 
@@ -40,12 +47,15 @@ async function getCommissionData(
     },
   })
 
-  const providerMap = new Map<string, {
-    name: string
-    grossRevenue: number
-    commission: number
-    netEarnings: number
-  }>()
+  const providerMap = new Map<
+    string,
+    {
+      name: string
+      grossRevenue: number
+      commission: number
+      netEarnings: number
+    }
+  >()
 
   let grossRevenue = 0
   let completedCount = 0

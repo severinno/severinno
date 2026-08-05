@@ -67,7 +67,7 @@ export function ChangePasswordForm() {
     <Card>
       <CardHeader className="border-b py-3">
         <div className="flex items-center gap-2">
-          <Key className="size-4 text-muted-foreground" />
+          <Key className="text-muted-foreground size-4" />
           <CardTitle className="text-sm">Alterar senha</CardTitle>
         </div>
         <CardDescription className="text-xs">
@@ -81,7 +81,7 @@ export function ChangePasswordForm() {
               <ShieldCheck className="size-6 text-emerald-600" />
             </div>
             <p className="text-sm font-medium">Senha alterada com sucesso!</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Sua nova senha já está valendo. Use-a no próximo login.
             </p>
           </div>
@@ -118,7 +118,7 @@ export function ChangePasswordForm() {
                   />
                 </div>
                 {newPassword && newPassword.length < 6 && (
-                  <p className="text-xs text-destructive">Mínimo de 6 caracteres</p>
+                  <p className="text-destructive text-xs">Mínimo de 6 caracteres</p>
                 )}
               </div>
               <div className="space-y-1.5">
@@ -133,7 +133,7 @@ export function ChangePasswordForm() {
                   required
                 />
                 {confirmPassword && newPassword !== confirmPassword && (
-                  <p className="text-xs text-destructive">As senhas não conferem</p>
+                  <p className="text-destructive text-xs">As senhas não conferem</p>
                 )}
               </div>
             </div>
@@ -142,7 +142,7 @@ export function ChangePasswordForm() {
               <button
                 type="button"
                 onClick={() => setShowPasswords((v) => !v)}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
               >
                 {showPasswords ? (
                   <>
@@ -154,12 +154,7 @@ export function ChangePasswordForm() {
                   </>
                 )}
               </button>
-              <Button
-                type="submit"
-                disabled={!canSubmit}
-                size="sm"
-                className="gap-1.5"
-              >
+              <Button type="submit" disabled={!canSubmit} size="sm" className="gap-1.5">
                 {saving ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (

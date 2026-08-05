@@ -38,7 +38,7 @@ export async function POST(request: Request, { params }: Params) {
     if (quote.clientId !== session.userId) throw forbidden("Este orçamento não é seu")
     if (quote.status !== "APPROVED") throw badRequest("Orçamento precisa estar aprovado")
 
-    const body = await request.json() as { scheduledAt?: string; address?: string }
+    const body = (await request.json()) as { scheduledAt?: string; address?: string }
     if (!body.scheduledAt) throw badRequest("Data e horário são obrigatórios")
 
     const scheduleDate = new Date(body.scheduledAt)
@@ -86,7 +86,10 @@ export async function POST(request: Request, { params }: Params) {
       body: `${client.name} agendou um serviço baseado no orçamento.`,
       pushUrl: `/dashboard?booking=${booking.id}`,
     }).catch((e) => {
-      logger.error({ err: e, bookingId: booking.id }, "failed to notify provider after quote booking")
+      logger.error(
+        { err: e, bookingId: booking.id },
+        "failed to notify provider after quote booking",
+      )
     })
 
     emitRealtime("booking:update", {

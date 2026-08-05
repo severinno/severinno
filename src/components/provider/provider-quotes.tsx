@@ -30,16 +30,8 @@ import { formatBRL, formatDateTime } from "@/lib/format"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -96,12 +88,7 @@ type QuoteRequest = {
   items: QuoteItem[]
 }
 
-type Tab =
-  | "PENDING"
-  | "RESPONDED"
-  | "APPROVED"
-  | "REJECTED"
-  | "all"
+type Tab = "PENDING" | "RESPONDED" | "APPROVED" | "REJECTED" | "all"
 
 const TABS: Array<{ value: Tab; label: string }> = [
   { value: "PENDING", label: "Pendentes" },
@@ -187,9 +174,7 @@ function isUrgent(createdAt: string, status: QuoteStatus): boolean {
 
 function QuoteItemCard({ item }: { item: QuoteItem }) {
   const qc = useQueryClient()
-  const [price, setPrice] = React.useState<string>(
-    item.price != null ? String(item.price) : "",
-  )
+  const [price, setPrice] = React.useState<string>(item.price != null ? String(item.price) : "")
   const [note, setNote] = React.useState<string>(item.providerNote ?? "")
   const [sending, setSending] = React.useState(false)
 
@@ -201,14 +186,11 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
     }
     setSending(true)
     try {
-      await apiPatch(
-        `/api/quotes/${item.requestId}/items/${item.id}`,
-        {
-          price: num,
-          providerNote: note || "",
-          status: "QUOTED",
-        },
-      )
+      await apiPatch(`/api/quotes/${item.requestId}/items/${item.id}`, {
+        price: num,
+        providerNote: note || "",
+        status: "QUOTED",
+      })
       toast.success("Orçamento enviado ao cliente.")
       qc.invalidateQueries({ queryKey: ["provider", "quotes"] })
     } catch (e) {
@@ -220,17 +202,15 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
   }
 
   return (
-    <div className="grid gap-3 rounded-lg border bg-card p-3">
+    <div className="bg-card grid gap-3 rounded-lg border p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <Wrench className="size-4 shrink-0 text-muted-foreground" />
+            <Wrench className="text-muted-foreground size-4 shrink-0" />
             <p className="truncate text-sm font-medium">{item.service.title}</p>
           </div>
           {item.description && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              {item.description}
-            </p>
+            <p className="text-muted-foreground mt-1 text-xs">{item.description}</p>
           )}
           <p className="mt-1 text-xs">
             <span className="text-muted-foreground">Quantidade:</span>{" "}
@@ -255,15 +235,11 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
       </div>
 
       {item.status === "PENDING" ? (
-        <div className="grid gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
-          <p className="text-xs font-semibold text-primary">
-            Responder orçamento
-          </p>
+        <div className="border-primary/20 bg-primary/5 grid gap-2 rounded-lg border p-3">
+          <p className="text-primary text-xs font-semibold">Responder orçamento</p>
           <div className="grid gap-2 sm:grid-cols-[160px_1fr] sm:items-start">
             <div>
-              <label className="text-xs text-muted-foreground">
-                Preço (R$)
-              </label>
+              <label className="text-muted-foreground text-xs">Preço (R$)</label>
               <Input
                 type="number"
                 step="0.01"
@@ -274,7 +250,7 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">
+              <label className="text-muted-foreground text-xs">
                 Nota para o cliente (opcional)
               </label>
               <Textarea
@@ -287,12 +263,7 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
             </div>
           </div>
           <div className="flex justify-end">
-            <Button
-              size="sm"
-              onClick={respond}
-              disabled={sending || !price}
-              className="gap-1.5"
-            >
+            <Button size="sm" onClick={respond} disabled={sending || !price} className="gap-1.5">
               {sending ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
@@ -303,16 +274,16 @@ function QuoteItemCard({ item }: { item: QuoteItem }) {
           </div>
         </div>
       ) : (
-        <div className="grid gap-1 rounded-lg bg-muted/30 p-3 text-sm">
+        <div className="bg-muted/30 grid gap-1 rounded-lg p-3 text-sm">
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Preço enviado</span>
-            <span className="font-semibold tabular-nums text-primary">
+            <span className="text-primary font-semibold tabular-nums">
               {item.price != null ? formatBRL(item.price) : "—"}
             </span>
           </div>
           {item.providerNote && (
             <div className="mt-1 border-t pt-2">
-              <p className="text-xs text-muted-foreground">Sua nota:</p>
+              <p className="text-muted-foreground text-xs">Sua nota:</p>
               <p className="text-sm">{item.providerNote}</p>
             </div>
           )}
@@ -338,28 +309,24 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
     <Card
       className={cn(
         "overflow-hidden py-0",
-        urgent && "border-amber-300 ring-1 ring-amber-300/50 dark:border-amber-700 dark:ring-amber-700/30",
+        urgent &&
+          "border-amber-300 ring-1 ring-amber-300/50 dark:border-amber-700 dark:ring-amber-700/30",
       )}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CardHeader className="border-b bg-muted/30 py-3">
+        <CardHeader className="bg-muted/30 border-b py-3">
           <div className="flex flex-wrap items-center gap-3">
             <Avatar className="size-10 border">
               {request.client.avatarUrl ? (
-                <AvatarImage
-                  src={request.client.avatarUrl}
-                  alt={request.client.name}
-                />
+                <AvatarImage src={request.client.avatarUrl} alt={request.client.name} />
               ) : null}
-              <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                 {initials(request.client.name)}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">
-                {request.client.name}
-              </p>
-              <p className="truncate text-xs text-muted-foreground tabular-nums">
+              <p className="truncate text-sm font-semibold">{request.client.name}</p>
+              <p className="text-muted-foreground truncate text-xs tabular-nums">
                 Solicitado em {formatDateTime(request.createdAt)}
               </p>
             </div>
@@ -376,11 +343,7 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
             <QuoteStatusBadge status={request.status} />
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="icon" className="size-8">
-                {open ? (
-                  <ChevronDown className="size-4" />
-                ) : (
-                  <ChevronRight className="size-4" />
-                )}
+                {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
               </Button>
             </CollapsibleTrigger>
           </div>
@@ -389,18 +352,16 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
           <CardContent className="grid gap-3 p-4">
             <div className="grid gap-2 rounded-lg border p-3 text-sm">
               <div className="flex items-start gap-2">
-                <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+                <MapPin className="text-primary mt-0.5 size-4 shrink-0" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Endereço</p>
+                  <p className="text-muted-foreground text-xs">Endereço</p>
                   <p className="font-medium">{request.address}</p>
-                  <p className="text-xs text-muted-foreground">
-                    CEP: {request.cep}
-                  </p>
+                  <p className="text-muted-foreground text-xs">CEP: {request.cep}</p>
                   <a
                     href={mapsUrl}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    className="text-primary mt-1 inline-flex items-center gap-1 text-xs font-medium hover:underline"
                   >
                     <MapPin className="size-3" /> Abrir no mapa
                   </a>
@@ -409,7 +370,7 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
             </div>
 
             <div className="grid gap-2">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                 Itens ({request.items.length})
               </p>
               {request.items.map((item) => (
@@ -421,9 +382,7 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  navigate("provider.messages", { peerId: request.clientId })
-                }
+                onClick={() => navigate("provider.messages", { peerId: request.clientId })}
                 className="gap-1.5"
               >
                 <MessageSquare className="size-3.5" /> Enviar mensagem ao cliente
@@ -479,14 +438,10 @@ export function ProviderQuotes() {
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList className="w-full overflow-x-auto sm:w-auto">
           {TABS.map((t) => (
-            <TabsTrigger
-              key={t.value}
-              value={t.value}
-              className="flex-1 gap-1.5 sm:flex-none"
-            >
+            <TabsTrigger key={t.value} value={t.value} className="flex-1 gap-1.5 sm:flex-none">
               {t.label}
               {counts[t.value] > 0 && (
-                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 text-[10px] font-semibold text-primary tabular-nums">
+                <span className="bg-primary/15 text-primary ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums">
                   {counts[t.value]}
                 </span>
               )}
@@ -498,20 +453,17 @@ export function ProviderQuotes() {
       {query.isLoading ? (
         <div className="grid gap-3">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-32 animate-pulse rounded-xl border bg-muted/30"
-            />
+            <div key={i} className="bg-muted/30 h-32 animate-pulse rounded-xl border" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
             <FileText className="size-6" />
           </div>
           <div>
             <p className="text-sm font-semibold">Nenhum orçamento aqui</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-xs">
               Quando um cliente solicitar um orçamento, ele aparecerá aqui.
             </p>
           </div>

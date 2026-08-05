@@ -36,9 +36,7 @@ export function expectCacheHeaders(
   const swr = sMaxage ?? maxAge
 
   expect(res.status).toBe(200)
-  expect(res.headers.get("Cache-Control")).toBe(
-    `public, max-age=${maxAge}, s-maxage=${swr}`,
-  )
+  expect(res.headers.get("Cache-Control")).toBe(`public, max-age=${maxAge}, s-maxage=${swr}`)
   expect(res.headers.get("Vary")).toBe(VARY_VALUE)
 }
 
@@ -59,9 +57,7 @@ export function expectPrivateCacheHeaders(
   maxAge: number,
 ): void {
   expect(res.status).toBe(200)
-  expect(res.headers.get("Cache-Control")).toBe(
-    `private, max-age=${maxAge}`,
-  )
+  expect(res.headers.get("Cache-Control")).toBe(`private, max-age=${maxAge}`)
   expect(res.headers.get("Vary")).toBe("Cookie, Accept-Encoding, Accept")
 }
 
@@ -75,9 +71,9 @@ export function expectPrivateCacheHeaders(
  *
  * @param res - The NextResponse to check headers on.
  */
-export function expectNoCacheHeaders(
-  res: { headers: { get: (name: string) => string | null } },
-): void {
+export function expectNoCacheHeaders(res: {
+  headers: { get: (name: string) => string | null }
+}): void {
   expect(res.headers.get("Cache-Control")).toBeNull()
   expect(res.headers.get("Vary")).toBeNull()
 }

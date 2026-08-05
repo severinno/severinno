@@ -31,14 +31,27 @@ export default async function Page({ params }: Props) {
   const provider = await db.user.findFirst({
     where: { OR: [{ slug }, { id: slug }], role: "PROVIDER", active: true },
     select: {
-      id: true, name: true, email: true, avatarUrl: true, coverUrl: true,
-      bio: true, city: true, state: true, whatsapp: true,
+      id: true,
+      name: true,
+      email: true,
+      avatarUrl: true,
+      coverUrl: true,
+      bio: true,
+      city: true,
+      state: true,
+      whatsapp: true,
       services: {
         where: { active: true },
         select: { id: true, title: true, basePrice: true, duration: true, description: true },
       },
       reviewsReceived: {
-        select: { id: true, rating: true, comment: true, createdAt: true, client: { select: { name: true, avatarUrl: true } } },
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          client: { select: { name: true, avatarUrl: true } },
+        },
         orderBy: { createdAt: "desc" },
         take: 20,
       },
@@ -46,15 +59,19 @@ export default async function Page({ params }: Props) {
         select: { dayOfWeek: true, startTime: true, endTime: true, active: true },
         orderBy: { dayOfWeek: "asc" },
       },
-      _count: { select: { reviewsReceived: true, bookingsAsProvider: { where: { status: "COMPLETED" } } } },
+      _count: {
+        select: { reviewsReceived: true, bookingsAsProvider: { where: { status: "COMPLETED" } } },
+      },
     },
   })
 
   if (!provider) notFound()
 
-  const rating = provider.reviewsReceived.length > 0
-    ? provider.reviewsReceived.reduce((acc, r) => acc + r.rating, 0) / provider.reviewsReceived.length
-    : 0
+  const rating =
+    provider.reviewsReceived.length > 0
+      ? provider.reviewsReceived.reduce((acc, r) => acc + r.rating, 0) /
+        provider.reviewsReceived.length
+      : 0
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -68,14 +85,16 @@ export default async function Page({ params }: Props) {
       addressRegion: provider.state ?? undefined,
     },
     priceRange: "$$",
-    ...(provider.reviewsReceived.length > 0 ? {
-      aggregateRating: {
-        "@type": "AggregateRating",
-        ratingValue: rating.toFixed(1),
-        reviewCount: provider.reviewsReceived.length,
-        bestRating: 5,
-      },
-    } : {}),
+    ...(provider.reviewsReceived.length > 0
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: rating.toFixed(1),
+            reviewCount: provider.reviewsReceived.length,
+            bestRating: 5,
+          },
+        }
+      : {}),
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"

@@ -53,9 +53,7 @@ export function MuteIndicator({
       ) : (
         <Volume2 className="size-4" aria-hidden />
       )}
-      {showLabel ? (
-        <span>{muted ? "Som desativado" : "Som ativado"}</span>
-      ) : null}
+      {showLabel ? <span>{muted ? "Som desativado" : "Som ativado"}</span> : null}
     </span>
   )
 }

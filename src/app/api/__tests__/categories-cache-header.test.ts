@@ -37,19 +37,40 @@ import { db } from "@/lib/db"
 
 const mockCategories = [
   {
-    id: "cat-1", name: "Reparos", slug: "reparos", icon: "🔧",
-    level: 0, parentId: null, active: true, order: 1,
-    createdAt: new Date("2025-01-01"), updatedAt: new Date("2025-01-01"),
+    id: "cat-1",
+    name: "Reparos",
+    slug: "reparos",
+    icon: "🔧",
+    level: 0,
+    parentId: null,
+    active: true,
+    order: 1,
+    createdAt: new Date("2025-01-01"),
+    updatedAt: new Date("2025-01-01"),
   },
   {
-    id: "cat-2", name: "Elétrica", slug: "eletrica", icon: "⚡",
-    level: 1, parentId: "cat-1", active: true, order: 1,
-    createdAt: new Date("2025-01-01"), updatedAt: new Date("2025-01-01"),
+    id: "cat-2",
+    name: "Elétrica",
+    slug: "eletrica",
+    icon: "⚡",
+    level: 1,
+    parentId: "cat-1",
+    active: true,
+    order: 1,
+    createdAt: new Date("2025-01-01"),
+    updatedAt: new Date("2025-01-01"),
   },
   {
-    id: "cat-3", name: "Hidráulica", slug: "hidraulica", icon: "💧",
-    level: 1, parentId: "cat-1", active: true, order: 2,
-    createdAt: new Date("2025-01-01"), updatedAt: new Date("2025-01-01"),
+    id: "cat-3",
+    name: "Hidráulica",
+    slug: "hidraulica",
+    icon: "💧",
+    level: 1,
+    parentId: "cat-1",
+    active: true,
+    order: 2,
+    createdAt: new Date("2025-01-01"),
+    updatedAt: new Date("2025-01-01"),
   },
 ]
 
@@ -65,7 +86,7 @@ describe("Cache-Control headers on GET /api/categories", () => {
   })
 
   it("sets cache headers even when no categories exist", async () => {
-    (vi.mocked(db.category.findMany) as any).mockResolvedValue([])
+    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue([])
     const res = await GET(createMockRequest())
     expectCacheHeaders(res, 120, 600)
   })

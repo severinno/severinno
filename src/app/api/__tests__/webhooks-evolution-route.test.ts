@@ -4,11 +4,23 @@ import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-te
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
 vi.mock("@/lib/logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: vi.fn().mockReturnThis() },
+  default: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn().mockReturnThis(),
+  },
 }))
 
 vi.mock("@/lib/evolution", () => ({
-  evolutionLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: vi.fn().mockReturnThis() },
+  evolutionLogger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn().mockReturnThis(),
+  },
 }))
 
 vi.mock("@/lib/db", () => ({
@@ -30,7 +42,7 @@ describe("POST /api/webhooks/evolution", () => {
   })
 
   it("returns 200 for a valid messages.upsert event", async () => {
-    (vi.mocked(db.user.findFirst) as any).mockResolvedValue({
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue({
       id: "user-1",
       name: "Test User",
     })
@@ -171,7 +183,7 @@ describe("POST /api/webhooks/evolution", () => {
   })
 
   it("returns 200 when message sender is not a registered user", async () => {
-    (vi.mocked(db.user.findFirst) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.user.findFirst) as any).mockResolvedValue(null)
 
     const payload = {
       event: "messages.upsert",

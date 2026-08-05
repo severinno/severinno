@@ -64,7 +64,9 @@ export async function GET(request: Request) {
       }),
 
       // Daily aggregated stats
-      db.$queryRawUnsafe<Array<{ date: string; sent: bigint; clicked: bigint; bounced: bigint; failed: bigint }>>(
+      db.$queryRawUnsafe<
+        Array<{ date: string; sent: bigint; clicked: bigint; bounced: bigint; failed: bigint }>
+      >(
         `SELECT
            DATE("createdAt") AS date,
            COUNT(*) AS sent,
@@ -108,7 +110,8 @@ export async function GET(request: Request) {
         failed: totalFailed,
       },
       rates: {
-        deliveryRate: sentMinusBounced > 0 ? Math.round((delivered / sentMinusBounced) * 10000) / 100 : 0,
+        deliveryRate:
+          sentMinusBounced > 0 ? Math.round((delivered / sentMinusBounced) * 10000) / 100 : 0,
         clickRate: delivered > 0 ? Math.round((totalClicked / delivered) * 10000) / 100 : 0,
         bounceRate: totalSent > 0 ? Math.round((totalBounced / totalSent) * 10000) / 100 : 0,
         failureRate: totalSent > 0 ? Math.round((totalFailed / totalSent) * 10000) / 100 : 0,

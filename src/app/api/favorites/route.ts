@@ -18,10 +18,7 @@ export async function GET(request: Request) {
     const latNum = lat ? Number(lat) : null
     const lngNum = lng ? Number(lng) : null
     const hasGeo =
-      latNum !== null &&
-      lngNum !== null &&
-      Number.isFinite(latNum) &&
-      Number.isFinite(lngNum)
+      latNum !== null && lngNum !== null && Number.isFinite(latNum) && Number.isFinite(lngNum)
 
     const favorites = await db.favorite.findMany({
       where: { clientId: session.userId },
@@ -38,22 +35,13 @@ export async function GET(request: Request) {
 
     const providers = favorites.map((f) => {
       const ratings = f.provider.reviewsReceived.map((r) => r.rating)
-      const rating = ratings.length
-        ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-        : 0
+      const rating = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0
       const reviewCount = ratings.length
       const distanceKm =
         hasGeo && f.provider.lat !== null && f.provider.lng !== null
-          ? Math.round(
-              haversineKm(latNum!, lngNum!, f.provider.lat, f.provider.lng) *
-                10,
-            ) / 10
+          ? Math.round(haversineKm(latNum!, lngNum!, f.provider.lat, f.provider.lng) * 10) / 10
           : null
-      const {
-        reviewsReceived: _ignored,
-        passwordHash: _ignored2,
-        ...safeProvider
-      } = f.provider
+      const { reviewsReceived: _ignored, passwordHash: _ignored2, ...safeProvider } = f.provider
       return {
         ...safeProvider,
         rating: Math.round(rating * 10) / 10,

@@ -17,9 +17,7 @@ function esc(val: unknown): string {
 }
 
 function fmtBRL(n: number): string {
-  return n
-    .toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-    .replace(/\u00A0/g, " ")
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }).replace(/\u00A0/g, " ")
 }
 
 function fmtDate(d: string): string {
@@ -57,9 +55,10 @@ export async function GET(request: Request) {
 
     // Validate type filter
     const validTypes = ["paid", "pending", "refunded", "withdrawn"] as const
-    const filterType = typeFilter && validTypes.includes(typeFilter as typeof validTypes[number])
-      ? (typeFilter as typeof validTypes[number])
-      : null
+    const filterType =
+      typeFilter && validTypes.includes(typeFilter as (typeof validTypes)[number])
+        ? (typeFilter as (typeof validTypes)[number])
+        : null
 
     // Parse date range
     const startDate = dateStart ? new Date(dateStart) : null
@@ -76,9 +75,7 @@ export async function GET(request: Request) {
     )
 
     // Apply type filter
-    let filtered = filterType
-      ? all.filter((t) => t.status === filterType)
-      : all
+    let filtered = filterType ? all.filter((t) => t.status === filterType) : all
 
     // Apply date range filter if specified (inclusive)
     if (startDate) {
@@ -117,26 +114,24 @@ export async function GET(request: Request) {
 
     // Transaction list
     rows.push("=== TRANSAÇÕES ===")
-    rows.push([
-      "Data",
-      "Descrição",
-      "Cliente",
-      "Valor Bruto",
-      "Taxa (15%)",
-      "Valor Líquido",
-      "Status",
-    ].join(","))
+    rows.push(
+      ["Data", "Descrição", "Cliente", "Valor Bruto", "Taxa (15%)", "Valor Líquido", "Status"].join(
+        ",",
+      ),
+    )
 
     for (const t of filtered) {
-      rows.push([
-        esc(fmtDate(t.date)),
-        esc(t.description),
-        esc(t.clientName),
-        esc(fmtBRL(t.amount)),
-        esc(fmtBRL(t.fee)),
-        esc(fmtBRL(t.netAmount)),
-        esc(statusLabel(t.status)),
-      ].join(","))
+      rows.push(
+        [
+          esc(fmtDate(t.date)),
+          esc(t.description),
+          esc(t.clientName),
+          esc(fmtBRL(t.amount)),
+          esc(fmtBRL(t.fee)),
+          esc(fmtBRL(t.netAmount)),
+          esc(statusLabel(t.status)),
+        ].join(","),
+      )
     }
 
     const csv = rows.join("\r\n")

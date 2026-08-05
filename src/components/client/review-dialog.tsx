@@ -23,16 +23,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import {
-  StarRatingInput,
-} from "@/components/modals/star-rating"
+import { StarRatingInput } from "@/components/modals/star-rating"
 
 export type ReviewDialogProps = {
   open: boolean
@@ -45,12 +39,7 @@ export type ReviewDialogProps = {
   onSubmitted?: () => void
 }
 
-export function ReviewDialog({
-  open,
-  onOpenChange,
-  booking,
-  onSubmitted,
-}: ReviewDialogProps) {
+export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: ReviewDialogProps) {
   const qc = useQueryClient()
   const [rating, setRating] = React.useState(0)
   const [comment, setComment] = React.useState("")
@@ -101,30 +90,24 @@ export function ReviewDialog({
         <DialogHeader>
           <DialogTitle>Avaliar serviço</DialogTitle>
           <DialogDescription>
-            Conte como foi sua experiência. Sua avaliação é pública e ajuda
-            outros clientes.
+            Conte como foi sua experiência. Sua avaliação é pública e ajuda outros clientes.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Provider / service summary */}
-          <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
+          <div className="bg-muted/30 flex items-center gap-3 rounded-lg border p-3">
             <Avatar className="size-10">
               {provider?.avatarUrl ? (
-                <AvatarImage
-                  src={provider.avatarUrl}
-                  alt={provider.name ?? ""}
-                />
+                <AvatarImage src={provider.avatarUrl} alt={provider.name ?? ""} />
               ) : null}
-              <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
                 {providerInitials || "?"}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">
-                {provider?.name ?? "Prestador"}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-sm font-medium">{provider?.name ?? "Prestador"}</p>
+              <p className="text-muted-foreground truncate text-xs">
                 {booking?.service?.title ?? "Serviço"}
               </p>
             </div>
@@ -134,14 +117,9 @@ export function ReviewDialog({
           <div className="space-y-2">
             <Label>Sua nota</Label>
             <div className="flex items-center gap-3 rounded-lg border p-3">
-              <StarRatingInput
-                value={rating}
-                onChange={setRating}
-                size={32}
-                name="rating"
-              />
+              <StarRatingInput value={rating} onChange={setRating} size={32} name="rating" />
               {rating === 0 ? (
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="text-muted-foreground ml-auto text-xs">
                   Selecione de 1 a 5 estrelas
                 </span>
               ) : (
@@ -164,28 +142,18 @@ export function ReviewDialog({
               rows={4}
               maxLength={1000}
             />
-            <p className="text-right text-xs text-muted-foreground tabular-nums">
+            <p className="text-muted-foreground text-right text-xs tabular-nums">
               {comment.length}/1000
             </p>
           </div>
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={submit.isPending}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submit.isPending}>
             Cancelar
           </Button>
-          <Button
-            onClick={() => submit.mutate()}
-            disabled={!canSubmit}
-            className="gap-2"
-          >
-            {submit.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : null}
+          <Button onClick={() => submit.mutate()} disabled={!canSubmit} className="gap-2">
+            {submit.isPending ? <Loader2 className="size-4 animate-spin" /> : null}
             Enviar avaliação
           </Button>
         </DialogFooter>

@@ -87,9 +87,7 @@ export async function computeDistanceMap(
   const postgisMap = new Map<string, number>()
   if (centerGeo) {
     try {
-      const rows = await queryRawUnsafe<
-        Array<{ id: string; distance_km: number }>
-      >(
+      const rows = await queryRawUnsafe<Array<{ id: string; distance_km: number }>>(
         `SELECT id,
                 ST_Distance(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) / 1000 AS distance_km
          FROM "User"
@@ -119,9 +117,7 @@ export async function computeDistanceMap(
     if (postgisDist !== undefined) {
       distanceKm = postgisDist
     } else if (hasGeo && p.lat !== null && p.lng !== null) {
-      distanceKm = Math.round(
-        haversineKm(userLat, userLng, p.lat, p.lng) * 10,
-      ) / 10
+      distanceKm = Math.round(haversineKm(userLat, userLng, p.lat, p.lng) * 10) / 10
     } else {
       distanceKm = null
     }

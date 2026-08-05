@@ -9,10 +9,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
  *
  * Mark a settlement period as finalized.
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireRole("ADMIN")
     await assertRateLimit(request, RATE_LIMITS.settlements)
@@ -24,16 +21,10 @@ export async function POST(
 
     const period = await db.settlementPeriod.findUnique({ where: { id } })
     if (!period) {
-      return NextResponse.json(
-        { error: "Período não encontrado." },
-        { status: 404 },
-      )
+      return NextResponse.json({ error: "Período não encontrado." }, { status: 404 })
     }
     if (period.status === "FINALIZED") {
-      return NextResponse.json(
-        { error: "Período já finalizado." },
-        { status: 409 },
-      )
+      return NextResponse.json({ error: "Período já finalizado." }, { status: 409 })
     }
 
     const updated = await db.settlementPeriod.update({

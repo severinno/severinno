@@ -13,12 +13,7 @@
  */
 
 import { PrismaClient } from "@prisma/client"
-import {
-  getClient,
-  indexDocument,
-  deleteDocument,
-  INDICES,
-} from "../lib/search"
+import { getClient, indexDocument, deleteDocument, INDICES } from "../lib/search"
 import logger from "../lib/logger"
 
 const db = new PrismaClient()
@@ -37,10 +32,19 @@ async function reindexProvider(id: string, action: string): Promise<void> {
   const provider = await db.user.findUnique({
     where: { id },
     select: {
-      id: true, name: true, email: true, bio: true,
-      city: true, state: true, district: true,
-      lat: true, lng: true, verified: true, active: true,
-      role: true, createdAt: true,
+      id: true,
+      name: true,
+      email: true,
+      bio: true,
+      city: true,
+      state: true,
+      district: true,
+      lat: true,
+      lng: true,
+      verified: true,
+      active: true,
+      role: true,
+      createdAt: true,
       services: {
         where: { active: true },
         select: { title: true, category: { select: { id: true, name: true } } },
@@ -75,14 +79,14 @@ async function reindexProvider(id: string, action: string): Promise<void> {
     role: provider.role,
     verified: provider.verified,
     active: provider.active,
-    location: provider.lat && provider.lng
-      ? { lat: provider.lat, lon: provider.lng }
-      : null,
+    location: provider.lat && provider.lng ? { lat: provider.lat, lon: provider.lng } : null,
     rating,
     reviewCount: ratings.length,
     completedBookings: provider.bookingsAsProvider.length,
     serviceTitles: provider.services.map((s: { title: string }) => s.title),
-    serviceCategories: provider.services.map((s: { category?: { id: string } | null }) => s.category?.id ?? "").filter(Boolean),
+    serviceCategories: provider.services
+      .map((s: { category?: { id: string } | null }) => s.category?.id ?? "")
+      .filter(Boolean),
     createdAt: provider.createdAt.toISOString(),
   })
 }
@@ -96,8 +100,13 @@ async function reindexService(id: string, action: string): Promise<void> {
   const service = await db.service.findUnique({
     where: { id },
     select: {
-      id: true, title: true, description: true, basePrice: true,
-      unit: true, active: true, createdAt: true,
+      id: true,
+      title: true,
+      description: true,
+      basePrice: true,
+      unit: true,
+      active: true,
+      createdAt: true,
       providerId: true,
       provider: { select: { name: true } },
       category: { select: { name: true } },
@@ -132,8 +141,15 @@ async function reindexCategory(id: string, action: string): Promise<void> {
   const category = await db.category.findUnique({
     where: { id },
     select: {
-      id: true, name: true, slug: true, description: true,
-      level: true, parentId: true, icon: true, order: true, active: true,
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      level: true,
+      parentId: true,
+      icon: true,
+      order: true,
+      active: true,
     },
   })
 
@@ -158,12 +174,14 @@ async function reindexCategory(id: string, action: string): Promise<void> {
 // ── Polling loop ─────────────────────────────────────────────────────────────
 
 async function processQueue(): Promise<number> {
-  const rows = await db.$queryRawUnsafe<Array<{
-    id: bigint
-    entityType: string
-    entityId: string
-    action: string
-  }>>(
+  const rows = await db.$queryRawUnsafe<
+    Array<{
+      id: bigint
+      entityType: string
+      entityId: string
+      action: string
+    }>
+  >(
     `SELECT id, "entityType", "entityId", action
      FROM "search_reindex_queue"
      ORDER BY "createdAt" ASC
@@ -177,9 +195,12 @@ async function processQueue(): Promise<number> {
   const results = await Promise.allSettled(
     rows.map((row: { entityType: string; entityId: string; action: string }) => {
       switch (row.entityType) {
-        case "provider": return reindexProvider(row.entityId, row.action)
-        case "service":  return reindexService(row.entityId, row.action)
-        case "category": return reindexCategory(row.entityId, row.action)
+        case "provider":
+          return reindexProvider(row.entityId, row.action)
+        case "service":
+          return reindexService(row.entityId, row.action)
+        case "category":
+          return reindexCategory(row.entityId, row.action)
         default:
           logger.warn({ entityType: row.entityType }, "Unknown entity type in reindex queue")
           return Promise.resolve()
@@ -197,12 +218,11 @@ async function processQueue(): Promise<number> {
 
   // Delete processed rows
   const ids = rows.map((r: { id: bigint }) => r.id)
-  await db.$executeRawUnsafe(
-    `DELETE FROM "search_reindex_queue" WHERE id = ANY($1::bigint[])`,
-    ids,
-  )
+  await db.$executeRawUnsafe(`DELETE FROM "search_reindex_queue" WHERE id = ANY($1::bigint[])`, ids)
 
-  const failed = results.filter((r: PromiseSettledResult<unknown>) => r.status === "rejected").length
+  const failed = results.filter(
+    (r: PromiseSettledResult<unknown>) => r.status === "rejected",
+  ).length
   logger.info({ processed: rows.length, failed }, "Reindex batch processed")
   return rows.length - failed
 }
@@ -214,13 +234,22 @@ async function main() {
     process.exit(1)
   }
 
-  logger.info({
-    pollInterval: POLL_INTERVAL,
-    batchSize: BATCH_SIZE,
-  }, "Search index consumer started")
+  logger.info(
+    {
+      pollInterval: POLL_INTERVAL,
+      batchSize: BATCH_SIZE,
+    },
+    "Search index consumer started",
+  )
 
-  process.on("SIGINT", () => { logger.info("shutting down"); process.exit(0) })
-  process.on("SIGTERM", () => { logger.info("shutting down"); process.exit(0) })
+  process.on("SIGINT", () => {
+    logger.info("shutting down")
+    process.exit(0)
+  })
+  process.on("SIGTERM", () => {
+    logger.info("shutting down")
+    process.exit(0)
+  })
 
   while (true) {
     try {
