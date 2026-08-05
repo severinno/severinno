@@ -80,13 +80,32 @@ function makeFakeRepo(
   return dir
 }
 
-const PR_CHECK = `# ORDEM: prod E2E PRIMEIRO (115 checks — banco limpo, asserta ZERO
-# usuários), dev E2E DEPOIS (162 checks — o wipe+recreate do dev seed não
-`
+/**
+ * Gera linhas de sites documentados por alvo até o PISO do guard
+ * (MIN_DOCUMENTED_SITES: prod ≥ 8, dev ≥ 6). Sem isso, um fixture com 1-2
+ * sites por alvo cai na violação de PISO ("SUMIRAM da extração") em vez do
+ * cenário que o teste quer cobrir (divergência de count / sincronizados).
+ */
+function siteLines(prodChecks: number, devChecks: number): string {
+  const lines: string[] = []
+  for (let i = 1; i <= 8; i++) {
+    lines.push(`# site prod ${i}: prod E2E (test-seed-prod-e2e.ts — ${prodChecks} checks)`)
+  }
+  for (let i = 1; i <= 6; i++) {
+    lines.push(`# site dev ${i}: dev E2E (test-seed-dev-e2e.ts — ${devChecks} checks)`)
+  }
+  return lines.join("\n") + "\n"
+}
 
-const SEED_GUARDS = `# 1. prod E2E (test-seed-prod-e2e.ts — 115 checks): guard recusa fora de
-# 2. dev E2E (test-seed-dev-e2e.ts — 162 checks): guard recusa em produção,
-`
+const PR_CHECK = (prodChecks = 115, devChecks = 162) =>
+  `# ORDEM: prod E2E PRIMEIRO (${prodChecks} checks — banco limpo, asserta ZERO
+# usuários), dev E2E DEPOIS (${devChecks} checks — o wipe+recreate do dev seed não
+${siteLines(prodChecks, devChecks)}`
+
+const SEED_GUARDS = (prodChecks = 115, devChecks = 162) =>
+  `# 1. prod E2E (test-seed-prod-e2e.ts — ${prodChecks} checks): guard recusa fora de
+# 2. dev E2E (test-seed-dev-e2e.ts — ${devChecks} checks): guard recusa em produção,
+${siteLines(prodChecks, devChecks)}`
 
 describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
   afterAll(() => {
@@ -96,8 +115,9 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
   it("count documentado divergente da derivação → exit 1 com arquivo:linha", () => {
     const dir = makeFakeRepo("t1-divergent", {
       workflows: {
-        "pr-check.yml": `# ORDEM: prod E2E PRIMEIRO (147 checks — divergente\n`,
-        "seed-guards.yml": SEED_GUARDS,
+        // Linha 1 divergente (147) + piso completo de sites corretos (115/162)
+        "pr-check.yml": `# ORDEM: prod E2E PRIMEIRO (147 checks — divergente\n${siteLines(115, 162)}`,
+        "seed-guards.yml": SEED_GUARDS(115, 162),
       },
     })
     const { status, out } = runGuard(dir)
@@ -109,7 +129,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
 
   it("counts documentados iguais à derivação → exit 0", () => {
     const dir = makeFakeRepo("t2-clean", {
-      workflows: { "pr-check.yml": PR_CHECK, "seed-guards.yml": SEED_GUARDS },
+      workflows: { "pr-check.yml": PR_CHECK(115, 162), "seed-guards.yml": SEED_GUARDS(115, 162) },
     })
     const { status, out } = runGuard(dir)
     expect(status).toBe(0)
@@ -120,7 +140,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
   it("derivação FALHA (stub exit 1) → exit 1 (fail-closed)", () => {
     const dir = makeFakeRepo("t3-derivation-fails", {
       derivationFails: true,
-      workflows: { "seed-guards.yml": SEED_GUARDS },
+      workflows: { "seed-guards.yml": SEED_GUARDS(115, 162) },
     })
     const { status, out } = runGuard(dir)
     expect(status).toBe(1)
@@ -131,7 +151,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
   it("derivação com JSON inválido → exit 1 (fail-closed)", () => {
     const dir = makeFakeRepo("t3b-bad-json", {
       derivationJson: "não é json",
-      workflows: { "seed-guards.yml": SEED_GUARDS },
+      workflows: { "seed-guards.yml": SEED_GUARDS(115, 162) },
     })
     const { status, out } = runGuard(dir)
     expect(status).toBe(1)

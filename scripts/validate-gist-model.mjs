@@ -202,7 +202,9 @@ async function main() {
   const args = process.argv.slice(2)
   const benchIdx = args.indexOf("--benchmark")
   const filePath =
-    benchIdx >= 0 && benchIdx + 1 < args.length ? args[benchIdx + 1] : "geo-benchmark.json"
+    benchIdx >= 0 && benchIdx + 1 < args.length
+      ? args[benchIdx + 1]
+      : "docs/benchmarks/geo-benchmark.json"
 
   let data
   try {

@@ -43,8 +43,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?q=S%C3%A3o+Paulo&limit=5",
-    } as any)
+      searchParams: { q: "São Paulo", limit: "5" },
+    })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
@@ -61,8 +61,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?street=Rua+Augusta&city=S%C3%A3o+Paulo&state=SP&limit=3",
-    } as any)
+      searchParams: { street: "Rua Augusta", city: "São Paulo", state: "SP", limit: "3" },
+    })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
@@ -78,10 +78,7 @@ describe("GET /api/geo/search", () => {
   })
 
   it("returns 400 when no query params are provided", async () => {
-    const req = createMockRequest({
-      method: "GET",
-      url: "http://localhost:3000/api/geo/search",
-    } as any)
+    const req = createMockRequest({ method: "GET" })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
@@ -89,42 +86,50 @@ describe("GET /api/geo/search", () => {
     expect((parsed.body as any).error).toContain("obrigatório")
   })
 
-  it("limits results to maximum 10", async () => {
+  it("rejects limit above maximum (10) with 400", async () => {
     vi.mocked(geocodeSearch).mockResolvedValue([] as any)
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?q=test&limit=100",
-    } as any)
-    await geoSearchHandler(req)
+      searchParams: { q: "test", limit: "100" },
+    })
+    const res = await geoSearchHandler(req)
+    const parsed = await parseResponse(res)
 
-    expect(geocodeSearch).toHaveBeenCalledWith("test", 10)
+    // geocodeSearchSchema valida limit com min(1)/max(10) — fora de range é
+    // rejeitado pelo Zod (400), não clampado pela rota.
+    expect(parsed.status).toBe(400)
+    expect(geocodeSearch).not.toHaveBeenCalled()
   })
 
-  it("enforces minimum limit of 1", async () => {
+  it("rejects limit below minimum (1) with 400", async () => {
     vi.mocked(geocodeSearch).mockResolvedValue([] as any)
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?q=test&limit=0",
-    } as any)
-    await geoSearchHandler(req)
+      searchParams: { q: "test", limit: "0" },
+    })
+    const res = await geoSearchHandler(req)
+    const parsed = await parseResponse(res)
 
-    expect(geocodeSearch).toHaveBeenCalledWith("test", 1)
+    expect(parsed.status).toBe(400)
+    expect(geocodeSearch).not.toHaveBeenCalled()
   })
 
-  it("returns 502 when geocoding service fails", async () => {
+  it("returns 500 when geocoding service fails", async () => {
     vi.mocked(geocodeSearch).mockRejectedValue(new Error("Nominatim unavailable"))
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?q=S%C3%A3o+Paulo",
-    } as any)
+      searchParams: { q: "São Paulo" },
+    })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
-    expect(parsed.status).toBe(502)
-    expect((parsed.body as any).error).toBe("Nominatim unavailable")
+    // handleError mapeia erro genérico (não-HttpError) para 500 com mensagem
+    // neutra — não vaza a mensagem interna do provider upstream.
+    expect(parsed.status).toBe(500)
+    expect((parsed.body as any).error).toBe("Erro interno do servidor")
   })
 
   it("supports structured query with postcode", async () => {
@@ -135,8 +140,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?city=S%C3%A3o+Paulo&postcode=01310-100",
-    } as any)
+      searchParams: { city: "São Paulo", postcode: "01310-100" },
+    })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
