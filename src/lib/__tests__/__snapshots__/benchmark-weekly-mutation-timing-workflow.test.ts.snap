@@ -6,7 +6,7 @@ exports[`benchmark-weekly.yml — job mutation-coord-timing (sintaxe YAML + snap
   "name": "Mutation coord timing (re-medição semanal)",
   "needs": "seed-guards",
   "permissions": {
-    "actions": "write",
+    "actions": "read",
     "contents": "read",
   },
   "runs-on": "ubuntu-latest",
@@ -19,14 +19,13 @@ exports[`benchmark-weekly.yml — job mutation-coord-timing (sintaxe YAML + snap
         "GH_TOKEN": "\${{ github.token }}",
       },
       "id": "measure",
-      "name": "Medir tempo do step mutation test e publicar baseline (budget 240/baseline)",
+      "name": "Medir tempo do step mutation test (budget 240/mediana 4)",
       "run": "node scripts/measure-mutation-timing.mjs \\
   --run "\${{ github.run_id }}" \\
   --repo "\${{ github.repository }}" \\
   --max 240 \\
-  --warn "\${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \\
-  --publish-baseline MUTATION_TIMING_BASELINE \\
-  --baseline-margin 0.2 \\
+  --warn-median 4 \\
+  --warn-margin 0.2 \\
   --json /tmp/mutation-timing.json
 ",
     },

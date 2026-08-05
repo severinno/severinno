@@ -80,6 +80,19 @@
 #      page). Covers BOTH markdown `![alt](src)` and HTML `<img src=...>`
 #      syntaxes, fence-aware (images inside code blocks don't count).
 #      See scripts/check-readme-images.mjs.
+#
+#  11. Mutation-timing contract: fails if the contract markers of the
+#      mutation-coord timing step drift between the FOUR places that
+#      duplicate them — .github/workflows/seed-guards.yml (source of truth:
+#      job 'Mutation Test (contrato coordenado …)', step 'Run mutation test
+#      (contrato coordenado …)'), scripts/measure-mutation-timing.mjs
+#      (JOB_NAME_MARKER/STEP_NAME_MARKER substrings used in .includes()),
+#      scripts/test-mutation-timing-budget.sh (JOB_NAME=/STEP_NAME= full
+#      names) and src/lib/__tests__/measure-mutation-timing.test.ts (fixture
+#      literals). Job-scoped step resolution mirrors the medidor (the
+#      seed-dev E2E job also has 'Mutation Test'/'Run mutation test' names),
+#      with ambiguity + discrimination checks. See
+#      scripts/check-mutation-timing-contract.mjs.
 # =============================================================================
 
 name: UTF-8 Check
@@ -142,6 +155,9 @@ jobs:
 
       - name: Run mutation-jobs guard (every test-mutation-*.sh has a CI job)
         run: node scripts/check-mutation-jobs.mjs
+
+      - name: Run mutation-timing contract guard (markers ↔ seed-guards.yml)
+        run: node scripts/check-mutation-timing-contract.mjs
 
       - name: Summary
         run: echo "All source files validated as valid UTF-8, LF line endings, locked CRLF scope (.sh/.bash only), and clean shell assignments."

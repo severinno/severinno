@@ -679,7 +679,7 @@ Os hooks locais (`.husky/`) formam uma cadeia de validação em camadas: o
 **pre-push** revalida os fast gates que o CI roda (`utf8-check.yml`) e os
 testes da branch (via smart-skip) antes de expor o push ao remoto.
 
-Os **16 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
+Os **17 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
 `scripts/run-encoding-guards.sh` — a **fonte única** da lista, chamada por
 ambos os hooks. Adicionar um guard novo = editar esse script em UM lugar,
 sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
@@ -698,35 +698,37 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 > bloco real (`bun test:snapshots`) — se o bloco sumir do hook, a linha vira
 > stale e falha igual.
 
-| Validação                                                      | Pre-commit |   Pre-push    |
-| :------------------------------------------------------------- | :--------: | :-----------: |
-| UTF-8 (`check-utf8.sh --dry-run --ci src/`)                    |     ✅     |      ✅       |
-| Escopo UTF-8 (`check-utf8-scope.mjs`)                          |     ✅     |      ✅       |
-| CRLF working tree (`check-crlf.sh --ci`)                       |     ✅     |      ✅       |
-| Escopo CRLF (`check-crlf-scope.mjs`)                           |     ✅     |      ✅       |
-| CRLF blob commitado (`check-blob-crlf.sh --ci`)                |     ✅     |      ✅       |
-| Single-line `out=` (`check-single-line-out-assign.sh`)         |     ✅     |      ✅       |
-| Badge encoding guards (`check-encoding-guards-badge.mjs`)      |     ✅     |      ✅       |
-| Docs repro marker (`check-readme-repro-marker.mjs`)            |     ✅     |      ✅       |
-| Âncoras README (`check-readme-anchors.mjs`)                    |     ✅     |      ✅       |
-| TOC README (`check-readme-toc.mjs`)                            |     ✅     |      ✅       |
-| Imagens README (`check-readme-images.mjs`)                     |     ✅     |      ✅       |
-| Setup-bun externo (`check-no-setup-bun.mjs`)                   |     ✅     |      ✅       |
-| Fonte única Bun (`check-bun-mirror.mjs`)                       |     ✅     |      ✅       |
-| Bun staged diff (`check-bun-mirror.mjs --staged`)              |     ✅     |       —       |
-| Ícones lucide (`scan-lucide-icons.mjs --check`)                |     ✅     |      ✅       |
-| Hooks symmetry (`check-hooks-symmetry.mjs`)                    |     ✅     |      ✅       |
-| Mutation jobs CI (`check-mutation-jobs.mjs`)                   |     ✅     |      ✅       |
-| Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`) |     ✅     |       —       |
-| Format + lint (lint-staged: prettier + eslint --fix)           |     ✅     |       —       |
-| Imports diretos (check:direct-rtl-import + barrel-lint)        |     ✅     |       —       |
-| Barrel lint (`barrel-lint`)                                    |     ✅     |       —       |
-| Typecheck (`tsc --noEmit`)                                     |     ✅     |       —       |
-| Snapshots (quando `.snap`/snapshot tests alterados)            |  ✅ cond.  |       —       |
-| Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)         |     —      | ✅ smart-skip |
+| Validação                                                                      | Pre-commit |   Pre-push    |
+| :----------------------------------------------------------------------------- | :--------: | :-----------: |
+| UTF-8 (`check-utf8.sh --dry-run --ci src/`)                                    |     ✅     |      ✅       |
+| Escopo UTF-8 (`check-utf8-scope.mjs`)                                          |     ✅     |      ✅       |
+| CRLF working tree (`check-crlf.sh --ci`)                                       |     ✅     |      ✅       |
+| Escopo CRLF (`check-crlf-scope.mjs`)                                           |     ✅     |      ✅       |
+| CRLF blob commitado (`check-blob-crlf.sh --ci`)                                |     ✅     |      ✅       |
+| Single-line `out=` (`check-single-line-out-assign.sh`)                         |     ✅     |      ✅       |
+| Badge encoding guards (`check-encoding-guards-badge.mjs`)                      |     ✅     |      ✅       |
+| Docs repro marker (`check-readme-repro-marker.mjs`)                            |     ✅     |      ✅       |
+| Âncoras README (`check-readme-anchors.mjs`)                                    |     ✅     |      ✅       |
+| TOC README (`check-readme-toc.mjs`)                                            |     ✅     |      ✅       |
+| Imagens README (`check-readme-images.mjs`)                                     |     ✅     |      ✅       |
+| Setup-bun externo (`check-no-setup-bun.mjs`)                                   |     ✅     |      ✅       |
+| Fonte única Bun (`check-bun-mirror.mjs`)                                       |     ✅     |      ✅       |
+| Bun staged diff (`check-bun-mirror.mjs --staged`)                              |     ✅     |       —       |
+| Ícones lucide (`scan-lucide-icons.mjs --check`)                                |     ✅     |      ✅       |
+| Hooks symmetry (`check-hooks-symmetry.mjs`)                                    |     ✅     |      ✅       |
+| Mutation jobs CI (`check-mutation-jobs.mjs`)                                   |     ✅     |      ✅       |
+| Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                 |     ✅     |       —       |
+| Contrato mutation-coord (`check-mutation-timing-contract.mjs`)                 |     ✅     |      ✅       |
+| Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`) |     ✅     |       —       |
+| Format + lint (lint-staged: prettier + eslint --fix)                           |     ✅     |       —       |
+| Imports diretos (check:direct-rtl-import + barrel-lint)                        |     ✅     |       —       |
+| Barrel lint (`barrel-lint`)                                                    |     ✅     |       —       |
+| Typecheck (`tsc --noEmit`)                                                     |     ✅     |       —       |
+| Snapshots (quando `.snap`/snapshot tests alterados)                            |  ✅ cond.  |       —       |
+| Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)                         |     —      | ✅ smart-skip |
 
 **Overhead medido** (`bash scripts/bench-encoding-guards.sh` — 5 runs, mediana
-por guard): o TOTAL dos 16 guards ≈ **3.2s**, dominado por `check-blob-crlf`
+por guard): o TOTAL dos 17 guards ≈ **3.2s**, dominado por `check-blob-crlf`
 (~0.59s), `check-utf8` (~0.56s) e `check-crlf` (~0.55s) — os três varrem
 blobs/.ts/.sh inteiros. O `check-readme-toc` (README de 54 headings) custa
 ~**0.23s** — tão rápido quanto os demais guards de README (~0.22-0.25s); o
@@ -736,10 +738,10 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**11 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**12 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
-anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo e
-timing-budget). ⚠️ Não
+anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
+timing-budget e e2e-cache-budget). ⚠️ Não
 existe um job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda
 dentro da matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc +
 images, 1 sub-test do master). Custo medido em 08/2026 (Windows host, worktree
@@ -749,20 +751,21 @@ local, mediana de 3 runs warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (11 sub-tests)   | ≈ **40.75s** (39.5–42.9)²  |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (12 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
-O gap **9.1s (act) vs 40.75s (local)** no master sugere que o node no container
+O gap **9.1s (act) vs 39s (local)** no master sugere que o node no container
 roda mais rápido que o Windows local (warm cache/FS — não é causa provada, é
 observação).
-²Medido com TODOS os 10 sub-tests originais em 08/2026: mediana de 3 runs
-warm, **40.75s local** (39.5–42.9s) e **9.1s** de step no act com a imagem
-ubuntu-bun + `--pull=false` (o mesmo act mediu o actionlint em 3.6s e o
-utf8-check em 7.46s). O 11º sub-test (timing-budget — fixtures JSON em
-mktemp, ~1s) foi adicionado DEPOIS da medição. O custo escala com o nº de
-sub-tests — cada um cria fixtures e roda o guard contra a mutação —, então
-o valor antigo (15.8s) era de 5 sub-tests.
+²Medido com os 12 sub-tests atuais em 08/2026 (o e2e-cache-budget roda em
+SKIP — exit 0 enquanto measure-e2e-cache.mjs não existir —, custo ~0s):
+mediana de 3 runs warm, **39s local** (39–40s). O **9.1s** de step no act
+com a imagem ubuntu-bun + `--pull=false` foi medido ANTES, com 10
+sub-tests, e não foi re-medido (o mesmo act mediu o actionlint em 3.6s e o
+utf8-check em 7.46s). O custo escala com o nº de sub-tests — cada um cria
+fixtures e roda o guard contra a mutação —, então o valor antigo (15.8s)
+era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 10.
 *O checkout no act é overhead de EMULAÇÃO (docker cp do worktree inteiro):
 **32.2s na 1ª run fria** (volume não cacheado) vs **~0.03s nas runs seguintes**
 (volume quente — os steps de 9.1s/7.46s/3.61s destas tabelas foram medidos com
@@ -806,33 +809,44 @@ o workflow for mergeado e um run real existir:
 jobs --jq '.jobs[] | select(.name | contains("contrato")) | .steps[] |
 select(.name | contains("Run mutation test")) | {name, startedAt, completedAt}'`.
 
-**Budget de payload (DUAS FAIXAS — 240s duro / baseline soft auto-atualizado):**
-o step 'Run mutation test (contrato coordenado)' tem um **budget duro de 240s
-(4 min)** — se ultrapassar, o gate falha (regressão de overhead do contrato
-coordenado) — e uma **faixa soft BASELINE-ORIENTADA**: o job SEMANAL
-(`mutation-coord-timing`) mede o tempo real e, quando o budget passa,
-**publica o valor como repository variable `MUTATION_TIMING_BASELINE` via `gh
-variable set`** (`--publish-baseline MUTATION_TIMING_BASELINE --baseline-margin
-0.2` → publica `ceil(duração × 1.2)`, clampado para sempre ficar `< 240`). Os
-três jobs do gate (2 do pr-check + 1 semanal) consultam a variável em vez do
-literal: `--warn ${{ vars.MUTATION_TIMING_BASELINE || '180' }}` — o baseline
-**tolerar variação de runner re-anchorando no tempo real medido** (o gate
-segue a média + headroom, não um palpite fixo); o fallback 180s vale só antes
-do primeiro publish. Entre baseline e 240s o script emite `::warning::` e sai
-**exit 0** (ruído de runner tolerado SEM perder a observabilidade); acima de
-240s falha. **Publica SÓ quando o budget passou (zone ok/warn)** — um run
-lento (fail) não ratcheta o baseline para cima (a regressão não vira o novo
-normal); PRs NUNCA publicam (só o semanal — PR não muta repo state). Falha de
-publish é `::warning::` fail-soft (a medição é o sinal primário; baseline stale
-fica observável via `report.baseline.published=false`). O timing é o **NATIVO
-do Actions** (started_at/completed_at da jobs API — o mesmo que a UI mostra),
-medido por `scripts/measure-mutation-timing.mjs` (mesma flag `--publish-baseline`
-com `MEASURE_MUTATION_TIMING_DRY_PUBLISH=1` em testes, sem gh real). O budget
-duro de 240s tem ~5× de headroom sobre o esperado ~35-45s (evita flakiness de
-runner); a faixa soft absorve picos intermediários sem falhar o PR. O relatório
-JSON ganha `zone` (`'ok'`|`'warn'`|`'fail'`) + `warnSecs` + `warned` +
-`baseline` (`{name, value, published}`) — o caller distingue alerta de falha
-de infra/drift.
+**Budget de payload (DRIFT RELATIVO no PR / faixa soft derivada no semanal —
+240s como TETO absoluto):** o step 'Run mutation test (contrato coordenado)'
+tem um **teto absoluto de 240s (4 min)** — falha SEMPRE acima dele, mesmo com
+drift pequeno (regressão de overhead do contrato coordenado). O **job do PR
+(`mutation-coord-timing-guard`)** gateia por **DRIFT RELATIVO vs a MEDIANA do
+histórico**: `--fail-drift ${{ vars.MUTATION_TIMING_DRIFT_MAX || '50' }}` —
+falha quando o step é mais que o threshold configurável (% do desvio
+relativo, default 50%) mais lento que a mediana dos últimos 4 runs medidos
+do MESMO step (gh run list `benchmark-weekly.yml` + jobs API por run — o
+mesmo mecanismo do trend guard; histórico SEMPRE da branch DEFAULT, resolvida
+via `gh repo view`). Isso pega a **regressão lenta** (ex.: 100s vs mediana
+62.5s = +60% — falha por drift ANTES de tocar o teto) que um teto fixo jamais
+veria, sem depender de literal — e a var `MUTATION_TIMING_DRIFT_MAX` permite
+ajuste por repo sem editar o workflow. O **job semanal e o act-guard** usam a
+**faixa soft DERIVADA DA MEDIANA** (`--warn-median 4 --warn-margin 0.2`): o
+warn = `ceil(mediana × 1.2)`, clampado `< 240` — se **AUTO-AJUSTA ao runner
+real** e emite `::warning::` sem falhar; o **primeiro run** (sem histórico
+suficiente) mede o baseline com `::notice::` + gate só no duro — não existe
+mais a variable `MUTATION_TIMING_BASELINE` nem `--publish-baseline` (o semanal
+agora é read-only nas permissions). Abaixo do warn derivado há ainda a
+**faixa SUAVE `--alert`** (escalada suave em 3 degraus: `d <= alert` → `ok`
+silencioso; `alert < d <= warn` → `::notice::` + exit 0; `warn < d <= max` →
+`::warning::` + exit 0; `d > max` → `::error::` + exit 1) — o notice observa
+o drift cedo (ruído baixo) ANTES do warning acender. O timing é o **NATIVO do
+Actions** (started_at/completed_at da jobs API — o mesmo que a UI mostra),
+medido por `scripts/measure-mutation-timing.mjs` (no modo TESTE o histórico
+vem de `--history-file` — fixtures determinísticos, sem gh). O teto de 240s
+tem ~5× de headroom sobre o esperado ~35-45s (evita flakiness de runner); o
+drift relativo absorve picos intermediários sem falhar o PR. O relatório JSON
+ganha `zone` (`'ok'`|`'notice'`|`'warn'`|`'fail'`) + `alertSecs` + `warnSecs`
+
+- `noticed` + `warned` + `warnSource: 'median'`/`warnWindow`/`warnMargin`/
+  `warnMedianSecs`/`warnHistoryCount` (a derivação — null sem histórico
+  suficiente) e, no modo `--fail-drift`, `driftSource`/`driftWindow`/
+  `driftMaxPct`/`driftMedianSecs`/`driftPct`/`driftHistoryCount`/`drifted` (a
+  zone `'fail'` distingue `drifted: true` — drift relativo — de `exceeded: true`
+  — teto absoluto) — o caller distingue notice de alerta de falha de
+  infra/drift.
 
 **Medição via ACT (PRs sem seed-guards na default):** o gate real mede via
 jobs API do run ATUAL — mas o `seed-guards.yml` é um reusable `workflow_call`:
@@ -843,30 +857,43 @@ jobs API não mede NADA. O job **`mutation-coord-timing-act-guard`**
 `mutation-coord-update` **localmente via act com a imagem ubuntu-bun** (o
 MESMO pipeline do tier1-fastpath-guard — bun pré-instalado) e o guard roda em
 modo `--act-log` (`measure-mutation-timing.mjs --act-log <log> --max 240
---warn ${{ vars.MUTATION_TIMING_BASELINE || '180' }} --act-exit <exit>`) —
+--warn-median 4 --warn-margin 0.2 --act-exit <exit>`) —
 extraindo a duração do step da linha
 `Success - Main Run mutation test ... [X.XXs]` do log do act (mesma técnica de
 parse do check-tier1-fastpath). Só roda quando o PR toca o contrato coordenado
 (seed-guards.yml / measure-mutation-timing.mjs / test-mutation-timing-budget.sh
 / seed-e2e-count.ts), com custo ~15 min de act — o preço de travar o budget
 mesmo antes do merge, quando o run real ainda não pode medir.
-**Tuning do budget:** o **duro** (`--max 240`) e a **margem do baseline**
-(`--baseline-margin 0.2`) alteram em **lugares coordenados** — os TRÊS jobs
-(pr-check.yml `mutation-coord-timing-guard` + `mutation-coord-timing-act-guard`
-e benchmark-weekly.yml `mutation-coord-timing`, `--max 240 --warn
-${{ vars.MUTATION_TIMING_BASELINE || '180' }}`), as TRÊS asserções de teste de
+**Tuning do budget:** o **teto** (`--max 240`), o **threshold de drift**
+(`--fail-drift`, default 50%) e a **margem da derivação** (`--warn-margin
+0.2`) alteram em **lugares coordenados** — os TRÊS jobs (pr-check.yml
+`mutation-coord-timing-guard` com `--max 240 --fail-drift
+${{ vars.MUTATION_TIMING_DRIFT_MAX || '50' }} --window 4`;
+`mutation-coord-timing-act-guard` e benchmark-weekly.yml
+`mutation-coord-timing` com `--max 240 --warn-median 4 --warn-margin 0.2`),
+as TRÊS asserções de teste de
 workflow (`benchmark-weekly-mutation-timing-workflow.test.ts`,
-`pr-check-mutation-timing-guard-workflow.test.ts` e
-`pr-check-mutation-timing-act-workflow.test.ts` — estas travam o `--warn` da
-var + o `--publish-baseline` do semanal) e as constantes
-`BUDGET_MAX`/`BUDGET_WARN` do mutation test (`scripts/test-mutation-timing-budget.sh`
-— os fixtures de 200s/300s dependem das faixas; o próprio mutation test falha
-se os budgets mudarem e os fixtures ficarem na faixa errada). O **baseline em
-si** (valor de `MUTATION_TIMING_BASELINE`) NÃO precisa de tuning — o semanal o
-auto-atualiza com o tempo real medido (+20%). O modo `--warn-only` emite
-`::warning::` em vez de falhar (alerta não-bloqueante para dispatch manual).
-Limites: faixa soft é **`warn < d <= max`** (d == max ainda é warn, não fail);
-faixa dura é **`d > max`** — só estritamente acima do duro falha.
+`pr-check-mutation-timing-guard-workflow.test.ts` — trava o `--fail-drift` +
+`--window 4` + `--max 240` + a AUSÊNCIA de `--warn-median`/`--publish-baseline`
+— e `pr-check-mutation-timing-act-workflow.test.ts` — trava o `--warn-median`
+
+- `--warn-margin` + a AUSÊNCIA de `--publish-baseline`) e as constantes
+  `BUDGET_MAX`/`BUDGET_WARN`/`BUDGET_ALERT` + os cenários `--fail-drift` do
+  mutation test (`scripts/test-mutation-timing-budget.sh` — os fixtures de
+  120s/200s/300s dependem das faixas; o próprio mutation test falha se os
+  budgets mudarem e os fixtures ficarem na faixa errada). A **janela do
+  histórico** (`--window 4`) e o **threshold de drift** (`--fail-drift`) podem
+  ser tuning via vars (`MUTATION_TIMING_DRIFT_MAX` no PR;
+  `MUTATION_TIMING_TREND_WINDOW` já existe para o trend) — a mediana em si NÃO
+  precisa de tuning: auto-deriva do tempo real medido. O modo `--warn-only`
+  emite `::warning::` em vez de falhar (alerta não-bloqueante para dispatch
+  manual); a faixa notice é SEMPRE não-bloqueante (`::notice::` + exit 0, com ou
+  sem `--warn-only`).
+  Limites: faixa suave é **`alert < d <= warn`** (d == warn ainda é notice, não
+  warn); faixa soft é **`warn < d <= max`** (d == max ainda é warn, não fail);
+  faixa dura é **`d > max`** — só estritamente acima do duro falha. O contrato
+  exige `alert < warn < max` (o CLI rejeita `--alert >= --warn` com exit 2 —
+  faixa notice vazia).
 
 Comparando com os fast gates: os 16 guards somam ≈ **3.2s** de mediana; o payload
 do mutation-coord-update (51s local) é **~16× mais caro que TODA a classe de fast
@@ -885,7 +912,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |           — (n/a)            |         <2s         |
 | `utf8-check` (748 arquivos, `--ci src/`)          |        ≈ **0.92s**         |          **7.46s**           |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |          **3.61s**           |    ~1-2s (est.)     |
-| `mutation-guards` (11 sub-tests node-puro)        |        ≈ **40.75s**        |           **9.1s**           |   ~15-25s (est.)    |
+| `mutation-guards` (12 sub-tests node-puro)        |         ≈ **39s**          |          **9.1s**²           |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |         **4m37.6s**          |   ~35-45s (est.)³   |
 | `e2e-cache` (build Next.js + playwright cache)    |  **4m6s** (build, 1 run)   |     — (requer serviços)      | **~6-9 min (est.)** |
 
@@ -898,7 +925,7 @@ workflows de encoding/cache) — PRs comuns NÃO o rodam; quando roda (timeout 1
 min), o custo é dominado pelo `bun run build` (4m6s local, **1 run** — não foi
 estabilizado em 3 runs como os demais) + `playwright install chromium` + testes
 de cache. Os demais gates somam ≈ **1m32s** no pior caso
-(mutation-guards 40.75s + coord-update 51s local) contra ≈ **3.2s** dos 16 fast
+(mutation-guards 39s + coord-update 51s local) contra ≈ **3.2s** dos 16 fast
 guards — por design: cada mutation test roda o guard REAL contra uma mutação
 (não é node-puro) e o coord-update roda vitest real + guard estático por cenário.
 

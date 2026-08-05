@@ -315,7 +315,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 10 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 12 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -345,6 +345,15 @@ jobs:
   #                    FALHAR: prova o par transitivo end-to-end no CI)
   #   utf8-scope     → test-mutation-utf8-scope.sh
   #                    (call site sem src/ deve FALHAR)
+  #   timing-budget  → test-mutation-timing-budget.sh
+  #                    (payload 300s > budget 240s do measure-mutation-timing
+  #                    deve FALHAR exit 1 + controle 35s passa + warn-only
+  #                    + DRIFT: step renomeado → exit 2 + faixa soft DERIVADA
+  #                    da mediana --warn-median: controle/warn/mutação/validação)
+  #   e2e-cache-budget → test-mutation-e2e-cache-budget.sh
+  #                    (gate de budget 600s/10 min do job 'E2E Cache': payload
+  #                    900s > 600s deve FALHAR exit 1 + drift exit 2 — SKIP
+  #                    exit 0 enquanto measure-e2e-cache.mjs não existir)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
   # completo do script granular + verdict por sub-test + tabela final —
   # granularidade de diagnóstico preservada. Exit final agregado: 0 se
@@ -357,7 +366,7 @@ jobs:
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (10 node-pure mutation tests)
+    name: Mutation guards master (12 node-pure mutation tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -366,7 +375,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 10 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo)."
+        run: echo "✅ All 12 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget)."
 
   # ── Hooks Symmetry Guard (dedicado) ─────────────────────────────────
   # Fast gate (node puro, <1s): roda o guard REAL de simetria
@@ -1115,18 +1124,21 @@ jobs:
   # mutation-coord-timing (benchmark-weekly.yml) — alterações no
   # script/args DEVEM ser replicadas nos dois lugares.
   #
-  # TUINING DO BUDGET (DUAS FAIXAS — 240s duro / baseline soft): alterar em
-  # lugares coordenados — este job (--max 240 --warn
-  # ${{ vars.MUTATION_TIMING_BASELINE || '180' }}), o job semanal
-  # mutation-coord-timing do benchmark-weekly.yml (mesmo --warn + o
-  # --publish-baseline MUTATION_TIMING_BASELINE que auto-atualiza a variável
-  # quando o budget passa) e as asserções de teste de workflow — o README
-  # (seção Git Hooks, bloco de overhead) documenta os valores como fonte da
-  # verdade. Faixa SOFT (baseline < d <= 240) alerta com ::warning:: + exit 0
-  # (ruído de runner tolerado); faixa DURO (d > 240) falha com ::error:: +
-  # exit 1.
+  # TUINING DO GATE (DRIFT RELATIVO + TETO ABSOLUTO): alterar em lugares
+  # coordenados — este job (--max 240 --fail-drift ${{ vars.MUTATION_TIMING_DRIFT_MAX || '50' }}
+  # --window 4), o job semanal
+  # mutation-coord-timing do benchmark-weekly.yml (mantém o --warn-median da
+  # faixa soft — a re-medição alerta; o PR gateia) e as asserções de teste
+  # de workflow — o README (seção Git Hooks, bloco de overhead) documenta os
+  # valores como fonte da verdade. O PR compara o timing contra a MEDIANA do
+  # histórico (gh run list nos runs anteriores do seed-guards + jobs API por
+  # run) e FALHA quando o DRIFT RELATIVO (d - mediana)/mediana ultrapassa o
+  # threshold configurável (vars.MUTATION_TIMING_DRIFT_MAX, default 50%) —
+  # pegando regressão por desvio relativo ANTES do teto; --max 240 vira o
+  # TETO ABSOLUTO de segurança (d > 240 falha SEMPRE, mesmo com drift
+  # pequeno). Sem histórico (primeiro run) → ::notice:: + gate só no teto.
   mutation-coord-timing-guard:
-    name: Mutation coord timing (budget 240/baseline)
+    name: Mutation coord timing (drift 50%/teto 240)
     runs-on: ubuntu-latest
     needs: seed-guards
     if: always() # mede também quando o seed-guards falhou (timeout é o alvo)
@@ -1134,21 +1146,23 @@ jobs:
 
     permissions:
       contents: read
-      actions: read # gh api repos/X/actions/runs/<id>/jobs (jobs API)
+      actions: read # gh api repos/X/actions/runs/<id>/jobs (jobs API) + gh run list + gh repo view
 
     steps:
       - uses: actions/checkout@v4
 
-      # ── Mede o step no run ATUAL e gateia o budget em DUAS FAIXAS ──
-      # --max 240 (duro) = 4 min; --warn consulta a variable
-      # MUTATION_TIMING_BASELINE (publicada pelo job semanal quando o budget
-      # passa — baseline auto-atualizado que tolera variação de runner) com
-      # fallback no literal 180 (esperado ~35-45s — headroom amplo). Exit 1 =
-      # budget DURO excedido (gate) ou infra; exit 0 na faixa soft com
-      # ::warning::; exit 2 = drift de contrato. GH_TOKEN explícito (o gh do
-      # runner já usa o GITHUB_TOKEN por padrão — explicitar torna o
-      # contrato auto-documentado). PR NÃO publica baseline (só o semanal).
-      - name: Medir tempo do step mutation test (budget 240/baseline)
+      # ── Mede o step no run ATUAL e gateia por DRIFT RELATIVO + TETO ──
+      # --max 240 (TETO ABSOLUTO) = 4 min — falha SEMPRE acima disso;
+      # --fail-drift compara a duração contra a MEDIANA do histórico (gh run
+      # list --workflow benchmark-weekly.yml — os runs anteriores do
+      # seed-guards vivem nos runs do caller — + jobs API por run, o mesmo
+      # mecanismo do trend guard; branch DEFAULT resolvida via gh repo view)
+      # e falha quando o desvio relativo ultrapassa o threshold configurável
+      # (default 50%). Exit 1 = drift relativo OU teto excedido (gate) ou
+      # infra; exit 2 = drift de contrato. GH_TOKEN explícito (o gh do runner
+      # já usa o GITHUB_TOKEN por padrão — explicitar torna o contrato
+      # auto-documentado). PR NÃO publica baseline (nada para publicar).
+      - name: Medir tempo do step mutation test (drift relativo vs mediana)
         id: measure
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1157,7 +1171,8 @@ jobs:
             --run "${{ github.run_id }}" \
             --repo "${{ github.repository }}" \
             --max 240 \
-            --warn "${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \
+            --fail-drift "${{ vars.MUTATION_TIMING_DRIFT_MAX || '50' }}" \
+            --window 4 \
             --json /tmp/mutation-timing.json
 
       # ── Evidência como artifact (debug de falhas do budget) ────────
@@ -1169,12 +1184,18 @@ jobs:
           path: /tmp/mutation-timing.json
           if-no-files-found: ignore
 
-      # ── Summary (a evidência do budget no PR) ──────────────────────
+      # ── Summary (a evidência do budget E do drift no PR) ───────────
+      # Mostra o NÚMERO que falhou, não só o JSON bruto: a tabela
+      # 'atual vs mediana vs threshold' (mesmo shape do summary do
+      # mutation-coord-trend do benchmark-weekly.yml — drift relativo vs a
+      # mediana do histórico com o limiar configurável) + o veredito do
+      # budget. r.driftPct é o número real do --fail-drift; o PR mostra por
+      # que falhou (quanto % acima da mediana) sem abrir o artifact.
       - name: Summary
         if: always()
         run: |
           {
-            echo '## ⏱️ Mutation coord — budget de payload (PR, 240/baseline)'
+            echo '## ⏱️ Mutation coord — budget de payload (PR, 240/mediana drift)'
             echo ''
             if [ -f /tmp/mutation-timing.json ]; then
               node -e "
@@ -1184,6 +1205,10 @@ jobs:
                   console.log('|---|---|');
                   console.log('| Step | ' + r.stepName + ' |');
                   console.log('| Duração | **' + r.durationSecs + 's** (duro ' + (r.budgetSecs ?? 'n/a') + 's / soft ' + (r.warnSecs ?? 'n/a') + 's) |');
+                  if (typeof r.driftPct === 'number') {
+                    console.log('| Atual vs mediana | **' + r.durationSecs + 's vs ' + r.driftMedianSecs + 's** (janela ' + (r.driftWindow ?? 'n/a') + ' runs anteriores) |');
+                    console.log('| Drift relativo | **' + r.driftPct.toFixed(1) + '%** (threshold ' + r.driftMaxPct + '%) |');
+                  }
                   console.log('| Conclusão | ' + r.conclusion + ' |');
                   console.log('| Run | ' + r.runId + ' |');
                   if (r.zone === 'fail') console.log('| Budget | ❌ **EXCEDIDO** (faixa dura) — regressão de overhead |');
@@ -1202,8 +1227,9 @@ jobs:
   # Re-executa o job mutation-coord-update do seed-guards.yml LOCALMENTE com
   # o act + imagem custom (ghcr.io/<owner>/ubuntu-bun:<versão>, bun
   # PRÉ-INSTALADO — o mesmo pipeline do tier1-fastpath-guard) e aplica o
-  # MESMO gate de budget de duas faixas (--max 240 duro / --warn baseline soft)
-  # sobre a duração do step 'Run mutation test (contrato coordenado — 5
+  # MESMO gate de budget de duas faixas (--max 240 duro / faixa soft
+  # DERIVADA da mediana — --warn-median 4 --warn-margin 0.2, como no gate
+  # real) sobre a duração do step 'Run mutation test (contrato coordenado — 5
   # cenários, 2 elos)' extraída do LOG do act (measure-mutation-timing.mjs
   # --act-log, mesma técnica de parse do check-tier1-fastpath.mjs).
   #
@@ -1221,10 +1247,11 @@ jobs:
   # ⚠️ Imagem no GHCR: pacote PRIVADO (verificado 08/2026) — o pull do act
   # usa o auth automático do runner (GITHUB_TOKEN com 'packages: read').
   # ⚠️ Espelho do gate real acima: alterações nos args do guard (--max
-  # --warn) DEVEM ser replicadas nos dois jobs + benchmark-weekly.yml + os
-  # 2 testes de workflow (ver README, bloco de overhead).
+  # --warn-median --warn-margin) DEVEM ser replicadas nos dois jobs +
+  # benchmark-weekly.yml + os 2 testes de workflow (ver README, bloco de
+  # overhead).
   mutation-coord-timing-act-guard:
-    name: Mutation coord timing (act, budget 240/baseline)
+    name: Mutation coord timing (act, budget 240/mediana 4)
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -1315,16 +1342,18 @@ jobs:
       # --act-exit recebe o exit code do act (steps.act.outputs.ACT_EXIT): se
       # o act morreu ANTES do step (exit != 0 sem evidência no log — ex.:
       # imagem não publicada), o guard FALHA com diagnóstico claro. Exit 1 =
-      # budget DURO excedido; exit 0 na faixa soft (::warning::). --warn
-      # consulta a variable MUTATION_TIMING_BASELINE (fallback 180) — o act
-      # NÃO publica baseline (timing local ≠ baseline do CI real).
-      - name: Guard mutation coord timing (act log, 240/baseline)
+      # budget DURO excedido; exit 0 na faixa soft (::warning::).
+      # --warn-median 4 --warn-margin 0.2 DERIVA a faixa soft da MEDIANA dos
+      # últimos 4 runs do MESMO step (o histórico vem do gh run list — o act
+      # NÃO publica baseline; a faixa deriva da mediana, como no gate real).
+      - name: Guard mutation coord timing (act log, 240/mediana 4)
         if: steps.changes.outputs.changed == 'true'
         run: |
           node scripts/measure-mutation-timing.mjs \
             --act-log /tmp/act-mutation.log \
             --max 240 \
-            --warn "${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \
+            --warn-median 4 \
+            --warn-margin 0.2 \
             --act-exit "${{ steps.act.outputs.ACT_EXIT }}" \
             --json /tmp/mutation-timing-act.json
 

@@ -749,19 +749,22 @@ jobs:
 
     permissions:
       contents: read
-      actions: write # gh api jobs (read) + gh variable set (write — baseline auto-atualizado)
+      actions: read # gh api jobs (read) + gh run list (read) — NÃO publica baseline (faixa soft DERIVA da mediana)
 
     steps:
       - uses: actions/checkout@v4
 
-      # ── Mede o tempo real do step no run ATUAL E PUBLICO O BASELINE ──
+      # ── Mede o tempo real do step no run ATUAL com a faixa soft DERIVADA ──
       # GH_TOKEN explícito: o gh do runner já usa o GITHUB_TOKEN por
       # padrão — explicitar torna o contrato auto-documentado e imune a um
       # override futuro de env. Exit 0 = achado; 1 = infra; 2 = drift.
-      # --warn consulta a variable MUTATION_TIMING_BASELINE (publicada aqui
-      # mesmo quando o budget passa) com fallback no literal 180 — o gate
-      # tolera variação de runner re-anchorando no tempo real medido.
-      - name: Medir tempo do step mutation test e publicar baseline (budget 240/baseline)
+      # --warn-median 4 --warn-margin 0.2 DERIVA a faixa soft da MEDIANA dos
+      # últimos 4 runs medidos do MESMO step (gh run list + jobs API — o
+      # mesmo mecanismo do trend guard): o warn se AUTO-AJUSTA ao runner
+      # real, sem variable publicada. O gate DURO (--max 240) não muda — o
+      # drift é detectado por desvio RELATIVO à mediana, e o primeiro run
+      # mede o baseline (::notice:: + gate só no duro).
+      - name: Medir tempo do step mutation test (budget 240/mediana 4)
         id: measure
         env:
           GH_TOKEN: ${{ github.token }}
@@ -770,9 +773,8 @@ jobs:
             --run "${{ github.run_id }}" \
             --repo "${{ github.repository }}" \
             --max 240 \
-            --warn "${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \
-            --publish-baseline MUTATION_TIMING_BASELINE \
-            --baseline-margin 0.2 \
+            --warn-median 4 \
+            --warn-margin 0.2 \
             --json /tmp/mutation-timing.json
 
       # ── Evidência como artifact (debug + insumo da tabela) ─────────
@@ -810,5 +812,105 @@ jobs:
               "
             else
               echo '⚠ Medição não produziu JSON — veja o passo "Medir tempo do step mutation test".'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Mutation coord TREND (semanal) ──────────────────────────────────
+  # Rede de segurança de TENDÊNCIA do overhead do mutation-coord: compara o
+  # tempo do step 'Run mutation test (contrato coordenado)' do run ATUAL
+  # contra a MEDIANA dos N runs anteriores do MESMO workflow e emite
+  # ::warning:: quando o drift relativo passa de X%.
+  #
+  # Por que existe: o gate duro (--max 240 do mutation-coord-timing) só falha
+  # quando o step JÁ estourou o budget. Uma regressão LENTA (40s → 55s → 75s
+  # → 90s — ex.: o contrato coordenado ganhou um cenário por release) passa
+  # silenciosamente por MESES até cruzar 240s. Este job mede a DERIVADA:
+  # drift % do run atual vs a mediana dos anteriores = tendência ANTES do
+  # duro disparar (alerta não-bloqueante — o ::warning:: acende no run sem
+  # falhar o CI). Mediana (não média): imune a outlier de runner lento.
+  #
+  # Mecânica: gh run list --workflow benchmark-weekly.yml (o GITHUB_TOKEN do
+  # Actions autentica) + jobs API por run para extrair a duração do step
+  # (reusa extractMutationStep/computeDurationSecs do medidor — a MESMA fonte
+  # do gate). if: always() + needs: seed-guards: mede TAMBÉM quando o
+  # seed-guards falhou (timeout é o alvo). Fail-closed: exit 1 = infra, exit
+  # 2 = drift de contrato (renomearam o step). Sem bun — só node + gh.
+  #
+  # Baseline no summary: a mediana dos N anteriores é publicada na tabela do
+  # summary (junto com drift % e veredito) — o número que o PR/pre-release
+  # deve olhar antes do gate duro.
+  mutation-coord-trend:
+    name: Mutation coord trend (mediana vs drift %)
+    runs-on: ubuntu-latest
+    needs: seed-guards
+    if: always() # mede também quando o seed-guards falhou (timeout é o alvo)
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      actions: read # gh run list + jobs API (só leitura — não publica baseline)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Mede o drift de tendência: run atual vs mediana dos N anteriores ──
+      # --window N (default 4) e --max-drift X% (default 30) vêm de vars com
+      # fallback — tuning coordenado como o --max/--warn do timing job. O
+      # gh do runner usa o GITHUB_TOKEN por padrão (GH_TOKEN explícito =
+      # contrato auto-documentado). Exit 0 SEMPRE no drift (::warning:: é
+      # não-bloqueante); 1 = infra; 2 = drift de contrato. ATENÇÃO: se o
+      # seed-guards falhar ANTES do step de mutation (ex.: erro de bun install
+      # no upstream), o step some e este job sai exit 2 — o run semanal fica
+      # vermelho de PROPÓSITO (fail-closed), não é contrato quebrado; o
+      # artifact/summary (if: always()) guardam a evidência real.
+      - name: Medir drift de tendência do mutation-coord (window/mediana)
+        id: trend
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/measure-mutation-trend.mjs \
+            --run "${{ github.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --window "${{ vars.MUTATION_TIMING_TREND_WINDOW || '4' }}" \
+            --max-drift "${{ vars.MUTATION_TIMING_TREND_MAX_DRIFT || '30' }}" \
+            --json /tmp/mutation-trend.json
+
+      # ── Evidência como artifact (debug + histórico da tendência) ─────
+      - name: Upload trend JSON (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-coord-trend
+          path: /tmp/mutation-trend.json
+          if-no-files-found: ignore
+
+      # ── Summary (baseline = mediana dos N anteriores publicada) ───────
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## 📈 Mutation coord — tendência de overhead (mediana vs drift)'
+            echo ''
+            if [ -f /tmp/mutation-trend.json ]; then
+              node -e "
+                const r = require('/tmp/mutation-trend.json');
+                if (r.current && r.current.found) {
+                  console.log('| Campo | Valor |');
+                  console.log('|---|---|');
+                  console.log('| Run atual | **' + r.current.durationSecs + 's** |');
+                  console.log('| Baseline (mediana ' + r.window + ' runs anteriores) | **' + r.medianSecs + 's** |');
+                  console.log('| Drift relativo | ' + (typeof r.driftPct === 'number' ? r.driftPct.toFixed(1) + '%' : 'n/a') + ' (limiar ' + r.maxDriftPct + '%) |');
+                  if (r.warned) console.log('| Tendência | ⚠️ **ACIMA do limiar** — overhead subindo antes do gate duro disparar |');
+                  else console.log('| Tendência | ✅ saudável (dentro do limiar) |');
+                  if (r.history && r.history.length) {
+                    console.log('');
+                    console.log('Últimos ' + r.history.length + ' runs: ' + r.history.map(h => h.durationSecs + 's').join(' → '));
+                  }
+                } else {
+                  console.log('⚠ Tendência não medida: ' + (r.error || 'sem detalhes'));
+                }
+              "
+            else
+              echo '⚠ Tendência não produziu JSON — veja o passo "Medir drift de tendência".'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

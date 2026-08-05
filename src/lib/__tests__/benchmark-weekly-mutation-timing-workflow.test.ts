@@ -133,14 +133,17 @@ describe("benchmark-weekly.yml — contrato de medição do mutation-coord-timin
     expect(job?.if).toBe("always()")
   })
 
-  it("permissions: actions: WRITE (jobs API read + gh variable set do baseline) + contents: read", () => {
+  it("permissions: actions: READ (jobs API + gh run list da derivação — NÃO publica variable) + contents: read", () => {
     expect(job?.permissions).toMatchObject({
       contents: "read",
-      actions: "write",
+      actions: "read",
     })
+    // A faixa soft DERIVA da mediana dos últimos runs (gh run list) — não
+    // publica baseline, então não precisa de actions: write.
+    expect(job?.permissions).not.toMatchObject({ actions: "write" })
   })
 
-  it("passo de medida (id: measure) injeta GH_TOKEN, invoca o script com run atual, gateia EM DUAS FAIXAS (--max 240 --warn baseline var) E PUBLICA o baseline (--publish-baseline MUTATION_TIMING_BASELINE)", () => {
+  it("passo de medida (id: measure) injeta GH_TOKEN, invoca o script com run atual E DERIVA a faixa soft da MEDIANA (--max 240 --warn-median 4 --warn-margin 0.2 — sem publish)", () => {
     const measure = steps.find((s) => s.id === "measure")
     expect(measure).toBeDefined()
     expect(measure?.env).toEqual({ GH_TOKEN: "${{ github.token }}" })
@@ -148,15 +151,18 @@ describe("benchmark-weekly.yml — contrato de medição do mutation-coord-timin
     expect(run).toContain("node scripts/measure-mutation-timing.mjs")
     expect(run).toContain('--run "${{ github.run_id }}"')
     expect(run).toContain('--repo "${{ github.repository }}"')
-    // DUAS FAIXAS: --max 240 (duro, falha) + --warn consulta a variable
-    // MUTATION_TIMING_BASELINE (publicada AQUI quando o budget passa —
-    // baseline auto-atualizado) com fallback 180 (soft). O semanal é o ÚNICO
-    // job que publica (PR não muta repo state).
+    // DUAS FAIXAS: --max 240 (duro, falha) + faixa soft DERIVADA da MEDIANA
+    // dos últimos 4 runs medidos do MESMO step (--warn-median 4
+    // --warn-margin 0.2 — o warn se AUTO-AJUSTA ao runner real, sem
+    // variable publicada; o primeiro run mede o baseline com ::notice::).
     expect(run).toContain("--max 240")
-    expect(run).toContain("--warn \"${{ vars.MUTATION_TIMING_BASELINE || '180' }}\"")
-    expect(run).toContain("--publish-baseline MUTATION_TIMING_BASELINE")
-    expect(run).toContain("--baseline-margin 0.2")
+    expect(run).toContain("--warn-median 4")
+    expect(run).toContain("--warn-margin 0.2")
     expect(run).toContain("--json /tmp/mutation-timing.json")
+    // SEM publish: o semanal não publica mais baseline (a derivação pela
+    // mediana substituiu a variable auto-atualizada).
+    expect(run).not.toContain("--publish-baseline")
+    expect(run).not.toContain('--warn "')
   })
 
   it("artifact e summary usam if: always() — a evidência existe mesmo com exit 1/2 do script", () => {

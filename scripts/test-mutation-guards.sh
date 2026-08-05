@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 11 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 12 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -46,8 +46,22 @@
 #   utf8-scope     → scripts/test-mutation-utf8-scope.sh
 #                    call site sem src/ deve FALHAR
 #   timing-budget  → scripts/test-mutation-timing-budget.sh
-#                    payload 300s > budget 180s do measure-mutation-timing
+#                    payload 300s > budget 240s do measure-mutation-timing
 #                    deve FALHAR (exit 1) + controle 35s passa + warn-only
+#                    + DRIFT: step renomeado → exit 2 (drift de contrato)
+#                    + MEDIAN: faixa soft DERIVADA da mediana (--warn-median
+#                    4 --warn-margin 0.2 — controle/warn/mutação/validação)
+#                    + DRIFT RELATIVO: --fail-drift 50% vs mediana 62.5s —
+#                    100s (+60%) falha exit 1 ANTES do teto; teto 240s
+#                    segue falhando (300s vs mediana alta 227.5s, +31.87%
+#                    < 50%, só exceeded); controle 35s/80s passam (drift
+#                    negativo / +28% < threshold)
+#   e2e-cache-budget → scripts/test-mutation-e2e-cache-budget.sh
+#                    gate de budget de 10 min (600s) do job 'E2E Cache':
+#                    payload 900s > 600s deve FALHAR (exit 1) + controle
+#                    300s passa + warn 500s + drift exit 2. SKIP (exit 0)
+#                    enquanto scripts/measure-e2e-cache.mjs não existir —
+#                    ativa sozinho quando o medidor for criado
 #
 # Cada script granular é a FONTE ÚNICA do seu cenário (sem duplicação de
 # fixtures/mutações/asserções — o harness só orquestra). TODOS os sub-tests
@@ -76,7 +90,8 @@ SUBTESTS=(
   "mutation-jobs|Mutation-jobs — script órfão + matriz quebrada|scripts/test-mutation-mutation-jobs.sh"
   "workflow-refs|Workflow-refs — alvo transitivo deletado + entry órfã|scripts/test-mutation-workflow-refs.sh"
   "utf8-scope|UTF-8 — call site sem src/|scripts/test-mutation-utf8-scope.sh"
-  "timing-budget|Timing — gate de budget 180s do mutation-coord (300s → exit 1)|scripts/test-mutation-timing-budget.sh"
+  "timing-budget|Timing — gate de budget 240/180/100s (três faixas) + drift exit 2 + faixa soft derivada da mediana (--warn-median) + gate de drift relativo (--fail-drift) do mutation-coord|scripts/test-mutation-timing-budget.sh"
+  "e2e-cache-budget|E2E Cache — gate de budget 600s (10 min) + drift exit 2 (SKIP até medidor)|scripts/test-mutation-e2e-cache-budget.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -233,6 +248,6 @@ fi
 
 pass "MUTATION TESTS PASSED — os guards (bun literal, bun remoção, hooks simetria,"
 pass "README anchors/toc/images + reverse, docs anchor, produtor sentinel,"
-pass "mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget) detectam todas as"
-pass "mutações."
+pass "mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget [240/180/100s + drift exit 2 + mediana],"
+pass "e2e-cache-budget [600s/10 min + drift exit 2]) detectam todas as mutações."
 exit 0

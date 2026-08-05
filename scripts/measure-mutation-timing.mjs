@@ -11,12 +11,14 @@
 // GITHUB_TOKEN do próprio Actions).
 //
 // Usage:
-//   node scripts/measure-mutation-timing.mjs --run <id> --repo owner/repo [--max SECS] [--warn SECS] [--publish-baseline NAME] [--baseline-margin FRAC] [--warn-only] [--json OUT]
-//   node scripts/measure-mutation-timing.mjs --jobs-file FILE [--json OUT] [--max SECS] [--warn SECS] [--publish-baseline NAME] [--baseline-margin FRAC]
-//   node scripts/measure-mutation-timing.mjs --act-log FILE [--max SECS] [--warn SECS] [--act-exit CODE] [--json OUT]
+//   node scripts/measure-mutation-timing.mjs --run <id> --repo owner/repo [--max SECS] [--warn SECS] [--warn-median N] [--warn-margin FRAC] [--alert SECS] [--fail-drift PCT] [--window N] [--workflow NAME] [--branch NAME] [--publish-baseline NAME] [--baseline-margin FRAC] [--warn-only] [--json OUT]
+//   node scripts/measure-mutation-timing.mjs --jobs-file FILE [--json OUT] [--max SECS] [--warn SECS] [--warn-median N] [--warn-margin FRAC] [--alert SECS] [--fail-drift PCT] [--window N] [--workflow NAME] [--branch NAME] [--publish-baseline NAME] [--baseline-margin FRAC]
+//   node scripts/measure-mutation-timing.mjs --act-log FILE [--max SECS] [--warn SECS] [--warn-median N] [--warn-margin FRAC] [--alert SECS] [--fail-drift PCT] [--window N] [--workflow NAME] [--branch NAME] [--act-exit CODE] [--json OUT]
+//   node scripts/measure-mutation-timing.mjs --jobs-file FILE --history-file FILE --warn-median N [--warn-margin FRAC] [--max SECS] [--json OUT]
+//   node scripts/measure-mutation-timing.mjs --jobs-file FILE --history-file FILE --fail-drift PCT [--window N] [--max SECS] [--json OUT]
 //
 // Exit codes:
-//   0 — step encontrado, dentro do budget ou na faixa de WARN (--warn < d <= --max)
+//   0 — step encontrado, dentro do budget ou nas faixas de NOTICE/WARN (--alert < d <= --warn ou --warn < d <= --max)
 //   1 — falha de infra OU budget duro excedido com --max OU act falhou antes do step
 //   2 — step/job não encontrado (drift de contrato ou seed-guards não rodou)
 //
@@ -51,8 +53,74 @@
 //                      se SECS < duração <= --max, emite ::warning:: e sai
 //                      exit 0 — reduz o ruído de runner sem perder o gate
 //                      (um passo 200s num budget 180/240 é AVISO, não falha;
-//                      acima de 240 falha). DUAS FAIXAS no mesmo --max:
-//                      budget-warn (soft, não-bloqueante) + budget-fail (duro).
+//                      acima de 240 falha).
+//   --warn-median N    faixa SOFT DERIVADA DA MEDIANA dos últimos N runs
+//                      medidos do MESMO step (--warn-median 4 = mediana dos
+//                      últimos 4 runs) — SUBSTITUI o literal --warn (exclusivo
+//                      entre si). O warn se AUTO-AJUSTA ao runner real: a
+//                      faixa soft = mediana * (1 + --warn-margin), clampada
+//                      para < --max (reusa computeBaselineValue). O gate
+//                      DURO (--max) NÃO muda — o drift é detectado por DESVIO
+//                      RELATIVO à mediana (uma regressão lenta 40→55→75→90s
+//                      acende o soft cedo sem tocar o duro de 240s). Fonte do
+//                      histórico: gh run list --workflow benchmark-weekly.yml
+//                      + jobs API por run (o MESMO mecanismo do
+//                      measure-mutation-trend.mjs — buildRunListJq
+//                      compartilhado) nos modos --run/--act-log; --history-file
+//                      no modo TESTE (--jobs-file). O histórico é SEMPRE o da
+//                      BRANCH DEFAULT do repo (resolvida via gh repo view —
+//                      os runs semanais vivem lá; um job de PR na branch do
+//                      PR não veria NADA se filtrasse pela branch atual).
+//                      Sem histórico suficiente (primeiro run) → ::notice:: e
+//                      o gate opera SÓ no duro (--max) — o primeiro run mede o
+//                      baseline. Falha do gh no histórico (workflow ainda não
+//                      na default / gh fora) DEGRADA para ::notice:: + gate só
+//                      no duro — o gate DURO é o sinal primário; a derivação é
+//                      um refinamento (não pode derrubar o gate por uma
+//                      dependência secundária). No modo TESTE
+//                      (--history-file) a falha de leitura continua INFRA
+//                      (exit 1) — o fixture quebrou, não o gh.
+//   --branch NAME      branch dos runs do histórico (default: a DEFAULT do
+//                      repo, resolvida via gh repo view). Override explícito
+//                      para testes/debug; o parâmetro não é obrigatório.
+//   --warn-margin FRAC margem de headroom da faixa derivada (default 0.2 =
+//                      20% acima da mediana). Exige --warn-median.
+//   --fail-drift PCT   GATE DE DRIFT RELATIVO (--max vira TETO ABSOLUTO):
+//                      compara a duração do step ATUAL contra a MEDIANA do
+//                      histórico e FALHA (exit 1) quando o desvio relativo
+//                      ultrapassar PCT% — `(d - mediana) / mediana * 100 >
+//                      PCT` (ex.: --fail-drift 50 = falha se o step for 50%
+//                      mais lento que a mediana). O --max continua valendo
+//                      como TETO ABSOLUTO de segurança (d > max falha SEMPRE,
+//                      mesmo com drift pequeno). Exclusivo com --warn/
+//                      --warn-median/--alert (escolha o SEMÂNTICA do gate:
+//                      faixa soft OU drift relativo). Exige --max e histórico
+//                      (--history-file no modo TESTE; gh no modo REAL — o
+//                      MESMO mecanismo do --warn-median, branch default).
+//                      Sem histórico → ::notice:: + gate SÓ no teto (--max).
+//                      Relatório: driftSource/driftWindow/driftMaxPct/
+//                      driftMedianSecs/driftPct/driftHistoryCount/drifted.
+//   --window N         janela do histórico do --fail-drift (default 4 runs
+//                      anteriores — o mesmo default do trend guard). Exige
+//                      --fail-drift.
+//   --workflow NAME    workflow cujos runs fornecem o histórico da mediana
+//                      (default benchmark-weekly.yml — o job semanal que
+//                      executa o seed-guards.yml via reusable; os runs
+//                      ANTERIORES do seed-guards estão nos runs do caller).
+//   --history-file FILE JSON { runs: [{ runId, durationSecs }] } dos runs
+//                      ANTERIORES (modo TESTE determinístico — sem gh, como o
+//                      measure-mutation-trend.mjs). Exige --jobs-file +
+//                      --warn-median OU --fail-drift.
+//   --alert SECS       faixa SUAVE (opcional, exige --warn e deve ser < --warn):
+//                      se SECS < duração <= --warn, emite ::notice:: e sai exit 0
+//                      — ESCALADA SUAVE em três degraus abaixo do duro:
+//                        d <= alert            → 'ok'     (silencioso)
+//                        alert < d <= warn     → 'notice' (::notice::)
+//                        warn < d <= max       → 'warn'   (::warning::)
+//                        d > max               → 'fail'   (::error:: + exit 1)
+//                      A faixa notice observa o drift cedo (ruído baixo) ANTES
+//                      do warning acender — o relatório ganha alertSecs + zone
+//                      de QUATRO níveis ('ok'|'notice'|'warn'|'fail') + noticed.
 //                      O timing é o NATIVO do Actions (started_at/completed_at
 //                      da jobs API — o mesmo que a UI do GitHub mostra).
 //                      Relatório ganha budgetSecs + warnSecs + zone
@@ -61,7 +129,12 @@
 //   --warn-only        com --max: em vez de FALHAR no budget duro, emite
 //                      ::warning:: e sai com exit 0 — alerta não-bloqueante
 //                      (para contextos onde regressão de overhead não pode
-//                      bloquear, ex.: dispatch manual)
+//                      bloquear, ex.: dispatch manual). Interage com
+//                      --fail-drift: converte AMBAS as causas de fail (drift
+//                      relativo OU teto absoluto) em ::warning:: + exit 0 —
+//                      a mensagem ainda distingue a causa (drifted/exceeded)
+//                      no relatório, mas o job não bloqueia (uso explícito
+//                      para alerta manual; o job do PR NUNCA passa --warn-only).
 //   --publish-baseline NAME publica a duração medida (com margem
 //                      --baseline-margin) como repository variable NAME via
 //                      `gh variable set NAME <valor> --repo <repo>` — o
@@ -93,17 +166,25 @@
 //     conclusion, found: true
 //   }
 //   Com --max: + { budgetSecs, exceeded: bool }
-//   Com --warn: + { warnSecs, zone: 'ok'|'warn'|'fail', warned: bool }
+//   Com --warn: + { warnSecs, warned: bool }
+//   Com --warn-median: + { warnSource: 'median', warnWindow, warnMargin,
+//     warnMedianSecs, warnHistoryCount } (warnSecs = mediana * (1+margem)
+//     clampada < --max; null = sem histórico suficiente → gate só no duro)
+//   Com --fail-drift: + { driftSource: 'median', driftWindow, driftMaxPct,
+//     driftMedianSecs, driftPct, driftHistoryCount, drifted: bool } — zone
+//     'fail' por drift (drifted: true) OU por teto absoluto (exceeded: true)
+//   Com --alert: + { alertSecs, zone: 'ok'|'notice'|'warn'|'fail', noticed: bool }
 //   Com --publish-baseline: + { baseline: { name, value, published,
 //     dryRun?|error? } } — publicado SÓ quando zone != 'fail' (budget passou)
 // Em erro: { runId, repo, found: false, error: '<mensagem>' }
 //
 // Job semanal (benchmark-weekly.yml — mutation-coord-timing): mede, gateia E
-// PUBLICO o baseline (variável MUTATION_TIMING_BASELINE) quando o budget passa:
-//   node scripts/measure-mutation-timing.mjs --run <id> --repo <owner/repo> --max 240 --warn ${{ vars.MUTATION_TIMING_BASELINE || '180' }} --publish-baseline MUTATION_TIMING_BASELINE --baseline-margin 0.2 --json /tmp/mutation-timing.json
-// Job PR (pr-check.yml — mutation-coord-timing-guard, antes do merge): CONSULTA
-// o baseline (não publica — PR não muta repo state):
-//   node scripts/measure-mutation-timing.mjs --run <id> --repo <owner/repo> --max 240 --warn ${{ vars.MUTATION_TIMING_BASELINE || '180' }} --json /tmp/mutation-timing.json
+// a faixa soft DERIVA da mediana dos últimos 4 runs (sem baseline var):
+//   node scripts/measure-mutation-timing.mjs --run <id> --repo <owner/repo> --max 240 --warn-median 4 --warn-margin 0.2 --json /tmp/mutation-timing.json
+// Job PR (pr-check.yml — mutation-coord-timing-guard, antes do merge): GATE DE
+// DRIFT RELATIVO vs a mediana do histórico (--fail-drift, threshold
+// configurável) + teto absoluto --max 240:
+//   node scripts/measure-mutation-timing.mjs --run <id> --repo <owner/repo> --max 240 --fail-drift 50 --window 4 --json /tmp/mutation-timing.json
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
@@ -188,6 +269,142 @@ export function computeDurationSecs(startedAt, completedAt) {
   return Math.max(1, Math.ceil((end - start) / 1000))
 }
 
+// ── Helpers de MEDIANA + HISTÓRICO (compartilhados com o trend guard) ─────
+// O measure-mutation-trend.mjs importa estes helpers daqui — a MESMA fonte
+// de derivação da mediana (fonte única da verdade; o trend mede a DERIVADA,
+// o medidor usa a mediana como baseline da faixa soft).
+
+/**
+ * Mediana de um array de números (imune a outliers — um run com runner lento
+ * de 200s não distorce a tendência). Filtra não-finitos (NaN de data quebrada
+ * não envenena o sort nem a mediana).
+ *
+ * @param {number[]} values
+ * @returns {number | null} null quando vazio / sem valores finitos
+ */
+export function computeMedian(values) {
+  if (!Array.isArray(values) || values.length === 0) return null
+  const finite = values.filter((v) => typeof v === "number" && Number.isFinite(v))
+  if (finite.length === 0) return null
+  const sorted = [...finite].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+/**
+ * Programa jq do `gh run list` do histórico: exclui o run ATUAL e mantém só
+ * runs COMPLETOS. Comparação por NÚMERO puro (o gh emite databaseId como JSON
+ * number — `!= "123"` string compararia TIPOS diferentes e nunca excluiria o
+ * run atual, que entraria na própria mediana e viciaria o baseline).
+ *
+ * @param {string | number} currentRunId id numérico do run atual
+ * @returns {string} programa jq (ex.: `.[] | select(.databaseId != 123) | select(.status == "completed") | .databaseId`)
+ */
+export function buildRunListJq(currentRunId) {
+  return (
+    ".[] | select(.databaseId != " +
+    Number(currentRunId) +
+    ') | select(.status == "completed") | .databaseId'
+  )
+}
+
+/**
+ * Busca as durações do MESMO step de mutation nos N runs ANTERIORES do
+ * benchmark-weekly.yml via gh run list + jobs API por run (o MESMO mecanismo
+ * do trend guard — fonte única da derivação da mediana). Runs onde o step não
+ * apareceu (falhou antes / contrato antigo) simplesmente não entram.
+ *
+ * @param {string | number} currentRunId run ATUAL (excluído do histórico)
+ * @param {string} repo
+ * @param {number} window quantos runs anteriores entram
+ * @returns {{ history: { runId: string, durationSecs: number }[] } | { error: string }}
+ */
+export function fetchHistoryDurationsViaGh(currentRunId, repo, window, branch, workflow) {
+  // O histórico SEMPRE vem da branch DEFAULT do repo (os runs semanais do
+  // benchmark-weekly vivem lá). Num job de PR, o gh run list sem --branch
+  // filtraria pela branch do PR (o checkout é a head do PR) → histórico
+  // VAZIO → o soft derivado viraria no-op silencioso no próprio gate que a
+  // derivação existe para servir. Resolve a default via gh repo view (o
+  // github.event.repository é VAZIO em eventos schedule — não depender do
+  // payload do evento) e passa --branch explícito.
+  let runBranch = branch
+  if (runBranch === null || runBranch === undefined) {
+    const view = spawnSync(
+      "gh",
+      ["repo", "view", repo, "--json", "default_branch", "--jq", ".default_branch"],
+      { encoding: "utf8", timeout: 60_000 },
+    )
+    if (view.error) return { error: `gh indisponível (repo view): ${view.error.message}` }
+    if (view.status !== 0) {
+      return {
+        error: `gh repo view falhou (exit ${view.status}): ${(view.stderr ?? "").trim().slice(0, 300)}`,
+      }
+    }
+    runBranch = view.stdout.trim()
+    if (!runBranch)
+      return {
+        error: "gh repo view devolveu default_branch vazio — não dá para derivar o histórico",
+      }
+  }
+  const list = spawnSync(
+    "gh",
+    [
+      "run",
+      "list",
+      "--workflow",
+      workflow ?? "benchmark-weekly.yml",
+      "--repo",
+      repo,
+      "--branch",
+      runBranch,
+      "--limit",
+      String(window + 1), // corrente + N anteriores
+      "--json",
+      "databaseId,status",
+      "--jq",
+      buildRunListJq(currentRunId),
+    ],
+    { encoding: "utf8", timeout: 60_000 },
+  )
+  if (list.error) return { error: `gh indisponível (run list): ${list.error.message}` }
+  if (list.status !== 0) {
+    return {
+      error: `gh run list falhou (exit ${list.status}): ${(list.stderr ?? "").trim().slice(0, 300)}`,
+    }
+  }
+  const runIds = list.stdout
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => /^\d+$/.test(l))
+    .slice(0, window)
+
+  const history = []
+  for (const runId of runIds) {
+    const res = fetchJobsViaGh(runId, repo)
+    if (res.error) continue // run com jobs API quebrada não entra (ruído)
+    const step = extractMutationStep(res.payload)
+    if (!step) continue // step não rodou nesse run — não entra na mediana
+    history.push({ runId, durationSecs: computeDurationSecs(step.startedAt, step.completedAt) })
+  }
+  return { history }
+}
+
+/**
+ * Deriva a faixa SOFT do budget a partir da MEDIANA do histórico: a duração
+ * mediana dos últimos N runs com headroom de margem, clampada para SEMPRE
+ * ficar < --max (reusa computeBaselineValue — a mesma semântica de clamp do
+ * baseline publicado). Mediana null (sem histórico) → null.
+ *
+ * @param {number | null} medianSecs mediana das durações históricas
+ * @param {number} margin fração de headroom (0.2 = +20% acima da mediana)
+ * @param {number|null} maxSecs budget duro (clamp; null = sem clamp)
+ * @returns {number | null} warn derivado (>= 1, < maxSecs quando dado)
+ */
+export function deriveWarnFromMedian(medianSecs, margin, maxSecs) {
+  if (medianSecs === null) return null
+  return computeBaselineValue(medianSecs, margin, maxSecs)
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -197,11 +414,11 @@ function usage() {
     [
       "Uso:",
       "  node scripts/measure-mutation-timing.mjs --jobs-file FILE",
-      "  node scripts/measure-mutation-timing.mjs --run <id> [--repo owner/repo] [--max SECS] [--warn SECS] [--publish-baseline NAME] [--baseline-margin FRAC] [--warn-only] [--json OUT]",
-      "  node scripts/measure-mutation-timing.mjs --act-log FILE [--max SECS] [--warn SECS] [--act-exit CODE] [--json OUT]",
+      "  node scripts/measure-mutation-timing.mjs --run <id> [--repo owner/repo] [--max SECS] [--warn SECS] [--alert SECS] [--publish-baseline NAME] [--baseline-margin FRAC] [--warn-only] [--json OUT]",
+      "  node scripts/measure-mutation-timing.mjs --act-log FILE [--max SECS] [--warn SECS] [--alert SECS] [--act-exit CODE] [--json OUT]",
       "",
       "Exit codes:",
-      "  0 — step encontrado, dentro do budget ou na faixa de WARN (--warn < d <= --max)",
+      "  0 — step encontrado, dentro do budget ou nas faixas de NOTICE/WARN (--alert < d <= --warn ou --warn < d <= --max)",
       "  1 — falha de infra OU budget duro excedido com --max (gate de overhead) OU act falhou antes do step (--act-exit != 0 sem evidência)",
       "  2 — step/job não encontrado (drift de contrato ou seed-guards não rodou)",
     ].join("\n") + "\n",
@@ -218,7 +435,15 @@ function parseArgs(argv) {
     json: null,
     max: null,
     warn: null,
+    warnMedian: null, // N runs anteriores — deriva a faixa soft da MEDIANA
+    warnMargin: null, // headroom sobre a mediana (default 0.2 quando --warn-median)
+    failDrift: null, // PCT de drift relativo vs mediana que FALHA (--max vira teto absoluto)
+    window: null, // janela do histórico do --fail-drift (default 4)
+    workflow: null, // workflow do histórico (default benchmark-weekly.yml)
+    historyFile: null, // histórico determinístico (modo TESTE --jobs-file)
+    alert: null,
     warnOnly: false,
+    branch: null, // branch do histórico da mediana (default: a DEFAULT do repo)
     publishBaseline: null,
     baselineMargin: null, // null = não passada (usa default 0.2); a validação
     // distingue 'não passada' de 'passada explicitamente' (senão
@@ -283,6 +508,64 @@ function parseArgs(argv) {
         out.warn = Number(v)
         break
       }
+      case "--warn-median": {
+        const v = argv[++i]
+        if (v === undefined || !/^\d+$/.test(v) || Number(v) < 1)
+          return { ...out, error: `--warn-median deve ser um inteiro >= 1 (obtido: '${v}')` }
+        out.warnMedian = Number(v)
+        break
+      }
+      case "--warn-margin": {
+        const v = argv[++i]
+        if (v === undefined || !/^\d+(\.\d+)?$/.test(v) || Number(v) < 0)
+          return { ...out, error: `--warn-margin deve ser um número >= 0 (obtido: '${v}')` }
+        out.warnMargin = Number(v)
+        break
+      }
+      case "--fail-drift": {
+        const v = argv[++i]
+        if (v === undefined || !/^\d+(\.\d+)?$/.test(v) || Number(v) < 0)
+          return {
+            ...out,
+            error: `--fail-drift deve ser um número >= 0 (percentual, obtido: '${v}')`,
+          }
+        out.failDrift = Number(v)
+        break
+      }
+      case "--window": {
+        const v = argv[++i]
+        if (v === undefined || !/^\d+$/.test(v) || Number(v) < 1)
+          return { ...out, error: `--window deve ser um inteiro >= 1 (obtido: '${v}')` }
+        out.window = Number(v)
+        break
+      }
+      case "--workflow": {
+        const v = argv[++i]
+        if (v === undefined || v.trim() === "")
+          return { ...out, error: "--workflow exige um nome de workflow" }
+        out.workflow = v
+        break
+      }
+      case "--branch": {
+        const v = argv[++i]
+        if (v === undefined || v.trim() === "")
+          return { ...out, error: "--branch exige um nome de branch" }
+        out.branch = v
+        break
+      }
+      case "--history-file": {
+        const v = argv[++i]
+        if (v === undefined) return { ...out, error: "--history-file exige um caminho" }
+        out.historyFile = v
+        break
+      }
+      case "--alert": {
+        const v = argv[++i]
+        if (v === undefined || !/^\d+$/.test(v) || Number(v) <= 0)
+          return { ...out, error: `--alert deve ser um inteiro positivo (obtido: '${v}')` }
+        out.alert = Number(v)
+        break
+      }
       case "--warn-only":
         out.warnOnly = true
         break
@@ -335,6 +618,82 @@ function parseArgs(argv) {
       ...out,
       error: `--warn deve ser MENOR que --max (faixa vazia: warn ${out.warn} >= max ${out.max})`,
     }
+  // ── FAIXA SOFT DERIVADA DA MEDIANA (--warn-median N) ─────────────────
+  // O warn se AUTO-AJUSTA ao runner real: mediana dos últimos N runs medidos
+  // * (1 + --warn-margin), clampada < --max. Exclusivo com --warn (literal):
+  // escolha a fonte da faixa soft. Exige --max (a faixa é relativa ao duro).
+  // No modo TESTE (--jobs-file) o histórico NÃO vem do gh — exige
+  // --history-file (fixtures determinísticos); nos modos --run/--act-log o
+  // histórico vem do gh (mesmo mecanismo do trend guard).
+  if (out.warnMedian !== null && out.max === null)
+    return {
+      ...out,
+      error: "--warn-median exige --max (a faixa derivada é relativa ao budget duro)",
+    }
+  if (out.warnMedian !== null && out.warn !== null)
+    return {
+      ...out,
+      error:
+        "--warn-median não pode ser combinado com --warn (escolha: literal OU derivada da mediana)",
+    }
+  if (out.warnMedian !== null && out.jobsFile && !out.historyFile)
+    return {
+      ...out,
+      error:
+        "--warn-median com --jobs-file exige --history-file (modo TESTE — o histórico não vem do gh; use fixtures determinísticos)",
+    }
+  // ── GATE DE DRIFT RELATIVO (--fail-drift PCT) ──────────────────────
+  // O PR compara o timing atual contra a MEDIANA do histórico e FALHA por
+  // desvio relativo (--fail-drift PCT) — o --max vira TETO ABSOLUTO (d > max
+  // falha SEMPRE). Exclusivo com as faixas (--warn/--warn-median/--alert):
+  // escolha a SEMÂNTICA do gate. Exige histórico (gh no modo REAL;
+  // --history-file no modo TESTE --jobs-file), igual ao --warn-median.
+  if (out.failDrift !== null && out.max === null)
+    return {
+      ...out,
+      error: "--fail-drift exige --max (o teto absoluto define a segurança)",
+    }
+  if (out.failDrift !== null && out.warn !== null)
+    return {
+      ...out,
+      error:
+        "--fail-drift não pode ser combinado com --warn (escolha a semântica do gate: faixa soft OU drift relativo)",
+    }
+  if (out.failDrift !== null && out.warnMedian !== null)
+    return {
+      ...out,
+      error:
+        "--fail-drift não pode ser combinado com --warn-median (escolha a semântica do gate: faixa derivada OU drift relativo)",
+    }
+  if (out.failDrift !== null && out.alert !== null)
+    return {
+      ...out,
+      error:
+        "--fail-drift não pode ser combinado com --alert (a escalada suave é da semântica de faixa)",
+    }
+  if (out.failDrift !== null && out.jobsFile && !out.historyFile)
+    return {
+      ...out,
+      error:
+        "--fail-drift com --jobs-file exige --history-file (modo TESTE — o histórico não vem do gh; use fixtures determinísticos)",
+    }
+  if (out.window !== null && out.failDrift === null)
+    return { ...out, error: "--window exige --fail-drift (a janela define o histórico do drift)" }
+  if (out.historyFile && out.warnMedian === null && out.failDrift === null)
+    return {
+      ...out,
+      error:
+        "--history-file exige --warn-median OU --fail-drift (o histórico alimenta a derivação)",
+    }
+  if (out.warnMargin !== null && out.warnMedian === null)
+    return { ...out, error: "--warn-margin exige --warn-median (a margem define a faixa derivada)" }
+  if (out.alert !== null && out.warn === null)
+    return { ...out, error: "--alert exige --warn (a faixa notice é relativa à soft)" }
+  if (out.alert !== null && out.warn !== null && out.alert >= out.warn)
+    return {
+      ...out,
+      error: `--alert deve ser MENOR que --warn (faixa vazia: alert ${out.alert} >= warn ${out.warn})`,
+    }
   if (out.actExit !== null && !out.actLog)
     return {
       ...out,
@@ -358,6 +717,187 @@ function parseArgs(argv) {
         "--publish-baseline exige --max (o baseline é relativo ao budget — publicar sem budget seria no-op silencioso)",
     }
   return out
+}
+
+// ── Derivação da faixa soft pela MEDIANA (--warn-median N) ───────────────
+
+/**
+ * Lê o histórico de durações do MESMO step: --history-file (fixtures
+ * determinísticos — { runs: [{ runId, durationSecs }] }) no modo TESTE, ou gh
+ * run list benchmark-weekly.yml + jobs API por run no modo REAL (o MESMO
+ * mecanismo do trend guard — buildRunListJq/computeMedian compartilhados).
+ *
+ * @param {object} args args parseados (warnMedian/historyFile/run)
+ * @param {string} repo owner/repo
+ * @returns {{ runs: { runId: string, durationSecs: number }[] } | { error: string }}
+ */
+function readHistoryDurations(args, repo) {
+  if (args.historyFile) {
+    try {
+      const data = JSON.parse(readFileSync(args.historyFile, "utf8"))
+      return { runs: Array.isArray(data?.runs) ? data.runs : [] }
+    } catch (e) {
+      return { error: `falha ao ler --history-file '${args.historyFile}': ${e.message}` }
+    }
+  }
+  // Modo REAL: histórico dos últimos N runs do workflow que executa o
+  // seed-guards (default benchmark-weekly.yml — o semanal; --workflow permite
+  // outro caller, ex.: pr-check.yml). A janela vem do --warn-median N OU do
+  // --window do --fail-drift (default 4). Em --act-log o run atual não é um
+  // run real do CI (o act é local) — passar o id 0 na exclusão é inofensivo
+  // (nenhum run tem databaseId 0).
+  const window = args.warnMedian ?? args.window ?? 4
+  const res = fetchHistoryDurationsViaGh(args.run ?? 0, repo, window, args.branch, args.workflow)
+  return res.error ? { error: res.error } : { runs: res.history }
+}
+
+/**
+ * Deriva a faixa soft pela MEDIANA dos últimos N runs (--warn-median):
+ * mediana * (1 + --warn-margin), clampada < --max (computeBaselineValue).
+ * Sem histórico suficiente (primeiro run) → { warnSecs: null } — o gate opera
+ * SÓ no duro (--max) com ::notice::; o primeiro run mede o baseline.
+ *
+ * @param {object} args args parseados (warnMedian/warnMargin/max/historyFile)
+ * @param {string} repo owner/repo
+ * @returns {{ warnSecs: number | null, medianSecs: number | null, historyCount: number } | { error: string }}
+ */
+function deriveMedianWarn(args, repo) {
+  const hist = readHistoryDurations(args, repo)
+  if (hist.error) return { error: hist.error }
+  const durations = hist.runs.map((r) => r.durationSecs)
+  const medianSecs = computeMedian(durations)
+  if (medianSecs === null) {
+    return { warnSecs: null, medianSecs: null, historyCount: durations.length }
+  }
+  const margin = args.warnMargin ?? 0.2
+  return {
+    warnSecs: deriveWarnFromMedian(medianSecs, margin, args.max),
+    medianSecs,
+    historyCount: durations.length,
+  }
+}
+
+/**
+ * Aplica a derivação da faixa soft (--warn-median) ao report ANTES do gate:
+ * define report.warnSource/warnWindow/warnMargin/warnMedianSecs/warnHistoryCount
+ * e, com histórico suficiente, `args.warn` (que o applyBudgetGate consome).
+ * Sem histórico → ::notice:: + gate só no duro. Infra (gh/file) → exit 1.
+ *
+ * @param {object} report relatório (found: true, durationSecs já preenchido)
+ * @param {object} args   args parseados
+ * @param {string} repo   owner/repo
+ */
+function applyMedianWarnDerivation(report, args, repo) {
+  if (args.warnMedian === null) return
+  const derived = deriveMedianWarn(args, repo)
+  if (derived.error) {
+    // Modo TESTE (--history-file): o fixture quebrou → INFRA (exit 1). Modo
+    // REAL (gh): a derivação DEGRADA para ::notice:: + gate só no duro — o
+    // gate DURO (--max) é o sinal primário e continua funcionando; o
+    // histórico é uma dependência SECUNDÁRIA (workflow ainda não na default
+    // / gh fora) que não pode derrubar o gate do PR por um refinamento.
+    if (args.historyFile) {
+      const infra = { runId: args.run ?? "fixture", repo, found: false, error: derived.error }
+      emit(infra, args.json)
+      process.stdout.write(`${JSON.stringify(infra, null, 2)}\n`)
+      process.stderr.write(`erro (infra): ${derived.error}\n`)
+      process.exit(1)
+    }
+    process.stdout.write(
+      `::notice::histórico da mediana indisponível (${derived.error}) — gate opera SÓ no duro (--max ${args.max}s); a faixa soft é restaurada assim que o histórico estiver disponível\n`,
+    )
+    report.warnSource = "median"
+    report.warnWindow = args.warnMedian
+    report.warnMargin = args.warnMargin ?? 0.2
+    report.warnMedianSecs = null
+    report.warnHistoryCount = 0
+    return
+  }
+  report.warnSource = "median"
+  report.warnWindow = args.warnMedian
+  report.warnMargin = args.warnMargin ?? 0.2
+  report.warnMedianSecs = derived.medianSecs
+  report.warnHistoryCount = derived.historyCount
+  if (derived.warnSecs === null) {
+    // Sem histórico suficiente: o gate opera SÓ no duro; o primeiro run mede
+    // o baseline (mesma semântica do trend guard — ::notice::, não falha).
+    process.stdout.write(
+      `::notice::sem histórico suficiente para a faixa soft (${derived.historyCount} runs anteriores < window ${args.warnMedian}) — gate opera SÓ no duro (--max ${args.max}s); o primeiro run mede o baseline\n`,
+    )
+    return
+  }
+  args.warn = derived.warnSecs // o applyBudgetGate consome a faixa derivada
+}
+
+/**
+ * Deriva o DRIFT RELATIVO (--fail-drift) do step atual vs a MEDIANA do
+ * histórico: `(durationSecs - medianSecs) / medianSecs * 100`. Reusa o MESMO
+ * readHistoryDurations do --warn-median (fonte única do histórico — gh na
+ * branch default no modo REAL, --history-file no modo TESTE). Sem histórico
+ * → driftPct null (gate só no teto).
+ *
+ * @param {object} args args parseados (failDrift/window/workflow/historyFile/run)
+ * @param {string} repo owner/repo
+ * @returns {{ medianSecs: number | null, historyCount: number, window: number } | { error: string }}
+ */
+function deriveDriftStats(args, repo) {
+  const hist = readHistoryDurations(args, repo)
+  if (hist.error) return { error: hist.error }
+  const durations = hist.runs.map((r) => r.durationSecs)
+  return {
+    medianSecs: computeMedian(durations),
+    historyCount: durations.length,
+    window: args.window ?? 4,
+  }
+}
+
+/**
+ * Aplica a derivação do DRIFT RELATIVO (--fail-drift) ao report ANTES do
+ * gate: define report.driftSource/driftWindow/driftMaxPct/driftMedianSecs/
+ * driftPct/driftHistoryCount — o applyBudgetGate consome report.driftPct
+ * para a zone 'fail' por drift. Sem histórico (primeiro run) → ::notice:: +
+ * gate SÓ no teto (--max). Infra (gh/file) → o MESMO contrato do
+ * --warn-median: TESTE exit 1, REAL degrada para ::notice:: + teto.
+ *
+ * @param {object} report relatório (found: true, durationSecs já preenchido)
+ * @param {object} args   args parseados
+ * @param {string} repo   owner/repo
+ */
+function applyFailDriftDerivation(report, args, repo) {
+  if (args.failDrift === null) return
+  const stats = deriveDriftStats(args, repo)
+  if (stats.error) {
+    if (args.historyFile) {
+      const infra = { runId: args.run ?? "fixture", repo, found: false, error: stats.error }
+      emit(infra, args.json)
+      process.stdout.write(`${JSON.stringify(infra, null, 2)}\n`)
+      process.stderr.write(`erro (infra): ${stats.error}\n`)
+      process.exit(1)
+    }
+    process.stdout.write(
+      `::notice::histórico do drift indisponível (${stats.error}) — gate opera SÓ no teto absoluto (--max ${args.max}s); o drift é restaurado assim que o histórico estiver disponível\n`,
+    )
+    report.driftSource = "median"
+    report.driftWindow = args.window ?? 4
+    report.driftMaxPct = args.failDrift
+    report.driftMedianSecs = null
+    report.driftPct = null
+    report.driftHistoryCount = 0
+    return
+  }
+  report.driftSource = "median"
+  report.driftWindow = stats.window
+  report.driftMaxPct = args.failDrift
+  report.driftMedianSecs = stats.medianSecs
+  report.driftHistoryCount = stats.historyCount
+  if (stats.medianSecs === null) {
+    process.stdout.write(
+      `::notice::sem histórico suficiente para o drift relativo (${stats.historyCount} runs anteriores < window ${stats.window}) — gate opera SÓ no teto absoluto (--max ${args.max}s); o primeiro run mede o baseline\n`,
+    )
+    report.driftPct = null
+    return
+  }
+  report.driftPct = ((report.durationSecs - stats.medianSecs) / stats.medianSecs) * 100
 }
 
 /** Busca o payload de jobs via gh (GH_TOKEN do env — usado pelo Actions). */
@@ -470,6 +1010,12 @@ function main() {
       conclusion: "success",
     }
 
+    // Faixa soft DERIVADA da mediana (--warn-median) OU drift relativo
+    // (--fail-drift) — ANTES do gate, que consome args.warn (faixa) ou
+    // report.driftPct (drift).
+    applyMedianWarnDerivation(report, args, repo)
+    applyFailDriftDerivation(report, args, repo)
+
     // GATE de duas faixas — o MESMO do modo jobs-file/run (helper
     // compartilhado applyBudgetGate — uma única fonte da verdade para a
     // semântica das zonas; o mutation test trava a paridade dos dois modos).
@@ -564,6 +1110,12 @@ function main() {
     conclusion: step.conclusion,
   }
 
+  // Faixa soft DERIVADA da mediana (--warn-median) OU drift relativo
+  // (--fail-drift) — ANTES do gate, que consome args.warn (faixa) ou
+  // report.driftPct (drift).
+  applyMedianWarnDerivation(report, args, repo)
+  applyFailDriftDerivation(report, args, repo)
+
   // ── GATE DE BUDGET EM DUAS FAIXAS (--max duro + --warn soft) ─────────
   // Previne regressão de overhead do contrato coordenado com ruído reduzido:
   //   zone 'ok'   — duração <= --warn (ou <= --max sem --warn) → exit 0
@@ -657,16 +1209,24 @@ function maybePublishBaseline(report, args) {
 }
 
 /**
- * Aplica o GATE de budget em DUAS FAIXAS (--max duro + --warn soft) sobre o
- * report já montado — COMPARTILHADO entre os modos --jobs-file/--run e
- * --act-log (fonte única da verdade da semântica das zonas; o mutation test
- * trava a paridade dos dois modos). Comportamento por zona:
- *   'ok'   — retorna sem sair; o caller emite o JSON e sai exit 0
- *   'warn' — ::warning:: + JSON + exit 0 (ruído de runner tolerado)
- *   'fail' — ::error:: + JSON + exit 1 (com --warn-only: ::warning:: + exit 0)
+ * Aplica o GATE de budget em TRÊS FAIXAS (--max duro + --warn soft + --alert
+ * suave) sobre o report já montado — COMPARTILHADO entre os modos
+ * --jobs-file/--run e --act-log (fonte única da verdade da semântica das
+ * zonas; o mutation test trava a paridade dos dois modos). Escalada suave
+ * em QUATRO níveis:
+ *   'ok'     — d <= alert                          → exit 0, silencioso
+ *   'notice' — alert < d <= warn (faixa SUAVE)     → ::notice:: + exit 0
+ *   'warn'   — warn < d <= max (faixa SOFT)        → ::warning:: + exit 0
+ *   'fail'   — d > max (faixa DURO)                → ::error:: + exit 1
+ * (com --warn-only: a faixa fail também vira ::warning:: + exit 0). O
+ * relatório carrega budgetSecs/warnSecs/alertSecs/zone/exceeded/warned/
+ * noticed — o caller distingue notice (found:true, noticed:true) de warn
+ * (warned:true) de fail (exceeded:true) de infra (found:false) e drift
+ * (exit 2). Helper único (applyBudgetGate) compartilhado com o modo
+ * --act-log — semântica idêntica nas duas fontes.
  *
- * @param {object} report relatório (já com durationSecs; ganha budget/warn/zone)
- * @param {object} args   args parseados (max/warn/warnOnly/json)
+ * @param {object} report relatório (já com durationSecs; ganha budget/warn/alert/zone)
+ * @param {object} args   args parseados (max/warn/alert/warnOnly/json)
  * @param {string} stepName nome do step para a mensagem
  * @param {string} viaSuffix sufixo descritivo da fonte (ex.: '(medido via act)')
  */
@@ -674,24 +1234,58 @@ function applyBudgetGate(report, args, stepName, viaSuffix) {
   if (args.max === null) return
   report.budgetSecs = args.max
   if (args.warn !== null) report.warnSecs = args.warn
+  if (args.alert !== null) report.alertSecs = args.alert
 
-  const inWarnBand = args.warn !== null && report.durationSecs > args.warn
-  const zone = report.durationSecs > args.max ? "fail" : inWarnBand ? "warn" : "ok"
+  // ── ESCALADA SUAVE EM QUATRO NÍVEIS (--alert < --warn < --max) ───────
+  // A faixa notice observa o drift cedo (ruído baixo, ::notice::) ANTES do
+  // warning acender; a faixa warn tolera o ruído médio; o duro é o gate.
+  // ── GATE DE DRIFT RELATIVO (--fail-drift PCT): o --max vira TETO ABSOLUTO
+  // de segurança (d > max falha SEMPRE) e o drift relativo vs a MEDIANA do
+  // histórico falha ANTES do teto quando `(d - mediana)/mediana > PCT` — o
+  // PR pega a regressão por DESVIO RELATIVO mesmo num payload que ainda
+  // caberia no teto. driftPct null (sem histórico) → gate só no teto.
+  let zone = "ok"
+  if (report.durationSecs > args.max) {
+    zone = "fail" // TETO ABSOLUTO — falha sempre, mesmo com drift pequeno
+  } else if (
+    args.failDrift !== null &&
+    typeof report.driftPct === "number" &&
+    report.driftPct > args.failDrift
+  ) {
+    zone = "fail" // DRIFT RELATIVO excedeu o threshold configurável
+  } else if (args.warn !== null && report.durationSecs > args.warn) {
+    zone = "warn"
+  } else if (args.alert !== null && report.durationSecs > args.alert) {
+    zone = "notice"
+  }
   report.zone = zone
-  report.exceeded = zone === "fail"
+  report.exceeded = report.durationSecs > args.max
+  report.drifted =
+    args.failDrift !== null &&
+    typeof report.driftPct === "number" &&
+    report.driftPct > args.failDrift
   report.warned = zone === "warn"
+  report.noticed = zone === "notice"
   const via = viaSuffix ? ` ${viaSuffix}` : ""
 
   // Publish do baseline (--publish-baseline): SÓ quando o budget passou
-  // (zone ok/warn — exit 0). maybePublishBaseline filtra zone fail internamente
+  // (zone ok/notice/warn — exit 0). maybePublishBaseline filtra zone fail internamente
   // (defensivo) e o parseArgs já rejeita --publish-baseline + --act-log.
   maybePublishBaseline(report, args)
 
   if (zone === "fail") {
-    const msg =
-      `budget de payload EXCEDIDO (faixa dura): step '${stepName}' durou ` +
-      `${report.durationSecs}s > budget ${args.max}s — regressão de overhead ` +
-      `do contrato coordenado${via}`
+    // Duas causas de fail com --fail-drift: TETO ABSOLUTO (exceeded — d >
+    // max) ou DRIFT RELATIVO (drifted — desvio vs mediana > PCT). A mensagem
+    // distingue a causa para o PR debugar a regressão (teto = payload já
+    // estourou; drift = lento RELATIVO à mediana, mesmo dentro do teto).
+    const msg = report.drifted
+      ? `drift relativo EXCEDIDO: step '${stepName}' durou ${report.durationSecs}s vs ` +
+        `mediana ${report.driftMedianSecs}s (+${report.driftPct.toFixed(1)}% > limiar ` +
+        `${args.failDrift}%) — regressão de overhead relativa ao histórico${via}; ` +
+        `teto absoluto ${args.max}s intacto`
+      : `budget de payload EXCEDIDO (faixa dura): step '${stepName}' durou ` +
+        `${report.durationSecs}s > budget ${args.max}s — regressão de overhead ` +
+        `do contrato coordenado${via}`
     if (args.warnOnly) {
       // ::warning:: no STDOUT (o runner do Actions parseia os comandos de
       // workflow do stdout do step) — alerta audível, não-bloqueante.
@@ -717,6 +1311,18 @@ function applyBudgetGate(report, args, stepName, viaSuffix) {
       `${args.max}s) — ruído de runner tolerado${via}, observa o drift antes ` +
       `do gate falhar`
     process.stdout.write(`::warning::${msg}\n`)
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
+    emit(report, args.json)
+    process.exit(0)
+  }
+
+  if (zone === "notice") {
+    const msg =
+      `budget de payload na faixa de NOTICE (suave): step '${stepName}' durou ` +
+      `${report.durationSecs}s > alert ${args.alert}s (warn ${args.warn}s, ` +
+      `budget duro ${args.max}s) — escalada suave: ruído de runner baixo${via}, ` +
+      `observa o drift cedo antes do warning acender`
+    process.stdout.write(`::notice::${msg}\n`)
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
     emit(report, args.json)
     process.exit(0)
