@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from "@prisma/client"
+import { PrismaClient } from "@prisma/client"
 import { SOFT_DELETE_MODELS } from "./soft-delete"
 
 // The `query` option type Prisma's `$extends` accepts for per-model operation

@@ -309,7 +309,7 @@ export function ProviderBookings() {
     queryFn: async () => apiGet("/api/bookings", { role: "PROVIDER", page: 1, limit: 200 }),
   })
 
-  const allBookings = allQuery.data?.items ?? []
+  const allBookings = React.useMemo(() => allQuery.data?.items ?? [], [allQuery.data?.items])
 
   const counts = React.useMemo(() => {
     const c: Record<string, number> = {

@@ -175,7 +175,7 @@ export function AdminSettings() {
     if (dataUpdatedAt) setLastFetched(new Date(dataUpdatedAt))
   }, [dataUpdatedAt])
 
-  const items = data?.items ?? []
+  const items = React.useMemo(() => data?.items ?? [], [data?.items])
 
   // Group by prefix (first segment before "_"); fallback to "Geral"
   const groups = React.useMemo(() => {

@@ -109,6 +109,15 @@ export default function ProviderMiniMap({
     [interactive],
   )
 
+  // Refs dos callbacks instáveis — o effect de init do mapa roda com deps
+  // geo primitivas; ler onRadiusChange/autoSaveRadius via ref evita recriar o
+  // mapa quando o callback do pai muda de identidade (mesmo padrão do
+  // selectRef no providers-map). interactive é boolean prop — dep estável.
+  const onRadiusChangeRef = useRef(onRadiusChange)
+  onRadiusChangeRef.current = onRadiusChange
+  const autoSaveRadiusRef = useRef(autoSaveRadius)
+  autoSaveRadiusRef.current = autoSaveRadius
+
   // Cleanup save timer on unmount
   useEffect(() => {
     return () => {
@@ -190,8 +199,8 @@ export default function ProviderMiniMap({
                 providerLng,
                 (newRadius: number) => {
                   setRadius(newRadius)
-                  onRadiusChange?.(newRadius)
-                  autoSaveRadius(newRadius)
+                  onRadiusChangeRef.current?.(newRadius)
+                  autoSaveRadiusRef.current(newRadius)
                 },
               )
             }
@@ -213,8 +222,8 @@ export default function ProviderMiniMap({
                   providerLng,
                   (newRadius: number) => {
                     setRadius(newRadius)
-                    onRadiusChange?.(newRadius)
-                    autoSaveRadius(newRadius)
+                    onRadiusChangeRef.current?.(newRadius)
+                    autoSaveRadiusRef.current(newRadius)
                   },
                 )
               }
@@ -277,7 +286,7 @@ export default function ProviderMiniMap({
       }
       cleanup?.()
     }
-  }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm])
+  }, [providerLat, providerLng, providerName, userLat, userLng, radiusKm, interactive])
 
   // Update radius circle dynamically when slider changes (without recreating map)
   // NOTE: We do NOT call removeRadiusCircle/removeRadiusHandle here because
@@ -331,6 +340,7 @@ export default function ProviderMiniMap({
         {/* Fallback static image (if MapLibre failed) */}
         {status === "error" && (
           <div className="bg-muted absolute inset-0 z-10 flex flex-col items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element -- fallback estático externo */}
             <img
               src={staticMapUrl(providerLat, providerLng, 14, 400, height)}
               alt={`Mapa de ${providerName}`}

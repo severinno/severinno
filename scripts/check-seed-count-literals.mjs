@@ -42,7 +42,7 @@
 //   1 — literal fora do conjunto válido OU derivação falhou (fail-closed)
 // =============================================================================
 
-import { readFileSync, readdirSync, statSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { runDerivation } from "./check-e2e-counts.mjs"

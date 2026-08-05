@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { useQuery } from "@tanstack/react-query"
 import { useForm, type Resolver, type UseFormReturn } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -765,11 +766,16 @@ function Step5Review({
         {item?.photos && item.photos.length > 0 && (
           <div className="mt-2 flex gap-2">
             {item.photos.map((url, i) => (
-              <div key={url + i} className="bg-muted size-12 overflow-hidden rounded-md border">
-                <img
+              <div
+                key={url + i}
+                className="bg-muted relative size-12 overflow-hidden rounded-md border"
+              >
+                <Image
                   src={url}
                   alt={`Foto ${i + 1}`}
-                  className="size-full object-cover"
+                  fill
+                  sizes="48px"
+                  className="object-cover"
                   loading="lazy"
                 />
               </div>

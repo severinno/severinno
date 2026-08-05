@@ -1,6 +1,6 @@
 "use client"
-
 import * as React from "react"
+import Image from "next/image"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useForm, useWatch, type Resolver } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -549,7 +549,14 @@ function ServiceCard({
     <div className="bg-card flex flex-col overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md">
       <div className="bg-muted relative aspect-video w-full overflow-hidden">
         {photo ? (
-          <img src={photo} alt={service.title} className="size-full object-cover" loading="lazy" />
+          <Image
+            src={photo}
+            alt={service.title}
+            fill
+            sizes="(max-width: 768px) 100vw, 33vw"
+            className="object-cover"
+            loading="lazy"
+          />
         ) : (
           <div className="bg-muted text-muted-foreground flex size-full items-center justify-center">
             <Wrench className="size-8" />
@@ -661,7 +668,7 @@ export function ProviderServices() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const services = servicesQuery.data ?? []
+  const services = React.useMemo(() => servicesQuery.data ?? [], [servicesQuery.data])
   const filtered = React.useMemo(() => {
     if (!search.trim()) return services
     const q = search.toLowerCase()

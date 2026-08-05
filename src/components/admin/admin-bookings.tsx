@@ -143,7 +143,7 @@ export function AdminBookings() {
     staleTime: 15_000,
   })
 
-  const rawItems = data?.items ?? []
+  const rawItems = React.useMemo(() => data?.items ?? [], [data?.items])
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / limit))
 

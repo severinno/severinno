@@ -293,7 +293,7 @@ export function ProviderAgenda() {
       }),
   })
 
-  const bookings = query.data?.items ?? []
+  const bookings = React.useMemo(() => query.data?.items ?? [], [query.data?.items])
 
   // Filter bookings by range for the day-list
   const visibleBookings = React.useMemo(() => {

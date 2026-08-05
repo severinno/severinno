@@ -87,7 +87,7 @@ export default function AIChatWidget() {
       ])
     }
     // Only run when chat opens
-  }, [isOpen])
+  }, [isOpen, messages.length])
 
   const handleSend = async (messageText?: string) => {
     const text = (messageText ?? input).trim()

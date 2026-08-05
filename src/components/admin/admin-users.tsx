@@ -227,7 +227,7 @@ export function AdminUsers() {
   })
 
   // Client-side filter for verified/active (API does not support these yet — H2)
-  const rawItems = data?.items ?? []
+  const rawItems = React.useMemo(() => data?.items ?? [], [data?.items])
   const filteredItems = React.useMemo(() => {
     return rawItems.filter((u) => {
       if (verified === "true" && !u.verified) return false

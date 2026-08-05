@@ -39,7 +39,6 @@
 
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
-import { pathToFileURL } from "node:url"
 
 /**
  * Extrai o valor de BUN_VERSION de um .actrc (ex.: `--var BUN_VERSION=1.3.14`

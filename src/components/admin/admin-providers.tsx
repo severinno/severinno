@@ -198,7 +198,7 @@ export function AdminProviders() {
       apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
   })
 
-  const rawItems = data?.items ?? []
+  const rawItems = React.useMemo(() => data?.items ?? [], [data?.items])
   const filteredItems = React.useMemo(() => {
     return rawItems.filter((p) => {
       if (verified === "true" && !p.verified) return false

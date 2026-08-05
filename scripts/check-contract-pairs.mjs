@@ -134,7 +134,7 @@ export const CONTRACTS = [
  * @returns {boolean}
  */
 export function isValidGitRef(ref) {
-  return /^[a-zA-Z0-9._\-\/]+$/.test(ref)
+  return /^[a-zA-Z0-9._\-/]+$/.test(ref)
 }
 
 /**

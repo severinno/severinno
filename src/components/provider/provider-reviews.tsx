@@ -57,7 +57,7 @@ export function ProviderReviews() {
     enabled: !!user,
   })
 
-  const reviews = query.data?.items ?? []
+  const reviews = React.useMemo(() => query.data?.items ?? [], [query.data?.items])
 
   const avg =
     reviews.length > 0 ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length : 0

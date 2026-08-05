@@ -132,6 +132,7 @@ function SinglePhoto({
         }
       >
         {value ? (
+          // eslint-disable-next-line @next/next/no-img-element -- URL runtime (upload/blob)
           <img src={value} alt={label} className="size-full object-cover" />
         ) : (
           <div className="text-muted-foreground flex size-full items-center justify-center">
@@ -352,6 +353,7 @@ export function ProviderProfile() {
           <CardContent className="p-4">
             <div className="relative h-32 w-full overflow-hidden rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-700 sm:h-40">
               {form.watch("coverUrl") && (
+                // eslint-disable-next-line @next/next/no-img-element -- URL runtime (upload/blob)
                 <img
                   src={form.watch("coverUrl") ?? ""}
                   alt="Capa"

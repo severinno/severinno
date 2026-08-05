@@ -159,8 +159,10 @@ export function ClientServices() {
     ],
   })
 
-  const completed = queries[0]?.data?.items ?? []
-  const cancelled = queries[1]?.data?.items ?? []
+  const completedItems = queries[0]?.data?.items
+  const cancelledItems = queries[1]?.data?.items
+  const completed = React.useMemo(() => completedItems ?? [], [completedItems])
+  const cancelled = React.useMemo(() => cancelledItems ?? [], [cancelledItems])
   const isLoading = queries.some((q) => q.isLoading)
 
   const counts = React.useMemo(

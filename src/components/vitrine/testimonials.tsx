@@ -78,7 +78,7 @@ export default function Testimonials({ className }: { className?: string }) {
     retry: 2,
   })
 
-  const reviews = data?.items ?? []
+  const reviews = React.useMemo(() => data?.items ?? [], [data?.items])
   const avgRating = data?.avgRating ?? 0
   const total = data?.total ?? 0
   const { ref, visible } = useScrollReveal<HTMLDivElement>()
