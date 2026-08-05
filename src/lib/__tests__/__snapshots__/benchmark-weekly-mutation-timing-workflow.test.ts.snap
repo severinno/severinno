@@ -1,0 +1,75 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`benchmark-weekly.yml — job mutation-coord-timing (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+{
+  "if": "always()",
+  "name": "Mutation coord timing (re-medição semanal)",
+  "needs": "seed-guards",
+  "permissions": {
+    "actions": "write",
+    "contents": "read",
+  },
+  "runs-on": "ubuntu-latest",
+  "steps": [
+    {
+      "uses": "actions/checkout@v4",
+    },
+    {
+      "env": {
+        "GH_TOKEN": "\${{ github.token }}",
+      },
+      "id": "measure",
+      "name": "Medir tempo do step mutation test e publicar baseline (budget 240/baseline)",
+      "run": "node scripts/measure-mutation-timing.mjs \\
+  --run "\${{ github.run_id }}" \\
+  --repo "\${{ github.repository }}" \\
+  --max 240 \\
+  --warn "\${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \\
+  --publish-baseline MUTATION_TIMING_BASELINE \\
+  --baseline-margin 0.2 \\
+  --json /tmp/mutation-timing.json
+",
+    },
+    {
+      "if": "always()",
+      "name": "Upload timing JSON (artifact)",
+      "uses": "actions/upload-artifact@v4",
+      "with": {
+        "if-no-files-found": "ignore",
+        "name": "mutation-coord-timing",
+        "path": "/tmp/mutation-timing.json",
+      },
+    },
+    {
+      "if": "always()",
+      "name": "Summary",
+      "run": "{
+  echo '## ⏱️ Mutation coord — tempo real (re-medição semanal)'
+  echo ''
+  if [ -f /tmp/mutation-timing.json ]; then
+    node -e "
+      const r = require('/tmp/mutation-timing.json');
+      if (r.found) {
+        console.log('| Campo | Valor |');
+        console.log('|---|---|');
+        console.log('| Step | ' + r.stepName + ' |');
+        console.log('| Duração | **' + r.durationSecs + 's** (duro ' + (r.budgetSecs ?? 'n/a') + 's / soft ' + (r.warnSecs ?? 'n/a') + 's) |');
+        console.log('| Conclusão | ' + r.conclusion + ' |');
+        console.log('| Run | ' + r.runId + ' |');
+        if (r.zone === 'fail') console.log('| Budget | ❌ **EXCEDIDO** (faixa dura) — regressão de overhead |');
+        else if (r.zone === 'warn') console.log('| Budget | ⚠️ faixa SOFT (::warning::) — observa o drift antes do gate |');
+        else console.log('| Budget | ✅ dentro do limite |');
+      } else {
+        console.log('⚠ Medição falhou: ' + (r.error || 'sem detalhes'));
+      }
+    "
+  else
+    echo '⚠ Medição não produziu JSON — veja o passo "Medir tempo do step mutation test".'
+  fi
+} >> "$GITHUB_STEP_SUMMARY"
+",
+    },
+  ],
+  "timeout-minutes": 5,
+}
+`;

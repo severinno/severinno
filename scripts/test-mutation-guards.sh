@@ -2,13 +2,23 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 10 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 11 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
 # cada sub-test roda o seu script granular original (que imprime os STEPS
 # detalhados de CONTROLE/MUTAÇÃO) e o harness reporta o verdict por sub-test
 # + tabela final.
+#
+# Usage:
+#   ./scripts/test-mutation-guards.sh                    # matriz completa
+#   ./scripts/test-mutation-guards.sh --scenario readme  # 1 sub-test
+#   ./scripts/test-mutation-guards.sh --list             # lista a matriz
+#
+# Exit codes:
+#   0 — todos os sub-tests passaram (mutações detectadas) ✅
+#   1 — pelo menos um sub-test falhou (guard cego / asserção / infra) ❌
+#   2 — uso inválido (--scenario com id desconhecido, flag desconhecida)
 #
 # Matriz de sub-tests (id|descrição|script granular):
 #   bun-literal    → scripts/test-mutation-bun-literal.sh
@@ -35,21 +45,14 @@
 #                    scripts/X) + entry órfã do --pkg-internal devem FALHAR
 #   utf8-scope     → scripts/test-mutation-utf8-scope.sh
 #                    call site sem src/ deve FALHAR
+#   timing-budget  → scripts/test-mutation-timing-budget.sh
+#                    payload 300s > budget 180s do measure-mutation-timing
+#                    deve FALHAR (exit 1) + controle 35s passa + warn-only
 #
 # Cada script granular é a FONTE ÚNICA do seu cenário (sem duplicação de
 # fixtures/mutações/asserções — o harness só orquestra). TODOS os sub-tests
 # rodam mesmo se um falhar (fail-CONTINUE, não fail-fast) — o exit final é
 # agregado: 0 se TODOS passarem, 1 se QUALQUER um falhar.
-#
-# Usage:
-#   ./scripts/test-mutation-guards.sh                    # matriz completa
-#   ./scripts/test-mutation-guards.sh --scenario readme  # 1 sub-test
-#   ./scripts/test-mutation-guards.sh --list             # lista a matriz
-#
-# Exit codes:
-#   0 — todos os sub-tests passaram (mutações detectadas) ✅
-#   1 — pelo menos um sub-test falhou (guard cego / asserção / infra) ❌
-#   2 — uso inválido (--scenario com id desconhecido, flag desconhecida)
 # =============================================================================
 
 set -euo pipefail
@@ -73,6 +76,7 @@ SUBTESTS=(
   "mutation-jobs|Mutation-jobs — script órfão + matriz quebrada|scripts/test-mutation-mutation-jobs.sh"
   "workflow-refs|Workflow-refs — alvo transitivo deletado + entry órfã|scripts/test-mutation-workflow-refs.sh"
   "utf8-scope|UTF-8 — call site sem src/|scripts/test-mutation-utf8-scope.sh"
+  "timing-budget|Timing — gate de budget 180s do mutation-coord (300s → exit 1)|scripts/test-mutation-timing-budget.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -229,5 +233,6 @@ fi
 
 pass "MUTATION TESTS PASSED — os guards (bun literal, bun remoção, hooks simetria,"
 pass "README anchors/toc/images + reverse, docs anchor, produtor sentinel,"
-pass "mutation-jobs, workflow-refs, UTF-8 escopo) detectam todas as mutações."
+pass "mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget) detectam todas as"
+pass "mutações."
 exit 0

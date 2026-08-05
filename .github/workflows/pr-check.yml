@@ -1095,6 +1095,247 @@ jobs:
     name: Seed Guards (prod + dev E2E)
     uses: ./.github/workflows/seed-guards.yml
 
+  # ── Mutation Coord Timing Guard (PR, budget de payload) ─────────────
+  # GATE de REGRESSÃO DE OVERHEAD do contrato coordenado ANTES do merge:
+  # mede o tempo REAL do step 'Run mutation test (contrato coordenado —
+  # 5 cenários, 2 elos)' (timing NATIVO do Actions — started_at/completed_at
+  # da jobs API, o mesmo que a UI mostra) e FALHA o PR se o step
+  # ultrapassar o budget (180s = 3 min). O pr-check mede CORREÇÃO, não
+  # performance — se o payload do mutation test crescer silenciosamente
+  # (6 vitest + 6 guard runs ficarem lentos por bump de dep ou cenário
+  # novo), o CI de correção não percebe; este guard é a rede de segurança
+  # que trava o overhead antes do merge.
+  #
+  # needs: seed-guards + if: always() — espera o seed-guards terminar mas
+  # mede TAMBÉM quando ele falhou (um timeout de step é exatamente a
+  # regressão que o budget deve acusar). GH_TOKEN do próprio Actions (o gh
+  # usa automaticamente). O script é fail-closed: exit 1 = infra OU budget
+  # excedido (report.exceeded=true distingue), exit 2 = drift de contrato
+  # ('não achado' não é 'limpo'). Espelho do job semanal
+  # mutation-coord-timing (benchmark-weekly.yml) — alterações no
+  # script/args DEVEM ser replicadas nos dois lugares.
+  #
+  # TUINING DO BUDGET (DUAS FAIXAS — 240s duro / baseline soft): alterar em
+  # lugares coordenados — este job (--max 240 --warn
+  # ${{ vars.MUTATION_TIMING_BASELINE || '180' }}), o job semanal
+  # mutation-coord-timing do benchmark-weekly.yml (mesmo --warn + o
+  # --publish-baseline MUTATION_TIMING_BASELINE que auto-atualiza a variável
+  # quando o budget passa) e as asserções de teste de workflow — o README
+  # (seção Git Hooks, bloco de overhead) documenta os valores como fonte da
+  # verdade. Faixa SOFT (baseline < d <= 240) alerta com ::warning:: + exit 0
+  # (ruído de runner tolerado); faixa DURO (d > 240) falha com ::error:: +
+  # exit 1.
+  mutation-coord-timing-guard:
+    name: Mutation coord timing (budget 240/baseline)
+    runs-on: ubuntu-latest
+    needs: seed-guards
+    if: always() # mede também quando o seed-guards falhou (timeout é o alvo)
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      actions: read # gh api repos/X/actions/runs/<id>/jobs (jobs API)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Mede o step no run ATUAL e gateia o budget em DUAS FAIXAS ──
+      # --max 240 (duro) = 4 min; --warn consulta a variable
+      # MUTATION_TIMING_BASELINE (publicada pelo job semanal quando o budget
+      # passa — baseline auto-atualizado que tolera variação de runner) com
+      # fallback no literal 180 (esperado ~35-45s — headroom amplo). Exit 1 =
+      # budget DURO excedido (gate) ou infra; exit 0 na faixa soft com
+      # ::warning::; exit 2 = drift de contrato. GH_TOKEN explícito (o gh do
+      # runner já usa o GITHUB_TOKEN por padrão — explicitar torna o
+      # contrato auto-documentado). PR NÃO publica baseline (só o semanal).
+      - name: Medir tempo do step mutation test (budget 240/baseline)
+        id: measure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/measure-mutation-timing.mjs \
+            --run "${{ github.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --max 240 \
+            --warn "${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \
+            --json /tmp/mutation-timing.json
+
+      # ── Evidência como artifact (debug de falhas do budget) ────────
+      - name: Upload timing JSON (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-coord-timing-pr
+          path: /tmp/mutation-timing.json
+          if-no-files-found: ignore
+
+      # ── Summary (a evidência do budget no PR) ──────────────────────
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## ⏱️ Mutation coord — budget de payload (PR, 240/baseline)'
+            echo ''
+            if [ -f /tmp/mutation-timing.json ]; then
+              node -e "
+                const r = require('/tmp/mutation-timing.json');
+                if (r.found) {
+                  console.log('| Campo | Valor |');
+                  console.log('|---|---|');
+                  console.log('| Step | ' + r.stepName + ' |');
+                  console.log('| Duração | **' + r.durationSecs + 's** (duro ' + (r.budgetSecs ?? 'n/a') + 's / soft ' + (r.warnSecs ?? 'n/a') + 's) |');
+                  console.log('| Conclusão | ' + r.conclusion + ' |');
+                  console.log('| Run | ' + r.runId + ' |');
+                  if (r.zone === 'fail') console.log('| Budget | ❌ **EXCEDIDO** (faixa dura) — regressão de overhead |');
+                  else if (r.zone === 'warn') console.log('| Budget | ⚠️ faixa SOFT (::warning::) — observa o drift antes do gate |');
+                  else console.log('| Budget | ✅ dentro do limite |');
+                } else {
+                  console.log('⚠ Medição falhou: ' + (r.error || 'sem detalhes'));
+                }
+              "
+            else
+              echo '⚠ Medição não produziu JSON — veja o passo "Medir tempo do step mutation test".'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Mutation Coord Timing — via ACT (PRs sem seed-guards na default) ───
+  # Re-executa o job mutation-coord-update do seed-guards.yml LOCALMENTE com
+  # o act + imagem custom (ghcr.io/<owner>/ubuntu-bun:<versão>, bun
+  # PRÉ-INSTALADO — o mesmo pipeline do tier1-fastpath-guard) e aplica o
+  # MESMO gate de budget de duas faixas (--max 240 duro / --warn baseline soft)
+  # sobre a duração do step 'Run mutation test (contrato coordenado — 5
+  # cenários, 2 elos)' extraída do LOG do act (measure-mutation-timing.mjs
+  # --act-log, mesma técnica de parse do check-tier1-fastpath.mjs).
+  #
+  # POR QUE: o gate real (mutation-coord-timing-guard, acima) mede o step
+  # via jobs API do run ATUAL — mas o seed-guards.yml é um reusable
+  # workflow_call: se ele NÃO existir na branch DEFAULT (ex.: branch de
+  # criação ainda não mergeada, como aconteceu com release/v0.4.0), o
+  # reusable não roda no CI e a jobs API não mede NADA (exit 2 drift / 404
+  # no gh). Este job cobre o PR ANTES do merge rodando o job via act com a
+  # imagem custom — o budget fica validado mesmo quando o run real ainda
+  # não pode medir. DRY vs periódico: sem schedule, sem upload-artifact, só
+  # o guard decide (exit 0/1). Custo: ~act + pull da imagem (~15 min) só
+  # quando os paths do contrato coordenado mudam.
+  #
+  # ⚠️ Imagem no GHCR: pacote PRIVADO (verificado 08/2026) — o pull do act
+  # usa o auth automático do runner (GITHUB_TOKEN com 'packages: read').
+  # ⚠️ Espelho do gate real acima: alterações nos args do guard (--max
+  # --warn) DEVEM ser replicadas nos dois jobs + benchmark-weekly.yml + os
+  # 2 testes de workflow (ver README, bloco de overhead).
+  mutation-coord-timing-act-guard:
+    name: Mutation coord timing (act, budget 240/baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # packages: read — pull da imagem PRIVADA ghcr.io/<owner>/ubuntu-bun pelo
+    # act (auth automático do runner; mesmo contrato do periódico
+    # tier1-fastpath-guard.yml). Sem ele o pull falha → act exit != 0 sem
+    # evidência → o guard falha com diagnóstico (fail-closed, mas ruidoso).
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed for origin/main...HEAD diff
+
+      # ── Path filter: steps pesados só rodam quando o PR toca o contrato
+      # coordenado (seed-guards.yml ou o medidor/scripts do contrato) —
+      # mesmo padrão do tier1-fastpath-guard (sem action externa de paths).
+      # Falha LOUD se o diff não puder ser calculado (guard que pula em
+      # silêncio trairia o propósito).
+      - name: Detect mutation-timing relevant changes
+        id: changes
+        run: |
+          set -euo pipefail
+          if ! git diff --name-only origin/main...HEAD > /tmp/pr-diff.txt 2>/tmp/pr-diff.err; then
+            echo "::error::não foi possível calcular o diff origin/main...HEAD"
+            cat /tmp/pr-diff.err
+            exit 1
+          fi
+          if grep -qE '^(\.github/workflows/seed-guards\.yml|scripts/measure-mutation-timing\.mjs|scripts/test-mutation-timing-budget\.sh|scripts/test-mutation-coord-update\.sh|scripts/seed-e2e-count\.ts|scripts/check-e2e-counts\.mjs)' /tmp/pr-diff.txt; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "  ✅ PR toca o contrato coordenado — rodando act benchmark"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "  ℹ️ PR não toca o contrato coordenado — guard pulado"
+          fi
+
+      # ── Valida a repository variable (fail-fast com mensagem clara) ──
+      - name: Validate BUN_VERSION variable
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          if [ -z "${{ vars.BUN_VERSION }}" ]; then
+            echo "::error::Repository variable BUN_VERSION não definida — crie em Settings → Secrets and variables → Actions (ex.: gh variable set BUN_VERSION 1.3.14)."
+            exit 1
+          fi
+          echo "  ✅ BUN_VERSION=${{ vars.BUN_VERSION }}"
+
+      # ── Instala o act pinado (mesma versão do ambiente local) ────────
+      - name: Install act (v0.2.89)
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/act.tar.gz \
+            "https://github.com/nektos/act/releases/download/v0.2.89/act_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/act.tar.gz -C /tmp act
+          /tmp/act --version
+
+      # ── Re-executa o job mutation-coord-update com a imagem custom ──
+      # -j mutation-coord-update: o act roda o JOB do seed-guards.yml
+      # diretamente (o reusable é o alvo). O seed-guards.yml é
+      # workflow_call-ONLY — o act precisa de um evento para selecionar o
+      # workflow: o --eventpath com o JSON mínimo satisfaz o parse (sem ele,
+      # o act pode recusar com 'no workflows found' por não achar trigger).
+      # O log é salvo em /tmp/act-mutation.log para o guard extrair a
+      # duração do step. O timeout limita o custo.
+      - name: Run act -j mutation-coord-update (imagem custom)
+        if: steps.changes.outputs.changed == 'true'
+        id: act
+        run: |
+          set +e
+          printf '{"workflow_call": {}}' > /tmp/wfc-event.json
+          timeout 900 /tmp/act -b \
+            -W .github/workflows/seed-guards.yml \
+            -j mutation-coord-update \
+            --eventpath /tmp/wfc-event.json \
+            -P "ubuntu-latest=ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${{ vars.BUN_VERSION }}" \
+            --var "BUN_VERSION=${{ vars.BUN_VERSION }}" \
+            --secret "GITHUB_TOKEN=${{ github.token }}" \
+            > /tmp/act-mutation.log 2>&1
+          ACT_EXIT=$?
+          echo "ACT_EXIT=${ACT_EXIT}" >> "$GITHUB_OUTPUT"
+          echo "  act exit: ${ACT_EXIT} (o guard decide o verdict)"
+          echo "  log: /tmp/act-mutation.log ($(wc -l < /tmp/act-mutation.log) linhas)"
+
+      # ── GATE: o guard mede a duração do step no log do act ──────────
+      # --act-exit recebe o exit code do act (steps.act.outputs.ACT_EXIT): se
+      # o act morreu ANTES do step (exit != 0 sem evidência no log — ex.:
+      # imagem não publicada), o guard FALHA com diagnóstico claro. Exit 1 =
+      # budget DURO excedido; exit 0 na faixa soft (::warning::). --warn
+      # consulta a variable MUTATION_TIMING_BASELINE (fallback 180) — o act
+      # NÃO publica baseline (timing local ≠ baseline do CI real).
+      - name: Guard mutation coord timing (act log, 240/baseline)
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          node scripts/measure-mutation-timing.mjs \
+            --act-log /tmp/act-mutation.log \
+            --max 240 \
+            --warn "${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \
+            --act-exit "${{ steps.act.outputs.ACT_EXIT }}" \
+            --json /tmp/mutation-timing-act.json
+
+      - name: Summary
+        run: |
+          if [ "${{ steps.changes.outputs.changed }}" = "true" ]; then
+            echo "✅ Mutation coord budget validated via act on the custom image (PR sem seed-guards na default)."
+          else
+            echo "ℹ️ Skipped — PR does not touch the coordinated contract (seed-guards.yml/measure script)."
+          fi
+
   # ── Security Headers ──────────────────────────────────────────────────
   # Verifica CSP, HSTS, X-Frame-Options e demais headers de segurança
   # via curl. Roda no checkout sem dependências além de curl (pré-instalado).

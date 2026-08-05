@@ -736,35 +736,46 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-9 sub-tests node-puro via `scripts/test-mutation-guards.sh` (bun literal,
+**11 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
-anchor, produtor sentinel, mutation-jobs e UTF-8 escopo). ⚠️ Não existe um
-job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda dentro da
-matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc + images, 1
-sub-test do master). Custo medido em 08/2026 (Windows host, worktree local):
+anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo e
+timing-budget). ⚠️ Não
+existe um job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda
+dentro da matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc +
+images, 1 sub-test do master). Custo medido em 08/2026 (Windows host, worktree
+local, mediana de 3 runs warm):
 
 | Item                                      | Local (Windows, node frio) | act (proxy CI, container) |
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (9 sub-tests)    |        ≈ **15.8s**¹        |     **step ≈ 4.4s**¹      |
-| checkout@v4                               |             —              |          32.2s*           |
-| Summary                                   |             —              |           0.5s            |
+| master `mutation-guards` (11 sub-tests)   | ≈ **40.75s** (39.5–42.9)²  |     **step ≈ 9.1s**²      |
+| checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
+| Summary                                   |             —              |           0.34s           |
 
-O gap 4.4s vs 15.8s no master sugere que o node no container roda mais rápido
-que o Windows local (warm cache/FS — não é causa provada, é observação).
-¹Medido com 5 sub-tests em 08/2026; os 4 sub-tests adicionados desde então
-(README reverse, docs anchor, produtor sentinel, mutation-jobs) são scripts
-bash/node-puros rápidos e o custo da matriz não foi re-medido — a ordem de
-grandeza se mantém.
-*O checkout de 32s no act é overhead de EMULAÇÃO (docker cp do worktree
-inteiro) — o GitHub Actions real faz checkout em ~1-2s. Comparando com os
+O gap **9.1s (act) vs 40.75s (local)** no master sugere que o node no container
+roda mais rápido que o Windows local (warm cache/FS — não é causa provada, é
+observação).
+²Medido com TODOS os 10 sub-tests originais em 08/2026: mediana de 3 runs
+warm, **40.75s local** (39.5–42.9s) e **9.1s** de step no act com a imagem
+ubuntu-bun + `--pull=false` (o mesmo act mediu o actionlint em 3.6s e o
+utf8-check em 7.46s). O 11º sub-test (timing-budget — fixtures JSON em
+mktemp, ~1s) foi adicionado DEPOIS da medição. O custo escala com o nº de
+sub-tests — cada um cria fixtures e roda o guard contra a mutação —, então
+o valor antigo (15.8s) era de 5 sub-tests.
+*O checkout no act é overhead de EMULAÇÃO (docker cp do worktree inteiro):
+**32.2s na 1ª run fria** (volume não cacheado) vs **~0.03s nas runs seguintes**
+(volume quente — os steps de 9.1s/7.46s/3.61s destas tabelas foram medidos com
+volume quente, `--pull=false`) — o GitHub Actions real faz checkout em ~1-2s. Comparando com os
 fast gates: cada guard <1s (o `check-readme-toc` real ≈ 0.23s); o runner dos
 16 guards ≈ 3.2s de mediana. Ou seja, os mutation tests são o item mais caro
-dessa classe no PR-check (~4.4s de step no container vs ~3.2s dos 16 fast
+dessa classe no PR-check (~9.1s de step no container vs ~3.2s dos 16 fast
 gates), mas seguem node-puro e sem docker. ⚠️ Timing REAL do GitHub Actions
-não medido aqui (gh sem auth neste ambiente — ver "auth fantasma" em Bugs
-conhecidos); o act é o proxy local.
+não medido aqui — o `gh` está autenticado (auth fantasma RESOLVIDO em 08/2026,
+ver Bugs conhecidos), mas o `seed-guards.yml` não existe na branch default
+(`release/v0.4.0` — este branch não foi mergeado), então o job
+`mutation-coord-update` nunca rodou no CI real e não há run para medir; o act é
+o proxy local.
 
 **Overhead do job `mutation-coord-update` (seed-guards.yml, contrato coordenado)** —
 diferente do master `mutation-guards` (node-puro), este job roda o **vitest REAL
@@ -787,11 +798,75 @@ GitHub Actions real não paga esses custos.
 ¹ O payload de 51s local (6 runs de vitest ≈ 8.5s/run a frio) sobe para 4m37.6s
 no act por overhead de EMULAÇÃO (bind mount `/mnt/c` + docker cp); no GitHub
 Actions real (FS nativo + cache warm) a estimativa é ~35-45s — **pendente de
-medição real** (gh sem auth neste ambiente, ver "auth fantasma" em Bugs
-conhecidos). Quando autenticado:
+medição real**: o `gh` está autenticado (auth fantasma RESOLVIDO em 08/2026),
+mas o `seed-guards.yml` não existe na branch default (`release/v0.4.0` — nunca
+mergeado), então o job nunca rodou no CI real (API → 404, zero runs). Assim que
+o workflow for mergeado e um run real existir:
 `gh run list --workflow=seed-guards.yml --limit 1` → `gh run view <id> --json
 jobs --jq '.jobs[] | select(.name | contains("contrato")) | .steps[] |
 select(.name | contains("Run mutation test")) | {name, startedAt, completedAt}'`.
+
+**Budget de payload (DUAS FAIXAS — 240s duro / baseline soft auto-atualizado):**
+o step 'Run mutation test (contrato coordenado)' tem um **budget duro de 240s
+(4 min)** — se ultrapassar, o gate falha (regressão de overhead do contrato
+coordenado) — e uma **faixa soft BASELINE-ORIENTADA**: o job SEMANAL
+(`mutation-coord-timing`) mede o tempo real e, quando o budget passa,
+**publica o valor como repository variable `MUTATION_TIMING_BASELINE` via `gh
+variable set`** (`--publish-baseline MUTATION_TIMING_BASELINE --baseline-margin
+0.2` → publica `ceil(duração × 1.2)`, clampado para sempre ficar `< 240`). Os
+três jobs do gate (2 do pr-check + 1 semanal) consultam a variável em vez do
+literal: `--warn ${{ vars.MUTATION_TIMING_BASELINE || '180' }}` — o baseline
+**tolerar variação de runner re-anchorando no tempo real medido** (o gate
+segue a média + headroom, não um palpite fixo); o fallback 180s vale só antes
+do primeiro publish. Entre baseline e 240s o script emite `::warning::` e sai
+**exit 0** (ruído de runner tolerado SEM perder a observabilidade); acima de
+240s falha. **Publica SÓ quando o budget passou (zone ok/warn)** — um run
+lento (fail) não ratcheta o baseline para cima (a regressão não vira o novo
+normal); PRs NUNCA publicam (só o semanal — PR não muta repo state). Falha de
+publish é `::warning::` fail-soft (a medição é o sinal primário; baseline stale
+fica observável via `report.baseline.published=false`). O timing é o **NATIVO
+do Actions** (started_at/completed_at da jobs API — o mesmo que a UI mostra),
+medido por `scripts/measure-mutation-timing.mjs` (mesma flag `--publish-baseline`
+com `MEASURE_MUTATION_TIMING_DRY_PUBLISH=1` em testes, sem gh real). O budget
+duro de 240s tem ~5× de headroom sobre o esperado ~35-45s (evita flakiness de
+runner); a faixa soft absorve picos intermediários sem falhar o PR. O relatório
+JSON ganha `zone` (`'ok'`|`'warn'`|`'fail'`) + `warnSecs` + `warned` +
+`baseline` (`{name, value, published}`) — o caller distingue alerta de falha
+de infra/drift.
+
+**Medição via ACT (PRs sem seed-guards na default):** o gate real mede via
+jobs API do run ATUAL — mas o `seed-guards.yml` é um reusable `workflow_call`:
+se ele ainda não existir na **branch DEFAULT** (ex.: branch de criação não
+mergeada, como ocorreu com `release/v0.4.0`), o reusable não roda no CI e a
+jobs API não mede NADA. O job **`mutation-coord-timing-act-guard`**
+(pr-check.yml, paths-filtered) cobre esse buraco: re-executa o job
+`mutation-coord-update` **localmente via act com a imagem ubuntu-bun** (o
+MESMO pipeline do tier1-fastpath-guard — bun pré-instalado) e o guard roda em
+modo `--act-log` (`measure-mutation-timing.mjs --act-log <log> --max 240
+--warn ${{ vars.MUTATION_TIMING_BASELINE || '180' }} --act-exit <exit>`) —
+extraindo a duração do step da linha
+`Success - Main Run mutation test ... [X.XXs]` do log do act (mesma técnica de
+parse do check-tier1-fastpath). Só roda quando o PR toca o contrato coordenado
+(seed-guards.yml / measure-mutation-timing.mjs / test-mutation-timing-budget.sh
+/ seed-e2e-count.ts), com custo ~15 min de act — o preço de travar o budget
+mesmo antes do merge, quando o run real ainda não pode medir.
+**Tuning do budget:** o **duro** (`--max 240`) e a **margem do baseline**
+(`--baseline-margin 0.2`) alteram em **lugares coordenados** — os TRÊS jobs
+(pr-check.yml `mutation-coord-timing-guard` + `mutation-coord-timing-act-guard`
+e benchmark-weekly.yml `mutation-coord-timing`, `--max 240 --warn
+${{ vars.MUTATION_TIMING_BASELINE || '180' }}`), as TRÊS asserções de teste de
+workflow (`benchmark-weekly-mutation-timing-workflow.test.ts`,
+`pr-check-mutation-timing-guard-workflow.test.ts` e
+`pr-check-mutation-timing-act-workflow.test.ts` — estas travam o `--warn` da
+var + o `--publish-baseline` do semanal) e as constantes
+`BUDGET_MAX`/`BUDGET_WARN` do mutation test (`scripts/test-mutation-timing-budget.sh`
+— os fixtures de 200s/300s dependem das faixas; o próprio mutation test falha
+se os budgets mudarem e os fixtures ficarem na faixa errada). O **baseline em
+si** (valor de `MUTATION_TIMING_BASELINE`) NÃO precisa de tuning — o semanal o
+auto-atualiza com o tempo real medido (+20%). O modo `--warn-only` emite
+`::warning::` em vez de falhar (alerta não-bloqueante para dispatch manual).
+Limites: faixa soft é **`warn < d <= max`** (d == max ainda é warn, não fail);
+faixa dura é **`d > max`** — só estritamente acima do duro falha.
 
 Comparando com os fast gates: os 16 guards somam ≈ **3.2s** de mediana; o payload
 do mutation-coord-update (51s local) é **~16× mais caro que TODA a classe de fast
@@ -799,6 +874,33 @@ gates junta** — por design: cada cenário roda vitest real + guard estático (
 node-puro como o master `mutation-guards`). É o item mais caro dos mutation tests
 por PR, mas roda apenas no `seed-guards.yml` (reusable, chamado no PR-check), não
 no pre-push.
+
+**Custo de TODOS os gates por PR (visão consolidada, medido 08/2026)** — os jobs
+pesados do `pr-check.yml` + `e2e-cache.yml` na MESMA metodologia (mediana de 3
+runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
+`--pull=false`):
+
+| Gate / job                                        | Local (Windows, node frio) | act + ubuntu-bun (step real) | CI real (GH hosted) |
+| :------------------------------------------------ | :------------------------: | :--------------------------: | :-----------------: |
+| 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |           — (n/a)            |         <2s         |
+| `utf8-check` (748 arquivos, `--ci src/`)          |        ≈ **0.92s**         |          **7.46s**           |    ~2-5s (est.)     |
+| `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |          **3.61s**           |    ~1-2s (est.)     |
+| `mutation-guards` (11 sub-tests node-puro)        |        ≈ **40.75s**        |           **9.1s**           |   ~15-25s (est.)    |
+| `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |         **4m37.6s**          |   ~35-45s (est.)³   |
+| `e2e-cache` (build Next.js + playwright cache)    |  **4m6s** (build, 1 run)   |     — (requer serviços)      | **~6-9 min (est.)** |
+
+³Mesmo valor do bloco `mutation-coord-update` acima — estimativa, pendente de
+medição real (o `seed-guards.yml` não existe na branch default).
+
+O `e2e-cache` é o item MAIS caro por PR, mas é **condicional**: o trigger tem
+`paths:` (cache-manifest, api-server.ts, rotas de cache, `providers-cache.spec`,
+workflows de encoding/cache) — PRs comuns NÃO o rodam; quando roda (timeout 15
+min), o custo é dominado pelo `bun run build` (4m6s local, **1 run** — não foi
+estabilizado em 3 runs como os demais) + `playwright install chromium` + testes
+de cache. Os demais gates somam ≈ **1m32s** no pior caso
+(mutation-guards 40.75s + coord-update 51s local) contra ≈ **3.2s** dos 16 fast
+guards — por design: cada mutation test roda o guard REAL contra uma mutação
+(não é node-puro) e o coord-update roda vitest real + guard estático por cenário.
 
 > **Por que o pre-push não repete typecheck/lint-staged?** O pre-commit já os
 > rodou em cada commit da branch — reexecutá-los no push seria redundante. O
@@ -1103,9 +1205,30 @@ CI real**. O `scripts/bench-setup-bun.sh` automatiza a medição REAL:
 
 **Fluxo completo (auth → push → medição → cleanup):**
 
+> **Auth — device flow HUMANO, passo a passo (o 'auth fantasma' não completa
+> sozinho):**
+>
+> 1. `gh auth login --web` — inicia o device flow; o CLI imprime um
+>    **código de um só uso** (ex.: `XXXX-XXXX`).
+> 2. Abra `https://github.com/login/device` e **digite o código exibido
+>    pelo CLI** — não o token, o CÓDIGO de verificação do terminal.
+> 3. Autorize no navegador com a conta que tem acesso ao repo
+>    (scopes: `repo` + `workflow`).
+> 4. Volte ao terminal — o `hosts.yml` é gravado e o `gh auth status`
+>    completa ("Logged in to github.com").
+>
+> **⚠️ O código EXPIRA em ~15 minutos.** Se a autorização humana não
+> acontecer dentro da janela, o processo fica pendurado, o token NUNCA é
+> gravado e o `gh auth status` continua "not logged in" — o sintoma
+> exato do 'auth fantasma'. **Reinicie com `gh auth login --web` de novo
+> (código NOVO)**; o fluxo não completa sozinho e não herda auth de outro
+> checkout/worktree. `bench-setup-bun.sh --dry-run` valida o auth antes
+> de gastar um run (exit 4 = API bloqueada). Diagnóstico completo em
+> [Bugs conhecidos](#bugs-conhecidos).
+
 ```bash
-# 1. Auth — OBRIGATÓRIO completar NO ambiente do worktree (device flow)
-gh auth login                    # conta com acesso ao repo real
+# 1. Auth — OBRIGATÓRIO completar NO ambiente do worktree (device flow — ver acima)
+gh auth login --web              # inicia o device flow; o CLI mostra o código
 gh auth status                   # confirmar "Logged in to github.com"
 gh api repos/<owner>/<repo>      # exit 0 = acesso ok (404 = conta sem acesso)
 
@@ -1148,15 +1271,15 @@ local é o gargalo, não a migração do setup-bun.
 
 ### Bugs conhecidos
 
-| Bug                                                         | Sintoma                                                                                                                                                                                                                                | Workaround                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| :---------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`--dry-run` não existe**                                  | `Error: unknown flag: --dry-run`                                                                                                                                                                                                       | Usar `-n`. Atenção: `-n` só mostra o plano e **não** executa os `run:` — não pega erros de runtime (ex: CRLF, comandos ausentes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **`oven-sh/setup-bun@v2` lento**                            | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs                                                                                                                                                                  | **Confirmado (comportamento do action EXTERNO antigo, medido ANTES da migração):** 2 execuções consecutivas do job `e2e-counts-guard` no act — run #1 = 35.5s, run #2 = 24.2s, ambos com `cache-hit=false` explícito no output do setup-bun → re-download a cada execução, sem cache de layers nem de release. Exit 0 (é lentidão, não falha). (Uma captura posterior na mesma máquina deu 11.66s/13.53s — durações variam por máquina/rede; o invariante é `cache-hit=false` em todas — ver [Evidência empírica](#evidência-empírica-log-real-do-act--bug-do-setup-bun).)<br>**Repro automatizado:** `bun run repro:setup-bun` (scripts/act-repro-setup-bun.sh) — roda o job 2×, extrai a duração do step setup-bun e o cache-hit de cada run, e asserta o comportamento esperado (cache-miss em todas = bug; cache-hit na última = fix). Use num checkout ANTERIOR ao commit de migração para reproduzir o bug. **Hoje o bug não é reproduzível em `main`:** o job usa o composite local `.github/actions/setup-bun` (cache keyed na versão) — ver `scripts/check-bun-mirror.mjs`. Na época era aceitável para validação pontual; exigia rede para o GitHub. |
-| **Fast path (tier-1) não dispara no catthehacker**          | No act com a imagem default `catthehacker/ubuntu:act-latest` o tier-1 NUNCA engaja — a imagem não embarca bun — e o act **emula** o actions/cache com espera (~21s medidos: `Restore Bun release from cache [21.22s]`, composite ~33s) | Usar a imagem custom `ghcr.io/<owner>/ubuntu-bun:<versão>` com `-P ubuntu-latest=... --pull=false` para exercitar o tier-1 de verdade. **O ganho real (~1-2s) aparece no CI do GitHub** (tier-2 com cache REAL do GitHub; tier-1 só em runner com bun pré-instalado) — a expectativa de 0-2s no act é incorreta: o composite inclui o overhead do próprio act (~11s warm).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| **act 0.2.89 não resolve `vars` em composite action**       | `Unknown Variable Access vars` ao parsear o `action.yml` — e `expressions are not allowed here` para o token vazio `${{ }}` em descrição                                                                                               | Resolver a versão **no workflow** e passar via input `bun-version` (o composite lê só inputs); o guard `check-bun-mirror.mjs` exige `bun-version: ${{ vars.BUN_VERSION }}` em todo call site. Workflow-level `${{ vars.BUN_VERSION }}` funciona no act. Ver [Imagem custom](#imagem-custom-com-bun-pré-instalado-tier-1-fast-path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| **Actions locais untracked invisíveis**                     | `failed to read 'action.yml'... file does not exist` para actions recém-criadas                                                                                                                                                        | Usar `-b`/`--bind` (monta o working tree real, untracked inclusos) em vez do volume padrão copiado do HEAD.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **CRLF quebra bash no container (Windows)**                 | `scripts/check-utf8.sh: line 20: set: pipefail: invalid option name`                                                                                                                                                                   | **Causa raiz (confirmada):** `core.autocrlf=true` deixa o working tree CRLF (`i/lf w/crlf`) em **todos os 41 `.sh`** — o checkout ocorreu antes de `.gitattributes` declarar `eol=lf`, então o atributo nunca foi aplicado aos arquivos já presentes. O act copia o working tree para o container Linux → bash falha em `set -euo pipefail`. **Fix aplicado:** normalizar os `.sh` para LF no disco (o blob já era LF → **zero diff** no git) + `git add --renormalize` para sincronizar o stat cache do index (sem mudar conteúdo). **Evidência pós-fix no act:** exit 0 — 748 arquivos escaneados, "Status: OK -- all valid UTF-8". Alternativa: `git config core.autocrlf false` + `git add --renormalize`, ou WSL. **Proteção anti-regressão:** `scripts/check-crlf.sh` (working tree) + `scripts/check-blob-crlf.sh` (blob commitado — `i/crlf`/`i/mixed` via `git ls-files --eol`) rodam no pre-commit e no `utf8-check.yml`, falhando se qualquer `.sh` voltar a ter CRLF. **Fix reutilizável:** `scripts/normalize-crlf.sh` aplica a normalização em qualquer checkout/worktree (`.sh`/`.ts`/`.md` → LF + `git add --renormalize`).                    |
-| **`gh auth login` "fantasma" (device flow nunca completa)** | `gh auth status` sempre "not logged in" e o `bench-setup-bun.sh` sai com **exit 4 (API bloqueada)** mesmo depois de rodar o login — o processo do device flow fica vivo aguardando, mas nada acontece                                  | **Confirmado (08/2026):** o device flow do `gh` exige autorização **humana no navegador** — rodar o fluxo num ambiente sem interação deixa o processo pendurado até o código expirar (~15 min por código) e o token **nunca é gravado**. Evidência da investigação (3 ocasiões de device flow + polling de ~40 min): `hosts.yml` **ausente** em `%AppData%\GitHub CLI\` (o arquivo só é criado quando a autorização completa), repo **privado** (API 404 sem token), `GH_TOKEN`/`GITHUB_TOKEN` **vazios** no ambiente e `.env*` sem token. **Lição para futuros devs:** `gh auth login` **DEVE ser completado NO ambiente do worktree** — abrir `https://github.com/login/device`, digitar o código e autorizar a conta com acesso ao repo (`repo,workflow`). O fluxo não completa sozinho, não herda auth de outro checkout/worktree, e o código expira em ~15 min (reiniciar com código novo se passar disso). O `bench-setup-bun.sh --dry-run` valida o auth antes de gastar um run — ver o passo 1 do [fluxo de medição](#medição-real-do-setup-bun-no-ci-scriptsbench-setup-bunsh).                                                                       |
+| Bug                                                         | Sintoma                                                                                                                                                                                                                                | Workaround                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| :---------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`--dry-run` não existe**                                  | `Error: unknown flag: --dry-run`                                                                                                                                                                                                       | Usar `-n`. Atenção: `-n` só mostra o plano e **não** executa os `run:` — não pega erros de runtime (ex: CRLF, comandos ausentes).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **`oven-sh/setup-bun@v2` lento**                            | Baixa o Bun do GitHub a cada execução (~20–35s), sem cache entre runs                                                                                                                                                                  | **Confirmado (comportamento do action EXTERNO antigo, medido ANTES da migração):** 2 execuções consecutivas do job `e2e-counts-guard` no act — run #1 = 35.5s, run #2 = 24.2s, ambos com `cache-hit=false` explícito no output do setup-bun → re-download a cada execução, sem cache de layers nem de release. Exit 0 (é lentidão, não falha). (Uma captura posterior na mesma máquina deu 11.66s/13.53s — durações variam por máquina/rede; o invariante é `cache-hit=false` em todas — ver [Evidência empírica](#evidência-empírica-log-real-do-act--bug-do-setup-bun).)<br>**Repro automatizado:** `bun run repro:setup-bun` (scripts/act-repro-setup-bun.sh) — roda o job 2×, extrai a duração do step setup-bun e o cache-hit de cada run, e asserta o comportamento esperado (cache-miss em todas = bug; cache-hit na última = fix). Use num checkout ANTERIOR ao commit de migração para reproduzir o bug. **Hoje o bug não é reproduzível em `main`:** o job usa o composite local `.github/actions/setup-bun` (cache keyed na versão) — ver `scripts/check-bun-mirror.mjs`. Na época era aceitável para validação pontual; exigia rede para o GitHub.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **Fast path (tier-1) não dispara no catthehacker**          | No act com a imagem default `catthehacker/ubuntu:act-latest` o tier-1 NUNCA engaja — a imagem não embarca bun — e o act **emula** o actions/cache com espera (~21s medidos: `Restore Bun release from cache [21.22s]`, composite ~33s) | Usar a imagem custom `ghcr.io/<owner>/ubuntu-bun:<versão>` com `-P ubuntu-latest=... --pull=false` para exercitar o tier-1 de verdade. **O ganho real (~1-2s) aparece no CI do GitHub** (tier-2 com cache REAL do GitHub; tier-1 só em runner com bun pré-instalado) — a expectativa de 0-2s no act é incorreta: o composite inclui o overhead do próprio act (~11s warm).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **act 0.2.89 não resolve `vars` em composite action**       | `Unknown Variable Access vars` ao parsear o `action.yml` — e `expressions are not allowed here` para o token vazio `${{ }}` em descrição                                                                                               | Resolver a versão **no workflow** e passar via input `bun-version` (o composite lê só inputs); o guard `check-bun-mirror.mjs` exige `bun-version: ${{ vars.BUN_VERSION }}` em todo call site. Workflow-level `${{ vars.BUN_VERSION }}` funciona no act. Ver [Imagem custom](#imagem-custom-com-bun-pré-instalado-tier-1-fast-path).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Actions locais untracked invisíveis**                     | `failed to read 'action.yml'... file does not exist` para actions recém-criadas                                                                                                                                                        | Usar `-b`/`--bind` (monta o working tree real, untracked inclusos) em vez do volume padrão copiado do HEAD.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **CRLF quebra bash no container (Windows)**                 | `scripts/check-utf8.sh: line 20: set: pipefail: invalid option name`                                                                                                                                                                   | **Causa raiz (confirmada):** `core.autocrlf=true` deixa o working tree CRLF (`i/lf w/crlf`) em **todos os 41 `.sh`** — o checkout ocorreu antes de `.gitattributes` declarar `eol=lf`, então o atributo nunca foi aplicado aos arquivos já presentes. O act copia o working tree para o container Linux → bash falha em `set -euo pipefail`. **Fix aplicado:** normalizar os `.sh` para LF no disco (o blob já era LF → **zero diff** no git) + `git add --renormalize` para sincronizar o stat cache do index (sem mudar conteúdo). **Evidência pós-fix no act:** exit 0 — 748 arquivos escaneados, "Status: OK -- all valid UTF-8". Alternativa: `git config core.autocrlf false` + `git add --renormalize`, ou WSL. **Proteção anti-regressão:** `scripts/check-crlf.sh` (working tree) + `scripts/check-blob-crlf.sh` (blob commitado — `i/crlf`/`i/mixed` via `git ls-files --eol`) rodam no pre-commit e no `utf8-check.yml`, falhando se qualquer `.sh` voltar a ter CRLF. **Fix reutilizável:** `scripts/normalize-crlf.sh` aplica a normalização em qualquer checkout/worktree (`.sh`/`.ts`/`.md` → LF + `git add --renormalize`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **`gh auth login` "fantasma" (device flow nunca completa)** | `gh auth status` sempre "not logged in" e o `bench-setup-bun.sh` sai com **exit 4 (API bloqueada)** mesmo depois de rodar o login — o processo do device flow fica vivo aguardando, mas nada acontece                                  | **RESOLVIDO (08/2026):** o device flow do `gh` exige autorização **humana no navegador** — quando o código é digitado em `https://github.com/login/device` dentro da janela (~15 min), o `hosts.yml` **É gravado** e o login completa (confirmado neste ambiente: conta `severinno`, scope `repo`, `gh api` exit 0). O bug só ocorria porque o fluxo rodava num ambiente sem interação — o processo ficava pendurado até o código expirar e o token nunca era gravado. Evidência da investigação original (3 ocasiões + polling de ~40 min): `hosts.yml` **ausente** (o arquivo só é criado quando a autorização completa), repo **privado** (API 404 sem token), `GH_TOKEN`/`GITHUB_TOKEN` **vazios**. **Lição para futuros devs:** `gh auth login` **DEVE ser completado NO ambiente do worktree com autorização humana** — abrir `https://github.com/login/device`, digitar o código exibido pelo CLI e autorizar a conta com acesso ao repo (`repo,workflow`). O fluxo não completa sozinho, não herda auth de outro checkout/worktree, e o código expira em ~15 min (reiniciar com código novo se passar disso). O `bench-setup-bun.sh --dry-run` valida o auth antes de gastar um run — ver o passo 1 do [fluxo de medição](#medição-real-do-setup-bun-no-ci-scriptsbench-setup-bunsh). **Pós-auth:** o one-liner de medição (`gh run view --jq`) foi validado num run real do `bench-setup-bun` (run 30765242263 — um run de FALHA num commit pré-fix; só prova o MECANISMO de captura de timing, não o ganho ~1-2s) — mas o `mutation-coord-update` ainda não tem run real porque o `seed-guards.yml` não está na branch default. |
 
 #### Evidência empírica (log real do act — bug do setup-bun)
 

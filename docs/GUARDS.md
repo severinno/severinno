@@ -112,8 +112,11 @@ abaixo). O step do mutation test roda no CI com bun install WARM (cache real do
 GitHub), então a I/O não é o gargalo; a expectativa é o payload ficar no mesmo
 patamar do local (dezenas de segundos, não minutos).
 
-⚠️ Timing REAL do GitHub Actions não medido aqui (gh sem auth neste ambiente — ver
-"auth fantasma" em Bugs conhecidos); o act é o proxy local, no padrão do README. O
+⚠️ Timing REAL do GitHub Actions não medido aqui — o `gh` está autenticado (auth
+fantasma RESOLVIDO em 08/2026, ver Bugs conhecidos no README), mas o
+`seed-guards.yml` não existe na branch default (`release/v0.4.0` — nunca
+mergeado), então o job nunca rodou no CI real (zero runs); o act é o proxy
+local, no padrão do README. O
 número confiável é o **payload do mutation test no container: 4m37.6s** (o step
 `Run mutation test` completou `✅ Success` com os 5 cenários; o job só foi morto
 depois, no Post Cache emulado). No CI real, com cache warm e FS nativo, o payload
