@@ -27,10 +27,7 @@ import {
 import { ptBR } from "date-fns/locale"
 
 import { apiGet } from "@/lib/api"
-import {
-  BOOKING_STATUS_LABELS,
-  type BookingStatus,
-} from "@/lib/constants"
+import { BOOKING_STATUS_LABELS, type BookingStatus } from "@/lib/constants"
 import { formatBRL, formatTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -153,7 +150,7 @@ function CalendarGrid({
 
   return (
     <div>
-      <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="text-muted-foreground grid grid-cols-7 gap-1 text-center text-[10px] font-semibold tracking-wider uppercase">
         {weekDays.map((d) => (
           <div key={d} className="py-1">
             {d}
@@ -174,35 +171,21 @@ function CalendarGrid({
               onClick={() => onSelectDay(day)}
               className={cn(
                 "relative flex aspect-square flex-col items-center justify-center rounded-lg border text-sm transition-colors sm:aspect-[4/3]",
-                inMonth
-                  ? "bg-card"
-                  : "bg-muted/30 text-muted-foreground",
-                isSelected
-                  ? "border-primary ring-2 ring-primary/30"
-                  : "hover:border-primary/40",
+                inMonth ? "bg-card" : "bg-muted/30 text-muted-foreground",
+                isSelected ? "border-primary ring-primary/30 ring-2" : "hover:border-primary/40",
                 isToday && !isSelected && "border-primary",
               )}
             >
-              <span
-                className={cn(
-                  "text-xs font-medium",
-                  isToday && "text-primary",
-                )}
-              >
+              <span className={cn("text-xs font-medium", isToday && "text-primary")}>
                 {format(day, "d")}
               </span>
               {dayBookings.length > 0 && (
                 <span className="absolute bottom-1 flex gap-0.5">
                   {dayBookings.slice(0, 3).map((b, i) => (
-                    <span
-                      key={i}
-                      className={cn("size-1.5 rounded-full", DOT_STYLES[b.status])}
-                    />
+                    <span key={i} className={cn("size-1.5 rounded-full", DOT_STYLES[b.status])} />
                   ))}
                   {dayBookings.length > 3 && (
-                    <span className="text-[8px] leading-none text-muted-foreground">
-                      +
-                    </span>
+                    <span className="text-muted-foreground text-[8px] leading-none">+</span>
                   )}
                 </span>
               )}
@@ -210,7 +193,7 @@ function CalendarGrid({
           )
         })}
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
+      <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-3 text-[10px]">
         <span className="flex items-center gap-1">
           <span className="size-2 rounded-full bg-emerald-500" /> Confirmado
         </span>
@@ -236,31 +219,28 @@ function DayList({ bookings }: { bookings: Booking[] }) {
   if (bookings.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-6 text-center">
-        <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-full">
           <CalendarDays className="size-5" />
         </div>
-        <p className="text-sm text-muted-foreground">
-          Nenhum agendamento neste dia.
-        </p>
+        <p className="text-muted-foreground text-sm">Nenhum agendamento neste dia.</p>
       </div>
     )
   }
   const sorted = [...bookings].sort(
-    (a, b) =>
-      new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
+    (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime(),
   )
   return (
     <ul className="grid gap-2">
       {sorted.map((b) => (
         <li
           key={b.id}
-          className="flex items-center gap-3 rounded-xl border bg-card p-3 transition-colors hover:bg-accent/40"
+          className="bg-card hover:bg-accent/40 flex items-center gap-3 rounded-xl border p-3 transition-colors"
         >
-          <div className="flex w-12 shrink-0 flex-col items-center justify-center rounded-md bg-primary/10 py-1 text-primary">
-            <span className="text-sm font-bold tabular-nums leading-none">
+          <div className="bg-primary/10 text-primary flex w-12 shrink-0 flex-col items-center justify-center rounded-md py-1">
+            <span className="text-sm leading-none font-bold tabular-nums">
               {formatTime(b.scheduledAt).slice(0, 2)}h
             </span>
-            <span className="text-[10px] tabular-nums leading-none opacity-80">
+            <span className="text-[10px] leading-none tabular-nums opacity-80">
               {formatTime(b.scheduledAt).slice(3, 5)}
             </span>
           </div>
@@ -268,28 +248,24 @@ function DayList({ bookings }: { bookings: Booking[] }) {
             {b.client.avatarUrl ? (
               <AvatarImage src={b.client.avatarUrl} alt={b.client.name} />
             ) : null}
-            <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xs">
               {initials(b.client.name)}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium leading-tight">
-                {b.client.name}
-              </p>
+              <p className="text-sm leading-tight font-medium">{b.client.name}</p>
               <StatusBadge status={b.status} />
             </div>
-            <p className="truncate text-xs text-muted-foreground">
-              {b.service.title}
-            </p>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+            <p className="text-muted-foreground truncate text-xs">{b.service.title}</p>
+            <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
               <span className="flex items-center gap-1">
                 <MapPin className="size-3" />
                 <span className="truncate">{b.address}</span>
               </span>
             </div>
           </div>
-          <p className="shrink-0 text-sm font-semibold tabular-nums text-primary">
+          <p className="text-primary shrink-0 text-sm font-semibold tabular-nums">
             {formatBRL(b.amount)}
           </p>
         </li>
@@ -337,9 +313,7 @@ export function ProviderAgenda() {
   }, [bookings, range])
 
   const dayBookings = React.useMemo(() => {
-    return bookings.filter((b) =>
-      isSameDay(new Date(b.scheduledAt), selectedDay),
-    )
+    return bookings.filter((b) => isSameDay(new Date(b.scheduledAt), selectedDay))
   }, [bookings, selectedDay])
 
   return (
@@ -416,9 +390,7 @@ export function ProviderAgenda() {
         <Card className="py-0">
           <CardHeader className="border-b py-3">
             <CardTitle className="text-sm">
-              {range === "today"
-                ? "Agendamentos de hoje"
-                : "Agendamentos da semana"}
+              {range === "today" ? "Agendamentos de hoje" : "Agendamentos da semana"}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-3">

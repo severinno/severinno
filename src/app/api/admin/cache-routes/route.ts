@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError, cacheControlPrivate } from "@/lib/api-server"
-import {
-  CACHED_ROUTES,
-  TOTAL_COUNT,
-  PUBLIC_COUNT,
-  PRIVATE_COUNT,
-} from "@/lib/cache-manifest"
+import { CACHED_ROUTES, TOTAL_COUNT, PUBLIC_COUNT, PRIVATE_COUNT } from "@/lib/cache-manifest"
 
 /**
  * Static manifest of all cache-controlled API routes.
@@ -95,15 +90,11 @@ function routeManifestBase(path: string): { notes: string[] } {
       }
     case "/api/services":
       return {
-        notes: [
-          "s-maxage (120s) longer than max-age (30s) for CDN resilience.",
-        ],
+        notes: ["s-maxage (120s) longer than max-age (30s) for CDN resilience."],
       }
     case "/api/reviews/recent":
       return {
-        notes: [
-          "s-maxage=300 (5 min) — reviews change slowly, CDN can serve stale copies.",
-        ],
+        notes: ["s-maxage=300 (5 min) — reviews change slowly, CDN can serve stale copies."],
       }
     case "/api/stats/public":
       return {

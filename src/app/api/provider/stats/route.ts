@@ -37,7 +37,11 @@ export async function GET() {
     ] = await Promise.all([
       db.booking.count({ where: { providerId: userId } }),
       db.booking.count({
-        where: { providerId: userId, scheduledAt: { gte: todayStart }, status: { not: "CANCELLED" } },
+        where: {
+          providerId: userId,
+          scheduledAt: { gte: todayStart },
+          status: { not: "CANCELLED" },
+        },
       }),
       db.booking.count({
         where: { providerId: userId, scheduledAt: { gte: weekAgo }, status: { not: "CANCELLED" } },
@@ -52,7 +56,11 @@ export async function GET() {
         _sum: { amount: true },
       }),
       db.booking.aggregate({
-        where: { providerId: userId, paymentStatus: "PAID", scheduledAt: { gte: monthStart, lte: monthEnd } },
+        where: {
+          providerId: userId,
+          paymentStatus: "PAID",
+          scheduledAt: { gte: monthStart, lte: monthEnd },
+        },
         _sum: { amount: true },
       }),
       db.booking.aggregate({

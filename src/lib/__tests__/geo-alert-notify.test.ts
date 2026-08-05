@@ -432,11 +432,11 @@ describe("notifyGeoAlert — edge cases", () => {
     await notifyGeoAlert(payload)
 
     // Sentry receives context spread into extra
-    expect(mockCaptureMessage).toHaveBeenCalledWith(
-      expect.any(String),
-      "warn",
-      { source: "test", metric: "latency", delta: 0.5 },
-    )
+    expect(mockCaptureMessage).toHaveBeenCalledWith(expect.any(String), "warn", {
+      source: "test",
+      metric: "latency",
+      delta: 0.5,
+    })
   })
 
   it("logs info when push succeeds", async () => {

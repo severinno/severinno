@@ -44,7 +44,10 @@ export async function sendWhatsApp(payload: WhatsAppPayload): Promise<void> {
     })
     phone = user?.whatsapp ?? null
   } catch (err) {
-    logger.error({ err: (err as Error).message, userId: payload.userId }, "whatsapp: failed to fetch user phone")
+    logger.error(
+      { err: (err as Error).message, userId: payload.userId },
+      "whatsapp: failed to fetch user phone",
+    )
     return
   }
 
@@ -66,21 +69,18 @@ export async function sendWhatsApp(payload: WhatsAppPayload): Promise<void> {
   const instance = getInstance()
 
   try {
-    const response = await fetch(
-      `${apiUrl}/message/send/${instance}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: apiKey,
-        },
-        body: JSON.stringify({
-          number,
-          text,
-          delay: 1000,
-        }),
+    const response = await fetch(`${apiUrl}/message/send/${instance}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: apiKey,
       },
-    )
+      body: JSON.stringify({
+        number,
+        text,
+        delay: 1000,
+      }),
+    })
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "")
@@ -107,8 +107,6 @@ export async function sendWhatsApp(payload: WhatsAppPayload): Promise<void> {
 /**
  * Send WhatsApp to multiple users in parallel.
  */
-export async function sendWhatsAppToMany(
-  payloads: WhatsAppPayload[],
-): Promise<void> {
+export async function sendWhatsAppToMany(payloads: WhatsAppPayload[]): Promise<void> {
   await Promise.allSettled(payloads.map((p) => sendWhatsApp(p)))
 }

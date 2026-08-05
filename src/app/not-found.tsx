@@ -3,11 +3,11 @@ import { Search, Home } from "lucide-react"
 
 export default function NotFound() {
   return (
-    <div className="relative flex min-h-screen flex-col bg-gradient-to-b from-background via-background to-muted/30">
+    <div className="from-background via-background to-muted/30 relative flex min-h-screen flex-col bg-gradient-to-b">
       {/* ── Decorative blobs ─────────────────────────────────────────── */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-40 -top-40 size-80 rounded-full bg-emerald-500/5 blur-3xl dark:bg-emerald-400/5" />
-        <div className="absolute -bottom-40 -right-40 size-96 rounded-full bg-emerald-500/5 blur-3xl dark:bg-emerald-400/5" />
+        <div className="absolute -top-40 -left-40 size-80 rounded-full bg-emerald-500/5 blur-3xl dark:bg-emerald-400/5" />
+        <div className="absolute -right-40 -bottom-40 size-96 rounded-full bg-emerald-500/5 blur-3xl dark:bg-emerald-400/5" />
       </div>
 
       {/* ── Main content ──────────────────────────────────────────────── */}
@@ -40,11 +40,11 @@ export default function NotFound() {
 
           {/* Description */}
           <p
-            className="mt-3 max-w-sm text-muted-foreground"
+            className="text-muted-foreground mt-3 max-w-sm"
             style={{ animation: "fadeSlideUp 0.5s 0.2s both" }}
           >
-            O conteúdo que você procura não existe ou foi removido. Verifique o
-            link ou busque por profissionais na página inicial.
+            O conteúdo que você procura não existe ou foi removido. Verifique o link ou busque por
+            profissionais na página inicial.
           </p>
 
           {/* Action buttons */}
@@ -62,7 +62,7 @@ export default function NotFound() {
 
             <Link
               href="/busca"
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-card px-5 text-sm font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.97]"
+              className="border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground inline-flex h-11 items-center gap-2 rounded-xl border px-5 text-sm font-medium transition-all active:scale-[0.97]"
             >
               <Search className="size-4" />
               Buscar profissionais
@@ -73,12 +73,11 @@ export default function NotFound() {
 
       {/* ── Footer ────────────────────────────────────────────────────── */}
       <footer
-        className="relative border-t bg-muted/20 px-4 py-6"
+        className="bg-muted/20 relative border-t px-4 py-6"
         style={{ animation: "fadeIn 0.5s 0.5s both" }}
       >
-        <p className="text-center text-xs text-muted-foreground/60">
-          &copy; {new Date().getFullYear()} Severinno. Todos os direitos
-          reservados.
+        <p className="text-muted-foreground/60 text-center text-xs">
+          &copy; {new Date().getFullYear()} Severinno. Todos os direitos reservados.
         </p>
       </footer>
 

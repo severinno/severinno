@@ -14,8 +14,7 @@ function getCtx(): AudioContext {
   if (!_ctx) {
     const Ctor =
       window.AudioContext ??
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     _ctx = new Ctor()
   }
   return _ctx
@@ -135,9 +134,9 @@ export function playReviewSound(options?: { vibrate?: boolean }): void {
     const now = ctx.currentTime
 
     const notes = [
-      { freq: 523.25, time: 0, vol: 0.10 },    // C5
-      { freq: 659.25, time: 0.05, vol: 0.08 },   // E5
-      { freq: 783.99, time: 0.1, vol: 0.06 },    // G5
+      { freq: 523.25, time: 0, vol: 0.1 }, // C5
+      { freq: 659.25, time: 0.05, vol: 0.08 }, // E5
+      { freq: 783.99, time: 0.1, vol: 0.06 }, // G5
     ]
 
     for (const { freq, time, vol } of notes) {
@@ -174,10 +173,10 @@ export function playWelcomeSound(options?: { vibrate?: boolean }): void {
     const now = ctx.currentTime
 
     const notes = [
-      { freq: 261.63, time: 0, vol: 0.08 },     // C4
-      { freq: 329.63, time: 0.08, vol: 0.07 },   // E4
-      { freq: 392.00, time: 0.16, vol: 0.06 },   // G4
-      { freq: 523.25, time: 0.28, vol: 0.08 },   // C5
+      { freq: 261.63, time: 0, vol: 0.08 }, // C4
+      { freq: 329.63, time: 0.08, vol: 0.07 }, // E4
+      { freq: 392.0, time: 0.16, vol: 0.06 }, // G4
+      { freq: 523.25, time: 0.28, vol: 0.08 }, // C5
     ]
 
     for (const { freq, time, vol } of notes) {

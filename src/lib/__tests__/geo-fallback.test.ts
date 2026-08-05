@@ -52,9 +52,13 @@ function makeProvider(overrides: Record<string, unknown> = {}) {
 
 const MOCK_PROVIDER_SP = makeProvider()
 const MOCK_PROVIDER_RJ = makeProvider({
-  lat: -22.9068, lng: -43.1729,
-  street: "Avenida Atlântica", district: "Copacabana",
-  city: "Rio de Janeiro", state: "RJ", cep: "22070-001",
+  lat: -22.9068,
+  lng: -43.1729,
+  street: "Avenida Atlântica",
+  district: "Copacabana",
+  city: "Rio de Janeiro",
+  state: "RJ",
+  cep: "22070-001",
 })
 
 // ===========================================================================
@@ -115,7 +119,9 @@ describe("geocodeSearch — fallback local DB (geocodeSearchLocal)", () => {
           role: "PROVIDER",
           active: true,
           OR: expect.arrayContaining([
-            expect.objectContaining({ city: { contains: "Fallback Limit Query Param", mode: "insensitive" } }),
+            expect.objectContaining({
+              city: { contains: "Fallback Limit Query Param", mode: "insensitive" },
+            }),
           ]),
         }),
         take: 3,
@@ -154,22 +160,22 @@ describe("geocodeSearch — fallback local DB (geocodeSearchLocal)", () => {
   })
 
   it("passes limit to DB and returns up to limit results", async () => {
-    const items = Array.from({ length: 3 }, (_, i) => makeProvider({
-      lat: -23.55 + i * 0.01,
-      lng: -46.63 + i * 0.01,
-      street: `Rua Limit ${i}`,
-      district: `Bairro ${i}`,
-      cep: `88888-80${i}`,
-    }))
+    const items = Array.from({ length: 3 }, (_, i) =>
+      makeProvider({
+        lat: -23.55 + i * 0.01,
+        lng: -46.63 + i * 0.01,
+        street: `Rua Limit ${i}`,
+        district: `Bairro ${i}`,
+        cep: `88888-80${i}`,
+      }),
+    )
     mockDb.user.findMany.mockResolvedValue(items)
     const { geocodeSearch } = await import("../geo")
     const results = await geocodeSearch("Fallback Limit Pass Test", 3)
 
     expect(results).toHaveLength(3)
     expect(results[0].street).toBe("Rua Limit 0")
-    expect(mockDb.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 3 }),
-    )
+    expect(mockDb.user.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3 }))
   })
 })
 
@@ -329,8 +335,20 @@ describe("reverseGeocode — fallback local DB (reverseGeocodeLocal)", () => {
   })
 
   it("selects nearest provider using Haversine distance", async () => {
-    const NEAR = makeProvider({ lat: -23.55, lng: -46.63, street: "Perto", district: "Centro", cep: "01001-000" })
-    const FAR = makeProvider({ lat: -23.56, lng: -46.64, street: "Longe", district: "Vila Mariana", cep: "04001-000" })
+    const NEAR = makeProvider({
+      lat: -23.55,
+      lng: -46.63,
+      street: "Perto",
+      district: "Centro",
+      cep: "01001-000",
+    })
+    const FAR = makeProvider({
+      lat: -23.56,
+      lng: -46.64,
+      street: "Longe",
+      district: "Vila Mariana",
+      cep: "04001-000",
+    })
     mockDb.user.findMany.mockResolvedValue([FAR, NEAR])
 
     const { reverseGeocode } = await import("../geo")
@@ -373,7 +391,10 @@ describe("reverseGeocode — fallback local DB (reverseGeocodeLocal)", () => {
     const PARTIAL = makeProvider({
       lat: null as unknown as number,
       lng: null as unknown as number,
-      street: "Sem Coordenadas", city: "Nowhere", state: "XX", cep: null,
+      street: "Sem Coordenadas",
+      city: "Nowhere",
+      state: "XX",
+      cep: null,
     })
     mockDb.user.findMany.mockResolvedValue([PARTIAL, MOCK_PROVIDER_SP])
 

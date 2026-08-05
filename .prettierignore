@@ -8,3 +8,19 @@ coverage
 *.png
 *.jpg
 *.webp
+*.gif
+*.ico
+
+# Artefatos gerados / runtime — nunca formatar
+lhci-reports
+tool-results
+secrets
+download
+upload
+agent-ctx
+*.pid
+*.err
+dev.err
+dev2.err
+output.txt
+verify-screenshot.png

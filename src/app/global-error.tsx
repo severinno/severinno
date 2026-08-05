@@ -218,15 +218,12 @@ export default function GlobalError({
 
           <h1>Erro interno</h1>
           <p>
-            Ocorreu um erro inesperado. Nossa equipe já foi notificada e está
-            trabalhando na correção.
+            Ocorreu um erro inesperado. Nossa equipe já foi notificada e está trabalhando na
+            correção.
           </p>
 
           <div className="actions">
-            <button
-              className="btn-primary"
-              onClick={() => reset()}
-            >
+            <button className="btn-primary" onClick={() => reset()}>
               <svg
                 width="16"
                 height="16"
@@ -251,11 +248,7 @@ export default function GlobalError({
             </p>
           )}
 
-          {!error.digest && (
-            <p className="footer">
-              &copy; {new Date().getFullYear()} Severinno
-            </p>
-          )}
+          {!error.digest && <p className="footer">&copy; {new Date().getFullYear()} Severinno</p>}
         </div>
       </body>
     </html>

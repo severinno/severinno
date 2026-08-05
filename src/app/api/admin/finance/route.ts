@@ -49,9 +49,7 @@ export async function GET(request: Request) {
         break
     }
 
-    const paymentWhere = dateFilter
-      ? { createdAt: { gte: dateFilter } }
-      : {}
+    const paymentWhere = dateFilter ? { createdAt: { gte: dateFilter } } : {}
 
     // Build date ranges for MRR calculation (3 complete months before/after)
     const nowMonth = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -68,7 +66,16 @@ export async function GET(request: Request) {
     })
     const commissionPercent = Number(commissionSetting?.value ?? 10)
 
-    const [summary, monthlyRaw, methodRaw, transactions, total, mrrCurrent, mrrPrevious, providerRaw] = await Promise.all([
+    const [
+      summary,
+      monthlyRaw,
+      methodRaw,
+      transactions,
+      total,
+      mrrCurrent,
+      mrrPrevious,
+      providerRaw,
+    ] = await Promise.all([
       // Summary: aggregate by payment status
       db.payment.groupBy({
         by: ["status"],
@@ -152,7 +159,11 @@ export async function GET(request: Request) {
     ])
 
     // Build summary object
-    const summaryByStatus = { PAID: { total: 0, count: 0 }, PENDING: { total: 0, count: 0 }, REFUNDED: { total: 0, count: 0 } }
+    const summaryByStatus = {
+      PAID: { total: 0, count: 0 },
+      PENDING: { total: 0, count: 0 },
+      REFUNDED: { total: 0, count: 0 },
+    }
     for (const row of summary) {
       const s = row.status as keyof typeof summaryByStatus
       if (s in summaryByStatus) {
@@ -181,13 +192,28 @@ export async function GET(request: Request) {
     const mrrGrowth = previousMrr > 0 ? ((mrrValue - previousMrr) / previousMrr) * 100 : 0
 
     // Monthly MRR data (per-month breakdown for chart)
-    function buildMonthlyMrr(payments: Array<{ amount: number; createdAt: Date }>): Array<{ month: string; label: string; total: number }> {
+    function buildMonthlyMrr(
+      payments: Array<{ amount: number; createdAt: Date }>,
+    ): Array<{ month: string; label: string; total: number }> {
       const map = new Map<string, number>()
       for (const p of payments) {
         const key = `${p.createdAt.getFullYear()}-${String(p.createdAt.getMonth() + 1).padStart(2, "0")}`
         map.set(key, (map.get(key) ?? 0) + p.amount)
       }
-      const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+      const monthNames = [
+        "Jan",
+        "Fev",
+        "Mar",
+        "Abr",
+        "Mai",
+        "Jun",
+        "Jul",
+        "Ago",
+        "Set",
+        "Out",
+        "Nov",
+        "Dez",
+      ]
       const result: Array<{ month: string; label: string; total: number }> = []
       const iter = new Date(mrrPreviousStart)
       while (iter < mrrCurrentEnd) {
@@ -228,7 +254,20 @@ export async function GET(request: Request) {
       const iter = new Date(start)
       while (iter <= end) {
         const key = `${iter.getFullYear()}-${String(iter.getMonth() + 1).padStart(2, "0")}`
-        const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        const monthNames = [
+          "Jan",
+          "Fev",
+          "Mar",
+          "Abr",
+          "Mai",
+          "Jun",
+          "Jul",
+          "Ago",
+          "Set",
+          "Out",
+          "Nov",
+          "Dez",
+        ]
         const data = monthlyMap.get(key) ?? { total: 0, count: 0 }
         monthlyRevenue.push({
           month: key,
@@ -242,7 +281,20 @@ export async function GET(request: Request) {
       // All time: show all months with data
       for (const [key, data] of monthlyMap) {
         const [, m] = key.split("-")
-        const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+        const monthNames = [
+          "Jan",
+          "Fev",
+          "Mar",
+          "Abr",
+          "Mai",
+          "Jun",
+          "Jul",
+          "Ago",
+          "Set",
+          "Out",
+          "Nov",
+          "Dez",
+        ]
         monthlyRevenue.push({
           month: key,
           label: `${monthNames[parseInt(m!) - 1]!}/${key.slice(2, 4)}`,

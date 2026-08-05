@@ -51,7 +51,11 @@ export async function GET(request: Request) {
             scheduledAt: scheduledDate,
           }),
         }).catch((err) => {
-          captureError(err, { bookingId: booking.id, clientId: booking.client.id, context: "cron reminder email" })
+          captureError(err, {
+            bookingId: booking.id,
+            clientId: booking.client.id,
+            context: "cron reminder email",
+          })
         })
       }
 
@@ -60,7 +64,11 @@ export async function GET(request: Request) {
         "Lembrete de agendamento",
         `Você tem um agendamento com ${booking.provider.name} amanhã!`,
       ).catch((err) => {
-        captureError(err, { bookingId: booking.id, clientId: booking.client.id, context: "cron reminder push" })
+        captureError(err, {
+          bookingId: booking.id,
+          clientId: booking.client.id,
+          context: "cron reminder push",
+        })
       })
 
       await db.booking.update({

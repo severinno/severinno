@@ -18,12 +18,7 @@
  */
 
 import * as React from "react"
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  useQueries,
-} from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query"
 import {
   CalendarDays,
   CheckCircle2,
@@ -59,11 +54,7 @@ import { useViewStore } from "@/store/view"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,9 +70,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  EmptyState,
-} from "@/components/shared/dashboard-shell"
+import { EmptyState } from "@/components/shared/dashboard-shell"
 import { ReviewDialog } from "@/components/client/review-dialog"
 import { BookingTimeline } from "@/components/shared/flow-timeline"
 import {
@@ -228,10 +217,7 @@ export function ClientBookings() {
 
   // Filtered + paginated list
   const visible = React.useMemo(() => {
-    const filtered =
-      tab === "ALL"
-        ? allBookings
-        : allBookings.filter((b) => b.status === tab)
+    const filtered = tab === "ALL" ? allBookings : allBookings.filter((b) => b.status === tab)
     // Sort: upcoming first (asc by date) for active statuses, recent first
     // (desc) for terminal statuses.
     const isActive = (s: BookingStatus) =>
@@ -252,8 +238,7 @@ export function ClientBookings() {
   const pageItems = visible.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const cancelMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiPatch(`/api/bookings/${id}`, { status: "CANCELLED" }),
+    mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "CANCELLED" }),
     onSuccess: () => {
       toast.success("Agendamento cancelado.")
       qc.invalidateQueries({ queryKey: ["bookings"] })
@@ -266,8 +251,7 @@ export function ClientBookings() {
   })
 
   const completeMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiPatch(`/api/bookings/${id}`, { status: "COMPLETED" }),
+    mutationFn: (id: string) => apiPatch(`/api/bookings/${id}`, { status: "COMPLETED" }),
     onSuccess: () => {
       toast.success("Serviço marcado como concluído. Já pode avaliar!")
       qc.invalidateQueries({ queryKey: ["bookings"] })
@@ -284,11 +268,7 @@ export function ClientBookings() {
         title="Agendamentos"
         subtitle="Acompanhe e gerencie seus serviços agendados."
         action={
-          <Button
-            variant="outline"
-            onClick={() => navigate("vitrine")}
-            className="h-10 gap-2"
-          >
+          <Button variant="outline" onClick={() => navigate("vitrine")} className="h-10 gap-2">
             <MapPin className="size-4" />
             Buscar prestadores
           </Button>
@@ -297,23 +277,17 @@ export function ClientBookings() {
 
       {/* Status tabs with counts */}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex w-full flex-wrap justify-start gap-1 h-auto p-1 sm:w-auto">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-auto">
           {TABS.map((t) => {
             const count = counts[t.key] ?? 0
             const active = tab === t.key
             return (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="h-8 flex-shrink-0 gap-1.5"
-              >
+              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
                 {t.label}
                 <span
                   className={cn(
                     "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground",
+                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
@@ -325,7 +299,7 @@ export function ClientBookings() {
       </Tabs>
 
       {/* Result count */}
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         {isLoading
           ? "Carregando…"
           : total === 0
@@ -335,28 +309,21 @@ export function ClientBookings() {
 
       {/* Content */}
       {isLoading ? (
-        <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+        <div className="text-muted-foreground flex items-center justify-center gap-2 p-10 text-sm">
           <Loader2 className="size-5 animate-spin" />
           Carregando agendamentos…
         </div>
       ) : pageItems.length === 0 ? (
         <EmptyState
           icon={CalendarDays}
-          title={
-            tab === "ALL"
-              ? "Nenhum agendamento ainda"
-              : "Nenhum agendamento com este status"
-          }
+          title={tab === "ALL" ? "Nenhum agendamento ainda" : "Nenhum agendamento com este status"}
           description={
             tab === "ALL"
               ? "Você ainda não agendou nenhum serviço. Explore prestadores verificados e agende seu primeiro serviço."
               : "Não há agendamentos com este status no momento. Tente outra categoria."
           }
           action={
-            <Button
-              onClick={() => navigate("vitrine")}
-              className="mt-2 gap-2"
-            >
+            <Button onClick={() => navigate("vitrine")} className="mt-2 gap-2">
               <MapPin className="size-4" />
               Buscar prestadores
             </Button>
@@ -372,13 +339,9 @@ export function ClientBookings() {
               onCancel={() => setCancelBooking(b)}
               onComplete={() => completeMutation.mutate(b.id)}
               onReview={() => setReviewBooking(b)}
-              onMessage={() =>
-                navigate("client.messages", { with: b.provider.id })
-              }
+              onMessage={() => navigate("client.messages", { with: b.provider.id })}
               onViewProvider={() => openProvider(b.provider.id)}
-              onTrack={() =>
-                window.open(`/tracking/${b.id}`, "_blank")
-              }
+              onTrack={() => window.open(`/tracking/${b.id}`, "_blank")}
               isCompleting={completeMutation.isPending}
             />
           ))}
@@ -388,7 +351,7 @@ export function ClientBookings() {
       {/* Pagination */}
       {total > PAGE_SIZE ? (
         <div className="flex flex-col items-center justify-between gap-2 border-t pt-3 sm:flex-row">
-          <p className="text-xs text-muted-foreground tabular-nums">
+          <p className="text-muted-foreground text-xs tabular-nums">
             Página {page} de {totalPages} · {total} agendamentos
           </p>
           <div className="flex items-center gap-1">
@@ -402,7 +365,7 @@ export function ClientBookings() {
               <ChevronLeft className="size-4" />
               Anterior
             </Button>
-            <span className="px-2 text-xs text-muted-foreground tabular-nums">
+            <span className="text-muted-foreground px-2 text-xs tabular-nums">
               {page} / {totalPages}
             </span>
             <Button
@@ -427,10 +390,7 @@ export function ClientBookings() {
       />
 
       {/* Cancel confirm */}
-      <Dialog
-        open={!!cancelBooking}
-        onOpenChange={(o) => !o && setCancelBooking(null)}
-      >
+      <Dialog open={!!cancelBooking} onOpenChange={(o) => !o && setCancelBooking(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Cancelar agendamento?</DialogTitle>
@@ -451,9 +411,7 @@ export function ClientBookings() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() =>
-                cancelBooking && cancelMutation.mutate(cancelBooking.id)
-              }
+              onClick={() => cancelBooking && cancelMutation.mutate(cancelBooking.id)}
               disabled={cancelMutation.isPending}
               className="gap-2"
             >
@@ -469,10 +427,7 @@ export function ClientBookings() {
       </Dialog>
 
       {/* Details dialog */}
-      <BookingDetailsDialog
-        bookingId={detailsId}
-        onOpenChange={(o) => !o && setDetailsId(null)}
-      />
+      <BookingDetailsDialog bookingId={detailsId} onOpenChange={(o) => !o && setDetailsId(null)} />
     </div>
   )
 }
@@ -506,8 +461,7 @@ function BookingCard({
   const initials = providerInitials(provider.name)
 
   const status = booking.status as BookingStatus
-  const canCancel =
-    status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
+  const canCancel = status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
   const canComplete = status === "CONFIRMED" || status === "IN_PROGRESS"
   const canTrack = status === "IN_PROGRESS"
   const hasReview = (booking.reviews?.length ?? 0) > 0
@@ -520,14 +474,14 @@ function BookingCard({
           <button
             type="button"
             onClick={onViewProvider}
-            className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="focus-visible:ring-ring shrink-0 rounded-full outline-none focus-visible:ring-2"
             aria-label={`Ver perfil de ${provider.name}`}
           >
             <Avatar className="size-11 border">
               {provider.avatarUrl ? (
                 <AvatarImage src={provider.avatarUrl} alt={provider.name} />
               ) : null}
-              <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
                 {initials || "P"}
               </AvatarFallback>
             </Avatar>
@@ -538,14 +492,11 @@ function BookingCard({
               <button
                 type="button"
                 onClick={onViewProvider}
-                className="truncate text-sm font-semibold hover:text-primary focus-visible:underline"
+                className="hover:text-primary truncate text-sm font-semibold focus-visible:underline"
               >
                 {provider.name}
               </button>
-              <StatusBadge
-                tone={bookingTone(status)}
-                icon={bookingIcon(status)}
-              >
+              <StatusBadge tone={bookingTone(status)} icon={bookingIcon(status)}>
                 {BOOKING_STATUS_LABELS[status]}
               </StatusBadge>
               {hasReview ? (
@@ -554,30 +505,24 @@ function BookingCard({
                 </StatusBadge>
               ) : null}
             </div>
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+            <p className="text-muted-foreground mt-0.5 truncate text-sm">
               {booking.service.title}
-              <span className="ml-1 text-xs">
-                ({SERVICE_UNIT_SHORT[booking.service.unit]})
-              </span>
+              <span className="ml-1 text-xs">({SERVICE_UNIT_SHORT[booking.service.unit]})</span>
             </p>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1 font-medium text-foreground/80 tabular-nums">
-                <CalendarDays className="size-3.5 text-primary" />
+            <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span className="text-foreground/80 inline-flex items-center gap-1 font-medium tabular-nums">
+                <CalendarDays className="text-primary size-3.5" />
                 {formatDateTime(booking.scheduledAt)}
               </span>
               <span className="inline-flex items-center gap-1">
                 <MapPin className="size-3.5" />
-                <span className="max-w-[14rem] truncate">
-                  {booking.address}
-                </span>
+                <span className="max-w-[14rem] truncate">{booking.address}</span>
               </span>
             </div>
           </div>
 
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <span className="text-sm font-semibold tabular-nums">
-              {formatBRL(booking.amount)}
-            </span>
+            <span className="text-sm font-semibold tabular-nums">{formatBRL(booking.amount)}</span>
             <StatusBadge
               tone={paymentTone(booking.paymentStatus as PaymentStatus)}
               icon={paymentIcon(booking.paymentStatus as PaymentStatus)}
@@ -590,12 +535,7 @@ function BookingCard({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-9 shrink-0"
-                aria-label="Ações"
-              >
+              <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="Ações">
                 <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -620,10 +560,7 @@ function BookingCard({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {canComplete ? (
-                <DropdownMenuItem
-                  onSelect={onComplete}
-                  disabled={isCompleting}
-                >
+                <DropdownMenuItem onSelect={onComplete} disabled={isCompleting}>
                   <CheckCircle2 className="size-4 text-emerald-600" />
                   Marcar como concluído
                 </DropdownMenuItem>
@@ -635,24 +572,17 @@ function BookingCard({
                 </DropdownMenuItem>
               ) : null}
               {canCancel ? (
-                <DropdownMenuItem
-                  variant="destructive"
-                  onSelect={onCancel}
-                >
+                <DropdownMenuItem variant="destructive" onSelect={onCancel}>
                   <XCircle className="size-4" />
                   Cancelar agendamento
                 </DropdownMenuItem>
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>          {/* Quick action buttons (visible on mobile too) */}
+        </div>{" "}
+        {/* Quick action buttons (visible on mobile too) */}
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onViewDetails}
-            className="h-9 gap-1.5"
-          >
+          <Button variant="outline" size="sm" onClick={onViewDetails} className="h-9 gap-1.5">
             <Eye className="size-4" />
             Detalhes
           </Button>
@@ -668,12 +598,7 @@ function BookingCard({
             </Button>
           ) : null}
           {canComplete ? (
-            <Button
-              size="sm"
-              onClick={onComplete}
-              disabled={isCompleting}
-              className="h-9 gap-1.5"
-            >
+            <Button size="sm" onClick={onComplete} disabled={isCompleting} className="h-9 gap-1.5">
               {isCompleting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
@@ -683,11 +608,7 @@ function BookingCard({
             </Button>
           ) : null}
           {canReview ? (
-            <Button
-              size="sm"
-              onClick={onReview}
-              className="h-9 gap-1.5"
-            >
+            <Button size="sm" onClick={onReview} className="h-9 gap-1.5">
               <Star className="size-4" />
               Avaliar
             </Button>
@@ -697,7 +618,7 @@ function BookingCard({
               variant="ghost"
               size="sm"
               onClick={onCancel}
-              className="h-9 gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive h-9 gap-1.5"
             >
               <XCircle className="size-4" />
               Cancelar
@@ -735,31 +656,23 @@ function BookingDetailsDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Detalhes do agendamento</DialogTitle>
-          <DialogDescription>
-            Informações completas sobre este serviço.
-          </DialogDescription>
+          <DialogDescription>Informações completas sobre este serviço.</DialogDescription>
         </DialogHeader>
 
         {query.isLoading ? (
-          <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+          <div className="text-muted-foreground flex items-center justify-center gap-2 p-6 text-sm">
             <Loader2 className="size-4 animate-spin" />
             Carregando…
           </div>
         ) : !b ? (
-          <p className="text-sm text-muted-foreground">
-            Agendamento não encontrado.
-          </p>
+          <p className="text-muted-foreground text-sm">Agendamento não encontrado.</p>
         ) : (
           <div className="space-y-3 text-sm">
             <Row label="Prestador" value={b.provider.name} />
             <Row label="Serviço" value={b.service.title} />
             <Row
               label="Agendado para"
-              value={
-                <span className="tabular-nums">
-                  {formatDateTime(b.scheduledAt)}
-                </span>
-              }
+              value={<span className="tabular-nums">{formatDateTime(b.scheduledAt)}</span>}
             />
             <Row label="Endereço" value={b.address} />
             <Row label="CEP" value={<span className="tabular-nums">{b.cep}</span>} />
@@ -778,9 +691,7 @@ function BookingDetailsDialog({
               label="Pagamento"
               value={
                 <span className="inline-flex flex-wrap items-center gap-1.5">
-                  <span>
-                    {PAYMENT_METHOD_LABELS[b.paymentMethod as PaymentMethod]}
-                  </span>
+                  <span>{PAYMENT_METHOD_LABELS[b.paymentMethod as PaymentMethod]}</span>
                   <span className="text-muted-foreground">·</span>
                   <StatusBadge
                     tone={paymentTone(b.paymentStatus as PaymentStatus)}
@@ -794,11 +705,7 @@ function BookingDetailsDialog({
             />
             <Row
               label="Valor"
-              value={
-                <span className="font-semibold tabular-nums">
-                  {formatBRL(b.amount)}
-                </span>
-              }
+              value={<span className="font-semibold tabular-nums">{formatBRL(b.amount)}</span>}
             />
             {b.notes ? <Row label="Observações" value={b.notes} /> : null}
 
@@ -819,17 +726,11 @@ function BookingDetailsDialog({
   )
 }
 
-function Row({
-  label,
-  value,
-}: {
-  label: string
-  value: React.ReactNode
-}) {
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="grid grid-cols-3 gap-2 border-b pb-2 last:border-b-0 last:pb-0">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="col-span-2 break-words text-sm">{value}</span>
+      <span className="text-muted-foreground text-xs">{label}</span>
+      <span className="col-span-2 text-sm break-words">{value}</span>
     </div>
   )
 }

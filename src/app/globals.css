@@ -223,7 +223,9 @@
 
 /* Enlarge the footer avatar from size-9 → size-11 when collapsed so the
    user's face stays visible and recognizable. */
-[data-slot="sidebar"][data-state="collapsed"] [data-sidebar="footer"] [class*="size-9"]:first-child {
+[data-slot="sidebar"][data-state="collapsed"]
+  [data-sidebar="footer"]
+  [class*="size-9"]:first-child {
   width: 2.75rem;
   height: 2.75rem;
 }
@@ -233,7 +235,10 @@
 [data-slot="sidebar"] [data-sidebar="menu-button"],
 [data-slot="sidebar"] [data-sidebar="header"] svg,
 [data-slot="sidebar"] [data-sidebar="header"] > div > span {
-  transition: width 200ms ease, height 200ms ease, min-height 200ms ease;
+  transition:
+    width 200ms ease,
+    height 200ms ease,
+    min-height 200ms ease;
 }
 
 /* ===========================================================================
@@ -242,8 +247,15 @@
 
 /* Subtle pulse for the logo pin sparkle badge */
 @keyframes topbar-sparkle-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(0.85); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.85);
+  }
 }
 
 header .topbar-sparkle {
@@ -252,9 +264,15 @@ header .topbar-sparkle {
 
 /* Search bar glassmorphism glow on focus */
 @keyframes search-glow {
-  0% { box-shadow: 0 0 0 0 oklch(0.55 0.15 160 / 0); }
-  50% { box-shadow: 0 0 16px 2px oklch(0.55 0.15 160 / 0.08); }
-  100% { box-shadow: 0 0 0 0 oklch(0.55 0.15 160 / 0); }
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.55 0.15 160 / 0);
+  }
+  50% {
+    box-shadow: 0 0 16px 2px oklch(0.55 0.15 160 / 0.08);
+  }
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.55 0.15 160 / 0);
+  }
 }
 
 header input:focus-visible {
@@ -263,13 +281,27 @@ header input:focus-visible {
 
 /* Notification bell swing animation */
 @keyframes bell-swing {
-  0% { transform: rotate(0deg); }
-  15% { transform: rotate(14deg); }
-  30% { transform: rotate(-12deg); }
-  45% { transform: rotate(8deg); }
-  60% { transform: rotate(-4deg); }
-  75% { transform: rotate(2deg); }
-  100% { transform: rotate(0deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(14deg);
+  }
+  30% {
+    transform: rotate(-12deg);
+  }
+  45% {
+    transform: rotate(8deg);
+  }
+  60% {
+    transform: rotate(-4deg);
+  }
+  75% {
+    transform: rotate(2deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
 }
 
 header button[aria-label="Notificações"]:hover svg {
@@ -279,21 +311,38 @@ header button[aria-label="Notificações"]:hover svg {
 
 /* Category pill — active indicator underline animation */
 @keyframes pill-slide-in {
-  from { transform: scaleX(0); opacity: 0; }
-  to { transform: scaleX(1); opacity: 1; }
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
 }
 
 /* Unread notification dot pulse */
 @keyframes dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Online status indicator pulse */
 @keyframes online-pulse {
-  0% { box-shadow: 0 0 0 0 oklch(0.72 0.19 155 / 0.5); }
-  70% { box-shadow: 0 0 0 6px oklch(0.72 0.19 155 / 0); }
-  100% { box-shadow: 0 0 0 0 oklch(0.72 0.19 155 / 0); }
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.72 0.19 155 / 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px oklch(0.72 0.19 155 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.72 0.19 155 / 0);
+  }
 }
 
 header .online-indicator {
@@ -319,8 +368,14 @@ header {
    AI Chat Widget — typing dots and smooth animations
    =========================================================================== */
 @keyframes chat-slide-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .chat-message-enter {
@@ -331,8 +386,14 @@ header {
    Smooth section reveal — for intersection observer animations
    =========================================================================== */
 @keyframes reveal-up {
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .reveal-up {

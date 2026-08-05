@@ -36,9 +36,10 @@ export async function GET(request: Request) {
 
     // Validate type filter
     const validTypes = ["paid", "pending", "refunded", "withdrawn"] as const
-    const filterType = typeFilter && validTypes.includes(typeFilter as typeof validTypes[number])
-      ? (typeFilter as typeof validTypes[number])
-      : null
+    const filterType =
+      typeFilter && validTypes.includes(typeFilter as (typeof validTypes)[number])
+        ? (typeFilter as (typeof validTypes)[number])
+        : null
 
     // Parse date range
     const startDate = dateStart ? new Date(dateStart) : null
@@ -56,9 +57,7 @@ export async function GET(request: Request) {
     )
 
     // Apply type filter if specified
-    let filtered = filterType
-      ? all.filter((t) => t.status === filterType)
-      : all
+    let filtered = filterType ? all.filter((t) => t.status === filterType) : all
 
     // Apply date range filter if specified (inclusive)
     if (startDate) {

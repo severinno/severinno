@@ -41,9 +41,7 @@ export const USER_PUBLIC_SELECT = {
   updatedAt: true,
 } as const
 
-export function publicUser<T extends { passwordHash?: string }>(
-  user: T,
-): Omit<T, "passwordHash"> {
+export function publicUser<T extends { passwordHash?: string }>(user: T): Omit<T, "passwordHash"> {
   const { passwordHash: _ignored, ...rest } = user
   return rest
 }
@@ -64,8 +62,7 @@ export class HttpError extends Error {
 export const badRequest = (msg = "Requisição inválida") => new HttpError(400, msg)
 export const unauthorized = (msg = "Não autorizado") => new HttpError(401, msg)
 export const forbidden = (msg = "Acesso proibido") => new HttpError(403, msg)
-export const notFound = (msg = "Recurso não encontrado") =>
-  new HttpError(404, msg)
+export const notFound = (msg = "Recurso não encontrado") => new HttpError(404, msg)
 export const conflict = (msg = "Conflito de estado") => new HttpError(409, msg)
 
 /**
@@ -75,16 +72,10 @@ export const conflict = (msg = "Conflito de estado") => new HttpError(409, msg)
  */
 export function handleError(e: unknown) {
   if (e instanceof HttpError) {
-    return NextResponse.json(
-      { error: e.message },
-      { status: e.status, headers: e.headers },
-    )
+    return NextResponse.json({ error: e.message }, { status: e.status, headers: e.headers })
   }
   if (e instanceof ZodError) {
-    return NextResponse.json(
-      { error: "Dados inválidos", details: e.issues },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: "Dados inválidos", details: e.issues }, { status: 400 })
   }
   if (e instanceof Error) {
     if (e.message === "UNAUTHORIZED") {
@@ -95,10 +86,7 @@ export function handleError(e: unknown) {
     }
   }
   logger.error({ err: e }, "unhandled api error")
-  return NextResponse.json(
-    { error: "Erro interno do servidor" },
-    { status: 500 },
-  )
+  return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
 }
 
 // ---------------------------------------------------------------------------
@@ -106,10 +94,7 @@ export function handleError(e: unknown) {
 // ---------------------------------------------------------------------------
 export function parsePagination(searchParams: URLSearchParams) {
   const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1)
-  const limit = Math.min(
-    50,
-    Math.max(1, Number(searchParams.get("limit") ?? "20") || 20),
-  )
+  const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit") ?? "20") || 20))
   return { page, limit, skip: (page - 1) * limit, take: limit }
 }
 
@@ -118,9 +103,7 @@ export function parsePagination(searchParams: URLSearchParams) {
 // Used by provider/service filters that need to match the whole sub-tree.
 // Cached in Redis (10min TTL) since the category tree rarely changes.
 // ---------------------------------------------------------------------------
-export async function getCategoryDescendants(
-  categoryId: string,
-): Promise<string[]> {
+export async function getCategoryDescendants(categoryId: string): Promise<string[]> {
   return withCache(
     `cat:desc:${categoryId}`,
     async () => {
@@ -158,7 +141,6 @@ export async function invalidateCategoryCache(): Promise<void> {
   await cacheInvalidate("cat:desc:*")
 }
 
-
 // ---------------------------------------------------------------------------
 // Cache-Control helpers � set public Cache-Control headers on responses
 // ---------------------------------------------------------------------------
@@ -188,10 +170,7 @@ export function cacheControlPublic(
   staleWhileRevalidate?: number,
 ): NextResponse {
   const swr = staleWhileRevalidate ?? maxAge
-  response.headers.set(
-    "Cache-Control",
-    `public, max-age=${maxAge}, s-maxage=${swr}`,
-  )
+  response.headers.set("Cache-Control", `public, max-age=${maxAge}, s-maxage=${swr}`)
   // Set Vary to prevent CDN cache collisions for encoding, format, and origin variants
   response.headers.set("Vary", "Accept-Encoding, Accept, Origin")
   return response
@@ -217,14 +196,8 @@ export function cacheControlPublic(
  * @param response  The response to modify.
  * @param maxAge    Max age in seconds (e.g. 30, 60, 120).
  */
-export function cacheControlPrivate(
-  response: NextResponse,
-  maxAge: number,
-): NextResponse {
-  response.headers.set(
-    "Cache-Control",
-    `private, max-age=${maxAge}`,
-  )
+export function cacheControlPrivate(response: NextResponse, maxAge: number): NextResponse {
+  response.headers.set("Cache-Control", `private, max-age=${maxAge}`)
   // Vary on Cookie separates cache per user session. Accept-Encoding and
   // Accept are inherited from the public variant for encoding/format safety.
   response.headers.set("Vary", "Cookie, Accept-Encoding, Accept")
@@ -238,9 +211,7 @@ export function cacheControlPrivate(
 /**
  * Queue a category for search reindexing.
  */
-export async function syncCategorySearch(category: {
-  id: string
-}): Promise<void> {
+export async function syncCategorySearch(category: { id: string }): Promise<void> {
   await db.$queryRawUnsafe(
     `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
      VALUES ($1, $2, $3, NOW())`,
@@ -253,9 +224,7 @@ export async function syncCategorySearch(category: {
 /**
  * Queue a service for search reindexing.
  */
-export async function syncServiceSearch(service: {
-  id: string
-}): Promise<void> {
+export async function syncServiceSearch(service: { id: string }): Promise<void> {
   await db.$queryRawUnsafe(
     `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
      VALUES ($1, $2, $3, NOW())`,
@@ -268,9 +237,7 @@ export async function syncServiceSearch(service: {
 /**
  * Queue a provider for search reindexing.
  */
-export async function syncProviderSearch(provider: {
-  id: string
-}): Promise<void> {
+export async function syncProviderSearch(provider: { id: string }): Promise<void> {
   await db.$queryRawUnsafe(
     `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
      VALUES ($1, $2, $3, NOW())`,

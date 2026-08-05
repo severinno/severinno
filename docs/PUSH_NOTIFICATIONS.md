@@ -14,7 +14,7 @@
 │  (sw.js)     │     │  │ sendPush...   │ │     │  │ (payloads)  │  │
 └──────┬───────┘     │  └──────────────┘ │     │  └────────────┘  │
        │             │  ┌──────────────┐ │     └──────────────────┘
-       │ Web Push    │  │ event-hub.ts │ │     
+       │ Web Push    │  │ event-hub.ts │ │
        │ (encrypted) │  │ fireEvent()  │ │     ┌──────────────────┐
        ▼             │  └──────────────┘ │     │  PostgreSQL       │
 ┌──────────────┐     │  ┌──────────────┐ │     │  ┌────────────┐  │
@@ -40,14 +40,14 @@ O service worker registra o usuário via Push API e envia a subscription para o 
 
 **Modelo:** `PushSubscription` (armazenado em PostgreSQL)
 
-| Campo | Tipo | Descrição |
-|-------|------|-----------|
-| `id` | String | CUID |
-| `userId` | String | FK → User |
-| `endpoint` | String | URL única do push service (FCM/ Mozilla) |
-| `p256dh` | String | Chave pública para criptografia |
-| `auth` | String | Secreto de autenticação |
-| `userAgent` | String? | Navegador do usuário |
+| Campo       | Tipo    | Descrição                                |
+| ----------- | ------- | ---------------------------------------- |
+| `id`        | String  | CUID                                     |
+| `userId`    | String  | FK → User                                |
+| `endpoint`  | String  | URL única do push service (FCM/ Mozilla) |
+| `p256dh`    | String  | Chave pública para criptografia          |
+| `auth`      | String  | Secreto de autenticação                  |
+| `userAgent` | String? | Navegador do usuário                     |
 
 ### 2. Envio Imediato (sendPushNotification)
 
@@ -72,10 +72,10 @@ sendPushNotification(userId, title, body, url?, opts?)
 **Retry com Exponential Backoff:**
 
 | Tentativa | Delay (base) | Delay máximo |
-|:---------:|:------------:|:------------:|
-| 1 | 500ms | 4s |
-| 2 | 1000ms | 4s |
-| 3 | 2000ms | 4s |
+| :-------: | :----------: | :----------: |
+|     1     |    500ms     |      4s      |
+|     2     |    1000ms    |      4s      |
+|     3     |    2000ms    |      4s      |
 
 Cada delay inclui **jitter** (random 0-500ms) para evitar thundering herd.
 
@@ -99,20 +99,21 @@ Quando o payload excede **3072 bytes** (limite seguro de 4KB com overhead de cri
 
 **Arquivo:** `src/lib/push-store.ts`
 
-| Storage | Prioridade | TTL |
-|---------|:----------:|:---:|
-| Redis | 1ª | 5 min |
-| In-memory Map | Fallback | 5 min |
+| Storage       | Prioridade |  TTL  |
+| ------------- | :--------: | :---: |
+| Redis         |     1ª     | 5 min |
+| In-memory Map |  Fallback  | 5 min |
 
 ### 5. Botões de Ação (Action Buttons)
 
 Tipos de notificação com ações pré-definidas:
 
-| Tipo | Ações | Descrição |
-|------|-------|-----------|
+| Tipo              | Ações                   | Descrição                   |
+| ----------------- | ----------------------- | --------------------------- |
 | `BOOKING_CREATED` | ✅ Aceitar / ❌ Recusar | Provider responde a booking |
 
 O service worker captura o clique em ação e redireciona para:
+
 ```
 POST /api/push/action { action, notificationId }
 ```
@@ -120,6 +121,7 @@ POST /api/push/action { action, notificationId }
 ### 6. Notificações Agendadas
 
 **Rotas Admin:**
+
 - `POST /api/admin/push/send` — Envio manual imediato
 - `POST /api/admin/push/schedule` — Agendar para futuro
 - `GET /api/admin/push/history` — Histórico de envios
@@ -128,12 +130,12 @@ POST /api/push/action { action, notificationId }
 
 **Modelo:** `ScheduledPushNotification`
 
-| Campo | Tipo | Descrição |
-|-------|------|-----------|
-| `scheduledAt` | DateTime | Quando enviar |
-| `status` | String | PENDING \| SENT \| CANCELLED \| FAILED |
-| `userIds` | JSON | Lista de destinatários |
-| `type` | String | ADMIN_MANUAL \| RECURRING \| WEBHOOK |
+| Campo         | Tipo     | Descrição                              |
+| ------------- | -------- | -------------------------------------- |
+| `scheduledAt` | DateTime | Quando enviar                          |
+| `status`      | String   | PENDING \| SENT \| CANCELLED \| FAILED |
+| `userIds`     | JSON     | Lista de destinatários                 |
+| `type`        | String   | ADMIN_MANUAL \| RECURRING \| WEBHOOK   |
 
 **Cron job:** `/api/cron/push-scheduled` (executado a cada minuto via CRON_SECRET)
 
@@ -141,11 +143,11 @@ POST /api/push/action { action, notificationId }
 
 **Modelo:** `RecurringPushSchedule`
 
-| Frequência | Configuração |
-|:----------:|--------------|
-| `daily` | `time: "09:00"` — todo dia no horário |
-| `weekly` | `time: "09:00", dayOfWeek: 1` — toda segunda |
-| `monthly` | `time: "09:00", dayOfMonth: 15` — dia 15 |
+| Frequência | Configuração                                 |
+| :--------: | -------------------------------------------- |
+|  `daily`   | `time: "09:00"` — todo dia no horário        |
+|  `weekly`  | `time: "09:00", dayOfWeek: 1` — toda segunda |
+| `monthly`  | `time: "09:00", dayOfMonth: 15` — dia 15     |
 
 O cron job verifica a cada minuto se alguma regra recorrente deve disparar hoje.
 
@@ -167,18 +169,18 @@ EventHub.emit("booking.created", {
 
 **Eventos suportados:**
 
-| Evento | Template padrão | Destinatário |
-|--------|----------------|--------------|
-| `booking.created` | "{{clientName}} agendou {{serviceName}}" | Provider |
-| `booking.confirmed` | "Agendamento confirmado!" | Cliente |
-| `booking.cancelled` | "Agendamento cancelado" | Provider/Cliente |
-| `booking.completed` | "Serviço concluído! Avalie" | Cliente |
-| `review.created` | "{{clientName}} avaliou: ★★★★★" | Provider |
-| `quote.received` | "{{clientName}} solicitou orçamento" | Provider |
-| `quote.responded` | "{{providerName}} respondeu" | Cliente |
-| `payment.confirmed` | "Pagamento confirmado!" | Provider |
-| `message.sent` | "Nova mensagem de {{senderName}}" | Destinatário |
-| `provider.registered` | "Novo prestador: {{providerName}}" | Admin |
+| Evento                | Template padrão                          | Destinatário     |
+| --------------------- | ---------------------------------------- | ---------------- |
+| `booking.created`     | "{{clientName}} agendou {{serviceName}}" | Provider         |
+| `booking.confirmed`   | "Agendamento confirmado!"                | Cliente          |
+| `booking.cancelled`   | "Agendamento cancelado"                  | Provider/Cliente |
+| `booking.completed`   | "Serviço concluído! Avalie"              | Cliente          |
+| `review.created`      | "{{clientName}} avaliou: ★★★★★"          | Provider         |
+| `quote.received`      | "{{clientName}} solicitou orçamento"     | Provider         |
+| `quote.responded`     | "{{providerName}} respondeu"             | Cliente          |
+| `payment.confirmed`   | "Pagamento confirmado!"                  | Provider         |
+| `message.sent`        | "Nova mensagem de {{senderName}}"        | Destinatário     |
+| `provider.registered` | "Novo prestador: {{providerName}}"       | Admin            |
 
 **Modelo:** `EventWebhook` — regras configuráveis no admin panel
 
@@ -188,13 +190,13 @@ EventHub.emit("booking.created", {
 
 **Modelo:** `PushAnalytics`
 
-| Métrica | Descrição |
-|---------|-----------|
-| Sent | Notificação enviada ao push service |
-| Delivered | Recebida pelo dispositivo |
-| Clicked | Usuário clicou na notificação |
-| Bounced | Subscription expirada (410/404) |
-| Failed | Erro após todas as tentativas |
+| Métrica   | Descrição                           |
+| --------- | ----------------------------------- |
+| Sent      | Notificação enviada ao push service |
+| Delivered | Recebida pelo dispositivo           |
+| Clicked   | Usuário clicou na notificação       |
+| Bounced   | Subscription expirada (410/404)     |
+| Failed    | Erro após todas as tentativas       |
 
 **Dashboard Admin:** `/admin?view=admin.push`
 
@@ -202,12 +204,12 @@ EventHub.emit("booking.created", {
 
 **Modelo:** `PushSendLog` — registro de auditoria para cada operação de envio
 
-| action | Descrição |
-|--------|-----------|
-| `manual_send` | Envio manual pelo admin |
+| action            | Descrição                     |
+| ----------------- | ----------------------------- |
+| `manual_send`     | Envio manual pelo admin       |
 | `manual_schedule` | Agendamento criado pelo admin |
-| `scheduled_send` | Disparo automático agendado |
-| `recurring_send` | Disparo recorrente |
+| `scheduled_send`  | Disparo automático agendado   |
+| `recurring_send`  | Disparo recorrente            |
 
 ## Configuração
 
@@ -238,14 +240,14 @@ O service worker é servido em `/sw.js` e registrado no `layout.tsx`:
 
 ## Fallbacks
 
-| Cenário | Comportamento |
-|---------|---------------|
-| Redis indisponível | Payload store → memória. Rate limit → in-memory token bucket |
-| RabbitMQ indisponível | Envio direto sem fila (directPushCount no log) |
-| Push service retorna 410 | Subscription removida automaticamente |
-| Push service retorna 5xx | Retry com backoff (max 3 tentativas) |
-| Usuário sem subscriptions | Silenciosamente ignorado (sem erro) |
-| Payload > 4KB | Signal-only pattern com store server-side |
+| Cenário                   | Comportamento                                                |
+| ------------------------- | ------------------------------------------------------------ |
+| Redis indisponível        | Payload store → memória. Rate limit → in-memory token bucket |
+| RabbitMQ indisponível     | Envio direto sem fila (directPushCount no log)               |
+| Push service retorna 410  | Subscription removida automaticamente                        |
+| Push service retorna 5xx  | Retry com backoff (max 3 tentativas)                         |
+| Usuário sem subscriptions | Silenciosamente ignorado (sem erro)                          |
+| Payload > 4KB             | Signal-only pattern com store server-side                    |
 
 ## Testes
 

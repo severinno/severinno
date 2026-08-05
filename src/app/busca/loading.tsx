@@ -3,10 +3,10 @@ import { LoadingShell, StaggerContainer, StaggerItem, S } from "@/app/loading-sh
 export default function Loading() {
   return (
     <LoadingShell>
-      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/30">
+      <div className="from-background via-background to-muted/30 min-h-screen bg-gradient-to-b">
         {/* ── Hero skeleton ────────────────────────────────────────── */}
-        <div className="border-b bg-gradient-to-b from-emerald-50/50 to-background dark:from-emerald-950/10">
-          <div className="mx-auto max-w-5xl px-4 pb-8 pt-12 sm:pb-10 sm:pt-16">
+        <div className="to-background border-b bg-gradient-to-b from-emerald-50/50 dark:from-emerald-950/10">
+          <div className="mx-auto max-w-5xl px-4 pt-12 pb-8 sm:pt-16 sm:pb-10">
             <StaggerContainer stagger={0.06} className="text-center">
               <StaggerItem y={12} duration={0.35}>
                 <S className="mx-auto mb-2 h-8 w-64 sm:h-9 sm:w-72" />
@@ -49,7 +49,7 @@ export default function Loading() {
           <StaggerContainer stagger={0.06} className="grid gap-4 sm:grid-cols-2">
             {Array.from({ length: 6 }).map((_, i) => (
               <StaggerItem key={i} y={12} duration={0.35}>
-                <div className="rounded-xl border border-border/50 bg-card p-4">
+                <div className="border-border/50 bg-card rounded-xl border p-4">
                   <div className="flex gap-4">
                     <S className="size-14 shrink-0 rounded-xl" />
                     <div className="flex-1 space-y-2.5">

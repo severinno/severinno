@@ -49,26 +49,27 @@ unavailable, and the app falls back to direct DB queries.
 
 ### Cache Patterns
 
-| Pattern | Function | Use Case |
-|---------|----------|----------|
-| Cache-aside | `withCache(key, fn, ttl)` | Generic: return cached value or compute + store |
-| Get | `cacheGet<T>(key)` | Manual read |
-| Set | `cacheSet(key, value, ttl?)` | Manual write |
-| Invalidate | `cacheInvalidate(pattern)` | Glob-pattern delete (e.g. `cat:desc:*`) |
+| Pattern     | Function                     | Use Case                                        |
+| ----------- | ---------------------------- | ----------------------------------------------- |
+| Cache-aside | `withCache(key, fn, ttl)`    | Generic: return cached value or compute + store |
+| Get         | `cacheGet<T>(key)`           | Manual read                                     |
+| Set         | `cacheSet(key, value, ttl?)` | Manual write                                    |
+| Invalidate  | `cacheInvalidate(pattern)`   | Glob-pattern delete (e.g. `cat:desc:*`)         |
 
 ### Cache Keys and TTLs
 
-| Key Pattern | Description | TTL | Source File |
-|-------------|-------------|:---:|-------------|
-| `proximity:{lat}:{lng}:{radiusKm}` | PostGIS provider proximity query | **60s** | `src/lib/postgis.ts` |
-| `distance:{uid1}:{uid2}` | Distance between two users | **60s** | `src/lib/postgis.ts` |
-| `postgis:available` | PostGIS extension presence check | **300s (5m)** | `src/lib/postgis.ts` |
-| `cat:desc:{categoryId}` | Category tree descendants | **600s (10m)** | `src/lib/api-server.ts` |
-| `user:active:{userId}` | User active status (auth guard) | **300s (5m)** | `src/lib/auth.ts` |
+| Key Pattern                        | Description                      |      TTL       | Source File             |
+| ---------------------------------- | -------------------------------- | :------------: | ----------------------- |
+| `proximity:{lat}:{lng}:{radiusKm}` | PostGIS provider proximity query |    **60s**     | `src/lib/postgis.ts`    |
+| `distance:{uid1}:{uid2}`           | Distance between two users       |    **60s**     | `src/lib/postgis.ts`    |
+| `postgis:available`                | PostGIS extension presence check | **300s (5m)**  | `src/lib/postgis.ts`    |
+| `cat:desc:{categoryId}`            | Category tree descendants        | **600s (10m)** | `src/lib/api-server.ts` |
+| `user:active:{userId}`             | User active status (auth guard)  | **300s (5m)**  | `src/lib/auth.ts`       |
 
 ### Graceful Degradation
 
 If Redis is down or unreachable:
+
 - `cacheGet` returns `null` (cache miss)
 - `cacheSet` / `cacheInvalidate` silently no-op
 - The app continues to work — responses are computed fresh from PostgreSQL
@@ -81,6 +82,7 @@ If Redis is down or unreachable:
 **File:** `src/lib/api-server.ts`
 
 HTTP headers control **what can be cached, for how long, and by whom**:
+
 - **CDN/proxy caches** observe `s-maxage`
 - **Browser caches** observe `max-age`
 - Both use `Vary` to separate cached copies by request properties
@@ -97,12 +99,13 @@ Cache-Control: public, max-age=60, s-maxage=60
 Vary: Accept-Encoding, Accept, Origin
 ```
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `maxAge` | — | `max-age` in seconds (browser cache) |
+| Parameter              | Default    | Description                                                          |
+| ---------------------- | ---------- | -------------------------------------------------------------------- |
+| `maxAge`               | —          | `max-age` in seconds (browser cache)                                 |
 | `staleWhileRevalidate` | `= maxAge` | `s-maxage` in seconds (CDN cache). If omitted, `s-maxage` = `maxAge` |
 
 **Vary values:**
+
 - `Accept-Encoding` — separate copies for gzip vs uncompressed
 - `Accept` — separate copies for JSON vs future content types
 - `Origin` — separate copies per CORS origin (future-proofing)
@@ -119,17 +122,18 @@ Vary: Cookie, Accept-Encoding, Accept
 ```
 
 **Key differences from public:**
+
 - No `s-maxage` — shared caches must not store private responses
 - `Vary: Cookie` — different users get separate cached copies by session cookie
 
 ### Common Rules
 
-| Rule | Applies To | Reason |
-|------|------------|--------|
-| Never apply cache headers to error responses | All routes | `handleError` paths are excluded from caching |
-| Always apply cache headers on 200, even if data is empty | Public routes | CDN should cache "empty" to avoid DDoS on DB |
-| Apply cache headers only on 200 for personalized routes | Private routes | 404 errors go through `handleError` — no cache |
-| `s-maxage` >= `max-age` for public routes | All public routes | CDN should be at least as permissive as browser |
+| Rule                                                     | Applies To        | Reason                                          |
+| -------------------------------------------------------- | ----------------- | ----------------------------------------------- |
+| Never apply cache headers to error responses             | All routes        | `handleError` paths are excluded from caching   |
+| Always apply cache headers on 200, even if data is empty | Public routes     | CDN should cache "empty" to avoid DDoS on DB    |
+| Apply cache headers only on 200 for personalized routes  | Private routes    | 404 errors go through `handleError` — no cache  |
+| `s-maxage` >= `max-age` for public routes                | All public routes | CDN should be at least as permissive as browser |
 
 ---
 
@@ -141,10 +145,10 @@ React Query provides client-side caching with:
 
 ```typescript
 // Defaults (set in QueryClient configuration):
-staleTime: 30_000        // 30s — data is fresh (no refetch)
-gcTime:  300_000         // 5min — unused data stays in cache
-retry: 2                 // retry twice on failure
-refetchOnWindowFocus: true  // auto-refresh when user returns to tab
+staleTime: 30_000 // 30s — data is fresh (no refetch)
+gcTime: 300_000 // 5min — unused data stays in cache
+retry: 2 // retry twice on failure
+refetchOnWindowFocus: true // auto-refresh when user returns to tab
 ```
 
 Individual queries can override these defaults as needed.
@@ -171,40 +175,40 @@ max-age=60                  staleTime: 30s
 
 ### Public Routes (10) — `cacheControlPublic`
 
-| Route | max-age | s-maxage | Vary |
-|-------|:-------:|:--------:|:----:|
-| `GET /api/categories` | **120s** | **600s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/geo/cep` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/geo/reverse` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/providers` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/reviews/recent` | **60s** | **300s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/search` | **30s** | **30s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/search/providers` | **30s** | **30s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/search/services` | **30s** | **30s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/services` | **30s** | **120s** | `Accept-Encoding, Accept, Origin` |
-| `GET /api/stats/public` | **30s** | **120s** | `Accept-Encoding, Accept, Origin` |
+| Route                       | max-age  | s-maxage |               Vary                |
+| --------------------------- | :------: | :------: | :-------------------------------: |
+| `GET /api/categories`       | **120s** | **600s** | `Accept-Encoding, Accept, Origin` |
+| `GET /api/geo/cep`          | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
+| `GET /api/geo/reverse`      | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
+| `GET /api/providers`        | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
+| `GET /api/reviews/recent`   | **60s**  | **300s** | `Accept-Encoding, Accept, Origin` |
+| `GET /api/search`           | **30s**  | **30s**  | `Accept-Encoding, Accept, Origin` |
+| `GET /api/search/providers` | **30s**  | **30s**  | `Accept-Encoding, Accept, Origin` |
+| `GET /api/search/services`  | **30s**  | **30s**  | `Accept-Encoding, Accept, Origin` |
+| `GET /api/services`         | **30s**  | **120s** | `Accept-Encoding, Accept, Origin` |
+| `GET /api/stats/public`     | **30s**  | **120s** | `Accept-Encoding, Accept, Origin` |
 
 ### Private Route (1) — `cacheControlPrivate`
 
-| Route | max-age | s-maxage | Vary |
-|-------|:-------:|:--------:|:----:|
-| `GET /api/providers/[id]` | **60s** | — | `Cookie, Accept-Encoding, Accept` |
+| Route                     | max-age | s-maxage |               Vary                |
+| ------------------------- | :-----: | :------: | :-------------------------------: |
+| `GET /api/providers/[id]` | **60s** |    —     | `Cookie, Accept-Encoding, Accept` |
 
 ### Rationale Per Route
 
-| Route | Why This TTL | Notes |
-|-------|--------------|-------|
-| `/api/categories` | Category tree changes rarely (admins only). Highest TTL. | 404 on empty tree — no cache |
-| `/api/geo/cep` | CEP → address is stable. Conservative 60s. | 404 on unknown CEP — no cache |
-| `/api/geo/reverse` | lat/lng → address via external API. 60s absorbs repeated lookups. | 400/502 errors — no cache |
-| `/api/providers` | Provider listing with geo + filters. 60s is a good balance. | 400 on `sort=distance` without coords — no cache |
-| `/api/providers/[id]` | **Private** — contains `favorited` flag per user. Vary:Cookie separates sessions. | 404 — no cache |
-| `/api/reviews/recent` | Reviews change slowly. s-maxage=300s for CDN resilience. | — |
-| `/api/search` | Text search results. Short TTL for freshness. | 400 on missing `q` — no cache |
-| `/api/search/providers` | Geolocated provider search. Same TTL as `/api/search`. | All errors via `handleError` |
-| `/api/search/services` | Textual service search. Short TTL. | 400 on missing `q` — no cache |
-| `/api/services` | Service listing. s-maxage=120s longer than max-age=30s for CDN resilience. | — |
-| `/api/stats/public` | Aggregate counters (providers, bookings, etc.). s-maxage=120s. | Fallback returns zeros on error (no cache) |
+| Route                   | Why This TTL                                                                      | Notes                                            |
+| ----------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `/api/categories`       | Category tree changes rarely (admins only). Highest TTL.                          | 404 on empty tree — no cache                     |
+| `/api/geo/cep`          | CEP → address is stable. Conservative 60s.                                        | 404 on unknown CEP — no cache                    |
+| `/api/geo/reverse`      | lat/lng → address via external API. 60s absorbs repeated lookups.                 | 400/502 errors — no cache                        |
+| `/api/providers`        | Provider listing with geo + filters. 60s is a good balance.                       | 400 on `sort=distance` without coords — no cache |
+| `/api/providers/[id]`   | **Private** — contains `favorited` flag per user. Vary:Cookie separates sessions. | 404 — no cache                                   |
+| `/api/reviews/recent`   | Reviews change slowly. s-maxage=300s for CDN resilience.                          | —                                                |
+| `/api/search`           | Text search results. Short TTL for freshness.                                     | 400 on missing `q` — no cache                    |
+| `/api/search/providers` | Geolocated provider search. Same TTL as `/api/search`.                            | All errors via `handleError`                     |
+| `/api/search/services`  | Textual service search. Short TTL.                                                | 400 on missing `q` — no cache                    |
+| `/api/services`         | Service listing. s-maxage=120s longer than max-age=30s for CDN resilience.        | —                                                |
+| `/api/stats/public`     | Aggregate counters (providers, bookings, etc.). s-maxage=120s.                    | Fallback returns zeros on error (no cache)       |
 
 ---
 
@@ -219,11 +223,11 @@ so the cache stores separate copies for each variant.
 Vary: Accept-Encoding, Accept, Origin
 ```
 
-| Vary Value | Why |
-|------------|-----|
+| Vary Value        | Why                                                                                                                                                   |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Accept-Encoding` | Separate cached copies for compressed vs uncompressed responses. Without this, a CDN might serve a gzip response to a client that doesn't support it. |
-| `Accept` | Separate copies for different content types (`application/json` vs `text/html`). Safety net for future content negotiation. |
-| `Origin` | Separate copies per CORS origin. Future-proofing — if the API is consumed by multiple origins, cached responses won't leak across them. |
+| `Accept`          | Separate copies for different content types (`application/json` vs `text/html`). Safety net for future content negotiation.                           |
+| `Origin`          | Separate copies per CORS origin. Future-proofing — if the API is consumed by multiple origins, cached responses won't leak across them.               |
 
 ### Private Route
 
@@ -231,11 +235,11 @@ Vary: Accept-Encoding, Accept, Origin
 Vary: Cookie, Accept-Encoding, Accept
 ```
 
-| Vary Value | Why |
-|------------|-----|
-| `Cookie` | **Key difference from public.** Different users have different session cookies, so each gets their own cached copy. Prevents user A from seeing user B's `favorited` state. |
-| `Accept-Encoding` | Same as public — compression safety. |
-| `Accept` | Same as public — content type safety. |
+| Vary Value        | Why                                                                                                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Cookie`          | **Key difference from public.** Different users have different session cookies, so each gets their own cached copy. Prevents user A from seeing user B's `favorited` state. |
+| `Accept-Encoding` | Same as public — compression safety.                                                                                                                                        |
+| `Accept`          | Same as public — content type safety.                                                                                                                                       |
 
 > **Important:** `Vary: Cookie` is not a security boundary — it only separates
 > cache keys in shared caches. The `private` directive in `Cache-Control` is
@@ -271,6 +275,7 @@ return cacheControlPrivate(NextResponse.json(result), 60)
 ```
 
 **Rules:**
+
 - Wrap **only the 200 OK** response path
 - Error paths (400, 404, 500, etc.) go through `handleError` — **never cache errors**
 - Early returns (e.g. validation failures) must stay uncached
@@ -286,9 +291,14 @@ The cache route configuration lives in **two places** that must be kept in sync:
    ```typescript
    const CACHED_ROUTES = [
      // ... existing routes ...
-     { path: "/api/my-route", method: "GET", type: "public",
-       maxAge: 60, sMaxage: 60,
-       vary: "Accept-Encoding, Accept, Origin" },
+     {
+       path: "/api/my-route",
+       method: "GET",
+       type: "public",
+       maxAge: 60,
+       sMaxage: 60,
+       vary: "Accept-Encoding, Accept, Origin",
+     },
    ] as const
    ```
 
@@ -336,12 +346,12 @@ npx tsx scripts/validate-cache-manifest.ts
 
 **What it detects:**
 
-| Issue | Message | Cause |
-|-------|---------|-------|
+| Issue                 | Message                 | Cause                                                                 |
+| --------------------- | ----------------------- | --------------------------------------------------------------------- |
 | Missing from manifest | `MISSING FROM MANIFEST` | Route has `cacheControlPublic`/`Private` but isn't in `CACHED_ROUTES` |
-| Stale manifest entry | `STALE IN MANIFEST` | Route in `CACHED_ROUTES` but no longer uses cache functions |
-| TTL mismatch | `TTL MISMATCH` | `maxAge`/`sMaxage` differ between route handler and manifest |
-| Type mismatch | `TYPE MISMATCH` | `public` vs `private` differs between handler and manifest |
+| Stale manifest entry  | `STALE IN MANIFEST`     | Route in `CACHED_ROUTES` but no longer uses cache functions           |
+| TTL mismatch          | `TTL MISMATCH`          | `maxAge`/`sMaxage` differ between route handler and manifest          |
+| Type mismatch         | `TYPE MISMATCH`         | `public` vs `private` differs between handler and manifest            |
 
 Excluded prefixes (auth-required, mutating, or internal routes) are not
 validated: `/api/admin`, `/api/auth`, `/api/bookings`, `/api/cron`, and
@@ -361,8 +371,7 @@ Trigger: PR/push touching
   - scripts/validate-cache-manifest.ts
   - .github/workflows/e2e-cache.yml
 
-Pipeline:
-  1. Start PostgreSQL (PostGIS) + Redis as service containers
+Pipeline: 1. Start PostgreSQL (PostGIS) + Redis as service containers
   2. Push Prisma schema
   3. ⭐ Validate cache manifest (scripts/validate-cache-manifest.ts) — fast gate
   4. Build + start Next.js (production mode)
@@ -389,16 +398,16 @@ for the full build + E2E pipeline.
 
 ### Test Suites
 
-| Test file | Tests | What it covers |
-|-----------|:-----:|----------------|
-| `scripts/validate-cache-manifest.ts` | — | **Fast gate**: scans 79 route files, cross-references against manifest. Exits 0/1 for CI. |
-| `src/lib/__tests__/api-server.test.ts` | **31** | `cacheControlPublic`, `cacheControlPrivate`, `handleError` function correctness |
-| `src/app/api/__tests__/all-cache-routes.test.ts` | **29** | Manifest integrity (counts, TTLs, Vary), function parameterization, no-cache-on-error edge cases |
-| `src/app/api/__tests__/providers-cache-header.test.ts` | **4** | Route-level: `/api/providers` cache headers present on 200, absent on 400/empty |
-| `src/app/api/__tests__/categories-cache-header.test.ts` | **3** | Route-level: `/api/categories` cache headers with `max-age=120, s-maxage=600` |
-| `e2e/providers-cache.spec.ts` | **9** | E2E via Playwright: CDN headers, repeated-call consistency, edge cache detection |
-| `e2e/all-cache-routes.spec.ts` | **23** | E2E via Playwright: HTTP headers for all 11 cached routes, dynamic ID resolution, auth-skip for blocked routes |
-| **Total** | **99 + fast gate** | |
+| Test file                                               |       Tests        | What it covers                                                                                                 |
+| ------------------------------------------------------- | :----------------: | -------------------------------------------------------------------------------------------------------------- |
+| `scripts/validate-cache-manifest.ts`                    |         —          | **Fast gate**: scans 79 route files, cross-references against manifest. Exits 0/1 for CI.                      |
+| `src/lib/__tests__/api-server.test.ts`                  |       **31**       | `cacheControlPublic`, `cacheControlPrivate`, `handleError` function correctness                                |
+| `src/app/api/__tests__/all-cache-routes.test.ts`        |       **29**       | Manifest integrity (counts, TTLs, Vary), function parameterization, no-cache-on-error edge cases               |
+| `src/app/api/__tests__/providers-cache-header.test.ts`  |       **4**        | Route-level: `/api/providers` cache headers present on 200, absent on 400/empty                                |
+| `src/app/api/__tests__/categories-cache-header.test.ts` |       **3**        | Route-level: `/api/categories` cache headers with `max-age=120, s-maxage=600`                                  |
+| `e2e/providers-cache.spec.ts`                           |       **9**        | E2E via Playwright: CDN headers, repeated-call consistency, edge cache detection                               |
+| `e2e/all-cache-routes.spec.ts`                          |       **23**       | E2E via Playwright: HTTP headers for all 11 cached routes, dynamic ID resolution, auth-skip for blocked routes |
+| **Total**                                               | **99 + fast gate** |                                                                                                                |
 
 ### Monitoring Dashboard
 
@@ -435,11 +444,13 @@ cache route manifest as JSON:
 
 Cache configuration is determined at **compile time** in each route's handler.
 It doesn't change between deploys. A hard-coded manifest is:
+
 - **Simpler** — no runtime scanning of route handlers
 - **Fail-safe** — the type-checked manifest is the source of truth
 - **Self-documenting** — developers read the manifest to understand cache config
 
 The manifest lives in two places:
+
 1. `src/app/api/admin/cache-routes/route.ts` — runtime API for monitoring
 2. `src/app/api/__tests__/all-cache-routes.test.ts` — test-time validation
 
@@ -451,6 +462,7 @@ fail if the counts, TTLs, or Vary headers don't match expectations.
 The `s-maxage` directive controls CDN/proxy cache duration, while `max-age`
 controls browser cache duration. Setting `s-maxage` >= `max-age` ensures the
 CDN is at least as permissive as the browser. This is the recommended pattern:
+
 - Users get fresh data (shorter `max-age`)
 - CDN absorbs more traffic (equal or longer `s-maxage`)
 - `stale-while-revalidate` allows CDN to serve stale data while fetching fresh
@@ -474,6 +486,7 @@ later.
 
 The Redis cache layer is a **performance optimization**, not a correctness
 requirement. Short TTLs ensure:
+
 - Stale data is served for at most 60 seconds
 - High-traffic areas (provider searches) avoid repeated PostGIS queries
 - Fast-changing data (user active status, location lookups) stays reasonably fresh
@@ -504,6 +517,7 @@ functions correctly set `Vary: Accept-Encoding, Accept, Origin`, but Next.js
 prepends its own internal headers.
 
 **Impact on tests:**
+
 - **Unit tests (Vitest):** Not affected — they test the function directly,
   bypassing Next.js's runtime pipeline.
 - **E2E tests (Playwright):** Must use `toContain()` instead of `toBe()`
@@ -581,6 +595,7 @@ if b'\\x97' in data:
 ```
 
 **Prevention:**
+
 - Ensure your editor saves files as **UTF-8 without BOM**
 - Configure VS Code to always use UTF-8: `"files.encoding": "utf8"`
 - Avoid pasting rich text (Word, browser) into source code comments —

@@ -17,11 +17,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 // ---------------------------------------------------------------------------
 // SERVICE UNITS
 // ---------------------------------------------------------------------------
-export type ServiceUnit =
-  | "UNIDADE"
-  | "METRO_LINEAR"
-  | "METRO_QUADRADO"
-  | "METRO_CUBICO"
+export type ServiceUnit = "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
 
 export const SERVICE_UNITS: ServiceUnit[] = [
   "UNIDADE",
@@ -47,12 +43,7 @@ export const SERVICE_UNIT_SHORT: Record<ServiceUnit, string> = {
 // ---------------------------------------------------------------------------
 // QUOTE STATUS
 // ---------------------------------------------------------------------------
-export type QuoteStatus =
-  | "PENDING"
-  | "RESPONDED"
-  | "APPROVED"
-  | "REJECTED"
-  | "EXPIRED"
+export type QuoteStatus = "PENDING" | "RESPONDED" | "APPROVED" | "REJECTED" | "EXPIRED"
 
 export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
   PENDING: "Aguardando resposta",
@@ -83,12 +74,7 @@ export const QUOTE_ITEM_STATUS_LABELS: Record<QuoteItemStatus, string> = {
 // ---------------------------------------------------------------------------
 // BOOKING STATUS
 // ---------------------------------------------------------------------------
-export type BookingStatus =
-  | "PENDING"
-  | "CONFIRMED"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "CANCELLED"
+export type BookingStatus = "PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
 
 export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   PENDING: "Pendente",

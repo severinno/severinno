@@ -238,9 +238,7 @@ export interface CreateCachedRadiusCountFnOptions {
  * const result = await findEffectiveRadius(10, countFn)
  * ```
  */
-export function createCachedRadiusCountFn(
-  opts: CreateCachedRadiusCountFnOptions,
-): RadiusCountFn {
+export function createCachedRadiusCountFn(opts: CreateCachedRadiusCountFnOptions): RadiusCountFn {
   const { lat, lng, categoryIds, q, cacheTtl, queryRawUnsafe, withCache, buildWhereClause } = opts
   const ttl = cacheTtl ?? DEFAULT_COUNT_CACHE_TTL
 

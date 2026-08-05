@@ -18,29 +18,15 @@ import {
 } from "lucide-react"
 
 import { apiGet, apiPatch } from "@/lib/api"
-import {
-  playCoinSound,
-  playCompletionSound,
-  playReviewSound,
-  tryVibrate,
-} from "@/lib/sounds"
-import {
-  providerProfileSchema,
-  type ProviderProfileInput,
-} from "@/lib/validators"
+import { playCoinSound, playCompletionSound, playReviewSound, tryVibrate } from "@/lib/sounds"
+import { providerProfileSchema, type ProviderProfileInput } from "@/lib/validators"
 import { useAuthStore } from "@/store/auth"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Form,
   FormControl,
@@ -62,9 +48,33 @@ import { Slider } from "@/components/ui/slider"
 import { Textarea } from "@/components/ui/textarea"
 
 const UF_OPTIONS = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-  "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-  "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
 ]
 
 // ---------------------------------------------------------------------------
@@ -113,24 +123,18 @@ function SinglePhoto({
 
   return (
     <div className="grid gap-1.5">
-      <label className="text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
+      <label className="text-muted-foreground text-xs font-medium">{label}</label>
       <div
         className={
           aspect === "square"
-            ? "relative size-24 overflow-hidden rounded-lg border bg-muted"
-            : "relative h-32 w-full overflow-hidden rounded-lg border bg-muted"
+            ? "bg-muted relative size-24 overflow-hidden rounded-lg border"
+            : "bg-muted relative h-32 w-full overflow-hidden rounded-lg border"
         }
       >
         {value ? (
-          <img
-            src={value}
-            alt={label}
-            className="size-full object-cover"
-          />
+          <img src={value} alt={label} className="size-full object-cover" />
         ) : (
-          <div className="flex size-full items-center justify-center text-muted-foreground">
+          <div className="text-muted-foreground flex size-full items-center justify-center">
             <ImagePlus className="size-6" />
           </div>
         )}
@@ -171,11 +175,7 @@ function SinglePhoto({
         )}
         {value ? "Trocar" : "Enviar"}
       </Button>
-      {max > 1 && (
-        <p className="text-[10px] text-muted-foreground">
-          Aceita até {max} imagens.
-        </p>
-      )}
+      {max > 1 && <p className="text-muted-foreground text-[10px]">Aceita até {max} imagens.</p>}
     </div>
   )
 }
@@ -330,7 +330,7 @@ export function ProviderProfile() {
 
   if (profileQuery.isLoading) {
     return (
-      <div className="flex items-center justify-center py-12 text-muted-foreground">
+      <div className="text-muted-foreground flex items-center justify-center py-12">
         <Loader2 className="mr-2 size-5 animate-spin" /> Carregando perfil…
       </div>
     )
@@ -338,7 +338,7 @@ export function ProviderProfile() {
 
   if (!profile) {
     return (
-      <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+      <div className="text-muted-foreground rounded-xl border border-dashed p-10 text-center text-sm">
         Não foi possível carregar o perfil.
       </div>
     )
@@ -359,14 +359,11 @@ export function ProviderProfile() {
                 />
               )}
               <div className="absolute -bottom-8 left-4 flex items-end gap-3">
-                <Avatar className="size-16 border-4 border-background sm:size-20">
+                <Avatar className="border-background size-16 border-4 sm:size-20">
                   {form.watch("avatarUrl") ? (
-                    <AvatarImage
-                      src={form.watch("avatarUrl") ?? ""}
-                      alt={profile.name}
-                    />
+                    <AvatarImage src={form.watch("avatarUrl") ?? ""} alt={profile.name} />
                   ) : null}
-                  <AvatarFallback className="bg-primary text-lg text-primary-foreground">
+                  <AvatarFallback className="bg-primary text-primary-foreground text-lg">
                     {profile.name
                       ?.split(" ")
                       .slice(0, 2)
@@ -375,9 +372,7 @@ export function ProviderProfile() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="mb-1 flex items-center gap-2">
-                  <p className="text-sm font-semibold text-white drop-shadow">
-                    {profile.name}
-                  </p>
+                  <p className="text-sm font-semibold text-white drop-shadow">{profile.name}</p>
                   {profile.verified && (
                     <Badge className="inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-medium text-emerald-700 shadow">
                       <BadgeCheck className="size-3" /> Verificado
@@ -390,17 +385,13 @@ export function ProviderProfile() {
               <SinglePhoto
                 label="Foto de perfil"
                 value={form.watch("avatarUrl")}
-                onChange={(url) =>
-                  form.setValue("avatarUrl", url ?? "", { shouldDirty: true })
-                }
+                onChange={(url) => form.setValue("avatarUrl", url ?? "", { shouldDirty: true })}
                 aspect="square"
               />
               <SinglePhoto
                 label="Capa do perfil"
                 value={form.watch("coverUrl")}
-                onChange={(url) =>
-                  form.setValue("coverUrl", url ?? "", { shouldDirty: true })
-                }
+                onChange={(url) => form.setValue("coverUrl", url ?? "", { shouldDirty: true })}
                 aspect="wide"
               />
             </div>
@@ -434,9 +425,7 @@ export function ProviderProfile() {
               <div className="grid gap-1.5">
                 <FormLabel>E-mail</FormLabel>
                 <Input value={profile.email} disabled />
-                <p className="text-[10px] text-muted-foreground">
-                  O e-mail não pode ser alterado.
-                </p>
+                <p className="text-muted-foreground text-[10px]">O e-mail não pode ser alterado.</p>
               </div>
               <div className="grid gap-1.5">
                 <FormLabel className="flex items-center gap-1.5">
@@ -448,7 +437,7 @@ export function ProviderProfile() {
                   )}
                 </FormLabel>
                 <Input value={profile.cpfCnpj ?? ""} disabled />
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-muted-foreground text-[10px]">
                   Documento verificado. Não editável.
                 </p>
               </div>
@@ -482,11 +471,7 @@ export function ProviderProfile() {
                   <FormItem>
                     <FormLabel>WhatsApp</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="(11) 99999-9999"
-                        inputMode="tel"
-                        {...field}
-                      />
+                      <Input placeholder="(11) 99999-9999" inputMode="tel" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -499,11 +484,7 @@ export function ProviderProfile() {
                   <FormItem>
                     <FormLabel>Telefone fixo (opcional)</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="(11) 3000-0000"
-                        inputMode="tel"
-                        {...field}
-                      />
+                      <Input placeholder="(11) 3000-0000" inputMode="tel" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -522,13 +503,7 @@ export function ProviderProfile() {
                 Define sua base de atendimento no mapa.
               </CardDescription>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={useGPS}
-              className="gap-1.5"
-            >
+            <Button type="button" variant="outline" size="sm" onClick={useGPS} className="gap-1.5">
               <LocateFixed className="size-3.5" /> Usar GPS
             </Button>
           </CardHeader>
@@ -671,9 +646,8 @@ export function ProviderProfile() {
             />
 
             {form.watch("lat") != null && form.watch("lng") != null && (
-              <p className="text-xs text-muted-foreground">
-                Localização: {form.watch("lat")?.toFixed(5)},{" "}
-                {form.watch("lng")?.toFixed(5)}
+              <p className="text-muted-foreground text-xs">
+                Localização: {form.watch("lat")?.toFixed(5)}, {form.watch("lng")?.toFixed(5)}
               </p>
             )}
           </CardContent>
@@ -684,23 +658,23 @@ export function ProviderProfile() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-start gap-3">
-                <Volume2 className="mt-0.5 size-5 text-primary" />
+                <Volume2 className="text-primary mt-0.5 size-5" />
                 <div>
                   <p className="text-sm font-medium">Sons do painel</p>
-                  <p className="text-xs text-muted-foreground">
-                    Toque um som quando novas transações ou confirmações
-                    chegarem.
+                  <p className="text-muted-foreground text-xs">
+                    Toque um som quando novas transações ou confirmações chegarem.
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  type="button"                    onClick={() => {
-                      playCoinSound()
-                      setTimeout(playCompletionSound, 300)
-                      setTimeout(playReviewSound, 750)
-                    }}
-                  className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  type="button"
+                  onClick={() => {
+                    playCoinSound()
+                    setTimeout(playCompletionSound, 300)
+                    setTimeout(playReviewSound, 750)
+                  }}
+                  className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-8 items-center justify-center rounded-full border transition"
                   title="Prévia dos sons (moeda → sino → estrela)"
                   aria-label="Ouvir prévia dos sons do painel"
                 >
@@ -730,12 +704,11 @@ export function ProviderProfile() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-start gap-3">
-                <Smartphone className="mt-0.5 size-5 text-primary" />
+                <Smartphone className="text-primary mt-0.5 size-5" />
                 <div>
                   <p className="text-sm font-medium">Vibração</p>
-                  <p className="text-xs text-muted-foreground">
-                    Vibração sutil em dispositivos móveis quando notificações
-                    chegarem.
+                  <p className="text-muted-foreground text-xs">
+                    Vibração sutil em dispositivos móveis quando notificações chegarem.
                   </p>
                 </div>
               </div>
@@ -745,7 +718,7 @@ export function ProviderProfile() {
                   onClick={() => {
                     tryVibrate([30, 50, 30, 50, 30])
                   }}
-                  className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                  className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-8 items-center justify-center rounded-full border transition"
                   title="Prévia da vibração"
                   aria-label="Ouvir prévia da vibração"
                 >
@@ -772,16 +745,8 @@ export function ProviderProfile() {
 
         {/* Submit */}
         <div className="flex justify-end">
-          <Button
-            type="submit"
-            disabled={saving}
-            className="gap-1.5"
-          >
-            {saving ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}
+          <Button type="submit" disabled={saving} className="gap-1.5">
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             Salvar alterações
           </Button>
         </div>

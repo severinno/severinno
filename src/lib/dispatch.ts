@@ -34,16 +34,16 @@ export async function findBestProvider(
   const provider = service.provider
   if (!provider.lat || !provider.lng || !provider.radiusKm) return null
 
-  const route = await getRoute(
-    [provider.lat, provider.lng],
-    [clientLat, clientLng],
-  )
+  const route = await getRoute([provider.lat, provider.lng], [clientLat, clientLng])
 
   if (route.distanceKm > provider.radiusKm) return null
 
   const rating =
     provider.reviewsReceived.length > 0
-      ? +(provider.reviewsReceived.reduce((a: number, r: { rating: number }) => a + r.rating, 0) / provider.reviewsReceived.length).toFixed(1)
+      ? +(
+          provider.reviewsReceived.reduce((a: number, r: { rating: number }) => a + r.rating, 0) /
+          provider.reviewsReceived.length
+        ).toFixed(1)
       : 0
 
   return {
@@ -105,7 +105,11 @@ export async function findBestProviders(
   })
 
   const validProviders = providers.filter(
-    (p: { lat: number | null; lng: number | null; radiusKm: number | null }): p is typeof p & { lat: number; lng: number; radiusKm: number } =>
+    (p: {
+      lat: number | null
+      lng: number | null
+      radiusKm: number | null
+    }): p is typeof p & { lat: number; lng: number; radiusKm: number } =>
       p.lat !== null && p.lng !== null && p.radiusKm !== null,
   )
 
@@ -113,9 +117,7 @@ export async function findBestProviders(
 
   // Single batch call — coordinates use [lat, lng] order (routing.ts toLatLng)
   const clientCoords: [number, number] = [clientLat, clientLng]
-  const providerCoords = validProviders.map(
-    (p) => [p.lat!, p.lng!] as [number, number],
-  )
+  const providerCoords = validProviders.map((p) => [p.lat!, p.lng!] as [number, number])
   const routes = await getMultiRoute(clientCoords, providerCoords)
 
   const candidates: DispatchResult[] = []
@@ -127,7 +129,10 @@ export async function findBestProviders(
 
     const rating =
       p.reviewsReceived.length > 0
-        ? +(p.reviewsReceived.reduce((a: number, r: { rating: number }) => a + r.rating, 0) / p.reviewsReceived.length).toFixed(1)
+        ? +(
+            p.reviewsReceived.reduce((a: number, r: { rating: number }) => a + r.rating, 0) /
+            p.reviewsReceived.length
+          ).toFixed(1)
         : 0
 
     candidates.push({

@@ -23,10 +23,7 @@ export function JsonLd() {
         name: "Severinno",
         url: baseUrl,
         logo: `${baseUrl}/logo.svg`,
-        sameAs: [
-          "https://instagram.com/severinno",
-          "https://facebook.com/severinno",
-        ],
+        sameAs: ["https://instagram.com/severinno", "https://facebook.com/severinno"],
       },
     ],
   }

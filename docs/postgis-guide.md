@@ -35,22 +35,23 @@ REDIS_URL="redis://localhost:6380"
 
 A migração PostGIS (`prisma/migrations/XX_add_postgis/migration.sql`) inclui:
 
-| Componente | Descrição |
-|------------|-----------|
-| **PostGIS extension** | `CREATE EXTENSION IF NOT EXISTS postgis` |
-| **Coluna `location`** | `geography(Point, 4326)` em User, Booking, QuoteRequest |
-| **GiST index** | `idx_user_location_gist` para queries espaciais rápidas |
-| **Triggers** | Sincronizam `location` automaticamente quando `lat`/`lng` são alterados |
+| Componente            | Descrição                                                               |
+| --------------------- | ----------------------------------------------------------------------- |
+| **PostGIS extension** | `CREATE EXTENSION IF NOT EXISTS postgis`                                |
+| **Coluna `location`** | `geography(Point, 4326)` em User, Booking, QuoteRequest                 |
+| **GiST index**        | `idx_user_location_gist` para queries espaciais rápidas                 |
+| **Triggers**          | Sincronizam `location` automaticamente quando `lat`/`lng` são alterados |
 
 ### Modelos com coluna espacial
 
-| Modelo | Coluna | Trigger |
-|--------|--------|---------|
-| `User` | `location geography(Point, 4326)` | `trg_sync_user_location` |
-| `Booking` | `location geography(Point, 4326)` | `trg_sync_booking_location` |
+| Modelo         | Coluna                            | Trigger                          |
+| -------------- | --------------------------------- | -------------------------------- |
+| `User`         | `location geography(Point, 4326)` | `trg_sync_user_location`         |
+| `Booking`      | `location geography(Point, 4326)` | `trg_sync_booking_location`      |
 | `QuoteRequest` | `location geography(Point, 4326)` | `trg_sync_quoterequest_location` |
 
 > **Importante:** As colunas `location` são gerenciadas por triggers SQL. Quando você atualiza `lat`/`lng` via Prisma, o trigger sincroniza `location` automaticamente. Para batch inserts (`createMany`), execute o sync manual via:
+>
 > ```sql
 > UPDATE "User" SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
 > WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
@@ -80,6 +81,7 @@ bun run test:postgis
 ```
 
 Saída esperada:
+
 ```
 🧪 Testing PostGIS spatial operations...
 

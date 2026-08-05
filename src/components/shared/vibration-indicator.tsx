@@ -50,15 +50,10 @@ export function VibrationIndicator({
       aria-live="polite"
     >
       <Smartphone
-        className={cn(
-          "size-4 transition-opacity",
-          disabled && "opacity-50",
-        )}
+        className={cn("size-4 transition-opacity", disabled && "opacity-50")}
         aria-hidden
       />
-      {showLabel ? (
-        <span>{disabled ? "Vibração desativada" : "Vibração ativada"}</span>
-      ) : null}
+      {showLabel ? <span>{disabled ? "Vibração desativada" : "Vibração ativada"}</span> : null}
     </span>
   )
 }

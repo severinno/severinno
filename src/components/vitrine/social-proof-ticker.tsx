@@ -67,12 +67,12 @@ function MarqueeRow({
       {/* Left fade gradient (H8: clean edges) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-emerald-50 to-transparent dark:from-emerald-950/30 dark:to-transparent sm:w-24"
+        className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-emerald-50 to-transparent sm:w-24 dark:from-emerald-950/30 dark:to-transparent"
       />
       {/* Right fade gradient */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-teal-50 to-transparent dark:from-teal-950/30 dark:to-transparent sm:w-24"
+        className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-teal-50 to-transparent sm:w-24 dark:from-teal-950/30 dark:to-transparent"
       />
 
       <div

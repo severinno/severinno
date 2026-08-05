@@ -19,10 +19,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const providerId = searchParams.get("providerId")
     if (!providerId) {
-      return NextResponse.json(
-        { error: "providerId é obrigatório" },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "providerId é obrigatório" }, { status: 400 })
     }
 
     const period = (searchParams.get("period") ?? "30d") as Period
@@ -48,9 +45,7 @@ export async function GET(request: Request) {
         break
     }
 
-    const paymentWhere = dateFilter
-      ? { createdAt: { gte: dateFilter } }
-      : {}
+    const paymentWhere = dateFilter ? { createdAt: { gte: dateFilter } } : {}
 
     // Fetch transactions for this provider via booking relation
     const transactions = await db.payment.findMany({

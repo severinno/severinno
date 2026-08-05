@@ -109,6 +109,7 @@ unit + E2E tests.
 - Fix: add `.catch(() => {})` to `syncCategorySearch(created)` in categories route
 - Fix: repair 21 pre-existing test failures across 10 test suites
 - Fix: release.sh CHANGELOG_FILE definition and consolidated commit flow
+
 ### Technical Debt
 
 - 151 TypeScript errors resolved (55 production + 96 test files)

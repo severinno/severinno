@@ -18,10 +18,7 @@ import logger from "@/lib/logger"
  *   200 — { title, body, url, icon, badge, actions, data, ... }
  *   404 — { error: "Payload not found or expired" }
  */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
 
@@ -30,10 +27,7 @@ export async function GET(
     const payload = await getPayload(id)
 
     if (!payload) {
-      return NextResponse.json(
-        { error: "Payload não encontrado ou expirado" },
-        { status: 404 },
-      )
+      return NextResponse.json({ error: "Payload não encontrado ou expirado" }, { status: 404 })
     }
 
     return NextResponse.json(payload)

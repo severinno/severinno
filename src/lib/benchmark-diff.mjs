@@ -104,9 +104,9 @@ export function computeDiff(baseline, current, options = {}) {
     }
 
     const meanPct = pct(base.mean, curr.mean)
-    const minPct  = pct(base.min, curr.min)
-    const maxPct  = pct(base.max, curr.max)
-    const opsPct  = pct(base.opsPerSec, curr.opsPerSec)
+    const minPct = pct(base.min, curr.min)
+    const maxPct = pct(base.max, curr.max)
+    const opsPct = pct(base.opsPerSec, curr.opsPerSec)
 
     const isRegression = meanPct > threshold
 
@@ -115,8 +115,8 @@ export function computeDiff(baseline, current, options = {}) {
       name: curr.name,
       status: isRegression ? "regression" : Math.abs(meanPct) < 1 ? "unchanged" : "changed",
       mean: { baseline: base.mean, current: curr.mean, pct: +meanPct.toFixed(1) },
-      min:  { baseline: base.min,  current: curr.min,  pct: +minPct.toFixed(1) },
-      max:  { baseline: base.max,  current: curr.max,  pct: +maxPct.toFixed(1) },
+      min: { baseline: base.min, current: curr.min, pct: +minPct.toFixed(1) },
+      max: { baseline: base.max, current: curr.max, pct: +maxPct.toFixed(1) },
       opsPerSec: { baseline: base.opsPerSec, current: curr.opsPerSec, pct: +opsPct.toFixed(1) },
     }
 
@@ -128,14 +128,38 @@ export function computeDiff(baseline, current, options = {}) {
   if (baseline.analysis && current.analysis) {
     diff.analysis = {
       haversineUnitCosts: {
-        at100:  { baseline: baseline.analysis.haversineUnitCosts?.at100,  current: current.analysis.haversineUnitCosts?.at100,  pct: +pct(baseline.analysis.haversineUnitCosts?.at100 ?? 0, current.analysis.haversineUnitCosts?.at100 ?? 0).toFixed(1) },
-        at1000: { baseline: baseline.analysis.haversineUnitCosts?.at1000, current: current.analysis.haversineUnitCosts?.at1000, pct: +pct(baseline.analysis.haversineUnitCosts?.at1000 ?? 0, current.analysis.haversineUnitCosts?.at1000 ?? 0).toFixed(1) },
-        at10000:{ baseline: baseline.analysis.haversineUnitCosts?.at10000,current: current.analysis.haversineUnitCosts?.at10000,pct: +pct(baseline.analysis.haversineUnitCosts?.at10000 ?? 0, current.analysis.haversineUnitCosts?.at10000 ?? 0).toFixed(1) },
+        at100: {
+          baseline: baseline.analysis.haversineUnitCosts?.at100,
+          current: current.analysis.haversineUnitCosts?.at100,
+          pct: +pct(
+            baseline.analysis.haversineUnitCosts?.at100 ?? 0,
+            current.analysis.haversineUnitCosts?.at100 ?? 0,
+          ).toFixed(1),
+        },
+        at1000: {
+          baseline: baseline.analysis.haversineUnitCosts?.at1000,
+          current: current.analysis.haversineUnitCosts?.at1000,
+          pct: +pct(
+            baseline.analysis.haversineUnitCosts?.at1000 ?? 0,
+            current.analysis.haversineUnitCosts?.at1000 ?? 0,
+          ).toFixed(1),
+        },
+        at10000: {
+          baseline: baseline.analysis.haversineUnitCosts?.at10000,
+          current: current.analysis.haversineUnitCosts?.at10000,
+          pct: +pct(
+            baseline.analysis.haversineUnitCosts?.at10000 ?? 0,
+            current.analysis.haversineUnitCosts?.at10000 ?? 0,
+          ).toFixed(1),
+        },
       },
       avgHaversinePerProvider: {
         baseline: baseline.analysis.avgHaversinePerProvider,
         current: current.analysis.avgHaversinePerProvider,
-        pct: +pct(baseline.analysis.avgHaversinePerProvider ?? 0, current.analysis.avgHaversinePerProvider ?? 0).toFixed(1),
+        pct: +pct(
+          baseline.analysis.avgHaversinePerProvider ?? 0,
+          current.analysis.avgHaversinePerProvider ?? 0,
+        ).toFixed(1),
       },
     }
   }

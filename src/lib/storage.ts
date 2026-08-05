@@ -39,9 +39,7 @@ export async function uploadFile(
         ContentType: contentType,
       }),
     )
-    const url = PUBLIC_URL
-      ? `${PUBLIC_URL}/${key}`
-      : `${ENDPOINT}/${BUCKET}/${key}`
+    const url = PUBLIC_URL ? `${PUBLIC_URL}/${key}` : `${ENDPOINT}/${BUCKET}/${key}`
     return url
   } catch (err) {
     logger.error({ err }, "s3 upload failed")

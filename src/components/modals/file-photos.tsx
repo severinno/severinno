@@ -45,9 +45,7 @@ export function FilePhotos({
   disabled,
 }: FilePhotosProps) {
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const [status, setStatus] = React.useState<Record<number, UploadStatus>>(
-    {},
-  )
+  const [status, setStatus] = React.useState<Record<number, UploadStatus>>({})
   const [error, setError] = React.useState<string | null>(null)
   const [dragging, setDragging] = React.useState(false)
 
@@ -121,12 +119,12 @@ export function FilePhotos({
       {label && (
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">{label}</span>
-          <span className="text-xs text-muted-foreground tabular-nums">
+          <span className="text-muted-foreground text-xs tabular-nums">
             {value.length}/{max} fotos
           </span>
         </div>
       )}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
 
       {/* Drop zone — only when there's room for more */}
       {remaining > 0 && (
@@ -153,20 +151,16 @@ export function FilePhotos({
               ? "border-primary bg-primary/5"
               : "border-input hover:border-primary hover:bg-primary/5",
             (disabled || isUploading) &&
-              "cursor-not-allowed opacity-60 hover:border-input hover:bg-transparent",
+              "hover:border-input cursor-not-allowed opacity-60 hover:bg-transparent",
           )}
         >
           {isUploading ? (
-            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            <Loader2 className="text-muted-foreground size-5 animate-spin" />
           ) : (
-            <UploadCloud className="size-5 text-muted-foreground" />
+            <UploadCloud className="text-muted-foreground size-5" />
           )}
-          <p className="text-sm font-medium">
-            Arraste imagens ou clique para enviar
-          </p>
-          <p className="text-xs text-muted-foreground">
-            JPG, PNG ou WebP · até 5 MB cada
-          </p>
+          <p className="text-sm font-medium">Arraste imagens ou clique para enviar</p>
+          <p className="text-muted-foreground text-xs">JPG, PNG ou WebP · até 5 MB cada</p>
         </div>
       )}
 
@@ -176,7 +170,7 @@ export function FilePhotos({
           {value.map((url, i) => (
             <div
               key={url + i}
-              className="group relative aspect-square overflow-hidden rounded-lg border bg-muted"
+              className="group bg-muted relative aspect-square overflow-hidden rounded-lg border"
             >
               {/* img element used intentionally for runtime-provided URLs */}
               <img
@@ -190,7 +184,7 @@ export function FilePhotos({
                 onClick={() => removeAt(i)}
                 disabled={disabled}
                 aria-label={`Remover foto ${i + 1}`}
-                className="absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="focus-visible:ring-ring absolute top-1 right-1 inline-flex size-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-black/80 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none"
               >
                 <X className="size-3.5" />
               </button>
@@ -199,7 +193,7 @@ export function FilePhotos({
         </div>
       )}
 
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p className="text-destructive text-xs">{error}</p>}
 
       <input
         ref={inputRef}

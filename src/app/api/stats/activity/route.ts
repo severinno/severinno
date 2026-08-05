@@ -176,9 +176,7 @@ export async function GET() {
     }
 
     // 3. Sort all by createdAt descending, take top 10
-    activities.sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-    )
+    activities.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     const topActivities = activities.slice(0, 10).map(
       // Strip the internal createdAt field from the public response
       ({ createdAt: _ct, ...rest }) => rest,

@@ -35,7 +35,7 @@ async function main() {
     `CREATE TRIGGER trg_sync_user_location
      BEFORE INSERT OR UPDATE OF lat, lng ON "User"
      FOR EACH ROW
-     EXECUTE FUNCTION sync_user_location();`
+     EXECUTE FUNCTION sync_user_location();`,
   ]
 
   for (const cmd of sqlCommands) {
@@ -44,7 +44,7 @@ async function main() {
       await prisma.$executeRawUnsafe(cmd)
     } catch (err) {
       console.error(`Failed executing command:`, err)
-      throw err;
+      throw err
     }
   }
 

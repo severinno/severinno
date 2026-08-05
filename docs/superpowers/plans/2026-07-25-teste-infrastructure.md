@@ -5,6 +5,7 @@
 **Goal:** Diagnosticar, corrigir e completar a infraestrutura de testes do Severinno Marketplace. O projeto já possui 97 arquivos de teste com 1.143 testes, mas 29 arquivos estão falhando (406 testes quebrados).
 
 **Diagnóstico atual:**
+
 - ✅ 67 arquivos de teste passando (730 testes)
 - ❌ 29 arquivos de teste falhando (406 testes)
 - ⏭️ 1 arquivo skipped (7 testes)
@@ -27,6 +28,7 @@
 ### Task 1: Diagnóstico completo dos 29 arquivos falhando
 
 **Files:** (read-only)
+
 - Run: `npx vitest run --reporter=verbose 2>&1 | grep "FAIL" > test-failures.txt`
 
 **Goal:** Categorizar cada falha por causa raiz.
@@ -41,6 +43,7 @@ grep "FAIL" test-output.txt | sort > failing-files.txt
 ```
 
 Categorias esperadas de erro:
+
 - **Categoria A — "Invalid hook call" / "Cannot read useState"** (~70% das falhas): React 19 + jsdom 26 incompatibilidade. Componentes que usam hooks (useState, useEffect) dentro de contextos que o jsdom não suporta (ex: WebSocket, AudioContext, IntersectionObserver).
 - **Categoria B — Timeout / Async:** Testes que esperam eventos assíncronos que não disparam no ambiente de teste.
 - **Categoria C — Missing mocks:** Componentes que dependem de módulos não mockados (ex: maplibre-gl, socket.io-client).
@@ -58,7 +61,7 @@ echo "Category B (Timeout):"
 grep -l "timeout\|Timed out" test-output.txt | while read f; do echo "  - $f"; done
 echo ""
 echo "Category C (Missing mock):"
-grep -l "Cannot find module\|is not defined\|Module.*not found" test-output.txt | while read f; do echo "  - $f"; done  
+grep -l "Cannot find module\|is not defined\|Module.*not found" test-output.txt | while read f; do echo "  - $f"; done
 ```
 
 - [ ] **Step 3: Commitar relatório**
@@ -73,6 +76,7 @@ git commit -m "chore: add test failure diagnostic report"
 ### Task 2: Fix — Mock global para módulos faltantes no vitest.setup.ts
 
 **Files:**
+
 - Modify: `vitest.setup.ts`
 - Check: `src/lib/__tests__/__mocks__/server-only.ts`
 
@@ -194,6 +198,7 @@ git commit -m "test: add global mocks for next/navigation, maplibre-gl, socket.i
 ### Task 3: Fix — Component accessibility tests (Category A principal)
 
 **Files:**
+
 - Modify: `src/components/modals/__tests__/accessibility.test.tsx`
 - Modify: `src/app/__tests__/accessibility.test.tsx`
 - Modify: `src/app/__tests__/loading-accessibility.test.tsx`
@@ -211,6 +216,7 @@ Problema comum: componentes que usam hooks condicionalmente ou que dependem de C
 - [ ] **Step 2: Corrigir cada arquivo de teste**
 
 Padrão de correção para testes de acessibilidade:
+
 ```tsx
 // Se o componente precisa de ThemeProvider
 import { ThemeProvider } from "next-themes"
@@ -227,7 +233,7 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 render(
   <TestWrapper>
     <ComponentUnderTest />
-  </TestWrapper>
+  </TestWrapper>,
 )
 ```
 
@@ -251,6 +257,7 @@ git commit -m "test: fix accessibility test setup with proper providers"
 ### Task 4: Fix — Sound/audio hook tests (use-coin-sound, sound-context)
 
 **Files:**
+
 - Read: `src/lib/__tests__/use-coin-sound.test.ts`
 - Read: `src/lib/__tests__/sound-context.test.tsx`
 - Read: `src/hooks/use-coin-sound.ts` (provável nome do hook real)
@@ -268,6 +275,7 @@ npx vitest run src/lib/__tests__/use-coin-sound.test.ts src/lib/__tests__/sound-
 - [ ] **Step 2: Se ainda falhar, adicionar mocks específicos**
 
 Possível causa: o hook usa `new Audio()` (HTML5 Audio), não `AudioContext`. Adicionar:
+
 ```typescript
 // Mock HTMLAudioElement
 globalThis.Audio = vi.fn().mockImplementation(() => ({
@@ -279,7 +287,7 @@ globalThis.Audio = vi.fn().mockImplementation(() => ({
   currentTime: 0,
   volume: 1,
   src: "",
-})) as any;
+})) as any
 ```
 
 - [ ] **Step 3: Verificar e commit**
@@ -293,6 +301,7 @@ npx vitest run src/lib/__tests__/use-coin-sound.test.ts src/lib/__tests__/sound-
 ### Task 5: Fix — Loading shell / Loading base tests
 
 **Files:**
+
 - Modify: `src/app/__tests__/loading.test.tsx`
 - Modify: `src/app/__tests__/loading-shell.test.tsx`
 - Modify: `src/app/__tests__/loading-base.test.tsx`
@@ -318,6 +327,7 @@ npx vitest run src/app/__tests__/loading.test.tsx src/app/__tests__/loading-shel
 ### Task 6: Adicionar script de CI e GitHub Actions
 
 **Files:**
+
 - Create: `.github/workflows/test.yml`
 
 **Goal:** Rodar testes automaticamente em CI (push e PR).
@@ -337,7 +347,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgis/postgis:16-3.4
@@ -364,39 +374,39 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
-      
+
       - name: Generate Prisma client
         run: bunx prisma generate
-      
+
       - name: Run unit tests
         run: bun run test:unit
         env:
           DATABASE_URL: postgresql://severinno:severinno@localhost:5432/severinno_test
           SESSION_SECRET: ci-secret-at-least-32-chars-long-for-testing
-      
+
       - name: Run full test suite
         run: bun run test:run
         env:
           DATABASE_URL: postgresql://severinno:severinno@localhost:5432/severinno_test
           SESSION_SECRET: ci-secret-at-least-32-chars-long-for-testing
-      
+
       - name: Upload coverage
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage
           path: coverage/
-      
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
-      
+
       - name: Run E2E tests (Chromium only)
         run: bun run e2e --project=chromium
         env:
@@ -416,7 +426,8 @@ git commit -m "ci: add GitHub Actions workflow for tests"
 ### Task 7: Adicionar testes de cobertura para áreas críticas descobertas
 
 **Files:** (conforme necessário)
-- Create/Modify: testes nos diretórios __tests__ correspondentes
+
+- Create/Modify: testes nos diretórios **tests** correspondentes
 
 **Goal:** Garantir cobertura mínima de 70% nas libs core e 50% nos componentes.
 
@@ -431,33 +442,35 @@ Identificar áreas com cobertura baixa.
 - [ ] **Step 2: Adicionar testes prioritários**
 
 Prioridade:
+
 1. **Libs core** (auth, crypto, geo, validators, format) — se alguma estiver < 80%
 2. **API routes** mais críticas (auth, providers, bookings, quotes)
 3. **Stores** (auth, geo, view, ui)
 4. **Hooks** principais (use-realtime, use-mobile)
 
 Para cada área:
+
 ```typescript
 // Exemplo: test para auth lib
-import { describe, it, expect } from "vitest";
-import { hashPassword, verifyPassword } from "../crypto";
+import { describe, it, expect } from "vitest"
+import { hashPassword, verifyPassword } from "../crypto"
 
 describe("crypto", () => {
   it("hashes password and verifies correctly", async () => {
-    const password = "minha-senha-secreta-123";
-    const hash = await hashPassword(password);
-    expect(hash).not.toBe(password);
-    
-    const valid = await verifyPassword(password, hash);
-    expect(valid).toBe(true);
-  });
-  
+    const password = "minha-senha-secreta-123"
+    const hash = await hashPassword(password)
+    expect(hash).not.toBe(password)
+
+    const valid = await verifyPassword(password, hash)
+    expect(valid).toBe(true)
+  })
+
   it("rejects wrong password", async () => {
-    const hash = await hashPassword("correct-password");
-    const valid = await verifyPassword("wrong-password", hash);
-    expect(valid).toBe(false);
-  });
-});
+    const hash = await hashPassword("correct-password")
+    const valid = await verifyPassword("wrong-password", hash)
+    expect(valid).toBe(false)
+  })
+})
 ```
 
 - [ ] **Step 3: Commit**
@@ -472,13 +485,14 @@ git commit -m "test: add crypto unit tests for hashPassword and verifyPassword"
 ### Task 8: Documentação de testes
 
 **Files:**
+
 - Create: `docs/testing-guide.md`
 
 **Goal:** Documentar como rodar, escrever e manter testes no projeto.
 
 - [ ] **Step 1: Criar guia de testes**
 
-```markdown
+````markdown
 # Testing Guide — Severinno Marketplace
 
 ## Quick Start
@@ -503,6 +517,7 @@ bun run e2e
 # E2E com UI mode
 bun run e2e:ui
 ```
+````
 
 ## Estrutura
 
@@ -538,7 +553,8 @@ npx vitest run src/lib/__tests__/api-server.test.ts -t "handleError"
 # Com UI (Vitest UI)
 npx vitest --ui
 ```
-```
+
+````
 
 - [ ] **Step 2: Atualizar .agents/memory/project-conventions.md** com seção de testes
 
@@ -552,7 +568,7 @@ Adicionar ao final:
 - **Mocks de store:** `createMockAuthStore/UIStore/ViewStore` em `test-utils.tsx`
 - **API test utils:** `createMockRequest` + `parseResponse` em `api-test-utils.ts`
 - **Estrutura:** `__tests__/` colocalizado com o módulo
-```
+````
 
 - [ ] **Step 3: Commit**
 
@@ -575,6 +591,7 @@ npx vitest run 2>&1 | tee final-test-output.txt
 ```
 
 Expected:
+
 ```
 Test Files  97 passed (97)
      Tests  1143 passed (1143)

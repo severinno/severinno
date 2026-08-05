@@ -95,10 +95,7 @@ export async function startSpan<T>(
 /**
  * Versão síncrona de startSpan, para operações que não são async.
  */
-export function startSpanSync<T>(
-  options: SpanOptions,
-  fn: () => T,
-): TransactionResult<T> {
+export function startSpanSync<T>(options: SpanOptions, fn: () => T): TransactionResult<T> {
   const start = performance.now()
 
   if (ENABLED) {

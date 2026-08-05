@@ -83,7 +83,9 @@ describe("GET /api/provider/wallet/history/export", () => {
 
     expect(res.status).toBe(200)
     expect(res.headers.get("Content-Type")).toBe("text/csv; charset=utf-8")
-    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="extrato-carteira.csv"')
+    expect(res.headers.get("Content-Disposition")).toBe(
+      'attachment; filename="extrato-carteira.csv"',
+    )
   })
 
   it("includes summary and all transactions in CSV", async () => {
@@ -129,9 +131,7 @@ describe("GET /api/provider/wallet/history/export", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history/export?type=paid",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history/export?type=paid")
     const res = await GET(req)
     const csv = await res.text()
 

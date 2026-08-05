@@ -3,18 +3,18 @@ import { LoadingShell, StaggerContainer, StaggerItem, S } from "@/app/loading-sh
 export default function Loading() {
   return (
     <LoadingShell>
-      <div className="min-h-screen bg-background">
+      <div className="bg-background min-h-screen">
         {/* ══════════════════════════════════════════════════════════════
             HERO SECTION — search + CTA
            ══════════════════════════════════════════════════════════════ */}
-        <section className="relative overflow-hidden border-b bg-gradient-to-b from-emerald-50/60 via-background to-background dark:from-emerald-950/10">
+        <section className="via-background to-background relative overflow-hidden border-b bg-gradient-to-b from-emerald-50/60 dark:from-emerald-950/10">
           {/* Decorative blobs */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute -left-32 -top-32 size-64 rounded-full bg-emerald-500/5 blur-3xl dark:bg-emerald-400/5" />
+            <div className="absolute -top-32 -left-32 size-64 rounded-full bg-emerald-500/5 blur-3xl dark:bg-emerald-400/5" />
             <div className="absolute -right-32 -bottom-32 size-80 rounded-full bg-emerald-500/5 blur-3xl dark:bg-emerald-400/5" />
           </div>
 
-          <div className="relative mx-auto max-w-5xl px-4 pb-16 pt-8 sm:pb-20 sm:pt-12">
+          <div className="relative mx-auto max-w-5xl px-4 pt-8 pb-16 sm:pt-12 sm:pb-20">
             {/* Topbar skeleton */}
             <StaggerContainer stagger={0.07} className="mb-10 flex items-center justify-between">
               <StaggerItem y={14} duration={0.4} className="flex items-center gap-8">
@@ -85,9 +85,15 @@ export default function Loading() {
           style={{ animation: "fadeIn 0.5s 0.45s both" }}
         >
           {/* Left fade gradient */}
-          <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-emerald-50 to-transparent dark:from-emerald-950/30 sm:w-24" />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-emerald-50 to-transparent sm:w-24 dark:from-emerald-950/30"
+          />
           {/* Right fade gradient */}
-          <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-teal-50 to-transparent dark:from-teal-950/30 sm:w-24" />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-teal-50 to-transparent sm:w-24 dark:from-teal-950/30"
+          />
 
           <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 sm:py-4">
             {/* Badge: "Atividade recente" */}
@@ -102,7 +108,7 @@ export default function Loading() {
             <div className="flex items-center gap-3 overflow-hidden">
               <div className="flex shrink-0 items-center gap-3">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-2 shrink-0">
+                  <div key={i} className="flex shrink-0 items-center gap-2">
                     <S className="size-4" />
                     <S className="h-3.5 w-36" />
                     <S className="size-1.5 shrink-0 rounded-full" />
@@ -115,7 +121,7 @@ export default function Loading() {
             <div className="mt-2 hidden sm:flex sm:items-center sm:gap-3 sm:overflow-hidden">
               <div className="flex shrink-0 items-center gap-3">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-2 shrink-0">
+                  <div key={i} className="flex shrink-0 items-center gap-2">
                     <S className="size-4" />
                     <S className="h-3.5 w-40" />
                     <S className="size-1.5 shrink-0 rounded-full" />
@@ -140,10 +146,13 @@ export default function Loading() {
               </StaggerItem>
             </StaggerContainer>
 
-            <StaggerContainer stagger={0.07} className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+            <StaggerContainer
+              stagger={0.07}
+              className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6"
+            >
               {Array.from({ length: 6 }).map((_, i) => (
                 <StaggerItem key={i} y={14} duration={0.4}>
-                  <div className="flex flex-col items-center gap-3 rounded-xl border border-border/50 bg-card p-5">
+                  <div className="border-border/50 bg-card flex flex-col items-center gap-3 rounded-xl border p-5">
                     <S className="size-10 rounded-xl" />
                     <S className="h-4 w-20" />
                   </div>
@@ -160,7 +169,7 @@ export default function Loading() {
           className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8"
           style={{ animation: "fadeSlideUp 0.45s 0.55s both" }}
         >
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-card dark:border-slate-700/60">
+          <div className="bg-card overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700/60">
             {/* CardHeader */}
             <div className="flex items-center justify-between px-5 py-4">
               <div className="flex items-center gap-2">
@@ -179,7 +188,7 @@ export default function Loading() {
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div
                     key={i}
-                    className="rounded-xl border border-slate-200 bg-card p-3 dark:border-slate-700/60"
+                    className="bg-card rounded-xl border border-slate-200 p-3 dark:border-slate-700/60"
                   >
                     {/* Avatar + name + rating */}
                     <div className="flex items-center gap-2.5">
@@ -205,7 +214,7 @@ export default function Loading() {
                 {Array.from({ length: 2 }).map((_, i) => (
                   <div
                     key={i}
-                    className="min-w-[220px] rounded-xl border border-slate-200 bg-card p-3 dark:border-slate-700/60"
+                    className="bg-card min-w-[220px] rounded-xl border border-slate-200 p-3 dark:border-slate-700/60"
                   >
                     <div className="flex items-center gap-2.5">
                       <S className="size-10 shrink-0 rounded-full ring-2 ring-emerald-500/20" />
@@ -229,7 +238,7 @@ export default function Loading() {
         {/* ══════════════════════════════════════════════════════════════
             HOW IT WORKS SECTION
            ══════════════════════════════════════════════════════════════ */}
-        <section className="border-b bg-muted/20 py-10 sm:py-14">
+        <section className="bg-muted/20 border-b py-10 sm:py-14">
           <div className="mx-auto max-w-5xl px-4">
             <StaggerContainer stagger={0.07} className="mb-10 text-center">
               <StaggerItem y={14} duration={0.4}>
@@ -243,7 +252,7 @@ export default function Loading() {
             <StaggerContainer stagger={0.07} className="grid gap-6 sm:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <StaggerItem key={i} y={14} duration={0.4}>
-                  <div className="flex flex-col items-center gap-3 rounded-xl border border-border/50 bg-card p-6 text-center">
+                  <div className="border-border/50 bg-card flex flex-col items-center gap-3 rounded-xl border p-6 text-center">
                     <S className="size-14 rounded-2xl" />
                     <S className="h-5 w-28" />
                     <S className="h-3 w-full" />
@@ -259,7 +268,7 @@ export default function Loading() {
             PARTNERS TRUST — referência no mercado
            ══════════════════════════════════════════════════════════════ */}
         <section
-          className="border-t border-border/30 bg-background py-12 sm:py-16"
+          className="border-border/30 bg-background border-t py-12 sm:py-16"
           style={{ animation: "fadeSlideUp 0.45s 0.6s both" }}
           aria-label="Parceiros e imprensa"
         >
@@ -274,7 +283,7 @@ export default function Loading() {
               {Array.from({ length: 8 }).map((_, i) => (
                 <div
                   key={i}
-                  className="flex shrink-0 items-center justify-center rounded-xl border border-border/40 bg-card/30 px-5 py-3.5"
+                  className="border-border/40 bg-card/30 flex shrink-0 items-center justify-center rounded-xl border px-5 py-3.5"
                   style={{ minWidth: 120 }}
                 >
                   <S className="h-4 w-20" />
@@ -287,7 +296,7 @@ export default function Loading() {
               {Array.from({ length: 8 }).map((_, i) => (
                 <div
                   key={i}
-                  className="flex shrink-0 items-center justify-center rounded-xl border border-border/40 bg-card/30 px-5 py-3.5"
+                  className="border-border/40 bg-card/30 flex shrink-0 items-center justify-center rounded-xl border px-5 py-3.5"
                   style={{ minWidth: 120 }}
                 >
                   <S className="h-4 w-20" />
@@ -296,10 +305,7 @@ export default function Loading() {
             </div>
 
             {/* Trust stat */}
-            <div
-              className="mt-8 text-center"
-              style={{ animation: "fadeIn 0.4s 0.75s both" }}
-            >
+            <div className="mt-8 text-center" style={{ animation: "fadeIn 0.4s 0.75s both" }}>
               <S className="mx-auto h-4 w-64" />
             </div>
           </div>
@@ -319,7 +325,7 @@ export default function Loading() {
             <StaggerContainer stagger={0.07} className="grid gap-4 sm:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <StaggerItem key={i} y={14} duration={0.4}>
-                  <div className="rounded-xl border border-border/50 bg-card p-5">
+                  <div className="border-border/50 bg-card rounded-xl border p-5">
                     <div className="mb-3 flex gap-1">
                       {Array.from({ length: 5 }).map((_, j) => (
                         <S key={j} className="size-4" />
@@ -345,7 +351,7 @@ export default function Loading() {
         {/* ══════════════════════════════════════════════════════════════
             FAQ SECTION
            ══════════════════════════════════════════════════════════════ */}
-        <section className="border-b bg-muted/20 py-10 sm:py-14">
+        <section className="bg-muted/20 border-b py-10 sm:py-14">
           <div className="mx-auto max-w-3xl px-4">
             <StaggerContainer stagger={0.07} className="mb-8 text-center">
               <StaggerItem y={14} duration={0.4}>
@@ -359,7 +365,7 @@ export default function Loading() {
             <StaggerContainer stagger={0.07} className="space-y-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <StaggerItem key={i} y={14} duration={0.4}>
-                  <div className="rounded-xl border border-border/50 bg-card p-4">
+                  <div className="border-border/50 bg-card rounded-xl border p-4">
                     <div className="flex items-center justify-between">
                       <S className="h-4 w-3/4" />
                       <S className="size-5" />
@@ -376,7 +382,10 @@ export default function Loading() {
            ══════════════════════════════════════════════════════════════ */}
         <section className="border-b py-10 sm:py-14">
           <div className="mx-auto max-w-3xl px-4 text-center">
-            <StaggerContainer stagger={0.07} className="rounded-2xl bg-emerald-50 p-8 dark:bg-emerald-950/20 sm:p-12">
+            <StaggerContainer
+              stagger={0.07}
+              className="rounded-2xl bg-emerald-50 p-8 sm:p-12 dark:bg-emerald-950/20"
+            >
               <StaggerItem y={14} duration={0.4}>
                 <S className="mx-auto mb-2 h-6 w-64" />
               </StaggerItem>
@@ -393,7 +402,7 @@ export default function Loading() {
         {/* ══════════════════════════════════════════════════════════════
             FOOTER
            ══════════════════════════════════════════════════════════════ */}
-        <footer className="border-t bg-muted/30 py-8">
+        <footer className="bg-muted/30 border-t py-8">
           <div className="mx-auto max-w-6xl px-4">
             <StaggerContainer stagger={0.07} className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -403,9 +412,7 @@ export default function Loading() {
                   <S className="h-3 w-4/5" />
                   {i === 0 && <S className="mt-2 h-3 w-3/5" />}
                   {i === 3 &&
-                    Array.from({ length: 3 }).map((_, j) => (
-                      <S key={j} className="h-3 w-28" />
-                    ))}
+                    Array.from({ length: 3 }).map((_, j) => <S key={j} className="h-3 w-28" />)}
                 </StaggerItem>
               ))}
             </StaggerContainer>

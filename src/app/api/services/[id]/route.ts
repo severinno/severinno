@@ -57,10 +57,7 @@ export async function PATCH(request: Request, { params }: Params) {
     const data = serviceSchema.partial().parse(body)
 
     // Business rule: basePrice may only increase
-    if (
-      data.basePrice !== undefined &&
-      data.basePrice < service.basePrice
-    ) {
+    if (data.basePrice !== undefined && data.basePrice < service.basePrice) {
       throw badRequest(
         "O preço base só pode ser reajustado para cima (mínimo atual: R$ " +
           service.basePrice.toFixed(2) +
@@ -81,9 +78,7 @@ export async function PATCH(request: Request, { params }: Params) {
       where: { id },
       data: {
         ...(data.title !== undefined ? { title: data.title } : {}),
-        ...(data.description !== undefined
-          ? { description: data.description }
-          : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
         ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
         ...(data.basePrice !== undefined ? { basePrice: data.basePrice } : {}),
         ...(data.unit !== undefined ? { unit: data.unit } : {}),

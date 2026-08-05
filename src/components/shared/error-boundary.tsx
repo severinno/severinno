@@ -48,10 +48,7 @@ type ErrorBoundaryState = {
 // Component (class-based — required for componentDidCatch)
 // ---------------------------------------------------------------------------
 
-export class ErrorBoundary extends React.Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props)
     this.state = { error: null }
@@ -111,26 +108,25 @@ function DefaultFallback({
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center p-6">
-      <Card className="mx-auto max-w-md w-full shadow-lg border-destructive/20">
+      <Card className="border-destructive/20 mx-auto w-full max-w-md shadow-lg">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-full bg-destructive/10">
-            <AlertTriangle className="size-7 text-destructive" />
+          <div className="bg-destructive/10 mx-auto mb-3 flex size-14 items-center justify-center rounded-full">
+            <AlertTriangle className="text-destructive size-7" />
           </div>
           <CardTitle className="text-lg">
             {label ? `Erro no ${label}` : "Algo deu errado"}
           </CardTitle>
           <CardDescription className="text-sm">
-            Ocorreu um erro inesperado. Você pode tentar novamente ou voltar
-            para a página inicial.
+            Ocorreu um erro inesperado. Você pode tentar novamente ou voltar para a página inicial.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {process.env.NODE_ENV === "development" && error.message ? (
-            <details className="group rounded-lg border bg-muted/50 p-3">
-              <summary className="cursor-pointer text-xs font-medium text-muted-foreground group-open:text-foreground">
+            <details className="group bg-muted/50 rounded-lg border p-3">
+              <summary className="text-muted-foreground group-open:text-foreground cursor-pointer text-xs font-medium">
                 Detalhes do erro
               </summary>
-              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">
+              <pre className="text-muted-foreground mt-2 overflow-x-auto text-xs whitespace-pre-wrap">
                 {error.message}
                 {"\n"}
                 {error.stack?.split("\n").slice(0, 6).join("\n")}

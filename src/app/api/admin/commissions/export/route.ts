@@ -20,18 +20,30 @@ function esc(val: unknown): string {
 
 /** Format a number as Brazilian currency string (e.g. "R$ 1.234,56"). */
 function fmtBRL(n: number): string {
-  return n.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).replace(/\u00A0/g, " ")
+  return n
+    .toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    })
+    .replace(/\u00A0/g, " ")
 }
 
 /** Month name in Portuguese. */
 function monthName(key: string): string {
   const m = parseInt(key.split("-")[1], 10)
   const months = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+    "Janeiro",
+    "Fevereiro",
+    "Março",
+    "Abril",
+    "Maio",
+    "Junho",
+    "Julho",
+    "Agosto",
+    "Setembro",
+    "Outubro",
+    "Novembro",
+    "Dezembro",
   ]
   return months[m - 1] ?? key
 }
@@ -72,12 +84,15 @@ export async function GET(request: Request) {
     // ── Aggregate totals ─────────────────────────────────────────────────
     let grossRevenue = 0
     let completedCount = 0
-    const providerMap = new Map<string, {
-      name: string
-      bookingCount: number
-      grossRevenue: number
-      completedCount: number
-    }>()
+    const providerMap = new Map<
+      string,
+      {
+        name: string
+        bookingCount: number
+        grossRevenue: number
+        completedCount: number
+      }
+    >()
     const monthlyMap = new Map<string, { gross: number; count: number }>()
 
     for (const b of bookings) {
@@ -115,8 +130,7 @@ export async function GET(request: Request) {
       .sort((a, b) => b.grossRevenue - a.grossRevenue)
 
     // Sort monthly chronologically
-    const sortedMonthly = Array.from(monthlyMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
+    const sortedMonthly = Array.from(monthlyMap.entries()).sort(([a], [b]) => a.localeCompare(b))
 
     // ── Build CSV ────────────────────────────────────────────────────────
     const rows: string[] = []
@@ -141,31 +155,39 @@ export async function GET(request: Request) {
       const gross = Math.round(data.gross * 100) / 100
       const comm = Math.round(data.gross * FEE_RATE * 100) / 100
       const net = Math.round(data.gross * (1 - FEE_RATE) * 100) / 100
-      rows.push([
-        esc(monthName(key)),
-        esc(fmtBRL(gross)),
-        esc(fmtBRL(comm)),
-        esc(fmtBRL(net)),
-        esc(data.count),
-      ].join(","))
+      rows.push(
+        [
+          esc(monthName(key)),
+          esc(fmtBRL(gross)),
+          esc(fmtBRL(comm)),
+          esc(fmtBRL(net)),
+          esc(data.count),
+        ].join(","),
+      )
     }
     rows.push("")
 
     // ── Per-provider breakdown ──────────────────────────────────────────
     rows.push("=== REPASSES POR PRESTADOR ===")
-    rows.push(["Prestador", "Agendamentos", "Completos", "Bruto", "Comissão (15%)", "Líquido (85%)"].join(","))
+    rows.push(
+      ["Prestador", "Agendamentos", "Completos", "Bruto", "Comissão (15%)", "Líquido (85%)"].join(
+        ",",
+      ),
+    )
     for (const p of sortedProviders) {
       const gross = Math.round(p.grossRevenue * 100) / 100
       const comm = Math.round(p.grossRevenue * FEE_RATE * 100) / 100
       const net = Math.round(p.grossRevenue * (1 - FEE_RATE) * 100) / 100
-      rows.push([
-        esc(p.name),
-        esc(p.bookingCount),
-        esc(p.completedCount),
-        esc(fmtBRL(gross)),
-        esc(fmtBRL(comm)),
-        esc(fmtBRL(net)),
-      ].join(","))
+      rows.push(
+        [
+          esc(p.name),
+          esc(p.bookingCount),
+          esc(p.completedCount),
+          esc(fmtBRL(gross)),
+          esc(fmtBRL(comm)),
+          esc(fmtBRL(net)),
+        ].join(","),
+      )
     }
 
     const csv = rows.join("\r\n")

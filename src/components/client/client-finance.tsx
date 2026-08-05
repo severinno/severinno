@@ -21,23 +21,8 @@
 
 import * as React from "react"
 import { useQueries } from "@tanstack/react-query"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts"
-import {
-  CreditCard,
-  Loader2,
-  PiggyBank,
-  Receipt,
-  RotateCcw,
-  Wallet,
-} from "lucide-react"
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { CreditCard, Loader2, PiggyBank, Receipt, RotateCcw, Wallet } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
@@ -61,11 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
   SelectContent,
@@ -74,10 +55,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import {
-  EmptyState,
-  StatCard,
-} from "@/components/shared/dashboard-shell"
+import { EmptyState, StatCard } from "@/components/shared/dashboard-shell"
 import {
   PageHeader,
   StatusBadge,
@@ -119,13 +97,33 @@ const TABS: Array<{ key: string; label: string }> = [
 ]
 
 const MONTH_LABELS = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+  "Jan",
+  "Fev",
+  "Mar",
+  "Abr",
+  "Mai",
+  "Jun",
+  "Jul",
+  "Ago",
+  "Set",
+  "Out",
+  "Nov",
+  "Dez",
 ]
 
 const MONTH_FULL = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
 ]
 
 const CHART_TOOLTIP_STYLE = {
@@ -264,15 +262,9 @@ export function ClientFinance() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Financeiro"
-        subtitle="Acompanhe seus pagamentos e gastos com serviços."
-      />
+      <PageHeader title="Financeiro" subtitle="Acompanhe seus pagamentos e gastos com serviços." />
 
-      <RealtimeStatusBadge
-        status={status}
-        isConnected={isConnected}
-      />
+      <RealtimeStatusBadge status={status} isConnected={isConnected} />
 
       {/* Summary cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -305,7 +297,7 @@ export function ClientFinance() {
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <p className="text-sm font-semibold">Gastos por mês</p>
-              <p className="text-xs text-muted-foreground tabular-nums">
+              <p className="text-muted-foreground text-xs tabular-nums">
                 Pagamentos confirmados em {year}
               </p>
             </div>
@@ -313,11 +305,7 @@ export function ClientFinance() {
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--border)"
-                  vertical={false}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis
                   dataKey="month"
                   tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
@@ -353,23 +341,17 @@ export function ClientFinance() {
 
       {/* Status tabs (segmented, with counts) */}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex w-full flex-wrap justify-start gap-1 h-auto p-1 sm:w-auto">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-auto">
           {TABS.map((t) => {
             const count = counts[t.key] ?? 0
             const active = tab === t.key
             return (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="h-8 flex-shrink-0 gap-1.5"
-              >
+              <TabsTrigger key={t.key} value={t.key} className="h-8 flex-shrink-0 gap-1.5">
                 {t.label}
                 <span
                   className={cn(
                     "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                    active
-                      ? "bg-primary/15 text-primary"
-                      : "bg-muted text-muted-foreground",
+                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {count}
@@ -381,9 +363,9 @@ export function ClientFinance() {
       </Tabs>
 
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3">
+      <div className="bg-card flex flex-wrap items-center gap-3 rounded-xl border p-3">
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
             Mês
           </span>
           <Select value={month} onValueChange={setMonth}>
@@ -402,7 +384,7 @@ export function ClientFinance() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
             Ano
           </span>
           <Select value={year} onValueChange={setYear}>
@@ -424,14 +406,14 @@ export function ClientFinance() {
             variant="ghost"
             size="sm"
             onClick={clearFilters}
-            className="h-9 gap-1.5 self-end text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground h-9 gap-1.5 self-end"
           >
             <RotateCcw className="size-3.5" />
             Limpar
           </Button>
         ) : null}
 
-        <p className="ml-auto self-end text-xs text-muted-foreground tabular-nums">
+        <p className="text-muted-foreground ml-auto self-end text-xs tabular-nums">
           {isLoading
             ? "Carregando…"
             : filtered.length === 0
@@ -442,7 +424,7 @@ export function ClientFinance() {
 
       {/* Table */}
       {isLoading ? (
-        <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+        <div className="text-muted-foreground flex items-center justify-center gap-2 p-10 text-sm">
           <Loader2 className="size-5 animate-spin" />
           Carregando pagamentos…
         </div>
@@ -458,23 +440,23 @@ export function ClientFinance() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50 h-11 hover:bg-muted/50">
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableRow className="bg-muted/50 hover:bg-muted/50 h-11">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Data
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Prestador
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground md:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase md:table-cell">
                       Serviço
                     </TableHead>
-                    <TableHead className="text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-xs font-semibold tracking-wide uppercase">
                       Valor
                     </TableHead>
-                    <TableHead className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-xs font-semibold tracking-wide uppercase sm:table-cell">
                       Método
                     </TableHead>
-                    <TableHead className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
                       Status
                     </TableHead>
                   </TableRow>
@@ -483,30 +465,25 @@ export function ClientFinance() {
                   {filtered.map((b) => {
                     const initials = providerInitials(b.provider.name)
                     return (
-                      <TableRow
-                        key={b.id}
-                        className="h-14 transition-colors hover:bg-muted/30"
-                      >
-                        <TableCell className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+                      <TableRow key={b.id} className="hover:bg-muted/30 h-14 transition-colors">
+                        <TableCell className="text-muted-foreground text-xs whitespace-nowrap tabular-nums">
                           {formatDate(b.scheduledAt)}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Avatar className="size-7">
                               {b.provider.avatarUrl ? null : null}
-                              <AvatarFallback className="bg-primary text-[10px] font-semibold text-primary-foreground">
+                              <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-semibold">
                                 {initials || "P"}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="truncate text-sm font-medium">
-                              {b.provider.name}
-                            </span>
+                            <span className="truncate text-sm font-medium">{b.provider.name}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="hidden max-w-[16rem] truncate text-xs text-muted-foreground md:table-cell">
+                        <TableCell className="text-muted-foreground hidden max-w-[16rem] truncate text-xs md:table-cell">
                           {b.service.title}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-right text-sm font-semibold tabular-nums">
+                        <TableCell className="text-right text-sm font-semibold whitespace-nowrap tabular-nums">
                           {formatBRL(b.amount)}
                         </TableCell>
                         <TableCell className="hidden whitespace-nowrap sm:table-cell">

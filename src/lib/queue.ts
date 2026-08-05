@@ -4,9 +4,7 @@ import amqp from "amqplib"
 // amqplib type aliases — avoids TS2614 import issues with @types/amqplib
 type Connection = Awaited<ReturnType<typeof amqp.connect>>
 type Channel = Awaited<ReturnType<Connection["createChannel"]>>
-type ConsumeMessage = NonNullable<
-  Parameters<NonNullable<Parameters<Channel["consume"]>[1]>>[0]
->
+type ConsumeMessage = NonNullable<Parameters<NonNullable<Parameters<Channel["consume"]>[1]>>[0]>
 import logger from "./logger"
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL ?? "amqp://severinno:severinno@localhost:5672"
@@ -64,20 +62,17 @@ export type PublishOptions = {
 export async function publish(opts: PublishOptions): Promise<void> {
   try {
     const ch = await getChannel()
-    ch.publish(
-      EXCHANGE,
-      opts.routingKey,
-      Buffer.from(JSON.stringify(opts.payload)),
-      { persistent: opts.persistent ?? true, contentType: "application/json" },
-    )
+    ch.publish(EXCHANGE, opts.routingKey, Buffer.from(JSON.stringify(opts.payload)), {
+      persistent: opts.persistent ?? true,
+      contentType: "application/json",
+    })
   } catch (err) {
     logger.error({ err: (err as Error).message }, "rabbitmq publish error")
   }
 }
 
 function getDeathCount(msg: ConsumeMessage): number {
-  const deaths = msg.properties.headers?.["x-death"] as
-    | Array<{ count: number }> | undefined
+  const deaths = msg.properties.headers?.["x-death"] as Array<{ count: number }> | undefined
   if (!deaths?.length) return 0
   return deaths.reduce((sum, d) => sum + (d.count ?? 0), 0)
 }

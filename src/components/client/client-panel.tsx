@@ -34,10 +34,7 @@ import { useViewStore } from "@/store/view"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import {
-  DashboardShell,
-  type NavItem,
-} from "@/components/shared/dashboard-shell"
+import { DashboardShell, type NavItem } from "@/components/shared/dashboard-shell"
 
 import { ClientDashboard } from "@/components/client/client-dashboard"
 import { ClientBookings } from "@/components/client/client-bookings"
@@ -125,22 +122,19 @@ export function ClientPanel() {
   // Guard: not authenticated or wrong role
   if (initialized && (!user || user.role !== "CLIENT")) {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-background p-6">
+      <div className="bg-background flex min-h-svh items-center justify-center p-6">
         <Card className="max-w-md text-center">
           <CardContent className="flex flex-col items-center gap-3 py-10">
-            <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-full">
               <MapPin className="size-7" />
             </div>
             <h2 className="text-lg font-semibold">Acesso restrito</h2>
-            <p className="text-sm text-muted-foreground">
-              Esta área é exclusiva para clientes autenticados. Entre ou
-              cadastre-se para acessar seu painel.
+            <p className="text-muted-foreground text-sm">
+              Esta área é exclusiva para clientes autenticados. Entre ou cadastre-se para acessar
+              seu painel.
             </p>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => navigate("vitrine")}
-              >
+              <Button variant="outline" onClick={() => navigate("vitrine")}>
                 Voltar à vitrine
               </Button>
             </div>
@@ -153,16 +147,14 @@ export function ClientPanel() {
   // Loading state while auth initializes
   if (!initialized || status === "idle") {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-background p-6">
-        <div className="text-sm text-muted-foreground">Carregando…</div>
+      <div className="bg-background flex min-h-svh items-center justify-center p-6">
+        <div className="text-muted-foreground text-sm">Carregando…</div>
       </div>
     )
   }
 
   // Resolve which view to render (fallback to dashboard)
-  const effectiveView = view.startsWith("client.")
-    ? view
-    : "client.dashboard"
+  const effectiveView = view.startsWith("client.") ? view : "client.dashboard"
   const meta = VIEW_META[effectiveView] ?? VIEW_META["client.dashboard"]!
 
   return (

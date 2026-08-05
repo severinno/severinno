@@ -9,7 +9,8 @@ export function useCheckout() {
   return {
     state: snapshot.value as CheckoutMachineState,
     context: snapshot.context as CheckoutContext,
-    can: (event: string) => (snapshot as unknown as { nextEvents: string[] }).nextEvents.includes(event),
+    can: (event: string) =>
+      (snapshot as unknown as { nextEvents: string[] }).nextEvents.includes(event),
     isError: snapshot.value === "error",
     isConfirmed: snapshot.value === "confirmed",
     isSubmitting: snapshot.value === "submitting",
@@ -21,14 +22,12 @@ export function useCheckout() {
     setAddress: (data: { address: string; cep: string; lat: number; lng: number }) =>
       send({ type: "SET_ADDRESS", data }),
 
-    setSchedule: (scheduledAt: string) =>
-      send({ type: "SET_SCHEDULE", data: { scheduledAt } }),
+    setSchedule: (scheduledAt: string) => send({ type: "SET_SCHEDULE", data: { scheduledAt } }),
 
     setPayment: (paymentMethod: "PIX" | "CARD") =>
       send({ type: "SET_PAYMENT", data: { paymentMethod } }),
 
-    setNotes: (notes: string) =>
-      send({ type: "SET_NOTES", data: { notes } }),
+    setNotes: (notes: string) => send({ type: "SET_NOTES", data: { notes } }),
 
     submit: () => send({ type: "SUBMIT" }),
 
@@ -41,10 +40,4 @@ export function useCheckout() {
 }
 
 type CheckoutMachineState =
-  | "cart"
-  | "address"
-  | "payment"
-  | "review"
-  | "submitting"
-  | "confirmed"
-  | "error"
+  "cart" | "address" | "payment" | "review" | "submitting" | "confirmed" | "error"

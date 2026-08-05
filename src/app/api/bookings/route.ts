@@ -2,13 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { bookingSchema } from "@/lib/validators"
-import {
-  badRequest,
-  forbidden,
-  handleError,
-  notFound,
-  parsePagination,
-} from "@/lib/api-server"
+import { badRequest, forbidden, handleError, notFound, parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyNewBooking } from "@/lib/notifications"
 
@@ -95,10 +89,7 @@ export async function GET(request: Request) {
     await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { searchParams } = new URL(request.url)
-    const role = (searchParams.get("role") || session.role) as
-      | "CLIENT"
-      | "PROVIDER"
-      | "ADMIN"
+    const role = (searchParams.get("role") || session.role) as "CLIENT" | "PROVIDER" | "ADMIN"
     const status = searchParams.get("status") || undefined
     const { page, limit, skip, take } = parsePagination(searchParams)
 

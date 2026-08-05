@@ -52,9 +52,33 @@ type GeoAddressFormProps = {
 }
 
 const UF_OPTIONS = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-  "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-  "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
 ]
 
 function onlyDigits(s: string): string {
@@ -131,9 +155,7 @@ export function GeoAddressForm({
     <div className={cn("grid gap-3", className)}>
       {/* AddressAutocomplete — primary input */}
       <div>
-        <Label className="text-xs mb-1.5 block text-muted-foreground">
-          Buscar endereço
-        </Label>
+        <Label className="text-muted-foreground mb-1.5 block text-xs">Buscar endereço</Label>
         <AddressAutocomplete
           placeholder="CEP, cidade ou endereço…"
           onSelect={handleAutocompleteSelect}
@@ -152,9 +174,7 @@ export function GeoAddressForm({
             aria-invalid={!!errors?.cep}
             className="h-10 text-sm"
           />
-          {errors?.cep && (
-            <p className="text-xs text-destructive">{errors.cep}</p>
-          )}
+          {errors?.cep && <p className="text-destructive text-xs">{errors.cep}</p>}
         </div>
         {!hideGps && (
           <div className="flex items-end">
@@ -164,7 +184,7 @@ export function GeoAddressForm({
               size="sm"
               onClick={handleGps}
               disabled={gpsLoading}
-              className="h-10 w-full justify-start gap-2 border-primary/30 text-primary hover:bg-primary/5 hover:text-primary"
+              className="border-primary/30 text-primary hover:bg-primary/5 hover:text-primary h-10 w-full justify-start gap-2"
             >
               {gpsLoading ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -187,9 +207,7 @@ export function GeoAddressForm({
           aria-invalid={!!errors?.street}
           className="h-10 text-sm"
         />
-        {errors?.street && (
-          <p className="text-xs text-destructive">{errors.street}</p>
-        )}
+        {errors?.street && <p className="text-destructive text-xs">{errors.street}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -203,9 +221,7 @@ export function GeoAddressForm({
             aria-invalid={!!errors?.number}
             className="h-10 text-sm"
           />
-          {errors?.number && (
-            <p className="text-xs text-destructive">{errors.number}</p>
-          )}
+          {errors?.number && <p className="text-destructive text-xs">{errors.number}</p>}
         </div>
         <div className="col-span-1 grid gap-1.5 sm:col-span-2">
           <Label htmlFor={`${idPrefix}-complement`}>Complemento</Label>
@@ -240,22 +256,17 @@ export function GeoAddressForm({
             aria-invalid={!!errors?.city}
             className="h-10 text-sm"
           />
-          {errors?.city && (
-            <p className="text-xs text-destructive">{errors.city}</p>
-          )}
+          {errors?.city && <p className="text-destructive text-xs">{errors.city}</p>}
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor={`${idPrefix}-state`}>UF</Label>
-          <Select
-            value={value.state}
-            onValueChange={(v) => set("state", v)}
-          >
+          <Select value={value.state} onValueChange={(v) => set("state", v)}>
             <SelectTrigger
               id={`${idPrefix}-state`}
-              className="w-full h-10 text-sm"
+              className="h-10 w-full text-sm"
               aria-invalid={!!errors?.state}
             >
               <SelectValue placeholder="Estado" />
@@ -268,9 +279,7 @@ export function GeoAddressForm({
               ))}
             </SelectContent>
           </Select>
-          {errors?.state && (
-            <p className="text-xs text-destructive">{errors.state}</p>
-          )}
+          {errors?.state && <p className="text-destructive text-xs">{errors.state}</p>}
         </div>
         <div className="flex items-end">
           {value.lat != null && value.lng != null ? (
@@ -279,9 +288,7 @@ export function GeoAddressForm({
               Localização confirmada
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              Confirme o endereço para prosseguir.
-            </p>
+            <p className="text-muted-foreground text-xs">Confirme o endereço para prosseguir.</p>
           )}
         </div>
       </div>

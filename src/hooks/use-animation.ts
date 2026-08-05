@@ -104,15 +104,12 @@ export function useCountUp(
 // useScrollReveal — trigger a boolean when element enters viewport
 // ---------------------------------------------------------------------------
 
-export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(
-  options?: {
-    threshold?: number
-    rootMargin?: string
-    once?: boolean
-  },
-) {
-  const { threshold = 0.15, rootMargin = "0px 0px -50px 0px", once = true } =
-    options ?? {}
+export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(options?: {
+  threshold?: number
+  rootMargin?: string
+  once?: boolean
+}) {
+  const { threshold = 0.15, rootMargin = "0px 0px -50px 0px", once = true } = options ?? {}
   const ref = React.useRef<T>(null)
   // Initialise based on reduced-motion *during render* (not in an effect)
   const prefersReduced =
@@ -153,12 +150,10 @@ export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(
 // useTilt — 3D tilt-on-mouse-move for interactive cards
 // ---------------------------------------------------------------------------
 
-export function useTilt<T extends HTMLElement = HTMLDivElement>(
-  options?: {
-    max?: number // max degrees
-    scale?: number // hover scale
-  },
-) {
+export function useTilt<T extends HTMLElement = HTMLDivElement>(options?: {
+  max?: number // max degrees
+  scale?: number // hover scale
+}) {
   const { max = 6, scale = 1.01 } = options ?? {}
   const ref = React.useRef<T>(null)
 

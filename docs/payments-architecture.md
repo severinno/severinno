@@ -154,30 +154,30 @@ Cliente                          API                           Lytex
 
 ### 3.1. Funções Exportadas
 
-| Função | Endpoint | Descrição |
-|--------|----------|-----------|
-| `createPixCharge(req)` | `POST /charges/pix` | Criar cobrança PIX |
-| `createCardCharge(req)` | `POST /charges/card` | Criar cobrança cartão |
-| `getCharge(chargeId)` | `GET /charges/{id}` | Consultar status |
-| `cancelCharge(chargeId)` | `POST /charges/{id}/cancel` | Cancelar cobrança |
-| `refundCharge(chargeId, amount?)` | `POST /charges/{id}/refund` | Reembolsar |
-| `getChargeByExternalReference(ref)` | `GET /charges/external/{ref}` | Buscar por ref externa |
-| `verifyWebhookSignature(payload)` | — | Validar assinatura webhook |
-| `parseExternalReference(ref)` | — | Extrair booking ID |
-| `mapLytexStatus(status)` | — | Mapear status Lytex → nosso |
-| `pollChargeStatus(chargeId)` | — | Polling waiting→paid |
-| `getWallet(recipientId)` | `GET /recipients/{id}/wallet` | Saldo do recebedor |
-| `listSplits(recipientId)` | `GET /recipients/{id}/splits` | Repasses ao recebedor |
+| Função                              | Endpoint                      | Descrição                   |
+| ----------------------------------- | ----------------------------- | --------------------------- |
+| `createPixCharge(req)`              | `POST /charges/pix`           | Criar cobrança PIX          |
+| `createCardCharge(req)`             | `POST /charges/card`          | Criar cobrança cartão       |
+| `getCharge(chargeId)`               | `GET /charges/{id}`           | Consultar status            |
+| `cancelCharge(chargeId)`            | `POST /charges/{id}/cancel`   | Cancelar cobrança           |
+| `refundCharge(chargeId, amount?)`   | `POST /charges/{id}/refund`   | Reembolsar                  |
+| `getChargeByExternalReference(ref)` | `GET /charges/external/{ref}` | Buscar por ref externa      |
+| `verifyWebhookSignature(payload)`   | —                             | Validar assinatura webhook  |
+| `parseExternalReference(ref)`       | —                             | Extrair booking ID          |
+| `mapLytexStatus(status)`            | —                             | Mapear status Lytex → nosso |
+| `pollChargeStatus(chargeId)`        | —                             | Polling waiting→paid        |
+| `getWallet(recipientId)`            | `GET /recipients/{id}/wallet` | Saldo do recebedor          |
+| `listSplits(recipientId)`           | `GET /recipients/{id}/splits` | Repasses ao recebedor       |
 
 ### 3.2. Configuração
 
-| Variável | Descrição | Default |
-|----------|-----------|---------|
-| `LYTEX_CLIENT_ID` | Client ID do gateway | **obrigatório** |
-| `LYTEX_CLIENT_SECRET` | Client Secret | **obrigatório** |
-| `LYTEX_ENV` | Ambiente | `sandbox` |
-| `LYTEX_API_URL` | URL produção (custom) | `https://api.lytex.com.br/v1` |
-| `LYTEX_SANDBOX_URL` | URL sandbox (custom) | `https://sandbox-api.lytex.com.br/v1` |
+| Variável              | Descrição             | Default                               |
+| --------------------- | --------------------- | ------------------------------------- |
+| `LYTEX_CLIENT_ID`     | Client ID do gateway  | **obrigatório**                       |
+| `LYTEX_CLIENT_SECRET` | Client Secret         | **obrigatório**                       |
+| `LYTEX_ENV`           | Ambiente              | `sandbox`                             |
+| `LYTEX_API_URL`       | URL produção (custom) | `https://api.lytex.com.br/v1`         |
+| `LYTEX_SANDBOX_URL`   | URL sandbox (custom)  | `https://sandbox-api.lytex.com.br/v1` |
 
 ### 3.3. Webhook
 
@@ -185,13 +185,13 @@ A Lytex envia POST para `POST /api/webhooks/lytex` com payload assinado via **HM
 
 **Status processados:**
 
-| Status | Ação |
-|--------|------|
-| `paid` | `confirmBookingPayment()` → atualiza payment + booking |
-| `refunded` | `refundBookingPayment()` → marca payment + booking como reembolsado |
-| `canceled` / `expired` | Apenas log |
-| `waitingPayment` | Apenas log |
-| desconhecido | Apenas log |
+| Status                 | Ação                                                                |
+| ---------------------- | ------------------------------------------------------------------- |
+| `paid`                 | `confirmBookingPayment()` → atualiza payment + booking              |
+| `refunded`             | `refundBookingPayment()` → marca payment + booking como reembolsado |
+| `canceled` / `expired` | Apenas log                                                          |
+| `waitingPayment`       | Apenas log                                                          |
+| desconhecido           | Apenas log                                                          |
 
 ---
 
@@ -206,6 +206,7 @@ GET /api/provider/lytex → { wallet, splits }
 ```
 
 **Regras:**
+
 - `balance`: Soma de bookings COMPLETED + PAID, menos 15% de taxa
 - `pendingBalance`: Bookings CONFIRMED/IN_PROGRESS + PAID, menos 15%
 - `totalReceived`: Soma de TODOS os bookings PAID (sem taxa)
@@ -215,12 +216,12 @@ GET /api/provider/lytex → { wallet, splits }
 
 `src/lib/wallet.ts`:
 
-| Função | Descrição |
-|--------|-----------|
-| `computeBaseBalance(providerId)` | Calcula saldo base, pendente, transações |
+| Função                                | Descrição                                           |
+| ------------------------------------- | --------------------------------------------------- |
+| `computeBaseBalance(providerId)`      | Calcula saldo base, pendente, transações            |
 | `computeAvailableBalance(providerId)` | Saldo disponível para saque (COMPLETED - withdraws) |
-| `getWithdrawals(providerId)` | Retiradas já realizadas |
-| `buildWallet(base, withdrawals)` | Monta objeto SimulatedWallet completo |
+| `getWithdrawals(providerId)`          | Retiradas já realizadas                             |
+| `buildWallet(base, withdrawals)`      | Monta objeto SimulatedWallet completo               |
 
 ### 4.3. Taxa da Plataforma
 
@@ -235,6 +236,7 @@ GET /api/provider/lytex → { wallet, splits }
 `GET /api/admin/finance?period=30d`
 
 Retorna:
+
 - **summary**: Agregação por status (PAID/PENDING/REFUNDED)
 - **monthlyRevenue**: Receita mensal
 - **paymentMethods**: Estatísticas por método (PIX vs CARD)
@@ -249,6 +251,7 @@ Retorna:
 `POST /api/admin/settlements/generate` — Gera novo período
 
 Campos do período:
+
 - `type`: WEEKLY | MONTHLY
 - `startDate` / `endDate`
 - `totalAmount`, `totalCommission`, `totalNet`
@@ -265,31 +268,31 @@ Proxy para API v2 da Lytex (requer `LYTEX_BASE_URL`). Usa token cacheado (expira
 
 ## 6. Constantes
 
-| Constante | Valor | Arquivo |
-|-----------|-------|---------|
-| `FEE_RATE` | 0.15 (15%) | `src/lib/constants.ts` |
-| `PaymentMethod` | `"CARD" \| "PIX"` | `src/lib/constants.ts` |
+| Constante       | Valor                               | Arquivo                |
+| --------------- | ----------------------------------- | ---------------------- |
+| `FEE_RATE`      | 0.15 (15%)                          | `src/lib/constants.ts` |
+| `PaymentMethod` | `"CARD" \| "PIX"`                   | `src/lib/constants.ts` |
 | `PaymentStatus` | `"PENDING" \| "PAID" \| "REFUNDED"` | `src/lib/constants.ts` |
 
 ---
 
 ## 7. Testes
 
-| Suite | Arquivo | Testes |
-|-------|---------|--------|
-| Lytex HTTP Client | `src/lib/__tests__/lytex.test.ts` | 30+ (inline replication) |
-| Webhook Lytex | `src/app/api/__tests__/webhooks-lytex-route.test.ts` | 15+ |
-| Pay Route | `src/app/api/__tests__/bookings-pay-route.test.ts` | 18+ |
-| Wallet Route | `src/app/api/__tests__/wallet-route.test.ts` | 12 |
-| Wallet Withdraw | `src/app/api/__tests__/wallet-withdraw-route.test.ts` | 10 |
-| Wallet History | `src/app/api/__tests__/wallet-history-route.test.ts` | 14 |
-| Wallet Export CSV | `src/app/api/__tests__/wallet-history-export-route.test.ts` | 9 |
-| **Wallet Library** | `src/lib/__tests__/wallet.test.ts` | **15+ (novo)** |
-| **Provider Lytex** | `src/app/api/__tests__/provider-lytex-route.test.ts` | **7 (novo)** |
-| **Admin Invoices** | `src/app/api/__tests__/admin-gateway-invoices-route.test.ts` | **7 (novo)** |
-| Checkout Machine | `src/machines/__tests__/checkout.test.ts` | 4 |
-| Admin Finance | `src/app/api/__tests__/admin-finance-route.test.ts` | 7+ |
-| Admin Settlements | `src/app/api/__tests__/admin-settlements-route.test.ts` | Testes existentes |
+| Suite              | Arquivo                                                      | Testes                   |
+| ------------------ | ------------------------------------------------------------ | ------------------------ |
+| Lytex HTTP Client  | `src/lib/__tests__/lytex.test.ts`                            | 30+ (inline replication) |
+| Webhook Lytex      | `src/app/api/__tests__/webhooks-lytex-route.test.ts`         | 15+                      |
+| Pay Route          | `src/app/api/__tests__/bookings-pay-route.test.ts`           | 18+                      |
+| Wallet Route       | `src/app/api/__tests__/wallet-route.test.ts`                 | 12                       |
+| Wallet Withdraw    | `src/app/api/__tests__/wallet-withdraw-route.test.ts`        | 10                       |
+| Wallet History     | `src/app/api/__tests__/wallet-history-route.test.ts`         | 14                       |
+| Wallet Export CSV  | `src/app/api/__tests__/wallet-history-export-route.test.ts`  | 9                        |
+| **Wallet Library** | `src/lib/__tests__/wallet.test.ts`                           | **15+ (novo)**           |
+| **Provider Lytex** | `src/app/api/__tests__/provider-lytex-route.test.ts`         | **7 (novo)**             |
+| **Admin Invoices** | `src/app/api/__tests__/admin-gateway-invoices-route.test.ts` | **7 (novo)**             |
+| Checkout Machine   | `src/machines/__tests__/checkout.test.ts`                    | 4                        |
+| Admin Finance      | `src/app/api/__tests__/admin-finance-route.test.ts`          | 7+                       |
+| Admin Settlements  | `src/app/api/__tests__/admin-settlements-route.test.ts`      | Testes existentes        |
 
 ---
 

@@ -144,28 +144,28 @@ Provider-card.tsx adiciona mousemove listener por card. Em grids grandes (>20), 
 
 ## 📊 Métricas Atuais
 
-| Métrica | Status | Meta |
-|---------|--------|------|
-| LCP | < 4.5s (Lighthouse CI) | < 2.5s |
-| CLS | < 0.25 (Lighthouse CI) | < 0.1 |
-| Bundle Analyzer | Nunca rodado | Rodar semanalmente |
-| Cobertura de Testes | ~5% | > 60% (alvo Fase 2) |
-| ESLint | 0 regras ativas | Reativar gradativamente |
-| next/image | 0 ocorrências | 100% das imagens |
-| Redis | Off (ECONNREFUSED) | Running |
-| OpenSearch Sync | Manual | Automático via eventos |
+| Métrica             | Status                 | Meta                    |
+| ------------------- | ---------------------- | ----------------------- |
+| LCP                 | < 4.5s (Lighthouse CI) | < 2.5s                  |
+| CLS                 | < 0.25 (Lighthouse CI) | < 0.1                   |
+| Bundle Analyzer     | Nunca rodado           | Rodar semanalmente      |
+| Cobertura de Testes | ~5%                    | > 60% (alvo Fase 2)     |
+| ESLint              | 0 regras ativas        | Reativar gradativamente |
+| next/image          | 0 ocorrências          | 100% das imagens        |
+| Redis               | Off (ECONNREFUSED)     | Running                 |
+| OpenSearch Sync     | Manual                 | Automático via eventos  |
 
 ---
 
 ## 🎯 Ações Imediatas Recomendadas (Top 5)
 
-| # | Ação | Esforço | Impacto |
-|---|------|---------|---------|
-| 1 | Subir Redis (Valkey) via Docker | 5 min | Latência de cache em todas as rotas |
-| 2 | Rodar `prisma db push` para sync schema | 2 min | Bug de schema drift resolvido |
-| 3 | Middleware fail-closed para SESSION_SECRET | 15 min | Segurança crítica |
-| 4 | Remover barrel `@/store` → imports diretos | 30 min | Bundle menor |
-| 5 | Substituir `<img>` por `next/image` no Hero | 1h | LCP improvement |
+| #   | Ação                                        | Esforço | Impacto                             |
+| --- | ------------------------------------------- | ------- | ----------------------------------- |
+| 1   | Subir Redis (Valkey) via Docker             | 5 min   | Latência de cache em todas as rotas |
+| 2   | Rodar `prisma db push` para sync schema     | 2 min   | Bug de schema drift resolvido       |
+| 3   | Middleware fail-closed para SESSION_SECRET  | 15 min  | Segurança crítica                   |
+| 4   | Remover barrel `@/store` → imports diretos  | 30 min  | Bundle menor                        |
+| 5   | Substituir `<img>` por `next/image` no Hero | 1h      | LCP improvement                     |
 
 ---
 

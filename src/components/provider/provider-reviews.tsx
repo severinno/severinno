@@ -60,9 +60,7 @@ export function ProviderReviews() {
   const reviews = query.data?.items ?? []
 
   const avg =
-    reviews.length > 0
-      ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length
-      : 0
+    reviews.length > 0 ? reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length : 0
 
   const distribution = React.useMemo(() => {
     const dist: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }
@@ -78,16 +76,13 @@ export function ProviderReviews() {
       <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
         <Card className="rounded-xl shadow-sm">
           <CardContent className="flex flex-col items-center justify-center gap-2 p-6 text-center">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">
+            <p className="text-muted-foreground text-xs tracking-wider uppercase">
               Avaliação média
             </p>
-            <p className="text-5xl font-bold tabular-nums text-primary">
-              {avg.toFixed(1)}
-            </p>
+            <p className="text-primary text-5xl font-bold tabular-nums">{avg.toFixed(1)}</p>
             <StarRatingDisplay value={avg} size={20} showCount={false} />
-            <p className="text-xs text-muted-foreground tabular-nums">
-              {reviews.length}{" "}
-              {reviews.length === 1 ? "avaliação" : "avaliações"}
+            <p className="text-muted-foreground text-xs tabular-nums">
+              {reviews.length} {reviews.length === 1 ? "avaliação" : "avaliações"}
             </p>
           </CardContent>
         </Card>
@@ -100,18 +95,13 @@ export function ProviderReviews() {
             <ul className="grid gap-2">
               {[5, 4, 3, 2, 1].map((star) => {
                 const count = distribution[star] ?? 0
-                const pct =
-                  reviews.length > 0 ? (count / reviews.length) * 100 : 0
+                const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0
                 return (
-                  <li
-                    key={star}
-                    className="flex items-center gap-3 text-sm"
-                  >
+                  <li key={star} className="flex items-center gap-3 text-sm">
                     <span className="flex w-12 items-center gap-1">
-                      {star}{" "}
-                      <Star className="size-3 fill-amber-400 text-amber-400" />
+                      {star} <Star className="size-3 fill-amber-400 text-amber-400" />
                     </span>
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                    <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
                       <div
                         className={cn(
                           "h-full rounded-full transition-all",
@@ -124,10 +114,10 @@ export function ProviderReviews() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="w-8 text-right text-xs text-muted-foreground tabular-nums">
+                    <span className="text-muted-foreground w-8 text-right text-xs tabular-nums">
                       {count}
                     </span>
-                    <span className="hidden w-10 text-right text-[10px] text-muted-foreground tabular-nums sm:inline">
+                    <span className="text-muted-foreground hidden w-10 text-right text-[10px] tabular-nums sm:inline">
                       {pct.toFixed(0)}%
                     </span>
                   </li>
@@ -142,20 +132,17 @@ export function ProviderReviews() {
       {query.isLoading ? (
         <div className="grid gap-3">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-32 animate-pulse rounded-xl border bg-muted/30"
-            />
+            <div key={i} className="bg-muted/30 h-32 animate-pulse rounded-xl border" />
           ))}
         </div>
       ) : reviews.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-10 text-center">
-          <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <div className="bg-primary/10 text-primary flex size-12 items-center justify-center rounded-full">
             <Star className="size-6" />
           </div>
           <div>
             <p className="text-sm font-semibold">Ainda não há avaliações</p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-xs">
               Realize serviços para receber avaliações dos seus clientes.
             </p>
           </div>
@@ -168,41 +155,29 @@ export function ProviderReviews() {
                 <div className="flex flex-wrap items-center gap-3">
                   <Avatar className="size-10 border">
                     {r.client.avatarUrl ? (
-                      <AvatarImage
-                        src={r.client.avatarUrl}
-                        alt={r.client.name}
-                      />
+                      <AvatarImage src={r.client.avatarUrl} alt={r.client.name} />
                     ) : null}
-                    <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                       {initials(r.client.name)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{r.client.name}</p>
-                    <p className="text-xs text-muted-foreground tabular-nums">
+                    <p className="text-muted-foreground text-xs tabular-nums">
                       {formatDateTime(r.createdAt)}
                     </p>
                   </div>
-                  <StarRatingDisplay
-                    value={r.rating}
-                    size={16}
-                    showCount={false}
-                  />
+                  <StarRatingDisplay value={r.rating} size={16} showCount={false} />
                 </div>
                 {r.comment && (
-                  <p className="text-sm leading-relaxed text-foreground">
-                    “{r.comment}”
-                  </p>
+                  <p className="text-foreground text-sm leading-relaxed">“{r.comment}”</p>
                 )}
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
                   {r.service?.title && (
                     <span className="inline-flex items-center gap-1">
                       <MessageSquareReply className="size-3" />
                       Serviço:{" "}
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] font-medium"
-                      >
+                      <Badge variant="secondary" className="text-[10px] font-medium">
                         {r.service.title}
                       </Badge>
                     </span>
@@ -210,9 +185,7 @@ export function ProviderReviews() {
                   {r.booking && (
                     <span className="tabular-nums">
                       Agendamento:{" "}
-                      <span className="font-medium text-foreground">
-                        #{r.booking.id.slice(-6)}
-                      </span>
+                      <span className="text-foreground font-medium">#{r.booking.id.slice(-6)}</span>
                     </span>
                   )}
                 </div>

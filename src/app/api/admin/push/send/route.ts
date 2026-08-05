@@ -53,12 +53,15 @@ export async function POST(request: Request) {
       throw badRequest("pushUrl deve comecar com /, http:// ou https://.")
     }
 
-    logger.info({
-      adminId: session.userId,
-      userIds: userIds.length,
-      title: notificationTitle,
-      type: notificationType,
-    }, "admin sending manual push notification")
+    logger.info(
+      {
+        adminId: session.userId,
+        userIds: userIds.length,
+        title: notificationTitle,
+        type: notificationType,
+      },
+      "admin sending manual push notification",
+    )
 
     // Para cada usuario, criar notificacao in-app e enviar push.
     // Tenta via RabbitMQ primeiro; se a fila estiver indisponivel,
@@ -82,12 +85,7 @@ export async function POST(request: Request) {
         // RabbitMQ indisponivel — fallback para push direto
         logger.warn({ err: queueErr, userId }, "queue unavailable, falling back to direct push")
         try {
-          await sendPushNotification(
-            userId,
-            notificationTitle,
-            notificationBody,
-            notificationUrl,
-          )
+          await sendPushNotification(userId, notificationTitle, notificationBody, notificationUrl)
           await db.notification.create({
             data: {
               userId,
@@ -106,25 +104,27 @@ export async function POST(request: Request) {
     }
 
     // ── Audit log ────────────────────────────────────────────────────
-    db.pushSendLog.create({
-      data: {
-        adminId: session.userId,
-        action: "manual_send",
-        title: notificationTitle,
-        body: notificationBody || null,
-        pushUrl: notificationUrl,
-        notificationType,
-        recipientCount: userIds.length,
-        sentCount,
-        errorCount,
-        directPushCount,
-        metadata: {
-          total: userIds.length,
-          sampleUserIds: userIds.slice(0, 5),
-          hasFallback: directPushCount > 0,
+    db.pushSendLog
+      .create({
+        data: {
+          adminId: session.userId,
+          action: "manual_send",
+          title: notificationTitle,
+          body: notificationBody || null,
+          pushUrl: notificationUrl,
+          notificationType,
+          recipientCount: userIds.length,
+          sentCount,
+          errorCount,
+          directPushCount,
+          metadata: {
+            total: userIds.length,
+            sampleUserIds: userIds.slice(0, 5),
+            hasFallback: directPushCount > 0,
+          },
         },
-      },
-    }).catch((err) => logger.error({ err }, "failed to create push audit log"))
+      })
+      .catch((err) => logger.error({ err }, "failed to create push audit log"))
 
     const hasFallback = directPushCount > 0
     const responseMessage = hasFallback

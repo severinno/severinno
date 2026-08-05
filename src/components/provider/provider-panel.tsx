@@ -118,9 +118,7 @@ const VIEWS: ViewMeta[] = [
   },
 ]
 
-const VIEW_MAP: Record<string, ViewMeta> = Object.fromEntries(
-  VIEWS.map((v) => [v.view, v]),
-)
+const VIEW_MAP: Record<string, ViewMeta> = Object.fromEntries(VIEWS.map((v) => [v.view, v]))
 
 // ---------------------------------------------------------------------------
 // Pending counts (for nav badges)
@@ -162,8 +160,7 @@ function useBadges() {
   const pendingQuotes = React.useMemo(() => {
     const items = quotesQuery.data?.items ?? []
     return items.reduce(
-      (acc, q) =>
-        acc + (q.items ?? []).filter((i) => i.status === "PENDING").length,
+      (acc, q) => acc + (q.items ?? []).filter((i) => i.status === "PENDING").length,
       0,
     )
   }, [quotesQuery.data])
@@ -221,10 +218,7 @@ export function ProviderPanel() {
             : undefined,
   }))
 
-  const breadcrumbs = [
-    { label: "Painel do Prestador" },
-    { label: meta.label },
-  ]
+  const breadcrumbs = [{ label: "Painel do Prestador" }, { label: meta.label }]
 
   return (
     <DashboardShell

@@ -56,7 +56,12 @@ export async function saveAndQueueNotification(payload: SaveNotificationOptions)
   })
 }
 
-async function dispatchPush(userId: string, title: string, body: string, pushUrl?: string): Promise<void> {
+async function dispatchPush(
+  userId: string,
+  title: string,
+  body: string,
+  pushUrl?: string,
+): Promise<void> {
   try {
     await sendPushNotification(userId, title, body, pushUrl)
   } catch (err) {
@@ -64,7 +69,12 @@ async function dispatchPush(userId: string, title: string, body: string, pushUrl
   }
 }
 
-async function dispatchWhatsApp(userId: string, title: string, body?: string, url?: string): Promise<void> {
+async function dispatchWhatsApp(
+  userId: string,
+  title: string,
+  body?: string,
+  url?: string,
+): Promise<void> {
   try {
     await sendWhatsApp({ userId, title, body, url })
   } catch (err) {
@@ -72,7 +82,14 @@ async function dispatchWhatsApp(userId: string, title: string, body?: string, ur
   }
 }
 
-async function dispatchRealtime(notificationId: string, userId: string, type: string, title: string, body: string | undefined, createdAt: Date): Promise<void> {
+async function dispatchRealtime(
+  notificationId: string,
+  userId: string,
+  type: string,
+  title: string,
+  body: string | undefined,
+  createdAt: Date,
+): Promise<void> {
   try {
     await emitRealtime("notification:new", {
       toId: userId,
@@ -91,7 +108,8 @@ async function dispatchRealtime(notificationId: string, userId: string, type: st
 }
 
 export async function handleNotification(msg: Record<string, unknown>): Promise<void> {
-  const { notificationId, userId, type, title, body, pushUrl } = msg as unknown as NotificationPayload
+  const { notificationId, userId, type, title, body, pushUrl } =
+    msg as unknown as NotificationPayload
 
   logger.info({ userId, type, title, notificationId }, "dispatching notification")
 
@@ -113,7 +131,12 @@ export async function handleNotification(msg: Record<string, unknown>): Promise<
   // Check user preferences before dispatching (raw SQL because Prisma client
   // may not have been regenerated with the new model yet)
   const rows = await prisma.$queryRawUnsafe<
-    Array<{ pushEnabled: boolean; emailEnabled: boolean; whatsappEnabled: boolean; soundEnabled: boolean }>
+    Array<{
+      pushEnabled: boolean
+      emailEnabled: boolean
+      whatsappEnabled: boolean
+      soundEnabled: boolean
+    }>
   >(
     `SELECT "pushEnabled", "emailEnabled", "whatsappEnabled", "soundEnabled"
      FROM "NotificationPreference"
@@ -131,14 +154,10 @@ export async function handleNotification(msg: Record<string, unknown>): Promise<
     )
   }
   if (!pref || pref.pushEnabled) {
-    dispatches.push(
-      dispatchPush(userId, title, body ?? "", pushUrl),
-    )
+    dispatches.push(dispatchPush(userId, title, body ?? "", pushUrl))
   }
   if (!pref || pref.whatsappEnabled) {
-    dispatches.push(
-      dispatchWhatsApp(userId, title, body, pushUrl),
-    )
+    dispatches.push(dispatchWhatsApp(userId, title, body, pushUrl))
   }
 
   await Promise.allSettled(dispatches)

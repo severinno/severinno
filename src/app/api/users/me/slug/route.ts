@@ -28,9 +28,7 @@ export async function POST(request: Request) {
     })
 
     if (existing) {
-      throw conflict(
-        `O slug "${slug}" já está em uso. Escolha outro.`,
-      )
+      throw conflict(`O slug "${slug}" já está em uso. Escolha outro.`)
     }
 
     const updated = await db.user.update({

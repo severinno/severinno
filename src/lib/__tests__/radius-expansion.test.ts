@@ -14,11 +14,7 @@
  */
 
 import { describe, it, expect } from "vitest"
-import {
-  EXPANSION_STEPS,
-  buildRadiiToTry,
-  findEffectiveRadius,
-} from "../radius-expansion"
+import { EXPANSION_STEPS, buildRadiiToTry, findEffectiveRadius } from "../radius-expansion"
 
 // ---------------------------------------------------------------------------
 // EXPANSION_STEPS

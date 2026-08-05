@@ -61,7 +61,7 @@ export default function CookieConsent() {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 100, opacity: 0 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="fixed bottom-0 left-0 right-0 z-[60] border-t border-border bg-background/95 backdrop-blur-lg shadow-2xl"
+          className="border-border bg-background/95 fixed right-0 bottom-0 left-0 z-[60] border-t shadow-2xl backdrop-blur-lg"
         >
           <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -71,11 +71,12 @@ export default function CookieConsent() {
                   <Cookie className="size-5" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-foreground text-sm font-medium">
                     Usamos cookies para melhorar sua experiência
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Utilizamos cookies essenciais para o funcionamento do site e cookies de análise para melhorar nossos serviços.{" "}
+                  <p className="text-muted-foreground text-xs">
+                    Utilizamos cookies essenciais para o funcionamento do site e cookies de análise
+                    para melhorar nossos serviços.{" "}
                     <button
                       type="button"
                       className="text-emerald-600 hover:underline dark:text-emerald-400"
@@ -92,7 +93,7 @@ export default function CookieConsent() {
                   variant="ghost"
                   size="sm"
                   onClick={handleReject}
-                  className="text-xs text-muted-foreground"
+                  className="text-muted-foreground text-xs"
                 >
                   Recusar
                 </Button>
@@ -107,7 +108,7 @@ export default function CookieConsent() {
                 <button
                   type="button"
                   onClick={handleDismiss}
-                  className="ml-1 rounded-full p-1 text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground ml-1 rounded-full p-1"
                   aria-label="Dispensar"
                 >
                   <X className="size-4" />

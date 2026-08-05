@@ -10,7 +10,11 @@
  * distance-fallback.ts): Prisma methods are injected for testability.
  */
 
-import { fetchProvidersData, type FetchProvidersDataDeps, type ProviderDataItem } from "./fetch-providers-data"
+import {
+  fetchProvidersData,
+  type FetchProvidersDataDeps,
+  type ProviderDataItem,
+} from "./fetch-providers-data"
 
 // ---------------------------------------------------------------------------
 // Types

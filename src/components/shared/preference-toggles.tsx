@@ -74,10 +74,10 @@ export function PreferenceToggles({
   const soundToggle = (
     <div className="flex items-center justify-between">
       <div className="flex items-start gap-3">
-        <Volume2 className="mt-0.5 size-5 text-primary" />
+        <Volume2 className="text-primary mt-0.5 size-5" />
         <div>
           <p className="text-sm font-medium">Sons do painel</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             Toque um som quando novas notificações chegarem.
           </p>
         </div>
@@ -86,7 +86,7 @@ export function PreferenceToggles({
         <button
           type="button"
           onClick={() => playCoinSound()}
-          className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-8 items-center justify-center rounded-full border transition"
           title="Prévia do som"
           aria-label="Ouvir prévia do som"
         >
@@ -104,19 +104,17 @@ export function PreferenceToggles({
   const vibrationToggle = (
     <div className="flex items-center justify-between">
       <div className="flex items-start gap-3">
-        <Smartphone className="mt-0.5 size-5 text-primary" />
+        <Smartphone className="text-primary mt-0.5 size-5" />
         <div>
           <p className="text-sm font-medium">Vibração</p>
-          <p className="text-xs text-muted-foreground">
-            Vibração sutil em dispositivos móveis.
-          </p>
+          <p className="text-muted-foreground text-xs">Vibração sutil em dispositivos móveis.</p>
         </div>
       </div>
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => tryVibrate([30, 50, 30, 50, 30])}
-          className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
+          className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-8 items-center justify-center rounded-full border transition"
           title="Prévia da vibração"
           aria-label="Ouvir prévia da vibração"
         >

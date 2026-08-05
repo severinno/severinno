@@ -25,18 +25,23 @@ export async function POST(request: Request) {
     const { notificationId, title } = body
 
     if (!notificationId && !title) {
-      return NextResponse.json({ ok: false, error: "notificationId ou title required" }, { status: 400 })
+      return NextResponse.json(
+        { ok: false, error: "notificationId ou title required" },
+        { status: 400 },
+      )
     }
 
     if (notificationId) {
       // Update the specific analytics record
-      const updated = await db.pushAnalytics.update({
-        where: { id: notificationId },
-        data: {
-          status: "clicked",
-          clickedAt: new Date(),
-        },
-      }).catch(() => null)
+      const updated = await db.pushAnalytics
+        .update({
+          where: { id: notificationId },
+          data: {
+            status: "clicked",
+            clickedAt: new Date(),
+          },
+        })
+        .catch(() => null)
 
       if (updated) {
         logger.debug({ notificationId }, "push notification clicked — analytics updated")
@@ -45,7 +50,10 @@ export async function POST(request: Request) {
     }
 
     // Fallback: if notificationId not found or not provided, log the click
-    logger.info({ title, notificationId: notificationId ?? "unknown" }, "push notification clicked (no analytics record)")
+    logger.info(
+      { title, notificationId: notificationId ?? "unknown" },
+      "push notification clicked (no analytics record)",
+    )
     return NextResponse.json({ ok: true })
   } catch (e) {
     return handleError(e)

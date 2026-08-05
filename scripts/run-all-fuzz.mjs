@@ -95,9 +95,7 @@ function isFuzzFile(filePath) {
 function extractIterations(filePath) {
   try {
     const content = readFileSync(filePath, "utf-8")
-    const match = content.match(
-      /FUZZ_ITERATIONS\s*[:=]\s*(\d+)/,
-    )
+    const match = content.match(/FUZZ_ITERATIONS\s*[:=]\s*(\d+)/)
     return match ? Number.parseInt(match[1], 10) : 0
   } catch {
     return 0
@@ -115,9 +113,7 @@ function main() {
   // Apply --only filter
   let fuzzFiles = allFiles
   if (ONLY_FILTER) {
-    fuzzFiles = allFiles.filter((f) =>
-      f.replace(/\\/g, "/").includes(ONLY_FILTER),
-    )
+    fuzzFiles = allFiles.filter((f) => f.replace(/\\/g, "/").includes(ONLY_FILTER))
   }
 
   if (fuzzFiles.length === 0) {
@@ -161,17 +157,25 @@ function main() {
   const jsonFiles = []
 
   for (const file of fuzzFiles) {
-    const label = file.replace(/\\/g, "/").split("/").pop()?.replace(/\.[jt]sx?$/, "") ?? "unknown"
+    const label =
+      file
+        .replace(/\\/g, "/")
+        .split("/")
+        .pop()
+        ?.replace(/\.[jt]sx?$/, "") ?? "unknown"
     const jsonOut = join(tmpDir, `${label}.json`)
     const iters = extractIterations(file)
 
     try {
-      execSync(`npx vitest run "${file}" --reporter=json > "${jsonOut}" 2> "${tmpDir}/${label}.stderr"`, {
-        cwd: ROOT,
-        stdio: "pipe",
-        shell: true,
-        timeout: 120_000,
-      })
+      execSync(
+        `npx vitest run "${file}" --reporter=json > "${jsonOut}" 2> "${tmpDir}/${label}.stderr"`,
+        {
+          cwd: ROOT,
+          stdio: "pipe",
+          shell: true,
+          timeout: 120_000,
+        },
+      )
     } catch {
       // vitest exits non-zero on failure; that's OK — the JSON is still valid
     }
@@ -186,14 +190,11 @@ function main() {
   const formatterArgs = JSON_MODE ? ["--json", ...jsonFiles] : jsonFiles
 
   try {
-    execSync(
-      `node "${FORMATTER}" ${formatterArgs.map((a) => `"${a}"`).join(" ")}`,
-      {
-        cwd: ROOT,
-        stdio: "inherit",
-        shell: true,
-      },
-    )
+    execSync(`node "${FORMATTER}" ${formatterArgs.map((a) => `"${a}"`).join(" ")}`, {
+      cwd: ROOT,
+      stdio: "inherit",
+      shell: true,
+    })
   } catch {
     // formatter exits non-zero on failures; propagate
     rmSync(tmpDir, { recursive: true, force: true })

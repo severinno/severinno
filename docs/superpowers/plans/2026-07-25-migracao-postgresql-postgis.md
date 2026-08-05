@@ -24,11 +24,13 @@
 ### Task 1: Migration SQL — Criar extension PostGIS + coluna location + índice GiST
 
 **Files:**
+
 - Create: `prisma/migrations/manual/0001_add_postgis_location/migration.sql`
 - Modify: `prisma/schema.prisma` (adicionar campo `location Unsupported`)
 - Verify: `prisma/migrations/migration_lock.toml`
 
 **Interfaces:**
+
 - Consumes: Current schema.prisma (already has `provider = "postgresql"`, `lat`/`lng` Float columns)
 - Produces: A manual SQL migration that enables PostGIS, adds `location geography(Point, 4326)`, populates it from existing `lat`/`lng`, creates GiST index, adds sync trigger
 
@@ -93,6 +95,7 @@ CREATE TRIGGER trg_sync_user_location
 ```
 
 **Rollback SQL (para referência):**
+
 ```sql
 DROP TRIGGER IF EXISTS trg_sync_user_location ON "User";
 DROP FUNCTION IF EXISTS sync_user_location();
@@ -104,12 +107,14 @@ ALTER TABLE "User" DROP COLUMN IF EXISTS location;
 - [ ] **Step 3: Atualizar prisma/schema.prisma para incluir a coluna location**
 
 Adicionar ao modelo `User`:
+
 ```prisma
 // Coluna espacial PostGIS — gerenciada via trigger SQL (sync_user_location)
 location Unsupported("geography(Point, 4326)")?
 ```
 
 E atualizar o índice composto:
+
 ```prisma
 @@index([role, active, verified])
 ```
@@ -137,11 +142,13 @@ git commit -m "feat: add PostGIS extension, location geography column, GiST inde
 ### Task 2: Script de migração de dados SQLite → PostgreSQL
 
 **Files:**
+
 - Create: `scripts/migrate-sqlite-to-postgres.ts`
 - Create: `.env.pg` (template with PostgreSQL DATABASE_URL)
 - Modify: `prisma/seed.ts` (ensure PostgreSQL compatibility)
 
 **Interfaces:**
+
 - Consumes: SQLite database at `prisma/dev.db`, PostgreSQL at `DATABASE_URL`
 - Produces: Dump SQLite data → transform → insert into PostgreSQL
 
@@ -180,164 +187,164 @@ REDIS_URL="redis://localhost:6379"
  *   12. SettlementPeriod + ProviderSettlement
  */
 
-import { PrismaClient as PrismaSQLite } from "@prisma/client";
-import { PrismaClient as PrismaPG } from "@prisma/client";
-import { execSync } from "child_process";
+import { PrismaClient as PrismaSQLite } from "@prisma/client"
+import { PrismaClient as PrismaPG } from "@prisma/client"
+import { execSync } from "child_process"
 
-const SQLITE_URL = process.env.DATABASE_URL_SQLITE || "file:./prisma/dev.db";
-const PG_URL = process.env.DATABASE_URL_PG;
+const SQLITE_URL = process.env.DATABASE_URL_SQLITE || "file:./prisma/dev.db"
+const PG_URL = process.env.DATABASE_URL_PG
 
 if (!PG_URL) {
-  console.error("❌ DATABASE_URL_PG is required");
-  process.exit(1);
+  console.error("❌ DATABASE_URL_PG is required")
+  process.exit(1)
 }
 
 async function migrate() {
-  console.log("🔄 Starting SQLite → PostgreSQL migration...");
+  console.log("🔄 Starting SQLite → PostgreSQL migration...")
 
   // Step 1: Push schema to PostgreSQL
-  console.log("📦 Pushing schema to PostgreSQL...");
-  execSync("DATABASE_URL=\"" + PG_URL + "\" bunx prisma db push --accept-data-loss", {
+  console.log("📦 Pushing schema to PostgreSQL...")
+  execSync('DATABASE_URL="' + PG_URL + '" bunx prisma db push --accept-data-loss', {
     stdio: "inherit",
-  });
+  })
 
   // Step 2: Run manual PostGIS migration SQL
-  console.log("🗺️  Applying PostGIS migration...");
+  console.log("🗺️  Applying PostGIS migration...")
   execSync(
     "PGPASSWORD=severinno psql -h localhost -U severinno -d severinno " +
-    "-f prisma/migrations/manual/0001_add_postgis_location/migration.sql",
+      "-f prisma/migrations/manual/0001_add_postgis_location/migration.sql",
     { stdio: "inherit" },
-  );
+  )
 
   // Step 3: Connect to both databases and migrate data
   const sqlite = new PrismaSQLite({
     datasources: { db: { url: SQLITE_URL } },
-  });
+  })
   const pg = new PrismaPG({
     datasources: { db: { url: PG_URL } },
-  });
+  })
 
   try {
     // --- Settings (no dependencies) ---
-    console.log("📋 Migrating settings...");
-    const settings = await sqlite.setting.findMany();
+    console.log("📋 Migrating settings...")
+    const settings = await sqlite.setting.findMany()
     if (settings.length > 0) {
-      await pg.setting.createMany({ data: settings });
-      console.log(`  ✅ ${settings.length} settings migrated`);
+      await pg.setting.createMany({ data: settings })
+      console.log(`  ✅ ${settings.length} settings migrated`)
     }
 
     // --- Users ---
-    console.log("📋 Migrating users...");
-    const users = await sqlite.user.findMany();
+    console.log("📋 Migrating users...")
+    const users = await sqlite.user.findMany()
     for (const user of users) {
-      const { ...userData } = user;
+      const { ...userData } = user
       // location will be set automatically by the trigger from lat/lng
-      await pg.user.create({ data: userData });
+      await pg.user.create({ data: userData })
     }
-    console.log(`  ✅ ${users.length} users migrated`);
+    console.log(`  ✅ ${users.length} users migrated`)
 
     // --- Categories ---
-    console.log("📋 Migrating categories...");
-    const categories = await sqlite.category.findMany();
+    console.log("📋 Migrating categories...")
+    const categories = await sqlite.category.findMany()
     if (categories.length > 0) {
-      await pg.category.createMany({ data: categories });
-      console.log(`  ✅ ${categories.length} categories migrated`);
+      await pg.category.createMany({ data: categories })
+      console.log(`  ✅ ${categories.length} categories migrated`)
     }
 
     // --- Services ---
-    console.log("📋 Migrating services...");
-    const services = await sqlite.service.findMany();
+    console.log("📋 Migrating services...")
+    const services = await sqlite.service.findMany()
     // Services have relations - need to use individual creates
     for (const svc of services) {
-      await pg.service.create({ data: svc as any });
+      await pg.service.create({ data: svc as any })
     }
-    console.log(`  ✅ ${services.length} services migrated`);
+    console.log(`  ✅ ${services.length} services migrated`)
 
     // --- Provider Availability ---
-    console.log("📋 Migrating provider availability...");
-    const availabilities = await sqlite.providerAvailability.findMany();
+    console.log("📋 Migrating provider availability...")
+    const availabilities = await sqlite.providerAvailability.findMany()
     if (availabilities.length > 0) {
-      await pg.providerAvailability.createMany({ data: availabilities });
-      console.log(`  ✅ ${availabilities.length} availabilities migrated`);
+      await pg.providerAvailability.createMany({ data: availabilities })
+      console.log(`  ✅ ${availabilities.length} availabilities migrated`)
     }
 
     // --- Quote Requests + Items ---
-    console.log("📋 Migrating quote requests...");
-    const quotes = await sqlite.quoteRequest.findMany({ include: { items: true } });
+    console.log("📋 Migrating quote requests...")
+    const quotes = await sqlite.quoteRequest.findMany({ include: { items: true } })
     for (const quote of quotes) {
-      const { items, ...quoteData } = quote;
+      const { items, ...quoteData } = quote
       await pg.quoteRequest.create({
         data: {
           ...quoteData,
           items: { createMany: { data: items } },
         },
-      });
+      })
     }
-    console.log(`  ✅ ${quotes.length} quote requests migrated`);
+    console.log(`  ✅ ${quotes.length} quote requests migrated`)
 
     // --- Bookings + Payments ---
-    console.log("📋 Migrating bookings...");
-    const bookings = await sqlite.booking.findMany({ include: { payment: true } });
+    console.log("📋 Migrating bookings...")
+    const bookings = await sqlite.booking.findMany({ include: { payment: true } })
     for (const booking of bookings) {
-      const { payment, ...bookingData } = booking;
+      const { payment, ...bookingData } = booking
       await pg.booking.create({
         data: {
           ...bookingData,
           payment: payment ? { create: payment } : undefined,
         },
-      });
+      })
     }
-    console.log(`  ✅ ${bookings.length} bookings migrated`);
+    console.log(`  ✅ ${bookings.length} bookings migrated`)
 
     // --- Reviews ---
-    console.log("📋 Migrating reviews...");
-    const reviews = await sqlite.review.findMany();
+    console.log("📋 Migrating reviews...")
+    const reviews = await sqlite.review.findMany()
     if (reviews.length > 0) {
-      await pg.review.createMany({ data: reviews });
-      console.log(`  ✅ ${reviews.length} reviews migrated`);
+      await pg.review.createMany({ data: reviews })
+      console.log(`  ✅ ${reviews.length} reviews migrated`)
     }
 
     // --- Favorites ---
-    console.log("📋 Migrating favorites...");
-    const favorites = await sqlite.favorite.findMany();
+    console.log("📋 Migrating favorites...")
+    const favorites = await sqlite.favorite.findMany()
     if (favorites.length > 0) {
-      await pg.favorite.createMany({ data: favorites });
-      console.log(`  ✅ ${favorites.length} favorites migrated`);
+      await pg.favorite.createMany({ data: favorites })
+      console.log(`  ✅ ${favorites.length} favorites migrated`)
     }
 
     // --- Messages ---
-    console.log("📋 Migrating messages...");
-    const messages = await sqlite.message.findMany();
+    console.log("📋 Migrating messages...")
+    const messages = await sqlite.message.findMany()
     if (messages.length > 0) {
-      await pg.message.createMany({ data: messages });
-      console.log(`  ✅ ${messages.length} messages migrated`);
+      await pg.message.createMany({ data: messages })
+      console.log(`  ✅ ${messages.length} messages migrated`)
     }
 
     // --- Notifications ---
-    console.log("📋 Migrating notifications...");
-    const notifications = await sqlite.notification.findMany();
+    console.log("📋 Migrating notifications...")
+    const notifications = await sqlite.notification.findMany()
     if (notifications.length > 0) {
-      await pg.notification.createMany({ data: notifications });
-      console.log(`  ✅ ${notifications.length} notifications migrated`);
+      await pg.notification.createMany({ data: notifications })
+      console.log(`  ✅ ${notifications.length} notifications migrated`)
     }
 
     // --- SettlementPeriod + ProviderSettlement ---
-    console.log("📋 Migrating settlement periods...");
+    console.log("📋 Migrating settlement periods...")
     const periods = await sqlite.settlementPeriod.findMany({
       include: { providers: true },
-    });
+    })
     for (const period of periods) {
-      const { providers, ...periodData } = period;
+      const { providers, ...periodData } = period
       await pg.settlementPeriod.create({
         data: {
           ...periodData,
           providers: { createMany: { data: providers } },
         },
-      });
+      })
     }
-    console.log(`  ✅ ${periods.length} settlement periods migrated`);
+    console.log(`  ✅ ${periods.length} settlement periods migrated`)
 
-    console.log("\n✅ Migration completed successfully!");
+    console.log("\n✅ Migration completed successfully!")
     console.log(`📊 Summary:
     - ${settings.length} settings
     - ${users.length} users
@@ -350,17 +357,17 @@ async function migrate() {
     - ${favorites.length} favorites
     - ${messages.length} messages
     - ${notifications.length} notifications
-    - ${periods.length} settlement periods`);
+    - ${periods.length} settlement periods`)
   } finally {
-    await sqlite.$disconnect();
-    await pg.$disconnect();
+    await sqlite.$disconnect()
+    await pg.$disconnect()
   }
 }
 
 migrate().catch((err) => {
-  console.error("❌ Migration failed:", err);
-  process.exit(1);
-});
+  console.error("❌ Migration failed:", err)
+  process.exit(1)
+})
 ```
 
 - [ ] **Step 3: Adicionar script no package.json**
@@ -398,16 +405,19 @@ git commit -m "feat: add SQLite-to-PostgreSQL migration script with data transfo
 ### Task 3: PostGIS query optimization — atualizar lib postgis.ts para ser o path primário
 
 **Files:**
+
 - Modify: `src/lib/postgis.ts`
 - Modify: `src/app/api/providers/route.ts`
 
 **Interfaces:**
+
 - Consumes: Current `src/lib/postgis.ts` with `findProvidersWithinRadius`, `getDistanceBetween`, `isPostGISAvailable`
 - Produces: Optimized PostGIS queries that are the PRIMARY path (Haversine becomes fallback only)
 
 - [ ] **Step 1: Revisar e otimizar src/lib/postgis.ts**
 
 The current implementation is good. Verify it handles:
+
 - `findProvidersWithinRadius` — already correct with ST_DWithin + GiST index
 - `getDistanceBetween` — already correct
 - `isPostGISAvailable` — already correct
@@ -417,6 +427,7 @@ No changes needed to the library itself — it was already written for PostGIS.
 - [ ] **Step 2: Atualizar src/app/api/providers/route.ts para usar PostGIS como path primário**
 
 The current code already has a sophisticated 2-phase architecture with PostGIS-aware queries. Key changes:
+
 - Ensure `isPostGISAvailable()` check runs first, not buried inside conditional
 - The fallback to Haversine is already implemented correctly
 - The `fetchProvidersData` helper already falls back from PostGIS to Haversine
@@ -442,9 +453,11 @@ git commit -m "perf: promote PostGIS to primary geo query path with Haversine fa
 ### Task 4: Atualizar seed para PostgreSQL + PostGIS
 
 **Files:**
+
 - Modify: `prisma/seed.ts`
 
 **Interfaces:**
+
 - Consumes: Current seed script that works with SQLite
 - Produces: PostgreSQL-optimized seed that also inserts location geography data
 
@@ -458,7 +471,7 @@ await db.$executeRawUnsafe(`
   UPDATE "User"
   SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
   WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
-`);
+`)
 ```
 
 - [ ] **Step 2: Verificar que o seed é idempotente com PostgreSQL**
@@ -477,9 +490,11 @@ git commit -m "feat: update seed for PostgreSQL + PostGIS location column"
 ### Task 5: Script de E2E para geo queries PostGIS
 
 **Files:**
+
 - Create: `scripts/test-postgis.ts`
 
 **Interfaces:**
+
 - Consumes: Running PostgreSQL with PostGIS
 - Produces: Script that verifies all spatial operations work correctly
 
@@ -503,28 +518,28 @@ git commit -m "feat: update seed for PostgreSQL + PostGIS location column"
  *   6. Haversine JS fallback gives same results (within tolerance)
  */
 
-import { db } from "@/lib/db";
-import { findProvidersWithinRadius, isPostGISAvailable, getDistanceBetween } from "@/lib/postgis";
-import { haversineKm } from "@/lib/geo-shared";
+import { db } from "@/lib/db"
+import { findProvidersWithinRadius, isPostGISAvailable, getDistanceBetween } from "@/lib/postgis"
+import { haversineKm } from "@/lib/geo-shared"
 
 async function testPostGIS() {
-  console.log("🧪 Testing PostGIS spatial operations...\n");
-  let passed = 0;
-  let failed = 0;
+  console.log("🧪 Testing PostGIS spatial operations...\n")
+  let passed = 0
+  let failed = 0
 
   // Test 1: Extension availability
   try {
-    const available = await isPostGISAvailable();
+    const available = await isPostGISAvailable()
     if (available) {
-      console.log("✅ PostGIS extension is available");
-      passed++;
+      console.log("✅ PostGIS extension is available")
+      passed++
     } else {
-      console.log("❌ PostGIS extension is NOT available");
-      failed++;
+      console.log("❌ PostGIS extension is NOT available")
+      failed++
     }
   } catch (e) {
-    console.log("❌ PostGIS check failed:", e);
-    failed++;
+    console.log("❌ PostGIS check failed:", e)
+    failed++
   }
 
   // Test 2: Location column + trigger
@@ -541,26 +556,26 @@ async function testPostGIS() {
         active: true,
         verified: true,
       },
-    });
+    })
 
     // Check if trigger populated location
     const check = await db.$queryRaw<Array<{ id: string; has_location: boolean }>>`
       SELECT id, location IS NOT NULL AS has_location FROM "User" WHERE id = ${user.id}
-    `;
+    `
 
     if (check[0]?.has_location) {
-      console.log("✅ Trigger syncs location on INSERT");
-      passed++;
+      console.log("✅ Trigger syncs location on INSERT")
+      passed++
     } else {
-      console.log("❌ Trigger did NOT populate location");
-      failed++;
+      console.log("❌ Trigger did NOT populate location")
+      failed++
     }
 
     // Cleanup
-    await db.user.delete({ where: { id: user.id } });
+    await db.user.delete({ where: { id: user.id } })
   } catch (e) {
-    console.log("❌ Trigger test failed:", e);
-    failed++;
+    console.log("❌ Trigger test failed:", e)
+    failed++
   }
 
   // Test 3: ST_DWithin radius query
@@ -570,38 +585,43 @@ async function testPostGIS() {
       where: { role: "PROVIDER", active: true, verified: true, lat: { not: null } },
       take: 5,
       select: { id: true, lat: true, lng: true, name: true },
-    });
+    })
 
     if (providers.length >= 2) {
-      const center = providers[0];
-      const target = providers[1];
+      const center = providers[0]
+      const target = providers[1]
       if (center.lat && center.lng && target.lat && target.lng) {
         // PostGIS distance
-        const pgDist = await getDistanceBetween(center.id, target.id);
+        const pgDist = await getDistanceBetween(center.id, target.id)
         // Haversine distance
-        const hvDist = haversineKm(center.lat, center.lng, target.lat, target.lng);
+        const hvDist = haversineKm(center.lat, center.lng, target.lat, target.lng)
 
         if (pgDist !== null) {
-          const diff = Math.abs(pgDist - hvDist);
-          if (diff < 0.1) { // within 100m tolerance
-            console.log(`✅ ST_Distance matches Haversine (PG: ${pgDist.toFixed(2)}km, Haversine: ${hvDist.toFixed(2)}km, diff: ${diff.toFixed(4)}km)`);
-            passed++;
+          const diff = Math.abs(pgDist - hvDist)
+          if (diff < 0.1) {
+            // within 100m tolerance
+            console.log(
+              `✅ ST_Distance matches Haversine (PG: ${pgDist.toFixed(2)}km, Haversine: ${hvDist.toFixed(2)}km, diff: ${diff.toFixed(4)}km)`,
+            )
+            passed++
           } else {
-            console.log(`⚠️  ST_Distance differs from Haversine (PG: ${pgDist.toFixed(2)}km, Haversine: ${hvDist.toFixed(2)}km, diff: ${diff.toFixed(4)}km)`);
-            passed++; // Still pass — differences are expected (PostGIS uses spheroid, Haversine uses sphere)
+            console.log(
+              `⚠️  ST_Distance differs from Haversine (PG: ${pgDist.toFixed(2)}km, Haversine: ${hvDist.toFixed(2)}km, diff: ${diff.toFixed(4)}km)`,
+            )
+            passed++ // Still pass — differences are expected (PostGIS uses spheroid, Haversine uses sphere)
           }
         } else {
-          console.log("⚠️  ST_Distance returned null (no location data?)");
-          passed++;
+          console.log("⚠️  ST_Distance returned null (no location data?)")
+          passed++
         }
       }
     } else {
-      console.log("⚠️  Not enough providers with coordinates found — skipping distance test");
-      passed++;
+      console.log("⚠️  Not enough providers with coordinates found — skipping distance test")
+      passed++
     }
   } catch (e) {
-    console.log("❌ Distance test failed:", e);
-    failed++;
+    console.log("❌ Distance test failed:", e)
+    failed++
   }
 
   // Test 4: GiST index exists
@@ -609,28 +629,28 @@ async function testPostGIS() {
     const indexes = await db.$queryRaw<Array<{ indexname: string }>>`
       SELECT indexname FROM pg_indexes
       WHERE tablename = 'User' AND indexname = 'idx_user_location_gist'
-    `;
+    `
     if (indexes.length > 0) {
-      console.log("✅ GiST index 'idx_user_location_gist' exists");
-      passed++;
+      console.log("✅ GiST index 'idx_user_location_gist' exists")
+      passed++
     } else {
-      console.log("❌ GiST index NOT found");
-      failed++;
+      console.log("❌ GiST index NOT found")
+      failed++
     }
   } catch (e) {
-    console.log("❌ Index check failed:", e);
-    failed++;
+    console.log("❌ Index check failed:", e)
+    failed++
   }
 
   // Summary
-  console.log(`\n📊 Results: ${passed} passed, ${failed} failed, ${passed + failed} total`);
-  process.exit(failed > 0 ? 1 : 0);
+  console.log(`\n📊 Results: ${passed} passed, ${failed} failed, ${passed + failed} total`)
+  process.exit(failed > 0 ? 1 : 0)
 }
 
 testPostGIS().catch((e) => {
-  console.error("💥 Test suite crashed:", e);
-  process.exit(1);
-});
+  console.error("💥 Test suite crashed:", e)
+  process.exit(1)
+})
 ```
 
 - [ ] **Step 2: Executar e verificar**
@@ -663,6 +683,7 @@ git commit -m "test: add E2E PostGIS spatial query verification suite"
 ### Task 6: Configuração final e verificação — Docker Compose + env + docs + lint/typecheck
 
 **Files:**
+
 - Modify: `docker-compose.dev.yml` (ensure postgis service is properly configured)
 - Create: `.env.example` (update with PostgreSQL instructions)
 - Create: `docs/postgis-guide.md` (setup guide for developers)
@@ -671,6 +692,7 @@ git commit -m "test: add E2E PostGIS spatial query verification suite"
 - [ ] **Step 1: Verificar docker-compose.dev.yml**
 
 The current config already has:
+
 ```yaml
 postgis:
   image: postgis/postgis:16-3.4
@@ -683,6 +705,7 @@ postgis:
 ```
 
 This is correct. Add a volume for init scripts to auto-enable extensions:
+
 ```yaml
 volumes:
   - ./scripts/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql
@@ -691,7 +714,8 @@ volumes:
 - [ ] **Step 2: Criar guia de setup para desenvolvedores**
 
 Create `docs/postgis-guide.md` with:
-```markdown
+
+````markdown
 # PostGIS Setup Guide
 
 ## Quick Start
@@ -718,10 +742,12 @@ DATABASE_URL_PG="postgresql://severinno:severinno@localhost:5432/severinno" \
 DATABASE_URL="postgresql://severinno:severinno@localhost:5432/severinno" \
   bun run test:postgis
 ```
+````
 
 ## Environment Variables
 
 Set in `.env.local`:
+
 ```
 DATABASE_URL="postgresql://severinno:severinno@localhost:5432/severinno"
 REDIS_URL="redis://localhost:6380"
@@ -730,14 +756,15 @@ REDIS_URL="redis://localhost:6380"
 ## Architecture
 
 See `Arquitetura_Software.md` for the full architecture document.
-```
+
+````
 
 - [ ] **Step 3: Verificar lint e typecheck**
 
 ```bash
 bun run lint
 bunx tsc --noEmit
-```
+````
 
 Expected: 0 errors (pre-existing errors in examples/ and skills/ are out of scope).
 

@@ -7,7 +7,13 @@ export const metadata = {
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center p-4"><p className="text-muted-foreground">Carregando...</p></div>}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center p-4">
+          <p className="text-muted-foreground">Carregando...</p>
+        </div>
+      }
+    >
       <ResetPasswordForm />
     </Suspense>
   )

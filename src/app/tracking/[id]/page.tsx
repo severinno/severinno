@@ -13,8 +13,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   })
   if (!booking) return { title: "Agendamento não encontrado" }
   const statusLabels: Record<string, string> = {
-    PENDING: "Pendente", CONFIRMED: "Confirmado", IN_PROGRESS: "Em andamento",
-    COMPLETED: "Concluído", CANCELLED: "Cancelado",
+    PENDING: "Pendente",
+    CONFIRMED: "Confirmado",
+    IN_PROGRESS: "Em andamento",
+    COMPLETED: "Concluído",
+    CANCELLED: "Cancelado",
   }
   return {
     title: `${statusLabels[booking.status] ?? booking.status} — ${booking.service.title}`,
@@ -27,9 +30,15 @@ export default async function Page({ params }: Props) {
   const booking = await db.booking.findUnique({
     where: { id },
     select: {
-      id: true, status: true, paymentStatus: true, scheduledAt: true,
-      address: true, createdAt: true, amount: true,
-      lat: true, lng: true,
+      id: true,
+      status: true,
+      paymentStatus: true,
+      scheduledAt: true,
+      address: true,
+      createdAt: true,
+      amount: true,
+      lat: true,
+      lng: true,
       provider: { select: { id: true, name: true, avatarUrl: true } },
       client: { select: { id: true, name: true } },
       service: { select: { id: true, title: true, basePrice: true } },

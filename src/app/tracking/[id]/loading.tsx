@@ -25,7 +25,7 @@ export default function Loading() {
 
           {/* ── Map placeholder (aspect-video) ──────────────────────── */}
           <StaggerItem y={12} duration={0.35} className="mt-6">
-            <div className="overflow-hidden rounded-xl border border-border/50 bg-muted/20">
+            <div className="border-border/50 bg-muted/20 overflow-hidden rounded-xl border">
               <div className="flex aspect-video items-center justify-center">
                 <S className="size-full rounded-none" />
               </div>
@@ -34,7 +34,7 @@ export default function Loading() {
 
           {/* ── Booking details card ────────────────────────────────── */}
           <StaggerItem y={12} duration={0.35} className="mt-6">
-            <div className="rounded-xl border border-border/50 bg-card p-6">
+            <div className="border-border/50 bg-card rounded-xl border p-6">
               <div className="grid gap-4 sm:grid-cols-2">
                 {/* Provider */}
                 <div className="space-y-2">
@@ -74,7 +74,7 @@ export default function Loading() {
 
           {/* ── Progress / timeline ─────────────────────────────────── */}
           <StaggerItem y={12} duration={0.35} className="mt-6">
-            <div className="rounded-xl border border-border/50 bg-card p-6">
+            <div className="border-border/50 bg-card rounded-xl border p-6">
               <S className="mb-4 h-5 w-24" />
               <div className="space-y-4">
                 {Array.from({ length: 4 }).map((_, i) => (

@@ -33,13 +33,13 @@ export function CategoryPage({ category }: Props) {
       <div className="mb-8">
         <h1 className="text-3xl font-bold">{category.name}</h1>
         {category.description && (
-          <p className="mt-2 text-muted-foreground">{category.description}</p>
+          <p className="text-muted-foreground mt-2">{category.description}</p>
         )}
       </div>
 
       <div className="mb-6 flex flex-wrap gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative max-w-md flex-1">
+          <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
           <Input
             placeholder="Buscar serviço..."
             value={query}
@@ -70,9 +70,7 @@ export function CategoryPage({ category }: Props) {
       ) : (
         <div className="flex flex-col items-center gap-2 py-16 text-center">
           <p className="text-lg font-medium">Nenhum profissional encontrado</p>
-          <p className="text-sm text-muted-foreground">
-            Tente ajustar sua busca ou filtro.
-          </p>
+          <p className="text-muted-foreground text-sm">Tente ajustar sua busca ou filtro.</p>
         </div>
       )}
     </div>

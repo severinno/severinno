@@ -18,10 +18,7 @@ const VALID_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
  *   targetRoles — array de roles alvo
  *   active      — booleano
  */
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("ADMIN")
     const { id } = await params
@@ -92,10 +89,7 @@ export async function PATCH(
  *
  * Exclui uma regra de webhook de evento.
  */
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("ADMIN")
     const { id } = await params

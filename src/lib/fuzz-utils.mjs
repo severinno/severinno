@@ -53,7 +53,7 @@ export function pick(arr) {
 export function fuzzLat() {
   const r = seededRandom()
   if (r < 0.05) return 0
-  if (r < 0.10) return 90
+  if (r < 0.1) return 90
   if (r < 0.15) return -90
   if (r < 0.17) return NaN
   if (r < 0.18) return Infinity
@@ -65,7 +65,7 @@ export function fuzzLat() {
 export function fuzzLng() {
   const r = seededRandom()
   if (r < 0.05) return 0
-  if (r < 0.10) return 180
+  if (r < 0.1) return 180
   if (r < 0.15) return -180
   if (r < 0.17) return NaN
   if (r < 0.18) return Infinity
@@ -77,13 +77,13 @@ export function fuzzLng() {
 export function fuzzRadius() {
   const r = seededRandom()
   if (r < 0.05) return 0
-  if (r < 0.10) return -1
+  if (r < 0.1) return -1
   if (r < 0.12) return -1000
   if (r < 0.14) return 1_000_000
   if (r < 0.16) return NaN
   if (r < 0.17) return Infinity
   if (r < 0.18) return -Infinity
-  if (r < 0.30) return seededRandom() * 200
+  if (r < 0.3) return seededRandom() * 200
   return Math.round(seededRandom() * 500)
 }
 
@@ -94,12 +94,12 @@ export function fuzzRadius() {
 /** Generate a random categoryIds array biased toward edge cases. */
 export function fuzzCategoryIds() {
   const r = seededRandom()
-  if (r < 0.10) return undefined
-  if (r < 0.20) return []
-  if (r < 0.30) return [""]
-  if (r < 0.40) return ["cat-a"]
-  if (r < 0.50) return ["cat-z", "cat-a"]
-  if (r < 0.60) return ["a", "b", "c", "d"]
+  if (r < 0.1) return undefined
+  if (r < 0.2) return []
+  if (r < 0.3) return [""]
+  if (r < 0.4) return ["cat-a"]
+  if (r < 0.5) return ["cat-z", "cat-a"]
+  if (r < 0.6) return ["a", "b", "c", "d"]
   if (r < 0.65) return ["", "cat-a", ""]
   const count = randInt(1, 10)
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789-"
@@ -120,18 +120,18 @@ export function fuzzCategoryIds() {
 /** Generate a random search query biased toward edge cases. */
 export function fuzzQuery() {
   const r = seededRandom()
-  if (r < 0.10) return undefined
-  if (r < 0.20) return ""
+  if (r < 0.1) return undefined
+  if (r < 0.2) return ""
   if (r < 0.25) return "   "
   if (r < 0.35) return "eletricista"
   if (r < 0.45) return "são paulo"
-  if (r < 0.50) return "   encanador   "
+  if (r < 0.5) return "   encanador   "
   if (r < 0.55) return "a".repeat(200)
-  if (r < 0.60) return "<script>alert(1)</script>"
+  if (r < 0.6) return "<script>alert(1)</script>"
   if (r < 0.65) return "' OR 1=1 --"
-  if (r < 0.70) return "\u{1F600}\u{1F389}\u{1F3E0}"
+  if (r < 0.7) return "\u{1F600}\u{1F389}\u{1F3E0}"
   if (r < 0.75) return "東京"
-  if (r < 0.80) return "a b c d e f g h i j"
+  if (r < 0.8) return "a b c d e f g h i j"
   const len = randInt(1, 50)
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789 -_."
   let result = ""
@@ -178,24 +178,24 @@ const MAX_EXPECTED_RADII = EXPANSION_STEPS_FUZZ.length + 1
 /** Generate a fuzz input value for userRadiusKm, biased toward edge cases. */
 export function fuzzRadiusValue() {
   const r = seededRandom()
-  if (r < 0.10) {
+  if (r < 0.1) {
     const neg = seededRandom()
-    if (neg < 0.30) return -seededRandom() * 1e6
-    if (neg < 0.60) return -seededRandom() * 1000
+    if (neg < 0.3) return -seededRandom() * 1e6
+    if (neg < 0.6) return -seededRandom() * 1000
     return -seededRandom() * 10
   }
-  if (r < 0.20) return 0
-  if (r < 0.30) return EXPANSION_STEPS_FUZZ[randInt(0, EXPANSION_STEPS_FUZZ.length - 1)]
-  if (r < 0.40) {
+  if (r < 0.2) return 0
+  if (r < 0.3) return EXPANSION_STEPS_FUZZ[randInt(0, EXPANSION_STEPS_FUZZ.length - 1)]
+  if (r < 0.4) {
     const step = EXPANSION_STEPS_FUZZ[randInt(0, EXPANSION_STEPS_FUZZ.length - 2)]
     const nextStep = EXPANSION_STEPS_FUZZ[EXPANSION_STEPS_FUZZ.indexOf(step) + 1]
     return step + seededRandom() * (nextStep - step)
   }
-  if (r < 0.50) return seededRandom() * 5
-  if (r < 0.60) {
+  if (r < 0.5) return seededRandom() * 5
+  if (r < 0.6) {
     const above = seededRandom()
-    if (above < 0.30) return 100 + seededRandom() * 1e6
-    if (above < 0.60) return 100 + seededRandom() * 1000
+    if (above < 0.3) return 100 + seededRandom() * 1e6
+    if (above < 0.6) return 100 + seededRandom() * 1000
     return 100 + seededRandom() * 500
   }
   return seededRandom() * 2000 - 1000
@@ -219,7 +219,10 @@ export function validateRadii(userRadiusKm, radii) {
     const v = radii[i]
     if (v === userRadiusKm) continue
     if (!stepSet.has(v)) {
-      return { pass: false, reason: `value ${v} at index ${i} is neither userRadius (${userRadiusKm}) nor an expansion step [${EXPANSION_STEPS_FUZZ}]` }
+      return {
+        pass: false,
+        reason: `value ${v} at index ${i} is neither userRadius (${userRadiusKm}) nor an expansion step [${EXPANSION_STEPS_FUZZ}]`,
+      }
     }
     if (i > 0 && v === userRadiusKm) {
       return { pass: false, reason: `duplicate user radius ${v} at index ${i}` }

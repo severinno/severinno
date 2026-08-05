@@ -55,10 +55,7 @@ async function confirmBookingPayment(
     },
   })
   if (!booking || !booking.payment) {
-    lytexLogger.warn(
-      { bookingId },
-      "Webhook: booking ou payment não encontrado ",
-    )
+    lytexLogger.warn({ bookingId }, "Webhook: booking ou payment não encontrado ")
     return
   }
 
@@ -113,11 +110,7 @@ async function confirmBookingPayment(
   )
 
   // Notificar provider via WhatsApp (best-effort)
-  notifyPaymentConfirmed(
-    booking.providerId,
-    bookingId,
-    booking.amount,
-  ).catch(() => {})
+  notifyPaymentConfirmed(booking.providerId, bookingId, booking.amount).catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -176,20 +169,17 @@ export async function POST(request: Request) {
     const isValid = verifyWebhookSignature(body)
     if (!isValid) {
       lytexLogger.warn({}, "Webhook: assinatura inválida")
-      return NextResponse.json(
-        { error: "Assinatura inválida" },
-        { status: 401 },
-      )
+      return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 })
     }
 
     // Extrair booking ID do externalReference (formato: "booking:{bookingId}")
     const ref = parseExternalReference(body.externalReference)
     if (!ref || ref.type !== "booking" || !ref.id) {
-      lytexLogger.warn({ externalRef: body.externalReference }, "Webhook: externalReference inválido")
-      return NextResponse.json(
-        { error: "externalReference inválido" },
-        { status: 400 },
+      lytexLogger.warn(
+        { externalRef: body.externalReference },
+        "Webhook: externalReference inválido",
       )
+      return NextResponse.json({ error: "externalReference inválido" }, { status: 400 })
     }
 
     const bookingId = ref.id
@@ -216,24 +206,15 @@ export async function POST(request: Request) {
 
       case "canceled":
       case "expired":
-        lytexLogger.info(
-          { bookingId, status: body.status },
-          "Webhook: cobrança cancelada/expirada",
-        )
+        lytexLogger.info({ bookingId, status: body.status }, "Webhook: cobrança cancelada/expirada")
         break
 
       case "waitingPayment":
-        lytexLogger.info(
-          { bookingId },
-          "Webhook: pagamento em processamento (waitingPayment)",
-        )
+        lytexLogger.info({ bookingId }, "Webhook: pagamento em processamento (waitingPayment)")
         break
 
       default:
-        lytexLogger.info(
-          { bookingId, status: body.status },
-          "Webhook: status não mapeado",
-        )
+        lytexLogger.info({ bookingId, status: body.status }, "Webhook: status não mapeado")
     }
 
     // Sempre retornar 200 para a Lytex (evita reenvios desnecessários)

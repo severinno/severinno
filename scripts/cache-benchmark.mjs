@@ -37,9 +37,10 @@ const DEFAULT_OUT_FILE = join(DEFAULT_OUT_DIR, "cache-latest.json")
 const args = process.argv.slice(2)
 const jsonFlag = args.includes("--json")
 const jsonIndex = args.indexOf("--json")
-const jsonFile = jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsWith("--")
-  ? args[jsonIndex + 1]
-  : DEFAULT_OUT_FILE
+const jsonFile =
+  jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsWith("--")
+    ? args[jsonIndex + 1]
+    : DEFAULT_OUT_FILE
 
 // ---------------------------------------------------------------------------
 // Redis modelled latency parameters
@@ -69,11 +70,11 @@ const jsonFile = jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsW
 //   https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/
 //   https://redis.io/docs/latest/develop/use/pipelining/
 
-const SINGLE_SET_US  = 400
-const SINGLE_GET_US  = 300
-const SINGLE_DEL_US  = 200
+const SINGLE_SET_US = 400
+const SINGLE_GET_US = 300
+const SINGLE_DEL_US = 200
 const SINGLE_SETEX_US = 500
-const PIPELINE_3_US   = 600
+const PIPELINE_3_US = 600
 
 const ITERS_PER_MS = calibrateBusyLoop()
 
@@ -122,15 +123,15 @@ function redisBatch(count, latencyUs) {
 // ---------------------------------------------------------------------------
 
 function runAll() {
-  const sSet  = measure(() => redisSet(),  200)
-  const sGet  = measure(() => redisGet(),  200)
-  const sDel  = measure(() => redisDel(),  200)
+  const sSet = measure(() => redisSet(), 200)
+  const sGet = measure(() => redisGet(), 200)
+  const sDel = measure(() => redisDel(), 200)
   const sSetex = measure(() => redisSetex(), 200)
   const pipeline = measure(() => redisPipeline(), 200)
 
-  const batch100Set  = measure(() => redisBatch(100, SINGLE_SET_US),  20)
-  const batch100Get  = measure(() => redisBatch(100, SINGLE_GET_US),  20)
-  const batch100Del  = measure(() => redisBatch(100, SINGLE_DEL_US),  20)
+  const batch100Set = measure(() => redisBatch(100, SINGLE_SET_US), 20)
+  const batch100Get = measure(() => redisBatch(100, SINGLE_GET_US), 20)
+  const batch100Del = measure(() => redisBatch(100, SINGLE_DEL_US), 20)
 
   return {
     meta: {
@@ -142,23 +143,23 @@ function runAll() {
       timestamp: new Date().toISOString(),
     },
     benchmarks: [
-      { name: "SET  × 1",        label: "cache_set_single",   ...sSet },
-      { name: "GET  × 1",        label: "cache_get_single",   ...sGet },
-      { name: "DEL  × 1",        label: "cache_del_single",   ...sDel },
-      { name: "SETEX × 1",       label: "cache_setex_single", ...sSetex },
-      { name: "Pipeline 3 ops",  label: "cache_pipeline_3",   ...pipeline },
-      { name: "Batch SET 100",   label: "cache_set_batch_100",  ...batch100Set },
-      { name: "Batch GET 100",   label: "cache_get_batch_100",  ...batch100Get },
-      { name: "Batch DEL 100",   label: "cache_del_batch_100",  ...batch100Del },
+      { name: "SET  × 1", label: "cache_set_single", ...sSet },
+      { name: "GET  × 1", label: "cache_get_single", ...sGet },
+      { name: "DEL  × 1", label: "cache_del_single", ...sDel },
+      { name: "SETEX × 1", label: "cache_setex_single", ...sSetex },
+      { name: "Pipeline 3 ops", label: "cache_pipeline_3", ...pipeline },
+      { name: "Batch SET 100", label: "cache_set_batch_100", ...batch100Set },
+      { name: "Batch GET 100", label: "cache_get_batch_100", ...batch100Get },
+      { name: "Batch DEL 100", label: "cache_del_batch_100", ...batch100Del },
     ],
     analysis: {
       note: "CPU-modelled estimate of local Redis operations. Real-world performance depends on network latency, Redis persistence config, and payload size.",
       modelParams: {
-        singleSetUs:  SINGLE_SET_US,
-        singleGetUs:  SINGLE_GET_US,
-        singleDelUs:  SINGLE_DEL_US,
+        singleSetUs: SINGLE_SET_US,
+        singleGetUs: SINGLE_GET_US,
+        singleDelUs: SINGLE_DEL_US,
         singleSetexUs: SINGLE_SETEX_US,
-        pipeline3Us:  PIPELINE_3_US,
+        pipeline3Us: PIPELINE_3_US,
       },
     },
   }

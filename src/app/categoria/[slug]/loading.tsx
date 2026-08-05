@@ -5,10 +5,7 @@ export default function Loading() {
     <LoadingShell>
       <div className="mx-auto max-w-7xl px-4 py-8">
         {/* Breadcrumb */}
-        <div
-          className="mb-6"
-          style={{ animation: "fadeIn 0.3s both" }}
-        >
+        <div className="mb-6" style={{ animation: "fadeIn 0.3s both" }}>
           <S className="h-4 w-48" />
         </div>
 
@@ -26,10 +23,7 @@ export default function Loading() {
         </StaggerContainer>
 
         {/* Filter bar */}
-        <div
-          className="mb-6 flex gap-3"
-          style={{ animation: "fadeSlideUp 0.3s 0.15s both" }}
-        >
+        <div className="mb-6 flex gap-3" style={{ animation: "fadeSlideUp 0.3s 0.15s both" }}>
           <S className="h-10 flex-1 rounded-lg" />
           <S className="h-10 w-32 rounded-lg" />
           <S className="h-10 w-32 rounded-lg" />
@@ -39,7 +33,7 @@ export default function Loading() {
         <StaggerContainer stagger={0.05} className="mb-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <StaggerItem key={i} y={12} duration={0.3}>
-              <div className="rounded-xl border border-border/50 bg-card p-5">
+              <div className="border-border/50 bg-card rounded-xl border p-5">
                 <S className="mb-3 size-10 rounded-lg" />
                 <S className="mb-1 h-4 w-24" />
                 <S className="h-3 w-32" />
@@ -52,7 +46,7 @@ export default function Loading() {
         <StaggerContainer stagger={0.05} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <StaggerItem key={i} y={12} duration={0.3}>
-              <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+              <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
                 <S className="aspect-video w-full rounded-none" />
                 <div className="p-4">
                   <div className="flex items-center gap-3">

@@ -27,11 +27,7 @@ export const registerSchema = z
       .regex(cpfCnpjRegex, "CPF/CNPJ inválido")
       .optional()
       .or(z.literal("")),
-    whatsapp: z
-      .string()
-      .min(10, "WhatsApp inválido")
-      .optional()
-      .or(z.literal("")),
+    whatsapp: z.string().min(10, "WhatsApp inválido").optional().or(z.literal("")),
     phone: z.string().optional().or(z.literal("")),
     cep: z.string().optional().or(z.literal("")),
     street: z.string().optional().or(z.literal("")),
@@ -51,12 +47,9 @@ export const registerSchema = z
     path: ["confirmPassword"],
   })
   .refine(
-    (d) =>
-      d.role !== "PROVIDER" ||
-      (Boolean(d.cpfCnpj) && Boolean(d.whatsapp) && Boolean(d.city)),
+    (d) => d.role !== "PROVIDER" || (Boolean(d.cpfCnpj) && Boolean(d.whatsapp) && Boolean(d.city)),
     {
-      message:
-        "Prestadores devem informar CPF/CNPJ, WhatsApp e cidade",
+      message: "Prestadores devem informar CPF/CNPJ, WhatsApp e cidade",
       path: ["role"],
     },
   )
@@ -90,26 +83,15 @@ export type ProviderProfileInput = z.infer<typeof providerProfileSchema>
 // ---------------------------------------------------------------------------
 // SERVICE
 // ---------------------------------------------------------------------------
-export const serviceUnitEnum = z.enum([
-  "UNIDADE",
-  "METRO_LINEAR",
-  "METRO_QUADRADO",
-  "METRO_CUBICO",
-])
+export const serviceUnitEnum = z.enum(["UNIDADE", "METRO_LINEAR", "METRO_QUADRADO", "METRO_CUBICO"])
 
 export const serviceSchema = z.object({
   title: z.string().min(3, "Título muito curto").max(80),
   description: z.string().min(10, "Descreva melhor o serviço").max(1200),
   categoryId: z.string().min(1, "Selecione uma subcategoria"),
-  basePrice: z.coerce
-    .number()
-    .min(0, "Preço deve ser positivo")
-    .max(1_000_000),
+  basePrice: z.coerce.number().min(0, "Preço deve ser positivo").max(1_000_000),
   unit: serviceUnitEnum.default("UNIDADE"),
-  photos: z
-    .array(z.string().url())
-    .max(4, "Máximo de 4 fotos")
-    .default([]),
+  photos: z.array(z.string().url()).max(4, "Máximo de 4 fotos").default([]),
   active: z.boolean().default(true),
 })
 export type ServiceInput = z.infer<typeof serviceSchema>
@@ -151,9 +133,7 @@ export const quoteSchema = z.object({
   lat: z.coerce.number(),
   lng: z.coerce.number(),
   expiresAt: z.coerce.date().optional(),
-  items: z
-    .array(quoteItemInputSchema)
-    .min(1, "Adicione ao menos um item ao orçamento"),
+  items: z.array(quoteItemInputSchema).min(1, "Adicione ao menos um item ao orçamento"),
 })
 export type QuoteInput = z.infer<typeof quoteSchema>
 
@@ -254,12 +234,8 @@ export type SettingInput = z.infer<typeof settingSchema>
 // ---------------------------------------------------------------------------
 export const availabilitySchema = z.object({
   dayOfWeek: z.number().int().min(0).max(6),
-  startTime: z
-    .string()
-    .regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
-  endTime: z
-    .string()
-    .regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Formato HH:mm"),
   active: z.boolean().default(true),
 })
 export type AvailabilityInput = z.infer<typeof availabilitySchema>

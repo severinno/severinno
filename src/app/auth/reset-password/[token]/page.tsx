@@ -53,15 +53,15 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 to-background p-4 dark:from-emerald-950/20">
-      <div className="w-full max-w-md rounded-2xl border bg-card p-8 shadow-lg">
+    <div className="to-background flex min-h-screen items-center justify-center bg-gradient-to-b from-emerald-50 p-4 dark:from-emerald-950/20">
+      <div className="bg-card w-full max-w-md rounded-2xl border p-8 shadow-lg">
         {/* Brand */}
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 inline-flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+          <div className="bg-primary text-primary-foreground mx-auto mb-3 inline-flex size-12 items-center justify-center rounded-xl shadow-sm">
             <Lock className="size-6" />
           </div>
-          <h1 className="text-xl font-bold text-foreground">Redefinir senha</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="text-foreground text-xl font-bold">Redefinir senha</h1>
+          <p className="text-muted-foreground mt-1 text-sm">
             Escolha uma nova senha para sua conta
           </p>
         </div>
@@ -71,9 +71,8 @@ export default function ResetPasswordPage() {
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <CheckCircle2 className="size-12 text-emerald-600" />
             <h2 className="text-lg font-semibold">Senha alterada! 🎉</h2>
-            <p className="text-sm text-muted-foreground">
-              Sua senha foi redefinida com sucesso. Agora você pode fazer login
-              com sua nova senha.
+            <p className="text-muted-foreground text-sm">
+              Sua senha foi redefinida com sucesso. Agora você pode fazer login com sua nova senha.
             </p>
             <button
               onClick={() => router.push("/")}
@@ -88,7 +87,7 @@ export default function ResetPasswordPage() {
         {status === "error" && (
           <div className="flex flex-col items-center gap-3 py-4 text-center">
             <XCircle className="size-12 text-red-500" />
-            <p className="text-sm text-destructive">{errorMsg}</p>
+            <p className="text-destructive text-sm">{errorMsg}</p>
             <button
               onClick={() => setStatus("idle")}
               className="text-sm font-medium text-emerald-700 hover:underline dark:text-emerald-400"
@@ -106,7 +105,7 @@ export default function ResetPasswordPage() {
                 Nova senha
               </label>
               <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Lock className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
@@ -114,13 +113,13 @@ export default function ResetPasswordPage() {
                   placeholder="Mínimo 6 caracteres"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-input bg-transparent pl-9 pr-9 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-lg border bg-transparent pr-9 pl-9 text-sm transition-colors outline-none focus-visible:ring-3"
                 />
                 <button
                   type="button"
                   tabIndex={-1}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2 transition-colors"
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                 >
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -133,7 +132,7 @@ export default function ResetPasswordPage() {
                 Confirmar senha
               </label>
               <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Lock className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                 <input
                   id="confirmPassword"
                   type={showPassword ? "text" : "password"}
@@ -141,14 +140,14 @@ export default function ResetPasswordPage() {
                   placeholder="Repita a senha"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-input bg-transparent pl-9 pr-9 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className="border-input focus-visible:border-ring focus-visible:ring-ring/50 h-10 w-full rounded-lg border bg-transparent pr-9 pl-9 text-sm transition-colors outline-none focus-visible:ring-3"
                 />
               </div>
               {confirmPassword && password !== confirmPassword && (
-                <p className="text-xs text-destructive">As senhas não conferem</p>
+                <p className="text-destructive text-xs">As senhas não conferem</p>
               )}
               {password && password.length < 6 && (
-                <p className="text-xs text-muted-foreground">Mínimo de 6 caracteres</p>
+                <p className="text-muted-foreground text-xs">Mínimo de 6 caracteres</p>
               )}
             </div>
 

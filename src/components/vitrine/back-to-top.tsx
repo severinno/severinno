@@ -25,9 +25,7 @@ export default function BackToTop() {
   }, [])
 
   const handleClick = () => {
-    const prefersReducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     window.scrollTo({
       top: 0,
       behavior: prefersReducedMotion ? "auto" : "smooth",
@@ -42,7 +40,7 @@ export default function BackToTop() {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.6 }}
           transition={{ duration: 0.15 }}
-          className="fixed bottom-20 right-4 z-30 sm:bottom-24 sm:right-6"
+          className="fixed right-4 bottom-20 z-30 sm:right-6 sm:bottom-24"
         >
           <Button
             type="button"
@@ -52,7 +50,7 @@ export default function BackToTop() {
             aria-label="Voltar ao topo"
             title="Voltar ao topo"
             className={cn(
-              "size-11 rounded-full border-emerald-200 bg-background/95 shadow-lg backdrop-blur",
+              "bg-background/95 size-11 rounded-full border-emerald-200 shadow-lg backdrop-blur",
               "hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700",
               "dark:border-emerald-800/60 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300",
             )}

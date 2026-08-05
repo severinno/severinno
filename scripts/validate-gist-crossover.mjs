@@ -139,7 +139,8 @@ function radiusIndexMap(radii) {
  */
 function nearestRadius(target, radii) {
   if (radii.length === 0) return null
-  let best = radii[0], bestIdx = 0
+  let best = radii[0],
+    bestIdx = 0
   let bestDist = Math.abs(target - best)
   for (let i = 1; i < radii.length; i++) {
     const dist = Math.abs(target - radii[i])
@@ -198,12 +199,14 @@ for (const density of densities) {
       stepDrift = Math.abs(currIdx - baseIdx)
     } else {
       // Radii lists diverged — find nearest radius in the other list
-      const baseNearest = baseIdx == null && baselineRadii.length > 0
-        ? nearestRadius(baselineCrossoverRadius, baselineRadii)
-        : null
-      const currNearest = currIdx == null && currentRadii.length > 0
-        ? nearestRadius(currentCrossoverRadius, currentRadii)
-        : null
+      const baseNearest =
+        baseIdx == null && baselineRadii.length > 0
+          ? nearestRadius(baselineCrossoverRadius, baselineRadii)
+          : null
+      const currNearest =
+        currIdx == null && currentRadii.length > 0
+          ? nearestRadius(currentCrossoverRadius, currentRadii)
+          : null
 
       const resolvedBaseIdx = baseIdx ?? baseNearest?.index ?? null
       const resolvedCurrIdx = currIdx ?? currNearest?.index ?? null

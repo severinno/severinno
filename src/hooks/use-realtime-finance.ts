@@ -18,11 +18,11 @@
  * to render a live-connection indicator.
  */
 
-'use client'
+"use client"
 
-import { useEffect } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { useRealtime, type ConnectionStatus } from './use-realtime'
+import { useEffect } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { useRealtime, type ConnectionStatus } from "./use-realtime"
 
 /**
  * Call this hook inside any finance dashboard component (admin, provider, or
@@ -51,25 +51,25 @@ export function useRealtimeFinance(): {
     // monthly revenue, provider statements, and transaction history.
     const invalidateFinance = () => {
       // Admin dashboard: queryKey starts with ["admin", "finance", ...]
-      queryClient.invalidateQueries({ queryKey: ['admin', 'finance'] })
+      queryClient.invalidateQueries({ queryKey: ["admin", "finance"] })
       // Provider dashboard: queryKey starts with ["provider", "finance", ...]
-      queryClient.invalidateQueries({ queryKey: ['provider', 'finance'] })
+      queryClient.invalidateQueries({ queryKey: ["provider", "finance"] })
       // Client dashboard: queryKey starts with ["bookings", "CLIENT", "finance", ...]
-      queryClient.invalidateQueries({ queryKey: ['bookings', 'CLIENT', 'finance'] })
+      queryClient.invalidateQueries({ queryKey: ["bookings", "CLIENT", "finance"] })
     }
 
-    const unsubPaymentConfirmed = on('payment:confirmed', invalidateFinance)
-    const unsubPaymentRefunded = on('payment:refunded', invalidateFinance)
+    const unsubPaymentConfirmed = on("payment:confirmed", invalidateFinance)
+    const unsubPaymentRefunded = on("payment:refunded", invalidateFinance)
 
     // ── Booking events ─────────────────────────────────────────────────
     // A new booking might not affect payments directly, but will appear
     // in the provider and client transaction lists.
     const invalidateBookingFinance = () => {
-      queryClient.invalidateQueries({ queryKey: ['provider', 'finance'] })
-      queryClient.invalidateQueries({ queryKey: ['bookings', 'CLIENT', 'finance'] })
+      queryClient.invalidateQueries({ queryKey: ["provider", "finance"] })
+      queryClient.invalidateQueries({ queryKey: ["bookings", "CLIENT", "finance"] })
     }
 
-    const unsubBookingCreated = on('booking:created', invalidateBookingFinance)
+    const unsubBookingCreated = on("booking:created", invalidateBookingFinance)
 
     // ── Cleanup ────────────────────────────────────────────────────────
     return () => {

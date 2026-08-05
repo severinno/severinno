@@ -19,10 +19,10 @@ export default function Loading() {
           {/* ── Avatar / identity sidebar ────────────────────────── */}
           <StaggerContainer stagger={0.06} className="lg:col-span-1">
             <StaggerItem y={10} duration={0.35}>
-              <div className="rounded-xl border bg-card">
+              <div className="bg-card rounded-xl border">
                 <div className="flex flex-col items-center gap-3 p-6">
                   {/* Avatar */}
-                  <S className="size-24 rounded-full ring-4 ring-background shadow-md" />
+                  <S className="ring-background size-24 rounded-full shadow-md ring-4" />
                   {/* Name + email */}
                   <div className="text-center">
                     <S className="mx-auto h-4 w-28" />
@@ -35,7 +35,7 @@ export default function Loading() {
                   </div>
                 </div>
                 {/* Readonly fields */}
-                <div className="space-y-3 border-t px-6 pb-6 pt-4">
+                <div className="space-y-3 border-t px-6 pt-4 pb-6">
                   {Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <S className="size-4 shrink-0" />
@@ -52,7 +52,7 @@ export default function Loading() {
 
           {/* ── Editable fields ─────────────────────────────────── */}
           <div className="lg:col-span-2">
-            <StaggerContainer stagger={0.06} className="rounded-xl border bg-card p-6">
+            <StaggerContainer stagger={0.06} className="bg-card rounded-xl border p-6">
               {/* Name + WhatsApp row */}
               <StaggerItem y={10} duration={0.35}>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -129,7 +129,11 @@ export default function Loading() {
               </StaggerItem>
 
               {/* Action buttons */}
-              <StaggerItem y={10} duration={0.35} className="mt-6 flex items-center justify-end gap-2 border-t pt-4">
+              <StaggerItem
+                y={10}
+                duration={0.35}
+                className="mt-6 flex items-center justify-end gap-2 border-t pt-4"
+              >
                 <S className="h-10 w-24 rounded-lg" />
                 <S className="h-10 w-40 rounded-lg" />
               </StaggerItem>
@@ -140,7 +144,7 @@ export default function Loading() {
                   <S className="size-4" />
                   <S className="h-4 w-32" />
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   <S className="h-3 w-64" />
                 </p>
                 <div className="space-y-1.5">

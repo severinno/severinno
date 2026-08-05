@@ -2,7 +2,13 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { serviceSchema } from "@/lib/validators"
-import { badRequest, forbidden, handleError, syncServiceSearch, cacheControlPublic } from "@/lib/api-server"
+import {
+  badRequest,
+  forbidden,
+  handleError,
+  syncServiceSearch,
+  cacheControlPublic,
+} from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
@@ -15,37 +21,38 @@ export async function GET(request: Request) {
     const q = searchParams.get("q")?.trim() || undefined
 
     const cacheKey = `services:${providerId ?? "all"}:${categoryId ?? "all"}:${q ?? ""}`
-    const services = await withCache(cacheKey, async () => {
-      return db.service.findMany({
-        where: {
-          active: true,
-          ...(providerId ? { providerId } : {}),
-          ...(categoryId ? { categoryId } : {}),
-          ...(q
-            ? {
-                OR: [
-                  { title: { contains: q } },
-                  { description: { contains: q } },
-                ],
-              }
-            : {}),
-        },
-        include: {
-          category: true,
-          provider: {
-            select: {
-              id: true,
-              name: true,
-              avatarUrl: true,
-              city: true,
-              state: true,
-              verified: true,
+    const services = await withCache(
+      cacheKey,
+      async () => {
+        return db.service.findMany({
+          where: {
+            active: true,
+            ...(providerId ? { providerId } : {}),
+            ...(categoryId ? { categoryId } : {}),
+            ...(q
+              ? {
+                  OR: [{ title: { contains: q } }, { description: { contains: q } }],
+                }
+              : {}),
+          },
+          include: {
+            category: true,
+            provider: {
+              select: {
+                id: true,
+                name: true,
+                avatarUrl: true,
+                city: true,
+                state: true,
+                verified: true,
+              },
             },
           },
-        },
-        orderBy: { createdAt: "desc" },
-      })
-    }, 30)
+          orderBy: { createdAt: "desc" },
+        })
+      },
+      30,
+    )
 
     return cacheControlPublic(NextResponse.json(services), 30, 120)
   } catch (e) {

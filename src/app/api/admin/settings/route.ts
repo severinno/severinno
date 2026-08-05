@@ -23,12 +23,9 @@ export async function POST(request: Request) {
     const body = await request.json()
     const pairs: Array<{ key: string; value: string }> = Array.isArray(body)
       ? body
-      : body?.items ?? body?.settings ?? []
+      : (body?.items ?? body?.settings ?? [])
     if (!Array.isArray(pairs) || pairs.length === 0) {
-      return NextResponse.json(
-        { error: "Envie um array de { key, value }" },
-        { status: 400 },
-      )
+      return NextResponse.json({ error: "Envie um array de { key, value }" }, { status: 400 })
     }
 
     const ops = pairs.map((p) =>

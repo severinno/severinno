@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole, invalidateUserCache } from "@/lib/auth"
-import {
-  badRequest,
-  handleError,
-  notFound,
-  USER_PUBLIC_SELECT,
-} from "@/lib/api-server"
+import { badRequest, handleError, notFound, USER_PUBLIC_SELECT } from "@/lib/api-server"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -37,16 +32,12 @@ export async function PATCH(request: Request, { params }: Params) {
         ...(body.active !== undefined ? { active: Boolean(body.active) } : {}),
         ...(body.role !== undefined ? { role: body.role } : {}),
         ...(body.name !== undefined ? { name: String(body.name) } : {}),
-        ...(body.email !== undefined
-          ? { email: String(body.email).toLowerCase() }
-          : {}),
+        ...(body.email !== undefined ? { email: String(body.email).toLowerCase() } : {}),
         ...(body.avatarUrl !== undefined ? { avatarUrl: body.avatarUrl } : {}),
         ...(body.bio !== undefined ? { bio: body.bio } : {}),
         ...(body.city !== undefined ? { city: body.city } : {}),
         ...(body.state !== undefined ? { state: body.state } : {}),
-        ...(body.verified !== undefined && body.verified === true
-          ? { verified: true }
-          : {}),
+        ...(body.verified !== undefined && body.verified === true ? { verified: true } : {}),
       },
       select: USER_PUBLIC_SELECT,
     })

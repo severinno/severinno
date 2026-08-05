@@ -7,10 +7,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 /**
  * GET /api/admin/settlements/[id] — get settlement period details
  */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("ADMIN")
     await assertRateLimit(_request, RATE_LIMITS.settlements)
@@ -31,10 +28,7 @@ export async function GET(
     })
 
     if (!period) {
-      return NextResponse.json(
-        { error: "Período de repasse não encontrado." },
-        { status: 404 },
-      )
+      return NextResponse.json({ error: "Período de repasse não encontrado." }, { status: 404 })
     }
 
     return NextResponse.json({ period })

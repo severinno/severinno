@@ -92,10 +92,7 @@ function setCache(key: string, result: RouteResult): void {
  * Calculate a route using the OSRM API (driving profile).
  * Returns the route result or null if OSRM is unavailable.
  */
-async function osrmRoute(
-  origin: LatLng,
-  destination: LatLng,
-): Promise<RouteResult | null> {
+async function osrmRoute(origin: LatLng, destination: LatLng): Promise<RouteResult | null> {
   const key = cacheKey(origin, destination)
 
   const cached = getFromCache(key)
@@ -160,10 +157,7 @@ export function estimateDuration(distanceKm: number, avgSpeedKmH = 30): number {
  * Calculate a fallback route using Haversine straight-line distance.
  * Synchronous — no I/O needed.
  */
-function haversineRoute(
-  origin: LatLng,
-  destination: LatLng,
-): RouteResult {
+function haversineRoute(origin: LatLng, destination: LatLng): RouteResult {
   const distanceKm = haversineKm(origin.lat, origin.lng, destination.lat, destination.lng)
   return {
     distanceKm: Math.round(distanceKm * 10) / 10,
@@ -185,10 +179,7 @@ function haversineRoute(
  *
  * Accepts both `{ lat, lng }` objects and `[lat, lng]` arrays.
  */
-export async function getRoute(
-  origin: Coords,
-  destination: Coords,
-): Promise<RouteResult> {
+export async function getRoute(origin: Coords, destination: Coords): Promise<RouteResult> {
   const o = toLatLng(origin)
   const d = toLatLng(destination)
 
@@ -214,9 +205,7 @@ export async function getMultiRoute(
   const dests = destinations.map((d) => toLatLng(d))
 
   // Fire all OSRM requests in parallel
-  const osrmResults = await Promise.allSettled(
-    dests.map((d) => osrmRoute(o, d)),
-  )
+  const osrmResults = await Promise.allSettled(dests.map((d) => osrmRoute(o, d)))
 
   // Mix OSRM results with Haversine fallbacks, preserving order
   return osrmResults.map((result, idx) => {

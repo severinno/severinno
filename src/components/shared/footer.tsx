@@ -65,11 +65,7 @@ type FooterColumn = {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function Footer({
-  className,
-}: {
-  className?: string
-}) {
+export default function Footer({ className }: { className?: string }) {
   const navigate = useViewStore((s) => s.navigate)
   const openAuth = useUIStore((s) => s.openAuth)
 
@@ -102,10 +98,13 @@ export default function Footer({
       title: "Precisa de ajuda?",
       icon: <MessageCircle className="size-4" />,
       links: [
-        { label: "Perguntas frequentes", onClick: () => {
-          const el = document.getElementById("faq")
-          if (el) el.scrollIntoView({ behavior: "smooth" })
-        }},
+        {
+          label: "Perguntas frequentes",
+          onClick: () => {
+            const el = document.getElementById("faq")
+            if (el) el.scrollIntoView({ behavior: "smooth" })
+          },
+        },
         { label: "Segurança", onClick: () => navigate("vitrine") },
         { label: "Reportar problema", onClick: () => navigate("vitrine") },
       ],
@@ -143,14 +142,11 @@ export default function Footer({
 
       setSubscribed(true)
       setEmail("")
-      toast.success(
-        data.alreadySubscribed ? "E-mail já inscrito!" : "Inscrição confirmada!",
-        {
-          description: data.alreadySubscribed
-            ? "Você já receberá novidades e dicas no seu e-mail."
-            : "Você receberá novidades e dicas no seu e-mail.",
-        },
-      )
+      toast.success(data.alreadySubscribed ? "E-mail já inscrito!" : "Inscrição confirmada!", {
+        description: data.alreadySubscribed
+          ? "Você já receberá novidades e dicas no seu e-mail."
+          : "Você receberá novidades e dicas no seu e-mail.",
+      })
     } catch {
       toast.error("Erro de conexão", {
         description: "Verifique sua internet e tente novamente.",
@@ -164,18 +160,13 @@ export default function Footer({
 
   return (
     <footer
-      className={cn(
-        "mt-auto w-full bg-slate-900 text-slate-300 dark:bg-slate-950",
-        className,
-      )}
+      className={cn("mt-auto w-full bg-slate-900 text-slate-300 dark:bg-slate-950", className)}
     >
       {/* ─── Newsletter bar ─── */}
       <div className="border-b border-slate-800 bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 dark:from-emerald-700 dark:via-emerald-800 dark:to-teal-800">
         <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-4 py-6 sm:flex-row sm:justify-between sm:px-6 lg:px-8">
           <div className="text-center sm:text-left">
-            <p className="text-sm font-semibold text-white">
-              Receba novidades e dicas de serviços
-            </p>
+            <p className="text-sm font-semibold text-white">Receba novidades e dicas de serviços</p>
             <p className="mt-0.5 text-xs text-emerald-100">
               Cadastre-se e receba ofertas exclusivas. Cancele quando quiser.
             </p>
@@ -184,9 +175,7 @@ export default function Footer({
             // H1: Success state — visible confirmation
             <div className="flex items-center gap-2 rounded-lg bg-white/20 px-4 py-2">
               <CheckCircle2 className="size-4 text-white" />
-              <span className="text-sm font-medium text-white">
-                Inscrito com sucesso!
-              </span>
+              <span className="text-sm font-medium text-white">Inscrito com sucesso!</span>
             </div>
           ) : (
             <form
@@ -233,13 +222,11 @@ export default function Footer({
               <span className="flex size-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
                 <MapPin className="size-5" />
               </span>
-              <span className="text-lg font-bold tracking-tight text-white">
-                {APP_NAME}
-              </span>
+              <span className="text-lg font-bold tracking-tight text-white">{APP_NAME}</span>
             </div>
             <p className="max-w-xs text-sm text-slate-400">
-              Marketplace de serviços com geolocalização. Encontre prestadores
-              verificados, próximos e bem avaliados.
+              Marketplace de serviços com geolocalização. Encontre prestadores verificados, próximos
+              e bem avaliados.
             </p>
             <ul className="flex items-center gap-2" aria-label="Redes sociais">
               <SocialIcon icon={Github} label="GitHub" href="https://github.com" />
@@ -252,11 +239,7 @@ export default function Footer({
 
           {/* Columns 2-4: Link groups */}
           {columns.map((col) => (
-            <nav
-              key={col.title}
-              aria-label={col.title}
-              className="space-y-3"
-            >
+            <nav key={col.title} aria-label={col.title} className="space-y-3">
               <h3 className="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                 {col.icon}
                 {col.title}
@@ -335,13 +318,11 @@ export default function Footer({
         {/* ─── Copyright bar ─── */}
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-800 pt-6 text-xs text-slate-500 sm:flex-row">
           <p>
-            © {currentYear} {APP_NAME} Marketplace. Todos os
-            direitos reservados.
+            © {currentYear} {APP_NAME} Marketplace. Todos os direitos reservados.
           </p>
           <p className="flex items-center gap-1 text-center sm:text-right">
-            Feito com{" "}
-            <Heart className="inline size-3 fill-rose-500 text-rose-500" />{" "}
-            usando tecnologia Open Source (
+            Feito com <Heart className="inline size-3 fill-rose-500 text-rose-500" /> usando
+            tecnologia Open Source (
             <a
               href="https://maplibre.org/"
               target="_blank"
@@ -391,7 +372,7 @@ function SocialIcon({
         rel="noreferrer noopener"
         aria-label={label}
         title={label}
-        className="flex size-9 items-center justify-center rounded-full border border-slate-700 text-slate-400 transition-all hover:border-emerald-500 hover:text-emerald-400 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="focus-visible:ring-ring flex size-9 items-center justify-center rounded-full border border-slate-700 text-slate-400 transition-all hover:scale-105 hover:border-emerald-500 hover:text-emerald-400 focus-visible:ring-2 focus-visible:outline-none"
       >
         <Icon className="size-4" />
       </a>
@@ -422,7 +403,7 @@ function BackToTopButton() {
     <button
       type="button"
       onClick={handleClick}
-      className="fixed bottom-6 right-6 z-40 flex size-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 shadow-lg transition-all hover:border-emerald-500 hover:text-emerald-400 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-slate-950 dark:border-slate-700 sm:bottom-8 sm:right-8"
+      className="focus-visible:ring-ring fixed right-6 bottom-6 z-40 flex size-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 shadow-lg transition-all hover:border-emerald-500 hover:text-emerald-400 hover:shadow-xl focus-visible:ring-2 focus-visible:outline-none sm:right-8 sm:bottom-8 dark:border-slate-700 dark:bg-slate-950"
       aria-label="Voltar ao topo"
     >
       <ArrowUp className="size-4" />

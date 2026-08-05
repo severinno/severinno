@@ -20,13 +20,10 @@ import { LoadingShell } from "@/components/vitrine/loading-shell"
 
 // The full app shell — view router, auth, panels, all interactivity.
 // Loaded inside Suspense so the shell streams immediately.
-const AppShell = dynamic(
-  () => import("@/components/app-shell"),
-  {
-    ssr: true,
-    loading: () => <LoadingShell />,
-  },
-)
+const AppShell = dynamic(() => import("@/components/app-shell"), {
+  ssr: true,
+  loading: () => <LoadingShell />,
+})
 
 export default function Home() {
   return (

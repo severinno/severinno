@@ -31,7 +31,13 @@ import logger from "./logger"
 
 // @aws-sdk/s3-request-presigner is optional — install it if you need signed URLs.
 // If not installed, getSignedUrlForObject will throw a clear error.
-let getSignedUrlFn: ((client: S3Client, command: GetObjectCommand, options?: { expiresIn?: number }) => Promise<string>) | null = null
+let getSignedUrlFn:
+  | ((
+      client: S3Client,
+      command: GetObjectCommand,
+      options?: { expiresIn?: number },
+    ) => Promise<string>)
+  | null = null
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const presigner = require("@aws-sdk/s3-request-presigner")
@@ -112,9 +118,7 @@ export async function uploadToS3(
   const { contentType, acl = "public-read", prefix = "uploads/" } = options
 
   // Sanitize filename and prefix
-  const sanitizedName = fileName
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .toLowerCase()
+  const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_").toLowerCase()
   const key = `${prefix}${Date.now()}-${sanitizedName}`
 
   const params: PutObjectCommandInput = {
@@ -177,15 +181,12 @@ export async function deleteFromS3(key: string): Promise<void> {
 // Signed URL (for private files)
 // ---------------------------------------------------------------------------
 
-export async function getSignedUrlForObject(
-  key: string,
-  expiresInSeconds = 3600,
-): Promise<string> {
+export async function getSignedUrlForObject(key: string, expiresInSeconds = 3600): Promise<string> {
   const cmd = new GetObjectCommand({ Bucket: getBucket(), Key: key })
   if (!getSignedUrlFn) {
     throw new Error(
       "Signed URLs require @aws-sdk/s3-request-presigner to be installed. " +
-      "Run: bun add @aws-sdk/s3-request-presigner",
+        "Run: bun add @aws-sdk/s3-request-presigner",
     )
   }
   return getSignedUrlFn(getS3Client(), cmd, { expiresIn: expiresInSeconds })

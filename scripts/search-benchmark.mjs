@@ -38,9 +38,10 @@ const DEFAULT_OUT_FILE = join(DEFAULT_OUT_DIR, "search-latest.json")
 const args = process.argv.slice(2)
 const jsonFlag = args.includes("--json")
 const jsonIndex = args.indexOf("--json")
-const jsonFile = jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsWith("--")
-  ? args[jsonIndex + 1]
-  : DEFAULT_OUT_FILE
+const jsonFile =
+  jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsWith("--")
+    ? args[jsonIndex + 1]
+    : DEFAULT_OUT_FILE
 
 // ---------------------------------------------------------------------------
 // Search modelled latency parameters
@@ -70,12 +71,12 @@ const jsonFile = jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsW
 // Reference:
 //   https://opensearch.org/docs/latest/benchmark/
 
-const EXACT_MATCH_US   = 2200
-const FULLTEXT_US      = 4200
-const GEO_DISTANCE_US  = 3200
-const COMBINED_US      = 5200
-const AGGREGATION_US   = 6200
-const BULK_100_US      = 70000
+const EXACT_MATCH_US = 2200
+const FULLTEXT_US = 4200
+const GEO_DISTANCE_US = 3200
+const COMBINED_US = 5200
+const AGGREGATION_US = 6200
+const BULK_100_US = 70000
 
 const ITERS_PER_MS = calibrateBusyLoop()
 
@@ -92,24 +93,36 @@ function simulatedSearchOp(latencyUs) {
   if (acc < 0) throw new Error("unreachable")
 }
 
-function exactMatch()     { simulatedSearchOp(EXACT_MATCH_US) }
-function fulltextSearch() { simulatedSearchOp(FULLTEXT_US) }
-function geoDistance()    { simulatedSearchOp(GEO_DISTANCE_US) }
-function combinedSearch() { simulatedSearchOp(COMBINED_US) }
-function aggregation()    { simulatedSearchOp(AGGREGATION_US) }
-function bulkIndex100()  { simulatedSearchOp(BULK_100_US) }
+function exactMatch() {
+  simulatedSearchOp(EXACT_MATCH_US)
+}
+function fulltextSearch() {
+  simulatedSearchOp(FULLTEXT_US)
+}
+function geoDistance() {
+  simulatedSearchOp(GEO_DISTANCE_US)
+}
+function combinedSearch() {
+  simulatedSearchOp(COMBINED_US)
+}
+function aggregation() {
+  simulatedSearchOp(AGGREGATION_US)
+}
+function bulkIndex100() {
+  simulatedSearchOp(BULK_100_US)
+}
 
 // ---------------------------------------------------------------------------
 // Run benchmarks — collect structured results
 // ---------------------------------------------------------------------------
 
 function runAll() {
-  const sExact   = measure(() => exactMatch(),     100)
+  const sExact = measure(() => exactMatch(), 100)
   const sFulltext = measure(() => fulltextSearch(), 100)
-  const sGeo     = measure(() => geoDistance(),     100)
-  const sCombined = measure(() => combinedSearch(),  50)
-  const sAgg     = measure(() => aggregation(),      50)
-  const sBulk    = measure(() => bulkIndex100(),     10)
+  const sGeo = measure(() => geoDistance(), 100)
+  const sCombined = measure(() => combinedSearch(), 50)
+  const sAgg = measure(() => aggregation(), 50)
+  const sBulk = measure(() => bulkIndex100(), 10)
 
   return {
     meta: {
@@ -121,22 +134,22 @@ function runAll() {
       timestamp: new Date().toISOString(),
     },
     benchmarks: [
-      { name: "Exact-match (term)     1", label: "search_exact_match",    ...sExact },
-      { name: "Full-text (match)      1", label: "search_fulltext",       ...sFulltext },
-      { name: "Geo-distance query     1", label: "search_geo_distance",   ...sGeo },
-      { name: "Combined (text + geo)  1", label: "search_combined",       ...sCombined },
-      { name: "Aggregation (faceted)  1", label: "search_aggregation",    ...sAgg },
-      { name: "Bulk index           100", label: "search_bulk_100",       ...sBulk },
+      { name: "Exact-match (term)     1", label: "search_exact_match", ...sExact },
+      { name: "Full-text (match)      1", label: "search_fulltext", ...sFulltext },
+      { name: "Geo-distance query     1", label: "search_geo_distance", ...sGeo },
+      { name: "Combined (text + geo)  1", label: "search_combined", ...sCombined },
+      { name: "Aggregation (faceted)  1", label: "search_aggregation", ...sAgg },
+      { name: "Bulk index           100", label: "search_bulk_100", ...sBulk },
     ],
     analysis: {
       note: "CPU-modelled estimate of local OpenSearch operations. Real-world performance depends on shard count, index size, query complexity, and hardware.",
       modelParams: {
-        exactMatchUs:  EXACT_MATCH_US,
-        fulltextUs:    FULLTEXT_US,
+        exactMatchUs: EXACT_MATCH_US,
+        fulltextUs: FULLTEXT_US,
         geoDistanceUs: GEO_DISTANCE_US,
-        combinedUs:    COMBINED_US,
+        combinedUs: COMBINED_US,
         aggregationUs: AGGREGATION_US,
-        bulk100Us:     BULK_100_US,
+        bulk100Us: BULK_100_US,
       },
     },
   }

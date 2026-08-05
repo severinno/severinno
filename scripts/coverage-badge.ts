@@ -102,7 +102,10 @@ function updateReadme(pct: number, covered: number, denominator: number): void {
     }
     if (lastMatch) {
       const idx = lastMatch.index + lastMatch[0].length
-      readme = readme.slice(0, idx) + `\n  <img src="${newBadge}" alt="Coverage: ${pct}%">` + readme.slice(idx)
+      readme =
+        readme.slice(0, idx) +
+        `\n  <img src="${newBadge}" alt="Coverage: ${pct}%">` +
+        readme.slice(idx)
     } else {
       console.warn("Could not find any img tag in README.md — badge not added")
       return

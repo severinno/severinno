@@ -88,8 +88,7 @@ export async function GET(request: Request) {
     }
 
     // Sort by total descending
-    const sorted = Array.from(providerMap.entries())
-      .sort((a, b) => b[1].total - a[1].total)
+    const sorted = Array.from(providerMap.entries()).sort((a, b) => b[1].total - a[1].total)
 
     // CSV helpers
     function escapeCsv(val: string | number | null | undefined): string {

@@ -48,7 +48,11 @@ const mockBookings = [
     amount: 2000,
     status: "COMPLETED",
     createdAt: new Date("2025-02-20"),
-    provider: { id: "prov-2", name: "Maria Profissional", avatarUrl: "https://example.com/avatar.jpg" },
+    provider: {
+      id: "prov-2",
+      name: "Maria Profissional",
+      avatarUrl: "https://example.com/avatar.jpg",
+    },
   },
   {
     id: "b-4",

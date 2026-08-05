@@ -20,10 +20,7 @@ import {
   playErrorSound,
   playWelcomeSound,
 } from "@/lib/sounds"
-import {
-  useSoundEnabledPreference,
-  useVibrateEnabledPreference,
-} from "@/lib/sound-context"
+import { useSoundEnabledPreference, useVibrateEnabledPreference } from "@/lib/sound-context"
 
 // ---------------------------------------------------------------------------
 // Notification types that can trigger sounds
@@ -37,14 +34,10 @@ const TX_NOTIF_TYPES = new Set([
 ] as const)
 
 /** Review-related — new rating received. */
-const REVIEW_NOTIF_TYPES = new Set([
-  "REVIEW_RECEIVED",
-] as const)
+const REVIEW_NOTIF_TYPES = new Set(["REVIEW_RECEIVED"] as const)
 
 /** Error-related — transaction cancelled / rejected / failed. */
-const ERROR_NOTIF_TYPES = new Set([
-  "BOOKING_CANCELLED",
-] as const)
+const ERROR_NOTIF_TYPES = new Set(["BOOKING_CANCELLED"] as const)
 
 // ---------------------------------------------------------------------------
 // useCoinSound — preference-aware sound player
@@ -107,7 +100,9 @@ function pickSound(
   playReview: () => void,
   playError: () => void,
 ): void {
-  if (ERROR_NOTIF_TYPES.has(notifType as typeof ERROR_NOTIF_TYPES extends Set<infer T> ? T : string)) {
+  if (
+    ERROR_NOTIF_TYPES.has(notifType as typeof ERROR_NOTIF_TYPES extends Set<infer T> ? T : string)
+  ) {
     playError()
   } else if (notifType === "BOOKING_COMPLETED" && userRole === "CLIENT") {
     playCompletion()
@@ -153,7 +148,10 @@ export function useTransactionNotificationSound(
     const allTypes = new Set([...TX_NOTIF_TYPES, ...REVIEW_NOTIF_TYPES, ...ERROR_NOTIF_TYPES])
     const prevIds = prevIdsRef.current
     for (const n of items) {
-      if (!prevIds.has(n.id) && allTypes.has(n.type as unknown as typeof TX_NOTIF_TYPES extends Set<infer T> ? T : never)) {
+      if (
+        !prevIds.has(n.id) &&
+        allTypes.has(n.type as unknown as typeof TX_NOTIF_TYPES extends Set<infer T> ? T : never)
+      ) {
         pickSound(n.type, userRole, playCoin, playCompletion, playReview, playError)
         break // one sound per batch is enough
       }

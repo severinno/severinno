@@ -52,10 +52,14 @@ export default async function Page({ params }: Props) {
         ]}
       />
       <div className="mx-auto max-w-7xl px-4 pt-4">
-        <nav className="text-sm text-muted-foreground">
-          <a href="/" className="hover:text-emerald-600">Início</a>
+        <nav className="text-muted-foreground text-sm">
+          <a href="/" className="hover:text-emerald-600">
+            Início
+          </a>
           <span className="mx-2">›</span>
-          <a href={`/categoria/${slug}`} className="hover:text-emerald-600">{parentCat?.name ?? slug}</a>
+          <a href={`/categoria/${slug}`} className="hover:text-emerald-600">
+            {parentCat?.name ?? slug}
+          </a>
           <span className="mx-2">›</span>
           <span className="text-foreground">{category.name}</span>
         </nav>

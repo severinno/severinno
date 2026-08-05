@@ -66,9 +66,7 @@ export type WhereClauseBuilder = (opts: BuildWhereClauseOptions) => [string, unk
  * })
  * ```
  */
-export function buildProviderWhereClause(
-  opts: BuildWhereClauseOptions,
-): [string, unknown[]] {
+export function buildProviderWhereClause(opts: BuildWhereClauseOptions): [string, unknown[]] {
   const { categoryIds, q, centerGeo } = opts
 
   const conditions: string[] = [
@@ -92,7 +90,7 @@ export function buildProviderWhereClause(
   // Full-text search (sanitized)
   if (q) {
     const sanitized = q
-      .replace(/[^\w\sÀ-ÿ]/g, " ")  // remove non-alphanumeric (incl. acentos)
+      .replace(/[^\w\sÀ-ÿ]/g, " ") // remove non-alphanumeric (incl. acentos)
       .trim()
       .split(/\s+/)
       .filter(Boolean)

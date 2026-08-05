@@ -6,7 +6,7 @@
  */
 
 // Models that support soft delete (have a `deletedAt` column)
-export const SOFT_DELETE_MODELS = ['User', 'Service', 'Booking'] as const
+export const SOFT_DELETE_MODELS = ["User", "Service", "Booking"] as const
 export type SoftDeleteModel = (typeof SOFT_DELETE_MODELS)[number]
 
 export function isSoftDeleteModel(model: string): model is SoftDeleteModel {
@@ -15,14 +15,14 @@ export function isSoftDeleteModel(model: string): model is SoftDeleteModel {
 
 /** Prisma middleware action names that read data (may need deletedAt filter) */
 export const READ_ACTIONS = [
-  'findFirst',
-  'findFirstOrThrow',
-  'findUnique',
-  'findUniqueOrThrow',
-  'findMany',
-  'count',
-  'aggregate',
-  'groupBy',
+  "findFirst",
+  "findFirstOrThrow",
+  "findUnique",
+  "findUniqueOrThrow",
+  "findMany",
+  "count",
+  "aggregate",
+  "groupBy",
 ] as const
 
 /**
@@ -30,16 +30,13 @@ export const READ_ACTIONS = [
  * Automatically adds `deletedAt: null` to where clauses for soft-delete models
  * unless the caller explicitly queries `deletedAt`.
  */
-export function softDeleteReadFilter(
-  params: Record<string, unknown>,
-): Record<string, unknown> {
+export function softDeleteReadFilter(params: Record<string, unknown>): Record<string, unknown> {
   if (!params.model || !isSoftDeleteModel(params.model as string)) return params
 
-  if (READ_ACTIONS.includes(params.action as typeof READ_ACTIONS[number])) {
+  if (READ_ACTIONS.includes(params.action as (typeof READ_ACTIONS)[number])) {
     const where = (params.args as Record<string, unknown> | undefined)?.where as
-      | Record<string, unknown>
-      | undefined
-    if (where && 'deletedAt' in where) return params
+      Record<string, unknown> | undefined
+    if (where && "deletedAt" in where) return params
 
     const args = (params.args as Record<string, unknown>) ?? {}
     args.where = { ...(args.where as Record<string, unknown>), deletedAt: null }
@@ -58,15 +55,15 @@ export function softDeleteWriteInterceptor(
 ): Record<string, unknown> {
   if (!params.model || !isSoftDeleteModel(params.model as string)) return params
 
-  if (params.action === 'delete') {
-    params.action = 'update'
+  if (params.action === "delete") {
+    params.action = "update"
     const args = (params.args as Record<string, unknown>) ?? {}
     args.data = { deletedAt: new Date() }
     params.args = args
   }
 
-  if (params.action === 'deleteMany') {
-    params.action = 'updateMany'
+  if (params.action === "deleteMany") {
+    params.action = "updateMany"
     const args = (params.args as Record<string, unknown>) ?? {}
     args.data = { ...(args.data as Record<string, unknown>), deletedAt: new Date() }
     params.args = args

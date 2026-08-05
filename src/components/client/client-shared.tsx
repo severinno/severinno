@@ -41,16 +41,10 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0 space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          {title}
-        </h1>
-        {subtitle ? (
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
-        ) : null}
+        <h1 className="text-foreground text-2xl font-bold tracking-tight">{title}</h1>
+        {subtitle ? <p className="text-muted-foreground text-sm">{subtitle}</p> : null}
       </div>
-      {action ? (
-        <div className="flex flex-wrap items-center gap-2">{action}</div>
-      ) : null}
+      {action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
     </div>
   )
 }
@@ -59,19 +53,11 @@ export function PageHeader({
 // StatusBadge
 // ---------------------------------------------------------------------------
 
-export type StatusTone =
-  | "emerald"
-  | "amber"
-  | "rose"
-  | "teal"
-  | "zinc"
-  | "sky"
+export type StatusTone = "emerald" | "amber" | "rose" | "teal" | "zinc" | "sky"
 
 const TONE_CLASS: Record<StatusTone, string> = {
-  emerald:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  amber:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+  emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
+  amber: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
   teal: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
   zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
@@ -109,19 +95,9 @@ export function StatusBadge({
 // touch src/lib/constants.ts.
 // ---------------------------------------------------------------------------
 
-import {
-  CheckCircle2,
-  Clock,
-  Loader2,
-  XCircle,
-  CircleSlash,
-} from "lucide-react"
+import { CheckCircle2, Clock, Loader2, XCircle, CircleSlash } from "lucide-react"
 
-import {
-  type BookingStatus,
-  type PaymentStatus,
-  type QuoteStatus,
-} from "@/lib/constants"
+import { type BookingStatus, type PaymentStatus, type QuoteStatus } from "@/lib/constants"
 
 export function bookingTone(status: BookingStatus): StatusTone {
   switch (status) {

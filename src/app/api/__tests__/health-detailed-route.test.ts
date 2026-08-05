@@ -107,7 +107,9 @@ describe("GET /api/health/detailed", () => {
     expect(summary).toHaveProperty("unhealthy")
     expect(summary).toHaveProperty("total")
     // total pode incluir serviços com status "unknown" (ex: workers sem RabbitMQ)
-    expect(summary.total).toBeGreaterThanOrEqual(summary.healthy + summary.degraded + summary.unhealthy)
+    expect(summary.total).toBeGreaterThanOrEqual(
+      summary.healthy + summary.degraded + summary.unhealthy,
+    )
   })
 
   it("inclui cache stats no response", async () => {
@@ -130,17 +132,17 @@ describe("GET /api/health/detailed?format=prometheus", () => {
   })
 
   it("retorna 200 com Content-Type text/plain", async () => {
-    const response = await GET(createRequest(
-      "http://localhost:3000/api/health/detailed?format=prometheus",
-    ))
+    const response = await GET(
+      createRequest("http://localhost:3000/api/health/detailed?format=prometheus"),
+    )
     expect(response.status).toBe(200)
     expect(response.headers.get("Content-Type")).toContain("text/plain")
   })
 
   it("retorna métricas no formato OpenMetrics com HELP e TYPE", async () => {
-    const response = await GET(createRequest(
-      "http://localhost:3000/api/health/detailed?format=prometheus",
-    ))
+    const response = await GET(
+      createRequest("http://localhost:3000/api/health/detailed?format=prometheus"),
+    )
     const text = await response.text()
 
     expect(text).toContain("# HELP")
@@ -149,9 +151,9 @@ describe("GET /api/health/detailed?format=prometheus", () => {
   })
 
   it("inclui métricas de serviço individuais", async () => {
-    const response = await GET(createRequest(
-      "http://localhost:3000/api/health/detailed?format=prometheus",
-    ))
+    const response = await GET(
+      createRequest("http://localhost:3000/api/health/detailed?format=prometheus"),
+    )
     const text = await response.text()
 
     expect(text).toContain("severinno_service_status")
@@ -162,9 +164,9 @@ describe("GET /api/health/detailed?format=prometheus", () => {
   })
 
   it("inclui métricas de processo (uptime, cpu, memory)", async () => {
-    const response = await GET(createRequest(
-      "http://localhost:3000/api/health/detailed?format=prometheus",
-    ))
+    const response = await GET(
+      createRequest("http://localhost:3000/api/health/detailed?format=prometheus"),
+    )
     const text = await response.text()
 
     expect(text).toContain("severinno_process_uptime_seconds")

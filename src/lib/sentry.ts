@@ -25,14 +25,23 @@ export function captureError(error: unknown, context?: Record<string, unknown>) 
   const Sentry = getSentry()
   if (!Sentry) return
 
-  Sentry.withScope((scope: { setExtras: (ctx: Record<string, unknown> | undefined) => void; setTag: (key: string, value: string) => void }) => {
-    if (context) scope.setExtras(context)
-    scope.setTag("source", "server")
-    Sentry.captureException(error)
-  })
+  Sentry.withScope(
+    (scope: {
+      setExtras: (ctx: Record<string, unknown> | undefined) => void
+      setTag: (key: string, value: string) => void
+    }) => {
+      if (context) scope.setExtras(context)
+      scope.setTag("source", "server")
+      Sentry.captureException(error)
+    },
+  )
 }
 
-export function captureMessage(message: string, severity: Severity = "info", context?: Record<string, unknown>) {
+export function captureMessage(
+  message: string,
+  severity: Severity = "info",
+  context?: Record<string, unknown>,
+) {
   logger[severity](context ?? {}, message)
 
   if (!isProd) return
@@ -41,7 +50,16 @@ export function captureMessage(message: string, severity: Severity = "info", con
 
   Sentry.withScope((scope: { setExtras: (ctx: Record<string, unknown> | undefined) => void }) => {
     if (context) scope.setExtras(context)
-    Sentry.captureMessage(message, severity === "fatal" ? "fatal" : severity === "error" ? "error" : severity === "warn" ? "warning" : "log")
+    Sentry.captureMessage(
+      message,
+      severity === "fatal"
+        ? "fatal"
+        : severity === "error"
+          ? "error"
+          : severity === "warn"
+            ? "warning"
+            : "log",
+    )
   })
 }
 

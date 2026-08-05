@@ -11,7 +11,13 @@ export async function GET(request: NextRequest) {
     if (!userId) throw unauthorized()
 
     const result = await db.$queryRawUnsafe<
-      Array<{ type: string; pushEnabled: boolean; emailEnabled: boolean; whatsappEnabled: boolean; soundEnabled: boolean }>
+      Array<{
+        type: string
+        pushEnabled: boolean
+        emailEnabled: boolean
+        whatsappEnabled: boolean
+        soundEnabled: boolean
+      }>
     >(
       `SELECT type, "pushEnabled", "emailEnabled", "whatsappEnabled", "soundEnabled"
        FROM "NotificationPreference"

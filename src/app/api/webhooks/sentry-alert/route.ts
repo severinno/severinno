@@ -122,11 +122,16 @@ function getLevelEmoji(level?: string): string {
 
 function getLevelColor(level?: string): number {
   switch (level?.toLowerCase()) {
-    case "fatal":  return 0xe74c3c  // red
-    case "error":  return 0xf39c12  // orange
-    case "warning": return 0xf1c40f // yellow
-    case "info":   return 0x3498db  // blue
-    default:       return 0x95a5a6  // gray
+    case "fatal":
+      return 0xe74c3c // red
+    case "error":
+      return 0xf39c12 // orange
+    case "warning":
+      return 0xf1c40f // yellow
+    case "info":
+      return 0x3498db // blue
+    default:
+      return 0x95a5a6 // gray
   }
 }
 
@@ -136,23 +141,23 @@ function formatMessage(payload: SentryWebhookPayload, projectName: string): Aler
   const tags = event?.tags ?? []
 
   const title =
-    event?.metadata?.title
-    ?? event?.exception?.values?.[0]?.type
-    ?? event?.message
-    ?? "Erro desconhecido"
+    event?.metadata?.title ??
+    event?.exception?.values?.[0]?.type ??
+    event?.message ??
+    "Erro desconhecido"
 
   const description =
-    event?.exception?.values?.[0]?.value
-    ?? event?.metadata?.value
-    ?? event?.culprit
-    ?? "Sem detalhes adicionais"
+    event?.exception?.values?.[0]?.value ??
+    event?.metadata?.value ??
+    event?.culprit ??
+    "Sem detalhes adicionais"
 
   return {
     title: title.slice(0, 200),
     description: description.slice(0, 500),
     level: event?.level ?? "error",
     project: projectName,
-    environment: (tags.find(([k]) => k === "environment")?.[1]) ?? process.env.NODE_ENV ?? "unknown",
+    environment: tags.find(([k]) => k === "environment")?.[1] ?? process.env.NODE_ENV ?? "unknown",
     timestamp: new Date().toISOString(),
     url: event?.url ?? event?.request?.url,
     culprit: event?.culprit,
@@ -190,7 +195,7 @@ async function sendDiscord(msg: AlertMessage): Promise<void> {
 
   // Extrair tags relevantes
   const relevantTags = msg.tags.filter(([k]) =>
-    ["source", "type", "endpoint", "userId"].includes(k)
+    ["source", "type", "endpoint", "userId"].includes(k),
   )
   for (const [k, v] of relevantTags) {
     fields.push({ name: `🏷️ ${k}`, value: `\`${v.slice(0, 100)}\``, inline: true })
@@ -221,7 +226,10 @@ async function sendDiscord(msg: AlertMessage): Promise<void> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "")
-    logger.error({ status: res.status, response: text.slice(0, 200) }, "[sentry-alert] Discord webhook failed")
+    logger.error(
+      { status: res.status, response: text.slice(0, 200) },
+      "[sentry-alert] Discord webhook failed",
+    )
   } else {
     logger.info("[sentry-alert] Discord alert sent")
   }
@@ -234,7 +242,9 @@ async function sendTelegram(msg: AlertMessage): Promise<void> {
   const chatId = process.env.TELEGRAM_CHAT_ID
 
   if (!token || !chatId) {
-    logger.debug("[sentry-alert] TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados — pulando Telegram")
+    logger.debug(
+      "[sentry-alert] TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados — pulando Telegram",
+    )
     return
   }
 
@@ -311,7 +321,10 @@ export async function POST(request: NextRequest) {
     }
 
     const payload: SentryWebhookPayload = JSON.parse(body)
-    logger.info({ action: payload.action, rule: payload.data?.triggered_rule?.name }, "[sentry-alert] webhook recebido")
+    logger.info(
+      { action: payload.action, rule: payload.data?.triggered_rule?.name },
+      "[sentry-alert] webhook recebido",
+    )
 
     if (payload.action === "triggered") {
       const msg = formatMessage(payload, projectName)

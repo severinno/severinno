@@ -60,9 +60,7 @@ export async function GET() {
     const topProviders = topProvidersRows
       .map((p) => {
         const ratings = p.reviewsReceived.map((r) => r.rating)
-        const avg = ratings.length
-          ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-          : 0
+        const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0
         const { reviewsReceived: _ignored, ...rest } = p
         return {
           ...rest,

@@ -30,17 +30,21 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 vi.mock("@/lib/queue", () => ({
-  publish: vi.fn().mockImplementation(async (payload: { routingKey: string; payload: Record<string, unknown> }) => {
-    sentQueueCalls.push(payload)
-  }),
+  publish: vi
+    .fn()
+    .mockImplementation(
+      async (payload: { routingKey: string; payload: Record<string, unknown> }) => {
+        sentQueueCalls.push(payload)
+      },
+    ),
 }))
 
 vi.mock("@/lib/push", () => ({
-  sendPushNotification: vi.fn().mockImplementation(
-    async (userId: string, title: string, body: string, url?: string) => {
+  sendPushNotification: vi
+    .fn()
+    .mockImplementation(async (userId: string, title: string, body: string, url?: string) => {
       sentPushCalls.push({ userId, title, body, url })
-    },
-  ),
+    }),
   sendPushToMany: vi.fn(),
 }))
 

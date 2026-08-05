@@ -51,9 +51,7 @@ export async function PATCH(request: Request, { params }: Params) {
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.slug !== undefined ? { slug: data.slug } : {}),
-        ...(data.parentId !== undefined
-          ? { parentId: data.parentId || null }
-          : {}),
+        ...(data.parentId !== undefined ? { parentId: data.parentId || null } : {}),
         ...(data.level !== undefined ? { level: data.level } : {}),
         ...(data.icon !== undefined ? { icon: data.icon || null } : {}),
         ...(data.order !== undefined ? { order: data.order } : {}),
@@ -80,9 +78,7 @@ export async function DELETE(_request: Request, { params }: Params) {
       db.service.count({ where: { categoryId: id } }),
     ])
     if (childrenCount > 0 || servicesCount > 0) {
-      throw conflict(
-        "Não é possível excluir: existem categorias filhas ou serviços vinculados",
-      )
+      throw conflict("Não é possível excluir: existem categorias filhas ou serviços vinculados")
     }
 
     await db.category.delete({ where: { id } })

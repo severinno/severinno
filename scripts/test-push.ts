@@ -91,7 +91,9 @@ let subscription: webpush.PushSubscription
 try {
   subscription = JSON.parse(subscriptionJson)
 } catch {
-  console.error("❌ JSON invalido. Use o formato: {\"endpoint\":\"...\",\"keys\":{\"p256dh\":\"...\",\"auth\":\"...\"}}")
+  console.error(
+    '❌ JSON invalido. Use o formato: {"endpoint":"...","keys":{"p256dh":"...","auth":"..."}}',
+  )
   process.exit(1)
 }
 

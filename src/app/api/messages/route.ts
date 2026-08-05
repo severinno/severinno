@@ -2,11 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { messageSchema } from "@/lib/validators"
-import {
-  badRequest,
-  handleError,
-  notFound,
-} from "@/lib/api-server"
+import { badRequest, handleError, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // Authenticated: list messages
@@ -82,11 +78,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const consider = (
-      peerId: string,
-      content: string,
-      createdAt: Date,
-    ) => {
+    const consider = (peerId: string, content: string, createdAt: Date) => {
       const existing = byPeer.get(peerId)
       if (!existing || existing.lastAt < createdAt) {
         byPeer.set(peerId, {
@@ -158,10 +150,7 @@ export async function POST(request: Request) {
           userId: data.toId,
           type: "MESSAGE",
           title: "Nova mensagem",
-          body:
-            data.content.length > 80
-              ? data.content.slice(0, 80) + "…"
-              : data.content,
+          body: data.content.length > 80 ? data.content.slice(0, 80) + "…" : data.content,
           read: false,
         },
       })

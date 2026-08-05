@@ -263,18 +263,18 @@ Endpoint: `GET /api/health/detailed`
 
 Retorna status de 10 serviços:
 
-| Serviço | Criticidade | O que verifica |
-|:--------|:-----------:|:---------------|
-| app | 🔴 Crítica | Processo rodando, PID, memória |
-| database | 🔴 Crítica | `SELECT 1` via Prisma |
-| redis | 🟡 Degradável | PING |
-| rabbitmq | 🟡 Degradável | Conexão, filas, consumidores |
-| pgbouncer | 🟡 Degradável | Conexão via pooler |
-| realtime | 🟡 Degradável | Healthcheck HTTP |
-| minio | 🟡 Degradável | Healthcheck live |
-| caddy | 🟡 Degradável | Healthcheck interno :8080 |
-| disk | 🟡 Info | Memória RSS/Heap |
-| workers | 🟡 Info | Consumidores RabbitMQ ativos |
+| Serviço   |  Criticidade  | O que verifica                 |
+| :-------- | :-----------: | :----------------------------- |
+| app       |  🔴 Crítica   | Processo rodando, PID, memória |
+| database  |  🔴 Crítica   | `SELECT 1` via Prisma          |
+| redis     | 🟡 Degradável | PING                           |
+| rabbitmq  | 🟡 Degradável | Conexão, filas, consumidores   |
+| pgbouncer | 🟡 Degradável | Conexão via pooler             |
+| realtime  | 🟡 Degradável | Healthcheck HTTP               |
+| minio     | 🟡 Degradável | Healthcheck live               |
+| caddy     | 🟡 Degradável | Healthcheck interno :8080      |
+| disk      |    🟡 Info    | Memória RSS/Heap               |
+| workers   |    🟡 Info    | Consumidores RabbitMQ ativos   |
 
 ### Prometheus / OpenMetrics
 

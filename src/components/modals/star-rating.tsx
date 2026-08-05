@@ -35,10 +35,7 @@ export function StarRatingDisplay({
         count != null ? ` (${count} avaliações)` : ""
       }`}
     >
-      <span
-        className="relative inline-flex"
-        style={{ width: size * 5 + 4 * 2, height: size }}
-      >
+      <span className="relative inline-flex" style={{ width: size * 5 + 4 * 2, height: size }}>
         {/* empty layer */}
         <span className="absolute inset-0 flex" style={{ gap: 2 }}>
           {Array.from({ length: 5 }).map((_, i) => (
@@ -66,7 +63,7 @@ export function StarRatingDisplay({
         </span>
       </span>
       {showCount && (
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className="text-muted-foreground text-xs font-medium">
           {clamped.toFixed(1)}
           {count != null ? ` (${count})` : ""}
         </span>
@@ -132,7 +129,7 @@ export function StarRatingInput({
             disabled={disabled}
             tabIndex={value === v ? 0 : -1}
             className={cn(
-              "rounded-md p-0.5 transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "focus-visible:ring-ring rounded-md p-0.5 transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
               disabled && "cursor-not-allowed opacity-60 hover:scale-100",
             )}
             onMouseEnter={() => !disabled && setHover(v)}
@@ -145,7 +142,7 @@ export function StarRatingInput({
               className={cn(
                 filled
                   ? "fill-amber-400 text-amber-400"
-                  : "fill-transparent text-muted-foreground/50",
+                  : "text-muted-foreground/50 fill-transparent",
               )}
               strokeWidth={1.5}
             />
@@ -153,7 +150,7 @@ export function StarRatingInput({
         )
       })}
       {name && <input type="hidden" name={name} value={value} readOnly />}
-      <span className="ml-1.5 text-sm font-medium tabular-nums text-muted-foreground">
+      <span className="text-muted-foreground ml-1.5 text-sm font-medium tabular-nums">
         {active > 0 ? `${active}.0` : "—"}
       </span>
     </div>

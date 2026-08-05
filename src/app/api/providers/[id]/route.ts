@@ -70,12 +70,17 @@ export async function GET(request: Request, { params }: Params) {
       Number.isFinite(lngNum) &&
       provider.lat !== null &&
       provider.lng !== null
-        ? Math.round(haversineKm(latNum, lngNum, provider.lat, provider.lng) * 10) /
-          10
+        ? Math.round(haversineKm(latNum, lngNum, provider.lat, provider.lng) * 10) / 10
         : null
 
-    const { passwordHash: _ignored, avgRating: _r, reviewCount: _rc, favoriteCount: _fc, reviewsReceived, ...safe } =
-      provider
+    const {
+      passwordHash: _ignored,
+      avgRating: _r,
+      reviewCount: _rc,
+      favoriteCount: _fc,
+      reviewsReceived,
+      ...safe
+    } = provider
 
     // Map reviews to the UI's `ProviderReview` shape: each review has an
     // `author: { id, name, avatarUrl }` field (alias for `client`).
@@ -86,17 +91,20 @@ export async function GET(request: Request, { params }: Params) {
 
     // Return the provider object directly (the typed fetch wrapper expects
     // a `ProviderDetail`, not `{ provider: ProviderDetail }`).
-    return cacheControlPrivate(NextResponse.json({
-      ...safe,
-      services: safe.services,
-      availability: safe.availability,
-      reviews,
-      rating: Math.round(rating * 10) / 10,
-      reviewCount,
-      favoriteCount,
-      distanceKm,
-      favorited,
-    }), 60)
+    return cacheControlPrivate(
+      NextResponse.json({
+        ...safe,
+        services: safe.services,
+        availability: safe.availability,
+        reviews,
+        rating: Math.round(rating * 10) / 10,
+        reviewCount,
+        favoriteCount,
+        distanceKm,
+        favorited,
+      }),
+      60,
+    )
   } catch (e) {
     return handleError(e)
   }

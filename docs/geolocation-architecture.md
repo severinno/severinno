@@ -76,28 +76,30 @@ O Severinno usa geolocalização como seu principal diferencial: busca por proxi
 
 ### 2.1. Store (Client-side)
 
-| Arquivo | Descrição |
-|---------|-----------|
+| Arquivo            | Descrição                                                                                                                                           |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/store/geo.ts` | Zustand store com persistência em localStorage. Estados: `idle → locating → geocoding → ready \| error \| denied`. Expira após 24h sem atualização. |
 
 **Ações:**
+
 - `setFromGPS()` — `navigator.geolocation.getCurrentPosition` + reverse geocode
 - `setFromCoords(lat, lng, address?)` — definição manual de coordenadas
 - `setFromCEP(cep)` — busca CEP via API → popula street/district/city/state
 - `clear()` — reseta tudo para valores iniciais
 
 **Persistência:**
+
 - Chave: `severinno:geo`
 - `partialize`: salva lat, lng, address, cep, district, city, state, status, updatedAt
 - `onRehydrateStorage`: se `updatedAt` > 24h, limpa estado automaticamente
 
 ### 2.2. API Routes (Server-side)
 
-| Rota | Serviço | Cache | Rate Limit | Descrição |
-|------|---------|-------|------------|-----------|
-| `GET /api/geo/search` | Nominatim Search | Redis 24h | 1 req/s (compartilhado) | Forward geocode: free-form (`?q=...`) ou estruturado (`?street=&city=`) |
-| `GET /api/geo/reverse` | Nominatim Reverse | Redis 1h | 1 req/s (compartilhado) | Reverse geocode: lat/lng → endereço |
-| `GET /api/geo/cep` | ViaCEP | Redis 24h | rate limit geo | CEP brasileiro → endereço |
+| Rota                   | Serviço           | Cache     | Rate Limit              | Descrição                                                               |
+| ---------------------- | ----------------- | --------- | ----------------------- | ----------------------------------------------------------------------- |
+| `GET /api/geo/search`  | Nominatim Search  | Redis 24h | 1 req/s (compartilhado) | Forward geocode: free-form (`?q=...`) ou estruturado (`?street=&city=`) |
+| `GET /api/geo/reverse` | Nominatim Reverse | Redis 1h  | 1 req/s (compartilhado) | Reverse geocode: lat/lng → endereço                                     |
+| `GET /api/geo/cep`     | ViaCEP            | Redis 24h | rate limit geo          | CEP brasileiro → endereço                                               |
 
 ### 2.3. Rate Limiter Compartilhado
 
@@ -105,29 +107,29 @@ O Severinno usa geolocalização como seu principal diferencial: busca por proxi
 
 ### 2.4. Server Libraries
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `src/lib/geo.ts` | `server-only` — viaCEP, reverseGeocode, geocodeSearch, geocodeSearchStructured |
-| `src/lib/geo-shared.ts` | Pure math: `haversineKm`, `formatDistance` — seguro para server e client |
-| `src/lib/geo-client.ts` | Re-exporta `geo-shared.ts` para uso em componentes client |
-| `src/lib/geo-server.ts` | Barrel que re-exporta `distance-fallback.ts` + `geo-shared.ts` |
-| `src/lib/postgis.ts` | Wrappers PostGIS: `findProvidersWithinRadius`, `getDistanceBetween`, `isPostGISAvailable` |
-| `src/lib/distance-fallback.ts` | Cadeia: PostGIS ST_Distance → Haversine JS → null |
-| `src/lib/radius-expansion.ts` | Expansão progressiva de raio: 5→10→25→50→100 km |
-| `src/lib/geo-circle.ts` | Gerador de círculo GeoJSON + helpers MapLibre GL (fill, outline, edge dots) |
+| Arquivo                        | Descrição                                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------------------------- |
+| `src/lib/geo.ts`               | `server-only` — viaCEP, reverseGeocode, geocodeSearch, geocodeSearchStructured            |
+| `src/lib/geo-shared.ts`        | Pure math: `haversineKm`, `formatDistance` — seguro para server e client                  |
+| `src/lib/geo-client.ts`        | Re-exporta `geo-shared.ts` para uso em componentes client                                 |
+| `src/lib/geo-server.ts`        | Barrel que re-exporta `distance-fallback.ts` + `geo-shared.ts`                            |
+| `src/lib/postgis.ts`           | Wrappers PostGIS: `findProvidersWithinRadius`, `getDistanceBetween`, `isPostGISAvailable` |
+| `src/lib/distance-fallback.ts` | Cadeia: PostGIS ST_Distance → Haversine JS → null                                         |
+| `src/lib/radius-expansion.ts`  | Expansão progressiva de raio: 5→10→25→50→100 km                                           |
+| `src/lib/geo-circle.ts`        | Gerador de círculo GeoJSON + helpers MapLibre GL (fill, outline, edge dots)               |
 
 ### 2.5. React Components
 
-| Componente | Descrição |
-|------------|-----------|
-| `providers-map.tsx` | Mapa MapLibre GL com clustering (20+), círculo de raio, slider, marcadores |
+| Componente                 | Descrição                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| `providers-map.tsx`        | Mapa MapLibre GL com clustering (20+), círculo de raio, slider, marcadores                  |
 | `address-autocomplete.tsx` | Campo de endereço com debounce 300ms, dropdown Nominatim, navegação por teclado, GPS locate |
-| `provider-mini-map.tsx` | Mapa compacto para modal de perfil, fallback para imagem estática OSM |
+| `provider-mini-map.tsx`    | Mapa compacto para modal de perfil, fallback para imagem estática OSM                       |
 
 ### 2.6. Hooks
 
-| Hook | Descrição |
-|------|-----------|
+| Hook                  | Descrição                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------- |
 | `use-geo-tracking.ts` | Rastreamento GPS em tempo real via WebSocket (watchPosition + sendTrackingPosition) |
 
 ---
@@ -167,16 +169,17 @@ A cadeia de fallback para cálculo de distância:
 
 Quando PostGIS está disponível e o raio do usuário retorna 0 provedores:
 
-| Passo | Raio | Descrição |
-|-------|------|-----------|
-| 1º | user radius | Tenta o raio solicitado |
-| 2º | 5 km | Expansão mínima |
-| 3º | 10 km | |
-| 4º | 25 km | |
-| 5º | 50 km | |
-| 6º | 100 km | Máximo |
+| Passo | Raio        | Descrição               |
+| ----- | ----------- | ----------------------- |
+| 1º    | user radius | Tenta o raio solicitado |
+| 2º    | 5 km        | Expansão mínima         |
+| 3º    | 10 km       |                         |
+| 4º    | 25 km       |                         |
+| 5º    | 50 km       |                         |
+| 6º    | 100 km      | Máximo                  |
 
 **Resposta:**
+
 - `expandedRadius: null` → encontrou no raio do usuário
 - `expandedRadius: 25` → encontrou após expandir para 25km
 - `expandedRadius: -1` → existe provedor mas além de 100km (sem filtro de raio)
@@ -187,10 +190,10 @@ Quando PostGIS está disponível e o raio do usuário retorna 0 provedores:
 
 ### 4.1. Colunas Espaciais
 
-| Tabela | Coluna | Tipo | Trigger |
-|--------|--------|------|---------|
-| User | `location` | `geography(Point, 4326)` | `trg_sync_user_location` |
-| Booking | `location` | `geography(Point, 4326)` | `trg_sync_booking_location` |
+| Tabela       | Coluna     | Tipo                     | Trigger                          |
+| ------------ | ---------- | ------------------------ | -------------------------------- |
+| User         | `location` | `geography(Point, 4326)` | `trg_sync_user_location`         |
+| Booking      | `location` | `geography(Point, 4326)` | `trg_sync_booking_location`      |
 | QuoteRequest | `location` | `geography(Point, 4326)` | `trg_sync_quoterequest_location` |
 
 > As triggers sincronizam `location` automaticamente quando `lat`/`lng` são alterados via Prisma.
@@ -203,12 +206,12 @@ Quando PostGIS está disponível e o raio do usuário retorna 0 provedores:
 
 ### 4.3. Cache
 
-| Função | Cache Key | TTL | Agrupamento |
-|--------|-----------|-----|-------------|
-| `findProvidersWithinRadius` | `proximity:{lat:.3f}:{lng:.3f}:{radius}` | 60s | ~110m precision |
-| `getDistanceBetween` | `distance:{userIdA}:{userIdB}` (sorted) | 60s | Por par de usuários |
-| `isPostGISAvailable` | `postgis:available` | 300s (5min) | Global |
-| Radius count | `providers:count:{lat:.3f}:{lng:.3f}:{radius}:{cats}:{q}` | 120s | ~110m precision |
+| Função                      | Cache Key                                                 | TTL         | Agrupamento         |
+| --------------------------- | --------------------------------------------------------- | ----------- | ------------------- |
+| `findProvidersWithinRadius` | `proximity:{lat:.3f}:{lng:.3f}:{radius}`                  | 60s         | ~110m precision     |
+| `getDistanceBetween`        | `distance:{userIdA}:{userIdB}` (sorted)                   | 60s         | Por par de usuários |
+| `isPostGISAvailable`        | `postgis:available`                                       | 300s (5min) | Global              |
+| Radius count                | `providers:count:{lat:.3f}:{lng:.3f}:{radius}:{cats}:{q}` | 120s        | ~110m precision     |
 
 ---
 
@@ -216,21 +219,21 @@ Quando PostGIS está disponível e o raio do usuário retorna 0 provedores:
 
 ### 5.1. Nominatim (OpenStreetMap)
 
-| Aspecto | Detalhe |
-|---------|---------|
-| URL base | `https://nominatim.openstreetmap.org` |
-| Rate limit | 1 req/s (compartilhado via `rateLimitedNominatim`) |
-| User-Agent | `SeverinnoMarketplace/1.0 (admin@severinno.com)` |
-| Cache Redis | search: 24h, reverse: 1h |
-| Endpoints | `/search` (forward), `/reverse` (reverse) |
+| Aspecto     | Detalhe                                            |
+| ----------- | -------------------------------------------------- |
+| URL base    | `https://nominatim.openstreetmap.org`              |
+| Rate limit  | 1 req/s (compartilhado via `rateLimitedNominatim`) |
+| User-Agent  | `SeverinnoMarketplace/1.0 (admin@severinno.com)`   |
+| Cache Redis | search: 24h, reverse: 1h                           |
+| Endpoints   | `/search` (forward), `/reverse` (reverse)          |
 
 ### 5.2. ViaCEP
 
-| Aspecto | Detalhe |
-|---------|---------|
-| URL base | `https://viacep.com.br/ws/{cep}/json/` |
-| Rate limit | Via `assertRateLimit` (rate limit geo) |
-| Cache Redis | 24h (dados raramente mudam) |
+| Aspecto     | Detalhe                                |
+| ----------- | -------------------------------------- |
+| URL base    | `https://viacep.com.br/ws/{cep}/json/` |
+| Rate limit  | Via `assertRateLimit` (rate limit geo) |
+| Cache Redis | 24h (dados raramente mudam)            |
 
 ---
 
@@ -250,25 +253,25 @@ Atribuição obrigatória: "© OpenStreetMap contributors" (já inclusa nos comp
 
 ## 7. Testes
 
-| Suite | Arquivo | Testes |
-|-------|---------|--------|
-| Core geo | `src/lib/__tests__/geo.test.ts` | 23+ (geocodeSearch, structured, haversine, formatDistance) |
-| Client geo | `src/lib/__tests__/geo-client.test.ts` | 7 (re-exports) |
-| Geo circle | `src/lib/__tests__/geo-circle.test.ts` | 20+ + fuzzing 600 |
-| Geo circle map | `src/lib/__tests__/geo-circle-map.test.ts` | 8 (syncRadiusCircle, removeRadiusCircle) |
-| Distance fallback | `src/lib/__tests__/distance-fallback.test.ts` | 10 (computeDistanceMap) |
-| Distance fallback fuzz | `src/lib/__tests__/distance-fallback-fuzz.test.ts` | 100 iterations + edge cases |
-| Radius expansion | `src/lib/__tests__/radius-expansion.test.ts` | 12+ (buildRadiiToTry, findEffectiveRadius) |
-| Radius expansion fuzz | `src/lib/__tests__/radius-expansion-fuzz.test.ts` | 1000 iterations |
-| Radius expansion (route) | `src/app/api/__tests__/providers-radius-expansion.test.ts` | 10+ (integração providers route) |
-| PostGIS | `src/lib/__tests__/postgis.test.ts` | 16 (findProvidersWithinRadius, getDistanceBetween, isPostGISAvailable) |
-| Nominatim rate limit | `src/lib/__tests__/nominatim-rate-limit.test.ts` | 8 (rateLimitedNominatim, reset) |
-| Geo store | `src/lib/__tests__/geo-store.test.ts` | 12+ (setFromCoords, setFromCEP, setFromGPS, clear) |
-| CEP route | `src/app/api/__tests__/geo-cep-route.test.ts` | Rota CEP |
-| Reverse route | `src/app/api/__tests__/geo-reverse-route.test.ts` | Rota reverse |
-| Search route | `src/app/api/__tests__/geo-search-route.test.ts` | Rota search |
-| Benchmarks | `src/lib/__tests__/geo-benchmark.bench.ts` | Performance |
-| Performance regression | `src/lib/__tests__/geo-performance-regression.test.ts` | Regressão |
+| Suite                    | Arquivo                                                    | Testes                                                                 |
+| ------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Core geo                 | `src/lib/__tests__/geo.test.ts`                            | 23+ (geocodeSearch, structured, haversine, formatDistance)             |
+| Client geo               | `src/lib/__tests__/geo-client.test.ts`                     | 7 (re-exports)                                                         |
+| Geo circle               | `src/lib/__tests__/geo-circle.test.ts`                     | 20+ + fuzzing 600                                                      |
+| Geo circle map           | `src/lib/__tests__/geo-circle-map.test.ts`                 | 8 (syncRadiusCircle, removeRadiusCircle)                               |
+| Distance fallback        | `src/lib/__tests__/distance-fallback.test.ts`              | 10 (computeDistanceMap)                                                |
+| Distance fallback fuzz   | `src/lib/__tests__/distance-fallback-fuzz.test.ts`         | 100 iterations + edge cases                                            |
+| Radius expansion         | `src/lib/__tests__/radius-expansion.test.ts`               | 12+ (buildRadiiToTry, findEffectiveRadius)                             |
+| Radius expansion fuzz    | `src/lib/__tests__/radius-expansion-fuzz.test.ts`          | 1000 iterations                                                        |
+| Radius expansion (route) | `src/app/api/__tests__/providers-radius-expansion.test.ts` | 10+ (integração providers route)                                       |
+| PostGIS                  | `src/lib/__tests__/postgis.test.ts`                        | 16 (findProvidersWithinRadius, getDistanceBetween, isPostGISAvailable) |
+| Nominatim rate limit     | `src/lib/__tests__/nominatim-rate-limit.test.ts`           | 8 (rateLimitedNominatim, reset)                                        |
+| Geo store                | `src/lib/__tests__/geo-store.test.ts`                      | 12+ (setFromCoords, setFromCEP, setFromGPS, clear)                     |
+| CEP route                | `src/app/api/__tests__/geo-cep-route.test.ts`              | Rota CEP                                                               |
+| Reverse route            | `src/app/api/__tests__/geo-reverse-route.test.ts`          | Rota reverse                                                           |
+| Search route             | `src/app/api/__tests__/geo-search-route.test.ts`           | Rota search                                                            |
+| Benchmarks               | `src/lib/__tests__/geo-benchmark.bench.ts`                 | Performance                                                            |
+| Performance regression   | `src/lib/__tests__/geo-performance-regression.test.ts`     | Regressão                                                              |
 
 ---
 
@@ -277,6 +280,7 @@ Atribuição obrigatória: "© OpenStreetMap contributors" (já inclusa nos comp
 O arquivo `geo-benchmark.json` contém resultados de benchmark para comparar performance entre PostGIS e Haversine.
 
 Métricas chave:
+
 - **PostGIS ST_DWithin** vs **Haversine JS** para raios de 1–100km
 - **Tempo de resposta** médio para cada faixa de raio
 - **Precisão** da aproximação equirectangular vs Haversine real

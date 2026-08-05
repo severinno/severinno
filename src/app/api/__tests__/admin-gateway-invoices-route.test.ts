@@ -29,7 +29,9 @@ const INVOICES = {
     { id: "inv-1", amount: 50000, status: "paid", createdAt: "2025-01-15" },
     { id: "inv-2", amount: 30000, status: "pending", createdAt: "2025-02-10" },
   ],
-  total: 2, page: 1, perPage: 20,
+  total: 2,
+  page: 1,
+  perPage: 20,
 }
 
 const TOKEN_RESP = { accessToken: "test-token" }
@@ -54,7 +56,10 @@ function mockFetchSequence(responses: Array<{ status: number; body: unknown }>) 
       }),
     ),
   )
-  vi.stubGlobal("fetch", vi.fn().mockImplementation(() => fns.shift()!()))
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(() => fns.shift()!()),
+  )
 }
 
 // ── Success ────────────────────────────────────────────────────────────────
@@ -107,9 +112,7 @@ describe("GET /api/admin/gateway/invoices — query params", () => {
     ])
 
     const { GET } = await import("../admin/gateway/invoices/route")
-    const req = new Request(
-      "http://localhost/api/admin/gateway/invoices?search=50000",
-    )
+    const req = new Request("http://localhost/api/admin/gateway/invoices?search=50000")
     await GET(req)
 
     // With fresh module + reset, there should be 2 fetch calls
@@ -125,9 +128,7 @@ describe("GET /api/admin/gateway/invoices — query params", () => {
     ])
 
     const { GET } = await import("../admin/gateway/invoices/route")
-    const req = new Request(
-      "http://localhost/api/admin/gateway/invoices?page=2&perPage=10",
-    )
+    const req = new Request("http://localhost/api/admin/gateway/invoices?page=2&perPage=10")
     await GET(req)
 
     const calls = vi.mocked(fetch).mock.calls

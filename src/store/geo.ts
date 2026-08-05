@@ -3,13 +3,7 @@
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
 
-export type GeoStatus =
-  | "idle"
-  | "locating"
-  | "geocoding"
-  | "ready"
-  | "error"
-  | "denied"
+export type GeoStatus = "idle" | "locating" | "geocoding" | "ready" | "error" | "denied"
 
 export type GeoState = {
   lat: number | null
@@ -134,9 +128,7 @@ export const useGeoStore = create<GeoState>()(
         set({ status: "geocoding", error: null })
         try {
           const clean = cep.replace(/\D/g, "")
-          const res = await fetch(
-            `/api/geo/cep?cep=${encodeURIComponent(clean)}`,
-          )
+          const res = await fetch(`/api/geo/cep?cep=${encodeURIComponent(clean)}`)
           const data = await res.json()
           if (!res.ok || !data?.cep) {
             set({

@@ -87,7 +87,7 @@ export async function GET(request: Request) {
         filterBy: {
           level: { error: "Unhealthy services", warning: "Degraded services" },
           tags: "service:<name>",
-          title: '[HealthMonitor]',
+          title: "[HealthMonitor]",
         },
         actions: ["Send email", "Send Telegram", "Send Discord", "Send Webhook"],
       },

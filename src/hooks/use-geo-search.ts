@@ -33,7 +33,7 @@ export function useGeoSearch(
     queryFn: () => fetchGeoSearch(trimmed, limit),
     enabled,
     staleTime: 5 * 60 * 1000, // 5 min — SWR: serve cache while re-fetching in background
-    gcTime: 30 * 60 * 1000,   // 30 min — keep in garbage-collectible cache
+    gcTime: 30 * 60 * 1000, // 30 min — keep in garbage-collectible cache
     retry: 1,
   })
 

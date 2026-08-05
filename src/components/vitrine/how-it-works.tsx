@@ -41,11 +41,7 @@ import { useUIStore } from "@/store/ui"
 import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
 
 import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 
 // ---------------------------------------------------------------------------
 // Step definitions — concrete, real-world examples (H2 + H6)
@@ -78,9 +74,7 @@ const STEPS: StepDef[] = [
         {/* Search bar mockup */}
         <div className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 shadow-sm dark:bg-slate-800">
           <Search className="size-4 text-emerald-500" />
-          <span className="text-[11px] text-muted-foreground">
-            encanador em São Paulo
-          </span>
+          <span className="text-muted-foreground text-[11px]">encanador em São Paulo</span>
           <span className="ml-auto animate-pulse text-[11px] text-emerald-500">|</span>
         </div>
         {/* Filter pills */}
@@ -88,10 +82,10 @@ const STEPS: StepDef[] = [
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
             Verificados
           </span>
-          <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+          <span className="bg-muted/50 text-muted-foreground rounded-full border px-2 py-0.5 text-[9px] font-medium">
             &lt; 5 km
           </span>
-          <span className="rounded-full border bg-muted/50 px-2 py-0.5 text-[9px] font-medium text-muted-foreground">
+          <span className="bg-muted/50 text-muted-foreground rounded-full border px-2 py-0.5 text-[9px] font-medium">
             <Filter className="mr-0.5 inline size-2.5" />
             Mais filtros
           </span>
@@ -118,11 +112,19 @@ const STEPS: StepDef[] = [
               <span className="text-[8px] font-semibold">João S.</span>
             </div>
             <div className="mt-1 flex items-center gap-0.5">
-              {[1,2,3,4,5].map(i => (
-                <Star key={i} className={cn("size-2", i <= 4 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30")} />
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Star
+                  key={i}
+                  className={cn(
+                    "size-2",
+                    i <= 4 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30",
+                  )}
+                />
               ))}
             </div>
-            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">R$ 180</span>
+            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+              R$ 180
+            </span>
           </div>
           <div className="rounded-md border border-emerald-300 bg-emerald-50/80 p-1.5 shadow-sm ring-1 ring-emerald-200 dark:border-emerald-700 dark:bg-emerald-950/30 dark:ring-emerald-800">
             <div className="flex items-center gap-1">
@@ -130,15 +132,25 @@ const STEPS: StepDef[] = [
               <span className="text-[8px] font-semibold">Maria L.</span>
             </div>
             <div className="mt-1 flex items-center gap-0.5">
-              {[1,2,3,4,5].map(i => (
-                <Star key={i} className={cn("size-2", i <= 5 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30")} />
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Star
+                  key={i}
+                  className={cn(
+                    "size-2",
+                    i <= 5 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30",
+                  )}
+                />
               ))}
             </div>
-            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">R$ 150</span>
-            <span className="mt-0.5 block text-[7px] font-semibold text-emerald-600 dark:text-emerald-400">Melhor avaliação</span>
+            <span className="mt-0.5 block text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+              R$ 150
+            </span>
+            <span className="mt-0.5 block text-[7px] font-semibold text-emerald-600 dark:text-emerald-400">
+              Melhor avaliação
+            </span>
           </div>
         </div>
-        <div className="flex items-center justify-center gap-1 text-[8px] text-muted-foreground">
+        <div className="text-muted-foreground flex items-center justify-center gap-1 text-[8px]">
           <GitCompare className="size-2.5" />
           Compare lado a lado
         </div>
@@ -158,19 +170,30 @@ const STEPS: StepDef[] = [
       <div className="flex w-full flex-col gap-1.5">
         {/* Calendar mockup */}
         <div className="rounded-lg border bg-white p-2 shadow-sm dark:bg-slate-800">
-          <div className="mb-1 text-center text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Março 2025</div>
-          <div className="grid grid-cols-7 gap-0.5 text-center text-[8px] text-muted-foreground">
-            {["S","T","Q","Q","S","S","D"].map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
-            {Array.from({length: 15}, (_, i) => (
-              <span key={i} className={cn(
-                "py-0.5 rounded",
-                i === 11 ? "bg-emerald-500 text-white font-bold" : ""
-              )}>{i + 1}</span>
+          <div className="text-muted-foreground mb-1 text-center text-[9px] font-bold tracking-wider uppercase">
+            Março 2025
+          </div>
+          <div className="text-muted-foreground grid grid-cols-7 gap-0.5 text-center text-[8px]">
+            {["S", "T", "Q", "Q", "S", "S", "D"].map((d, i) => (
+              <span key={`${d}-${i}`}>{d}</span>
+            ))}
+            {Array.from({ length: 15 }, (_, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "rounded py-0.5",
+                  i === 11 ? "bg-emerald-500 font-bold text-white" : "",
+                )}
+              >
+                {i + 1}
+              </span>
             ))}
           </div>
           <div className="mt-1.5 flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 dark:border-emerald-800 dark:bg-emerald-950/30">
             <CheckCircle2 className="size-3 text-emerald-500" />
-            <span className="text-[9px] font-medium text-emerald-700 dark:text-emerald-300">12 Mar, 14:00 — Confirmado</span>
+            <span className="text-[9px] font-medium text-emerald-700 dark:text-emerald-300">
+              12 Mar, 14:00 — Confirmado
+            </span>
           </div>
         </div>
       </div>
@@ -195,9 +218,7 @@ const STEPS: StepDef[] = [
                 key={i}
                 className={cn(
                   "size-4",
-                  i <= 4
-                    ? "fill-amber-400 text-amber-400"
-                    : "text-muted-foreground/30",
+                  i <= 4 ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30",
                 )}
               />
             ))}
@@ -205,10 +226,10 @@ const STEPS: StepDef[] = [
               4.0
             </span>
           </div>
-          <div className="mt-1.5 h-2 w-full rounded-full bg-muted/50">
+          <div className="bg-muted/50 mt-1.5 h-2 w-full rounded-full">
             <div className="h-2 w-4/5 rounded-full bg-gradient-to-r from-amber-400 to-amber-500" />
           </div>
-          <p className="mt-1 text-[9px] italic text-muted-foreground">
+          <p className="text-muted-foreground mt-1 text-[9px] italic">
             "Excelente trabalho, recomendo!"
           </p>
         </div>
@@ -266,7 +287,11 @@ const fadeUp = {
 // Parallax blobs — different scroll speeds for layered depth
 // ---------------------------------------------------------------------------
 
-function ParallaxBlobs({ scrollYProgress }: { scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"] }) {
+function ParallaxBlobs({
+  scrollYProgress,
+}: {
+  scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"]
+}) {
   const y1 = useTransform(scrollYProgress, [0, 1], [0, -60])
   const y2 = useTransform(scrollYProgress, [0, 1], [0, 40])
   const y3 = useTransform(scrollYProgress, [0, 1], [0, -30])
@@ -300,8 +325,9 @@ function StepStat({ value, suffix, label }: { value: number; suffix: string; lab
   const { ref, value: displayed } = useCountUp(value, { duration: 1200 })
   return (
     <span className="inline-flex items-baseline gap-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-      <span ref={ref}>{displayed}</span>{suffix}
-      <span className="ml-0.5 font-normal text-muted-foreground">{label}</span>
+      <span ref={ref}>{displayed}</span>
+      {suffix}
+      <span className="text-muted-foreground ml-0.5 font-normal">{label}</span>
     </span>
   )
 }
@@ -377,7 +403,10 @@ export default function HowItWorks({
       {/* Parallax decorative blobs */}
       <ParallaxBlobs scrollYProgress={scrollYProgress} />
 
-      <div ref={ref} className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+      <div
+        ref={ref}
+        className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24"
+      >
         {/* ── Header with quick-skip link (H7) ──────────────────────── */}
         <motion.header
           initial={{ opacity: 0, y: 20 }}
@@ -388,7 +417,7 @@ export default function HowItWorks({
           {/* "Pular para resultados" quick-skip button at top-right (H7) */}
           <a
             href="#vitrine-resultados"
-            className="absolute right-0 top-0 hidden items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/80 px-3 py-1 text-[10px] font-medium text-emerald-700 transition-all hover:bg-emerald-100 hover:shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60 sm:inline-flex"
+            className="absolute top-0 right-0 hidden items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/80 px-3 py-1 text-[10px] font-medium text-emerald-700 transition-all hover:bg-emerald-100 hover:shadow-sm sm:inline-flex dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
           >
             <MessageSquareQuote className="size-3" />
             Pular para resultados
@@ -409,7 +438,7 @@ export default function HowItWorks({
             Como funciona
           </h2>
 
-          <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+          <p className="text-muted-foreground mt-2 text-sm sm:text-base">
             Sem surpresas — do início ao fim, você tem o controle.
           </p>
 
@@ -534,7 +563,7 @@ export default function HowItWorks({
                     <Icon className="size-7 text-white" />
                   </button>
                   {/* Step number badge */}
-                  <span className="absolute left-12 top-0 z-20 flex size-6 items-center justify-center rounded-full bg-white text-xs font-bold text-emerald-600 shadow-sm ring-2 ring-emerald-200 dark:bg-slate-900 dark:text-emerald-400 dark:ring-emerald-800">
+                  <span className="absolute top-0 left-12 z-20 flex size-6 items-center justify-center rounded-full bg-white text-xs font-bold text-emerald-600 shadow-sm ring-2 ring-emerald-200 dark:bg-slate-900 dark:text-emerald-400 dark:ring-emerald-800">
                     {idx + 1}
                   </span>
 
@@ -548,7 +577,7 @@ export default function HowItWorks({
                       <motion.span
                         animate={{ rotate: isExpanded ? 180 : 0 }}
                         transition={{ duration: 0.2 }}
-                        className="ml-2 text-muted-foreground"
+                        className="text-muted-foreground ml-2"
                       >
                         <ChevronRight className="size-3.5 -rotate-90" />
                       </motion.span>
@@ -563,22 +592,20 @@ export default function HowItWorks({
                           transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
                           className="overflow-hidden"
                         >
-                          <div className="pb-2 pt-2">
-                            <p className="text-xs text-muted-foreground">
-                              {step.oneLiner}
-                            </p>
-                            <p className="mt-1 text-[10px] italic text-emerald-600 dark:text-emerald-400">
+                          <div className="pt-2 pb-2">
+                            <p className="text-muted-foreground text-xs">{step.oneLiner}</p>
+                            <p className="mt-1 text-[10px] text-emerald-600 italic dark:text-emerald-400">
                               Ex: {step.example}
                             </p>
                             {/* Step stat counter (H1) */}
                             <div className="mt-1.5">
                               <StepStat {...step.stat} />
                             </div>
-                            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                            <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
                               {step.details}
                             </p>
                             {/* Mini illustration (H6) */}
-                            <div className="mt-3 rounded-xl border bg-muted/20 p-3">
+                            <div className="bg-muted/20 mt-3 rounded-xl border p-3">
                               {step.miniIllustration}
                             </div>
                             {/* "Sem compromisso" badge on compare step (H9) */}
@@ -620,7 +647,7 @@ export default function HowItWorks({
           initial={{ opacity: 0, y: 16 }}
           animate={visible ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.5, delay: 0.5 }}
-          className="mt-14 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/60 via-white to-teal-50/60 p-5 dark:border-emerald-900/50 dark:from-emerald-950/20 dark:via-slate-900 dark:to-teal-950/20 sm:mt-16"
+          className="mt-14 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/60 via-white to-teal-50/60 p-5 sm:mt-16 dark:border-emerald-900/50 dark:from-emerald-950/20 dark:via-slate-900 dark:to-teal-950/20"
         >
           <div className="mb-3 flex items-center justify-center gap-2">
             <ShieldCheck className="size-4 text-emerald-500" />
@@ -634,15 +661,12 @@ export default function HowItWorks({
               return (
                 <Tooltip key={item.label}>
                   <TooltipTrigger asChild>
-                    <div className="flex cursor-default items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400">
+                    <div className="text-muted-foreground flex cursor-default items-center gap-2 text-sm transition-colors hover:text-emerald-600 dark:hover:text-emerald-400">
                       <TIcon className="size-4 text-emerald-500" />
                       <span className="hidden text-xs sm:inline">{item.label}</span>
                     </div>
                   </TooltipTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    className="max-w-[220px] text-center text-xs"
-                  >
+                  <TooltipContent side="bottom" className="max-w-[220px] text-center text-xs">
                     {item.tooltip}
                   </TooltipContent>
                 </Tooltip>
@@ -700,7 +724,7 @@ export default function HowItWorks({
         >
           <a
             href="#vitrine-resultados"
-            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400 sm:hidden"
+            className="text-muted-foreground flex items-center gap-1 text-xs transition-colors hover:text-emerald-600 sm:hidden dark:hover:text-emerald-400"
           >
             <MessageSquareQuote className="size-3" />
             Pular para resultados
@@ -709,7 +733,7 @@ export default function HowItWorks({
           <button
             type="button"
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
+            className="text-muted-foreground flex items-center gap-1 text-xs transition-colors hover:text-emerald-600 dark:hover:text-emerald-400"
             aria-label="Voltar ao topo"
           >
             <ArrowUp className="size-3" />
@@ -752,10 +776,10 @@ function StepCardDesktop({
     >
       {/* Gradient border wrapper — visible on hover */}
       <div className="rounded-2xl bg-gradient-to-br from-transparent via-transparent to-transparent p-[1.5px] transition-all duration-300 group-hover:from-emerald-400 group-hover:via-teal-400 group-hover:to-emerald-500 group-hover:shadow-xl group-hover:shadow-emerald-500/10">
-        <div className="flex h-full flex-col items-center rounded-2xl border bg-card p-5 text-center shadow-sm transition-colors duration-300 group-hover:border-transparent lg:p-6">
+        <div className="bg-card flex h-full flex-col items-center rounded-2xl border p-5 text-center shadow-sm transition-colors duration-300 group-hover:border-transparent lg:p-6">
           {/* Large step number badge — size-16 (H6) */}
           <div className="absolute -top-5 left-1/2 z-20 -translate-x-1/2">
-            <span className="flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-xl font-extrabold text-white shadow-lg shadow-emerald-500/30 ring-4 ring-white dark:ring-slate-900">
+            <span className="flex size-14 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-xl font-extrabold text-white shadow-lg ring-4 shadow-emerald-500/30 ring-white dark:ring-slate-900">
               {index + 1}
             </span>
           </div>
@@ -769,8 +793,13 @@ function StepCardDesktop({
             <motion.span
               initial={{ scale: 0, opacity: 0 }}
               animate={visible ? { scale: 1, opacity: 1 } : {}}
-              transition={{ duration: 0.3, delay: 0.6 + index * 0.15, type: "spring", stiffness: 300 }}
-              className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-emerald-500 shadow-md"
+              transition={{
+                duration: 0.3,
+                delay: 0.6 + index * 0.15,
+                type: "spring",
+                stiffness: 300,
+              }}
+              className="absolute -right-1.5 -bottom-1.5 flex size-6 items-center justify-center rounded-full bg-emerald-500 shadow-md"
               aria-hidden
             >
               <CheckCircle2 className="size-3.5 text-white" />
@@ -778,14 +807,10 @@ function StepCardDesktop({
           </div>
 
           {/* Title */}
-          <h3 className="mt-4 text-sm font-bold tracking-tight lg:text-base">
-            {step.title}
-          </h3>
+          <h3 className="mt-4 text-sm font-bold tracking-tight lg:text-base">{step.title}</h3>
 
           {/* One-liner description (H8 — minimalism) */}
-          <p className="mt-1 text-xs text-muted-foreground lg:text-sm">
-            {step.oneLiner}
-          </p>
+          <p className="text-muted-foreground mt-1 text-xs lg:text-sm">{step.oneLiner}</p>
 
           {/* Step stat counter (H1) */}
           <div className="mt-2">
@@ -793,12 +818,12 @@ function StepCardDesktop({
           </div>
 
           {/* Mini UI illustration area (H2 + H6) */}
-          <div className="mt-3 flex w-full items-stretch justify-center rounded-xl border bg-muted/20 p-3 transition-colors duration-200 group-hover:border-emerald-200 group-hover:bg-emerald-50/40 dark:group-hover:border-emerald-800/50 dark:group-hover:bg-emerald-950/20">
+          <div className="bg-muted/20 mt-3 flex w-full items-stretch justify-center rounded-xl border p-3 transition-colors duration-200 group-hover:border-emerald-200 group-hover:bg-emerald-50/40 dark:group-hover:border-emerald-800/50 dark:group-hover:bg-emerald-950/20">
             {step.miniIllustration}
           </div>
 
           {/* Concrete example (H2) */}
-          <p className="mt-2 text-[9px] italic text-emerald-600 dark:text-emerald-400">
+          <p className="mt-2 text-[9px] text-emerald-600 italic dark:text-emerald-400">
             Ex: {step.example}
           </p>
 

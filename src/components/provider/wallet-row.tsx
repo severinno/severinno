@@ -1,12 +1,7 @@
 "use client"
 
 import * as React from "react"
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  Banknote,
-  Clock,
-} from "lucide-react"
+import { ArrowDownLeft, ArrowUpRight, Banknote, Clock } from "lucide-react"
 
 import { formatBRL, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -36,7 +31,7 @@ export type WalletTransaction = {
 export function TransactionRow({ t }: { t: WalletTransaction }) {
   const isWithdrawn = t.status === "withdrawn"
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-card p-3 transition-colors hover:bg-accent/40">
+    <div className="bg-card hover:bg-accent/40 flex items-center gap-3 rounded-lg border p-3 transition-colors">
       <div
         className={cn(
           "flex size-9 shrink-0 items-center justify-center rounded-lg",
@@ -46,8 +41,7 @@ export function TransactionRow({ t }: { t: WalletTransaction }) {
             "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
           t.status === "refunded" &&
             "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
-          isWithdrawn &&
-            "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+          isWithdrawn && "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
         )}
       >
         {isWithdrawn ? (
@@ -62,7 +56,7 @@ export function TransactionRow({ t }: { t: WalletTransaction }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{t.description}</p>
-        <p className="truncate text-xs text-muted-foreground">
+        <p className="text-muted-foreground truncate text-xs">
           {isWithdrawn
             ? `Saque realizado — ${formatDate(t.date)}`
             : `${t.clientName} — ${formatDate(t.date)}`}

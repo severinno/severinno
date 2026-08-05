@@ -43,8 +43,7 @@ export const useCompareStore = create<CompareState>()(
           return { ids: [...s.ids, id] }
         }),
 
-      remove: (id) =>
-        set((s) => ({ ids: s.ids.filter((x) => x !== id) })),
+      remove: (id) => set((s) => ({ ids: s.ids.filter((x) => x !== id) })),
 
       clear: () => set({ ids: [] }),
 

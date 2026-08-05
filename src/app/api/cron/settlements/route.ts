@@ -84,7 +84,14 @@ export async function GET(request: Request) {
     // Aggregate by provider (same logic as the manual generation route)
     const providerMap = new Map<
       string,
-      { name: string; email: string; totalAmount: number; count: number; commission: number; netAmount: number }
+      {
+        name: string
+        email: string
+        totalAmount: number
+        count: number
+        commission: number
+        netAmount: number
+      }
     >()
     for (const p of payments) {
       const providerId = p.booking?.providerId
@@ -128,16 +135,14 @@ export async function GET(request: Request) {
         providerCount: providerMap.size,
         transactionCount,
         providers: {
-          create: Array.from(providerMap.entries()).map(
-            ([providerId, ps]) => ({
-              providerId,
-              status: "PENDING",
-              totalAmount: ROUND2(ps.totalAmount),
-              commission: ROUND2(ps.commission),
-              netAmount: ROUND2(ps.netAmount),
-              transactionCount: ps.count,
-            }),
-          ),
+          create: Array.from(providerMap.entries()).map(([providerId, ps]) => ({
+            providerId,
+            status: "PENDING",
+            totalAmount: ROUND2(ps.totalAmount),
+            commission: ROUND2(ps.commission),
+            netAmount: ROUND2(ps.netAmount),
+            transactionCount: ps.count,
+          })),
         },
       },
     })
