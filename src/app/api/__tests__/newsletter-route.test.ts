@@ -2,6 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
+// Padrão geo-alert-notify.test.ts: mocks criados com vi.hoisted e injetados
+// na factory do vi.mock. Evita o bug de ASI do padrão anterior, onde duas
+// linhas `(vi.mocked(...) as any).mockResolvedValue(...)` consecutivas eram
+// encadeadas pelo parser JS (`foo()(bar())`) — a primeira terminava em `)`
+// e a segunda começava com `(`, então a segunda virava chamada do RESULTADO
+// da primeira e `mockResolvedValue` quebrava com "is not a function".
+
+const { mockSettingFindUnique, mockSettingCreate } = vi.hoisted(() => ({
+  mockSettingFindUnique: vi.fn(),
+  mockSettingCreate: vi.fn(),
+}))
 
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -10,8 +21,8 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     setting: {
-      findUnique: vi.fn(),
-      create: vi.fn(),
+      findUnique: mockSettingFindUnique,
+      create: mockSettingCreate,
     },
   },
 }))
@@ -29,8 +40,8 @@ describe("POST /api/newsletter", () => {
   })
 
   it("subscribes a new email successfully", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    mockSettingFindUnique.mockResolvedValue(null)
+    mockSettingCreate.mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -50,11 +61,11 @@ describe("POST /api/newsletter", () => {
   })
 
   it("returns already subscribed when email exists", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
+    mockSettingFindUnique.mockResolvedValue({
       key: "newsletter:user@example.com",
       value: JSON.stringify({ email: "user@example.com" }),
     } as any)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    mockSettingCreate.mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -96,8 +107,8 @@ describe("POST /api/newsletter", () => {
   })
 
   it("normalizes email to lowercase", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    mockSettingFindUnique.mockResolvedValue(null)
+    mockSettingCreate.mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -113,8 +124,8 @@ describe("POST /api/newsletter", () => {
   })
 
   it("trims whitespace from email", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    mockSettingFindUnique.mockResolvedValue(null)
+    mockSettingCreate.mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",

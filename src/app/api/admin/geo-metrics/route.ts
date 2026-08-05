@@ -73,7 +73,9 @@ export type GeoMetricsResponse = ReturnType<typeof getGeoMetrics> & {
 
 function loadBenchmarkData(): BenchmarkData | null {
   try {
-    const p = join(process.cwd(), "geo-benchmark.json")
+    // Baseline versionado em docs/benchmarks — o geo-benchmark.json da raiz
+    // foi removido (08/2026); o shape é o mesmo (meta/benchmarks/analysis).
+    const p = join(process.cwd(), "docs", "benchmarks", "geo-benchmark.json")
     if (!existsSync(p)) return null
     const raw = readFileSync(p, "utf-8")
     const parsed = JSON.parse(raw) as {

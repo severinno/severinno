@@ -54,3 +54,15 @@ agent-ctx/
 download/
 upload/
 mini-services/.gitkeep
+
+# ── Runtime/scratch artifacts (regenerated locally; never in image) ────────
+lhci-reports/
+*.pid
+/dev.err
+/dev2.err
+/output.txt
+/verify-screenshot.png
+/test-prisma7.mjs
+/geo-benchmark.json
+# NOTA: docs/benchmarks/geo-benchmark.json é lido pela rota admin/benchmarks
+# no runtime da imagem — NÃO pode ser excluído daqui (por isso o âncora /).

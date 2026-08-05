@@ -84,7 +84,7 @@ const eslintConfig = [
     // mecanismo de output correto (não há logger/browser) e `any` em dados
     // dinâmicos de CLI é idiomático. no-console/no-explicit-any só fazem
     // sentido no código da aplicação (src/).
-    files: ["scripts/**", "prisma/**", "mini-services/**", "test-prisma7.mjs"],
+    files: ["scripts/**", "prisma/**", "mini-services/**"],
     rules: {
       "no-console": "off",
       "@typescript-eslint/no-explicit-any": "off",

@@ -67,15 +67,16 @@ describe("GET /api/geo/cep", () => {
     expect(parsed.body).toHaveProperty("street", "Avenida Paulista")
   })
 
-  it("returns 400 when ViaCEP is unavailable", async () => {
+  it("returns 500 when ViaCEP is unavailable", async () => {
     vi.mocked(geocodeCEP).mockRejectedValue(new Error("ViaCEP HTTP 502"))
 
     const req = createMockRequest({ searchParams: { cep: "01310100" } })
     const response = await GET(req)
     const parsed = await parseResponse(response)
 
-    // Route catch block always returns 400 for generic errors
-    expect(parsed.status).toBe(400)
-    expect(parsed.body).toHaveProperty("error")
+    // handleError mapeia erro genérico (não-HttpError) para 500 com mensagem
+    // neutra — não vaza o status interno do provider upstream.
+    expect(parsed.status).toBe(500)
+    expect((parsed.body as any).error).toBe("Erro interno do servidor")
   })
 })

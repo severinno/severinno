@@ -83,6 +83,24 @@ test-results/
 # Freebuff agent tool outputs (act binary, lint/tsc reports) — never commit
 tool-results/
 
+# Lighthouse CI generated reports (lighthouserc.json outputDir) — never commit
+lhci-reports/
+
+# Runtime artifacts — process IDs and error logs regenerated on each run
+*.pid
+.zscripts/dev.pid
+mini-services/realtime/service.pid
+mini-services/realtime/realtime.err
+/dev.err
+/dev2.err
+
+# Scratch/debug files at repo root (removed from tracking in 08/2026)
+/output.txt
+/verify-screenshot.png
+/test-prisma7.mjs
+# Duplicado da raiz — o baseline versionado é docs/benchmarks/geo-benchmark.json
+/geo-benchmark.json
+
 # Python bytecode (check_crlf.py / check_blob_crlf.py compile cache)
 __pycache__/
 *.pyc

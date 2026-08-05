@@ -3,10 +3,10 @@ import { cleanup, render, screen } from "@/__tests__/test-utils"
 
 import { SearchPage } from "../search-page"
 
-// SearchPage tests are sketched out but the component hasn't been
-// implemented yet. The stub in search-page.tsx returns null, so
-// these tests are temporarily skipped with a placeholder assertion.
-// Remove this outer describe when the real component exists.
+// SearchPage é uma rota real implementada (src/app/busca/search-page.tsx).
+// O ProviderCard é mockado para isolar a página de busca dos detalhes de
+// renderização do card — o mock renderiza o shape real de ProviderCard
+// (name/services/category) para as asserções de texto.
 
 const { mockUseSearchParams, mockUseQuery } = vi.hoisted(() => ({
   mockUseSearchParams: vi.fn().mockReturnValue(new URLSearchParams("")),
@@ -39,7 +39,21 @@ vi.mock("framer-motion", () => ({
 }))
 
 vi.mock("@/components/vitrine/provider-card", () => ({
-  ProviderCard: () => null,
+  // O componente faz `import ProviderCard, { ProviderCardSkeleton }` — o mock
+  // precisa do export DEFAULT (o erro "No default export is defined" vinha da
+  // falta dele). Renderiza o shape real de ProviderCard para as asserções.
+  default: ({ provider }: any) => (
+    <div data-testid="mock-provider-card">
+      <h3>{provider.name}</h3>
+      {provider.services?.map((s: any) => (
+        <div key={s.id}>
+          <p>{s.title}</p>
+          <p>a partir de R$ {Number(s.basePrice).toFixed(2).replace(".", ",")}</p>
+          <p>{s.category?.name}</p>
+        </div>
+      ))}
+    </div>
+  ),
   ProviderCardSkeleton: () => <div data-testid="skeleton">Carregando…</div>,
 }))
 
@@ -100,22 +114,24 @@ describe("SearchPage", () => {
     mockUseSearchParams.mockReturnValue(new URLSearchParams("q=encanador"))
     const mockResult = {
       id: "1",
-      title: "Encanador Experiente",
-      description: null,
-      basePrice: 150,
-      unit: "UNIT",
-      categoryId: "cat-1",
-      category: { id: "cat-1", name: "Encanamento", slug: "encanamento" },
-      provider: {
-        id: "p1",
-        name: "João Encanador",
-        avatarUrl: null,
-        city: "São Paulo",
-        state: "SP",
-        verified: true,
-        rating: 4.5,
-      },
-      rank: 1,
+      name: "João Encanador",
+      avatarUrl: null,
+      coverUrl: null,
+      bio: null,
+      rating: 4.5,
+      reviewCount: 10,
+      verified: true,
+      city: "São Paulo",
+      state: "SP",
+      services: [
+        {
+          id: "s1",
+          title: "Encanador Experiente",
+          basePrice: 150,
+          unit: "UNIDADE",
+          category: { id: "cat-1", name: "Encanamento", slug: "encanamento" },
+        },
+      ],
     }
     mockUseQuery.mockImplementation((opts: { queryKey: string[] }) => {
       if (opts.queryKey?.[0] === "search-categories") {
@@ -124,8 +140,8 @@ describe("SearchPage", () => {
       return { data: { items: [mockResult], q: "encanador" }, isLoading: false }
     })
     render(<SearchPage />)
-    expect(screen.getByText("Encanador Experiente")).toBeDefined()
     expect(screen.getByText("João Encanador")).toBeDefined()
+    expect(screen.getByText("Encanador Experiente")).toBeDefined()
     expect(screen.getByText("a partir de R$ 150,00")).toBeDefined()
     expect(screen.getByText("Encanamento")).toBeDefined()
   })

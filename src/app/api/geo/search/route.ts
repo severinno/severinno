@@ -48,12 +48,12 @@ export async function GET(request: Request) {
 
     if (hasStructured) {
       const parsed = geocodeSearchStructuredSchema.parse({
-        street,
-        city,
-        state,
-        country,
-        postcode,
-        limit: searchParams.get("limit"),
+        street: street ?? undefined,
+        city: city ?? undefined,
+        state: state ?? undefined,
+        country: country ?? undefined,
+        postcode: postcode ?? undefined,
+        limit: searchParams.get("limit") ?? undefined,
       })
       // Convert undefined → null for handleStructured's nullable params
       return await handleStructured({
@@ -74,9 +74,12 @@ export async function GET(request: Request) {
         { status: 400 },
       )
     }
+    // `searchParams.get()` retorna null quando o param está ausente; o schema
+    // Zod usa `.optional()` (undefined, não null) e `coerce.number(null)` → 0
+    // quebraria o min(1). Converter null → undefined antes do parse.
     const parsed = geocodeSearchSchema.parse({
       q: raw,
-      limit: searchParams.get("limit"),
+      limit: searchParams.get("limit") ?? undefined,
     })
 
     return await handleFreeForm(parsed.q, parsed.limit)

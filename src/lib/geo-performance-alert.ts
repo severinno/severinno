@@ -74,7 +74,8 @@ const BASELINE_CANDIDATES: Array<{
 }> = [
   { path: "docs/benchmarks/geo-real-baseline.json", source: "geo-real-baseline" },
   { path: "docs/benchmarks/geo-baseline.json", source: "geo-baseline" },
-  { path: "geo-benchmark.json", source: "geo-benchmark" },
+  // Baseline versionado — o geo-benchmark.json da raiz foi removido (08/2026)
+  { path: "docs/benchmarks/geo-benchmark.json", source: "geo-benchmark" },
 ]
 
 // ---------------------------------------------------------------------------

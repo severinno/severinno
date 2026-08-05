@@ -117,6 +117,8 @@ vi.mock("lucide-react", () => {
     LocateFixed: () => <span data-testid="icon-locate" />,
     Loader2: () => <span data-testid="icon-loading" />,
     Navigation: () => <span data-testid="icon-navigation" />,
+    Search: () => <span data-testid="icon-search" />,
+    SearchX: () => <span data-testid="icon-searchx" />,
     X: () => <span data-testid="icon-x" />,
   }
 })
