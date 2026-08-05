@@ -1,0 +1,70 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`benchmark-weekly.yml — job default-branch-workflow-guard (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+{
+  "name": "Default-branch workflow guard (medição deployada?)",
+  "permissions": {
+    "contents": "read",
+  },
+  "runs-on": "ubuntu-latest",
+  "steps": [
+    {
+      "uses": "actions/checkout@v4",
+    },
+    {
+      "env": {
+        "GH_TOKEN": "\${{ github.token }}",
+      },
+      "id": "guard",
+      "name": "Validar workflows de medição na branch default",
+      "run": "node scripts/check-default-branch-workflows.mjs \\
+  --repo "\${{ github.repository }}" \\
+  --workflow seed-guards.yml \\
+  --json /tmp/default-branch-guard.json
+",
+    },
+    {
+      "if": "always()",
+      "name": "Upload guard JSON (artifact)",
+      "uses": "actions/upload-artifact@v4",
+      "with": {
+        "if-no-files-found": "ignore",
+        "name": "default-branch-workflow-guard",
+        "path": "/tmp/default-branch-guard.json",
+      },
+    },
+    {
+      "if": "always()",
+      "name": "Summary",
+      "run": "{
+  echo '## 🛡️ Default-branch workflow guard (medição deployada?)'
+  echo ''
+  if [ -f /tmp/default-branch-guard.json ]; then
+    node -e "
+      const r = require('/tmp/default-branch-guard.json');
+      if (r.infra) {
+        console.log('❌ **INFRA**: ' + r.error);
+      } else {
+        console.log('Branch default: ' + r.defaultBranch);
+        for (const w of r.workflows) {
+          console.log('- ' + (w.exists ? '✅' : '❌') + ' ' + w.file);
+        }
+        if (!r.allPresent) {
+          console.log('');
+          console.log('❌ **BLOQUEIO REAL**: ' + r.missing.join(', ') + ' não está na default — mergeie o branch que o contém (não é falta de run).');
+        } else {
+          console.log('');
+          console.log('✅ Todos os workflows de medição estão na default branch.');
+        }
+      }
+    "
+  else
+    echo '⚠️ Relatório ausente (gh indisponível?)'
+  fi
+} >> "$GITHUB_STEP_SUMMARY"
+",
+    },
+  ],
+  "timeout-minutes": 5,
+}
+`;

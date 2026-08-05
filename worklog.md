@@ -757,3 +757,275 @@ Stage Summary:
   CI real '~35-45s (est.)¹ pendente de medição real' + one-liner gh para quando
   autenticado + comparação ~16× vs 16 fast gates (3.2s). Prettier 0, CRLF 0,
   anchors/toc/images 0, hooks-symmetry 0, badge 0. Review SHIP ×2.
+- AUTH-FANTASMA-RESOLVIDO (08/2026): `gh auth login` completado NO ambiente do
+  worktree com autorização humana (device flow: código 6125-781F em
+  https://github.com/login/device → hosts.yml GRAVADO em %AppData%\GitHub CLI).
+  Confirmado: conta severinno, scopes 'gist','read:org','repo', gh api exit 0.
+  O bug documentado em Bugs conhecidos era FALTA de interação humana, não falha
+  do gh — a entrada do README foi marcada RESOLVIDO com a evidência.
+- MEDICAO-CI-MUTATION-COORD (08/2026): o one-liner de medição (gh run view
+  --jq) foi VALIDADO de ponta a ponta num run real (bench-setup-bun 30765242263:
+  timings reais de steps capturados). MAS mutation-coord-update NUNCA rodou no
+  CI real: seed-guards.yml não existe na branch default (release/v0.4.0 — só
+  neste branch do worktree, nunca mergeado) → GitHub API 404, zero runs. A
+  estimativa ~35-45s da tabela de overhead NÃO pôde ser substituída por dado
+  real — o bloqueio mudou de 'gh sem auth' para 'workflow não mergeado'. Docs
+  atualizadas: README (bloco mutation tests + footnote ¹ + Bugs conhecidos) e
+  GUARDS.md seção 3 com o estado verdadeiro. Prettier 0, CRLF 0, anchors/toc/
+  images 0, hooks-symmetry 0, badge 0, zero ocorrências de 'gh sem auth'.
+- MUTATION-COORD-TIMING-JOB (08/2026): re-medição SEMANAL do tempo real do step
+  'Run mutation test (contrato coordenado)' do seed-guards.yml SEM depender de
+  auth local — o gh do runner usa o GITHUB_TOKEN do próprio Actions. Novo
+  scripts/measure-mutation-timing.mjs (node puro): extrai o step do payload da
+  jobs API pelos MARKERS de contrato (JOB/STEP_NAME_MARKER = nomes reais do
+  seed-guards.yml), modos --jobs-file (teste/fixtures) e --run (spawn gh api
+  repos/X/actions/runs/<id>/jobs --per-page 100, retry 5×10s inclusive em erro
+  transiente, sleep via Atomics.wait), exit 0 achado / 1 infra fail-closed /
+  2 drift de contrato ('não achado' não é 'limpo'). Novo job mutation-coord-
+  timing no benchmark-weekly.yml: needs: seed-guards + if: always() (mede
+  também quando o seed-guards falhou — timeout é o alvo), permissions actions:
+  read, GH_TOKEN: ${{ github.token }}, --run github.run_id (jobs do reusable
+  workflow aparecem no run do chamador), artifact + Summary (if: always()).
+  Testes: 16 unit (extract/compute/CLI real incl. infra exit 1 e drift exit 2)
+  - 13 snapshot de workflow (YAML, contrato needs/if/permissions/GH_TOKEN,
+    markers vs seed-guards.yml com busca por sufixo exato — o arquivo tem DOIS
+    jobs 'Mutation Test', seed-dev-e2e vem antes; refs vs check-workflow-refs).
+    Review: 1 blocking (markers .find pega o job errado) + 1 médio (--paginate
+    quebra com >30 jobs: gh aplica jq por página e concatena objetos → JSON
+    inválido; trocado por --per-page 100) + barrel-lint (header exigia 'Usage:'
+    literal, usava 'Uso:') — todos corrigidos. 29/29 testes, prettier 0, barrel-
+    lint 0, refs 0, anchors/toc/images/hooks-symmetry/badge 0, CRLF 0, .snap
+    criado (benchmark-weekly-mutation-timing-workflow.test.ts.snap — incluir no
+    commit). Review final SHIP ×2.
+- MUTATION-COORD-TIMING-BUDGET (08/2026): GATE de budget de payload do step
+  'Run mutation test (contrato coordenado)' — falha se ultrapassar 180s (3
+  min), prevenindo regressão de overhead do contrato coordenado ANTES do
+  merge. Timing NATIVO do Actions (started_at/completed_at da jobs API — o
+  mesmo da UI), medido pelo measure-mutation-timing.mjs com a nova flag
+  --max SECS (relatório ganha budgetSecs + exceeded; exit 1 fail-closed) e
+  --warn-only (::warning:: + exit 0 — alerta não-bloqueante p/ dispatch).
+  Gate: novo job mutation-coord-timing-guard no pr-check.yml (needs:
+  seed-guards + if: always(), permissions actions: read, GH_TOKEN,
+  --max 180, artifact + Summary com linha EXCEDIDO) + o semanal
+  mutation-coord-timing (benchmark-weekly.yml) agora também passa --max 180
+  (re-gateia semanalmente). Testes: +6 unit de budget (dentro/fora/warn-only/
+  uso inválido — 22 no total) + novo pr-check-mutation-timing-guard-workflow.
+  test.ts (snapshot: contrato needs/if/permissions/--max 180/not --warn-only)
+  - weekly atualizado (asserção --max 180) + snapshots regenerados (-u).
+    README: parágrafo 'Budget de payload (gate 180s)' no bloco de overhead —
+    fonte da verdade com os 4 lugares coordenados de tuning (2 jobs + 2 testes)
+    e o racional de ~4× headroom (~35-45s esperado). Corrigidos no review: 2
+    testes (--help com strings novas de exit code; parse do JSON do budget —
+    regex de chaves, o merge stdout+stderr poluía o slice) + ::error:: no gate
+    (convenção do repo) + doc gap do README (a nota TUINING referenciava o
+    README como fonte da verdade sem o bloco existir). 45/45 testes (22+13+10),
+    prettier 0, barrel-lint 0, refs 0, guards de docs 0, CRLF 0, 2 .snap
+    presentes. Review SHIP ×2.
+
+## Overhead consolidado de TODOS os gates por PR (README, 08/2026)
+
+Extensão da seção Git Hooks/CI do README com o custo real de TODOS os
+gates pesados do pr-check.yml + e2e-cache.yml, na metodologia do repo
+(mediana 3 runs warm local + act com ubuntu-bun --pull=false):
+
+- Tabela de mutation tests atualizada: master agora 10 sub-tests (era 9 —
+  o cenário workflow-refs já existia), local ≈40.75s (39.5–42.9, mediana
+  3 warm) vs 15.8s antigo de 5 sub-tests, step act ≈9.1s (era 4.4s);
+  footnote ² com a re-medição completa (actionlint 3.61s, utf8-check
+  7.46s no mesmo atmo).
+- NOVA tabela consolidada 'Custo de TODOS os gates por PR': 16 fast
+  guards 3.2s · utf8-check 0.92s/7.46s · actionlint 0.51s/3.61s ·
+  mutation-guards 40.75s/9.1s · mutation-coord-update 51s/4m37.6s
+  (CI ~35-45s est.) · e2e-cache 4m6s só build (1 run, condicional via
+  paths no trigger, timeout 15min). Pior caso node-puro ≈1m32s vs 3.2s
+  dos fast guards — por design (cada mutation roda o guard REAL).
+- Honestidade nos nits do review: checkout@v4 0.03s quente/32.2s frio
+  (footnote * separa os dois runs do act), e2e-cache marcado como 1 run
+  (não estabilizado), footnotes ²/¹/³ desambiguadas entre as 3 tabelas.
+  Validação: prettier 0, CRLF 0, 7 guards de docs 0 (anchors/toc/images/
+  hooks-symmetry/badge/reverse-baseline/seed-count-literals). Review SHIP ×2.
+
+## Guard de default branch — workflows de medição mergeados? (08/2026)
+
+Previne o falso estado 'pendente de medição' que ocorreu neste thread: o
+gh run list --workflow=seed-guards.yml responde '404: workflow not found
+on the default branch' quando o workflow NÃO foi mergeado — o bloqueio
+real é o MERGE, não a falta de run. Novo guard scripts/check-default-
+branch-workflows.mjs (node-puro) valida via gh api que os workflows de
+medição (default: seed-guards.yml) EXISTEM na branch default do repo.
+
+- Exit codes fail-closed: 0 = todos presentes; 1 = AUSENTE (GATE com
+  ::error:: citando MERGE + o 404 — causa raiz explícita); 2 = infra
+  (gh indisponível/API) ou uso. Flags: --repo (default GITHUB_REPOSITORY),
+  --workflow (repetível), --default-branch (override — evita chamada gh),
+  --fixture-dir (modo TESTE determinístico, classe do --jobs-file),
+  --json, --warn-only (::warning:: + exit 0). Exports puros testados:
+  extractDefaultBranch, classifyExistenceCheck (404=ausente apenas porque
+  o caller resolve a branch primeiro — assunção documentada), e a const
+  DEFAULT_MEASUREMENT_WORKFLOWS.
+- Job semanal default-branch-workflow-guard no benchmark-weekly.yml:
+  permissions contents: read, GH_TOKEN github.token, --repo
+  github.repository --workflow seed-guards.yml, artifact + Summary
+  (if: always(), linha 'BLOQUEIO REAL'). Comentário no job explica por
+  que NÃO passa --default-branch (schedule tem github.event.repository
+  VAZIO — resolve via gh api, único caminho confiável no cron).
+- Testes 38/38: 17 unit (funções puras + CLI com fixtures: presente→0,
+  ausente→1 com MERGE/404, warn-only→0, multi-workflow, infra→2,
+  sem args→2, --help, --json, override de branch) + 8 do workflow
+  (snapshot + contrato GH_TOKEN/invocação/artifact/summary + asserção do
+  header com normalização que remove marcadores '//' — o /\s+/ sozinho
+  deixava '//' literal no meio da frase) + 13 de regressão do timing.
+- Review: 2 rodadas SHIP (nits aplicados: comentário do schedule no job,
+  assunção 404 no docstring; 1 teste quebrado corrigido com strip de
+  '// ' por linha antes do toContain). Validação: vitest 38/38, prettier
+  0, barrel-lint 0, check-workflow-refs 0, node --check OK, CRLF 0,
+  guards de docs 0, .snap criado.
+
+## Device flow humano documentado (README, seção medição do setup-bun, 08/2026)
+
+Passo a passo EXATO do gh auth device flow na seção 'Fluxo completo
+(auth → push → medição → cleanup)' do setup-bun — para o 'auth fantasma'
+não voltar em ambientes futuros: blockquote com 4 passos (1. gh auth
+login --web imprime o código de um só uso; 2. abrir github.com/login/
+device e digitar o CÓDIGO exibido pelo CLI (não o token); 3. autorizar
+com scopes repo+workflow; 4. hosts.yml gravado + auth status completa) + ⚠️
+alerta: o código EXPIRA em ~15 min — sem autorização humana o processo
+fica pendurado, o token nunca é gravado (sintoma do auth fantasma) e é
+preciso reiniciar com gh auth login --web (código NOVO). Menciona o
+preflight --dry-run (exit 4 = API bloqueada) e linka #bugs-conhecidos.
+Passo 1 do bash atualizado para gh auth login --web (era gh auth login).
+Review SHIP com 1 nit de convenção (⚠️ dentro do bold: '> **⚠️ ...' —
+padrão do repo) aplicado. Validação: prettier 0, CRLF 0, 7 guards de
+docs 0.
+
+## Mutation test do gate de budget 180s (timing-budget, 08/2026)
+
+Prova o GATE de overhead do contrato coordenado end-to-end no CI (não só
+no teste unitário): scripts/test-mutation-timing-budget.sh gera fixtures
+da jobs API em mktemp com os MARKERS reais do seed-guards.yml e valida 3
+direções do measure-mutation-timing.mjs --max 180: CONTROLE 35s → exit 0
+
+- exceeded:false (gate não é over-eager); MUTAÇÃO 300s → exit 1 +
+  'budget de payload EXCEDIDO' + exceeded:true (regressão DETECTADA — o
+  contrato coordenado ficou lento e ninguém percebeu); WARN-ONLY mesma
+  mutação → exit 0 + ::warning:: (alerta sem mascarar a detecção). Sem
+  tocar arquivos reais (fixtures em mktemp, trap EXIT). Wire no master:
+  SUBTESTS ganhou a entrada timing-budget (11 no total) + comentário da
+  matriz + mensagem final; check-mutation-jobs cobre transitivamente via
+  matriz do master (JOBS:0). README: 10→11 sub-tests em 4 pontos (lista
+  L739, tabela L751, footnote ² — reescrita sem run-on: medição com os 10
+  originais + nota do 11º adicionado depois, 'fixtures JSON em mktemp' em
+  vez do impreciso 'git reais' —, tabela consolidada L837). Nits do review
+  aplicados: header do master 10→11; diagnóstico de DRIFT DE CONTRATO
+  (exit 2 — markers não casam) separado de GUARD CEGA no caminho de falha.
+  Validação: bash -n OK, granular exit 0, master --scenario exit 0, --list
+  = 11, prettier 0, CRLF 0, guards de docs 0, refs 0. Review SHIP ×2.
+
+### [08/2026] Gate de budget em DUAS FAIXAS (--max 240 duro + --warn 180 soft)
+
+Extensão do measure-mutation-timing.mjs: faixa SOFT (warn < d <= max) emite
+::warning:: + exit 0 (zone 'warn' — ruído de runner tolerado SEM perder o
+gate); faixa DURO (d > max) continua ::error:: + exit 1 (zone 'fail'). O
+relatório ganha warnSecs/zone/warned. Validações: --warn exige --max; --warn
+deve ser < --max; usage() documenta 'budget duro excedido'. Coordenação:
+pr-check.yml + benchmark-weekly.yml passam --max 240 --warn 180; Summary dos
+2 jobs agora imprime zone (fail/warn/ok) + duração com ambos os budgets;
+comentário TUINING DO BUDGET reescrito (240/180, cinco lugares). Mutation
+test test-mutation-timing-budget.sh: 4 direções (CONTROLE 35s→zone ok, FAIXA
+SOFT 200s→exit 0 + ::warning:: + zone warn, MUTAÇÃO 300s→exit 1 + zone fail,
+WARN-ONLY→exit 0); BUDGET_MAX=240/BUDGET_WARN=180. README: parágrafo Budget
+reescrito com as duas faixas + limites exatos (soft: warn < d <= max — d==max
+é warn; dura: d > max) + cinco lugares coordenados (inclui constantes do
+mutation test). Nome do job/step alinhado para 'budget 240/180s'. Validação:
+bash -n OK, mutation granular exit 0 (4 direções), vitest 51/51 (unit 23 + 2
+workflow 28) com snapshots regenerados, prettier 0, CRLF 0, guards de docs 0,
+refs 0, scan de stale 180s limpo. Review SHIP ×2 (nits aplicados: asserção
+--help 'budget duro excedido', 5º lugar coordenado no README, ordenação do
+nome, precisão do limite).
+
+## [2026-08-05] Medição do budget do mutation test VIA ACT (--act-log) — PRs sem seed-guards na default
+
+Adicionado ao measure-mutation-timing.mjs o modo `--act-log FILE` + `--act-exit CODE`:
+re-execução do job mutation-coord-update via act (imagem ubuntu-bun) e extração da
+duração do step da linha 'Success - Main Run mutation test ... [X.XXs]' (reusa
+extractDurationFromLine do check-setup-bun-common.mjs — mesma técnica do tier1).
+Cobre PRs que ainda NÃO têm o seed-guards.yml na branch default (reusable não roda
+no CI real → jobs API não mede). --act-exit != 0 sem evidência = act morreu antes do
+step (infra, exit 1 com diagnóstico); exit 0 sem evidência = drift (exit 2). O MESMO
+gate de duas faixas (--max 240 --warn 180).
+
+Novo job mutation-coord-timing-act-guard no pr-check.yml: path filter
+origin/main...HEAD, act v0.2.89 pinado, --eventpath mínimo ({workflow_call:{}}) para
+o seed-guards.yml workflow_call-only, -P imagem ubuntu-bun, ACT_EXIT → GITHUB_OUTPUT,
+guard com --act-log --max 240 --warn 180 --act-exit. permissions packages: read.
+
+Refactor do review: bloco de gate duplicado (~30 linhas) extraído para o helper
+compartilhado applyBudgetGate(report, args, stepName, viaSuffix) — fonte única da
+verdade das zonas (ok/warn/fail) entre os modos jobs-file/run e act-log; validação
+--act-exit exige --act-log (simétrica ao --warn exige --max) + teste unitário.
+
+Testes: pr-check-mutation-timing-act-workflow.test.ts (novo, snapshot + contrato);
+measure-mutation-timing.test.ts ganhou seção 1b extractMutationStepFromActLog + 5b
+CLI --act-log + validação --act-exit; mutation test timing-budget agora com 7 direções
+(+act-log 300s fail, 35s ok, infra exit 1). README: 'sete lugares coordenados'.
+
+Fix barrel-lint: headers do measure-mutation-timing.mjs e test-mutation-guards.sh
+tiveram Usage:/Exit codes: movidos para as 50 primeiras linhas (a doc do --act-log e
+a entrada timing-budget na matriz os tinham empurrado para fora).
+
+Validação: bash -n OK, mutation granular exit 0 (7 direções), vitest 76/76 (unit +
+3 workflow tests), prettier 0, barrel-lint 0, CRLF 0, 6 guards de docs 0, refs 0.
+Review SHIP ×2 (nits aplicados: helper applyBudgetGate, validação --act-exit, teste
+do nit, headers < 50 linhas).
+
+## [2026-08-05] Baseline auto-atualizado do budget (--publish-baseline via gh variable set)
+
+Estendido o measure-mutation-timing.mjs para PUBLICAR o tempo real medido como
+repository variable quando o budget passa — o gate consulta a variável em vez do
+literal 180, tolerando variação de runner.
+
+Script: flags --publish-baseline NAME (regex ^[A-Z][A-Z0-9_]_$; rejeitado com
+--act-log) + --baseline-margin FRAC (default 0.2; exige --publish-baseline).
+computeBaselineValue(duration, margin, max) = ceil(d_(1+margin)), min 1s, clamp
+para SEMPRE < max (faixa warn nunca vira vazia). maybePublishBaseline spawna
+'gh variable set NAME <valor> --repo <repo>' (GH_TOKEN do env); FAIL-SOFT
+(::warning:: + published:false, exit inalterado); dry-run para testes via env
+MEASURE_MUTATION_TIMING_DRY_PUBLISH=1 (published:'dry-run'). Trigger dentro do
+applyBudgetGate (após zone) — publica SÓ quando zone != fail (run lento não
+ratcheta o baseline). Report ganha baseline: {name, value, published}.
+
+Workflows: benchmark-weekly mutation-coord-timing agora com permissions actions:
+WRITE (gh variable set), --warn ${{ vars.MUTATION_TIMING_BASELINE || '180' }} +
+--publish-baseline MUTATION_TIMING_BASELINE --baseline-margin 0.2. pr-check
+(mutation-coord-timing-guard + mutation-coord-timing-act-guard) renomeados para
+'budget 240/baseline', consultam a var (fallback 180) e NÃO publicam (PR não
+muta repo state).
+
+Testes: unit (computeBaselineValue pura com clamp, validações de parseArgs,
+CLI dry-run: 35s→baseline 42 published dry-run; 300s fail→sem baseline+exit 1);
+3 workflow tests (asserções --warn baseline var + publish no semanal + sem
+publish no PR + nomes); mutation test timing-budget agora com 9 direções
+(+PUBLISH: 35s→42 publicado, 300s→não publica). Snapshots regenerados (nomes de
+jobs mudaram). README reescrito (baseline var, semanal publica, tuning = max +
+margem; baseline em si auto-atualiza).
+
+Review 8 rodadas (SHIP): bug crítico da validação de --baseline-margin (presença
+explícita via null default + ?? 0.2) corrigido; nits aplicados (param morto,
+Summary title, header < 50 linhas para barrel-lint, NOVE direções, typo,
+convenção uppercase, refs stale).
+
+Validação: bash -n OK, mutation granular exit 0 (9 direções), vitest 85/85 (4
+arquivos, snapshots regenerados), prettier 0, barrel-lint 0, CRLF 0, 6 guards de
+docs 0, workflow-refs 0, stale-scan limpo (só menções intencionais de fixtures).
+
+Round 9 (fechamento do baseline auto-atualizado): aplicados os 2 últimos nits do
+review — (1) validação `--publish-baseline exige --max` no parseArgs (era no-op
+silencioso sem --max: maybePublishBaseline só dispara dentro do applyBudgetGate,
+que retorna cedo quando max é null) + teste unitário novo (exit 2 com a mensagem
+exata); (2) Summary do semanal agora exibe baseline.published. Review 9 SHIP com
+1 nit de paridade de doc (header do --publish-baseline agora diz 'Exige --max',
+paridade com o --warn) + nota de verificação (o 4º arquivo de teste,
+pr-check-mutation-timing-act-workflow.test.ts, estava fora da bateria por nome
+errado — rodado: 86/86). Prettier --write aplicado em 2 arquivos (reformat
+neutro), prettier --check 0 em 9 arquivos, vitest pós-reformat 86/86, CRLF 0,
+barrel 0, guards de docs 0, workflow-refs 0.

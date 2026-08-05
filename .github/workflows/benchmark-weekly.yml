@@ -639,3 +639,176 @@ jobs:
   seed-guards:
     name: Seed Guards (semanal)
     uses: ./.github/workflows/seed-guards.yml
+
+  # ── Default-branch workflow guard (semanal) ─────────────────────────
+  # Valida que os workflows de MEDIÇÃO de CI (ex.: seed-guards.yml — a
+  # fonte do tempo real do mutation-coord-update) EXISTEM na branch
+  # DEFAULT do repo — prevenindo o falso estado 'pendente de medição':
+  # o gh run list responde '404: workflow not found on the default
+  # branch' quando o workflow NÃO foi mergeado, e isso PARECE 'nada
+  # para medir'. O bloqueio real é o MERGE, não a falta de run — este
+  # guard falha com a causa raiz explícita (exit 1) em vez do silêncio
+  # ambíguo que deixou a tabela do README 'pendente' para sempre.
+  #
+  # Fail-closed: exit 1 = workflow ausente (gate — mergeie o branch que
+  # o contém); exit 2 = infra (mecanismo de verificação quebrou).
+  # GH_TOKEN explícito: o gh do runner já usa o GITHUB_TOKEN por padrão.
+  # Não é gate do PR — roda no cron semanal (a default branch muda com o
+  # merge, não com o PR em si).
+  default-branch-workflow-guard:
+    name: Default-branch workflow guard (medição deployada?)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      contents: read # gh api repos/X/contents (existência do workflow)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Valida a existência dos workflows de medição na default ─────
+      # NÃO passar --default-branch de propósito: em eventos schedule o
+      # github.event.repository é VAZIO (payload mínimo do cron), então o
+      # script resolve a branch via gh api repos/X — a única fonte
+      # confiável no contexto semanal. Não 'otimizar' para
+      # "${{ github.event.repository.default_branch }}" — quebraria o cron.
+      - name: Validar workflows de medição na branch default
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/check-default-branch-workflows.mjs \
+            --repo "${{ github.repository }}" \
+            --workflow seed-guards.yml \
+            --json /tmp/default-branch-guard.json
+
+      # ── Evidência como artifact (debug + insumo da tabela) ──────────
+      - name: Upload guard JSON (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: default-branch-workflow-guard
+          path: /tmp/default-branch-guard.json
+          if-no-files-found: ignore
+
+      # ── Summary (diagnóstico visível no run) ────────────────────────
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## 🛡️ Default-branch workflow guard (medição deployada?)'
+            echo ''
+            if [ -f /tmp/default-branch-guard.json ]; then
+              node -e "
+                const r = require('/tmp/default-branch-guard.json');
+                if (r.infra) {
+                  console.log('❌ **INFRA**: ' + r.error);
+                } else {
+                  console.log('Branch default: ' + r.defaultBranch);
+                  for (const w of r.workflows) {
+                    console.log('- ' + (w.exists ? '✅' : '❌') + ' ' + w.file);
+                  }
+                  if (!r.allPresent) {
+                    console.log('');
+                    console.log('❌ **BLOQUEIO REAL**: ' + r.missing.join(', ') + ' não está na default — mergeie o branch que o contém (não é falta de run).');
+                  } else {
+                    console.log('');
+                    console.log('✅ Todos os workflows de medição estão na default branch.');
+                  }
+                }
+              "
+            else
+              echo '⚠️ Relatório ausente (gh indisponível?)'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Mutation coord timing (semanal) ─────────────────────────────────
+  # Re-medição semanal do tempo REAL do step 'Run mutation test (contrato
+  # coordenado — 5 cenários, 2 elos)' do seed-guards.yml — fecha a linha
+  # '~35-45s (est.)¹ pendente de medição real' da tabela de overhead do
+  # README com o número verdadeiro, SEM depender de auth local: o gh do
+  # runner usa o GITHUB_TOKEN do próprio Actions (autenticado
+  # automaticamente) e a jobs API consulta o run ATUAL (github.run_id — o
+  # mutation-coord-update é job do seed-guards.yml, um reusable workflow
+  # chamado por ESTE arquivo, então os jobs dele aparecem no mesmo run).
+  #
+  # if: always() + needs: seed-guards: espera o seed-guards terminar, mas
+  # mede TAMBÉM quando ele falhou — um timeout de step é exatamente o que
+  # a medição deve capturar (se o job estourar os 15 min, o tempo real
+  # fica visível em vez de sumir). O script é fail-closed: exit 1 = infra
+  # (mecanismo de medição quebrou), exit 2 = drift de contrato (renomearam
+  # o step e ninguém percebeu) — 'não achado' não é evidência de 'limpo'
+  # (mesma classe do report_exit do blob-crlf-all-text-alert). Sem bun —
+  # só node + o gh pré-instalado do runner.
+  mutation-coord-timing:
+    name: Mutation coord timing (re-medição semanal)
+    runs-on: ubuntu-latest
+    needs: seed-guards
+    if: always() # mede também quando o seed-guards falhou (timeout é o alvo)
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      actions: write # gh api jobs (read) + gh variable set (write — baseline auto-atualizado)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Mede o tempo real do step no run ATUAL E PUBLICO O BASELINE ──
+      # GH_TOKEN explícito: o gh do runner já usa o GITHUB_TOKEN por
+      # padrão — explicitar torna o contrato auto-documentado e imune a um
+      # override futuro de env. Exit 0 = achado; 1 = infra; 2 = drift.
+      # --warn consulta a variable MUTATION_TIMING_BASELINE (publicada aqui
+      # mesmo quando o budget passa) com fallback no literal 180 — o gate
+      # tolera variação de runner re-anchorando no tempo real medido.
+      - name: Medir tempo do step mutation test e publicar baseline (budget 240/baseline)
+        id: measure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/measure-mutation-timing.mjs \
+            --run "${{ github.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --max 240 \
+            --warn "${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \
+            --publish-baseline MUTATION_TIMING_BASELINE \
+            --baseline-margin 0.2 \
+            --json /tmp/mutation-timing.json
+
+      # ── Evidência como artifact (debug + insumo da tabela) ─────────
+      - name: Upload timing JSON (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-coord-timing
+          path: /tmp/mutation-timing.json
+          if-no-files-found: ignore
+
+      # ── Summary (a linha do CI real na tabela do README) ───────────
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## ⏱️ Mutation coord — tempo real (re-medição semanal)'
+            echo ''
+            if [ -f /tmp/mutation-timing.json ]; then
+              node -e "
+                const r = require('/tmp/mutation-timing.json');
+                if (r.found) {
+                  console.log('| Campo | Valor |');
+                  console.log('|---|---|');
+                  console.log('| Step | ' + r.stepName + ' |');
+                  console.log('| Duração | **' + r.durationSecs + 's** (duro ' + (r.budgetSecs ?? 'n/a') + 's / soft ' + (r.warnSecs ?? 'n/a') + 's) |');
+                  console.log('| Conclusão | ' + r.conclusion + ' |');
+                  console.log('| Run | ' + r.runId + ' |');
+                  if (r.zone === 'fail') console.log('| Budget | ❌ **EXCEDIDO** (faixa dura) — regressão de overhead |');
+                  else if (r.zone === 'warn') console.log('| Budget | ⚠️ faixa SOFT (::warning::) — observa o drift antes do gate |');
+                  else console.log('| Budget | ✅ dentro do limite |');
+                } else {
+                  console.log('⚠ Medição falhou: ' + (r.error || 'sem detalhes'));
+                }
+              "
+            else
+              echo '⚠ Medição não produziu JSON — veja o passo "Medir tempo do step mutation test".'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
