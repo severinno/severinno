@@ -192,8 +192,7 @@ describe("computeDistanceMap fuzzing", () => {
   // -----------------------------------------------------------------------
 
   it("handles empty provider list even when PostGIS throws", async () => {
-    const queryRaw = vi.fn(() => Promise.reject(new Error("DB gone")))
-
+    const queryRaw = vi.fn(() => Promise.reject(new Error("DB gone"))) as any
     const map = await computeDistanceMap({
       providerIds: [],
       providers: [],
@@ -203,7 +202,6 @@ describe("computeDistanceMap fuzzing", () => {
       userLng: -46.63,
       queryRawUnsafe: queryRaw,
     })
-
     expect(map.size).toBe(0)
   })
 
@@ -216,8 +214,7 @@ describe("computeDistanceMap fuzzing", () => {
       { id: "a", lat: null, lng: null },
       { id: "b", lat: null, lng: null },
     ]
-    const queryRaw = vi.fn(() => Promise.resolve([]))
-
+    const queryRaw = vi.fn(() => Promise.resolve([])) as any
     const map = await computeDistanceMap({
       providerIds: ["a", "b"],
       providers,
@@ -227,7 +224,6 @@ describe("computeDistanceMap fuzzing", () => {
       userLng: 0,
       queryRawUnsafe: queryRaw,
     })
-
     // PostGIS query runs but returns nothing (no coordinates to query with),
     // Haversine can't compute because lat/lng are null → all null
     expect(map.size).toBe(2)
@@ -244,8 +240,7 @@ describe("computeDistanceMap fuzzing", () => {
       { id: "a", lat: null, lng: -46.63 },
       { id: "b", lat: -23.55, lng: null },
     ]
-    const queryRaw = vi.fn(() => Promise.resolve([]))
-
+    const queryRaw = vi.fn(() => Promise.resolve([])) as any
     const map = await computeDistanceMap({
       providerIds: ["a", "b"],
       providers,
@@ -255,7 +250,6 @@ describe("computeDistanceMap fuzzing", () => {
       userLng: -46.63,
       queryRawUnsafe: queryRaw,
     })
-
     // Both providers have incomplete coordinates → Haversine can't compute
     expect(map.size).toBe(2)
     expect(map.get("a")).toBeNull()
@@ -271,8 +265,7 @@ describe("computeDistanceMap fuzzing", () => {
       { id: "north", lat: 89.9, lng: 0 },
       { id: "south", lat: -89.9, lng: 0 },
     ]
-    const queryRaw = vi.fn(() => Promise.reject(new Error("No PostGIS")))
-
+    const queryRaw = vi.fn(() => Promise.reject(new Error("No PostGIS"))) as any
     const map = await computeDistanceMap({
       providerIds: ["north", "south"],
       providers,
@@ -282,7 +275,6 @@ describe("computeDistanceMap fuzzing", () => {
       userLng: 0,
       queryRawUnsafe: queryRaw,
     })
-
     expect(map.size).toBe(2)
     // Haversine should still work at poles (Haversine formula handles it)
     expect(map.get("north")).toBeTypeOf("number")
@@ -294,8 +286,7 @@ describe("computeDistanceMap fuzzing", () => {
   // -----------------------------------------------------------------------
 
   it("handles duplicate provider IDs — last entry wins", async () => {
-    const queryRaw = vi.fn(() => Promise.resolve([]))
-
+    const queryRaw = vi.fn(() => Promise.resolve([])) as any
     const map = await computeDistanceMap({
       providerIds: ["dup", "dup"],
       providers: [
@@ -308,7 +299,6 @@ describe("computeDistanceMap fuzzing", () => {
       userLng: -46.63,
       queryRawUnsafe: queryRaw,
     })
-
     // Map has 1 key because Map deduplicates by key
     expect(map.size).toBe(1)
     // The last provider's coordinates were used

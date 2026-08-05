@@ -24,9 +24,9 @@ describe("env validation", () => {
       RABBITMQ_URL: "amqp://localhost:5672",
     }
 
-    const { env } = await import("../env")
-    expect(env.NODE_ENV).toBe("test")
-    expect(env.SESSION_SECRET).toBe("a".repeat(32))
+    const _env = await import("../env")
+    expect(_env.env!.NODE_ENV).toBe("test")
+    expect(_env.env!.SESSION_SECRET).toBe("a".repeat(32))
   })
 
   it("applies defaults for optional fields", async () => {
@@ -40,9 +40,9 @@ describe("env validation", () => {
       RABBITMQ_URL: "amqp://localhost:5672",
     }
 
-    const { env } = await import("../env")
-    expect(env.LOG_LEVEL).toBe("info")
-    expect(env.REALTIME_URL).toBe("http://localhost:3003")
+    const _env = await import("../env")
+    expect(_env.env!.LOG_LEVEL).toBe("info")
+    expect(_env.env!.REALTIME_URL).toBe("http://localhost:3003")
   })
 
   it("rejects short SESSION_SECRET returning undefined env", async () => {
@@ -56,14 +56,14 @@ describe("env validation", () => {
       RABBITMQ_URL: "amqp://localhost:5672",
     }
 
-    const { env } = await import("../env")
-    expect(env).toBeUndefined()
+    const _env = await import("../env")
+    expect(_env.env).toBeUndefined()
   })
 
   it("rejects invalid NODE_ENV by throwing", async () => {
     process.env = {
       ...ORIG_ENV,
-      NODE_ENV: "staging",
+      NODE_ENV: "staging" as "production",
       NEXT_PUBLIC_APP_URL: "https://severinno.com.br",
       SESSION_SECRET: "a".repeat(32),
       DATABASE_URL: "postgresql://localhost:5432/test",
@@ -87,7 +87,7 @@ describe("env validation", () => {
       RABBITMQ_URL: "amqp://localhost:5672",
     }
 
-    const { env } = await import("../env")
-    expect(env).toBeUndefined()
+    const _env = await import("../env")
+    expect(_env.env).toBeUndefined()
   })
 })

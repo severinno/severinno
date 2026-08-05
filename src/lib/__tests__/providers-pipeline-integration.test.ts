@@ -98,12 +98,12 @@ function createStagedQueryRaw(stages: {
       return Promise.resolve(radiusSpecific)
     }
     return Promise.resolve(stages.defaultIdRows ?? [])
-  })
+  }) as any
 }
 
 /** Create a mock withCache that invokes the factory function (cache miss). */
 function createMockWithCache() {
-  return vi.fn(async (_key: string, fn: () => unknown) => fn())
+  return vi.fn(async (_key: string, fn: () => unknown) => fn()) as any
 }
 
 // ---------------------------------------------------------------------------
@@ -166,10 +166,10 @@ async function runPipeline(opts: {
   // Phase 1b: resolve provider IDs at the effective radius
   const centerGeo = { lat: USER_LAT, lng: USER_LNG, radiusKm: effectiveRadius }
   const [idWhere] = buildProviderWhereClause({ centerGeo })
-  const idResult = await queryRaw<Array<{ id: string }>>(
+  const idResult = await (queryRaw as any)(
     `SELECT u.id FROM "User" u WHERE ${idWhere}`,
   )
-  const resolvedIds = idResult.map((r) => r.id)
+  const resolvedIds = idResult.map((r: { id: string }) => r.id)
 
   // Only keep providers that were actually returned by Phase 1b
   const resolvedProviders = providers.filter((p) => resolvedIds.includes(p.id))
@@ -325,7 +325,7 @@ describe("Providers pipeline integration", () => {
       if (sql.includes("COUNT")) return Promise.resolve([{ total: BigInt(2) }])
       if (sql.includes("ST_Distance")) return Promise.resolve([])
       return Promise.resolve(noCoordIds.map((id) => ({ id })))
-    })
+    }) as any
     const withCache = createMockWithCache()
 
     const countFn = createCachedRadiusCountFn({

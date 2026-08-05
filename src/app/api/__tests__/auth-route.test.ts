@@ -13,7 +13,7 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 // Auth functions — use mutable module-level variables so per-test setup works
-let _mockSession: { userId: string; role: "CLIENT" | "PROVIDER" | "ADMIN" } | null = null
+let _mockSession: any = null
 
 vi.mock("@/lib/auth", () => ({
   createSession: vi.fn().mockResolvedValue(undefined),
@@ -94,14 +94,14 @@ const mockUser = {
 
 describe("POST /api/auth/login", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(db.user.findUnique).mockReset()
+    (vi as any).clearAllMocks()
+    (vi.mocked(db.user.findUnique) as any).mockReset()
     vi.mocked(verifyPassword).mockReturnValue(true)
     _mockSession = null
   })
 
   it("returns user on successful login", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(mockUser)
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue(mockUser)
 
     const req = createMockRequest({
       method: "POST",
@@ -112,13 +112,13 @@ describe("POST /api/auth/login", () => {
 
     expect(parsed.status).toBe(200)
     expect(parsed.body).toHaveProperty("user")
-    expect(parsed.body!.user.email).toBe("joao@example.com")
-    expect(parsed.body!.user).not.toHaveProperty("passwordHash")
+    expect((parsed.body as any).user.email).toBe("joao@example.com")
+    expect((parsed.body as any).user).not.toHaveProperty("passwordHash")
     expect(createSession).toHaveBeenCalledWith("user-1", "CLIENT")
   })
 
   it("returns 401 for wrong password", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(mockUser)
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue(mockUser)
     vi.mocked(verifyPassword).mockReturnValue(false)
 
     const req = createMockRequest({
@@ -130,7 +130,7 @@ describe("POST /api/auth/login", () => {
   })
 
   it("returns 401 for non-existent user", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(null)
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
 
     const req = createMockRequest({
       method: "POST",
@@ -141,7 +141,7 @@ describe("POST /api/auth/login", () => {
   })
 
   it("returns 401 for inactive user", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue({ ...mockUser, active: false })
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue({ ...mockUser, active: false } as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -172,7 +172,7 @@ describe("POST /api/auth/login", () => {
 
 describe("POST /api/auth/register", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    (vi as any).clearAllMocks()
     _mockSession = null
   })
 
@@ -185,38 +185,38 @@ describe("POST /api/auth/register", () => {
   }
 
   it("creates a client user and returns 201", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(null)
-    vi.mocked(db.user.create).mockResolvedValue({
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
+    (vi.mocked(db.user.create) as any).mockResolvedValue({
       id: "user-2",
       name: "Maria Souza",
       email: "maria@example.com",
       role: "CLIENT",
       avatarUrl: null,
-    })
-    vi.mocked(db.user.update).mockResolvedValue({} as any)
+    } as any)
+    (vi.mocked(db.user.update) as any).mockResolvedValue({} as any)
 
     const req = createMockRequest({ method: "POST", body: clientPayload })
     const res = await register(req)
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(201)
-    expect(parsed.body!.user.email).toBe("maria@example.com")
-    expect(parsed.body!.user.role).toBe("CLIENT")
+    expect((parsed.body as any).user.email).toBe("maria@example.com")
+    expect((parsed.body as any).user.role).toBe("CLIENT")
     expect(hashPassword).toHaveBeenCalledWith("123456")
     expect(createSession).toHaveBeenCalled()
   })
 
   it("creates a provider user with extra fields", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue(null)
-    vi.mocked(db.user.create).mockResolvedValue({
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
+    (vi.mocked(db.user.create) as any).mockResolvedValue({
       id: "user-3",
       name: "Carlos Prestador",
       email: "carlos@example.com",
       role: "PROVIDER",
       avatarUrl: null,
-    })
-    vi.mocked(db.user.update).mockResolvedValue({} as any)
-    vi.mocked(db.user.findMany).mockResolvedValue([])
+    } as any)
+    (vi.mocked(db.user.update) as any).mockResolvedValue({} as any)
+    (vi.mocked(db.user.findMany) as any).mockResolvedValue([])
 
     const req = createMockRequest({
       method: "POST",
@@ -237,18 +237,18 @@ describe("POST /api/auth/register", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(201)
-    expect(parsed.body!.user.role).toBe("PROVIDER")
+    expect((parsed.body as any).user.role).toBe("PROVIDER")
   })
 
   it("returns 409 for duplicate email", async () => {
-    vi.mocked(db.user.findUnique).mockResolvedValue({ id: "existing" })
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue({ id: "existing" } as any)
 
     const req = createMockRequest({ method: "POST", body: clientPayload })
     const res = await register(req)
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(409)
-    expect(parsed.body!.error).toBe("E-mail já cadastrado")
+    expect((parsed.body as any).error).toBe("E-mail já cadastrado")
   })
 
   it("returns 400 for invalid registration data", async () => {
@@ -283,26 +283,26 @@ describe("POST /api/auth/logout", () => {
 
 describe("GET /api/auth/me", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    (vi as any).clearAllMocks()
     _mockSession = null
   })
 
   it("returns user for authenticated session", async () => {
-    _mockSession = { userId: "user-1", role: "CLIENT" }
-    vi.mocked(db.user.findUnique).mockResolvedValue({
+    _mockSession = { userId: "user-1", role: "CLIENT" } as any
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue({
       id: "user-1",
       name: "João Silva",
       email: "joao@example.com",
       role: "CLIENT",
       avatarUrl: null,
-    })
+    } as any)
 
     const res = await me()
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
-    expect(parsed.body!.user).toBeTruthy()
-    expect(parsed.body!.user.id).toBe("user-1")
+    expect((parsed.body as any).user).toBeTruthy()
+    expect((parsed.body as any).user.id).toBe("user-1")
   })
 
   it("returns null user when not authenticated", async () => {
@@ -310,17 +310,17 @@ describe("GET /api/auth/me", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
-    expect(parsed.body!.user).toBeNull()
+    expect((parsed.body as any).user).toBeNull()
   })
 
   it("returns null user when session user not found in db", async () => {
-    _mockSession = { userId: "nonexistent", role: "CLIENT" }
-    vi.mocked(db.user.findUnique).mockResolvedValue(null)
+    _mockSession = { userId: "nonexistent", role: "CLIENT" } as any
+    (vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
 
     const res = await me()
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
-    expect(parsed.body!.user).toBeNull()
+    expect((parsed.body as any).user).toBeNull()
   })
 })

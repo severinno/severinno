@@ -35,7 +35,7 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
   const actual = await importOriginal()
-  return { ...actual, handleError: vi.fn((e: unknown) => actual.handleError(e)) }
+  return { ...actual, handleError: vi.fn((e: unknown) => (actual as any).handleError(e)) }
 })
 
 // ── Imports ────────────────────────────────────────────────────────────────
@@ -47,8 +47,8 @@ import { db } from "@/lib/db"
 
 /** Recreates all db mocks fresh to avoid vi.clearAllMocks() quirk */
 function resetDbMocks() {
-  db.setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
-  db.payment = {
+  (db as any).setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
+  (db as any).payment = {
     groupBy: vi.fn(),
     findMany: vi.fn(),
     count: vi.fn(),
@@ -83,7 +83,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("returns summary by payment status (PAID/PENDING/REFUNDED)", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
     // groupBy: 1st call = summary, 2nd call = method stats
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
@@ -122,7 +122,7 @@ describe("GET /api/admin/finance", () => {
             ? { provider: { id: "prov-2", name: "Maria Profissional", email: "maria@test.com", avatarUrl: "avatar.jpg" } }
             : { provider: { id: "prov-1", name: "Paulo Prestador", email: "paulo@test.com", avatarUrl: null } },
       })) as any)  // 5: provider data
-    vi.mocked(db.payment.count).mockResolvedValue(5)  // count is called once
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(5)  // count is called once
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -135,7 +135,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("calculates average ticket from paid payments", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([{ status: "PAID", _sum: { amount: 90000 }, _count: { _all: 3 } }] as any)
       .mockResolvedValueOnce([] as any)
@@ -145,7 +145,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([] as any)  // 3: MRR current
       .mockResolvedValueOnce([] as any)  // 4: MRR previous
       .mockResolvedValueOnce([] as any)  // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(3)
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(3)
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -155,7 +155,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("returns per-provider aggregation with commission", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([{ status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } }] as any)
       .mockResolvedValueOnce([] as any)
@@ -169,7 +169,7 @@ describe("GET /api/admin/finance", () => {
         { amount: 30000, booking: { provider: { id: "prov-2", name: "Maria Profissional", email: "maria@test.com", avatarUrl: "avatar.jpg" } } },
         { amount: 15000, booking: { provider: { id: "prov-1", name: "Paulo Prestador", email: "paulo@test.com", avatarUrl: null } } },
       ] as any)
-    vi.mocked(db.payment.count).mockResolvedValue(3)
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(3)
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -187,7 +187,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("returns payment method stats", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([{ status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } }] as any)
       .mockResolvedValueOnce([
@@ -200,7 +200,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([] as any)  // 3: MRR current
       .mockResolvedValueOnce([] as any)  // 4: MRR previous
       .mockResolvedValueOnce([] as any)  // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(3)
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(3)
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -213,7 +213,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("reads commission percent from settings", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "15" } as any)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "15" } as any)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([{ status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } }] as any)
       .mockResolvedValueOnce([] as any)
@@ -223,7 +223,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([] as any)  // 3: MRR current
       .mockResolvedValueOnce([] as any)  // 4: MRR previous
       .mockResolvedValueOnce([] as any)  // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(3)
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(3)
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -233,7 +233,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("uses default commission of 10% when setting not found", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([{ status: "PAID", _sum: { amount: 100000 }, _count: { _all: 2 } }] as any)
       .mockResolvedValueOnce([] as any)
@@ -243,7 +243,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([] as any)  // 3: MRR current
       .mockResolvedValueOnce([] as any)  // 4: MRR previous
       .mockResolvedValueOnce([] as any)  // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(2)
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(2)
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -261,7 +261,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("handles empty result set gracefully", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([] as any)
       .mockResolvedValueOnce([] as any)
@@ -271,7 +271,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([] as any)  // 3: MRR current
       .mockResolvedValueOnce([] as any)  // 4: MRR previous
       .mockResolvedValueOnce([] as any)  // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(0)
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(0)
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -290,7 +290,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("paginates transactions with default page/limit", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([{ status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } }] as any)
       .mockResolvedValueOnce([] as any)
@@ -310,7 +310,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([] as any)                                              // 3: MRR current
       .mockResolvedValueOnce([] as any)                                              // 4: MRR previous
       .mockResolvedValueOnce([] as any)                                              // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(25)
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(25)
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -322,7 +322,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("respects period parameter (7d vs 30d vs all)", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([] as any)
       .mockResolvedValueOnce([] as any)
@@ -332,7 +332,7 @@ describe("GET /api/admin/finance", () => {
       .mockResolvedValueOnce([] as any)  // 3: MRR current
       .mockResolvedValueOnce([] as any)  // 4: MRR previous
       .mockResolvedValueOnce([] as any)  // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(0)
+    (vi.mocked(db.payment.count) as any).mockResolvedValue(0)
 
     const req = new Request("http://localhost/api/admin/finance?period=7d")
     const res = await GET(req)

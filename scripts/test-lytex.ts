@@ -255,15 +255,15 @@ async function testSplit() {
         { _recipientId: recipientId, value: splitValue },
       ],
     },
-  })
+  } as any)
 
   assert(!!result.id, `charge created: ${result.id}`)
   assert(!!result.qrCode, "QR code returned")
   console.log(`   charge id: ${result.id}`)
   console.log(`   status: ${result.status}`)
   console.log(`   amount: R$${result.amount.toFixed(2)}`)
-  console.log(`   txId: ${result.txId}`)
-  console.log(`   checkout: ${result.checkoutUrl}`)
+  console.log(`   txId: ${(result as any).txId}`)
+  console.log(`   checkout: ${(result as any).checkoutUrl}`)
   console.log(`   split recipients:`, JSON.stringify([{ _recipientId: recipientId, value: splitValue }], null, 2))
 
   console.log("")

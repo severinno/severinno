@@ -34,7 +34,7 @@ import { db } from "@/lib/db"
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function resetDbMocks() {
-  db.setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
+  (db as any).setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
   db.payment = {
     findMany: vi.fn(),
     count: vi.fn(),

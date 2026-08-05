@@ -30,17 +30,12 @@ function mockQueryRaw(
   rows?: Array<{ id: string; distance_km: number }>,
   shouldReject = false,
 ) {
-  return vi.fn<
-    (
-      sql: string,
-      ...params: unknown[]
-    ) => Promise<Array<{ id: string; distance_km: number }>>
-  >(
+  return vi.fn(
     () =>
       shouldReject
         ? Promise.reject(new Error("DB error"))
         : Promise.resolve(rows ?? []),
-  )
+  ) as any
 }
 
 // ---------------------------------------------------------------------------

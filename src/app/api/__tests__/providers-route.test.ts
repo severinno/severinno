@@ -9,7 +9,7 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 vi.mock("@/lib/routing", () => ({
-  getRoute: vi.fn().mockResolvedValue({ distanceKm: 5.5, durationMin: 11 }),
+  getRoute: vi.fn().mockResolvedValue({ distanceKm: 5.5, durationMin: 11 } as any),
   getMultiRoute: vi.fn().mockImplementation(async (origin, destinations) => {
     return destinations.map(() => ({ distanceKm: 5.5, durationMin: 11 }))
   }),
@@ -143,7 +143,7 @@ describe("GET /api/providers", () => {
     vi.mocked(db.booking.groupBy as any).mockResolvedValue([
       { providerId: "prov-1", _count: { id: 3 } },
     ])
-    vi.mocked(db.user.findMany).mockResolvedValue([baseProvider])
+    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider])
   })
 
   it("returns paginated list of active verified providers", async () => {
@@ -219,7 +219,7 @@ describe("GET /api/providers", () => {
 
   it("sorts by distance when lat/lng provided", async () => {
     // Override user.findMany with two providers
-    vi.mocked(db.user.findMany).mockResolvedValue([
+    (vi.mocked(db.user.findMany) as any).mockResolvedValue([
       { ...baseProvider, id: "prov-1", lat: -23.55, lng: -46.63 },
       { ...baseProvider, id: "prov-2", lat: -23.56, lng: -46.64 },
     ] as any)
@@ -246,9 +246,9 @@ describe("GET /api/providers/[id]", () => {
   })
 
   it("returns provider detail with services, reviews, and availability", async () => {
-    _mockSession = { userId: "client-1", role: "CLIENT" }
-    vi.mocked(db.user.findFirst).mockResolvedValue(baseProvider as any)
-    vi.mocked(db.favorite.findUnique).mockResolvedValue(null)
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    (vi.mocked(db.user.findFirst) as any).mockResolvedValue(baseProvider as any)
+    (vi.mocked(db.favorite.findUnique) as any).mockResolvedValue(null)
 
     const req = createMockRequest({ searchParams: { lat: "-23.55", lng: "-46.63" } })
     const res = await getProvider(req, { params: Promise.resolve({ id: "prov-1" }) })
@@ -266,7 +266,7 @@ describe("GET /api/providers/[id]", () => {
   })
 
   it("returns 404 for non-existent provider", async () => {
-    vi.mocked(db.user.findFirst).mockResolvedValue(null)
+    (vi.mocked(db.user.findFirst) as any).mockResolvedValue(null)
 
     const req = createMockRequest()
     const res = await getProvider(req, { params: Promise.resolve({ id: "nonexistent" }) })
@@ -282,7 +282,7 @@ describe("POST /api/providers/[id]/favorite", () => {
   })
 
   it("returns 403 when not a client", async () => {
-    _mockSession = { userId: "prov-1", role: "PROVIDER" }
+    _mockSession = { userId: "prov-1", role: "PROVIDER" } as any
 
     const req = createMockRequest({ method: "POST" })
     const res = await toggleFavorite(req, { params: Promise.resolve({ id: "prov-2" }) })
@@ -291,10 +291,10 @@ describe("POST /api/providers/[id]/favorite", () => {
   })
 
   it("adds favorite and returns favorited: true", async () => {
-    _mockSession = { userId: "client-1", role: "CLIENT" }
-    vi.mocked(db.user.findFirst).mockResolvedValue({ id: "prov-1" } as any)
-    vi.mocked(db.favorite.findUnique).mockResolvedValue(null)
-    vi.mocked(db.favorite.create).mockResolvedValue({ id: "fav-1", clientId: "client-1", providerId: "prov-1", createdAt: new Date() } as any)
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    (vi.mocked(db.user.findFirst) as any).mockResolvedValue({ id: "prov-1" } as any)
+    (vi.mocked(db.favorite.findUnique) as any).mockResolvedValue(null)
+    (vi.mocked(db.favorite.create) as any).mockResolvedValue({ id: "fav-1", clientId: "client-1", providerId: "prov-1", createdAt: new Date() } as any)
 
     const req = createMockRequest({ method: "POST" })
     const res = await toggleFavorite(req, { params: Promise.resolve({ id: "prov-1" }) })
@@ -305,10 +305,10 @@ describe("POST /api/providers/[id]/favorite", () => {
   })
 
   it("removes favorite and returns favorited: false", async () => {
-    _mockSession = { userId: "client-1", role: "CLIENT" }
-    vi.mocked(db.user.findFirst).mockResolvedValue({ id: "prov-1" } as any)
-    vi.mocked(db.favorite.findUnique).mockResolvedValue({ id: "fav-1" } as any)
-    vi.mocked(db.favorite.delete).mockResolvedValue({ id: "fav-1", clientId: "client-1", providerId: "prov-1", createdAt: new Date() } as any)
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    (vi.mocked(db.user.findFirst) as any).mockResolvedValue({ id: "prov-1" } as any)
+    (vi.mocked(db.favorite.findUnique) as any).mockResolvedValue({ id: "fav-1" } as any)
+    (vi.mocked(db.favorite.delete) as any).mockResolvedValue({ id: "fav-1", clientId: "client-1", providerId: "prov-1", createdAt: new Date() } as any)
 
     const req = createMockRequest({ method: "POST" })
     const res = await toggleFavorite(req, { params: Promise.resolve({ id: "prov-1" }) })
@@ -319,8 +319,8 @@ describe("POST /api/providers/[id]/favorite", () => {
   })
 
   it("returns 404 for non-existent provider", async () => {
-    _mockSession = { userId: "client-1", role: "CLIENT" }
-    vi.mocked(db.user.findFirst).mockResolvedValue(null)
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    (vi.mocked(db.user.findFirst) as any).mockResolvedValue(null)
 
     const req = createMockRequest({ method: "POST" })
     const res = await toggleFavorite(req, { params: Promise.resolve({ id: "nonexistent" }) })
@@ -329,8 +329,8 @@ describe("POST /api/providers/[id]/favorite", () => {
   })
 
   it("returns 400 when favoriting self", async () => {
-    _mockSession = { userId: "client-1", role: "CLIENT" }
-    vi.mocked(db.user.findFirst).mockResolvedValue({ id: "client-1" } as any)
+    _mockSession = { userId: "client-1", role: "CLIENT" } as any
+    (vi.mocked(db.user.findFirst) as any).mockResolvedValue({ id: "client-1" } as any)
 
     const req = createMockRequest({ method: "POST" })
     const res = await toggleFavorite(req, { params: Promise.resolve({ id: "client-1" }) })

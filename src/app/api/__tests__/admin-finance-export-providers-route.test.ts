@@ -36,7 +36,7 @@ import { db } from "@/lib/db"
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function resetDbMocks() {
-  db.setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
+  db.setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() } as any
   db.payment = {
     findMany: vi.fn(),
     count: vi.fn(),
@@ -55,7 +55,7 @@ describe("GET /api/admin/finance/export-providers", () => {
   })
 
   it("returns CSV with correct provider headers", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")

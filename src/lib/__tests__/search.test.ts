@@ -76,7 +76,7 @@ describe("searchProviders", () => {
   it("builds multi_match query for text search", async () => {
     // Temporarily pretend we're in production to get a client
     const prevEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "production"
+    Object.assign(process.env, { NODE_ENV: "production" })
     process.env.OPENSEARCH_URL = "http://localhost:9200"
 
     mocks.mockSearch.mockResolvedValue({
@@ -125,13 +125,13 @@ describe("searchProviders", () => {
     )
 
     // Cleanup
-    process.env.NODE_ENV = prevEnv
+    Object.assign(process.env, { NODE_ENV: prevEnv })
     delete process.env.OPENSEARCH_URL
   })
 
   it("returns empty result on search error", async () => {
     const prevEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "production"
+    Object.assign(process.env, { NODE_ENV: "production" })
     process.env.OPENSEARCH_URL = "http://localhost:9200"
 
     mocks.mockSearch.mockRejectedValue(new Error("Connection refused"))
@@ -140,7 +140,7 @@ describe("searchProviders", () => {
     expect(result.items).toEqual([])
     expect(result.total).toBe(0)
 
-    process.env.NODE_ENV = prevEnv
+    Object.assign(process.env, { NODE_ENV: prevEnv })
     delete process.env.OPENSEARCH_URL
   })
 })
@@ -164,7 +164,7 @@ describe("searchServices", () => {
 
   it("builds service search query correctly", async () => {
     const prevEnv = process.env.NODE_ENV
-    process.env.NODE_ENV = "production"
+    Object.assign(process.env, { NODE_ENV: "production" })
     process.env.OPENSEARCH_URL = "http://localhost:9200"
 
     mocks.mockSearch.mockResolvedValue({
@@ -203,7 +203,7 @@ describe("searchServices", () => {
       { term: { active: true } },
     )
 
-    process.env.NODE_ENV = prevEnv
+    Object.assign(process.env, { NODE_ENV: prevEnv })
     delete process.env.OPENSEARCH_URL
   })
 })

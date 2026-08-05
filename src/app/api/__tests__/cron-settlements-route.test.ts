@@ -25,9 +25,9 @@ import { db } from "@/lib/db"
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function resetDbMocks() {
-  db.setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
-  db.settlementPeriod = { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() }
-  db.payment = { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }
+  (db as any).setting = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
+  (db as any).settlementPeriod = { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() }
+  (db as any).payment = { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }
 }
 
 const _origCronSecret = process.env.CRON_SECRET
@@ -45,13 +45,13 @@ describe("GET /api/cron/settlements", () => {
   })
 
   it("generates monthly settlement from PAID payments", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
-    vi.mocked(db.settlementPeriod.findFirst).mockResolvedValue(null)
-    vi.mocked(db.payment.findMany).mockResolvedValue([
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
+    (vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue(null)
+    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([
       { amount: 50000, booking: { providerId: "prov-1", provider: { name: "Paulo", email: "paulo@test.com" } } },
       { amount: 30000, booking: { providerId: "prov-2", provider: { name: "Maria", email: "maria@test.com" } } },
     ] as any)
-    vi.mocked(db.settlementPeriod.create).mockResolvedValue({
+    (vi.mocked(db.settlementPeriod.create) as any).mockResolvedValue({
       id: "cron-sp-1",
       totalAmount: 80000,
       totalCommission: 8000,
@@ -72,7 +72,7 @@ describe("GET /api/cron/settlements", () => {
   })
 
   it("returns existing period when already generated (idempotent)", async () => {
-    vi.mocked(db.settlementPeriod.findFirst).mockResolvedValue({ id: "existing-sp-1" } as any)
+    (vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue({ id: "existing-sp-1" } as any)
 
     const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=my-cron-secret")
     const res = await GET(req)
@@ -86,9 +86,9 @@ describe("GET /api/cron/settlements", () => {
   })
 
   it("returns message when no payments found in period", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
-    vi.mocked(db.settlementPeriod.findFirst).mockResolvedValue(null)
-    vi.mocked(db.payment.findMany).mockResolvedValue([])
+    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
+    (vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue(null)
+    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([])
 
     const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=my-cron-secret")
     const res = await GET(req)
@@ -119,8 +119,8 @@ describe("GET /api/cron/settlements", () => {
 
   it("allows access when CRON_SECRET is empty (no auth configured)", async () => {
     process.env.CRON_SECRET = ""
-    vi.mocked(db.settlementPeriod.findFirst).mockResolvedValue(null)
-    vi.mocked(db.payment.findMany).mockResolvedValue([])
+    (vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue(null)
+    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([])
 
     const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY")
     const res = await GET(req)
@@ -131,7 +131,7 @@ describe("GET /api/cron/settlements", () => {
   })
 
   it("catches errors and returns 500 with message", async () => {
-    vi.mocked(db.setting.findUnique).mockRejectedValue(new Error("DB connection failed"))
+    (vi.mocked(db.setting.findUnique) as any).mockRejectedValue(new Error("DB connection failed"))
 
     const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=my-cron-secret")
     const res = await GET(req)

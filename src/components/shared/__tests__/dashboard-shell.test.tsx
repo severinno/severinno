@@ -76,9 +76,9 @@ vi.mock("framer-motion", () => ({
 }))
 
 // ---- Hooks under test -----------------------------------------------------
-export const mockUseTransactionNotificationSound = vi.fn()
-export const mockPlayCoin = vi.fn()
-export const mockUseBalancePulse = vi.fn()
+export const mockUseTransactionNotificationSound = vi.fn() as any
+export const mockPlayCoin = vi.fn() as any
+export const mockUseBalancePulse = vi.fn() as any
 export const mockIsPulsing = false
 
 vi.mock("@/lib/use-coin-sound", () => ({
@@ -92,7 +92,6 @@ vi.mock("@/lib/use-coin-sound", () => ({
     mockUseTransactionNotificationSound(...args),
   useWelcomeSound: vi.fn(),
 }))
-
 vi.mock("@/lib/use-balance-pulse", () => ({
   useBalancePulse: (...args: unknown[]) => {
     mockUseBalancePulse(...args)
@@ -130,8 +129,7 @@ type MockQueryResult = {
 
 let mockNotificationsQuery: MockQueryResult = { data: undefined, isLoading: false }
 let mockWalletQuery: MockQueryResult = { data: undefined, isLoading: false }
-const mockInvalidateQueries = vi.fn()
-
+const mockInvalidateQueries = vi.fn() as any
 vi.mock("@tanstack/react-query", () => ({
   useQuery: vi.fn((opts: { queryKey: string[] }) => {
     if (opts.queryKey.includes("notifications")) return mockNotificationsQuery
@@ -146,11 +144,10 @@ vi.mock("@tanstack/react-query", () => ({
     invalidateQueries: mockInvalidateQueries,
   })),
 }))
-
 // ---- API ------------------------------------------------------------------
 vi.mock("@/lib/api", () => ({
-  apiGet: vi.fn().mockResolvedValue({ items: [] }),
-  apiPatch: vi.fn().mockResolvedValue({}),
+  apiGet: vi.fn().mockResolvedValue({ items: [] } as any),
+  apiPatch: vi.fn().mockResolvedValue({} as any),
 }))
 
 // ---- Format helpers -------------------------------------------------------
@@ -208,8 +205,8 @@ import { DashboardShell, type DashboardShellProps, type NavItem } from "../dashb
 // ---------------------------------------------------------------------------
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", icon: () => null, view: "client.dashboard" },
-  { label: "Serviços", icon: () => null, view: "client.services" },
+  { label: "Dashboard", icon: (() => null) as unknown as React.ElementType, view: "client.dashboard" },
+  { label: "Serviços", icon: (() => null) as unknown as React.ElementType, view: "client.services" },
 ]
 
 const DEFAULT_PROPS: DashboardShellProps = {
@@ -525,8 +522,8 @@ describe("DashboardShell — WalletBalancePill (provider wallet)", () => {
 describe("DashboardShell — nav item badges", () => {
   it("renders badge on nav items when badge is provided", () => {
     const itemsWithBadge: NavItem[] = [
-      { label: "Mensagens", icon: () => null, view: "client.messages", badge: 3 },
-      { label: "Dashboard", icon: () => null, view: "client.dashboard" },
+      { label: "Mensagens", icon: (() => null) as unknown as React.ElementType, view: "client.messages", badge: 3 },
+      { label: "Dashboard", icon: (() => null) as unknown as React.ElementType, view: "client.dashboard" },
     ]
     renderShell({
       navItems: itemsWithBadge,

@@ -103,7 +103,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
 
   it("should have no accessibility violations with error digest", async () => {
     const error = new Error("Database timeout")
-    error.digest = "abc123def456"
+    (error as any).digest = "abc123def456"
     const { container } = render(
       <ErrorComponent error={error} reset={mockReset} />,
     )
@@ -174,7 +174,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
 
   it("shows error digest when available", () => {
     const error = new Error("Server error")
-    error.digest = "test-digest-123"
+    (error as any).digest = "test-digest-123"
     const { container } = render(
       <ErrorComponent error={error} reset={mockReset} />,
     )
