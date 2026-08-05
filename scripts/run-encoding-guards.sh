@@ -2,7 +2,7 @@
 # =============================================================================
 # run-encoding-guards.sh
 #
-# Runner compartilhado dos 16 guards de encoding/CI que os hooks locais
+# Runner compartilhado dos 17 guards de encoding/CI que os hooks locais
 # executam de forma IDÊNTICA — .husky/pre-commit e .husky/pre-push chamam
 # este script em vez de duplicar a lista. Adicionar um guard novo = editar
 # UM lugar (aqui), sem risco de drift entre os dois hooks.
@@ -25,6 +25,8 @@
 #  14. scan-lucide-icons.mjs    — ícones lucide do vitrine sincronizados
 #  15. check-hooks-symmetry.mjs  — tabela '## Git Hooks' do README ↔ hooks reais
 #  16. check-mutation-jobs.mjs   — todo test-mutation-*.sh tem job no CI
+#  17. check-mutation-timing-contract.mjs — markers do mutation-coord
+#       consistentes nos 4 locais (seed-guards ↔ medidor ↔ mutation test ↔ teste)
 #
 # Usage:
 #   bash scripts/run-encoding-guards.sh
@@ -52,5 +54,6 @@ node scripts/check-bun-mirror.mjs
 node scripts/scan-lucide-icons.mjs --check
 node scripts/check-hooks-symmetry.mjs
 node scripts/check-mutation-jobs.mjs
+node scripts/check-mutation-timing-contract.mjs
 
-echo "✅ Todos os 16 guards de encoding/CI passaram (run-encoding-guards.sh)."
+echo "✅ Todos os 17 guards de encoding/CI passaram (run-encoding-guards.sh)."

@@ -35,7 +35,7 @@
 #      exceder o limiar — revalidação automática de regressão de overhead
 #
 # Usage:
-#   ./scripts/bench-encoding-guards.sh                  # 5 runs × 16 linhas
+#   ./scripts/bench-encoding-guards.sh                  # 5 runs × 17 linhas
 #   ./scripts/bench-encoding-guards.sh -n 3             # 3 runs por guard
 #   ./scripts/bench-encoding-guards.sh --assert-total-ms 5000   # falha se TOTAL mediana > 5s
 #   ./scripts/bench-encoding-guards.sh -h               # ajuda

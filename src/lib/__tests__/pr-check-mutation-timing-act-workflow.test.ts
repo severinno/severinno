@@ -101,7 +101,7 @@ describe("pr-check.yml — job mutation-coord-timing-act-guard (sintaxe YAML + s
   })
 
   it("estrutura mínima: job com 7 steps (checkout, detect, valida, act install, run act, guard, summary)", () => {
-    expect(job?.name).toBe("Mutation coord timing (act, budget 240/baseline)")
+    expect(job?.name).toBe("Mutation coord timing (act, budget 240/mediana 4)")
     expect(steps.length).toBe(7)
   })
 
@@ -181,19 +181,22 @@ describe("pr-check.yml — contrato do gate act-based mutation-coord-timing-act-
     expect(run).toContain("/tmp/act-mutation.log")
   })
 
-  it("passo guard invoca measure-mutation-timing.mjs com --act-log --max 240 --warn da baseline var e --act-exit do GITHUB_OUTPUT", () => {
+  it("passo guard invoca measure-mutation-timing.mjs com --act-log --max 240 --warn-median 4 --warn-margin 0.2 e --act-exit do GITHUB_OUTPUT", () => {
     const guard = steps.find((s) => s.name?.startsWith("Guard mutation"))
     expect(guard).toBeDefined()
     const run = guard?.run ?? ""
     expect(run).toContain("node scripts/measure-mutation-timing.mjs")
     expect(run).toContain("--act-log /tmp/act-mutation.log")
-    // GATE em duas faixas: --max 240 duro + --warn consulta a baseline var
-    // (fallback 180). O act NÃO publica baseline (timing local ≠ CI real).
+    // GATE em duas faixas: --max 240 duro + faixa soft DERIVADA da MEDIANA
+    // (--warn-median 4 --warn-margin 0.2 — o histórico vem do gh run list;
+    // o act NÃO publica baseline: a faixa deriva, nada é publicado).
     expect(run).toContain("--max 240")
-    expect(run).toContain("--warn \"${{ vars.MUTATION_TIMING_BASELINE || '180' }}\"")
+    expect(run).toContain("--warn-median 4")
+    expect(run).toContain("--warn-margin 0.2")
     expect(run).toContain('--act-exit "${{ steps.act.outputs.ACT_EXIT }}"')
     expect(run).toContain("--json /tmp/mutation-timing-act.json")
     expect(run).not.toContain("--publish-baseline")
+    expect(run).not.toContain('--warn "')
   })
 })
 

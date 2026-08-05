@@ -116,18 +116,36 @@ export default function Testimonials({ className }: { className?: string }) {
   const [isPaused, setIsPaused] = React.useState(false)
   const pauseTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // IMPORTANTE: só chamar play()/stop() do plugin quando o carousel ESTÁ
+  // montado. O Embla Autoplay só inicializa `emblaApi`/`internalEngine` no
+  // init(), que o <Carousel> dispara ao montar — antes disso, play() lança
+  // 'Cannot read properties of undefined (reading internalEngine)'. Os
+  // handlers de hover ficam no wrapper que SEMPRE renderiza (loading/erro/
+  // empty sem carousel), então hover+leave durante o loading crashava. O
+  // guard `!api` cobre exatamente isso: `api` só é setado (setApi) quando o
+  // carousel monta — o mesmo momento em que o plugin inicializa.
   const handleMouseEnter = React.useCallback(() => {
+    if (!api) return
     setIsPaused(true)
     autoplayPlugin.stop()
     if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current)
-  }, [autoplayPlugin])
+  }, [api, autoplayPlugin])
 
   const handleMouseLeave = React.useCallback(() => {
+    if (!api) return
     pauseTimerRef.current = setTimeout(() => {
       setIsPaused(false)
       autoplayPlugin.play()
     }, 300)
-  }, [autoplayPlugin])
+  }, [api, autoplayPlugin])
+
+  // Limpa o timer pendente de retomada no unmount (evita play() pós-destroy
+  // do plugin e setState em componente desmontado).
+  React.useEffect(() => {
+    return () => {
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current)
+    }
+  }, [])
 
   // Carousel state sync — setState is called inside async event handlers,
   // NOT synchronously within the effect body.

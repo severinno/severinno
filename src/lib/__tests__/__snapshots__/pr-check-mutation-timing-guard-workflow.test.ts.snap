@@ -3,7 +3,7 @@
 exports[`pr-check.yml — job mutation-coord-timing-guard (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
   "if": "always()",
-  "name": "Mutation coord timing (budget 240/baseline)",
+  "name": "Mutation coord timing (drift 50%/teto 240)",
   "needs": "seed-guards",
   "permissions": {
     "actions": "read",
@@ -19,12 +19,13 @@ exports[`pr-check.yml — job mutation-coord-timing-guard (sintaxe YAML + snapsh
         "GH_TOKEN": "\${{ github.token }}",
       },
       "id": "measure",
-      "name": "Medir tempo do step mutation test (budget 240/baseline)",
+      "name": "Medir tempo do step mutation test (drift relativo vs mediana)",
       "run": "node scripts/measure-mutation-timing.mjs \\
   --run "\${{ github.run_id }}" \\
   --repo "\${{ github.repository }}" \\
   --max 240 \\
-  --warn "\${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \\
+  --fail-drift "\${{ vars.MUTATION_TIMING_DRIFT_MAX || '50' }}" \\
+  --window 4 \\
   --json /tmp/mutation-timing.json
 ",
     },
@@ -42,7 +43,7 @@ exports[`pr-check.yml — job mutation-coord-timing-guard (sintaxe YAML + snapsh
       "if": "always()",
       "name": "Summary",
       "run": "{
-  echo '## ⏱️ Mutation coord — budget de payload (PR, 240/baseline)'
+  echo '## ⏱️ Mutation coord — budget de payload (PR, 240/mediana drift)'
   echo ''
   if [ -f /tmp/mutation-timing.json ]; then
     node -e "
@@ -52,6 +53,10 @@ exports[`pr-check.yml — job mutation-coord-timing-guard (sintaxe YAML + snapsh
         console.log('|---|---|');
         console.log('| Step | ' + r.stepName + ' |');
         console.log('| Duração | **' + r.durationSecs + 's** (duro ' + (r.budgetSecs ?? 'n/a') + 's / soft ' + (r.warnSecs ?? 'n/a') + 's) |');
+        if (typeof r.driftPct === 'number') {
+          console.log('| Atual vs mediana | **' + r.durationSecs + 's vs ' + r.driftMedianSecs + 's** (janela ' + (r.driftWindow ?? 'n/a') + ' runs anteriores) |');
+          console.log('| Drift relativo | **' + r.driftPct.toFixed(1) + '%** (threshold ' + r.driftMaxPct + '%) |');
+        }
         console.log('| Conclusão | ' + r.conclusion + ' |');
         console.log('| Run | ' + r.runId + ' |');
         if (r.zone === 'fail') console.log('| Budget | ❌ **EXCEDIDO** (faixa dura) — regressão de overhead |');

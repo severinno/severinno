@@ -2,7 +2,7 @@
 
 exports[`pr-check.yml — job mutation-coord-timing-act-guard (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
-  "name": "Mutation coord timing (act, budget 240/baseline)",
+  "name": "Mutation coord timing (act, budget 240/mediana 4)",
   "permissions": {
     "contents": "read",
     "packages": "read",
@@ -76,11 +76,12 @@ echo "  log: /tmp/act-mutation.log ($(wc -l < /tmp/act-mutation.log) linhas)"
     },
     {
       "if": "steps.changes.outputs.changed == 'true'",
-      "name": "Guard mutation coord timing (act log, 240/baseline)",
+      "name": "Guard mutation coord timing (act log, 240/mediana 4)",
       "run": "node scripts/measure-mutation-timing.mjs \\
   --act-log /tmp/act-mutation.log \\
   --max 240 \\
-  --warn "\${{ vars.MUTATION_TIMING_BASELINE || '180' }}" \\
+  --warn-median 4 \\
+  --warn-margin 0.2 \\
   --act-exit "\${{ steps.act.outputs.ACT_EXIT }}" \\
   --json /tmp/mutation-timing-act.json
 ",
