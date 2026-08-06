@@ -113,6 +113,13 @@ exports[`AddressAutocomplete — snapshot > dropdown hover: highlights first ite
             São Paulo, SP
           </p>
         </div>
+        <span
+          aria-label="Alta relevância"
+          class="shrink-0 self-center text-[11px] text-amber-500"
+          title="Alta relevância"
+        >
+          ★
+        </span>
       </button>
       <button
         aria-selected="false"
@@ -405,6 +412,13 @@ exports[`AddressAutocomplete — snapshot > results dropdown: shows dropdown wit
             São Paulo, SP
           </p>
         </div>
+        <span
+          aria-label="Alta relevância"
+          class="shrink-0 self-center text-[11px] text-amber-500"
+          title="Alta relevância"
+        >
+          ★
+        </span>
       </button>
       <button
         aria-selected="false"

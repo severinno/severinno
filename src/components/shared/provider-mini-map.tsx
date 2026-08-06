@@ -113,10 +113,18 @@ export default function ProviderMiniMap({
   // geo primitivas; ler onRadiusChange/autoSaveRadius via ref evita recriar o
   // mapa quando o callback do pai muda de identidade (mesmo padrão do
   // selectRef no providers-map). interactive é boolean prop — dep estável.
+  //
+  // A sincronização acontece num effect (não durante o render): a regra
+  // react-hooks/refs proíbe escrever `ref.current = ...` no corpo do
+  // componente (React 19 — atualizar ref durante render pode quebrar
+  // renderização concorrente). O effect roda antes de qualquer handler, então
+  // os callbacks do mapa sempre leem a versão atual.
   const onRadiusChangeRef = useRef(onRadiusChange)
-  onRadiusChangeRef.current = onRadiusChange
   const autoSaveRadiusRef = useRef(autoSaveRadius)
-  autoSaveRadiusRef.current = autoSaveRadius
+  useEffect(() => {
+    onRadiusChangeRef.current = onRadiusChange
+    autoSaveRadiusRef.current = autoSaveRadius
+  }, [onRadiusChange, autoSaveRadius])
 
   // Cleanup save timer on unmount
   useEffect(() => {
@@ -125,11 +133,24 @@ export default function ProviderMiniMap({
     }
   }, [])
 
-  // Sync local radius when prop changes — intentional: the slider should
-  // follow when the provider's configured radius loads asynchronously.
-  // Use rAF to avoid synchronous setState inside effect (ESLint rule).
+  // Sync local radius when the radiusKm PROP changes — intentional: the
+  // slider should follow when the provider's configured radius loads
+  // asynchronously (e.g. null/undefined → 50).
+  //
+  // We schedule via rAF to avoid synchronous setState inside effect (ESLint
+  // rule), but ONLY when the prop actually changed from the previous render:
+  // the mount case (radiusKm == initial radius, no change) must not schedule
+  // a rAF — in jsdom the pending rAF fires mid-test and clobbers the slider
+  // state, causing an extra syncRadiusCircle (flaky "expected spy to be
+  // called 2 times, but got 3").
+  const prevRadiusKmRef = useRef(radiusKm)
   useEffect(() => {
-    if (radiusKm != null) {
+    // Atualiza o ref SEMPRE (mesmo quando radiusKm é null) — se o pai
+    // fizer 50 → null → 50, o ref precisa voltar a 50 para o sync disparar
+    // de novo (o slider pode ter mudado enquanto radiusKm era null).
+    const prev = prevRadiusKmRef.current
+    prevRadiusKmRef.current = radiusKm
+    if (radiusKm != null && radiusKm !== prev) {
       const id = requestAnimationFrame(() => setRadius(radiusKm))
       return () => cancelAnimationFrame(id)
     }

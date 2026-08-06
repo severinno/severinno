@@ -144,19 +144,28 @@ export default function AddressAutocomplete({
       return
     }
 
-    // Check cache first
+    // Check cache first — through the same async path as the fetch (the
+    // synchronous setState-during-effect is a React 19 anti-pattern flagged by
+    // react-hooks/set-state-in-effect; the microtask keeps it ordered but
+    // defers the state update out of the effect body).
     const cached = cacheGet(debouncedInput.trim().toLowerCase())
     if (cached) {
-      setResults(cached)
-      setOpen(cached.length > 0)
-      setSelectedIdx(-1)
+      const hit = cached
+      void Promise.resolve().then(() => {
+        setResults(hit)
+        setOpen(hit.length > 0)
+        setSelectedIdx(-1)
+      })
       return
     }
 
     let cancelled = false
-    setLoading(true)
 
     const fetchData = async () => {
+      // Loading começa AQUI (dentro do fluxo async) — setLoading direto no
+      // corpo do effect viola react-hooks/set-state-in-effect (React 19).
+      setLoading(true)
+
       // CEP detection — use ViaCEP + try Nominatim for coordinates
       if (isCEP(debouncedInput)) {
         try {
@@ -499,6 +508,14 @@ export default function AddressAutocomplete({
                 {isCep ? (
                   <span className="shrink-0 self-center text-[10px] font-medium text-emerald-600">
                     ViaCEP
+                  </span>
+                ) : result.importance > 0.5 ? (
+                  <span
+                    className="shrink-0 self-center text-[11px] text-amber-500"
+                    aria-label="Alta relevância"
+                    title="Alta relevância"
+                  >
+                    ★
                   </span>
                 ) : null}
               </button>
