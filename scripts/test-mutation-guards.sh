@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 13 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 15 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -62,6 +62,11 @@
 #                    300s passa + warn 500s + drift exit 2. SKIP (exit 0)
 #                    enquanto scripts/measure-e2e-cache.mjs não existir —
 #                    ativa sozinho quando o medidor for criado
+#   no-leaked-imports → scripts/test-mutation-no-leaked-imports.sh
+#                    import de dep NÃO declarada que resolve no node_modules
+#                    do PAI (worktree aninhado — o bug do z-ai-web-dev-sdk)
+#                    deve FALHAR; dep inexistente deve FALHAR; dep declarada
+#                    com install pendente deve PASSAR (exit 0)
 #
 # Cada script granular é a FONTE ÚNICA do seu cenário (sem duplicação de
 # fixtures/mutações/asserções — o harness só orquestra). TODOS os sub-tests
@@ -93,6 +98,8 @@ SUBTESTS=(
   "timing-budget|Timing — gate de budget 240/180/100s (três faixas) + drift exit 2 + faixa soft derivada da mediana (--warn-median) + gate de drift relativo (--fail-drift) do mutation-coord|scripts/test-mutation-timing-budget.sh"
   "e2e-cache-budget|E2E Cache — gate de budget 600s (10 min) + drift exit 2 (SKIP até medidor)|scripts/test-mutation-e2e-cache-budget.sh"
   "lint-guard|Lint Guard — prettier --check + eslint --max-warnings 0 devem FALHAR (arquivo mal formatado / warning)|scripts/test-mutation-lint-guard.sh"
+  "mutation-count|Count — drift do nº de sub-tests (job name/summary/README) deve FALHAR|scripts/test-mutation-mutation-count.sh"
+  "no-leaked-imports|No-leaked-imports — import resolvendo no node_modules do PAI + dep inexistente devem FALHAR (install pendente passa)|scripts/test-mutation-no-leaked-imports.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -250,5 +257,7 @@ fi
 pass "MUTATION TESTS PASSED — os guards (bun literal, bun remoção, hooks simetria,"
 pass "README anchors/toc/images + reverse, docs anchor, produtor sentinel,"
 pass "mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget [240/180/100s + drift exit 2 + mediana],"
-pass "e2e-cache-budget [600s/10 min + drift exit 2], lint-guard [prettier + eslint]) detectam todas as mutações."
+pass "e2e-cache-budget [600s/10 min + drift exit 2], lint-guard [prettier + eslint],"
+pass "mutation-count [drift do nº de sub-tests do master], no-leaked-imports [leak do"
+pass "node_modules do pai + dep inexistente + install pendente]) detectam todas as mutações."
 exit 0

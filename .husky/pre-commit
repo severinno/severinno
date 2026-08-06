@@ -15,6 +15,14 @@ node scripts/check-bun-mirror.mjs --staged
 # Node puro, <1s.
 node scripts/check-mutation-jobs.mjs --staged
 
+# Unused-deps STAGED — detecta dep órfã INTRODUZIDA pelo commit (adicionada no
+# package.json do git diff --cached sem referência no ÍNDICE) ANTES do guard
+# global (CI): o scan completo é ~850ms (1057 arquivos) e não roda no
+# pre-commit; o --staged custa ~290ms (caso comum, sem diff do package.json)
+# e ~150-500ms com deps novas (1-2 git grep --cached por dep). O import em
+# arquivo NÃO staged não conta (o commit não o carrega). Node puro, <1s.
+node scripts/check-unused-deps.mjs --staged
+
 # Mutation-timing contract STAGED — valida que os markers do mutation-coord
 # (job/step do seed-guards.yml) estão consistentes no que está STAGED (git
 # diff --cached — lê o ÍNDICE, não o working tree) ANTES do guard global: um

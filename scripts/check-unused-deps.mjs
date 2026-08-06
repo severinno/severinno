@@ -4,14 +4,31 @@
 // =============================================================================
 //
 // Usage:
-//   node scripts/check-unused-deps.mjs           # scan completo (default)
-//   node scripts/check-unused-deps.mjs --root X  # fixture (testes/mutation)
-//   node scripts/check-unused-deps.mjs --json    # output JSON estruturado
+//   node scripts/check-unused-deps.mjs                    # scan completo (default)
+//   node scripts/check-unused-deps.mjs --root X           # fixture (testes/mutation)
+//   node scripts/check-unused-deps.mjs --json             # output JSON estruturado
+//   node scripts/check-unused-deps.mjs --staged           # só as deps NOVAS do diff --cached (pre-commit)
+//   node scripts/check-unused-deps.mjs --staged --root X  # staged num repo git do fixture
 //
 // Exit codes:
 //   0 — todas as deps têm referência OU são allowlist (pass)
 //   1 — pelo menos uma dep órfã (fail — a mensagem lista cada uma)
-//   2 — infra: package.json ausente/ilegível, root inválido (fail-closed)
+//   2 — infra: package.json ausente/ilegível, root inválido, git indisponível (fail-closed)
+//
+// MODO --staged (pre-commit): verifica APENAS as deps ADICIONADAS ao
+// package.json no `git diff --cached` (o que o commit introduz) — o scan
+// completo é ~850ms (1057 arquivos, 97 deps — medido 08/2026) e o pre-commit
+// não o roda por isso; o --staged custa ~150-500ms (1-2 `git grep --cached`
+// por dep nova, ~250ms cada). Para cada dep nova não-allowlist, procura a
+// referência no ÍNDICE (git grep --cached — o que será commitado, NÃO o
+// working tree: um import em arquivo não-staged NÃO conta, o commit não o
+// carrega) e falha (exit 1) se ZERO hits — a dep seria órfã no merge.
+// Espelho do check-bun-mirror --staged: pega o erro ANTES do guard global
+// (CI), no commit local, com custo proporcional ao diff.
+//
+// Sem diff staged do package.json → exit 0 imediato (~150ms de `git diff
+// --cached --name-only`): o pre-commit roda o guard TODO commit, e o caso
+// comum (commit sem mexer em deps) não pode pagar o scan completo.
 //
 // Escaneia TODO o código do repo (src/, scripts/, e2e/, mini-services/,
 // configs, workflows, hooks, Dockerfiles) procurando referências a CADA dep
@@ -72,6 +89,7 @@
 //     escopo de código de produção).
 // =============================================================================
 
+import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join, relative } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -88,7 +106,7 @@ const SELF = fileURLToPath(import.meta.url)
  * código mas são NECESSÁRIAS. Cada entrada documenta o porquê (ver header).
  * Prefixos: "prefix:" casa o início do nome (ex.: "@types/" cobre todos).
  */
-const ALLOWLIST = [
+export const ALLOWLIST = [
   { match: "@types/", type: "prefix", why: "tipos TypeScript implícitos (tsconfig types)" },
   { match: "bun-types", type: "exact", why: "tipos do runtime Bun via tsconfig (não importado)" },
   {
@@ -343,9 +361,159 @@ export function findOrphanDeps(root) {
   return { orphans, scanned: files.length, total: deps.length }
 }
 
+// ---------------------------------------------------------------------------
+// MODO --staged (pre-commit): deps NOVAS do git diff --cached
+// ---------------------------------------------------------------------------
+
+/**
+ * Converte o nome de uma dep para o padrão ERE do `git grep` com o MESMO
+ * boundary do depPattern JS: `[^\w-]` vira `[^[:alnum:]_\-]` (POSIX ERE —
+ * o `\w` não existe em ERE). O hífen é excluído para não casar o prefixo de
+ * outra dep (ex.: "next" dentro de "next-intl") — o nome completo casa.
+ *
+ * @param {string} dep
+ * @returns {string}
+ */
+export function depERE(dep) {
+  const esc = dep.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return `(^|[^[:alnum:]_\\-])${esc}([^[:alnum:]_\\-]|$)`
+}
+
+/**
+ * Verifica se um path relativo seria ESCANEADO pelo scan completo — espelho
+ * da lógica de exclusão do collectCodeFiles (dirs ALWAYS_IGNORE em qualquer
+ * nível, lockfiles/temp IGNORE_PREFIX, ext/config/Dockerfile/.husky). Usado
+ * para filtrar os hits do `git grep --cached` no modo --staged: uma dep
+ * referenciada SÓ em docs/ ou num lockfile NÃO conta (igual ao scan global).
+ *
+ * @param {string} rel
+ * @returns {boolean}
+ */
+export function isScannedPath(rel) {
+  const segs = rel.split("/")
+  for (const s of segs) {
+    if (ALWAYS_IGNORE.has(s)) return false
+  }
+  const name = segs[segs.length - 1]
+  if (ALWAYS_IGNORE_FILES.has(name)) return false
+  if (IGNORE_PREFIX.some((p) => name.startsWith(p))) return false
+  const ext = "." + (name.includes(".") ? name.split(".").pop() : "")
+  if (CODE_EXTENSIONS.has(ext)) return true
+  if (JSON_CONFIG_FILES.has(name) || CODE_FILE_NAMES.has(name)) return true
+  if (name.startsWith("Dockerfile") || rel.startsWith(".husky/")) return true
+  return false
+}
+
+/**
+ * Roda `git` no root com spawnSync (array de args, SEM shell).
+ *
+ * @param {string} root
+ * @param {string[]} args
+ * @returns {{status: number|null, stdout: string, stderr: string}}
+ */
+function runGit(root, args) {
+  return spawnSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+}
+
+/**
+ * Extrai as keys de deps de um texto de package.json (dependencies +
+ * devDependencies).
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+function pkgDepsKeys(text) {
+  try {
+    const pkg = JSON.parse(text)
+    return [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Encontra as deps órfãs INTRODUZIDAS pelo commit (modo --staged): compara
+ * as deps do ÍNDICE (`git show :package.json` — o que será commitado) com as
+ * do HEAD; para cada dep ADICIONADA (não-allowlist), procura a referência no
+ * índice via `git grep --cached` (1 chamada por dep, ~250ms) filtrada pelos
+ * MESMOS critérios do scan global (isScannedPath + self-exclusão) e nos
+ * scripts do package.json do índice (CLIs — o grep exclui o package.json
+ * para não contar o campo deps como auto-ref).
+ *
+ * @param {string} root
+ * @returns {{added: string[], orphans: Array<{dep: string}>, total: number}}
+ */
+export function findOrphanDepsStaged(root) {
+  // Fast path: sem package.json no diff --cached → nada a verificar (~150ms).
+  const nameRes = runGit(root, ["diff", "--cached", "--name-only", "--", "package.json"])
+  if (nameRes.status !== 0) {
+    throw new Error("git diff --cached indisponível — repo git? (staged precisa do índice)")
+  }
+  if (!nameRes.stdout.trim()) {
+    return { added: [], orphans: [], total: 0 }
+  }
+
+  // Deps do índice (o que será commitado) vs HEAD (estado anterior).
+  const idxRes = runGit(root, ["show", ":package.json"])
+  if (idxRes.status !== 0) {
+    throw new Error("package.json ausente no índice — staged precisa dele commitado")
+  }
+  const headRes = runGit(root, ["show", "HEAD:package.json"])
+  const idxDeps = pkgDepsKeys(idxRes.stdout)
+  const headDeps = headRes.status === 0 ? pkgDepsKeys(headRes.stdout) : []
+  const added = idxDeps.filter((d) => !headDeps.includes(d))
+  if (added.length === 0) return { added: [], orphans: [], total: idxDeps.length }
+
+  // Scripts do package.json do índice (CLIs contam como ref — igual ao global).
+  let scriptsText = ""
+  try {
+    const pkg = JSON.parse(idxRes.stdout)
+    scriptsText = Object.values(pkg.scripts ?? {}).join("\n")
+  } catch {
+    /* índice ilegível — sem scripts */
+  }
+  const selfRel = relative(root, SELF).split("\\").join("/")
+
+  const orphans = []
+  for (const dep of added) {
+    const { allowed } = isAllowlisted(dep)
+    if (allowed) continue
+    // grep no ÍNDICE (o que o commit carrega) — package.json excluído para
+    // não contar o campo deps como auto-ref (scripts cobertos acima).
+    const ere = depERE(dep)
+    const grepRes = runGit(root, [
+      "grep",
+      "--cached",
+      "-l",
+      "-I",
+      "-E",
+      ere,
+      "--",
+      ":(exclude)package.json",
+    ])
+    // git grep: 0 = achou, 1 = sem hits; QUALQUER outro status (ex.: 128,
+    // erro fatal do git) é INFRA — fail-closed (exit 2), não falso órfão.
+    if (grepRes.status !== 0 && grepRes.status !== 1) {
+      throw new Error(
+        `git grep --cached falhou para a dep ${dep} (status ${grepRes.status}): ${grepRes.stderr.trim()}`,
+      )
+    }
+    const hit =
+      grepRes.status === 0 &&
+      grepRes.stdout
+        .split("\n")
+        .filter(Boolean)
+        .some((f) => isScannedPath(f) && f !== selfRel)
+    if (!hit && depPattern(dep).test(scriptsText)) continue
+    if (!hit) orphans.push({ dep })
+  }
+  return { added, orphans, total: idxDeps.length }
+}
+
 function main() {
   const args = process.argv.slice(2)
   const json = args.includes("--json")
+  const staged = args.includes("--staged")
   const rootIdx = args.indexOf("--root")
   if (rootIdx !== -1 && args[rootIdx + 1] === undefined) {
     console.error("check-unused-deps: --root requer um path")
@@ -357,6 +525,11 @@ function main() {
     console.error(`❌ check-unused-deps: package.json ausente em ${root}`)
     console.error("   Rode na raiz do repo (ou passe --root <dir>).")
     process.exit(2)
+  }
+
+  if (staged) {
+    mainStaged(root, json)
+    return
   }
 
   let result
@@ -373,6 +546,7 @@ function main() {
     console.log(
       JSON.stringify(
         {
+          mode: "full",
           total,
           scanned,
           orphanCount: orphans.length,
@@ -402,6 +576,66 @@ function main() {
     `\n   Use a dep em código (import/require/CLI) ou REMOVA-A do package.json.\n` +
       `   Deps de uso implícito vão na ALLOWLIST (header do script) — ex.: sharp\n` +
       `   (Next image optimization), @types/* (tipos), husky/lint-staged (CLIs).\n`,
+  )
+  process.exit(1)
+}
+
+/**
+ * Modo --staged: valida só as deps novas do diff --cached (pre-commit).
+ *
+ * @param {string} root
+ * @param {boolean} json
+ */
+function mainStaged(root, json) {
+  let result
+  try {
+    result = findOrphanDepsStaged(root)
+  } catch (e) {
+    console.error(`❌ check-unused-deps --staged: ${e.message}`)
+    process.exit(2)
+  }
+
+  const { added, orphans, total } = result
+
+  if (json) {
+    console.log(
+      JSON.stringify(
+        {
+          mode: "staged",
+          added,
+          total,
+          orphanCount: orphans.length,
+          orphans: orphans.map((o) => o.dep),
+        },
+        null,
+        2,
+      ),
+    )
+    process.exit(orphans.length > 0 ? 1 : 0)
+  }
+
+  if (orphans.length === 0) {
+    if (added.length === 0) {
+      console.log("✅ check-unused-deps --staged: nenhuma dep adicionada no diff --cached — ok.")
+    } else {
+      console.log(
+        `✅ check-unused-deps --staged: ${added.length} dep(s) nova(s) no diff — todas com referência no índice (${total} deps).`,
+      )
+    }
+    process.exit(0)
+  }
+
+  console.error(
+    `🔍 check-unused-deps --staged: ${orphans.length} dep(s) ADICIONADA(s) no diff --cached SEM referência no que será commitado:\n`,
+  )
+  for (const o of orphans) {
+    console.error(`   • ${o.dep}`)
+  }
+  console.error(
+    `\n   A dep entra no package.json pelo commit mas NENHUM arquivo do índice a
+   usa — o merge teria uma órfã. Use-a (import/require/CLI) ou REMOVA-A.\n` +
+      `   Se o import está em arquivo AINDA NÃO stageado: git add <arquivo>\n` +
+      `   (o --staged lê o ÍNDICE, não o working tree).\n`,
   )
   process.exit(1)
 }

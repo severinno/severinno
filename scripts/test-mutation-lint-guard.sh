@@ -3,47 +3,48 @@
 # scripts/test-mutation-lint-guard.sh — Mutation test do LINT GUARD (prettier
 # + eslint zero) — item #8 da auditoria
 #
-# Prova que os DOIS comandos do job lint-guard do pr-check.yml REALMENTE
-# falham nas regressões que eles existem para bloquear:
-#
-#   Cenário A (PRETTIER):  arquivo TS mal formatado (spacing errado) — o
-#                          `prettier --check` (mesmo bin e flags do job)
-#                          DEVE FALHAR (exit 1) citando o arquivo.
-#   Cenário B (ESLINT):    arquivo TS com warning (console.log) — o
-#                          `eslint --max-warnings 0` (mesmo bin e flags do
-#                          job) DEVE FALHAR (exit 1) citando o warning.
-#
-# E o CONTROLE: o mesmo fixture com arquivo formatado + sem warning passa nos
-# DOIS comandos (exit 0) — provando que a falha vem da MUTAÇÃO, não de um
-# fixture quebrado ou do bin ausente.
-#
-# DIFERENÇA vs mutation-seed-dev-e2e: aqui o fixture é criado do zero num
-# mktemp e os bins de prettier/eslint são os do node_modules do repo (não
-# instala nada). O script NÃO toca NENHUM arquivo do repositório real — o
-# fixture tem a própria eslint.config.mjs mínima (flat config com uma regra
-# warning) para o eslint rodar fora do repo.
-#
-# NOTA DE CONFIG: o fixture não tem .prettierrc — o CONTROLE valida os
-# DEFAULTS do prettier (semi: true etc.), não o estilo configurado do repo.
-# A mutação A (indentação errada) falha sob QUALQUER config, então a prova
-# é robusta a essa diferença; se um dia o job lint-guard mudar as flags,
-# atualize os comentários 'Job:' abaixo junto.
-#
-# Pipeline:
-#   1. Cria temp dir com src/ok.ts (formatado, sem warning) + eslint.config.mjs
-#   2. CONTROLE: prettier --check ok.ts + eslint --max-warnings 0 ok.ts → exit 0
-#   3. MUTAÇÃO A: escreve src/bad-format.ts (spacing errado) → prettier --check
-#      DEVE FALHAR (exit 1)
-#   4. MUTAÇÃO B: escreve src/bad-lint.ts (console.log) → eslint --max-warnings 0
-#      DEVE FALHAR (exit 1)
-#   5. Cleanup (trap EXIT — rm -rf do temp)
-#
 # Usage:
 #   ./scripts/test-mutation-lint-guard.sh
 #
 # Exit codes:
 #   0 — mutações DETECTADAS (prettier/eslint falharam pelas asserções) ✅
 #   1 — guard CEGO (algum comando passou com a mutação) OU infra ❌
+#
+# Prova que os comandos do job lint-guard do pr-check.yml REALMENTE falham
+# nas regressões que existem para bloquear:
+#   Cenário A (PRETTIER):   arquivo TS mal formatado → `prettier --check` DEVE
+#                           FALHAR (exit 1) citando o arquivo.
+#   Cenário B (ESLINT):     arquivo TS com warning → `eslint --max-warnings 0`
+#                           DEVE FALHAR (exit 1) citando o warning.
+#   Cenário C (PRE-COMMIT): o BLOCO REAL do hook local (`.husky/pre-commit`)
+#                           replicado num repo git temp com `git add` staged —
+#                           `git diff --cached --name-only --diff-filter=ACMR`
+#                           + `prettier --check` nos staged DEVE FALHAR (exit
+#                           1) citando o arquivo mal formatado staged; e o
+#                           CONTROLE com arquivo formatado staged deve PASS.
+#                           Prova o hook end-to-end (não só os bins): a
+#                           exclusão de binários e o `--diff-filter=ACMR` do
+#                           bloco real são exercitados de verdade.
+#
+# CONTROLE: o mesmo fixture com arquivo formatado + sem warning passa nos
+# DOIS comandos (exit 0) — a falha vem da MUTAÇÃO, não de fixture quebrado.
+#
+# Fixture: criado do zero num mktemp; os bins de prettier/eslint são os do
+# node_modules do repo (não instala nada); NÃO toca NENHUM arquivo do repo
+# real — tem a própria eslint.config.mjs mínima (flat config, regra warning).
+# O fixture NÃO tem .prettierrc — o CONTROLE valida os DEFAULTS do prettier
+# (semi: true etc.), não o estilo do repo; a mutação A falha sob QUALQUER
+# config, então a prova é robusta a essa diferença.
+#
+# Pipeline:
+#   1. Cria temp dir com src/ok.ts (formatado, sem warning) + eslint.config.mjs
+#   2. CONTROLE: prettier + eslint em ok.ts → exit 0
+#   3. MUTAÇÃO A: src/bad-format.ts → prettier DEVE FALHAR
+#   4. MUTAÇÃO B: src/bad-lint.ts (console.log) → eslint DEVE FALHAR
+#   5. CENÁRIO C: fixture → repo git (init + baseline); staged formatado →
+#      bloco PASS; staged mal formatado → bloco DEVE FALHAR citando o
+#      arquivo; binário staged (.png) → bloco IGNORA (pass)
+#   6. Cleanup (trap EXIT — rm -rf do temp)
 # =============================================================================
 
 set -euo pipefail
@@ -195,10 +196,117 @@ fi
 pass "Mutação B DETECTADA: eslint --max-warnings 0 falhou citando bad-lint.ts (exit $EXIT)"
 
 # ═════════════════════════════════════════════════════════════════════════
+# CENÁRIO C — BLOCO REAL do pre-commit (.husky/pre-commit) em repo git temp
+# ═════════════════════════════════════════════════════════════════════════
+
+info "STEP 7: Transformando o fixture em repo git (init + baseline commit)..."
+git -C "$TMP_DIR" init -q
+git -C "$TMP_DIR" config user.email "t@t"
+git -C "$TMP_DIR" config user.name "t"
+git -C "$TMP_DIR" add -A
+git -C "$TMP_DIR" commit -qm "baseline"
+pass "Repo git criado com baseline commitado (ok.ts formatado + eslint.config.mjs)"
+
+# O bloco real do hook é:
+#   STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE ...)
+#   if [ -n "$STAGED_FORMAT" ]; then npx prettier --check --ignore-unknown $STAGED_FORMAT; fi
+# Aqui replicamos EXATAMENTE o bloco (mesma derivação de staged e o mesmo
+# check), com `node "$PRETTIER_BIN"` no lugar de `npx prettier` — o npx no
+# hook resolve o bin do node_modules do repo; no fixture não há node_modules,
+# então apontamos direto para o MESMO binário. A lógica de staged
+# (diff --cached, ACMR, exclusão de binários) é idêntica à do hook.
+run_precommit_block() {
+  set +e
+  STAGED_FORMAT=$(git -C "$TMP_DIR" diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
+  if [ -n "$STAGED_FORMAT" ]; then
+    OUTPUT="$(cd "$TMP_DIR" && node "$PRETTIER_BIN" --check --ignore-unknown $STAGED_FORMAT 2>&1)"
+    EXIT=$?
+  else
+    OUTPUT="(sem arquivos staged para formatar)"
+    EXIT=0
+  fi
+  set -e
+}
+
+info "STEP 8: Controle do bloco — staged com arquivo FORMATADO deve PASS..."
+# Baseline commit deixa o diff --cached VAZIO — sem staged o bloco passa pelo
+# short-circuit (else), o que NÃO provaria o caminho positivo. Por isso staged
+# de um arquivo formatado NOVO: STAGED_FORMAT não-vazio + prettier roda de
+# verdade contra um arquivo bom (exit 0 significativo).
+cat > "$TMP_DIR/src/good-staged.ts" <<'EOF'
+const good = "formatado";
+export default good;
+EOF
+git -C "$TMP_DIR" add src/good-staged.ts
+
+run_precommit_block
+if [ "$EXIT" -ne 0 ]; then
+  fail "CONTROLE do bloco FALHOU (pre-commit): arquivo formatado staged foi"
+  fail "rejeitado (exit $EXIT). O bloco do hook está quebrado ou o fixture"
+  fail "não é válido."
+  echo "$OUTPUT" | tail -6
+  exit 1
+fi
+pass "Controle do bloco OK — pre-commit passa com staged formatado (exit 0)"
+
+info "STEP 9: MUTAÇÃO C — staged com arquivo MAL FORMATADO deve FALHAR..."
+cat > "$TMP_DIR/src/bad-staged.ts" <<'EOF'
+const  staged    =   "ruim"
+export  default  staged
+EOF
+git -C "$TMP_DIR" add src/bad-staged.ts
+
+run_precommit_block
+echo "$OUTPUT" | tail -4
+
+# Caso 1 — bloco CEGO: o check passou com arquivo mal formatado staged.
+if [ "$EXIT" -eq 0 ]; then
+  fail "BLOCO CEGO (pre-commit): prettier --check passou com src/bad-staged.ts"
+  fail "mal formatado STAGED (exit 0). A derivação de staged ou o check está"
+  fail "quebrado."
+  exit 1
+fi
+
+# Caso 2 — falhou, mas NÃO citou o arquivo staged da mutação.
+if ! echo "$OUTPUT" | grep -Fq "bad-staged.ts"; then
+  fail "O bloco falhou (exit $EXIT) mas NÃO citou bad-staged.ts."
+  fail "Falha pode ser outro invariante do fixture — veja o output acima."
+  exit 1
+fi
+pass "Mutação C DETECTADA: pre-commit falhou citando bad-staged.ts staged (exit $EXIT)"
+
+info "STEP 10: Binário staged (.png) deve ser IGNORADO pelo bloco..."
+# White-box: prettier --ignore-unknown pula .png SOZINHO (exit 0 mesmo com o
+# grep quebrado), então asserção por exit code seria tautológica. Em vez disso
+# assert na DERIVAÇÃO: o .png ESTÁ staged (git diff --cached o lista), mas
+# DEVE estar AUSENTE do STAGED_FORMAT pós-grep — provando o filtro do bloco.
+# O rm --cached tira o bad-staged.ts do índice (arquivo não está no HEAD, vira
+# untracked — some do diff, sem D).
+git -C "$TMP_DIR" rm -q --cached src/bad-staged.ts
+printf '\x89PNG\r\n\x1a\n' > "$TMP_DIR/src/pic.png"
+git -C "$TMP_DIR" add src/pic.png
+
+STAGED_RAW=$(git -C "$TMP_DIR" diff --cached --name-only --diff-filter=ACMR)
+STAGED_FORMAT=$(echo "$STAGED_RAW" | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
+
+if ! echo "$STAGED_RAW" | grep -Fq "pic.png"; then
+  fail "O .png NÃO está staged (git diff --cached não o lista) — o fixture"
+  fail "do teste do binário não está montado."
+  exit 1
+fi
+if echo "$STAGED_FORMAT" | grep -Fq "pic.png"; then
+  fail "O filtro de binários NÃO excluiu pic.png do STAGED_FORMAT — o"
+  fail "grep -vE do pre-commit está quebrado (o prettier rodaria no binário)."
+  exit 1
+fi
+pass "Binário OK — pic.png staged, mas EXCLUÍDO do STAGED_FORMAT (grep -vE ok)"
+
+# ═════════════════════════════════════════════════════════════════════════
 # Result (cleanup roda no trap EXIT)
 # ═════════════════════════════════════════════════════════════════════════
 
 echo ""
 pass "MUTATION TEST PASSED — lint-guard pega arquivo mal formatado (prettier)"
 pass "e warning de lint (eslint --max-warnings 0), ambos exit 1"
+pass "e o BLOCO REAL do pre-commit (staged, diff --cached) falha com staged ruim"
 exit 0
