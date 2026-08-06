@@ -1,0 +1,31 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pr-check.yml — job bun-audit-guard (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+{
+  "name": "Bun Audit Guard (deps — drift baseline)",
+  "runs-on": "ubuntu-latest",
+  "steps": [
+    {
+      "uses": "actions/checkout@v4",
+    },
+    {
+      "uses": "./.github/actions/setup-bun",
+      "with": {
+        "bun-version": "\${{ vars.BUN_VERSION }}",
+      },
+    },
+    {
+      "name": "Mutation test — bun audit guard sensitivity (fixtures)",
+      "run": "bash scripts/test-mutation-bun-audit-baseline.sh",
+    },
+    {
+      "name": "Check bun audit drift (baseline)",
+      "run": "node scripts/check-bun-audit-baseline.mjs",
+    },
+    {
+      "name": "Summary",
+      "run": "echo "✅ No new high-severity dependency vulnerabilities beyond the baseline (docs/security/bun-audit-baseline.json)."",
+    },
+  ],
+}
+`;

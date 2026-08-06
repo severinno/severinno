@@ -315,7 +315,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 12 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 13 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -354,6 +354,9 @@ jobs:
   #                    (gate de budget 600s/10 min do job 'E2E Cache': payload
   #                    900s > 600s deve FALHAR exit 1 + drift exit 2 — SKIP
   #                    exit 0 enquanto measure-e2e-cache.mjs não existir)
+  #   lint-guard      → test-mutation-lint-guard.sh
+  #                    (prettier --check + eslint --max-warnings 0 devem
+  #                    FALHAR: arquivo mal formatado / warning de lint)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
   # completo do script granular + verdict por sub-test + tabela final —
   # granularidade de diagnóstico preservada. Exit final agregado: 0 se
@@ -366,7 +369,7 @@ jobs:
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (12 node-pure mutation tests)
+    name: Mutation guards master (13 node-pure mutation tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -375,7 +378,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 12 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget)."
+        run: echo "✅ All 13 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard)."
 
   # ── Hooks Symmetry Guard (dedicado) ─────────────────────────────────
   # Fast gate (node puro, <1s): roda o guard REAL de simetria
@@ -762,6 +765,112 @@ jobs:
 
       - name: Summary
         run: echo "✅ All files formatted (prettier) and zero eslint warnings/errors."
+
+  # ── JSDOM Component Suite — drift baseline (P0 qualidade) ─────────────
+  # A suíte jsdom de componentes (src/components, vitest.config.ts) NÃO roda
+  # no test:unit do CI (o vitest.config.unit.ts exclui src/components/**).
+  # Este job roda a suíte REAL (~6 min) e compara as falhas com um baseline
+  # commitado (docs/quality/jsdom-failures-baseline.json) — padrão
+  # check-secret-leaks-baseline: NENHUM drift PARA CIMA é permitido (arquivo
+  # de teste novo falhando OU count crescendo = exit 1); falhas que SUMEM
+  # passam. As 141 falhas pré-existentes (08/2026) são documentadas no
+  # baseline — este gate as torna VISÍVEIS e impede o crescimento enquanto
+  # a remediação por arquivo anda. --update regenera o baseline e é USO
+  # LOCAL (nunca no PR — um PR que reduz falhas precisa de revisão manual
+  # do baseline, não de re-baseline automático).
+  #
+  # O mutation test (test-mutation-jsdom-baseline.sh — fixtures
+  # --results-file, node-puro <5s) roda ANTES do guard real: se a
+  # sensibilidade do guard quebrar, o job falha rápido sem pagar os ~6 min
+  # do run da suíte completa.
+  jsdom-drift-guard:
+    name: JSDOM component suite — drift baseline
+    runs-on: ubuntu-latest
+    # Folga para o pior caso: install + run real (~6 min) + 2ª run de
+    # CONFIRMAÇÃO quando drift é detectado (anti-flake) ≈ 14-15 min.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Mutation test — drift guard sensitivity (fixtures)
+        run: bash scripts/test-mutation-jsdom-baseline.sh
+
+      - name: Check jsdom failure drift (baseline)
+        run: node scripts/check-jsdom-baseline.mjs
+
+      - name: Summary
+        run: echo "✅ JSDOM component suite — drift dentro do baseline (falhas pré-existentes não cresceram)."
+
+  # ── Bun Audit — drift baseline (P0 segurança) ────────────────────────
+  # Gate de vulnerabilidades de deps no padrão check-secret-leaks-baseline:
+  # roda o `bun audit --json` REAL e falha SOMENTE em achados NOVOS de
+  # severidade alta (high/critical) contra o baseline commitado
+  # (docs/security/bun-audit-baseline.json — 73 advisories conhecidos em
+  # 08/2026: 1 critical, 33 high, 33 moderate, 6 low).
+  #
+  # Por que existe: o antigo security:audit rodava `pnpm audit` (lockfile
+  # pnpm REMOVIDO — o repo unificou em só bun.lock) com `|| echo` — o job
+  # security-audit do quality-gate.yml NUNCA falhava e ninguém rodava
+  # `bun audit` no CI (83 vulns sem gate). Este job fecha o buraco: um bump
+  # de dep que traga advisory NOVO de severidade alta = PR vermelho, com
+  # pacote/url/title no output. Achados novos de severidade MENOR viram
+  # aviso (--min-severity alta é o default).
+  #
+  # O mutation test (fixtures --results-file, node-puro <5s) roda ANTES do
+  # guard real (bun audit ~10-30s com rede) — se a sensibilidade quebrar, o
+  # job falha rápido. Sem cache/install de propósito: o bun audit lê o
+  # bun.lock direto (não precisa de node_modules).
+  unused-deps-guard:
+    name: Unused Deps Guard (package.json hygiene)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Mutation test — unused deps guard sensitivity (fixtures)
+        run: bash scripts/test-mutation-unused-deps.sh
+
+      - name: Check unused deps (package.json vs code refs)
+        run: node scripts/check-unused-deps.mjs
+
+      - name: Summary
+        run: echo "✅ No unused dependencies — every package.json dep is referenced in code (sharp/@types/CLIs are implicit)."
+
+  bun-audit-guard:
+    name: Bun Audit Guard (deps — drift baseline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Mutation test — bun audit guard sensitivity (fixtures)
+        run: bash scripts/test-mutation-bun-audit-baseline.sh
+
+      - name: Check bun audit drift (baseline)
+        run: node scripts/check-bun-audit-baseline.mjs
+
+      - name: Summary
+        run: echo "✅ No new high-severity dependency vulnerabilities beyond the baseline (docs/security/bun-audit-baseline.json)."
 
   # ── Fuzz Tests ─────────────────────────────────────────────────────────
   # Runs in parallel with other checks. No external dependencies needed.
@@ -1441,6 +1550,48 @@ jobs:
           echo "X-XSS-Protection, Referrer-Policy, Permissions-Policy, Server removal"
 
   # ── Main PR Check ──────────────────────────────────────────────────────
+  # ── TypeScript check (PARALELO) ────────────────────────────────────────
+  # Item #6 da auditoria: o typecheck rodava SERIAL dentro do job check
+  # (lint → ts-nocheck → typecheck → unit tests — o tsc de ~2min no meio do
+  # caminho crítico). Extraído para job PRÓPRIO que roda em paralelo com o
+  # check e os demais gates — o PR espera o tsc sem bloquear o resto. O tsc
+  # requer o prisma client gerado (bunx prisma generate) — mesmo pré-requisito
+  # do job typecheck do ci.yml.
+  typecheck:
+    name: TypeCheck (tsc --noEmit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      # O heap default do Node (~1.4GB) é insuficiente para o tsc neste
+      # codebase — o processo crasha com 'JavaScript heap out of memory'
+      # (SIGABRT exit 134, não erro de tipo). Reproduzido e validado em
+      # 08/2026: com 4096MB o typecheck passa limpo em ~2min.
+      - name: Type check
+        run: bunx tsc --noEmit
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Summary
+        run: echo "✅ TypeScript typecheck (tsc --noEmit, heap 4096MB) passed."
+
   check:
     runs-on: ubuntu-latest
     steps:
@@ -1468,15 +1619,6 @@ jobs:
 
       - name: "Guard: no @ts-nocheck in non-generated files"
         run: bun run check:ts-nocheck
-
-      # O heap default do Node (~1.4GB) é insuficiente para o tsc neste
-      # codebase — o processo crasha com 'JavaScript heap out of memory'
-      # (SIGABRT exit 134, não erro de tipo). Reproduzido e validado em
-      # 08/2026: com 4096MB o typecheck passa limpo em ~2min.
-      - name: Type check
-        run: bunx tsc --noEmit
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
 
       # ── Unit tests ──────────────────────────────────────────────────
       # Cobertura do contrato de escopo CRLF revalidada a CADA PR: o glob

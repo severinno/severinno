@@ -738,10 +738,10 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**12 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**13 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
-timing-budget e e2e-cache-budget). ⚠️ Não
+timing-budget, e2e-cache-budget e lint-guard). ⚠️ Não
 existe um job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda
 dentro da matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc +
 images, 1 sub-test do master). Custo medido em 08/2026 (Windows host, worktree
@@ -751,15 +751,17 @@ local, mediana de 3 runs warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (12 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (13 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
 O gap **9.1s (act) vs 39s (local)** no master sugere que o node no container
 roda mais rápido que o Windows local (warm cache/FS — não é causa provada, é
 observação).
-²Medido com os 12 sub-tests atuais em 08/2026 (o e2e-cache-budget roda em
-SKIP — exit 0 enquanto measure-e2e-cache.mjs não existir —, custo ~0s):
+²Medido com os 13 sub-tests em 08/2026 (o e2e-cache-budget roda em
+SKIP — exit 0 enquanto measure-e2e-cache.mjs não existir —, custo ~0s;
+⚠️ a medição local foi com 12 — o lint-guard, 13º, foi adicionado DEPOIS e
+não re-medido, custo estimado ~0.5s):
 mediana de 3 runs warm, **39s local** (39–40s). O **9.1s** de step no act
 com a imagem ubuntu-bun + `--pull=false` foi medido ANTES, com 10
 sub-tests, e não foi re-medido (o mesmo act mediu o actionlint em 3.6s e o
@@ -912,7 +914,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |           — (n/a)            |         <2s         |
 | `utf8-check` (748 arquivos, `--ci src/`)          |        ≈ **0.92s**         |          **7.46s**           |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |          **3.61s**           |    ~1-2s (est.)     |
-| `mutation-guards` (12 sub-tests node-puro)        |         ≈ **39s**          |          **9.1s**²           |   ~15-25s (est.)    |
+| `mutation-guards` (13 sub-tests node-puro)        |         ≈ **39s**          |          **9.1s**²           |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |         **4m37.6s**          |   ~35-45s (est.)³   |
 | `e2e-cache` (build Next.js + playwright cache)    |  **4m6s** (build, 1 run)   |     — (requer serviços)      | **~6-9 min (est.)** |
 

@@ -1,0 +1,45 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pr-check.yml — job jsdom-drift-guard (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+{
+  "name": "JSDOM component suite — drift baseline",
+  "runs-on": "ubuntu-latest",
+  "steps": [
+    {
+      "uses": "actions/checkout@v4",
+    },
+    {
+      "uses": "./.github/actions/setup-bun",
+      "with": {
+        "bun-version": "\${{ vars.BUN_VERSION }}",
+      },
+    },
+    {
+      "name": "Cache node_modules",
+      "uses": "actions/cache@v4",
+      "with": {
+        "key": "bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}",
+        "path": "node_modules",
+        "restore-keys": "bun-\${{ vars.BUN_VERSION }}-",
+      },
+    },
+    {
+      "name": "Install deps",
+      "run": "bun install --frozen-lockfile",
+    },
+    {
+      "name": "Mutation test — drift guard sensitivity (fixtures)",
+      "run": "bash scripts/test-mutation-jsdom-baseline.sh",
+    },
+    {
+      "name": "Check jsdom failure drift (baseline)",
+      "run": "node scripts/check-jsdom-baseline.mjs",
+    },
+    {
+      "name": "Summary",
+      "run": "echo "✅ JSDOM component suite — drift dentro do baseline (falhas pré-existentes não cresceram)."",
+    },
+  ],
+  "timeout-minutes": 25,
+}
+`;
