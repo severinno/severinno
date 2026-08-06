@@ -178,7 +178,28 @@ vi.mock("lucide-react", () => {
   return new Proxy(
     {},
     {
-      get: () => Icon,
+      // IMPORTANT: só devolve Icon para chaves de string (nomes de ícone).
+      // Symbols e chaves de interop (then, __esModule, Symbol.iterator, ...)
+      // precisam de undefined — caso contrário o módulo vira um thenable
+      // (get retorna função para `then`) e o vite-node trava no await do
+      // import, travando o worker (login/register-page testavam em hang).
+      get: (_target, prop) => {
+        if (typeof prop === "symbol") return undefined
+        if (prop === "then" || prop === "__esModule") return undefined
+        return Icon
+      },
+      // vitest valida exports nomeados com `prop in target` (trap has) e
+      // getOwnPropertyDescriptor; sem estes traps ele reporta
+      // "No X export is defined on the mock".
+      has: (_target, prop) => {
+        if (typeof prop === "symbol") return false
+        return prop !== "then" && prop !== "__esModule"
+      },
+      getOwnPropertyDescriptor: (_target, prop) => {
+        if (typeof prop === "symbol") return undefined
+        if (prop === "then" || prop === "__esModule") return undefined
+        return { configurable: true, enumerable: true, value: Icon, writable: true }
+      },
     },
   )
 })
