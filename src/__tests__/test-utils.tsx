@@ -386,3 +386,21 @@ export function cleanup(): void {
   }
   container = null
 }
+
+// ---------------------------------------------------------------------------
+// Global auto-cleanup
+// ---------------------------------------------------------------------------
+// Vitest roda os testes em singleFork (um worker compartilhado por todos os
+// arquivos). Se um arquivo esquecer de chamar cleanup() no afterEach, o root
+// custom (createRoot singleton) PERMANECE montado e o DOM vaza para o próximo
+// arquivo — ex.: o Select "Selecionar prestador" do quote-modal aparecendo nos
+// testes do address-autocomplete ("Found multiple elements with the role
+// combobox", 50× na varredura). Registrar afterEach aqui cobre QUALQUER arquivo
+// que importe @/__tests__/test-utils, mesmo sem afterEach(cleanup) próprio.
+// cleanup() é idempotente, então o afterEach explícito dos arquivos continua
+// funcionando sem double-unmount.
+import { afterEach } from "vitest"
+
+afterEach(() => {
+  cleanup()
+})

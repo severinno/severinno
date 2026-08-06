@@ -550,8 +550,10 @@ describe("AddressAutocomplete — loading state", () => {
     render(<AddressAutocomplete />)
     const input = screen.getByRole("combobox")
 
+    // Query única — evita o GLOBAL_CACHE do módulo (persiste entre testes do
+    // mesmo arquivo), forçando o caminho de fetch e o spinner de loading.
     await act(async () => {
-      fireEvent.change(input, { target: { value: "Av. Paulista" } })
+      fireEvent.change(input, { target: { value: "Rua Do Loading Teste" } })
     })
 
     await flushDebounce()
@@ -565,8 +567,9 @@ describe("AddressAutocomplete — loading state", () => {
     render(<AddressAutocomplete />)
     const input = screen.getByRole("combobox")
 
+    // Query única (mesma razão: não pode bater no GLOBAL_CACHE).
     await act(async () => {
-      fireEvent.change(input, { target: { value: "Av. Paulista" } })
+      fireEvent.change(input, { target: { value: "Rua Do Loading Resolve" } })
     })
     await flushDebounce()
 

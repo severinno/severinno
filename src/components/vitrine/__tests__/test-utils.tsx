@@ -1,6 +1,11 @@
 import { vi, afterEach } from "vitest"
-import { act, cleanup } from "@testing-library/react"
 import type { GeoSearchResult } from "@/lib/api"
+// IMPORTANT: cleanup/act MUST come from @/__tests__/test-utils (project's own
+// createRoot renderer), NOT from @testing-library/react. RTL's cleanup only
+// unmounts roots IT created; this suite renders with the project's custom
+// singleton root, so RTL's cleanup leaves the component mounted and state
+// (input/debounced/results) leaks across tests in the same file.
+import { act, cleanup } from "@/__tests__/test-utils"
 
 // ===========================================================================
 // Re-export shared mock objects from vitest.setup (which registers vi.mock)
