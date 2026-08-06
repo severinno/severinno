@@ -181,7 +181,7 @@ export function extractStepDurationFromJobsPayload(jobsPayload) {
 function fetchCurrentViaGh(runId, repo) {
   const res = spawnSync(
     "gh",
-    ["api", `repos/${repo}/actions/runs/${runId}/jobs`, "--per-page", "100", "--jq", "."],
+    ["api", `repos/${repo}/actions/runs/${runId}/jobs?per_page=100`, "--jq", "."],
     { encoding: "utf8", timeout: 60_000 },
   )
   if (res.error) return { error: `gh indisponível: ${res.error.message}` }
