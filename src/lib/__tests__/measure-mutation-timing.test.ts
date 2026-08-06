@@ -130,6 +130,65 @@ function runCliEnv(args: string[], env: Record<string, string>) {
   return { status: res.status ?? -1, stdout: `${res.stdout ?? ""}${res.stderr ?? ""}` }
 }
 
+/**
+ * Extrai o relatório JSON do output mesclado do CLI (stdout + stderr).
+ *
+ * O CLI imprime o relatório SEMPRE como a ÚLTIMA estrutura JSON (JSON.stringify
+ * com indent — primeira linha exatamente '{', última '}'). O ::notice::/
+ * ::warning:: vai para o stdout ANTES dele, e pode embutir o stderr do gh
+ * (ex.: erro do gh real no CI — 'gh repo view falhou (exit 1): ...' com
+ * chaves no texto) — o regex greedy /\{[\s\S]*\}/ quebrava nesse caso
+ * (capturava do 1º '{' do notice ao último '}' — texto não-JSON no meio).
+ * Âncora: primeira linha '{' a partir do FIM (a do relatório) até a última
+ * linha '}' — imune a chaves no texto do notice/erro.
+ */
+interface TimingReport {
+  found: boolean
+  source: string
+  jobName?: string
+  stepName?: string
+  durationSecs: number
+  conclusion?: string
+  zone: string
+  exceeded: boolean
+  budgetSecs?: number
+  alertSecs?: number
+  warnSecs?: number
+  warned?: boolean
+  noticed?: boolean
+  drifted?: boolean
+  driftPct?: number
+  driftSource?: string
+  driftWindow?: number
+  driftHistoryCount?: number
+  driftMedianSecs?: number | null
+  driftMaxPct?: number
+  warnSource?: string
+  warnWindow?: number
+  warnMargin?: number
+  warnMedianSecs?: number | null
+  warnHistoryCount?: number
+  baseline?: unknown
+  json?: string
+}
+
+function extractJsonReport(merged: string): TimingReport {
+  const lines = merged.split("\n")
+  let start = -1
+  let end = -1
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (end === -1 && lines[i] === "}") end = i
+    if (lines[i] === "{") {
+      start = i
+      break
+    }
+  }
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`relatório JSON não encontrado no output do CLI:\n${merged.slice(0, 200)}`)
+  }
+  return JSON.parse(lines.slice(start, end + 1).join("\n"))
+}
+
 // ── 1. extractMutationStep (função pura) ─────────────────────────────────
 
 describe("extractMutationStep", () => {
@@ -381,7 +440,7 @@ describe("measure-mutation-timing.mjs CLI — gate de budget (--max)", () => {
       // stderr que vem depois.
       expect(stdout).toContain("budget de payload EXCEDIDO")
       expect(stdout).toContain("35s > budget 10s")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.exceeded).toBe(true)
       expect(report.budgetSecs).toBe(10)
     } finally {
@@ -471,7 +530,7 @@ describe("measure-mutation-timing.mjs CLI — modo --act-log", () => {
       const { status, stdout } = runCli(["--act-log", file, "--max", "240", "--warn", "180"])
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("fail")
       expect(report.exceeded).toBe(true)
     } finally {
@@ -590,7 +649,7 @@ describe("measure-mutation-timing.mjs CLI — duas faixas do budget (--max + --w
       const { status, stdout } = runCli(["--jobs-file", file, "--max", "240", "--warn", "180"])
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO (faixa dura)")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("fail")
       expect(report.exceeded).toBe(true)
       expect(report.warned).toBe(false)
@@ -811,7 +870,7 @@ describe("measure-mutation-timing.mjs CLI — três faixas do budget (--alert + 
       ])
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO (faixa dura)")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("fail")
       expect(report.exceeded).toBe(true)
       expect(report.noticed).toBe(false)
@@ -947,7 +1006,7 @@ describe("measure-mutation-timing.mjs — baseline auto-atualizado (--publish-ba
       )
       expect(status).toBe(0)
       expect(stdout).toContain("[dry-run] gh variable set MUTATION_TIMING_BASELINE 42")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.baseline).toMatchObject({
         name: "MUTATION_TIMING_BASELINE",
         value: 42,
@@ -978,7 +1037,7 @@ describe("measure-mutation-timing.mjs — baseline auto-atualizado (--publish-ba
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO")
       expect(stdout).not.toContain("gh variable set")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.baseline).toBeUndefined()
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -1151,7 +1210,7 @@ describe("measure-mutation-timing.mjs — faixa soft derivada da mediana (--warn
       ])
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO (faixa dura)")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("fail")
       expect(report.exceeded).toBe(true)
       expect(report.budgetSecs).toBe(240)
@@ -1208,7 +1267,7 @@ describe("measure-mutation-timing.mjs — faixa soft derivada da mediana (--warn
       ])
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.exceeded).toBe(true)
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -1337,7 +1396,7 @@ describe("measure-mutation-timing.mjs — faixa soft derivada da mediana (--warn
       expect(status).toBe(0)
       expect(stdout).toContain("::notice::histórico da mediana indisponível")
       expect(stdout).toContain("gate opera SÓ no duro")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("ok")
       expect(report.exceeded).toBe(false)
       // Shape consistente com o primeiro-run (sem histórico): a derivação
@@ -1376,7 +1435,7 @@ describe("measure-mutation-timing.mjs — faixa soft derivada da mediana (--warn
       expect(status).toBe(1)
       expect(stdout).toContain("::notice::histórico da mediana indisponível")
       expect(stdout).toContain("budget de payload EXCEDIDO (faixa dura)")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("fail")
       expect(report.exceeded).toBe(true)
       expect(report.warnMedianSecs).toBeNull()
@@ -1488,7 +1547,7 @@ describe("measure-mutation-timing.mjs — gate de drift relativo (--fail-drift)"
       expect(status).toBe(1)
       expect(stdout).toContain("drift relativo EXCEDIDO")
       expect(stdout).toContain("+60.0% > limiar 50%")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("fail")
       expect(report.drifted).toBe(true)
       expect(report.exceeded).toBe(false) // teto NÃO foi tocado — drift pegou antes
@@ -1529,7 +1588,7 @@ describe("measure-mutation-timing.mjs — gate de drift relativo (--fail-drift)"
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO (faixa dura)")
       expect(stdout).toContain("250s > budget 240s")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("fail")
       expect(report.exceeded).toBe(true) // causa: TETO, não drift
       expect(report.drifted).toBe(false)
@@ -1588,7 +1647,7 @@ describe("measure-mutation-timing.mjs — gate de drift relativo (--fail-drift)"
       ])
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO (faixa dura)")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.exceeded).toBe(true)
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -1613,7 +1672,7 @@ describe("measure-mutation-timing.mjs — gate de drift relativo (--fail-drift)"
       ])
       expect(status).toBe(0)
       expect(stdout).toContain("::notice::histórico do drift indisponível")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.zone).toBe("ok")
       expect(report.driftPct).toBeNull()
       expect(report.driftHistoryCount).toBe(0)
@@ -1639,7 +1698,7 @@ describe("measure-mutation-timing.mjs — gate de drift relativo (--fail-drift)"
       ])
       expect(status).toBe(1)
       expect(stdout).toContain("budget de payload EXCEDIDO (faixa dura)")
-      const report = JSON.parse(stdout.match(/\{[\s\S]*\}/)![0])
+      const report = extractJsonReport(stdout)
       expect(report.exceeded).toBe(true)
     } finally {
       rmSync(dir, { recursive: true, force: true })

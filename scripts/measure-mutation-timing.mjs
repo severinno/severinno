@@ -902,16 +902,17 @@ function applyFailDriftDerivation(report, args, repo) {
 
 /** Busca o payload de jobs via gh (GH_TOKEN do env — usado pelo Actions). */
 function fetchJobsViaGh(runId, repo) {
-  // --per-page 100: a jobs API tem default de 30 jobs/página; o run semanal
-  // tem ~16+ jobs hoje e tende a crescer. NÃO usar --paginate aqui: o gh
-  // aplica o jq POR PÁGINA e concatena os resultados — como o endpoint
+  // per_page=100 via QUERY STRING: a jobs API tem default de 30 jobs/página; o
+  // run semanal tem ~16+ jobs hoje e tende a crescer. NÃO usar --paginate:
+  // o gh aplica o jq POR PÁGINA e concatena os resultados — como o endpoint
   // retorna um OBJETO ({ total_count, jobs }), 2+ páginas virariam
   // '{...}\n{...}' (JSON inválido para o JSON.parse abaixo). per_page=100
   // mantém o shape de objeto único que o parser espera (100 jobs >> qualquer
-  // run razoável).
+  // run razoável). ATENÇÃO: gh api NÃO aceita a flag --per-page (é do gh run
+  // list) — o caminho correto é a query string na URL (?per_page=100).
   const res = spawnSync(
     "gh",
-    ["api", `repos/${repo}/actions/runs/${runId}/jobs`, "--per-page", "100", "--jq", "."],
+    ["api", `repos/${repo}/actions/runs/${runId}/jobs?per_page=100`, "--jq", "."],
     {
       encoding: "utf8",
       timeout: 60_000,

@@ -261,7 +261,9 @@ function main() {
 
   // ── Fonte das falhas: fixture (--results-file, testes/mutation tests) ou
   // run REAL do vitest (spawn da suíte jsdom de componentes). ────────────
-  const failedFiles = collectFailures(cwd, resultsFile)
+  // let: reatribuído na confirmação de drift (failedFiles = second, linha ~331)
+  // quando o retry REPRODUZ o drift — const quebraria com TypeError no CI.
+  let failedFiles = collectFailures(cwd, resultsFile)
   const currentTotal = Object.values(failedFiles).reduce((a, b) => a + b, 0)
 
   // ── --update: regenera o baseline a partir do run atual ──────────────
