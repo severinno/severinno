@@ -738,10 +738,10 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**13 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**14 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
-timing-budget, e2e-cache-budget e lint-guard). ⚠️ Não
+timing-budget, e2e-cache-budget, lint-guard e mutation-count). ⚠️ Não
 existe um job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda
 dentro da matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc +
 images, 1 sub-test do master). Custo medido em 08/2026 (Windows host, worktree
@@ -751,17 +751,17 @@ local, mediana de 3 runs warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (13 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (14 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
 O gap **9.1s (act) vs 39s (local)** no master sugere que o node no container
 roda mais rápido que o Windows local (warm cache/FS — não é causa provada, é
 observação).
-²Medido com os 13 sub-tests em 08/2026 (o e2e-cache-budget roda em
+²Medido com os 14 sub-tests em 08/2026 (o e2e-cache-budget roda em
 SKIP — exit 0 enquanto measure-e2e-cache.mjs não existir —, custo ~0s;
-⚠️ a medição local foi com 12 — o lint-guard, 13º, foi adicionado DEPOIS e
-não re-medido, custo estimado ~0.5s):
+⚠️ a medição local foi com 12 — o lint-guard (13º) e o mutation-count (14º)
+foram adicionados DEPOIS e não re-medidos, custo estimado ~0.5s cada):
 mediana de 3 runs warm, **39s local** (39–40s). O **9.1s** de step no act
 com a imagem ubuntu-bun + `--pull=false` foi medido ANTES, com 10
 sub-tests, e não foi re-medido (o mesmo act mediu o actionlint em 3.6s e o
@@ -909,17 +909,42 @@ pesados do `pr-check.yml` + `e2e-cache.yml` na MESMA metodologia (mediana de 3
 runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 `--pull=false`):
 
-| Gate / job                                        | Local (Windows, node frio) | act + ubuntu-bun (step real) | CI real (GH hosted) |
-| :------------------------------------------------ | :------------------------: | :--------------------------: | :-----------------: |
-| 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |           — (n/a)            |         <2s         |
-| `utf8-check` (748 arquivos, `--ci src/`)          |        ≈ **0.92s**         |          **7.46s**           |    ~2-5s (est.)     |
-| `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |          **3.61s**           |    ~1-2s (est.)     |
-| `mutation-guards` (13 sub-tests node-puro)        |         ≈ **39s**          |          **9.1s**²           |   ~15-25s (est.)    |
-| `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |         **4m37.6s**          |   ~35-45s (est.)³   |
-| `e2e-cache` (build Next.js + playwright cache)    |  **4m6s** (build, 1 run)   |     — (requer serviços)      | **~6-9 min (est.)** |
+| Gate / job                                        | Local (Windows, node frio) |            act + ubuntu-bun (step real)            | CI real (GH hosted) |
+| :------------------------------------------------ | :------------------------: | :------------------------------------------------: | :-----------------: |
+| 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
+| `utf8-check` (748 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
+| `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
+| `mutation-guards` (14 sub-tests node-puro)        |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
+| `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |     | `lint-guard` (prettier --check + eslint zero) | ~**4min** (local)⁵ | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴ | ~4-7 min (est.) |
+| `typecheck` (tsc --noEmit, heap 4096MB)           |     **~2min** (local)      | **3m52s** cold / **2m31s** warm (step Type check)⁴ |   ~2-3 min (est.)   |
+| `e2e-cache` (build Next.js + playwright cache)    |  **4m6s** (build, 1 run)   |                — (requer serviços)                 | **~6-9 min (est.)** |
 
 ³Mesmo valor do bloco `mutation-coord-update` acima — estimativa, pendente de
 medição real (o `seed-guards.yml` não existe na branch default).
+
+⁴Medido via act (imagem `ghcr.io/severinno/ubuntu-bun:1.3.14`, `--bind` — o
+`docker cp` default falha no Windows com RWLayer nil, no `setup-bun` E no
+post-step de cache; por isso os valores de job são dos steps principais, não
+job end-to-end). `unused-deps-guard` (job inteiro, 2 runs: 26.8s cold /
+20.9s warm, ambos Job succeeded). `typecheck`: o step `Type check` custa
+3m52s (cold, 1ª run pós-mudança do lockfile) / 2m31s (warm, cache-hit) e
+PASSOU nos dois (sem erros TS); o job inclui ainda setup-bun (~8-15s), bun
+install (~8-9s) e prisma generate (~26-54s). `lint-guard`: lint total =
+prettier (2m20s / 1m53s) + eslint (5m3s / 4m30s) nas 2 runs (MESMA cache
+key — o delta é warm-up do FS/runner, não cache-hit), ambos os steps
+PASSARAM; soma ≈ 7m22s / 6m23s (+ setup ~14s + install ~23-31s). É o gate
+node-puro MAIS caro por PR — o eslint repo-wide (com `@typescript-eslint`
+sobre todo o src/) domina o custo. Nota:
+na 1ª medição do typecheck o job FALHOU no act — `src/app/api/chat/route.ts`
+importava `z-ai-web-dev-sdk` que NÃO estava no package.json (o tsc local
+passava por resolução de módulo vazando do node_modules do projeto pai,
+worktree aninhado). Corrigido adicionando a dep (0.0.18, existe no npm) — o
+typecheck do CI real teria quebrado o merge sem esse fix.
+⁵Medição local (Windows, node frio, 08/2026): prettier --check repo-wide
+≈ **85s** + eslint . --max-warnings 0 ≈ **146s** = **~4min** total (o
+estimado ~4-7 min de CI reflete runner carregado + variação de hardware;
+local 1 run, não mediana).
 
 O `e2e-cache` é o item MAIS caro por PR, mas é **condicional**: o trigger tem
 `paths:` (cache-manifest, api-server.ts, rotas de cache, `providers-cache.spec`,
@@ -935,6 +960,58 @@ guards — por design: cada mutation test roda o guard REAL contra uma mutação
 > rodou em cada commit da branch — reexecutá-los no push seria redundante. O
 > pre-push cobre exatamente o gap entre "commitei local" e "o CI vai rodar":
 > revalida os guards do `utf8-check.yml` + roda os testes da branch.
+
+### Auditoria de dependências — política ZERO-órfãs
+
+O `check-unused-deps.mjs` (job `unused-deps-guard` no `pr-check.yml`; node-puro, <2s,
+roda só no CI — fora do pre-commit por ser um scan repo-wide mais lento) é o
+**guarda de higiene do `package.json`**: escaneia TODO o código do repo (src/, scripts/,
+e2e/, mini-services/, configs, workflows, hooks, Dockerfiles) procurando referências a
+CADA dep (`dependencies` + `devDependencies`) e **falha (exit 1) quando uma dep tem
+ZERO referências** — a política é ZERO-órfãs.
+
+**Fluxo ao adicionar uma dependência nova:**
+
+1. **Use-a** — importe/referencie o pacote no código (a referência pode ser em
+   qualquer contexto: import TS, CLI `bunx`/`npx` em workflow, config como
+   `next.config`/`tailwind.config`/`postcss`, hook do husky ou Dockerfile).
+2. **Ou remova-a** — o guard rejeita dep adicionada e não usada; não existe
+   "baseline de órfãs" (diferente dos guards de baseline de secrets/jsdom/bun-audit,
+   que têm `--update`). O objetivo é ENCOLHER o lockfile.
+3. **Allowlist com razão** — apenas uso IMPLÍCITO (o pacote funciona sem nunca ser
+   referenciado em código): `@types/*` e `bun-types` (tipos via `tsconfig types`),
+   `@vitest/coverage-v8` (provider v8 da config), `sharp` (runtime implícito da
+   otimização de imagem do Next — remover quebraria produção), `husky`/`lint-staged`
+   (CLIs via `prepare`/pre-commit) e `prisma` (CLI de generate/migrate). A entrada
+   precisa da razão no header do guard — sem razão não entra.
+
+**5 deps órfãs removidas no bump 0.4.0** (08/2026, item #4 da auditoria —
+verificadas com ZERO hits em código/config/scripts, `bun install` só removeu,
+sem mudar versões): `next-intl`, `react-markdown`, `@mdxeditor/editor`,
+`@tanstack/react-table` e `zod-to-openapi` — 101 → **96 deps** (hoje 97: a
+`z-ai-web-dev-sdk` foi declarada DEPOIS, 08/2026, quando a medição via act do
+typecheck expôs que ela era importada pela rota `/api/chat` sem estar no
+package.json — ver nota ⁴ na tabela de overhead). Limitações
+documentadas do scan (prefix-substring ex.: `xstate` vs `@xstate/react`;
+arquivos ignorados por prefixo `_`/`dev.*`/`run-*`/`start-*`/`supervisor*`) estão no
+header do guard.
+
+> O job `unused-deps-guard` do `pr-check.yml` roda o mutation test
+> `test-mutation-unused-deps.sh` (controle limpo passa, órfã falha exit 1) seguido
+> do guard real — a política é revalidada a cada PR (o pre-commit não o roda;
+> o scan repo-wide é responsabilidade do CI). Para checagem local pontual:
+> `bun run check:unused-deps`.
+
+### Typecheck — gate de tipo do PR
+
+O `tsc --noEmit` (com `prisma generate` antes — o client é requisito do typecheck)
+roda no **job `typecheck` PARALELO** do `pr-check.yml` (desde 08/2026): antes ele
+rodava serial dentro do job `check` (lint → ts-nocheck → typecheck → unit tests),
+esticando o caminho crítico do PR. Hoje é o **gate de tipo oficial do PR** —
+bloqueia merge em qualquer erro TS (`bun run typecheck` local é o espelho do
+pre-commit, mesma semântica). O contrato do job é travado por
+`pr-check-typecheck-workflow.test.ts` (snapshot + verificação de que o job `check`
+NÃO mantém o step serial).
 
 ## Regression Guards
 
