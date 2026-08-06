@@ -15,7 +15,7 @@
  *   ✅ Persistence: ensureDir, atomic write, JSON round-trip, corrupted data
  */
 
-import { describe, it, expect, vi, beforeEach, afterAll } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from "vitest"
 
 // ---------------------------------------------------------------------------
 // Mock node:fs — prevents loadFromDisk from reading real files and prevents
@@ -99,6 +99,14 @@ function getFsMocks() {
 beforeEach(() => {
   vi.setSystemTime(NOW)
   resetQueryLog()
+})
+
+afterEach(() => {
+  // Restore real timers: vi.setSystemTime() installs fake timers lazily, and
+  // with singleFork:true this file shares the worker with every other test
+  // file. Without this, the mocked clock leaks into the next file's
+  // vi.useFakeTimers() ("setSystemTime was called already" error).
+  vi.useRealTimers()
 })
 
 // ===========================================================================
