@@ -69,19 +69,25 @@ vi.mock("lucide-react", () => ({
   FileText: () => <svg />,
   Loader2: () => <svg />,
   MapPin: () => <svg />,
+  Navigation: () => <svg />,
   Play: () => <svg />,
   Plus: () => <svg />,
   Send: () => <svg />,
+  Settings: () => <svg />,
   Smartphone: () => <svg />,
   Star: () => <svg />,
+  Users: () => <svg />,
   Volume2: () => <svg />,
   Wallet: () => <svg />,
+  X: () => <svg />,
   XCircle: () => <svg />,
 }))
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn().mockResolvedValue({ items: [], total: 0 }),
   apiPatch: mockApiPatch,
+  // geo-awareness-badge (renderizado pelo dashboard) importa este export
+  fetchRegionDemand: vi.fn().mockResolvedValue({ items: [], total: 0 }),
 }))
 
 vi.mock("@/lib/sounds", () => ({

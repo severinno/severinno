@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
+import { render, screen, fireEvent, act, cleanup } from "@/__tests__/test-utils"
 import AddressAutocomplete from "../address-autocomplete"
 
 import {
@@ -19,6 +19,10 @@ import {
 beforeEach(() => {
   vi.useFakeTimers()
   resetCommonMocks()
+})
+
+afterEach(() => {
+  cleanup()
 })
 
 // ===========================================================================
@@ -122,8 +126,10 @@ describe("AddressAutocomplete — snapshot", () => {
     const { asFragment } = render(<AddressAutocomplete />)
     const input = screen.getByRole("combobox")
 
+    // Termo ÚNICO para não bater no GLOBAL_CACHE em memória do módulo
+    // (persiste entre testes — o reset só limpa localStorage/mocks).
     await act(async () => {
-      fireEvent.change(input, { target: { value: "Av. Paulista" } })
+      fireEvent.change(input, { target: { value: "Rua Fetch Falha Unica" } })
     })
     await flushDebounce()
 
@@ -133,7 +139,7 @@ describe("AddressAutocomplete — snapshot", () => {
     expect(screen.queryByTestId("icon-loading")).toBeNull()
     expect(screen.queryByRole("listbox")).toBeNull()
     const inputEl = screen.getByRole("combobox") as HTMLInputElement
-    expect(inputEl.value).toBe("Av. Paulista")
+    expect(inputEl.value).toBe("Rua Fetch Falha Unica")
     expect(screen.getByLabelText("Limpar localização")).toBeTruthy()
     expect(asFragment()).toMatchSnapshot("fetch-error")
   })
