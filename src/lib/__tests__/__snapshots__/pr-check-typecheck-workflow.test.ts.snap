@@ -1,0 +1,47 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pr-check.yml — job typecheck (typecheck paralelo) > snapshot da estrutura do job (mudança estrutural exige revisão consciente) 1`] = `
+{
+  "name": "TypeCheck (tsc --noEmit)",
+  "runs-on": "ubuntu-latest",
+  "steps": [
+    {
+      "uses": "actions/checkout@v4",
+    },
+    {
+      "uses": "./.github/actions/setup-bun",
+      "with": {
+        "bun-version": "\${{ vars.BUN_VERSION }}",
+      },
+    },
+    {
+      "name": "Cache node_modules",
+      "uses": "actions/cache@v4",
+      "with": {
+        "key": "bun-\${{ vars.BUN_VERSION }}-\${{ hashFiles('bun.lock') }}",
+        "path": "node_modules",
+        "restore-keys": "bun-\${{ vars.BUN_VERSION }}-",
+      },
+    },
+    {
+      "name": "Install deps",
+      "run": "bun install --frozen-lockfile",
+    },
+    {
+      "name": "Generate Prisma client",
+      "run": "bunx prisma generate",
+    },
+    {
+      "env": {
+        "NODE_OPTIONS": "--max-old-space-size=4096",
+      },
+      "name": "Type check",
+      "run": "bunx tsc --noEmit",
+    },
+    {
+      "name": "Summary",
+      "run": "echo "✅ TypeScript typecheck (tsc --noEmit, heap 4096MB) passed."",
+    },
+  ],
+}
+`;

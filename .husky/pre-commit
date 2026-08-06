@@ -36,6 +36,20 @@ bash scripts/run-encoding-guards.sh
 # sobre arquivos já modificados).
 bun run barrel-lint
 
+# Prettier check STAGED — feedback local de formatação ANTES do lint-staged
+# (padrão do barrel-lint: o erro é pego com arquivo:linha cedo, não
+# silenciosamente corrigido). Escopo = arquivos do commit (staged) — o
+# repo-wide é responsabilidade do job lint-guard no CI (prettier --check
+# sobre TODO o repo a cada PR). Arquivos não-formatados que o lint-staged
+# corrigiria agora FALHAM o commit: rode `npx prettier --write <arquivo>`
+# e re-stage.
+STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
+if [ -n "$STAGED_FORMAT" ]; then
+  # O --check lê o working tree, não o índice: com git add -p o conteúdo
+  # checado pode diferir do que será commitado — caso raro no repo, aceito.
+  npx prettier --check --ignore-unknown $STAGED_FORMAT
+fi
+
 bun x lint-staged
 
 # Direct RTL import check — impede import de @testing-library/react

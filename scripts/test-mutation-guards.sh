@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 12 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 13 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -92,6 +92,7 @@ SUBTESTS=(
   "utf8-scope|UTF-8 — call site sem src/|scripts/test-mutation-utf8-scope.sh"
   "timing-budget|Timing — gate de budget 240/180/100s (três faixas) + drift exit 2 + faixa soft derivada da mediana (--warn-median) + gate de drift relativo (--fail-drift) do mutation-coord|scripts/test-mutation-timing-budget.sh"
   "e2e-cache-budget|E2E Cache — gate de budget 600s (10 min) + drift exit 2 (SKIP até medidor)|scripts/test-mutation-e2e-cache-budget.sh"
+  "lint-guard|Lint Guard — prettier --check + eslint --max-warnings 0 devem FALHAR (arquivo mal formatado / warning)|scripts/test-mutation-lint-guard.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -249,5 +250,5 @@ fi
 pass "MUTATION TESTS PASSED — os guards (bun literal, bun remoção, hooks simetria,"
 pass "README anchors/toc/images + reverse, docs anchor, produtor sentinel,"
 pass "mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget [240/180/100s + drift exit 2 + mediana],"
-pass "e2e-cache-budget [600s/10 min + drift exit 2]) detectam todas as mutações."
+pass "e2e-cache-budget [600s/10 min + drift exit 2], lint-guard [prettier + eslint]) detectam todas as mutações."
 exit 0

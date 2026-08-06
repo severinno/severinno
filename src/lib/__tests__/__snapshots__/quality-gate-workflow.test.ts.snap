@@ -1,0 +1,138 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`quality-gate.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml não lança) e casa com o snapshot 1`] = `
+{
+  "jobs": {
+    "barrel-lint": {
+      "name": "Barrel Lint",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "name": "Check barrel imports (fail) and script headers (warn)",
+          "run": "node scripts/barrel-lint.mjs || exit_code=$?
+if [ "\${exit_code:-0}" -eq 1 ]; then
+  echo "❌ Barrel import violations found — failing."
+  exit 1
+elif [ "\${exit_code:-0}" -eq 3 ]; then
+  echo "⚠️  Script header documentation violations found — non-blocking (fix in progress)."
+fi
+",
+        },
+      ],
+    },
+    "cache-manifest": {
+      "name": "Cache Manifest",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "name": "Validate cache manifest against route handlers",
+          "run": "npx tsx scripts/validate-cache-manifest.ts",
+        },
+      ],
+    },
+    "coverage-badge": {
+      "name": "Coverage Badge",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "name": "Generate coverage badge SVG",
+          "run": "npx tsx scripts/coverage-badge.ts --save",
+        },
+        {
+          "name": "Upload badge artifact",
+          "uses": "actions/upload-artifact@v4",
+          "with": {
+            "name": "badge-coverage",
+            "path": "docs/badge-coverage.svg",
+            "retention-days": 1,
+          },
+        },
+      ],
+    },
+    "coverage-gaps": {
+      "name": "Coverage Gaps",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "name": "Validate all API routes have test coverage",
+          "run": "npx tsx scripts/coverage-gaps.ts --ci",
+        },
+      ],
+    },
+    "security-audit": {
+      "name": "Security Audit",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "name": "Audit dependencies for known vulnerabilities",
+          "run": "bun run security:audit",
+        },
+      ],
+    },
+  },
+  "name": "Quality Gate",
+  "on": {
+    "workflow_call": null,
+  },
+}
+`;

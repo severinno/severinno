@@ -10,7 +10,10 @@ set -euo pipefail
 if [ "$3" = "1" ]; then
   CHANGED=$(git diff --name-only "$1" "$2" 2>/dev/null || echo "")
 
-  if echo "$CHANGED" | grep -qE "^package\.json$|^pnpm-lock\.yaml$|^bun\.lockb$"; then
+  # O repo unificou os lockfiles em SÓ bun.lock (removidos package-lock.json
+  # e pnpm-lock.yaml em 08/2026) — os padrões antigos (pnpm-lock.yaml,
+  # bun.lockb) não disparam mais o install automático quando o lockfile muda.
+  if echo "$CHANGED" | grep -qE "^package\.json$|^bun\.lock$"; then
     echo "📦 Dependências alteradas — executando bun install..."
     bun install
     echo "✅ bun install concluído"

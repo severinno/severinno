@@ -1,0 +1,205 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml não lança) e casa com o snapshot 1`] = `
+{
+  "concurrency": {
+    "cancel-in-progress": true,
+    "group": "\${{ github.workflow }}-\${{ github.ref }}",
+  },
+  "env": {
+    "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/severinno_test",
+    "NODE_VERSION": 22,
+    "REDIS_URL": "redis://localhost:6379",
+    "SESSION_SECRET": "ci-session-secret-at-least-32-characters-long",
+  },
+  "jobs": {
+    "build": {
+      "name": "Build",
+      "needs": [
+        "lint",
+        "typecheck",
+        "utf8-check",
+        "quality-gate",
+        "test",
+      ],
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "run": "bun run db:generate",
+        },
+        {
+          "env": {
+            "SKIP_TYPESCRIPT_CHECK": "true",
+          },
+          "run": "bun run build",
+        },
+        {
+          "uses": "actions/upload-artifact@v4",
+          "with": {
+            "name": "standalone-build",
+            "path": ".next/standalone/",
+            "retention-days": 3,
+          },
+        },
+      ],
+    },
+    "deploy": {
+      "if": "github.ref == 'refs/heads/main' && github.event_name == 'push'",
+      "name": "Deploy",
+      "needs": [
+        "build",
+      ],
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/download-artifact@v4",
+          "with": {
+            "name": "standalone-build",
+            "path": ".next/standalone/",
+          },
+        },
+        {
+          "run": "echo "Build ready for deployment"",
+        },
+      ],
+    },
+    "lint": {
+      "name": "Lint",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "run": "bun run lint",
+        },
+      ],
+    },
+    "quality-gate": {
+      "uses": "./.github/workflows/quality-gate.yml",
+    },
+    "test": {
+      "name": "Tests",
+      "runs-on": "ubuntu-latest",
+      "services": {
+        "postgres": {
+          "env": {
+            "POSTGRES_DB": "severinno_test",
+            "POSTGRES_PASSWORD": "postgres",
+            "POSTGRES_USER": "postgres",
+          },
+          "image": "postgres:16-alpine",
+          "options": "--health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5",
+          "ports": [
+            "5432:5432",
+          ],
+        },
+      },
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "env": {
+            "DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/severinno_test",
+          },
+          "run": "bun run test:run",
+        },
+        {
+          "name": "Generate coverage badge",
+          "run": "npx tsx scripts/coverage-badge.ts --save",
+        },
+        {
+          "if": "github.ref == 'refs/heads/main' && github.event_name == 'push'",
+          "name": "Commit updated badge (push to main only)",
+          "run": "git config user.name "github-actions[bot]"
+git config user.email "github-actions[bot]@users.noreply.github.com"
+git add docs/badge-coverage.svg
+if git diff --cached --quiet; then
+  echo "No changes to badge — skipping commit"
+else
+  git commit -m "chore: update coverage badge [skip ci]"
+  git push
+fi
+",
+        },
+      ],
+    },
+    "typecheck": {
+      "name": "TypeCheck",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "run": "bun run db:generate",
+        },
+        {
+          "env": {
+            "NODE_OPTIONS": "--max-old-space-size=4096",
+          },
+          "name": "Type check",
+          "run": "bunx tsc --noEmit",
+        },
+      ],
+    },
+    "utf8-check": {
+      "uses": "./.github/workflows/utf8-check.yml",
+    },
+  },
+  "name": "CI/CD",
+  "on": {
+    "pull_request": {
+      "branches": [
+        "main",
+      ],
+    },
+    "push": {
+      "branches": [
+        "main",
+        "develop",
+      ],
+    },
+  },
+}
+`;

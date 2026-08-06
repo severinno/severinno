@@ -1,0 +1,31 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pr-check.yml — job unused-deps-guard > snapshot da estrutura do job (mudança estrutural exige revisão consciente) 1`] = `
+{
+  "name": "Unused Deps Guard (package.json hygiene)",
+  "runs-on": "ubuntu-latest",
+  "steps": [
+    {
+      "uses": "actions/checkout@v4",
+    },
+    {
+      "uses": "./.github/actions/setup-bun",
+      "with": {
+        "bun-version": "\${{ vars.BUN_VERSION }}",
+      },
+    },
+    {
+      "name": "Mutation test — unused deps guard sensitivity (fixtures)",
+      "run": "bash scripts/test-mutation-unused-deps.sh",
+    },
+    {
+      "name": "Check unused deps (package.json vs code refs)",
+      "run": "node scripts/check-unused-deps.mjs",
+    },
+    {
+      "name": "Summary",
+      "run": "echo "✅ No unused dependencies — every package.json dep is referenced in code (sharp/@types/CLIs are implicit)."",
+    },
+  ],
+}
+`;
