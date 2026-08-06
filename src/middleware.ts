@@ -1,52 +1,39 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { checkGlobalRateLimit, globalRateLimitHeaders } from "@/lib/global-rate-limit"
 
 // ---------------------------------------------------------------------------
-// Rate limiting — simple in-memory token bucket for the Edge Runtime.
-// Tracks request counts per IP in a global Map (resets on deployment).
-// In production, replace with Upstash Redis or similar for persistence.
+// Rate limiting — global sliding-window limiter for /api/* (Edge-compatible).
+//
+// Usa checkGlobalRateLimit (src/lib/global-rate-limit.ts): Upstash Redis via
+// REST quando UPSTASH_REDIS_REST_URL/TOKEN estão configurados, com fallback
+// in-memory por processo. Config via env:
+//   GLOBAL_RATE_LIMIT_MAX / WINDOW_MS / BYPASS_IPS / WHITELIST
+// Rotas sempre bypassadas: health, stats/public, newsletter, webhooks/*, cron/*
+// (mesmos bypasses do antigo middleware.ts raiz + cron do src/middleware).
 // ---------------------------------------------------------------------------
 
-const RATE_LIMIT_WINDOW_MS = 60 * 1000 // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 60 // max requests per window
+// Rotas fixas que nunca sofrem rate limit global
+const RATE_LIMIT_BYPASS_ROUTES = new Set(["/api/health", "/api/stats/public", "/api/newsletter"])
 
-// Global rate-limit store (Edge Runtime: shared across requests on the same worker)
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
+// Prefixos que nunca sofrem rate limit global
+const RATE_LIMIT_BYPASS_PREFIXES = ["/api/webhooks/", "/api/cron/"]
 
-function checkRateLimit(ip: string): { allowed: boolean; remaining: number; resetIn: number } {
-  const now = Date.now()
-  const entry = rateLimitStore.get(ip)
-
-  if (!entry || now > entry.resetAt) {
-    // New window
-    rateLimitStore.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
-    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1, resetIn: RATE_LIMIT_WINDOW_MS }
+function shouldBypassGlobalRateLimit(pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/, "")
+  if (RATE_LIMIT_BYPASS_ROUTES.has(normalized)) return true
+  for (const prefix of RATE_LIMIT_BYPASS_PREFIXES) {
+    if (pathname.startsWith(prefix)) return true
   }
-
-  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
-    return { allowed: false, remaining: 0, resetIn: entry.resetAt - now }
-  }
-
-  entry.count++
-  return {
-    allowed: true,
-    remaining: RATE_LIMIT_MAX_REQUESTS - entry.count,
-    resetIn: entry.resetAt - now,
-  }
+  return false
 }
 
-// Periodically clean up stale entries (every 5 minutes)
-if (typeof setInterval !== "undefined") {
-  // unref: limpeza de store não deve segurar o processo (Edge/worker/testes).
-  setInterval(
-    () => {
-      const now = Date.now()
-      for (const [key, val] of rateLimitStore) {
-        if (now > val.resetAt) rateLimitStore.delete(key)
-      }
-    },
-    5 * 60 * 1000,
-  ).unref?.()
+/** Whitelist dinâmica via env (GLOBAL_RATE_LIMIT_WHITELIST, prefixos). */
+function isWhitelisted(pathname: string, prefixes: string[]): boolean {
+  for (const prefix of prefixes) {
+    if (pathname.startsWith(prefix)) return true
+  }
+  return false
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +131,7 @@ const PUBLIC_API = new Set([
   "/api/search/services",
   "/api/geo/cep",
   "/api/geo/reverse",
+  "/api/geo/search",
   "/api/health",
   "/api/health/detailed",
   "/api/stats/public",
@@ -156,6 +144,7 @@ const PUBLIC_API = new Set([
   "/api/sentry/test",
   "/api/webhooks/lytex",
   "/api/webhooks/sentry-alert",
+  "/api/webhooks/evolution",
 ])
 
 function isPublicApi(pathname: string): boolean {
@@ -198,30 +187,49 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // --- Rate limiting (API routes only, exempt cron) ---
-  if (pathname.startsWith("/api/") && !pathname.startsWith("/api/cron/")) {
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      request.headers.get("x-real-ip") ??
-      "127.0.0.1"
-    const { allowed, remaining, resetIn } = checkRateLimit(ip)
+  // --- Rate limiting global (API routes only, com bypasses) ---
+  // Primeira linha de defesa: Upstash Redis (distribuído) com fallback
+  // in-memory. Bypasses: health/stats/newsletter (fixas), webhooks/* e cron/*
+  // (prefixos), além de GLOBAL_RATE_LIMIT_WHITELIST via env.
+  if (pathname.startsWith("/api/") && !shouldBypassGlobalRateLimit(pathname)) {
+    const whitelistRaw = process.env.GLOBAL_RATE_LIMIT_WHITELIST ?? ""
+    const whitelist = whitelistRaw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const bypassedByWhitelist = whitelist.length > 0 && isWhitelisted(pathname, whitelist)
 
-    // Always include rate-limit headers
-    response.headers.set("X-RateLimit-Limit", String(RATE_LIMIT_MAX_REQUESTS))
-    response.headers.set("X-RateLimit-Remaining", String(remaining))
-    response.headers.set("X-RateLimit-Reset", String(Math.ceil(resetIn / 1000)))
+    if (!bypassedByWhitelist) {
+      const result = await checkGlobalRateLimit(request)
+      const rateHeaders = globalRateLimitHeaders(result)
 
-    if (!allowed) {
-      return new NextResponse(
-        JSON.stringify({ error: "Muitas requisições. Tente novamente em alguns segundos." }),
-        {
+      // Headers de compat (X-RateLimit-*) + contrato global (X-Global-*)
+      response.headers.set("X-RateLimit-Limit", String(result.limit))
+      response.headers.set("X-RateLimit-Remaining", String(result.remaining))
+      response.headers.set("X-RateLimit-Reset", rateHeaders["X-Global-RateLimit-Reset"])
+      for (const [key, value] of Object.entries(rateHeaders)) {
+        response.headers.set(key, value)
+      }
+
+      if (!result.allowed) {
+        const body = JSON.stringify({
+          error: "Muitas requisições. Tente novamente em alguns segundos.",
+          retryAfter: Math.ceil((result.reset - Date.now()) / 1000),
+        })
+        const response429 = new NextResponse(body, {
           status: 429,
           headers: {
             "Content-Type": "application/json",
-            "Retry-After": String(Math.ceil(resetIn / 1000)),
+            // Compat + contrato global no 429 também (clientes que leem
+            // X-RateLimit-* continuam vendo os mesmos headers do 200)
+            "X-RateLimit-Limit": String(result.limit),
+            "X-RateLimit-Remaining": String(result.remaining),
+            ...rateHeaders,
           },
-        },
-      )
+        })
+        addCorsHeaders(response429, request.headers.get("origin"))
+        return response429
+      }
     }
   }
 

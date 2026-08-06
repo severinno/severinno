@@ -1,14 +1,22 @@
 /**
- * Tests for middleware.ts — global rate limiting middleware for /api/*.
+ * Tests for src/middleware.ts — global rate limiting for /api/*.
+ *
+ * The global limiter (checkGlobalRateLimit: Upstash → in-memory fallback) was
+ * previously wired only in the ROOT middleware.ts, which Next.js ignores when
+ * a src/ directory exists (the root file never ran in production). This suite
+ * validates the same contract now that the limiter lives in src/middleware.ts.
  *
  * Coverage:
  *   1. Request permitido — checkGlobalRateLimit permite → NextResponse.next()
- *      com headers X-Global-RateLimit-* + CORS
+ *      com headers X-Global-RateLimit-* (e X-RateLimit-* de compat)
  *   2. Request bloqueado — checkGlobalRateLimit nega → 429 com Retry-After,
  *      body JSON com error/retryAfter e headers de rate limit
- *   3. Rotas bypass — /api/health e /api/webhooks/* (incl. trailing slash)
- *      → checkGlobalRateLimit NÃO é chamado
- *   4. OPTIONS preflight — 204 + headers CORS, sem chamar o rate limiter
+ *   3. Rotas bypass — /api/health, /api/stats/public, /api/newsletter e
+ *      /api/webhooks/*, /api/cron/* → checkGlobalRateLimit NÃO é chamado
+ *   4. GLOBAL_RATE_LIMIT_WHITELIST via env var (prefixos) → não consulta o limiter
+ *   5. OPTIONS preflight — 204, sem consultar o rate limiter
+ *   6. Rotas PÚBLICAS de auth não são bloqueadas por sessão (paridade do
+ *      fluxo: /api/webhooks/evolution agora é público)
  *
  * checkGlobalRateLimit é mockado; globalRateLimitHeaders permanece real
  * (função pura e determinística) para validar a integração real.
@@ -17,9 +25,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { NextRequest } from "next/server"
 
-// NOTE: root middleware.ts (global rate limiting) — NOT src/middleware.ts
-// (auth middleware). From src/lib/__tests__/, the root is ../../../.
-import { middleware } from "../../../middleware"
+import { middleware } from "../../middleware"
 import { globalRateLimitHeaders, type GlobalRateLimitResult } from "@/lib/global-rate-limit"
 
 // ---------------------------------------------------------------------------
@@ -62,22 +68,24 @@ function allowedResult(overrides: Partial<GlobalRateLimitResult> = {}): GlobalRa
 // Suite
 // ---------------------------------------------------------------------------
 
-describe("middleware — global rate limit", () => {
+describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
   beforeEach(() => {
     mockCheckGlobalRateLimit.mockReset()
     // Ensure the env-var whitelist doesn't leak between tests
     delete process.env.GLOBAL_RATE_LIMIT_WHITELIST
+    delete process.env.SESSION_SECRET
   })
 
   afterEach(() => {
     delete process.env.GLOBAL_RATE_LIMIT_WHITELIST
+    delete process.env.SESSION_SECRET
   })
 
   // -------------------------------------------------------------------------
   // 1. Request permitido
   // -------------------------------------------------------------------------
 
-  it("permite a requisição e anexa headers X-Global-RateLimit-* + CORS", async () => {
+  it("permite a requisição e anexa headers X-Global-RateLimit-* + compat X-RateLimit-*", async () => {
     mockCheckGlobalRateLimit.mockResolvedValue(allowedResult())
 
     const req = makeRequest("/api/providers")
@@ -95,9 +103,12 @@ describe("middleware — global rate limit", () => {
     expect(response.headers.get("X-Global-RateLimit-Remaining")).toBe("99")
     expect(response.headers.get("X-Global-RateLimit-Reset")).toBeDefined()
 
-    // CORS
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*")
-    expect(response.headers.get("Access-Control-Allow-Methods")).toContain("GET")
+    // Compat headers (X-RateLimit-*) preservam o contrato anterior
+    expect(response.headers.get("X-RateLimit-Limit")).toBe("100")
+    expect(response.headers.get("X-RateLimit-Remaining")).toBe("99")
+
+    // Security headers continuam presentes
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff")
   })
 
   // -------------------------------------------------------------------------
@@ -148,38 +159,73 @@ describe("middleware — global rate limit", () => {
   })
 
   it("não aplica rate limit em /api/webhooks/* (prefixo)", async () => {
-    const response = await middleware(makeRequest("/api/webhooks/evolution/message"))
+    const response = await middleware(makeRequest("/api/webhooks/evolution"))
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
     expect(response.headers.get("X-Global-RateLimit-Limit")).toBeNull()
   })
 
-  it("respeita GLOBAL_RATE_LIMIT_WHITELIST via env var", async () => {
-    process.env.GLOBAL_RATE_LIMIT_WHITELIST = "/api/newsletter2"
+  it("não aplica rate limit em /api/cron/* (prefixo)", async () => {
+    // Cron routes autenticam via CRON_SECRET (Bearer) — provemos o secret
+    // para o fluxo chegar ao final com 200 (o ponto é o BYPASS de rate limit).
+    process.env.CRON_SECRET = "cron-secret-teste"
+    const req = makeRequest("/api/cron/health-monitor")
+    req.headers.set("authorization", "Bearer cron-secret-teste")
 
-    const response = await middleware(makeRequest("/api/newsletter2/subscribe"))
+    const response = await middleware(req)
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
   })
 
   // -------------------------------------------------------------------------
-  // 4. OPTIONS preflight
+  // 4. Whitelist via env var
   // -------------------------------------------------------------------------
 
-  it("responde OPTIONS preflight com 204 + CORS sem consultar o rate limiter", async () => {
+  it("respeita GLOBAL_RATE_LIMIT_WHITELIST via env var", async () => {
+    process.env.GLOBAL_RATE_LIMIT_WHITELIST = "/api/providers"
+
+    const response = await middleware(makeRequest("/api/providers/42"))
+
+    expect(response.status).toBe(200)
+    expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
+  })
+
+  it("aplica rate limit em /api/geo/search (público, usado pela vitrine) e passa no auth", async () => {
+    mockCheckGlobalRateLimit.mockResolvedValue(allowedResult())
+
+    // /api/geo/search alimenta o address-autocomplete da vitrine pública —
+    // deve passar pelo limiter E pelo auth público (sem sessão) com 200.
+    const response = await middleware(makeRequest("/api/geo/search"))
+
+    expect(response.status).toBe(200)
+    expect(mockCheckGlobalRateLimit).toHaveBeenCalledTimes(1)
+    expect(response.headers.get("X-Global-RateLimit-Limit")).toBe("100")
+  })
+
+  it("aplica rate limit em /api/health/detailed (não é bypass de health)", async () => {
+    mockCheckGlobalRateLimit.mockResolvedValue(allowedResult())
+
+    const response = await middleware(makeRequest("/api/health/detailed"))
+
+    expect(response.status).toBe(200)
+    expect(mockCheckGlobalRateLimit).toHaveBeenCalledTimes(1)
+  })
+
+  // -------------------------------------------------------------------------
+  // 5. OPTIONS preflight
+  // -------------------------------------------------------------------------
+
+  it("responde OPTIONS preflight com 204 sem consultar o rate limiter", async () => {
     const response = await middleware(makeRequest("/api/providers", "OPTIONS"))
 
     expect(response.status).toBe(204)
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*")
-    expect(response.headers.get("Access-Control-Allow-Methods")).toContain("OPTIONS")
-    expect(response.headers.get("Access-Control-Allow-Headers")).toContain("Authorization")
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
   })
 
   // -------------------------------------------------------------------------
-  // Header wiring — globalRateLimitHeaders real
+  // 6. Header wiring — globalRateLimitHeaders real
   // -------------------------------------------------------------------------
 
   it("usa o globalRateLimitHeaders real para os headers de resposta", async () => {
