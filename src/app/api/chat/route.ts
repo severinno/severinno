@@ -13,8 +13,8 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
  * Body: { message: string, history?: Array<{role: string, content: string}> }
  */
 export async function POST(req: NextRequest) {
-  await assertRateLimit(req, RATE_LIMITS.general)
   try {
+    await assertRateLimit(req, RATE_LIMITS.general)
     const body = await req.json()
     const message = body.message as string | undefined
     const history = body.history as Array<{ role: string; content: string }> | undefined

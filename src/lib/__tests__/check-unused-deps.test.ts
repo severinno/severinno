@@ -33,14 +33,17 @@
 
 import { describe, it, expect, afterEach } from "vitest"
 import { spawnSync } from "node:child_process"
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs"
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import {
   depPattern,
+  depERE,
   isAllowlisted,
   collectCodeFiles,
   findOrphanDeps,
+  findOrphanDepsStaged,
+  isScannedPath,
 } from "../../../scripts/check-unused-deps.mjs"
 
 const SCRIPT = resolve(process.cwd(), "scripts/check-unused-deps.mjs")
@@ -80,8 +83,77 @@ function runCheck(dir: string, args: string[] = []) {
   })
 }
 
+/** Cria um repo git real (init + config + commit base) num temp dir. */
+function makeGitRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "unused-deps-git-"))
+  tmpDirs.push(dir)
+  writeFileSync(
+    join(dir, "package.json"),
+    JSON.stringify({ scripts: {}, dependencies: { lodash: "^4.17.0" } }, null, 2),
+    "utf8",
+  )
+  mkdirSync(join(dir, "src"))
+  writeFileSync(join(dir, "src", "index.ts"), 'import lodash from "lodash"\n', "utf8")
+  git(dir, ["init", "-q", "-b", "main"])
+  git(dir, ["config", "user.email", "test@example.com"])
+  git(dir, ["config", "user.name", "Test"])
+  git(dir, ["add", "-A"])
+  git(dir, ["commit", "-qm", "base"])
+  return dir
+}
+
+function git(dir: string, args: string[]): { status: number | null; stdout: string } {
+  const r = spawnSync("git", args, { cwd: dir, encoding: "utf8" })
+  return { status: r.status, stdout: r.stdout }
+}
+
+/** Atualiza o package.json do repo e dá git add (staged). */
+function stageDep(dir: string, dep: string, version = "^1.0.0"): void {
+  const pkgPath = join(dir, "package.json")
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<string, unknown>
+  const deps = (pkg.dependencies ?? {}) as Record<string, string>
+  deps[dep] = version
+  pkg.dependencies = deps
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), "utf8")
+  git(dir, ["add", "package.json"])
+}
+
 afterEach(() => {
   for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+})
+
+// ── depERE (git grep ERE — espelho do depPattern) ─────────────────────────
+
+describe("depERE", () => {
+  it("gera ERE POSIX com boundary espelhando o depPattern", () => {
+    // ERE POSIX é para `git grep -E` — NÃO é compilável por RegExp JS
+    // ([:alnum:] é classe POSIX). Aqui validamos o SHAPE da string; a
+    // semântica real (casa import, não casa substring, casa CLI) é coberta
+    // pelos testes CLI que rodam o git grep de verdade.
+    expect(depERE("lodash")).toBe("(^|[^[:alnum:]_\\-])lodash([^[:alnum:]_\\-]|$)")
+    expect(depERE("@types/node")).toBe("(^|[^[:alnum:]_\\-])@types/node([^[:alnum:]_\\-]|$)")
+  })
+
+  it("não escapa hífen (literal fora de classe no ERE — mesmo do depPattern)", () => {
+    // O hífen do nome (zod-to-openapi) é literal em ERE fora de classe;
+    // pontos e outros metacaracteres SÃO escapados.
+    const ere = depERE("zod-to-openapi")
+    expect(ere).toBe("(^|[^[:alnum:]_\\-])zod-to-openapi([^[:alnum:]_\\-]|$)")
+    expect(depERE("@babel/core")).toContain("@babel/core")
+  })
+})
+
+// ── isScannedPath (filtro dos hits do git grep --cached) ──────────────────
+
+describe("isScannedPath", () => {
+  it("aceita código e rejeita docs/lockfiles/temp", () => {
+    expect(isScannedPath("src/index.ts")).toBe(true)
+    expect(isScannedPath(".husky/pre-commit")).toBe(true)
+    expect(isScannedPath("docs/API.md")).toBe(false)
+    expect(isScannedPath("bun.lock")).toBe(false)
+    expect(isScannedPath("run-server.sh")).toBe(false) // IGNORE_PREFIX run-
+    expect(isScannedPath("node_modules/x.ts")).toBe(false) // dir ALWAYS_IGNORE
+  })
 })
 
 // ── depPattern ────────────────────────────────────────────────────────────
@@ -292,5 +364,114 @@ describe("check-unused-deps.mjs — CLI real (fixtures)", () => {
     const res = runCheck(dir)
     expect(res.status).toBe(2)
     expect(res.stderr).toContain("package.json ausente")
+  })
+})
+
+// ── MODO --staged (pre-commit) — repo git real ────────────────────────────
+
+describe("check-unused-deps.mjs --staged — CLI real (repo git)", () => {
+  it("exit 0: sem diff staged do package.json (caso comum do pre-commit)", () => {
+    const dir = makeGitRepo()
+    const res = runCheck(dir, ["--staged"])
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("nenhuma dep adicionada")
+  })
+
+  it("exit 1: dep ADICIONADA no staged sem referência no índice", () => {
+    const dir = makeGitRepo()
+    stageDep(dir, "is-odd")
+    const res = runCheck(dir, ["--staged"])
+    expect(res.status).toBe(1)
+    expect(res.stderr).toContain("is-odd")
+    expect(res.stderr).toContain("--staged")
+  })
+
+  it("exit 0: dep ADICIONADA com import TAMBÉM staged (par commitado)", () => {
+    const dir = makeGitRepo()
+    stageDep(dir, "is-odd")
+    writeFileSync(
+      join(dir, "src", "index.ts"),
+      'import lodash from "lodash"\nimport isOdd from "is-odd"\n',
+      "utf8",
+    )
+    git(dir, ["add", "src/index.ts"])
+    const res = runCheck(dir, ["--staged"])
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("todas com referência")
+  })
+
+  it("exit 1: import em arquivo NÃO staged NÃO conta (o commit não o carrega)", () => {
+    const dir = makeGitRepo()
+    stageDep(dir, "is-odd")
+    // import no working tree mas NÃO staged — o commit carregaria a dep órfã
+    writeFileSync(
+      join(dir, "src", "index.ts"),
+      'import lodash from "lodash"\nimport isOdd from "is-odd"\n',
+      "utf8",
+    )
+    const res = runCheck(dir, ["--staged"])
+    expect(res.status).toBe(1)
+    expect(res.stderr).toContain("is-odd")
+    expect(res.stderr).toContain("git add")
+  })
+
+  it("exit 0: dep allowlist adicionada (sharp) não acusa", () => {
+    const dir = makeGitRepo()
+    stageDep(dir, "sharp")
+    const res = runCheck(dir, ["--staged"])
+    expect(res.status).toBe(0)
+  })
+
+  it("--json: shape com mode/added/orphans", () => {
+    const dir = makeGitRepo()
+    stageDep(dir, "is-odd")
+    const res = runCheck(dir, ["--staged", "--json"])
+    expect(res.status).toBe(1)
+    const j = JSON.parse(res.stdout)
+    expect(j.mode).toBe("staged")
+    expect(j.added).toEqual(["is-odd"])
+    expect(j.orphanCount).toBe(1)
+    expect(j.orphans).toEqual(["is-odd"])
+  })
+})
+
+describe("findOrphanDepsStaged (função pura — índice vs HEAD)", () => {
+  it("detecta dep adicionada órfã e ignora a usada no mesmo par", () => {
+    const dir = makeGitRepo()
+    stageDep(dir, "is-odd")
+    writeFileSync(
+      join(dir, "src", "index.ts"),
+      'import lodash from "lodash"\nimport isOdd from "is-odd"\n',
+      "utf8",
+    )
+    git(dir, ["add", "src/index.ts"])
+    // 2ª dep órfã: só no package.json staged
+    stageDep(dir, "chalk")
+    const { added, orphans } = findOrphanDepsStaged(dir)
+    expect(added.sort()).toEqual(["chalk", "is-odd"])
+    expect(orphans.map((o) => o.dep)).toEqual(["chalk"])
+  })
+
+  it("sem diff staged → added vazio", () => {
+    const dir = makeGitRepo()
+    const { added, orphans } = findOrphanDepsStaged(dir)
+    expect(added).toEqual([])
+    expect(orphans).toEqual([])
+  })
+
+  it("referência em script do package.json staged conta (CLI)", () => {
+    const dir = makeGitRepo()
+    // adiciona dep + script que a usa, ambos staged
+    const pkgPath = join(dir, "package.json")
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      dependencies?: Record<string, string>
+      scripts?: Record<string, string>
+    }
+    pkg.dependencies = { ...pkg.dependencies, eslint: "^9" }
+    pkg.scripts = { lint: "eslint ." }
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), "utf8")
+    git(dir, ["add", "package.json"])
+    const { orphans } = findOrphanDepsStaged(dir)
+    expect(orphans).toEqual([])
   })
 })

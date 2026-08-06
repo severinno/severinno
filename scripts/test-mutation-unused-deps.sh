@@ -12,6 +12,12 @@
 #                           — o guard DEVE FALHAR (exit 1) citando a dep.
 #   Cenário B (REMOVER ref): remover o import da dep usada deixa ela órfã —
 #                           o guard DEVE FALHAR (exit 1) citando a dep.
+#   Cenário C (--staged):   num repo GIT real (init + commit base), uma dep
+#                           ADICIONADA no git diff --cached sem ref no índice
+#                           — o guard --staged DEVE FALHAR (exit 1); com o
+#                           import TAMBÉM staged, DEVE PASSAR (exit 0). Prova
+#                           o modo pre-commit end-to-end (o import em arquivo
+#                           não-staged NÃO conta — o commit não o carrega).
 #
 # E o CONTROLE: o mesmo fixture com a dep usada passa (exit 0) — provando que
 # a falha vem da MUTAÇÃO, não de um fixture quebrado.
@@ -27,7 +33,10 @@
 #   2. CONTROLE: adiciona import da órfã → guard exit 0 ('todas com referência')
 #   3. MUTAÇÃO A: remove o import da órfã → guard DEVE FALHAR (exit 1)
 #   4. MUTAÇÃO B: remove o import da USADA também → guard DEVE FALHAR (exit 1)
-#   5. Cleanup (trap EXIT — rm -rf do temp)
+#   5. CENÁRIO C (--staged): git init + commit base → dep órfã staged DEVE
+#      FALHAR (exit 1); import staged junto → DEVE PASSAR (exit 0); import só
+#      no working tree (não staged) → DEVE FALHAR (exit 1)
+#   6. Cleanup (trap EXIT — rm -rf do temp)
 #
 # Usage:
 #   ./scripts/test-mutation-unused-deps.sh
@@ -63,8 +72,12 @@ fail() { echo -e "  ${RED}❌${NC} $1"; }
 info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 
 # ── Cleanup (trap EXIT — SEMPRE remove o temp, mesmo com falha) ──────────
+# GIT_TMP (Cenário C, repo git real) nasce DEPOIS do trap — a variável vazia
+# no rm -rf é inócua no caso comum; a inicialização previne o leak se o
+# cenário C falhar antes do rm -rf do próprio passo.
+GIT_TMP=""
 cleanup() {
-  rm -rf "$TMP_DIR"
+  rm -rf "$TMP_DIR" "$GIT_TMP"
 }
 trap cleanup EXIT
 
@@ -180,10 +193,97 @@ fi
 pass "Mutação B DETECTADA: guard falhou citando $EXPECTED_ORPHAN_B (exit $EXIT)"
 
 # ═════════════════════════════════════════════════════════════════════════
+# STEP 7-10 — CENÁRIO C (--staged): repo git real, dep adicionada no diff
+# ═════════════════════════════════════════════════════════════════════════
+
+info "STEP 7: Cenário C — transforma o fixture em repo GIT real (init + commit base)..."
+GIT_TMP="$(mktemp -d)"
+git -C "$GIT_TMP" init -q -b main
+(cd "$GIT_TMP" && git config user.email test@example.com && git config user.name Test)
+mkdir -p "$GIT_TMP/src"
+cat > "$GIT_TMP/package.json" <<'EOF'
+{
+  "scripts": {},
+  "dependencies": { "lodash": "^4.17.0" }
+}
+EOF
+cat > "$GIT_TMP/src/index.ts" <<'EOF'
+import lodash from "lodash"
+EOF
+git -C "$GIT_TMP" add -A
+git -C "$GIT_TMP" commit -qm base
+
+run_staged() {
+  set +e
+  OUTPUT="$(node "$GUARD" --staged --root "$GIT_TMP" 2>&1)"
+  EXIT=$?
+  set -e
+}
+
+info "STEP 8: Controle staged — dep órfã ADICIONADA no staged DEVE FALHAR (exit 1)..."
+# heredoc (não node -e com path embutido — o MSYS/Windows não converte paths
+# dentro de strings do script; o cat é determinístico em ambos os shells)
+cat > "$GIT_TMP/package.json" <<'EOF'
+{
+  "scripts": {},
+  "dependencies": {
+    "lodash": "^4.17.0",
+    "is-odd": "^3.0.1"
+  }
+}
+EOF
+git -C "$GIT_TMP" add package.json
+run_staged
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (--staged): dep is-odd adicionada no diff --cached sem ref no"
+  fail "índice passou (exit 0). O modo --staged não pega dep órfã do commit."
+  exit 1
+fi
+if ! echo "$OUTPUT" | grep -Fq "is-odd"; then
+  fail "--staged falhou (exit $EXIT) mas NÃO citou a dep is-odd."
+  echo "$OUTPUT" | tail -6
+  exit 1
+fi
+pass "--staged DETECTA dep órfã do commit: falhou citando is-odd (exit $EXIT)"
+
+info "STEP 9: Controle staged — import TAMBÉM staged DEVE PASSAR (exit 0)..."
+cat > "$GIT_TMP/src/index.ts" <<'EOF'
+import lodash from "lodash"
+import isOdd from "is-odd"
+EOF
+git -C "$GIT_TMP" add src/index.ts
+run_staged
+if [ "$EXIT" -ne 0 ]; then
+  fail "--staged rejeitou o par CORRETO (dep + import staged, exit $EXIT):"
+  echo "$OUTPUT" | tail -6
+  exit 1
+fi
+pass "--staged aceita o par commitado (dep + import staged, exit 0)"
+
+info "STEP 10: Controle staged — import SÓ no working tree (não staged) DEVE FALHAR..."
+# desfaz o import staged mas mantém no working tree: o commit carregaria a
+# dep órfã (o --staged lê o ÍNDICE, não o working tree)
+git -C "$GIT_TMP" restore --staged src/index.ts
+run_staged
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (--staged): import fora do índice contou como ref — o guard"
+  fail "deveria ler o ÍNDICE (o que será commitado), não o working tree."
+  exit 1
+fi
+if ! echo "$OUTPUT" | grep -Fq "git add"; then
+  fail "--staged falhou (exit $EXIT) mas a mensagem não orienta o git add."
+  echo "$OUTPUT" | tail -6
+  exit 1
+fi
+pass "--staged NÃO conta import fora do índice (orienta git add, exit $EXIT)"
+rm -rf "$GIT_TMP"
+
+# ═════════════════════════════════════════════════════════════════════════
 # Result (cleanup roda no trap EXIT)
 # ═════════════════════════════════════════════════════════════════════════
 
 echo ""
-pass "MUTATION TEST PASSED — o guard de unused-deps pega dep órfã (exit 1)"
-pass "e passa com o fixture limpo (exit 0)"
+pass "MUTATION TEST PASSED — o guard de unused-deps pega dep órfã (exit 1),"
+pass "passa com o fixture limpo (exit 0) e o modo --staged pega dep órfã do"
+pass "commit no pre-commit (exit 1)"
 exit 0

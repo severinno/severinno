@@ -315,7 +315,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 13 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 15 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -357,6 +357,10 @@ jobs:
   #   lint-guard      → test-mutation-lint-guard.sh
   #                    (prettier --check + eslint --max-warnings 0 devem
   #                    FALHAR: arquivo mal formatado / warning de lint)
+  #   no-leaked-imports → test-mutation-no-leaked-imports.sh
+  #                    (import resolvendo no node_modules do PAI — o bug do
+  #                    z-ai-web-dev-sdk — + dep inexistente devem FALHAR;
+  #                    dep declarada com install pendente deve PASSAR)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
   # completo do script granular + verdict por sub-test + tabela final —
   # granularidade de diagnóstico preservada. Exit final agregado: 0 se
@@ -369,7 +373,7 @@ jobs:
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (13 node-pure mutation tests)
+    name: Mutation guards master (15 node-pure mutation tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -378,7 +382,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 13 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard)."
+        run: echo "✅ All 15 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports)."
 
   # ── Hooks Symmetry Guard (dedicado) ─────────────────────────────────
   # Fast gate (node puro, <1s): roda o guard REAL de simetria
@@ -852,6 +856,29 @@ jobs:
 
       - name: Summary
         run: echo "✅ No unused dependencies — every package.json dep is referenced in code (sharp/@types/CLIs are implicit)."
+
+  # Guard do Nº de sub-tests do master — deriva N do array SUBTESTS do
+  # scripts/test-mutation-guards.sh e falha se o name/summary deste MESMO
+  # job (mutation-guards) ou o README divergirem (drift 12→13 em 08/2026 foi
+  # corrigido à mão; o guard impede a repetição). Node-puro, <1s, sem deps.
+  mutation-count-guard:
+    name: Mutation Count Guard (matrix ↔ job name/summary ↔ README)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Mutation test — count guard sensitivity (fixtures)
+        run: bash scripts/test-mutation-mutation-count.sh
+
+      - name: Check mutation count consistency (matrix vs pr-check vs README)
+        run: node scripts/check-mutation-count.mjs
+
+      - name: Summary
+        run: echo "✅ Mutation test count (N sub-tests) is consistent across the matrix, pr-check.yml and README."
 
   bun-audit-guard:
     name: Bun Audit Guard (deps — drift baseline)

@@ -256,6 +256,30 @@ agregada para hooks e CI.
 
 ---
 
+## 12. Dependências — `check-unused-deps`
+
+**O que protege:** zero órfãs no `package.json` — toda dep (`dependencies` +
+`devDependencies`) tem pelo menos UMA referência real no código do repo
+(src/, scripts/, e2e/, mini-services/, configs, workflows, hooks, Dockerfiles).
+Dep adicionada e não usada = falha (exit 1); não existe baseline de órfãs.
+
+**Por que existe:** dep órfã é lockfile que cresce sem uso, superfície de
+ataque (deps nunca atualizadas no audit) e confusão para o próximo dev
+(qual dep é runtime de verdade?). O guard trava o lockfile ENCOLHENDO — a
+política é ZERO-órfãs, não "N órfãs toleradas".
+
+**Onde roda:** job `unused-deps-guard` do pr-check.yml (mutation test
+`test-mutation-unused-deps.sh` + guard real) — fora do pre-commit por ser um
+scan repo-wide mais lento; checagem local pontual: `bun run check:unused-deps`.
+
+**Política completa (fluxo ao adicionar dep: use / remova / allowlist com
+razão; allowlist de uso implícito; as 5 deps removidas no bump 0.4.0; as
+limitações do scan):** veja a seção [Auditoria de dependências — política
+ZERO-órfãs](../README.md#auditoria-de-dependências-política-zero-órfãs) —
+fonte única, sem duplicação neste catálogo para não driftar.
+
+---
+
 ## Regra de ouro para guards novos
 
 1. **Cabe numa família existente?** Se sim, estenda a família (com teste +
