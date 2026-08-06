@@ -6,6 +6,20 @@ import * as matchers from "@testing-library/jest-dom/matchers"
 
 expect.extend(matchers)
 
+// ── Sanitiza env GIT_* herdado do hook do git ────────────────────────────
+// Quando o pre-push/pre-commit roda sob `git push`/`git commit`, o git seta
+// GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE no ambiente do hook — e os workers do
+// vitest (singleFork) herdam isso. Os testes de CLI que spawnam `git` em
+// repos TEMPORÁRIOS (git init + cwd) operariam no repo REAL em vez do
+// fixture (36 falhas no test:guards só sob o hook real). Limpa as vars GIT_*
+// para o processo: nenhum código do repo depende delas explicitamente, e os
+// helpers que precisam do repo atual derivam o caminho via cwd/rev-parse.
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith("GIT_")) {
+    delete process.env[key]
+  }
+}
+
 // ── Mock ioredis globally (prevents "Unhandled error event" in tests) ─────
 // Rate-limit and Redis modules may try to connect to a real Redis instance
 // during tests. This mock prevents unhandled error events.
