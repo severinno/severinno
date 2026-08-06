@@ -1184,3 +1184,38 @@ no src/middleware.ts (restaurar a camada), (b) remover middleware.ts raiz +
 middleware.test.ts (aceitar só o token bucket), ou (c) manter como está
 (documentado). Recomendação: (a) antes do go-live — a camada Upstash foi
 construída intencionalmente (commit 489686f) e hoje não protege nada.
+---
+
+## [2026-08-06] Fix do rate limit Upstash inativo — integrado no src/middleware.ts
+
+Resolução do achado sinalizado no commit c40b72b: o middleware.ts raiz (rate
+limit global Upstash) NUNCA rodava em produção — com src/ dir, o Next ignora o
+middleware da raiz e só carrega src/middleware.ts.
+
+O que foi feito:
+
+- **src/middleware.ts**: substituído o token bucket local (60 req/min, in-memory
+  Map) pelo `checkGlobalRateLimit` + `globalRateLimitHeaders`
+  (`@/lib/global-rate-limit`): Upstash Redis via REST quando
+  UPSTASH_REDIS_REST_URL/TOKEN configurados, com fallback in-memory por
+  processo. Config via GLOBAL_RATE_LIMIT_MAX/WINDOW_MS/BYPASS_IPS/WHITELIST.
+  Bypasses: /api/health, /api/stats/public, /api/newsletter (fixas) +
+  /api/webhooks/_, /api/cron/_ (prefixos) + whitelist env. Headers de compat
+  X-RateLimit-* mantidos ao lado do contrato X-Global-RateLimit-*; o 429 agora
+  carrega os dois + CORS (addCorsHeaders) — paridade com o antigo middleware raiz.
+- **Fix colateral de produção**: `/api/geo/search` adicionado ao PUBLIC_API —
+  o address-autocomplete da vitrine pública chama essa rota sem sessão e, com
+  SESSION_SECRET setado em produção, o middleware 401aria (bug latente
+  pré-existente que os testes fail-open mascaravam). `/api/webhooks/evolution`
+  também adicionado ao PUBLIC_API (paridade com lytex/sentry-alert — sem ele,
+  o webhook evolution recebia 401).
+- **Removidos**: `middleware.ts` raiz (dead code em runtime) e
+  `src/lib/__tests__/middleware.test.ts` (testava o middleware morto).
+- **Novo teste**: `src/lib/__tests__/middleware-global-rate-limit.test.ts`
+  (11 testes) migrado para o src/middleware.ts com paths públicos EXATOS
+  (não dependem do fail-open de SESSION_SECRET ausente), cobrindo allowed/429/
+  bypasses (health, webhooks, cron)/whitelist/OPTIONS/header wiring real +
+  os 2 fix de auth (geo/search público com limiter; health/detailed limitado).
+
+Validação: vitest 62/62 (4 suites de rate limit) · tsc 0 erros · prettier limpo ·
+guards (no-leaked-imports, workflow-refs, unused-deps, barrel-lint) exit 0.
