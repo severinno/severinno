@@ -51,6 +51,13 @@ describe("POST /api/admin/geo-reindex", () => {
   beforeEach(() => {
     _mockRole = "ADMIN"
     vi.clearAllMocks()
+    // Defesa contra vazamento de fake timers de OUTRAS suítes: o pool do
+    // vitest.config.unit.ts roda todas as suítes num ÚNICO worker (singleFork)
+    // e o estado global de timers cruza a fronteira entre arquivos. Uma suíte
+    // que esquece de restaurar `vi.useFakeTimers()` congelaria o
+    // performance.now() (que a rota usa para medir durationMs) aqui — este
+    // beforeEach garante timers REAIS antes de cada teste, isolando a suíte.
+    vi.useRealTimers()
   })
 
   it("reindexes all 3 spatial indexes successfully", async () => {
@@ -131,7 +138,15 @@ describe("POST /api/admin/geo-reindex", () => {
 
   it("includes durationMs for each reindexed index", async () => {
     vi.mocked(db.$executeRawUnsafe).mockImplementation((async () => {
-      await new Promise((r) => setTimeout(r, 1))
+      // Garante elapsed REAL >= 2ms medido pelo MESMO clock que a rota usa
+      // (performance.now). O setTimeout(1) original era flaky no worker
+      // quente/isolado: podia disparar sem avançar o relógio (durationMs 0),
+      // quebrando `toBeGreaterThan(0)` só no run completo — busy-wait é
+      // determinístico e imune à velocidade do worker.
+      const t0 = performance.now()
+      while (performance.now() - t0 < 2) {
+        /* busy-wait: simula um REINDEX que leva tempo mensurável */
+      }
       return [{ result: "OK" }] as any
     }) as any)
 

@@ -14,7 +14,9 @@ describe("RegisterPage (/register)", () => {
 
   it("renders the register form with title", () => {
     render(<RegisterPageClient />)
-    expect(screen.getByText("Criar conta")).toBeDefined()
+    // "Criar conta" existe no título (h2) e no botão de submit — usa role
+    // para ser unívoco e não quebrar com múltiplos matches.
+    expect(screen.getByRole("heading", { name: "Criar conta" })).toBeDefined()
     expect(screen.getByText("Cadastre-se como cliente ou prestador de serviços")).toBeDefined()
   })
 

@@ -14,7 +14,9 @@ describe("LoginPage (/login)", () => {
 
   it("renders the login form with title", () => {
     render(<LoginPageClient />)
-    expect(screen.getByText("Entrar")).toBeDefined()
+    // "Entrar" existe no título (h2) e no botão de submit — usa role para
+    // ser unívoco e não quebrar com múltiplos matches.
+    expect(screen.getByRole("heading", { name: "Entrar" })).toBeDefined()
     expect(screen.getByText("Acesse sua conta Severinno")).toBeDefined()
   })
 

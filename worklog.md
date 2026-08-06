@@ -1029,3 +1029,119 @@ pr-check-mutation-timing-act-workflow.test.ts, estava fora da bateria por nome
 errado — rodado: 86/86). Prettier --write aplicado em 2 arquivos (reformat
 neutro), prettier --check 0 em 9 arquivos, vitest pós-reformat 86/86, CRLF 0,
 barrel 0, guards de docs 0, workflow-refs 0.
+
+---
+
+## [2026-08-06] Commit 6a900e1 — guards de dependências + fix do rate-limit do /api/chat (20 arquivos)
+
+Commit local na branch `freebuff/new-thread-thms5x3m7xt8k4` (8 novos + 12 modificados,
++3091/−57), estilo `feat:` pt-BR do repo. Corpo coeso: higiene de dependências +
+fronteira de imports + primeiros testes da rota de chat.
+
+### Escopo do commit
+
+- **check-no-leaked-imports.mjs (novo, ~600 linhas)**: import bare que resolve para
+  FORA do node_modules do worktree falha exit 1 — o bug do `z-ai-web-dev-sdk`
+  mascarado pelo node_modules do PROJETO PAI (worktree aninhado em
+  C:/PROJETOS/severinno/). Achou `pg@8.22.0` usado pelo geo-benchmark-gist sem
+  declarar no package.json (job semanal quebraria no CI limpo) — declarado junto
+  com z-ai-web-dev-sdk@0.0.18. 19 testes unit + CLI + mutation test (3 cenários:
+  leak do pai / dep inexistente / install pendente passa) + 15º sub-test do master.
+- **check-unused-deps --staged**: dep órfã INTRODUZIDA pelo commit falha no
+  pre-commit (~290ms vs ~850ms do scan completo; import em arquivo não-staged não
+  conta) + contrato de política README↔guard (check-unused-deps-policy-contract.
+  test.ts, 5 testes — ALLOWLIST exportada e REAL_REMOVED derivado do header) +
+  cenário C no test-mutation-unused-deps.sh.
+- **check-mutation-count.mjs (novo)**: deriva N do array SUBTESTS do master e
+  falha se job name/summary do pr-check ou o README divergirem — trava o drift
+  12→15 corrigido à mão; job mutation-count-guard no pr-check.
+- **test-mutation-lint-guard.sh**: cenário do bloco REAL do pre-commit (prettier
+  --check em staged de repo git temp com diff --cached).
+- **chat/route.ts**: `assertRateLimit` movido para DENTRO do try (429 vira JSON
+  com headers via handleError, padrão das demais rotas; antes propagava como erro
+  não tratado → 500) + primeiros 10 testes unitários (rate-limit 429, mensagem
+  vazia, sucesso, trim de histórico p/ 10, falhas do provider).
+- **docs**: README (15 sub-tests, no-leaked-imports, linha do unused-deps staged
+  na tabela Git Hooks) e GUARDS.md (seção 12 do check-unused-deps com link único
+  para a política ZERO-órfãs).
+
+### Detalhe do processo
+
+- O pre-commit do repo travou o commit uma vez: o `check-unused-deps.mjs --staged`
+  foi adicionado ao `.husky/pre-commit` sem a linha na tabela '## Git Hooks' do
+  README — exatamente o contrato que o guard de simetria (check-hooks-symmetry)
+  protege. Linha adicionada e o commit fechou.
+- Pré-commit também rodou eslint e pegou 3 issues pré-existentes no trabalho do
+  no-leaked-imports (CODE_EXTENSIONS dead code + 2× require() no teste +
+  readFileSync faltando no import) — corrigidos antes do commit.
+
+### Validação (tudo verde)
+
+- vitest 76/76 (5 suítes: chat-route 10, unused-deps 30, policy-contract 5,
+  no-leaked 19, mutation-count 12) · tsc --noEmit 0 erros.
+- Guards reais exit 0: unused-deps full + staged, no-leaked-imports,
+  mutation-count, mutation-jobs, workflow-refs.
+- Mutation tests: mutation-count e no-leaked-imports exit 0. Varredura de segredos
+  no diff: 0.
+
+## [2026-08-06] Bateria pós-commit — test:unit 228/228 + fix do hang do worker (lucide Proxy)
+
+Validação completa para confirmar que o 6a900e1 não regrediu fora das suítes
+tocadas. Achado principal: o `bun run test:unit` NUNCA completava de verdade —
+travava com 'Worker exited unexpectedly' em login-page/register-page, e o run
+inteiro parava em 217/228 arquivos. Diagnóstico por bisect de probes: o mock
+Proxy do lucide-react em `src/app/__tests__/test-setup.tsx` retornava `Icon`
+(função) para TODA chave, incluindo `Symbol.iterator`, `Symbol.toStringTag` e
+`then` — o vite-node via o módulo como THENABLE e ficava aguardando o `then`
+para sempre (hang no worker). Fix: traps `get`/`has`/`getOwnPropertyDescriptor`
+guardando symbols + chaves de interop (then, __esModule) — só nomes de string
+viram Icon. + 2 asserts ambíguos ('Entrar'/'Criar conta' existem no h2 E no
+botão) trocados por getByRole('heading').
+
+Resultado da bateria: **test:unit 228/228 arquivos, 3494/3494 testes verdes**
+(antes parava em 217/228 — o fix destravou a suíte inteira); master
+test-mutation-guards.sh 15/15 PASS; tsc 0; guards reais (unused-deps,
+no-leaked-imports, mutation-count, workflow-refs, hooks-symmetry) todos exit 0;
+prettier/eslint 0. E2E spot com stack docker real (postgis+redis+dev server):
+health.spec 3/3 + smoke /api/providers /api/categories /api/search 200;
+providers-cache.spec 6/9 (3 falhas de Cache-Control são artefato de dev-mode —
+o CI roda `next start` prod onde cacheControlPublic aplica; 6a900e1 não toca
+nem providers/route.ts nem api-server). home.spec falha localmente (h1 some na
+hidratação com DB vazio em dev) mas NÃO roda em nenhum workflow e o commit não
+toca arquivos da home — pré-existente. Observações de ambiente: `bun run build`
+falha no Windows (output: standalone + pnpm symlink EPERM no .pnpm/sharp —
+limitação local; CI é Linux).
+
+## [2026-08-06] Medição pós-merge PENDENTE — pr-check nunca rodou no CI real
+
+Estado da medição de overhead do PR (seção Git Hooks/CI do README, tabela de
+overhead): as células de `unused-deps-guard` (~10-15s est.) e `typecheck`
+(~2-3 min est.) ainda são ESTIMATIVAS — substituição por medições reais do
+GitHub-hosted runner segue pendente de merge.
+
+Verificado nesta thread: branch `freebuff/new-thread-thms5x3m7xt8k4` NÃO está
+mergeada na default `release/v0.4.0`; gh autenticado (scope repo); pr-check.yml
+EXISTE na default; mas **ZERO runs de pr-check.yml nos últimos 200 runs** — o
+workflow nunca executou no GitHub (só via act local). O 404 de
+`gh run list --workflow=pr-check.yml` é sintoma de workflow com zero runs
+registrados (GitHub só indexa por nome após a 1ª execução), não de arquivo
+ausente.
+
+Receita validada para rodar pós-merge (o merge não dispara pr-check — trigger é
+pull_request/merge_group/workflow_dispatch):
+
+```
+gh workflow run pr-check.yml --ref release/v0.4.0
+RID=$(gh run list --workflow=pr-check.yml --limit 1 --json databaseId -q '.[0].databaseId')
+gh run view $RID --json jobs --jq \
+  '.jobs[] | select(.name | contains("Unused Deps Guard")) | .steps[] | select(.name == "Check unused deps") | {name, startedAt, completedAt}'
+gh run view $RID --json jobs --jq \
+  '.jobs[] | select(.name | contains("TypeCheck")) | .steps[] | select(.name == "Type check") | {name, startedAt, completedAt}'
+```
+
+Duração = `((.completedAt | fromdateiso8601) - (.startedAt | fromdateiso8601))` —
+mesmo mecanismo do measure-mutation-timing.mjs; shape camelCase (startedAt/
+completedAt) validado num run real do ci.yml (30438401889). Bloqueio atual: o
+pre-push falha no hang do login-page (agora corrigido) — o merge fast-forward
+(57 commits à frente, 0 atrás, sem workflow de push para release/v0.4.0) fica
+liberado após o commit do fix do test-setup.
