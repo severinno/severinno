@@ -1145,3 +1145,42 @@ completedAt) validado num run real do ci.yml (30438401889). Bloqueio atual: o
 pre-push falha no hang do login-page (agora corrigido) — o merge fast-forward
 (57 commits à frente, 0 atrás, sem workflow de push para release/v0.4.0) fica
 liberado após o commit do fix do test-setup.
+
+---
+
+## [2026-08-06] Pequenos itens técnicos — 65 arquivos mortos removidos (14MB) + achado do middleware raiz
+
+### Limpeza executada (git rm, 65 arquivos, ~14MB)
+
+- **63 PNGs de screenshot órfãos na raiz** (admin-_.png, qa-_.png, final-_.png,
+  screenshot-_.png, sidebar-*.png, after-redesign, client-panel, current-state,
+  landing-page-current, login-dialog, mobile-view, verify-screenshot, etc.) —
+  ZERO referências em src/, README.md, docs/, .github/, scripts/, e2e/
+  (grep estrito de ".png" nos consumers; admin-panel/client-panel nas fontes
+  são strings de view, não arquivos).
+- **`--full-page`** (PNG 1280x577 de ferramenta de screenshot, 380K) — órfão.
+- **`download/homepage-check.png`** — órfão (mantido download/README.md).
+
+Validado após a remoção: tsc 0 erros · check-unused-deps 98 deps 0 órfãs ·
+check-no-leaked-imports 0 · check-workflow-refs 0 · check-mutation-jobs 0 ·
+check-readme-images (7 imagens resolvem) · prettier limpo.
+
+### Achado sinalizado (NÃO removido — decisão de produto/segurança pendente)
+
+- **`middleware.ts` raiz é dead code em RUNTIME**: com o diretório `src/`,
+  o Next.js ignora o middleware da raiz e só carrega `src/middleware.ts`.
+  Consequência: o **rate limit global Upstash** (checkGlobalRateLimit) do
+  middleware raiz **NUNCA roda em produção** — bug latente de segurança.
+  `src/middleware.ts` tem rate limit próprio (token bucket 60 req/min, in-memory)
+  - auth + CSP + CORS, então a proteção básica existe — mas a camada global
+    Upstash documentada no header do arquivo raiz está inativa.
+- `src/lib/global-rate-limit.ts` **continua viva e usada** (rotas admin
+  /api/admin/global-rate-limit-status + reset + testes) — NÃO remover.
+- `src/lib/__tests__/middleware.test.ts` testa o middleware raiz órfão
+  (import de `../../../middleware`) — cobertura de código que não roda.
+
+**Decisões possíveis (escolher uma):** (a) integrar o rate limit global Upstash
+no src/middleware.ts (restaurar a camada), (b) remover middleware.ts raiz +
+middleware.test.ts (aceitar só o token bucket), ou (c) manter como está
+(documentado). Recomendação: (a) antes do go-live — a camada Upstash foi
+construída intencionalmente (commit 489686f) e hoje não protege nada.
