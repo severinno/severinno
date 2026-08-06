@@ -19,7 +19,7 @@ import type { ProviderCard } from "@/lib/api"
 // Hoisted mocks — vi.hoisted avoids TDZ with vi.mock hoisting
 // ---------------------------------------------------------------------------
 
-const mockUseQuery = vi.hoisted(() => vi.fn())
+const mockUseInfiniteQuery = vi.hoisted(() => vi.fn())
 const mockOpenProvider = vi.hoisted(() => vi.fn())
 const mockFormatBRL = vi.hoisted(() => vi.fn((v: number) => `R$ ${v.toFixed(2)}`))
 const mockCn = vi.hoisted(() => vi.fn((...c: any[]) => c.filter(Boolean).join(" ")))
@@ -36,7 +36,7 @@ let geoState: Record<string, unknown> = {
 // ---------------------------------------------------------------------------
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: (options: unknown) => mockUseQuery(options),
+  useInfiniteQuery: (options: unknown) => mockUseInfiniteQuery(options),
   QueryClient: class {},
   QueryClientProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
@@ -251,17 +251,20 @@ function setGeoState(overrides: Record<string, unknown>) {
   Object.assign(geoState, overrides)
 }
 
-/** Create a mock query result for useQuery. */
+/** Create a mock query result for useInfiniteQuery. */
 function mockQueryResult(overrides: {
   isLoading?: boolean
   data?: { items: ProviderCard[] } | null
-  isFetching?: boolean
+  isFetchingNextPage?: boolean
+  hasNextPage?: boolean
   error?: Error | null
 }) {
-  mockUseQuery.mockReturnValue({
-    data: overrides.data ?? { items: MOCK_PROVIDERS.slice(0, 4) },
+  mockUseInfiniteQuery.mockReturnValue({
+    data: { pages: [overrides.data ?? { items: MOCK_PROVIDERS.slice(0, 4) }] },
     isLoading: overrides.isLoading ?? false,
-    isFetching: overrides.isFetching ?? false,
+    isFetchingNextPage: overrides.isFetchingNextPage ?? false,
+    hasNextPage: overrides.hasNextPage ?? false,
+    fetchNextPage: vi.fn(),
     error: overrides.error ?? null,
   })
 }

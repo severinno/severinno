@@ -15,7 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
+import { render, screen, fireEvent, act, cleanup } from "@/__tests__/test-utils"
 import AddressAutocomplete from "../address-autocomplete"
 
 import {
@@ -73,6 +73,24 @@ async function clearInput() {
     fireEvent.change(input, { target: { value: "" } })
   })
 }
+
+/**
+ * Clear the input AND let the 300 ms debounce settle to "".
+ *
+ * Re-typing the SAME term right after clearing without settling keeps the
+ * debounced value unchanged ("Termo" → "Termo"), so the fetch effect never
+ * re-runs and cache/re-fetch logic is never exercised. Settling first makes
+ * the debounced value go through "" before the new term — the same path a
+ * real user's typing produces.
+ */
+async function clearAndSettle(): Promise<void> {
+  await clearInput()
+  await flushDebounce()
+}
+
+afterEach(() => {
+  cleanup()
+})
 
 // ===========================================================================
 // CEP Detection
@@ -164,7 +182,7 @@ describe("AddressAutocomplete — CEP selection", () => {
     mockFetchCep.mockResolvedValue(MOCK_CEP_RESULT)
   })
 
-  it("calls setFromCEP and onSelect when CEP result is clicked", async () => {
+  it("updates geo store and calls onSelect when CEP result is clicked", async () => {
     const onSelect = vi.fn()
     render(<AddressAutocomplete onSelect={onSelect} />)
 
@@ -175,7 +193,14 @@ describe("AddressAutocomplete — CEP selection", () => {
       fireEvent.click(cepOption)
     })
 
-    expect(mockGeoStore.setFromCEP).toHaveBeenCalledWith("01310100")
+    // O componente atualiza o store via useGeoStore.setState (não mais
+    // setFromCEP) com os campos ViaCEP + onSelect(0, 0, displayName) quando
+    // o CEP não tem coordenadas do Nominatim.
+    expect(mockGeoStore.cep).toBe("01310100")
+    expect(mockGeoStore.district).toBe("Consolação")
+    expect(mockGeoStore.city).toBe("São Paulo")
+    expect(mockGeoStore.state).toBe("SP")
+    expect(mockGeoStore.status).toBe("ready")
     expect(onSelect).toHaveBeenCalledWith(0, 0, expect.stringContaining("Rua Augusta"))
   })
 
@@ -214,7 +239,7 @@ describe("AddressAutocomplete — in-memory cache", () => {
 
     // Clear and re-search same term — cache hit (no API call)
     mockFetchGeoSearch.mockClear()
-    await clearInput()
+    await clearAndSettle()
     await typeAndFlush("Endereco Cache Normal")
 
     expect(mockFetchGeoSearch).not.toHaveBeenCalled()
@@ -231,7 +256,7 @@ describe("AddressAutocomplete — in-memory cache", () => {
     mockFetchCep.mockClear()
 
     // Clear and re-search same CEP — cache hit
-    await clearInput()
+    await clearAndSettle()
     await typeAndFlush("99999999")
 
     expect(mockFetchCep).not.toHaveBeenCalled()
@@ -259,7 +284,7 @@ describe("AddressAutocomplete — cache TTL and mixed flows", () => {
     mockFetchGeoSearch.mockClear()
 
     // Re-search immediately — cache hit
-    await clearInput()
+    await clearAndSettle()
     await typeAndFlush("Rua TTL Expirada")
     expect(mockFetchGeoSearch).not.toHaveBeenCalled()
     mockFetchGeoSearch.mockClear()
@@ -270,7 +295,7 @@ describe("AddressAutocomplete — cache TTL and mixed flows", () => {
     })
 
     // Clear and re-search — cache expired, should re-fetch
-    await clearInput()
+    await clearAndSettle()
     mockFetchGeoSearch.mockResolvedValue(MOCK_NOMINATIM_RESULTS)
     await typeAndFlush("Rua TTL Expirada")
     expect(mockFetchGeoSearch).toHaveBeenCalledTimes(1)
@@ -350,11 +375,15 @@ describe("AddressAutocomplete — cache edge cases", () => {
 
     expect(mockFetchGeoSearch).toHaveBeenCalledTimes(1)
 
-    // Clear and retry with success
+    // Clear, let the debounce settle to "", then retry with success —
+    // re-typing the same term immediately would keep the debounced value
+    // unchanged and never re-trigger the fetch effect.
     mockFetchGeoSearch.mockResolvedValueOnce(MOCK_NOMINATIM_RESULTS)
     await act(async () => {
       fireEvent.change(input, { target: { value: "" } })
     })
+    await new Promise((r) => setTimeout(r, 350))
+    await act(async () => {})
     await act(async () => {
       fireEvent.change(input, { target: { value: "Rua Novinha Unica" } })
     })

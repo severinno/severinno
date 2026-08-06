@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
+import { render, screen, fireEvent, act, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 import AddressAutocomplete from "../address-autocomplete"
 
@@ -122,6 +122,10 @@ async function realDebounce() {
 
 beforeEach(() => {
   resetCommonMocks()
+})
+
+afterEach(() => {
+  cleanup()
 })
 
 // ===========================================================================

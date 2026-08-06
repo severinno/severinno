@@ -90,6 +90,7 @@ vi.mock("sonner", () => ({
 }))
 
 vi.mock("lucide-react", () => ({
+  ArrowRight: () => <svg />,
   CalendarDays: () => <svg />,
   Camera: () => <svg />,
   CheckCircle2: () => <svg />,
@@ -97,15 +98,18 @@ vi.mock("lucide-react", () => ({
   FileText: () => <svg />,
   Loader2: () => <svg />,
   MapPin: () => <svg />,
+  Navigation: () => <svg />,
   Phone: () => <svg />,
   Play: () => <svg />,
   Plus: () => <svg />,
   Search: () => <svg />,
   Smartphone: () => <svg />,
+  Sparkles: () => <svg />,
   TrendingUp: () => <svg />,
   User: () => <svg />,
   Volume2: () => <svg />,
   Wallet: () => <svg />,
+  X: () => <svg />,
 }))
 
 // ---- Recharts needs ResizeObserver -----------------------------------------
