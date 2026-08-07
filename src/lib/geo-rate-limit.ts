@@ -36,6 +36,7 @@
 import { getClient, isRedisAvailable } from "@/lib/redis"
 import { type Redis, type Cluster } from "ioredis"
 import { HttpError } from "@/lib/api-server"
+import { VIACEP_WINDOW_MS, VIACEP_MAX_PER_WINDOW } from "./viacep-rate-limit"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,8 +69,8 @@ export type GeoRateLimitResult = {
 export const GEO_LIMITS: Record<GeoEndpoint, GeoRateLimitConfig> = {
   /** Nominatim Search: 1 req/s ≈ 30 req/min respects OSM policy. */
   search: { max: 30, windowMs: 60_000 },
-  /** ViaCEP: more permissive, up to 60 req/min. */
-  cep: { max: 60, windowMs: 60_000 },
+  /** ViaCEP: more permissive, up to 60 req/min (fonte única: viacep-rate-limit.ts). */
+  cep: { max: VIACEP_MAX_PER_WINDOW, windowMs: VIACEP_WINDOW_MS },
   /** Nominatim Reverse: same policy as search. */
   reverse: { max: 30, windowMs: 60_000 },
 }

@@ -11,7 +11,9 @@ import "server-only"
 import { trackGeoLatency } from "./geo-metrics"
 import { withCache } from "./redis"
 import { rateLimitedNominatim } from "./nominatim-rate-limit"
+import { rateLimitedViaCEP } from "./viacep-rate-limit"
 import { recordSearch, recordCEP, recordReverse } from "./geo-query-log"
+import { getGeoSettings } from "./geo-settings"
 
 export { haversineKm, formatDistance } from "./geo-shared"
 
@@ -28,27 +30,34 @@ function normalizeCacheKey(input: string): string {
  *
  * On cache hit: returns instantly ("geo-cache" latency tracked).
  * On cache miss:
- *   1. rateLimitedNominatim — respeita política OSM (1 req/s)
+ *   1. limiter — proteção do provedor (Nominatim 1 req/s; ViaCEP 60 req/min,
+ *      com filas independentes para os dois não se atrasarem)
  *   2. trackGeoLatency — métricas P50/P95/P99
  *   3. withCache — armazena no Redis + in-memory fallback
  */
-function withCachedGeo<T>(key: string, fn: () => Promise<T>, ttl: number): Promise<T> {
+function withCachedGeo<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttl: number,
+  limiter: (f: () => Promise<T>) => Promise<T> = rateLimitedNominatim,
+): Promise<T> {
   // The rate limiter + latency tracker go INSIDE the cache-miss callback
   // so they only run when we actually call the external API.
   // Cache hit is nearly instant — no need for separate metrics.
-  return withCache(key, () => rateLimitedNominatim(fn), ttl)
+  return withCache(key, () => limiter(fn), ttl)
 }
 
 // ── Instrumented + cached wrappers ───────────────────────────────────────
 // Each wrapper adds BOTH latency tracking AND Redis caching.
 
-/** Wraps geocodeCEP with Redis cache (7d TTL) + ViaCEP latency tracking. */
+/** Wraps geocodeCEP with Redis cache (7d TTL) + ViaCEP latency tracking + limiter 60 req/min. */
 export async function geocodeCEP(cep: string): Promise<ViaCEPResult> {
   const clean = cep.replace(/\D/g, "")
   const result = await withCachedGeo(
     `geo:cep:${clean}`,
     () => trackGeoLatency("viacep", () => _geocodeCEP(clean)),
     604800, // 7d
+    rateLimitedViaCEP,
   )
   // Record in query log so we can warm the most popular CEPs after restart
   recordCEP(cep)
@@ -122,7 +131,11 @@ async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
   }
 
   try {
-    const url = `https://viacep.com.br/ws/${clean}/json/`
+    const settings = await getGeoSettings()
+    // Kill-switch: ViaCEP desligado → fallback local direto (sem rede)
+    if (!settings.viacepEnabled) return geocodeCEPLocal(clean)
+
+    const url = `${settings.viacepBaseUrl}/ws/${clean}/json/`
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
       next: { revalidate: 86400 },
@@ -206,12 +219,13 @@ export type ReverseGeocodeResult = {
 /** @internal renamed to _reverseGeocode — use reverseGeocodeWithMetrics for latency tracking. */
 async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=pt-BR`
+    const settings = await getGeoSettings()
+    // Kill-switch: Nominatim desligado → fallback local direto (sem rede)
+    if (!settings.nominatimEnabled) return reverseGeocodeLocal(lat, lng)
+
+    const url = `${settings.nominatimBaseUrl}/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=pt-BR`
     const res = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
-      },
+      headers: nominatimHeaders(settings.userAgent),
       next: { revalidate: 3600 },
       signal: AbortSignal.timeout(5000), // 5s timeout
     })
@@ -383,11 +397,13 @@ function parseNominatimSearchResponse(
   })
 }
 
-/** Shared headers for Nominatim API calls. */
-const NOMINATIM_HEADERS = {
-  Accept: "application/json",
-  "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
-} as const
+/** Shared headers for Nominatim API calls (User-Agent vindo das settings). */
+function nominatimHeaders(userAgent: string): Record<string, string> {
+  return {
+    Accept: "application/json",
+    "User-Agent": userAgent,
+  }
+}
 
 /** @internal renamed to _geocodeSearch — use geocodeSearchWithMetrics for latency tracking. */
 async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSearchResult[]> {
@@ -397,13 +413,17 @@ async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSear
   const clampedLimit = Math.max(1, Math.min(10, limit))
 
   try {
+    const settings = await getGeoSettings()
+    // Kill-switch: Nominatim desligado → fallback local direto (sem rede)
+    if (!settings.nominatimEnabled) return geocodeSearchLocal(trimmed, clampedLimit)
+
     const url =
-      `https://nominatim.openstreetmap.org/search?` +
+      `${settings.nominatimBaseUrl}/search?` +
       `format=jsonv2&q=${encodeURIComponent(trimmed)}` +
       `&addressdetails=1&limit=${clampedLimit}&accept-language=pt-BR`
 
     const res = await fetch(url, {
-      headers: NOMINATIM_HEADERS,
+      headers: nominatimHeaders(settings.userAgent),
       next: { revalidate: 86400 },
       signal: AbortSignal.timeout(5000), // 5s timeout
     })
@@ -506,10 +526,20 @@ async function _geocodeSearchStructured(opts: {
   if (country?.trim()) params.set("country", country.trim())
   if (postcode?.trim()) params.set("postcode", postcode.trim())
 
-  const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`
-
   try {
-    const res = await fetch(url, { headers: NOMINATIM_HEADERS, next: { revalidate: 86400 } })
+    const settings = await getGeoSettings()
+    // Kill-switch: Nominatim desligado → fallback local direto (sem rede)
+    if (!settings.nominatimEnabled) {
+      const combined = [street, city, state].filter(Boolean).join(", ")
+      return geocodeSearchLocal(combined, clampedLimit)
+    }
+
+    const url = `${settings.nominatimBaseUrl}/search?${params.toString()}`
+    const res = await fetch(url, {
+      headers: nominatimHeaders(settings.userAgent),
+      next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(5000), // 5s timeout
+    })
     if (!res.ok) throw new Error(`Nominatim structured HTTP ${res.status}`)
 
     return parseNominatimSearchResponse(await res.json())

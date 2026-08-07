@@ -9,6 +9,15 @@ export default defineConfig({
     },
   },
 
+  // Mesmo guard do vitest.config.ts: não carrega o postcss.config.mjs do app
+  // (Tailwind v4 ESM-only quebra no loader síncrono do Vite) em qualquer CSS
+  // que entre no grafo de testes.
+  css: {
+    postcss: {
+      plugins: [],
+    },
+  },
+
   test: {
     environment: "jsdom",
     globals: true,

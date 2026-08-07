@@ -47,6 +47,18 @@ globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
 }
 
+// ── Polyfill URL.createObjectURL/revokeObjectURL (jsdom não tem) ───────────
+// O maplibre-gl chama window.URL.createObjectURL(new Blob([...])) no PRÓPRIO
+// import do módulo (setWorkerUrl com worker inline). Qualquer teste que carregue
+// o maplibre real — via radius-map-inner (import estático) ou provider-mini-map
+// (import dinâmico no escopo do módulo) — rejeitava com
+// "window.URL.createObjectURL is not a function" no singleFork.
+// Polyfill mínimo: devolve um blob URL fake; o maplibre só guarda a string.
+if (typeof window !== "undefined" && typeof window.URL.createObjectURL !== "function") {
+  window.URL.createObjectURL = () => "blob:vitest-mock"
+  window.URL.revokeObjectURL = () => {}
+}
+
 // ── Mock HTMLCanvasElement.getContext for axe-core color contrast analysis ─
 // axe-core internally uses canvas for color checks, which crashes in jsdom.
 HTMLCanvasElement.prototype.getContext = function () {
@@ -67,6 +79,9 @@ process.env.RABBITMQ_URL = "amqp://localhost:5672"
 // db.ts now uses $extends (Prisma v6) for soft-delete, not $use.
 // The mock provides a minimal PrismaClient that can be chained with $extends.
 // Tests that need specific mocking can override with vi.mock('@prisma/client', ...).
+// O namespace Prisma (sql/empty) é usado por postgis.ts para montar o LIMIT
+// condicional — o mock replica o shape do fragmento ({ strings, values })
+// para que o $queryRaw mockado receba o fragmento como valor interpolado.
 vi.mock("@prisma/client", () => ({
   PrismaClient: vi.fn().mockImplementation(() => ({
     $connect: vi.fn(),
@@ -78,4 +93,8 @@ vi.mock("@prisma/client", () => ({
     booking: {},
     category: {},
   })),
+  Prisma: {
+    sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
+    empty: { strings: [], values: [] },
+  },
 }))

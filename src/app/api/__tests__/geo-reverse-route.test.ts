@@ -6,7 +6,16 @@ vi.mock("@/lib/geo", () => ({
   reverseGeocode: vi.fn(),
 }))
 
+// Geo rate limit: mockado para evitar depender do Redis e permitir assert de
+// chamada + simulação de 429.
+vi.mock("@/lib/geo-rate-limit", () => ({
+  assertGeoRateLimit: vi.fn(),
+  isGeoRateLimitError: (e: unknown) =>
+    e instanceof Error && (e as { status?: number }).status === 429,
+}))
+
 import { reverseGeocode } from "@/lib/geo"
+import { assertGeoRateLimit } from "@/lib/geo-rate-limit"
 
 const validAddress = {
   displayName: "Av. Paulista, 1000, São Paulo, SP, Brasil",
@@ -19,9 +28,45 @@ const validAddress = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // clearAllMocks não limpa implementações setadas via mockRejectedValue —
+  // garante que o assertGeoRateLimit sempre RESOLVE no início de cada teste.
+  vi.mocked(assertGeoRateLimit).mockResolvedValue(undefined)
 })
 
 describe("GET /api/geo/reverse", () => {
+  it("aplica o rate limit antes de geocodificar", async () => {
+    vi.mocked(reverseGeocode).mockResolvedValue(validAddress)
+
+    const req = createMockRequest({ searchParams: { lat: "-23.55", lng: "-46.63" } })
+    const res = await GET(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect(vi.mocked(assertGeoRateLimit)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(assertGeoRateLimit).mock.calls[0]![0]).toBe(req)
+    expect(vi.mocked(assertGeoRateLimit).mock.calls[0]![1]).toBe("reverse")
+  })
+
+  it("retorna 429 com headers quando o rate limit é excedido", async () => {
+    vi.mocked(assertGeoRateLimit).mockRejectedValue(
+      Object.assign(new Error("Muitas requisições. Tente novamente em alguns segundos."), {
+        status: 429,
+        headers: { "X-RateLimit-Limit": "30", "Retry-After": "10" },
+      }),
+    )
+
+    const req = createMockRequest({ searchParams: { lat: "-23.55", lng: "-46.63" } })
+    const res = await GET(req)
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(429)
+    expect(parsed.body).toHaveProperty("error")
+    expect(vi.mocked(reverseGeocode)).not.toHaveBeenCalled()
+    // Headers de rate limit preservados (não caindo no 502 genérico)
+    expect(res.headers.get("x-ratelimit-limit")).toBe("30")
+    expect(res.headers.get("retry-after")).toBe("10")
+  })
+
   it("returns address for valid lat/lng", async () => {
     vi.mocked(reverseGeocode).mockResolvedValue(validAddress)
 

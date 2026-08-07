@@ -407,6 +407,21 @@ describe("geocodeSearchStructured", () => {
     await geocodeSearchStructured({ city: "São Paulo", limit: 0 })
   })
 
+  it("uses AbortSignal.timeout(5000) on the fetch (same guard as the other geocoders)", async () => {
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation(() => new AbortController().signal)
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve([]),
+    } as Response)
+
+    const { geocodeSearchStructured } = await import("../geo")
+    await geocodeSearchStructured({ city: "São Paulo" })
+
+    expect(timeoutSpy).toHaveBeenCalledWith(5000)
+  })
+
   it("returns empty array on Nominatim HTTP error (falls back to local DB)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: false,

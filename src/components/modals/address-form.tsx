@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { apiGet } from "@/lib/api"
+import { apiGet, fetchGeoSearchStructured } from "@/lib/api"
 import { useGeoStore } from "@/store/geo"
 import { cn } from "@/lib/utils"
 
@@ -82,7 +82,9 @@ function maskCep(cep: string): string {
 /**
  * Reusable address form with CEP auto-fill and "use my location" GPS.
  *
- * Used by the Quote and Booking flows. CEP lookup calls `/api/geo/cep`;
+ * Used by the Quote and Booking flows. CEP lookup calls `/api/geo/cep` and
+ * then enriches the result with coordinates via a Nominatim structured
+ * search (postcode) — ViaCEP has no lat/lng, and Booking/Quote require them.
  * GPS uses `useGeoStore.setFromGPS` and then `/api/geo/reverse` for
  * reverse geocoding.
  */
@@ -120,6 +122,38 @@ export function AddressForm({
           city?: string
           state?: string
         }>("/api/geo/cep", { cep })
+        // ViaCEP não retorna coordenadas — enriquece com Nominatim structured
+        // (postcode), mesmo padrão do address-autocomplete. Se o endereço
+        // resolvido divergir do atual (ex.: GPS de outro lugar), coords antigas
+        // ficariam inconsistentes — tenta enriquecer, senão limpa para forçar
+        // a confirmação do usuário (indicator "Localização confirmada" some).
+        let lat = value.lat
+        let lng = value.lng
+        if (data.city) {
+          const addressChanged =
+            (data.street ?? value.street) !== value.street ||
+            (data.city ?? value.city) !== value.city ||
+            (data.state ?? value.state) !== value.state
+          if (addressChanged) {
+            lat = null
+            lng = null
+            try {
+              const geoResults = await fetchGeoSearchStructured({
+                postcode: cep,
+                city: data.city,
+                state: data.state || undefined,
+                limit: 1,
+              })
+              const first = geoResults[0]
+              if (first?.lat != null && first?.lng != null) {
+                lat = first.lat
+                lng = first.lng
+              }
+            } catch {
+              // Nominatim falhou — mantém lat/lng null (endereço não confirmado)
+            }
+          }
+        }
         onChange({
           ...value,
           cep: data.cep ?? maskCep(cep),
@@ -127,6 +161,8 @@ export function AddressForm({
           district: data.district ?? value.district,
           city: data.city ?? value.city,
           state: data.state ?? value.state,
+          lat,
+          lng,
         })
       } catch {
         setCepError("CEP não encontrado. Preencha o endereço manualmente.")
