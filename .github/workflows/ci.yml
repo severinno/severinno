@@ -7,6 +7,7 @@
 #   utf8-check → iconv-based UTF-8 validation on all .ts files
 #   test       → vitest run
 #   build      → next build (Docker or standalone)
+#   budget     → ANALYZE=true next build (webpack) + JS size gate (parallel to build)
 #   deploy     → (VPS / Docker Hub / SSH deploy)
 # =============================================================================
 
@@ -142,6 +143,47 @@ jobs:
           name: standalone-build
           path: .next/standalone/
           retention-days: 3
+
+  # ── JS Bundle Budget ──────────────────────────────────────────────────────
+  # Runs an ANALYZE=true webpack build, caches the report, and enforces the
+  # JS size budget (scripts/check-js-budget.mjs — fails the run if any
+  # chunk/library exceeds its gzip limit). Runs in parallel with build; the
+  # analyze report and Next.js build cache are persisted via actions/cache.
+  budget:
+    name: JS Bundle Budget
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, utf8-check, quality-gate]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+      - run: bun run db:generate
+
+      - name: Cache Next.js build + analyze report
+        uses: actions/cache@v4
+        with:
+          path: |
+            .next/cache
+            .next/analyze
+          key: ${{ runner.os }}-next-analyze-${{ hashFiles('bun.lock', 'package.json', 'next.config.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-next-analyze-
+
+      # --webpack is required: @next/bundle-analyzer only emits reports for
+      # webpack builds (CI installs with bun, so we can't use `pnpm exec`
+      # like the local analyze:webpack script does).
+      - name: Analyze build (webpack + bundle report)
+        run: ANALYZE=true bunx next build --webpack
+        env:
+          SKIP_TYPESCRIPT_CHECK: "true"
+
+      - name: Enforce JS bundle budget
+        run: bun run budget:js
 
   # ── Deploy (manual trigger or on push to main) ────────────────────────────
   deploy:
