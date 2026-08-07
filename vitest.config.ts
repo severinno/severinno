@@ -11,6 +11,21 @@ export default defineConfig({
     },
   },
 
+  // ── Não carrega o postcss.config.mjs do app nos testes ───────────────────
+  // O config do app usa plugins: ["@tailwindcss/postcss"] (Tailwind v4,
+  // ESM-only). O Vite carrega postcss config de forma SÍNCRONA (sync
+  // postcss-load-config) e não consegue resolver o plugin ESM — qualquer CSS
+  // importado no grafo de testes (ex.: maplibre-gl/dist/maplibre-gl.css via
+  // radius-map-inner/provider-mini-map) quebra com "Invalid PostCSS Plugin
+  // found at: plugins[0]". O Next.js carrega o mesmo config sem problema
+  // (loader próprio) — por isso isto é isolado ao vitest: fornecer um config
+  // PostCSS explícito (sem plugins) desativa a descoberta do arquivo do app.
+  css: {
+    postcss: {
+      plugins: [],
+    },
+  },
+
   test: {
     environment: "jsdom",
     // ── (Redundant since custom-render bypasses RTL entirely) ─────────

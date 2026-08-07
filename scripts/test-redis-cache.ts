@@ -43,6 +43,9 @@ const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6381"
 const CENTER_LAT = -19.8125
 const CENTER_LNG = -41.9736
 const RADIUS_KM = 50
+// Top-N do PostGIS proximity (LIMIT) — prova o caminho limitado do
+// findProvidersWithinRadius contra PostGIS real.
+const PROXIMITY_LIMIT = 100
 
 // ---------------------------------------------------------------------------
 // Track test data for cleanup
@@ -189,7 +192,12 @@ async function testRedisCache() {
   // -----------------------------------------------------------------------
   divider("STEP 1: First query (cache miss -> PostGIS)")
 
-  const result1 = await findProvidersWithinRadius(CENTER_LAT, CENTER_LNG, RADIUS_KM)
+  const result1 = await findProvidersWithinRadius(
+    CENTER_LAT,
+    CENTER_LNG,
+    RADIUS_KM,
+    PROXIMITY_LIMIT,
+  )
   const count1 = result1.length
 
   if (count1 > 0) {
@@ -264,7 +272,12 @@ async function testRedisCache() {
   // -----------------------------------------------------------------------
   divider("STEP 3: Repeat query (cache hit -> same result)")
 
-  const result2 = await findProvidersWithinRadius(CENTER_LAT, CENTER_LNG, RADIUS_KM)
+  const result2 = await findProvidersWithinRadius(
+    CENTER_LAT,
+    CENTER_LNG,
+    RADIUS_KM,
+    PROXIMITY_LIMIT,
+  )
 
   // Count match
   if (result2.length === count1) {
@@ -334,7 +347,12 @@ async function testRedisCache() {
   }
 
   // Query with Redis offline — should fall back to PostGIS
-  const result3 = await findProvidersWithinRadius(CENTER_LAT, CENTER_LNG, RADIUS_KM)
+  const result3 = await findProvidersWithinRadius(
+    CENTER_LAT,
+    CENTER_LNG,
+    RADIUS_KM,
+    PROXIMITY_LIMIT,
+  )
 
   if (result3.length === count1) {
     pass(`Same ${count1} providers returned (PostGIS fallback)`)
@@ -400,7 +418,12 @@ async function testRedisCache() {
   }
 
   // Fresh query — should re-populate cache
-  const result4 = await findProvidersWithinRadius(CENTER_LAT, CENTER_LNG, RADIUS_KM)
+  const result4 = await findProvidersWithinRadius(
+    CENTER_LAT,
+    CENTER_LNG,
+    RADIUS_KM,
+    PROXIMITY_LIMIT,
+  )
 
   if (result4.length === count1) {
     pass(`Same ${count1} providers after Redis restart`)

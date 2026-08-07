@@ -32,8 +32,9 @@ test.describe("/api/health — geo services", () => {
     expect(body.checks).toHaveProperty("viacep")
     expect(body.checks).toHaveProperty("postgis")
     expect(["ok", "error"]).toContain(body.checks.database)
-    expect(["ok", "error"]).toContain(body.checks.nominatim)
-    expect(["ok", "error"]).toContain(body.checks.viacep)
+    // Kill-switches podem reportar "disabled" (sem chamada de rede)
+    expect(["ok", "disabled", "error"]).toContain(body.checks.nominatim)
+    expect(["ok", "disabled", "error"]).toContain(body.checks.viacep)
     expect(["ok", "error"]).toContain(body.checks.postgis)
 
     // Geo object with detail strings
@@ -68,9 +69,9 @@ test.describe("/api/health — geo services", () => {
     expect(typeof body.version).toBe("string")
     expect(body.uptime).toBeGreaterThan(0)
 
-    // Each check value must be "ok" or "error"
+    // Each check value must be "ok", "disabled" (kill-switch) or "error"
     for (const service of ["database", "redis", "nominatim", "viacep", "postgis"] as const) {
-      expect(["ok", "error"]).toContain(body.checks[service])
+      expect(["ok", "disabled", "error"]).toContain(body.checks[service])
     }
   })
 })
@@ -81,9 +82,10 @@ test.describe("/api/health — status consistency", () => {
     const body = await response.json()
 
     const geoChecks = [body.checks.nominatim, body.checks.viacep, body.checks.postgis]
-    const allGeoOk = geoChecks.every((s: string) => s === "ok")
+    // "disabled" (kill-switch) não é degradação
+    const allGeoHealthy = geoChecks.every((s: string) => s === "ok" || s === "disabled")
 
-    if (!allGeoOk) {
+    if (!allGeoHealthy) {
       expect(body.status).toBe("degraded")
     }
   })

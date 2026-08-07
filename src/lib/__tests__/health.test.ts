@@ -25,12 +25,33 @@ vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+// ── Mock geo-settings (kill-switches) — controlado por teste ───────────────
+const mockGetGeoSettings = vi.fn()
+
+vi.mock("@/lib/geo-settings", () => ({
+  getGeoSettings: (...args: any[]) => mockGetGeoSettings(...args),
+  resetGeoSettingsCache: () => {},
+}))
+
+const ENABLED_SETTINGS = {
+  nominatimEnabled: true,
+  viacepEnabled: true,
+  nominatimBaseUrl: "https://nominatim.openstreetmap.org",
+  viacepBaseUrl: "https://viacep.com.br",
+  userAgent: "SeverinnoMarketplace/1.0 (admin@severinno.com)",
+}
+
+// URLs acessadas pelo fetch em cada teste (para provar que o kill-switch
+// não faz chamada de rede).
+let fetchUrls: string[] = []
+
 beforeAll(() => {
   // Mock global fetch for Nominatim status check + ViaCEP
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url: RequestInfo | URL) => {
     const href = typeof url === "string" ? url : url instanceof URL ? url.href : ""
-    // Nominatim status check — return OK
-    if (href.includes("nominatim.openstreetmap.org/status.php")) {
+    fetchUrls.push(href)
+    // Nominatim status check — return OK (qualquer base URL)
+    if (href.includes("status.php")) {
       return new Response(JSON.stringify({ status: 0, message: "OK" }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -56,9 +77,16 @@ beforeAll(() => {
   })
 })
 
-import { GET } from "@/app/api/health/route"
+import { GET, resetHealthCache } from "@/app/api/health/route"
 
 describe("GET /api/health", () => {
+  beforeEach(() => {
+    // Isola o cache in-memory da rota entre testes + settings default (enabled)
+    resetHealthCache()
+    fetchUrls = []
+    mockGetGeoSettings.mockResolvedValue({ ...ENABLED_SETTINGS })
+  })
+
   it("retorna status 200 no formato esperado", async () => {
     const response = await GET()
     const body = await response.json()
@@ -91,5 +119,48 @@ describe("GET /api/health", () => {
 
     const second = await GET()
     expect(second.status).toBe(200)
+  })
+
+  // ---- Kill-switches (kill-switch não é degradação) ---------------------
+
+  it("reporta nominatim como 'disabled' SEM rede quando nominatim_enabled=false", async () => {
+    mockGetGeoSettings.mockResolvedValue({ ...ENABLED_SETTINGS, nominatimEnabled: false })
+
+    const response = await GET()
+    const body = await response.json()
+
+    expect(body.checks.nominatim).toBe("disabled")
+    expect(body.geo.nominatim).toContain("kill-switch")
+    // Nenhuma chamada ao status.php (kill-switch corta a rede)
+    expect(fetchUrls.some((u) => u.includes("status.php"))).toBe(false)
+    // Desabilitar é intencional — status geral continua ok / HTTP 200
+    expect(body.status).toBe("ok")
+    expect(response.status).toBe(200)
+  })
+
+  it("reporta viacep como 'disabled' SEM rede quando viacep_enabled=false", async () => {
+    mockGetGeoSettings.mockResolvedValue({ ...ENABLED_SETTINGS, viacepEnabled: false })
+
+    const response = await GET()
+    const body = await response.json()
+
+    expect(body.checks.viacep).toBe("disabled")
+    expect(body.geo.viacep).toContain("kill-switch")
+    expect(fetchUrls.some((u) => u.includes("viacep.com.br"))).toBe(false)
+    expect(body.status).toBe("ok")
+    expect(response.status).toBe(200)
+  })
+
+  it("usa a NOMINATIM_BASE_URL das settings no probe", async () => {
+    mockGetGeoSettings.mockResolvedValue({
+      ...ENABLED_SETTINGS,
+      nominatimBaseUrl: "https://nominatim.example.org",
+    })
+
+    const response = await GET()
+    const body = await response.json()
+
+    expect(body.checks.nominatim).toBe("ok")
+    expect(fetchUrls.some((u) => u.includes("nominatim.example.org/status.php"))).toBe(true)
   })
 })

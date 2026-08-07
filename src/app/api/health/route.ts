@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCacheStats, getClient } from "@/lib/redis"
+import { getGeoSettings } from "@/lib/geo-settings"
 import logger from "@/lib/logger"
 import pkg from "../../../../package.json"
 
@@ -32,6 +33,14 @@ async function getSentry(): Promise<typeof import("@sentry/nextjs") | null> {
  *   5. **ViaCEP API** (Brazilian postal code service)
  *   6. **PostGIS extension** availability
  *
+ * Os checks de Nominatim/ViaCEP respeitam os kill-switches do painel admin
+ * (nominatim_enabled / viacep_enabled): com o switch desligado o serviço é
+ * reportado como "disabled" SEM chamada de rede, e o status geral continua
+ * "ok" (desabilitar é decisão intencional, não degradação). As URLs e o
+ * User-Agent usados no probe vêm das settings (base URL substituível).
+ * Monitores estritos que comparam checks.nominatim === "ok" veem "disabled"
+ * como não-ok: o geo.* detail ("kill-switch ...") distingue do erro real.
+ *
  * Response shape:
  *   {
  *     status: "ok" | "degraded",
@@ -40,8 +49,8 @@ async function getSentry(): Promise<typeof import("@sentry/nextjs") | null> {
  *     checks: {
  *       database: "ok"|"error",
  *       redis: "ok"|"error",
- *       nominatim: "ok"|"error",
- *       viacep: "ok"|"error",
+ *       nominatim: "ok"|"disabled"|"error",
+ *       viacep: "ok"|"disabled"|"error",
  *       postgis: "ok"|"error",
  *     },
  *     version: string (from package.json)
@@ -56,10 +65,19 @@ async function getSentry(): Promise<typeof import("@sentry/nextjs") | null> {
 // Cache the health result for 15s so we don't hammer external APIs on every check
 const HEALTH_CACHE_TTL = 15
 
+/**
+ * Reseta o cache in-memory. Usado pelos testes (padrão __testing__) e pelo
+ * POST /api/admin/settings — quando um kill-switch/base URL muda, o próximo
+ * /api/health reflete imediatamente em vez de servir o estado antigo por até 15s.
+ */
+export function resetHealthCache(): void {
+  inMemoryCache = null
+}
+
 // In-memory cache (Redis-independent so it works even when Redis is down)
 let inMemoryCache: { timestamp: number; result: HealthResponse } | null = null
 
-type ServiceStatus = "ok" | "error"
+type ServiceStatus = "ok" | "disabled" | "error"
 
 type HealthResponse = {
   status: "ok" | "degraded"
@@ -119,12 +137,14 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   const viacepDetail = results[3].status === "fulfilled" ? results[3].value.detail : "unreachable"
   const postgisDetail = results[4].status === "fulfilled" ? results[4].value.detail : "unreachable"
 
+  // "disabled" (kill-switch) é decisão intencional — não conta como degradação.
+  const isHealthy = (s: ServiceStatus): boolean => s === "ok" || s === "disabled"
   const allOk =
-    database === "ok" &&
-    redis === "ok" &&
-    nominatimStatus === "ok" &&
-    viacepStatus === "ok" &&
-    postgisStatus === "ok"
+    isHealthy(database) &&
+    isHealthy(redis) &&
+    isHealthy(nominatimStatus) &&
+    isHealthy(viacepStatus) &&
+    isHealthy(postgisStatus)
 
   const response: HealthResponse = {
     status: allOk ? "ok" : "degraded",
@@ -218,12 +238,16 @@ async function checkRedis(): Promise<ServiceStatus> {
   }
 }
 
-/** Check Nominatim API availability. */
+/** Check Nominatim API availability (respeita o kill-switch nominatim_enabled). */
 async function checkNominatim(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
-    const res = await fetch("https://nominatim.openstreetmap.org/status.php?format=json", {
+    const settings = await getGeoSettings()
+    if (!settings.nominatimEnabled) {
+      return { status: "disabled", detail: "kill-switch nominatim_enabled=false" }
+    }
+    const res = await fetch(`${settings.nominatimBaseUrl}/status.php?format=json`, {
       headers: {
-        "User-Agent": "SeverinnoMarketplace/1.0 (admin@severinno.com)",
+        "User-Agent": settings.userAgent,
       },
       signal: AbortSignal.timeout(5000),
     })
@@ -241,11 +265,15 @@ async function checkNominatim(): Promise<{ status: ServiceStatus; detail: string
   }
 }
 
-/** Check ViaCEP API availability. */
+/** Check ViaCEP API availability (respeita o kill-switch viacep_enabled). */
 async function checkViaCEP(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
+    const settings = await getGeoSettings()
+    if (!settings.viacepEnabled) {
+      return { status: "disabled", detail: "kill-switch viacep_enabled=false" }
+    }
     // Use a well-known CEP (CEP da Rua Augusta, SP)
-    const res = await fetch("https://viacep.com.br/ws/01310100/json/", {
+    const res = await fetch(`${settings.viacepBaseUrl}/ws/01310100/json/`, {
       signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) {

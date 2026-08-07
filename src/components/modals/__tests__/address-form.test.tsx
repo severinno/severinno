@@ -29,9 +29,11 @@ vi.mock("@/store/geo", () => ({
 // ---------------------------------------------------------------------------
 
 const mockApiGet = vi.fn()
+const mockFetchGeoSearchStructured = vi.fn()
 
 vi.mock("@/lib/api", () => ({
   apiGet: (...args: any[]) => mockApiGet(...args),
+  fetchGeoSearchStructured: (...args: any[]) => mockFetchGeoSearchStructured(...args),
 }))
 
 // ---------------------------------------------------------------------------
@@ -146,6 +148,7 @@ beforeEach(() => {
   mockGeoStore.lng = null
   mockGeoStore.getState.mockReturnValue(mockGeoStore)
   mockApiGet.mockReset()
+  mockFetchGeoSearchStructured.mockReset()
 })
 
 afterEach(() => {
@@ -339,6 +342,128 @@ describe("AddressForm — CEP lookup", () => {
     expect(
       screen.getByText("CEP não encontrado. Preencha o endereço manualmente."),
     ).toBeInTheDocument()
+  })
+
+  it("enriches CEP result with coordinates via Nominatim structured search", async () => {
+    mockApiGet.mockResolvedValue({
+      cep: "01310-100",
+      street: "Av. Paulista",
+      district: "Bela Vista",
+      city: "São Paulo",
+      state: "SP",
+    })
+    mockFetchGeoSearchStructured.mockResolvedValue([
+      { lat: -23.5614, lng: -46.6559, displayName: "Av. Paulista, São Paulo" },
+    ])
+
+    const { onChange } = renderForm()
+    const input = screen.getByLabelText("CEP") as HTMLInputElement
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "01310100" } })
+    })
+    await act(async () => {
+      fireEvent.blur(input)
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    expect(mockFetchGeoSearchStructured).toHaveBeenCalledWith({
+      postcode: "01310100",
+      city: "São Paulo",
+      state: "SP",
+      limit: 1,
+    })
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ lat: -23.5614, lng: -46.6559 }))
+  })
+
+  it("clears coordinates when CEP resolves a different address and enrichment fails", async () => {
+    // GPS localizou o usuário em outra cidade — CEP aponta para outro lugar.
+    mockApiGet.mockResolvedValue({
+      cep: "01310-100",
+      street: "Av. Paulista",
+      district: "Bela Vista",
+      city: "São Paulo",
+      state: "SP",
+    })
+    mockFetchGeoSearchStructured.mockRejectedValue(new Error("Nominatim down"))
+
+    const { onChange } = renderForm({
+      initialValue: {
+        ...defaultAddress,
+        city: "Rio de Janeiro",
+        state: "RJ",
+        lat: -22.9,
+        lng: -43.17,
+      },
+    })
+    const input = screen.getByLabelText("CEP") as HTMLInputElement
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "01310100" } })
+    })
+    await act(async () => {
+      fireEvent.blur(input)
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ lat: null, lng: null }))
+  })
+
+  it("keeps coordinates when ViaCEP address matches the current one", async () => {
+    mockApiGet.mockResolvedValue({
+      cep: "01310-100",
+      street: "Av. Paulista",
+      district: "Bela Vista",
+      city: "São Paulo",
+      state: "SP",
+    })
+    mockFetchGeoSearchStructured.mockRejectedValue(new Error("Nominatim down"))
+
+    const { onChange } = renderForm({
+      initialValue: {
+        ...defaultAddress,
+        city: "São Paulo",
+        state: "SP",
+        lat: -23.55,
+        lng: -46.63,
+      },
+    })
+    const input = screen.getByLabelText("CEP") as HTMLInputElement
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "01310100" } })
+    })
+    await act(async () => {
+      fireEvent.blur(input)
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ lat: -23.55, lng: -46.63 }))
+  })
+
+  it("skips Nominatim enrichment when ViaCEP returns no city", async () => {
+    mockApiGet.mockResolvedValue({ cep: "01310-100" })
+
+    renderForm()
+    const input = screen.getByLabelText("CEP") as HTMLInputElement
+
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "01310100" } })
+    })
+    await act(async () => {
+      fireEvent.blur(input)
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+
+    expect(mockFetchGeoSearchStructured).not.toHaveBeenCalled()
   })
 })
 
