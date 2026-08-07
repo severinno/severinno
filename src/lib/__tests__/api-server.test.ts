@@ -226,23 +226,29 @@ describe("cacheControlPrivate", () => {
 // cacheControlPublic
 // ---------------------------------------------------------------------------
 describe("cacheControlPublic", () => {
-  it("sets Cache-Control header with max-age and s-maxage", () => {
+  it("sets Cache-Control header with max-age, s-maxage and stale-while-revalidate", () => {
     const res = new Response()
     const result = cacheControlPublic(res as unknown as NextResponse, 120, 600)
-    expect(result.headers.get("Cache-Control")).toBe("public, max-age=120, s-maxage=600")
+    expect(result.headers.get("Cache-Control")).toBe(
+      "public, max-age=120, s-maxage=600, stale-while-revalidate=600",
+    )
     expect(result).toBe(res) // returns same response object
   })
 
-  it("defaults s-maxage to max-age when staleWhileRevalidate is omitted", () => {
+  it("defaults s-maxage and swr to max-age when staleWhileRevalidate is omitted", () => {
     const res = new Response()
     const result = cacheControlPublic(res as unknown as NextResponse, 60)
-    expect(result.headers.get("Cache-Control")).toBe("public, max-age=60, s-maxage=60")
+    expect(result.headers.get("Cache-Control")).toBe(
+      "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
+    )
   })
 
   it("handles zero max-age", () => {
     const res = new Response()
     const result = cacheControlPublic(res as unknown as NextResponse, 0)
-    expect(result.headers.get("Cache-Control")).toBe("public, max-age=0, s-maxage=0")
+    expect(result.headers.get("Cache-Control")).toBe(
+      "public, max-age=0, s-maxage=0, stale-while-revalidate=0",
+    )
   })
 })
 

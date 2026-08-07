@@ -18,6 +18,11 @@ import dynamic from "next/dynamic"
 
 import { LoadingShell } from "@/components/vitrine/loading-shell"
 
+// ISR — the marketing shell is static and revalidated in the background.
+// Live data (stats, activity feed) is fetched client-side via react-query,
+// so a 60s revalidate keeps the HTML fresh without server-rendering per hit.
+export const revalidate = 60
+
 // The full app shell — view router, auth, panels, all interactivity.
 // Loaded inside Suspense so the shell streams immediately.
 const AppShell = dynamic(

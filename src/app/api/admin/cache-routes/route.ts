@@ -61,7 +61,7 @@ function buildCacheControl(entry: (typeof CACHED_ROUTES)[number]): string {
   if (entry.type === "private") {
     return `private, max-age=${entry.maxAge}`
   }
-  return `public, max-age=${entry.maxAge}, s-maxage=${entry.sMaxage}`
+  return `public, max-age=${entry.maxAge}, s-maxage=${entry.sMaxage}, stale-while-revalidate=${entry.sMaxage}`
 }
 
 /**
@@ -125,6 +125,14 @@ function routeManifestBase(path: string): { notes: string[] } {
           "lat/lng → address reverse geocode.",
           "400 on missing coords — no cache.",
           "502 on external API failure — no cache.",
+        ],
+      }
+    case "/api/geo/search":
+      return {
+        notes: [
+          "Free-form/structured Nominatim geocode search.",
+          "Shared 1 req/s Nominatim rate limit; CDN cache absorbs repeated lookups.",
+          "400 on missing q — no cache.",
         ],
       }
     case "/api/search/providers":

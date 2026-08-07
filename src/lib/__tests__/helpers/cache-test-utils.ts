@@ -21,12 +21,14 @@ const VARY_VALUE = "Accept-Encoding, Accept, Origin"
  * Assert that a response has correct cache headers set by cacheControlPublic.
  *
  * Checks:
- *   1. Cache-Control: public, max-age={maxAge}, s-maxage={sMaxage}
+ *   1. Cache-Control: public, max-age={maxAge}, s-maxage={sMaxage},
+ *      stale-while-revalidate={sMaxage}
  *   2. Vary: Accept-Encoding, Accept, Origin
  *
  * @param res      - The NextResponse to check headers on.
  * @param maxAge   - Expected max-age in seconds.
- * @param sMaxage  - Expected s-maxage in seconds (defaults to maxAge).
+ * @param sMaxage  - Expected s-maxage / stale-while-revalidate in seconds
+ *                   (defaults to maxAge).
  */
 export function expectCacheHeaders(
   res: { status: number; headers: { get: (name: string) => string | null } },
@@ -37,7 +39,7 @@ export function expectCacheHeaders(
 
   expect(res.status).toBe(200)
   expect(res.headers.get("Cache-Control")).toBe(
-    `public, max-age=${maxAge}, s-maxage=${swr}`,
+    `public, max-age=${maxAge}, s-maxage=${swr}, stale-while-revalidate=${swr}`,
   )
   expect(res.headers.get("Vary")).toBe(VARY_VALUE)
 }

@@ -1,5 +1,8 @@
 import type { Metadata } from "next"
 
+// ISR — static marketing content; revalidate daily (content changes rarely)
+export const revalidate = 86400
+
 export const metadata: Metadata = {
   title: "Termos de Uso — Severinno",
 }

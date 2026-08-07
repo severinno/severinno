@@ -96,12 +96,12 @@ describe("cacheControlPublic — all TTL combos used in routes", () => {
   )
 
   it.each(publicConfigs)(
-    "sets correct Cache-Control for $path (max-age=$maxAge, s-maxage=$sMaxage)",
+    "sets correct Cache-Control for $path (max-age=$maxAge, s-maxage=$sMaxage, swr=$sMaxage)",
     ({ maxAge, sMaxage, vary }) => {
       const res = new NextResponse()
       cacheControlPublic(res, maxAge, sMaxage)
       expect(res.headers.get("Cache-Control")).toBe(
-        `public, max-age=${maxAge}, s-maxage=${sMaxage}`,
+        `public, max-age=${maxAge}, s-maxage=${sMaxage}, stale-while-revalidate=${sMaxage}`,
       )
       expect(res.headers.get("Vary")).toBe(vary)
     },
@@ -191,7 +191,9 @@ describe("edge case cache configurations", () => {
   it("cacheControlPublic with zero max-age produces no-cache equivalent", () => {
     const res = new NextResponse()
     cacheControlPublic(res, 0)
-    expect(res.headers.get("Cache-Control")).toBe("public, max-age=0, s-maxage=0")
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, max-age=0, s-maxage=0, stale-while-revalidate=0",
+    )
   })
 
   it("cacheControlPrivate with zero max-age", () => {
@@ -204,7 +206,7 @@ describe("edge case cache configurations", () => {
     const res = new NextResponse()
     cacheControlPublic(res, 30, 300)
     expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=30, s-maxage=300",
+      "public, max-age=30, s-maxage=300, stale-while-revalidate=300",
     )
   })
 
@@ -212,7 +214,7 @@ describe("edge case cache configurations", () => {
     const res = new NextResponse()
     cacheControlPublic(res, 60)
     expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=60, s-maxage=60",
+      "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
     )
   })
 })

@@ -93,14 +93,19 @@ For **public, non-personalized data**. Both CDN and browser may cache.
 
 ```typescript
 // Sets:
-Cache-Control: public, max-age=60, s-maxage=60
+Cache-Control: public, max-age=60, s-maxage=60, stale-while-revalidate=60
 Vary: Accept-Encoding, Accept, Origin
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `maxAge` | — | `max-age` in seconds (browser cache) |
-| `staleWhileRevalidate` | `= maxAge` | `s-maxage` in seconds (CDN cache). If omitted, `s-maxage` = `maxAge` |
+| `staleWhileRevalidate` | `= maxAge` | `s-maxage` **and** `stale-while-revalidate` in seconds (CDN cache). If omitted, both = `maxAge` |
+
+**stale-while-revalidate (RFC 5861):** after `s-maxage` expires, the CDN
+keeps serving the stale copy for up to this many more seconds while it
+revalidates in the background — eliminating cache-miss latency spikes at
+TTL boundaries.
 
 **Vary values:**
 - `Accept-Encoding` — separate copies for gzip vs uncompressed
@@ -169,13 +174,14 @@ max-age=60                  staleTime: 30s
 
 ## Cached Routes Manifest
 
-### Public Routes (10) — `cacheControlPublic`
+### Public Routes (11) — `cacheControlPublic`
 
 | Route | max-age | s-maxage | Vary |
 |-------|:-------:|:--------:|:----:|
 | `GET /api/categories` | **120s** | **600s** | `Accept-Encoding, Accept, Origin` |
 | `GET /api/geo/cep` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
 | `GET /api/geo/reverse` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
+| `GET /api/geo/search` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
 | `GET /api/providers` | **60s** | **60s** | `Accept-Encoding, Accept, Origin` |
 | `GET /api/reviews/recent` | **60s** | **300s** | `Accept-Encoding, Accept, Origin` |
 | `GET /api/search` | **30s** | **30s** | `Accept-Encoding, Accept, Origin` |
@@ -197,6 +203,7 @@ max-age=60                  staleTime: 30s
 | `/api/categories` | Category tree changes rarely (admins only). Highest TTL. | 404 on empty tree — no cache |
 | `/api/geo/cep` | CEP → address is stable. Conservative 60s. | 404 on unknown CEP — no cache |
 | `/api/geo/reverse` | lat/lng → address via external API. 60s absorbs repeated lookups. | 400/502 errors — no cache |
+| `/api/geo/search` | Free-form/structured Nominatim search. 60s absorbs lookups behind the shared 1 req/s rate limit. | 400 on missing `q` — no cache |
 | `/api/providers` | Provider listing with geo + filters. 60s is a good balance. | 400 on `sort=distance` without coords — no cache |
 | `/api/providers/[id]` | **Private** — contains `favorited` flag per user. Vary:Cookie separates sessions. | 404 — no cache |
 | `/api/reviews/recent` | Reviews change slowly. s-maxage=300s for CDN resilience. | — |
@@ -279,20 +286,22 @@ return cacheControlPrivate(NextResponse.json(result), 60)
 
 ### Step 3: Update both manifests
 
-The cache route configuration lives in **two places** that must be kept in sync:
+The cache route configuration lives in **one source of truth** plus one
+runtime consumer that must be kept in sync:
 
-1. **Test manifest** — `src/app/api/__tests__/all-cache-routes.test.ts`:
+1. **Source of truth** — `src/lib/cache-manifest.ts` (`CACHED_ROUTES`):
+   the shared manifest consumed by the unit tests, the validator, and the
+   admin endpoint. Add the new route here:
 
    ```typescript
-   const CACHED_ROUTES = [
-     // ... existing routes ...
-     { path: "/api/my-route", method: "GET", type: "public",
-       maxAge: 60, sMaxage: 60,
-       vary: "Accept-Encoding, Accept, Origin" },
-   ] as const
+   { path: "/api/my-route", method: "GET" as const, type: "public" as const,
+     maxAge: 60, sMaxage: 60,
+     vary: "Accept-Encoding, Accept, Origin" },
    ```
 
-2. **Admin dashboard** — `src/app/api/admin/cache-routes/route.ts`:
+2. **Admin dashboard** — `src/app/api/admin/cache-routes/route.ts`: this
+   endpoint maps `CACHED_ROUTES` to its JSON payload, so a new route only
+   needs an optional `routeManifestBase(path)` note entry:
 
    ```typescript
    // Add to the routes array in the admin manifest
@@ -303,7 +312,7 @@ The cache route configuration lives in **two places** that must be kept in sync:
      maxAge: 60,
      staleWhileRevalidate: 60,
      vary: ["Accept-Encoding", "Accept", "Origin"],
-     cacheControl: "public, max-age=60, s-maxage=60",
+     cacheControl: "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
      notes: ["Brief rationale for this route's cache config."],
    },
    ```
@@ -393,12 +402,12 @@ for the full build + E2E pipeline.
 |-----------|:-----:|----------------|
 | `scripts/validate-cache-manifest.ts` | — | **Fast gate**: scans 79 route files, cross-references against manifest. Exits 0/1 for CI. |
 | `src/lib/__tests__/api-server.test.ts` | **31** | `cacheControlPublic`, `cacheControlPrivate`, `handleError` function correctness |
-| `src/app/api/__tests__/all-cache-routes.test.ts` | **29** | Manifest integrity (counts, TTLs, Vary), function parameterization, no-cache-on-error edge cases |
+| `src/app/api/__tests__/all-cache-routes.test.ts` | **30** | Manifest integrity (counts, TTLs, Vary), function parameterization, no-cache-on-error edge cases |
 | `src/app/api/__tests__/providers-cache-header.test.ts` | **4** | Route-level: `/api/providers` cache headers present on 200, absent on 400/empty |
 | `src/app/api/__tests__/categories-cache-header.test.ts` | **3** | Route-level: `/api/categories` cache headers with `max-age=120, s-maxage=600` |
 | `e2e/providers-cache.spec.ts` | **9** | E2E via Playwright: CDN headers, repeated-call consistency, edge cache detection |
-| `e2e/all-cache-routes.spec.ts` | **23** | E2E via Playwright: HTTP headers for all 11 cached routes, dynamic ID resolution, auth-skip for blocked routes |
-| **Total** | **99 + fast gate** | |
+| `e2e/all-cache-routes.spec.ts` | **25** | E2E via Playwright: HTTP headers for all 12 cached routes, dynamic ID resolution, auth-skip for blocked routes |
+| **Total** | **102 + fast gate** | |
 
 ### Monitoring Dashboard
 
@@ -409,8 +418,8 @@ cache route manifest as JSON:
 {
   "meta": {
     "generatedAt": "2026-07-25T...",
-    "totalRoutes": 11,
-    "cacheControlPublic": 10,
+    "totalRoutes": 12,
+    "cacheControlPublic": 11,
     "cacheControlPrivate": 1
   },
   "routes": [
@@ -420,7 +429,7 @@ cache route manifest as JSON:
       "maxAge": 60,
       "staleWhileRevalidate": 60,
       "vary": ["Accept-Encoding", "Accept", "Origin"],
-      "cacheControl": "public, max-age=60, s-maxage=60",
+      "cacheControl": "public, max-age=60, s-maxage=60, stale-while-revalidate=60",
       "notes": ["..."]
     }
   ]

@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
 import withBundleAnalyzer from "@next/bundle-analyzer";
 
-// CSP is set dynamically in middleware.ts with strict directives.
-// Static security headers here apply to pre-rendered responses.
-// See src/middleware.ts for the dynamic CSP header.
+// Security headers are set here (static) and in src/middleware.ts.
+// Note: middleware currently does NOT emit a CSP header, and the root
+// layout no longer reads an x-nonce — see src/app/layout.tsx for why.
+// If a strict CSP is added later, scope any nonce to the pages that need it.
 
 const nextConfig: NextConfig = {
   output: "standalone",

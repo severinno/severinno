@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { headers } from "next/headers";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
@@ -65,13 +64,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RootLayout({
+// NOTE: `headers()` was previously called here to read an `x-nonce` for CSP,
+// but the value was never used anywhere (dead code). Because `headers()`
+// opts the whole tree into dynamic rendering, it silently disabled ISR for
+// every route. Removed so marketing pages can use `export const revalidate`.
+// If CSP nonces are re-introduced, scope them to the pages that need them.
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const nonce = (await headers()).get("x-nonce") ?? "";
-
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body

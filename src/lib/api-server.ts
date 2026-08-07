@@ -167,20 +167,27 @@ export async function invalidateCategoryCache(): Promise<void> {
  * Apply public Cache-Control + Vary headers to a NextResponse.
  *
  * Sets:
- *   Cache-Control: public, max-age={maxAge}, s-maxage={swr}
- *   Vary: Accept-Encoding, Accept
+ *   Cache-Control: public, max-age={maxAge}, s-maxage={swr}, stale-while-revalidate={swr}
+ *   Vary: Accept-Encoding, Accept, Origin
  *
  * The Vary header tells CDNs/proxies to cache separate copies based on:
  *   Accept-Encoding — compressed (gzip) vs uncompressed responses
  *   Accept          — JSON vs potential future content-type variants
+ *   Origin          — CORS variants
  *
  * Without Vary, a CDN may serve a gzip-compressed response to a client
  * that doesn't support it, or serve a JSON response to a client expecting
  * HTML (shouldn't happen for this API, but is a safety net).
  *
+ * `s-maxage` sets how long shared/CDN caches may serve the response fresh;
+ * `stale-while-revalidate` allows the CDN to keep serving the stale copy
+ * for up to {swr} more seconds while it revalidates in the background
+ * (RFC 5861) — eliminating cache-miss latency spikes after expiry.
+ *
  * @param response  The response to modify.
  * @param maxAge    Max age in seconds (e.g. 30, 60, 120).
- * @param staleWhileRevalidate  Stale-while-revalidate in seconds (defaults to maxAge).
+ * @param staleWhileRevalidate  Stale-while-revalidate window in seconds
+ *                              (defaults to maxAge). Also used as s-maxage.
  */
 export function cacheControlPublic(
   response: NextResponse,
@@ -190,7 +197,7 @@ export function cacheControlPublic(
   const swr = staleWhileRevalidate ?? maxAge
   response.headers.set(
     "Cache-Control",
-    `public, max-age=${maxAge}, s-maxage=${swr}`,
+    `public, max-age=${maxAge}, s-maxage=${swr}, stale-while-revalidate=${swr}`,
   )
   // Set Vary to prevent CDN cache collisions for encoding, format, and origin variants
   response.headers.set("Vary", "Accept-Encoding, Accept, Origin")

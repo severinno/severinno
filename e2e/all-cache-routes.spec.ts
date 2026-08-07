@@ -40,6 +40,7 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
   "/api/categories":       { queryString: "" },
   "/api/geo/cep":          { queryString: "?cep=01310100" },
   "/api/geo/reverse":      { queryString: "?lat=-23.55&lng=-46.63" },
+  "/api/geo/search":       { queryString: "?q=s%C3%A3o%20paulo" },
   "/api/providers":        { queryString: "?page=1&limit=5" },
   "/api/providers/[id]":   {
     queryString: "",
@@ -101,11 +102,11 @@ function expectedCacheControl(entry: RouteEntry): string {
   if (entry.type === "private") {
     return `private, max-age=${entry.maxAge}`
   }
-  return `public, max-age=${entry.maxAge}, s-maxage=${entry.sMaxage}`
+  return `public, max-age=${entry.maxAge}, s-maxage=${entry.sMaxage}, stale-while-revalidate=${entry.sMaxage}`
 }
 
 // -------------------------------------------------------------------------
-// Test suite — parameterized over all 11 cached routes
+// Test suite — parameterized over all 12 cached routes
 // -------------------------------------------------------------------------
 
 test.describe("GET all cached routes — HTTP cache headers", () => {
@@ -155,11 +156,11 @@ test.describe("GET all cached routes — HTTP cache headers", () => {
 })
 
 // -------------------------------------------------------------------------
-// Summary test — confirms all 11 routes were covered
+// Summary test — confirms all 12 routes were covered
 // -------------------------------------------------------------------------
 
 test.describe("Cache route coverage summary", () => {
-  test("all 11 cached routes were verified via HTTP", () => {
+  test("all 12 cached routes were verified via HTTP", () => {
     const total = CACHED_ROUTES.length
     const publicRoutes = CACHED_ROUTES.filter((r) => r.type === "public").length
     const privateRoutes = CACHED_ROUTES.filter((r) => r.type === "private").length
@@ -175,8 +176,8 @@ test.describe("Cache route coverage summary", () => {
       console.log(`       ${r.path.padEnd(28)} ${cc}`)
     }
 
-    expect(total).toBe(11)
-    expect(publicRoutes).toBe(10)
+    expect(total).toBe(12)
+    expect(publicRoutes).toBe(11)
     expect(privateRoutes).toBe(1)
   })
 })

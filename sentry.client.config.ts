@@ -24,8 +24,8 @@ const dsn =
 if (dsn) {
   Sentry.init({
     dsn,
-    // Send only 20% of transactions in dev to save quota
-    tracesSampleRate: process.env.NODE_ENV === "production" ? 0.5 : 0.2,
+    // 15% of transactions in prod to save quota; 20% in dev
+    tracesSampleRate: process.env.NODE_ENV === "production" ? 0.15 : 0.2,
     // Profile sampling — stack traces for performance hotspots (20% of traced transactions)
     profilesSampleRate: process.env.NODE_ENV === "production" ? 0.2 : 0.1,
     // Replays for debugging user sessions (10% sampled)

@@ -96,7 +96,14 @@ export function ProviderProfileModal() {
   const provider = query.data
   const [favorited, setFavorited] = React.useState(false)
 
-  React.useEffect(() => { setFavorited(false) }, [providerId])
+  // Reset favorite state when the provider changes — render-time adjustment
+  // (avoids react-hooks/set-state-in-effect; setState in an effect body
+  // causes cascading renders, per react.dev/learn/you-might-not-need-an-effect)
+  const [lastProviderId, setLastProviderId] = React.useState(providerId)
+  if (lastProviderId !== providerId) {
+    setLastProviderId(providerId)
+    setFavorited(false)
+  }
 
   React.useEffect(() => {
     if (open && provider) addRecentlyViewed(provider)
@@ -413,10 +420,13 @@ function ServicesTab({
 
   const [expandedCats, setExpandedCats] = React.useState<Set<string>>(() => new Set(groups.keys()))
 
-  // Sync when services change
-  React.useEffect(() => {
+  // Sync expanded categories when the service groups change — render-time
+  // adjustment (avoids react-hooks/set-state-in-effect)
+  const [lastGroups, setLastGroups] = React.useState(groups)
+  if (lastGroups !== groups) {
+    setLastGroups(groups)
     setExpandedCats(new Set(groups.keys()))
-  }, [groups])
+  }
 
   if (loading) {
     return (
@@ -509,7 +519,14 @@ function ServiceCard({
         {/* Photo thumbnail */}
         {photos.length > 0 ? (
           <div className="size-12 shrink-0 overflow-hidden rounded-md bg-muted">
-            <img src={photos[0]} alt={service.title} className="size-full object-cover" loading="lazy" />
+            <img
+              src={photos[0]}
+              alt={service.title}
+              width={48}
+              height={48}
+              className="size-full object-cover"
+              loading="lazy"
+            />
           </div>
         ) : (
           <div className="size-12 shrink-0 rounded-md bg-muted flex items-center justify-center text-muted-foreground">

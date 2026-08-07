@@ -20,6 +20,8 @@ export function PhotoUpload({ currentUrl, onUploaded, type = "avatar", className
   const inputRef = React.useRef<HTMLInputElement>(null)
 
   const sizeClasses = size === "sm" ? "size-16" : size === "lg" ? "size-32" : "size-24"
+  // Intrinsic dimensions so the browser reserves space and avoids CLS
+  const imageDim = size === "sm" ? 64 : size === "lg" ? 128 : 96
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -45,7 +47,7 @@ export function PhotoUpload({ currentUrl, onUploaded, type = "avatar", className
         )}
       >
         {currentUrl ? (
-          <img src={currentUrl} alt="" className="size-full object-cover" />
+          <img src={currentUrl} alt="" width={imageDim} height={imageDim} className="size-full object-cover" />
         ) : (
           <Camera className="size-5 text-muted-foreground" />
         )}

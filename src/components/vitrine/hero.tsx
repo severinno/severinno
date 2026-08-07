@@ -356,15 +356,23 @@ function LiveActivityPanel({
   const [toastIndex, setToastIndex] = React.useState(0)
   const [visibleActivities, setVisibleActivities] = React.useState<ActivityItem[]>([])
 
-  // Stagger-reveal activities
+  // Reset the staggered reveal when the feed data changes — render-time
+  // adjustment (avoids react-hooks/set-state-in-effect)
+  const [lastActivities, setLastActivities] = React.useState(activities)
+  if (lastActivities !== activities) {
+    setLastActivities(activities)
+    setVisibleActivities([])
+  }
+
+  // Stagger-reveal activities (timers cleaned up on unmount/data change)
   React.useEffect(() => {
     if (activities.length === 0) return
-    setVisibleActivities([])
-    activities.forEach((_, i) => {
+    const timers = activities.map((_, i) =>
       setTimeout(() => {
         setVisibleActivities((prev) => [...prev, activities[i]])
-      }, i * 300)
-    })
+      }, i * 300),
+    )
+    return () => timers.forEach(clearTimeout)
   }, [activities])
 
   // Cycle toast
@@ -505,6 +513,9 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
             alt={activity.userName}
             width={40}
             height={40}
+            // First avatar above the fold = the hero's LCP image candidate
+            priority={index === 0}
+            sizes="40px"
             className="size-10 rounded-full object-cover ring-2 ring-white/20"
           />
         ) : (
