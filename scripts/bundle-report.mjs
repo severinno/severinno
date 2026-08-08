@@ -19,14 +19,22 @@
  *                                                     # last release. Never accumulates
  *                                                     # duplicate rows (same label = upsert).
  *                                                     # ANTI-REGRESSION GATE: fails (exit 1)
- *                                                     # if the merged bundle's Initial JS (/) or
- *                                                     # Total worsened by more than the threshold
- *                                                     # vs the last versioned release, so a
- *                                                     # per-merge regression BLOCKS the push to
- *                                                     # main (thresholds in KB gzip,
- *                                                     # env-overridable, default 50/200):
+ *                                                     # if the merged bundle's Initial JS (/),
+ *                                                     # Total, or any key ROUTE's real transfer
+ *                                                     # worsened by more than the threshold vs the
+ *                                                     # last versioned release, so a per-merge
+ *                                                     # regression BLOCKS the push to main
+ *                                                     # (thresholds in KB gzip, env-overridable,
+ *                                                     # defaults 50/200/30-per-route):
  *                                                     #   JS_BUDGET_MAIN_DELTA_INITIAL_KB
  *                                                     #   JS_BUDGET_MAIN_DELTA_TOTAL_KB
+ *                                                     #   JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB
+ *                                                     #   JS_BUDGET_MAIN_DELTA_ROUTE_DASHBOARD_KB
+ *                                                     #   JS_BUDGET_MAIN_DELTA_ROUTE_U_KB
+ *                                                     #   JS_BUDGET_MAIN_DELTA_ROUTE_CATEGORIA_KB
+ *                                                     # (per-route = check-7 real transfer; a route
+ *                                                     # worsening 30 KB without touching / initial
+ *                                                     # would otherwise escape the gate)
  *   node scripts/bundle-report.mjs --version develop  # rolling "develop" row — same upsert
  *                                                     # mechanism for push to develop (ci.yml),
  *                                                     # sorted BELOW main but ABOVE releases so
@@ -458,6 +466,25 @@ fs.writeFileSync(BADGE, JSON.stringify(badge, null, 2) + "\n")
 // via env; use a tiny positive value like 0.05 for that intent.
 const MAIN_DELTA_INITIAL_KB = numEnv(process.env.JS_BUDGET_MAIN_DELTA_INITIAL_KB, 50)
 const MAIN_DELTA_TOTAL_KB = numEnv(process.env.JS_BUDGET_MAIN_DELTA_TOTAL_KB, 200)
+// Per-route real-transfer deltas (check 7): a route that worsens 30 KB on a
+// merge WITHOUT touching / initial would escape the Initial/Total gate alone,
+// so the 'main' gate also enforces per-route thresholds. Default 30 KB per
+// route (KB gzip), env-overridable (policy mirrored in ci.yml). Keyed by the
+// same labels as REAL_ROUTE_CHECKS / the report's "Rotas" blocks. A route
+// with no configured threshold (future REAL_ROUTE_CHECKS entry not yet in
+// this map) is measured and REPORTED but not gated until a policy is added.
+//
+// SEMANTICS: realRoutes is worst-case-over-prerendered-params (Math.max over
+// the per-param transfers, check 7). A build that prerenders a heavier new
+// param can legitimately jump a route's delta > 30 KB without a code change
+// — that is DESIRED (a heavier param IS a regression for that route's users),
+// not flakiness. Don't "fix" a param-driven jump by raising the threshold.
+const ROUTE_DELTA_KB = {
+  "/busca": numEnv(process.env.JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB, 30),
+  "/dashboard": numEnv(process.env.JS_BUDGET_MAIN_DELTA_ROUTE_DASHBOARD_KB, 30),
+  "/u/[slug]": numEnv(process.env.JS_BUDGET_MAIN_DELTA_ROUTE_U_KB, 30),
+  "/categoria/[slug]": numEnv(process.env.JS_BUDGET_MAIN_DELTA_ROUTE_CATEGORIA_KB, 30),
+}
 // Baseline for the main gate: the latest VERSIONED release. Rolling rows
 // (main/develop) are explicitly EXCLUDED — once a develop row exists in the
 // report, the gate must still compare against the release, not against
@@ -482,6 +509,23 @@ const gdTotal =
   entry.version === "main" && releaseBaseline && entry.totalKB != null && releaseBaseline.totalKB != null
     ? +(entry.totalKB - releaseBaseline.totalKB).toFixed(1)
     : null
+// Per-route deltas vs the release baseline — the SAME 0.1-KB float-safe
+// rounding as gdInit/gdTotal. Only routes with a measured value on BOTH sides
+// are compared; a route that exists in only one (newly added since the
+// release, or removed) has no comparable delta and is skipped silently.
+const gdRoutes =
+  entry.version === "main" &&
+  releaseBaseline &&
+  Array.isArray(entry.routes) &&
+  Array.isArray(releaseBaseline.routes)
+    ? entry.routes
+        .map((rt) => {
+          const base = releaseBaseline.routes.find((x) => x.label === rt.label)
+          if (!base || base.gzipKB == null || rt.gzipKB == null) return null
+          return { label: rt.label, delta: +(rt.gzipKB - base.gzipKB).toFixed(1), base: base.gzipKB, cur: rt.gzipKB }
+        })
+        .filter((x) => x !== null)
+    : []
 if (entry.version === "main" && releaseBaseline && m.initialSource === "prerendered-html") {
   const dInit = gdInit
   if (dInit != null && dInit > MAIN_DELTA_INITIAL_KB) {
@@ -500,6 +544,21 @@ if (entry.version === "main" && releaseBaseline && m.initialSource === "prerende
         `limite +${MAIN_DELTA_TOTAL_KB} KB). Bloqueado — reduza o bundle total antes do merge.`,
     )
     process.exit(1)
+  }
+  // Per-route real-transfer regressions — checked AFTER initial/total so the
+  // most severe message wins when multiple gates trip; each failing route is
+  // reported before exit.
+  for (const gd of gdRoutes) {
+    const limit = ROUTE_DELTA_KB[gd.label]
+    if (limit == null) continue // measured but no policy yet → report only
+    if (gd.delta > limit) {
+      console.error(
+        `❌ ANTI-REGRESSION GATE: 'main' rota ${gd.label} piorou +${gd.delta.toFixed(1)} KB vs ` +
+          `${releaseBaseline.version} (${gd.base.toFixed(1)} → ${gd.cur.toFixed(1)} KB; ` +
+          `limite +${limit.toFixed(1)} KB). Bloqueado — reduza o real transfer da rota antes do merge.`,
+      )
+      process.exit(1)
+    }
   }
 }
 
@@ -527,8 +586,18 @@ if (entry.version === "develop") {
     )
   } else {
     const sign = (d) => (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(1))
+    // Distinguish "rotas dentro do limite" from "sem baseline por rota ainda"
+    // (releases antigos — v0.4.0/v0.4.1 — não têm blocos Rotas no markdown, e
+    // rotas novas só passam a ser comparadas quando o baseline as registra).
+    // Sem isto, o log silenciosamente omite rotas no primeiro run pós-change,
+    // indistinguível de "nenhuma rota medida".
+    const routeLog = gdRoutes.length
+      ? ", rotas: " + gdRoutes.map((g) => `${g.label} ${sign(g.delta)} KB`).join(", ")
+      : Array.isArray(entry.routes) && entry.routes.length > 0
+        ? ", rotas: n/a — sem baseline por rota ainda"
+        : ""
     console.log(
-      `   gate anti-regressão: ok (Δ initial ${sign(gdInit)} KB, Δ total ${sign(gdTotal)} KB vs ${releaseBaseline.version})`,
+      `   gate anti-regressão: ok (Δ initial ${sign(gdInit)} KB, Δ total ${sign(gdTotal)} KB${routeLog} vs ${releaseBaseline.version})`,
     )
   }
 }

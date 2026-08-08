@@ -24,6 +24,15 @@
  *   5. initialSource fallback (rootMainFiles, non-comparable) → exit 0, skipped
  *   6. Delta EXACTLY equal to the threshold → exit 0 (strictly-greater >
  *      contract: a regression exactly at the limit passes)
+ *   7. A ROUTE's real transfer (check 7: prerendered HTML script-list sum)
+ *      worsens beyond its per-route threshold → exit 1 "rota /busca piorou"
+ *      — the case that escapes the Initial/Total gate alone
+ *   8. ROUTE delta within the threshold → exit 0, "rotas:" in the ok log
+ *   9. No route baseline in the report (route added since the release) →
+ *      skip, exit 0 — only routes measured on BOTH sides are compared
+ *  10. Default 30 KB per-route threshold applies without env override
+ *  11. Route in the baseline but absent in the entry (REAL_ROUTE_CHECKS
+ *      shrank) → skip, exit 0 — a removed route can't regress
  */
 import { describe, it, expect, afterEach } from "vitest"
 import { spawnSync } from "node:child_process"
@@ -83,6 +92,31 @@ function baselineReport(initialKB: string, totalKB: string): string {
     "| Versão | Data | Initial (/) | Δ Init | Total | Δ Total | Largest | Δ Largest | Maplibre | Recharts | Framer | Δ Framer | Gate |\n" +
     "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n" +
     `| v0.4.2 | 2026-08-08 | ${initialKB} | — | ${totalKB} | — | 58.6 | — | 266.9 | 85.4 | — | — | ✅ |\n`
+  )
+}
+
+/** Prerendered route HTML under .next/server/app/ — feeds REAL_ROUTE_CHECKS
+ * (check 7). References the given chunk rel-paths (under .next/static/chunks)
+ * so realTransferFromHtmlFile can resolve and sum their gzip bytes. */
+function writeRouteHtml(f: Fixture, htmlRel: string, chunkRels: string[]): void {
+  const scripts = chunkRels
+    .map((c) => `<script src="/_next/static/chunks/${c}"></script>`)
+    .join("")
+  f.write(
+    `.next/server/app/${htmlRel}`,
+    `<html><head>${scripts}</head><body></body></html>`,
+  )
+}
+
+/** Baseline report + a "## Rotas" block with one route row (v0.4.2). */
+function baselineReportWithRoute(initialKB: string, totalKB: string, routeKB: string): string {
+  return (
+    baselineReport(initialKB, totalKB) +
+    "\n## Rotas (real transfer, KB gzip)\n\n" +
+    "### v0.4.2 — 2026-08-08\n" +
+    "| Rota | Params | KB gzip | Δ |\n" +
+    "|---|---|---|---|\n" +
+    `| /busca | 1 | ${routeKB} | — |\n`
   )
 }
 
@@ -314,5 +348,94 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("gate anti-regressão: skipped — initial veio do fallback")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
+  })
+
+  it("fails (exit 1) when a ROUTE's real transfer worsens beyond its threshold even with Initial/Total fine", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // Route chunk: a heavy, mostly-incompressible payload so the prerendered
+    // /busca real transfer (sum of referenced chunk gzip bytes) is measured
+    // far ABOVE the tiny baseline route value.
+    const payload = Array.from({ length: 30000 }, (_, i) => `"r${i}${i * 31}qz"`).join(",")
+    f.write(".next/static/chunks/busca-heavy-zz.js", `export const b = [${payload}];`)
+    writeRouteHtml(f, "busca.html", ["busca-heavy-zz.js"])
+    // Baseline v0.4.2: /busca real transfer = 0.1 KB; Initial/Total deltas
+    // stay within limits (initial tiny vs 219.1 → negative; total +7.9 < 200)
+    // so ONLY the route gate can trip — the escape case the gate was built for.
+    f.write("docs/bundle-report.md", baselineReportWithRoute("219.1", "80.0", "0.1"))
+
+    const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB: "5" })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain("ANTI-REGRESSION GATE")
+    expect(r.stderr).toContain("rota /busca piorou")
+    expect(r.stderr).toContain("v0.4.2")
+    expect(r.stderr).toContain("limite +5.0 KB")
+    // Docs written before the gate exits → the regressed row is recorded.
+    expect(fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")).toContain("| main |")
+  })
+
+  it("passes (exit 0) when route deltas are within threshold, logging the per-route delta", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // Same tiny chunks referenced by /busca as by / — the measured route
+    // transfer ≈ the / initial, well within the 30 KB route threshold.
+    writeRouteHtml(f, "busca.html", ["framework-abc.js", "main-app-def.js"])
+    f.write("docs/bundle-report.md", baselineReportWithRoute("219.1", "80.0", "0.1"))
+
+    const r = runReport(f.dir, {})
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("rotas: /busca")
+    expect(r.stdout).toContain("v0.4.2")
+  })
+
+  it("skips (exit 0) routes with no baseline row — a route added since the release is never compared", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // Heavy /busca payload (would blow any threshold) BUT the baseline report
+    // has NO Rotas section at all → releaseBaseline.routes = [] → the route
+    // exists only on the entry side and must be skipped, not falsely blocked.
+    const payload = Array.from({ length: 30000 }, (_, i) => `"r${i}${i * 31}qz"`).join(",")
+    f.write(".next/static/chunks/busca-heavy-zz.js", `export const b = [${payload}];`)
+    writeRouteHtml(f, "busca.html", ["busca-heavy-zz.js"])
+    f.write("docs/bundle-report.md", baselineReport("219.1", "80.0"))
+
+    const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB: "0.01" })
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("registrado em docs/bundle-report.md")
+  })
+
+  it("skips (exit 0) a route present in the baseline but absent in the entry (REAL_ROUTE_CHECKS shrank)", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // Baseline v0.4.2 HAS a /busca row, but the fixture writes NO busca.html
+    // → check 7 measures nothing → entry.routes is empty → the loop over
+    // entry.routes never compares /busca. A removed route can't regress, so
+    // even a 0.01 KB threshold must not fail.
+    f.write("docs/bundle-report.md", baselineReportWithRoute("219.1", "80.0", "250.0"))
+
+    const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB: "0.01" })
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("registrado em docs/bundle-report.md")
+  })
+
+  it("applies the 30 KB DEFAULT per-route threshold when no env override is set", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // Heavy payload guarantees the measured /busca transfer is FAR above
+    // 30 KB gzip (baseline 0.1 KB) → the default threshold must trip.
+    const payload = Array.from({ length: 50000 }, (_, i) => `"d${i}${i * 17}qz"`).join(",")
+    f.write(".next/static/chunks/busca-heavy-zz.js", `export const b = [${payload}];`)
+    writeRouteHtml(f, "busca.html", ["busca-heavy-zz.js"])
+    f.write("docs/bundle-report.md", baselineReportWithRoute("219.1", "80.0", "0.1"))
+
+    // No JS_BUDGET_MAIN_DELTA_ROUTE_*_KB env → the 30 KB default applies.
+    const r = runReport(f.dir, {})
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain("ANTI-REGRESSION GATE")
+    expect(r.stderr).toContain("rota /busca piorou")
+    expect(r.stderr).toContain("limite +30.0 KB")
   })
 })

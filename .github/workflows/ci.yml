@@ -318,12 +318,14 @@ jobs:
       # (mirrors the PR-preview step below; bundle-report.mjs tolerates exit 1,
       # only exit 2 / missing report fails it).
       # ANTI-REGRESSION GATE (bundle-report.mjs): the 'main' row is not just
-      # tracking — the generator exits 1 if the merged bundle's Initial JS (/)
-      # or Total worsened by more than the threshold vs the last versioned
-      # release, blocking the push. Thresholds declared here as the enforced
-      # policy (KB gzip); script defaults are the fallback. Evaluated only for
-      # the rolling 'main' row (releases define the baseline) and skipped when
-      # the initial metric came from the rootMainFiles fallback (non-comparable).
+      # tracking — the generator exits 1 if the merged bundle's Initial JS (/),
+      # Total, or any key ROUTE's real transfer (check 7: /busca, /dashboard,
+      # /u/[slug], /categoria/[slug]) worsened by more than the threshold vs
+      # the last versioned release, blocking the push. Thresholds declared
+      # here as the enforced policy (KB gzip); script defaults are the
+      # fallback. Evaluated only for the rolling 'main' row (releases define
+      # the baseline) and skipped when the initial metric came from the
+      # rootMainFiles fallback (non-comparable).
       - name: Generate versioned bundle report (main push)
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
@@ -331,6 +333,14 @@ jobs:
           # release blocks the push to main.
           JS_BUDGET_MAIN_DELTA_INITIAL_KB: 50
           JS_BUDGET_MAIN_DELTA_TOTAL_KB: 200
+          # Per-route real-transfer regressions (check 7) — a route that
+          # worsens 30 KB without touching / initial would escape the
+          # initial/total thresholds alone, so each measured route is gated
+          # with its own 30 KB default (env-overridable per route).
+          JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB: 30
+          JS_BUDGET_MAIN_DELTA_ROUTE_DASHBOARD_KB: 30
+          JS_BUDGET_MAIN_DELTA_ROUTE_U_KB: 30
+          JS_BUDGET_MAIN_DELTA_ROUTE_CATEGORIA_KB: 30
         run: bun run bundle:report --version main
 
       - name: Commit bundle report (main push)
