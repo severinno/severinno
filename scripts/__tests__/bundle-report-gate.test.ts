@@ -410,6 +410,81 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.stdout).toContain("v0.4.2")
   })
 
+  it("emits ::warning:: for PARTIAL disarm — baseline has Rotas blocks but ZERO label overlap with the entry", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // Entry measures /busca (check 7) from the prerendered HTML.
+    writeRouteHtml(f, "busca.html", ["framework-abc.js", "main-app-def.js"])
+    // Baseline v0.4.2 HAS a Rotas section, but only /dashboard — NO label in
+    // common with the entry's /busca → gdRoutes is empty → the per-route gate
+    // is silently skipped. Camada B must warn (partial disarm) instead of
+    // passing quietly, and the log must say "sem overlap de labels" — not the
+    // misleading "sem baseline por rota ainda".
+    f.write(
+      "docs/bundle-report.md",
+      baselineReport("219.1", "80.0") +
+        "\n## Rotas (real transfer, KB gzip)\n\n" +
+        "### v0.4.2 — 2026-08-08\n" +
+        "| Rota | Params | KB gzip | Δ |\n" +
+        "|---|---|---|---|\n" +
+        "| /dashboard | 1 | 218.1 | — |\n",
+    )
+
+    const r = runReport(f.dir, {})
+    expect(r.status).toBe(0) // warning is non-blocking
+    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("::warning:: gate de rota PARCIALMENTE desarmado")
+    expect(r.stdout).toContain("/dashboard")
+    expect(r.stdout).toContain("/busca")
+    expect(r.stdout).toContain("v0.4.2")
+    expect(r.stdout).toContain("baseline sem overlap de labels")
+    expect(r.stdout).toContain("registrado em docs/bundle-report.md")
+    // Exclusividade do if/else-if: o warning de desarme TOTAL (baseline sem
+    // blocos) NÃO pode disparar junto no caso parcial — são estados distintos.
+    expect(r.stdout).not.toContain("::warning:: gate de rota desarmado — baseline")
+    expect(r.stdout).not.toContain("sem baseline por rota ainda")
+  })
+
+  it("INTEGRATION release→main: a real release run WITHOUT route HTML leaves no Rotas block, and the next main push (now measuring /busca) fires the FULL-disarm ::warning:: on stdout", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // Release run FIRST — the fixture has NO busca.html, so check 7 measures
+    // no routes and the v0.4.3 row is written WITHOUT a Rotas block (exactly
+    // what a pre-blocks release looks like). The docs state here is PRODUCED
+    // by a real subprocess run, not hand-written — the hand-written fixture
+    // test above could drift from the real release output; this locks the
+    // full release→main chain (the user-visible disarm path in CI).
+    const rel = runReport(f.dir, {}, "v0.4.3")
+    expect(rel.status).toBe(0)
+    const mdAfterRelease = fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")
+    expect(mdAfterRelease).toContain("| v0.4.3 |")
+    expect(mdAfterRelease).not.toContain("## Rotas (real transfer")
+
+    // Later, on main, the build now measures /busca (route HTML present).
+    // Baseline v0.4.3 has NO route blocks → FULL disarm: the ::warning:: must
+    // appear on stdout (that is exactly what the GitHub Actions CI log
+    // consumes as an annotation), the gate must NOT block (exit 0), and the
+    // log must say "sem baseline por rota ainda" — the tri-valued routeLog's
+    // honest state for this case.
+    writeRouteHtml(f, "busca.html", ["framework-abc.js", "main-app-def.js"])
+    const r = runReport(f.dir, {})
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("::warning:: gate de rota desarmado")
+    expect(r.stdout).toContain("v0.4.3") // baseline = the release just made
+    expect(r.stdout).toContain("O próximo release re-arma") // guidance tail
+    expect(r.stdout).toContain("sem baseline por rota ainda")
+    expect(r.stdout).toContain("gate anti-regressão: ok")
+    // Exclusividade do if/else-if: baseline sem blocos ≠ sem overlap — o
+    // warning PARCIAL não pode disparar junto com o total.
+    expect(r.stdout).not.toContain("PARCIALMENTE desarmado")
+    // Both rows survive the round-trip; the main block is now in the report.
+    const md = fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")
+    expect(md).toContain("| main |")
+    expect(md).toContain("| v0.4.3 |")
+    expect(md).toContain("### main")
+    expect(md).toContain("| /busca |")
+  })
+
   it("skips (exit 0) a route present in the baseline but absent in the entry (REAL_ROUTE_CHECKS shrank)", () => {
     const f = makeFixture()
     writePassBuild(f)

@@ -597,27 +597,46 @@ if (entry.version === "develop") {
     // rotas novas só passam a ser comparadas quando o baseline as registra).
     // Sem isto, o log silenciosamente omite rotas no primeiro run pós-change,
     // indistinguível de "nenhuma rota medida".
+    const entryRouteLabels = Array.isArray(entry.routes) ? entry.routes.map((r) => r.label) : []
+    const baselineRouteLabels = Array.isArray(releaseBaseline.routes)
+      ? releaseBaseline.routes.map((r) => r.label)
+      : []
+    const overlapLabels = entryRouteLabels.filter((l) => baselineRouteLabels.includes(l))
+    // Três estados de observabilidade por rota: (a) algo foi comparado → loga
+    // os deltas; (b) entry mediu rotas mas baseline NÃO tem blocos (release
+    // antigo) → "sem baseline por rota ainda"; (c) entry E baseline têm rotas,
+    // mas ZERO label em comum (release mediu outras rotas / labels divergiram)
+    // → "baseline sem overlap de labels" — e nunca "sem baseline por rota",
+    // que seria enganoso aqui. Baseline routes sempre têm gzipKB numérico
+    // (regex do parser), então gdRoutes vazio com baseline não-vazio ⟺ sem
+    // overlap — sem estado extra.
     const routeLog = gdRoutes.length
       ? ", rotas: " + gdRoutes.map((g) => `${g.label} ${sign(g.delta)} KB`).join(", ")
-      : Array.isArray(entry.routes) && entry.routes.length > 0
-        ? ", rotas: n/a — sem baseline por rota ainda"
+      : entryRouteLabels.length > 0
+        ? baselineRouteLabels.length === 0
+          ? ", rotas: n/a — sem baseline por rota ainda"
+          : ", rotas: n/a — baseline sem overlap de labels"
         : ""
     // Camada B do plano: quando este push do main MEDIU rotas (check 7) mas o
-    // último release versionado NÃO tem blocos Rotas, o gate anti-regressão
-    // por rota está silenciosamente DESARMADO (nada para comparar → "n/a").
-    // Emite um ::warning:: (anotação do GitHub Actions, inofensiva fora do
-    // CI) para um desarme nunca passar despercebido no log — não bloqueia por
-    // design (um release legítimo pode ser anterior aos blocos); o próximo
-    // release re-arma o gate, o que o release-deploy.yml asserta (Camada A).
-    if (
-      Array.isArray(entry.routes) &&
-      entry.routes.length > 0 &&
-      Array.isArray(releaseBaseline.routes) &&
-      releaseBaseline.routes.length === 0
-    ) {
+    // gate anti-regressão por rota está DESARMADO — total (baseline sem blocos
+    // Rotas, releases antigos) OU parcial (baseline com blocos, mas NENHUM
+    // label em comum com as rotas medidas: o release mediu outras rotas ou os
+    // labels divergiram). Em ambos nada é comparado → uma rota poderia
+    // regredir no merge sem o gate perceber. Emite um ::warning:: (anotação
+    // do GitHub Actions, inofensiva fora do CI) — não bloqueia por design (um
+    // release legítimo pode ser anterior aos blocos); o próximo release
+    // re-arma o gate, o que o release-deploy.yml asserta (Camada A).
+    if (entryRouteLabels.length > 0 && baselineRouteLabels.length === 0) {
       console.log(
         `::warning:: gate de rota desarmado — baseline ${releaseBaseline.version} sem blocos Rotas; ` +
           "deltas por rota deste merge NÃO foram comparados. O próximo release re-arma (assertado no release-deploy.yml).",
+      )
+    } else if (entryRouteLabels.length > 0 && baselineRouteLabels.length > 0 && overlapLabels.length === 0) {
+      console.log(
+        `::warning:: gate de rota PARCIALMENTE desarmado — baseline ${releaseBaseline.version} tem blocos Rotas ` +
+          `(${baselineRouteLabels.join(", ")}) mas NENHUM label coincide com as rotas medidas neste merge ` +
+          `(${entryRouteLabels.join(", ")}); deltas por rota NÃO foram comparados. ` +
+          "Alinhe os labels (REAL_ROUTE_CHECKS) ou recalibre o baseline.",
       )
     }
     console.log(
