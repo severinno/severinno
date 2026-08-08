@@ -14,7 +14,6 @@
  */
 
 import * as React from "react"
-import { motion } from "framer-motion"
 import { useScrollReveal } from "@/hooks/use-animation"
 import { cn } from "@/lib/utils"
 
@@ -84,22 +83,21 @@ export default function PartnersTrust() {
     >
       <div ref={ref} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header (H8: minimal, just a muted label) */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="mb-8 text-center"
+        <div
+          className={cn(
+            "mb-8 text-center transition-all duration-500 ease-out",
+            visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+          )}
         >
           <p className="text-sm font-medium uppercase tracking-widest text-muted-foreground">
             Referência no mercado
           </p>
-        </motion.div>
+        </div>
 
         {/* Logos — horizontal scroll on mobile, centered grid on desktop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={visible ? { opacity: 1 } : {}}
-          transition={{ duration: 0.6, delay: 0.15 }}
+        <div
+          className={cn("transition-opacity duration-500", visible ? "opacity-100" : "opacity-0")}
+          style={{ transitionDelay: visible ? "150ms" : "0ms" }}
         >
           {/* Mobile: horizontal scroll */}
           <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:hidden scrollbar-thin">
@@ -111,31 +109,34 @@ export default function PartnersTrust() {
           {/* Desktop: centered grid */}
           <div className="hidden flex-wrap items-center justify-center gap-3 sm:flex lg:gap-4">
             {PRESS_LOGOS.map((logo, idx) => (
-              <motion.div
+              <div
                 key={logo.name}
-                initial={{ opacity: 0, y: 8 }}
-                animate={visible ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.4, delay: 0.1 + idx * 0.05 }}
+                className={cn(
+                  "transition-all duration-400 ease-out",
+                  visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+                )}
+                style={{ transitionDelay: visible ? `${100 + idx * 50}ms` : "0ms" }}
               >
                 <LogoCard logo={logo} />
-              </motion.div>
+              </div>
             ))}
           </div>
-        </motion.div>
+        </div>
 
         {/* Trust stat below logos (H9: trust reduces anxiety) */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={visible ? { opacity: 1 } : {}}
-          transition={{ duration: 0.5, delay: 0.4 }}
-          className="mt-8 text-center text-sm text-muted-foreground"
+        <p
+          className={cn(
+            "mt-8 text-center text-sm text-muted-foreground transition-opacity duration-500",
+            visible ? "opacity-100" : "opacity-0",
+          )}
+          style={{ transitionDelay: visible ? "400ms" : "0ms" }}
         >
           + de{" "}
           <span className="font-semibold text-emerald-600 dark:text-emerald-400">
             6.000
           </span>{" "}
           prestadores confiam no Severinno
-        </motion.p>
+        </p>
       </div>
     </section>
   )

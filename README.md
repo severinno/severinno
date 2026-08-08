@@ -15,6 +15,9 @@
   <img src="https://img.shields.io/badge/tests-74%20unit%20%7C%20160%20e2e%20%E2%9C%85-2ea44f" alt="Tests: 74 unit | 160 E2E">
   <img src="https://img.shields.io/badge/encoding%20guards-4%2F4%20active%20%E2%9C%85-2ea44f" alt="Encoding guards: 4/4 active">
   <img src="https://img.shields.io/badge/coverage-57%25%20(45%2F79)-bfa100" alt="Coverage: 57%">
+  <a href="docs/bundle-report.md">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fseverinno%2Fseverinno%2FHEAD%2Fdocs%2Fbundle-badge.json" alt="Bundle: initial JS + gate">
+  </a>
 </p>
 
 > Marketplace de serviços com geolocalização — encontre prestadores verificados próximos a você.

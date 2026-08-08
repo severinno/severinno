@@ -35,7 +35,6 @@ import {
   ThumbsUp,
   type LucideIcon,
 } from "lucide-react"
-import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { useUIStore } from "@/store/ui"
 import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
@@ -247,46 +246,23 @@ const TRUST_ITEMS = [
 ]
 
 // ---------------------------------------------------------------------------
-// Animation variants
+// Parallax blobs — static decorative gradients (scroll parallax removed)
 // ---------------------------------------------------------------------------
 
-const staggerContainer = {
-  hidden: {},
-  show: {
-    transition: { staggerChildren: 0.12 },
-  },
-}
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } },
-}
-
-// ---------------------------------------------------------------------------
-// Parallax blobs — different scroll speeds for layered depth
-// ---------------------------------------------------------------------------
-
-function ParallaxBlobs({ scrollYProgress }: { scrollYProgress: ReturnType<typeof useScroll>["scrollYProgress"] }) {
-  const y1 = useTransform(scrollYProgress, [0, 1], [0, -60])
-  const y2 = useTransform(scrollYProgress, [0, 1], [0, 40])
-  const y3 = useTransform(scrollYProgress, [0, 1], [0, -30])
-
+function ParallaxBlobs() {
   return (
     <>
-      <motion.div
+      <div
         aria-hidden
         className="absolute -top-32 right-0 size-80 rounded-full bg-emerald-200/40 blur-3xl dark:bg-emerald-800/20"
-        style={{ y: y1 }}
       />
-      <motion.div
+      <div
         aria-hidden
         className="absolute -bottom-24 -left-16 size-96 rounded-full bg-teal-200/30 blur-3xl dark:bg-teal-800/15"
-        style={{ y: y2 }}
       />
-      <motion.div
+      <div
         aria-hidden
         className="absolute top-1/2 left-1/3 size-64 rounded-full bg-emerald-100/30 blur-3xl dark:bg-emerald-900/10"
-        style={{ y: y3 }}
       />
     </>
   )
@@ -320,13 +296,6 @@ export default function HowItWorks({
   const openAuth = useUIStore((s) => s.openAuth)
   const { ref, visible } = useScrollReveal<HTMLDivElement>()
   const sectionRef = React.useRef<HTMLDivElement>(null)
-
-  // Scroll progress for animated connector line (H1)
-  const { scrollYProgress } = useScroll({
-    target: sectionRef,
-    offset: ["start end", "end start"],
-  })
-  const lineProgress = useTransform(scrollYProgress, [0.1, 0.6], [0, 1])
 
   const { ref: countRef, value: countValue } = useCountUp(4, {
     duration: 800,
@@ -374,16 +343,16 @@ export default function HowItWorks({
         }}
       />
 
-      {/* Parallax decorative blobs */}
-      <ParallaxBlobs scrollYProgress={scrollYProgress} />
+      {/* Decorative blobs */}
+      <ParallaxBlobs />
 
       <div ref={ref} className="relative mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
         {/* ── Header with quick-skip link (H7) ──────────────────────── */}
-        <motion.header
-          initial={{ opacity: 0, y: 20 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="relative mx-auto mb-14 max-w-2xl text-center sm:mb-16"
+        <header
+          className={cn(
+            "relative mx-auto mb-14 max-w-2xl text-center transition-all duration-500 ease-out sm:mb-16",
+            visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          )}
         >
           {/* "Pular para resultados" quick-skip button at top-right (H7) */}
           <a
@@ -395,15 +364,16 @@ export default function HowItWorks({
           </a>
 
           {/* "4 passos simples" badge (H1) */}
-          <motion.span
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={visible ? { opacity: 1, scale: 1 } : {}}
-            transition={{ duration: 0.4, delay: 0.1 }}
-            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 transition-all duration-300 ease-out dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50",
+              visible ? "scale-100 opacity-100" : "scale-90 opacity-0",
+            )}
+            style={{ transitionDelay: visible ? "100ms" : "0ms" }}
           >
             <Sparkles className="size-3.5" />
             <span ref={countRef}>{countValue}</span> passos simples
-          </motion.span>
+          </span>
 
           <h2 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
             Como funciona
@@ -418,7 +388,7 @@ export default function HowItWorks({
             <Handshake className="size-3.5" />
             Sem compromisso
           </span>
-        </motion.header>
+        </header>
 
         {/* ── Desktop: 4 connected cards with animated line ───────── */}
         <div className="hidden sm:block">
@@ -449,8 +419,8 @@ export default function HowItWorks({
                   strokeWidth="2"
                   strokeDasharray="8 6"
                 />
-                {/* Animated progress line — fills on scroll */}
-                <motion.line
+                {/* Progress line */}
+                <line
                   x1="125"
                   y1="4"
                   x2="875"
@@ -458,19 +428,14 @@ export default function HowItWorks({
                   stroke="url(#conn-gradient)"
                   strokeWidth="3"
                   strokeLinecap="round"
-                  pathLength={1}
-                  style={{ pathLength: lineProgress }}
+                  opacity={visible ? 1 : 0}
+                  className="transition-opacity duration-500"
                 />
               </svg>
             </div>
 
             {/* Step cards grid — 4 columns */}
-            <motion.div
-              variants={staggerContainer}
-              initial="hidden"
-              animate={visible ? "show" : "hidden"}
-              className="relative z-10 grid grid-cols-2 gap-6 lg:grid-cols-4 lg:gap-6"
-            >
+            <div className="relative z-10 grid grid-cols-2 gap-6 lg:grid-cols-4 lg:gap-6">
               {STEPS.map((step, idx) => (
                 <StepCardDesktop
                   key={step.title}
@@ -490,7 +455,7 @@ export default function HowItWorks({
                   }}
                 />
               ))}
-            </motion.div>
+            </div>
           </div>
         </div>
 
@@ -503,12 +468,10 @@ export default function HowItWorks({
               className="absolute top-0 bottom-0 left-7 w-0.5 rounded-full bg-emerald-200 dark:bg-emerald-900/60"
             />
             {/* Animated progress fill based on expanded step */}
-            <motion.div
+            <div
               aria-hidden
-              className="absolute top-0 left-7 w-0.5 rounded-full bg-gradient-to-b from-emerald-500 to-teal-600"
-              initial={{ height: 0 }}
-              animate={{ height: `${((expandedStep + 1) / STEPS.length) * 100}%` }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
+              className="absolute top-0 left-7 w-0.5 rounded-full bg-gradient-to-b from-emerald-500 to-teal-600 transition-all duration-500 ease-out"
+              style={{ height: `${((expandedStep + 1) / STEPS.length) * 100}%` }}
             />
           </div>
 
@@ -517,12 +480,13 @@ export default function HowItWorks({
               const Icon = step.icon
               const isExpanded = expandedStep === idx
               return (
-                <motion.div
+                <div
                   key={step.title}
-                  variants={fadeUp}
-                  initial="hidden"
-                  animate={visible ? "show" : "hidden"}
-                  className="relative flex items-start gap-4 pb-5"
+                  className={cn(
+                    "relative flex items-start gap-4 pb-5 transition-all duration-500 ease-out",
+                    visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0",
+                  )}
+                  style={{ transitionDelay: `${idx * 120}ms` }}
                 >
                   {/* Timeline node — size-16 circle with gradient */}
                   <button
@@ -545,25 +509,24 @@ export default function HowItWorks({
                       className="flex w-full items-center justify-between text-left text-sm font-semibold"
                     >
                       {step.title}
-                      <motion.span
-                        animate={{ rotate: isExpanded ? 180 : 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="ml-2 text-muted-foreground"
+                      <span
+                        className={cn(
+                          "ml-2 text-muted-foreground transition-transform duration-200",
+                          isExpanded && "rotate-180",
+                        )}
                       >
                         <ChevronRight className="size-3.5 -rotate-90" />
-                      </motion.span>
+                      </span>
                     </button>
 
-                    <AnimatePresence initial={false}>
-                      {isExpanded && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-                          className="overflow-hidden"
-                        >
-                          <div className="pb-2 pt-2">
+                    <div
+                      className={cn(
+                        "grid transition-all duration-300 ease-out",
+                        isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+                      )}
+                    >
+                      <div className="min-h-0 overflow-hidden">
+                        <div className="pb-2 pt-2">
                             <p className="text-xs text-muted-foreground">
                               {step.oneLiner}
                             </p>
@@ -605,22 +568,22 @@ export default function HowItWorks({
                               <ChevronRight className="size-3" />
                             </Button>
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                        </div>
+                      </div>
                   </div>
-                </motion.div>
+                </div>
               )
             })}
           </div>
         </div>
 
         {/* ── Guarantee strip with trust badges (H10 tooltips) ────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5, delay: 0.5 }}
-          className="mt-14 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/60 via-white to-teal-50/60 p-5 dark:border-emerald-900/50 dark:from-emerald-950/20 dark:via-slate-900 dark:to-teal-950/20 sm:mt-16"
+        <div
+          className={cn(
+            "mt-14 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50/60 via-white to-teal-50/60 p-5 transition-all duration-500 ease-out dark:border-emerald-900/50 dark:from-emerald-950/20 dark:via-slate-900 dark:to-teal-950/20 sm:mt-16",
+            visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          )}
+          style={{ transitionDelay: visible ? "500ms" : "0ms" }}
         >
           <div className="mb-3 flex items-center justify-center gap-2">
             <ShieldCheck className="size-4 text-emerald-500" />
@@ -649,14 +612,15 @@ export default function HowItWorks({
               )
             })}
           </div>
-        </motion.div>
+        </div>
 
         {/* ── CTA — drive conversion ───────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5, delay: 0.6 }}
-          className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center"
+        <div
+          className={cn(
+            "mt-8 flex flex-col items-center gap-3 transition-all duration-500 ease-out sm:flex-row sm:justify-center",
+            visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          )}
+          style={{ transitionDelay: visible ? "600ms" : "0ms" }}
         >
           <Button
             size="lg"
@@ -689,14 +653,15 @@ export default function HowItWorks({
               </a>
             </Button>
           )}
-        </motion.div>
+        </div>
 
         {/* Quick-skip links (H3 + H7) */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={visible ? { opacity: 1 } : {}}
-          transition={{ duration: 0.5, delay: 0.7 }}
-          className="mt-4 flex items-center justify-center gap-4"
+        <div
+          className={cn(
+            "mt-4 flex items-center justify-center gap-4 transition-all duration-500 ease-out",
+            visible ? "opacity-100" : "opacity-0",
+          )}
+          style={{ transitionDelay: visible ? "700ms" : "0ms" }}
         >
           <a
             href="#vitrine-resultados"
@@ -715,7 +680,7 @@ export default function HowItWorks({
             <ArrowUp className="size-3" />
             Voltar ao topo
           </button>
-        </motion.div>
+        </div>
       </div>
     </section>
   )
@@ -742,9 +707,12 @@ function StepCardDesktop({
   const Icon = step.icon
 
   return (
-    <motion.div
-      variants={fadeUp}
-      className="group relative z-10 cursor-pointer"
+    <div
+      className={cn(
+        "group relative z-10 cursor-pointer transition-all duration-500 ease-out",
+        visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0",
+      )}
+      style={{ transitionDelay: `${index * 120}ms` }}
       role="button"
       tabIndex={0}
       onKeyDown={onKeyDown}
@@ -766,15 +734,16 @@ function StepCardDesktop({
               <Icon className="size-8" />
             </span>
             {/* Completion checkmark */}
-            <motion.span
-              initial={{ scale: 0, opacity: 0 }}
-              animate={visible ? { scale: 1, opacity: 1 } : {}}
-              transition={{ duration: 0.3, delay: 0.6 + index * 0.15, type: "spring", stiffness: 300 }}
-              className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-emerald-500 shadow-md"
+            <span
+              className={cn(
+                "absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full bg-emerald-500 shadow-md transition-all duration-300 ease-out",
+                visible ? "scale-100 opacity-100" : "scale-0 opacity-0",
+              )}
+              style={{ transitionDelay: visible ? `${600 + index * 150}ms` : "0ms" }}
               aria-hidden
             >
               <CheckCircle2 className="size-3.5 text-white" />
-            </motion.span>
+            </span>
           </div>
 
           {/* Title */}
@@ -825,6 +794,6 @@ function StepCardDesktop({
           </Button>
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }

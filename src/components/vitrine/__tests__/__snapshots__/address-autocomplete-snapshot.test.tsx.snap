@@ -66,9 +66,7 @@ exports[`AddressAutocomplete — snapshot > dropdown hover: highlights first ite
         type="button"
       >
         <span
-          animate="[object Object]"
-          class="inline-flex transition-colors duration-300"
-          transition="[object Object]"
+          class="inline-flex animate-in zoom-in-90 fade-in duration-300 transition-colors"
         >
           <span
             data-testid="icon-locate"
@@ -177,9 +175,7 @@ exports[`AddressAutocomplete — snapshot > empty state: renders input with MapP
         type="button"
       >
         <span
-          animate="[object Object]"
-          class="inline-flex transition-colors duration-300"
-          transition="[object Object]"
+          class="inline-flex animate-in zoom-in-90 fade-in duration-300 transition-colors"
         >
           <span
             data-testid="icon-locate"
@@ -219,9 +215,7 @@ exports[`AddressAutocomplete — snapshot > fetch error: shows input with typed 
         type="button"
       >
         <span
-          animate="[object Object]"
-          class="inline-flex transition-colors duration-300"
-          transition="[object Object]"
+          class="inline-flex animate-in zoom-in-90 fade-in duration-300 transition-colors"
         >
           <span
             data-testid="icon-locate"
@@ -270,9 +264,7 @@ exports[`AddressAutocomplete — snapshot > geo store placeholder: shows city na
         type="button"
       >
         <span
-          animate="[object Object]"
-          class="inline-flex transition-colors duration-300"
-          transition="[object Object]"
+          class="inline-flex animate-in zoom-in-90 fade-in duration-300 transition-colors"
         >
           <span
             data-testid="icon-locate"
@@ -312,9 +304,7 @@ exports[`AddressAutocomplete — snapshot > input filled: shows filled input wit
         type="button"
       >
         <span
-          animate="[object Object]"
-          class="inline-flex transition-colors duration-300"
-          transition="[object Object]"
+          class="inline-flex animate-in zoom-in-90 fade-in duration-300 transition-colors"
         >
           <span
             data-testid="icon-locate"
@@ -364,9 +354,7 @@ exports[`AddressAutocomplete — snapshot > results dropdown: shows dropdown wit
         type="button"
       >
         <span
-          animate="[object Object]"
-          class="inline-flex transition-colors duration-300"
-          transition="[object Object]"
+          class="inline-flex animate-in zoom-in-90 fade-in duration-300 transition-colors"
         >
           <span
             data-testid="icon-locate"
@@ -475,9 +463,7 @@ exports[`AddressAutocomplete — snapshot > reverse geocode error: shows raw coo
         type="button"
       >
         <span
-          animate="[object Object]"
-          class="inline-flex transition-colors duration-300 text-emerald-500"
-          transition="[object Object]"
+          class="inline-flex animate-in zoom-in-90 fade-in duration-300 transition-colors text-emerald-500"
         >
           <span
             data-testid="icon-locate"

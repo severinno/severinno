@@ -30,7 +30,6 @@ import {
   ChevronUp,
   MessageCircle,
 } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 
 import { fetchProviders, type ProviderCard, type ProviderService } from "@/lib/api"
 import { useScrollReveal } from "@/hooks/use-animation"
@@ -40,27 +39,6 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatBRL } from "@/lib/format"
 import { cn } from "@/lib/utils"
-
-// ---------------------------------------------------------------------------
-// Staggered children animation variants
-// ---------------------------------------------------------------------------
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
-  },
-}
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.45, ease: "easeOut" as const },
-  },
-}
 
 // ---------------------------------------------------------------------------
 // Helper: response time estimate (simulated based on rating)
@@ -116,11 +94,11 @@ export default function ProviderSpotlight() {
 
       <div ref={ref} className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Section header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="mb-8 text-center"
+        <div
+          className={cn(
+            "mb-8 text-center transition-all duration-500 ease-out",
+            visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          )}
         >
           <span className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-800/50">
             <Trophy className="size-3.5" />
@@ -133,7 +111,7 @@ export default function ProviderSpotlight() {
           <p className="mt-1.5 text-sm text-muted-foreground">
             Conheça um dos nossos prestadores mais bem avaliados.
           </p>
-        </motion.div>
+        </div>
 
         {/* Featured card */}
         {providerQuery.isLoading ? (
@@ -147,10 +125,11 @@ export default function ProviderSpotlight() {
           />
         ) : (
           /* Fallback — no provider found */
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={visible ? { opacity: 1 } : {}}
-            className="mx-auto max-w-md rounded-2xl border border-dashed bg-muted/20 p-8 text-center"
+          <div
+            className={cn(
+              "mx-auto max-w-md rounded-2xl border border-dashed bg-muted/20 p-8 text-center transition-opacity duration-500",
+              visible ? "opacity-100" : "opacity-0",
+            )}
           >
             <User className="mx-auto size-10 text-muted-foreground/50" />
             <p className="mt-3 text-sm text-muted-foreground">
@@ -159,7 +138,7 @@ export default function ProviderSpotlight() {
             <p className="mt-1 text-xs text-muted-foreground">
               Cadastre-se como prestador e apareça aqui!
             </p>
-          </motion.div>
+          </div>
         )}
       </div>
     </section>
@@ -184,17 +163,14 @@ function SpotlightCard({
   const [bioExpanded, setBioExpanded] = React.useState(false)
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 24, scale: 0.98 }}
-      animate={visible ? { opacity: 1, y: 0, scale: 1 } : {}}
-      transition={{ duration: 0.5, delay: 0.15 }}
-      className="mx-auto max-w-2xl"
+    <div
+      className={cn(
+        "mx-auto max-w-2xl transition-all duration-500 ease-out",
+        visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-[0.98] opacity-0",
+      )}
+      style={{ transitionDelay: visible ? "150ms" : "0ms" }}
     >
-      <motion.div
-        whileHover={{ y: -4 }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className="group relative overflow-hidden rounded-2xl border bg-card shadow-lg transition-shadow duration-300 hover:shadow-2xl"
-      >
+      <div className="group relative overflow-hidden rounded-2xl border bg-card shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl">
         {/* Gradient accent bar — taller & more prominent */}
         <div className="h-2 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
 
@@ -216,14 +192,12 @@ function SpotlightCard({
         />
 
         <div className="relative p-6 sm:p-8">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate={visible ? "visible" : "hidden"}
-            className="flex flex-col gap-6 sm:flex-row sm:items-start"
-          >
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
             {/* Avatar — larger with decorative ring */}
-            <motion.div variants={itemVariants} className="relative shrink-0 self-center sm:self-start">
+            <div
+              className="relative shrink-0 self-center transition-all duration-500 ease-out sm:self-start"
+              style={{ transitionDelay: visible ? "200ms" : "0ms" }}
+            >
               {/* Decorative ring */}
               <div className="absolute -inset-1.5 rounded-full bg-gradient-to-br from-emerald-400 via-teal-400 to-emerald-500 opacity-60 blur-[2px] transition-opacity group-hover:opacity-80" />
               <div className="relative flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 sm:size-28 dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-400 ring-4 ring-background">
@@ -252,12 +226,15 @@ function SpotlightCard({
                   Top
                 </span>
               </div>
-            </motion.div>
+            </div>
 
             {/* Info section */}
-            <motion.div variants={containerVariants} className="flex-1 space-y-3">
+            <div className="flex-1 space-y-3">
               {/* Name & Location */}
-              <motion.div variants={itemVariants}>
+              <div
+                className="transition-all duration-500 ease-out"
+                style={{ transitionDelay: visible ? "250ms" : "0ms" }}
+              >
                 <h3 className="text-xl font-bold">{provider.name}</h3>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
                   {provider.city && (
@@ -280,10 +257,13 @@ function SpotlightCard({
                     </span>
                   )}
                 </div>
-              </motion.div>
+              </div>
 
               {/* Rating — prominent with numeric + stars */}
-              <motion.div variants={itemVariants} className="flex items-center gap-3">
+              <div
+                className="flex items-center gap-3 transition-all duration-500 ease-out"
+                style={{ transitionDelay: visible ? "300ms" : "0ms" }}
+              >
                 <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 dark:bg-amber-950/30">
                   <Star className="size-5 fill-amber-400 text-amber-400" />
                   <span className="text-base font-bold tabular-nums text-amber-700 dark:text-amber-300">
@@ -294,10 +274,13 @@ function SpotlightCard({
                   ({provider.reviewCount}{" "}
                   {provider.reviewCount === 1 ? "avaliação" : "avaliações"})
                 </span>
-              </motion.div>
+              </div>
 
               {/* Meta row: completed bookings + response time */}
-              <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-2">
+              <div
+                className="flex flex-wrap items-center gap-2 transition-all duration-500 ease-out"
+                style={{ transitionDelay: visible ? "350ms" : "0ms" }}
+              >
                 {provider.completedBookings != null && provider.completedBookings > 0 && (
                   <Badge className="gap-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60 border-0">
                     <Sparkles className="size-3" />
@@ -308,11 +291,14 @@ function SpotlightCard({
                   <Clock className="size-3" />
                   Responde em {getResponseTime(provider.rating)}
                 </Badge>
-              </motion.div>
+              </div>
 
               {/* Services with prices */}
               {provider.services.length > 0 && (
-                <motion.div variants={itemVariants} className="space-y-1.5">
+                <div
+                  className="space-y-1.5 transition-all duration-500 ease-out"
+                  style={{ transitionDelay: visible ? "400ms" : "0ms" }}
+                >
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Serviços
                   </p>
@@ -326,12 +312,15 @@ function SpotlightCard({
                       </p>
                     )}
                   </div>
-                </motion.div>
+                </div>
               )}
 
               {/* Bio with expandable "Ver mais" */}
               {provider.bio && (
-                <motion.div variants={itemVariants}>
+                <div
+                  className="transition-all duration-500 ease-out"
+                  style={{ transitionDelay: visible ? "450ms" : "0ms" }}
+                >
                   <p
                     className={cn(
                       "text-sm text-muted-foreground transition-all duration-300",
@@ -358,11 +347,14 @@ function SpotlightCard({
                       )}
                     </button>
                   )}
-                </motion.div>
+                </div>
               )}
 
               {/* Social proof: recent client avatar stack */}
-              <motion.div variants={itemVariants} className="flex items-center gap-2">
+              <div
+                className="flex items-center gap-2 transition-all duration-500 ease-out"
+                style={{ transitionDelay: visible ? "500ms" : "0ms" }}
+              >
                 <div className="flex -space-x-2">
                   {FAKE_CLIENT_AVATARS.map((client, i) => (
                     <div
@@ -378,18 +370,16 @@ function SpotlightCard({
                 <span className="text-xs text-muted-foreground">
                   Clientes recentes
                 </span>
-              </motion.div>
-            </motion.div>
-          </motion.div>
+              </div>
+            </div>
+          </div>
 
           {/* CTA buttons */}
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate={visible ? "visible" : "hidden"}
-            className="mt-6 flex flex-col gap-2 border-t pt-5 sm:flex-row sm:items-center"
+          <div
+            className="mt-6 flex flex-col gap-2 border-t pt-5 transition-all duration-500 ease-out sm:flex-row sm:items-center"
+            style={{ transitionDelay: visible ? "550ms" : "0ms" }}
           >
-            <motion.div variants={itemVariants} className="flex flex-col gap-2 sm:flex-row sm:flex-1">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-1">
               {/* Primary CTA — Pedir orçamento */}
               <Button
                 className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
@@ -407,10 +397,10 @@ function SpotlightCard({
                 Ver perfil completo
                 <ArrowRight className="size-4" />
               </Button>
-            </motion.div>
+            </div>
 
             {/* WhatsApp-style CTA */}
-            <motion.div variants={itemVariants}>
+            <div>
               <Button
                 variant="ghost"
                 className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300 transition-all duration-200"
@@ -425,11 +415,11 @@ function SpotlightCard({
                 <MessageCircle className="size-4" />
                 Enviar mensagem
               </Button>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   )
 }
 

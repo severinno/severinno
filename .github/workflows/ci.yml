@@ -199,12 +199,19 @@ jobs:
         env:
           JS_BUDGET_ROUTE_ROOT_KB: 20
           JS_BUDGET_ROUTE_BUSCA_KB: 20
-          JS_BUDGET_ROUTE_DASHBOARD_KB: 20
+          JS_BUDGET_ROUTE_DASHBOARD_KB: 10
           JS_BUDGET_ROUTE_TRACKING_KB: 20
           JS_BUDGET_ROUTE_U_KB: 20
           JS_BUDGET_ROUTE_CATEGORIA_KB: 10
           JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB: 10
           JS_BUDGET_ROUTE_LOGIN_KB: 20
+          JS_BUDGET_ROUTE_REGISTER_KB: 20
+          JS_BUDGET_ROUTE_RESET_PASSWORD_KB: 20
+          JS_BUDGET_ROUTE_AUTH_RESET_KB: 10
+          JS_BUDGET_ROUTE_AUTH_RESET_TOKEN_KB: 10
+          JS_BUDGET_ROUTE_TERMOS_KB: 10
+          JS_BUDGET_ROUTE_COMO_FUNCIONA_KB: 10
+          JS_BUDGET_ROUTE_CONTATO_KB: 10
           # Real first-paint transfer per static/ISR route (prerendered HTML).
           # Calibrated 2026-08-08 after dashboard panels + search-page became
           # next/dynamic ssr:false / pure CSS: measured + ~20% headroom.
@@ -214,8 +221,21 @@ jobs:
           # Eager-graph source lint (check 8): heavy libs that must never be
           # STATICALLY imported in any route's eager graph (dynamic ƒ routes
           # included — the HTML guard can't see them). Defaults already mirror
-          # the check-5 guard list; declared here as documented CI policy.
-          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,framer-motion
+          # the heavy-lib guard policy; declared here as documented CI policy.
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,framer-motion,socket.io-client
+          # ── ESCAPE HATCH (time-boxed, do NOT enable without a removal plan) ──
+          # Production-week mitigation: to keep CI green while a heavy lib is
+          # still in the initial JS without removing it yet, uncomment and list
+          # the libs here:
+          #
+          #   JS_BUDGET_GUARD_ALLOW: framer-motion
+          #
+          # Exempts ONLY the presence guards (check 5 prerendered HTML + check 8
+          # source lint) for the listed libs — ALL size budgets still apply and
+          # the script prints a prominent ⚠️ ESCAPE HATCH ACTIVE warning to the
+          # log. Deliberately NOT set by default: the guard is the permanent
+          # contract. Remove the var (and the lib from the eager graph) before
+          # the end of the production week — grep CI logs for "ESCAPE HATCH".
         run: bun run budget:js
 
       # ── Proof of gate ──────────────────────────────────────────────────────
@@ -245,6 +265,13 @@ jobs:
           JS_BUDGET_ROUTE_CATEGORIA_KB: 1
           JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB: 1
           JS_BUDGET_ROUTE_LOGIN_KB: 1
+          JS_BUDGET_ROUTE_REGISTER_KB: 1
+          JS_BUDGET_ROUTE_RESET_PASSWORD_KB: 1
+          JS_BUDGET_ROUTE_AUTH_RESET_KB: 1
+          JS_BUDGET_ROUTE_AUTH_RESET_TOKEN_KB: 1
+          JS_BUDGET_ROUTE_TERMOS_KB: 1
+          JS_BUDGET_ROUTE_COMO_FUNCIONA_KB: 1
+          JS_BUDGET_ROUTE_CONTATO_KB: 1
           # Real-transfer checks too: the assertion below also requires a
           # real-transfer violation, so a regression deleting the REAL_*
           # checks (or silently skipping them) fails the proof step.
@@ -253,7 +280,7 @@ jobs:
           JS_BUDGET_REAL_U_KB: 1
           # Eager-graph lint is boolean (not a size): pinned to the same policy
           # as the real gate so a script-default drift can't silently shift CI.
-          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,framer-motion
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,framer-motion,socket.io-client
         run: |
           set +e
           out=$(node scripts/check-js-budget.mjs 2>&1)
@@ -277,6 +304,33 @@ jobs:
             exit 1
           fi
           echo "✅ Gate proof OK: budget check exited $code with zeroed budgets (expected failure)"
+
+      # ── PR bundle preview ──────────────────────────────────────────────
+      # Generates a read-only delta table vs the last versioned release
+      # (bundle-report.mjs --preview) and uploads it as an artifact;
+      # bundle-preview-comment.yml (workflow_run on CI/CD) posts it as a PR
+      # comment. Runs even when the gate fails (always()) because the delta
+      # is most informative then — but only when the ANALYZE report exists:
+      # if the analyze build failed, the generate step exits 2 fast and the
+      # upload is ignored, so the commenter posts a fallback message.
+      - name: Generate bundle preview (PR only)
+        if: always() && github.event_name == 'pull_request'
+        # > file (no tee): GH bash runs with -o pipefail, so a failed
+        # check-js-budget (exit 2 = analyze report missing) would fail the
+        # pipeline AND leave a partial bundle-preview.md that the always()
+        # upload step would ship as a garbage comment. On failure, remove
+        # the file so the upload is skipped (if-no-files-found: ignore) and
+        # the commenter posts its fallback message.
+        run: node scripts/bundle-report.mjs --version preview --preview > bundle-preview.md || { rm -f bundle-preview.md; echo "::warning::bundle preview skipped (analyze report missing)"; }
+
+      - name: Upload bundle preview (PR only)
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-preview
+          path: bundle-preview.md
+          if-no-files-found: ignore
+          retention-days: 7
 
       # Upload the report even when the gate fails so PR authors can see
       # exactly which chunk/library blew the budget.

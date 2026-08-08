@@ -17,7 +17,6 @@
  */
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
 import {
   ArrowRight,
   Wrench,
@@ -113,14 +112,14 @@ const TESTIMONIAL = {
 }
 
 const FLOATING_MICRO = [
-  { type: "star" as const, x: "5%", y: "8%", size: 12, delay: 0, duration: 5 },
-  { type: "check" as const, x: "90%", y: "15%", size: 10, delay: 1.5, duration: 6 },
-  { type: "dot" as const, x: "80%", y: "70%", size: 8, delay: 0.8, duration: 4.5 },
-  { type: "star" as const, x: "12%", y: "82%", size: 10, delay: 2, duration: 5.5 },
-  { type: "dot" as const, x: "70%", y: "25%", size: 6, delay: 0.5, duration: 7 },
-  { type: "check" as const, x: "25%", y: "55%", size: 8, delay: 1.2, duration: 6 },
-  { type: "dot" as const, x: "55%", y: "90%", size: 10, delay: 1.8, duration: 5 },
-  { type: "star" as const, x: "45%", y: "5%", size: 8, delay: 0.3, duration: 6.5 },
+  { type: "star" as const, x: "5%", y: "8%", size: 12 },
+  { type: "check" as const, x: "90%", y: "15%", size: 10 },
+  { type: "dot" as const, x: "80%", y: "70%", size: 8 },
+  { type: "star" as const, x: "12%", y: "82%", size: 10 },
+  { type: "dot" as const, x: "70%", y: "25%", size: 6 },
+  { type: "check" as const, x: "25%", y: "55%", size: 8 },
+  { type: "dot" as const, x: "55%", y: "90%", size: 10 },
+  { type: "star" as const, x: "45%", y: "5%", size: 8 },
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -162,7 +161,7 @@ function AvatarStack() {
 }
 
 // ---------------------------------------------------------------------------
-// Floating micro-elements (stars, checkmarks, dots)
+// Floating micro-elements (stars, checkmarks, dots) — static decorative
 // ---------------------------------------------------------------------------
 
 function FloatingMicro({
@@ -170,36 +169,14 @@ function FloatingMicro({
   x,
   y,
   size,
-  delay,
-  duration,
 }: {
   type: "star" | "check" | "dot"
   x: string
   y: string
   size: number
-  delay: number
-  duration: number
 }) {
   return (
-    <motion.div
-      aria-hidden
-      className="absolute pointer-events-none"
-      style={{ left: x, top: y }}
-      initial={{ opacity: 0, scale: 0.3 }}
-      animate={{
-        opacity: [0, 0.25, 0.1, 0.2],
-        scale: [0.6, 1.1, 0.8, 1],
-        y: [0, -8, 3, -5],
-        x: [0, 4, -3, 2],
-      }}
-      transition={{
-        duration,
-        delay,
-        repeat: Infinity,
-        repeatType: "reverse",
-        ease: [0.42, 0, 0.58, 1],
-      }}
-    >
+    <div aria-hidden className="absolute pointer-events-none opacity-15 animate-pulse" style={{ left: x, top: y }}>
       {type === "star" && (
         <Star style={{ width: size, height: size }} className="fill-amber-300/30 text-amber-300/40" />
       )}
@@ -212,49 +189,31 @@ function FloatingMicro({
           className="rounded-full bg-white/20"
         />
       )}
-    </motion.div>
+    </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Animated mesh blobs
+// Animated mesh blobs — static decorative (CSS pulse)
 // ---------------------------------------------------------------------------
 
 function MeshBlobs() {
   return (
     <>
       {/* Primary blob — top right */}
-      <motion.div
+      <div
         aria-hidden
-        className="absolute -top-20 -right-10 size-72 rounded-full bg-emerald-400/30 blur-3xl"
-        animate={{
-          scale: [1, 1.15, 0.95, 1.1],
-          x: [0, 15, -10, 5],
-          y: [0, -10, 8, -5],
-        }}
-        transition={{ duration: 8, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1] }}
+        className="absolute -top-20 -right-10 size-72 rounded-full bg-emerald-400/30 blur-3xl animate-pulse"
       />
       {/* Secondary blob — bottom left */}
-      <motion.div
+      <div
         aria-hidden
-        className="absolute -bottom-24 -left-10 size-80 rounded-full bg-teal-300/20 blur-3xl"
-        animate={{
-          scale: [1, 0.9, 1.1, 0.95],
-          x: [0, -12, 8, -5],
-          y: [0, 10, -8, 5],
-        }}
-        transition={{ duration: 10, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1], delay: 1 }}
+        className="absolute -bottom-24 -left-10 size-80 rounded-full bg-teal-300/20 blur-3xl animate-pulse [animation-delay:1s]"
       />
       {/* Tertiary blob — center accent */}
-      <motion.div
+      <div
         aria-hidden
-        className="absolute top-1/3 left-1/2 size-60 rounded-full bg-emerald-300/10 blur-3xl"
-        animate={{
-          scale: [1, 1.2, 0.85, 1.1],
-          x: [0, -20, 10, -8],
-          y: [0, 8, -12, 6],
-        }}
-        transition={{ duration: 12, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1], delay: 2 }}
+        className="absolute top-1/3 left-1/2 size-60 rounded-full bg-emerald-300/10 blur-3xl animate-pulse [animation-delay:2s]"
       />
     </>
   )
@@ -268,23 +227,14 @@ function PulsingGlow({ children }: { children: React.ReactNode }) {
   return (
     <div className="group/glow relative inline-flex">
       {/* Ambient glow ring */}
-      <motion.div
+      <div
         aria-hidden
         className="absolute inset-0 rounded-lg bg-emerald-400/30 blur-lg opacity-0 transition-opacity duration-300 group-hover/glow:opacity-100"
       />
       {/* Pulsing ring */}
-      <motion.div
+      <div
         aria-hidden
-        className="absolute inset-0 rounded-lg bg-white/40 blur-md"
-        animate={{
-          opacity: [0, 0.4, 0],
-          scale: [1, 1.06, 1],
-        }}
-        transition={{
-          duration: 2.5,
-          repeat: Infinity,
-          ease: [0.42, 0, 0.58, 1],
-        }}
+        className="absolute inset-0 rounded-lg bg-white/40 blur-md animate-pulse"
       />
       {children}
     </div>
@@ -298,17 +248,13 @@ function PulsingGlow({ children }: { children: React.ReactNode }) {
 function LiveCounter({ count }: { count: number }) {
   const { ref, value } = useCountUp(count, { duration: 1500 })
   return (
-    <motion.span
-      initial={{ opacity: 0, scale: 0.8 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-100 ring-1 ring-white/20"
-    >
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-medium text-emerald-100 ring-1 ring-white/20">
       <span className="relative flex size-2">
         <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
         <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
       </span>
       <span ref={ref}>{value}</span> pessoas se cadastraram hoje
-    </motion.span>
+    </span>
   )
 }
 
@@ -320,27 +266,17 @@ function HandshakeIllustration() {
   return (
     <div className="relative flex h-full items-center justify-center" aria-hidden>
       {/* Abstract person 1 — customer */}
-      <motion.div
-        className="absolute left-[15%] top-[25%]"
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.4, duration: 0.6 }}
-      >
+      <div className="absolute left-[15%] top-[25%]">
         {/* Head */}
         <div className="size-12 rounded-full bg-gradient-to-br from-emerald-300 to-emerald-400 shadow-lg shadow-emerald-400/30" />
         {/* Body */}
         <div className="mx-auto mt-1 h-14 w-10 rounded-t-full bg-gradient-to-b from-emerald-300/80 to-emerald-400/60" />
         {/* Label */}
         <span className="mt-1 block text-center text-[9px] font-semibold text-white/80">Cliente</span>
-      </motion.div>
+      </div>
 
       {/* Abstract person 2 — provider */}
-      <motion.div
-        className="absolute right-[15%] top-[25%]"
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ delay: 0.6, duration: 0.6 }}
-      >
+      <div className="absolute right-[15%] top-[25%]">
         {/* Head */}
         <div className="size-12 rounded-full bg-gradient-to-br from-teal-300 to-teal-400 shadow-lg shadow-teal-400/30" />
         {/* Body */}
@@ -351,66 +287,43 @@ function HandshakeIllustration() {
         </div>
         {/* Label */}
         <span className="mt-1 block text-center text-[9px] font-semibold text-white/80">Prestador</span>
-      </motion.div>
+      </div>
 
       {/* Handshake in the middle — two overlapping circles */}
-      <motion.div
-        className="absolute left-1/2 top-[38%] -translate-x-1/2 -translate-y-1/2"
-        initial={{ opacity: 0, scale: 0.5 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.8, duration: 0.5, type: "spring" }}
-      >
+      <div className="absolute left-1/2 top-[38%] -translate-x-1/2 -translate-y-1/2">
         <div className="relative flex size-16 items-center justify-center">
           <div className="absolute size-14 rounded-full border-2 border-white/20" />
           <div className="absolute size-10 rounded-full bg-gradient-to-br from-emerald-400/60 to-teal-400/60 backdrop-blur-sm" />
           <Sparkles className="relative size-6 text-white" />
         </div>
-      </motion.div>
+      </div>
 
       {/* Decorative connection lines */}
       <svg className="absolute inset-0 h-full w-full" viewBox="0 0 300 250" fill="none">
-        <motion.path
+        <path
           d="M 80 80 Q 150 60 150 110"
           stroke="rgba(255,255,255,0.15)"
           strokeWidth="1.5"
           strokeDasharray="4 3"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ delay: 1, duration: 0.8 }}
         />
-        <motion.path
+        <path
           d="M 220 80 Q 150 60 150 110"
           stroke="rgba(255,255,255,0.15)"
           strokeWidth="1.5"
           strokeDasharray="4 3"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ delay: 1.2, duration: 0.8 }}
         />
       </svg>
 
       {/* Decorative floating elements around illustration */}
-      <motion.div
-        className="absolute left-[8%] bottom-[20%]"
-        animate={{ y: [0, -6, 0], opacity: [0.3, 0.6, 0.3] }}
-        transition={{ duration: 3, repeat: Infinity }}
-      >
+      <div className="absolute left-[8%] bottom-[20%] animate-pulse">
         <Star className="size-4 fill-amber-300/40 text-amber-300/50" />
-      </motion.div>
-      <motion.div
-        className="absolute right-[10%] bottom-[30%]"
-        animate={{ y: [0, -5, 0], opacity: [0.3, 0.5, 0.3] }}
-        transition={{ duration: 4, repeat: Infinity, delay: 1 }}
-      >
+      </div>
+      <div className="absolute right-[10%] bottom-[30%] animate-pulse [animation-delay:1s]">
         <CheckCircle2 className="size-4 text-emerald-300/40" />
-      </motion.div>
-      <motion.div
-        className="absolute left-1/2 bottom-[10%] -translate-x-1/2"
-        animate={{ y: [0, -4, 0], opacity: [0.2, 0.4, 0.2] }}
-        transition={{ duration: 3.5, repeat: Infinity, delay: 0.5 }}
-      >
+      </div>
+      <div className="absolute left-1/2 bottom-[10%] -translate-x-1/2 animate-pulse [animation-delay:0.5s]">
         <ShieldCheck className="size-5 text-white/20" />
-      </motion.div>
+      </div>
     </div>
   )
 }
@@ -477,11 +390,11 @@ export default function CtaBanner() {
   return (
     <section className="relative isolate overflow-hidden bg-background py-16 sm:py-20">
       <div ref={ref} className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 30, scale: 0.98 }}
-          animate={visible ? { opacity: 1, y: 0, scale: 1 } : {}}
-          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-          className="relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-900 shadow-2xl"
+        <div
+          className={cn(
+            "relative isolate overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-700 via-emerald-800 to-teal-900 shadow-2xl transition-all duration-700 ease-out",
+            visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-8 scale-[0.98] opacity-0",
+          )}
         >
           {/* Animated mesh blobs */}
           <MeshBlobs />
@@ -552,11 +465,7 @@ export default function CtaBanner() {
                     )}
                   >
                     {visitorTab === "client" && (
-                      <motion.div
-                        layoutId="visitor-tab-indicator"
-                        className="absolute inset-0 rounded-md bg-white shadow-sm"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                      />
+                      <div className="absolute inset-0 rounded-md bg-white shadow-sm animate-in fade-in zoom-in-95 duration-200" />
                     )}
                     <span className="relative z-10">Para clientes</span>
                   </button>
@@ -570,39 +479,29 @@ export default function CtaBanner() {
                     )}
                   >
                     {visitorTab === "provider" && (
-                      <motion.div
-                        layoutId="visitor-tab-indicator"
-                        className="absolute inset-0 rounded-md bg-white shadow-sm"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-                      />
+                      <div className="absolute inset-0 rounded-md bg-white shadow-sm animate-in fade-in zoom-in-95 duration-200" />
                     )}
                     <span className="relative z-10">Para prestadores</span>
                   </button>
                 </div>
               )}
 
-              {/* Benefits list */}
-              <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={isVisitor ? visitorTab : (isProvider ? "provider" : "client")}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.25 }}
-                    className="flex flex-wrap gap-x-5 gap-y-2"
+              {/* Benefits list — key on the <ul> itself so the tab swap
+                  remounts it and replays the fade-in without an invalid
+                  wrapper div inside the list (axe list/listitem rules). */}
+              <ul
+                key={isVisitor ? visitorTab : (isProvider ? "provider" : "client")}
+                className="mt-5 flex flex-wrap gap-x-5 gap-y-2 animate-in fade-in duration-200"
+              >
+                {activeBenefits.map((benefit) => (
+                  <li
+                    key={benefit}
+                    className="flex items-center gap-1.5 text-sm text-emerald-50"
                   >
-                    {activeBenefits.map((benefit) => (
-                      <li
-                        key={benefit}
-                        className="flex items-center gap-1.5 text-sm text-emerald-50"
-                      >
-                        <CheckCircle2 className="size-4 text-emerald-300" />
-                        {benefit}
-                      </li>
-                    ))}
-                  </motion.div>
-                </AnimatePresence>
+                    <CheckCircle2 className="size-4 text-emerald-300" />
+                    {benefit}
+                  </li>
+                ))}
               </ul>
 
               {/* CTAs */}
@@ -610,11 +509,7 @@ export default function CtaBanner() {
                 {isVisitor && (
                   <>
                     <PulsingGlow>
-                      <motion.div
-                        whileHover={{ scale: 1.04 }}
-                        whileTap={{ scale: 0.97 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                      >
+                      <div className="transition-transform duration-200 hover:scale-[1.04] active:scale-[0.97]">
                         <Button
                           size="lg"
                           onClick={() =>
@@ -628,21 +523,12 @@ export default function CtaBanner() {
                           {visitorTab === "client"
                             ? "Cadastrar grátis"
                             : "Cadastrar como prestador"}
-                          <motion.span
-                            animate={{ x: [0, 4, 0] }}
-                            transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1] }}
-                          >
-                            <ArrowRight className="size-4" />
-                          </motion.span>
+                          <ArrowRight className="size-4 transition-transform duration-300 hover:translate-x-0.5" />
                         </Button>
-                      </motion.div>
+                      </div>
                     </PulsingGlow>
                     {visitorTab === "client" && (
-                      <motion.div
-                        whileHover={{ scale: 1.04 }}
-                        whileTap={{ scale: 0.97 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                      >
+                      <div className="transition-transform duration-200 hover:scale-[1.04] active:scale-[0.97]">
                         <Button
                           size="lg"
                           variant="outline"
@@ -652,14 +538,10 @@ export default function CtaBanner() {
                           <Wrench className="size-4" />
                           Sou prestador
                         </Button>
-                      </motion.div>
+                      </div>
                     )}
                     {visitorTab === "provider" && (
-                      <motion.div
-                        whileHover={{ scale: 1.04 }}
-                        whileTap={{ scale: 0.97 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                      >
+                      <div className="transition-transform duration-200 hover:scale-[1.04] active:scale-[0.97]">
                         <Button
                           size="lg"
                           variant="outline"
@@ -669,17 +551,13 @@ export default function CtaBanner() {
                           <Search className="size-4" />
                           Sou cliente
                         </Button>
-                      </motion.div>
+                      </div>
                     )}
                   </>
                 )}
                 {isClient && (
                   <PulsingGlow>
-                    <motion.div
-                      whileHover={{ scale: 1.04 }}
-                      whileTap={{ scale: 0.97 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                    >
+                    <div className="transition-transform duration-200 hover:scale-[1.04] active:scale-[0.97]">
                       <Button
                         size="lg"
                         onClick={() => {
@@ -693,60 +571,49 @@ export default function CtaBanner() {
                       >
                         <Search className="size-4" />
                         Buscar prestadores
-                        <motion.span
-                          animate={{ x: [0, 4, 0] }}
-                          transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1] }}
-                        >
-                          <ArrowRight className="size-4" />
-                        </motion.span>
+                        <ArrowRight className="size-4" />
                       </Button>
-                    </motion.div>
+                    </div>
                   </PulsingGlow>
                 )}
                 {isProvider && (
                   <PulsingGlow>
-                    <motion.div
-                      whileHover={{ scale: 1.04 }}
-                      whileTap={{ scale: 0.97 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                    >
+                    <div className="transition-transform duration-200 hover:scale-[1.04] active:scale-[0.97]">
                       <Button
                         size="lg"
                         onClick={() => openAuth("login")}
                         className="h-12 gap-2 bg-white px-7 text-base font-semibold text-emerald-700 shadow-lg transition-shadow hover:bg-emerald-50 hover:shadow-[0_0_30px_rgba(16,185,129,0.4)] hover:shadow-emerald-500/30"
                       >
                         Ir para meu painel
-                        <motion.span
-                          animate={{ x: [0, 4, 0] }}
-                          transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse", ease: [0.42, 0, 0.58, 1] }}
-                        >
-                          <ArrowRight className="size-4" />
-                        </motion.span>
+                        <ArrowRight className="size-4" />
                       </Button>
-                    </motion.div>
+                    </div>
                   </PulsingGlow>
                 )}
               </div>
 
               {/* Urgency element */}
               {isVisitor && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={visible ? { opacity: 1, y: 0 } : {}}
-                  transition={{ delay: 0.6, duration: 0.4 }}
-                  className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/30 px-3 py-1 text-xs font-medium text-emerald-100 ring-1 ring-emerald-400/20"
+                <div
+                  className={cn(
+                    "mt-4 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/30 px-3 py-1 text-xs font-medium text-emerald-100 ring-1 ring-emerald-400/20 transition-all duration-500 ease-out",
+                    visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+                  )}
+                  style={{ transitionDelay: visible ? "0.6s" : "0s" }}
                 >
                   <Timer className="size-3.5" />
                   Comece em 30 segundos
-                </motion.div>
+                </div>
               )}
 
               {/* "Já tenho conta" link */}
               {isVisitor && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={visible ? { opacity: 1, y: 0 } : {}}
-                  transition={{ delay: 0.7, duration: 0.4 }}
+                <div
+                  className={cn(
+                    "transition-all duration-500 ease-out",
+                    visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+                  )}
+                  style={{ transitionDelay: visible ? "0.7s" : "0s" }}
                 >
                   <button
                     onClick={() => openAuth("login")}
@@ -755,16 +622,17 @@ export default function CtaBanner() {
                     <LogIn className="size-4" />
                     Já tenho conta · Entrar
                   </button>
-                </motion.div>
+                </div>
               )}
 
               {/* Avatar stack social proof */}
               {isVisitor && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={visible ? { opacity: 1, y: 0 } : {}}
-                  transition={{ delay: 0.5, duration: 0.4 }}
-                  className="mt-5 flex items-center gap-3"
+                <div
+                  className={cn(
+                    "mt-5 flex items-center gap-3 transition-all duration-500 ease-out",
+                    visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+                  )}
+                  style={{ transitionDelay: visible ? "0.5s" : "0s" }}
                 >
                   <AvatarStack />
                   <div>
@@ -781,17 +649,18 @@ export default function CtaBanner() {
                       {stats.avgRating}
                     </div>
                   )}
-                </motion.div>
+                </div>
               )}
             </div>
 
             {/* RIGHT side: "O que vem depois?" steps + handshake illustration */}
             <div className="relative hidden lg:block">
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={visible ? { opacity: 1, x: 0 } : {}}
-                transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                className="rounded-2xl bg-white/[0.08] p-6 backdrop-blur-xl ring-1 ring-white/[0.12] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)]"
+              <div
+                className={cn(
+                  "rounded-2xl bg-white/[0.08] p-6 backdrop-blur-xl ring-1 ring-white/[0.12] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)] transition-all duration-600 ease-out",
+                  visible ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0",
+                )}
+                style={{ transitionDelay: visible ? "0.2s" : "0s" }}
               >
                 <h3 className="text-sm font-semibold text-emerald-100">
                   O que vem depois?
@@ -808,36 +677,31 @@ export default function CtaBanner() {
                     viewBox="0 0 40 200"
                     preserveAspectRatio="none"
                   >
-                    <motion.line
+                    <line
                       x1="20" y1="20" x2="20" y2="180"
                       stroke="rgba(255,255,255,0.15)"
                       strokeWidth="2"
                       strokeDasharray="4 3"
                     />
-                    <motion.line
+                    <line
                       x1="20" y1="20" x2="20" y2="180"
                       stroke="rgba(16,185,129,0.6)"
                       strokeWidth="2"
                       strokeLinecap="round"
-                      initial={{ pathLength: 0 }}
-                      animate={visible ? { pathLength: 1 } : {}}
-                      transition={{ duration: 1.5, delay: 0.5, ease: "easeOut" }}
+                      strokeDasharray="4 3"
                     />
                   </svg>
 
                   <div className="space-y-5">
                     {SIGNUP_STEPS.map((step, i) => {
-                      const StepIcon = step.icon
                       return (
-                        <motion.div
+                        <div
                           key={step.label}
-                          initial={{ opacity: 0, x: 12 }}
-                          animate={visible ? { opacity: 1, x: 0 } : {}}
-                          transition={{
-                            duration: 0.4,
-                            delay: 0.4 + i * 0.15,
-                          }}
-                          className="flex items-start gap-3"
+                          className={cn(
+                            "flex items-start gap-3 transition-all duration-500 ease-out",
+                            visible ? "translate-x-0 opacity-100" : "translate-x-4 opacity-0",
+                          )}
+                          style={{ transitionDelay: visible ? `${0.4 + i * 0.15}s` : "0s" }}
                         >
                           {/* Step number circle with number */}
                           <div className="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/30 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.15)]">
@@ -851,7 +715,7 @@ export default function CtaBanner() {
                               ~{step.time}
                             </p>
                           </div>
-                        </motion.div>
+                        </div>
                       )
                     })}
                   </div>
@@ -881,26 +745,28 @@ export default function CtaBanner() {
                   <ShieldCheck className="size-3" />
                   Saiba mais sobre pagamento protegido
                 </a>
-              </motion.div>
+              </div>
 
               {/* Handshake illustration below the steps card */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={visible ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.6, delay: 0.5 }}
-                className="mt-4 h-48 rounded-2xl bg-white/[0.04] ring-1 ring-white/[0.08] backdrop-blur-sm overflow-hidden"
+              <div
+                className={cn(
+                  "mt-4 h-48 rounded-2xl bg-white/[0.04] ring-1 ring-white/[0.08] backdrop-blur-sm overflow-hidden transition-all duration-600 ease-out",
+                  visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0",
+                )}
+                style={{ transitionDelay: visible ? "0.5s" : "0s" }}
               >
                 <HandshakeIllustration />
-              </motion.div>
+              </div>
             </div>
           </div>
 
           {/* ── Testimonial quote at the bottom ─────────────────────── */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={visible ? { opacity: 1, y: 0 } : {}}
-            transition={{ delay: 0.9, duration: 0.5 }}
-            className="border-t border-white/10 px-6 py-5 sm:px-12"
+          <div
+            className={cn(
+              "border-t border-white/10 px-6 py-5 sm:px-12 transition-all duration-500 ease-out",
+              visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+            )}
+            style={{ transitionDelay: visible ? "0.9s" : "0s" }}
           >
             <div className="mx-auto flex max-w-2xl items-start gap-3">
               <Quote className="mt-0.5 size-5 shrink-0 text-emerald-300/50" />
@@ -913,14 +779,15 @@ export default function CtaBanner() {
                 </p>
               </div>
             </div>
-          </motion.div>
+          </div>
 
           {/* Bottom trust strip */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={visible ? { opacity: 1, y: 0 } : {}}
-            transition={{ delay: 1, duration: 0.5 }}
-            className="flex flex-wrap items-center justify-center gap-4 border-t border-white/10 px-6 py-4 sm:gap-6 sm:px-12"
+          <div
+            className={cn(
+              "flex flex-wrap items-center justify-center gap-4 border-t border-white/10 px-6 py-4 sm:gap-6 sm:px-12 transition-all duration-500 ease-out",
+              visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+            )}
+            style={{ transitionDelay: visible ? "1s" : "0s" }}
           >
             {TRUST_SIGNS.map((sign) => {
               const SignIcon = sign.icon
@@ -934,8 +801,8 @@ export default function CtaBanner() {
                 </span>
               )
             })}
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       </div>
     </section>
   )

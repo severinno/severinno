@@ -14,8 +14,6 @@
  *   createItem          – Factory for stagger‑item Variants
  */
 
-import type { Variants } from "framer-motion"
-
 // ── Shimmer CSS ───────────────────────────────────────────────────────────
 export const shimmerCSS = `
   @keyframes shimmer {
@@ -68,6 +66,16 @@ export function S({ className }: { className?: string }) {
 
 // ── Animation variant factories ───────────────────────────────────────────
 // Each loading.tsx can customise stagger delay and y-offset independently.
+// (Plain object shape — no framer-motion type dependency, keeping the
+// animation lib out of the initial JS graph.)
+
+// Local minimal shape for the legacy variant factories. The CSS-based
+// <StaggerContainer>/<StaggerItem> in loading-shell.tsx are the current
+// recommended path; these factories remain for API compatibility.
+export type Variants = {
+  hidden: Record<string, unknown>
+  show: Record<string, unknown>
+}
 
 export function createContainer(staggerChildren = 0.06): Variants {
   return {

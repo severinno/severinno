@@ -23,7 +23,6 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { motion, AnimatePresence } from "framer-motion"
 import {
   ShieldCheck,
   Wallet,
@@ -270,43 +269,47 @@ export default function WhySeverinno() {
         >
           {/* Heading */}
           <div className="mx-auto max-w-2xl text-center">
-            <motion.span
-              initial={{ opacity: 0, y: 12 }}
-              animate={visible ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
+            <span
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 transition-all duration-500 ease-out dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50",
+                visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+              )}
+              style={{ transitionDelay: visible ? "0.1s" : "0s" }}
             >
               <ShieldCheck className="size-3.5" />
               Por que Severinno?
-            </motion.span>
-            <motion.h2
-              initial={{ opacity: 0, y: 16 }}
-              animate={visible ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.5, delay: 0.15 }}
-              className="mt-4 text-balance text-3xl font-bold tracking-tight sm:text-4xl"
+            </span>
+            <h2
+              className={cn(
+                "mt-4 text-balance text-3xl font-bold tracking-tight transition-all duration-500 ease-out sm:text-4xl",
+                visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+              )}
+              style={{ transitionDelay: visible ? "0.15s" : "0s" }}
             >
               Confiança em cada{" "}
               <span className="text-emerald-600 dark:text-emerald-400">
                 agendamento
               </span>
-            </motion.h2>
-            <motion.p
-              initial={{ opacity: 0, y: 16 }}
-              animate={visible ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="mt-4 text-pretty text-muted-foreground"
+            </h2>
+            <p
+              className={cn(
+                "mt-4 text-pretty text-muted-foreground transition-all duration-500 ease-out",
+                visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+              )}
+              style={{ transitionDelay: visible ? "0.2s" : "0s" }}
             >
               Mais que um diretório de serviços — um ecossistema pensado para
               proteger você e o prestador. Da verificação ao pagamento, cada
               etapa foi desenhada para a sua tranquilidade.
-            </motion.p>
+            </p>
 
             {/* H7 — Quick link to FAQ */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={visible ? { opacity: 1 } : {}}
-              transition={{ duration: 0.3, delay: 0.3 }}
-              className="mt-3"
+            <div
+              className={cn(
+                "mt-3 transition-all duration-500 ease-out",
+                visible ? "opacity-100" : "opacity-0",
+              )}
+              style={{ transitionDelay: visible ? "0.3s" : "0s" }}
             >
               <a
                 href="#faq"
@@ -315,7 +318,7 @@ export default function WhySeverinno() {
                 <HelpCircle className="size-3" />
                 Pular para FAQ
               </a>
-            </motion.div>
+            </div>
           </div>
 
           {/* Feature grid (H8 — 3×2 minimalism) */}
@@ -336,11 +339,12 @@ export default function WhySeverinno() {
           BOTTOM — Trust guarantee strip (H5, H9)
           ================================================================ */}
       <div className="relative mx-auto max-w-7xl px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5, delay: 0.4 }}
-          className="flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-4 text-center shadow-sm"
+        <div
+          className={cn(
+            "flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-4 text-center shadow-sm transition-all duration-500 ease-out",
+            visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          )}
+          style={{ transitionDelay: visible ? "0.4s" : "0s" }}
         >
           <ShieldAlert className="size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <p className="text-sm font-medium text-foreground">
@@ -356,7 +360,7 @@ export default function WhySeverinno() {
             Saiba mais
             <ArrowRight className="size-3" />
           </a>
-        </motion.div>
+        </div>
       </div>
     </section>
   )
@@ -383,11 +387,12 @@ function LiveStatItem({
   const value = stats ? item.getValue(stats) : 0
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={visible ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.5, delay: index * 0.1 }}
-      className="flex flex-col items-center gap-2 text-center"
+    <div
+      className={cn(
+        "flex flex-col items-center gap-2 text-center transition-all duration-500 ease-out",
+        visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+      )}
+      style={{ transitionDelay: visible ? `${index * 0.1}s` : "0s" }}
     >
       <div className="flex size-12 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20 sm:size-14">
         <Icon className="size-6 text-white sm:size-7" />
@@ -406,7 +411,7 @@ function LiveStatItem({
       <p className="text-xs font-medium text-emerald-100 sm:text-sm">
         {item.label}
       </p>
-    </motion.div>
+    </div>
   )
 }
 
@@ -454,10 +459,12 @@ function FeatureCard({
   const [isOpen, setIsOpen] = React.useState(false)
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      animate={visible ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.45, delay: 0.15 + index * 0.06 }}
+    <div
+      className={cn(
+        "transition-all duration-500 ease-out",
+        visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0",
+      )}
+      style={{ transitionDelay: visible ? `${0.15 + index * 0.06}s` : "0s" }}
     >
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <div
@@ -518,27 +525,19 @@ function FeatureCard({
           </CollapsibleTrigger>
 
           <CollapsibleContent>
-            <AnimatePresence>
-              {isOpen && (
-                <motion.ul
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="mt-3 space-y-1.5 overflow-hidden"
-                >
-                  {feature.bullets.map((bullet) => (
-                    <li
-                      key={bullet}
-                      className="flex items-start gap-2 text-xs text-muted-foreground"
-                    >
-                      <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                      <span>{bullet}</span>
-                    </li>
-                  ))}
-                </motion.ul>
-              )}
-            </AnimatePresence>
+            {isOpen && (
+              <ul className="mt-3 space-y-1.5 overflow-hidden animate-in fade-in duration-200">
+                {feature.bullets.map((bullet) => (
+                  <li
+                    key={bullet}
+                    className="flex items-start gap-2 text-xs text-muted-foreground"
+                  >
+                    <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span>{bullet}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CollapsibleContent>
 
           {/* H4, H6 — Subtle colored corner accent on hover */}
@@ -551,6 +550,6 @@ function FeatureCard({
           />
         </div>
       </Collapsible>
-    </motion.div>
+    </div>
   )
 }

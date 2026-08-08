@@ -10,7 +10,6 @@
 
 import * as React from "react"
 import { GitCompare, X, Trash2, ArrowRight } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
@@ -32,41 +31,40 @@ export default function CompareBar() {
   >([])
 
   React.useEffect(() => {
-    if (ids.length === 0) {
-      setProviderInfo([])
-      return
-    }
-    const found: { id: string; name: string; avatarUrl?: string | null }[] = []
-    for (const id of ids) {
-      const el = document.querySelector<HTMLElement>(
-        `[data-provider-id="${id}"]`,
-      )
-      if (el) {
-        found.push({
-          id,
-          name: el.dataset.compareName || "Prestador",
-          avatarUrl: el.dataset.compareAvatar || null,
-        })
-      } else {
-        found.push({ id, name: "Prestador", avatarUrl: null })
+    // The bar renders null when ids is empty (below), so no reset is needed.
+    // The DOM read + setState run inside a requestAnimationFrame callback —
+    // not synchronously in the effect body (react-hooks/set-state-in-effect);
+    // one frame after ids refills the providerInfo rebuilds from the DOM.
+    if (ids.length === 0) return
+    const raf = requestAnimationFrame(() => {
+      const found: { id: string; name: string; avatarUrl?: string | null }[] = []
+      for (const id of ids) {
+        const el = document.querySelector<HTMLElement>(
+          `[data-provider-id="${id}"]`,
+        )
+        if (el) {
+          found.push({
+            id,
+            name: el.dataset.compareName || "Prestador",
+            avatarUrl: el.dataset.compareAvatar || null,
+          })
+        } else {
+          found.push({ id, name: "Prestador", avatarUrl: null })
+        }
       }
-    }
-    setProviderInfo(found)
+      setProviderInfo(found)
+    })
+    return () => cancelAnimationFrame(raf)
   }, [ids])
 
   const canCompare = ids.length >= 2
 
   return (
-    <AnimatePresence>
-      {ids.length > 0 ? (
-        <motion.div
-          initial={{ y: 80, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 80, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 280, damping: 30 }}
-          className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3 sm:px-6 sm:pb-5"
-          aria-live="polite"
-        >
+    ids.length > 0 ? (
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3 animate-in slide-in-from-bottom-8 fade-in duration-300 sm:px-6 sm:pb-5"
+        aria-live="polite"
+      >
           <div
             className={cn(
               "mx-auto flex max-w-5xl flex-col gap-3 rounded-2xl border border-emerald-200/70 bg-background/95 p-3 shadow-2xl backdrop-blur-md sm:flex-row sm:items-center sm:gap-4 sm:p-4",
@@ -147,8 +145,7 @@ export default function CompareBar() {
               </Button>
             </div>
           </div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+      </div>
+    ) : null
   )
 }

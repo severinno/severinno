@@ -13,7 +13,6 @@
  */
 
 import * as React from "react"
-import { motion } from "framer-motion"
 
 import { useScrollReveal } from "@/hooks/use-animation"
 import { cn } from "@/lib/utils"
@@ -68,8 +67,13 @@ function PartnerCard({ partner }: { partner: Partner }) {
 }
 
 // ---------------------------------------------------------------------------
-// Marquee animation — infinite horizontal scroll using framer-motion
+// Marquee animation — infinite horizontal scroll using CSS keyframes
 // ---------------------------------------------------------------------------
+
+const MARQUEE_KEYFRAMES = `@keyframes sev-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}`
 
 function Marquee({
   children,
@@ -89,26 +93,18 @@ function Marquee({
       onMouseLeave={() => setHovered(false)}
       aria-hidden="true"
     >
-      <motion.div
-        className="flex gap-4"
-        animate={{ x: hovered ? undefined : ["0%", "-50%"] }}
-        transition={
-          hovered
-            ? { duration: 0 }
-            : {
-                x: {
-                  repeat: Infinity,
-                  repeatType: "loop",
-                  duration: speed,
-                  ease: "linear",
-                },
-              }
-        }
+      <style>{MARQUEE_KEYFRAMES}</style>
+      <div
+        className="flex w-max gap-4"
+        style={{
+          animation: `sev-marquee ${speed}s linear infinite`,
+          animationPlayState: hovered ? "paused" : "running",
+        }}
       >
         {children}
         {/* Duplicate for seamless loop */}
         {children}
-      </motion.div>
+      </div>
     </div>
   )
 }
@@ -124,11 +120,11 @@ export default function PartnersSection() {
     <section className="relative border-t border-border/40 bg-background py-12 sm:py-16">
       <div ref={ref} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="mb-8 text-center"
+        <div
+          className={cn(
+            "mb-8 text-center transition-all duration-500 ease-out",
+            visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          )}
         >
           <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50">
             Empresas que confiam
@@ -140,34 +136,31 @@ export default function PartnersSection() {
           <p className="mt-1.5 text-sm text-muted-foreground">
             Prestadores e empresas de todo o Brasil já usam nossa plataforma.
           </p>
-        </motion.div>
+        </div>
 
         {/* Marquee */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={visible ? { opacity: 1 } : {}}
-          transition={{ duration: 0.6, delay: 0.2 }}
+        <div
+          className={cn("transition-opacity duration-500", visible ? "opacity-100" : "opacity-0")}
+          style={{ transitionDelay: visible ? "200ms" : "0ms" }}
         >
           <Marquee speed={35}>
             {PARTNERS.map((partner, idx) => (
               <PartnerCard key={`${partner.name}-${idx}`} partner={partner} />
             ))}
           </Marquee>
-        </motion.div>
+        </div>
 
         {/* Second row — reverse direction for visual interest */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={visible ? { opacity: 1 } : {}}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="mt-4"
+        <div
+          className={cn("mt-4 transition-opacity duration-500", visible ? "opacity-100" : "opacity-0")}
+          style={{ transitionDelay: visible ? "300ms" : "0ms" }}
         >
           <Marquee speed={40} className="[direction:rtl]">
             {[...PARTNERS].reverse().map((partner, idx) => (
               <PartnerCard key={`${partner.name}-rev-${idx}`} partner={partner} />
             ))}
           </Marquee>
-        </motion.div>
+        </div>
       </div>
     </section>
   )

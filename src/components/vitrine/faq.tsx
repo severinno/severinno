@@ -30,7 +30,6 @@ import {
   ChevronUp,
   ArrowRight,
 } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 
 import {
   Accordion,
@@ -277,10 +276,11 @@ export default function FAQ() {
           {/* ============ LEFT: heading + search + categories + popular + CTA ============ */}
           <div className="lg:sticky lg:top-24 lg:self-start space-y-6">
             {/* Heading */}
-            <motion.div
-              initial={{ opacity: 0, y: 24 }}
-              animate={visible ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.5 }}
+            <div
+              className={cn(
+                "transition-all duration-500 ease-out",
+                visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0",
+              )}
             >
               <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50">
                 <HelpCircle className="size-3.5" />
@@ -296,14 +296,15 @@ export default function FAQ() {
                 Reunimos as perguntas mais comuns sobre como o Severinno
                 funciona — do cadastro ao pagamento.
               </p>
-            </motion.div>
+            </div>
 
             {/* Search — H7: Ctrl+F style, H5: clear button, H1: result count */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={visible ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="relative"
+            <div
+              className={cn(
+                "relative transition-all duration-500 ease-out",
+                visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+              )}
+              style={{ transitionDelay: visible ? "0.1s" : "0s" }}
             >
               <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -332,13 +333,15 @@ export default function FAQ() {
                   </button>
                 </div>
               )}
-            </motion.div>
+            </div>
 
             {/* Category filter chips — H7: quick filters, H6: icons for recognition */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={visible ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.5, delay: 0.15 }}
+            <div
+              className={cn(
+                "transition-all duration-500 ease-out",
+                visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+              )}
+              style={{ transitionDelay: visible ? "0.15s" : "0s" }}
             >
               <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Filtrar por categoria
@@ -369,13 +372,15 @@ export default function FAQ() {
                   )
                 })}
               </div>
-            </motion.div>
+            </div>
 
             {/* Popular questions quick links — H6, H7 */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={visible ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.5, delay: 0.2 }}
+            <div
+              className={cn(
+                "transition-all duration-500 ease-out",
+                visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+              )}
+              style={{ transitionDelay: visible ? "0.2s" : "0s" }}
             >
               <p className="mb-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Perguntas mais frequentes
@@ -394,14 +399,15 @@ export default function FAQ() {
                   </li>
                 ))}
               </ul>
-            </motion.div>
+            </div>
 
             {/* CTA — H10: Help & documentation, H3: user control */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={visible ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.5, delay: 0.25 }}
-              className="rounded-2xl border bg-card p-5 shadow-sm"
+            <div
+              className={cn(
+                "rounded-2xl border bg-card p-5 shadow-sm transition-all duration-500 ease-out",
+                visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+              )}
+              style={{ transitionDelay: visible ? "0.25s" : "0s" }}
             >
               <div className="flex items-start gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -435,20 +441,15 @@ export default function FAQ() {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
 
           {/* ============ RIGHT: accordion ============ */}
           <div>
-            <AnimatePresence mode="wait">
-              {filtered.length === 0 ? (
+            {filtered.length === 0 ? (
                 /* H9: Error recovery — helpful alternatives */
-                <motion.div
-                  key="empty"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  className="flex flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/20 px-6 py-16 text-center"
+                <div
+                  className="animate-in fade-in slide-in-from-bottom-2 duration-300 flex flex-col items-center justify-center rounded-2xl border border-dashed bg-muted/20 px-6 py-16 text-center"
                 >
                   <Search className="size-10 text-muted-foreground/50" />
                   <p className="mt-4 text-base font-semibold">
@@ -481,14 +482,9 @@ export default function FAQ() {
                       Fale com suporte
                     </Button>
                   </div>
-                </motion.div>
+                </div>
               ) : (
-                <motion.div
-                  key="list"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
+                <div className="animate-in fade-in duration-300">
                   <Accordion
                     type="single"
                     collapsible
@@ -496,14 +492,14 @@ export default function FAQ() {
                     className="space-y-3"
                   >
                     {filtered.map((faq, idx) => (
-                      <motion.div
+                      <div
                         key={faq.id}
                         id={faq.id}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={
-                          visible ? { opacity: 1, y: 0 } : {}
-                        }
-                        transition={{ duration: 0.4, delay: idx * 0.05 }}
+                        className={cn(
+                          "transition-all duration-400 ease-out",
+                          visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+                        )}
+                        style={{ transitionDelay: visible ? `${idx * 0.05}s` : "0s" }}
                       >
                         <AccordionItem
                           value={faq.id}
@@ -540,12 +536,11 @@ export default function FAQ() {
                             </div>
                           </AccordionContent>
                         </AccordionItem>
-                      </motion.div>
+                      </div>
                     ))}
                   </Accordion>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
 
             {/* H1: Visibility of system status — counter */}
             <div className="mt-6 flex items-center justify-between">

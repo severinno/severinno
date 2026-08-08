@@ -25,7 +25,6 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import { motion, AnimatePresence } from "framer-motion"
 import Image from "next/image"
 import {
   Search,
@@ -468,36 +467,30 @@ function LiveActivityPanel({
       </div>
 
       {/* ── Floating toast notification ── */}
-      <AnimatePresence mode="wait">
-        {activities.length > 0 && (
-          <motion.div
-            key={`toast-${toastIndex}`}
-            initial={{ opacity: 0, y: 12, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.95 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="absolute -bottom-4 -left-4 z-10 flex items-center gap-2.5 rounded-2xl bg-white px-4 py-3 shadow-2xl ring-1 ring-black/5"
-          >
-            <span className="text-lg" aria-hidden>{activities[toastIndex % activities.length].emoji}</span>
-            <div className="leading-tight">
-              <p className="text-xs font-semibold text-slate-900">
-                {activities[toastIndex % activities.length].userName}{" "}
-                {activities[toastIndex % activities.length].action}
-              </p>
-              <p className="text-[11px] text-slate-500">
-                {activities[toastIndex % activities.length].target}
-              </p>
-            </div>
-            <span className="ml-2 text-[10px] text-slate-400 whitespace-nowrap">
-              {activities[toastIndex % activities.length].timeAgo}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {activities.length > 0 && (
+        <div
+          key={`toast-${toastIndex}`}
+          className="absolute -bottom-4 -left-4 z-10 flex items-center gap-2.5 rounded-2xl bg-white px-4 py-3 shadow-2xl ring-1 ring-black/5 animate-in fade-in slide-in-from-bottom-2 zoom-in-95 duration-300"
+        >
+          <span className="text-lg" aria-hidden>{activities[toastIndex % activities.length].emoji}</span>
+          <div className="leading-tight">
+            <p className="text-xs font-semibold text-slate-900">
+              {activities[toastIndex % activities.length].userName}{" "}
+              {activities[toastIndex % activities.length].action}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              {activities[toastIndex % activities.length].target}
+            </p>
+          </div>
+          <span className="ml-2 text-[10px] text-slate-400 whitespace-nowrap">
+            {activities[toastIndex % activities.length].timeAgo}
+          </span>
+        </div>
+      )}
 
       {/* ── Floating rating badge ── */}
       {stats && stats.avgRating > 0 && (
-        <div className="absolute -top-3 -right-3 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-black/5">
+        <div className="absolute -top-3 -right-3 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 shadow-xl ring-1 ring-black/5 animate-in fade-in slide-in-from-top-2 duration-300">
           <Star className="size-5 fill-amber-400 text-amber-400" />
           <div className="leading-tight">
             <p className="text-base font-bold text-slate-900">{stats.avgRating}</p>
@@ -518,11 +511,9 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
   const Icon = meta.icon
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.08, duration: 0.35, ease: "easeOut" }}
-      className="group flex items-start gap-3 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10"
+    <div
+      className="group flex items-start gap-3 rounded-xl bg-white/5 p-3 transition-colors hover:bg-white/10 animate-in fade-in slide-in-from-left-2 duration-300"
+      style={{ animationDelay: `${index * 0.08}s` }}
     >
       {/* Avatar or icon */}
       <div className="relative shrink-0">
@@ -578,7 +569,7 @@ function ActivityCard({ activity, index }: { activity: ActivityItem; index: numb
       <span className="shrink-0 text-[10px] font-medium text-emerald-200/50">
         {activity.timeAgo}
       </span>
-    </motion.div>
+    </div>
   )
 }
 

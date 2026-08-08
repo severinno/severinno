@@ -29,7 +29,6 @@
 
 import * as React from "react"
 import { useTheme } from "next-themes"
-import { motion, AnimatePresence } from "framer-motion"
 import {
   MapPin,
   LocateFixed,
@@ -89,7 +88,6 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 import { useFaviconBadge } from "@/hooks/use-favicon-badge"
 import { NOTIFICATION_TYPE_LABELS } from "@/lib/constants"
 import { formatRelative } from "@/lib/format"
@@ -234,13 +232,7 @@ function WelcomeToast({ onDismiss }: { onDismiss: () => void }) {
   }, [onDismiss])
 
   return (
-    <motion.div
-      initial={{ y: -100, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: -100, opacity: 0 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="fixed left-1/2 top-4 z-[60] -translate-x-1/2"
-    >
+    <div className="fixed left-1/2 top-4 z-[60] -translate-x-1/2 animate-in slide-in-from-top-4 fade-in duration-300">
       <div className="flex items-center gap-3 rounded-2xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-3 shadow-lg shadow-emerald-500/10 dark:border-emerald-800/40 dark:from-emerald-950/90 dark:to-teal-950/90 dark:shadow-emerald-500/5">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 shadow-md shadow-emerald-500/20">
           <Sparkles className="size-4 text-white" />
@@ -264,7 +256,7 @@ function WelcomeToast({ onDismiss }: { onDismiss: () => void }) {
           <X className="size-3.5" />
         </button>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -276,7 +268,6 @@ export default function Topbar({
   query,
   onQueryChange,
   categories,
-  activeCategoryId,
   onCategorySelect,
   onSearchSubmit,
 }: TopbarProps) {
@@ -382,9 +373,7 @@ export default function Topbar({
   return (
     <>
       {/* ── Welcome Toast (H1: system status) ──────────────────────────── */}
-      <AnimatePresence>
-        {showWelcome && <WelcomeToast onDismiss={dismissWelcome} />}
-      </AnimatePresence>
+      {showWelcome && <WelcomeToast onDismiss={dismissWelcome} />}
 
       <header
         className={cn(
@@ -395,15 +384,11 @@ export default function Topbar({
         )}
       >
         {/* ── Gradient bottom border on scroll (2px emerald-400 → teal-500) ── */}
-        <motion.div
-          className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-400 to-teal-500"
-          initial={{ scaleX: 0, opacity: 0 }}
-          animate={{
-            scaleX: scrolled ? 1 : 0,
-            opacity: scrolled ? 1 : 0,
-          }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-          style={{ transformOrigin: "left" }}
+        <div
+          className={cn(
+            "absolute bottom-0 left-0 right-0 h-[2px] origin-left bg-gradient-to-r from-emerald-400 to-teal-500 transition-all duration-[400ms] ease-out",
+            scrolled ? "scale-x-100 opacity-100" : "scale-x-0 opacity-0",
+          )}
         />
 
         {/* ── Main bar ─────────────────────────────────────────────────────── */}
@@ -420,30 +405,16 @@ export default function Topbar({
             className="group flex shrink-0 items-center gap-2.5 rounded-xl px-1.5 py-1.5 outline-none transition-all hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             aria-label="Severinno — página inicial"
           >
-            <motion.span
-              className="relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/25 transition-shadow duration-300 group-hover:shadow-lg group-hover:shadow-primary/30"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
+            <span
+              className="relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/25 transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg group-hover:shadow-primary/30 active:scale-95"
             >
-              <motion.div
-                className="flex items-center justify-center"
-                whileHover={{
-                  y: [0, -3, 0],
-                  transition: {
-                    duration: 0.5,
-                    repeat: Infinity,
-                    repeatType: "loop",
-                    ease: "easeInOut",
-                  },
-                }}
-              >
+              <div className="flex items-center justify-center">
                 <MapPin className="size-5 text-white" />
-              </motion.div>
+              </div>
               <span className="absolute -bottom-0.5 -right-0.5 flex size-3 items-center justify-center rounded-full bg-emerald-400 shadow-sm">
                 <Sparkles className="size-2 text-white" />
               </span>
-            </motion.span>
+            </span>
             <span className="text-xl font-extrabold tracking-tight">
               <span className="bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
                 Sever
@@ -451,32 +422,19 @@ export default function Topbar({
               <span className="text-foreground">inno</span>
             </span>
             {/* "Verificado" shield badge (H6) */}
-            <motion.span
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.5, duration: 0.3 }}
-              className="hidden items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 dark:from-emerald-900/40 dark:to-teal-900/40 sm:inline-flex"
-            >
+            <span className="hidden animate-in fade-in zoom-in-75 items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 duration-300 [animation-delay:500ms] dark:from-emerald-900/40 dark:to-teal-900/40 sm:inline-flex">
               <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
               <span className="text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300">
                 Verificado
               </span>
-            </motion.span>
+            </span>
           </button>
 
           {/* ── Desktop search — full bar or mini bar (H7: efficiency) ──── */}
           <div className="hidden flex-1 items-center justify-center md:flex">
             {/* Full search bar — visible when NOT past hero */}
-            <AnimatePresence mode="wait">
-              {!pastHero ? (
-                <motion.div
-                  key="full-search"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="w-full"
-                >
+            {!pastHero ? (
+                <div key="full-search" className="w-full animate-in fade-in duration-200">
                   <Popover open={searchOpen} onOpenChange={setSearchOpen}>
                     <PopoverAnchor asChild>
                       <div className="relative mx-auto w-full max-w-xl">
@@ -506,25 +464,19 @@ export default function Topbar({
                           )}
                           aria-label="Buscar prestadores"
                         />
-                        <AnimatePresence>
                           {query ? (
-                            <motion.button
+                            <button
                               type="button"
                               aria-label="Limpar busca"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 onQueryChange("")
                               }}
-                              initial={{ scale: 0, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 0, opacity: 0 }}
-                              transition={{ duration: 0.15 }}
-                              className="absolute top-1/2 right-3 flex size-6 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                              className="absolute top-1/2 right-3 flex size-6 -translate-y-1/2 animate-in zoom-in-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors duration-150 hover:bg-destructive/10 hover:text-destructive"
                             >
                               <X className="size-3.5" />
-                            </motion.button>
+                            </button>
                           ) : null}
-                        </AnimatePresence>
                         {/* Search shortcut hint */}
                         {!query && !searchOpen && (
                           <kbd className="pointer-events-none absolute top-1/2 right-3 hidden -translate-y-1/2 rounded-md border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground lg:inline-block">
@@ -595,16 +547,9 @@ export default function Topbar({
                       </Command>
                     </PopoverContent>
                   </Popover>
-                </motion.div>
+                </div>
               ) : (
-                <motion.div
-                  key="mini-search"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.2 }}
-                  className="w-full max-w-sm"
-                >
+                <div key="mini-search" className="w-full max-w-sm animate-in fade-in zoom-in-95 duration-200">
                   <div className="relative">
                     <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -632,9 +577,8 @@ export default function Topbar({
                       aria-label="Buscar prestadores (compacto)"
                     />
                   </div>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
           </div>
 
           {/* ── Location / AddressAutocomplete (desktop) ────────────────────── */}
@@ -659,32 +603,24 @@ export default function Topbar({
               title="Alternar tema"
             >
               {mounted ? (
-                <motion.div
+                <div
                   key={resolvedTheme}
-                  initial={{ rotate: -90, scale: 0 }}
-                  animate={{ rotate: 0, scale: 1 }}
-                  transition={{ duration: 0.4, type: "spring", stiffness: 200, damping: 15 }}
+                  className="animate-in rotate-in-[-90deg] zoom-in-0 duration-300"
                 >
                   {resolvedTheme === "dark" ? (
                     <Sun className="size-[18px]" />
                   ) : (
                     <Moon className="size-[18px]" />
                   )}
-                </motion.div>
+                </div>
               ) : (
                 <div className="size-[18px]" />
               )}
             </Button>
 
             {/* Compare button with bounce badge */}
-            <AnimatePresence>
               {compareCount > 0 ? (
-                <motion.div
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                >
+                <div className="animate-in zoom-in-75 fade-in duration-200">
                   <Button
                     variant="outline"
                     size="sm"
@@ -695,20 +631,17 @@ export default function Topbar({
                   >
                     <GitCompare className="size-4" />
                     <span className="text-sm font-medium">Comparar</span>
-                    <motion.span
+                    <span
                       key={compareCount}
-                      initial={{ scale: 1.5 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 15 }}
+                      className="inline-block animate-in zoom-in-200 duration-200"
                     >
                       <Badge className="ml-0.5 h-5 min-w-5 justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 px-1.5 text-[10px] font-bold text-white shadow-sm">
                         {compareCount}
                       </Badge>
-                    </motion.span>
+                    </span>
                   </Button>
-                </motion.div>
+                </div>
               ) : null}
-            </AnimatePresence>
 
             {isAuth ? (
               <>
@@ -723,19 +656,11 @@ export default function Topbar({
                       title="Notificações"
                     >
                       <Bell className="size-[18px] transition-transform duration-200 group-hover:rotate-12" />
-                      <AnimatePresence>
                         {unreadCount > 0 ? (
-                          <motion.span
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1 }}
-                            exit={{ scale: 0 }}
-                            transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                            className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-red-400 text-[9px] font-bold text-white shadow-sm"
-                          >
+                          <span className="absolute -top-0.5 -right-0.5 flex size-4 animate-in zoom-in-0 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-red-400 text-[9px] font-bold text-white shadow-sm duration-200">
                             {unreadCount > 9 ? "9+" : unreadCount}
-                          </motion.span>
+                          </span>
                         ) : null}
-                      </AnimatePresence>
                     </Button>
                   </PopoverAnchor>
                   <PopoverContent
@@ -956,32 +881,24 @@ export default function Topbar({
               title="Alternar tema"
             >
               {mounted ? (
-                <motion.div
+                <div
                   key={resolvedTheme}
-                  initial={{ rotate: -90, scale: 0 }}
-                  animate={{ rotate: 0, scale: 1 }}
-                  transition={{ duration: 0.4, type: "spring", stiffness: 200, damping: 15 }}
+                  className="animate-in rotate-in-[-90deg] zoom-in-0 duration-300"
                 >
                   {resolvedTheme === "dark" ? (
                     <Sun className="size-5" />
                   ) : (
                     <Moon className="size-5" />
                   )}
-                </motion.div>
+                </div>
               ) : (
                 <div className="size-5" />
               )}
             </Button>
 
             {/* Mobile compare with bounce badge */}
-            <AnimatePresence>
               {compareCount > 0 ? (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  exit={{ scale: 0 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                >
+                <div className="animate-in zoom-in-75 duration-200">
                   <Button
                     variant="outline"
                     size="icon"
@@ -991,19 +908,15 @@ export default function Topbar({
                     title={`Comparar ${compareCount} prestador(es)`}
                   >
                     <GitCompare className="size-4" />
-                    <motion.span
+                    <span
                       key={compareCount}
-                      initial={{ scale: 1.5 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", stiffness: 500, damping: 15 }}
-                      className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-[9px] font-bold text-white shadow-sm"
+                      className="absolute -top-1 -right-1 flex size-4 animate-in zoom-in-200 items-center justify-center rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 text-[9px] font-bold text-white shadow-sm duration-200"
                     >
                       {compareCount}
-                    </motion.span>
+                    </span>
                   </Button>
-                </motion.div>
+                </div>
               ) : null}
-            </AnimatePresence>
 
             {/* Mobile location shortcut */}
             <Button

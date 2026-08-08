@@ -20,7 +20,6 @@
  */
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
 import {
   Zap,
   Droplets,
@@ -29,7 +28,6 @@ import {
   Square,
   SprayCan,
   Home,
-  ChevronRight,
   ChevronLeft,
   Calculator,
   AlertTriangle,
@@ -134,21 +132,16 @@ function PriceBarChart({ categoryKey }: { categoryKey: string }) {
                 </span>
               </div>
               <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted/50">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${widthMax}%` }}
-                  transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+                <div
                   className={cn(
-                    "absolute inset-y-0 left-0 rounded-full bg-gradient-to-r",
+                    "absolute inset-y-0 left-0 rounded-full bg-gradient-to-r transition-all duration-700 ease-out",
                     barColors[scope],
                   )}
+                  style={{ width: `${widthMax}%`, transitionDelay: "200ms" }}
                 />
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${widthMin}%` }}
-                  transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
-                  className="absolute inset-y-0 left-0 rounded-full bg-background/30"
-                  style={{ width: `${widthMin}%` }}
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full bg-background/30 transition-all duration-500 ease-out"
+                  style={{ width: `${widthMin}%`, transitionDelay: "100ms" }}
                 />
               </div>
             </div>
@@ -294,11 +287,11 @@ export default function QuickQuoteCalculator() {
 
       <div className="relative mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         {/* ── Header ────────────────────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="mb-10 text-center"
+        <div
+          className={cn(
+            "mb-10 text-center transition-all duration-500 ease-out",
+            visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+          )}
         >
           <Badge
             variant="secondary"
@@ -316,7 +309,7 @@ export default function QuickQuoteCalculator() {
           <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
             Estime o valor do serviço em 3 passos rápidos. Sem compromisso, sem cadastro.
           </p>
-        </motion.div>
+        </div>
 
         {/* ── Step indicator ─────────────────────────────────────────────── */}
         <StepIndicator currentStep={step} totalSteps={3} />
@@ -324,228 +317,206 @@ export default function QuickQuoteCalculator() {
         {/* ── Steps content ──────────────────────────────────────────────── */}
         <Card className="mt-8 overflow-hidden border-0 shadow-xl shadow-primary/5">
           <CardContent className="p-0">
-            <AnimatePresence mode="wait">
-              {/* ── Step 1: Select service type ───────────────────────────── */}
-              {step === 0 && (
-                <motion.div
-                  key="step-1"
-                  initial={{ opacity: 0, x: 60 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -60 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="p-6 sm:p-8"
-                >
-                  <h3 className="mb-1 text-lg font-bold">
-                    1. Qual serviço você precisa?
-                  </h3>
-                  <p className="mb-6 text-sm text-muted-foreground">
-                    Selecione a categoria do serviço
-                  </p>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                    {CATEGORIES.map((cat) => {
-                      const Icon = cat.icon
-                      const isActive = selectedCategory === cat.key
-                      return (
-                        <motion.button
-                          key={cat.key}
-                          type="button"
-                          onClick={() => handleCategorySelect(cat.key)}
-                          whileHover={{ scale: 1.03 }}
-                          whileTap={{ scale: 0.97 }}
+            {/* ── Step 1: Select service type ───────────────────────────── */}
+            {step === 0 && (
+              <div
+                key="step-1"
+                className="p-6 animate-in fade-in slide-in-from-right-4 duration-300 ease-in-out sm:p-8"
+              >
+                <h3 className="mb-1 text-lg font-bold">
+                  1. Qual serviço você precisa?
+                </h3>
+                <p className="mb-6 text-sm text-muted-foreground">
+                  Selecione a categoria do serviço
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {CATEGORIES.map((cat) => {
+                    const Icon = cat.icon
+                    const isActive = selectedCategory === cat.key
+                    return (
+                      <button
+                        key={cat.key}
+                        type="button"
+                        onClick={() => handleCategorySelect(cat.key)}
+                        className={cn(
+                          "group flex flex-col items-center gap-2.5 rounded-2xl border-2 p-4 text-center transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]",
+                          isActive
+                            ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
+                            : "border-transparent bg-muted/30 hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm",
+                        )}
+                      >
+                        <span
                           className={cn(
-                            "group flex flex-col items-center gap-2.5 rounded-2xl border-2 p-4 text-center transition-all duration-200",
+                            "flex size-12 items-center justify-center rounded-xl transition-all duration-200",
                             isActive
-                              ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
-                              : "border-transparent bg-muted/30 hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm",
+                              ? "bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/20"
+                              : "bg-muted group-hover:bg-primary/10",
                           )}
                         >
-                          <span
+                          <Icon
                             className={cn(
-                              "flex size-12 items-center justify-center rounded-xl transition-all duration-200",
-                              isActive
-                                ? "bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/20"
-                                : "bg-muted group-hover:bg-primary/10",
+                              "size-6 transition-colors",
+                              isActive ? "text-white" : "text-muted-foreground group-hover:text-primary",
                             )}
-                          >
-                            <Icon
-                              className={cn(
-                                "size-6 transition-colors",
-                                isActive ? "text-white" : "text-muted-foreground group-hover:text-primary",
-                              )}
-                            />
-                          </span>
-                          <span
-                            className={cn(
-                              "text-sm font-semibold transition-colors",
-                              isActive ? "text-primary" : "text-foreground/70 group-hover:text-foreground",
-                            )}
-                          >
-                            {cat.label}
-                          </span>
-                        </motion.button>
-                      )
-                    })}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* ── Step 2: Describe scope ────────────────────────────────── */}
-              {step === 1 && (
-                <motion.div
-                  key="step-2"
-                  initial={{ opacity: 0, x: 60 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -60 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="p-6 sm:p-8"
-                >
-                  <div className="mb-4 flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleBack}
-                      className="gap-1 text-muted-foreground"
-                      aria-label="Voltar ao passo anterior"
-                    >
-                      <ChevronLeft className="size-4" />
-                      Voltar
-                    </Button>
-                  </div>
-                  <h3 className="mb-1 text-lg font-bold">
-                    2. Qual o tamanho do serviço?
-                  </h3>
-                  <p className="mb-6 text-sm text-muted-foreground">
-                    <span className="font-medium text-primary">
-                      {selectedCategoryConfig?.label}
-                    </span>{" "}
-                    — selecione o escopo
-                  </p>
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    {SCOPES.map((scope) => {
-                      const isActive = selectedScope === scope.key
-                      return (
-                        <motion.button
-                          key={scope.key}
-                          type="button"
-                          onClick={() => handleScopeSelect(scope.key)}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.97 }}
+                          />
+                        </span>
+                        <span
                           className={cn(
-                            "group relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all duration-200",
-                            isActive
-                              ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
-                              : "border-transparent bg-muted/30 hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm",
+                            "text-sm font-semibold transition-colors",
+                            isActive ? "text-primary" : "text-foreground/70 group-hover:text-foreground",
                           )}
                         >
-                          <span className="text-2xl">{scope.emoji}</span>
-                          <span
-                            className={cn(
-                              "text-base font-bold transition-colors",
-                              isActive ? "text-primary" : "text-foreground/80 group-hover:text-foreground",
-                            )}
-                          >
-                            {scope.label}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {scope.description}
-                          </span>
-                          {isActive && (
-                            <motion.div
-                              layoutId="scope-indicator"
-                              className="absolute inset-0 rounded-2xl border-2 border-primary"
-                              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                            />
+                          {cat.label}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 2: Describe scope ────────────────────────────────── */}
+            {step === 1 && (
+              <div
+                key="step-2"
+                className="p-6 animate-in fade-in slide-in-from-right-4 duration-300 ease-in-out sm:p-8"
+              >
+                <div className="mb-4 flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleBack}
+                    className="gap-1 text-muted-foreground"
+                    aria-label="Voltar ao passo anterior"
+                  >
+                    <ChevronLeft className="size-4" />
+                    Voltar
+                  </Button>
+                </div>
+                <h3 className="mb-1 text-lg font-bold">
+                  2. Qual o tamanho do serviço?
+                </h3>
+                <p className="mb-6 text-sm text-muted-foreground">
+                  <span className="font-medium text-primary">
+                    {selectedCategoryConfig?.label}
+                  </span>{" "}
+                  — selecione o escopo
+                </p>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {SCOPES.map((scope) => {
+                    const isActive = selectedScope === scope.key
+                    return (
+                      <button
+                        key={scope.key}
+                        type="button"
+                        onClick={() => handleScopeSelect(scope.key)}
+                        className={cn(
+                          "group relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all duration-200 hover:scale-[1.02] active:scale-[0.97]",
+                          isActive
+                            ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
+                            : "border-transparent bg-muted/30 hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm",
+                        )}
+                      >
+                        <span className="text-2xl">{scope.emoji}</span>
+                        <span
+                          className={cn(
+                            "text-base font-bold transition-colors",
+                            isActive ? "text-primary" : "text-foreground/80 group-hover:text-foreground",
                           )}
-                        </motion.button>
-                      )
-                    })}
-                  </div>
-                </motion.div>
-              )}
+                        >
+                          {scope.label}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {scope.description}
+                        </span>
+                        {isActive && (
+                          <span className="absolute inset-0 animate-in zoom-in-95 rounded-2xl border-2 border-primary duration-200" />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
-              {/* ── Step 3: Price estimate ────────────────────────────────── */}
-              {step === 2 && priceRange && (
-                <motion.div
-                  key="step-3"
-                  initial={{ opacity: 0, x: 60 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -60 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="p-6 sm:p-8"
-                >
-                  <div className="mb-4 flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleBack}
-                      className="gap-1 text-muted-foreground"
-                      aria-label="Voltar ao passo anterior"
-                    >
-                      <ChevronLeft className="size-4" />
-                      Voltar
-                    </Button>
-                  </div>
-                  <h3 className="mb-1 text-lg font-bold">
-                    3. Estimativa de preço
-                  </h3>
-                  <p className="mb-6 text-sm text-muted-foreground">
-                    <span className="font-medium text-primary">
-                      {selectedCategoryConfig?.label}
-                    </span>{" "}
-                    •{" "}
-                    <span className="font-medium text-primary">
-                      {SCOPES.find((s) => s.key === selectedScope)?.label}
-                    </span>
-                  </p>
+            {/* ── Step 3: Price estimate ────────────────────────────────── */}
+            {step === 2 && priceRange && (
+              <div
+                key="step-3"
+                className="p-6 animate-in fade-in slide-in-from-right-4 duration-300 ease-in-out sm:p-8"
+              >
+                <div className="mb-4 flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleBack}
+                    className="gap-1 text-muted-foreground"
+                    aria-label="Voltar ao passo anterior"
+                  >
+                    <ChevronLeft className="size-4" />
+                    Voltar
+                  </Button>
+                </div>
+                <h3 className="mb-1 text-lg font-bold">
+                  3. Estimativa de preço
+                </h3>
+                <p className="mb-6 text-sm text-muted-foreground">
+                  <span className="font-medium text-primary">
+                    {selectedCategoryConfig?.label}
+                  </span>{" "}
+                  •{" "}
+                  <span className="font-medium text-primary">
+                    {SCOPES.find((s) => s.key === selectedScope)?.label}
+                  </span>
+                </p>
 
-                  {/* Price display */}
-                  <div className="mb-8 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 p-8 dark:from-emerald-950/30 dark:to-teal-950/30">
-                    <div className="flex items-center justify-center gap-4 sm:gap-6">
-                      <div key={`min-${priceKey}`}>
-                        <AnimatedPrice value={priceRange[0]} label="Valor mínimo estimado" />
-                      </div>
-                      <span className="text-2xl font-light text-muted-foreground">—</span>
-                      <div key={`max-${priceKey}`}>
-                        <AnimatedPrice value={priceRange[1]} label="Valor máximo estimado" />
-                      </div>
+                {/* Price display */}
+                <div className="mb-8 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 p-8 dark:from-emerald-950/30 dark:to-teal-950/30">
+                  <div className="flex items-center justify-center gap-4 sm:gap-6">
+                    <div key={`min-${priceKey}`}>
+                      <AnimatedPrice value={priceRange[0]} label="Valor mínimo estimado" />
                     </div>
-
-                    {/* Price comparison chart */}
-                    {selectedCategory && <PriceBarChart categoryKey={selectedCategory} />}
+                    <span className="text-2xl font-light text-muted-foreground">—</span>
+                    <div key={`max-${priceKey}`}>
+                      <AnimatedPrice value={priceRange[1]} label="Valor máximo estimado" />
+                    </div>
                   </div>
 
-                  {/* Disclaimer (H5/H10) */}
-                  <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-amber-200/60 bg-amber-50/50 p-4 dark:border-amber-800/30 dark:bg-amber-950/20">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Valores são apenas estimativas baseadas em médias de mercado. O orçamento
-                      final pode variar conforme a complexidade, materiais e região. Solicite um
-                      orçamento real para um valor preciso.
-                    </p>
-                  </div>
+                  {/* Price comparison chart */}
+                  {selectedCategory && <PriceBarChart categoryKey={selectedCategory} />}
+                </div>
 
-                  {/* CTA + reset */}
-                  <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                    <Button
-                      size="lg"
-                      onClick={handleRequestQuote}
-                      className="gap-2 rounded-xl bg-gradient-to-r from-primary to-emerald-600 px-8 font-bold shadow-lg shadow-primary/20 transition-all hover:shadow-xl hover:shadow-primary/30 hover:brightness-110"
-                    >
-                      Pedir orçamento real
-                      <ArrowRight className="size-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      onClick={handleReset}
-                      className="gap-2 rounded-xl"
-                    >
-                      Simular outro serviço
-                    </Button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                {/* Disclaimer (H5/H10) */}
+                <div className="mb-6 flex items-start gap-2.5 rounded-xl border border-amber-200/60 bg-amber-50/50 p-4 dark:border-amber-800/30 dark:bg-amber-950/20">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    Valores são apenas estimativas baseadas em médias de mercado. O orçamento
+                    final pode variar conforme a complexidade, materiais e região. Solicite um
+                    orçamento real para um valor preciso.
+                  </p>
+                </div>
+
+                {/* CTA + reset */}
+                <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                  <Button
+                    size="lg"
+                    onClick={handleRequestQuote}
+                    className="gap-2 rounded-xl bg-gradient-to-r from-primary to-emerald-600 px-8 font-bold shadow-lg shadow-primary/20 transition-all hover:shadow-xl hover:shadow-primary/30 hover:brightness-110"
+                  >
+                    Pedir orçamento real
+                    <ArrowRight className="size-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    onClick={handleReset}
+                    className="gap-2 rounded-xl"
+                  >
+                    Simular outro serviço
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

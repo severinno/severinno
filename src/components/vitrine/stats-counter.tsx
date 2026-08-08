@@ -21,8 +21,6 @@ import {
   Star,
   type LucideIcon,
 } from "lucide-react"
-import { motion } from "framer-motion"
-
 import { apiGet } from "@/lib/api"
 import { useCountUp, useScrollReveal } from "@/hooks/use-animation"
 import { cn } from "@/lib/utils"
@@ -130,12 +128,13 @@ export default function StatsCounter() {
           {items.map((item, idx) => {
             const Icon = item.icon
             return (
-              <motion.div
+              <div
                 key={item.label}
-                initial={{ opacity: 0, y: 16 }}
-                animate={visible ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.5, delay: idx * 0.1 }}
-                className="flex flex-col items-center gap-2 text-center"
+                className={cn(
+                  "flex flex-col items-center gap-2 text-center transition-all duration-500 ease-out",
+                  visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+                )}
+                style={{ transitionDelay: `${idx * 100}ms` }}
               >
                 <div className="flex size-12 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/20 sm:size-14">
                   <Icon className="size-6 text-white sm:size-7" />
@@ -154,7 +153,7 @@ export default function StatsCounter() {
                 <p className="text-xs font-medium text-emerald-100 sm:text-sm">
                   {item.label}
                 </p>
-              </motion.div>
+              </div>
             )
           })}
         </div>

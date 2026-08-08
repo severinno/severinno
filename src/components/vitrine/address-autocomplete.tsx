@@ -10,7 +10,6 @@
  */
 
 import * as React from "react"
-import { motion } from "framer-motion"
 import { MapPin, LocateFixed, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
@@ -68,28 +67,31 @@ export default function AddressAutocomplete({
 
   // Fetch results when debounced input changes
   React.useEffect(() => {
-    if (!debouncedInput || debouncedInput.length < 3) {
-      setResults([])
-      setOpen(false)
-      return
-    }
+    if (!debouncedInput || debouncedInput.length < 3) return
     let cancelled = false
-    setLoading(true)
-
-    fetchGeoSearch(debouncedInput, 5)
-      .then((data) => {
-        if (cancelled) return
-        setResults(data)
-        setOpen(data.length > 0)
-        setSelectedIdx(-1)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setResults([])
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+    // The fetch + setLoading run inside a microtask — not synchronously in the
+    // effect body (react-hooks/set-state-in-effect). A microtask flushes
+    // before the next paint (so the spinner still shows before the Nominatim
+    // round-trip resolves) and is deterministic under jsdom/act in tests
+    // (requestAnimationFrame is not).
+    queueMicrotask(() => {
+      if (cancelled) return
+      setLoading(true)
+      fetchGeoSearch(debouncedInput, 5)
+        .then((data) => {
+          if (cancelled) return
+          setResults(data)
+          setOpen(data.length > 0)
+          setSelectedIdx(-1)
+        })
+        .catch(() => {
+          if (cancelled) return
+          setResults([])
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false)
+        })
+    })
 
     return () => {
       cancelled = true
@@ -192,7 +194,15 @@ export default function AddressAutocomplete({
         ref={inputRef}
         value={input}
         onChange={(e) => {
-          setInput(e.target.value)
+          const value = e.target.value
+          setInput(value)
+          // Reset immediately when the query is too short — doing it in the
+          // event handler (not the effect body) avoids synchronous setState
+          // in an effect (react-hooks/set-state-in-effect).
+          if (value.length < 3) {
+            setResults([])
+            setOpen(false)
+          }
         }}
         onFocus={() => {
           if (results.length > 0) setOpen(true)
@@ -222,16 +232,15 @@ export default function AddressAutocomplete({
           {locating ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
-            <motion.span
-              animate={located ? { scale: [1, 1.35, 1] } : { scale: 1 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
+            <span
+              key={located ? "located" : "idle"}
               className={cn(
-                "inline-flex transition-colors duration-300",
+                "inline-flex animate-in zoom-in-90 fade-in duration-300 transition-colors",
                 located ? "text-emerald-500" : "",
               )}
             >
               <LocateFixed className="size-3.5" />
-            </motion.span>
+            </span>
           )}
         </button>
         {/* Loading spinner from Nominatim search */}

@@ -20,21 +20,28 @@
  *   2. Total client bundle (gzipped)
  *   3. Largest single chunk (gzipped)
  *   4. Per-library sizes: maplibre-gl, recharts, framer-motion, socket.io-client
- *   5. Lazy-load guard: maplibre-gl / recharts / framer-motion must NEVER
- *      reach the initial JS — EVERY prerendered route's HTML script list is
- *      scanned (home, /busca, /dashboard, /u/[slug], /categoria/..., etc.),
- *      with the build-manifest `rootMainFiles` as fallback when no route is
- *      prerendered. A regression there would add ~267 KB / ~100 KB / ~40 KB
- *      to a page's first paint; the guard fails the build so CI catches it
- *      immediately, on any route.
+ *   5. Lazy-load guard: maplibre-gl / recharts / framer-motion /
+ *      socket.io-client must NEVER reach the initial JS — EVERY prerendered
+ *      route's HTML script list is scanned (home, /busca, /dashboard,
+ *      /u/[slug], /categoria/..., etc.), with the build-manifest
+ *      `rootMainFiles` as fallback when no route is prerendered. A regression
+ *      there would add ~267 KB / ~100 KB / ~40 KB / ~13 KB to a page's first
+ *      paint; the guard fails the build so CI catches it immediately, on any
+ *      route. NOTE: @tanstack/react-query is intentionally NOT presence-
+ *      guarded — it is the app's data layer, statically imported by dozens of
+ *      eager components by design; its growth is bounded by the check-3 size
+ *      budget instead.
  *      Scope: prerendered (static/ISR) routes only — a regression on a
  *      dynamic (ƒ) route escapes this guard and is caught by check 8
  *      (source lint, no build needed) and by checks 2–4 (total, largest,
  *      per-library sizes).
  *   6. Per-route JS (gzipped): layout chain + page chunk of key routes
  *      (`/`, `/busca`, `/dashboard`, `/tracking/[id]`, `/u/[slug]`,
- *      `/categoria/[slug]`, `/categoria/[slug]/[child]`, `/login`) — catches
- *      a heavy static import added to a single page before it reaches prod.
+ *      `/categoria/[slug]`, `/categoria/[slug]/[child]`, `/login`,
+ *      `/register`, `/reset-password`, `/auth/reset-password`,
+ *      `/auth/reset-password/[token]`, `/termos`, `/como-funciona`,
+ *      `/contato`) — catches a heavy static import added to a single page
+ *      before it reaches prod.
  *      Route budgets complement checks 1–3: shared framework growth is caught
  *      by Total/Largest, page-specific growth by the route check.
  *      Limitation: if webpack splits a page-only import into a dedicated named
@@ -52,8 +59,8 @@
  *      on any single page variant is caught in the bytes the browser really
  *      downloads — complementing the layout+page chunk sum of check 6.
  *   8. Source-level eager-graph lint: maplibre-gl / react-map-gl / recharts /
- *      framer-motion must never be STATICALLY imported by any file in a
- *      route's eager graph. BFS from every route entry over static imports
+ *      framer-motion / socket.io-client must never be STATICALLY imported by
+ *      any file in a route's eager graph. BFS from every route entry over static imports
  *      (dynamic import()/next/dynamic targets are lazy and exempt); a
  *      violation lists the route(s) that reach the offending file. Needs NO
  *      build — runs before the bundle-report guard, so the gate fires even on
@@ -74,6 +81,12 @@
  *   JS_BUDGET_REAL_U_KB=400 ...
  *   JS_BUDGET_EAGER_LIBS=maplibre-gl,react-map-gl,recharts,framer-motion
  *   JS_BUDGET_EAGER_ALLOW_FILES=src/legacy/x.tsx   # whitelist a flagged file
+ *   JS_BUDGET_GUARD_ALLOW=framer-motion            # ESCAPE HATCH (time-boxed):
+ *                                 # temporarily exempts these libs from guard
+ *                                 # checks 5+8 (initial-JS presence). Size
+ *                                 # budgets and all byte checks still apply.
+ *                                 # REMOVE once the lib is out of the eager
+ *                                 # graph — the guard is the permanent contract.
  */
 
 import fs from "node:fs"
@@ -97,14 +110,26 @@ const BUDGETS = {
   // Baseline = 219.2 KB gzip (real initial transfer measured 2026-08-08,
   // after socket.io lazy + framer removed from error/loading shells and the
   // search page) + ~20% headroom → 270 KB.
+  // Recalibrated 2026-08-08 via `--update` against the ANALYZE build after
+  // the Proposta A framer→CSS conversion (total 1229.2 → 1480, largest
+  // 266.8 → 330, maplibre 266.9 → 330, recharts 85.4 → 110).
   initialGzipKB: num(process.env.JS_BUDGET_INITIAL_KB, 270),
-  totalGzipKB: num(process.env.JS_BUDGET_TOTAL_KB, 1400),
-  largestChunkGzipKB: num(process.env.JS_BUDGET_LARGEST_CHUNK_KB, 300),
+  totalGzipKB: num(process.env.JS_BUDGET_TOTAL_KB, 1480),
+  largestChunkGzipKB: num(process.env.JS_BUDGET_LARGEST_CHUNK_KB, 330),
   libs: {
-    "maplibre-gl": { budgetKB: num(process.env.JS_BUDGET_LIB_MAPLIBRE_KB, 300), envKey: "JS_BUDGET_LIB_MAPLIBRE_KB" },
-    recharts: { budgetKB: num(process.env.JS_BUDGET_LIB_RECHARTS_KB, 100), envKey: "JS_BUDGET_LIB_RECHARTS_KB" },
+    "maplibre-gl": { budgetKB: num(process.env.JS_BUDGET_LIB_MAPLIBRE_KB, 330), envKey: "JS_BUDGET_LIB_MAPLIBRE_KB" },
+    recharts: { budgetKB: num(process.env.JS_BUDGET_LIB_RECHARTS_KB, 110), envKey: "JS_BUDGET_LIB_RECHARTS_KB" },
     "framer-motion": { budgetKB: num(process.env.JS_BUDGET_LIB_FRAMER_KB, 50), envKey: "JS_BUDGET_LIB_FRAMER_KB" },
     "socket.io-client": { budgetKB: num(process.env.JS_BUDGET_LIB_SOCKETIO_KB, 20), envKey: "JS_BUDGET_LIB_SOCKETIO_KB" },
+    // Data layer: intentionally eager (see check 5 note) — bounded by SIZE,
+    // not presence. Measured 2026-08-08 (module attribution): react-query
+    // wrapper 7.9 KB + query-core 23.2 KB. Two entries because libGzip
+    // matches by label — a single "@tanstack/react-query" entry would NOT
+    // capture @tanstack/query-core (separate package, separate label).
+    // Recalibrated via `--update` 2026-08-08: wrapper 7.9 → 10 KB (~+25%
+    // headroom), core 23.2 → 30 KB (~+29%).
+    "@tanstack/react-query": { budgetKB: num(process.env.JS_BUDGET_LIB_REACTQUERY_KB, 10), envKey: "JS_BUDGET_LIB_REACTQUERY_KB" },
+    "@tanstack/query-core": { budgetKB: num(process.env.JS_BUDGET_LIB_QUERYCORE_KB, 30), envKey: "JS_BUDGET_LIB_QUERYCORE_KB" },
   },
 }
 
@@ -116,12 +141,32 @@ const BUDGETS = {
 const ROUTE_BUDGETS = [
   { label: "/", dir: "", envKey: "JS_BUDGET_ROUTE_ROOT_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_ROOT_KB, 20) },
   { label: "/busca", dir: "busca", envKey: "JS_BUDGET_ROUTE_BUSCA_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_BUSCA_KB, 20) },
-  { label: "/dashboard", dir: "dashboard", envKey: "JS_BUDGET_ROUTE_DASHBOARD_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_DASHBOARD_KB, 20) },
+  { label: "/dashboard", dir: "dashboard", envKey: "JS_BUDGET_ROUTE_DASHBOARD_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_DASHBOARD_KB, 10) },
   { label: "/tracking/[id]", dir: "tracking/[id]", envKey: "JS_BUDGET_ROUTE_TRACKING_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_TRACKING_KB, 20) },
   { label: "/u/[slug]", dir: "u/[slug]", envKey: "JS_BUDGET_ROUTE_U_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_U_KB, 20) },
   { label: "/categoria/[slug]", dir: "categoria/[slug]", envKey: "JS_BUDGET_ROUTE_CATEGORIA_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_CATEGORIA_KB, 10) },
   { label: "/categoria/[slug]/[child]", dir: "categoria/[slug]/[child]", envKey: "JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB, 10) },
   { label: "/login", dir: "login", envKey: "JS_BUDGET_ROUTE_LOGIN_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_LOGIN_KB, 20) },
+  // Remaining public SEO routes (added 2026-08-08 via --update): auth and
+  // static informational pages — same gate as the other routes: a heavy
+  // static import on any of these pages is caught before it reaches prod.
+  // Budgets = measured + ~20% headroom, rounded to 10 KB (register 12.3 → 20,
+  // reset-password 9.2 → 20, auth/reset-password 8.1 → 10,
+  // auth/reset-password/[token] 8.3 → 10, termos/como-funciona/contato 5.9 → 10).
+  // NOTE: /auth/reset-password/[token] is a DYNAMIC route (no page chunk in
+  // the build — 0 page-*.js, no prerendered HTML), so its metric is the
+  // shared layout chain only; it still catches a heavy import added to the
+  // auth layout/shell, but is NOT a page-specific signal. Its heavy-lib
+  // presence is covered by check 8 (source lint, no build needed) and checks
+  // 2–4 (total, largest, per-library sizes) — check 5 only scans prerendered
+  // routes, which this one is not.
+  { label: "/register", dir: "register", envKey: "JS_BUDGET_ROUTE_REGISTER_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_REGISTER_KB, 20) },
+  { label: "/reset-password", dir: "reset-password", envKey: "JS_BUDGET_ROUTE_RESET_PASSWORD_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_RESET_PASSWORD_KB, 20) },
+  { label: "/auth/reset-password", dir: "auth/reset-password", envKey: "JS_BUDGET_ROUTE_AUTH_RESET_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_AUTH_RESET_KB, 10) },
+  { label: "/auth/reset-password/[token]", dir: "auth/reset-password/[token]", envKey: "JS_BUDGET_ROUTE_AUTH_RESET_TOKEN_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_AUTH_RESET_TOKEN_KB, 10) },
+  { label: "/termos", dir: "termos", envKey: "JS_BUDGET_ROUTE_TERMOS_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_TERMOS_KB, 10) },
+  { label: "/como-funciona", dir: "como-funciona", envKey: "JS_BUDGET_ROUTE_COMO_FUNCIONA_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_COMO_FUNCIONA_KB, 10) },
+  { label: "/contato", dir: "contato", envKey: "JS_BUDGET_ROUTE_CONTATO_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_CONTATO_KB, 10) },
 ]
 
 // Real transfer per route — the exact first-paint JS the browser downloads,
@@ -376,12 +421,55 @@ function routeGzip(routeDir) {
 //   JS_BUDGET_EAGER_ALLOW_FILES — comma-separated src-relative paths whose
 //                                 heavy static imports are whitelisted
 //                                 (documented exception only)
+//   JS_BUDGET_GUARD_ALLOW        — comma-separated lib names TEMPORARILY
+//                                 allowed in the initial JS (time-boxed
+//                                 escape hatch; see below)
+// ─── Escape hatch (time-boxed) ─────────────────────────────────────────────
+// JS_BUDGET_GUARD_ALLOW — comma-separated lib names TEMPORARILY allowed in
+// the initial JS. Exempts them from guard check 5 (prerendered HTML) AND
+// guard check 8 (source eager lint) so CI stays green while the removal is
+// scheduled. The guard is the permanent contract: drop the env var (and this
+// section, if unused) once the allowed lib is out of the eager graph.
+// Per-library SIZE budgets (check 3) and every byte budget still apply — this
+// hatch never lifts a size limit, only the presence guard.
+// NOTE: declared BEFORE EAGER_LIBS/EAGER_GUARD_LIBS — both filter against it
+// at module load, so it must exist before either is initialized (TDZ).
+// Known heavy-lib names (union of the check-5 guard list + check-3 size
+// budgets) — used only to warn when the hatch lists a name that matches no
+// guarded lib (a typo would otherwise create false confidence).
+const KNOWN_GUARD_LIBS = [
+  "maplibre-gl",
+  "react-map-gl",
+  "recharts",
+  "framer-motion",
+  "socket.io-client",
+  "@tanstack/react-query",
+  "@tanstack/query-core",
+]
+const GUARD_ALLOW = new Set(
+  (process.env.JS_BUDGET_GUARD_ALLOW || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+)
+if (GUARD_ALLOW.size > 0) {
+  const unknown = [...GUARD_ALLOW].filter((lib) => !KNOWN_GUARD_LIBS.includes(lib))
+  console.warn(
+    `⚠️ ESCAPE HATCH ACTIVE: ${[...GUARD_ALLOW].join(", ")} allowed in the initial JS ` +
+      "(JS_BUDGET_GUARD_ALLOW) — REMOVE the env var once these libs are lazy-loaded." +
+      (unknown.length
+        ? `\n   ⚠️  ${unknown.join(", ")} match(es) NO guarded lib — check the spelling.`
+        : ""),
+  )
+}
 const EAGER_LIBS = (
-  process.env.JS_BUDGET_EAGER_LIBS || "maplibre-gl,react-map-gl,recharts,framer-motion"
+  process.env.JS_BUDGET_EAGER_LIBS ||
+  "maplibre-gl,react-map-gl,recharts,framer-motion,socket.io-client"
 )
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean)
+  .filter((lib) => !GUARD_ALLOW.has(lib))
 const EAGER_ALLOW_FILES = new Set(
   (process.env.JS_BUDGET_EAGER_ALLOW_FILES || "")
     .split(",")
@@ -661,12 +749,19 @@ if (htmlInitialGzip === null && (!fs.existsSync(BUILD_MANIFEST) || initialSkippe
 //    only; since Next 16 emits one flat prerendered .html per static/ISR
 //    route (busca.html, dashboard.html, u/*.html, ...), every route's
 //    first-paint script list is now scanned — a regression statically
-//    importing maplibre (~267 KB), recharts (~100 KB) or framer-motion
-//    (~40 KB) into /busca, /dashboard or any other route is caught here,
-//    complementing the byte-level real-transfer budgets of check 7.
+//    importing maplibre (~267 KB), recharts (~100 KB), framer-motion
+//    (~40 KB) or socket.io-client (~13 KB) into /busca, /dashboard or any
+//    other route is caught here, complementing the byte-level real-transfer
+//    budgets of check 7. @tanstack/react-query is intentionally absent (data
+//    layer, eager by design) — bounded by its check-3 size budget instead.
 //    Fallback: build-manifest `rootMainFiles` is used only when NO route has
 //    prerendered HTML (fully dynamic app / stale build).
-const EAGER_GUARD_LIBS = ["maplibre-gl", "recharts", "framer-motion"]
+// Escape hatch: libs listed in JS_BUDGET_GUARD_ALLOW are dropped from the
+// guard set (their bytes may temporarily ride in the initial JS without
+// failing the build — the size budgets of check 3 still bound them).
+const EAGER_GUARD_LIBS = ["maplibre-gl", "recharts", "framer-motion", "socket.io-client"].filter(
+  (lib) => !GUARD_ALLOW.has(lib),
+)
 
 /** Every prerendered route HTML under .next/server/app (recursive). */
 function allPrerenderedHtmls() {
@@ -720,6 +815,36 @@ if (fs.existsSync(BUILD_MANIFEST)) {
   rootMainNames = (JSON.parse(fs.readFileSync(BUILD_MANIFEST, "utf8")).rootMainFiles || []).map((f) =>
     path.basename(f),
   )
+}
+
+// Artifact-consistency guard: the analyzer report and the prerendered HTMLs
+// MUST come from the same build. A mixed .next (e.g. CI cache restoring a
+// stale analyze report while HTMLs were rebuilt, or HTMLs regenerated by a
+// non-analyze build) makes the guard's chunk-name matching meaningless — it
+// could silently report 0.0 KB (false green) or a phantom violation (false
+// red). Cheap signal: on a fresh ANALYZE build the prerendered route HTMLs
+// and the analyzer share the framework chunk names (webpack / main-app /
+// polyfills). An EMPTY intersection means two different builds → fail with a
+// clear message instead of a misleading guard verdict.
+if (hasPrerenderedInitial) {
+  const htmlScripts = new Set()
+  for (const { names } of routeChunkNames) for (const n of names) htmlScripts.add(n)
+  const analyzerAssets = new Set(assets.map((a) => path.basename(a.label || "")))
+  const shared = [...htmlScripts].filter((n) => analyzerAssets.has(n))
+  const consistent = shared.length > 0
+  results.checks.push({
+    name: "artifact consistency (analyzer vs prerendered HTML)",
+    currentKB: 0,
+    budgetKB: 0,
+    ok: consistent,
+  })
+  if (!consistent) {
+    results.failures.push(
+      "Analyzer report and prerendered HTMLs appear to be from DIFFERENT builds " +
+        "(no shared chunk names). Guard results are unreliable — re-run: " +
+        "ANALYZE=true pnpm exec next build --webpack",
+    )
+  }
 }
 
 // No initial-shell data at all (stale/incomplete build) — surface a skipped
@@ -864,6 +989,13 @@ if (json) {
       ? { gzipKB: +(Math.max(...transfers) / KB).toFixed(1), files: transfers.length }
       : null
   }
+  // Top 5 chunks by gzip size (analyzer chartData attribution) — lets
+  // bundle-report track WHICH chunk grew between releases, beyond the
+  // fixed per-library sizes.
+  const topChunks = assets
+    .map((a) => ({ label: a.label || "", gzipKB: +((a.gzipSize || 0) / KB).toFixed(1) }))
+    .sort((a, b) => b.gzipKB - a.gzipKB)
+    .slice(0, 5)
   console.log(
     JSON.stringify(
       {
@@ -872,6 +1004,7 @@ if (json) {
         largestKB: +(largest / KB).toFixed(1),
         initialKB: +(initialGzip / KB).toFixed(1),
         initialSource: htmlInitialGzip !== null ? "prerendered-html" : "rootMainFiles",
+        topChunks,
         libs,
         routes,
         realRoutes,

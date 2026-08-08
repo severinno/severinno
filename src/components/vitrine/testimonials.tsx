@@ -23,14 +23,12 @@ import {
   Star,
   Quote,
   MessageSquare,
-  Loader2,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
   Info,
   ShieldCheck,
 } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 import { formatRelative } from "@/lib/format"
@@ -93,7 +91,7 @@ export default function Testimonials({
     retry: 2,
   })
 
-  const reviews = data?.items ?? []
+  const reviews = React.useMemo(() => data?.items ?? [], [data])
   const avgRating = data?.avgRating ?? 0
   const total = data?.total ?? 0
   const { ref, visible } = useScrollReveal<HTMLDivElement>()
@@ -147,17 +145,24 @@ export default function Testimonials({
     }, 300)
   }, [autoplayPlugin])
 
-  // Carousel state sync — setState is called inside async event handlers,
-  // NOT synchronously within the effect body.
+  // Carousel state sync — initial values are read from embla (an external
+  // system) inside a requestAnimationFrame callback, not synchronously in the
+  // effect body (react-hooks/set-state-in-effect); subsequent updates flow
+  // through embla's select/reInit event callbacks.
   React.useEffect(() => {
     if (!api) return
-    setCount(api.scrollSnapList().length)
-    setCurrent(api.selectedScrollSnap())
+    const sync = () => {
+      setCount(api.scrollSnapList().length)
+      setCurrent(api.selectedScrollSnap())
+    }
     const onSelect = () => setCurrent(api.selectedScrollSnap())
     api.on("select", onSelect)
     api.on("reInit", onSelect)
+    const raf = requestAnimationFrame(sync)
     return () => {
+      cancelAnimationFrame(raf)
       api.off("select", onSelect)
+      api.off("reInit", onSelect)
     }
   }, [api])
 
@@ -201,11 +206,11 @@ export default function Testimonials({
         className="relative"
       >
         {/* Header */}
-        <motion.header
-          initial={{ opacity: 0, y: 20 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="mx-auto mb-8 max-w-2xl text-center"
+        <header
+          className={cn(
+            "mx-auto mb-8 max-w-2xl text-center transition-all duration-500 ease-out",
+            visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0",
+          )}
         >
           <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:ring-amber-800/50">
             <Star className="size-3.5 fill-amber-500 text-amber-500" />
@@ -219,15 +224,16 @@ export default function Testimonials({
               ? `${total} avaliações verificadas — nota média ${avgRating.toFixed(1)} de 5 estrelas.`
               : "Avaliações de clientes após a conclusão do serviço."}
           </p>
-        </motion.header>
+        </header>
 
         {/* Summary stats + star distribution */}
         {total > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={visible ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.4, delay: 0.1 }}
-            className="mb-8 mx-auto max-w-xl"
+          <div
+            className={cn(
+              "mb-8 mx-auto max-w-xl transition-all duration-500 ease-out",
+              visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+            )}
+            style={{ transitionDelay: visible ? "0.1s" : "0s" }}
           >
             <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
               {/* Average rating hero — large & prominent */}
@@ -295,16 +301,17 @@ export default function Testimonials({
                       </span>
                       <Star className="size-3 fill-amber-400 text-amber-400 shrink-0" />
                       <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={visible ? { width: `${pct}%` } : { width: 0 }}
-                          transition={{ duration: 0.6, delay: 0.2 + (5 - starVal) * 0.06 }}
+                        <div
                           className={cn(
-                            "h-full rounded-full",
+                            "h-full rounded-full transition-all duration-700 ease-out",
                             ratingFilter === String(starVal)
                               ? "bg-emerald-500"
                               : "bg-gradient-to-r from-amber-400 to-amber-500",
                           )}
+                          style={{
+                            width: visible ? `${pct}%` : "0%",
+                            transitionDelay: visible ? `${0.2 + (5 - starVal) * 0.06}s` : "0s",
+                          }}
                         />
                       </div>
                       <span className="text-[10px] text-muted-foreground tabular-nums w-6 text-right shrink-0">
@@ -315,16 +322,17 @@ export default function Testimonials({
                 })}
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* Rating filter chips */}
         {reviews.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={visible ? { opacity: 1 } : {}}
-            transition={{ duration: 0.3, delay: 0.15 }}
-            className="mb-6 flex items-center justify-center gap-2"
+          <div
+            className={cn(
+              "mb-6 flex items-center justify-center gap-2 transition-all duration-300 ease-out",
+              visible ? "opacity-100" : "opacity-0",
+            )}
+            style={{ transitionDelay: visible ? "0.15s" : "0s" }}
           >
             {(
               [
@@ -347,7 +355,7 @@ export default function Testimonials({
                 {f.label}
               </button>
             ))}
-          </motion.div>
+          </div>
         )}
 
         {/* Loading state */}
@@ -377,14 +385,15 @@ export default function Testimonials({
                     key={review.id}
                     className="pl-4 basis-full sm:basis-1/2 lg:basis-1/3"
                   >
-                    <motion.div
-                      initial={{ opacity: 0, y: 24 }}
-                      animate={visible ? { opacity: 1, y: 0 } : {}}
-                      transition={{ duration: 0.45, delay: idx * 0.06 }}
-                      className="h-full"
+                    <div
+                      className={cn(
+                        "h-full transition-all duration-500 ease-out",
+                        visible ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0",
+                      )}
+                      style={{ transitionDelay: visible ? `${idx * 0.06}s` : "0s" }}
                     >
                       <ReviewCard review={review} />
-                    </motion.div>
+                    </div>
                   </CarouselItem>
                 ))}
               </CarouselContent>
@@ -449,19 +458,12 @@ export default function Testimonials({
             </div>
 
             {/* Pause indicator */}
-            <AnimatePresence>
-              {isPaused && count > 1 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 4 }}
-                  className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground"
-                >
-                  <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  Pausado — passe o mouse para pausar
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {isPaused && count > 1 && (
+              <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground animate-in fade-in duration-200">
+                <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
+                Pausado — passe o mouse para pausar
+              </div>
+            )}
           </div>
         ) : (
           <EmptyTestimonials />
