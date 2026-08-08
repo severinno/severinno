@@ -383,6 +383,27 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stderr).toContain("reachable from /")
   })
 
+  it("source lint (check 8): CRLF source line endings still attribute the CORRECT line number (exit 1)", () => {
+    const f = makeFixture()
+    // `.gitattributes * text=auto` checks files out as CRLF on Windows — the
+    // eager-graph lint must still report the REAL line of the heavy import
+    // (line 2, not 1/3). The bundle-report bug proved the failure mode: a
+    // trailing `\r` on a line split by "\n" broke end-anchored parsing.
+    f.write(
+      "src/app/busca/page.tsx",
+      'import dynamic from "next/dynamic";\r\nimport { Map } from "react-map-gl";\r\nexport default function Page() { return null }\r\n',
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain("react-map-gl statically imported")
+    // Line 2 — proves the CRLF-tolerant line attribution (both a naive
+    // split("\n") AND the /\r?\n/ split yield 2 here, so this locks the
+    // contract against a future `$`-anchored or \n-only regression).
+    expect(r.stderr).toContain("src/app/busca/page.tsx:2")
+    expect(r.stderr).toContain("reachable from /busca")
+  })
+
   it("source lint: transitive static import through an eager component is caught with route attribution (exit 1)", () => {
     const f = makeFixture()
     // Bundle report present → the violation must surface as a check + failure.

@@ -126,8 +126,11 @@ function isHeaderCheckable(fileName) {
  * Check whether the first `maxLines` lines of `content` contain both
  * a Usage section and an Exit code section inside comments.
  */
-function hasMinimalHeader(content, maxLines = 50) {
-  const lines = content.split("\n").slice(0, maxLines)
+export function hasMinimalHeader(content, maxLines = 50) {
+  // CRLF-tolerant split: `.gitattributes * text=auto` checks files out as
+  // CRLF on Windows, and a `$`-anchored regex on a line that kept its
+  // trailing `\r` would silently never match (the bundle-report bug).
+  const lines = content.split(/\r?\n/).slice(0, maxLines)
   let hasUsage = false
   let hasExitCode = false
   for (const line of lines) {
@@ -147,7 +150,7 @@ function isExcluded(filePath) {
 }
 
 /** Check if a line contains a direct import from a forbidden module. */
-function hasViolation(line) {
+export function hasViolation(line) {
   return FORBIDDEN_IMPORTS.some((mod) => {
     // Match patterns like:
     //   import ... from "@/lib/distance-fallback"
@@ -184,113 +187,122 @@ function collectFiles(dir) {
 // Main
 // ---------------------------------------------------------------------------
 
-try {
-  const srcStat = statSync(SRC)
-  if (!srcStat.isDirectory()) {
-    console.error(`❌ Source directory not found: ${SRC}`)
-    process.exit(2)
-  }
+function main() {
+  try {
+    const srcStat = statSync(SRC)
+    if (!srcStat.isDirectory()) {
+      console.error(`❌ Source directory not found: ${SRC}`)
+      process.exit(2)
+    }
 
-  const files = collectFiles(SRC)
-  let violations = []
+    const files = collectFiles(SRC)
+    let violations = []
 
-  for (const file of files) {
-    const relPath = relative(ROOT, file)
-    if (isExcluded(relPath)) continue
+    for (const file of files) {
+      const relPath = relative(ROOT, file)
+      if (isExcluded(relPath)) continue
 
-    const content = readFileSync(file, "utf-8")
-    const lines = content.split("\n")
+      const content = readFileSync(file, "utf-8")
+      const lines = content.split(/\r?\n/)
 
-    for (let i = 0; i < lines.length; i++) {
-      if (hasViolation(lines[i])) {
-        violations.push({
-          file: relPath,
-          line: i + 1,
-          text: lines[i].trim(),
-        })
+      for (let i = 0; i < lines.length; i++) {
+        if (hasViolation(lines[i])) {
+          violations.push({
+            file: relPath,
+            line: i + 1,
+            text: lines[i].trim(),
+          })
+        }
       }
     }
-  }
 
-  // ── Report barrel violations ────────────────────────────────────────
-  if (violations.length > 0) {
-    console.log("")
-    console.log("╔══════════════════════════════════════════════════════════════════════╗")
-    console.log("║              Barrel Lint — Direct Import Violations                ║")
-    console.log("╚══════════════════════════════════════════════════════════════════════╝")
-    console.log("")
-    console.log(`  The following files import directly from modules that should be`)
-    console.log(`  accessed through a barrel (@/lib/geo-server or @/lib/sql):`)
-    console.log("")
-
-    for (const v of violations) {
-      console.log(`  ❌ ${v.file}:${v.line}`)
-      console.log(`     → ${v.text}`)
+    // ── Report barrel violations ────────────────────────────────────────
+    if (violations.length > 0) {
       console.log("")
+      console.log("╔══════════════════════════════════════════════════════════════════════╗")
+      console.log("║              Barrel Lint — Direct Import Violations                ║")
+      console.log("╚══════════════════════════════════════════════════════════════════════╝")
+      console.log("")
+      console.log(`  The following files import directly from modules that should be`)
+      console.log(`  accessed through a barrel (@/lib/geo-server or @/lib/sql):`)
+      console.log("")
+
+      for (const v of violations) {
+        console.log(`  ❌ ${v.file}:${v.line}`)
+        console.log(`     → ${v.text}`)
+        console.log("")
+      }
+
+      console.log(`  ─── ${violations.length} violation(s) found ───`)
+      console.log("")
+      console.log("  Fix: replace imports with the appropriate barrel:")
+      console.log('    import { ... } from "@/lib/geo-server"')
+      console.log('    import { ... } from "@/lib/sql"')
+      console.log('    import { ... } from "@/lib/__tests__"')
     }
 
-    console.log(`  ─── ${violations.length} violation(s) found ───`)
-    console.log("")
-    console.log("  Fix: replace imports with the appropriate barrel:")
-    console.log('    import { ... } from "@/lib/geo-server"')
-    console.log('    import { ... } from "@/lib/sql"')
-    console.log('    import { ... } from "@/lib/__tests__"')
-  }
+    // ═════════════════════════════════════════════════════════════════════
+    // Check 2 — Script header documentation
+    // ═════════════════════════════════════════════════════════════════════
 
-  // ═════════════════════════════════════════════════════════════════════
-  // Check 2 — Script header documentation
-  // ═════════════════════════════════════════════════════════════════════
+    const scriptsDir = join(ROOT, "scripts")
+    const scriptEntries = readdirSync(scriptsDir, { withFileTypes: true })
+    const headerViolations = []
 
-  const scriptsDir = join(ROOT, "scripts")
-  const scriptEntries = readdirSync(scriptsDir, { withFileTypes: true })
-  const headerViolations = []
+    for (const entry of scriptEntries) {
+      if (!entry.isFile()) continue
+      if (!isHeaderCheckable(entry.name)) continue
 
-  for (const entry of scriptEntries) {
-    if (!entry.isFile()) continue
-    if (!isHeaderCheckable(entry.name)) continue
+      const fullPath = join(scriptsDir, entry.name)
+      const content = readFileSync(fullPath, "utf-8")
 
-    const fullPath = join(scriptsDir, entry.name)
-    const content = readFileSync(fullPath, "utf-8")
-
-    if (!hasMinimalHeader(content)) {
-      headerViolations.push(entry.name)
-    }
-  }
-
-  // ── Report header violations ────────────────────────────────────────
-  if (headerViolations.length > 0) {
-    console.log("")
-    console.log("╔══════════════════════════════════════════════════════════════════════╗")
-    console.log("║         Script Header — Missing Documentation Violations           ║")
-    console.log("╚══════════════════════════════════════════════════════════════════════╝")
-    console.log("")
-    console.log(`  These scripts are missing a header comment with both "Usage:"`)
-    console.log(`  and "Exit code:" documentation:`)
-    console.log("")
-
-    for (const name of headerViolations) {
-      console.log(`  ❌ scripts/${name}`)
+      if (!hasMinimalHeader(content)) {
+        headerViolations.push(entry.name)
+      }
     }
 
-    console.log("")
-    console.log(`  ─── ${headerViolations.length} violation(s) found ───`)
-    console.log("")
-    console.log("  Fix: add a JSDoc/comment block at the top with at least:")
-    console.log('    // Usage:\n    //   node scripts/<name>')
-    console.log('    //\n    // Exit codes:\n    //   0 — success\n    //   1 — failure')
-  }
+    // ── Report header violations ────────────────────────────────────────
+    if (headerViolations.length > 0) {
+      console.log("")
+      console.log("╔══════════════════════════════════════════════════════════════════════╗")
+      console.log("║         Script Header — Missing Documentation Violations           ║")
+      console.log("╚══════════════════════════════════════════════════════════════════════╝")
+      console.log("")
+      console.log(`  These scripts are missing a header comment with both "Usage:"`)
+      console.log(`  and "Exit code:" documentation:`)
+      console.log("")
 
-  // ── Final exit code ─────────────────────────────────────────────────
-  if (violations.length > 0) {
-    process.exit(1)
-  }
-  if (headerViolations.length > 0) {
-    process.exit(3)
-  }
+      for (const name of headerViolations) {
+        console.log(`  ❌ scripts/${name}`)
+      }
 
-  console.log("✅ Barrel lint passed — no violations.")
-  process.exit(0)
-} catch (err) {
-  console.error("❌ barrel-lint error:", err.message)
-  process.exit(2)
+      console.log("")
+      console.log(`  ─── ${headerViolations.length} violation(s) found ───`)
+      console.log("")
+      console.log("  Fix: add a JSDoc/comment block at the top with at least:")
+      console.log('    // Usage:\n    //   node scripts/<name>')
+      console.log('    //\n    // Exit codes:\n    //   0 — success\n    //   1 — failure')
+    }
+
+    // ── Final exit code ─────────────────────────────────────────────────
+    if (violations.length > 0) {
+      process.exit(1)
+    }
+    if (headerViolations.length > 0) {
+      process.exit(3)
+    }
+
+    console.log("✅ Barrel lint passed — no violations.")
+    process.exit(0)
+  } catch (err) {
+    console.error("❌ barrel-lint error:", err.message)
+    process.exit(2)
+  }
+}
+
+// Entry-point guard — unit tests import the pure helpers (hasMinimalHeader,
+// hasViolation) without running the lint scan (same pattern as
+// scripts/pre-commit-tests.mjs).
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main()
 }

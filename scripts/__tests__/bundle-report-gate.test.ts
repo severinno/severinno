@@ -404,6 +404,10 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("gate anti-regressão: ok")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
+    // Camada B: o gate de rota está DESARMADO (baseline sem blocos Rotas) —
+    // o run deve emitir o ::warning:: de desarme, nunca passar em silêncio.
+    expect(r.stdout).toContain("::warning:: gate de rota desarmado")
+    expect(r.stdout).toContain("v0.4.2")
   })
 
   it("skips (exit 0) a route present in the baseline but absent in the entry (REAL_ROUTE_CHECKS shrank)", () => {
@@ -469,5 +473,30 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.stderr).toContain("ANTI-REGRESSION GATE")
     expect(r.stderr).toContain("rota /busca piorou")
     expect(r.stderr).toContain("limite +30.0 KB")
+  })
+
+  it("RELEASE run self-heals the route baseline: a tag with measured routes writes its own Rotas block even when the last release had none", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // /busca prerendered HTML → check 7 measures the route for the release.
+    writeRouteHtml(f, "busca.html", ["framework-abc.js", "main-app-def.js"])
+    // Baseline v0.4.2 exists but has NO Rotas section (pre-blocks release).
+    f.write("docs/bundle-report.md", baselineReport("219.1", "80.0"))
+
+    // Release run (tracking-only — no gate). The regenerated docs MUST
+    // contain the tag's OWN Rotas block with a /busca row — that block is
+    // what the next main push uses as per-route baseline AND what the
+    // release-deploy.yml assert step (Camada A) requires.
+    const r = runReport(f.dir, {}, "v0.4.3")
+    expect(r.status).toBe(0)
+    const md = fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")
+    // Pin to the ## Rotas section (the only version with a block there is the
+    // run's own v0.4.3 — the baseline has none): the /busca row must live in
+    // THAT block, so a stale row from a future fixture can't false-pass.
+    const rotas = md.slice(md.indexOf("## Rotas (real transfer"))
+    expect(rotas).toContain("### v0.4.3")
+    expect(rotas).toContain("| /busca |")
+    // Baseline row survives the regeneration (round-trip, no data loss).
+    expect(md).toContain("| v0.4.2 |")
   })
 })

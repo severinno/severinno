@@ -221,6 +221,34 @@ jobs:
         if: github.ref_type == 'tag' && github.event_name == 'push'
         run: bun run bundle:report --version "${{ github.ref_name }}"
 
+      # Camada A do plano: o gate anti-regressão do main compara os deltas por
+      # ROTA contra os blocos "Rotas (real transfer)" do ÚLTIMO release. Um
+      # release gerado sem eles (parser quebrado, build sem prerender) deixaria
+      # o gate de rota silenciosamente DESARMADO até o release seguinte — então
+      # todo tag DEVE provar que o report regenerado contém o bloco do próprio
+      # tag E a linha /busca dentro dele. Falha o job (bloqueia o release) se
+      # faltar; o próximo push a main volta a ter baseline por rota.
+      - name: Assert Rotas blocks in bundle report (route gate stays armed)
+        if: github.ref_type == 'tag' && github.event_name == 'push'
+        run: |
+          REPORT=docs/bundle-report.md
+          TAG="${{ github.ref_name }}"
+          # awk escopado à seção ## Rotas + bloco do próprio tag: a linha
+          # | /busca | DEVE estar DENTRO do bloco do tag — um grep global
+          # passaria falso com um /busca de um release antigo. O trailing
+          # space em tag desambigua prefixo de versão (v0.4.3 vs v0.4.30).
+          awk -v tag="### $TAG " '
+            /^## Rotas/ { in_routes = 1 }
+            in_routes && index($0, tag) == 1 { in_block = 1; next }
+            in_block && /^### / { in_block = 0 }
+            in_block && /^\| \/busca \|/ { found = 1 }
+            END { exit (found ? 0 : 1) }
+          ' "$REPORT" || {
+            echo "::error::release $TAG sem bloco Rotas com /busca em docs/bundle-report.md — gate de rota desarmado; próximo release precisa re-armar"
+            exit 1
+          }
+          echo "OK: bloco Rotas presente para $TAG (gate de rota armado)"
+
       - name: Commit bundle report (tag pushes only)
         if: github.ref_type == 'tag' && github.event_name == 'push'
         run: |

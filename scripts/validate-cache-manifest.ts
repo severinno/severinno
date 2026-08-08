@@ -28,6 +28,7 @@
 import { readFileSync } from "node:fs"
 import { globSync } from "glob"
 import { resolve, sep } from "node:path"
+import { fileURLToPath } from "node:url"
 
 // Import the single source of truth
 import { CACHED_ROUTES } from "../src/lib/cache-manifest"
@@ -36,7 +37,12 @@ import { CACHED_ROUTES } from "../src/lib/cache-manifest"
 // Configuration
 // ---------------------------------------------------------------------------
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "..")
+// fileURLToPath-based (not import.meta.dirname): robust under vitest's module
+// transform AND plain node/bun — same pattern as scripts/barrel-lint.mjs.
+// Note TWO "..": the URL is <root>/scripts/validate-cache-manifest.ts, so we
+// climb past scripts/ to the repo root (import.meta.dirname would be
+// <root>/scripts — a single ".." from the FILE lands in scripts/, not root).
+const PROJECT_ROOT = resolve(fileURLToPath(import.meta.url), "..", "..")
 const API_ROUTES_GLOB = "src/app/api/**/route.ts"
 
 // Paths that are intentionally excluded from caching (auth-required,
@@ -105,8 +111,12 @@ function shouldHaveCache(apiPath: string): boolean {
   return true
 }
 
-/** Extract TTL values from a route file's cacheControlPublic/Private calls. */
-function extractTtlFromFile(content: string, apiPath: string): { maxAge: number; sMaxage: number | null; type: "public" | "private" } | null {
+/**
+ * Extract TTL values from a route file's cacheControlPublic/Private calls.
+ * Exported pure for unit tests (incl. CRLF line-ending tolerance) — the CLI
+ * flow runs only when this file is the entry point.
+ */
+export function extractTtlFromFile(content: string, apiPath: string): { maxAge: number; sMaxage: number | null; type: "public" | "private" } | null {
   // Simple form: cacheControlPublic(res, <maxAge>, <sMaxage?>) or cacheControlPrivate(res, <maxAge>)
   const publicMatch = content.match(/cacheControlPublic\([^,]+,\s*(\d+)(?:\s*,\s*(\d+))?/)
   const privateMatch = content.match(/cacheControlPrivate\([^,]+,\s*(\d+)/)
@@ -163,7 +173,7 @@ function extractTtlFromFile(content: string, apiPath: string): { maxAge: number;
  * directives are order-independent — but all three required directives must
  * still be present, in order, so removals/reorders keep failing.
  */
-const PUBLIC_CACHE_CONTROL_FORMAT =
+export const PUBLIC_CACHE_CONTROL_FORMAT =
   /public,\s*max-age=\$\{[^}]+\}(?:,\s*[^,]+)*?,\s*s-maxage=\$\{[^}]+\}(?:,\s*[^,]+)*?,\s*stale-while-revalidate=\$\{[^}]+\}/
 
 const API_SERVER_SOURCE = "src/lib/api-server.ts"
@@ -187,7 +197,7 @@ function validatePublicCacheControlFormat(): string[] {
 
   if (!PUBLIC_CACHE_CONTROL_FORMAT.test(fnMatch[0])) {
     const rendered = fnMatch[0]
-      .split("\n")
+      .split(/\r?\n/) // CRLF-tolerant (`.gitattributes text=auto` on Windows)
       .map((l) => l.trim())
       .filter(Boolean)
       .join(" ")
@@ -348,4 +358,9 @@ function main(): void {
   process.exit(1)
 }
 
-main()
+// Entry-point guard — unit tests import the pure helpers (extractTtlFromFile,
+// PUBLIC_CACHE_CONTROL_FORMAT) without running the full scan (same pattern as
+// scripts/pre-commit-tests.mjs).
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main()
+}

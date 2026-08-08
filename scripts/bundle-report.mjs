@@ -602,6 +602,24 @@ if (entry.version === "develop") {
       : Array.isArray(entry.routes) && entry.routes.length > 0
         ? ", rotas: n/a — sem baseline por rota ainda"
         : ""
+    // Camada B do plano: quando este push do main MEDIU rotas (check 7) mas o
+    // último release versionado NÃO tem blocos Rotas, o gate anti-regressão
+    // por rota está silenciosamente DESARMADO (nada para comparar → "n/a").
+    // Emite um ::warning:: (anotação do GitHub Actions, inofensiva fora do
+    // CI) para um desarme nunca passar despercebido no log — não bloqueia por
+    // design (um release legítimo pode ser anterior aos blocos); o próximo
+    // release re-arma o gate, o que o release-deploy.yml asserta (Camada A).
+    if (
+      Array.isArray(entry.routes) &&
+      entry.routes.length > 0 &&
+      Array.isArray(releaseBaseline.routes) &&
+      releaseBaseline.routes.length === 0
+    ) {
+      console.log(
+        `::warning:: gate de rota desarmado — baseline ${releaseBaseline.version} sem blocos Rotas; ` +
+          "deltas por rota deste merge NÃO foram comparados. O próximo release re-arma (assertado no release-deploy.yml).",
+      )
+    }
     console.log(
       `   gate anti-regressão: ok (Δ initial ${sign(gdInit)} KB, Δ total ${sign(gdTotal)} KB${routeLog} vs ${releaseBaseline.version})`,
     )

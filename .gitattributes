@@ -2,3 +2,9 @@
 * text=auto
 
 *.sh text eol=lf
+
+# .mjs scripts carry a shebang (#!/usr/bin/env node). A CRLF checkout leaves
+# the shebang mid-file after vite-node injects its import preamble, breaking
+# any vitest import of the script (SyntaxError: Invalid or unexpected token).
+# Same class of regression the *.sh rule above prevents.
+*.mjs text eol=lf

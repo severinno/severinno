@@ -517,7 +517,10 @@ function eagerStripComments(code) {
 function eagerStatics(code) {
   const clean = eagerStripComments(code)
   const out = []
-  const push = (m) => out.push({ spec: m[1], line: code.slice(0, m.index).split("\n").length })
+  // CRLF-tolerant line count: `.gitattributes * text=auto` checks files out
+  // as CRLF on Windows, and the violation message must name the right line
+  // (the bundle-report bug: a trailing `\r` broke `$`-anchored regexes).
+  const push = (m) => out.push({ spec: m[1], line: code.slice(0, m.index).split(/\r?\n/).length })
   for (const m of clean.matchAll(/\bimport\s+(?!type\b)[^'"]*?\bfrom\s+['"]([^'"]+)['"]/g)) push(m)
   for (const m of clean.matchAll(/\bimport\s+(?!type\b)\s*['"]([^'"]+)['"]/g)) push(m)
   // Note: the lazy [^'"]*? clause may span statements and latch onto a later
