@@ -9,18 +9,47 @@
  *     ANALYZE=true pnpm exec next build --webpack
  *
  * Checks:
- *   1. Initial JS of `/` (rootMainFiles from build-manifest.json, gzipped)
+ *   1. Initial JS of `/` — the REAL transfer the browser downloads: every
+ *      <script src> referenced in the prerendered home HTML
+ *      (`.next/server/app/index.html`, generated at build time for
+ *      static/ISR routes). This includes the framework rootMainFiles chunks
+ *      (webpack runtime + main-app + React framework), the polyfills chunk,
+ *      the shared numbered chunks, and app/layout + app/page — exactly the
+ *      bytes a user fetches on first paint. Falls back to build-manifest
+ *      `rootMainFiles` (framework only) when the prerendered HTML is absent.
  *   2. Total client bundle (gzipped)
  *   3. Largest single chunk (gzipped)
  *   4. Per-library sizes: maplibre-gl, recharts, framer-motion, socket.io-client
+ *   5. Lazy-load guard: maplibre-gl / recharts / framer-motion must NEVER
+ *      reach the initial JS — neither the prerendered home HTML script list
+ *      (real first-paint transfer, primary) nor the build-manifest
+ *      `rootMainFiles` (fallback). A regression there would add ~267 KB /
+ *      ~100 KB / ~40 KB to every page's first paint; the guard fails the
+ *      build so CI catches it immediately.
+ *   6. Per-route JS (gzipped): layout chain + page chunk of key routes
+ *      (`/`, `/busca`, `/dashboard`, `/tracking/[id]`, `/u/[slug]`,
+ *      `/categoria/[slug]`, `/categoria/[slug]/[child]`, `/login`) — catches
+ *      a heavy static import added to a single page before it reaches prod.
+ *      Route budgets complement checks 1–3: shared framework growth is caught
+ *      by Total/Largest, page-specific growth by the route check.
+ *      Limitation: if webpack splits a page-only import into a dedicated named
+ *      chunk (e.g. `chunks/9812.abc.js`), that chunk is neither `page-*.js` nor
+ *      `layout-*.js` and escapes this check — Total/Largest are the backstop.
+ *      Note: the root `layout-*.js` (page-level shell, shared by all routes) is
+ *      included in every route's metric; framework `rootMainFiles` is excluded
+ *      because check 1 already covers it.
  *
  * Usage:
  *   node scripts/check-js-budget.mjs            # fail CI if over budget
  *   node scripts/check-js-budget.mjs --report   # print details, no failure
  *   node scripts/check-js-budget.mjs --update   # print suggested budgets (+20% headroom)
+ *   node scripts/check-js-budget.mjs --json     # machine-readable metrics (used by scripts/bundle-report.mjs)
  *
  * Budgets can be overridden via env vars (KB, gzip):
- *   JS_BUDGET_INITIAL_KB=150 JS_BUDGET_TOTAL_KB=1400 ...
+ *   JS_BUDGET_INITIAL_KB=330 JS_BUDGET_TOTAL_KB=1400 ...
+ *   JS_BUDGET_ROUTE_ROOT_KB=20 JS_BUDGET_ROUTE_BUSCA_KB=20
+ *   JS_BUDGET_ROUTE_CATEGORIA_KB=10 JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB=10
+ *   JS_BUDGET_ROUTE_LOGIN_KB=20 ...
  */
 
 import fs from "node:fs"
@@ -31,10 +60,19 @@ const KB = 1024
 const ROOT = process.cwd()
 const ANALYZE_HTML = path.join(ROOT, ".next", "analyze", "client.html")
 const BUILD_MANIFEST = path.join(ROOT, ".next", "build-manifest.json")
+const APP_CHUNKS = path.join(ROOT, ".next", "static", "chunks", "app")
+// Prerendered home HTML — generated at build time for static/ISR routes.
+// Parsing its <script src> list gives the EXACT initial JS transfer the
+// browser downloads (framework + polyfills + app/layout + app/page + shared
+// chunks), which rootMainFiles alone underestimates (124.6 KB vs 271.5 KB
+// measured gzip on the 20 scripts a user actually fetches).
+const PRERENDER_INDEX_HTML = path.join(ROOT, ".next", "server", "app", "index.html")
 
 // ─── Budgets (KB, gzip) — set from the measured baseline + ~20% headroom ───
 const BUDGETS = {
-  initialGzipKB: num(process.env.JS_BUDGET_INITIAL_KB, 150),
+  // Baseline = 271.5 KB gzip (real initial transfer measured 2026-08-07: 20
+  // scripts in the prerendered home HTML) + ~20% headroom → 330 KB.
+  initialGzipKB: num(process.env.JS_BUDGET_INITIAL_KB, 330),
   totalGzipKB: num(process.env.JS_BUDGET_TOTAL_KB, 1400),
   largestChunkGzipKB: num(process.env.JS_BUDGET_LARGEST_CHUNK_KB, 300),
   libs: {
@@ -44,6 +82,22 @@ const BUDGETS = {
     "socket.io-client": { budgetKB: num(process.env.JS_BUDGET_LIB_SOCKETIO_KB, 20), envKey: "JS_BUDGET_LIB_SOCKETIO_KB" },
   },
 }
+
+// Per-route budgets. `dir` is relative to .next/static/chunks/app (empty = root).
+// Metric: gzip of the route's layout chain + page chunk — the JS this route
+// adds on top of the shared framework (which checks 1–3 already cover).
+// Defaults follow the `--update` recalibration (measured + ~20%, rounded to
+// 10 KB) — re-run `--update` to recalibrate after a meaningful bundle change.
+const ROUTE_BUDGETS = [
+  { label: "/", dir: "", envKey: "JS_BUDGET_ROUTE_ROOT_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_ROOT_KB, 20) },
+  { label: "/busca", dir: "busca", envKey: "JS_BUDGET_ROUTE_BUSCA_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_BUSCA_KB, 20) },
+  { label: "/dashboard", dir: "dashboard", envKey: "JS_BUDGET_ROUTE_DASHBOARD_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_DASHBOARD_KB, 20) },
+  { label: "/tracking/[id]", dir: "tracking/[id]", envKey: "JS_BUDGET_ROUTE_TRACKING_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_TRACKING_KB, 20) },
+  { label: "/u/[slug]", dir: "u/[slug]", envKey: "JS_BUDGET_ROUTE_U_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_U_KB, 20) },
+  { label: "/categoria/[slug]", dir: "categoria/[slug]", envKey: "JS_BUDGET_ROUTE_CATEGORIA_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_CATEGORIA_KB, 10) },
+  { label: "/categoria/[slug]/[child]", dir: "categoria/[slug]/[child]", envKey: "JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB, 10) },
+  { label: "/login", dir: "login", envKey: "JS_BUDGET_ROUTE_LOGIN_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_LOGIN_KB, 20) },
+]
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -102,10 +156,100 @@ function libGzip(assets, lib) {
   return total
 }
 
-/** Gzip a file's bytes (for rootMainFiles initial-JS computation). */
+/** True if any module in the asset's tree is (or descends from) `lib`. */
+function assetContainsLib(asset, lib) {
+  const stack = [asset]
+  while (stack.length) {
+    const node = stack.pop()
+    if ((node.label || "").includes(lib)) return true
+    for (const g of node.groups || []) stack.push(g)
+  }
+  return false
+}
+
+/** Gzip a file's bytes (initial-JS metrics: real transfer + rootMainFiles). */
 function gzipBytes(file) {
   const buf = fs.readFileSync(file)
   return zlib.gzipSync(buf, { level: 9 }).length
+}
+
+/**
+ * Unique <script src> URLs referenced in a prerendered Next.js page HTML.
+ * Shared by check 1 (real initial transfer) and check 5 (lazy-load guard) so
+ * the two definitions of "initial JS" can never drift apart.
+ */
+function scriptSrcsFromHtml(html) {
+  return [
+    ...new Set([...html.matchAll(/<script[^>]*src="([^"]+)"/g)].map((m) => m[1])),
+  ].filter((s) => s.startsWith("/_next/") && s.endsWith(".js"))
+}
+
+/**
+ * Sum gzip bytes of every JS file the prerendered home HTML references — the
+ * real initial transfer. Returns null when the HTML is missing or any
+ * referenced file is not on disk; section 4 then falls back to the
+ * rootMainFiles metric (more lenient) instead of failing on a partial build.
+ */
+function initialTransferFromHtml() {
+  if (!fs.existsSync(PRERENDER_INDEX_HTML)) return null
+  const html = fs.readFileSync(PRERENDER_INDEX_HTML, "utf8")
+  const srcs = scriptSrcsFromHtml(html)
+  if (srcs.length === 0) return null
+  let total = 0
+  let found = 0
+  for (const s of srcs) {
+    const p = path.join(ROOT, ".next", s.replace("/_next/", ""))
+    if (fs.existsSync(p)) {
+      total += gzipBytes(p)
+      found++
+    }
+  }
+  if (found !== srcs.length) return null
+  return total
+}
+
+/** First file in dir matching /^prefix-[^/]+\.js$/ (e.g. `page-*.js`), or null. */
+function findChunkFile(dir, prefix) {
+  let entries
+  try {
+    entries = fs.readdirSync(dir)
+  } catch {
+    return null
+  }
+  const name = entries.find((f) => new RegExp(`^${prefix}-[^/]+\\.js$`).test(f))
+  return name ? path.join(dir, name) : null
+}
+
+/** Layout chunks for a route dir: `layout-*.js` from the app root down to the route. */
+function routeLayoutChunks(routeDir) {
+  const layouts = []
+  const chain = []
+  let d = routeDir ? path.join(APP_CHUNKS, routeDir) : APP_CHUNKS
+  while (d.startsWith(APP_CHUNKS)) {
+    chain.unshift(d)
+    if (d === APP_CHUNKS) break
+    d = path.dirname(d)
+  }
+  for (const dir of chain) {
+    let entries
+    try {
+      entries = fs.readdirSync(dir)
+    } catch {
+      continue
+    }
+    const name = entries.find((f) => /^layout-[^/]+\.js$/.test(f))
+    if (name) layouts.push(path.join(dir, name))
+  }
+  return layouts
+}
+
+/** Route-specific JS bytes: layout chain + page chunk (gzip). */
+function routeGzip(routeDir) {
+  const files = [...routeLayoutChunks(routeDir)]
+  const page = findChunkFile(routeDir ? path.join(APP_CHUNKS, routeDir) : APP_CHUNKS, "page")
+  if (page) files.push(page)
+  if (files.length === 0) return null
+  return files.reduce((s, f) => s + gzipBytes(f), 0)
 }
 
 // ─── Collect data ───────────────────────────────────────────────────────────
@@ -143,10 +287,17 @@ for (const [lib, cfg] of Object.entries(BUDGETS.libs)) {
   addCheck(`lib: ${lib}`, libGzip(assets, lib) / KB, cfg.budgetKB)
 }
 
-// 4. Initial JS of `/` (rootMainFiles, gzipped) — from build-manifest.json
+// 4. Initial JS of `/` — the REAL transfer the user downloads, parsed from
+// the prerendered home HTML. Falls back to build-manifest rootMainFiles
+// (framework-only metric) when the HTML is not available (e.g. dynamic route
+// or stale build) so the gate never silently passes on zero bytes.
 let initialGzip = 0
 let initialSkipped = false
-if (fs.existsSync(BUILD_MANIFEST)) {
+const htmlInitialGzip = initialTransferFromHtml()
+if (htmlInitialGzip !== null) {
+  initialGzip = htmlInitialGzip
+  addCheck("Initial JS (/) real transfer", initialGzip / KB, BUDGETS.initialGzipKB)
+} else if (fs.existsSync(BUILD_MANIFEST)) {
   const manifest = JSON.parse(fs.readFileSync(BUILD_MANIFEST, "utf8"))
   const rootMain = manifest.rootMainFiles || []
   if (rootMain.length === 0) {
@@ -167,20 +318,133 @@ if (fs.existsSync(BUILD_MANIFEST)) {
     }
   }
 }
-if (!fs.existsSync(BUILD_MANIFEST) || initialSkipped) {
+if (htmlInitialGzip === null && (!fs.existsSync(BUILD_MANIFEST) || initialSkipped)) {
   results.checks.push({ name: "Initial JS (/)", currentKB: 0, budgetKB: 0, ok: true, skipped: true })
+}
+
+// 5. Lazy-load guard — heavy map/chart/animation libs must never reach the
+//    initial JS. Two definitions of "initial" are enforced:
+//      a) the prerendered home HTML script list (the REAL first-paint
+//         transfer, same source as check 1) — the primary, strongest check;
+//      b) build-manifest `rootMainFiles` — used only when the prerendered
+//         HTML is absent (dynamic route / stale build).
+//    A regression statically importing maplibre (~267 KB), recharts (~100 KB)
+//    or framer-motion (~40 KB) into the app shell is caught here instead of
+//    silently inflating every page load.
+const EAGER_GUARD_LIBS = ["maplibre-gl", "recharts", "framer-motion"]
+
+let initialChunkNames = null // null = prerendered HTML unavailable
+if (fs.existsSync(PRERENDER_INDEX_HTML)) {
+  const names = scriptSrcsFromHtml(fs.readFileSync(PRERENDER_INDEX_HTML, "utf8")).map((s) => path.basename(s))
+  if (names.length) initialChunkNames = new Set(names)
+}
+let rootMainNames = []
+if (fs.existsSync(BUILD_MANIFEST)) {
+  rootMainNames = (JSON.parse(fs.readFileSync(BUILD_MANIFEST, "utf8")).rootMainFiles || []).map((f) =>
+    path.basename(f),
+  )
+}
+
+// No initial-shell data at all (stale/incomplete build) — surface a skipped
+// check instead of silently green-lighting the guard, mirroring check 1.
+if (!initialChunkNames && rootMainNames.length === 0) {
+  results.checks.push({
+    name: "guard: heavy libs not in initial JS",
+    currentKB: 0,
+    budgetKB: 0,
+    ok: true,
+    skipped: true,
+    skippedNote: "no prerendered home HTML nor build-manifest.json",
+  })
+} else {
+  for (const lib of EAGER_GUARD_LIBS) {
+    // chunk basenames that contain this lib (analyzer module attribution)
+    const containing = assets.filter((a) => assetContainsLib(a, lib)).map((a) => path.basename(a.label || ""))
+    const inInitial = initialChunkNames ? containing.filter((n) => initialChunkNames.has(n)) : []
+    const inRootMain = containing.filter((n) => rootMainNames.includes(n))
+    const offenders = initialChunkNames ? inInitial : inRootMain
+    const ok = offenders.length === 0
+    // gzip of the offending chunks only — how many KB of first-paint JS the
+    // lib is responsible for (not the full weight of every chunk that touches
+    // it)
+    const offenderKB = assets
+      .filter((a) => offenders.includes(path.basename(a.label || "")))
+      .reduce((s, a) => s + (a.gzipSize || 0), 0)
+    const checkName = initialChunkNames
+      ? `guard: ${lib} not in initial JS (home HTML)`
+      : `guard: ${lib} not in initial JS (rootMainFiles)`
+    results.checks.push({ name: checkName, currentKB: offenderKB / KB, budgetKB: 0, ok })
+    if (!ok) {
+      results.failures.push(
+        `${lib} is statically bundled in the initial JS (chunk(s): ${offenders.join(", ")}) — ` +
+          `it must be lazy-loaded (next/dynamic). Regression guard check 5.`,
+      )
+    }
+  }
+}
+
+// 6. Per-route JS (layout chain + page chunk) — route-specific regressions
+for (const r of ROUTE_BUDGETS) {
+  const gzip = routeGzip(r.dir)
+  if (gzip === null) {
+    results.checks.push({
+      name: `route: ${r.label}`,
+      currentKB: 0,
+      budgetKB: 0,
+      ok: true,
+      skipped: true,
+      skippedNote: "route chunks not found (build may be stale)",
+    })
+    continue
+  }
+  addCheck(`route: ${r.label} initial`, gzip / KB, r.budgetKB)
 }
 
 // ─── Report ─────────────────────────────────────────────────────────────────
 
 const report = process.argv.includes("--report")
 const update = process.argv.includes("--update")
+const json = process.argv.includes("--json")
+
+if (json) {
+  // Machine-readable output for tooling (e.g. scripts/bundle-report.mjs).
+  // Emits every measured metric; caller decides what to do with failures.
+  const libs = {}
+  for (const [lib, cfg] of Object.entries(BUDGETS.libs)) {
+    libs[lib] = { gzipKB: +(libGzip(assets, lib) / KB).toFixed(1), budgetKB: cfg.budgetKB }
+  }
+  const routes = {}
+  for (const r of ROUTE_BUDGETS) {
+    const gzip = routeGzip(r.dir)
+    routes[r.label] = gzip === null ? null : +(gzip / KB).toFixed(1)
+  }
+  console.log(
+    JSON.stringify(
+      {
+        totalKB: +(totalGzip / KB).toFixed(1),
+        chunks: assets.length,
+        largestKB: +(largest / KB).toFixed(1),
+        initialKB: +(initialGzip / KB).toFixed(1),
+        initialSource: htmlInitialGzip !== null ? "prerendered-html" : "rootMainFiles",
+        libs,
+        routes,
+        ok: results.failures.length === 0,
+        failures: results.failures,
+      },
+      null,
+      2,
+    ),
+  )
+  process.exit(results.failures.length ? 1 : 0)
+}
 
 console.log("📦 JS Bundle Budget")
 console.log("─".repeat(46))
 for (const c of results.checks) {
   const mark = c.ok ? "✅" : "❌"
-  const skip = c.skipped ? " (skipped — no rootMainFiles / build-manifest.json)" : ""
+  const skip = c.skipped
+    ? ` (${c.skippedNote || "skipped — no rootMainFiles / build-manifest.json"})`
+    : ""
   console.log(
     `  ${mark} ${c.name.padEnd(28)} ${c.currentKB.toFixed(1).padStart(7)} KB gzip` +
       (c.budgetKB ? `  (budget ${c.budgetKB} KB)` : "") + skip,
@@ -190,7 +454,13 @@ if (report) {
   console.log("\nℹ️  Measured totals:")
   console.log(`   total gzip:  ${(totalGzip / KB).toFixed(1)} KB (${assets.length} chunks)`)
   console.log(`   largest:     ${(largest / KB).toFixed(1)} KB`)
-  console.log(`   initial (/): ${(initialGzip / KB).toFixed(1)} KB`)
+  const initialSource = htmlInitialGzip !== null ? "real transfer (prerendered HTML)" : "rootMainFiles (fallback)"
+  console.log(`   initial (/): ${(initialGzip / KB).toFixed(1)} KB — ${initialSource}`)
+  console.log("\n   Per-route (layout chain + page chunk, gzip):")
+  for (const r of ROUTE_BUDGETS) {
+    const gzip = routeGzip(r.dir)
+    console.log(`   ${r.label.padEnd(16)} ${gzip === null ? "n/a" : (gzip / KB).toFixed(1) + " KB"}`)
+  }
 }
 if (update) {
   // Suggest budgets with ~20% headroom over current measurements
@@ -201,6 +471,13 @@ if (update) {
   console.log(`   JS_BUDGET_LARGEST_CHUNK_KB     → ${suggest(largest / KB, "largest chunk")}`)
   for (const [lib, cfg] of Object.entries(BUDGETS.libs)) {
     console.log(`   ${cfg.envKey} → ${suggest(libGzip(assets, lib) / KB, lib)}`)
+  }
+  console.log("\n   Per-route:")
+  for (const r of ROUTE_BUDGETS) {
+    const gzip = routeGzip(r.dir)
+    if (gzip !== null) {
+      console.log(`   ${r.envKey} → ${suggest(gzip / KB, r.label)}`)
+    }
   }
 }
 

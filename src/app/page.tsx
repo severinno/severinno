@@ -17,6 +17,7 @@ import { Suspense } from "react"
 import dynamic from "next/dynamic"
 
 import { LoadingShell } from "@/components/vitrine/loading-shell"
+import { JsonLd } from "@/components/shared/json-ld"
 
 // ISR — the marketing shell is static and revalidated in the background.
 // Live data (stats, activity feed) is fetched client-side via react-query,
@@ -35,8 +36,14 @@ const AppShell = dynamic(
 
 export default function Home() {
   return (
-    <Suspense fallback={<LoadingShell />}>
-      <AppShell />
-    </Suspense>
+    <>
+      {/* WebSite (SearchAction → /busca) + Organization — rich results de SEO.
+          JSON-LD é bloco de dados (nunca executado), não governado por
+          script-src — ver design notes do CSP em next.config.ts. */}
+      <JsonLd />
+      <Suspense fallback={<LoadingShell />}>
+        <AppShell />
+      </Suspense>
+    </>
   )
 }

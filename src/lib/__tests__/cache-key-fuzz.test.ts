@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * cache-key-fuzz.test.ts
  *
@@ -58,12 +57,26 @@ describe("radiusCountCacheKey fuzzing", () => {
         continue
       }
 
-      const v = validateCacheKey(key, lat, lng)
-      if (!v.pass) {
+      // validateCacheKey returns a boolean (see fuzz-utils.ts).  Earlier this
+      // was consumed as `v.pass`/`v.reason` (a shape copied from the
+      // validateRadii-based fuzz test), which made every case fail.
+      const valid = validateCacheKey(key)
+      if (!valid) {
         failures.push(
           `  [${failures.length + 1}] ` +
             `lat=${lat} lng=${lng} radius=${radius} cats=${JSON.stringify(categoryIds)} q=${JSON.stringify(q)} ` +
-            `→ ${v.reason}`,
+            `→ invalid cache key: ${key}`,
+        )
+      } else if (
+        (Number.isFinite(lat) && !key.includes(lat.toFixed(3))) ||
+        (Number.isFinite(lng) && !key.includes(lng.toFixed(3)))
+      ) {
+        // Invariant #2: key must contain lat/lng formatted to 3 decimals.
+        // Mirrors the .mjs validator's presence check (skipped for NaN/Inf).
+        failures.push(
+          `  [${failures.length + 1}] ` +
+            `lat=${lat} lng=${lng} radius=${radius} cats=${JSON.stringify(categoryIds)} q=${JSON.stringify(q)} ` +
+            `→ key missing formatted lat/lng: ${key}`,
         )
       }
     }

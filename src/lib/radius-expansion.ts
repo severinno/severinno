@@ -150,7 +150,12 @@ export function radiusCountCacheKey(
   const rLat = lat.toFixed(3)
   const rLng = lng.toFixed(3)
   const cats = categoryIds?.length ? categoryIds.sort().join(",") : "all"
-  const query = q?.trim() || ""
+  // Normalize the query to ASCII-safe characters so the key always matches the
+  // cache-key contract enforced by `validateCacheKey` in the fuzz tests
+  // (alphanumeric + `_ - : . @ /` only).  Accents are stripped (NFD) and any
+  // other non-alphanumeric run collapses to a single "-".  Deterministic for
+  // equal inputs, so cache identity is preserved.
+  const query = (q?.trim() || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-")
   return `providers:count:${rLat}:${rLng}:${radiusKm}:${cats}:${query}`
 }
 

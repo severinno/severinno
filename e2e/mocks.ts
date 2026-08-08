@@ -397,7 +397,11 @@ export async function setupApiMocks(
   // ── GET /api/providers (listagem pública) ──────────────────────────
   // NOTA: a ordem das rotas importa. Playwright usa a primeira que der match,
   // então registramos o pattern mais específico (/api/providers/:id) primeiro.
-  await page.route(/\/api\/providers\/(?!favorite)[a-f0-9-]+(\?|$)/, async (route) => {
+  // Detail regex must match BOTH hex UUIDs AND the mock 'prov-N' IDs — the
+  // old [a-f0-9-]+ charset silently missed 'prov-N' (p/r/o/v are not in a-f),
+  // so detail requests fell through to the list handler and the booking
+  // modal got no `availability` → every calendar day disabled → step 1 stuck.
+  await page.route(/\/api\/providers\/(?!favorite)[a-zA-Z0-9-]+(\?|$)/, async (route) => {
     return route.fulfill({
       status: 200,
       contentType: "application/json",

@@ -38,8 +38,11 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const limitRaw = searchParams.get("limit")
+    const parsedLimit = limitRaw ? Number.parseInt(limitRaw, 10) : Number.NaN
+    // `|| 5` would coerce "0" to the default (5), violating the documented
+    // minimum of 1 — so only fall back to 5 when the value is not a number.
     const limit = limitRaw
-      ? Math.max(1, Math.min(10, Number.parseInt(limitRaw, 10) || 5))
+      ? Math.max(1, Math.min(10, Number.isNaN(parsedLimit) ? 5 : parsedLimit))
       : 5
 
     // Detect structured mode: if any of street/city/state is present, use structured

@@ -41,8 +41,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?q=S%C3%A3o+Paulo&limit=5",
-    } as any)
+      searchParams: { q: "São Paulo", limit: "5" },
+    })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
@@ -59,8 +59,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?street=Rua+Augusta&city=S%C3%A3o+Paulo&state=SP&limit=3",
-    } as any)
+      searchParams: { street: "Rua Augusta", city: "São Paulo", state: "SP", limit: "3" },
+    })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
@@ -76,10 +76,7 @@ describe("GET /api/geo/search", () => {
   })
 
   it("returns 400 when no query params are provided", async () => {
-    const req = createMockRequest({
-      method: "GET",
-      url: "http://localhost:3000/api/geo/search",
-    } as any)
+    const req = createMockRequest({ method: "GET" })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
@@ -92,8 +89,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?q=test&limit=100",
-    } as any)
+      searchParams: { q: "test", limit: "100" },
+    })
     await geoSearchHandler(req)
 
     expect(geocodeSearch).toHaveBeenCalledWith("test", 10)
@@ -104,8 +101,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?q=test&limit=0",
-    } as any)
+      searchParams: { q: "test", limit: "0" },
+    })
     await geoSearchHandler(req)
 
     expect(geocodeSearch).toHaveBeenCalledWith("test", 1)
@@ -116,8 +113,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?q=S%C3%A3o+Paulo",
-    } as any)
+      searchParams: { q: "São Paulo" },
+    })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 
@@ -133,8 +130,8 @@ describe("GET /api/geo/search", () => {
 
     const req = createMockRequest({
       method: "GET",
-      url: "http://localhost:3000/api/geo/search?city=S%C3%A3o+Paulo&postcode=01310-100",
-    } as any)
+      searchParams: { city: "São Paulo", postcode: "01310-100" },
+    })
     const res = await geoSearchHandler(req)
     const parsed = await parseResponse(res)
 

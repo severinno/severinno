@@ -1,0 +1,202 @@
+# =============================================================================
+# Lighthouse CI — Severinno Marketplace
+#
+# Enforces the Core Web Vitals baseline on the 3 main public routes before
+# deploy, in BOTH form factors via a job matrix:
+#   /                     (home, ISR revalidate=60)
+#   /categoria/limpeza    (SEO category page, ISR)
+#   /u/carlos-encanador   (provider public profile, ISR)
+#
+# Matrix legs:
+#   - desktop — lighthouserc.json          (LCP error 4500ms, CLS error 0.25)
+#   - mobile  — lighthouserc.mobile.json   (mobile emulation 412x823 @2.625x,
+#     simulate throttling; LCP error 4000ms, TBT error 600ms, CLS error 0.25,
+#     FCP/SI warn+error per Core Web Vitals boundaries)
+#
+# Pipeline (mirrors e2e-cache.yml), one job per leg:
+#   1. Start PostgreSQL (PostGIS) + Redis services
+#   2. Push Prisma schema + seed deterministic data (provider slugs required
+#      by /u/[slug] routes — see prisma/seed.ts slugify)
+#   3. Build Next.js production bundle
+#   4. Start the production server on :3000
+#   5. Smoke test the 3 audited routes (fail fast if a route 404s)
+#   6. lhci autorun → collect (3 runs/URL) + assert (per-preset thresholds)
+#      + upload filesystem
+#
+# The assert thresholds live in lighthouserc*.json — the single source of
+# truth for the CWV baseline. Update thresholds there, not here.
+#
+# Triggered on:
+#   - Push to main (pre-deploy gate)
+#   - PRs to main touching frontend/performance-relevant files
+#   - Manual via workflow_dispatch
+# =============================================================================
+
+name: Lighthouse CI
+
+on:
+  push:
+    branches: [main]
+    # Release tags (release-deploy.yml) also deploy — the CWV gate must run
+    # before THAT path too, not only on main push.
+    tags:
+      - "v*"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/app/**"
+      - "src/components/**"
+      - "src/lib/**"
+      - "next.config.ts"
+      - "package.json"
+      - "lighthouserc.json"
+      - "lighthouserc.mobile.json"
+      - ".github/workflows/lighthouse-ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: lhci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+  DATABASE_URL: postgresql://severinno:severinno_test@localhost:5433/severinno_test
+  REDIS_URL: redis://localhost:6381
+  BASE_URL: http://localhost:3000
+  SESSION_SECRET: ci-lhci-session-secret-at-least-32-chars
+
+jobs:
+  lhci:
+    name: Lighthouse CI (${{ matrix.preset }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: desktop
+            lhci_config: lighthouserc.json
+            report_dir: lhci-reports
+            artifact: lhci-reports
+          - preset: mobile
+            lhci_config: lighthouserc.mobile.json
+            report_dir: lhci-reports-mobile
+            artifact: lhci-reports-mobile
+
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: severinno_test
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 15s
+
+      redis:
+        image: valkey/valkey:7.2-alpine
+        ports:
+          - 6381:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      # Push schema instead of running full migrations — faster and sufficient
+      # for Lighthouse (we need the schema + deterministic seed data).
+      - name: Push Prisma schema to test database
+        run: npx prisma db push --accept-data-loss --skip-generate
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      # The /u/[slug] routes require provider slugs; seed generates them via
+      # slugify(name) — "Carlos Encanador" → carlos-encanador (see lighthouserc.json).
+      - name: Seed deterministic data
+        run: bun run db:seed
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+
+      - name: Build Next.js
+        run: bun run build
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          SESSION_SECRET: ${{ env.SESSION_SECRET }}
+          SKIP_TYPESCRIPT_CHECK: "true"
+
+      - name: Start Next.js server
+        run: |
+          DATABASE_URL="${{ env.DATABASE_URL }}" \
+          REDIS_URL="${{ env.REDIS_URL }}" \
+          SESSION_SECRET="${{ env.SESSION_SECRET }}" \
+          npx next start -p 3000 &>/tmp/nextserver.log &
+          echo "PID=$!"
+          # Wait for server to respond
+          for i in $(seq 1 30); do
+            sleep 2
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health \
+              2>/dev/null | grep -q "200"; then
+              echo "Server ready after $((i * 2))s"
+              break
+            fi
+          done
+
+      # Fail fast: Lighthouse would audit a 404 page and produce misleading
+      # scores. The 3 routes must return 200 before we burn 9 audit runs.
+      - name: Smoke test audited routes
+        run: |
+          for route in "/" "/categoria/limpeza" "/u/carlos-encanador"; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000$route" || echo "000")
+            if [ "$status" = "200" ]; then
+              echo "  ✅ GET $route → $status"
+            else
+              echo "  ❌ GET $route → $status (expected 200)"
+              exit 1
+            fi
+          done
+
+      # Runs collect (3 runs/URL × 3 URLs) + assert (per-preset thresholds in
+      # lighthouserc*.json) + upload filesystem. Chrome is preinstalled on
+      # ubuntu-latest. Each leg uses its own config and report dir so the two
+      # artifacts (desktop/mobile) don't collide.
+      - name: Run Lighthouse CI (${{ matrix.preset }})
+        run: |
+          npx -y @lhci/cli@0.15.1 autorun --config=${{ matrix.lhci_config }}
+
+      - name: Upload Lighthouse reports (${{ matrix.preset }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.report_dir }}/
+          retention-days: 14

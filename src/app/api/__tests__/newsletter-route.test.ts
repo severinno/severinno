@@ -30,7 +30,7 @@ describe("POST /api/newsletter", () => {
 
   it("subscribes a new email successfully", async () => {
     (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -54,7 +54,7 @@ describe("POST /api/newsletter", () => {
       key: "newsletter:user@example.com",
       value: JSON.stringify({ email: "user@example.com" }),
     } as any)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -97,7 +97,7 @@ describe("POST /api/newsletter", () => {
 
   it("normalizes email to lowercase", async () => {
     (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -114,7 +114,7 @@ describe("POST /api/newsletter", () => {
 
   it("trims whitespace from email", async () => {
     (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",

@@ -13,7 +13,9 @@ export function JsonLd() {
           "@type": "SearchAction",
           target: {
             "@type": "EntryPoint",
-            urlTemplate: `${baseUrl}/?q={search_term_string}`,
+            // A busca real da app vive em /busca (search-page.tsx lê ?q=).
+            // O Sitelinks Searchbox do Google exige a URL exata de busca.
+            urlTemplate: `${baseUrl}/busca?q={search_term_string}`,
           },
           "query-input": "required name=search_term_string",
         },

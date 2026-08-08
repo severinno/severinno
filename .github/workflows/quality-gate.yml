@@ -106,6 +106,46 @@ jobs:
       - name: Validate cache manifest against route handlers
         run: npx tsx scripts/validate-cache-manifest.ts
 
+  # ── Validate .env.production ──────────────────────────────────────────────
+  # Compares the production env against the Zod schema (src/lib/env.schema.ts
+  # — the source of truth used by src/lib/env.ts at runtime). The file is not
+  # in git (removed in the secret-rotation cleanup), so it is restored from the
+  # ENV_PRODUCTION GitHub secret before validation.
+  #
+  # IMPORTANT: this is a *blocking* release gate — if the secret is not
+  # configured, the job fails and the release stops. Configure it in GitHub:
+  #   Settings → Secrets → Actions → ENV_PRODUCTION
+  validate-env:
+    name: Validate .env.production (schema)
+    # Só roda fora de PRs: este workflow também é chamado pelo ci.yml (que
+    # dispara em pull_request) e o GitHub Actions NÃO expõe repository
+    # secrets em PRs de fork — o job falharia com "secret não configurado".
+    # O gate de produção é para o path de release, não para PRs.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Restore .env.production from secret
+        env:
+          ENV_PRODUCTION: ${{ secrets.ENV_PRODUCTION }}
+        run: |
+          if [ -z "$ENV_PRODUCTION" ]; then
+            echo "❌ Secret ENV_PRODUCTION não configurado — configure em Settings → Secrets → Actions antes de liberar o release."
+            exit 1
+          fi
+          printf '%s' "$ENV_PRODUCTION" > .env.production
+
+      - name: Validate against Zod schema
+        run: npx tsx scripts/validate-env.ts --ci
+
   # ── Coverage Badge ────────────────────────────────────────────────────────
   # Generates the shields.io-style coverage badge SVG.
   # Note: The badge commit step remains in parent workflows (ci.yml,

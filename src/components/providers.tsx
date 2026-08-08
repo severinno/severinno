@@ -1,5 +1,9 @@
 "use client"
 
+// MUST be the first import: disables zod v4 JIT (new Function), which the
+// strict CSP (script-src 'self' 'unsafe-inline', no 'unsafe-eval') blocks.
+import "@/lib/zod-config"
+
 import { ThemeProvider } from "next-themes"
 import {
   QueryClient,

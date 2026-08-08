@@ -49,7 +49,6 @@ import {
   TrendingUp,
   type LucideIcon,
 } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 
 import { cn } from "@/lib/utils"
 import type { Category } from "@/lib/api"
@@ -423,36 +422,11 @@ export type CategoryShowcaseProps = {
 }
 
 // ---------------------------------------------------------------------------
-// Staggered entrance animation variants
+// Entrance animations use CSS transitions (opacity/transform) driven by the
+// `visible` flag from useScrollReveal — no framer-motion runtime on the home
+// path (P1-1: fewer rAF-driven main-thread animations, lower TBT).
+// Stagger is approximated with per-item transitionDelay.
 // ---------------------------------------------------------------------------
-
-const containerVariants = {
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.04,
-    },
-  },
-}
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 24, scale: 0.95 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: { duration: 0.4, ease: "easeOut" as const },
-  },
-}
-
-const chipVariants = {
-  hidden: { opacity: 0, scale: 0.85 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: { duration: 0.3, ease: "easeOut" as const },
-  },
-}
 
 // ---------------------------------------------------------------------------
 // Decorative dot pattern for section header
@@ -600,22 +574,22 @@ export default function CategoryShowcase({
         <DecorativeDots />
 
         {/* ── Header ────────────────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={visible ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.5 }}
-          className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+        <div
+          className={cn(
+            "mb-8 flex flex-col gap-4 transition-all duration-500 ease-out sm:flex-row sm:items-end sm:justify-between",
+            visible ? "translate-y-0 opacity-100" : "translate-y-5 opacity-0",
+          )}
         >
           <div>
-            <motion.span
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={visible ? { opacity: 1, scale: 1 } : {}}
-              transition={{ duration: 0.4, delay: 0.1 }}
-              className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200 transition-all duration-500 ease-out dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50",
+                visible ? "scale-100 opacity-100" : "scale-90 opacity-0",
+              )}
             >
               <Search className="size-3.5" />
               Explore categorias
-            </motion.span>
+            </span>
             <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
               Encontre o serviço ideal
             </h2>
@@ -629,15 +603,8 @@ export default function CategoryShowcase({
           </div>
 
           {/* Active filter indicator + clear button (H1 + H3) */}
-          <AnimatePresence>
-            {activeId && activeCategory && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: -4 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: -4 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="flex items-center gap-2.5"
-              >
+          {activeId && activeCategory && (
+            <div className="animate-in zoom-in-95 fade-in flex items-center gap-2.5 duration-200">
                 <div className="relative">
                   <Badge
                     variant="secondary"
@@ -671,10 +638,9 @@ export default function CategoryShowcase({
                   <RefreshCw className="size-3" />
                   Limpar filtros
                 </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
+            </div>
+          )}
+        </div>
 
         {/* ── Loading state (H1 + H5) ─────────────────────────────── */}
         {isLoading ? (
@@ -736,11 +702,12 @@ export default function CategoryShowcase({
           <>
             {/* ── Popular categories quick-access bar (H7) ─────────── */}
             {popularCategories.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={visible ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.4, delay: 0.15 }}
-                className="mb-8"
+              <div
+                className={cn(
+                  "mb-8 transition-all duration-500 ease-out",
+                  visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
+                )}
+                style={{ transitionDelay: visible ? "0.15s" : "0s" }}
               >
                 <div className="mb-3 flex items-center gap-2">
                   <TrendingUp className="size-4 text-emerald-600 dark:text-emerald-400" />
@@ -797,7 +764,7 @@ export default function CategoryShowcase({
                     />
                   ))}
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* ── Category grid ──────────────────────────────────────── */}
@@ -832,7 +799,10 @@ export default function CategoryShowcase({
                 ref={scrollRef}
                 className="flex gap-3 overflow-x-auto pb-3 scrollbar-thin sm:hidden"
               >
-                {categories.map((c, idx) => (
+                {/* Limit to the same visible set as the desktop grid (P1-1:
+                    the old `categories.map` rendered every category hidden on
+                    desktop — a big DOM + hydration cost). */}
+                {visibleCategories.map((c, idx) => (
                   <MobileCategoryChip
                     key={c.id}
                     category={c}
@@ -847,12 +817,7 @@ export default function CategoryShowcase({
               </div>
 
               {/* Desktop: grid layout */}
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate={visible ? "visible" : "hidden"}
-                className="hidden sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4"
-              >
+              <div className="hidden sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4">
                 {visibleCategories.map((c, idx) => (
                   <CategoryCard
                     key={c.id}
@@ -860,21 +825,23 @@ export default function CategoryShowcase({
                     category={c}
                     active={activeId === c.id}
                     index={idx}
+                    visible={visible}
                     onSelect={() =>
                       onSelect?.(activeId === c.id ? null : c.id)
                     }
                     onKeyDown={(e) => handleGridKeyDown(e, idx)}
                   />
                 ))}
-              </motion.div>
+              </div>
 
               {/* "Ver todas" expand button (H3 + H7) */}
               {categories.length > GRID_LIMIT && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={visible ? { opacity: 1 } : {}}
-                  transition={{ delay: 0.3 }}
-                  className="mt-6 flex justify-center"
+                <div
+                  className={cn(
+                    "mt-6 flex justify-center transition-opacity duration-500 ease-out",
+                    visible ? "opacity-100" : "opacity-0",
+                  )}
+                  style={{ transitionDelay: visible ? "0.3s" : "0s" }}
                 >
                   <Button
                     variant="outline"
@@ -899,7 +866,7 @@ export default function CategoryShowcase({
                       </>
                     )}
                   </Button>
-                </motion.div>
+                </div>
               )}
             </div>
           </>
@@ -933,11 +900,7 @@ function PopularChip({
   const tint = TINTS[tintKey] ?? TINTS.emerald
 
   return (
-    <motion.button
-      variants={chipVariants}
-      initial="hidden"
-      animate={visible ? "visible" : "hidden"}
-      custom={index}
+    <button
       type="button"
       onClick={onSelect}
       aria-pressed={active}
@@ -946,9 +909,13 @@ function PopularChip({
           ? `${category.name} (selecionada) — clique para desselecionar`
           : `${category.name} — buscar prestadores`
       }
+      style={visible ? { transitionDelay: `${index * 0.04}s` } : undefined}
       className={cn(
-        "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all duration-200",
+        "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all duration-300 ease-out",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+        visible
+          ? "scale-100 opacity-100"
+          : "pointer-events-none scale-90 opacity-0",
         active
           ? `${tint.bgActive} ${tint.darkBgActive} ${tint.ring} ${tint.darkRing} ring-2 border-transparent shadow-sm`
           : `bg-card border-border/60 ${tint.hoverBorder} hover:shadow-sm dark:hover:border-opacity-60`,
@@ -970,7 +937,7 @@ function PopularChip({
           <Check className="size-2.5" />
         </span>
       )}
-    </motion.button>
+    </button>
   )
 }
 
@@ -1002,10 +969,7 @@ function MobileCategoryChip({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <motion.button
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={visible ? { opacity: 1, scale: 1 } : {}}
-          transition={{ duration: 0.3, delay: index * 0.03 }}
+        <button
           type="button"
           onClick={onSelect}
           aria-pressed={active}
@@ -1014,9 +978,13 @@ function MobileCategoryChip({
               ? `${category.name} (selecionada) — clique para desselecionar`
               : `${category.name} — ${providerCount} prestadores`
           }
+          style={visible ? { transitionDelay: `${index * 0.03}s` } : undefined}
           className={cn(
-            "relative flex min-w-[110px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-3 py-3.5 text-center transition-all duration-200",
+            "relative flex min-w-[110px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-3 py-3.5 text-center transition-all duration-300 ease-out",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+            visible
+              ? "scale-100 opacity-100"
+              : "pointer-events-none scale-90 opacity-0",
             active
               ? `${tint.bgActive} ${tint.darkBgActive} ${tint.ring} ${tint.darkRing} ring-2 border-transparent shadow-md`
               : "bg-card border-border/60 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-sm",
@@ -1069,7 +1037,7 @@ function MobileCategoryChip({
           >
             {providerCount} prest.
           </span>
-        </motion.button>
+        </button>
       </TooltipTrigger>
       <TooltipContent
         side="bottom"
@@ -1090,6 +1058,7 @@ function CategoryCard({
   category,
   active,
   index,
+  visible,
   onSelect,
   onKeyDown,
 }: {
@@ -1097,6 +1066,7 @@ function CategoryCard({
   category: Category
   active: boolean
   index: number
+  visible: boolean
   onSelect: () => void
   onKeyDown: (e: React.KeyboardEvent) => void
 }) {
@@ -1112,11 +1082,10 @@ function CategoryCard({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <motion.div
-          variants={cardVariants}
+        <div
           id={id}
           role="button"
-          tabIndex={0}
+          tabIndex={visible ? 0 : -1}
           onClick={onSelect}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -1132,33 +1101,31 @@ function CategoryCard({
               ? `${category.name} (selecionada) — clique para desselecionar`
               : `${category.name} — ${providerCount} prestadores`
           }
+          style={visible ? { transitionDelay: `${index * 0.04}s` } : undefined}
           className={cn(
-            "group relative flex flex-col items-center gap-3 rounded-2xl border bg-card p-5 text-center transition-all duration-200 cursor-pointer select-none",
+            "group relative flex flex-col items-center gap-3 rounded-2xl border bg-card p-5 text-center transition-all duration-300 ease-out cursor-pointer select-none",
             "hover:-translate-y-1 hover:shadow-lg",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+            visible
+              ? "scale-100 translate-y-0 opacity-100"
+              : "pointer-events-none scale-95 translate-y-6 opacity-0",
             active
               ? `${tint.ring} ${tint.darkRing} ring-2 ${tint.bgActive} ${tint.darkBgActive} border-transparent shadow-lg -translate-y-1`
               : `border-border/50 ${tint.hoverBorder} dark:hover:border-opacity-60`,
           )}
         >
           {/* Active checkmark badge (H3 + H6) */}
-          <AnimatePresence>
-            {active && (
-              <motion.span
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ type: "spring", stiffness: 500, damping: 25 }}
-                className={cn(
-                  "absolute -top-2 -right-2 z-10 flex size-6 items-center justify-center rounded-full shadow-lg",
-                  `bg-gradient-to-br ${tint.gradientActiveFrom} ${tint.gradientActiveTo} text-white`,
-                )}
-                aria-hidden
-              >
-                <Check className="size-3.5" strokeWidth={3} />
-              </motion.span>
-            )}
-          </AnimatePresence>
+          {active && (
+            <span
+              className={cn(
+                "absolute -top-2 -right-2 z-10 flex size-6 animate-in zoom-in-95 fade-in items-center justify-center rounded-full shadow-lg duration-150",
+                `bg-gradient-to-br ${tint.gradientActiveFrom} ${tint.gradientActiveTo} text-white`,
+              )}
+              aria-hidden
+            >
+              <Check className="size-3.5" strokeWidth={3} />
+            </span>
+          )}
 
           {/* Icon with large gradient background (H6) */}
           <span
@@ -1213,7 +1180,7 @@ function CategoryCard({
           >
             <Info className="size-3" />
           </span>
-        </motion.div>
+        </div>
       </TooltipTrigger>
       <TooltipContent
         side="bottom"

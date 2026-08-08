@@ -280,6 +280,17 @@ curl -sI https://severinno.com.br | grep -i "strict-transport-security"
 # https://www.ssllabs.com/ssltest/analyze.html?d=severinno.com.br
 ```
 
+**HSTS preload (opcional, recomendado antes do go-live público):**
+
+```bash
+# Verificação pré-submissão (exit 0 = apto a submeter)
+bash scripts/verify-hsts-preload.sh --ci
+```
+
+- [ ] `verify-hsts-preload.sh --ci` → exit 0 para **todos** os hosts
+- [ ] `www.severinno.com.br` emite HSTS idêntico (CDN Hostinger — apontar para o apex se não emitir)
+- [ ] Submeter em https://hstspreload.org/ — processo completo em `docs/HSTS-PRELOAD.md`
+
 ### 6.2 — Verificar Security Headers
 
 ```bash

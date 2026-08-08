@@ -17,6 +17,14 @@ import { test, expect, type APIRequestContext } from "@playwright/test"
 import { CACHED_ROUTES } from "../src/lib/cache-manifest"
 
 // -------------------------------------------------------------------------
+// Serial mode — the external-upstream probe (Nominatim/ViaCEP) caches health
+// in module state; parallel workers would all fire the probe at once and
+// self-inflict Nominatim 429s. Force sequential execution regardless of
+// playwright.config fullyParallel settings.
+// -------------------------------------------------------------------------
+test.describe.configure({ mode: "serial" })
+
+// -------------------------------------------------------------------------
 // Route-specific query parameter builders
 // -------------------------------------------------------------------------
 // Each route needs specific params to return 200. Some need real IDs from
@@ -34,13 +42,15 @@ type RouteConfig = {
   }
   /** Whether this route returns a private (user-personalized) response. */
   expectsPrivate?: boolean
+  /** Route depends on an external upstream (Nominatim/ViaCEP) — probe once and skip if down, to avoid CI flakes (502/429). */
+  external?: boolean
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
   "/api/categories":       { queryString: "" },
-  "/api/geo/cep":          { queryString: "?cep=01310100" },
-  "/api/geo/reverse":      { queryString: "?lat=-23.55&lng=-46.63" },
-  "/api/geo/search":       { queryString: "?q=s%C3%A3o%20paulo" },
+  "/api/geo/cep":          { queryString: "?cep=01310100", external: true },
+  "/api/geo/reverse":      { queryString: "?lat=-23.55&lng=-46.63", external: true },
+  "/api/geo/search":       { queryString: "?q=s%C3%A3o%20paulo", external: true },
   "/api/providers":        { queryString: "?page=1&limit=5" },
   "/api/providers/[id]":   {
     queryString: "",
@@ -106,12 +116,52 @@ function expectedCacheControl(entry: RouteEntry): string {
 }
 
 // -------------------------------------------------------------------------
+// External-upstream health (geo routes call Nominatim/ViaCEP server-side)
+// -------------------------------------------------------------------------
+// Playwright cannot intercept server-to-server fetches (the Next.js server
+// calls Nominatim/ViaCEP, not the browser), and the upstreams are rate-limited
+// (Nominatim 1 req/s) and can 502/429 in CI. Probe each external route once;
+// skip its tests when the upstream is unreachable, so the suite never flakes.
+
+const externalHealth: Record<string, boolean> = {}
+let externalProbed = false
+
+/** Probe external-dependent routes once per worker (first geo test triggers it). */
+async function ensureExternalProbe(request: APIRequestContext): Promise<void> {
+  if (externalProbed) return
+  externalProbed = true
+  for (const entry of CACHED_ROUTES) {
+    if (ROUTE_CONFIGS[entry.path]?.external) {
+      const url = entry.path + ROUTE_CONFIGS[entry.path].queryString
+      try {
+        const probe = await request.get(url, { timeout: 8000 })
+        externalHealth[entry.path] = probe.ok()
+        if (!probe.ok()) {
+          console.log(`  ⚠️ ${entry.path} upstream unreachable (probe ${probe.status()}) — skipping`)
+        }
+      } catch {
+        externalHealth[entry.path] = false
+      }
+    }
+  }
+}
+
+/** Skip the current test when an external-dependent route's upstream is down. */
+function skipIfExternalDown(entry: RouteEntry): void {
+  if (ROUTE_CONFIGS[entry.path]?.external && externalHealth[entry.path] === false) {
+    test.skip(true, `external upstream unavailable — skipping ${entry.path}`)
+  }
+}
+
+// -------------------------------------------------------------------------
 // Test suite — parameterized over all 12 cached routes
 // -------------------------------------------------------------------------
 
 test.describe("GET all cached routes — HTTP cache headers", () => {
   for (const entry of CACHED_ROUTES) {
     test(`${entry.path} returns ${expectedCacheControl(entry)}`, async ({ request }) => {
+      await ensureExternalProbe(request)
+      skipIfExternalDown(entry)
       const url = await resolveUrl(request, entry)
       const response = await request.get(url)
       const headers = response.headers()
@@ -136,6 +186,8 @@ test.describe("GET all cached routes — HTTP cache headers", () => {
     })
 
     test(`${entry.path} returns consistent data on repeated call`, async ({ request }) => {
+      await ensureExternalProbe(request)
+      skipIfExternalDown(entry)
       const url = await resolveUrl(request, entry)
       const first = await request.get(url)
       const second = await request.get(url)

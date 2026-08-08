@@ -146,6 +146,7 @@ const PUBLIC_API = new Set([
   "/api/metrics",
   "/api/metrics/prometheus",
   "/api/newsletter",
+  "/api/csp-report", // CSP violation reports — no session cookie, not sensitive
   "/api/sentry",
   "/api/sentry/test",
   "/api/webhooks/lytex",
@@ -175,7 +176,7 @@ export async function middleware(request: NextRequest) {
 
   // --- Security headers (applied to ALL responses) ---
   response.headers.set("X-DNS-Prefetch-Control", "on")
-  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
   response.headers.set("X-Content-Type-Options", "nosniff")
   response.headers.set("X-Frame-Options", "DENY")
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")

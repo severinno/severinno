@@ -169,7 +169,7 @@ describe("GET /api/providers — handleError delegation", () => {
       { providerId: "prov-1", _count: { id: 3 } },
     ])
     // @ts-expect-error DeepMockProxy PrismaPromise mock edge case
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -213,7 +213,7 @@ describe("GET /api/providers — handleError delegation", () => {
     const phase2Error = new Error("Bookings DB connection lost")
     vi.mocked(db.booking.groupBy).mockRejectedValue(phase2Error)
     // @ts-expect-error DeepMockProxy PrismaPromise mock edge case
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -253,7 +253,7 @@ describe("GET /api/providers — handleError delegation", () => {
       { providerId: "prov-1", _count: { id: 3 } },
     ])
     // @ts-expect-error DeepMockProxy PrismaPromise mock edge case
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
 
     const req = createMockRequest({
       // No lat/lng — goes through non-PostGIS path, no error
@@ -284,7 +284,7 @@ describe("GET /api/providers — handleError delegation", () => {
       { providerId: "prov-1", _count: { id: 3 } },
     ])
     // @ts-expect-error DeepMockProxy PrismaPromise mock edge case
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },

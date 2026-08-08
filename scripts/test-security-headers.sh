@@ -183,6 +183,32 @@ test_csp() {
       warn "  connect-src NÃO inclui $source — pode quebrar funcionalidades"
     fi
   done
+
+  # CSP3 Reporting API: report-to + Reporting-Endpoints header (modern) com
+  # report-uri como fallback legado (browsers que suportam ambos preferem
+  # report-to e ignoram report-uri — o par é seguro de enviar junto).
+  if echo "$csp" | grep -qi "report-to csp-endpoint"; then
+    assert "  report-to csp-endpoint ✓" "true"
+  else
+    assert "  report-to csp-endpoint" "false"
+    warn "  Sem report-to — CSP3 Reporting API desativado"
+  fi
+
+  if echo "$csp" | grep -qi "report-uri /api/csp-report"; then
+    assert "  report-uri /api/csp-report (legado) ✓" "true"
+  else
+    assert "  report-uri /api/csp-report (legado)" "false"
+    warn "  Sem report-uri — browsers legados não reportarão violações"
+  fi
+
+  local reporting_endpoints
+  reporting_endpoints=$(get_header "Reporting-Endpoints")
+  if echo "$reporting_endpoints" | grep -qi 'csp-endpoint="/api/csp-report"'; then
+    assert "  Header Reporting-Endpoints: csp-endpoint ✓" "true"
+  else
+    assert "  Header Reporting-Endpoints: csp-endpoint" "false"
+    warn "  Sem Reporting-Endpoints header — report-to não tem endpoint definido"
+  fi
 }
 
 # ── Test: Security Headers básicos ─────────────────────────────────────────
@@ -207,16 +233,19 @@ test_security_headers() {
     warn "Sem X-Frame-Options — risco de clickjacking"
   fi
 
-  # X-XSS-Protection
+  # X-XSS-Protection — DEPRECATED. Modern browsers ignore it and OWASP
+  # recommends REMOVING it (the old `1; mode=block` could even enable a
+  # filter-based bypass on legacy browsers). We assert it is ABSENT, matching
+  # the production config (next.config.ts / middleware.ts do not set it).
   xss=$(get_header "X-XSS-Protection")
-  if echo "$xss" | grep -qi "1; mode=block"; then
-    assert "X-XSS-Protection: 1; mode=block ✓" "true"
+  if [[ -z "$xss" ]]; then
+    assert "X-XSS-Protection ausente (deprecado — OWASP recomenda remover) ✓" "true"
   else
-    assert "X-XSS-Protection: 1; mode=block" "false"
-    warn "X-XSS-Protection ausente — navegadores antigos não bloqueiam XSS refletido"
+    assert "X-XSS-Protection ausente — presente: '$xss' (deprecado, remover)" "false"
   fi
 
-  # Referrer-Policy    rp=$(get_header "Referrer-Policy")
+  # Referrer-Policy
+  rp=$(get_header "Referrer-Policy")
   if echo "$rp" | grep -qi "strict-origin-when-cross-origin"; then
     assert "Referrer-Policy: strict-origin-when-cross-origin ✓" "true"
   else
@@ -350,7 +379,13 @@ for endpoint in "${ENDPOINTS[@]}"; do
   test_csp
   test_security_headers
   test_removed_headers
-  test_rate_limit_headers
+
+  # Rate-limit headers are API-only by design (middleware applies them to
+  # /api/* paths). Asserting them on page routes (/ , /categoria, /u)
+  # would be a false failure.
+  if [[ "$endpoint" == */api/* ]]; then
+    test_rate_limit_headers
+  fi
 
   if [[ "$endpoint" == "$BASE_URL" ]]; then
     test_tls "$endpoint"

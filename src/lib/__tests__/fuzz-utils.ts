@@ -99,8 +99,9 @@ export function fuzzQuery(): string {
 export function validateCacheKey(key: string): boolean {
   if (!key || typeof key !== "string") return false
   if (key.length > 512) return false
-  // Must be alphanumeric with allowed separators
-  return /^[a-zA-Z0-9_\-:.@/]+$/.test(key)
+  // Must be alphanumeric with allowed separators.  `,` is allowed because
+  // radiusCountCacheKey joins multiple category IDs with ",".
+  return /^[a-zA-Z0-9_\-:,.@/]+$/.test(key)
 }
 
 // ── Radius expansion fuzz generators ──────────────────────────────────────

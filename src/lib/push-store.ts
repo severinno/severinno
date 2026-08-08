@@ -31,7 +31,7 @@ if (typeof setInterval !== "undefined") {
     for (const [key, val] of memoryStore) {
       if (now > val.expiresAt) memoryStore.delete(key)
     }
-  }, 60_000)
+  }, 60_000).unref?.()
 }
 
 /**

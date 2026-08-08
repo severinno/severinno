@@ -8,7 +8,14 @@
       ],
       "numberOfRuns": 3,
       "settings": {
-        "preset": "desktop",
+        "formFactor": "mobile",
+        "screenEmulation": {
+          "mobile": true,
+          "width": 412,
+          "height": 823,
+          "deviceScaleFactor": 2.625
+        },
+        "throttlingMethod": "simulate",
         "chromeFlags": "--no-sandbox --headless"
       }
     },
@@ -16,15 +23,15 @@
       "preset": "lighthouse:no-pwa",
       "assertions": {
         "first-contentful-paint": ["warn", { "maxNumericValue": 3000 }],
-        "largest-contentful-paint": ["error", { "maxNumericValue": 4500 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 4000 }],
         "cumulative-layout-shift": ["error", { "maxNumericValue": 0.25 }],
-        "speed-index": ["warn", { "maxNumericValue": 5000 }],
-        "total-blocking-time": ["warn", { "maxNumericValue": 500 }]
+        "total-blocking-time": ["error", { "maxNumericValue": 600 }],
+        "speed-index": ["warn", { "maxNumericValue": 5000 }]
       }
     },
     "upload": {
       "target": "filesystem",
-      "outputDir": "./lhci-reports"
+      "outputDir": "./lhci-reports-mobile"
     }
   }
 }

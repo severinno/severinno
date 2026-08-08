@@ -11,6 +11,10 @@
  *   1. Routes that use cache but are missing from the manifest
  *   2. Routes in the manifest that no longer use cache (stale)
  *   3. Routes whose TTL values differ from the manifest
+ *   4. Regressions of the Cache-Control header format emitted by
+ *      cacheControlPublic (the stale-while-revalidate directive) in
+ *      src/lib/api-server.ts
+ *   5. Malformed cacheControlPublic/Private calls in route handlers
  *
  * Usage:
  *   bun scripts/validate-cache-manifest.ts
@@ -103,27 +107,99 @@ function shouldHaveCache(apiPath: string): boolean {
 
 /** Extract TTL values from a route file's cacheControlPublic/Private calls. */
 function extractTtlFromFile(content: string, apiPath: string): { maxAge: number; sMaxage: number | null; type: "public" | "private" } | null {
-  // Match cacheControlPublic(res, <maxAge>, <sMaxage?>) or cacheControlPrivate(res, <maxAge>)
+  // Simple form: cacheControlPublic(res, <maxAge>, <sMaxage?>) or cacheControlPrivate(res, <maxAge>)
   const publicMatch = content.match(/cacheControlPublic\([^,]+,\s*(\d+)(?:\s*,\s*(\d+))?/)
   const privateMatch = content.match(/cacheControlPrivate\([^,]+,\s*(\d+)/)
 
-  if (publicMatch) {
+  // Wrapped form: cacheControlPublic(NextResponse.json({ ... }), <maxAge>, <sMaxage?>) —
+  // the first argument is an inline expression containing commas, so the simple
+  // regex above can't see past it. Match up to the first ')' (end of the wrapped
+  // expression) and then the trailing numeric TTL args.
+  const wrappedPublicMatch =
+    publicMatch ??
+    content.match(/cacheControlPublic\([\s\S]*?\)\s*,\s*(\d+)(?:\s*,\s*(\d+))?\s*\)/)
+  const wrappedPrivateMatch =
+    privateMatch ??
+    content.match(/cacheControlPrivate\([\s\S]*?\)\s*,\s*(\d+)\s*\)/)
+
+  if (wrappedPublicMatch) {
     return {
       type: "public",
-      maxAge: parseInt(publicMatch[1], 10),
-      sMaxage: publicMatch[2] ? parseInt(publicMatch[2], 10) : parseInt(publicMatch[1], 10),
+      maxAge: parseInt(wrappedPublicMatch[1], 10),
+      sMaxage: wrappedPublicMatch[2]
+        ? parseInt(wrappedPublicMatch[2], 10)
+        : parseInt(wrappedPublicMatch[1], 10),
     }
   }
 
-  if (privateMatch) {
+  if (wrappedPrivateMatch) {
     return {
       type: "private",
-      maxAge: parseInt(privateMatch[1], 10),
+      maxAge: parseInt(wrappedPrivateMatch[1], 10),
       sMaxage: null,
     }
   }
 
   return null
+}
+
+// ---------------------------------------------------------------------------
+// Header-format validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Expected Cache-Control format emitted by `cacheControlPublic`.
+ *
+ * Every public cached route must advertise stale-while-revalidate so shared
+ * caches (CDN) can keep serving stale content while revalidating in the
+ * background (RFC 5861). The header is built in ONE place —
+ * src/lib/api-server.ts — so a regression of the directive is caught here in
+ * ~2s instead of depending on e2e tests against a live server.
+ *
+ * Variable names inside the template literal are matched loosely
+ * (\$\{[^}]+\}) so renaming maxAge/swr does not trip the gate — only the
+ * directive format is normative. The (?:,\s*[^,]+)*? skips allow OTHER
+ * directives to be interleaved (e.g. `immutable`) because Cache-Control
+ * directives are order-independent — but all three required directives must
+ * still be present, in order, so removals/reorders keep failing.
+ */
+const PUBLIC_CACHE_CONTROL_FORMAT =
+  /public,\s*max-age=\$\{[^}]+\}(?:,\s*[^,]+)*?,\s*s-maxage=\$\{[^}]+\}(?:,\s*[^,]+)*?,\s*stale-while-revalidate=\$\{[^}]+\}/
+
+const API_SERVER_SOURCE = "src/lib/api-server.ts"
+
+/**
+ * Read `cacheControlPublic` from its single source of truth and verify the
+ * header format still contains the stale-while-revalidate directive.
+ */
+function validatePublicCacheControlFormat(): string[] {
+  const fullPath = resolve(PROJECT_ROOT, API_SERVER_SOURCE)
+  const content = readFileSync(fullPath, "utf-8")
+
+  const fnMatch = content.match(/function cacheControlPublic\s*\([\s\S]*?\n\s*}/)
+  if (!fnMatch) {
+    return [
+      `❌ HEADER FORMAT: cacheControlPublic not found in ${API_SERVER_SOURCE}\n` +
+        `   It is the single source of truth for the stale-while-revalidate\n` +
+        `   directive — every public cached route depends on it.`,
+    ]
+  }
+
+  if (!PUBLIC_CACHE_CONTROL_FORMAT.test(fnMatch[0])) {
+    const rendered = fnMatch[0]
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join(" ")
+    return [
+      `❌ HEADER FORMAT: cacheControlPublic lost the stale-while-revalidate directive\n` +
+        `   Expected: public, max-age={maxAge}, s-maxage={swr}, stale-while-revalidate={swr}\n` +
+        `   Found in ${API_SERVER_SOURCE}: ${rendered}\n` +
+        `   Restore the directive so CDN caches keep serving stale content during revalidation.`,
+    ]
+  }
+
+  return []
 }
 
 // ---------------------------------------------------------------------------
@@ -150,10 +226,30 @@ function main(): void {
     const shouldCache = shouldHaveCache(apiPath)
 
     if (hasCache) {
+      const ttl = extractTtlFromFile(content, apiPath)
       foundInCode.push({
         path: apiPath,
-        ttl: extractTtlFromFile(content, apiPath),
+        ttl,
       })
+
+      // A cacheControlPublic/Private call that fails to parse means the call
+      // signature regressed (non-numeric TTL, missing args, renamed helper).
+      // The directive is emitted by the helper, so a broken call silently
+      // weakens the cache contract — flag it here instead.
+      //
+      // Gated on shouldCache: excluded routes (e.g. /api/admin/cache-routes)
+      // may reference the helpers as object property names without calling
+      // them — those are outside the manifest contract and must not fail.
+      if (!ttl && shouldCache) {
+        errors.push(
+          `❌ MALFORMED CACHE CALL: ${apiPath}\n` +
+            `   Could not parse cacheControlPublic/Private call in ${file}\n` +
+            `   Expected one of:\n` +
+            `     cacheControlPublic(res, <maxAge>, <swr?>)\n` +
+            `     cacheControlPublic(NextResponse.json({ ... }), <maxAge>, <swr?>)\n` +
+            `     cacheControlPrivate(res, <maxAge>)`,
+        )
+      }
 
       // Only flag missing from manifest if this route SHOULD have cache
       // (excluded routes like /api/admin/* use cache but aren't in the manifest)
@@ -224,6 +320,10 @@ function main(): void {
       )
     }
   }
+
+  // ── Header-format check (single source of truth) ───────────────────────
+
+  errors.push(...validatePublicCacheControlFormat())
 
   // ── Report ──────────────────────────────────────────────────────────────
 

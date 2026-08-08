@@ -172,6 +172,25 @@ export default function Hero({
         "text-white",
       )}
     >
+      {/* LCP hero visual — a real <Image priority sizes> element so the
+          largest contentful paint is an eagerly-loaded photo, not the <h1>.
+          The photo is decorative (aria-hidden); the gradient wash below keeps
+          the brand color and guarantees text contrast on top of it. */}
+      <Image
+        src="/hero-provider.jpg"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-center"
+        aria-hidden
+      />
+      {/* Emerald wash over the photo — preserves the emerald identity and
+          makes the white text readable on any photo content. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-br from-emerald-950/75 via-emerald-900/60 to-teal-900/30"
+      />
       {/* Subtle pattern */}
       <div
         aria-hidden
@@ -187,7 +206,7 @@ export default function Hero({
       <div aria-hidden className="absolute -bottom-32 -left-20 size-80 animate-pulse rounded-full bg-teal-300/20 blur-3xl" style={{ animationDuration: "7s", animationDelay: "1.5s" }} />
       <div aria-hidden className="absolute top-1/3 right-1/4 size-56 animate-pulse rounded-full bg-emerald-300/15 blur-3xl" style={{ animationDuration: "8s", animationDelay: "0.8s" }} />
 
-      <div className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8 lg:py-20">
+      <div className="relative z-10 mx-auto max-w-7xl px-4 py-12 sm:px-6 md:py-16 lg:px-8 lg:py-20">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
           {/* ============ LEFT: copy + search + CTA ============ */}
           <div className="flex flex-col items-start">

@@ -4,6 +4,9 @@ import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useForm, type Resolver, type UseFormReturn } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
+// MUST run before the quoteFormSchema below is constructed: disables zod v4
+// JIT (new Function), which the strict CSP blocks (see src/lib/zod-config.ts).
+import "@/lib/zod-config"
 import { z } from "zod"
 import {
   Check,

@@ -95,10 +95,10 @@ describe("POST /api/webhooks/lytex", () => {
   it("processes charge.paid event and updates booking", async () => {
     // Mock setting lookup to return empty (skip signature validation)
     (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
     // First mock: confirmBookingPayment findUnique — must have payment
-    (vi.mocked(db.booking.findUnique) as any)
+    ;(vi.mocked(db.booking.findUnique) as any)
       .mockResolvedValueOnce({
         id: "book-1",
         clientId: "client-1",
@@ -139,9 +139,9 @@ describe("POST /api/webhooks/lytex", () => {
 
   it("processes charge.expired event", async () => {
     (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.booking.findUnique) as any).mockResolvedValue({
       clientId: "client-1",
       amount: 200,
     })
@@ -169,7 +169,7 @@ describe("POST /api/webhooks/lytex", () => {
 
   it("processes charge.refunded event", async () => {
     (vi.mocked(db.payment.findUnique) as any).mockResolvedValue({ id: "pay-1", status: "PAID", lytexId: "lytex-charge-refunded-1" })
-    (vi.mocked(db.booking.update) as any).mockResolvedValue({
+    ;(vi.mocked(db.booking.update) as any).mockResolvedValue({
       client: { name: "Client", email: "client@test.com", id: "client-1" },
       provider: { name: "Provider", id: "provider-1" },
       service: { title: "Service" },
@@ -304,7 +304,7 @@ describe("POST /api/webhooks/lytex — idempotência (booking já paga)", () => 
       amount: 200,
       payment: { id: "pay-1", status: "PAID" },
     })
-    (vi.mocked(db.payment.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.payment.update) as any).mockResolvedValue({} as any)
 
     const payload = {
       id: "lytex-charge-duplicate-2",
@@ -350,8 +350,8 @@ describe("POST /api/webhooks/lytex — pagamento com cartão", () => {
       amount: 350,
       payment: { id: "pay-card-1", status: "PENDING" },
     })
-    (vi.mocked(db.payment.update) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.payment.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.booking.update) as any).mockResolvedValue({} as any)
     vi.mocked(db.$transaction).mockResolvedValue([{}, {}])
 
     const payload = {

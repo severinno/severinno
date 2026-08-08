@@ -64,7 +64,12 @@ severinno.com.br, www.severinno.com.br {
   #   manifest-src 'self'     → Manifest PWA apenas da origem
   #   img-src restrito        → Sem wildcard https:; apenas domínios específicos
   header {
-    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.osrm.org https://s3.severinno.com.br https://*.s3.severinno.com.br; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.tile.openstreetmap.org https://nominatim.openstreetmap.org ws: wss: https://api.glitchtip.com wss://severinno.com.br https://glitchtip.severinno.com.br; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.osrm.org https://s3.severinno.com.br https://*.s3.severinno.com.br; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.tile.openstreetmap.org https://nominatim.openstreetmap.org ws: wss: https://api.glitchtip.com wss://severinno.com.br https://glitchtip.severinno.com.br; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'; report-to csp-endpoint; report-uri /api/csp-report"
+    # CSP3 Reporting API: report-to + Reporting-Endpoints (moderno, Chrome/Edge 96+
+    # e Safari 16+) com report-uri como fallback legado — espelha next.config.ts.
+    # O Caddy SUBSTITUI o header do app (directive header = set), então o sync aqui
+    # é obrigatório para o upgrade chegar à produção.
+    Reporting-Endpoints "csp-endpoint=\"/api/csp-report\""
   }
 
   # ── Healthcheck interno (Docker HEALTHCHECK) ────────────────────────

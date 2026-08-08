@@ -2,13 +2,20 @@
 # E2E Cache Validation — Severinno Marketplace
 #
 # Validates HTTP cache headers end-to-end:
-#   1. Start PostgreSQL (PostGIS) + Redis
-#   2. Push Prisma schema to test DB
-#   3. Build and start Next.js
-#   4. Run Playwright cache tests
-#   5. Clean up
+#   1. Cache-layer gates (fail the PR fast, before the build):
+#      a. validate-cache-manifest.ts — CACHED_ROUTES must match the actual
+#         route handlers + the stale-while-revalidate header format
+#      b. SWR cache-header unit tests (all-cache-routes.test.ts +
+#         api-server.test.ts) — cacheControlPublic must keep emitting
+#         stale-while-revalidate for every public cached route
+#   2. Start PostgreSQL (PostGIS) + Redis
+#   3. Push Prisma schema to test DB
+#   4. Build and start Next.js
+#   5. Run Playwright cache tests (providers-cache + all-cache-routes)
+#   6. Clean up
 #
 # Triggered on:
+#   - workflow_call (called by release-deploy.yml — cache layer BLOCKS release)
 #   - PRs to main that touch cache-related files
 #   - Push to main (after deploy)
 # =============================================================================
@@ -16,6 +23,7 @@
 name: E2E Cache
 
 on:
+  workflow_call:
   pull_request:
     branches: [main]
     paths: &cache_paths
@@ -105,8 +113,24 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: bunx prisma generate
+      # ── Cache-layer gates (fail the PR fast, before the expensive build) ──
+      # 1. Manifest contract: CACHED_ROUTES must match the actual route
+      #    handlers + the stale-while-revalidate header format.
+      - name: Gate — validate cache manifest
+        run: npx tsx scripts/validate-cache-manifest.ts
+
+      # 2. SWR header unit tests: cacheControlPublic must keep emitting
+      #    stale-while-revalidate for every public cached route, and the
+      #    manifest integrity (counts/Vary/s-maxage rules) must hold.
+      - name: Gate — SWR cache-header unit tests
+        run: |
+          bunx vitest run --config vitest.config.unit.ts \
+            src/app/api/__tests__/all-cache-routes.test.ts \
+            src/lib/__tests__/api-server.test.ts
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          SESSION_SECRET: ${{ env.SESSION_SECRET }}
 
       # Push schema instead of running full migrations — faster and sufficient
       # for cache header testing (we don't need data, just the schema)
@@ -161,6 +185,10 @@ jobs:
         run: |
           bunx playwright test e2e/providers-cache.spec.ts \
             --grep "cache headers|repeated calls|edge cache" \
+            --project chromium \
+            --reporter list
+          bunx playwright test e2e/all-cache-routes.spec.ts \
+            --grep "all cached routes" \
             --project chromium \
             --reporter list
 

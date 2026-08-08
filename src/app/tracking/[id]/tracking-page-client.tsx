@@ -7,11 +7,24 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { formatBRL, formatDate } from "@/lib/format"
 import { useEffect, useState } from "react"
-import Map, { Marker, Source, Layer, NavigationControl } from "react-map-gl/maplibre"
+import dynamic from "next/dynamic"
 import { useRealtime, TrackingPositionEvent } from "@/hooks/use-realtime"
 import { apiGet, apiPost } from "@/lib/api"
 import { toast } from "sonner"
-import "maplibre-gl/dist/maplibre-gl.css"
+
+// react-map-gl/maplibre (~267 KB gzip) is heavy and only needed when the map
+// card renders (not when the booking is cancelled). Lazy-load it with
+// ssr:false so it becomes a separate chunk fetched on demand — the eager
+// /tracking/[id] JS no longer includes maplibre. The CSS travels with the
+// TrackingMap chunk (imported inside it).
+const TrackingMap = dynamic(() => import("./tracking-map").then((m) => m.TrackingMap), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-80 w-full items-center justify-center bg-muted/20 text-sm text-muted-foreground">
+      Carregando mapa…
+    </div>
+  ),
+})
 
 const STATUS_FLOW = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED"]
 
@@ -210,69 +223,13 @@ export function TrackingPageClient({ booking }: { booking: BookingData }) {
                     <span>O prestador está muito próximo!</span>
                   </div>
                 )}
-                <Map
-                  initialViewState={{
-                    latitude: booking.lat,
-                    longitude: booking.lng,
-                    zoom: 13,
-                  }}
-                  mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
-                  style={{ width: "100%", height: "100%" }}
-                >
-                  <NavigationControl position="top-right" visualizePitch={false} />
-
-                  {/* Client Destination Marker */}
-                  <Marker latitude={booking.lat} longitude={booking.lng}>
-                    <div className="flex flex-col items-center">
-                      <div className="flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg border-2 border-background">
-                        <MapPin className="size-4" />
-                      </div>
-                      <span className="text-[10px] font-semibold bg-background px-1.5 py-0.5 rounded shadow mt-0.5 max-w-[80px] truncate">
-                        Você
-                      </span>
-                    </div>
-                  </Marker>
-
-                  {/* Provider Live Location Marker */}
-                  {providerLocation && (
-                    <Marker latitude={providerLocation[1]} longitude={providerLocation[0]}>
-                      <div className="flex flex-col items-center">
-                        <div className="flex size-8 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg border-2 border-background animate-pulse">
-                          <Navigation className="size-4 rotate-45" />
-                        </div>
-                        <span className="text-[10px] font-semibold bg-background px-1.5 py-0.5 rounded shadow mt-0.5 max-w-[80px] truncate">
-                          {booking.provider.name}
-                        </span>
-                      </div>
-                    </Marker>
-                  )}
-
-                  {/* OSRM Route Line */}
-                  {routeCoords && (
-                    <Source
-                      id="tracking-route"
-                      type="geojson"
-                      data={{
-                        type: "Feature",
-                        properties: {},
-                        geometry: {
-                          type: "LineString",
-                          coordinates: routeCoords,
-                        },
-                      }}
-                    >
-                      <Layer
-                        id="tracking-route-layer"
-                        type="line"
-                        layout={{ "line-join": "round", "line-cap": "round" }}
-                        paint={{
-                          "line-color": "#059669",
-                          "line-width": 4,
-                        }}
-                      />
-                    </Source>
-                  )}
-                </Map>
+                <TrackingMap
+                  lat={booking.lat}
+                  lng={booking.lng}
+                  providerLocation={providerLocation}
+                  providerName={booking.provider.name}
+                  routeCoords={routeCoords}
+                />
               </div>
             </CardContent>
           </Card>

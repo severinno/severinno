@@ -137,13 +137,13 @@ describe("POST /api/admin/settlements — generate period", () => {
 
   it("generates monthly settlement from PAID payments", async () => {
     (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
-    (vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue(null)
-    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([
+    ;(vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([
       { amount: 50000, booking: { providerId: "prov-1", provider: { name: "Paulo", email: "paulo@test.com" } } },
       { amount: 30000, booking: { providerId: "prov-2", provider: { name: "Maria", email: "maria@test.com" } } },
       { amount: 15000, booking: { providerId: "prov-1", provider: { name: "Paulo", email: "paulo@test.com" } } },
     ] as any)
-    (vi.mocked(db.settlementPeriod.create) as any).mockResolvedValue({
+    ;(vi.mocked(db.settlementPeriod.create) as any).mockResolvedValue({
       id: "sp-new-1",
       type: "MONTHLY",
       status: "PENDING",
@@ -177,7 +177,7 @@ describe("POST /api/admin/settlements — generate period", () => {
 
   it("returns 409 when period already exists for dates", async () => {
     (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue({ id: "existing" } as any)
+    ;(vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue({ id: "existing" } as any)
 
     const req = mockRequest({ type: "MONTHLY" })
     const res = await generatePeriod(req)
@@ -189,8 +189,8 @@ describe("POST /api/admin/settlements — generate period", () => {
 
   it("returns 404 when no payments found in period", async () => {
     (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue(null)
-    (vi.mocked(db.payment.findMany) as any).mockResolvedValue([])
+    ;(vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([])
 
     const req = mockRequest({ type: "MONTHLY" })
     const res = await generatePeriod(req)
@@ -272,7 +272,7 @@ describe("POST /api/admin/settlements/[id]/finalize", () => {
       status: "PENDING",
       notes: null,
     } as any)
-    (vi.mocked(db.settlementPeriod.update) as any).mockResolvedValue({
+    ;(vi.mocked(db.settlementPeriod.update) as any).mockResolvedValue({
       id: "sp-1",
       status: "FINALIZED",
       finalizedAt: new Date(),
@@ -337,7 +337,7 @@ describe("POST /api/admin/settlements/[id]/pay/[providerId]", () => {
       id: "ps-1",
       status: "PENDING",
     } as any)
-    (vi.mocked(db.providerSettlement.update) as any).mockResolvedValue({
+    ;(vi.mocked(db.providerSettlement.update) as any).mockResolvedValue({
       id: "ps-1",
       status: "PAID",
       paidAt: new Date(),
@@ -359,7 +359,7 @@ describe("POST /api/admin/settlements/[id]/pay/[providerId]", () => {
       id: "ps-1",
       status: "PENDING",
     } as any)
-    (vi.mocked(db.providerSettlement.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.providerSettlement.update) as any).mockResolvedValue({} as any)
 
     const req = new Request("http://localhost", { method: "POST" })
     await payProvider(req, { params: Promise.resolve({ id: "sp-1", providerId: "prov-1" }) })

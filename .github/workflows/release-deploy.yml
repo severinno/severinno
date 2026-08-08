@@ -74,6 +74,25 @@ jobs:
   test:
     name: Tests
     runs-on: ubuntu-latest
+
+    # Postgres service — same setup as ci.yml. The unit suite (vitest) hits
+    # the DB for route tests; without it the release gate fails on DB-dependent
+    # tests even though they pass locally.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: severinno_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -81,6 +100,10 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run test:run
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
+          REDIS_URL: redis://localhost:6379
+          SESSION_SECRET: ci-session-secret-at-least-32-characters-long
 
       - name: Generate coverage badge (for commit)
         run: npx tsx scripts/coverage-badge.ts --save
@@ -101,12 +124,95 @@ jobs:
             git push
           fi
 
+  # -- E2E Cache Layer --------------------------------------------------------
+  # Same cache gates as the PR workflow: validate-cache-manifest.ts (manifest
+  # + stale-while-revalidate header format) + SWR cache-header unit tests +
+  # Playwright all-cache-routes. Blocks the release if the cache layer
+  # regresses — cache is a first-class release gate, not just a PR check.
+  e2e-cache:
+    uses: ./.github/workflows/e2e-cache.yml
+
+  # -- JS Bundle Budget ------------------------------------------------------
+  # Same gate as ci.yml: ANALYZE=true webpack build + scripts/check-js-budget.mjs
+  # enforces the JS size budget. Blocks the release if any chunk/library blew
+  # its gzip limit. Runs in parallel with the other gates; report uploaded even
+  # on failure so release blockers are visible.
+  budget:
+    name: JS Bundle Budget
+    runs-on: ubuntu-latest
+    needs: [utf8-check, quality-gate, lint, typecheck]
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+      - run: bun run db:generate
+
+      - name: Cache Next.js build + analyze report
+        uses: actions/cache@v4
+        with:
+          path: |
+            .next/cache
+            .next/analyze
+          key: ${{ runner.os }}-next-analyze-${{ hashFiles('bun.lock', 'package.json', 'next.config.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-next-analyze-
+
+      # --webpack is required: @next/bundle-analyzer only emits reports for
+      # webpack builds. analyze:webpack is package-manager agnostic (plain
+      # `next build`), so it works under bun in CI and pnpm locally.
+      - name: Analyze build (webpack + bundle report)
+        run: bun run analyze:webpack
+        env:
+          SKIP_TYPESCRIPT_CHECK: "true"
+
+      - name: Enforce JS bundle budget
+        run: bun run budget:js
+
+      # Versioned bundle report: persists size evolution (initial/total/
+      # maplibre/recharts/framer-motion) in docs/bundle-report.md across
+      # releases. Only meaningful on tag pushes (github.ref_name = vX.Y.Z);
+      # on plain main pushes it would record a bogus "main" row, so skip.
+      - name: Generate versioned bundle report
+        if: github.ref_type == 'tag' && github.event_name == 'push'
+        run: bun run bundle:report --version "${{ github.ref_name }}"
+
+      - name: Commit bundle report (tag pushes only)
+        if: github.ref_type == 'tag' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/bundle-report.md
+          if git diff --cached --quiet; then
+            echo "No changes to bundle report — skipping commit"
+          else
+            git commit -m "docs: update bundle report [skip ci]"
+            # Tag-triggered runs check out detached HEAD, so a bare `git push`
+            # has no upstream branch. Push the report commit to the default
+            # branch explicitly (works from detached HEAD).
+            git push origin "HEAD:${{ github.event.repository.default_branch }}"
+          fi
+
+      - name: Upload bundle analyze report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-analyze-report
+          path: .next/analyze/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # -- Docker build & push (depends on quality gates) -----------------------
 
   docker:
     name: Docker Build & Push
     runs-on: ubuntu-latest
-    needs: [utf8-check, quality-gate, lint, typecheck, test]
+    needs: [utf8-check, quality-gate, lint, typecheck, test, budget, e2e-cache]
     permissions:
       contents: read
       packages: write

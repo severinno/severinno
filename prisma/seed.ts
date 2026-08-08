@@ -211,6 +211,10 @@ async function main() {
         email: p.email,
         passwordHash: await hashPassword("provider123"),
         name: p.name,
+        // Páginas públicas /u/[slug] (ISR + generateStaticParams) dependem do
+        // slug. Determinístico a partir do nome: "Carlos Encanador" →
+        // "carlos-encanador" (usado pelo lighthouserc.json no CI).
+        slug: slugify(p.name),
         role: "PROVIDER",
         verified: true,
         active: true,

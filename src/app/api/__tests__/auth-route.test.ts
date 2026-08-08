@@ -98,7 +98,7 @@ const mockUser = {
 describe("POST /api/auth/login", () => {
   beforeEach(() => {
     (vi as any).clearAllMocks()
-    (vi.mocked(db.user.findUnique) as any).mockReset()
+    ;(vi.mocked(db.user.findUnique) as any).mockReset()
     vi.mocked(verifyPassword).mockReturnValue(true)
     _mockSession = null
   })
@@ -189,14 +189,14 @@ describe("POST /api/auth/register", () => {
 
   it("creates a client user and returns 201", async () => {
     (vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.user.create) as any).mockResolvedValue({
+    ;(vi.mocked(db.user.create) as any).mockResolvedValue({
       id: "user-2",
       name: "Maria Souza",
       email: "maria@example.com",
       role: "CLIENT",
       avatarUrl: null,
     } as any)
-    (vi.mocked(db.user.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.user.update) as any).mockResolvedValue({} as any)
 
     const req = createMockRequest({ method: "POST", body: clientPayload })
     const res = await register(req)
@@ -211,15 +211,15 @@ describe("POST /api/auth/register", () => {
 
   it("creates a provider user with extra fields", async () => {
     (vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.user.create) as any).mockResolvedValue({
+    ;(vi.mocked(db.user.create) as any).mockResolvedValue({
       id: "user-3",
       name: "Carlos Prestador",
       email: "carlos@example.com",
       role: "PROVIDER",
       avatarUrl: null,
     } as any)
-    (vi.mocked(db.user.update) as any).mockResolvedValue({} as any)
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([])
+    ;(vi.mocked(db.user.update) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([])
 
     const req = createMockRequest({
       method: "POST",
@@ -292,7 +292,7 @@ describe("GET /api/auth/me", () => {
 
   it("returns user for authenticated session", async () => {
     _mockSession = { userId: "user-1", role: "CLIENT" } as any
-    (vi.mocked(db.user.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue({
       id: "user-1",
       name: "João Silva",
       email: "joao@example.com",
@@ -318,7 +318,7 @@ describe("GET /api/auth/me", () => {
 
   it("returns null user when session user not found in db", async () => {
     _mockSession = { userId: "nonexistent", role: "CLIENT" } as any
-    (vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
 
     const res = await me()
     const parsed = await parseResponse(res)

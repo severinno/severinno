@@ -4,6 +4,28 @@ import { db } from "@/lib/db"
 import { PublicProfilePage } from "./public-profile-page"
 import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
 
+// ISR — página pública de SEO (perfil de prestador): dados mudam com pouca
+// frequência e o profile carrega reviews/serviços via react-query no client.
+// generateStaticParams pré-renderiza prestadores ativos no build (estática de
+// verdade); perfis novos caem em on-demand (dynamicParams default true) e
+// entram no full route cache com a mesma revalidação.
+// Prisma direto, sem fetch — o route-level revalidate é o mecanismo correto.
+export const revalidate = 300
+
+export async function generateStaticParams() {
+  try {
+    const users = await db.user.findMany({
+      where: { role: "PROVIDER", active: true },
+      select: { slug: true },
+    })
+    return users.flatMap((u) => (u.slug ? [{ slug: u.slug }] : []))
+  } catch (err) {
+    // DB indisponível no build (ex.: Docker sem service): cai para on-demand ISR.
+    console.warn("[generateStaticParams] /u: DB unavailable, falling back to on-demand ISR", err)
+    return []
+  }
+}
+
 type Props = { params: Promise<{ slug: string }> }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

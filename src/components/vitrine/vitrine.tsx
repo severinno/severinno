@@ -54,7 +54,9 @@ import {
 } from "./filters"
 
 const RESULTS_ANCHOR_ID = "vitrine-resultados"
-const PAGE_LIMIT = 9
+// P1-1 perf: 9 heavy ProviderCards contributed ~1/3 of the home DOM and
+// hydration cost. 6 cards = 2 rows of 3 on xl, still paginated below.
+const PAGE_LIMIT = 6
 
 // ── Combined state (filters + debouncedQ + page) via reducer ─────────────
 // Using useReducer so that filter changes atomically reset the page,
