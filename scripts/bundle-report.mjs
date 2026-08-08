@@ -18,6 +18,23 @@
  *                                                     # releases so Δ compares against the
  *                                                     # last release. Never accumulates
  *                                                     # duplicate rows (same label = upsert).
+ *                                                     # ANTI-REGRESSION GATE: fails (exit 1)
+ *                                                     # if the merged bundle's Initial JS (/) or
+ *                                                     # Total worsened by more than the threshold
+ *                                                     # vs the last versioned release, so a
+ *                                                     # per-merge regression BLOCKS the push to
+ *                                                     # main (thresholds in KB gzip,
+ *                                                     # env-overridable, default 50/200):
+ *                                                     #   JS_BUDGET_MAIN_DELTA_INITIAL_KB
+ *                                                     #   JS_BUDGET_MAIN_DELTA_TOTAL_KB
+ *   node scripts/bundle-report.mjs --version develop  # rolling "develop" row — same upsert
+ *                                                     # mechanism for push to develop (ci.yml),
+ *                                                     # sorted BELOW main but ABOVE releases so
+ *                                                     # feature-merge evolution is tracked in the
+ *                                                     # report before reaching main. TRACKING
+ *                                                     # ONLY: the anti-regression gate stays
+ *                                                     # main-only by design (develop is WIP —
+ *                                                     # merges there must not be blocked).
  *   node scripts/bundle-report.mjs --preview          # PR comment body: delta vs the
  *                                                     # last versioned release, printed
  *                                                     # to stdout, WITHOUT touching
@@ -75,6 +92,12 @@ try {
 const today = new Date().toISOString().slice(0, 10)
 const num = (v) => (v == null ? null : +v.toFixed(1))
 const cell = (v) => (v == null ? "—" : v.toFixed(1))
+
+/** Env override helper: positive finite number or fallback (KB, gzip). */
+const numEnv = (raw, fallback) => {
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
 
 const entry = {
   version,
@@ -188,19 +211,30 @@ function parseRows(md) {
   return rows
 }
 
+// Rolling branch rows (ci.yml budget job, push to main/develop): they track
+// per-merge evolution and never represent a release — so they must NEVER be
+// the baseline for a delta/gate/preview comparison (those always target the
+// latest versioned RELEASE). `main` ranks first (newest), `develop` second;
+// both above every versioned release.
+const ROLLING_ROWS = new Set(["main", "develop"])
+const isRollingRow = (v) => ROLLING_ROWS.has(String(v))
+
 function verKey(v) {
   const s = String(v)
-  // Rolling "main" row (ci.yml, push to main): ranks ABOVE every versioned
-  // release so it stays at the top of the table and its Δ columns compare
-  // against the latest release (the row below it). Without this it would
-  // parse as 0.0.0 and sink to the bottom with meaningless deltas.
+  // Rolling rows (ci.yml, push to main/develop): rank ABOVE every versioned
+  // release so they stay at the top of the table and their Δ columns compare
+  // against the row below them. Without this they would parse as 0.0.0 and
+  // sink to the bottom with meaningless deltas.
   if (s === "main") return [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, s]
+  if (s === "develop") {
+    return [Number.MAX_SAFE_INTEGER - 1, Number.MAX_SAFE_INTEGER - 1, Number.MAX_SAFE_INTEGER - 1, s]
+  }
   const mm = s.replace(/^v/, "").match(/^(\d+)\.(\d+)\.(\d+)/)
   if (!mm) return [0, 0, 0, s]
   return [Number(mm[1]), Number(mm[2]), Number(mm[3]), s]
 }
 // Descending (newest first): semver prefix, then lexicographic for suffixes.
-// "main" (Number.MAX_SAFE_INTEGER) always ranks first.
+// "main" (Number.MAX_SAFE_INTEGER) ranks first, "develop" second.
 function cmpVer(a, b) {
   const ka = verKey(a)
   const kb = verKey(b)
@@ -217,7 +251,10 @@ const rows = parseRows(existing).filter((r) => r.version !== entry.version)
 // (bundle-preview-comment.yml) finds/updates the comment by the marker
 // "## 📦 Bundle preview (PR)" — keep it stable.
 if (preview) {
-  const baseline = [...rows].sort((a, b) => cmpVer(a.version, b.version))[0] ?? null
+  // Baseline for the PR comparison: the latest VERSIONED release — rolling
+  // main/develop rows track merges and must never be the comparison target.
+  const baseline =
+    [...rows].sort((a, b) => cmpVer(a.version, b.version)).find((r) => !isRollingRow(r.version)) ?? null
   const fmt = (v) => (v == null ? "—" : v.toFixed(1) + " KB")
   const delta = (cur, base) => {
     if (cur == null || base == null) return "—"
@@ -289,6 +326,11 @@ rows.sort((a, b) => cmpVer(a.version, b.version))
 
 const fmtDelta = (d) => (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(1))
 const table = rows.map((r, i) => {
+  // Δ columns are DISPLAY-ONLY vs the row below (desc order) — so main's
+  // displayed Δ is vs the develop row when one exists. The anti-regression
+  // gate below compares against the latest RELEASE instead (releaseBaseline
+  // skips rolling rows). The divergence is intentional: the table shows the
+  // incremental last hop, the gate enforces the release target. Don't "fix".
   const prev = rows[i + 1] // next row is the older version (desc order)
   const dInit = prev && r.initialKB != null && prev.initialKB != null ? +(r.initialKB - prev.initialKB).toFixed(1) : null
   const dTotal = prev && r.totalKB != null && prev.totalKB != null ? +(r.totalKB - prev.totalKB).toFixed(1) : null
@@ -373,6 +415,15 @@ fs.writeFileSync(REPORT, md)
 // so the repo shows the initial JS KB + gate of the LATEST release without
 // hardcoding values in the README. Written only in write mode — --preview is
 // read-only and never touches docs/ (verified by the read-only test).
+// NOTE: the badge reflects the SIZE-GATE status of the latest release
+// (entry.ok from check-js-budget), written BEFORE the anti-regression gate
+// below — a main push blocked by the delta gate still leaves a green ✅
+// badge. That is intentional: the badge documents the release's size gate,
+// not per-merge anti-regression outcomes (those fail the CI job instead).
+// Rolling-row writes (--version develop) overwrite the badge with the
+// branch's own values and commit it on develop; the README endpoint resolves
+// from main, so it self-corrects on the next main push — the badge is only
+// meaningful on the deployed branch.
 const BADGE = path.join(ROOT, "docs", "bundle-badge.json")
 const badge = {
   schemaVersion: 1,
@@ -382,6 +433,105 @@ const badge = {
 }
 fs.writeFileSync(BADGE, JSON.stringify(badge, null, 2) + "\n")
 
+// ── Anti-regression gate (rolling "main" row) ───────────────────────────────
+// The 'main' row (ci.yml, push to main) is not just tracking — it is a GATE:
+// if the merged bundle's Initial JS (/) or Total worsened by more than the
+// threshold vs the last versioned release, the budget job FAILS (exit 1). This
+// turns per-merge tracking into an anti-regression gate on push to main: a
+// +50 KB first-paint regression can no longer ride a merge into the report.
+// Thresholds in KB gzip, env-overridable (policy mirrored in ci.yml):
+//   JS_BUDGET_MAIN_DELTA_INITIAL_KB  (default 50)
+//   JS_BUDGET_MAIN_DELTA_TOTAL_KB    (default 200)
+// Only evaluated for the rolling "main" row — releases define the baseline,
+// so comparing a release against itself makes no sense. Skipped when the
+// initial metric came from the rootMainFiles FALLBACK (non-comparable — same
+// honesty rule as INIT_FALLBACK_NOTE) or when there is no versioned baseline
+// yet (first-ever main run). Report + badge are written BEFORE this check so
+// CI's always() commit step still records the regressed row.
+//
+// Comparison is STRICTLY GREATER than the threshold (>) — a regression
+// exactly equal to the limit (e.g. +50.0 KB initial) passes. If a hard
+// "no worse than X" ceiling is wanted, lower the policy env by the rounding
+// granularity (0.1 KB). Consistent with the size gate's > semantics.
+// numEnv: a threshold of 0 / negative / NaN falls back to the default — a
+// "block ANY positive regression" (0) policy is intentionally NOT expressible
+// via env; use a tiny positive value like 0.05 for that intent.
+const MAIN_DELTA_INITIAL_KB = numEnv(process.env.JS_BUDGET_MAIN_DELTA_INITIAL_KB, 50)
+const MAIN_DELTA_TOTAL_KB = numEnv(process.env.JS_BUDGET_MAIN_DELTA_TOTAL_KB, 200)
+// Baseline for the main gate: the latest VERSIONED release. Rolling rows
+// (main/develop) are explicitly EXCLUDED — once a develop row exists in the
+// report, the gate must still compare against the release, not against
+// develop (develop is WIP and can legitimately carry a regression).
+const releaseBaseline =
+  entry.version === "main" ? rows.find((r) => !isRollingRow(r.version)) : null
+// Single source of truth for the deltas — used BOTH by the gate comparison
+// below AND by the observability log, so a future edit to one can never
+// silently desync the logged value from the compared value.
+// Rounded at the DISPLAYED 0.1 KB granularity: an exact-equal delta
+// (e.g. +7.9 KB vs limite +7.9 KB) must pass per the strictly-greater
+// contract as a human reads the report. Raw doubles (87.9 - 80 =
+// 7.9000000000000004) would otherwise falsely block a merge whose delta is
+// exactly at the limit. (No false-negative window: entry metrics and the
+// parsed baseline are both already 1-decimal, so genuine deltas are always
+// multiples of 0.1 — only float noise lands in-between, which this absorbs.)
+const gdInit =
+  entry.version === "main" && releaseBaseline && entry.initialKB != null && releaseBaseline.initialKB != null
+    ? +(entry.initialKB - releaseBaseline.initialKB).toFixed(1)
+    : null
+const gdTotal =
+  entry.version === "main" && releaseBaseline && entry.totalKB != null && releaseBaseline.totalKB != null
+    ? +(entry.totalKB - releaseBaseline.totalKB).toFixed(1)
+    : null
+if (entry.version === "main" && releaseBaseline && m.initialSource === "prerendered-html") {
+  const dInit = gdInit
+  if (dInit != null && dInit > MAIN_DELTA_INITIAL_KB) {
+    console.error(
+      `❌ ANTI-REGRESSION GATE: 'main' Initial JS (/) piorou +${dInit.toFixed(1)} KB vs ` +
+        `${releaseBaseline.version} (${releaseBaseline.initialKB.toFixed(1)} → ${entry.initialKB.toFixed(1)} KB; ` +
+        `limite +${MAIN_DELTA_INITIAL_KB} KB). Bloqueado — reduza o initial JS antes do merge.`,
+    )
+    process.exit(1)
+  }
+  const dTotal = gdTotal
+  if (dTotal != null && dTotal > MAIN_DELTA_TOTAL_KB) {
+    console.error(
+      `❌ ANTI-REGRESSION GATE: 'main' Total piorou +${dTotal.toFixed(1)} KB vs ` +
+        `${releaseBaseline.version} (${releaseBaseline.totalKB.toFixed(1)} → ${entry.totalKB.toFixed(1)} KB; ` +
+        `limite +${MAIN_DELTA_TOTAL_KB} KB). Bloqueado — reduza o bundle total antes do merge.`,
+    )
+    process.exit(1)
+  }
+}
+
+// Observability: the CI log must show whether the gate was evaluated and its
+// delta — or why it was skipped (fallback metric / no versioned baseline) —
+// otherwise a green run is indistinguishable from a silent skip. Rolling
+// rows: main gets the gate; develop is tracking-only (no gate by design).
+if (entry.version === "develop") {
+  console.log(
+    "   gate anti-regressão: n/a — develop é tracking-only (o gate bloqueia só push em main)",
+  )
+} else if (entry.version === "main") {
+  if (!releaseBaseline) {
+    // rows here already contains the pushed entry — but releaseBaseline is
+    // null, so no prior row is a versioned release. rows.length > 1 means
+    // prior ROLLING rows exist (develop history) vs a true first-ever run.
+    console.log(
+      rows.length > 1
+        ? "   gate anti-regressão: skipped — sem release versionado ainda (só linhas rolling main/develop; o gate compara só vs releases)"
+        : "   gate anti-regressão: skipped — sem baseline versionado (primeiro run de main?)",
+    )
+  } else if (m.initialSource !== "prerendered-html") {
+    console.log(
+      "   gate anti-regressão: skipped — initial veio do fallback rootMainFiles (métrica não comparável)",
+    )
+  } else {
+    const sign = (d) => (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(1))
+    console.log(
+      `   gate anti-regressão: ok (Δ initial ${sign(gdInit)} KB, Δ total ${sign(gdTotal)} KB vs ${releaseBaseline.version})`,
+    )
+  }
+}
 console.log(`✅ bundle-report: ${entry.version} registrado em docs/bundle-report.md (+ docs/bundle-badge.json)`)
 console.log(
   `   initial ${cell(entry.initialKB)} KB | total ${cell(entry.totalKB)} KB | ` +

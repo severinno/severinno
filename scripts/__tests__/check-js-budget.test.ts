@@ -363,6 +363,26 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stderr).toContain("/busca")
   })
 
+  it("source lint: an eager page statically importing framer-motion fails WITHOUT a bundle report (exit 1)", () => {
+    const f = makeFixture()
+    // No .next artifacts at all — the source lint must fire pre-build. This
+    // closes the gap where only check 5 (build OUTPUT, post-build) carried
+    // the framer-motion sentinel: a static import of the removed lib is now
+    // also caught by the source lint (check 8) on a fresh checkout, before
+    // any ANALYZE build runs.
+    f.write(
+      "src/app/page.tsx",
+      'import { motion } from "framer-motion";\nexport default function Page() { return null }\n',
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain("EAGER-GRAPH LINT VIOLATIONS")
+    expect(r.stderr).toContain("framer-motion statically imported")
+    expect(r.stderr).toContain("src/app/page.tsx")
+    expect(r.stderr).toContain("reachable from /")
+  })
+
   it("source lint: transitive static import through an eager component is caught with route attribution (exit 1)", () => {
     const f = makeFixture()
     // Bundle report present → the violation must surface as a check + failure.

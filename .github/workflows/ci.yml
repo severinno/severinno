@@ -223,7 +223,10 @@ jobs:
           # STATICALLY imported in any route's eager graph (dynamic ƒ routes
           # included — the HTML guard can't see them). Defaults already mirror
           # the heavy-lib guard policy; declared here as documented CI policy.
-          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client
+          # framer-motion: zero-cost regression sentinel — the lib was removed
+          # from the app (2026-08-08, pure CSS); any static import in an eager
+          # graph is a regression, caught pre-build by check 8 (source lint).
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client,framer-motion
         run: bun run budget:js
 
       # ── Proof of gate ──────────────────────────────────────────────────────
@@ -268,7 +271,7 @@ jobs:
           JS_BUDGET_REAL_CATEGORIA_KB: 1
           # Eager-graph lint is boolean (not a size): pinned to the same policy
           # as the real gate so a script-default drift can't silently shift CI.
-          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client,framer-motion
         run: |
           set +e
           out=$(node scripts/check-js-budget.mjs 2>&1)
@@ -314,8 +317,20 @@ jobs:
       # regression merged to main is exactly the case the report must show
       # (mirrors the PR-preview step below; bundle-report.mjs tolerates exit 1,
       # only exit 2 / missing report fails it).
+      # ANTI-REGRESSION GATE (bundle-report.mjs): the 'main' row is not just
+      # tracking — the generator exits 1 if the merged bundle's Initial JS (/)
+      # or Total worsened by more than the threshold vs the last versioned
+      # release, blocking the push. Thresholds declared here as the enforced
+      # policy (KB gzip); script defaults are the fallback. Evaluated only for
+      # the rolling 'main' row (releases define the baseline) and skipped when
+      # the initial metric came from the rootMainFiles fallback (non-comparable).
       - name: Generate versioned bundle report (main push)
         if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          # +50 KB first-paint regression (or +200 KB total) vs the last
+          # release blocks the push to main.
+          JS_BUDGET_MAIN_DELTA_INITIAL_KB: 50
+          JS_BUDGET_MAIN_DELTA_TOTAL_KB: 200
         run: bun run bundle:report --version main
 
       - name: Commit bundle report (main push)
@@ -328,6 +343,44 @@ jobs:
             echo "No changes to bundle report — skipping commit"
           else
             git commit -m "docs: update bundle report (main) [skip ci]"
+            git push
+          fi
+
+      # ── Rolling 'develop' row (tracking only) ─────────────────────────────
+      # Same upsert mechanism as main, so feature-merge evolution is versioned
+      # in the report BEFORE reaching main: a rolling "develop" row (sorted
+      # below main, above releases — Δ vs the row below) is recorded on every
+      # push to develop. NO anti-regression gate here by design: develop is WIP
+      # and merges there must not be blocked; the gate stays main-only
+      # (bundle-report.mjs evaluates it only for --version main). Same [skip ci]
+      # commit pattern so this docs commit doesn't re-trigger the workflow.
+      #
+      # KNOWN TRADE-OFF: both branches commit docs/bundle-report.md on every
+      # push, so a develop→main merge will conflict on that file. Resolve by
+      # keeping THEIRS (develop's version — `git checkout --theirs
+      # docs/bundle-report.md` and `--theirs docs/bundle-badge.json`), which
+      # preserves the rolling develop row; then re-run
+      # `bun run bundle:report --version main` — the generator reconciles the
+      # table from the rows in the kept base and CI rewrites real values on
+      # the next push. (Keeping OURS would drop develop's history from the
+      # table, since the regeneration only sees the rows in the kept base.)
+      # The commit steps end in `git push`: if the branch moves between
+      # checkout and push the push fails and the row is lost — pre-existing
+      # for main, now on both branches; the next push regenerates.
+      - name: Generate versioned bundle report (develop push)
+        if: always() && github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        run: bun run bundle:report --version develop
+
+      - name: Commit bundle report (develop push)
+        if: always() && github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/bundle-report.md docs/bundle-badge.json
+          if git diff --cached --quiet; then
+            echo "No changes to bundle report — skipping commit"
+          else
+            git commit -m "docs: update bundle report (develop) [skip ci]"
             git push
           fi
 

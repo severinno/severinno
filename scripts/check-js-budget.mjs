@@ -60,7 +60,7 @@
  *      on any single page variant is caught in the bytes the browser really
  *      downloads — complementing the layout+page chunk sum of check 6.
  *   8. Source-level eager-graph lint: maplibre-gl / react-map-gl / recharts /
- *      socket.io-client must never be STATICALLY imported by
+ *      socket.io-client / framer-motion must never be STATICALLY imported by
  *      any file in a route's eager graph. BFS from every route entry over static imports
  *      (dynamic import()/next/dynamic targets are lazy and exempt); a
  *      violation lists the route(s) that reach the offending file. Needs NO
@@ -80,7 +80,7 @@
  *   JS_BUDGET_ROUTE_LOGIN_KB=20 ...
  *   JS_BUDGET_REAL_BUSCA_KB=400 JS_BUDGET_REAL_DASHBOARD_KB=400
  *   JS_BUDGET_REAL_U_KB=400 ...
- *   JS_BUDGET_EAGER_LIBS=maplibre-gl,react-map-gl,recharts
+ *   JS_BUDGET_EAGER_LIBS=maplibre-gl,react-map-gl,recharts,socket.io-client,framer-motion
  *   JS_BUDGET_EAGER_ALLOW_FILES=src/legacy/x.tsx   # whitelist a flagged file
  */
 
@@ -429,13 +429,18 @@ function routeGzip(routeDir) {
 // Config via env (defaults mirror the check-5 guard list):
 //   JS_BUDGET_EAGER_LIBS        — comma-separated lib names to guard
 //                                 (default: maplibre-gl, react-map-gl,
-//                                 recharts)
+//                                 recharts, socket.io-client,
+//                                 framer-motion — the last as a zero-cost
+//                                 regression sentinel: the lib was removed
+//                                 from the app 2026-08-08, so a static
+//                                 import anywhere in an eager graph is
+//                                 always a regression)
 //   JS_BUDGET_EAGER_ALLOW_FILES — comma-separated src-relative paths whose
 //                                 heavy static imports are whitelisted
 //                                 (documented exception only)
 const EAGER_LIBS = (
   process.env.JS_BUDGET_EAGER_LIBS ||
-  "maplibre-gl,react-map-gl,recharts,socket.io-client"
+  "maplibre-gl,react-map-gl,recharts,socket.io-client,framer-motion"
 )
   .split(",")
   .map((s) => s.trim())

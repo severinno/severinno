@@ -208,7 +208,10 @@ jobs:
           # STATICALLY imported in any route's eager graph (dynamic ƒ routes
           # included — the HTML guard can't see them). Defaults already mirror
           # the heavy-lib guard policy; declared here as documented CI policy.
-          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client
+          # framer-motion: zero-cost regression sentinel — the lib was removed
+          # from the app (2026-08-08, pure CSS); any static import in an eager
+          # graph is a regression, caught pre-build by check 8 (source lint).
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client,framer-motion
         run: bun run budget:js
 
       # Versioned bundle report: persists size evolution (initial/total/
