@@ -218,24 +218,12 @@ jobs:
           JS_BUDGET_REAL_BUSCA_KB: 320
           JS_BUDGET_REAL_DASHBOARD_KB: 270
           JS_BUDGET_REAL_U_KB: 280
+          JS_BUDGET_REAL_CATEGORIA_KB: 320  # calibrated via --update (measured 259.0 KB + 20%)
           # Eager-graph source lint (check 8): heavy libs that must never be
           # STATICALLY imported in any route's eager graph (dynamic ƒ routes
           # included — the HTML guard can't see them). Defaults already mirror
           # the heavy-lib guard policy; declared here as documented CI policy.
-          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,framer-motion,socket.io-client
-          # ── ESCAPE HATCH (time-boxed, do NOT enable without a removal plan) ──
-          # Production-week mitigation: to keep CI green while a heavy lib is
-          # still in the initial JS without removing it yet, uncomment and list
-          # the libs here:
-          #
-          #   JS_BUDGET_GUARD_ALLOW: framer-motion
-          #
-          # Exempts ONLY the presence guards (check 5 prerendered HTML + check 8
-          # source lint) for the listed libs — ALL size budgets still apply and
-          # the script prints a prominent ⚠️ ESCAPE HATCH ACTIVE warning to the
-          # log. Deliberately NOT set by default: the guard is the permanent
-          # contract. Remove the var (and the lib from the eager graph) before
-          # the end of the production week — grep CI logs for "ESCAPE HATCH".
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client
         run: bun run budget:js
 
       # ── Proof of gate ──────────────────────────────────────────────────────
@@ -255,7 +243,6 @@ jobs:
           JS_BUDGET_LARGEST_CHUNK_KB: 1
           JS_BUDGET_LIB_MAPLIBRE_KB: 1
           JS_BUDGET_LIB_RECHARTS_KB: 1
-          JS_BUDGET_LIB_FRAMER_KB: 1
           JS_BUDGET_LIB_SOCKETIO_KB: 1
           JS_BUDGET_ROUTE_ROOT_KB: 1
           JS_BUDGET_ROUTE_BUSCA_KB: 1
@@ -278,9 +265,10 @@ jobs:
           JS_BUDGET_REAL_BUSCA_KB: 1
           JS_BUDGET_REAL_DASHBOARD_KB: 1
           JS_BUDGET_REAL_U_KB: 1
+          JS_BUDGET_REAL_CATEGORIA_KB: 1
           # Eager-graph lint is boolean (not a size): pinned to the same policy
           # as the real gate so a script-default drift can't silently shift CI.
-          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,framer-motion,socket.io-client
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client
         run: |
           set +e
           out=$(node scripts/check-js-budget.mjs 2>&1)
@@ -313,6 +301,36 @@ jobs:
       # is most informative then — but only when the ANALYZE report exists:
       # if the analyze build failed, the generate step exits 2 fast and the
       # upload is ignored, so the commenter posts a fallback message.
+      # ── Versioned bundle report on main ──────────────────────────────────
+      # The docs/bundle-report.md history is normally written per RELEASE
+      # (release-deploy.yml, --version <tag>). During the pre-production
+      # stretch we ALSO record it on every push to main so the bundle
+      # evolution is tracked per merge, not just per tag: a rolling "main"
+      # row (upserted each run — never accumulates duplicate rows) sits on
+      # top of the table, with Δ columns vs the last versioned release.
+      # The commit uses [skip ci] (same pattern as the coverage badge) so
+      # the docs commit doesn't re-trigger this workflow.
+      # always(): record the row EVEN when the budget gate is red — a bundle
+      # regression merged to main is exactly the case the report must show
+      # (mirrors the PR-preview step below; bundle-report.mjs tolerates exit 1,
+      # only exit 2 / missing report fails it).
+      - name: Generate versioned bundle report (main push)
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: bun run bundle:report --version main
+
+      - name: Commit bundle report (main push)
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/bundle-report.md docs/bundle-badge.json
+          if git diff --cached --quiet; then
+            echo "No changes to bundle report — skipping commit"
+          else
+            git commit -m "docs: update bundle report (main) [skip ci]"
+            git push
+          fi
+
       - name: Generate bundle preview (PR only)
         if: always() && github.event_name == 'pull_request'
         # > file (no tee): GH bash runs with -o pipefail, so a failed

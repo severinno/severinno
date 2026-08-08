@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
 import { Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -151,17 +150,9 @@ export function StepWizard({
       {/* ── Step Content ── */}
       <ScrollArea className="flex-1 min-h-0">
         <div className="px-4 sm:px-5 py-4">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -12 }}
-              transition={{ duration: 0.18 }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          <div key={currentStep} className="svn-step-in">
+            {children}
+          </div>
         </div>
       </ScrollArea>
 

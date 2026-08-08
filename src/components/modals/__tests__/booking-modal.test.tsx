@@ -69,13 +69,6 @@ vi.mock("sonner", () => ({
   toast: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }))
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ...p }: any) => <div {...p}>{children}</div>,
-    p: ({ children, ...p }: any) => <p {...p}>{children}</p>,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-}))
 
 vi.mock("@/hooks/use-mobile", () => ({
   useIsMobile: () => false,

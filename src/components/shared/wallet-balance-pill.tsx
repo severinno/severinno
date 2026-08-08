@@ -11,7 +11,6 @@
  */
 
 import { useQuery } from "@tanstack/react-query"
-import { motion } from "framer-motion"
 import { Wallet } from "lucide-react"
 
 import { apiGet } from "@/lib/api"
@@ -54,16 +53,15 @@ export function WalletBalancePill() {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <motion.button
+        {/* Pulse is pure CSS (svn-scale-pulse) — no framer-motion (budget guard). */}
+        <button
           type="button"
           onClick={() => navigate("provider.finance")}
-          animate={isPulsing ? { scale: [1, 1.12, 1] } : { scale: 1 }}
-          transition={{ duration: 0.45, ease: "easeOut" }}
-          className="mr-1.5 inline-flex h-7 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
+          className={`mr-1.5 inline-flex h-7 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50${isPulsing ? " svn-scale-pulse" : ""}`}
         >
           <Wallet className="size-3.5" />
           {formatBRL(data.balance)}
-        </motion.button>
+        </button>
       </TooltipTrigger>
       <TooltipContent side="bottom" align="end" className="w-48 p-3">
         <div className="space-y-2">

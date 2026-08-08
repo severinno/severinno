@@ -62,20 +62,6 @@ export function getMockToast() {
 }
 
 // ---------------------------------------------------------------------------
-// Mock framer-motion
-// ---------------------------------------------------------------------------
-
-vi.mock("framer-motion", () => ({    motion: {
-    span: (p: any) => {
-      const { size, color, stroke, strokeWidth, fill, absoluteStrokeWidth, ...safe } = p
-      return <span {...safe} />
-    },
-    div: (p: any) => <div {...p} />,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-}))
-
-// ---------------------------------------------------------------------------
 // Mock UI components
 // ---------------------------------------------------------------------------
 

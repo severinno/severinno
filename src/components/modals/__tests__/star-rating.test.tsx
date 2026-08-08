@@ -20,7 +20,10 @@ describe("StarRatingDisplay", () => {
 
   it("renders with count text", () => {
     render(<StarRatingDisplay value={4} count={12} />)
-    expect(screen.getByText(/12/)).toBeInTheDocument()
+    // The count renders inside the value text "4.0 (12)" — match the parens
+    // exactly so the global user-chip mock ("admin123") can't collide (the
+    // old loose /12/ regex matched it: pre-existing ambiguity, now fixed).
+    expect(screen.getByText(/\(12\)/)).toBeInTheDocument()
   })
 
   it("clamps value to max 5", () => {

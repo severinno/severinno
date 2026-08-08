@@ -101,7 +101,89 @@ Remediado no working tree (já aplicado):
 
 ---
 
-## 5. Referências
+## 5. Status da rotação (verificação por hash — 2026-08-08)
+
+> Método: `scripts/verify-secret-rotation.mjs` compara o valor **vazado**
+> (último commit com o arquivo: `.env.production@d547476`, `.env@4cfbbbc`)
+> contra a cópia local atual. Saída value-safe: apenas status + prefixo
+> sha256-8 (nunca os valores).
+>
+> ⚠️ **A igualdade abaixo refere-se à CÓPIA LOCAL** — que é o próprio snapshot
+> do vazamento preservado pelo `git rm --cached`. Ela prova que **nada foi
+> rotacionado na cópia local**, mas a confirmação real exige comparar os
+> hashes no `.env.production` **deployado no servidor**, nos **secrets do CI**
+> e nos **painéis dos fornecedores** (passos 6–7 do §3).
+
+| Variável | Serviço | Status local | Hash atual | Vazado |
+|---|---|---|---|---|
+| `DB_PASSWORD` | Postgres | ❌ IGUAL | `c5c8dba0` | `c5c8dba0` |
+| `POSTGRES_PASSWORD` | Postgres | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
+| `DATABASE_URL` | Prisma (Postgres) | ❌ IGUAL | `208c0f99` | `208c0f99` |
+| `DIRECT_URL` | Prisma (Postgres) | ❌ IGUAL | `6c78e5f0` | `6c78e5f0` |
+| `REDIS_URL` | Redis | ❌ IGUAL | `ad61ff0e` | `ad61ff0e` |
+| `RABBITMQ_PASS` | RabbitMQ | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
+| `RABBITMQ_URL` | RabbitMQ | ❌ IGUAL | `9eb79c31` | `9eb79c31` |
+| `OPENSEARCH_PASSWORD` | OpenSearch | ⚠️ VAZIO | `e3b0c442` | `e3b0c442` |
+| `OPENSEARCH_URL` | OpenSearch | ❌ IGUAL | `19603ec9` | `19603ec9` |
+| `S3_ACCESS_KEY` | S3/MinIO | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
+| `S3_SECRET_KEY` | S3/MinIO | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
+| `SESSION_SECRET` | Auth (sessão) | ❌ IGUAL | `364c2800` | `364c2800` |
+| `CRON_SECRET` | Jobs agendados | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
+| `PAYMENT_WEBHOOK_SECRET` | Webhooks Lytex | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
+| `LYTEX_CLIENT_SECRET` | Integração Lytex | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
+| `SMTP_PASS` | E-mail transacional | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
+| `VAPID_PRIVATE_KEY` | Push (web-push) | ❌ IGUAL | `b4dce5e3` | `b4dce5e3` |
+| `EVOLUTION_API_KEY` | Evolução/WhatsApp (prod) | ⚠️ VAZIO | `e3b0c442` | `e3b0c442` |
+| `SENTRY_AUTH_TOKEN` | Sentry source maps | ⚠️ VAZIO | `e3b0c442` | `e3b0c442` |
+| `SENTRY_DSN` | Sentry (DSN) | ⚠️ VAZIO | `e3b0c442` | `e3b0c442` |
+| `NEXT_PUBLIC_SENTRY_DSN` | Sentry (DSN público) | ⚠️ VAZIO | `e3b0c442` | `e3b0c442` |
+| `GLITCHTIP_DSN` | GlitchTip (DSN) | ⚠️ VAZIO | `e3b0c442` | `e3b0c442` |
+| `NEXT_PUBLIC_GLITCHTIP_DSN` | GlitchTip (DSN público) | ⚠️ VAZIO | `e3b0c442` | `e3b0c442` |
+| `GROQ_API_KEY` | LLM (dev) | ⚠️ N/D | `e3b0c442` | — |
+| `WHATSAPP_API_KEY` | Evolução/WhatsApp (dev) | ⚠️ N/D | `d9b44521` | — |
+| `GLITCHTIP_SECRET` | GlitchTip (dev) | ⚠️ N/D | `0d21a287` | — |
+
+**Resumo: 0 ✅ rotacionado(s) | 16 ❌ igual(is) ao vazado | 7 ⚠️ vazio(s) na cópia local | 3 ⚠️ não verificável(is)**
+
+### Achados além do status
+
+1. **Reuso de senha em 8 serviços**: `POSTGRES_PASSWORD`, `RABBITMQ_PASS`,
+   `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `CRON_SECRET`, `PAYMENT_WEBHOOK_SECRET`,
+   `LYTEX_CLIENT_SECRET` e `SMTP_PASS` compartilham o **mesmo valor**
+   (`e2151e3c`, sem match com placeholders comuns → valor real reusado).
+   Rotacionar os 8 e **eliminar o reuso** (senha única por serviço) — o
+   comprometimento de um serve para todos.
+2. **7 chaves VAZIAS na cópia local** (`e3b0c442` = sha256 de string vazia):
+   `OPENSEARCH_PASSWORD`, `EVOLUTION_API_KEY`, `SENTRY_AUTH_TOKEN`,
+   `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, `GLITCHTIP_DSN`,
+   `NEXT_PUBLIC_GLITCHTIP_DSN` — não são segredos ativos NA CÓPIA LOCAL, mas
+   confirmar que produção real não opera com valores vazios/placeholder.
+3. **Dev N/D**: `WHATSAPP_API_KEY` e `GLITCHTIP_SECRET` têm valor atual que
+   nunca apareceu com esse nome no histórico de `.env` — verificar se vazaram
+   com **outro nome** em commits antigos (ex.: renames) antes de dar baixa.
+   `GROQ_API_KEY` está **vazia** na cópia local (`e3b0c442`) — confirmar que
+   prod/CI usa valor real.
+
+### Ações por serviço (confirmar no ambiente real)
+
+- [ ] **Postgres/Prisma** (`c5c8dba0`, `208c0f99`, `6c78e5f0`): comparar
+      hashes no servidor; rotacionar senha + regenerar URLs.
+- [ ] **Grupo reuso `e2151e3c`** (Postgres pw, RabbitMQ, S3, CRON, Webhook,
+      Lytex, SMTP): rotacionar os 8 com valores independentes.
+- [ ] **Redis/OpenSearch** (`ad61ff0e`, `19603ec9`, `9eb79c31`): rotacionar
+      credenciais + URLs completas.
+- [ ] **Auth/Push** (`364c2800` SESSION_SECRET, `b4dce5e3` VAPID): rotacionar
+      → logout geral + re-registrar push subscriptions.
+- [ ] **Vazios `e3b0c442`**: confirmar que prod usa valores reais; se sim,
+      rodar o verificador no servidor para comparar.
+- [ ] **Dev N/D** (`d9b44521`, `0d21a287`): investigar nomes antigos no
+      histórico; rotacionar se houver valor correlato.
+- [ ] **CI secrets**: atualizar todos no secret store do GitHub Actions e
+      re-rodar `node scripts/verify-secret-rotation.mjs` até 0 ❌.
+
+---
+
+## 6. Referências
 
 - [GitHub — Removing sensitive data from a repository](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
 - [git filter-repo](https://github.com/newren/git-filter-repo)

@@ -1,11 +1,20 @@
 # =============================================================================
 # Lighthouse CI — Severinno Marketplace
 #
-# Enforces the Core Web Vitals baseline on the 3 main public routes before
+# Enforces the Core Web Vitals baseline on the 4 main public routes before
 # deploy, in BOTH form factors via a job matrix:
 #   /                     (home, ISR revalidate=60)
+#   /busca                (marketplace search results — full-text q + filters)
 #   /categoria/limpeza    (SEO category page, ISR)
 #   /u/carlos-encanador   (provider public profile, ISR)
+#
+# NOTE: /busca is audited WITHOUT a query (deterministic empty state). The
+# query-driven results grid calls /api/search which depends on OpenSearch —
+# not provisioned in this workflow — so ?q=... would be flaky/misleading here.
+# The map+filter experience lives on the home vitrine (already covered by /).
+# FUTURE HARDENING: provision OpenSearch + seed indices in this workflow and
+# audit /busca?q=encanador for the real results-grid worst case, then re-tighten
+# thresholds on it (today the empty state rarely stresses LCP/CLS).
 #
 # Matrix legs (run in parallel — strategy.matrix, fail-fast: false):
 #   - desktop — lighthouserc.json          (LCP error 4500ms, CLS error 0.25)
@@ -19,9 +28,9 @@
 #      by /u/[slug] routes — see prisma/seed.ts slugify)
 #   3. Build Next.js production bundle
 #   4. Start the production server on :3000
-#   5. Smoke test the 3 audited routes (fail fast if a route 404s)
-#   6. lhci autorun → collect (3 runs/URL) + assert (per-preset thresholds)
-#      + upload filesystem
+#   5. Smoke test the 4 audited routes (fail fast if a route 404s)
+#   6. lhci autorun → collect (3 runs/URL × 4 URLs) + assert (per-preset
+#      thresholds) + upload filesystem
 #
 # The assert thresholds live in lighthouserc*.json — the single source of
 # truth for the CWV baseline. Update thresholds there, not here.
@@ -183,10 +192,10 @@ jobs:
           done
 
       # Fail fast: Lighthouse would audit a 404 page and produce misleading
-      # scores. The 3 routes must return 200 before we burn 9 audit runs.
+      # scores. The 4 routes must return 200 before we burn 12 audit runs.
       - name: Smoke test audited routes
         run: |
-          for route in "/" "/categoria/limpeza" "/u/carlos-encanador"; do
+          for route in "/" "/busca" "/categoria/limpeza" "/u/carlos-encanador"; do
             status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000$route" || echo "000")
             if [ "$status" = "200" ]; then
               echo "  ✅ GET $route → $status"

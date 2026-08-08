@@ -7,7 +7,7 @@
  *  - WalletBalancePill appears / hides based on role and wallet data
  *  - The sound hooks are invoked when react-query returns notification data
  *
- * We mock all heavy UI (sidebar, framer-motion) and external APIs so the
+ * We mock all heavy UI (sidebar, dashboard panels) and external APIs so the
  * component can render in jsdom without side-effects.
  */
 
@@ -88,21 +88,6 @@ vi.mock("lucide-react", () => {
     Wallet: MockIcon,
   }
 })
-
-// ---- framer-motion: motion.div renders as a plain div --------------------
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ..._props }: { children: React.ReactNode }) => (
-      <div>{children}</div>
-    ),
-    button: ({ children, ..._props }: { children: React.ReactNode }) => (
-      <button type="button">{children}</button>
-    ),
-  },
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-}))
 
 // ---- Hooks under test -----------------------------------------------------
 export const mockUseTransactionNotificationSound = vi.fn()

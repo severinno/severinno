@@ -173,11 +173,46 @@ jobs:
           SKIP_TYPESCRIPT_CHECK: "true"
 
       - name: Enforce JS bundle budget
+        # Mirror of ci.yml's 'Enforce JS bundle budget' env policy — keeps the
+        # per-route JS limits IDENTICAL in both pipelines (PR gate and release
+        # gate). The gate reads its budgets from env
+        # (scripts/check-js-budget.mjs); the script defaults are the fallback,
+        # and these env values are the enforced policy. Values = measured gzip
+        # (layout chain + page chunk) + ~20% headroom, rounded to 10 KB.
+        # Recalibrate with `node scripts/check-js-budget.mjs --update` after a
+        # meaningful bundle change and update BOTH this file and ci.yml.
+        env:
+          JS_BUDGET_ROUTE_ROOT_KB: 20
+          JS_BUDGET_ROUTE_BUSCA_KB: 20
+          JS_BUDGET_ROUTE_DASHBOARD_KB: 10
+          JS_BUDGET_ROUTE_TRACKING_KB: 20
+          JS_BUDGET_ROUTE_U_KB: 20
+          JS_BUDGET_ROUTE_CATEGORIA_KB: 10
+          JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB: 10
+          JS_BUDGET_ROUTE_LOGIN_KB: 20
+          JS_BUDGET_ROUTE_REGISTER_KB: 20
+          JS_BUDGET_ROUTE_RESET_PASSWORD_KB: 20
+          JS_BUDGET_ROUTE_AUTH_RESET_KB: 10
+          JS_BUDGET_ROUTE_AUTH_RESET_TOKEN_KB: 10
+          JS_BUDGET_ROUTE_TERMOS_KB: 10
+          JS_BUDGET_ROUTE_COMO_FUNCIONA_KB: 10
+          JS_BUDGET_ROUTE_CONTATO_KB: 10
+          # Real first-paint transfer per static/ISR route (prerendered HTML).
+          # Calibrated 2026-08-08 after dashboard panels + search-page became
+          # next/dynamic ssr:false / pure CSS: measured + ~20% headroom.
+          JS_BUDGET_REAL_BUSCA_KB: 320
+          JS_BUDGET_REAL_DASHBOARD_KB: 270
+          JS_BUDGET_REAL_U_KB: 280
+          JS_BUDGET_REAL_CATEGORIA_KB: 320  # calibrated via --update (measured 259.0 KB + 20%)
+          # Eager-graph source lint (check 8): heavy libs that must never be
+          # STATICALLY imported in any route's eager graph (dynamic ƒ routes
+          # included — the HTML guard can't see them). Defaults already mirror
+          # the heavy-lib guard policy; declared here as documented CI policy.
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,socket.io-client
         run: bun run budget:js
 
       # Versioned bundle report: persists size evolution (initial/total/
-      # maplibre/recharts/framer-motion) in docs/bundle-report.md across
-      # releases. Only meaningful on tag pushes (github.ref_name = vX.Y.Z);
+      # maplibre/recharts) in docs/bundle-report.md across releases. Only meaningful on tag pushes (github.ref_name = vX.Y.Z);
       # on plain main pushes it would record a bogus "main" row, so skip.
       - name: Generate versioned bundle report
         if: github.ref_type == 'tag' && github.event_name == 'push'

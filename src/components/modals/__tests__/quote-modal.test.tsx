@@ -67,14 +67,6 @@ vi.mock("sonner", () => ({
   toast: { info: vi.fn(), success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }))
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ...p }: any) => <div {...p}>{children}</div>,
-    p: ({ children, ...p }: any) => <p {...p}>{children}</p>,
-    span: ({ children, ...p }: any) => <span {...p}>{children}</span>,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-}))
 
 vi.mock("@/hooks/use-mobile", () => ({
   useIsMobile: () => false,
@@ -364,6 +356,10 @@ vi.mock("zod", () => {
 
   return {
     z: {
+      // zod-config.ts (imported by quote-modal for the CSP jitless opt-out)
+      // calls z.config({ jitless: true }) at module load — the mock must
+      // provide it or the import throws "z.config is not a function".
+      config: () => {},
       object: () => chainable({ refine: () => chainable() }),
       string: () => chainable(),
       number: () => chainable(),

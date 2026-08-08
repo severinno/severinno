@@ -18,7 +18,6 @@ import {
   Wrench,
 } from "lucide-react"
 import { toast } from "sonner"
-import { motion, AnimatePresence } from "framer-motion"
 
 import {
   Dialog,
@@ -75,15 +74,23 @@ export function AuthModal() {
   const openAuth = useUIStore((s) => s.openAuth)
 
   // Local mode synced with the store (lets users toggle inside the modal).
+  // Synced during render (React's "adjust state from previous render"
+  // pattern) instead of an effect — react-hooks/set-state-in-effect gate.
   const [localMode, setLocalMode] = React.useState<AuthModalMode>(mode)
   const [localRole, setLocalRole] = React.useState<AuthModalRole>(role)
+  const [prevAuthState, setPrevAuthState] = React.useState({ open, mode, role })
 
-  React.useEffect(() => {
+  if (
+    prevAuthState.open !== open ||
+    prevAuthState.mode !== mode ||
+    prevAuthState.role !== role
+  ) {
+    setPrevAuthState({ open, mode, role })
     if (open) {
       setLocalMode(mode)
       setLocalRole(role)
     }
-  }, [open, mode, role])
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : closeAuth())}>
@@ -298,18 +305,11 @@ function LoginForm({
           )}
         />
 
-        <AnimatePresence>
-          {formError && (
-            <motion.p
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="text-sm text-destructive"
-            >
-              {formError}
-            </motion.p>
-          )}
-        </AnimatePresence>
+        {formError && (
+          <p className="svn-fade-in text-sm text-destructive">
+            {formError}
+          </p>
+        )}
 
         <Button
           type="submit"
@@ -642,15 +642,11 @@ function RegisterForm({
           />
         </div>
 
-        <AnimatePresence initial={false} mode="wait">
-          {isProvider && (
-            <motion.div
-              key="provider-fields"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="grid gap-4 overflow-hidden sm:grid-cols-2"
-            >
+        {isProvider && (
+          <div
+            key="provider-fields"
+            className="svn-fade-in grid gap-4 overflow-hidden sm:grid-cols-2"
+          >
               <FormField
                 control={form.control}
                 name="cpfCnpj"
@@ -729,9 +725,8 @@ function RegisterForm({
                   </FormItem>
                 )}
               />
-            </motion.div>
-          )}
-        </AnimatePresence>
+          </div>
+        )}
 
         {isProvider && (
           <FormDescription className="flex items-center gap-2 rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
@@ -743,18 +738,11 @@ function RegisterForm({
           </FormDescription>
         )}
 
-        <AnimatePresence>
-          {formError && (
-            <motion.p
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="text-sm text-destructive"
-            >
-              {formError}
-            </motion.p>
-          )}
-        </AnimatePresence>
+        {formError && (
+          <p className="svn-fade-in text-sm text-destructive">
+            {formError}
+          </p>
+        )}
 
         <Button
           type="submit"

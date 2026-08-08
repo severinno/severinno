@@ -22,7 +22,6 @@
 
 import * as React from "react"
 import { useTheme } from "next-themes"
-import { motion } from "framer-motion"
 import {
   Bell,
   Check,
@@ -236,11 +235,9 @@ const DASHBOARD_VIEW: Record<string, string> = {
   ADMIN: "admin.dashboard",
 }
 
-// Reusable motion presets for staggered card mount.
-const cardMotion = {
-  initial: { opacity: 0, y: 8 },
-  animate: { opacity: 1, y: 0 },
-} as const
+// Staggered card mount is pure CSS (svn-card-in + per-index animation-delay)
+// — no framer-motion, keeping the animation lib out of the initial JS graph
+// (budget guard 5+8).
 
 // ---------------------------------------------------------------------------
 // Shared nav item styles — used by both desktop SidebarMenuButton and mobile Sheet
@@ -1012,10 +1009,9 @@ export function StatCard({
     zinc: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200",
   }[tone]
   return (
-    <motion.div
-      initial={cardMotion.initial}
-      animate={cardMotion.animate}
-      transition={{ delay: index * 0.05, duration: 0.25, ease: "easeOut" }}
+    <div
+      className="svn-card-in"
+      style={{ animationDelay: `${index * 0.05}s` }}
     >
       <Card className="rounded-xl bg-card shadow-sm transition-shadow hover:shadow-md">
         <CardContent className="p-5">
@@ -1052,7 +1048,7 @@ export function StatCard({
           ) : null}
         </CardContent>
       </Card>
-    </motion.div>
+    </div>
   )
 }
 

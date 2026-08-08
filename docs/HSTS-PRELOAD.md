@@ -134,6 +134,44 @@ O script verifica, por host:
 - [ ] Confirmar com o time que **não** há planos de subdomínio HTTP-only no
       futuro (ex.: ambiente de staging público em subdomínio)
 
+### 4.3 Resultado da verificação pré-submissão (2026-08-08)
+
+**Veredito: ❌ NÃO SUBMETER — 4 bloqueadores.** Verificação executada com
+`scripts/verify-hsts-preload.sh --ci` (exit code **1**) + probes live + API do
+hstspreload.org:
+
+| Host | DNS | http → https | https | HSTS | Veredito |
+|---|---|---|---|---|---|
+| `severinno.com.br` (apex) | ✅ resolve | ✅ 301 → https | 200 OK | ❌ **ausente** | 🔴 Bloqueador |
+| `www.severinno.com.br` | ✅ resolve | ✅ 301 → https | 301 (CDN) | ❌ **ausente** | 🔴 Bloqueador |
+| `glitchtip.severinno.com.br` | ⚠️ inconsistente¹ | ❌ inalcançável | inalcançável | ❌ ausente | 🔴 Bloqueador |
+
+¹ `nslookup` → NXDOMAIN; o script (via `getent`) reportou resolve. Inconsistência de
+resolver — precisa decidir se o subdomínio existe (isento) ou não antes de submeter.
+
+**Achados além dos bloqueadores (auditoria live, 2026-08-08):**
+
+1. 🔴 **O apex serve WordPress da Hostinger, não o app Severinno.** A resposta de
+   `https://severinno.com.br` é PHP 8.3.31 / litespeed-cache / `platform: hostinger`
+   — **o reverse proxy Caddy (Caddyfile.prod) não está atrás do DNS atual**.
+   Corrigir o apontamento/roteamento do domínio **antes** de pensar em submeter.
+2. 🔴 **Nenhum host emite HSTS** — o scanner do hstspreload.org rejeitaria a submissão
+   na hora. A config em 3 camadas (§3) existe no repo, mas não está servida em prod.
+3. ✅ **Redirect http→https correto** no apex e no `www` (301 → https).
+4. ✅ **Status oficial da API:** `{"status": "unknown"}` para apex e `www` — o
+   domínio **nunca foi submetido** (nem está pending).
+
+**Passos antes de submeter (nesta ordem):**
+1. Apontar `severinno.com.br` para o servidor do app (Caddy atrás do DNS) e
+   confirmar que o header HSTS completo (`max-age=31536000; includeSubDomains;
+   preload`) sai em todas as respostas HTTPS, inclusive redirects.
+2. Resolver o `www`: ou apontar para o mesmo servidor do apex (preferido — emite
+   HSTS idêntico), ou **remover o registro DNS** (fica isento). Hoje o `www` é CDN
+   WordPress Hostinger sem HSTS — os dois casos bloqueiam.
+3. Decidir o destino de `glitchtip.severinno.com.br` (subir com HSTS ou remover DNS).
+4. Re-rodar `bash scripts/verify-hsts-preload.sh --ci` até **exit 0** (8/8 asserções
+   dos 2 hosts ativos) e então seguir o §5.
+
 ---
 
 ## 5. Procedimento de submissão

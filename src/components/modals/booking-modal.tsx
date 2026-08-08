@@ -24,7 +24,6 @@ import {
 import { toast } from "sonner"
 import { ptBR } from "date-fns/locale"
 import { format } from "date-fns"
-import { motion, AnimatePresence } from "framer-motion"
 
 import {
   Dialog,
@@ -181,14 +180,18 @@ export function BookingModal() {
   const [submitting, setSubmitting] = React.useState(false)
   const [touched, setTouched] = React.useState<Set<string>>(new Set())
 
-  // Reset when modal opens
-  React.useEffect(() => {
+  // Reset when modal opens — adjusted during render (React's "adjust state
+  // from previous render" pattern) instead of an effect. The host keeps this
+  // modal mounted, so local state must reset on every open.
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
     if (open) {
       setStep(1)
       setState(initialState())
       setTouched(new Set())
     }
-  }, [open])
+  }
 
   // Fetch provider + services
   const providerQuery = useQuery({
@@ -212,11 +215,21 @@ export function BookingModal() {
   const selectedService =
     services.find((s) => s.id === serviceIdPreset) ?? services[0]
 
-  React.useEffect(() => {
+  // Reset quantity to 1 when a service is selected/loaded — render-adjusted
+  // instead of an effect (mirrors the previous [open, selectedService] deps).
+  const [prevServiceSync, setPrevServiceSync] = React.useState({
+    open,
+    service: selectedService,
+  })
+  if (
+    prevServiceSync.open !== open ||
+    prevServiceSync.service !== selectedService
+  ) {
+    setPrevServiceSync({ open, service: selectedService })
     if (open && selectedService) {
       setState((s) => ({ ...s, quantity: 1 }))
     }
-  }, [open, selectedService])
+  }
 
   const set = <K extends keyof BookingFormState>(
     key: K,
@@ -576,17 +589,9 @@ export function BookingModal() {
 
         {/* Step content — scrollable */}
         <div className="flex-1 overflow-y-auto min-h-0 px-4 sm:px-5 py-4">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, x: 12 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -12 }}
-              transition={{ duration: 0.18 }}
-            >
-              {stepContent}
-            </motion.div>
-          </AnimatePresence>
+          <div key={step} className="svn-step-in">
+            {stepContent}
+          </div>
         </div>
 
         {/* Footer — always visible at bottom */}

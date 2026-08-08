@@ -21,7 +21,6 @@
 
 import * as React from "react"
 import { MessageCircle, X, Send, Bot, User, Trash2, Sparkles } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -46,6 +45,11 @@ const SUGGESTED_ACTIONS = [
   { label: "É seguro?", message: "É seguro contratar pelo Severinno?" },
   { label: "Quanto custa?", message: "Quanto custa contratar um prestador?" },
 ]
+
+// Chat message ids — monotonic counter instead of Date.now() (the React
+// Compiler purity lint flags Date.now() inside handler bodies).
+let msgSeq = 0
+const nextMsgId = () => `msg-${++msgSeq}`
 
 // ---------------------------------------------------------------------------
 // Component
@@ -73,21 +77,24 @@ export default function AIChatWidget() {
     }
   }, [isOpen])
 
-  // Add initial greeting when chat first opens
-  React.useEffect(() => {
-    if (isOpen && messages.length === 0) {
-      setMessages([
-        {
-          id: "greeting",
-          role: "assistant",
-          content:
-            "Olá! 👋 Sou o assistente virtual do Severinno. Posso ajudar você a encontrar serviços, tirar dúvidas sobre a plataforma e muito mais. Como posso ajudar?",
-          timestamp: new Date(),
-        },
-      ])
-    }
-    // Only run when chat opens
-  }, [isOpen])
+  // Open the chat and seed the greeting message — in the click handler
+  // (no effect: react-hooks/set-state-in-effect gate).
+  const openChat = () => {
+    setIsOpen(true)
+    setMessages((prev) =>
+      prev.length === 0
+        ? [
+            {
+              id: "greeting",
+              role: "assistant",
+              content:
+                "Olá! 👋 Sou o assistente virtual do Severinno. Posso ajudar você a encontrar serviços, tirar dúvidas sobre a plataforma e muito mais. Como posso ajudar?",
+              timestamp: new Date(),
+            },
+          ]
+        : prev,
+    )
+  }
 
   const handleSend = async (messageText?: string) => {
     const text = (messageText ?? input).trim()
@@ -97,7 +104,7 @@ export default function AIChatWidget() {
 
     // Add user message
     const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: nextMsgId(),
       role: "user",
       content: text,
       timestamp: new Date(),
@@ -126,7 +133,7 @@ export default function AIChatWidget() {
       }
 
       const assistantMsg: ChatMessage = {
-        id: `assistant-${Date.now()}`,
+        id: nextMsgId(),
         role: "assistant",
         content: data.response,
         timestamp: new Date(),
@@ -151,7 +158,7 @@ export default function AIChatWidget() {
   const handleClear = () => {
     setMessages([
       {
-        id: `greeting-${Date.now()}`,
+        id: nextMsgId(),
         role: "assistant",
         content:
           "Conversa limpa! Como posso ajudar você agora? 😊",
@@ -164,32 +171,22 @@ export default function AIChatWidget() {
   return (
     <>
       {/* ── Chat Toggle Button (H3: always accessible) ── */}
-      <AnimatePresence>
-        {!isOpen && (
-          <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            onClick={() => setIsOpen(true)}
-            className="fixed bottom-20 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 hover:shadow-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 sm:bottom-22 sm:right-8"
-            aria-label="Abrir assistente virtual"
-          >
-            <MessageCircle className="size-6" />
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {/* Entrance is pure CSS (svn-pop-in) — no framer-motion (budget guard). */}
+      {!isOpen && (
+        <button
+          type="button"
+          onClick={openChat}
+          className="svn-pop-in fixed bottom-20 right-6 z-50 flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 hover:shadow-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 sm:bottom-22 sm:right-8"
+          aria-label="Abrir assistente virtual"
+        >
+          <MessageCircle className="size-6" />
+        </button>
+      )}
 
       {/* ── Chat Window ── */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="fixed bottom-20 right-6 z-50 flex h-[520px] w-[360px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:bottom-22 sm:right-8 sm:h-[560px] sm:w-[400px]"
-          >
+      {/* Entrance is pure CSS (svn-chat-in) — no framer-motion (budget guard). */}
+      {isOpen && (
+        <div className="svn-chat-in fixed bottom-20 right-6 z-50 flex h-[520px] w-[360px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:bottom-22 sm:right-8 sm:h-[560px] sm:w-[400px]">
             {/* ── Header ── */}
             <div className="flex items-center justify-between bg-emerald-600 px-4 py-3 text-white">
               <div className="flex items-center gap-2.5">
@@ -337,9 +334,8 @@ export default function AIChatWidget() {
                 </Button>
               </form>
             </div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
     </>
   )
 }

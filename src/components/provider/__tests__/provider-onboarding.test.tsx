@@ -27,13 +27,6 @@ vi.mock("lucide-react", () => ({
   Volume2: () => <svg />,
 }))
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ...p }: any) => <div {...p}>{children}</div>,
-    span: ({ children, ...p }: any) => <span {...p}>{children}</span>,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-}))
 
 vi.mock("@/lib/api", () => ({
   apiPatch: vi.fn().mockResolvedValue({}),

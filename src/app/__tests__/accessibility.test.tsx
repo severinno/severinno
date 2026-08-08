@@ -15,14 +15,6 @@ vi.mock("lucide-react", () => {
   }
 })
 
-// ---- Mock framer-motion (error.tsx uses motion.div, motion.footer, etc.) ----
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ..._props }: { children: React.ReactNode }) => <div>{children}</div>,
-    footer: ({ children, ..._props }: { children: React.ReactNode }) => <footer>{children}</footer>,
-  },
-}))
-
 import NotFound from "../not-found"
 import ErrorComponent from "../error"
 

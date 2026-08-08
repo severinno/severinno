@@ -15,7 +15,6 @@
 
 import * as React from "react"
 import { Cookie, Shield, X } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 
 type ConsentState = "accepted" | "rejected" | null
@@ -54,15 +53,11 @@ export default function CookieConsent() {
   if (dismissed) return null
 
   return (
-    <AnimatePresence>
+    <>
+      {/* Entrance is pure CSS (svn-slide-up) — no framer-motion, keeping the
+          animation lib out of the initial JS graph (budget guard 5+8). */}
       {visible && (
-        <motion.div
-          initial={{ y: 100, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 100, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="fixed bottom-0 left-0 right-0 z-[60] border-t border-border bg-background/95 backdrop-blur-lg shadow-2xl"
-        >
+        <div className="svn-slide-up fixed bottom-0 left-0 right-0 z-[60] border-t border-border bg-background/95 backdrop-blur-lg shadow-2xl">
           <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               {/* Left: icon + text */}
@@ -115,8 +110,8 @@ export default function CookieConsent() {
               </div>
             </div>
           </div>
-        </motion.div>
+        </div>
       )}
-    </AnimatePresence>
+    </>
   )
 }

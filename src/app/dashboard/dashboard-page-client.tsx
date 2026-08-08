@@ -6,9 +6,9 @@ import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { Loader2 } from "lucide-react"
 
-// The three role panels pull recharts (~122 KB gzip) + framer-motion
-// (~40 KB) + dashboard-shell into the initial JS of /dashboard when
-// statically imported (measured real transfer 623.8 KB). Each panel is only
+// The three role panels pull recharts (~122 KB gzip) + dashboard-shell
+// into the initial JS of /dashboard when statically imported (measured
+// real transfer 623.8 KB). Each panel is only
 // needed AFTER the user's role is known, so lazy-load them with ssr:false —
 // the prerendered shell shows the spinner and the heavy chunks become
 // on-demand fetches. Same pattern as ProvidersMap / TrackingMap.

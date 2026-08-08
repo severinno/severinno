@@ -38,7 +38,7 @@ vi.mock("@tanstack/react-query", () => ({
     error: null,
     refetch: vi.fn(),
   })),
-  useMutation: vi.fn((opts?: { onSuccess?: Function }) => ({
+  useMutation: vi.fn((opts?: { onSuccess?: (data: unknown) => void }) => ({
     mutate: vi.fn((data: unknown) => {
       opts?.onSuccess?.({ user: { id: "1", name: "Test User", role: "CLIENT" } })
     }),
@@ -61,7 +61,7 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/store/auth", () => ({
   useAuthStore: Object.assign(
-    (selector?: Function) => {
+    (selector?: (store: Record<string, unknown>) => unknown) => {
       const store = {
         user: null,
         status: "unauthenticated",
@@ -78,7 +78,7 @@ vi.mock("@/store/auth", () => ({
 
 vi.mock("@/store/ui", () => ({
   useUIStore: Object.assign(
-    (selector?: Function) => {
+    (selector?: (store: Record<string, unknown>) => unknown) => {
       const store = {
         openAuth: vi.fn(),
         openQuote: vi.fn(),
@@ -94,7 +94,7 @@ vi.mock("@/store/ui", () => ({
 
 vi.mock("@/store/geo", () => ({
   useGeoStore: Object.assign(
-    (selector?: Function) => {
+    (selector?: (store: Record<string, unknown>) => unknown) => {
       const store = {
         lat: null,
         lng: null,
@@ -129,29 +129,6 @@ vi.mock("sonner", () => ({
     warning: vi.fn(),
   },
 }))
-
-// ── Mock framer-motion ───────────────────────────────────────────────────
-
-vi.mock("framer-motion", () => {
-  const MotionDiv = ({ children, ...props }: any) => {
-    const { initial, animate, exit, transition, whileHover, whileTap, variants, layout, layoutId, ...safe } = props
-    return <div {...safe}>{children}</div>
-  }
-  return {
-    motion: {
-      div: MotionDiv,
-      span: ({ children, ...props }: any) => {
-        const { initial, animate, exit, ...safe } = props
-        return <span {...safe}>{children}</span>
-      },
-      section: ({ children, ...props }: any) => {
-        const { initial, animate, exit, ...safe } = props
-        return <section {...safe}>{children}</section>
-      },
-    },
-    AnimatePresence: ({ children }: any) => <>{children}</>,
-  }
-})
 
 // ── Mock lucide-react ────────────────────────────────────────────────────
 

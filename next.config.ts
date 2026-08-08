@@ -27,6 +27,13 @@ import withBundleAnalyzer from "@next/bundle-analyzer";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Pin the tracing root to THIS project. Without it Next infers the root from
+  // the nearest lockfile walking up — in a Freebuff worktree nested under the
+  // main project (C:\PROJETOS\severinno) it picked the MAIN project's
+  // pnpm-lock.yaml, which resolves `next` from the wrong node_modules and
+  // caused the prerender invariant "Expected workUnitAsyncStorage to have a
+  // store" (Next 16.1.x, E696) during `next build` in this worktree.
+  outputFileTracingRoot: __dirname,
   reactStrictMode: true,
   poweredByHeader: false,
   generateEtags: true,
@@ -132,7 +139,6 @@ const nextConfig: NextConfig = {
       "@radix-ui/react-icons",
       "recharts",
       "date-fns",
-      "framer-motion",
       "zod",
       "sonner",
     ],

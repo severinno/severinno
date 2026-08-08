@@ -104,24 +104,6 @@ vi.mock("@tanstack/react-query", () => ({
   })),
 }))
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children }: any) => <>{children}</>,
-    span: ({ children, ..._p }: any) => <span>{children}</span>,
-    p: ({ children, ..._p }: any) => <p>{children}</p>,
-    button: ({ children, ..._p }: any) => <button type="button">{children}</button>,
-    path: ({ ..._p }: any) => <path />,
-    line: ({ ..._p }: any) => <line />,
-    header: ({ children, ..._p }: any) => <header>{children}</header>,
-    h2: ({ children, ..._p }: any) => <h2>{children}</h2>,
-    li: ({ children, ..._p }: any) => <li>{children}</li>,
-    ul: ({ children, ..._p }: any) => <ul>{children}</ul>,
-    a: ({ children, ..._p }: any) => <a {..._p}>{children}</a>,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-  useScroll: () => ({ scrollYProgress: { get: () => 0, onChange: vi.fn() } }),
-  useTransform: () => ({ get: () => 0 }),
-}))
 
 vi.mock("@/store/ui", () => ({
   useUIStore: vi.fn((selector) => {

@@ -390,7 +390,7 @@ set -a; source .env; set +a
 ANALYZE=true pnpm exec next build --webpack > /tmp/analyze.log 2>&1; echo BUILD_EXIT=$?
 node scripts/check-js-budget.mjs > /tmp/budget.log 2>&1; echo BUDGET_EXIT=$?; tail -12 /tmp/budget.log
 ```
-Esperado: `BUDGET_EXIT=0` — `✅ All JS budgets within limits.` (budgets atuais: initial 150 KB, total 1400 KB, largest 300 KB, maplibre 300, recharts 100, framer 50, socket.io 20 — gzip).
+Esperado: `BUDGET_EXIT=0` — `✅ All JS budgets within limits.` (budgets atuais: initial 270 KB, total 1480 KB, largest 330 KB, maplibre 330, recharts 110, socket.io 20 — gzip).
 
 - [ ] **Step 2: Recalibrar budgets se o baseline mudou**
 

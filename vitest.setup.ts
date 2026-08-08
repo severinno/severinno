@@ -24,7 +24,7 @@ vi.mock("ioredis", () => {
   return { default: MockRedis, Redis: MockRedis }
 })
 
-// ── Mock ResizeObserver for framer-motion (used by error.tsx) ─────────────
+// ── Mock ResizeObserver for jsdom (layout/chart components) ────────────────
 globalThis.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}

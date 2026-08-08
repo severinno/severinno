@@ -34,7 +34,6 @@ import {
   X,
 } from "lucide-react"
 import { toast } from "sonner"
-import { motion, AnimatePresence } from "framer-motion"
 
 import {
   Dialog,
@@ -478,23 +477,15 @@ function ServicesTab({
             </button>
 
             {/* Service items */}
-            <AnimatePresence>
               {expanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
+                <div className="svn-fade-in overflow-hidden">
                   <div className="space-y-1.5 pb-1">
                     {items.map((s) => (
                       <ServiceCard key={s.id} service={s} onQuote={() => onQuote(s.id)} onBooking={() => onBooking(s.id)} />
                     ))}
                   </div>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
           </div>
         )
       })}
@@ -704,11 +695,9 @@ function ReviewsTab({
               <span className="w-2 text-muted-foreground tabular-nums">{d.star}</span>
               <Star className="size-2.5 fill-amber-400 text-amber-400" strokeWidth={0} />
               <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${d.pct}%` }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="absolute inset-y-0 left-0 rounded-full bg-amber-400"
+                <div
+                  style={{ width: `${d.pct}%` }}
+                  className="svn-grow-x absolute inset-y-0 left-0 rounded-full bg-amber-400"
                 />
               </div>
               <span className="w-4 text-right text-muted-foreground tabular-nums">{d.count}</span>
@@ -722,12 +711,10 @@ function ReviewsTab({
       {/* Review cards */}
       <div className="space-y-2">
         {reviews.map((r, idx) => (
-          <motion.div
+          <div
             key={r.id}
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.04, duration: 0.2 }}
-            className="rounded-lg border bg-card p-3"
+            style={{ animationDelay: `${idx * 0.04}s` }}
+            className="svn-card-in rounded-lg border bg-card p-3"
           >
             <div className="flex items-center gap-2.5">
               <Avatar className="size-8 rounded-lg">
@@ -753,7 +740,7 @@ function ReviewsTab({
                 {r.comment}
               </p>
             )}
-          </motion.div>
+          </div>
         ))}
       </div>
     </div>

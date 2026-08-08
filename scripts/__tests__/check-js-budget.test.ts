@@ -211,39 +211,40 @@ describe("scripts/check-js-budget.mjs", () => {
   it("guard (check 5): home HTML with a heavy lib eager fails (exit 1, route / attribution)", () => {
     const f = makeFixture()
     // The original check-5 scope: the HOME page's first-paint script list
-    // contains a chunk attributed to framer-motion.
+    // contains a chunk attributed to recharts (still-guarded lib; framer-motion
+    // was removed from the app 2026-08-08).
     f.write(
       ".next/analyze/client.html",
       chartDataHtml([
         asset("static/chunks/framework-abc.js", 60_000),
         asset("static/chunks/main-app-def.js", 30_000),
-        asset("static/chunks/framer-abc.js", 40_000, [
+        asset("static/chunks/chart-abc.js", 40_000, [
           {
-            label: "static/chunks/framer-abc.js",
-            groups: [{ label: "node_modules/framer-motion/dist/index.mjs", groups: [] }],
+            label: "static/chunks/chart-abc.js",
+            groups: [{ label: "node_modules/recharts/es6/Recharts.js", groups: [] }],
           },
         ]),
       ]),
     )
     f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
-    f.write(".next/static/chunks/framer-abc.js", "export const fr = 1;")
+    f.write(".next/static/chunks/chart-abc.js", "export const ch = 1;")
     f.write(
       ".next/server/app/index.html",
       '<html><body><script src="/_next/static/chunks/framework-abc.js"></script>' +
-        '<script src="/_next/static/chunks/framer-abc.js"></script></body></html>',
+        '<script src="/_next/static/chunks/chart-abc.js"></script></body></html>',
     )
 
     const r = runBudget(f.dir)
     expect(r.status).toBe(1)
-    expect(r.stdout).toContain("guard: framer-motion not in initial JS (all prerendered routes)")
-    expect(r.stderr).toContain("framer-motion is statically bundled")
-    // Home route formats as "/" — the offender site is "/ (framer-abc.js)".
-    // The initial-JS check is MEASURED (framework 60K + framer 40K = 100K,
+    expect(r.stdout).toContain("guard: recharts not in initial JS (all prerendered routes)")
+    expect(r.stderr).toContain("recharts is statically bundled")
+    // Home route formats as "/" — the offender site is "/ (chart-abc.js)".
+    // The initial-JS check is MEASURED (framework 60K + chart 40K = 100K,
     // under the 270 KB budget) — the guard is the sole failure cause.
-    expect(r.stderr).toContain("/ (framer-abc.js)")
+    expect(r.stderr).toContain("/ (chart-abc.js)")
   })
 
-  it("guard (check 5): clean home HTML passes with all 3 guard checks green", () => {
+  it("guard (check 5): clean home HTML passes with all 4 guard checks green", () => {
     const f = makeFixture()
     writePassBuild(f) // no heavy libs anywhere in the analyzer or the HTML
 
@@ -252,46 +253,46 @@ describe("scripts/check-js-budget.mjs", () => {
     // Every guarded lib reports a green check for the prerendered-routes source.
     expect(r.stdout).toContain("guard: maplibre-gl not in initial JS (all prerendered routes)")
     expect(r.stdout).toContain("guard: recharts not in initial JS (all prerendered routes)")
-    expect(r.stdout).toContain("guard: framer-motion not in initial JS (all prerendered routes)")
     expect(r.stdout).toContain("guard: socket.io-client not in initial JS (all prerendered routes)")
+    expect(r.stdout).toContain("guard: framer-motion not in initial JS (all prerendered routes)")
     expect(r.stdout).toContain("All JS budgets within limits")
   })
 
   it("guard (check 5): rootMainFiles fallback with a heavy lib eager fails (exit 1)", () => {
     const f = makeFixture()
     // NO prerendered route HTML at all → the guard must fall back to the
-    // build-manifest rootMainFiles list. The framer chunk is listed there,
+    // build-manifest rootMainFiles list. The recharts chunk is listed there,
     // so first paint is tainted even without any HTML to scan.
     f.write(
       ".next/analyze/client.html",
       chartDataHtml([
         asset("static/chunks/framework-abc.js", 60_000),
         asset("static/chunks/main-app-def.js", 30_000),
-        asset("static/chunks/framer-abc.js", 40_000, [
+        asset("static/chunks/chart-abc.js", 40_000, [
           {
-            label: "static/chunks/framer-abc.js",
-            groups: [{ label: "node_modules/framer-motion/dist/index.mjs", groups: [] }],
+            label: "static/chunks/chart-abc.js",
+            groups: [{ label: "node_modules/recharts/es6/Recharts.js", groups: [] }],
           },
         ]),
       ]),
     )
     f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
-    f.write(".next/static/chunks/framer-abc.js", "export const fr = 1;")
+    f.write(".next/static/chunks/chart-abc.js", "export const ch = 1;")
     f.write(
       ".next/build-manifest.json",
       JSON.stringify({
-        rootMainFiles: ["static/chunks/framework-abc.js", "static/chunks/framer-abc.js"],
+        rootMainFiles: ["static/chunks/framework-abc.js", "static/chunks/chart-abc.js"],
       }),
     )
 
     const r = runBudget(f.dir)
     expect(r.status).toBe(1)
-    expect(r.stdout).toContain("guard: framer-motion not in initial JS (rootMainFiles)")
-    expect(r.stderr).toContain("framer-motion is statically bundled")
-    expect(r.stderr).toContain("rootMainFiles (framer-abc.js)")
+    expect(r.stdout).toContain("guard: recharts not in initial JS (rootMainFiles)")
+    expect(r.stderr).toContain("recharts is statically bundled")
+    expect(r.stderr).toContain("rootMainFiles (chart-abc.js)")
   })
 
-  it("guard (check 5): clean rootMainFiles fallback passes with all 3 guard checks green", () => {
+  it("guard (check 5): clean rootMainFiles fallback passes with all 4 guard checks green", () => {
     const f = makeFixture()
     f.write(
       ".next/analyze/client.html",
@@ -313,8 +314,8 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("guard: maplibre-gl not in initial JS (rootMainFiles)")
     expect(r.stdout).toContain("guard: recharts not in initial JS (rootMainFiles)")
-    expect(r.stdout).toContain("guard: framer-motion not in initial JS (rootMainFiles)")
     expect(r.stdout).toContain("guard: socket.io-client not in initial JS (rootMainFiles)")
+    expect(r.stdout).toContain("guard: framer-motion not in initial JS (rootMainFiles)")
     expect(r.stdout).toContain("All JS budgets within limits")
   })
 
@@ -376,13 +377,13 @@ describe("scripts/check-js-budget.mjs", () => {
     )
     f.write(
       "src/app/hero.tsx",
-      'import { motion } from "framer-motion";\nexport default function Hero() { return null }\n',
+      'import { BarChart } from "recharts";\nexport default function Hero() { return null }\n',
     )
 
     const r = runBudget(f.dir)
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("guard: static heavy-lib imports (source lint)")
-    expect(r.stderr).toContain("framer-motion statically imported")
+    expect(r.stderr).toContain("recharts statically imported")
     expect(r.stderr).toContain("src/app/hero.tsx")
     expect(r.stderr).toContain("/")
   })
@@ -470,150 +471,6 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stderr).toContain("DIFFERENT builds")
   })
 
-  it("escape hatch: JS_BUDGET_GUARD_ALLOW=framer-motion lets framer pass the HTML guard (exit 0)", () => {
-    const f = makeFixture()
-    // The exact scenario the hatch exists for: a chunk attributed to
-    // framer-motion IS in the prerendered home HTML's script list.
-    f.write(
-      ".next/analyze/client.html",
-      chartDataHtml([
-        asset("static/chunks/framework-abc.js", 60_000),
-        asset("static/chunks/main-app-def.js", 30_000),
-        asset("static/chunks/framer-abc.js", 40_000, [
-          {
-            label: "static/chunks/framer-abc.js",
-            groups: [{ label: "node_modules/framer-motion/dist/index.mjs", groups: [] }],
-          },
-        ]),
-      ]),
-    )
-    f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
-    f.write(
-      ".next/server/app/index.html",
-      '<html><body><script src="/_next/static/chunks/framework-abc.js"></script>' +
-        '<script src="/_next/static/chunks/framer-abc.js"></script></body></html>',
-    )
-
-    // Without the env var this fixture fails (see next test) — the hatch is
-    // what flips the verdict. Size budgets (check 3, framer 50 KB) still pass.
-    const r = runBudget(f.dir, { JS_BUDGET_GUARD_ALLOW: "framer-motion" })
-    expect(r.status).toBe(0)
-    expect(r.stderr).toContain("ESCAPE HATCH ACTIVE")
-    expect(r.stderr).toContain("framer-motion")
-    expect(r.stdout).toContain("All JS budgets within limits")
-  })
-
-  it("escape hatch: the same fixture WITHOUT the env var still fails (exit 1)", () => {
-    const f = makeFixture()
-    f.write(
-      ".next/analyze/client.html",
-      chartDataHtml([
-        asset("static/chunks/framework-abc.js", 60_000),
-        asset("static/chunks/main-app-def.js", 30_000),
-        asset("static/chunks/framer-abc.js", 40_000, [
-          {
-            label: "static/chunks/framer-abc.js",
-            groups: [{ label: "node_modules/framer-motion/dist/index.mjs", groups: [] }],
-          },
-        ]),
-      ]),
-    )
-    f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
-    f.write(
-      ".next/server/app/index.html",
-      '<html><body><script src="/_next/static/chunks/framework-abc.js"></script>' +
-        '<script src="/_next/static/chunks/framer-abc.js"></script></body></html>',
-    )
-
-    const r = runBudget(f.dir)
-    expect(r.status).toBe(1)
-    expect(r.stdout).toContain("guard: framer-motion not in initial JS (all prerendered routes)")
-    expect(r.stderr).toContain("framer-motion is statically bundled")
-    expect(r.stderr).not.toContain("ESCAPE HATCH ACTIVE")
-  })
-
-  it("escape hatch: source lint (check 8) also honors JS_BUDGET_GUARD_ALLOW (exit 0)", () => {
-    const f = makeFixture()
-    writePassBuild(f)
-    // An eager route statically importing a heavy lib — the check-8 violation
-    // the hatch must exempt too, or CI stays red despite the HTML guard being
-    // satisfied.
-    f.write(
-      "src/app/page.tsx",
-      'import { motion } from "framer-motion";\nexport default function Page() { return null }\n',
-    )
-
-    const r = runBudget(f.dir, { JS_BUDGET_GUARD_ALLOW: "framer-motion" })
-    expect(r.status).toBe(0)
-    expect(r.stdout).toContain("All JS budgets within limits")
-    expect(r.stderr).toContain("ESCAPE HATCH ACTIVE")
-  })
-
-  it("escape hatch: a lib NOT listed in JS_BUDGET_GUARD_ALLOW is still guarded (exit 1)", () => {
-    const f = makeFixture()
-    // framer-motion is eager in the home HTML, but the hatch only allows
-    // recharts — a wrong/typo'd name must NOT exempt framer, or a misspelled
-    // env var would silently disable the guard while CI looks green.
-    f.write(
-      ".next/analyze/client.html",
-      chartDataHtml([
-        asset("static/chunks/framework-abc.js", 60_000),
-        asset("static/chunks/main-app-def.js", 30_000),
-        asset("static/chunks/framer-abc.js", 40_000, [
-          {
-            label: "static/chunks/framer-abc.js",
-            groups: [{ label: "node_modules/framer-motion/dist/index.mjs", groups: [] }],
-          },
-        ]),
-      ]),
-    )
-    f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
-    f.write(
-      ".next/server/app/index.html",
-      '<html><body><script src="/_next/static/chunks/framework-abc.js"></script>' +
-        '<script src="/_next/static/chunks/framer-abc.js"></script></body></html>',
-    )
-
-    const r = runBudget(f.dir, { JS_BUDGET_GUARD_ALLOW: "recharts" })
-    expect(r.status).toBe(1)
-    expect(r.stderr).toContain("framer-motion is statically bundled")
-  })
-
-  it("escape hatch: comma-separated list with spaces exempts libs across BOTH guards (exit 0)", () => {
-    const f = makeFixture()
-    // framer-motion eager in the prerendered HTML (check 5) AND an eager page
-    // statically importing maplibre-gl (check 8) — both hatched via one env
-    // var with spaces after the commas (parser trims each element).
-    f.write(
-      ".next/analyze/client.html",
-      chartDataHtml([
-        asset("static/chunks/framework-abc.js", 60_000),
-        asset("static/chunks/main-app-def.js", 30_000),
-        asset("static/chunks/framer-abc.js", 40_000, [
-          {
-            label: "static/chunks/framer-abc.js",
-            groups: [{ label: "node_modules/framer-motion/dist/index.mjs", groups: [] }],
-          },
-        ]),
-      ]),
-    )
-    f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
-    f.write(
-      ".next/server/app/index.html",
-      '<html><body><script src="/_next/static/chunks/framework-abc.js"></script>' +
-        '<script src="/_next/static/chunks/framer-abc.js"></script></body></html>',
-    )
-    f.write(
-      "src/app/busca/page.tsx",
-      'import "maplibre-gl/dist/maplibre-gl.css";\nexport default function Page() { return null }\n',
-    )
-
-    const r = runBudget(f.dir, { JS_BUDGET_GUARD_ALLOW: "framer-motion, maplibre-gl" })
-    expect(r.status).toBe(0)
-    expect(r.stdout).toContain("All JS budgets within limits")
-    expect(r.stderr).toContain("ESCAPE HATCH ACTIVE")
-  })
-
   it("guard (check 5): socket.io-client eager in home HTML fails (exit 1)", () => {
     const f = makeFixture()
     // socket.io-client must stay lazy (use-realtime.ts imports it via
@@ -645,6 +502,43 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stdout).toContain("guard: socket.io-client not in initial JS (all prerendered routes)")
     expect(r.stderr).toContain("socket.io-client is statically bundled")
     expect(r.stderr).toContain("/ (socket-abc.js)")
+  })
+
+  it("guard (check 5): framer-motion sentinel — a re-added chunk in a route HTML fails (exit 1)", () => {
+    const f = makeFixture()
+    // framer-motion was fully removed from the app (2026-08-08, pure CSS), but
+    // it stays in EAGER_GUARD_LIBS as a zero-cost regression sentinel: if the
+    // lib is ever re-added to an eager graph, the analyzer attributes a chunk
+    // to it, that chunk lands in a prerendered route's script list, and this
+    // guard fires — the exact regression the removal eliminated, caught in CI
+    // instead of at runtime. (There is no size budget for it: the lib cannot
+    // legitimately exist, so the guard is the sole failure cause.)
+    f.write(
+      ".next/analyze/client.html",
+      chartDataHtml([
+        asset("static/chunks/framework-abc.js", 60_000),
+        asset("static/chunks/main-app-def.js", 30_000),
+        asset("static/chunks/framer-abc.js", 40_000, [
+          {
+            label: "static/chunks/framer-abc.js",
+            groups: [{ label: "node_modules/framer-motion/dist/es/index.mjs", groups: [] }],
+          },
+        ]),
+      ]),
+    )
+    f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
+    f.write(".next/static/chunks/framer-abc.js", "export const fm = 1;")
+    f.write(
+      ".next/server/app/index.html",
+      '<html><body><script src="/_next/static/chunks/framework-abc.js"></script>' +
+        '<script src="/_next/static/chunks/framer-abc.js"></script></body></html>',
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("guard: framer-motion not in initial JS (all prerendered routes)")
+    expect(r.stderr).toContain("framer-motion is statically bundled")
+    expect(r.stderr).toContain("/ (framer-abc.js)")
   })
 
   it("lib size (check 3): @tanstack/react-query over budget fails via env override (exit 1)", () => {

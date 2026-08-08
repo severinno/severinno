@@ -3,6 +3,7 @@
     "collect": {
       "url": [
         "http://localhost:3000/",
+        "http://localhost:3000/busca",
         "http://localhost:3000/categoria/limpeza",
         "http://localhost:3000/u/carlos-encanador"
       ],
