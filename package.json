@@ -11,6 +11,8 @@
     "build": "next build",
     "start": "NODE_ENV=production node .next/standalone/server.js",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "pre-commit:test": "node scripts/pre-commit-tests.mjs",
     "security:audit": "pnpm audit --audit-level=high || echo '⚠️  Security audit found issues — review manually'",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",

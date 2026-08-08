@@ -3,3 +3,9 @@ set -euo pipefail
 bash scripts/check-utf8.sh --dry-run --ci src/
 node scripts/scan-lucide-icons.mjs --check
 bun x lint-staged
+
+# Typecheck: nenhum commit pode quebrar o build (tsc --noEmit — mesmo gate do CI).
+# Testes unitários das áreas tocadas: roda o vitest (unit config) só nos testes
+# mapeados dos arquivos staged (skip quando não há testes nas áreas tocadas).
+bun run typecheck
+bun run pre-commit:test
