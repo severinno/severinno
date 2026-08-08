@@ -188,7 +188,23 @@ jobs:
         env:
           SKIP_TYPESCRIPT_CHECK: "true"
 
+      # The gate reads its budgets from env (scripts/check-js-budget.mjs); the
+      # script defaults are the fallback, and these env values are the enforced
+      # policy in CI. Route budgets are declared here as documented inputs so
+      # per-route limits are visible and can be tuned without a code change.
+      # Values = measured gzip (layout chain + page chunk) + ~20% headroom,
+      # rounded to 10 KB. Recalibrate with `node scripts/check-js-budget.mjs
+      # --update` after a meaningful bundle change and update this block.
       - name: Enforce JS bundle budget
+        env:
+          JS_BUDGET_ROUTE_ROOT_KB: 20
+          JS_BUDGET_ROUTE_BUSCA_KB: 20
+          JS_BUDGET_ROUTE_DASHBOARD_KB: 20
+          JS_BUDGET_ROUTE_TRACKING_KB: 20
+          JS_BUDGET_ROUTE_U_KB: 20
+          JS_BUDGET_ROUTE_CATEGORIA_KB: 10
+          JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB: 10
+          JS_BUDGET_ROUTE_LOGIN_KB: 20
         run: bun run budget:js
 
       # ── Proof of gate ──────────────────────────────────────────────────────
@@ -215,6 +231,9 @@ jobs:
           JS_BUDGET_ROUTE_DASHBOARD_KB: 1
           JS_BUDGET_ROUTE_TRACKING_KB: 1
           JS_BUDGET_ROUTE_U_KB: 1
+          JS_BUDGET_ROUTE_CATEGORIA_KB: 1
+          JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB: 1
+          JS_BUDGET_ROUTE_LOGIN_KB: 1
         run: |
           set +e
           out=$(node scripts/check-js-budget.mjs 2>&1)
