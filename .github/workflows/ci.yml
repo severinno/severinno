@@ -205,6 +205,17 @@ jobs:
           JS_BUDGET_ROUTE_CATEGORIA_KB: 10
           JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB: 10
           JS_BUDGET_ROUTE_LOGIN_KB: 20
+          # Real first-paint transfer per static/ISR route (prerendered HTML).
+          # Calibrated 2026-08-08 after dashboard panels + search-page became
+          # next/dynamic ssr:false / pure CSS: measured + ~20% headroom.
+          JS_BUDGET_REAL_BUSCA_KB: 320
+          JS_BUDGET_REAL_DASHBOARD_KB: 270
+          JS_BUDGET_REAL_U_KB: 280
+          # Eager-graph source lint (check 8): heavy libs that must never be
+          # STATICALLY imported in any route's eager graph (dynamic ƒ routes
+          # included — the HTML guard can't see them). Defaults already mirror
+          # the check-5 guard list; declared here as documented CI policy.
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,framer-motion
         run: bun run budget:js
 
       # ── Proof of gate ──────────────────────────────────────────────────────
@@ -234,6 +245,15 @@ jobs:
           JS_BUDGET_ROUTE_CATEGORIA_KB: 1
           JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB: 1
           JS_BUDGET_ROUTE_LOGIN_KB: 1
+          # Real-transfer checks too: the assertion below also requires a
+          # real-transfer violation, so a regression deleting the REAL_*
+          # checks (or silently skipping them) fails the proof step.
+          JS_BUDGET_REAL_BUSCA_KB: 1
+          JS_BUDGET_REAL_DASHBOARD_KB: 1
+          JS_BUDGET_REAL_U_KB: 1
+          # Eager-graph lint is boolean (not a size): pinned to the same policy
+          # as the real gate so a script-default drift can't silently shift CI.
+          JS_BUDGET_EAGER_LIBS: maplibre-gl,react-map-gl,recharts,framer-motion
         run: |
           set +e
           out=$(node scripts/check-js-budget.mjs 2>&1)
@@ -250,6 +270,10 @@ jobs:
           fi
           if ! printf '%s\n' "$out" | grep -q "Total client bundle.*> budget 1 KB"; then
             echo "::error::Budget gate failed but not on the total-size check — proof inconclusive"
+            exit 1
+          fi
+          if ! printf '%s\n' "$out" | grep -qE "real: /.* transfer.*> budget 1 KB"; then
+            echo "::error::Budget gate failed but not on a real-transfer check — proof inconclusive"
             exit 1
           fi
           echo "✅ Gate proof OK: budget check exited $code with zeroed budgets (expected failure)"

@@ -18,7 +18,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { io, Socket } from 'socket.io-client'
+// Type-only import — erased at compile time, so 'socket.io-client' is NOT
+// statically bundled into the initial JS of `/`. The module is fetched as a
+// lazy chunk the first time a socket is actually needed (getSocket), keeping
+// ~12 KB out of the first-paint transfer without changing the hook's API.
+import type { Socket } from 'socket.io-client'
 
 // ---------- Types ----------
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error'
@@ -103,23 +107,40 @@ export interface TrackingPositionEvent {
 // ---------- Singleton socket ----------
 // Only build it in the browser. SSR returns null.
 let socketRef: Socket | null = null
+let socketPromise: Promise<Socket | null> | null = null
 
-function getSocket(): Socket | null {
-  if (typeof window === 'undefined') return null
-  if (socketRef) return socketRef
-
-  // Caddy gateway picks the upstream port from the `XTransformPort` query param.
-  // The path MUST be "/" (see Caddyfile + examples/websocket/*).
-  socketRef = io('/?XTransformPort=3003', {
-    transports: ['websocket', 'polling'],
-    forceNew: true,
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 10000,
-  })
-  return socketRef
+/**
+ * Lazily load socket.io-client and create the singleton socket on first call.
+ * Returns a promise so consumers can await readiness; the synchronous helpers
+ * below keep reading `socketRef` (null until the import resolves — same
+ * no-op behaviour as the pre-lazy "not connected" path).
+ */
+function getSocket(): Promise<Socket | null> {
+  if (typeof window === 'undefined') return Promise.resolve(null)
+  if (socketRef) return Promise.resolve(socketRef)
+  if (!socketPromise) {
+    socketPromise = import('socket.io-client')
+      .then(({ io }) => {
+        // Caddy gateway picks the upstream port from the `XTransformPort`
+        // query param. The path MUST be "/" (see Caddyfile + examples/websocket/*).
+        socketRef = io('/?XTransformPort=3003', {
+          transports: ['websocket', 'polling'],
+          forceNew: true,
+          reconnection: true,
+          reconnectionAttempts: Infinity,
+          reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          timeout: 10000,
+        })
+        return socketRef
+      })
+      .catch((err) => {
+        console.error('[realtime] failed to load socket.io-client', err)
+        socketPromise = null // allow a retry on the next call
+        return null
+      })
+  }
+  return socketPromise
 }
 
 // ---------- Hook ----------
@@ -145,54 +166,66 @@ export function useRealtime(): UseRealtimeResult {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
 
   useEffect(() => {
-    const s = getSocket()
-    if (!s) return // SSR guard
+    let cancelled = false
+    let cleanup: (() => void) | undefined
 
-    const onConnect = () => {
-      setIsConnected(true)
-      setStatus('connected')
-    }
-    const onDisconnect = () => {
-      setIsConnected(false)
-      setStatus('disconnected')
-    }
-    const onConnectError = () => {
-      setIsConnected(false)
-      setStatus('error')
-    }
-    const onReconnectAttempt = () => {
-      setStatus('reconnecting')
-    }
-    const onReconnect = () => {
-      setIsConnected(true)
-      setStatus('connected')
-    }
-    // Sync component state with the singleton socket's current status
-    // (e.g. when reused across mounts / hot reload). Wrapped in a function so
-    // the sync isn't a direct setState call in the effect body.
-    const syncFromSocket = () => {
-      if (s.connected) {
+    // Socket now loads on demand; register listeners once the lazy chunk
+    // resolves. `cancelled` guards against registering on an unmounted
+    // component (the import may resolve after unmount).
+    void getSocket().then((s) => {
+      if (cancelled || !s) return // SSR guard / import failed
+
+      const onConnect = () => {
         setIsConnected(true)
         setStatus('connected')
-      } else if (!s.active) {
-        setStatus('connecting')
       }
-    }
+      const onDisconnect = () => {
+        setIsConnected(false)
+        setStatus('disconnected')
+      }
+      const onConnectError = () => {
+        setIsConnected(false)
+        setStatus('error')
+      }
+      const onReconnectAttempt = () => {
+        setStatus('reconnecting')
+      }
+      const onReconnect = () => {
+        setIsConnected(true)
+        setStatus('connected')
+      }
+      // Sync component state with the singleton socket's current status
+      // (e.g. when reused across mounts / hot reload). Wrapped in a function so
+      // the sync isn't a direct setState call in the effect body.
+      const syncFromSocket = () => {
+        if (s.connected) {
+          setIsConnected(true)
+          setStatus('connected')
+        } else if (!s.active) {
+          setStatus('connecting')
+        }
+      }
 
-    s.on('connect', onConnect)
-    s.on('disconnect', onDisconnect)
-    s.on('connect_error', onConnectError)
-    s.on('reconnect_attempt', onReconnectAttempt)
-    s.on('reconnect', onReconnect)
+      s.on('connect', onConnect)
+      s.on('disconnect', onDisconnect)
+      s.on('connect_error', onConnectError)
+      s.on('reconnect_attempt', onReconnectAttempt)
+      s.on('reconnect', onReconnect)
 
-    syncFromSocket()
+      syncFromSocket()
+
+      cleanup = () => {
+        s.off('connect', onConnect)
+        s.off('disconnect', onDisconnect)
+        s.off('connect_error', onConnectError)
+        s.off('reconnect_attempt', onReconnectAttempt)
+        s.off('reconnect', onReconnect)
+      }
+    })
 
     return () => {
-      s.off('connect', onConnect)
-      s.off('disconnect', onDisconnect)
-      s.off('connect_error', onConnectError)
-      s.off('reconnect_attempt', onReconnectAttempt)
-      s.off('reconnect', onReconnect)
+      cancelled = true
+      cleanup?.()
     }
   }, [])
 

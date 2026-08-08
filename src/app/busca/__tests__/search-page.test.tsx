@@ -26,18 +26,6 @@ vi.mock("@/lib/api", () => ({
   apiGet: vi.fn().mockResolvedValue({ items: [], q: "" }),
 }))
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ...p }: any) => <div {...p}>{children}</div>,
-    h1: ({ children, ...p }: any) => <h1 {...p}>{children}</h1>,
-    p: ({ children, ...p }: any) => <p {...p}>{children}</p>,
-    span: ({ children, ...p }: any) => <span {...p}>{children}</span>,
-    section: ({ children, ...p }: any) => <section {...p}>{children}</section>,
-    a: ({ children, ...p }: any) => <a {...p}>{children}</a>,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-}))
-
 vi.mock("@/components/vitrine/provider-card", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/components/vitrine/provider-card")>()

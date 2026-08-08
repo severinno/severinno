@@ -21,11 +21,16 @@
  *   3. Largest single chunk (gzipped)
  *   4. Per-library sizes: maplibre-gl, recharts, framer-motion, socket.io-client
  *   5. Lazy-load guard: maplibre-gl / recharts / framer-motion must NEVER
- *      reach the initial JS — neither the prerendered home HTML script list
- *      (real first-paint transfer, primary) nor the build-manifest
- *      `rootMainFiles` (fallback). A regression there would add ~267 KB /
- *      ~100 KB / ~40 KB to every page's first paint; the guard fails the
- *      build so CI catches it immediately.
+ *      reach the initial JS — EVERY prerendered route's HTML script list is
+ *      scanned (home, /busca, /dashboard, /u/[slug], /categoria/..., etc.),
+ *      with the build-manifest `rootMainFiles` as fallback when no route is
+ *      prerendered. A regression there would add ~267 KB / ~100 KB / ~40 KB
+ *      to a page's first paint; the guard fails the build so CI catches it
+ *      immediately, on any route.
+ *      Scope: prerendered (static/ISR) routes only — a regression on a
+ *      dynamic (ƒ) route escapes this guard and is caught by check 8
+ *      (source lint, no build needed) and by checks 2–4 (total, largest,
+ *      per-library sizes).
  *   6. Per-route JS (gzipped): layout chain + page chunk of key routes
  *      (`/`, `/busca`, `/dashboard`, `/tracking/[id]`, `/u/[slug]`,
  *      `/categoria/[slug]`, `/categoria/[slug]/[child]`, `/login`) — catches
@@ -38,6 +43,21 @@
  *      Note: the root `layout-*.js` (page-level shell, shared by all routes) is
  *      included in every route's metric; framework `rootMainFiles` is excluded
  *      because check 1 already covers it.
+ *   7. REAL transfer per route: the same first-paint technique as check 1
+ *      (parse the prerendered HTML's <script src> list, sum gzip) applied to
+ *      other static/ISR routes. Next 16 emits one flat `.html` per route
+ *      under .next/server/app (`busca.html`, `dashboard.html`, and one per
+ *      prerendered param for `u/*.html`). For dynamic-param routes the
+ *      WORST-CASE file (max transfer) is enforced, so a heavy static import
+ *      on any single page variant is caught in the bytes the browser really
+ *      downloads — complementing the layout+page chunk sum of check 6.
+ *   8. Source-level eager-graph lint: maplibre-gl / react-map-gl / recharts /
+ *      framer-motion must never be STATICALLY imported by any file in a
+ *      route's eager graph. BFS from every route entry over static imports
+ *      (dynamic import()/next/dynamic targets are lazy and exempt); a
+ *      violation lists the route(s) that reach the offending file. Needs NO
+ *      build — runs before the bundle-report guard, so the gate fires even on
+ *      a fresh checkout and on dynamic (ƒ) routes that check 5 can never see.
  *
  * Usage:
  *   node scripts/check-js-budget.mjs            # fail CI if over budget
@@ -50,6 +70,10 @@
  *   JS_BUDGET_ROUTE_ROOT_KB=20 JS_BUDGET_ROUTE_BUSCA_KB=20
  *   JS_BUDGET_ROUTE_CATEGORIA_KB=10 JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB=10
  *   JS_BUDGET_ROUTE_LOGIN_KB=20 ...
+ *   JS_BUDGET_REAL_BUSCA_KB=400 JS_BUDGET_REAL_DASHBOARD_KB=400
+ *   JS_BUDGET_REAL_U_KB=400 ...
+ *   JS_BUDGET_EAGER_LIBS=maplibre-gl,react-map-gl,recharts,framer-motion
+ *   JS_BUDGET_EAGER_ALLOW_FILES=src/legacy/x.tsx   # whitelist a flagged file
  */
 
 import fs from "node:fs"
@@ -70,9 +94,10 @@ const PRERENDER_INDEX_HTML = path.join(ROOT, ".next", "server", "app", "index.ht
 
 // ─── Budgets (KB, gzip) — set from the measured baseline + ~20% headroom ───
 const BUDGETS = {
-  // Baseline = 271.5 KB gzip (real initial transfer measured 2026-08-07: 20
-  // scripts in the prerendered home HTML) + ~20% headroom → 330 KB.
-  initialGzipKB: num(process.env.JS_BUDGET_INITIAL_KB, 330),
+  // Baseline = 219.2 KB gzip (real initial transfer measured 2026-08-08,
+  // after socket.io lazy + framer removed from error/loading shells and the
+  // search page) + ~20% headroom → 270 KB.
+  initialGzipKB: num(process.env.JS_BUDGET_INITIAL_KB, 270),
   totalGzipKB: num(process.env.JS_BUDGET_TOTAL_KB, 1400),
   largestChunkGzipKB: num(process.env.JS_BUDGET_LARGEST_CHUNK_KB, 300),
   libs: {
@@ -97,6 +122,39 @@ const ROUTE_BUDGETS = [
   { label: "/categoria/[slug]", dir: "categoria/[slug]", envKey: "JS_BUDGET_ROUTE_CATEGORIA_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_CATEGORIA_KB, 10) },
   { label: "/categoria/[slug]/[child]", dir: "categoria/[slug]/[child]", envKey: "JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_CATEGORIA_CHILD_KB, 10) },
   { label: "/login", dir: "login", envKey: "JS_BUDGET_ROUTE_LOGIN_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_LOGIN_KB, 20) },
+]
+
+// Real transfer per route — the exact first-paint JS the browser downloads,
+// parsed from each static/ISR route's prerendered HTML (Next 16 emits one
+// flat .html per route: busca.html, u/carlos-encanador.html). `htmlRel` is
+// relative to .next/server/app; `*` matches any prerendered segment, so for
+// dynamic-param routes the WORST-CASE file is enforced (the heaviest variant
+// defines the user experience).
+// Budgets = measured 2026-08-08 (recalibrated after the dashboard panels and
+// the /busca search page became next/dynamic ssr:false / pure CSS) + ~20%
+// headroom: /busca 261.1 KB → 320 (was 301.4 with framer-motion eager),
+// /dashboard 218.2 KB → 270 (was 623.8 statically bundling the 3 panels +
+// framer/recharts — now lazy via dashboard-page-client), /u/[slug] 228.6 KB
+// → 280. Same values are mirrored as inputs in .github/workflows/ci.yml.
+const REAL_ROUTE_CHECKS = [
+  {
+    label: "/busca",
+    htmlRel: "busca.html",
+    envKey: "JS_BUDGET_REAL_BUSCA_KB",
+    budgetKB: num(process.env.JS_BUDGET_REAL_BUSCA_KB, 320),
+  },
+  {
+    label: "/dashboard",
+    htmlRel: "dashboard.html",
+    envKey: "JS_BUDGET_REAL_DASHBOARD_KB",
+    budgetKB: num(process.env.JS_BUDGET_REAL_DASHBOARD_KB, 270),
+  },
+  {
+    label: "/u/[slug]",
+    htmlRel: "u/*.html",
+    envKey: "JS_BUDGET_REAL_U_KB",
+    budgetKB: num(process.env.JS_BUDGET_REAL_U_KB, 280),
+  },
 ]
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -191,21 +249,63 @@ function scriptSrcsFromHtml(html) {
  * rootMainFiles metric (more lenient) instead of failing on a partial build.
  */
 function initialTransferFromHtml() {
-  if (!fs.existsSync(PRERENDER_INDEX_HTML)) return null
-  const html = fs.readFileSync(PRERENDER_INDEX_HTML, "utf8")
-  const srcs = scriptSrcsFromHtml(html)
+  // Delegates to the per-route helper so the two definitions of "real
+  // transfer" (check 1 for `/`, check 7 for other routes) can never drift.
+  return realTransferFromHtmlFile(PRERENDER_INDEX_HTML)
+}
+
+/**
+ * Real transfer (gzip) of one prerendered route HTML file, or null when the
+ * file is missing or any referenced chunk is not on disk (stale build).
+ */
+function realTransferFromHtmlFile(htmlFile) {
+  if (!fs.existsSync(htmlFile)) return null
+  const srcs = scriptSrcsFromHtml(fs.readFileSync(htmlFile, "utf8"))
   if (srcs.length === 0) return null
   let total = 0
   let found = 0
   for (const s of srcs) {
-    const p = path.join(ROOT, ".next", s.replace("/_next/", ""))
+    // Prerendered HTML references URL-encoded chunk paths (e.g.
+    // u/%5Bslug%5D/...) while the files on disk live in literal `[slug]`
+    // directories — decode before resolving.
+    const p = path.join(ROOT, ".next", decodeURIComponent(s.replace("/_next/", "")))
     if (fs.existsSync(p)) {
       total += gzipBytes(p)
       found++
     }
   }
-  if (found !== srcs.length) return null
-  return total
+  return found === srcs.length ? total : null
+}
+
+/**
+ * Prerendered HTML files under .next/server/app matching a route pattern.
+ * Exact file ("busca.html") or one level of `*` in the last segment
+ * ("u/*.html" → every prerendered /u/[slug] page).
+ */
+function findPrerenderedHtml(pattern) {
+  const base = path.join(ROOT, ".next", "server", "app")
+  if (!pattern.includes("*")) {
+    const p = path.join(base, pattern)
+    return fs.existsSync(p) ? [p] : []
+  }
+  const sep = pattern.lastIndexOf("/")
+  const dir = path.join(base, pattern.slice(0, sep))
+  const filePattern = pattern.slice(sep + 1)
+  const re = new RegExp(
+    "^" +
+      filePattern
+        .split("*")
+        .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*") +
+      "$",
+  )
+  let names = []
+  try {
+    names = fs.readdirSync(dir).filter((f) => re.test(f))
+  } catch {
+    return []
+  }
+  return names.map((n) => path.join(dir, n))
 }
 
 /** First file in dir matching /^prefix-[^/]+\.js$/ (e.g. `page-*.js`), or null. */
@@ -252,6 +352,225 @@ function routeGzip(routeDir) {
   return files.reduce((s, f) => s + gzipBytes(f), 0)
 }
 
+// ─── Check 8: source-level eager-graph lint ─────────────────────────────────
+// Heavy map/chart/animation libs must never be STATICALLY imported by any
+// file in a route's eager graph. Complement to check 5: check 5 scans the
+// build OUTPUT (prerendered HTML script lists) and is blind to dynamic (ƒ)
+// routes and to anything not yet built; this lint scans the SOURCE import
+// graph and closes that gap — no build required, fails in milliseconds.
+//
+// Semantics: eager roots are the route entry files (page/layout/template/
+// not-found/error/global-error/loading/default under src/app, or legacy
+// src/pages). A BFS follows STATIC imports (import / export-from / require;
+// `import type` is erased at build and never counted). Dynamic-import targets
+// (next/dynamic, await import()) are lazy: they join the eager set only if
+// some eager file also statically imports them — which is itself the
+// regression we want to catch (the heavy lib chunk would then load eagerly
+// for that route). A heavy lib statically imported by any eager file fails
+// the gate, listing the route(s) that reach it.
+//
+// Config via env (defaults mirror the check-5 guard list):
+//   JS_BUDGET_EAGER_LIBS        — comma-separated lib names to guard
+//                                 (default: maplibre-gl, react-map-gl,
+//                                 recharts, framer-motion)
+//   JS_BUDGET_EAGER_ALLOW_FILES — comma-separated src-relative paths whose
+//                                 heavy static imports are whitelisted
+//                                 (documented exception only)
+const EAGER_LIBS = (
+  process.env.JS_BUDGET_EAGER_LIBS || "maplibre-gl,react-map-gl,recharts,framer-motion"
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+const EAGER_ALLOW_FILES = new Set(
+  (process.env.JS_BUDGET_EAGER_ALLOW_FILES || "")
+    .split(",")
+    .map((s) => s.trim().replace(/\\/g, "/"))
+    .filter(Boolean),
+)
+const SRC_DIR = path.join(ROOT, "src")
+const EAGER_SRC_EXT = /\.(ts|tsx|js|jsx|mjs|cjs)$/
+const EAGER_ROUTE_ENTRY = /^(page|layout|template|not-found|error|global-error|loading|default)\.(ts|tsx)$/
+
+/** Non-test source files under src/ (recursive). */
+function eagerSrcFiles() {
+  const out = []
+  const walk = (dir) => {
+    let entries
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) {
+        if (e.name === "node_modules" || e.name === ".next" || e.name.startsWith(".")) continue
+        walk(p)
+      } else if (
+        EAGER_SRC_EXT.test(e.name) &&
+        !e.name.endsWith(".d.ts") &&
+        !/(\.test|\.spec)\.(ts|tsx|js|jsx|mjs|cjs)$/.test(e.name) &&
+        !p.includes(`${path.sep}__tests__${path.sep}`) &&
+        !p.includes(`${path.sep}__mocks__${path.sep}`)
+      ) {
+        out.push(p)
+      }
+    }
+  }
+  walk(SRC_DIR)
+  return out
+}
+
+/** tsconfig `paths` aliases sorted longest-first (e.g. "@/": "./src/"). */
+function eagerAliases() {
+  const out = []
+  try {
+    const ts = JSON.parse(fs.readFileSync(path.join(ROOT, "tsconfig.json"), "utf8"))
+    for (const [key, val] of Object.entries(ts.compilerOptions?.paths || {})) {
+      const base = Array.isArray(val) ? val[0] : null
+      if (!base) continue
+      out.push([key.replace(/\*$/, ""), base.replace(/\*$/, "")])
+    }
+    out.sort((a, b) => b[0].length - a[0].length)
+  } catch {
+    /* no tsconfig → relative-only resolution */
+  }
+  return out
+}
+
+/** Strip comments + template literals LENGTH-PRESERVINGLY (chars → spaces,
+ * newlines kept) so match indexes stay valid against the original source
+ * and line numbers in violation messages are exact. */
+function eagerStripComments(code) {
+  const blank = (m) => m.replace(/[^\n]/g, " ")
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/\/\/[^\n\r]*/g, blank)
+    .replace(/`(?:[^`\\]|\\.)*`/g, blank)
+}
+
+/** Static import specifiers (value imports only) with 1-based line numbers. */
+function eagerStatics(code) {
+  const clean = eagerStripComments(code)
+  const out = []
+  const push = (m) => out.push({ spec: m[1], line: code.slice(0, m.index).split("\n").length })
+  for (const m of clean.matchAll(/\bimport\s+(?!type\b)[^'"]*?\bfrom\s+['"]([^'"]+)['"]/g)) push(m)
+  for (const m of clean.matchAll(/\bimport\s+(?!type\b)\s*['"]([^'"]+)['"]/g)) push(m)
+  // Note: the lazy [^'"]*? clause may span statements and latch onto a later
+  // `from '...'` — accepted: the lib would be caught by the import-from regex
+  // anyway, so the cost is only a duplicate/incorrect line attribution.
+  for (const m of clean.matchAll(/\bexport\s+(?!type\b)(?:[^'"]*?\bfrom\s+|from\s+)['"]([^'"]+)['"]/g)) push(m)
+  for (const m of clean.matchAll(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/g)) push(m)
+  return out
+}
+
+/** Resolve a specifier to an existing file (extension + index fallbacks), or null. */
+function eagerResolveFile(p) {
+  for (const e of ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]) {
+    const candidate = p + e
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate
+    } catch {
+      /* keep trying */
+    }
+    const index = path.join(p, "index" + e)
+    try {
+      if (fs.statSync(index).isFile()) return index
+    } catch {
+      /* keep trying */
+    }
+  }
+  return null
+}
+
+/** './x', '../x', or an aliased path ('@/x') → absolute file; bare package → null. */
+function eagerResolveSpec(spec, fromFile, aliases) {
+  if (spec.startsWith("./") || spec.startsWith("../")) {
+    return eagerResolveFile(path.resolve(path.dirname(fromFile), spec))
+  }
+  for (const [alias, base] of aliases) {
+    if (spec.startsWith(alias)) {
+      return eagerResolveFile(path.join(ROOT, base, spec.slice(alias.length)))
+    }
+  }
+  return null // node_modules specifier — resolved by the bundler, not locally
+}
+
+function eagerIsHeavy(spec) {
+  return EAGER_LIBS.some((lib) => spec === lib || spec.startsWith(lib + "/"))
+}
+
+function eagerLibName(spec) {
+  return EAGER_LIBS.find((lib) => spec === lib || spec.startsWith(lib + "/")) || spec
+}
+
+/** File path relative to the repo root, forward slashes (allowlist format). */
+function eagerSrcRel(file) {
+  return path.relative(ROOT, file).split(path.sep).join("/")
+}
+
+/**
+ * BFS from every route entry over static imports; a heavy lib statically
+ * imported by any eager file is a violation (with the routes that reach it).
+ */
+function runEagerLint() {
+  if (!fs.existsSync(SRC_DIR)) {
+    return { ok: true, violations: [], filesScanned: 0, eagerFiles: 0 }
+  }
+  const files = eagerSrcFiles()
+  const aliases = eagerAliases()
+  const meta = new Map() // file -> [{ spec, line }]
+  for (const f of files) {
+    try {
+      meta.set(f, eagerStatics(fs.readFileSync(f, "utf8")))
+    } catch {
+      /* unreadable — skip */
+    }
+  }
+  const eager = new Map() // file -> Set<route label>
+  const queue = []
+  for (const f of files) {
+    if (!EAGER_ROUTE_ENTRY.test(path.basename(f))) continue
+    const rel = path.relative(SRC_DIR, f).split(path.sep)
+    if (rel[0] !== "app" && rel[0] !== "pages") continue
+    const route = "/" + rel.slice(1, -1).join("/")
+    eager.set(f, new Set([route]))
+    queue.push(f)
+  }
+  const violations = []
+  const seen = new Set()
+  while (queue.length) {
+    const f = queue.shift()
+    const routes = eager.get(f)
+    for (const { spec, line } of meta.get(f) || []) {
+      if (eagerIsHeavy(spec)) {
+        const rel = eagerSrcRel(f)
+        if (!EAGER_ALLOW_FILES.has(rel)) {
+          const msg =
+            `${eagerLibName(spec)} statically imported by ${rel}:${line} — ` +
+            `reachable from ${[...routes].join(", ")}. ` +
+            `Must be lazy (next/dynamic / await import()).`
+          if (!seen.has(msg)) {
+            seen.add(msg)
+            violations.push(msg)
+          }
+        }
+        continue
+      }
+      const target = eagerResolveSpec(spec, f, aliases)
+      if (!target || !target.startsWith(SRC_DIR + path.sep)) continue
+      if (!eager.has(target)) {
+        eager.set(target, new Set(routes))
+        queue.push(target)
+      } else {
+        for (const r of routes) eager.get(target).add(r)
+      }
+    }
+  }
+  return { ok: violations.length === 0, violations, filesScanned: files.length, eagerFiles: eager.size }
+}
+
 // ─── Collect data ───────────────────────────────────────────────────────────
 
 const results = { checks: [], failures: [] }
@@ -260,6 +579,21 @@ function addCheck(name, currentKB, budgetKB) {
   const ok = currentKB <= budgetKB
   results.checks.push({ name, currentKB, budgetKB, ok })
   if (!ok) results.failures.push(`${name}: ${currentKB.toFixed(1)} KB > budget ${budgetKB} KB (gzip)`)
+}
+
+// 8. Source-level eager-graph lint — runs BEFORE the bundle-report guard: a
+//    violation needs no .next artifacts at all, so the gate fires on a fresh
+//    checkout (CI budget job) or on a dynamic (ƒ) route that no prerendered
+//    HTML would ever expose to check 5.
+const eagerLint = runEagerLint()
+if (!eagerLint.ok && !fs.existsSync(ANALYZE_HTML)) {
+  console.error("❌ EAGER-GRAPH LINT VIOLATIONS (no bundle report to run the byte checks):")
+  for (const v of eagerLint.violations) console.error(`   - ${v}`)
+  console.error(
+    "\nLazy-load the offending library (next/dynamic / await import()) or whitelist " +
+      "the file in JS_BUDGET_EAGER_ALLOW_FILES.",
+  )
+  process.exit(1)
 }
 
 if (!fs.existsSync(ANALYZE_HTML)) {
@@ -323,20 +657,63 @@ if (htmlInitialGzip === null && (!fs.existsSync(BUILD_MANIFEST) || initialSkippe
 }
 
 // 5. Lazy-load guard — heavy map/chart/animation libs must never reach the
-//    initial JS. Two definitions of "initial" are enforced:
-//      a) the prerendered home HTML script list (the REAL first-paint
-//         transfer, same source as check 1) — the primary, strongest check;
-//      b) build-manifest `rootMainFiles` — used only when the prerendered
-//         HTML is absent (dynamic route / stale build).
-//    A regression statically importing maplibre (~267 KB), recharts (~100 KB)
-//    or framer-motion (~40 KB) into the app shell is caught here instead of
-//    silently inflating every page load.
+//    initial JS of ANY prerendered route. Original scope was the home HTML
+//    only; since Next 16 emits one flat prerendered .html per static/ISR
+//    route (busca.html, dashboard.html, u/*.html, ...), every route's
+//    first-paint script list is now scanned — a regression statically
+//    importing maplibre (~267 KB), recharts (~100 KB) or framer-motion
+//    (~40 KB) into /busca, /dashboard or any other route is caught here,
+//    complementing the byte-level real-transfer budgets of check 7.
+//    Fallback: build-manifest `rootMainFiles` is used only when NO route has
+//    prerendered HTML (fully dynamic app / stale build).
 const EAGER_GUARD_LIBS = ["maplibre-gl", "recharts", "framer-motion"]
 
-let initialChunkNames = null // null = prerendered HTML unavailable
-if (fs.existsSync(PRERENDER_INDEX_HTML)) {
-  const names = scriptSrcsFromHtml(fs.readFileSync(PRERENDER_INDEX_HTML, "utf8")).map((s) => path.basename(s))
-  if (names.length) initialChunkNames = new Set(names)
+/** Every prerendered route HTML under .next/server/app (recursive). */
+function allPrerenderedHtmls() {
+  const base = path.join(ROOT, ".next", "server", "app")
+  const out = []
+  const walk = (dir) => {
+    let entries
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) walk(p)
+      else if (e.name.endsWith(".html")) out.push(p)
+    }
+  }
+  walk(base)
+  return out
+}
+
+// route html → chunk basenames referenced in its script list
+const guardHtmls = allPrerenderedHtmls()
+// true when any prerendered route's HTML lists at least one script
+let hasPrerenderedInitial = false
+const routeChunkNames = [] // { route, names: Set<basename> }
+if (guardHtmls.length) {
+  for (const htmlFile of guardHtmls) {
+    let names = []
+    try {
+      names = scriptSrcsFromHtml(fs.readFileSync(htmlFile, "utf8")).map((s) => path.basename(s))
+    } catch {
+      continue // unreadable/partial artifact — skip this route
+    }
+    if (names.length) hasPrerenderedInitial = true
+    routeChunkNames.push({
+      route: formatGuardRoute(htmlFile),
+      names: new Set(names),
+    })
+  }
+}
+
+/** "/busca" from "busca.html", "/u/carlos-encanador" from "u/…", "/" from "index". */
+function formatGuardRoute(htmlFile) {
+  const rel = path.relative(path.join(ROOT, ".next", "server", "app"), htmlFile).replace(/\.html$/, "")
+  return rel === "index" ? "/" : "/" + rel
 }
 let rootMainNames = []
 if (fs.existsSync(BUILD_MANIFEST)) {
@@ -347,36 +724,53 @@ if (fs.existsSync(BUILD_MANIFEST)) {
 
 // No initial-shell data at all (stale/incomplete build) — surface a skipped
 // check instead of silently green-lighting the guard, mirroring check 1.
-if (!initialChunkNames && rootMainNames.length === 0) {
+if (!hasPrerenderedInitial && rootMainNames.length === 0) {
   results.checks.push({
     name: "guard: heavy libs not in initial JS",
     currentKB: 0,
     budgetKB: 0,
     ok: true,
     skipped: true,
-    skippedNote: "no prerendered home HTML nor build-manifest.json",
+    skippedNote: "no prerendered route HTML nor build-manifest.json",
   })
 } else {
   for (const lib of EAGER_GUARD_LIBS) {
     // chunk basenames that contain this lib (analyzer module attribution)
     const containing = assets.filter((a) => assetContainsLib(a, lib)).map((a) => path.basename(a.label || ""))
-    const inInitial = initialChunkNames ? containing.filter((n) => initialChunkNames.has(n)) : []
-    const inRootMain = containing.filter((n) => rootMainNames.includes(n))
-    const offenders = initialChunkNames ? inInitial : inRootMain
-    const ok = offenders.length === 0
+    // where the lib illegally reached first paint: "route (chunk)" per site
+    const offenderSites = []
+    const offenders = new Set()
+    if (hasPrerenderedInitial) {
+      for (const { route, names } of routeChunkNames) {
+        for (const n of containing) {
+          if (names.has(n)) {
+            offenders.add(n)
+            offenderSites.push(`${route} (${n})`)
+          }
+        }
+      }
+    } else {
+      for (const n of containing) {
+        if (rootMainNames.includes(n)) {
+          offenders.add(n)
+          offenderSites.push(`rootMainFiles (${n})`)
+        }
+      }
+    }
+    const ok = offenders.size === 0
     // gzip of the offending chunks only — how many KB of first-paint JS the
     // lib is responsible for (not the full weight of every chunk that touches
     // it)
     const offenderKB = assets
-      .filter((a) => offenders.includes(path.basename(a.label || "")))
+      .filter((a) => offenders.has(path.basename(a.label || "")))
       .reduce((s, a) => s + (a.gzipSize || 0), 0)
-    const checkName = initialChunkNames
-      ? `guard: ${lib} not in initial JS (home HTML)`
+    const checkName = hasPrerenderedInitial
+      ? `guard: ${lib} not in initial JS (all prerendered routes)`
       : `guard: ${lib} not in initial JS (rootMainFiles)`
     results.checks.push({ name: checkName, currentKB: offenderKB / KB, budgetKB: 0, ok })
     if (!ok) {
       results.failures.push(
-        `${lib} is statically bundled in the initial JS (chunk(s): ${offenders.join(", ")}) — ` +
+        `${lib} is statically bundled in the initial JS of route(s): ${offenderSites.join("; ")} — ` +
           `it must be lazy-loaded (next/dynamic). Regression guard check 5.`,
       )
     }
@@ -400,6 +794,50 @@ for (const r of ROUTE_BUDGETS) {
   addCheck(`route: ${r.label} initial`, gzip / KB, r.budgetKB)
 }
 
+// 7. REAL transfer per route — check 1's technique applied to other static /
+//    ISR routes via their prerendered HTML (flat .html per route in Next 16).
+for (const r of REAL_ROUTE_CHECKS) {
+  const files = findPrerenderedHtml(r.htmlRel)
+  if (files.length === 0) {
+    results.checks.push({
+      name: `real: ${r.label}`,
+      currentKB: 0,
+      budgetKB: 0,
+      ok: true,
+      skipped: true,
+      skippedNote: "no prerendered HTML for this route (dynamic / stale build)",
+    })
+    continue
+  }
+  const transfers = files.map(realTransferFromHtmlFile).filter((v) => v !== null)
+  if (transfers.length === 0) {
+    results.checks.push({
+      name: `real: ${r.label}`,
+      currentKB: 0,
+      budgetKB: 0,
+      ok: true,
+      skipped: true,
+      skippedNote: "prerendered HTML found but referenced chunks missing (stale build)",
+    })
+    continue
+  }
+  const worst = Math.max(...transfers) / KB
+  const n = transfers.length
+  addCheck(`real: ${r.label} transfer${n > 1 ? ` (max of ${n})` : ""}`, worst, r.budgetKB)
+}
+
+// 8. Eager-graph lint result (byte-independent gate) — pushed with the other
+//    checks so --report/--json surface it alongside the byte budgets.
+results.checks.push({
+  name: "guard: static heavy-lib imports (source lint)",
+  currentKB: 0,
+  budgetKB: 0,
+  ok: eagerLint.ok,
+})
+if (!eagerLint.ok) {
+  for (const v of eagerLint.violations) results.failures.push(v)
+}
+
 // ─── Report ─────────────────────────────────────────────────────────────────
 
 const report = process.argv.includes("--report")
@@ -418,6 +856,14 @@ if (json) {
     const gzip = routeGzip(r.dir)
     routes[r.label] = gzip === null ? null : +(gzip / KB).toFixed(1)
   }
+  const realRoutes = {}
+  for (const r of REAL_ROUTE_CHECKS) {
+    const files = findPrerenderedHtml(r.htmlRel)
+    const transfers = files.map(realTransferFromHtmlFile).filter((v) => v !== null)
+    realRoutes[r.label] = transfers.length
+      ? { gzipKB: +(Math.max(...transfers) / KB).toFixed(1), files: transfers.length }
+      : null
+  }
   console.log(
     JSON.stringify(
       {
@@ -428,6 +874,12 @@ if (json) {
         initialSource: htmlInitialGzip !== null ? "prerendered-html" : "rootMainFiles",
         libs,
         routes,
+        realRoutes,
+        eagerLint: {
+          ok: eagerLint.ok,
+          filesScanned: eagerLint.filesScanned,
+          violations: eagerLint.violations,
+        },
         ok: results.failures.length === 0,
         failures: results.failures,
       },
@@ -461,6 +913,18 @@ if (report) {
     const gzip = routeGzip(r.dir)
     console.log(`   ${r.label.padEnd(16)} ${gzip === null ? "n/a" : (gzip / KB).toFixed(1) + " KB"}`)
   }
+  console.log("\n   Per-route REAL transfer (prerendered HTML, worst case):")
+  for (const r of REAL_ROUTE_CHECKS) {
+    const files = findPrerenderedHtml(r.htmlRel)
+    const transfers = files.map(realTransferFromHtmlFile).filter((v) => v !== null)
+    console.log(
+      `   ${r.label.padEnd(16)} ${transfers.length ? (Math.max(...transfers) / KB).toFixed(1) + " KB" + (transfers.length > 1 ? ` (max of ${transfers.length})` : "") : "n/a (no prerendered HTML)"}`,
+    )
+  }
+  console.log(
+    `\n   Eager-graph lint (source, check 8): ${eagerLint.filesScanned} files scanned, ` +
+      `${eagerLint.eagerFiles} in eager graph, ${eagerLint.violations.length} violation(s)`,
+  )
 }
 if (update) {
   // Suggest budgets with ~20% headroom over current measurements
@@ -477,6 +941,14 @@ if (update) {
     const gzip = routeGzip(r.dir)
     if (gzip !== null) {
       console.log(`   ${r.envKey} → ${suggest(gzip / KB, r.label)}`)
+    }
+  }
+  console.log("\n   Per-route REAL transfer (prerendered HTML):")
+  for (const r of REAL_ROUTE_CHECKS) {
+    const files = findPrerenderedHtml(r.htmlRel)
+    const transfers = files.map(realTransferFromHtmlFile).filter((v) => v !== null)
+    if (transfers.length) {
+      console.log(`   ${r.envKey} → ${suggest(Math.max(...transfers) / KB, r.label)} (worst of ${transfers.length})`)
     }
   }
 }

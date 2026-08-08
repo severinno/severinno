@@ -4,11 +4,16 @@
  * Compound component that eliminates the boilerplate duplicated across every
  * loading.tsx:
  *   - "use client"
- *   - import { motion } from "framer-motion"
  *   - import { ShimmerStyle, S, createContainer, createItem } from "..."
- *   - const container = createContainer(X)
- *   - const item = createItem(Y, Z)
- *   - <ShimmerStyle />
+ *
+ * Entrance animations are pure CSS — no framer-motion. <StaggerContainer>
+ * injects a per-child `--svn-delay` custom property and <StaggerItem> animates
+ * with the `svnFadeUpVar` keyframe (fade + translateY from `--svn-y`). Both
+ * keyframes live in loading-base's shimmerCSS, rendered by <LoadingShell>.
+ *
+ * This matters for performance: error boundaries and loading shells are part
+ * of every route's INITIAL JS graph, so a static framer-motion import here
+ * would pull the whole ~40 KB animation library into the first-paint bundle.
  *
  * Usage:
  *   import { LoadingShell, StaggerContainer, StaggerItem, S } from "@/app/loading-shell"
@@ -20,15 +25,12 @@
  *       </StaggerItem>
  *     </StaggerContainer>
  *   </LoadingShell>
- *
- * For custom motion.div animations (e.g. fade-in with delay), just import
- * { motion } from "framer-motion" alongside LoadingShell.
  */
 
 "use client"
 
+import * as React from "react"
 import { type ReactNode } from "react"
-import { motion } from "framer-motion"
 import { ShimmerStyle, S, createContainer, createItem } from "./loading-base"
 
 /** Re‑exported so loading files need only one import line. */
@@ -45,7 +47,9 @@ export function LoadingShell({ children }: { children: ReactNode }) {
   )
 }
 
-// ── Animated stagger container (replaces motion.div with container variants) ─
+// ── CSS stagger container (replaces motion.div with container variants) ────
+// Injects a `--svn-delay` custom property per child so <StaggerItem> can
+// offset its entrance animation. Non-element children pass through untouched.
 
 export function StaggerContainer({
   children,
@@ -57,26 +61,33 @@ export function StaggerContainer({
   stagger?: number
   className?: string
 }) {
-  const variants = createContainer(stagger)
   return (
-    <motion.div
-      variants={variants}
-      initial="hidden"
-      animate="show"
-      className={className}
-    >
-      {children}
-    </motion.div>
+    <div className={className}>
+      {React.Children.map(children, (child, i) =>
+        React.isValidElement<{ style?: React.CSSProperties }>(child)
+          ? React.cloneElement(child, {
+              style: {
+                "--svn-delay": `${(i * stagger).toFixed(3)}s`,
+                ...(child.props.style || {}),
+              } as React.CSSProperties,
+            })
+          : child,
+      )}
+    </div>
   )
 }
 
-// ── Animated item (replaces motion.div with item variants) ─────────────────
+// ── CSS stagger item (replaces motion.div with item variants) ─────────────
+// Animates once with the svnFadeUpVar keyframe (fade + translateY from
+// `--svn-y`, default 12px), delayed by the `--svn-delay` injected by the
+// parent <StaggerContainer>.
 
 export function StaggerItem({
   children,
   y = 12,
   duration = 0.35,
   className,
+  style,
 }: {
   children: ReactNode
   /** Slide-up offset (px). Default 12. */
@@ -84,11 +95,22 @@ export function StaggerItem({
   /** Animation duration (seconds). Default 0.35. */
   duration?: number
   className?: string
+  /** Extra inline styles (used by StaggerContainer to inject --svn-delay). */
+  style?: React.CSSProperties
 }) {
-  const variants = createItem(y, duration)
   return (
-    <motion.div variants={variants} className={className}>
+    <div
+      className={className}
+      style={
+        {
+          ...style,
+          "--svn-y": `${y}px`,
+          animation: `svnFadeUpVar ${duration}s ease-out both`,
+          animationDelay: "var(--svn-delay, 0s)",
+        } as React.CSSProperties
+      }
+    >
       {children}
-    </motion.div>
+    </div>
   )
 }

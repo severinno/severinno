@@ -6,38 +6,15 @@
  *
  * Replaces the inline spinner in page-client.tsx with a branded skeleton
  * that uses the same LoadingShell / shimmer design language.
+ *
+ * Entrance + dot pulse are pure CSS keyframes (fadeSlideUp / svnDotPulse
+ * from loading-base's shimmerCSS, rendered by <LoadingShell>) — no
+ * framer-motion dependency, keeping the animation lib out of the initial JS.
  */
 
 "use client"
 
-import { motion } from "framer-motion"
 import { LoadingShell, S } from "@/app/loading-shell"
-
-const dotVariants: any = {
-  hidden: { opacity: 0, y: 4 },
-  show: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: {
-      delay: 0.4 + i * 0.15,
-      duration: 0.35,
-      ease: "easeOut",
-    },
-  }),
-}
-
-const pulseVariants: any = {
-  pulse: {
-    scale: [1, 1.3, 1],
-    opacity: [0.6, 1, 0.6],
-    transition: {
-      duration: 1.4,
-      repeat: Infinity,
-      ease: "easeInOut",
-      delay: 0.6,
-    },
-  },
-}
 
 export default function LoadingGlobal() {
   return (
@@ -56,26 +33,19 @@ export default function LoadingGlobal() {
           {/* Tagline skeleton */}
           <S className="h-4 w-64 sm:h-4 sm:w-72" />
 
-          {/* Animated dots */}
+          {/* Animated dots (CSS: fadeSlideUp entrance + svnDotPulse loop) */}
           <div className="mt-4 flex items-center gap-2">
             {[0, 1, 2].map((i) => (
-              <motion.div
+              <div
                 key={i}
-                custom={i}
-                variants={dotVariants}
-                initial="hidden"
-                animate="show"
-              >
-                <motion.div
-                  variants={pulseVariants}
-                  animate="pulse"
-                  className="size-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400"
-                  style={{
-                    boxShadow:
-                      "0 0 6px rgba(5, 150, 105, 0.3)",
-                  }}
-                />
-              </motion.div>
+                className="size-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                style={{
+                  animation:
+                    "fadeSlideUp 0.35s ease-out both, svnDotPulse 1.4s ease-in-out infinite",
+                  animationDelay: `${(0.4 + i * 0.15).toFixed(2)}s, 0.6s`,
+                  boxShadow: "0 0 6px rgba(5, 150, 105, 0.3)",
+                }}
+              />
             ))}
           </div>
 

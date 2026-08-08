@@ -19,7 +19,6 @@ import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Search, SearchX, Loader2 } from "lucide-react"
-import { motion } from "framer-motion"
 
 import { apiGet, type Category } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -37,6 +36,23 @@ import {
 } from "@/components/ui/pagination"
 
 const PAGE_LIMIT = 12
+
+// Entrance animations for the results area — pure CSS, no framer-motion (the
+// ~40 KB lib stays out of /busca's initial JS; same conversion as error.tsx /
+// loading-shell). The card stagger replicates the previous motion.div delay,
+// held in the "from" state via animation-fill-mode: both.
+const SEARCH_RESULTS_CSS = `
+  .svn-search-fade { animation: svnSearchFade 0.3s ease-out both; }
+  .svn-search-rise { animation: svnSearchRise 0.3s ease-out both; }
+  @keyframes svnSearchFade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes svnSearchRise {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .svn-search-fade, .svn-search-rise { animation: none; }
+  }
+`
 
 // Popular services para o empty state
 const POPULAR_SERVICES = [
@@ -114,6 +130,8 @@ export function SearchPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <style>{SEARCH_RESULTS_CSS}</style>
+
       {/* Hero compacto da busca */}
       <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 text-white">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -250,11 +268,7 @@ export function SearchPage() {
           </div>
         ) : (
           /* Resultados */
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
-          >
+          <div className="svn-search-fade">
             <div className="mb-6">
               <h2 className="text-lg font-semibold">
                 {total}{" "}
@@ -269,14 +283,13 @@ export function SearchPage() {
 
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {items.map((provider, index) => (
-                <motion.div
+                <div
                   key={provider.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05, duration: 0.3 }}
+                  className="svn-search-rise"
+                  style={{ animationDelay: `${index * 0.05}s` }}
                 >
                   <ProviderCard provider={provider} />
-                </motion.div>
+                </div>
               ))}
             </div>
 
@@ -318,7 +331,7 @@ export function SearchPage() {
                 </PaginationContent>
               </Pagination>
             )}
-          </motion.div>
+          </div>
         )}
       </div>
     </div>

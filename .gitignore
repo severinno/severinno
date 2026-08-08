@@ -71,5 +71,8 @@ docs/benchmarks/geo-latest.json
 # Playwright test artifacts — generated on every E2E run
 test-results/
 
+# Lighthouse CI reports — generated on every lhci run (workflow + local)
+lhci-reports/
+
 # AI agent skills and configurations
 .agents/

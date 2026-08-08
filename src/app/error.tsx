@@ -1,41 +1,33 @@
 "use client"
 
 import { useEffect, useState, useRef, useCallback } from "react"
-import { motion } from "framer-motion"
 import { AlertTriangle, RefreshCw, Home, Bug } from "lucide-react"
 import Link from "next/link"
 
-const container: any = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.1 },
-  },
-}
-
-const item: any = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" } },
-}
-
-const iconVariants: any = {
-  hidden: { scale: 0.6, rotate: -10, opacity: 0 },
-  show: {
-    scale: 1,
-    rotate: 0,
-    opacity: 1,
-    transition: { duration: 0.5, ease: "easeOut" },
-  },
-  pulse: {
-    scale: [1, 1.05, 1],
-    transition: { duration: 2, repeat: Infinity, ease: "easeInOut" },
-  },
-}
-
-const shimmerBlock: any = {
-  hidden: { opacity: 0, x: -20 },
-  show: { opacity: 1, x: 0, transition: { duration: 0.4, ease: "easeOut" } },
-}
+// ── CSS animations (replaces framer-motion variants) ──────────────────────
+// The error boundary is part of every route's INITIAL JS graph, so a static
+// framer-motion import here pulls the whole ~40 KB animation library into the
+// first-paint bundle of every page. These keyframes reproduce the same
+// entrance choreography (container fade → staggered items → icon pop + pulse)
+// in plain CSS with zero runtime cost.
+const errorCSS = `
+  @keyframes svnErrFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes svnErrFadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes svnErrPop {
+    from { opacity: 0; transform: scale(0.6) rotate(-10deg); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes svnErrSoftPulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.05); }
+  }
+`
 
 export default function Error({
   error,
@@ -88,6 +80,7 @@ export default function Error({
 
   return (
     <div className="relative flex min-h-screen flex-col bg-gradient-to-b from-background via-background to-muted/30">
+      <style>{errorCSS}</style>
       {/* Decorative blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -left-40 -top-40 size-80 rounded-full bg-red-500/5 blur-3xl dark:bg-red-400/5" />
@@ -96,17 +89,17 @@ export default function Error({
 
       {/* ── Main content ────────────────────────────────────────────────── */}
       <div className="relative flex flex-1 items-center justify-center px-4">
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate="show"
+        <div
           className="flex w-full max-w-md flex-col items-center text-center"
+          style={{ animation: "svnErrFadeIn 0.35s ease-out both" }}
         >
           {/* Animated icon */}
-          <motion.div
-            variants={iconVariants}
-            animate="show"
+          <div
             className="mb-2"
+            style={{
+              animation:
+                "svnErrPop 0.5s ease-out both, svnErrSoftPulse 2s ease-in-out 1.2s infinite",
+            }}
           >
             <div className="relative">
               <div className="absolute inset-0 animate-ping rounded-full bg-red-500/15 dark:bg-red-400/10" />
@@ -114,31 +107,31 @@ export default function Error({
                 <AlertTriangle className="size-9 text-red-500 dark:text-red-400" />
               </div>
             </div>
-          </motion.div>
+          </div>
 
           {/* Status code */}
-          <motion.div variants={item}>
+          <div style={{ animation: "svnErrFadeUp 0.45s ease-out 0.05s both" }}>
             <span className="inline-block rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
               {statusCode}
             </span>
-          </motion.div>
+          </div>
 
           {/* Title */}
-          <motion.div variants={item}>
+          <div style={{ animation: "svnErrFadeUp 0.45s ease-out 0.12s both" }}>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
               {title}
             </h1>
-          </motion.div>
+          </div>
 
           {/* Description */}
-          <motion.div variants={item}>
+          <div style={{ animation: "svnErrFadeUp 0.45s ease-out 0.19s both" }}>
             <p className="mt-3 max-w-sm text-muted-foreground">{description}</p>
-          </motion.div>
+          </div>
 
           {/* Action buttons */}
-          <motion.div
-            variants={item}
+          <div
             className="mt-8 flex flex-col items-center gap-3 sm:flex-row"
+            style={{ animation: "svnErrFadeUp 0.45s ease-out 0.26s both" }}
           >
             <button
               onClick={handleReset}
@@ -158,35 +151,33 @@ export default function Error({
               <Home className="size-4" />
               Voltar ao início
             </Link>
-          </motion.div>
+          </div>
 
           {/* Error digest (dev support) */}
           {error.digest && (
-            <motion.div
-              variants={item}
+            <div
               className="mt-12 flex items-center gap-1.5"
+              style={{ animation: "svnErrFadeUp 0.45s ease-out 0.33s both" }}
             >
               <Bug className="size-3 text-muted-foreground/50" />
               <span className="text-xs text-muted-foreground/50">
                 Ref: {error.digest}
               </span>
-            </motion.div>
+            </div>
           )}
-        </motion.div>
+        </div>
       </div>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
-      <motion.footer
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.8, duration: 0.5 }}
+      <footer
         className="relative border-t bg-muted/20 px-4 py-6"
+        style={{ animation: "svnErrFadeIn 0.5s ease-out 0.8s both" }}
       >
         <p className="text-center text-xs text-muted-foreground/60">
           &copy; {new Date().getFullYear()} Severinno. Todos os direitos
           reservados.
         </p>
-      </motion.footer>
+      </footer>
     </div>
   )
 }

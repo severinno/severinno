@@ -57,8 +57,12 @@ function chartDataHtml(assets: unknown[]): string {
 }
 
 /** Synthetic analyzer asset node (only label/isAsset/gzipSize/groups matter). */
-function asset(label: string, gzipSize: number): Record<string, unknown> {
-  return { label, isAsset: true, statSize: gzipSize * 2, parsedSize: gzipSize, gzipSize, groups: [] }
+function asset(
+  label: string,
+  gzipSize: number,
+  groups: Record<string, unknown>[] = [],
+): Record<string, unknown> {
+  return { label, isAsset: true, statSize: gzipSize * 2, parsedSize: gzipSize, gzipSize, groups }
 }
 
 /** Run the gate against a fixture dir; returns stdout/stderr/status. */
@@ -167,4 +171,188 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.status).toBe(2)
     expect(r.stderr).toContain("Bundle report not found")
   })
+
+  it("guard fails (exit 1) when a heavy lib reaches a NON-home route's prerendered HTML", () => {
+    const f = makeFixture()
+    // Analyzer attributes a chunk to maplibre-gl via its module tree.
+    f.write(
+      ".next/analyze/client.html",
+      chartDataHtml([
+        asset("static/chunks/framework-abc.js", 60_000),
+        asset("static/chunks/map-lib-abc.js", 260_000, [
+          {
+            label: "static/chunks/map-lib-abc.js",
+            groups: [{ label: "node_modules/maplibre-gl/dist/maplibre-gl.js", groups: [] }],
+          },
+        ]),
+      ]),
+    )
+    // Home HTML is CLEAN — the regression is on /busca, so only the
+    // multi-route guard extension (not the old home-only check) catches it.
+    f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
+    f.write(
+      ".next/server/app/index.html",
+      '<html><body><script src="/_next/static/chunks/framework-abc.js"></script></body></html>',
+    )
+    f.write(
+      ".next/server/app/busca.html",
+      '<html><body><script src="/_next/static/chunks/framework-abc.js"></script>' +
+        '<script src="/_next/static/chunks/map-lib-abc.js"></script></body></html>',
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("guard: maplibre-gl not in initial JS (all prerendered routes)")
+    expect(r.stderr).toContain("maplibre-gl is statically bundled")
+    // Route label is formatted with a leading slash: "/busca (map-lib-abc.js)".
+    expect(r.stderr).toContain("/busca (map-lib-abc.js)")
+  })
+
+  it("source lint: lazy dynamic-import targets may statically import heavy libs (exit 0)", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // The page loads the map via next/dynamic → tracking-map is a lazy root,
+    // so its static maplibre CSS import must be exempt (the real pattern from
+    // /tracking/[id]). The `@/` alias must resolve through the fixture tsconfig.
+    f.write(
+      "src/app/tracking/[id]/page.tsx",
+      'import dynamic from "next/dynamic";\n' +
+        'const TrackingMap = dynamic(() => import("@/components/tracking-map"), { ssr: false });\n' +
+        "export default function Page() { return null }\n",
+    )
+    f.write(
+      "src/components/tracking-map.tsx",
+      'import "maplibre-gl/dist/maplibre-gl.css";\nexport function TrackingMap() { return null }\n',
+    )
+    f.write(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { paths: { "@/*": ["./src/*"] } } }),
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("guard: static heavy-lib imports (source lint)")
+    expect(r.stdout).toContain("All JS budgets within limits")
+  })
+
+  it("source lint: an eager route statically importing a heavy lib fails WITHOUT a bundle report (exit 1)", () => {
+    const f = makeFixture()
+    // No .next artifacts at all — the source lint must fire first, proving the
+    // gate works on a fresh checkout with no build.
+    f.write(
+      "src/app/busca/page.tsx",
+      'import { Map } from "react-map-gl";\nexport default function Page() { return null }\n',
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain("EAGER-GRAPH LINT VIOLATIONS")
+    expect(r.stderr).toContain("react-map-gl statically imported")
+    expect(r.stderr).toContain("src/app/busca/page.tsx")
+    expect(r.stderr).toContain("/busca")
+  })
+
+  it("source lint: transitive static import through an eager component is caught with route attribution (exit 1)", () => {
+    const f = makeFixture()
+    // Bundle report present → the violation must surface as a check + failure.
+    f.write(
+      ".next/analyze/client.html",
+      chartDataHtml([asset("static/chunks/framework-abc.js", 60_000), asset("static/chunks/main-app-def.js", 30_000)]),
+    )
+    // hero.tsx itself is not a route entry — only reachable eagerly via /.
+    f.write(
+      "src/app/page.tsx",
+      'import Hero from "./hero";\nexport default function Page() { return <Hero /> }\n',
+    )
+    f.write(
+      "src/app/hero.tsx",
+      'import { motion } from "framer-motion";\nexport default function Hero() { return null }\n',
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("guard: static heavy-lib imports (source lint)")
+    expect(r.stderr).toContain("framer-motion statically imported")
+    expect(r.stderr).toContain("src/app/hero.tsx")
+    expect(r.stderr).toContain("/")
+  })
+
+  it("source lint: JS_BUDGET_EAGER_ALLOW_FILES whitelists a flagged file (exit 0)", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    f.write(
+      "src/app/busca/page.tsx",
+      'import { Map } from "react-map-gl";\nexport default function Page() { return null }\n',
+    )
+
+    const r = runBudget(f.dir, { JS_BUDGET_EAGER_ALLOW_FILES: "src/app/busca/page.tsx" })
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("All JS budgets within limits")
+  })
+
+  it("source lint: a bare dynamic import() of a heavy lib in an eager file is the sanctioned lazy pattern (exit 0)", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // providers-map pattern: the lib itself is fetched via await import() — a
+    // separate lazy chunk, NOT a static import. Must not be flagged.
+    f.write(
+      "src/app/page.tsx",
+      'export default async function Page() { await import("maplibre-gl"); return null }\n',
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("All JS budgets within limits")
+  })
+
+  it("source lint: an eager page importing @/components/foo (tsconfig alias) which statically imports a heavy lib is caught (exit 1)", () => {
+    const f = makeFixture()
+    f.write(
+      ".next/analyze/client.html",
+      chartDataHtml([asset("static/chunks/framework-abc.js", 60_000), asset("static/chunks/main-app-def.js", 30_000)]),
+    )
+    // Alias resolution end-to-end: the page statically imports via the
+    // tsconfig `paths` alias, and foo.tsx (NOT a route entry) statically
+    // imports maplibre — the BFS must follow "@/", resolve src/components/
+    // foo.tsx, and flag it with the eager route attribution.
+    f.write(
+      "tsconfig.json",
+      JSON.stringify({ compilerOptions: { paths: { "@/*": ["./src/*"] } } }),
+    )
+    f.write(
+      "src/app/page.tsx",
+      'import Foo from "@/components/foo";\nexport default function Page() { return <Foo /> }\n',
+    )
+    f.write(
+      "src/components/foo.tsx",
+      'import "maplibre-gl/dist/maplibre-gl.css";\nexport default function Foo() { return null }\n',
+    )
+
+    const r = runBudget(f.dir)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain("maplibre-gl statically imported")
+    expect(r.stderr).toContain("src/components/foo.tsx")
+  })
 })
+
+/** Minimal .next fixture where every byte check passes (no heavy libs). */
+function writePassBuild(f: Fixture): void {
+  f.write(
+    ".next/analyze/client.html",
+    chartDataHtml([
+      asset("static/chunks/framework-abc.js", 60_000),
+      asset("static/chunks/main-app-def.js", 30_000),
+      asset("static/chunks/app/layout-abc.js", 10_000),
+      asset("static/chunks/app/page-xyz.js", 5_000),
+    ]),
+  )
+  f.write(".next/static/chunks/framework-abc.js", "export const f = 1;")
+  f.write(".next/static/chunks/main-app-def.js", "export const m = 2;")
+  f.write(
+    ".next/server/app/index.html",
+    '<html><head><script src="/_next/static/chunks/framework-abc.js"></script>' +
+      '<script src="/_next/static/chunks/main-app-def.js"></script></head><body></body></html>',
+  )
+  f.write(".next/static/chunks/app/layout-abc.js", "export const layout = 1;")
+  f.write(".next/static/chunks/app/page-xyz.js", "export const page = 1;")
+}

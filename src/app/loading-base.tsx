@@ -42,6 +42,18 @@ export const shimmerCSS = `
     from { opacity: 0; }
     to   { opacity: 1; }
   }
+
+  /* Stagger entrance — translateY driven by --svn-y (set by StaggerItem) */
+  @keyframes svnFadeUpVar {
+    from { opacity: 0; transform: translateY(var(--svn-y, 12px)); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* LoadingGlobal dots — soft scale + opacity pulse */
+  @keyframes svnDotPulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50%      { transform: scale(1.3); opacity: 1; }
+  }
 `
 
 /** Render this once at the top of your loading component. */

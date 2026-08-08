@@ -5,15 +5,16 @@
 #   1. Encoding check (reusable)
 #   2. Lint + TypeCheck + Tests (via CI)
 #   3. Cache manifest validation
-#   4. Build & push Docker images (app + worker) to GHCR
-#   5. Run DB migrations on VPS
-#   6. Deploy (pull + restart containers)
+#   4. Lighthouse CI — Core Web Vitals gate (desktop + mobile)
+#   5. Build & push Docker images (app + worker) to GHCR
+#   6. Run DB migrations on VPS
+#   7. Deploy (pull + restart containers)
 #
 # Usage:
 #   git tag v0.3.0-cache-mvp
 #   git push origin v0.3.0-cache-mvp
 #
-# Also runs on push to main (without tag) for continuous deployment.
+# Can also be triggered manually via workflow_dispatch (with optional tag input).
 # =============================================================================
 
 name: Release & Deploy
@@ -207,12 +208,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # -- Core Web Vitals gate --------------------------------------------------
+  # Reuses the full Lighthouse CI pipeline from lighthouse-ci.yml (Postgres/
+  # Redis services + deterministic seed + production build + lhci autorun,
+  # desktop & mobile) as a release gate: the docker build below only fires
+  # with green CWV on the 3 main public routes. Runs after the fast quality
+  # gates so we don't burn ~45 min of LHCI on a red lint/typecheck.
+  lhci:
+    uses: ./.github/workflows/lighthouse-ci.yml
+    needs: [utf8-check, quality-gate, lint, typecheck]
+
   # -- Docker build & push (depends on quality gates) -----------------------
 
   docker:
     name: Docker Build & Push
     runs-on: ubuntu-latest
-    needs: [utf8-check, quality-gate, lint, typecheck, test, budget, e2e-cache]
+    needs: [utf8-check, quality-gate, lint, typecheck, test, budget, e2e-cache, lhci]
     permissions:
       contents: read
       packages: write
