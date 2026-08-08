@@ -137,9 +137,21 @@ vi.mock("lucide-react", () => {
     const { size, className, ...safe } = props
     return <span data-testid="icon" className={className} {...safe}>{children}</span>
   }
-  return new Proxy({}, {
-    get: () => Icon,
-  })
+  // EXPLICIT named exports (não um Proxy): um `new Proxy({}, { get: () => Icon })`
+  // retorna função para TODA chave (incl. `then`) — o namespace vira thenable e o
+  // import() interno do vitest aguarda para sempre, pendurando a coleta de módulos
+  // e, com singleFork, a suíte inteira após mail.test.ts (hang P0 da auditoria).
+  // Além disso, o vitest valida staticamente os named exports do mock — um Proxy
+  // falha com "No X export is defined on the mock". Exports explícitos resolvem
+  // ambos: um ícone novo usado nas páginas falha alto (fácil de adicionar).
+  return {
+    ArrowLeft: Icon,
+    Eye: Icon,
+    EyeOff: Icon,
+    Loader2: Icon,
+    LogIn: Icon,
+    UserPlus: Icon,
+  }
 })
 
 // ── Mock UI components ───────────────────────────────────────────────────

@@ -150,7 +150,12 @@ const HEADER = [
 /** Parse the per-version "Top 5 maiores chunks" blocks from the existing md. */
 function parseTopChunks(md) {
   const map = {}
-  const lines = md.split("\n")
+  // Split on /\r?\n (not "\n"): .gitattributes `* text=auto` checks the
+  // committed docs out as CRLF on Windows, and a trailing \r silently
+  // broke every $-anchored regex below — baseline blocks parsed as empty
+  // (gate skipped with "sem baseline por rota ainda") AND were dropped on
+  // the next regeneration (data loss). Tolerating both is the durable fix.
+  const lines = md.split(/\r?\n/)
   let cur = null
   for (const line of lines) {
     const h = line.match(/^###\s+(v?[\w][\w.-]*)\s+—\s+(\d{4}-\d{2}-\d{2})$/)
@@ -170,7 +175,8 @@ function parseTopChunks(md) {
 /** Parse the per-version "Rotas (real transfer)" blocks from the existing md. */
 function parseRoutes(md) {
   const map = {}
-  const lines = md.split("\n")
+  // Same CRLF tolerance as parseTopChunks (see the comment there).
+  const lines = md.split(/\r?\n/)
   let cur = null
   for (const line of lines) {
     const h = line.match(/^###\s+(v?[\w][\w.-]*)\s+—\s+(\d{4}-\d{2}-\d{2})$/)
@@ -194,7 +200,7 @@ function parseRows(md) {
   const rows = []
   const top = parseTopChunks(md)
   const routes = parseRoutes(md)
-  for (const line of md.split("\n")) {
+  for (const line of md.split(/\r?\n/)) {
     const mm = line.match(/^\|\s*(v?[\w][\w.-]*)\s*\|(.*)\|\s*$/)
     if (!mm) continue
     if (mm[1] === HEADER[0]) continue // header row (future-proof vs ASCII rename)

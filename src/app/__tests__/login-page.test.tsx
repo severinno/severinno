@@ -14,7 +14,9 @@ describe("LoginPage (/login)", () => {
 
   it("renders the login form with title", () => {
     render(<LoginPageClient />)
-    expect(screen.getByText("Entrar")).toBeDefined()
+    // "Entrar" aparece no h2 (título) E no botão submit — usar o heading
+    // específico evita o erro "multiple elements" do getByText.
+    expect(screen.getByRole("heading", { name: "Entrar" })).toBeDefined()
     expect(screen.getByText("Acesse sua conta Severinno")).toBeDefined()
   })
 

@@ -3,3 +3,8 @@ set -euo pipefail
 bash scripts/check-utf8.sh --dry-run --ci src/
 bun run fuzz:ci
 bun run fuzz
+
+# Gates rápidos do CI antes do push (validate-cache-manifest + check-js-budget
+# + suíte unitária completa) — espelhando o pre-commit: nenhum push pode
+# quebrar o que o CI verifica depois de já estar localmente verde.
+bun run pre-push:gates

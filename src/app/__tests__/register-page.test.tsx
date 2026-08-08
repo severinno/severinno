@@ -14,7 +14,9 @@ describe("RegisterPage (/register)", () => {
 
   it("renders the register form with title", () => {
     render(<RegisterPageClient />)
-    expect(screen.getByText("Criar conta")).toBeDefined()
+    // "Criar conta" aparece no h2 (título) E no botão submit — usar o heading
+    // específico evita o erro "multiple elements" do getByText.
+    expect(screen.getByRole("heading", { name: "Criar conta" })).toBeDefined()
     expect(
       screen.getByText(
         "Cadastre-se como cliente ou prestador de serviços",

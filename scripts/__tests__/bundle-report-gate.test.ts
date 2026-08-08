@@ -421,6 +421,38 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
   })
 
+  it("parses a CRLF baseline (Windows checkout via .gitattributes text=auto) — route gate still fires and blocks drop no data", () => {
+    const f = makeFixture()
+    writePassBuild(f)
+    // Heavy /busca payload (same shape as the other route tests).
+    const payload = Array.from({ length: 30000 }, (_, i) => `"r${i}${i * 31}qz"`).join(",")
+    f.write(".next/static/chunks/busca-heavy-zz.js", `export const b = [${payload}];`)
+    writeRouteHtml(f, "busca.html", ["busca-heavy-zz.js"])
+    // Windows checkouts (core.autocrlf / .gitattributes `* text=auto`) leave
+    // the committed LF docs as CRLF on disk. The $-anchored parse regexes
+    // used to fail on a trailing \r, so releaseBaseline.routes parsed empty
+    // (gate skipped with "sem baseline por rota ainda") AND the next
+    // regeneration silently DROPPED the v0.4.2 Rotas/Top-5 blocks. Both
+    // must not happen: the gate fires and the baseline row keeps its block.
+    const crlf = baselineReportWithRoute("219.1", "80.0", "0.1").replace(/\n/g, "\r\n")
+    f.write("docs/bundle-report.md", crlf)
+
+    const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB: "5" })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain("ANTI-REGRESSION GATE")
+    expect(r.stderr).toContain("rota /busca piorou")
+    expect(r.stderr).toContain("v0.4.2")
+    // Round-trip must NOT lose the baseline block: the regenerated report
+    // (LF on write) must still contain the v0.4.2 Rotas block header AND its
+    // row (baseline route 0.1 KB — distinguishable from the heavy main row),
+    // plus the main row. "| /busca |" alone could come from the main block
+    // and "| v0.4.2 |" from the table row, so pin the block row explicitly.
+    const md = fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")
+    expect(md).toContain("### v0.4.2")
+    expect(md).toContain("| /busca | 1 | 0.1 |")
+    expect(md).toContain("| main |")
+  })
+
   it("applies the 30 KB DEFAULT per-route threshold when no env override is set", () => {
     const f = makeFixture()
     writePassBuild(f)

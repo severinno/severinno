@@ -4,7 +4,9 @@ bash scripts/check-utf8.sh --dry-run --ci src/
 node scripts/scan-lucide-icons.mjs --check
 bun x lint-staged
 
-# Typecheck: nenhum commit pode quebrar o build (tsc --noEmit — mesmo gate do CI).
+# Typecheck: nenhum commit pode quebrar o build (tsc --noEmit --incremental — mesmo gate do CI).
+# NOTA: o incremental (tsconfig.tsbuildinfo, gitignored) deixa o gate ~17-24s WARM; o primeiro
+# run após clone limpo ou mudança no tsconfig é ~55s (cold) — não desative o gate por causa disso.
 # Testes unitários das áreas tocadas: roda o vitest (unit config) só nos testes
 # mapeados dos arquivos staged (skip quando não há testes nas áreas tocadas).
 bun run typecheck
