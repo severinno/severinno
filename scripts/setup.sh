@@ -296,6 +296,14 @@ else
     warn "Python nao encontrado - verificacao UTF-8 sera pulada"
 fi
 
+# Git blame ignore-revs (protege blame de conversoes mecanicas - veja .git-blame-ignore-revs)
+if git config blame.ignoreRevsFile >/dev/null 2>&1; then
+    pass "blame.ignoreRevsFile: ja configurado ($(git config blame.ignoreRevsFile))"
+else
+    git config blame.ignoreRevsFile .git-blame-ignore-revs
+    pass "blame.ignoreRevsFile: .git-blame-ignore-revs (blame pula conversoes mecanicas)"
+fi
+
 # ===========================================================================
 # 2. ENV FILE
 # ===========================================================================

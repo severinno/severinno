@@ -164,48 +164,68 @@ function ServiceFormDialog({
     },
   })
 
-  // Hydrate form when editing
+  // Hydrate React state when editing — adjust state during render (no effect:
+  // react-hooks/set-state-in-effect gate). Guard trips on open transitions
+  // and when a different service is selected. Keyed by id (not object
+  // identity) so a re-derived service ref can never loop the render.
+  const [prevEditState, setPrevEditState] = React.useState({
+    open,
+    serviceId: service?.id,
+  })
+  if (prevEditState.open !== open || prevEditState.serviceId !== service?.id) {
+    setPrevEditState({ open, serviceId: service?.id })
+    if (open) {
+      if (service) {
+        // Find category and walk up to determine pai → filha → sub
+        const sub = categories.find((c) => c.id === service.categoryId)
+        const filha = sub?.parentId
+          ? categories.find((c) => c.id === sub?.parentId)
+          : null
+        const pai = filha?.parentId
+          ? categories.find((c) => c.id === filha?.parentId)
+          : null
+
+        setParentCatId(pai?.id ?? "")
+        setChildCatId(filha?.id ?? "")
+        setSubCatId(sub?.id ?? service.categoryId)
+        setPhotos(service.photos ?? [])
+      } else {
+        setParentCatId("")
+        setChildCatId("")
+        setSubCatId("")
+        setPhotos([])
+      }
+    }
+  }
+
+  // RHF form hydration — reset-in-effect (the react-hook-form documented
+  // pattern for syncing a form with props). Kept as an effect: the
+  // set-state-in-effect rule only tracks React setState, and form.reset is a
+  // control method (same as the setValue sync effects below).
   React.useEffect(() => {
     if (!open) return
-    if (service) {
-      // Find category and walk up to determine pai → filha → sub
-      const sub = categories.find((c) => c.id === service.categoryId)
-      const filha = sub?.parentId
-        ? categories.find((c) => c.id === sub?.parentId)
-        : null
-      const pai = filha?.parentId
-        ? categories.find((c) => c.id === filha?.parentId)
-        : null
-
-      setParentCatId(pai?.id ?? "")
-      setChildCatId(filha?.id ?? "")
-      setSubCatId(sub?.id ?? service.categoryId)
-      setPhotos(service.photos ?? [])
-      form.reset({
-        title: service.title,
-        description: service.description,
-        categoryId: service.categoryId,
-        basePrice: service.basePrice,
-        unit: service.unit as ServiceUnit,
-        photos: service.photos ?? [],
-        active: service.active,
-      })
-    } else {
-      setParentCatId("")
-      setChildCatId("")
-      setSubCatId("")
-      setPhotos([])
-      form.reset({
-        title: "",
-        description: "",
-        categoryId: "",
-        basePrice: 0,
-        unit: "UNIDADE",
-        photos: [],
-        active: true,
-      })
-    }
-  }, [open, service, categories, form])
+    form.reset(
+      service
+        ? {
+            title: service.title,
+            description: service.description,
+            categoryId: service.categoryId,
+            basePrice: service.basePrice,
+            unit: service.unit as ServiceUnit,
+            photos: service.photos ?? [],
+            active: service.active,
+          }
+        : {
+            title: "",
+            description: "",
+            categoryId: "",
+            basePrice: 0,
+            unit: "UNIDADE",
+            photos: [],
+            active: true,
+          },
+    )
+  }, [open, service, form])
 
   // Keep form's categoryId in sync with subCatId
   React.useEffect(() => {

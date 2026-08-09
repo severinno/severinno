@@ -56,6 +56,14 @@
 #                         overrides set) check the baseline ONLY when this is
 #                         also set, so baseline-less fixture suites stay fast.
 #
+# NO root override (e.g. ASCII_PROOF_ROOT) BY DESIGN: unlike the fragile-
+# range scan, whose gateFiles() DISCOVERS files by walking a root, this
+# proof's audit surface is an EXPLICIT LIST (env-injected or default globs).
+# Fixture isolation is already full via the three overrides above - the
+# baseline mutation tests (drift/sync/CRLF) run on temp fixtures without
+# touching the real repo, so a root redirect would add precedence ambiguity
+# without closing any gap. (Decision recorded 2026-08 to avoid re-asking.)
+#
 # Usage:
 #   bash scripts/verify-ascii-proof.sh          # audit + baseline check
 #   bash scripts/verify-ascii-proof.sh --sync   # regenerate baseline manifest

@@ -22,6 +22,7 @@ import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { expect } from "vitest"
 
 /** Canonical form for the divergence guards (content, not layout). */
 export function canonicalProgram(program: string): string {
@@ -45,6 +46,37 @@ export interface SpawnResult {
 }
 
 /**
+ * Assert the layer-3 offender COUNT is pinned to exactly `count` - the
+ * "sole failure source" guarantee shared by every fragile-range dirty test
+ * (the guard suite's CLI --dir dirty + FRAGILE_SCAN_ROOT dirty tests, and
+ * the verify-encoding.sh FRAGILE_SCAN_ROOT + FRAGILE_SCAN_DIRS mutation
+ * tests). ALL of them are hermetic by construction: the CLI tests set
+ * FRAGILE_SCAN_ROOT (synthetic root) so they scan ZERO real surface, and
+ * the wrapper tests set BOTH layer-3 overrides. A real-repo regression can
+ * therefore never flip these pins or masquerade as a synthetic proof -
+ * the live-regression signal belongs to the real-surface tests (the guard
+ * suite's repo-wide / BASELINE / REAL-REPO CONTRACT / clean-verdict CLI
+ * runs), not to these pins.
+ */
+export function expectSoleFailureCount(stderr: string, count: number): void {
+  expect(stderr).toContain(`${count} fragile character-class range(s) in LIVE code:`)
+}
+
+/**
+ * RULE OF THREE (extraction gate) - do NOT extract before a 3rd use:
+ * the wrapper's FULL 5-assertion layer-3 mutation block (aggregation +
+ * isolation L1/L2 + propagation + count-pin) is intentionally NOT a
+ * helper yet - only 2 callers exist (the two fragile-layer mutation
+ * tests in verify-encoding.test.ts). WHEN a 3rd wrapper mutation test
+ * needs the same block, extract it HERE as
+ * expectLayer3FailsThroughWrapper(env) - running
+ * runGate(["--ci", "src/"], env) and asserting those 5 lines - and
+ * refactor all 3 callers onto it (full contract in the
+ * verify-encoding.test.ts docblock RULE section). Until then, COPY the
+ * block rather than abstracting early.
+ */
+
+/**
  * Run a subprocess (bash/awk/...) with the shared shape every shim harness
  * used: env merged over process.env, utf8 decoding, 30s timeout (kill on
  * hang so a broken loop fails the suite instead of stalling CI). Returns
@@ -55,11 +87,14 @@ export function runSubprocess(opts: {
   args: string[]
   env?: Record<string, string>
   timeoutMs?: number
+  /** Working directory for the child (defaults to the parent's CWD). */
+  cwd?: string
 }): SpawnResult {
   const r = spawnSync(opts.command, opts.args, {
     env: { ...process.env, ...opts.env },
     encoding: "utf8",
     timeout: opts.timeoutMs ?? 30_000,
+    cwd: opts.cwd,
   })
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" }
 }

@@ -42,6 +42,53 @@ jobs:
   utf8-check:
     uses: ./.github/workflows/utf8-check.yml
 
+  # ── Docs Encoding (informational) ──────────────────────────────────────
+  # docs/ e .md/.css/.html ficam FORA de todos os gates por design (ver
+  # docs/ascii-safe.md, seção 'Who protects the docs?'). Este job é o ÚNICO
+  # contato informativo de CI com a superfície de docs: NÃO-BLOQUEANTE
+  # (continue-on-error: true + exit 0) e só alerta CORRUPÇÃO REAL - UTF-8
+  # inválido (byte 0x97 Windows-1252, sequências truncadas etc.) - NÃO
+  # acentos legítimos: 69/73 .md têm não-ASCII válido hoje, então o --report
+  # cru daria falso alerta permanente em todo PR (por isso o --utf8, que
+  # valida well-formedness e deixa acentos passar). Roda o MESMO scanner
+  # canônico (scan-non-ascii.mjs), nunca um grep de range. A violação vira
+  # ::warning:: no PR sem quebrar o design de exclusão.
+  #
+  # DESDE 2026-08 o MESMO scan --utf8 também lista os YAML GATE FILES
+  # (.github/workflows/*.yml + .github/actions/*/action.yml): o fragile-range
+  # os varre (classe de range) mas nenhum gate de encoding os auditava -
+  # check-utf8 cobre só .ts/.tsx/.sh e o proof ASCII estrito false-failaria
+  # os acentos/em-dash legítimos (ex.: as descriptions das composite
+  # actions). O --utf8 (well-formedness) flagra só CORRUPÇÃO; acentos
+  # passam. Mesmo design informativo (::warning:: + exit 0) - ver
+  # docs/ascii-safe.md 'Who protects .zscripts and the YAML gate files?'.
+  docs-encoding:
+    name: Docs Encoding (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan docs + YAML gate files for invalid UTF-8 (corruption alert, non-blocking)
+        run: |
+          # GH Actions bash steps run with `set -e -o pipefail`: a detected
+          # violation makes node exit non-zero and the pipeline fail, which
+          # would ABORT the step before the ::warning:: emission and the
+          # `exit 0`. `set +e` is what keeps this job truly informational -
+          # it must never turn a doc corruption into a red step.
+          set +e
+          git ls-files '*.md' '*.css' '*.html' '.github/workflows/*.yml' '.github/actions/*/action.yml' | xargs -r node scripts/scan-non-ascii.mjs --utf8 --report > /tmp/docs-utf8.txt 2>&1
+          CODE=$?
+          cat /tmp/docs-utf8.txt
+          if [ $CODE -ne 0 ]; then
+            echo "::warning::docs-encoding: invalid UTF-8 detected in docs/YAML gate surface (informational - PR NOT blocked)"
+            while IFS=$'\t' read -r verdict file pos; do
+              [ "$verdict" = "INVALID-UTF8" ] || continue
+              echo "::warning file=$file::$pos invalid UTF-8 byte sequence"
+            done < /tmp/docs-utf8.txt
+          fi
+          exit 0
+
   # ── Fuzz Tests ─────────────────────────────────────────────────────────
   # Runs in parallel with other checks. No external dependencies needed.
   fuzz:
@@ -217,11 +264,48 @@ jobs:
       - name: Generate Prisma client
         run: bunx prisma generate
 
+      # Unit tests run FIRST so a lint regression never skips the suite
+      # (a failed step skips subsequent steps by default in GH Actions).
+      # Lint + Type check keep `if: always()` so they still run (and each
+      # failure still blocks the job) even when tests fail — no masking in
+      # either direction.
+      - name: Unit tests
+        run: bun run test:unit
+
       - name: Lint
+        if: always()
         run: bun run lint
 
       - name: Type check
+        if: always()
         run: bunx tsc --noEmit
 
-      - name: Unit tests
-        run: bun run test:unit
+  # ── Fragile Range Guard (vitest) ──────────────────────────────────────────
+  # Roda SOMENTE scripts/__tests__/fragile-range-guard.test.ts como job
+  # independente — imune a qualquer skip do job check (o reorder atual já
+  # protege, mas este job garante o contrato vitest do guard mesmo se o check
+  # for reordenado no futuro). A camada 3 (CLI em arquivos reais) roda no
+  # utf8-check; aqui ficam os contratos por mutação/fixture. Não precisa de
+  # Prisma client nem de build.
+  fragile-guard:
+    name: Fragile Range Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run fragile-range-guard vitest
+        run: bunx vitest run scripts/__tests__/fragile-range-guard.test.ts --config vitest.config.unit.ts

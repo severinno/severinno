@@ -248,12 +248,6 @@ function getGradeBorder(grade: number): string {
   return "border-red-200 dark:border-red-800/30"
 }
 
-function getGradeIcon(grade: number): LucideIcon {
-  if (grade >= 9) return CheckCircle2
-  if (grade >= 7) return AlertTriangle
-  return AlertTriangle
-}
-
 function getCompletionPercentage(layers: LayerInfo[]): number {
   const completed = layers.filter((l) => l.status === "completed").length
   return Math.round((completed / layers.length) * 100)
@@ -567,7 +561,6 @@ function KpiCard({
 function LayerCard({ layer }: { layer: LayerInfo }) {
   const Icon = layer.icon
   const pct = (layer.grade / layer.maxGrade) * 100
-  const GradeIcon = getGradeIcon(layer.grade)
   const hasActions = layer.todo.length > 0
 
   return (
@@ -600,7 +593,13 @@ function LayerCard({ layer }: { layer: LayerInfo }) {
       {/* Grade + Progress */}
       <div className="mt-3 flex items-center gap-3">
         <div className="flex shrink-0 items-center gap-1">
-          <GradeIcon className={cn("size-4", getGradeColor(layer.grade))} />
+          {/* Grade icon inlined (no component created during render —
+              react-hooks/static-components gate). */}
+          {layer.grade >= 9 ? (
+            <CheckCircle2 className={cn("size-4", getGradeColor(layer.grade))} />
+          ) : (
+            <AlertTriangle className={cn("size-4", getGradeColor(layer.grade))} />
+          )}
           <span className={cn(
             "text-lg font-bold tabular-nums",
             getGradeColor(layer.grade),

@@ -827,7 +827,16 @@ function EditUserDialog({
   const [city, setCity] = React.useState("")
   const [state, setState] = React.useState("")
 
-  React.useEffect(() => {
+  // Hydrate fields when editing — adjust state during render (no effect:
+  // react-hooks/set-state-in-effect gate). Guard trips on open transitions
+  // AND user changes, so reopening the same user still re-hydrates. Keyed by
+  // id (not object identity) so a re-derived user ref can never loop.
+  const [prevEditState, setPrevEditState] = React.useState({
+    open: !!user,
+    userId: user?.id,
+  })
+  if (prevEditState.open !== !!user || prevEditState.userId !== user?.id) {
+    setPrevEditState({ open: !!user, userId: user?.id })
     if (user) {
       setName(user.name)
       setRole(user.role)
@@ -835,7 +844,7 @@ function EditUserDialog({
       setCity(user.city ?? "")
       setState(user.state ?? "")
     }
-  }, [user])
+  }
 
   // H5: warning when demoting from ADMIN
   const demotingFromAdmin = user?.role === "ADMIN" && role !== "ADMIN"

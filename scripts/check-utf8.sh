@@ -6,16 +6,23 @@
 #   src/                all .ts/.tsx source files (valid UTF-8)
 #   scripts/            all .sh scripts (valid UTF-8)
 #   .github/workflows/  any .sh scripts there (valid UTF-8)
+#   .zscripts/          any .sh scripts there (valid UTF-8) - workspace-agent
+#                       operational scripts, ALWAYS scanned since 2026-08
 #
 # .sh scripts are scp'd to the VPS and executed over ssh, where the remote
 # locale may not be UTF-8 - emoji/accents/em-dashes would render as mojibake.
 # VALID UTF-8 is this script's job (check_utf8.py, with safe byte-0x97
 # Windows-1252 detection - valid 0x97 continuation bytes are never touched).
 #
-# PURE-ASCII is NOT this script's job anymore (2026-08): every .sh in the
-# repo is pure ASCII, enforced by scripts/verify-ascii-proof.sh (strict,
-# repo-wide, on every .sh + .husky hook + the frozen docs/ascii-safe.md
-# baseline drift check). The old always-on VPS ASCII gate (health-check.sh +
+# PURE-ASCII is NOT this script's job anymore (2026-08): every AUDITED .sh
+# (scripts/*.sh, root *.sh, .husky hooks) is pure ASCII, enforced by
+# scripts/verify-ascii-proof.sh (strict, + the frozen docs/ascii-safe.md
+# baseline drift check). EXCEPTION: .zscripts/*.sh are deliberately OUT of
+# the ASCII proof (legit CJK banners - workspace-agent tooling, never scp'd
+# to the VPS; strict ASCII would false-fail them); their encoding contract
+# is VALID UTF-8, enforced HERE by the always-scanned .zscripts dir below
+# (decision: docs/ascii-safe.md 'Who protects .zscripts and the YAML gate
+# files?'). The old always-on VPS ASCII gate (health-check.sh +
 # root *.sh) and the --ascii opt-in scan were REMOVED as redundant - the
 # proof audits a strict superset of both. This script DELEGATES all .sh
 # ASCII checking to the proof (unless it runs as layer 1 of
@@ -34,6 +41,8 @@
 #   ./scripts/check-utf8.sh --ci         # exit 1 on invalid files
 #   ./scripts/check-utf8.sh --fix        # replace corrupt byte 0x97
 #   ./scripts/check-utf8.sh --ascii      # accepted no-op (proof is always-on)
+#   ./scripts/check-utf8.sh --ext md     # also audit .md files (on-demand; --ext
+#                                        # is forwarded to check_utf8.py)
 #
 # NOTE (2026-08): a STANDALONE run now emits ALL delegated layers - the
 # python UTF-8 scan, the proof output (~40 [ASCII-OK] lines + baseline
@@ -56,25 +65,39 @@ if [ ! -f "$PYTHON_SCRIPT" ]; then
   exit 2
 fi
 
-# Default scan roots. A positional dir argument overrides src/ but scripts/
-# and .github/workflows/ are ALWAYS scanned (they hold the .sh scripts).
+# Default scan roots. A positional dir argument overrides src/ but scripts/,
+# .github/workflows/ and .zscripts/ are ALWAYS scanned (they hold the .sh
+# scripts; .zscripts since 2026-08 - see the header EXCEPTION note).
 # --ascii is intercepted and DROPPED: repo-wide .sh ASCII is always-on via
 # the delegated proof, so the flag is accepted only for backward compat.
 DEFAULT_DIRS=(src)
 ARGS=()
-for a in "$@"; do
+POSITIONAL=("$@")
+i=0
+while [ "$i" -lt "${#POSITIONAL[@]}" ]; do
+  a="${POSITIONAL[$i]}"
   case "$a" in
     # --ascii: no-op since 2026-08 - pure-ASCII is always enforced by the
     # delegated proof (verify-ascii-proof.sh), never forwarded to python.
     --ascii) : ;;
+    --ext)
+      # --ext consumes the NEXT argument as its extension value; without
+      # this, the value would be mistaken for a positional scan dir.
+      ARGS+=("$a")
+      if [ "$((i + 1))" -lt "${#POSITIONAL[@]}" ]; then
+        i=$((i + 1))
+        ARGS+=("${POSITIONAL[$i]}")
+      fi
+      ;;
     --*)     ARGS+=("$a") ;;
     *)       DEFAULT_DIRS=("$a") ;;
   esac
+  i=$((i + 1))
 done
 
 EXIT_CODE=0
 python3 "$PYTHON_SCRIPT" "${DEFAULT_DIRS[@]}" "${ARGS[@]}" \
-  scripts .github/workflows || EXIT_CODE=$?
+  scripts .github/workflows .zscripts || EXIT_CODE=$?
 
 # .sh ASCII delegation: ALL .sh checking lives in verify-ascii-proof.sh
 # (strict repo-wide pure ASCII + frozen docs/ascii-safe.md baseline). When
@@ -85,12 +108,30 @@ python3 "$PYTHON_SCRIPT" "${DEFAULT_DIRS[@]}" "${ARGS[@]}" \
 # complete gate. The fragile character-class RANGE scan (the 2026-08 bug
 # class, scripts/fragile-range-patterns.mjs) delegates the same way - it is
 # verify-encoding.sh's layer 3, so it too must not run twice under layer 1.
-# `|| X=$?` under set -e is REQUIRED: a non-zero delegated exit must not
-# abort before the verdict below.
+# A standalone run DERIVES the fragile scan's --dir targets from the
+# module's TARGET_DIRS (--print-target-dirs, single source of truth) - the
+# same e2e/ + src/ trees verify-encoding.sh layer 3 scans, so the standalone
+# entry enforces the SAME executable-code surface. NOTE: this delegation
+# does NOT honor a FRAGILE_SCAN_DIRS override (unlike verify-encoding.sh
+# layer 3) - fixture-driven layer-3 tests route through verify-encoding.sh,
+# and this standalone entry always audits the real repo. `|| X=$?` under
+# set -e is REQUIRED: a non-zero delegated exit must not abort before the
+# verdict.
 DELEGATED_EXIT=0
 if [ "${VERIFY_ENCODING_LAYER1:-}" != "1" ]; then
   bash "$SCRIPT_DIR/verify-ascii-proof.sh" || DELEGATED_EXIT=$?
-  node "$SCRIPT_DIR/fragile-range-patterns.mjs" --ci || DELEGATED_EXIT=$?
+  FRAGILE_DIRS="$(node "$SCRIPT_DIR/fragile-range-patterns.mjs" --print-target-dirs)" || FRAGILE_DIRS=""
+  if [ -z "$FRAGILE_DIRS" ]; then
+    echo "check-utf8: fragile-range derivation failed (TARGET_DIRS unavailable)" >&2
+    DELEGATED_EXIT=2
+  else
+    read -r -a FRAGILE_DIR_ARR <<< "$FRAGILE_DIRS"
+    FRAGILE_ARGS=()
+    for d in "${FRAGILE_DIR_ARR[@]}"; do
+      FRAGILE_ARGS+=(--dir "$d")
+    done
+    node "$SCRIPT_DIR/fragile-range-patterns.mjs" --ci "${FRAGILE_ARGS[@]}" || DELEGATED_EXIT=$?
+  fi
   if [ "$DELEGATED_EXIT" -gt "$EXIT_CODE" ]; then
     EXIT_CODE=$DELEGATED_EXIT
   fi

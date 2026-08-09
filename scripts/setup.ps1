@@ -271,6 +271,19 @@ if ($python) {
     Write-Warn "Python não encontrado — verificação UTF-8 será pulada"
 }
 
+# Git blame ignore-revs (protege blame de conversões mecânicas - veja .git-blame-ignore-revs)
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    $blameVal = git config blame.ignoreRevsFile 2>$null
+    if ($LASTEXITCODE -eq 0 -and $blameVal) {
+        Write-Pass "blame.ignoreRevsFile: já configurado ($blameVal)"
+    } else {
+        git config blame.ignoreRevsFile .git-blame-ignore-revs
+        Write-Pass "blame.ignoreRevsFile: .git-blame-ignore-revs (blame pula conversões mecânicas)"
+    }
+} else {
+    Write-Warn "Git não encontrado - pulando blame.ignoreRevsFile"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # 2. ARQUIVO .env
 # ═══════════════════════════════════════════════════════════════════

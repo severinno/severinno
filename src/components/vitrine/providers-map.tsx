@@ -68,7 +68,11 @@ export default function ProvidersMap({
   const maplibreglRef = useRef<typeof import("maplibre-gl") | null>(null)
 
   const selectRef = useRef(onSelectProvider)
-  selectRef.current = onSelectProvider
+  // Keep the latest callback without touching the ref during render
+  // (react-hooks/refs gate) — updated after each commit, before any event.
+  useEffect(() => {
+    selectRef.current = onSelectProvider
+  })
 
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number"
 

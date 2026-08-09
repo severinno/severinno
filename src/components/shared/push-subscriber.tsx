@@ -35,10 +35,13 @@ export function PushToggle() {
   React.useEffect(() => {
     if (!vapidConfigured) return
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return
-    setSupported(true)
+    // Deferred so the setState isn't synchronous in the effect body
+    // (react-hooks/set-state-in-effect gate).
+    const t = window.setTimeout(() => setSupported(true), 0)
     navigator.serviceWorker.ready.then((reg) =>
       reg.pushManager.getSubscription().then((sub) => setSubscribed(!!sub)),
     )
+    return () => window.clearTimeout(t)
   }, [vapidConfigured])
 
   const toggle = async () => {

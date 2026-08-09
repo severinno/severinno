@@ -20,10 +20,16 @@
  *   3. Every non-comment line is a full 40-hex commit hash.
  *   4. Every listed hash resolves to a REAL commit (git cat-file -e) -
  *      proven by a MUTATION test where a fabricated hash is rejected.
+ *   5. No listed hash resolves to the CURRENT HEAD - a self-referencing
+ *      entry (the commit that would add itself to this file) silently
+ *      disables the guard for every line it introduces, the exact class
+ *      of error the original placeholder documented. Proven by a
+ *      MUTATION test that feeds HEAD into the check and expects failure.
  *
- * The file intentionally has zero hash entries right now; the assertions
- * validate the format/existence rules for any entry that IS present, so
- * the gate becomes active the moment the conversion commit is appended.
+ * The file historically held zero entries while the conversion was
+ * UNCOMMITTED working-tree state; the assertions validate the
+ * format/existence rules for any entry that IS present, so the gate
+ * became active the moment the conversion commit was appended.
  */
 import { describe, it, expect } from "vitest"
 import { spawnSync } from "node:child_process"
@@ -53,12 +59,46 @@ function commitExists(hash: string): boolean {
   return r.status === 0
 }
 
+/** Full 40-hex hash of the current HEAD (resolved once per run). */
+function currentHead(): string {
+  const r = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: ROOT,
+    encoding: "utf8",
+    timeout: 15_000,
+  })
+  const head = (r.stdout ?? "").trim()
+  if (!/^[0-9a-f]{40}$/.test(head)) {
+    throw new Error("git rev-parse HEAD failed to return a 40-hex hash")
+  }
+  return head
+}
+
+/** Resolved once: HEAD is stable for the whole suite run. */
+const HEAD = currentHead()
+
+/** True when the hash is the commit that would write this very file. */
+function isSelfReferencing(hash: string): boolean {
+  return hash === HEAD
+}
+
 describe(".git-blame-ignore-revs", () => {
   it("exists at repo root and still documents its purpose (stripped stub = fail)", () => {
     expect(fs.existsSync(FILE)).toBe(true)
     const content = fs.readFileSync(FILE, "utf8")
     expect(content).toContain("Mechanical banner conversion")
     expect(content).toContain("git config blame.ignoreRevsFile")
+  })
+
+  it("setup scripts wire blame.ignoreRevsFile so new clones get the protection", () => {
+    const setupSh = fs.readFileSync(path.join(ROOT, "scripts", "setup.sh"), "utf8")
+    const setupPs1 = fs.readFileSync(path.join(ROOT, "scripts", "setup.ps1"), "utf8")
+    const docContent = fs.readFileSync(FILE, "utf8")
+    // Bash path: idempotent git config with pass/warn.
+    expect(setupSh).toContain("git config blame.ignoreRevsFile .git-blame-ignore-revs")
+    // PowerShell path: git config with $LASTEXITCODE + Get-Command guard (mirrors the .sh).
+    expect(setupPs1).toContain("git config blame.ignoreRevsFile .git-blame-ignore-revs")
+    // The command line in the ignore file doc must match the .sh wiring verbatim.
+    expect(docContent).toContain("git config blame.ignoreRevsFile .git-blame-ignore-revs")
   })
 
   it("is pure ASCII (byte-wise: no byte >= 0x80)", () => {
@@ -82,8 +122,27 @@ describe(".git-blame-ignore-revs", () => {
     }
   })
 
+  it("no listed hash is the current HEAD (a self-referencing entry would silently disable the guard)", () => {
+    const list = entries()
+    for (const h of list) {
+      expect(isSelfReferencing(h)).toBe(false)
+      expect(h).not.toBe(HEAD)
+    }
+  })
+
   it("MUTATION: a fabricated hash is rejected by the existence check", () => {
     const fake = "0000000000000000000000000000000000000000"
     expect(commitExists(fake)).toBe(false)
+  })
+
+  it("MUTATION: appending HEAD to the file is caught by the self-reference check", () => {
+    // HEAD passes the existence check, so only the self-reference check can
+    // catch it - this pins the exact error class the placeholder documented.
+    expect(commitExists(HEAD)).toBe(true)
+    // Real entries are clean today.
+    expect(entries().some(isSelfReferencing)).toBe(false)
+    // Injecting HEAD into the entry list must fire the check (a mutation that
+    // would silently disable the guard for every line HEAD introduces).
+    expect([...entries(), HEAD].some(isSelfReferencing)).toBe(true)
   })
 })

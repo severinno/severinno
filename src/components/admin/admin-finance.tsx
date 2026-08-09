@@ -201,10 +201,13 @@ export function AdminFinanceDashboard() {
   const [expandedProviders, setExpandedProviders] = React.useState<Set<string>>(new Set())
   const limit = 15
 
-  // Collapse all when period changes
-  React.useEffect(() => {
+  // Collapse all when period changes — adjust state during render (no
+  // effect: react-hooks/set-state-in-effect gate).
+  const [prevPeriod, setPrevPeriod] = React.useState(period)
+  if (period !== prevPeriod) {
+    setPrevPeriod(period)
     setExpandedProviders(new Set())
-  }, [period])
+  }
 
   const { data, isLoading, isError, isFetching, refetch, dataUpdatedAt } =
     useQuery({

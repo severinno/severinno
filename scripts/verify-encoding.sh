@@ -20,11 +20,24 @@
 #                                      patterns the vitest guard imports; wired
 #                                      here so the class is blocked even when
 #                                      the gate runs without the vitest suite.
+#                                      Scan surface: gate files + the
+#                                      module's TARGET_DIRS trees
+#                                      (DERIVED via the module's
+#                                      --print-target-dirs query, single
+#                                      source of truth). NOT scanned:
+#                                      .md/.css/.html + the docs/ tree -
+#                                      canonical decision record in
+#                                      fragile-range-patterns.mjs (the
+#                                      DECISION RECORD block just below
+#                                      TARGET_EXTS); enforced by the
+#                                      EXCLUSION CONTRACT tests in the
+#                                      guard suite.
 #
 # Exit code = the WORST of the three layers (0 all clean / 1 violation / 2
 # usage error), so a regression in any layer fails the single step.
-# Args are forwarded to check-utf8.sh (e.g. --ci src/, --dry-run); --sync is
-# intercepted and routed to verify-ascii-proof.sh (baseline regeneration).
+# Args are forwarded to check-utf8.sh (e.g. --ci src/, --dry-run, --ext md
+# for an on-demand doc audit); --sync is intercepted and routed to
+# verify-ascii-proof.sh (baseline regeneration).
 #
 # Usage:
 #   bash scripts/verify-encoding.sh                  # all layers, defaults
@@ -32,10 +45,11 @@
 #   bash scripts/verify-encoding.sh --dry-run --ci src/   # local hooks
 #   bash scripts/verify-encoding.sh --sync           # forward to proof only
 #
-# Env overrides for the proof (VPS_SH_FILES/OPS_SH_FILES/ASCII_BASELINE_FILE)
-# and for layer 3 (FRAGILE_SCAN_ROOT - synthetic/alternate repo root for the
-# fragile range scan) pass through untouched - fixture-driven tests keep
-# working through this entry point.
+# Env overrides pass through untouched - fixture-driven tests keep working
+# through this entry point: the proof layer's VPS_SH_FILES/OPS_SH_FILES/
+# ASCII_BASELINE_FILE, layer 3's FRAGILE_SCAN_ROOT (synthetic/alternate repo
+# root) and FRAGILE_SCAN_DIRS (space-separated dirs REPLACING the derived
+# TARGET_DIRS default).
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -81,19 +95,36 @@ bash "$SCRIPT_DIR/verify-ascii-proof.sh" || EXIT_CODE=$?
 # Layer 3: fragile character-class RANGE scan (the 2026-08 bug class). The
 # patterns live in scripts/fragile-range-patterns.mjs - the SAME module the
 # vitest guard imports - wired here so a fragile range in any gate file is
-# blocked even when the gate runs without the vitest suite. --dir targets
-# extend the scan to the e2e/ specs and the src/ app files (a fragile range
-# in a playwright spec or an app file would otherwise pass unnoticed - the
-# old gate-files-only scope was the gap this closes). FRAGILE_SCAN_DIRS
-# (space-separated) overrides the default target dirs for fixture-driven
-# tests, mirroring the proof layer's env overrides. Worst exit wins.
+# blocked even when the gate runs without the vitest suite. The DEFAULT
+# --dir targets are DERIVED from the module's TARGET_DIRS export via its
+# --print-target-dirs query mode - the module is the single source of
+# truth, so adding a dir to TARGET_DIRS picks it up in every gate
+# automatically and there is no second "e2e/ src/" list in this wrapper to
+# drift. FRAGILE_SCAN_DIRS (space-separated) OVERRIDES the derived default
+# for fixture-driven tests, mirroring the proof layer's env overrides. If
+# the derivation fails, layer 3 fails loudly (exit 2) - a gate must never
+# silently degrade to scanning fewer trees than the module declares. Worst
+# exit wins.
 FRAGILE_EXIT=0
-read -r -a FRAGILE_DIR_ARR <<< "${FRAGILE_SCAN_DIRS:-e2e/ src/}"
+FRAGILE_DIR_ARR=()
+if [ -n "${FRAGILE_SCAN_DIRS:-}" ]; then
+  read -r -a FRAGILE_DIR_ARR <<< "$FRAGILE_SCAN_DIRS"
+else
+  FRAGILE_DIRS="$(node "$SCRIPT_DIR/fragile-range-patterns.mjs" --print-target-dirs)" || FRAGILE_DIRS=""
+  if [ -z "$FRAGILE_DIRS" ]; then
+    echo "verify-encoding: layer 3 could not derive TARGET_DIRS from fragile-range-patterns.mjs (--print-target-dirs failed)" >&2
+    FRAGILE_EXIT=2
+  else
+    read -r -a FRAGILE_DIR_ARR <<< "$FRAGILE_DIRS"
+  fi
+fi
 DIR_ARGS=()
 for d in "${FRAGILE_DIR_ARR[@]}"; do
   DIR_ARGS+=(--dir "$d")
 done
-node "$SCRIPT_DIR/fragile-range-patterns.mjs" --ci "${DIR_ARGS[@]}" || FRAGILE_EXIT=$?
+if [ "$FRAGILE_EXIT" -eq 0 ]; then
+  node "$SCRIPT_DIR/fragile-range-patterns.mjs" --ci "${DIR_ARGS[@]}" || FRAGILE_EXIT=$?
+fi
 if [ "$FRAGILE_EXIT" -gt "$EXIT_CODE" ]; then
   EXIT_CODE=$FRAGILE_EXIT
 fi

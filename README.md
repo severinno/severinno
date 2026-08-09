@@ -42,6 +42,10 @@
 ## Quick Start
 
 ```bash
+# 0. Enable blame ignore-revs (recommended - hides mechanical conversion commits)
+#    (scripts/setup.sh and scripts/setup.ps1 do this automatically)
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+
 # 1. Install dependencies
 bun install
 

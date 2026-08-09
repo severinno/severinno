@@ -84,11 +84,15 @@ export default function ProviderCard({
   const { user } = useAuthStore()
   const openAuth = useUIStore((s) => s.openAuth)
 
-  // Optimistic favorite state (initialized from prop; synced if prop changes)
+  // Optimistic favorite state (initialized from prop; synced if prop changes
+  // via prev-guard — adjust state during render, no effect:
+  // react-hooks/set-state-in-effect gate).
   const [favorited, setFavorited] = React.useState<boolean>(!!favoritedProp)
-  React.useEffect(() => {
+  const [prevFavoritedProp, setPrevFavoritedProp] = React.useState(favoritedProp)
+  if (favoritedProp !== prevFavoritedProp) {
+    setPrevFavoritedProp(favoritedProp)
     setFavorited(!!favoritedProp)
-  }, [favoritedProp])
+  }
 
   const coverUrl =
     provider.coverUrl ||

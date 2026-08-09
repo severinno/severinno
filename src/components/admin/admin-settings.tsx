@@ -183,10 +183,13 @@ export function AdminSettings() {
     staleTime: 30_000,
   })
 
-  // H1 — sincroniza freshness label
-  React.useEffect(() => {
-    if (dataUpdatedAt) setLastFetched(new Date(dataUpdatedAt))
-  }, [dataUpdatedAt])
+  // H1 — sincroniza freshness label (adjust state during render, no effect:
+  // react-hooks/set-state-in-effect gate).
+  const [prevUpdatedAt, setPrevUpdatedAt] = React.useState(dataUpdatedAt)
+  if (dataUpdatedAt && dataUpdatedAt !== prevUpdatedAt) {
+    setPrevUpdatedAt(dataUpdatedAt)
+    setLastFetched(new Date(dataUpdatedAt))
+  }
 
   const items = data?.items ?? []
 
@@ -215,9 +218,12 @@ export function AdminSettings() {
     return items.filter((s) => s.key.toLowerCase().includes(q))
   }, [items, query])
 
-  // Initialize draft when items arrive
-  React.useEffect(() => {
-    if (items.length === 0) return
+  // Initialize draft when items arrive — adjust state during render (no
+  // effect: react-hooks/set-state-in-effect gate). Guard terminates once
+  // items matches the previous render (stable query ref after first load).
+  const [prevDraftItems, setPrevDraftItems] = React.useState(items)
+  if (items.length > 0 && items !== prevDraftItems) {
+    setPrevDraftItems(items)
     setDraft((prev) => {
       const next: Record<string, string> = { ...prev }
       for (const s of items) {
@@ -225,7 +231,7 @@ export function AdminSettings() {
       }
       return next
     })
-  }, [items])
+  }
 
   const upsertMutation = useMutation({
     mutationFn: (settings: Array<{ key: string; value: string }>) =>
@@ -764,12 +770,14 @@ function CreateSettingDialog({
   const [key, setKey] = React.useState("")
   const [value, setValue] = React.useState("")
 
-  React.useEffect(() => {
-    if (open) {
-      setKey("")
-      setValue("")
-    }
-  }, [open])
+  // Reset the form when the dialog opens — adjust state during render (no
+  // effect: react-hooks/set-state-in-effect gate).
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  if (open && !prevOpen) {
+    setPrevOpen(open)
+    setKey("")
+    setValue("")
+  }
 
   const keyValid = /^[A-Z0-9_]+$/.test(key) && key.length >= 1
   const dupe = existingKeys.includes(key.toUpperCase())

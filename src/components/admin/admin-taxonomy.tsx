@@ -249,12 +249,13 @@ export function AdminTaxonomy() {
 
   // Service count por categoria — enriquecido via includeCount=true no backend
 
-  // Auto-expand all level-0 nodes on first load
-  React.useEffect(() => {
-    if (tree.length && expanded.size === 0) {
-      setExpanded(new Set(tree.map((n) => n.id)))
-    }
-  }, [tree, expanded.size])
+  // Auto-expand all level-0 nodes on first load — adjust state during render
+  // (no effect: react-hooks/set-state-in-effect gate).
+  const [prevTree, setPrevTree] = React.useState(tree)
+  if (tree.length && expanded.size === 0 && tree !== prevTree) {
+    setPrevTree(tree)
+    setExpanded(new Set(tree.map((n) => n.id)))
+  }
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["categories"] })
@@ -790,32 +791,43 @@ function CategoryDialog({
   const [order, setOrder] = React.useState(0)
   const [active, setActive] = React.useState(true)
 
-  // Reset form when opening
-  React.useEffect(() => {
-    if (!open) return
-    if (initial) {
-      setName(initial.name)
-      setSlug(initial.slug)
-      setSlugTouched(true)
-      setParentId(initial.parentId ?? "__none__")
-      setIcon(initial.icon && initial.icon.length > 0 ? initial.icon : "__none__")
-      setOrder(initial.order ?? 0)
-      setActive(initial.active)
-    } else {
-      setName("")
-      setSlug("")
-      setSlugTouched(false)
-      setParentId("__none__")
-      setIcon("__none__")
-      setOrder(0)
-      setActive(true)
+  // Reset form when opening — adjust state during render (no effect:
+  // react-hooks/set-state-in-effect gate). Guard keyed by id (not object
+  // identity) so a re-derived initial ref can never loop the render.
+  const [prevDialogState, setPrevDialogState] = React.useState({
+    open,
+    initialId: initial?.id,
+  })
+  if (prevDialogState.open !== open || prevDialogState.initialId !== initial?.id) {
+    setPrevDialogState({ open, initialId: initial?.id })
+    if (open) {
+      if (initial) {
+        setName(initial.name)
+        setSlug(initial.slug)
+        setSlugTouched(true)
+        setParentId(initial.parentId ?? "__none__")
+        setIcon(initial.icon && initial.icon.length > 0 ? initial.icon : "__none__")
+        setOrder(initial.order ?? 0)
+        setActive(initial.active)
+      } else {
+        setName("")
+        setSlug("")
+        setSlugTouched(false)
+        setParentId("__none__")
+        setIcon("__none__")
+        setOrder(0)
+        setActive(true)
+      }
     }
-  }, [open, initial])
+  }
 
-  // Auto-generate slug from name unless user edited it manually
-  React.useEffect(() => {
-    if (!slugTouched) setSlug(slugify(name))
-  }, [name, slugTouched])
+  // Auto-generate slug from name unless user edited it manually — adjust
+  // state during render (no effect: react-hooks/set-state-in-effect gate).
+  const [prevSlugName, setPrevSlugName] = React.useState(name)
+  if (!slugTouched && name !== prevSlugName) {
+    setPrevSlugName(name)
+    setSlug(slugify(name))
+  }
 
   // Determine the level from the chosen parent
   const parent = allCategories.find((c) => c.id === parentId)

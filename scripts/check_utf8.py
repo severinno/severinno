@@ -31,8 +31,19 @@ Usage:
   python3 scripts/check_utf8.py --fix        auto-fix byte 0x97
   python3 scripts/check_utf8.py --dry-run    show what would be fixed
   python3 scripts/check_utf8.py --ci         exit 1 on any issue
+  python3 scripts/check_utf8.py --ext md     on-demand audit: also scan .md
+  python3 scripts/check_utf8.py --ext md,css --ext html   repeatable/comma
 
-Flags can be combined: --dry-run --ci, --fix --ci
+On-demand doc audit (--ext, opt-in since 2026-08): --ext EXT adds extensions
+  to scan WITHOUT changing the default contract - .ts/.tsx stay count-only,
+  .sh stay analyzed, and nothing new is scanned unless asked. Extra
+  extensions are ANALYZED exactly like .sh (valid UTF-8 + safe byte-0x97
+  detection), enabling on-demand audits of docs (e.g. --ext md): the same
+  distinction the docs-encoding CI job makes between legit accents (valid
+  UTF-8, pass) and corruption (byte 0x97, flagged). --fix/--dry-run/--ci
+  apply to extra extensions too.
+
+Flags can be combined: --dry-run --ci, --fix --ci, --ext md --ci
 
 Exit codes:
   0 -- all files are valid UTF-8
@@ -122,7 +133,39 @@ def analyze_utf8(data):
 
 
 def main():
-    flags = set(sys.argv[1:])
+    flags = set()
+    search_dirs = []
+    extra_exts = []
+
+    raw = sys.argv[1:]
+    i = 0
+    while i < len(raw):
+        a = raw[i]
+        if a == "--ext":
+            # --ext consumes the NEXT argument as its extension value; a
+            # bare value would otherwise be mistaken for a search dir.
+            if i + 1 >= len(raw):
+                print("ERROR: --ext requires an extension argument (e.g. --ext md)")
+                return 2
+            i += 1
+            for part in raw[i].split(","):
+                ext = part.strip()
+                if ext.startswith("."):
+                    ext = ext[1:]
+                if not ext or any(c in ext for c in ("/", "\\", " ", "\t")):
+                    print("ERROR: invalid --ext value '%s' "
+                          "(bare extension expected, e.g. md)" % part)
+                    return 2
+                if "." + ext not in extra_exts:
+                    extra_exts.append("." + ext)
+            i += 1
+        elif a.startswith("--"):
+            flags.add(a)
+            i += 1
+        else:
+            search_dirs.append(a)
+            i += 1
+
     fix_mode = "--fix" in flags
     ci_mode = "--ci" in flags
     dry_run = "--dry-run" in flags
@@ -131,13 +174,14 @@ def main():
               "Pure-ASCII checking lives in scripts/verify-ascii-proof.sh; "
               "check-utf8.sh delegates all .sh ASCII to it.")
         return 2
-    search_dirs = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not search_dirs:
         search_dirs = ["src"]
+    EXTRA_EXTS = tuple(extra_exts)
 
 
     total = 0
     sh_count = 0
+    extra_count = 0
     bad_files = []
     fixed_files = []
     warn_files = []
@@ -160,11 +204,15 @@ def main():
             fname = os.path.basename(filepath)
             is_ts = fname.endswith(TS_EXTS)
             is_sh = fname.endswith(SH_EXTS)
-            if not (is_ts or is_sh):
+            is_extra = bool(EXTRA_EXTS) and fname.endswith(EXTRA_EXTS)
+            if not (is_ts or is_sh or is_extra):
                 continue
             total += 1
-            if is_sh:
-                sh_count += 1
+            if is_extra:
+                extra_count += 1
+            if is_sh or is_extra:
+                if is_sh:
+                    sh_count += 1
 
                 with open(filepath, "rb") as f:
                     data = f.read()
@@ -202,7 +250,13 @@ def main():
 
     print()
     print("---")
-    exts = ".ts/.tsx/.sh" if sh_count else ".ts/.tsx"
+    ext_parts = [".ts/.tsx"]
+    if sh_count:
+        ext_parts.append(".sh")
+    if extra_count:
+        for e in EXTRA_EXTS:
+            ext_parts.append(e)
+    exts = "/".join(ext_parts)
     print("  Scanned: %d %s files (%d .sh)" % (total, exts, sh_count))
 
     # Print summaries (before early return so dry-run is always visible)

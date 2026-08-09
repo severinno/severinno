@@ -9,6 +9,9 @@
 # Local enablement (per-developer; cannot be committed):
 #   git config blame.ignoreRevsFile .git-blame-ignore-revs
 #
+# scripts/setup.sh and scripts/setup.ps1 wire this automatically on setup,
+# so every new clone gets the protection without manual config.
+#
 # GitHub needs no config: the web blame honors this file automatically.
 
 # =====================================================================

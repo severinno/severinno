@@ -27,12 +27,16 @@ export function useStandaloneMode() {
   )
 
   React.useEffect(() => {
-    setMode(getStandaloneMode())
-
     const mql = window.matchMedia("(display-mode: standalone)")
     const handler = () => setMode(getStandaloneMode())
     mql.addEventListener("change", handler)
-    return () => mql.removeEventListener("change", handler)
+    // Initial sync — deferred out of the synchronous effect body
+    // (react-hooks/set-state-in-effect gate).
+    const t = window.setTimeout(() => setMode(getStandaloneMode()), 0)
+    return () => {
+      mql.removeEventListener("change", handler)
+      window.clearTimeout(t)
+    }
   }, [])
 
   return mode

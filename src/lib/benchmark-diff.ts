@@ -101,7 +101,10 @@ export interface DiffOptions {
 // Import from .mjs implementation
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// CommonJS interop: the .mjs implementation is pure ESM and cannot be
+// imported statically from this TS module — both rules are deliberately
+// disabled for this single line.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const impl = require("./benchmark-diff.mjs") as {
   pct: (a: number, b: number) => number
   arrow: (pctChange: number) => string

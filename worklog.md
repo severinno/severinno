@@ -452,3 +452,25 @@ Stage Summary:
 - Sistema de memória persistente configurado em `.agents/memory/`.
 - Agora qualquer agente que iniciar uma nova thread pode ler `.agents/memory/MEMORY.md` para obter contexto completo do projeto.
 - worklog.md mantido como registro detalhado de cada task.
+
+---
+Task ID: Ignore-Revs Proof
+Agent: Buffy (AI coding assistant)
+Task: Provar o efeito do .git-blame-ignore-revs no blame das linhas de banner (comando pedido + resultado honesto).
+
+Work Log:
+- Comando pedido: `git log --format='%H' -- scripts/health-check.sh | head -1` -> `6b2d0b9e`.
+  - Fato honesto: o f17ffdd (conversao de banners p/ ASCII) NUNCA tocou o health-check.sh (tip = 6b2d0b9e; os 2 matches de `health-check` no diff-tree sao o .yml e o test file). O banner dele blamea 8812b4a1/6b2d0b9e.
+- Config ativada (shared config): `git config blame.ignoreRevsFile .git-blame-ignore-revs` (valor relativo -> resolve contra o top-level da working tree; como o arquivo e trackeado, cada worktree resolve para a propria copia).
+- Prova nos arquivos que o f17ffdd REALMENTE tocou (ex.: scripts/scan-non-ascii.mjs):
+  - blame sem ignore: linhas 1-6 do banner -> f17ffddb.
+  - blame com ignore (flag explicita relativa/absoluta, config, e `-w`): MANTEM f17ffddb.
+  - CRLF descartado como causa: arquivo em disco E blob commitado sao LF puro (1219 bytes identicos, `cat -A` sem CR).
+- Causa raiz: o mecanismo ignore-revs so reatribui linhas cujo CONTEUDO passou intacto (ou whitespace-only, com `-w`) pelo commit ignorado. A conversao de banners mudou os BYTES (glifo -> ASCII) em ~todas as linhas -> conteudo mudou -> o blame legitima mantem o commit que introduziu o conteudo atual (f17ffdd).
+- Prova sintetica (repo temp, comando documentado):
+  - A: f.txt com 3 linhas; B: linha2 ganha espaco no fim (ws-only) + linha3 muda conteudo.
+  - Sem ignore: L2->B, L3->B. Com ignore sem -w: L2->B (espaco e mudanca de conteudo). Com ignore + -w: L2->A, L3->B.
+  - Conclusao: mecanismo funcionando (p/ ws-only com -w); conversao de banners nao e ws-only -> nao se move.
+
+Stage Summary:
+- O entry f17ffdd no .git-blame-ignore-revs fica (pratica padrao, inofensivo e util p/ futuros commits ws-only), mas a expectativa correta: blame das linhas de banner vai continuar mostrando f17ffdd, porque a conversao foi mudanca de conteudo, nao de whitespace.

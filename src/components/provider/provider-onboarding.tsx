@@ -30,11 +30,19 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
     staleTime: 30_000,
   })
 
-  React.useEffect(() => {
-    if (savedProgress && !savedProgress.done && savedProgress.step > 0) {
-      setStep(savedProgress.step)
-    }
-  }, [savedProgress])
+  // Restore saved step — adjust state during render (no effect:
+  // react-hooks/set-state-in-effect gate). Guard terminates once the query
+  // ref matches the previous render.
+  const [prevSavedProgress, setPrevSavedProgress] = React.useState(savedProgress)
+  if (
+    savedProgress &&
+    !savedProgress.done &&
+    savedProgress.step > 0 &&
+    savedProgress !== prevSavedProgress
+  ) {
+    setPrevSavedProgress(savedProgress)
+    setStep(savedProgress.step)
+  }
   const [form, setForm] = React.useState({
     name: user?.name ?? "",
     bio: "",

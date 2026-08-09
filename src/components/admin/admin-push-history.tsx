@@ -220,8 +220,14 @@ export function AdminPushHistory() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [search])
 
-  // Reset page when filters change
-  React.useEffect(() => { setPage(1) }, [days, statusFilter, typeFilter, sourceFilter, actionFilter])
+  // Reset page when filters change — adjust state during render (no effect:
+  // react-hooks/set-state-in-effect gate).
+  const filterKey = `${days}|${statusFilter}|${typeFilter}|${sourceFilter}|${actionFilter}`
+  const [prevFilterKey, setPrevFilterKey] = React.useState(filterKey)
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey)
+    setPage(1)
+  }
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["admin", "push", "history", page, days, statusFilter, typeFilter, sourceFilter, actionFilter, debouncedSearch],

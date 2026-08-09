@@ -44,16 +44,21 @@ export function PreferenceToggles({
   const [vibrateEnabled, setVibrateEnabled] = React.useState(initialVibrate)
 
   // Sync internal state when props change from outside (e.g., async auth
-  // store hydration).  Each prop has its own effect so they don't interfere.
-  // This handles the case where the auth store loads after the first render
-  // and provides a different initial value.
-  React.useEffect(() => {
+  // store hydration).  Each prop gets its own prev-guard so they don't
+  // interfere — adjust state during render (no effect:
+  // react-hooks/set-state-in-effect gate). Handles the case where the auth
+  // store loads after the first render with a different initial value.
+  const [prevSound, setPrevSound] = React.useState(initialSound)
+  if (initialSound !== prevSound) {
+    setPrevSound(initialSound)
     setSoundEnabled(initialSound)
-  }, [initialSound])
+  }
 
-  React.useEffect(() => {
+  const [prevVibrate, setPrevVibrate] = React.useState(initialVibrate)
+  if (initialVibrate !== prevVibrate) {
+    setPrevVibrate(initialVibrate)
     setVibrateEnabled(initialVibrate)
-  }, [initialVibrate])
+  }
 
   const handleSoundChange = (v: boolean) => {
     setSoundEnabled(v)

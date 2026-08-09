@@ -416,9 +416,13 @@ function QuoteCard({
     status === "RESPONDED" || (status === "PENDING" && allQuoted)
   const canReject =
     status === "RESPONDED" || status === "PENDING" || status === "APPROVED"
+  // Expiry snapshot at mount — lazy state init keeps Date.now() out of
+  // render (react-hooks/purity gate). The list query re-fetches, so the
+  // badge refreshes on data updates.
+  const [now] = React.useState(() => Date.now())
   const isExpired =
     status === "EXPIRED" ||
-    (status !== "APPROVED" && new Date(quote.expiresAt).getTime() < Date.now())
+    (status !== "APPROVED" && new Date(quote.expiresAt).getTime() < now)
 
   const itemsCount = quote.items.length
   const firstServiceTitle = quote.items[0]?.service?.title ?? "—"

@@ -35,6 +35,15 @@
 # comes from the ci.yml + pr-check.yml callers; the push trigger remains the
 # always-on net for main/develop merges. Edit the step HERE only.
 #
+# NO paths filter on the push trigger BY DESIGN (decision recorded 2026-08):
+# this gate audits MORE than e2e/ + src/ - layer 2 scans every .sh + .husky
+# hook + the docs/ascii-safe.md baseline, and layer 3 scans the gate files
+# (scripts/*, workflows, root *.sh) too. A filter limited to e2e/** src/**
+# would silently skip this self-trigger on exactly the gate-file changes
+# these layers exist to catch. The consolidated gate is one <3s step, so
+# filtering saves nothing meaningful; real coverage comes from the callers
+# (ci.yml invokes this on every main/develop push, unfiltered).
+#
 # PROOF that this gate really bites (run locally, no CI needed):
 #   1. cp scripts/health-check.sh /tmp/hc.bak
 #   2. printf '\x97' >> scripts/health-check.sh   # Windows-1252 em dash byte

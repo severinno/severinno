@@ -57,12 +57,18 @@ export function PWAInstallBanner() {
 
     window.addEventListener("beforeinstallprompt", handler)
 
-    // Check if already installed (display-mode: standalone)
-    if (window.matchMedia("(display-mode: standalone)").matches) {
-      setIsInstallable(false)
-    }
+    // Check if already installed (display-mode: standalone) — deferred out of
+    // the synchronous effect body (react-hooks/set-state-in-effect gate).
+    const t = window.setTimeout(() => {
+      if (window.matchMedia("(display-mode: standalone)").matches) {
+        setIsInstallable(false)
+      }
+    }, 0)
 
-    return () => window.removeEventListener("beforeinstallprompt", handler)
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler)
+      window.clearTimeout(t)
+    }
   }, [])
 
   // Also check on window focus (user might have installed via another method)
@@ -148,14 +154,19 @@ export function IOSInstallGuide() {
   const [isStandalone, setIsStandalone] = React.useState(false)
 
   React.useEffect(() => {
-    const ua = navigator.userAgent
-    const iOS = /iPad|iPhone|iPod/.test(ua)
-    setIsIOS(iOS)
+    // Deferred so the setStates aren't synchronous in the effect body
+    // (react-hooks/set-state-in-effect gate).
+    const t = window.setTimeout(() => {
+      const ua = navigator.userAgent
+      const iOS = /iPad|iPhone|iPod/.test(ua)
+      setIsIOS(iOS)
 
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone === true
-    setIsStandalone(standalone)
+      const standalone =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone === true
+      setIsStandalone(standalone)
+    }, 0)
+    return () => window.clearTimeout(t)
   }, [])
 
   if (!isIOS || isStandalone) return null

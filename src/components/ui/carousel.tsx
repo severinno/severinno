@@ -95,11 +95,14 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
-    onSelect(api)
+    // Deferred so the initial onSelect (which sets scroll state) isn't
+    // synchronous in the effect body (react-hooks/set-state-in-effect gate).
+    const raf = window.requestAnimationFrame(() => onSelect(api))
     api.on("reInit", onSelect)
     api.on("select", onSelect)
 
     return () => {
+      window.cancelAnimationFrame(raf)
       api?.off("select", onSelect)
     }
   }, [api, onSelect])

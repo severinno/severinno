@@ -62,7 +62,7 @@ describe("GET /api/admin/finance/export", () => {
     expect(res.status).toBe(200)
     // Should start with BOM (\uFEFF) for Excel compatibility
     // First line should be the header row
-    // Note: BOM (﻿) is prepended but may not survive NextResponse → text() roundtrip in test env
+    // Note: BOM () is prepended but may not survive NextResponse → text() roundtrip in test env
     // Skipping charCodeAt(0) assertion — test relies on header content instead
     const lines = text.trim().split("\n")
     expect(lines[0]).toContain("ID")

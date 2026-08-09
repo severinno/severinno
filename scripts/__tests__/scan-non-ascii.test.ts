@@ -19,7 +19,13 @@ import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { findNonAsciiOffsets, scanFile, scanFiles } from "../scan-non-ascii.mjs"
+import {
+  findNonAsciiOffsets,
+  scanFile,
+  scanFiles,
+  firstInvalidUtf8Offset,
+  scanFileUtf8,
+} from "../scan-non-ascii.mjs"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-non-ascii.mjs")
 
@@ -173,5 +179,107 @@ describe("scripts/scan-non-ascii.mjs", () => {
     const r = runCli(["--report", spaced])
     expect(r.status).toBe(0)
     expect(r.stdout).toBe(`ASCII-OK\t${spaced}\n`)
+  })
+})
+
+describe("scripts/scan-non-ascii.mjs --utf8 (corruption alert: well-formedness, NOT accent presence)", () => {
+  it("firstInvalidUtf8Offset: valid UTF-8 (accents + em-dash) yields -1 - legit docs PASS", () => {
+    const buf = Buffer.from("# Título — ok\n", "utf8")
+    expect(firstInvalidUtf8Offset(buf)).toBe(-1)
+  })
+
+  it("firstInvalidUtf8Offset: single injected 0x97 byte flagged (Windows-1252 em dash corruption)", () => {
+    const clean = Buffer.from(ASCII_SH, "utf8")
+    const mutated = Buffer.from(clean)
+    mutated[26] = 0x97
+    expect(firstInvalidUtf8Offset(mutated)).toBe(26)
+  })
+
+  it("firstInvalidUtf8Offset: truncated 2-byte sequence flagged at the lead byte", () => {
+    // 0xC3 alone (would need a continuation) - truncated at offset 0.
+    expect(firstInvalidUtf8Offset(Buffer.from([0xc3]))).toBe(0)
+  })
+
+  it("firstInvalidUtf8Offset: overlong encoding (0xC0 0x80) flagged", () => {
+    expect(firstInvalidUtf8Offset(Buffer.from([0xc0, 0x80]))).toBe(0)
+  })
+
+  it("firstInvalidUtf8Offset: UTF-16 surrogate (0xED 0xA0 0x80) flagged", () => {
+    expect(firstInvalidUtf8Offset(Buffer.from([0xed, 0xa0, 0x80]))).toBe(0)
+  })
+
+  it("firstInvalidUtf8Offset: code point > U+10FFFF (0xF4 0x90 0x80 0x80) flagged", () => {
+    expect(firstInvalidUtf8Offset(Buffer.from([0xf4, 0x90, 0x80, 0x80]))).toBe(0)
+  })
+
+  it("scanFileUtf8: valid accented file -> validUtf8 true, hits empty (docs pass by design)", () => {
+    const p = tmpFile("accented.md", "# Título — ok\n")
+    const r = scanFileUtf8(p)
+    expect(r.validUtf8).toBe(true)
+    expect(r.hits).toEqual([])
+  })
+
+  it("MUTATION: clean fixture passes, one injected byte flips scanFileUtf8 with exact line/col", () => {
+    const cleanPath = tmpFile("clean.md", ASCII_SH)
+    expect(scanFileUtf8(cleanPath).validUtf8).toBe(true)
+
+    const mutPath = tmpFile("mutated.md", Buffer.from(ASCII_SH, "utf8"))
+    const f = fs.readFileSync(mutPath)
+    f[26] = 0x97
+    fs.writeFileSync(mutPath, f)
+
+    const r = scanFileUtf8(mutPath)
+    expect(r.validUtf8).toBe(false)
+    expect(r.hits).toEqual([{ offset: 26, line: 2, col: 7 }])
+  })
+
+  it("CLI --utf8: clean accented file exits 0 with no output (accents are NOT corruption)", () => {
+    const p = tmpFile("clean.md", "# Título — ok\n")
+    const r = runCli(["--utf8", p])
+    expect(r.status).toBe(0)
+    expect(r.stdout).toBe("")
+  })
+
+  it("CLI --utf8: corrupted file exits 1 printing file:line:col", () => {
+    const p = tmpFile("bad.md", Buffer.from(ASCII_SH, "utf8"))
+    const f = fs.readFileSync(p)
+    f[26] = 0x97
+    fs.writeFileSync(p, f)
+
+    const r = runCli(["--utf8", p])
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(`${p}:2:7`)
+  })
+
+  it("CLI --utf8 --report: all-valid batch exits 0 with one UTF8-OK line per file", () => {
+    const a = tmpFile("a.md", "# Título — ok\n")
+    const b = tmpFile("b.md", "# Docs — ok\n")
+    const r = runCli(["--utf8", "--report", a, b])
+    expect(r.status).toBe(0)
+    expect(r.stdout).toBe(`UTF8-OK\t${a}\nUTF8-OK\t${b}\n`)
+  })
+
+  it("CLI --utf8 --report: dirty + missing in one batch exit 1 with per-file verdicts", () => {
+    const dirty = tmpFile("dirty.md", Buffer.from(ASCII_SH, "utf8"))
+    const f = fs.readFileSync(dirty)
+    f[26] = 0x97
+    fs.writeFileSync(dirty, f)
+    const missing = path.join(os.tmpdir(), `scan-non-ascii-utf8-missing-${Date.now()}`)
+
+    const r = runCli(["--utf8", "--report", dirty, missing])
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(`INVALID-UTF8\t${dirty}\t2:7`)
+    expect(r.stdout).toContain(`ERROR\t${missing}`)
+  })
+
+  it("CLI --utf8: verdict is IMMUNE to LC_ALL=C (byte iteration, no locale)", () => {
+    const p = tmpFile("bad.md", Buffer.from(ASCII_SH, "utf8"))
+    const f = fs.readFileSync(p)
+    f[26] = 0x97
+    fs.writeFileSync(p, f)
+
+    const r = runCli(["--utf8", p], { LC_ALL: "C" })
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(`${p}:2:7`)
   })
 })

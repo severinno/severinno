@@ -79,21 +79,21 @@ export function ProviderExpediente() {
     queryFn: async () => apiGet("/api/availability"),
   })
 
-  // Hydrate state from server
-  React.useEffect(() => {
-    if (availQuery.data && !hydrated) {
-      const next = (availQuery.data.items ?? []).map((it) => ({
-        localId: it.id,
-        id: it.id,
-        dayOfWeek: it.dayOfWeek,
-        startTime: it.startTime,
-        endTime: it.endTime,
-        active: it.active,
-      }))
-      setSlots(next)
-      setHydrated(true)
-    }
-  }, [availQuery.data, hydrated])
+  // Hydrate state from server — adjust state during render (no effect:
+  // react-hooks/set-state-in-effect gate). Guard terminates once hydrated
+  // flips true on the same render pass.
+  if (availQuery.data && !hydrated) {
+    const next = (availQuery.data.items ?? []).map((it) => ({
+      localId: it.id,
+      id: it.id,
+      dayOfWeek: it.dayOfWeek,
+      startTime: it.startTime,
+      endTime: it.endTime,
+      active: it.active,
+    }))
+    setSlots(next)
+    setHydrated(true)
+  }
 
   // Detect overlapping slots within same day
   const overlapWarning = React.useMemo(() => {

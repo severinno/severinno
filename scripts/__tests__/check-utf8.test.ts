@@ -23,6 +23,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { TARGET_DIRS, filesInDir } from "../fragile-range-patterns.mjs"
 
 const PY_SCRIPT = path.join(process.cwd(), "scripts", "check_utf8.py")
 const SH_SCRIPT = path.join(process.cwd(), "scripts", "check-utf8.sh")
@@ -124,6 +125,26 @@ describe("check_utf8.py", () => {
     expect(r.stdout).toContain("fragile-range: clean")
   })
 
+  it("CONTRACT: standalone delegation derives the fragile scan's --dir targets from the module's TARGET_DIRS (no hardcoded list)", () => {
+    // A standalone check-utf8.sh must scan the SAME executable-code surface
+    // as verify-encoding.sh layer 3: the fragile scan's --dir targets come
+    // from fragile-range-patterns.mjs TARGET_DIRS (--print-target-dirs),
+    // not from a second hardcoded "e2e/ src/" list here. Proof: the
+    // delegated verdict must count exactly the code files under the
+    // module's TARGET_DIRS trees (computed from the module's own exports).
+    const expected = TARGET_DIRS.reduce(
+      (n, d) => n + filesInDir(path.join(process.cwd(), d)).length,
+      0,
+    )
+    expect(expected).toBeGreaterThan(0)
+    const r = runShDelegated()
+    expect(r.status).toBe(0)
+    // Verdict shape: "fragile-range: clean (109 gate files + N target files, ...)".
+    // `files?` future-proofs the singular "target file" if a tree ever
+    // shrinks to exactly one code file.
+    expect(r.stdout).toMatch(new RegExp(`\\+ ${expected} target files?`))
+  })
+
   it("LAYER-1: VERIFY_ENCODING_LAYER1=1 skips the proof delegation (verify-encoding.sh layer 1)", () => {
     // verify-encoding.sh runs check-utf8.sh as layer 1 with this env var set
     // so the .sh ASCII audit happens exactly ONCE (as its layer 2). A dirty
@@ -206,5 +227,128 @@ describe("check_utf8.py", () => {
     const missing = path.join(os.tmpdir(), `check-utf8-missing-${Date.now()}`)
     const r = scan(missing, "--ci")
     expect(r.status).toBe(2)
+  })
+})
+
+describe("check_utf8.py --ext (on-demand doc audit)", () => {
+  it("OPT-IN: a dirty .md is NOT scanned without --ext (default contract unchanged)", () => {
+    const dir = createTempDir("check-utf8-ext-optin-")
+    writeFile(dir, "dirty.md", Buffer.from([0x23, 0x20, 0x97, 0x0a]))
+
+    const r = scan(dir, "--ci")
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("Scanned: 0")
+  })
+
+  it("--ext md scans .md: accented doc is clean, byte-0x97 doc fails under --ci", () => {
+    const dir = createTempDir("check-utf8-ext-md-")
+    writeFile(dir, "legit.md", "## Olá — título\n")
+    writeFile(dir, "corrupt.md", Buffer.from([0x23, 0x20, 0x97, 0x0a]))
+
+    const r = scan(dir, "--ext", "md", "--ci")
+    expect(r.status).toBe(1)
+    // Label reflects the opt-in extension (no .sh here): .ts/.tsx/.md
+    expect(r.stdout).toContain("Scanned: 2 .ts/.tsx/.md files")
+    expect(r.stdout).toContain("corrupt.md")
+    expect(r.stdout).not.toContain("legit.md") // accented doc IS valid UTF-8
+  })
+
+  it("--ext accepts comma-separated AND repeated values (md,css + --ext html)", () => {
+    const dir = createTempDir("check-utf8-ext-multi-")
+    writeFile(dir, "a.md", Buffer.from([0x23, 0x20, 0x97, 0x0a]))
+    writeFile(dir, "b.css", Buffer.from([0x23, 0x20, 0x97, 0x0a]))
+    writeFile(dir, "c.html", Buffer.from([0x23, 0x20, 0x97, 0x0a]))
+
+    const r = scan(dir, "--ext", "md,css", "--ext", "html", "--ci")
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("a.md")
+    expect(r.stdout).toContain("b.css")
+    expect(r.stdout).toContain("c.html")
+  })
+
+  it("--ext with a leading dot is normalized (--ext .md == --ext md)", () => {
+    const dir = createTempDir("check-utf8-ext-dot-")
+    writeFile(dir, "doc.md", Buffer.from([0x23, 0x20, 0x97, 0x0a]))
+
+    const r = scan(dir, "--ext", ".md", "--ci")
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("doc.md")
+  })
+
+  it("--ext without a value exits 2 with a clear error", () => {
+    const dir = createTempDir("check-utf8-ext-noval-")
+    writeFile(dir, "doc.md", "clean\n")
+
+    const r = scan(dir, "--ext")
+    expect(r.status).toBe(2)
+    expect(r.stdout).toContain("--ext requires")
+  })
+
+  it("--ext keeps .sh semantics: a dirty .sh still fails alongside a doc audit", () => {
+    const dir = createTempDir("check-utf8-ext-sh-")
+    writeFile(dir, "bad.sh", Buffer.from([0x23, 0x20, 0x97, 0x0a]))
+    writeFile(dir, "doc.md", "## fine\n")
+
+    const r = scan(dir, "--ext", "md", "--ci")
+    expect(r.status).toBe(1)
+    // Both kinds scanned: .sh label appears alongside the opt-in .md
+    expect(r.stdout).toContain("Scanned: 2 .ts/.tsx/.sh/.md files")
+    expect(r.stdout).toContain("bad.sh")
+  })
+})
+
+describe("check-utf8.sh -- .zscripts fixed dir (workspace-agent ops scripts, 2026-08)", () => {
+  // .zscripts/*.sh are workspace-agent operational scripts whose banners are
+  // legit CJK (Chinese comments + emoji) - deliberately OUT of the strict
+  // ASCII proof (an ASCII gate would false-fail them; see docs/ascii-safe.md
+  // 'Who protects .zscripts and the YAML gate files?'). Their encoding
+  // contract is VALID UTF-8, enforced HERE by the wrapper's always-scanned
+  // fixed dirs (scripts/, .github/workflows/, .zscripts/ - not overridable
+  // by a positional dir). These tests are hermetic: they run from a temp CWD
+  // mirroring the fixed-dir structure, so the wiring is proven without
+  // touching the real repo. VERIFY_ENCODING_LAYER1=1 skips the proof/fragile
+  // delegation (the LAYER-1 pattern) so the python layer alone decides.
+
+  function runFromTempCwd(zscriptContent: Buffer | string): { status: number | null; stdout: string } {
+    const cwd = createTempDir("check-utf8-zscripts-cwd-")
+    // Mirror the wrapper's always-scanned fixed dirs (they must EXIST when
+    // the python layer resolves them relative to CWD).
+    fs.mkdirSync(path.join(cwd, "scripts"), { recursive: true })
+    fs.mkdirSync(path.join(cwd, ".github", "workflows"), { recursive: true })
+    const zs = path.join(cwd, ".zscripts")
+    fs.mkdirSync(zs, { recursive: true })
+    writeFile(zs, "build.sh", zscriptContent)
+
+    // A clean positional fixture replaces the default src/ dir.
+    const fixture = createTempDir("check-utf8-zscripts-fixture-")
+    writeFile(fixture, "ok.ts", "export const ok = 1;\n")
+
+    return runSubprocess({
+      command: "bash",
+      args: [SH_SCRIPT, "--ci", fixture],
+      cwd,
+      env: { VERIFY_ENCODING_LAYER1: "1" },
+    })
+  }
+
+  it("CONTRACT: .zscripts is always scanned - a corrupt .sh there fails the gate", () => {
+    // Byte 0x97 in .zscripts/build.sh (raw Windows-1252 em dash). Because
+    // .zscripts is in the fixed dirs, the python layer must find it and fail
+    // under --ci - even though the positional fixture is clean.
+    const r = runFromTempCwd(Buffer.from([0x23, 0x20, 0x97, 0x0a]))
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("0x97")
+    expect(r.stdout).toContain("build.sh")
+    expect(r.stdout).toContain(".zscripts")
+  })
+
+  it("CONTRACT: a legit CJK banner in .zscripts passes (valid UTF-8 is the contract, not ASCII)", () => {
+    // The banner mirrors the real .zscripts style: Chinese comment + emoji,
+    // all valid UTF-8. The gate must NOT flag it (ASCII strictness is
+    // deliberately NOT applied to .zscripts - only corruption is).
+    const cjk = Buffer.from("#!/bin/bash\n# 将 stderr 重定向到 stdout\necho '🚀 开始批量构建...'\n", "utf8")
+    const r = runFromTempCwd(cjk)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("check-utf8: done (all clean)")
   })
 })

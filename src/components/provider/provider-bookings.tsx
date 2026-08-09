@@ -355,9 +355,13 @@ export function ProviderBookings() {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize)
 
-  React.useEffect(() => {
+  // Reset page when tab changes — adjust state during render (no effect:
+  // react-hooks/set-state-in-effect gate).
+  const [prevTab, setPrevTab] = React.useState(tab)
+  if (tab !== prevTab) {
+    setPrevTab(tab)
     setPage(1)
-  }, [tab])
+  }
 
   const updateStatus = async (
     booking: Booking,
