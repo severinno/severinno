@@ -1,0 +1,71 @@
+# =============================================================================
+# guard-gates — Push-triggered vitest net for the guard contract suites
+#
+# WHY (2026-08): the fragile-range-guard BASELINE (real repo == 0 fragile
+# character-class ranges) and the golden-copy-utils divergence guards are
+# the contracts that keep the encoding gates honest. They run inside
+# test:unit (ci.yml + pr-check.yml check job) and in pr-check.yml's
+# fragile-guard job — but those are PR-gated. A push to main/develop that
+# skips or reorders the test job would orphan the BASELINE from execution
+# entirely (the exact failure mode a lint failure used to cause before the
+# test-first reorder). This workflow is the push-time net: a standalone job
+# with NO lint dependency — no lint step, no needs: on lint — running ONLY
+# the two guard suites on every push to main/develop. The BASELINE of 0
+# offenders can never become orphaned from execution.
+#
+# MIRROR of the PR side: pr-check.yml's fragile-guard job runs the SAME
+# pair on pull_request (test-first order + this standalone job = double
+# immunity there); guard-gates.yml is the merge-side twin (push trigger).
+# Both run the identical vitest invocation, so the contract the suites pin
+# is exercised on every PR AND every push.
+#
+# NO paths filter BY DESIGN (same decision as utf8-check.yml): the guard
+# suites audit gate files (scripts/*, workflows, root *.sh, hooks) + e2e/ +
+# src/ + mini-services/ + .zscripts/. A paths filter limited to e2e/**
+# src/** would silently skip this net on exactly the gate-file changes
+# these suites exist to catch. The pair runs in <15s; filtering saves
+# nothing meaningful.
+# =============================================================================
+
+name: Guard Gates
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard-gates:
+    name: Guard Gates (fragile-range + golden-copy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # The SAME script as pr-check.yml's fragile-guard job (bun run
+      # test:guard — the single source of truth in package.json, so a future
+      # guard suite lands in ONE place, not two workflows): fragile-range-
+      # guard (repo-wide BASELINE == 0 offenders + the mutation/CLI/growth
+      # contracts) and golden-copy-utils (the shared canonicalizer +
+      # divergence guards + the writeModuleCopy scaffold). No prisma
+      # generate, no build — both suites are pure node subprocess + vitest,
+      # exactly like the pr-check twin.
+      - name: Run guard vitest suites (BASELINE + divergence guards)
+        run: bun run test:guard

@@ -101,8 +101,14 @@ done
 # "scripts .github/workflows .zscripts" list to keep in sync with the
 # module and docs/ascii-safe.md. Derivation failure fails loudly (exit 2) -
 # a gate must never silently degrade to scanning fewer dirs.
+# ENCODING_SURFACE_MODULE OVERRIDES the module path (mirroring FRAGILE_MODULE
+# in verify-encoding.sh layer 3) so a fixture-driven test can run this
+# wrapper against a TEMP COPY of the manifest with a 5th ALWAYS_SCAN_DIRS
+# entry - proving the derivation covers future dirs through the real wiring
+# (the encoding-surface GROWTH CONTRACT test).
+ENCODING_SURFACE_MODULE="${ENCODING_SURFACE_MODULE:-$SCRIPT_DIR/encoding-surface.mjs}"
 EXIT_CODE=0
-FIXED_DIRS="$(node "$SCRIPT_DIR/encoding-surface.mjs" --print-always-dirs)" || FIXED_DIRS=""
+FIXED_DIRS="$(node "$ENCODING_SURFACE_MODULE" --print-always-dirs)" || FIXED_DIRS=""
 if [ -z "$FIXED_DIRS" ]; then
   echo "check-utf8: encoding-surface derivation failed (ALWAYS_SCAN_DIRS unavailable)" >&2
   EXIT_CODE=2

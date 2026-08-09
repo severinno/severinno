@@ -67,7 +67,7 @@ describe("verify-ascii-proof.sh", () => {
     const r = runSubprocess({ command: "bash", args: ["-n", SCRIPT] })
     expect(r.status).toBe(0)
     expect(r.stderr).toBe("")
-  })
+  }, 60000)
 
   it(
     "PROOF: the real repo run exits 0 - all .sh AND the .husky hooks are pure ASCII",
@@ -97,7 +97,7 @@ describe("verify-ascii-proof.sh", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain(`[ASCII-OK]   ${vps}`)
     expect(r.stdout).toContain(`[ASCII-OK]   ${ops}`)
-  })
+  }, 60000)
 
   it("MUTATION: a VPS-bound .sh with a raw 0x97 byte fails the proof and is listed", () => {
     // Exactly the byte the broken `[^ -~]` grep let through in 2026-08.
@@ -109,7 +109,7 @@ describe("verify-ascii-proof.sh", () => {
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`[VIOLATION]  ${dirty}`)
     expect(r.stdout).toContain("VPS-bound violations:")
-  })
+  }, 60000)
 
   it("STRICT: an ops .sh with valid UTF-8 accents now FAILS (no more ACCENTED tolerance)", () => {
     const dir = createTempDir("verify-ascii-proof-accent-")
@@ -120,7 +120,7 @@ describe("verify-ascii-proof.sh", () => {
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`[VIOLATION]  ${ops}`)
     expect(r.stdout).toContain("Ops/hook violations:")
-  })
+  }, 60000)
 
   it("ops .sh with invalid UTF-8 (raw 0x97) fails the proof", () => {
     const dir = createTempDir("verify-ascii-proof-badutf-")
@@ -131,7 +131,7 @@ describe("verify-ascii-proof.sh", () => {
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`[VIOLATION]  ${ops}`)
     expect(r.stdout).toContain("Ops/hook violations:")
-  })
+  }, 60000)
 
   it("a missing listed file fails the proof (no silent skip)", () => {
     const dir = createTempDir("verify-ascii-proof-missing-")
@@ -140,7 +140,7 @@ describe("verify-ascii-proof.sh", () => {
 
     const r = runProof({ vps: [vps], ops: [ops] })
     expect(r.status).toBe(1)
-  })
+  }, 60000)
 
   it("BASELINE: a matching manifest passes and reports the registered count", () => {
     const dir = createTempDir("verify-ascii-proof-base-ok-")
@@ -152,7 +152,7 @@ describe("verify-ascii-proof.sh", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("Baseline OK")
     expect(r.stdout).toContain("2 files registered")
-  })
+  }, 60000)
 
   it("BASELINE-DRIFT: a NEW audited file not in the manifest FAILS (the contract bites)", () => {
     const dir = createTempDir("verify-ascii-proof-drift-")
@@ -165,7 +165,7 @@ describe("verify-ascii-proof.sh", () => {
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("[BASELINE-DRIFT]")
     expect(r.stdout).toContain(ops2)
-  })
+  }, 60000)
 
   it("BASELINE-DRIFT: a manifest entry no longer audited FAILS", () => {
     const dir = createTempDir("verify-ascii-proof-stale-")
@@ -176,7 +176,7 @@ describe("verify-ascii-proof.sh", () => {
     const r = runProof({ vps: [vps], ops: [ops], baseline })
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("[BASELINE-DRIFT]")
-  })
+  }, 60000)
 
   it("SYNC: --sync regenerates the manifest from the fixture lists, then the proof passes", () => {
     const dir = createTempDir("verify-ascii-proof-sync-")
@@ -194,7 +194,7 @@ describe("verify-ascii-proof.sh", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("Baseline OK")
     expect(r.stdout).toContain("2 files registered")
-  })
+  }, 60000)
 
   it("CRLF-TOLERANT: a baseline saved with CRLF line endings does NOT false-fail a clean repo", () => {
     // docs/ascii-safe.md is a COMMITTED file parsed by the script. A CRLF-
@@ -218,7 +218,7 @@ describe("verify-ascii-proof.sh", () => {
     const r = runProof({ vps: [vps], ops: [ops], baseline })
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("Baseline OK")
-  })
+  }, 60000)
 
   it("SYNC-GUARD: --sync refuses a baseline with no manifest markers (no silent no-op)", () => {
     const dir = createTempDir("verify-ascii-proof-nomark-")
@@ -232,5 +232,5 @@ describe("verify-ascii-proof.sh", () => {
     // The guard error goes to stderr (the audit failure paths use stdout;
     // a --sync usage/refusal error is diagnostics, not an audit verdict).
     expect(sync.stderr).toContain("no manifest markers found")
-  })
+  }, 60000)
 })

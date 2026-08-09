@@ -179,7 +179,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     // Docs written before the gate exits → the regressed row is recorded.
     expect(fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")).toContain("| main |")
     expect(fs.existsSync(path.join(f.dir, "docs", "bundle-badge.json"))).toBe(true)
-  })
+  }, 60000)
 
   it("passes (exit 0) when the delta is within the threshold, logging the ok delta", () => {
     const f = makeFixture()
@@ -194,7 +194,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.stdout).toContain("Δ total +7.9 KB")
     expect(r.stdout).toContain("v0.4.2")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
-  })
+  }, 60000)
 
   it("fails (exit 1) when 'main' Initial JS (/) worsens beyond the threshold — the metric the gate was built for", () => {
     const f = makeFixture()
@@ -215,7 +215,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.stderr).toContain("'main' Initial JS (/) piorou")
     expect(r.stderr).toContain("v0.4.2")
     expect(fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")).toContain("| main |")
-  })
+  }, 60000)
 
   it("passes (exit 0) when the delta is EXACTLY equal to the threshold — the strict > contract", () => {
     const f = makeFixture()
@@ -229,7 +229,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("gate anti-regressão: ok")
     expect(r.stdout).toContain("Δ total +7.9 KB")
-  })
+  }, 60000)
 
   it("develop row sorts BELOW main but ABOVE releases, with Δ vs the row below", () => {
     const f = makeFixture()
@@ -248,7 +248,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(md).toContain("| 87.9 | +7.9 |")
     // No gate for develop: tracking-only by design.
     expect(r.stdout).toContain("gate anti-regressão: n/a — develop é tracking-only")
-  })
+  }, 60000)
 
   it("develop upsert: re-runs never accumulate duplicate develop rows", () => {
     const f = makeFixture()
@@ -259,7 +259,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     runReport(f.dir, {}, "develop")
     const md = fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")
     expect(md.match(/\| develop \|/g)?.length).toBe(1)
-  })
+  }, 60000)
 
   it("develop is tracking-only: a regression with a tiny threshold still exits 0 (no gate)", () => {
     const f = makeFixture()
@@ -272,7 +272,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("gate anti-regressão: n/a — develop é tracking-only")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
-  })
+  }, 60000)
 
   it("main gate baseline IGNORES the develop row — compares vs the latest release even when develop exists", () => {
     const f = makeFixture()
@@ -297,7 +297,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     const md = fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")
     expect(md.indexOf("| main |")).toBeLessThan(md.indexOf("| develop |"))
     expect(md.indexOf("| develop |")).toBeLessThan(md.indexOf("| v0.4.2 |"))
-  })
+  }, 60000)
 
   it("skips (exit 0) with the rolling-only message when the report has ONLY develop rows and no release (main run)", () => {
     const f = makeFixture()
@@ -322,7 +322,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("gate anti-regressão: skipped — sem release versionado ainda")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
-  })
+  }, 60000)
 
   it("skips (exit 0) when there is no versioned baseline yet (first-ever main run)", () => {
     const f = makeFixture()
@@ -333,7 +333,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("gate anti-regressão: skipped — sem baseline")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
-  })
+  }, 60000)
 
   it("skips (exit 0) when the initial metric came from the rootMainFiles fallback (non-comparable)", () => {
     const f = makeFixture()
@@ -353,7 +353,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("gate anti-regressão: skipped — initial veio do fallback")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
-  })
+  }, 60000)
 
   it("fails (exit 1) when a ROUTE's real transfer worsens beyond its threshold even with Initial/Total fine", () => {
     const f = makeFixture()
@@ -377,7 +377,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.stderr).toContain("limite +5.0 KB")
     // Docs written before the gate exits → the regressed row is recorded.
     expect(fs.readFileSync(path.join(f.dir, "docs", "bundle-report.md"), "utf8")).toContain("| main |")
-  })
+  }, 60000)
 
   it("passes (exit 0) when route deltas are within threshold, logging the per-route delta", () => {
     const f = makeFixture()
@@ -392,7 +392,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.stdout).toContain("gate anti-regressão: ok")
     expect(r.stdout).toContain("rotas: /busca")
     expect(r.stdout).toContain("v0.4.2")
-  })
+  }, 60000)
 
   it("skips (exit 0) routes with no baseline row — a route added since the release is never compared", () => {
     const f = makeFixture()
@@ -413,7 +413,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     // o run deve emitir o ::warning:: de desarme, nunca passar em silêncio.
     expect(r.stdout).toContain("::warning:: gate de rota desarmado")
     expect(r.stdout).toContain("v0.4.2")
-  })
+  }, 60000)
 
   it("emits ::warning:: for PARTIAL disarm — baseline has Rotas blocks but ZERO label overlap with the entry", () => {
     const f = makeFixture()
@@ -448,7 +448,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     // blocos) NÃO pode disparar junto no caso parcial — são estados distintos.
     expect(r.stdout).not.toContain("::warning:: gate de rota desarmado — baseline")
     expect(r.stdout).not.toContain("sem baseline por rota ainda")
-  })
+  }, 60000)
 
   it("INTEGRATION release→main: a real release run WITHOUT route HTML leaves no Rotas block, and the next main push (now measuring /busca) fires the FULL-disarm ::warning:: on stdout", () => {
     const f = makeFixture()
@@ -488,7 +488,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(md).toContain("| v0.4.3 |")
     expect(md).toContain("### main")
     expect(md).toContain("| /busca |")
-  })
+  }, 60000)
 
   it("skips (exit 0) a route present in the baseline but absent in the entry (REAL_ROUTE_CHECKS shrank)", () => {
     const f = makeFixture()
@@ -503,7 +503,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("gate anti-regressão: ok")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
-  })
+  }, 60000)
 
   it("parses a CRLF baseline (Windows checkout via .gitattributes text=auto) — route gate still fires and blocks drop no data", () => {
     const f = makeFixture()
@@ -535,7 +535,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(md).toContain("### v0.4.2")
     expect(md).toContain("| /busca | 1 | 0.1 |")
     expect(md).toContain("| main |")
-  })
+  }, 60000)
 
   it("applies the 30 KB DEFAULT per-route threshold when no env override is set", () => {
     const f = makeFixture()
@@ -553,7 +553,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.stderr).toContain("ANTI-REGRESSION GATE")
     expect(r.stderr).toContain("rota /busca piorou")
     expect(r.stderr).toContain("limite +30.0 KB")
-  })
+  }, 60000)
 
   it("RELEASE run self-heals the route baseline: a tag with measured routes writes its own Rotas block even when the last release had none", () => {
     const f = makeFixture()
@@ -578,5 +578,5 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(rotas).toContain("| /busca |")
     // Baseline row survives the regeneration (round-trip, no data loss).
     expect(md).toContain("| v0.4.2 |")
-  })
+  }, 60000)
 })

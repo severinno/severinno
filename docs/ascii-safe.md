@@ -250,9 +250,10 @@ still never a blocking gate.
 **SENTINEL PROOFS (how we know these gates really bite):** see
 `docs/gates-proofs.md` — Prova 1 (utf8-byte, run 31298436074), Prova 2
 (fragile-range, run 31306797327), Prova 3 (budget sentinel), Prova 4
-(FRAGILE_SCAN_ROOT, run 31312427503) e Prova 5 (`.zscripts` fixed-dir 0x97
-sentinel, local) — cada uma segue o contrato injetar -> gate falha (exit 1
-com o path exato) -> reverter -> repo limpo.
+(FRAGILE_SCAN_ROOT, run 31312427503), Prova 5 (`.zscripts` fixed-dir 0x97
+sentinel, local) e Prova 6 (SPREAD CONTRACT live — 5º dir injetado no
+`TARGET_DIRS` real, local) — cada uma segue o contrato injetar -> gate
+falha (exit 1 com o path exato) -> reverter -> repo limpo.
 
 **Local hook mirror (pre-commit + pre-push, added 2026-08):**
 `bash scripts/check-docs-encoding.sh` — a dedicated script (NOT

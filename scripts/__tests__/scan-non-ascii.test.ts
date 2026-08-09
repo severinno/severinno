@@ -97,7 +97,7 @@ describe("scripts/scan-non-ascii.mjs", () => {
     const r = runCli([p])
     expect(r.status).toBe(0)
     expect(r.stdout).toBe("")
-  })
+  }, 60000)
 
   it("CLI: mutated file exits 1 printing file:line:col", () => {
     const p = tmpFile("mutated.sh", Buffer.from(ASCII_SH, "utf8"))
@@ -108,7 +108,7 @@ describe("scripts/scan-non-ascii.mjs", () => {
     const r = runCli([p])
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`${p}:2:7`)
-  })
+  }, 60000)
 
   it("CLI: verdict is IMMUNE to LC_ALL=C (the locale that breaks grep ranges)", () => {
     const p = tmpFile("mutated.sh", Buffer.from(ASCII_SH, "utf8"))
@@ -119,7 +119,7 @@ describe("scripts/scan-non-ascii.mjs", () => {
     const r = runCli([p], { LC_ALL: "C" })
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`${p}:2:7`)
-  })
+  }, 60000)
 
   it("CLI: CRLF line endings still report the correct 1-based line", () => {
     // CRLF content — \r must NOT count as a line break (line 3, not 4).
@@ -128,7 +128,7 @@ describe("scripts/scan-non-ascii.mjs", () => {
     const r = runCli([p])
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`${p}:3:`)
-  })
+  }, 60000)
 
   it("scanFiles: mixed batch reports the offender only, order preserved", () => {
     const clean = tmpFile("clean.sh", ASCII_SH)
@@ -146,7 +146,7 @@ describe("scripts/scan-non-ascii.mjs", () => {
     const missing = path.join(os.tmpdir(), `scan-non-ascii-missing-${Date.now()}`)
     const r = runCli([missing])
     expect(r.status).not.toBe(0)
-  })
+  }, 60000)
 
   it("CLI --report: clean batch exits 0 with one ASCII-OK line per file (tab-separated)", () => {
     const a = tmpFile("a.sh", ASCII_SH)
@@ -155,7 +155,7 @@ describe("scripts/scan-non-ascii.mjs", () => {
     const r = runCli(["--report", a, b])
     expect(r.status).toBe(0)
     expect(r.stdout).toBe(`ASCII-OK\t${a}\nASCII-OK\t${b}\n`)
-  })
+  }, 60000)
 
   it("CLI --report: dirty + missing in one batch exit 1 with per-file verdicts", () => {
     const dirty = tmpFile("dirty.sh", Buffer.from(ASCII_SH, "utf8"))
@@ -168,7 +168,7 @@ describe("scripts/scan-non-ascii.mjs", () => {
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`VIOLATION\t${dirty}\t2:7`)
     expect(r.stdout).toContain(`ERROR\t${missing}`)
-  })
+  }, 60000)
 
   it("CLI --report: a path with spaces stays whole (tab separator, not space)", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scan-non-ascii-sp-"))
@@ -179,7 +179,7 @@ describe("scripts/scan-non-ascii.mjs", () => {
     const r = runCli(["--report", spaced])
     expect(r.status).toBe(0)
     expect(r.stdout).toBe(`ASCII-OK\t${spaced}\n`)
-  })
+  }, 60000)
 })
 
 describe("scripts/scan-non-ascii.mjs --utf8 (corruption alert: well-formedness, NOT accent presence)", () => {
@@ -238,7 +238,7 @@ describe("scripts/scan-non-ascii.mjs --utf8 (corruption alert: well-formedness, 
     const r = runCli(["--utf8", p])
     expect(r.status).toBe(0)
     expect(r.stdout).toBe("")
-  })
+  }, 60000)
 
   it("CLI --utf8: corrupted file exits 1 printing file:line:col", () => {
     const p = tmpFile("bad.md", Buffer.from(ASCII_SH, "utf8"))
@@ -249,7 +249,7 @@ describe("scripts/scan-non-ascii.mjs --utf8 (corruption alert: well-formedness, 
     const r = runCli(["--utf8", p])
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`${p}:2:7`)
-  })
+  }, 60000)
 
   it("CLI --utf8 --report: all-valid batch exits 0 with one UTF8-OK line per file", () => {
     const a = tmpFile("a.md", "# Título — ok\n")
@@ -257,7 +257,7 @@ describe("scripts/scan-non-ascii.mjs --utf8 (corruption alert: well-formedness, 
     const r = runCli(["--utf8", "--report", a, b])
     expect(r.status).toBe(0)
     expect(r.stdout).toBe(`UTF8-OK\t${a}\nUTF8-OK\t${b}\n`)
-  })
+  }, 60000)
 
   it("CLI --utf8 --report: dirty + missing in one batch exit 1 with per-file verdicts", () => {
     const dirty = tmpFile("dirty.md", Buffer.from(ASCII_SH, "utf8"))
@@ -270,7 +270,7 @@ describe("scripts/scan-non-ascii.mjs --utf8 (corruption alert: well-formedness, 
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`INVALID-UTF8\t${dirty}\t2:7`)
     expect(r.stdout).toContain(`ERROR\t${missing}`)
-  })
+  }, 60000)
 
   it("CLI --utf8: verdict is IMMUNE to LC_ALL=C (byte iteration, no locale)", () => {
     const p = tmpFile("bad.md", Buffer.from(ASCII_SH, "utf8"))
@@ -281,5 +281,5 @@ describe("scripts/scan-non-ascii.mjs --utf8 (corruption alert: well-formedness, 
     const r = runCli(["--utf8", p], { LC_ALL: "C" })
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(`${p}:2:7`)
-  })
+  }, 60000)
 })

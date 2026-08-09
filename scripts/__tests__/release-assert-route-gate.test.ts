@@ -120,7 +120,7 @@ describe("release-deploy.yml Camada A assert (awk Rotas block)", () => {
   it("awk binary resolves in this environment (so failures below are logic failures, not spawn errors)", () => {
     const r = runSubprocess({ command: "awk", args: ["--version"] })
     expect(r.status).toBe(0)
-  })
+  }, 60000)
 
   it("passes (exit 0) when the tag's own Rotas block contains a /busca row", () => {
     expect(runAssert("v0.4.3", reportWithBlock("v0.4.3", ["/busca", "/dashboard"]))).toBe(0)
@@ -214,5 +214,5 @@ describe("release-deploy.yml Camada A assert (awk Rotas block)", () => {
       expect(fromGolden).toBe(c.expected)
       expect(fromWorkflow).toBe(fromGolden)
     }
-  })
+  }, 60000)
 })

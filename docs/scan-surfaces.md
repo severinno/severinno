@@ -40,6 +40,16 @@ Answers: **WHICH FILES does this gate scan?**
     (`docs`, `public`, `examples`, `config`, `prisma`, `db`, `download`,
     `upload`, `osrm-data`, `agent-ctx`, `.opencode`, `tool-results`,
     `secrets`, `.agents`).
+  - Root executable tooling (2026-08 audit) ENTERS the fragile-range gate
+    surface: `gateFiles()` scans every tracked root `*.sh`/`*.ts`/`*.mjs`/
+    `*.ps1` tooling config plus `Makefile`/`Dockerfile` (next.config.ts,
+    eslint.config.mjs, dev.ps1, test-prisma7.mjs, ...) - a fragile
+    character-class range in any of them is the same silent-failure bug
+    class as the 2026-08 em-dash in a gate script. Root `docker-compose*.yml`
+    and `pnpm-*.yaml` stay OUT BY DESIGN (declared container/package data,
+    not executable gate logic - the same class as the `config/`,
+    `examples/`, `prisma/` tree exclusions). Frozen lists + the NO-ORPHAN
+    contract: `scripts/__tests__/executable-surface.test.ts`.
 
 ### Type B - Runtime routes (rotas de runtime)
 
@@ -82,7 +92,10 @@ Answers: **WHEN does this workflow RUN?**
   - `ssh-composite-proof.yml` - the `severinno-ssh`/`severinno-scp` actions,
     `health-check.yml`, + its own workflow file;
   - `utf8-auto-fix.yml` - `src/**/*.ts`, `src/**/*.tsx`;
-  - `ci.yml`, `deploy.yml`, `pr-check.yml` - NO `paths:` (always run).
+  - `ci.yml`, `deploy.yml`, `pr-check.yml`, `guard-gates.yml` - NO `paths:`
+    (always run; guard-gates.yml é o push net do guard vitest -
+    fragile-range-guard + golden-copy-utils em todo push a main/develop,
+    imune a skip por lint - espelho do job fragile-guard do pr-check).
 - **Failure mode is SAFE:** an over-narrow `paths:` only SKIPS a run (push
   to main still runs the full jobs via the always-run workflows); an
   over-narrow scan surface silently misses violations. Different failure

@@ -18,10 +18,16 @@
  * Both properties must hold TOGETHER for the guards to be simultaneously
  * non-flaky (noise tolerated) and protective (mutations caught).
  */
-import { describe, it, expect } from "vitest"
+import { afterEach, describe, it, expect } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { assertScopeMatchesGolden, canonicalProgram } from "./golden-copy-utils"
+import {
+  assertScopeMatchesGolden,
+  canonicalProgram,
+  cleanupTempDirs,
+  createTempDir,
+  writeModuleCopy,
+} from "./golden-copy-utils"
 
 /** A representative shell program (the shape the prove-gate suite guards). */
 const SHELL = [
@@ -206,5 +212,119 @@ describe("golden-copy-utils — canonicalProgram (shared canonicalizer)", () => 
     const mutated = AWK.replace("in_block = 0", "in_block = 9")
     expect(canonicalProgram(noisy)).toBe(canonicalProgram(AWK)) // noise tolerated
     expect(canonicalProgram(mutated)).not.toBe(canonicalProgram(AWK)) // mutation caught
+  })
+})
+
+describe("golden-copy-utils — writeModuleCopy (shared module-patch scaffold)", () => {
+  // Direct coverage for the RULE-OF-THREE extraction (2026-08): the patch
+  // scaffold behind the 3 manifest harnesses (fragile REVERSE MUTATION via
+  // writePatchedModule, encoding-surface GROWTH CONTRACT via
+  // writePatchedSurfaceModule, budget-routes GROWTH CONTRACT via
+  // writePatchedRoutesModule). A bug in the scaffold would silently weaken
+  // ALL of them at once — so it is exercised here in isolation, not only
+  // transitively inside the suites that import it. (The `$`-literal test is
+  // the critical one: a plain String.replace string replacement would
+  // interpret `$&`/`$1` in the NEW text; the scaffold must splice via a
+  // function replacement to keep patches whose content legitimately
+  // contains `$` intact.)
+  afterEach(() => {
+    cleanupTempDirs()
+  })
+
+  it("MUTATION: a missing STRING anchor throws the onMissing error (no silent no-op)", () => {
+    const dir = createTempDir("wmc-missing-str-")
+    const f = path.join(dir, "demo.mjs")
+    fs.writeFileSync(f, "export const A = [1]\n")
+    let err = ""
+    try {
+      writeModuleCopy(dir, f, [
+        { anchor: "export const B =", replace: "export const B = [2]", onMissing: "ANCHOR-B-MISSING" },
+      ])
+    } catch (e) {
+      err = (e as Error).message
+    }
+    expect(err).toContain("ANCHOR-B-MISSING")
+  })
+
+  it("MUTATION: a missing REGEX anchor throws the onMissing error (fail-loudly on shape drift)", () => {
+    const dir = createTempDir("wmc-missing-re-")
+    const f = path.join(dir, "demo.mjs")
+    fs.writeFileSync(f, "export const A = [1]\n")
+    let err = ""
+    try {
+      writeModuleCopy(dir, f, [
+        { anchor: /^export const MISSING = \[[^\]]*\]$/m, replace: "x", onMissing: "ANCHOR-REGEX-MISSING" },
+      ])
+    } catch (e) {
+      err = (e as Error).message
+    }
+    expect(err).toContain("ANCHOR-REGEX-MISSING")
+  })
+
+  it("string anchor: the matched text is replaced (first occurrence)", () => {
+    const dir = createTempDir("wmc-str-")
+    const f = path.join(dir, "demo.mjs")
+    fs.writeFileSync(f, "export const A = [1]\nexport const A = [2]\n")
+    const out = writeModuleCopy(dir, f, [
+      { anchor: "export const A = [1]", replace: "export const A = [9]", onMissing: "A" },
+    ])
+    expect(fs.readFileSync(out, "utf8")).toBe("export const A = [9]\nexport const A = [2]\n")
+  })
+
+  it("regex anchor: the matched span is passed to the replacer and rewritten (single-line array lift)", () => {
+    const dir = createTempDir("wmc-re-")
+    const f = path.join(dir, "demo.mjs")
+    fs.writeFileSync(f, 'export const LHC_PATHS = ["/", "/busca"]\n')
+    const out = writeModuleCopy(dir, f, [
+      {
+        anchor: /^export const LHC_PATHS = \[[^\]]*\]$/m,
+        replace: (m) => {
+          const cur = JSON.parse(m.replace(/^export const LHC_PATHS = /, "")) as string[]
+          return `export const LHC_PATHS = ${JSON.stringify([...cur, "/workers-check"])}`
+        },
+        onMissing: "LHC",
+      },
+    ])
+    // The replacer re-serializes via JSON.stringify — compact (no spaces),
+    // like the real harnesses' LHC_PATHS lift.
+    expect(fs.readFileSync(out, "utf8")).toBe('export const LHC_PATHS = ["/","/busca","/workers-check"]\n')
+  })
+
+  it("MUTATION (the `$` property): a `$&`/`$1` sequence in the NEW text stays LITERAL (function splice)", () => {
+    // The scaffold splices via String.replace(found, () => replacement) — a
+    // FUNCTION replacement, so `$` sequences in the new text are never
+    // interpreted as capture references. A naive string replacement would
+    // silently mangle patches whose content legitimately contains `$`
+    // (e.g. a shell program with `$1`). The anchor covers the WHOLE line so
+    // the splice replaces it outright (no dangling tail).
+    const dir = createTempDir("wmc-dollar-")
+    const f = path.join(dir, "demo.mjs")
+    fs.writeFileSync(f, "const cmd = 'echo ok'\n")
+    const out = writeModuleCopy(dir, f, [
+      { anchor: "const cmd = 'echo ok'", replace: "const cmd = '$1 & $&'", onMissing: "CMD" },
+    ])
+    expect(fs.readFileSync(out, "utf8")).toBe("const cmd = '$1 & $&'\n")
+  })
+
+  it("multiple ops apply in ORDER (each anchor resolves against the previous output)", () => {
+    const dir = createTempDir("wmc-multi-")
+    const f = path.join(dir, "demo.mjs")
+    fs.writeFileSync(f, "export const A = [1]\nexport const B = [2]\n")
+    const out = writeModuleCopy(dir, f, [
+      { anchor: "export const A = [1]", replace: "export const A = [9]", onMissing: "A" },
+      { anchor: "export const B = [2]", replace: "export const B = [8]", onMissing: "B" },
+    ])
+    expect(fs.readFileSync(out, "utf8")).toBe("export const A = [9]\nexport const B = [8]\n")
+  })
+
+  it("the copy is written under the module's own BASENAME in the target dir (no rename)", () => {
+    // The patch harnesses rely on the copy keeping the module's filename so
+    // the temp runner / env override can import it by the same name.
+    const dir = createTempDir("wmc-base-")
+    const f = path.join(dir, "budget-routes.mjs")
+    fs.writeFileSync(f, "export const A = [1]\n")
+    const out = writeModuleCopy(dir, f, [])
+    expect(path.basename(out)).toBe("budget-routes.mjs")
+    expect(fs.readFileSync(out, "utf8")).toBe("export const A = [1]\n")
   })
 })

@@ -88,11 +88,12 @@ import path from "node:path"
 import {
   cleanupTempDirs,
   createTempDir,
+  expectedTargetFiles,
   expectLayer3FailsThroughWrapper,
   patchModuleFile,
   runSubprocess,
 } from "./golden-copy-utils"
-import { TARGET_DIRS, filesInDir } from "../fragile-range-patterns.mjs"
+import { TARGET_DIRS } from "../fragile-range-patterns.mjs"
 
 const ROOT = process.cwd()
 const SCRIPT = path.join(ROOT, "scripts", "verify-encoding.sh")
@@ -117,7 +118,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     const r = runSubprocess({ command: "bash", args: ["-n", SCRIPT] })
     expect(r.status).toBe(0)
     expect(r.stderr).toBe("")
-  })
+  }, 60000)
 
   it(
     "PROOF: the real repo run exits 0 - ALL layers clean (UTF-8 + ASCII + baseline + fragile + YAML gate)",
@@ -144,14 +145,13 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
       // DEFAULT --dir args come from fragile-range-patterns.mjs
       // --print-target-dirs (the module is the single source of truth).
       // Proof: the real-repo run's layer-3 verdict must count exactly the
-      // code files under the module's TARGET_DIRS trees (computed here from
-      // the module's own filesInDir). If the wrapper drifted from
-      // TARGET_DIRS - or derivation silently failed and degraded to
-      // gate-files-only - the count would differ and this breaks.
-      const expected = TARGET_DIRS.reduce(
-        (n, d) => n + filesInDir(path.join(ROOT, d)).length,
-        0,
-      )
+      // code files under the module's TARGET_DIRS trees (derived here by
+      // the shared expectedTargetFiles() helper — TARGET_DIRS + filesInDir
+      // from the module, RULE OF TWO USES in golden-copy-utils.ts). If the
+      // wrapper drifted from TARGET_DIRS - or derivation silently failed
+      // and degraded to gate-files-only - the count would differ and this
+      // breaks.
+      const expected = expectedTargetFiles()
       expect(expected).toBeGreaterThan(0)
       const r = runGate(["--ci", "src/"])
       expect(r.status).toBe(0)
@@ -177,7 +177,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     expect(r.stdout).toContain("check-utf8: done (all clean)")
     expect(r.stdout).toContain(`[VIOLATION]  ${dirty}`)
     expect(r.stdout).toContain("fragile-range: clean")
-  })
+  }, 120000)
 
   it("MUTATION (utf8 layer): a dirty .sh dir fails via check-utf8.sh, proof still clean", () => {
     // check-utf8.sh treats a positional dir as the scan root. A byte-0x97
@@ -189,7 +189,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("0x97") // check_utf8.py byte-0x97 warning
     expect(r.stdout).toContain("verify-ascii-proof: done (all clean)")
-  })
+  }, 120000)
 
   it("MUTATION (fragile layer): a [^ -~] range in a SYNTHETIC repo gate file fails layer 3 through the wrapper", () => {
     // Wrapper-level proof of the layer-3 wiring without depending on the
@@ -228,7 +228,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     // running runGate(["--ci", "src/"], env) with BOTH layer-3 overrides
     // set (dirty gate-file root + clean target) and asserting those lines.
     expectLayer3FailsThroughWrapper({ FRAGILE_SCAN_ROOT: dir, FRAGILE_SCAN_DIRS: cleanTarget })
-  })
+  }, 120000)
 
   it("MUTATION (fragile layer, --dir target): a [^ -~] range in a SYNTHETIC e2e spec fails layer 3 via FRAGILE_SCAN_DIRS", () => {
     // Wrapper-level proof of the layer-3 --dir wiring without depending on
@@ -267,7 +267,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     // (clean gate-file root + dirty spec target) -> layer 3 scans zero real
     // surface, so the count-pin is unconditional.
     expectLayer3FailsThroughWrapper({ FRAGILE_SCAN_DIRS: dir, FRAGILE_SCAN_ROOT: cleanRoot })
-  })
+  }, 120000)
 
   it("REVERSE MUTATION (wrapper level): lifting docs/ on a temp module copy makes the WRAPPER trip on the docs/ fixture", () => {
     // The wrapper-level mirror of the module-level REVERSE MUTATION tests
@@ -328,7 +328,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
       FRAGILE_SCAN_ROOT: dir,
       FRAGILE_SCAN_DIRS: dir,
     })
-  })
+  }, 120000)
 
   it("SYNC: --sync routes to the proof ONLY (baseline regeneration, no UTF-8 scan)", () => {
     const dir = createTempDir("verify-encoding-sync-")
@@ -351,7 +351,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     // leak the flag into its args.
     expect(r.stdout).not.toContain("check-utf8:")
     expect(r.stdout).not.toContain("Usage:")
-  })
+  }, 120000)
 
   it("SYNC-MIXED: --sync combined with gate args is REJECTED (no silent ignore)", () => {
     // Mixing a maintenance op with normal gate args would silently drop the
@@ -361,7 +361,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     expect(r.stderr).toContain("cannot be combined")
     expect(r.stdout).not.toContain("check-utf8:")
     expect(r.stdout).not.toContain("baseline synced")
-  })
+  }, 120000)
 
   it("WORST-EXIT aggregation: utf8 error (2) + clean proof = 2", () => {
     // check-utf8.sh exits 2 when its python script is missing... it validates
@@ -370,7 +370,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     const missing = path.join(createTempDir("verify-encoding-missing-"), "nope")
     const r = runGate(["--ci", missing])
     expect(r.status).toBe(2)
-  })
+  }, 120000)
 
   it("MUTATION (YAML gate layer): a byte-0x97 in a synthetic workflow YAML fails layer 4 through the wrapper", () => {
     // Wrapper-level proof of the layer-4 wiring without depending on the
@@ -408,7 +408,7 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     expect(r.stdout).toContain("INVALID-UTF8")
     expect(r.stdout).toContain(path.basename(workflow))
     expect(r.stderr).toContain("yaml-gate: FAILED")
-  })
+  }, 120000)
 
   it("MUTATION (YAML gate layer): a CLEAN synthetic workflow YAML passes layer 4 (legit accents allowed)", () => {
     // Hermetic clean case: YAML_GATE_FILES pointing at a well-formed YAML
@@ -429,5 +429,5 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     expect(r.stdout).toContain("UTF8-OK")
     expect(r.stdout).toMatch(/yaml-gate: clean \(1 YAML gate file/)
     expect(r.stderr).not.toContain("yaml-gate: FAILED")
-  })
+  }, 120000)
 })

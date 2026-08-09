@@ -25,14 +25,36 @@ echo "-- Gate 2/3: check-js-budget (JS bundle budgets) --"
 # script: o CI roda o budget no build fresco de qualquer forma. Mesma
 # semantica de "honest skip" que o proprio budget usa no fallback
 # rootMainFiles.
-if [ -f .next/analyze/client.html ]; then
-  # AVISO: um relatorio DESATUALIZADO roda contra artefatos antigos (falso
-  # pass/fail) - se o build local for antigo, rode o ANALYZE antes de confiar.
-  node scripts/check-js-budget.mjs
-else
-  echo "[!]  .next/analyze/client.html nao encontrado - pulando check-js-budget."
+ANALYZE_HTML=".next/analyze/client.html"
+# Honest-skip do budget (motivo varia: arquivo ausente ou artefato stale). O
+# CI roda o budget no build fresco de qualquer forma, entao pular localmente
+# so perde um sanity check rapido - nunca mascara o CI. Mensagem unica para
+# os dois casos (DRY: futura mudanca de texto em um so lugar).
+skip_budget() {
+  echo "[!]  $ANALYZE_HTML $1 - pulando check-js-budget."
   echo "   Rode 'ANALYZE=true next build --webpack' localmente para validar;"
   echo "   o CI roda o budget no build fresco de qualquer forma."
+}
+if [ -f "$ANALYZE_HTML" ]; then
+  # STALENESS GUARD (medicao 2026-08): o gate falhava contra um relatorio
+  # de ontem - um artefato antigo roda check-js-budget contra dados que nao
+  # refletem o codigo atual (falso pass OU falso fail, os dois silenciosos).
+  # Definicao precisa de stale: o relatorio e mais velho que o ultimo commit
+  # (mtime < HEAD commit time) - nao um threshold de tempo de calendario, que
+  # deixaria um report de 23h passar mesmo depois de um commit novo. Comparar
+  # contra HEAD e deterministico: o relatorio so e confiavel se foi gerado a
+  # partir do codigo atual (ou posterior a ele). Honest-skip com o mesmo
+  # aviso do caso "arquivo ausente": o CI roda o budget no build fresco de
+  # qualquer forma, entao um relatorio stale so pode enganar o dev local.
+  HEAD_CT="$(git log -1 --format=%ct 2>/dev/null || echo 0)"
+  REPORT_MT="$(stat -c %Y "$ANALYZE_HTML" 2>/dev/null || echo 0)"
+  if [ "$REPORT_MT" -lt "$HEAD_CT" ]; then
+    skip_budget "e mais antigo que o ultimo commit (artefato stale)"
+  else
+    node scripts/check-js-budget.mjs
+  fi
+else
+  skip_budget "nao encontrado"
 fi
 
 echo "-- Gate 3/3: testes unitarios das areas tocadas (staged + HEAD + range do push) --"

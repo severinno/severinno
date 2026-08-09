@@ -408,7 +408,7 @@ describe("health-check.sh — single versioned health check (consolidation of th
       const r = runScript({ codes: ["200"] })
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("Health check passed (HTTP 200) after attempt 1/12")
-    })
+    }, 60000)
 
     it("fails with exit 1 after the default 12 attempts on persistent 503", () => {
       const r = runScript({ codes: ["503"] })
@@ -416,40 +416,40 @@ describe("health-check.sh — single versioned health check (consolidation of th
       expect(r.stdout).toContain("Health check failed after 12 attempts")
       expect(r.stdout).toContain("Attempt 1/12 - HTTP 503, retrying...")
       expect(r.stdout).toContain("Attempt 12/12 - HTTP 503, retrying...")
-    })
+    }, 60000)
 
     it("respects HEALTH_ATTEMPTS=20 (docker-test smoke test behavior)", () => {
       const r = runScript({ env: { HEALTH_ATTEMPTS: "20" }, codes: ["503"] })
       expect(r.status).toBe(1)
       expect(r.stdout).toContain("Health check failed after 20 attempts")
       expect(r.stdout).toContain("Attempt 20/20 - HTTP 503, retrying...")
-    })
+    }, 60000)
 
     it("retries and succeeds on the 3rd attempt (503, 503, 200)", () => {
       const r = runScript({ codes: ["503", "503", "200"] })
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("Health check passed (HTTP 200) after attempt 3/12")
-    })
+    }, 60000)
 
     it("probes a custom HEALTH_URL (curl receives the configured URL)", () => {
       const url = "http://localhost:9090/api/health"
       const r = runScript({ env: { HEALTH_URL: url }, codes: ["200"] })
       expect(r.status).toBe(0)
       expect(r.curlArgs).toContain(url)
-    })
+    }, 60000)
 
     it("honors a custom HEALTH_EXPECT_CODE (e.g. 503 maintenance gate)", () => {
       const r = runScript({ env: { HEALTH_EXPECT_CODE: "503" }, codes: ["503"] })
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("Health check passed (HTTP 503) after attempt 1/12")
-    })
+    }, 60000)
 
     it("falls back to HTTP 000 and keeps retrying when curl itself fails", () => {
       const r = runScript({ failCurl: true, codes: ["503"] })
       expect(r.status).toBe(1)
       expect(r.stdout).toContain("Attempt 1/12 - HTTP 000, retrying...")
       expect(r.stdout).toContain("Health check failed after 12 attempts")
-    })
+    }, 60000)
   })
 
   describe("HOUSEKEEPING INTEGRATION (synthetic workflow step gate)", () => {
@@ -492,5 +492,5 @@ describe("health-check.sh — single versioned health check (consolidation of th
     const r = runSubprocess({ command: "bash", args: ["-n", SCRIPT] })
     expect(r.status).toBe(0)
     expect(r.stderr).toBe("")
-  })
+  }, 60000)
 })

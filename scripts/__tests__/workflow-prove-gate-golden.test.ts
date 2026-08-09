@@ -150,32 +150,32 @@ describe("workflow golden copy — ci.yml 'Prove budget gate blocks' (node mock,
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("Budget gate PASSED with zeroed budgets")
     expect(r.stdout).toContain("the gate is not blocking!")
-  })
+  }, 60000)
 
   it("BEHAVIORAL exit2: report missing → must fail with 'exit 2 (report not found)'", () => {
     const r = runProveGateProgram(extractProveGateProgram(), "exit2")
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("failed with exit 2 (report not found)")
-  })
+  }, 60000)
 
   it("BEHAVIORAL no-total: failed without the total-size message → must fail as inconclusive", () => {
     const r = runProveGateProgram(extractProveGateProgram(), "no-total")
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("not on the total-size check")
-  })
+  }, 60000)
 
   it("BEHAVIORAL no-real: failed without the real-transfer message → must fail as inconclusive", () => {
     const r = runProveGateProgram(extractProveGateProgram(), "no-real")
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("not on a real-transfer check")
-  })
+  }, 60000)
 
   it("BEHAVIORAL ok: exit 1 with BOTH check messages → must exit 0 'Gate proof OK'", () => {
     const r = runProveGateProgram(extractProveGateProgram(), "ok")
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("✅ Gate proof OK")
     expect(r.stdout).toContain("budget check exited 1 with zeroed budgets")
-  })
+  }, 60000)
 
   it(
     "golden copy behaves IDENTICALLY to the workflow program across the 5-mode matrix",

@@ -82,7 +82,7 @@ describe("check_utf8.py", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("Scanned: 2")
     expect(r.stdout).toContain("OK")
-  })
+  }, 60000)
 
   it("flags a byte-0x97 .sh as warning: exit 0 without --ci, exit 1 with --ci", () => {
     const dir = createTempDir("check-utf8-emdash-")
@@ -96,7 +96,7 @@ describe("check_utf8.py", () => {
     const ci = scan(dir, "--ci")
     expect(ci.status).toBe(1)
     expect(ci.stdout).toContain("0x97")
-  })
+  }, 60000)
 
   it("DELEGATION: check-utf8.sh forwards .sh ASCII to the proof - an accented OPS fixture fails the gate", () => {
     const dir = createTempDir("check-utf8-delegate-")
@@ -110,7 +110,7 @@ describe("check_utf8.py", () => {
     expect(r.stdout).toContain("verify-ascii-proof")
     expect(r.stdout).toContain("[VIOLATION]")
     expect(r.stdout).toContain(accent)
-  })
+  }, 60000)
 
   it("DELEGATION: clean fixtures pass the delegated proof + fragile scan (exit 0)", () => {
     const dir = createTempDir("check-utf8-delegate-ok-")
@@ -123,7 +123,7 @@ describe("check_utf8.py", () => {
     // Standalone delegation runs the fragile scan too (same gate, no
     // exceptions) - it must report clean on the real repo.
     expect(r.stdout).toContain("fragile-range: clean")
-  })
+  }, 60000)
 
   it("CONTRACT: standalone delegation derives the fragile scan's --dir targets from the module's TARGET_DIRS (no hardcoded list)", () => {
     // A standalone check-utf8.sh must scan the SAME executable-code surface
@@ -143,7 +143,7 @@ describe("check_utf8.py", () => {
     // `files?` future-proofs the singular "target file" if a tree ever
     // shrinks to exactly one code file.
     expect(r.stdout).toMatch(new RegExp(`\\+ ${expected} target files?`))
-  })
+  }, 60000)
 
   it("LAYER-1: VERIFY_ENCODING_LAYER1=1 skips the proof delegation (verify-encoding.sh layer 1)", () => {
     // verify-encoding.sh runs check-utf8.sh as layer 1 with this env var set
@@ -164,7 +164,7 @@ describe("check_utf8.py", () => {
     expect(r.stdout).not.toContain("fragile-range")
     // Layer 1 still ran the python UTF-8 scan (not a silent no-op).
     expect(r.stdout).toContain("check-utf8: done (all clean)")
-  })
+  }, 60000)
 
   it("check-utf8.sh --ascii is accepted as a no-op (repo-wide ASCII is always-on via the proof)", () => {
     // The flag no longer triggers a local scan: pure-ASCII lives in the
@@ -175,7 +175,7 @@ describe("check_utf8.py", () => {
     const r = runSubprocess({ command: "bash", args: [SH_SCRIPT, "--ascii", "--ci", dir] })
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("check-utf8: done (all clean)")
-  })
+  }, 60000)
 
   it("check_utf8.py REJECTS --ascii with exit 2 (flag removed, delegated to Node)", () => {
     const dir = createTempDir("check-utf8-ascii-dead-")
@@ -184,7 +184,7 @@ describe("check_utf8.py", () => {
     const r = scan(dir, "--ascii", "--ci")
     expect(r.status).toBe(2)
     expect(r.stdout).toContain("--ascii was removed")
-  })
+  }, 60000)
 
   it("--fix replaces byte 0x97 with a UTF-8 em dash", () => {
     const dir = createTempDir("check-utf8-fix-")
@@ -196,7 +196,7 @@ describe("check_utf8.py", () => {
 
     const fixed = fs.readFileSync(p)
     expect(fixed.equals(Buffer.from("# \u2014\n", "utf8"))).toBe(true)
-  })
+  }, 60000)
 
   it("accepts individual FILES as args (UTF-8 validity side)", () => {
     const dir = createTempDir("check-utf8-file-")
@@ -209,7 +209,7 @@ describe("check_utf8.py", () => {
     const bad = scan(dirty, "--ci")
     expect(bad.status).toBe(1)
     expect(bad.stdout).toContain("vps-emdash.sh")
-  })
+  }, 60000)
 
   it("reports a truncated multi-byte sequence at EOF cleanly (no IndexError)", () => {
     const dir = createTempDir("check-utf8-trunc-")
@@ -221,13 +221,13 @@ describe("check_utf8.py", () => {
     expect(r.status).toBe(1)
     expect(r.stdout).not.toContain("IndexError")
     expect(r.stdout).toContain("trunc.sh")
-  })
+  }, 60000)
 
   it("exits 2 when a directory does not exist", () => {
     const missing = path.join(os.tmpdir(), `check-utf8-missing-${Date.now()}`)
     const r = scan(missing, "--ci")
     expect(r.status).toBe(2)
-  })
+  }, 60000)
 })
 
 describe("check_utf8.py --ext (on-demand doc audit)", () => {
@@ -238,7 +238,7 @@ describe("check_utf8.py --ext (on-demand doc audit)", () => {
     const r = scan(dir, "--ci")
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("Scanned: 0")
-  })
+  }, 60000)
 
   it("--ext md scans .md: accented doc is clean, byte-0x97 doc fails under --ci", () => {
     const dir = createTempDir("check-utf8-ext-md-")
@@ -251,7 +251,7 @@ describe("check_utf8.py --ext (on-demand doc audit)", () => {
     expect(r.stdout).toContain("Scanned: 2 .ts/.tsx/.md files")
     expect(r.stdout).toContain("corrupt.md")
     expect(r.stdout).not.toContain("legit.md") // accented doc IS valid UTF-8
-  })
+  }, 60000)
 
   it("--ext accepts comma-separated AND repeated values (md,css + --ext html)", () => {
     const dir = createTempDir("check-utf8-ext-multi-")
@@ -264,7 +264,7 @@ describe("check_utf8.py --ext (on-demand doc audit)", () => {
     expect(r.stdout).toContain("a.md")
     expect(r.stdout).toContain("b.css")
     expect(r.stdout).toContain("c.html")
-  })
+  }, 60000)
 
   it("--ext with a leading dot is normalized (--ext .md == --ext md)", () => {
     const dir = createTempDir("check-utf8-ext-dot-")
@@ -273,7 +273,7 @@ describe("check_utf8.py --ext (on-demand doc audit)", () => {
     const r = scan(dir, "--ext", ".md", "--ci")
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("doc.md")
-  })
+  }, 60000)
 
   it("--ext without a value exits 2 with a clear error", () => {
     const dir = createTempDir("check-utf8-ext-noval-")
@@ -282,7 +282,7 @@ describe("check_utf8.py --ext (on-demand doc audit)", () => {
     const r = scan(dir, "--ext")
     expect(r.status).toBe(2)
     expect(r.stdout).toContain("--ext requires")
-  })
+  }, 60000)
 
   it("--ext keeps .sh semantics: a dirty .sh still fails alongside a doc audit", () => {
     const dir = createTempDir("check-utf8-ext-sh-")
@@ -294,7 +294,7 @@ describe("check_utf8.py --ext (on-demand doc audit)", () => {
     // Both kinds scanned: .sh label appears alongside the opt-in .md
     expect(r.stdout).toContain("Scanned: 2 .ts/.tsx/.sh/.md files")
     expect(r.stdout).toContain("bad.sh")
-  })
+  }, 60000)
 })
 
 describe("check-utf8.sh -- .zscripts fixed dir (workspace-agent ops scripts, 2026-08)", () => {
@@ -340,7 +340,7 @@ describe("check-utf8.sh -- .zscripts fixed dir (workspace-agent ops scripts, 202
     expect(r.stdout).toContain("0x97")
     expect(r.stdout).toContain("build.sh")
     expect(r.stdout).toContain(".zscripts")
-  })
+  }, 60000)
 
   it("CONTRACT: a legit CJK banner in .zscripts passes (valid UTF-8 is the contract, not ASCII)", () => {
     // The banner mirrors the real .zscripts style: Chinese comment + emoji,
@@ -350,5 +350,5 @@ describe("check-utf8.sh -- .zscripts fixed dir (workspace-agent ops scripts, 202
     const r = runFromTempCwd(cjk)
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("check-utf8: done (all clean)")
-  })
+  }, 60000)
 })

@@ -163,7 +163,8 @@ export function stripComments(content, ext) {
 /**
  * Enumerate every gate-relevant file in the repo. Same scope as the vitest
  * guard: scripts/* (sh|mjs|ts|py|ps1, skipping __tmp_* and other __ junk),
- * root *.sh, .husky hooks, .github/workflows/*.yml, and the composite
+ * root executable tooling (sh + ts/mjs/ps1 configs + Makefile/Dockerfile),
+ * .husky hooks, .github/workflows/*.yml, and the composite
  * actions under .github/actions (action.yml / action.yaml - executable
  * run blocks, the same class as workflows). PLUS the NON-TEST
  * helper files under scripts/__tests__/ (e.g. golden-copy-utils.ts): they
@@ -204,8 +205,28 @@ export function gateFiles(root = REPO_ROOT) {
     }
   }
 
+  // Root executable tooling: the shell scripts (keep-alive.sh, ...) AND the
+  // executable Node/PowerShell configs + build files that run in CI
+  // (next.config.ts, eslint.config.mjs, vitest*.config.ts, dev.ps1,
+  // test-prisma7.mjs, Makefile, Dockerfile - the 2026-08 executable-surface
+  // audit decision, pinned by scripts/__tests__/executable-surface.test.ts
+  // and the gateFiles() enumeration asserts). A fragile character-class
+  // range in ANY of them fails silently exactly like the 2026-08 em-dash -
+  // same bug class, so the root gate surface is the full executable set,
+  // not just *.sh. (Root config DATA - .prettierrc, lighthouserc*.json -
+  // is not executable code; not scanned. The extension set mirrors
+  // TARGET_EXTS minus .ya?ml - root yml (docker-compose/pnpm) is declared
+  // container/package data, OUT BY DESIGN; yml is scanned only under
+  // .github/workflows and .github/actions. Makefile/Dockerfile are
+  // extension-less build files, matched by name.)
   for (const f of readdirSync(root)) {
-    if (f.endsWith(".sh")) files.push(path.join(root, f))
+    if (
+      /\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1)$/.test(f) ||
+      f === "Makefile" ||
+      f === "Dockerfile"
+    ) {
+      files.push(path.join(root, f))
+    }
   }
 
   for (const h of [".husky/pre-commit", ".husky/pre-push"]) {

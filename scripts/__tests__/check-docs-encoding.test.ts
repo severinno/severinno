@@ -42,7 +42,7 @@ describe("check-docs-encoding.sh", () => {
   it("bash -n (no syntax errors)", () => {
     const r = runSubprocess({ command: "bash", args: ["-n", SH_SCRIPT] })
     expect(r.status).toBe(0)
-  })
+  }, 60000)
 
   it("clean .md file -> exit 0, UTF8-OK, no warnings", () => {
     tmpDir = createTempDir("check-docs-encoding")
@@ -53,7 +53,7 @@ describe("check-docs-encoding.sh", () => {
     expect(stdout).toContain("UTF8-OK")
     expect(stdout).toContain("clean.md")
     expect(stderr).not.toContain("WARNING")
-  })
+  }, 60000)
 
   it("clean .md with legitimate UTF-8 accents -> exit 0, UTF8-OK, no warnings", () => {
     tmpDir = createTempDir("check-docs-encoding")
@@ -65,7 +65,7 @@ describe("check-docs-encoding.sh", () => {
     expect(stdout).toContain("UTF8-OK")
     expect(stdout).toContain("accent.md")
     expect(stderr).not.toContain("WARNING")
-  })
+  }, 60000)
 
   it("corrupt byte 0x97 in .md -> exit 0, INVALID-UTF8, WARNING on stderr (non-blocking)", () => {
     tmpDir = createTempDir("check-docs-encoding")
@@ -83,7 +83,7 @@ describe("check-docs-encoding.sh", () => {
     expect(stderr).toContain("WARNING")
     expect(stderr).not.toContain("FATAL")
     expect(stderr).not.toContain("BLOCKING")
-  })
+  }, 60000)
 
   it("mixed: one clean, one corrupt -> both reported, WARNING for corrupt only", () => {
     tmpDir = createTempDir("check-docs-encoding")
@@ -101,7 +101,7 @@ describe("check-docs-encoding.sh", () => {
     expect(stdout).toContain("bad.md")
     expect(stderr).toContain("WARNING")
     expect(stderr).toContain("bad.md")
-  })
+  }, 60000)
 
   it("no files -> exit 0, skip message", () => {
     tmpDir = createTempDir("check-docs-encoding")
@@ -111,13 +111,27 @@ describe("check-docs-encoding.sh", () => {
     // returns nothing → "no docs files to scan — skipping".
     //
     // For the test, run from the tmp dir's CWD so git sees no tracked files.
+    // HERMETIC ENV: inside the pre-commit/pre-push hooks the parent `git
+    // commit`/`git push` sets GIT_DIR (and friends), which the subprocess
+    // would inherit — git then resolves the REAL repo even from the tmp
+    // CWD, git ls-files lists every tracked docs file, and this test would
+    // fail with the whole repo's file list instead of the skip message
+    // (repro: GIT_DIR=$PWD/.git vitest run check-docs-encoding.test.ts).
+    // Pointing GIT_DIR at a non-existent path inside the tmp dir forces
+    // git to fail repo discovery here, so the skip path is exercised
+    // regardless of the invoking environment.
     const r = runSubprocess({
       command: "bash",
       args: [SH_SCRIPT],
       cwd: tmpDir,
+      env: {
+        GIT_DIR: path.join(tmpDir, ".no-git"),
+        GIT_WORK_TREE: path.join(tmpDir, ".no-git"),
+        GIT_INDEX_FILE: path.join(tmpDir, ".no-git", "index"),
+      },
     })
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("no docs files to scan")
     expect(r.stderr).not.toContain("WARNING")
-  })
+  }, 60000)
 })

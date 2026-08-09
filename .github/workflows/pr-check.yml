@@ -288,13 +288,16 @@ jobs:
         if: always()
         run: bunx tsc --noEmit
 
-  # ── Fragile Range Guard (vitest) ──────────────────────────────────────────
-  # Roda SOMENTE scripts/__tests__/fragile-range-guard.test.ts como job
-  # independente — imune a qualquer skip do job check (o reorder atual já
-  # protege, mas este job garante o contrato vitest do guard mesmo se o check
-  # for reordenado no futuro). A camada 3 (CLI em arquivos reais) roda no
-  # utf8-check; aqui ficam os contratos por mutação/fixture. Não precisa de
-  # Prisma client nem de build.
+  # ── Guard Gates (vitest) ──────────────────────────────────────────────────
+  # Roda o MESMO par de suítes do guard que o push net guard-gates.yml
+  # (bun run test:guard — o script único em package.json, single source of
+  # truth: uma futura suíte de guard entra em UM lugar, não em 2 workflows)
+  # como job independente — imune a qualquer skip do job check (o reorder
+  # atual já protege, mas este job garante o contrato vitest do guard mesmo
+  # se o check for reordenado no futuro). A camada 3 (CLI em arquivos reais)
+  # roda no utf8-check; aqui ficam os contratos por mutação/fixture + o
+  # scaffold compartilhado (golden-copy-utils: canonicalizer + divergence
+  # guards + writeModuleCopy). Não precisa de Prisma client nem de build.
   fragile-guard:
     name: Fragile Range Guard
     runs-on: ubuntu-latest
@@ -315,5 +318,5 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Run fragile-range-guard vitest
-        run: bunx vitest run scripts/__tests__/fragile-range-guard.test.ts --config vitest.config.unit.ts
+      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)
+        run: bun run test:guard

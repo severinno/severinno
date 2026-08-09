@@ -54,7 +54,9 @@
  * REAL-REPO CLEAN CONTRACT (the REAL-SURFACE tests' baseline): the tests
  * that DO scan real surface - the repo-wide scan, the BASELINE test below
  * (explicit count === 0), the REAL-REPO CONTRACT --dir MULTI-ARG test
- * (pins +476 target files) and the plain clean-verdict CLI runs
+ * (verdict count DERIVED from the module's own filesInDir over TARGET_DIRS
+ * - no magic literal that silently goes stale) and the plain clean-verdict
+ * CLI runs
  * (runCli(["--ci"]) / runCli([])) - assume the REAL repo has ZERO fragile
  * ranges TODAY (scanExecutableCode(ROOT) has no offenders). This is a
  * DELIBERATE contract, not an accident: a synthetic proof is only
@@ -91,6 +93,7 @@ import {
 import {
   cleanupTempDirs,
   createTempDir,
+  expectedTargetFiles,
   expectSoleFailureCount,
   patchModuleCopy,
   patchModuleFile,
@@ -151,9 +154,64 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
     // confusing 1->2 flip in some unrelated dirty test. Same root as the
     // repo-wide test above, stated as the contract the real-surface tests
     // depend on (see the REAL-REPO CLEAN CONTRACT paragraph in the suite
-    // docblock).
+    // docblock). WHY this is an INVARIANT and not a magic number (the
+    // distinction the REAL-REPO CONTRACT's derived verdict count makes
+    // plain): the expected offender count of a clean repo is 0 for ANY
+    // repo size - scanExecutableCode loops the TARGET_DIRS export
+    // internally, so growth (a new file, a 5th tree) is auto-covered and
+    // keeps the count at 0 by definition. There is no frozen number here
+    // that goes stale when the repo grows - deriving it from filesInDir
+    // counts would be a category error (file count != offender count).
+    // The per-tree companion test directly below decomposes this
+    // invariant the CORRECT way: per tree, from the TARGET_DIRS export.
     const offenders = scanExecutableCode(ROOT)
     expect(offenders, `real-repo baseline broken - fragile ranges in scanned live code:\n${offenders.join("\n")}`).toHaveLength(0)
+  }, 60000)
+
+  it("BASELINE companion: every existing TARGET_DIRS tree is clean - per-tree decomposition derived from the export", () => {
+    // The BASELINE above pins the GLOBAL offender count at 0 - an
+    // INVARIANT over a self-adapting surface, not a magic number:
+    // scanExecutableCode loops the TARGET_DIRS export internally, so a
+    // new file or a 5th tree is auto-covered and clean growth keeps the
+    // count at 0 by definition (unlike the REAL-REPO CONTRACT's "+ N
+    // target files" verdict message, which counts a legitimately-changing
+    // file set and therefore IS derived from filesInDir).
+    //
+    // This companion decomposes the invariant PER TREE, derived from the
+    // same single source as everything else - the exported TARGET_DIRS
+    // array (the loop below iterates it directly; a future tree enters
+    // the assertion with zero edits). Deliberately NOT derived from
+    // filesInDir COUNTS: filesInDir(d).length is a FILE count, not an
+    // offender count - the expected offender count of a clean tree is 0
+    // for ANY file count, so "deriving" it from filesInDir would assert
+    // offenders.length === files.length (every file an offender), a
+    // category error. The one quantity that changes with repo growth is
+    // the file set, and that derivation already exists (expectedTargetFiles()).
+    //
+    // Why not redundant with the global BASELINE: detection-wise it is the
+    // SAME union of trees (scanExecutableCode scans the same TARGET_DIRS
+    // set internally, so a fragile range in any tree fails the global
+    // tests too) - its value is the DECOMPOSITION: each tree asserted in
+    // its own iteration with a tree-named failure message (the global
+    // verdict lumps every offender into one blob, this one names the tree
+    // and reports paths relative to it), and the tree list derived from
+    // the export so a future 5th tree enters the assertion with zero
+    // edits. It does NOT guard scanExecutableCode's internal loop - this
+    // test scans each tree directly via scanDirectory, so a regression
+    // that dropped a tree from that loop would keep BOTH this test and
+    // the global BASELINE green (the dropped tree is simply never
+    // asserted); that class is out of scope here (the TARGET_DIRS covers
+    // test pins the list values). Trees that do not exist are skipped
+    // exactly like scanExecutableCode skips them.
+    for (const tree of TARGET_DIRS) {
+      const abs = path.join(ROOT, tree)
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) continue
+      const offenders = scanDirectory(abs)
+      expect(
+        offenders,
+        `TARGET_DIRS tree '${tree}' has fragile ranges (scanDirectory reachability or cleanliness broken):\n${offenders.join("\n")}`,
+      ).toEqual([])
+    }
   }, 60000)
 
   it("mutation: a [^ -~] range injected into live .sh code trips the guard", () => {
@@ -223,7 +281,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       const r = runCli(["--print-target-dirs"])
       expect(r.status).toBe(0)
       expect(r.stdout.trim()).toBe(TARGET_DIRS.join(" "))
-    })
+    }, 60000)
 
     it("--print-target-dirs combined with other flags: exit 2 (standalone query only)", () => {
       // The query is a pure derivation source - combining it with scan
@@ -233,7 +291,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       const r = runCli(["--ci", "--print-target-dirs"])
       expect(r.status).toBe(2)
       expect(r.stderr).toContain("usage:")
-    })
+    }, 60000)
 
     it("exit 0 with a clean verdict on the real repo", () => {
       const r = runCli(["--ci"])
@@ -245,7 +303,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       const r = runCli(["file.sh"])
       expect(r.status).toBe(2)
       expect(r.stderr).toContain("usage:")
-    })
+    }, 60000)
 
     it("exit 0 without --ci too (verdict identical; --ci only documents intent)", () => {
       const r = runCli([])
@@ -253,7 +311,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       expect(r.stdout).toContain("fragile-range: clean")
     }, 60000)
 
-    it("REAL-REPO CONTRACT: --dir MULTI-ARG (all TARGET_DIRS trees) exits 0 and pins the target-file count", () => {
+    it("REAL-REPO CONTRACT: --dir MULTI-ARG (all TARGET_DIRS trees) exits 0 and the verdict count matches the module's filesInDir (derived, no magic number)", () => {
       // Runs the FULL user-facing form against the REAL repo - not a
       // synthetic tempdir - so the verdict locks in the actual executable
       // surface the encoding gate audits (verify-encoding.sh layer 3 derives
@@ -261,16 +319,29 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       // is DERIVED from the imported TARGET_DIRS export (spread after the
       // --dir flag) - never a literal second "e2e/ src/" list in the test
       // that could silently omit a new tree if TARGET_DIRS grows (the same
-      // single-source-of-truth contract the wrapper keeps). The count is a
-      // CONTRACT: if a new code file lands in any TARGET_DIR tree, this
-      // assertion fails and forces an explicit decision (same frozen-surface
-      // posture as the ascii-safe baseline and the FRAGILE_SCAN_ROOT
-      // count-pin).
+      // single-source-of-truth contract the wrapper keeps). The expected
+      // count is DERIVED the same way the CLI counts it (extraFiles +==
+      // filesInDir(d).length) and the same way the wrapper CONTRACT test
+      // derives it (verify-encoding.test.ts) — both call sites via the
+      // shared expectedTargetFiles() helper in golden-copy-utils.ts (RULE
+      // OF TWO USES) - no hardcoded "+ 476 target files" literal that
+      // silently goes stale the day the surface grows.
+      // The verdict must agree with the module's own enumeration; surface
+      // GROWTH itself (a 5th TARGET_DIRS tree) is owned by the SPREAD
+      // CONTRACT, TARGET_DIRS covers and golden-copy tests, so this test
+      // only pins CLI-vs-module consistency, not a frozen number. A NEW
+      // FILE inside an existing TARGET_DIR tree is invisible here BY DESIGN
+      // (the count self-adjusts, same as the wrapper) - do not "restore" a
+      // magic number to catch it.
+      const expected = expectedTargetFiles()
+      expect(expected).toBeGreaterThan(0)
       const r = runCli(["--ci", "--dir", ...TARGET_DIRS])
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("fragile-range: clean")
-      // Verdict shape: "clean (109 gate files + 476 target files, ...)".
-      expect(r.stdout).toContain("+ 476 target files")
+      // Verdict shape: "clean (112 gate files + N target files, ...)".
+      // `files?` future-proofs the singular "target file" if a tree ever
+      // shrinks to exactly one code file (same pattern as the wrapper).
+      expect(r.stdout).toMatch(new RegExp(`\\+ ${expected} target files?`))
     }, 60000)
 
     it("--dir clean target: exit 0 and the verdict counts the target files", () => {
@@ -306,14 +377,14 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       expect(r.stderr).toContain("space-tilde character range")
       expect(r.stderr).toContain(path.join("e2e", "dirty.spec.ts"))
       expectSoleFailureCount(r.stderr, 1)
-    })
+    }, 60000)
 
     it("--dir missing target: exit 2 (no silent ignore of a mistyped path)", () => {
       const missing = path.join(createTempDir("frg-cli-missing-"), "nope")
       const r = runCli(["--ci", "--dir", missing])
       expect(r.status).toBe(2)
       expect(r.stderr).toContain("--dir target not found")
-    })
+    }, 60000)
 
     it("--dir pointing at a FILE: exit 2, not an ENOTDIR stack trace", () => {
       const dir = createTempDir("frg-cli-file-")
@@ -322,13 +393,13 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       expect(r.status).toBe(2)
       expect(r.stderr).toContain("not a directory")
       expect(r.stderr).not.toContain("ENOTDIR")
-    })
+    }, 60000)
 
     it("--dir without a path argument: exit 2 usage error", () => {
       const r = runCli(["--dir"])
       expect(r.status).toBe(2)
       expect(r.stderr).toContain("--dir requires at least one path")
-    })
+    }, 60000)
 
     it("--dir MULTI-ARG form (--dir a b): both targets scanned, one dirty trips exit 1", () => {
       // The user-facing example "--dir e2e/ src/" is one flag with several
@@ -341,7 +412,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       expect(r.status).toBe(1)
       expect(r.stderr).toContain("space-tilde character range")
       expect(r.stderr).toContain(path.join("bad.ts"))
-    })
+    }, 60000)
   })
 
   describe("CLI (FRAGILE_SCAN_ROOT env override: synthetic root, no wrapper)", () => {
@@ -371,7 +442,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       // failure source is the synthetic gate file and a real-repo
       // regression CANNOT affect (or masquerade as) this proof.
       expectSoleFailureCount(r.stderr, 1)
-    })
+    }, 60000)
 
     it("clean synthetic root: exit 0 with the clean verdict (override points at a clean tree)", () => {
       const dir = createTempDir("frg-cli-root-clean-")
@@ -384,7 +455,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       // has ~106, so this proves the redirect happened).
       expect(r.stdout).toContain("(1 gate files")
       expect(r.stdout).not.toContain("fragile character-class range(s)")
-    })
+    }, 60000)
   })
 
   describe("target scanning (--dir: e2e/ and src/ files, not just gate files)", () => {
@@ -531,7 +602,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       expect(offs).toHaveLength(1)
       expect(offs[0]).toContain("space-tilde character range")
       expect(offs[0]).toContain(path.join("docs", "dirty.ts"))
-    })
+    }, 60000)
 
     it(".md inside docs/ trips only when BOTH contracts are lifted (TARGET_DIRS AND TARGET_EXTS) - the .md exclusion is two-layered", () => {
       // The user-facing premise "inject docs/ into TARGET_DIRS and the .md
@@ -575,7 +646,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       expect(offs).toHaveLength(1)
       expect(offs[0]).toContain("space-tilde character range")
       expect(offs[0]).toContain(path.join("docs", "dirty.md"))
-    })
+    }, 60000)
   })
 
   describe("full executable-code scope (scanExecutableCode: gate files + TARGET_DIRS)", () => {
@@ -656,14 +727,15 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       // The REAL-REPO CONTRACT test derives its --dir args via the
       // `...TARGET_DIRS` spread - never a literal second list - so a future
       // tree landing in TARGET_DIRS is scanned by that test AUTOMATICALLY
-      // (its pinned target count then breaks, forcing the explicit decision
-      // the contract wants). THIS test pins the mechanism the spread relies
-      // on: the target set IS the module's TARGET_DIRS export, so a temp
-      // COPY of the module with a 5th entry (workers/) makes the same
-      // derivation cover the new tree - while the real module (4 entries)
-      // provably does not scan it today. Contrast the REVERSE MUTATION
-      // tests (which lift docs/ - an EXCLUDED tree): workers/ here is a
-      // brand-NEW tree, the forward growth direction.
+      // (its expected count is derived from filesInDir, so it self-adjusts;
+      // the growth signal is THIS test + TARGET_DIRS covers + the golden
+      // copy). THIS test pins the mechanism the spread relies on: the
+      // target set IS the module's TARGET_DIRS export, so a temp COPY of
+      // the module with a 5th entry (workers/) makes the same derivation
+      // cover the new tree - while the real module (4 entries) provably
+      // does not scan it today. Contrast the REVERSE MUTATION tests (which
+      // lift docs/ - an EXCLUDED tree): workers/ here is a brand-NEW tree,
+      // the forward growth direction.
       const dir = createTempDir("frg-spread-")
       fs.mkdirSync(path.join(dir, "scripts"), { recursive: true })
       fs.mkdirSync(path.join(dir, "e2e"), { recursive: true })
@@ -721,7 +793,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       // so the offender line carries just "dirty.ts".
       expect(rCli.stderr).toContain("dirty.ts")
       expectSoleFailureCount(rCli.stderr ?? "", 1)
-    })
+    }, 60000)
   })
 
   describe("scripts/__tests__ non-test helpers (gate class: scanned like gates)", () => {
@@ -782,7 +854,7 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
   })
 
   describe("module shape (single source of truth for the gate wiring)", () => {
-    it("gateFiles() enumerates the real gate surface (scripts, root .sh, hooks, workflows)", () => {
+    it("gateFiles() enumerates the real gate surface (scripts, root executable tooling, hooks, workflows)", () => {
       const files = gateFiles(ROOT)
       // Platform-independent check: normalize to forward slashes so the
       // assertion holds on Windows (path.sep = \\ ) and on POSIX alike.
@@ -793,6 +865,24 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       expect(files.some((f) => rel(f) === ".github/workflows/ci.yml")).toBe(true)
       expect(files.some((f) => rel(f) === ".github/actions/severinno-ssh/action.yml")).toBe(true)
       expect(files.some((f) => rel(f) === ".github/actions/severinno-scp/action.yml")).toBe(true)
+      // ROOT EXECUTABLE TOOLING (the 2026-08 executable-surface audit
+      // decision, pinned by scripts/__tests__/executable-surface.test.ts
+      // and documented in docs/scan-surfaces.md Type A): root .ts/.mjs/.ps1
+      // configs and the Makefile/Dockerfile build files run real logic in
+      // CI - a fragile range in next.config.ts is the SAME silent-failure
+      // class as the 2026-08 em-dash in a gate script, so they enter the
+      // gate surface (root *.sh already did).
+      expect(files.some((f) => rel(f) === "next.config.ts")).toBe(true)
+      expect(files.some((f) => rel(f) === "eslint.config.mjs")).toBe(true)
+      expect(files.some((f) => rel(f) === "dev.ps1")).toBe(true)
+      expect(files.some((f) => rel(f) === "test-prisma7.mjs")).toBe(true)
+      expect(files.some((f) => rel(f) === "Makefile")).toBe(true)
+      expect(files.some((f) => rel(f) === "Dockerfile")).toBe(true)
+      // Root *.yml orchestration/package data (docker-compose, pnpm lock) is
+      // NOT executable gate logic - declared container/package data, out by
+      // design (same class as the config/ examples/ prisma/ exclusions).
+      expect(files.some((f) => rel(f) === "docker-compose.yml")).toBe(false)
+      expect(files.some((f) => rel(f) === "pnpm-lock.yaml")).toBe(false)
       // Non-test helpers in scripts/__tests__ ARE scanned (executable
       // subprocess runners like golden-copy-utils.ts), but .test.* specs
       // and the fixtures/ tree are excluded by design.

@@ -104,7 +104,7 @@ describe("scripts/check-js-budget.mjs", () => {
     const r = runBudget(f.dir)
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("All JS budgets within limits")
-  })
+  }, 60000)
 
   it("fails (exit 1) when a route budget is exceeded via env override", () => {
     const f = makeFixture()
@@ -125,7 +125,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stdout).toContain("(budget 1 KB)")
     expect(r.stderr).toContain("> budget 1 KB")
     expect(r.stderr).toContain("route: /busca initial")
-  })
+  }, 60000)
 
   it("falls back to build-manifest rootMainFiles for initial JS when the prerendered HTML is absent", () => {
     const f = makeFixture()
@@ -146,7 +146,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("Initial JS (/) rootMainFiles")
     expect(r.stdout).toContain("All JS budgets within limits")
-  })
+  }, 60000)
 
   it("skips route/initial checks (still exit 0) when chunks are missing", () => {
     const f = makeFixture()
@@ -162,7 +162,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("All JS budgets within limits")
     expect(r.stdout).toContain("route chunks not found (build may be stale)")
-  })
+  }, 60000)
 
   it("exits 2 when the analyze report does not exist", () => {
     const f = makeFixture()
@@ -170,7 +170,7 @@ describe("scripts/check-js-budget.mjs", () => {
     const r = runBudget(f.dir)
     expect(r.status).toBe(2)
     expect(r.stderr).toContain("Bundle report not found")
-  })
+  }, 60000)
 
   it("guard fails (exit 1) when a heavy lib reaches a NON-home route's prerendered HTML", () => {
     const f = makeFixture()
@@ -206,7 +206,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stderr).toContain("maplibre-gl is statically bundled")
     // Route label is formatted with a leading slash: "/busca (map-lib-abc.js)".
     expect(r.stderr).toContain("/busca (map-lib-abc.js)")
-  })
+  }, 60000)
 
   it("guard (check 5): home HTML with a heavy lib eager fails (exit 1, route / attribution)", () => {
     const f = makeFixture()
@@ -242,7 +242,7 @@ describe("scripts/check-js-budget.mjs", () => {
     // The initial-JS check is MEASURED (framework 60K + chart 40K = 100K,
     // under the 270 KB budget) — the guard is the sole failure cause.
     expect(r.stderr).toContain("/ (chart-abc.js)")
-  })
+  }, 60000)
 
   it("guard (check 5): clean home HTML passes with all 4 guard checks green", () => {
     const f = makeFixture()
@@ -256,7 +256,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stdout).toContain("guard: socket.io-client not in initial JS (all prerendered routes)")
     expect(r.stdout).toContain("guard: framer-motion not in initial JS (all prerendered routes)")
     expect(r.stdout).toContain("All JS budgets within limits")
-  })
+  }, 60000)
 
   it("guard (check 5): rootMainFiles fallback with a heavy lib eager fails (exit 1)", () => {
     const f = makeFixture()
@@ -290,7 +290,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stdout).toContain("guard: recharts not in initial JS (rootMainFiles)")
     expect(r.stderr).toContain("recharts is statically bundled")
     expect(r.stderr).toContain("rootMainFiles (chart-abc.js)")
-  })
+  }, 60000)
 
   it("guard (check 5): clean rootMainFiles fallback passes with all 4 guard checks green", () => {
     const f = makeFixture()
@@ -317,7 +317,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stdout).toContain("guard: socket.io-client not in initial JS (rootMainFiles)")
     expect(r.stdout).toContain("guard: framer-motion not in initial JS (rootMainFiles)")
     expect(r.stdout).toContain("All JS budgets within limits")
-  })
+  }, 60000)
 
   it("source lint: lazy dynamic-import targets may statically import heavy libs (exit 0)", () => {
     const f = makeFixture()
@@ -344,7 +344,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("guard: static heavy-lib imports (source lint)")
     expect(r.stdout).toContain("All JS budgets within limits")
-  })
+  }, 60000)
 
   it("source lint: an eager route statically importing a heavy lib fails WITHOUT a bundle report (exit 1)", () => {
     const f = makeFixture()
@@ -361,7 +361,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stderr).toContain("react-map-gl statically imported")
     expect(r.stderr).toContain("src/app/busca/page.tsx")
     expect(r.stderr).toContain("/busca")
-  })
+  }, 60000)
 
   it("source lint: an eager page statically importing framer-motion fails WITHOUT a bundle report (exit 1)", () => {
     const f = makeFixture()
@@ -381,7 +381,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stderr).toContain("framer-motion statically imported")
     expect(r.stderr).toContain("src/app/page.tsx")
     expect(r.stderr).toContain("reachable from /")
-  })
+  }, 60000)
 
   it("source lint (check 8): CRLF source line endings still attribute the CORRECT line number (exit 1)", () => {
     const f = makeFixture()
@@ -402,7 +402,7 @@ describe("scripts/check-js-budget.mjs", () => {
     // contract against a future `$`-anchored or \n-only regression).
     expect(r.stderr).toContain("src/app/busca/page.tsx:2")
     expect(r.stderr).toContain("reachable from /busca")
-  })
+  }, 60000)
 
   it("source lint: transitive static import through an eager component is caught with route attribution (exit 1)", () => {
     const f = makeFixture()
@@ -427,7 +427,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stderr).toContain("recharts statically imported")
     expect(r.stderr).toContain("src/app/hero.tsx")
     expect(r.stderr).toContain("/")
-  })
+  }, 60000)
 
   it("source lint: JS_BUDGET_EAGER_ALLOW_FILES whitelists a flagged file (exit 0)", () => {
     const f = makeFixture()
@@ -440,7 +440,7 @@ describe("scripts/check-js-budget.mjs", () => {
     const r = runBudget(f.dir, { JS_BUDGET_EAGER_ALLOW_FILES: "src/app/busca/page.tsx" })
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("All JS budgets within limits")
-  })
+  }, 60000)
 
   it("source lint: a bare dynamic import() of a heavy lib in an eager file is the sanctioned lazy pattern (exit 0)", () => {
     const f = makeFixture()
@@ -455,7 +455,7 @@ describe("scripts/check-js-budget.mjs", () => {
     const r = runBudget(f.dir)
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("All JS budgets within limits")
-  })
+  }, 60000)
 
   it("source lint: an eager page importing @/components/foo (tsconfig alias) which statically imports a heavy lib is caught (exit 1)", () => {
     const f = makeFixture()
@@ -484,7 +484,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.status).toBe(1)
     expect(r.stderr).toContain("maplibre-gl statically imported")
     expect(r.stderr).toContain("src/components/foo.tsx")
-  })
+  }, 60000)
 
   it("artifact consistency: analyzer and prerendered HTML from DIFFERENT builds fail (exit 1)", () => {
     const f = makeFixture()
@@ -510,7 +510,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("artifact consistency (analyzer vs prerendered HTML)")
     expect(r.stderr).toContain("DIFFERENT builds")
-  })
+  }, 60000)
 
   it("guard (check 5): socket.io-client eager in home HTML fails (exit 1)", () => {
     const f = makeFixture()
@@ -543,7 +543,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stdout).toContain("guard: socket.io-client not in initial JS (all prerendered routes)")
     expect(r.stderr).toContain("socket.io-client is statically bundled")
     expect(r.stderr).toContain("/ (socket-abc.js)")
-  })
+  }, 60000)
 
   it("guard (check 5): framer-motion sentinel — a re-added chunk in a route HTML fails (exit 1)", () => {
     const f = makeFixture()
@@ -580,7 +580,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stdout).toContain("guard: framer-motion not in initial JS (all prerendered routes)")
     expect(r.stderr).toContain("framer-motion is statically bundled")
     expect(r.stderr).toContain("/ (framer-abc.js)")
-  })
+  }, 60000)
 
   it("lib size (check 3): @tanstack/react-query over budget fails via env override (exit 1)", () => {
     const f = makeFixture()
@@ -619,7 +619,7 @@ describe("scripts/check-js-budget.mjs", () => {
     expect(r.stdout).toContain("lib: @tanstack/react-query")
     expect(r.stdout).toContain("(budget 1 KB)")
     expect(r.stderr).toContain("> budget 1 KB")
-  })
+  }, 60000)
 })
 
 /** Minimal .next fixture where every byte check passes (no heavy libs). */

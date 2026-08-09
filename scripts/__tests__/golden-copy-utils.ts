@@ -17,12 +17,22 @@
  * `* text=auto` → CRLF would break bash parsing on `\r`). Centralized here so
  * the 4th suite inherits the same hardening by default instead of
  * re-implementing it per-harness.
+ *
+ * The module-patch scaffold (ModulePatchOp + writeModuleCopy) was the 3rd
+ * instance of the same shape — the fragile-range REVERSE MUTATION
+ * (writePatchedModule below), the encoding-surface GROWTH CONTRACT
+ * (writePatchedSurfaceModule) and the budget-routes GROWTH CONTRACT
+ * (writePatchedRoutesModule) all read a manifest module, patched it at
+ * structural anchors and wrote a temp copy. Extracted here so a 4th
+ * manifest suite builds ops and calls writeModuleCopy instead of
+ * copy-pasting the read-module / anchor / write-copy shape a 4th time.
  */
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { expect } from "vitest"
+import { TARGET_DIRS, filesInDir } from "../fragile-range-patterns.mjs"
 
 /** Canonical form for the divergence guards (content, not layout). */
 export function canonicalProgram(program: string): string {
@@ -60,6 +70,38 @@ export interface SpawnResult {
  */
 export function expectSoleFailureCount(stderr: string, count: number): void {
   expect(stderr).toContain(`${count} fragile character-class range(s) in LIVE code:`)
+}
+
+/**
+ * RULE OF TWO USES (EXTRACTED 2026-08): expectedTargetFiles() is the
+ * derived count of code files under the module's TARGET_DIRS trees — the
+ * exact number the layer-3 verdict asserts ("+ N target files"). It was
+ * duplicated VERBATIM in the REAL-REPO CONTRACT --dir MULTI-ARG test
+ * (fragile-range-guard.test.ts) and the CONTRACT layer-3-derivation test
+ * (verify-encoding.test.ts); the repo's usual rule-of-three would wait
+ * for a 3rd copy, but this derivation is exactly where a suite hardcodes
+ * a magic "+ 476 target files" literal, so the shared helper landed at 2
+ * uses. A 3rd suite asserts that count by importing THIS instead of
+ * re-deriving it.
+ *
+ * The count is DERIVED from the module's own exports (TARGET_DIRS +
+ * filesInDir) — never a frozen literal — so it always agrees with what
+ * the module's CLI itself counts (extraFiles += filesInDir(d).length),
+ * and a new file (or a 5th TARGET_DIRS tree) self-adjusts instead of
+ * tripping a stale pin. Root defaults to the process CWD (both original
+ * call sites used ROOT = process.cwd()); a synthetic-root suite can pass
+ * its own. NOTE: this import pulls fragile-range-patterns.mjs (an
+ * IS_MAIN-guarded CLI entry, side-effect-free on import) into every
+ * suite that imports golden-copy-utils — safe by design, but the module
+ * stays the single source of truth for both symbols.
+ *
+ * Real-coverage note: the helper is exercised, not dead — both call
+ * sites assert the real-repo count against the layer-3 verdict regex
+ * ("+ N target files?"), so a refactor that weakens the derivation would
+ * fail the CONTRACT tests, not pass silently.
+ */
+export function expectedTargetFiles(root = process.cwd()): number {
+  return TARGET_DIRS.reduce((n, d) => n + filesInDir(path.join(root, d)).length, 0)
 }
 
 /**
@@ -145,19 +187,87 @@ export function assertScopeMatchesGolden(src: string): { targetDirs: string; tar
 }
 
 /**
+ * RULE OF THREE (EXTRACTED 2026-08 — the 3rd module-patch harness arrived
+ * with the budget-routes GROWTH CONTRACT): writeModuleCopy is the SHARED
+ * SCAFFOLD behind every suite that writes a TEMP COPY of a real manifest
+ * module with contract-lifting patches — the fragile-range REVERSE
+ * MUTATION (writePatchedModule below), the encoding-surface GROWTH CONTRACT
+ * (writePatchedSurfaceModule in encoding-surface.test.ts) and the
+ * budget-routes GROWTH CONTRACT (writePatchedRoutesModule in
+ * budget-routes.test.ts). A 4th manifest suite builds ops and calls THIS
+ * instead of copy-pasting the read-module / anchor / write-copy shape a 4th
+ * time.
+ *
+ * Each op is (anchor, replace, onMissing): the anchor is a string (literal,
+ * first occurrence) or a RegExp (the matched text — the whole structural
+ * span the op rewrites), the replacement is a literal string or a replacer
+ * receiving the matched text, and a MISSING anchor throws the onMissing
+ * error — the same fail-loudly-on-shape-drift posture each harness kept
+ * ("update the harness when legitimately edited"), so a module
+ * rename/restructure can never degrade into a silent no-op. REGEX anchors
+ * MUST be non-global (no `g` flag): the presence check matches once, so a
+ * global flag would make the splice hit every occurrence while the anchor
+ * semantics assume one.
+ *
+ * The splice goes through String.replace with a FUNCTION replacement, never
+ * a string: a string replacement would interpret `$&`/`$1`-style sequences
+ * in the NEW text, silently mangling patches whose content legitimately
+ * contains `$`. REGEX anchors are re-matched for the splice (replace-on-
+ * regex) instead of re-locating the matched text as a literal: the matched
+ * TEXT could in principle appear earlier in the file, and a literal
+ * first-occurrence splice would land at the wrong position.
+ */
+export interface ModulePatchOp {
+  anchor: string | RegExp
+  replace: string | ((match: string) => string)
+  onMissing: string
+}
+
+export function writeModuleCopy(dir: string, modulePath: string, ops: ModulePatchOp[]): string {
+  let src = fs.readFileSync(modulePath, "utf8")
+  for (const op of ops) {
+    if (typeof op.anchor === "string") {
+      if (!src.includes(op.anchor)) {
+        throw new Error(op.onMissing)
+      }
+      const replacement = typeof op.replace === "string" ? op.replace : op.replace(op.anchor)
+      src = src.replace(op.anchor, () => replacement)
+    } else {
+      const matched = src.match(op.anchor)
+      // length === 0 ENFORCES the non-global contract: with a `g` flag,
+      // match() returns [] on no-match (truthy) — the fail-loudly throw
+      // would silently pass and the replacer would receive undefined.
+      if (!matched || matched.length === 0) {
+        throw new Error(op.onMissing)
+      }
+      const replacement = typeof op.replace === "string" ? op.replace : op.replace(matched[0])
+      src = src.replace(op.anchor, () => replacement)
+    }
+  }
+  const modPath = path.join(dir, path.basename(modulePath))
+  fs.writeFileSync(modPath, src)
+  return modPath
+}
+
+/**
  * Write a patched temp copy of fragile-range-patterns.mjs (contracts
  * lifted per `patch`) into `dir` and return the copy's path. First verifies
  * the live declarations match the golden copy (clear diff on drift), then
- * patches the EXTRACTED lines - so the lift is applied to whatever the
- * module actually declares today (as long as it is in sync with the
- * snapshot).
+ * patches the EXTRACTED lines through the shared writeModuleCopy scaffold —
+ * so the lift is applied to whatever the module actually declares today (as
+ * long as it is in sync with the snapshot).
  */
 function writePatchedModule(dir: string, patch: { targetDirs?: string[]; extsAddMd?: boolean }): string {
   const src = fs.readFileSync(REAL_FRAGILE_MODULE, "utf8")
   const decls = assertScopeMatchesGolden(src)
-  let patched = src
+  const ops: ModulePatchOp[] = []
   if (patch.targetDirs) {
-    patched = patched.replace(decls.targetDirs, `export const TARGET_DIRS = ${JSON.stringify(patch.targetDirs)}`)
+    ops.push({
+      anchor: decls.targetDirs,
+      replace: `export const TARGET_DIRS = ${JSON.stringify(patch.targetDirs)}`,
+      onMissing:
+        "REVERSE MUTATION: TARGET_DIRS declaration anchor missing (golden sync passed but the extracted line vanished) — update this harness",
+    })
   }
   if (patch.extsAddMd) {
     // Lift the extracted regex literal: append |md to the char-class group.
@@ -171,11 +281,14 @@ function writePatchedModule(dir: string, patch: { targetDirs?: string[]; extsAdd
         "REVERSE MUTATION: could not lift TARGET_EXTS (expected trailing ')$/' not found) — the golden-copy sync or the declaration shape changed",
       )
     }
-    patched = patched.replace(decls.targetExts, lifted)
+    ops.push({
+      anchor: decls.targetExts,
+      replace: lifted,
+      onMissing:
+        "REVERSE MUTATION: TARGET_EXTS declaration anchor missing (golden sync passed but the extracted line vanished) — update this harness",
+    })
   }
-  const modPath = path.join(dir, "fragile-range-patterns.mjs")
-  fs.writeFileSync(modPath, patched)
-  return modPath
+  return writeModuleCopy(dir, REAL_FRAGILE_MODULE, ops)
 }
 
 /**
