@@ -1,0 +1,20 @@
+# Golden copy of the fragile-range scan-scope declarations.
+#
+# Source of truth: the TARGET_EXTS + TARGET_DIRS declarations in
+# scripts/fragile-range-patterns.mjs. This file is the versioned, reviewable
+# snapshot of those declarations — the REVERSE-MUTATION harness
+# (golden-copy-utils.ts writePatchedModule) verifies the LIVE module matches
+# this snapshot BEFORE lifting the contracts (docs/ injected into
+# TARGET_DIRS, .md appended to TARGET_EXTS) and fails with a CLEAR DIFF
+# (expected golden lines vs actual live lines) if the module ever drifts —
+# not a bare "anchor not found". The divergence guard in
+# golden-copy-utils.test.ts FAILS if the module and this copy ever differ,
+# so an edit to either MUST be mirrored in the other.
+#
+# Update rule: change the module declaration AND this snapshot in the SAME
+# commit (the divergence guard enforces it). Canonical comparison uses
+# canonicalProgram (trim + drop # comments + CRLF normalization), so layout
+# noise is tolerated — only real token changes trip the guard.
+#
+const TARGET_EXTS = /^\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1|ya?ml)$/
+export const TARGET_DIRS = ["e2e", "src", "mini-services", ".zscripts"]

@@ -72,30 +72,106 @@ export function expectSoleFailureCount(stderr: string, count: number): void {
  * TARGET_EXTS) and re-execute the real code with the lifted constants -
  * an export-level vi.mock could never change the module-scope binding
  * scanExecutableCode reads, so the mutation must happen at the
- * module-source level. The patch anchors are asserted so a module drift
- * FAILS LOUDLY instead of silently scanning nothing.
+ * module-source level.
+ *
+ * The expected declarations are NOT hardcoded anchors anymore: they live in
+ * a VERSIONED GOLDEN COPY (scripts/__tests__/fixtures/fragile-range-scope.txt
+ * - the repo's golden-copy pattern). writePatchedModule EXTRACTS the live
+ * declarations from the real module by structural shape, compares them to
+ * the golden snapshot (canonicalProgram-normalized), and on drift throws a
+ * CLEAR DIFF (expected golden lines vs actual live lines + the fixture path
+ * to update) instead of a bare "anchor not found" - so a module change is
+ * actionable at a glance. The divergence guard in golden-copy-utils.test.ts
+ * enforces the golden == live-module sync.
  */
 const REAL_FRAGILE_MODULE = path.resolve(process.cwd(), "scripts", "fragile-range-patterns.mjs")
+const SCOPE_GOLDEN = path.resolve(
+  process.cwd(),
+  "scripts",
+  "__tests__",
+  "fixtures",
+  "fragile-range-scope.txt",
+)
+
+// Structural locators for the two scan-scope declarations. SHAPE-based, not
+// value-based: they match the declaration LINE regardless of its value, so a
+// value drift is REPORTED (the golden diff) instead of silently failing to
+// find an exact-string anchor. If the declaration is renamed or the shape
+// changes, extraction fails loudly with the fixture path to update.
+const TARGET_DIRS_DECL = /^export const TARGET_DIRS = \[[^\]]*\]$/m
+const TARGET_EXTS_DECL = /^const TARGET_EXTS = \/[^\n]*$/m
+
+/**
+ * Extract the live TARGET_DIRS/TARGET_EXTS declaration lines from the real
+ * module source (structural shape). Throws with the fixture path if the
+ * declaration shape changed (rename/restructure) - no silent ignore.
+ */
+function extractScopeDeclarations(src: string): { targetDirs: string; targetExts: string } {
+  const dirs = src.match(TARGET_DIRS_DECL)
+  const exts = src.match(TARGET_EXTS_DECL)
+  if (!dirs || !exts) {
+    throw new Error(
+      "REVERSE MUTATION: could not locate the TARGET_DIRS/TARGET_EXTS declarations in fragile-range-patterns.mjs (structural shape changed) — update scripts/__tests__/fixtures/fragile-range-scope.txt AND this harness",
+    )
+  }
+  return { targetDirs: dirs[0], targetExts: exts[0] }
+}
+
+/**
+ * Verify the live module's scan-scope declarations match the versioned
+ * GOLDEN COPY (canonicalProgram-normalized: layout noise tolerated, real
+ * token changes caught). On drift, throws a CLEAR DIFF - expected golden
+ * lines vs actual live lines + the fixture path - replacing the old bare
+ * "anchor not found" failure. Returns the extracted declarations so the
+ * caller can patch them. Exported for the divergence-guard mutation tests.
+ */
+export function assertScopeMatchesGolden(src: string): { targetDirs: string; targetExts: string } {
+  const live = extractScopeDeclarations(src)
+  const golden = canonicalProgram(fs.readFileSync(SCOPE_GOLDEN, "utf8"))
+  const liveForm = canonicalProgram(`${live.targetExts}\n${live.targetDirs}`)
+  if (golden !== liveForm) {
+    throw new Error(
+      [
+        "REVERSE MUTATION: fragile-range-patterns.mjs scan-scope declarations drifted from the golden copy",
+        `  golden copy (${path.relative(process.cwd(), SCOPE_GOLDEN)}):`,
+        ...golden.split("\n").map((l) => `    ${l}`),
+        "  live module (scripts/fragile-range-patterns.mjs):",
+        ...liveForm.split("\n").map((l) => `    ${l}`),
+        "  fix: update the golden copy to the live declarations (or restore the module) — the divergence guard in golden-copy-utils.test.ts enforces the sync",
+      ].join("\n"),
+    )
+  }
+  return live
+}
 
 /**
  * Write a patched temp copy of fragile-range-patterns.mjs (contracts
- * lifted per `patch`) into `dir` and return the copy's path.
+ * lifted per `patch`) into `dir` and return the copy's path. First verifies
+ * the live declarations match the golden copy (clear diff on drift), then
+ * patches the EXTRACTED lines - so the lift is applied to whatever the
+ * module actually declares today (as long as it is in sync with the
+ * snapshot).
  */
 function writePatchedModule(dir: string, patch: { targetDirs?: string[]; extsAddMd?: boolean }): string {
   const src = fs.readFileSync(REAL_FRAGILE_MODULE, "utf8")
+  const decls = assertScopeMatchesGolden(src)
   let patched = src
   if (patch.targetDirs) {
-    const anchor = 'export const TARGET_DIRS = ["e2e", "src", "mini-services", ".zscripts"]'
-    if (!patched.includes(anchor)) throw new Error("REVERSE MUTATION: TARGET_DIRS anchor not found — module drifted")
-    patched = patched.replace(anchor, `export const TARGET_DIRS = ${JSON.stringify(patch.targetDirs)}`)
+    patched = patched.replace(decls.targetDirs, `export const TARGET_DIRS = ${JSON.stringify(patch.targetDirs)}`)
   }
   if (patch.extsAddMd) {
-    // The module line is /^\\.(sh|...) — double backslash in TS source =
-    // single \\ in the module's regex literal (do NOT "simplify" to \\.
-    // or the anchor silently stops matching and the drift check throws).
-    const anchor = "const TARGET_EXTS = /^\\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1|ya?ml)$/"
-    if (!patched.includes(anchor)) throw new Error("REVERSE MUTATION: TARGET_EXTS anchor not found — module drifted")
-    patched = patched.replace(anchor, "const TARGET_EXTS = /^\\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1|ya?ml|md)$/")
+    // Lift the extracted regex literal: append |md to the char-class group.
+    // The declaration line ends with )$/ - insert |md right before it. The
+    // golden sync transitively guarantees the trailing shape today, but the
+    // guard below converts a would-be silent no-op into a clear harness
+    // error if that shape ever changes (belt-and-suspenders).
+    const lifted = decls.targetExts.replace(/\)\$\/$/, "|md)$/")
+    if (lifted === decls.targetExts) {
+      throw new Error(
+        "REVERSE MUTATION: could not lift TARGET_EXTS (expected trailing ')$/' not found) — the golden-copy sync or the declaration shape changed",
+      )
+    }
+    patched = patched.replace(decls.targetExts, lifted)
   }
   const modPath = path.join(dir, "fragile-range-patterns.mjs")
   fs.writeFileSync(modPath, patched)

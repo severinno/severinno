@@ -19,7 +19,9 @@
  * non-flaky (noise tolerated) and protective (mutations caught).
  */
 import { describe, it, expect } from "vitest"
-import { canonicalProgram } from "./golden-copy-utils"
+import fs from "node:fs"
+import path from "node:path"
+import { assertScopeMatchesGolden, canonicalProgram } from "./golden-copy-utils"
 
 /** A representative shell program (the shape the prove-gate suite guards). */
 const SHELL = [
@@ -39,6 +41,98 @@ const AWK = [
   "in_block && /^\\| \\/busca \\|/ { found = 1 }",
   "END { exit (found ? 0 : 1) }",
 ].join("\n")
+
+const MODULE_SRC = path.resolve(process.cwd(), "scripts", "fragile-range-patterns.mjs")
+const SCOPE_GOLDEN = path.resolve(process.cwd(), "scripts", "__tests__", "fixtures", "fragile-range-scope.txt")
+
+/** The golden copy's two declaration lines, in canonical form (the shape
+ * the harness compares against). Pinned below so the divergence guard is
+ * not vacuous. */
+function goldenDecls(): string {
+  return canonicalProgram(fs.readFileSync(SCOPE_GOLDEN, "utf8"))
+}
+
+describe("fragile-range scope golden copy (REVERSE-MUTATION harness anchor)", () => {
+  it("DIVERGENCE GUARD: the golden copy matches the live module declarations (no drift today)", () => {
+    // The harness lifts the contracts on a temp copy of the module by
+    // locating the TARGET_DIRS/TARGET_EXTS declarations and replacing them.
+    // The expected declarations live in the VERSIONED golden copy
+    // (fixtures/fragile-range-scope.txt) - if the module changes a
+    // declaration without updating the snapshot, THIS test fails (the same
+    // divergence-guard posture every golden copy keeps).
+    const live = fs.readFileSync(MODULE_SRC, "utf8")
+    expect(() => assertScopeMatchesGolden(live)).not.toThrow()
+  })
+
+  it("DIVERGENCE GUARD (absolute pin): the golden copy holds exactly the two expected declaration lines", () => {
+    // Pins the snapshot CONTENT so the guard cannot silently pass on an
+    // emptied/renamed fixture - the canonical form must be exactly the two
+    // declarations, in the module's declaration order (TARGET_EXTS then
+    // TARGET_DIRS). IMPORTANT: if the fixture is legitimately edited, this
+    // pin must be updated in the same change - a pin failure means "update
+    // the pin", not "the harness broke" (the mutation tests above cover the
+    // inverse).
+    const expected = [
+      "const TARGET_EXTS = /^\\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1|ya?ml)$/",
+      'export const TARGET_DIRS = ["e2e", "src", "mini-services", ".zscripts"]',
+    ].join("\n")
+    expect(goldenDecls()).toBe(expected)
+  })
+
+  it("MUTATION: a TARGET_DIRS declaration drift throws a CLEAR DIFF (golden vs live lines)", () => {
+    // The old harness failed with a bare "anchor not found". The golden-copy
+    // version must surface WHAT drifted: the expected golden line vs the
+    // actual live line, plus the fixture path to update - so a module change
+    // is actionable at a glance (no silent "anchor not found" dead end).
+    const live = fs.readFileSync(MODULE_SRC, "utf8")
+    const mutated = live.replace(
+      'export const TARGET_DIRS = ["e2e", "src", "mini-services", ".zscripts"]',
+      'export const TARGET_DIRS = ["e2e", "src", "mini-services", ".zscripts", "new-tree"]',
+    )
+    // Sanity: the mutation is a real text difference.
+    expect(mutated).not.toBe(live)
+    expect(() => assertScopeMatchesGolden(mutated)).toThrowError(/drifted from the golden copy/)
+    // The throw must carry BOTH sides of the diff - expected (golden) and
+    // actual (live) - plus the fixture path.
+    let err = ""
+    try {
+      assertScopeMatchesGolden(mutated)
+    } catch (e) {
+      err = (e as Error).message
+    }
+    expect(err).toContain('export const TARGET_DIRS = ["e2e", "src", "mini-services", ".zscripts"]')
+    expect(err).toContain('export const TARGET_DIRS = ["e2e", "src", "mini-services", ".zscripts", "new-tree"]')
+    expect(err).toContain("fragile-range-scope.txt")
+  })
+
+  it("MUTATION: a TARGET_EXTS declaration drift throws the same clear diff (both declarations guarded)", () => {
+    const live = fs.readFileSync(MODULE_SRC, "utf8")
+    const mutated = live.replace(
+      "const TARGET_EXTS = /^\\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1|ya?ml)$/",
+      "const TARGET_EXTS = /^\\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1|ya?ml|md)$/",
+    )
+    expect(mutated).not.toBe(live)
+    let err = ""
+    try {
+      assertScopeMatchesGolden(mutated)
+    } catch (e) {
+      err = (e as Error).message
+    }
+    expect(err).toContain("drifted from the golden copy")
+    expect(err).toContain("|md)$/") // the live (mutated) declaration
+    expect(err).toContain("fragile-range-scope.txt")
+  })
+
+  it("MUTATION: a structurally-renamed declaration (shape change) throws the extraction error, not a silent pass", () => {
+    // If the module's declaration is RENAMED (not just re-valued), the
+    // structural locator cannot find it - the harness must fail loudly with
+    // the fixture path, never silently patch nothing.
+    const live = fs.readFileSync(MODULE_SRC, "utf8")
+    const mutated = live.replace("export const TARGET_DIRS =", "export const SCAN_TREES =")
+    expect(mutated).not.toBe(live)
+    expect(() => assertScopeMatchesGolden(mutated)).toThrowError(/could not locate the TARGET_DIRS\/TARGET_EXTS declarations/)
+  })
+})
 
 describe("golden-copy-utils — canonicalProgram (shared canonicalizer)", () => {
   it("MUTATION: a changed exit-code token (exit 1 → exit 2) changes the canonical form", () => {

@@ -149,7 +149,68 @@ that is safe (and why extending a gate to them would be WRONG):
   renders as visible mojibake in GitHub, not a silent gate failure. Impact
   is cosmetic, not operational.
 
-Current state (2026-08 snapshot): 73 `.md` files (4 ASCII-pure, 69 with
+### The docs/ exclusion is TWO-LAYERED (tree x extension) - the 2x2 proof
+
+The fragile-range exclusion of `docs/` rests on TWO independent contracts
+(the TREE contract: `docs/` is not in `TARGET_DIRS`; the EXTENSION
+contract: `.md`/`.css`/`.html` are not in `TARGET_EXTS`). Both directions of
+the proof are enforced by tests - this table is the HOW it is verified (the
+WHAT/WHY lives in the 'Fragile-range exclusion' section above, canonical in
+`scripts/fragile-range-patterns.mjs`):
+
+| | `.md`/`.css`/`.html` NOT in `TARGET_EXTS` (today) | `.md`/`.css`/`.html` IN `TARGET_EXTS` (hypothetical) |
+|---|---|---|
+| `docs/` NOT in `TARGET_DIRS` (today) | **CLEAN** - current state: the scan never enters the tree AND never enumerates the extensions | **CLEAN** - docs/ is never a target tree, so `scanExecutableCode` never enters it even with the extensions scanned |
+| `docs/` IN `TARGET_DIRS` (hypothetical) | **CLEAN** - the extension filter still blocks the `.md`: `filesInDir` never even enumerates it | **TRIPS** - both contracts lifted: the dirty `.md` is found and the scan fails |
+
+The three CLEAN cells are only trustworthy because the TRIP cell is proven:
+each REVERSE MUTATION test lifts the contracts on a temp COPY of the module
+(source-patched, re-executed as a real node process - an export-level mock
+could never change the module-scope binding) and shows the SAME fixtures
+trip the moment the contract is gone. The exclusion is a CONTRACT, not
+fixture luck.
+
+**Bidirectional proof - what each suite pins:**
+
+- `EXCLUSION CONTRACT` (`fragile-range-guard.test.ts`) - the CLEAN
+direction: a genuinely-dirty `.md` under `docs/` does NOT trip the
+repo-wide `scanExecutableCode` (tree level); a dirty `.md`/`.css`/`.html`
+is never enumerated by `filesInDir` (extension level); the check is
+parametrized over every `EXCLUDED_TREES` entry. Plus the golden copy
+(`golden-copy-utils.test.ts`) pins that the LIVE module declarations match
+the versioned snapshot `fixtures/fragile-range-scope.txt` with a CLEAR DIFF
+on drift (the reverse-mutation harness anchors are versioned, not
+hardcoded).
+- `REVERSE MUTATION` (module level, `fragile-range-guard.test.ts`) - the
+CONTRACT direction: lifting ONLY the tree does not trip a `.md`; lifting
+ONLY the extension does not trip either; lifting BOTH does - proving the
+two layers are complementary, exactly as the DECISION RECORD documents.
+- `REVERSE MUTATION` (wrapper level, `verify-encoding.test.ts` + the
+`FRAGILE_MODULE` override) - the WIRING direction: `verify-encoding.sh`
+layer 3 executed against a temp patched module copy (docs/ injected via
+`FRAGILE_MODULE`, the module path override) exits 1 with `fragile-range:` -
+the exclusion is enforced end-to-end through the single gate entry, not
+just through the module API.
+
+**Proof commands (run from the repo root):**
+
+```bash
+# 1. The exclusion holds today: EXCLUSION CONTRACT + module REVERSE MUTATION + repo-wide clean
+NO_COLOR=1 npx vitest run scripts/__tests__/fragile-range-guard.test.ts --config vitest.config.unit.ts
+
+# 2. The contract is WIRED: wrapper-level REVERSE MUTATION (FRAGILE_MODULE) + golden-copy divergence guard
+NO_COLOR=1 npx vitest run scripts/__tests__/verify-encoding.test.ts scripts/__tests__/golden-copy-utils.test.ts --config vitest.config.unit.ts
+
+# 3. The real gate agrees (layer 3 clean on the real repo)
+bash scripts/verify-encoding.sh --ci src/
+```
+
+Any future change that extends `TARGET_EXTS` or `TARGET_DIRS` to cover an
+excluded extension or tree FAILS the EXCLUSION CONTRACT + REVERSE MUTATION
+tests AND the golden-copy divergence guard - forcing an explicit rethink
+before the exclusion can silently narrow.
+
+Current state (2026-08 snapshot): 75 `.md` files (4 ASCII-pure, 71 with
 legit non-ASCII, 0 with INVALID UTF-8), 1 `.css`, 0 `.html` - the doc
 surface is clean today.
 
@@ -159,7 +220,7 @@ pr-check.yml runs `git ls-files '*.md' '*.css' '*.html'
 scripts/scan-non-ascii.mjs --utf8 --report` with `continue-on-error: true`
 and `exit 0`, converting a CORRUPTION (INVALID UTF-8) into a `::warning::`
 annotation on the PR WITHOUT blocking and WITHOUT tripping on legit accents
-(the `--utf8` mode validates well-formedness only - 69/73 .md have non-ASCII
+(the `--utf8` mode validates well-formedness only - 71/75 .md have non-ASCII
 and must stay green). Since 2026-08 the YAML GATE FILES are ALSO listed:
 the fragile-range scan audits them for the RANGE class but no encoding gate
 reached them (check-utf8 covers only .ts/.tsx/.sh; the ASCII proof would
@@ -167,6 +228,16 @@ false-fail their legit accents/em-dashes) - see 'Who protects .zscripts and
 the YAML gate files?' below. This is the ONE informational contact CI has
 with the docs + YAML gate surfaces; the exclusion design above is preserved
 - docs are still never a blocking gate.
+
+**Local hook mirror (pre-commit + pre-push, added 2026-08):**
+`bash scripts/check-docs-encoding.sh` — a dedicated script (NOT
+`check-utf8.sh --ext md --ci`, which would scan 0 .md files — its default
+surface is `src/` + fixed dirs only) that runs the SAME surface as the CI
+job (`git ls-files '*.md' '*.css' '*.html'`) with SAME `--utf8 --report`
+mode and SAME non-blocking semantics (exit 0 always). The script wraps
+the Node scanner directly (`scan-non-ascii.mjs`), mirroring the CI's exact
+command without involving `check-utf8.sh`, `check_utf8.py`, or any ASCII
+gate. Custo medido < 1s (75 files, single node spawn).
 
 Ad-hoc audit (not wired into CI, by design - available on demand):
 
@@ -282,6 +353,7 @@ start-server.sh
 supervisor.sh
 <!-- ASCII-BASELINE:OPS -->
 scripts/backup-db.sh
+scripts/check-docs-encoding.sh
 scripts/check-health.sh
 scripts/check-utf8.sh
 scripts/dashboard.sh

@@ -5,6 +5,16 @@ set -euo pipefail
 # non-ASCII num .sh/hook nunca chega nem ao git add. Custo medido ~1.4s
 # (batched, 2 spawns node + 1 python) - node+python3, sem rede.
 bash scripts/verify-encoding.sh --dry-run --ci src/
+
+# Docs corruption audit (informational - NEVER blocks): varre todos os .md,
+# .css e .html sob git (a superficie completa, nao so src/) com
+# scan-non-ascii.mjs --utf8 --report, emitindo warnings em stderr mas SEMPRE
+# exit 0. NAO substitua por `bash scripts/check-utf8.sh --ext md --ci`: esse
+# comando so varre src/ + dirs fixos, que tem ZERO .md - e --ci seria
+# bloqueante. Esta auditoria e informativa e varre a superficie real (75
+# .md, 1 .css, 0 .html hoje). Custo medido < 1s.
+bash scripts/check-docs-encoding.sh
+
 node scripts/scan-lucide-icons.mjs --check
 bun x lint-staged
 
