@@ -15,6 +15,7 @@
 | 2 | Encoding — camada fragile-range (`fragile-range-patterns.mjs` no `verify-encoding.sh`) | Character-class range frágil (`[^ -~]`) que falha silenciosamente | `grep -q '[^ -~]'` em `scripts/check-utf8.sh` | Run [**31306797327**](https://github.com/severinno/severinno/actions/runs/31306797327) (`ci-proof/fragile-guard`) | ✅ `fragile-range: 1 fragile character-class range(s) in LIVE code: scripts/check-utf8.sh :: space-tilde character range :: "[^ -~]"` → exit 1 |
 | 3 | Bundle — `check-js-budget.mjs` | Lib pesada de volta ao grafo eager de rota | `import` estático de recharts no app shell | **Local** (sem run de CI dedicado) | ✅ `check-js-budget.mjs` → exit 1 (lib sinalizada no grafo eager) → revertido |
 | 4 | Encoding — camada fragile-range via override `FRAGILE_SCAN_ROOT` | Gate file sujo num repo **sintético** passar despercebido (o override de raiz do layer 3) | `sentinel-root/scripts/dirty.sh` com `[^ -~]` + `env: FRAGILE_SCAN_ROOT: sentinel-root` no step do utf8-check.yml | Run [**31312427503**](https://github.com/severinno/severinno/actions/runs/31312427503) (`ci-proof/fragile-root`) | ✅ `fragile-range: 1 fragile character-class range(s) in LIVE code: scripts/dirty.sh :: space-tilde character range :: "[^ -~]"` → exit 1 |
+| 5 | Encoding — camada UTF-8 (`check-utf8.sh`) no **fixed dir `.zscripts/`** (workspace-agent ops scripts) | Corrupção UTF-8 num `.zscripts/*.sh` (ex.: byte 0x97 Windows-1252) | `0x97` anexado a `.zscripts/build.sh` | **Local** (sem run de CI dedicado; o fixed dir é ALWAYS-scanned, o mesmo caminho do CI) | ✅ `WARNING: .zscripts\build.sh (byte 0x97 -- Windows-1252 em dash)` + `check-utf8: FAILED` → exit 1 → revertido byte-identical |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -121,7 +122,36 @@ fragile-range: 1 fragile character-class range(s) in LIVE code:
   `FRAGILE_SCAN_ROOT` apontando para uma árvore suja) falha o CI com o
   caminho exato — o override de raiz não é um escape hatch silencioso.
 
-## 6. Observação transversal — o mascaramento que motivou o reorder do check job
+## 6. Prova 5 — .zscripts fixed-dir 0x97 sentinel (local)
+
+- **Gate**: camada 1 do `verify-encoding.sh` → `check-utf8.sh` (`check_utf8.py`),
+  que varre os **fixed dirs** sempre-escaneados — `scripts/`, `.github/workflows/`
+  e `.zscripts/` (derivados do manifest `scripts/encoding-surface.mjs
+  --print-always-dirs`, single source of truth). A prova exercita o fixed dir
+  `.zscripts/` — os scripts operacionais do workspace-agent, que têm banners
+  CJK **legítimos** (valid UTF-8) e ficam FORA do ASCII proof por design — mas
+  a corrupção (byte 0x97) é inválida e DEVE falhar.
+- **Injeção**: byte `0x97` (em-dash Windows-1252) anexado a `.zscripts/build.sh`
+  (backup em `/tmp` antes; md5 do original `020c91b48659ec19832ebf9b46195285`).
+- **Comando**: `bash scripts/check-utf8.sh --ci src/`
+- **Observado** (local, 2026-08):
+
+```
+WARNING:  .zscripts\build.sh (byte 0x97 -- Windows-1252 em dash)
+Warnings: 1 file(s) with byte 0x97
+         - .zscripts\build.sh
+check-utf8: FAILED -- invalid UTF-8 or .sh ASCII violation
+```
+
+  → **exit 1 com o caminho exato do arquivo** (`.zscripts\build.sh`).
+- **Reversão**: `cp` do backup de volta; md5 **byte-identical** ao original
+  (`020c91b48659ec19832ebf9b46195285`); `git diff --stat .zscripts/` vazio;
+  re-run → `check-utf8: done (all clean)`, exit 0.
+- **Gap protegido**: corrupção UTF-8 num `.zscripts/*.sh` não pode entrar de
+  mansinho — o fixed dir é ALWAYS-scanned (não overridable por arg posicional)
+  e o gate falha com o path exato, mesmo que o arquivo carregue CJK legítimo.
+
+## 7. Observação transversal — o mascaramento que motivou o reorder do check job
 
 Nos dois runs acima (pré-reorder), o job `check` mostrava exatamente o
 problema que motivou a mudança de ordem dos steps:
@@ -138,7 +168,7 @@ padrão do GH Actions). Correção aplicada (ver o job `check` em
 Lint/Type check com `if: always()` — sem mascaramento em nenhuma direção.
 Esta seção serve de registro do porquê da ordem atual.
 
-## 7. Como adicionar uma nova prova
+## 8. Como adicionar uma nova prova
 
 1. Criar branch scratch `ci-proof/<nome>` a partir do HEAD, aplicar a injeção
    (byte, padrão, import) num arquivo de gate.
@@ -150,7 +180,7 @@ Esta seção serve de registro do porquê da ordem atual.
    `git status` limpo no worktree principal.
 5. Registrar na tabela da seção 1 com o run number.
 
-## 8. Referências
+## 9. Referências
 
 - Investigação da falha contínua do `security-headers`: `docs/security-headers-gate-2026-08.md`
   (DNS aponta para WordPress na Hostinger, não para o VPS — não é regressão do app).

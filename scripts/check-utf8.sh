@@ -95,9 +95,21 @@ while [ "$i" -lt "${#POSITIONAL[@]}" ]; do
   i=$((i + 1))
 done
 
+# Fixed dirs DERIVED from the encoding-surface manifest (single source of
+# truth - scripts/encoding-surface.mjs --print-always-dirs), the same
+# pattern as the fragile-range TARGET_DIRS derivation below: no second
+# "scripts .github/workflows .zscripts" list to keep in sync with the
+# module and docs/ascii-safe.md. Derivation failure fails loudly (exit 2) -
+# a gate must never silently degrade to scanning fewer dirs.
 EXIT_CODE=0
-python3 "$PYTHON_SCRIPT" "${DEFAULT_DIRS[@]}" "${ARGS[@]}" \
-  scripts .github/workflows .zscripts || EXIT_CODE=$?
+FIXED_DIRS="$(node "$SCRIPT_DIR/encoding-surface.mjs" --print-always-dirs)" || FIXED_DIRS=""
+if [ -z "$FIXED_DIRS" ]; then
+  echo "check-utf8: encoding-surface derivation failed (ALWAYS_SCAN_DIRS unavailable)" >&2
+  EXIT_CODE=2
+else
+  read -r -a FIXED_DIR_ARR <<< "$FIXED_DIRS"
+  python3 "$PYTHON_SCRIPT" "${DEFAULT_DIRS[@]}" "${ARGS[@]}" "${FIXED_DIR_ARR[@]}" || EXIT_CODE=$?
+fi
 
 # .sh ASCII delegation: ALL .sh checking lives in verify-ascii-proof.sh
 # (strict repo-wide pure ASCII + frozen docs/ascii-safe.md baseline). When

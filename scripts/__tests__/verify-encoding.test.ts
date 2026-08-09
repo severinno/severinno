@@ -120,17 +120,19 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
   })
 
   it(
-    "PROOF: the real repo run exits 0 - BOTH layers clean (UTF-8 + ASCII + baseline)",
+    "PROOF: the real repo run exits 0 - ALL layers clean (UTF-8 + ASCII + baseline + fragile + YAML gate)",
     () => {
       // Exercises the full real-repo path: check-utf8.sh --ci src/ then the
       // proof against the frozen docs/ascii-safe.md baseline, then the
-      // fragile character-class RANGE scan (layer 3).
+      // fragile character-class RANGE scan (layer 3), then the YAML gate
+      // files --utf8 well-formedness scan (layer 4, blocking).
       const r = runGate(["--ci", "src/"])
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("check-utf8: done (all clean)")
       expect(r.stdout).toContain("verify-ascii-proof: done (all clean)")
       expect(r.stdout).toContain("Baseline OK")
       expect(r.stdout).toContain("fragile-range: clean")
+      expect(r.stdout).toMatch(/yaml-gate: clean \(\d+ YAML gate files, well-formed UTF-8\)/)
     },
     120000,
   )
@@ -368,5 +370,64 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     const missing = path.join(createTempDir("verify-encoding-missing-"), "nope")
     const r = runGate(["--ci", missing])
     expect(r.status).toBe(2)
+  })
+
+  it("MUTATION (YAML gate layer): a byte-0x97 in a synthetic workflow YAML fails layer 4 through the wrapper", () => {
+    // Wrapper-level proof of the layer-4 wiring without depending on the
+    // real repo: YAML_GATE_FILES (env, space-separated) OVERRIDES the
+    // git-ls-files default surface, exactly mirroring the proof layer's
+    // VPS_SH_FILES/OPS_SH_FILES fixture pattern. A corrupt byte 0x97 in a
+    // workflow YAML BREAKS the parse entirely (js-yaml and PyYAML both
+    // throw "invalid start byte") - the workflow silently fails to load
+    // and CI checks silently stop running, so layer 4 must BLOCK.
+    //
+    // The wrapper contract pinned HERE is aggregation + isolation +
+    // propagation: layers 1+2+3 keep scanning the real repo (clean), layer
+    // 4 surfaces the INVALID-UTF8 violation, and the aggregate exit is 1.
+    // The scanner detail (exact verdict line INVALID-UTF8\t<path>) is
+    // scan-non-ascii.test.ts's job - here we pin the WIRING.
+    const dir = createTempDir("verify-encoding-yaml-")
+    const workflow = path.join(dir, "workflow.yml")
+    // Name: X\n# comment with a 0x97 byte -> <0x97>\non: push\n...
+    fs.writeFileSync(
+      workflow,
+      Buffer.concat([
+        Buffer.from("name: Test\n# comment with byte 0x97 -> ", "utf8"),
+        Buffer.from([0x97]),
+        Buffer.from("\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n"),
+      ]),
+    )
+
+    const r = runGate(["--ci", "src/"], { YAML_GATE_FILES: workflow })
+    expect(r.status).toBe(1)
+    // L1/L2/L3 isolation: real repo still clean
+    expect(r.stdout).toContain("check-utf8: done (all clean)")
+    expect(r.stdout).toContain("verify-ascii-proof: done (all clean)")
+    expect(r.stdout).toContain("fragile-range: clean")
+    // L4 propagation: verdict + blocking summary
+    expect(r.stdout).toContain("INVALID-UTF8")
+    expect(r.stdout).toContain(path.basename(workflow))
+    expect(r.stderr).toContain("yaml-gate: FAILED")
+  })
+
+  it("MUTATION (YAML gate layer): a CLEAN synthetic workflow YAML passes layer 4 (legit accents allowed)", () => {
+    // Hermetic clean case: YAML_GATE_FILES pointing at a well-formed YAML
+    // with legitimate UTF-8 accents (Portuguese workflow comment) - the
+    // --utf8 mode validates WELL-FORMEDNESS only, so accents PASS and the
+    // aggregate stays 0. Proves layer 4 does not false-fail the legit
+    // non-ASCII that 17/18 real gate files carry today.
+    const dir = createTempDir("verify-encoding-yaml-clean-")
+    const workflow = path.join(dir, "clean.yml")
+    fs.writeFileSync(
+      workflow,
+      "name: Test\n# comentário com acentos válidos - não é corrupção\non: push\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n",
+      "utf8",
+    )
+
+    const r = runGate(["--ci", "src/"], { YAML_GATE_FILES: workflow })
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("UTF8-OK")
+    expect(r.stdout).toMatch(/yaml-gate: clean \(1 YAML gate file/)
+    expect(r.stderr).not.toContain("yaml-gate: FAILED")
   })
 })

@@ -87,6 +87,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import zlib from "node:zlib"
+import { REAL_ROUTE_CHECKS } from "./budget-routes.mjs"
 
 const KB = 1024
 const ROOT = process.cwd()
@@ -163,56 +164,13 @@ const ROUTE_BUDGETS = [
   { label: "/contato", dir: "contato", envKey: "JS_BUDGET_ROUTE_CONTATO_KB", budgetKB: num(process.env.JS_BUDGET_ROUTE_CONTATO_KB, 10) },
 ]
 
-// Real transfer per route — the exact first-paint JS the browser downloads,
-// parsed from each static/ISR route's prerendered HTML (Next 16 emits one
-// flat .html per route: busca.html, u/carlos-encanador.html). `htmlRel` is
-// relative to .next/server/app; `*` matches any prerendered segment, so for
-// dynamic-param routes the WORST-CASE file is enforced (the heaviest variant
-// defines the user experience).
-// Budgets = measured 2026-08-08 (recalibrated after the dashboard panels and
-// the /busca search page became next/dynamic ssr:false / pure CSS) + ~20%
-// headroom: /busca 261.1 KB → 320 (was 301.4 with the search page eager),
-// /dashboard 218.2 KB → 270 (was 623.8 statically bundling the 3 panels +
-// framer/recharts — now lazy via dashboard-page-client), /u/[slug] 228.6 KB
-// → 280. Same values are mirrored as inputs in .github/workflows/ci.yml.
-const REAL_ROUTE_CHECKS = [
-  {
-    label: "/busca",
-    htmlRel: "busca.html",
-    envKey: "JS_BUDGET_REAL_BUSCA_KB",
-    budgetKB: num(process.env.JS_BUDGET_REAL_BUSCA_KB, 320),
-  },
-  {
-    label: "/dashboard",
-    htmlRel: "dashboard.html",
-    envKey: "JS_BUDGET_REAL_DASHBOARD_KB",
-    budgetKB: num(process.env.JS_BUDGET_REAL_DASHBOARD_KB, 270),
-  },
-  {
-    label: "/u/[slug]",
-    htmlRel: "u/*.html",
-    envKey: "JS_BUDGET_REAL_U_KB",
-    budgetKB: num(process.env.JS_BUDGET_REAL_U_KB, 280),
-  },
-  // /categoria/[slug] — added 2026-08-08: the proof-of-gate exercise proved
-  // check 6 (layout+page chunk sum) is STRUCTURALLY blind to route code in
-  // Next 16's app router (the page-*.js is a tiny entry stub; all real page
-  // code + imports live in numbered chunks outside the route dir that
-  // routeGzip never sums). The real-transfer technique (parse the
-  // prerendered HTML script list, sum gzip — worst case over params) sees
-  // those numbered chunks, so a heavy static import on any /categoria page
-  // IS caught here. Budget calibrated via --update 2026-08-08: measured
-  // 259.0 KB (worst of 27 prerendered params) + ~20% headroom → 320 KB.
-  // NOTE: /categoria/[slug]/[child] is NOT wired — findPrerenderedHtml
-  // supports one `*` glob level only (last segment); the child route is
-  // backstopped by check 2 (total) + check 3 (largest chunk).
-  {
-    label: "/categoria/[slug]",
-    htmlRel: "categoria/*.html",
-    envKey: "JS_BUDGET_REAL_CATEGORIA_KB",
-    budgetKB: num(process.env.JS_BUDGET_REAL_CATEGORIA_KB, 320),
-  },
-]
+// Check 7: REAL transfer per route — the exact first-paint JS the browser
+// downloads, parsed from each static/ISR route's prerendered HTML (Next 16
+// emits one flat .html per route: busca.html, u/carlos-encanador.html). The
+// route list + per-route budgets live in scripts/budget-routes.mjs (the
+// versioned ROUTE REGISTRY, single source of truth shared with
+// bundle-report.mjs and the LHCI configs) — imported here, never copied;
+// the budget-routes.test.ts CONTRACT tests pin every consumer to the module.
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

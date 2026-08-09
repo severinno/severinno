@@ -71,6 +71,7 @@ on:
       - "package.json"
       - "lighthouserc.json"
       - "lighthouserc.mobile.json"
+      - "scripts/budget-routes.mjs"
       - ".github/workflows/lighthouse-ci.yml"
   workflow_dispatch:
 
@@ -192,10 +193,15 @@ jobs:
           done
 
       # Fail fast: Lighthouse would audit a 404 page and produce misleading
-      # scores. The 4 routes must return 200 before we burn 12 audit runs.
+      # scores. The audited routes must return 200 before we burn audit runs.
+      # Route list DERIVED from scripts/budget-routes.mjs (the versioned
+      # ROUTE REGISTRY - single source of truth shared with lighthouserc*.json
+      # and check-js-budget.mjs), so this smoke test can never drift from the
+      # audited surface (the budget-routes.test.ts CONTRACT test pins it).
       - name: Smoke test audited routes
         run: |
-          for route in "/" "/busca" "/categoria/limpeza" "/u/carlos-encanador"; do
+          ROUTES="$(node scripts/budget-routes.mjs --print-lhci-paths)"
+          for route in $ROUTES; do
             status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000$route" || echo "000")
             if [ "$status" = "200" ]; then
               echo "  ✅ GET $route → $status"

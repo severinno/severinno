@@ -32,11 +32,26 @@ if [ $# -gt 0 ]; then
   # Specific file list (hermetic test mode -- fixture files)
   FILES=("$@")
 else
-  # Tracked docs surface -- same surface as CI docs-encoding job.
+  # Tracked docs surface DERIVED from the encoding-surface manifest
+  # (scripts/encoding-surface.mjs --print-docs, single source of truth --
+  # same pattern as the fragile-range TARGET_DIRS derivation). The docs
+  # globs are also listed in pr-check.yml's docs-encoding job and in
+  # docs/ascii-safe.md, so the manifest keeps all three in sync.
   # Guard against running outside a git repo (hermetic test path):
   # with --set -e, `git ls-files` failing would abort the script, so we
   # suppress its stderr and convert a non-zero exit to an empty list.
-  mapfile -t FILES < <(git ls-files '*.md' '*.css' '*.html' 2>/dev/null || true)
+  DOCS_PATTERNS="$(node "$SCRIPT_DIR/encoding-surface.mjs" --print-docs)" || DOCS_PATTERNS=""
+  if [ -z "$DOCS_PATTERNS" ]; then
+    # Informational gate: derivation failure SKIPS the layer (never blocks),
+    # and FILES=() is EXPLICIT - an empty DOCS_PAT_ARR would make `git
+    # ls-files "${DOCS_PAT_ARR[@]}"` expand to ZERO args and list ALL
+    # tracked files (not skip), so the empty-list guard is required here.
+    echo "[docs-encoding] encoding-surface derivation failed (DOCS_PATTERNS unavailable) -- skipping" >&2
+    FILES=()
+  else
+    read -r -a DOCS_PAT_ARR <<< "$DOCS_PATTERNS"
+    mapfile -t FILES < <(git ls-files "${DOCS_PAT_ARR[@]}" 2>/dev/null || true)
+  fi
 fi
 
 if [ ${#FILES[@]} -eq 0 ]; then

@@ -126,13 +126,30 @@ to be re-derived.
 
 Coverage matrix (every gate and exactly what it audits):
 
+The machine-consumed surfaces are SINGLE-SOURCE-OF-TRUTH in
+`scripts/encoding-surface.mjs` (the versioned encoding-surface manifest - the
+same pattern as `fragile-range-patterns.mjs` `TARGET_DIRS`: export the
+arrays, `--print-*` query modes, and every wrapper DERIVES its args from the
+module). This table summarizes what each gate does; the canonical SURFACE
+lists live in the manifest, not in this prose.
+
 | Gate | Scans | docs/ tree? | .md/.css/.html? |
 |------|-------|:-----------:|:---------------:|
-| `scripts/check-utf8.sh` (`check_utf8.py`) | valid UTF-8 for `.ts`/`.tsx` + `.sh` (`src/` + fixed dirs `scripts/`, `.github/workflows/`, `.zscripts/`) | no | no |
-| `scripts/verify-ascii-proof.sh` | pure ASCII for `.sh` + `.husky` hooks (this baseline) | no | no |
+| `scripts/check-utf8.sh` (`check_utf8.py`) | valid UTF-8 for `.ts`/`.tsx` + `.sh` (`src/` positional default + fixed dirs DERIVED from `encoding-surface.mjs --print-always-dirs`: `scripts/`, `.github/workflows/`, `.zscripts/`) | no | no |
+| `scripts/verify-ascii-proof.sh` | pure ASCII for `.sh` + `.husky` hooks - VPS/OPS glob patterns DERIVED from `encoding-surface.mjs --print-vps-sh`/`--print-ops-sh` (this baseline) | no | no |
 | `scripts/fragile-range-patterns.mjs` | fragile character-class ranges in gate files + `TARGET_DIRS` (`e2e/`, `src/`, `mini-services/`, `.zscripts/`) | no | no (excluded by design - see the 'Fragile-range exclusion' section above) |
+| `scripts/verify-encoding.sh` layer 4 (blocking) | invalid UTF-8 in YAML gate files (`.github/workflows/*.yml` + `.github/actions/*/action.yml` - globs DERIVED from `encoding-surface.mjs --print-yaml-gate`) - BLOCKING: a corrupt byte breaks the workflow parse and silently stops CI | no | no |
 | `scripts/scan-non-ascii.mjs` | whatever file list it is GIVEN (raw bytes) - a generic scanner, not a tree walker; `--utf8` mode validates WELL-FORMEDNESS (corruption), not accent presence | only if explicitly passed | only if explicitly passed |
-| `pr-check.yml` `docs-encoding` job (informational) | invalid UTF-8 in `git ls-files '*.md' '*.css' '*.html' '.github/workflows/*.yml' '.github/actions/*/action.yml'` via `scan-non-ascii.mjs --utf8 --report` - NON-BLOCKING (continue-on-error + exit 0), emits `::warning::` | no (only when a doc/YAML gate file is corrupt) | no (only when corrupt) |
+| `pr-check.yml` `docs-encoding` job (informational) + local `scripts/check-docs-encoding.sh` | invalid UTF-8 in docs surface (`git ls-files` of `encoding-surface.mjs --print-docs` globs: `*.md`, `*.css`, `*.html`) via `scan-non-ascii.mjs --utf8 --report` - NON-BLOCKING (continue-on-error + exit 0), emits `::warning::` | no (only when a doc file is corrupt) | no (only when corrupt) |
+
+> Related: this matrix covers only the ENCODING (Type A) side of the scan
+> surfaces. The three-list taxonomy - code surface (Type A) vs runtime
+> routes (Type B, the budget/LHCI lists) vs workflow trigger filters (Type
+> C, the `paths:` blocks) - and the full who-scans-what matrix live in
+> [`docs/scan-surfaces.md`](scan-surfaces.md). This section answers the
+> encoding-specific "who protects the docs?" question; that file answers
+> "who scans what, and why each fixed list is legitimate" across all three
+> types.
 
 So `docs/` and `.md`/`.css`/`.html` are outside every encoding GATE. Why
 that is safe (and why extending a gate to them would be WRONG):
@@ -141,7 +158,7 @@ that is safe (and why extending a gate to them would be WRONG):
   'Fragile-range exclusion' section above (canonical DECISION RECORD in
   `scripts/fragile-range-patterns.mjs`) - not re-stated here to avoid
   drift.
-- Docs legitimately carry accents: 69 of the repo's 73 `.md` files have
+- Docs legitimately carry accents: 71 of the repo's 76 `.md` files have
   bytes >= 0x80 (Portuguese prose). An ASCII gate over `docs/` would FAIL
   the docs themselves, not protect them.
 - The corruption class the gates exist to catch (Windows-1252 byte 0x97 in
@@ -210,24 +227,32 @@ excluded extension or tree FAILS the EXCLUSION CONTRACT + REVERSE MUTATION
 tests AND the golden-copy divergence guard - forcing an explicit rethink
 before the exclusion can silently narrow.
 
-Current state (2026-08 snapshot): 75 `.md` files (4 ASCII-pure, 71 with
+Current state (2026-08 snapshot): 76 `.md` files (5 ASCII-pure, 71 with
 legit non-ASCII, 0 with INVALID UTF-8), 1 `.css`, 0 `.html` - the doc
-surface is clean today.
+surface is clean today. (`docs/scan-surfaces.md`, added 2026-08, is one of
+the ASCII-pure five - it is deliberately accent-free.)
 
 INFORMATIONAL ALERT (not a gate, added 2026-08): the `docs-encoding` job in
-pr-check.yml runs `git ls-files '*.md' '*.css' '*.html'
-'.github/workflows/*.yml' '.github/actions/*/action.yml' | xargs node
+pr-check.yml runs `git ls-files '*.md' '*.css' '*.html' | xargs node
 scripts/scan-non-ascii.mjs --utf8 --report` with `continue-on-error: true`
 and `exit 0`, converting a CORRUPTION (INVALID UTF-8) into a `::warning::`
 annotation on the PR WITHOUT blocking and WITHOUT tripping on legit accents
-(the `--utf8` mode validates well-formedness only - 71/75 .md have non-ASCII
-and must stay green). Since 2026-08 the YAML GATE FILES are ALSO listed:
-the fragile-range scan audits them for the RANGE class but no encoding gate
-reached them (check-utf8 covers only .ts/.tsx/.sh; the ASCII proof would
-false-fail their legit accents/em-dashes) - see 'Who protects .zscripts and
-the YAML gate files?' below. This is the ONE informational contact CI has
-with the docs + YAML gate surfaces; the exclusion design above is preserved
-- docs are still never a blocking gate.
+(the `--utf8` mode validates well-formedness only - 71/76 .md have non-ASCII
+and must stay green). NOTE (2026-08): this job USED to also scan the YAML
+gate files (`.github/workflows/*.yml` + `.github/actions/*/action.yml`)
+informational - they moved OUT into verify-encoding.sh LAYER 4 as a
+BLOCKING gate (a corrupt byte in a workflow YAML breaks the parse and
+silently stops CI, so it must block - see 'Who protects .zscripts and the
+YAML gate files?' below). This is the ONE informational contact CI has
+with the docs surface; the exclusion design above is preserved - docs are
+still never a blocking gate.
+
+**SENTINEL PROOFS (how we know these gates really bite):** see
+`docs/gates-proofs.md` — Prova 1 (utf8-byte, run 31298436074), Prova 2
+(fragile-range, run 31306797327), Prova 3 (budget sentinel), Prova 4
+(FRAGILE_SCAN_ROOT, run 31312427503) e Prova 5 (`.zscripts` fixed-dir 0x97
+sentinel, local) — cada uma segue o contrato injetar -> gate falha (exit 1
+com o path exato) -> reverter -> repo limpo.
 
 **Local hook mirror (pre-commit + pre-push, added 2026-08):**
 `bash scripts/check-docs-encoding.sh` — a dedicated script (NOT
@@ -237,7 +262,7 @@ job (`git ls-files '*.md' '*.css' '*.html'`) with SAME `--utf8 --report`
 mode and SAME non-blocking semantics (exit 0 always). The script wraps
 the Node scanner directly (`scan-non-ascii.mjs`), mirroring the CI's exact
 command without involving `check-utf8.sh`, `check_utf8.py`, or any ASCII
-gate. Custo medido < 1s (75 files, single node spawn).
+gate. Custo medido < 1s (76 files, single node spawn).
 
 Ad-hoc audit (not wired into CI, by design - available on demand):
 
@@ -277,13 +302,7 @@ YAML gate files are protected for VALID UTF-8 by the `docs-encoding` job
 - **Range class: `fragile-range`** (verify-encoding.sh layer 3) - they ARE
   gate files, so the fragile character-class RANGE scan audits them
   (blocking).
-- **Encoding gate: `docs-encoding` job (informational)** - since 2026-08
-  the `--utf8` scan ALSO lists the YAML gate files (`git ls-files
-  '.github/workflows/*.yml' '.github/actions/*/action.yml'`). `--utf8`
-  validates well-formedness only: legit accents/em-dashes pass, raw 0x97
-  corruption flags a `::warning::` - non-blocking, same design as the docs
-  surface (a corrupt byte in a workflow comment is visible mojibake in the
-  GitHub UI, not a silent operational failure).
+- **Corruption class: `verify-encoding.sh` LAYER 4 (BLOCKING, since 2026-08)** - `scan-non-ascii.mjs --utf8 --report` over `git ls-files '.github/workflows/*.yml' '.github/actions/*/action.yml'`. Unlike the docs surface, this is a BLOCKING gate: a corrupt byte (0x97) in a workflow YAML BREAKS the parse entirely (js-yaml and PyYAML both throw "invalid start byte" - measured 2026-08), so the workflow silently fails to load and CI checks silently stop running. That is an OPERATIONAL failure, not the cosmetic mojibake a corrupt byte causes in a `.md`. `--utf8` validates well-formedness only: the legit accents/em-dashes 17/18 gate files carry today pass; only INVALID sequences block. The `docs-encoding` job was narrowed to docs-only (`.md/.css/.html`, informational) - the YAML gate files moved OUT of it into layer 4.
 
 ### Why validity, not ASCII, for both?
 
@@ -292,16 +311,25 @@ Both trees carry legit non-ASCII by intent. The gates above catch the
 CORRUPTION class (invalid UTF-8 / raw 0x97) without false-failing the
 content - the same distinction the docs surface already uses.
 
-### Why is the YAML scan informational while fragile-range is blocking?
+### Why is the YAML gate-file UTF-8 scan blocking while the docs scan is informational?
 
 The SAME YAML gate files get a BLOCKING fragile-range scan (layer 3, the
-character-class RANGE bug class) and an INFORMATIONAL `--utf8` scan (the
-encoding corruption class). Deliberate: the fragile-range class is a gate
-that fails SILENTLY (a broken grep pattern slips past), so it must block.
-Encoding corruption in a workflow/action YAML is loud and visible (the
-GitHub Actions editor shows the parse error / mojibake) - it cannot
-silently weaken a gate, so `::warning::` suffices and keeps the job from
-ever turning a doc-adjacent corruption into a red step.
+character-class RANGE bug class) AND a BLOCKING `--utf8` scan (layer 4,
+the encoding corruption class, since 2026-08). The docs surface
+(`.md/.css/.html`) stays informational. This asymmetry is deliberate and
+was MEASURED: a corrupt byte (0x97) in a workflow YAML BREAKS the parse
+entirely - js-yaml and PyYAML both throw "invalid start byte" (probe run
+2026-08) - so the workflow silently fails to load and CI checks silently
+stop running. That is an OPERATIONAL failure that weakens the gates
+themselves, not the cosmetic mojibake a corrupt byte causes in a `.md`
+(which the GitHub UI renders visibly). Docs corruptioncan never silently weaken a gate; workflow corruption can - hence layer 4
+BLOCKS. The old
+"informational YAML scan" rationale (2016-08 text claiming workflow
+corruption is "loud and visible") was disproven by the parse probes and
+retired. SCOPE NOTE: layer 4 is the UTF-8 CORRUPTION gate specifically
+(invalid sequences) - it is NOT a full YAML linter (a valid-UTF-8 control
+character could still break parsing; that class is covered by GH's own
+parse on push, not by this gate).
 
 ## Legit accent vs. corruption (the mojibake visual guide)
 
@@ -310,7 +338,7 @@ them is corruption:
 
 | Class | What it is | Example bytes | Renders on GitHub as | Action |
 |-------|------------|---------------|----------------------|--------|
-| Legit non-ASCII | a valid UTF-8 multi-byte sequence (Portuguese prose) | `é` = `0xC3 0xA9`, `ã` = `0xC3 0xA3`, `—` = `0xE2 0x80 0x94` | the intended glyph (`é`, `ã`, `—`) | NEVER touch - this is 69 of the repo's 73 `.md` files |
+| Legit non-ASCII | a valid UTF-8 multi-byte sequence (Portuguese prose) | `é` = `0xC3 0xA9`, `ã` = `0xC3 0xA3`, `—` = `0xE2 0x80 0x94` | the intended glyph (`é`, `ã`, `—`) | NEVER touch - this is 71 of the repo's 76 `.md` files |
 | Corruption | a raw byte that is NOT valid UTF-8 | `0x97` alone (a Windows-1252 em dash pasted raw) | `�` (U+FFFD replacement char), a box, or nothing | FLAG - run the `docs-encoding` scan and fix the byte |
 
 Visual rules of thumb on GitHub:

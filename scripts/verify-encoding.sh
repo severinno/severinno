@@ -32,8 +32,25 @@
 #                                      TARGET_EXTS); enforced by the
 #                                      EXCLUSION CONTRACT tests in the
 #                                      guard suite.
+#   4. scan-non-ascii.mjs --utf8 --report over the YAML GATE files
+#                                    - UTF-8 WELL-FORMEDNESS scan (the
+#                                      corruption class) on .github/workflows/*.yml
+#                                      + .github/actions/*/action.yml. BLOCKING
+#                                      (unlike the informational docs-encoding
+#                                      job): a corrupt byte (0x97) in a workflow
+#                                      YAML BREAKS the parse entirely (js-yaml
+#                                      and PyYAML both throw "invalid start
+#                                      byte") - the workflow silently fails to
+#                                      load and CI checks silently stop running.
+#                                      That is OPERATIONAL, not cosmetic like a
+#                                      .md. Legit accents/em-dashes are VALID
+#                                      UTF-8 and pass; only INVALID sequences
+#                                      fail. Surface: git ls-files of the gate
+#                                      files (not docker-compose*.yml etc).
+#                                      YAML_GATE_FILES (space-separated)
+#                                      OVERRIDES the default for fixture tests.
 #
-# Exit code = the WORST of the three layers (0 all clean / 1 violation / 2
+# Exit code = the WORST of the four layers (0 all clean / 1 violation / 2
 # usage error), so a regression in any layer fails the single step.
 # Args are forwarded to check-utf8.sh (e.g. --ci src/, --dry-run, --ext md
 # for an on-demand doc audit); --sync is intercepted and routed to
@@ -132,6 +149,52 @@ if [ "$FRAGILE_EXIT" -eq 0 ]; then
 fi
 if [ "$FRAGILE_EXIT" -gt "$EXIT_CODE" ]; then
   EXIT_CODE=$FRAGILE_EXIT
+fi
+
+# Layer 4: YAML gate files - UTF-8 WELL-FORMEDNESS (the corruption class).
+# A corrupt byte (0x97) in a workflow YAML BREAKS THE PARSE entirely (both
+# js-yaml and PyYAML throw "unacceptable character / invalid start byte") -
+# the workflow silently fails to load and CI checks silently stop running.
+# That is an OPERATIONAL failure, not the cosmetic mojibake a corrupt byte
+# causes in a .md: so the YAML gate files get a BLOCKING --utf8 scan, unlike
+# the docs surface (informational docs-encoding job in pr-check.yml). Legit
+# accents/em-dashes in workflow comments are VALID UTF-8 and PASS - only
+# INVALID sequences fail. Surface: git ls-files '.github/workflows/*.yml'
+# '.github/actions/*/action.yml' (the GATE files; docker-compose*.yml etc.
+# are not gate files and are not scanned). YAML_GATE_FILES (space-separated)
+# OVERRIDES the default for fixture-driven tests, mirroring the proof layer's
+# env overrides. Worst exit wins.
+YAML_EXIT=0
+YAML_LIST=()
+if [ -n "${YAML_GATE_FILES:-}" ]; then
+  read -r -a YAML_LIST <<< "$YAML_GATE_FILES"
+else
+  # YAML gate globs DERIVED from the encoding-surface manifest (single
+  # source of truth - scripts/encoding-surface.mjs --print-yaml-gate),
+  # same pattern as the fragile-range TARGET_DIRS derivation. Derivation
+  # failure fails loudly (exit 2): a gate must never silently degrade to
+  # scanning fewer surfaces. `2>/dev/null || true` on git ls-files keeps
+  # the fallback robust outside a git repo (hermetic fixture runs) - an
+  # empty list simply skips the layer.
+  YAML_PATTERNS="$(node "$SCRIPT_DIR/encoding-surface.mjs" --print-yaml-gate)" || YAML_PATTERNS=""
+  if [ -z "$YAML_PATTERNS" ]; then
+    echo "verify-encoding: encoding-surface derivation failed (YAML_GATE_PATTERNS unavailable)" >&2
+    YAML_EXIT=2
+  else
+    read -r -a YAML_PAT_ARR <<< "$YAML_PATTERNS"
+    mapfile -t YAML_LIST < <(git ls-files "${YAML_PAT_ARR[@]}" 2>/dev/null || true)
+  fi
+fi
+if [ "${#YAML_LIST[@]}" -gt 0 ]; then
+  node "$SCRIPT_DIR/scan-non-ascii.mjs" --utf8 --report "${YAML_LIST[@]}" || YAML_EXIT=$?
+  if [ "$YAML_EXIT" -eq 0 ]; then
+    echo "yaml-gate: clean (${#YAML_LIST[@]} YAML gate files, well-formed UTF-8)"
+  else
+    echo "yaml-gate: FAILED - invalid UTF-8 in a YAML gate file (workflow parse would break - blocking)" >&2
+  fi
+fi
+if [ "$YAML_EXIT" -gt "$EXIT_CODE" ]; then
+  EXIT_CODE=$YAML_EXIT
 fi
 
 exit "$EXIT_CODE"

@@ -129,11 +129,16 @@ function baselineReportWithRoute(initialKB: string, totalKB: string, routeKB: st
 function writePassBuild(f: Fixture): void {
   // bundle-report resolves CHECK = <cwd>/scripts/check-js-budget.mjs and
   // spawns it against the SAME cwd (the fixture) — so the fixture must
-  // provide the script itself. check-js-budget.mjs imports only node builtins
-  // (fs/path/zlib — no relative imports), so a copy is fully functional and
-  // reads the fixture's own .next tree, exactly like the real flow.
+  // provide the script itself. check-js-budget.mjs now imports its route
+  // registry (./budget-routes.mjs — the versioned ROUTE REGISTRY shared with
+  // bundle-report and the LHCI configs), so the fixture needs that module
+  // copy too (relative import resolves against the fixture's own scripts/).
+  // Both copies are fully functional and read the fixture's own .next tree,
+  // exactly like the real flow.
   const budgetSrc = fs.readFileSync(path.resolve(process.cwd(), "scripts", "check-js-budget.mjs"), "utf8")
   f.write("scripts/check-js-budget.mjs", budgetSrc)
+  const routesSrc = fs.readFileSync(path.resolve(process.cwd(), "scripts", "budget-routes.mjs"), "utf8")
+  f.write("scripts/budget-routes.mjs", routesSrc)
   f.write(
     ".next/analyze/client.html",
     chartDataHtml([asset("static/chunks/framework-abc.js", 60_000), asset("static/chunks/main-app-def.js", 30_000)]),

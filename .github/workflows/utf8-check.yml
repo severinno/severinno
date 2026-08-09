@@ -24,7 +24,16 @@
 #      wired here so the class is blocked even when the gate runs without
 #      the vitest suite (someone running only check-utf8/verify-ascii-proof
 #      used to never execute the guard).
-# The exit code is the worst of the three layers. Scripts stay directly
+#   4. scan-non-ascii.mjs --utf8 --report over the YAML GATE files
+#      (.github/workflows/*.yml + .github/actions/*/action.yml) — BLOCKING
+#      UTF-8 well-formedness scan (the corruption class). A corrupt byte
+#      (0x97) in a workflow YAML BREAKS the parse entirely (js-yaml and
+#      PyYAML both throw "invalid start byte") — the workflow silently
+#      fails to load and CI checks silently stop running, so unlike the
+#      docs surface (informational docs-encoding job) this layer BLOCKS.
+#      Legit accents/em-dashes in workflow comments are valid UTF-8 and
+#      pass. Surface: git ls-files of the gate files (not docker-compose*).
+# The exit code is the worst of the four layers. Scripts stay directly
 # invokable for their focused use (--fix, --sync, --dry-run).
 #
 # TRIGGER MODEL (single source of truth, since 2026-08): the check command

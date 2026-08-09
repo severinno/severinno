@@ -56,12 +56,15 @@ jobs:
   #
   # DESDE 2026-08 o MESMO scan --utf8 também lista os YAML GATE FILES
   # (.github/workflows/*.yml + .github/actions/*/action.yml): o fragile-range
-  # os varre (classe de range) mas nenhum gate de encoding os auditava -
-  # check-utf8 cobre só .ts/.tsx/.sh e o proof ASCII estrito false-failaria
-  # os acentos/em-dash legítimos (ex.: as descriptions das composite
-  # actions). O --utf8 (well-formedness) flagra só CORRUPÇÃO; acentos
-  # passam. Mesmo design informativo (::warning:: + exit 0) - ver
-  # docs/ascii-safe.md 'Who protects .zscripts and the YAML gate files?'.
+  # os varre (classe de range) e a CAMADA 4 do verify-encoding.sh (o gate
+  # unico, rodado via utf8-check.yml) os varre para UTF-8 well-formedness de
+  # forma BLOQUEANTE desde 2026-08 - um byte 0x97 num workflow QUEBRA o parse
+  # YAML inteiro (js-yaml/PyYAML: "invalid start byte"), o workflow nao carrega
+  # e o CI para silenciosamente. Por isso os YAML gate files SAIRAM deste job
+  # informativo e viraram gate blocking na camada 4; aqui so sobra a superficie
+  # docs (.md/.css/.html), onde corrupcao e mojibake cosmetico e o alerta
+  # informativo basta. Ver docs/ascii-safe.md 'Who protects .zscripts and the
+  # YAML gate files?'.
   docs-encoding:
     name: Docs Encoding (informational)
     runs-on: ubuntu-latest
@@ -69,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Scan docs + YAML gate files for invalid UTF-8 (corruption alert, non-blocking)
+      - name: Scan docs for invalid UTF-8 (corruption alert, non-blocking)
         run: |
           # GH Actions bash steps run with `set -e -o pipefail`: a detected
           # violation makes node exit non-zero and the pipeline fail, which
@@ -77,11 +80,16 @@ jobs:
           # `exit 0`. `set +e` is what keeps this job truly informational -
           # it must never turn a doc corruption into a red step.
           set +e
-          git ls-files '*.md' '*.css' '*.html' '.github/workflows/*.yml' '.github/actions/*/action.yml' | xargs -r node scripts/scan-non-ascii.mjs --utf8 --report > /tmp/docs-utf8.txt 2>&1
+          # Docs globs DERIVED from the encoding-surface manifest (single
+          # source of truth - scripts/encoding-surface.mjs --print-docs),
+          # keeping this job, check-docs-encoding.sh and ascii-safe.md in sync.
+          DOCS_PATTERNS="$(node scripts/encoding-surface.mjs --print-docs)"
+          # shellcheck disable=SC2086 (intentional word-splitting into globs)
+          git ls-files $DOCS_PATTERNS | xargs -r node scripts/scan-non-ascii.mjs --utf8 --report > /tmp/docs-utf8.txt 2>&1
           CODE=$?
           cat /tmp/docs-utf8.txt
           if [ $CODE -ne 0 ]; then
-            echo "::warning::docs-encoding: invalid UTF-8 detected in docs/YAML gate surface (informational - PR NOT blocked)"
+            echo "::warning::docs-encoding: invalid UTF-8 detected in docs surface (informational - PR NOT blocked)"
             while IFS=$'\t' read -r verdict file pos; do
               [ "$verdict" = "INVALID-UTF8" ] || continue
               echo "::warning file=$file::$pos invalid UTF-8 byte sequence"

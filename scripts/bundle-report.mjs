@@ -58,6 +58,7 @@
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { REAL_ROUTE_CHECKS } from "./budget-routes.mjs"
 
 const ROOT = process.cwd()
 const CHECK = path.join(ROOT, "scripts", "check-js-budget.mjs")
@@ -474,23 +475,21 @@ const MAIN_DELTA_INITIAL_KB = numEnv(process.env.JS_BUDGET_MAIN_DELTA_INITIAL_KB
 const MAIN_DELTA_TOTAL_KB = numEnv(process.env.JS_BUDGET_MAIN_DELTA_TOTAL_KB, 200)
 // Per-route real-transfer deltas (check 7): a route that worsens 30 KB on a
 // merge WITHOUT touching / initial would escape the Initial/Total gate alone,
-// so the 'main' gate also enforces per-route thresholds. Default 30 KB per
-// route (KB gzip), env-overridable (policy mirrored in ci.yml). Keyed by the
-// same labels as REAL_ROUTE_CHECKS / the report's "Rotas" blocks. A route
-// with no configured threshold (future REAL_ROUTE_CHECKS entry not yet in
-// this map) is measured and REPORTED but not gated until a policy is added.
+// so the 'main' gate also enforces per-route thresholds. DERIVED from
+// scripts/budget-routes.mjs (the versioned ROUTE REGISTRY) — every
+// REAL_ROUTE_CHECKS entry carries its deltaEnvKey, and each route gets the
+// 30 KB default unless that env is overridden (policy mirrored in ci.yml).
+// A route ADDED to the registry is automatically gated on the next main push
+// (no second list to update — closing the gate-vs-report route divergence).
 //
 // SEMANTICS: realRoutes is worst-case-over-prerendered-params (Math.max over
 // the per-param transfers, check 7). A build that prerenders a heavier new
 // param can legitimately jump a route's delta > 30 KB without a code change
 // — that is DESIRED (a heavier param IS a regression for that route's users),
 // not flakiness. Don't "fix" a param-driven jump by raising the threshold.
-const ROUTE_DELTA_KB = {
-  "/busca": numEnv(process.env.JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB, 30),
-  "/dashboard": numEnv(process.env.JS_BUDGET_MAIN_DELTA_ROUTE_DASHBOARD_KB, 30),
-  "/u/[slug]": numEnv(process.env.JS_BUDGET_MAIN_DELTA_ROUTE_U_KB, 30),
-  "/categoria/[slug]": numEnv(process.env.JS_BUDGET_MAIN_DELTA_ROUTE_CATEGORIA_KB, 30),
-}
+const ROUTE_DELTA_KB = Object.fromEntries(
+  REAL_ROUTE_CHECKS.map((r) => [r.label, numEnv(process.env[r.deltaEnvKey], 30)]),
+)
 // Baseline for the main gate: the latest VERSIONED release. Rolling rows
 // (main/develop) are explicitly EXCLUDED — once a develop row exists in the
 // report, the gate must still compare against the release, not against
@@ -556,7 +555,11 @@ if (entry.version === "main" && releaseBaseline && m.initialSource === "prerende
   // reported before exit.
   for (const gd of gdRoutes) {
     const limit = ROUTE_DELTA_KB[gd.label]
-    if (limit == null) continue // measured but no policy yet → report only
+    // Defensive: ROUTE_DELTA_KB is DERIVED from REAL_ROUTE_CHECKS and
+    // gdRoutes labels come from the same registry (check-js-budget --json
+    // realRoutes), so the limit is always present — the branch is kept only
+    // as a no-silent-ignore backstop, not a reachable policy path.
+    if (limit == null) continue // unreachable by design — see above
     if (gd.delta > limit) {
       console.error(
         `❌ ANTI-REGRESSION GATE: 'main' rota ${gd.label} piorou +${gd.delta.toFixed(1)} KB vs ` +

@@ -93,6 +93,7 @@ import {
   createTempDir,
   expectSoleFailureCount,
   patchModuleCopy,
+  patchModuleFile,
   runReverseMutation,
   runSubprocess,
 } from "./golden-copy-utils"
@@ -649,6 +650,77 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       writeFile(dir, "e2e/ok.spec.ts", "import { test } from '@playwright/test'\ntest('ok', () => {})\n")
       writeFile(dir, "src/ok.ts", "export const ok = 1\n")
       expect(scanExecutableCode(dir)).toEqual([])
+    })
+
+    it("SPREAD CONTRACT: a 5th TARGET_DIRS entry (temp module copy) is AUTO-covered - the REAL-REPO CONTRACT --dir spread derives live, not frozen", () => {
+      // The REAL-REPO CONTRACT test derives its --dir args via the
+      // `...TARGET_DIRS` spread - never a literal second list - so a future
+      // tree landing in TARGET_DIRS is scanned by that test AUTOMATICALLY
+      // (its pinned target count then breaks, forcing the explicit decision
+      // the contract wants). THIS test pins the mechanism the spread relies
+      // on: the target set IS the module's TARGET_DIRS export, so a temp
+      // COPY of the module with a 5th entry (workers/) makes the same
+      // derivation cover the new tree - while the real module (4 entries)
+      // provably does not scan it today. Contrast the REVERSE MUTATION
+      // tests (which lift docs/ - an EXCLUDED tree): workers/ here is a
+      // brand-NEW tree, the forward growth direction.
+      const dir = createTempDir("frg-spread-")
+      fs.mkdirSync(path.join(dir, "scripts"), { recursive: true })
+      fs.mkdirSync(path.join(dir, "e2e"), { recursive: true })
+      fs.mkdirSync(path.join(dir, "src"), { recursive: true })
+      fs.mkdirSync(path.join(dir, "mini-services"), { recursive: true })
+      fs.mkdirSync(path.join(dir, ".zscripts"), { recursive: true })
+      fs.mkdirSync(path.join(dir, "workers"), { recursive: true }) // hypothetical 5th tree
+      writeFile(dir, "scripts/ok.sh", "#!/usr/bin/env bash\necho ok\n")
+      writeFile(dir, "e2e/ok.spec.ts", "import { test } from '@playwright/test'\ntest('ok', () => {})\n")
+      writeFile(dir, "src/ok.ts", "export const ok = 1\n")
+      writeFile(dir, "mini-services/ok.ts", "export const ok = 1\n")
+      writeFile(dir, ".zscripts/ok.sh", "#!/usr/bin/env bash\necho ok\n")
+      writeFile(dir, "workers/dirty.ts", "const re = /[^ -~]/\n")
+      // Sole-failure-source: the fixture is GENUINELY dirty (the space-tilde
+      // pattern matches if scanned) - so the real module's clean verdict is
+      // attributable to workers/ NOT being a TARGET_DIR today, and the
+      // patched module's trip to the LIFT, never to an inert fixture.
+      expect(FRAGILE_PATTERNS.some(({ re }) => re.test("const re = /[^ -~]/\n"))).toBe(true)
+      // Control: the real module's TARGET_DIRS (4 entries) does not scan workers/.
+      expect(scanExecutableCode(dir)).toEqual([])
+
+      // Mutation (module level - the derivation): temp copy of the module
+      // with workers/ injected as the 5th TARGET_DIRS entry -> the SAME
+      // target set the REAL-REPO CONTRACT spread reads now covers the new
+      // tree automatically (zero edits to the test's dir list).
+      const runner = patchModuleCopy({ targetDirs: [...TARGET_DIRS, "workers"] })
+      const r = runReverseMutation(runner, dir)
+      expect(r.status).toBe(1)
+      const offs: string[] = JSON.parse(r.stdout)
+      expect(offs).toHaveLength(1)
+      expect(offs[0]).toContain("space-tilde character range")
+      expect(offs[0]).toContain(path.join("workers", "dirty.ts"))
+
+      // Mutation (CLI level - the REAL-REPO CONTRACT test's exact
+      // invocation shape): run the patched module as the CLI with
+      // `--dir ...TARGET_DIRS` PLUS the new tree, from the synthetic root
+      // (cwd) with FRAGILE_SCAN_ROOT keeping the gate-file scan synthetic.
+      // The verdict flips clean -> 1 offender exactly as the real contract
+      // test would once a 5th tree lands in the derived list. (The CLI
+      // scans whatever --dir it is given - the DERIVATION is what feeds it
+      // the new tree, which is the property the module-level half pins.)
+      // patchModuleFile (not path.dirname(runner)) returns the patched
+      // module path directly - no coupling to the harness's temp-dir layout.
+      const modPath = patchModuleFile({ targetDirs: [...TARGET_DIRS, "workers"] })
+      const rCli = spawnSync(process.execPath, [modPath, "--ci", "--dir", ...TARGET_DIRS, "workers"], {
+        cwd: dir,
+        encoding: "utf8",
+        timeout: 30_000,
+        env: { ...process.env, FRAGILE_SCAN_ROOT: dir },
+      })
+      expect(rCli.status).toBe(1)
+      expect(rCli.stderr).toContain("fragile-range:")
+      expect(rCli.stderr).toContain("space-tilde character range")
+      // scanDirectory reports paths relative to the TARGET dir (dir/workers),
+      // so the offender line carries just "dirty.ts".
+      expect(rCli.stderr).toContain("dirty.ts")
+      expectSoleFailureCount(rCli.stderr ?? "", 1)
     })
   })
 

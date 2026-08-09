@@ -87,24 +87,51 @@ for a in "$@"; do
 done
 
 # --- 1. File lists (env overridable; unset OR empty -> repo defaults) ------
+# The DEFAULT VPS/OPS glob patterns are DERIVED from the encoding-surface
+# manifest (scripts/encoding-surface.mjs --print-vps-sh / --print-ops-sh,
+# single source of truth - same pattern as the fragile-range TARGET_DIRS
+# derivation), then expanded with nullglob exactly as the old inline globs
+# were. The scripts/*.sh exclusion of health-check.sh (VPS-bound, not ops)
+# is a SHELL semantic kept here, not in the manifest. Derivation failure
+# fails loudly (exit 2): a gate must never silently degrade to auditing
+# fewer files than the manifest declares.
 if [ -n "${VPS_SH_FILES:-}" ]; then
   read -r -a VPS_LIST <<< "$VPS_SH_FILES"
 else
+  VPS_PATTERNS="$(node "$SCRIPT_DIR/encoding-surface.mjs" --print-vps-sh)" || VPS_PATTERNS=""
+  if [ -z "$VPS_PATTERNS" ]; then
+    echo "verify-ascii-proof: encoding-surface derivation failed (VPS_SH_PATTERNS unavailable)" >&2
+    exit 2
+  fi
+  read -r -a VPS_PAT_ARR <<< "$VPS_PATTERNS"
   shopt -s nullglob
-  VPS_LIST=(scripts/health-check.sh *.sh)
+  VPS_LIST=()
+  for p in "${VPS_PAT_ARR[@]}"; do
+    for f in $p; do
+      [ -n "$f" ] && VPS_LIST+=("$f")
+    done
+  done
   shopt -u nullglob
 fi
 
 if [ -n "${OPS_SH_FILES:-}" ]; then
   read -r -a OPS_LIST <<< "$OPS_SH_FILES"
 else
+  OPS_PATTERNS="$(node "$SCRIPT_DIR/encoding-surface.mjs" --print-ops-sh)" || OPS_PATTERNS=""
+  if [ -z "$OPS_PATTERNS" ]; then
+    echo "verify-ascii-proof: encoding-surface derivation failed (OPS_SH_PATTERNS unavailable)" >&2
+    exit 2
+  fi
+  read -r -a OPS_PAT_ARR <<< "$OPS_PATTERNS"
   shopt -s nullglob
   OPS_LIST=()
-  for f in scripts/*.sh; do
-    [ "$f" = "scripts/health-check.sh" ] && continue
-    OPS_LIST+=("$f")
+  for p in "${OPS_PAT_ARR[@]}"; do
+    for f in $p; do
+      [ -n "$f" ] || continue
+      [ "$f" = "scripts/health-check.sh" ] && continue
+      OPS_LIST+=("$f")
+    done
   done
-  OPS_LIST+=(.husky/pre-commit .husky/pre-push)
   shopt -u nullglob
 fi
 
