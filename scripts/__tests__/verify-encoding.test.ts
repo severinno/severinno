@@ -47,19 +47,19 @@
  * CLI suite. Both suites share the count-pin helper (expectSoleFailureCount
  * in golden-copy-utils.ts).
  *
- * RULE OF THREE (extraction gate - do NOT extract before a 3rd use): the
- * two fragile-layer mutation tests below share an IDENTICAL 5-assertion
- * block - aggregation (status 1) + layer-1 isolation (check-utf8 clean) +
- * layer-2 isolation (proof clean) + propagation (stderr "fragile-range:")
- * + the count-pin (expectSoleFailureCount(..., 1)) - with BOTH env
- * overrides (FRAGILE_SCAN_ROOT + FRAGILE_SCAN_DIRS) set, one dirty one
- * clean. That is 2 uses, below the rule-of-three threshold: extracting
- * from two samples guesses the shape instead of proving it. WHEN a 3rd
- * wrapper mutation test needs the same block, extract it into
- * golden-copy-utils.ts as expectLayer3FailsThroughWrapper(env) - running
- * runGate(["--ci", "src/"], env) and asserting those 5 lines - and
- * refactor all 3 callers onto it. Until then, COPY the block (the
- * documented pattern) rather than abstracting early.
+ * RULE OF THREE (EXTRACTED 2026-08 - the 3rd use arrived with the
+ * wrapper-level REVERSE MUTATION below): the three fragile-layer wrapper
+ * mutation tests share an IDENTICAL 5-assertion block - aggregation
+ * (status 1) + layer-1 isolation (check-utf8 clean) + layer-2 isolation
+ * (proof clean) + propagation (stderr "fragile-range:") + the count-pin
+ * (expectSoleFailureCount(..., 1)) - with BOTH env overrides
+ * (FRAGILE_SCAN_ROOT + FRAGILE_SCAN_DIRS) set, one dirty one clean. At 2
+ * uses it stayed a copied block (2 < 3 - extracting from two samples
+ * guesses the shape); with the 3rd caller it became
+ * expectLayer3FailsThroughWrapper(env) in golden-copy-utils.ts (runs
+ * runGate(["--ci", "src/"], env), asserts the 5 lines) and ALL THREE
+ * callers refactored onto it. A 4th wrapper mutation test calls the
+ * helper - never copies the 5 lines again.
  *
  * REAL-REPO CLEAN CONTRACT (decision 2026-08 - no separate baseline test):
  * the mutation count-pins below (expectSoleFailureCount(..., 1)) are
@@ -88,7 +88,8 @@ import path from "node:path"
 import {
   cleanupTempDirs,
   createTempDir,
-  expectSoleFailureCount,
+  expectLayer3FailsThroughWrapper,
+  patchModuleFile,
   runSubprocess,
 } from "./golden-copy-utils"
 import { TARGET_DIRS, filesInDir } from "../fragile-range-patterns.mjs"
@@ -219,15 +220,12 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
       "import { test } from '@playwright/test'\ntest('ok', () => {})\n",
     )
 
-    const r = runGate(["--ci", "src/"], { FRAGILE_SCAN_ROOT: dir, FRAGILE_SCAN_DIRS: cleanTarget })
-    expect(r.status).toBe(1) // worst-exit aggregation
-    expect(r.stdout).toContain("check-utf8: done (all clean)") // layer 1 isolation
-    expect(r.stdout).toContain("verify-ascii-proof: done (all clean)") // layer 2 isolation
-    expect(r.stderr).toContain("fragile-range:") // layer 3 propagated through the wrapper
-    // Count pinned to 1 - UNCONDITIONAL: layer 3 scans only synthetic trees
-    // (dirty gate file + clean target), so the sole failure source is the
-    // fixture itself and no real-repo regression can masquerade as it.
-    expectSoleFailureCount(r.stderr, 1)
+    // The 5-assertion block (aggregation + isolation L1/L2 + propagation +
+    // count-pin) is the shared expectLayer3FailsThroughWrapper contract
+    // (extracted at 3 uses - see the RULE OF THREE docblock section):
+    // running runGate(["--ci", "src/"], env) with BOTH layer-3 overrides
+    // set (dirty gate-file root + clean target) and asserting those lines.
+    expectLayer3FailsThroughWrapper({ FRAGILE_SCAN_ROOT: dir, FRAGILE_SCAN_DIRS: cleanTarget })
   })
 
   it("MUTATION (fragile layer, --dir target): a [^ -~] range in a SYNTHETIC e2e spec fails layer 3 via FRAGILE_SCAN_DIRS", () => {
@@ -263,15 +261,71 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     fs.mkdirSync(path.join(cleanRoot, "scripts"), { recursive: true })
     writeSh(cleanRoot, "scripts/ok.sh", "#!/usr/bin/env bash\necho ok\n")
 
-    const r = runGate(["--ci", "src/"], { FRAGILE_SCAN_DIRS: dir, FRAGILE_SCAN_ROOT: cleanRoot })
-    expect(r.status).toBe(1)
-    expect(r.stdout).toContain("check-utf8: done (all clean)")
-    expect(r.stdout).toContain("verify-ascii-proof: done (all clean)")
-    expect(r.stderr).toContain("fragile-range:")
-    // Count pinned to 1 - UNCONDITIONAL: layer 3 scans only synthetic trees
-    // (clean gate files + dirty spec), so the sole failure source is the
-    // fixture itself and no real-repo regression can masquerade as it.
-    expectSoleFailureCount(r.stderr, 1)
+    // Same shared 5-assertion contract (RULE OF THREE): both overrides set
+    // (clean gate-file root + dirty spec target) -> layer 3 scans zero real
+    // surface, so the count-pin is unconditional.
+    expectLayer3FailsThroughWrapper({ FRAGILE_SCAN_DIRS: dir, FRAGILE_SCAN_ROOT: cleanRoot })
+  })
+
+  it("REVERSE MUTATION (wrapper level): lifting docs/ on a temp module copy makes the WRAPPER trip on the docs/ fixture", () => {
+    // The wrapper-level mirror of the module-level REVERSE MUTATION tests
+    // (fragile-range-guard.test.ts): the module suite proves
+    // scanExecutableCode WOULD trip if the contracts were lifted, but only
+    // by importing the patched module directly. THIS test proves the SAME
+    // inverse through the wrapper's real wiring: verify-encoding.sh runs
+    // layer 3 against the module path in FRAGILE_MODULE (default: the real
+    // module next to the script), so pointing it at a TEMP COPY of the
+    // module with docs/ injected into TARGET_DIRS AND .md appended to
+    // TARGET_EXTS (the two-layered exclusion - see the module's DECISION
+    // RECORD) must make the wrapper exit 1 with 'fragile-range:' - proving
+    // the exclusion is enforced end-to-end through the gate, not just by
+    // the module API.
+    //
+    // NOTE (why the trip is observable with FRAGILE_SCAN_DIRS set): when
+    // FRAGILE_SCAN_DIRS is set, the wrapper SKIPS the --print-target-dirs
+    // derivation and passes the override as --dir <repo> - so the patched
+    // TARGET_DIRS never flows into the target list. The observable lift is
+    // the extsAddMd one: patched TARGET_EXTS lets filesInDir() enumerate
+    // docs/dirty.md under the --dir target, and its space-tilde quote trips.
+    // The targetDirs lift is kept only for parity with the module-level
+    // two-layered reverse mutation; with FRAGILE_SCAN_DIRS unset the
+    // derivation path is covered by the CONTRACT test above instead.
+    //
+    // Sole-failure-source proof: BOTH layer-3 overrides point at the
+    // synthetic repo (gate-file scan root + --dir targets), so layer 3
+    // scans ZERO real-repo surface; the ONLY offender is docs/dirty.md,
+    // exactly one - the count-pin below is unconditional. The CONTROL (real
+    // module, same fixture) stays green: the dirty .md is kept out by the
+    // real contracts, so a status-1 verdict with the patched module is
+    // attributable to the LIFT, not to an inert fixture.
+    const dir = createTempDir("verify-encoding-revmod-")
+    fs.mkdirSync(path.join(dir, "scripts"), { recursive: true })
+    fs.mkdirSync(path.join(dir, "e2e"), { recursive: true })
+    fs.mkdirSync(path.join(dir, "src"), { recursive: true })
+    fs.mkdirSync(path.join(dir, "docs"), { recursive: true })
+    writeSh(dir, "scripts/ok.sh", "#!/usr/bin/env bash\necho ok\n")
+    writeSh(dir, "e2e/ok.spec.ts", "import { test } from '@playwright/test'\ntest('ok', () => {})\n")
+    writeSh(dir, "src/ok.ts", "export const ok = 1\n")
+    writeSh(dir, "docs/dirty.md", "the historical bug used `grep -n '[^ -~]'`\n")
+
+    // Control: the REAL module keeps docs/ out - wrapper exits 0 even with
+    // the genuinely-dirty docs fixture present (the fixture must stay a
+    // valid historical-bug quote; the exclusion is what protects it).
+    const control = runGate(["--ci", "src/"], { FRAGILE_SCAN_ROOT: dir, FRAGILE_SCAN_DIRS: dir })
+    expect(control.status).toBe(0)
+
+    // Mutation: temp COPY of the module with BOTH contracts lifted - the
+    // wrapper executes it via FRAGILE_MODULE. The shared 5-assertion block
+    // asserts the trip surfaces through the wrapper wiring: aggregation
+    // (exit 1) + isolation (L1/L2 stay clean on the real repo) +
+    // propagation ('fragile-range:' on stderr) + the count-pin (docs/
+    // dirty.md is the sole offender).
+    const modulePath = patchModuleFile({ targetDirs: [...TARGET_DIRS, "docs"], extsAddMd: true })
+    expectLayer3FailsThroughWrapper({
+      FRAGILE_MODULE: modulePath,
+      FRAGILE_SCAN_ROOT: dir,
+      FRAGILE_SCAN_DIRS: dir,
+    })
   })
 
   it("SYNC: --sync routes to the proof ONLY (baseline regeneration, no UTF-8 scan)", () => {

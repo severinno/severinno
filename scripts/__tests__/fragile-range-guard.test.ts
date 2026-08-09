@@ -88,7 +88,14 @@ import {
   TARGET_DIRS,
   scanExecutableCode,
 } from "../fragile-range-patterns.mjs"
-import { cleanupTempDirs, createTempDir, expectSoleFailureCount, runSubprocess } from "./golden-copy-utils"
+import {
+  cleanupTempDirs,
+  createTempDir,
+  expectSoleFailureCount,
+  patchModuleCopy,
+  runReverseMutation,
+  runSubprocess,
+} from "./golden-copy-utils"
 
 const ROOT = process.cwd()
 const SCRIPT = path.resolve(ROOT, "scripts", "fragile-range-patterns.mjs")
@@ -114,60 +121,14 @@ function runCli(args: string[] = [], env: Record<string, string> = {}) {
   return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" }
 }
 
-/**
- * REVERSE-MUTATION harness: write a temp COPY of the real module with the
- * scan-scope contracts LIFTED (docs/ injected into TARGET_DIRS, optionally
- * .md appended to TARGET_EXTS), plus a tiny runner that imports the patched
- * copy and calls scanExecutableCode(root). The real module file is never
- * touched — the copy re-executes the REAL code with the lifted constants, so
- * scanExecutableCode closes over the patched module-scope TARGET_DIRS/
- * TARGET_EXTS (an export-level vi.mock could never change the binding the
- * function reads — the mutation must happen at the module-source level).
- * The patch anchors are asserted so a module drift FAILS LOUDLY instead of
- * silently scanning nothing (the no-silent-ignore posture every gate keeps).
- * Returns the runner path (temp dir tracked by cleanupTempDirs in afterEach).
- */
-function patchModuleCopy(patch: { targetDirs?: string[]; extsAddMd?: boolean }): string {
-  const src = fs.readFileSync(SCRIPT, "utf8")
-  let patched = src
-  if (patch.targetDirs) {
-    const anchor = 'export const TARGET_DIRS = ["e2e", "src", "mini-services", ".zscripts"]'
-    if (!patched.includes(anchor)) throw new Error("REVERSE MUTATION: TARGET_DIRS anchor not found — module drifted")
-    patched = patched.replace(anchor, `export const TARGET_DIRS = ${JSON.stringify(patch.targetDirs)}`)
-  }
-  if (patch.extsAddMd) {
-    // The module line is /^\\.(sh|...) — double backslash in TS source =
-    // single \\ in the module's regex literal (do NOT "simplify" to \\.
-    // or the anchor silently stops matching and the drift check throws).
-    const anchor = "const TARGET_EXTS = /^\\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1|ya?ml)$/"
-    if (!patched.includes(anchor)) throw new Error("REVERSE MUTATION: TARGET_EXTS anchor not found — module drifted")
-    patched = patched.replace(anchor, "const TARGET_EXTS = /^\\.(sh|mjs|js|cjs|mts|ts|tsx|jsx|py|ps1|ya?ml|md)$/")
-  }
-  const dir = createTempDir("frg-revmod-")
-  const modPath = path.join(dir, "fragile-range-patterns.mjs")
-  const runnerPath = path.join(dir, "run-scan.mjs")
-  fs.writeFileSync(modPath, patched)
-  fs.writeFileSync(
-    runnerPath,
-    [
-      `import { scanExecutableCode } from "./fragile-range-patterns.mjs"`,
-      `const offs = scanExecutableCode(process.argv[2])`,
-      `process.stdout.write(JSON.stringify(offs))`,
-      `process.exit(offs.length > 0 ? 1 : 0)`,
-      "",
-    ].join("\n"),
-  )
-  return runnerPath
-}
-
-/**
- * Run the patched module's scanExecutableCode(root) as a real node process.
- * Delegates to the shared runSubprocess (env inherit + utf8 + 30s timeout)
- * rather than re-implementing the shape.
- */
-function runReverseMutation(runnerPath: string, root: string) {
-  return runSubprocess({ command: process.execPath, args: [runnerPath, root] })
-}
+// REVERSE-MUTATION harness (patchModuleCopy / runReverseMutation) lives in
+// golden-copy-utils.ts - shared with the WRAPPER-level reverse mutation in
+// verify-encoding.test.ts (which uses patchModuleFile + FRAGILE_MODULE).
+// Both write a temp COPY of the real module with the scan-scope contracts
+// LIFTED (docs/ injected into TARGET_DIRS, optionally .md appended to
+// TARGET_EXTS) and re-execute the REAL code with the lifted constants - an
+// export-level vi.mock could never change the binding scanExecutableCode
+// reads. The patch anchors are asserted so a module drift FAILS LOUDLY.
 
 describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () => {
   it("repo-wide: no fragile character-class range in live executable code (gate files + e2e/ + src/)", () => {

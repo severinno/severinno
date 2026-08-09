@@ -49,7 +49,11 @@
 # through this entry point: the proof layer's VPS_SH_FILES/OPS_SH_FILES/
 # ASCII_BASELINE_FILE, layer 3's FRAGILE_SCAN_ROOT (synthetic/alternate repo
 # root) and FRAGILE_SCAN_DIRS (space-separated dirs REPLACING the derived
-# TARGET_DIRS default).
+# TARGET_DIRS default). FRAGILE_MODULE is READ by the wrapper itself: it
+# overrides the module path layer 3 executes (default: the real module next
+# to this script) so a REVERSE-MUTATION test can run layer 3 against a TEMP
+# COPY of the module with the scan-scope contracts lifted - proving the
+# exclusion wiring through the wrapper, not just through the module API.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -105,12 +109,13 @@ bash "$SCRIPT_DIR/verify-ascii-proof.sh" || EXIT_CODE=$?
 # the derivation fails, layer 3 fails loudly (exit 2) - a gate must never
 # silently degrade to scanning fewer trees than the module declares. Worst
 # exit wins.
+FRAGILE_MODULE="${FRAGILE_MODULE:-$SCRIPT_DIR/fragile-range-patterns.mjs}"
 FRAGILE_EXIT=0
 FRAGILE_DIR_ARR=()
 if [ -n "${FRAGILE_SCAN_DIRS:-}" ]; then
   read -r -a FRAGILE_DIR_ARR <<< "$FRAGILE_SCAN_DIRS"
 else
-  FRAGILE_DIRS="$(node "$SCRIPT_DIR/fragile-range-patterns.mjs" --print-target-dirs)" || FRAGILE_DIRS=""
+  FRAGILE_DIRS="$(node "$FRAGILE_MODULE" --print-target-dirs)" || FRAGILE_DIRS=""
   if [ -z "$FRAGILE_DIRS" ]; then
     echo "verify-encoding: layer 3 could not derive TARGET_DIRS from fragile-range-patterns.mjs (--print-target-dirs failed)" >&2
     FRAGILE_EXIT=2
@@ -123,7 +128,7 @@ for d in "${FRAGILE_DIR_ARR[@]}"; do
   DIR_ARGS+=(--dir "$d")
 done
 if [ "$FRAGILE_EXIT" -eq 0 ]; then
-  node "$SCRIPT_DIR/fragile-range-patterns.mjs" --ci "${DIR_ARGS[@]}" || FRAGILE_EXIT=$?
+  node "$FRAGILE_MODULE" --ci "${DIR_ARGS[@]}" || FRAGILE_EXIT=$?
 fi
 if [ "$FRAGILE_EXIT" -gt "$EXIT_CODE" ]; then
   EXIT_CODE=$FRAGILE_EXIT
