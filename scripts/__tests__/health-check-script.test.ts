@@ -293,7 +293,7 @@ describe("health-check.sh — single versioned health check (consolidation of th
       const r = runScript({ env: { HEALTH_DOCKER_PRUNE: "1", SHIM_DOCKER_FAIL: "1" }, codes: ["200"] })
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("Health check passed (HTTP 200) after attempt 1/12")
-      expect(r.stdout).toContain("docker image prune -f falhou (não-fatal — deploy segue verde)")
+      expect(r.stdout).toContain("WARNING: docker image prune -f failed (non-fatal - deploy stays green)")
       expect(r.dockerCalls).toContain("image prune -f")
     })
 

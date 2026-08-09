@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# health-check.sh — single source of truth for the deploy health checks.
+# health-check.sh - single source of truth for the deploy health checks.
 #
 # Used by EVERY workflow that waits for the app to come up after a deploy:
 #   - .github/workflows/deploy.yml         (docker-test smoke test + ssh deploy)
@@ -19,7 +19,7 @@
 #   HEALTH_EXPECT_CODE  HTTP code that means "healthy"     (default 200)
 #   HEALTH_DOCKER_PRUNE "1" = `docker image prune -f` on success (default 0).
 #                         NON-FATAL: prune failure never flips a green deploy
-#                         to red — the deploy verdict is the health check, not
+#                         to red - the deploy verdict is the health check, not
 #                         the disk cleanup (best-effort housekeeping).
 #
 # Exit codes:
@@ -41,9 +41,11 @@ for i in $(seq 1 "$HEALTH_ATTEMPTS"); do
     echo "Health check passed (HTTP $HTTP_CODE) after attempt $i/$HEALTH_ATTEMPTS"
     if [ "$HEALTH_DOCKER_PRUNE" = "1" ]; then
       # Best-effort housekeeping: `docker image prune -f` failure must NOT
-      # flip a green deploy to red under `set -e` — the `|| echo` keeps the
+      # flip a green deploy to red under `set -e` - the `|| echo` keeps the
       # OR-list exit 0 (and surfaces the failure in the logs for follow-up).
-      docker image prune -f || echo "⚠️  docker image prune -f falhou (não-fatal — deploy segue verde)"
+      # ASCII-only on purpose: this runs via ssh on the VPS, where the remote
+      # locale may not be UTF-8 - emoji/accents would render as mojibake.
+      docker image prune -f || echo "WARNING: docker image prune -f failed (non-fatal - deploy stays green)"
     fi
     exit 0
   fi
