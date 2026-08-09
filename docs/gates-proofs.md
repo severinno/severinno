@@ -4,8 +4,10 @@
 > de CI falha de verdade quando a classe de erro que ele protege é injetada
 > (e reverte o repo ao estado limpo depois). Serve de auditoria futura: se um
 > gate parar de falhar numa prova equivalente, é sinal de regressão no próprio
-> gate. Toda prova segue o mesmo contrato: **injetar → gate falha (exit 1) →
-> reverter → repo limpo**.
+> gate. As provas de sentinela (1-6) seguem o contrato: **injetar → gate
+> falha (exit 1) → reverter → repo limpo**. A Prova 7 é o outro lado do
+> ciclo — uma **prova de EXECUÇÃO**: o gate roda e PASSA no CI real, sem
+> injeção, fechando o caso "o gate nunca fica órfão de execução".
 
 ## 1. Tabela resumo
 
@@ -17,6 +19,7 @@
 | 4 | Encoding — camada fragile-range via override `FRAGILE_SCAN_ROOT` | Gate file sujo num repo **sintético** passar despercebido (o override de raiz do layer 3) | `sentinel-root/scripts/dirty.sh` com `[^ -~]` + `env: FRAGILE_SCAN_ROOT: sentinel-root` no step do utf8-check.yml | Run [**31312427503**](https://github.com/severinno/severinno/actions/runs/31312427503) (`ci-proof/fragile-root`) | ✅ `fragile-range: 1 fragile character-class range(s) in LIVE code: scripts/dirty.sh :: space-tilde character range :: "[^ -~]"` → exit 1 |
 | 5 | Encoding — camada UTF-8 (`check-utf8.sh`) no **fixed dir `.zscripts/`** (workspace-agent ops scripts) | Corrupção UTF-8 num `.zscripts/*.sh` (ex.: byte 0x97 Windows-1252) | `0x97` anexado a `.zscripts/build.sh` | **Local** (sem run de CI dedicado; o fixed dir é ALWAYS-scanned, o mesmo caminho do CI) | ✅ `WARNING: .zscripts\build.sh (byte 0x97 -- Windows-1252 em dash)` + `check-utf8: FAILED` → exit 1 → revertido byte-identical |
 | 6 | Fragile-range — **SPREAD CONTRACT** (a derivação `--dir ...TARGET_DIRS` cobre árvores futuras) | Um 5º dir no `TARGET_DIRS` real escapar da cobertura do guard | `workers` injetado no `TARGET_DIRS` real + `workers/dirty.ts` com `[^ -~]` | Run [**31331423557**](https://github.com/severinno/severinno/actions/runs/31331423557) (`ci-proof/spread-live`) + prova local 2026-08-09 | ✅ **CI (utf8-check / UTF-8 Check)**: `fragile-range: 1 fragile character-class range(s) in LIVE code: dirty.ts :: space-tilde character range :: "[^ -~]"` → exit 1; job `Fragile Range Guard` também falhou; local: guard suite 7 falhas + golden-copy divergence; revertido byte-identical |
+| 7 | Guard vitest — **push net** (`guard-gates.yml`, trigger `push: [main, develop]`) | O BASELINE de 0 offenders + divergence guards ficarem ÓRFÃOS de execução num push (skip/reorder do job de testes — o failure mode do lint) | Nenhuma injeção — push REAL temporário a `develop` (dispatch via API bloqueado: workflow fora do default branch; `main` dispararia deploy; `develop` é seguro e escuta o trigger) | Run [**31336318902**](https://github.com/severinno/severinno/actions/runs/31336318902) (`develop`, event `push`) + local `bun run test:guard` 66/66 | ✅ job `Guard Gates (fragile-range + golden-copy)` verde em 45s: `Test Files 2 passed (2), Tests 66 passed (66)` no step "Run guard vitest suites"; branch temporária deletada (remote de volta ao estado original) |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -237,7 +240,93 @@ fragile-range: 1 fragile character-class range(s) in LIVE code:
   explícita de incluir a árvore (e registrá-la no snapshot). Um futuro 5º
   dir não pode escapar silenciosamente nem do gate nem do CI.
 
-## 8. Observação transversal — o mascaramento que motivou o reorder do check job
+## 8. Prova 7 — push net do guard vitest (`guard-gates.yml`, run 31336318902)
+
+- **Gate**: o workflow `guard-gates.yml` — o push net que roda SOMENTE as duas
+  suítes de guard (`fragile-range-guard` + `golden-copy-utils`) via
+  `bun run test:guard` em todo push a main/develop, imune a skip por lint
+  (sem step de lint, sem `needs:` em lint). A classe protegida: o BASELINE
+  de 0 offenders e os divergence guards do golden-copy-utils ficarem órfãos
+  de execução quando um push pula/reordena o job de testes — o failure mode
+  que o lint costumava causar antes do reorder test-first.
+- **Run**: [31336318902](https://github.com/severinno/severinno/actions/runs/31336318902) (event `push`, branch `develop`)
+- **Disparo** (2026-08-09): o workflow ainda não existe no default branch
+  (`release/v0.4.0`), então `workflow_dispatch` via API é impossível
+  (HTTP 404 "workflow guard-gates.yml not found on the default branch" —
+  confirmado com `gh workflow run` e com a API direta). Push a `main`
+  dispararia o `deploy.yml` (deploy de produção — build + migrate no VPS),
+  risco alto demais. O trigger real do guard-gates.yml é `push: branches:
+  [main, develop]`, e `develop` não existe no remote nem tem deploy
+  atrelado (deploy.yml só escuta `main`), então um push TEMPORÁRIO a
+  `develop` é o caminho fiel e seguro para exercitar o push net de verdade:
+  `git push origin HEAD:develop`.
+- **Observado** (log do job, 2026-08-09 21:15Z) — job `Guard Gates
+  (fragile-range + golden-copy)` → ✅ verde em 45s, todos os steps
+  incluindo "Run guard vitest suites (BASELINE + divergence guards)":
+
+```
+Test Files  2 passed (2)
+      Tests  66 passed (66)
+```
+
+- **Local (ground truth do mesmo comando)**: `bun run test:guard` → 66/66
+  (2 suítes), exit 0 — idêntico ao CI.
+- **Reversão**: `git push origin --delete develop` e `--delete
+  ci-proof/guard-gates` (branch scratch do dispatch falho) — remote de volta
+  ao estado original (`freebuff/new-thread-thms5x3m7xt8k4` +
+  `release/v0.4.0`), `git status` limpo.
+- **Gap protegido**: um push a main/develop que pularia/reordenaria o job de
+  testes não pode mais deixar o BASELINE de 0 offenders e os divergence
+  guards sem execução — o push net roda o par completo em todo merge, e o
+  mesmo `test:guard` (single source of truth em package.json) alimenta o job
+  `fragile-guard` do PR. Registra também a descoberta operacional: enquanto
+  o workflow não existir no default branch, o dispatch manual via API fica
+  indisponível — a prova real do push net depende do trigger `push`
+  (ou de o arquivo entrar no default branch).
+- **Nota de contrato**: diferente das provas 1-6 (sentinela — injetar →
+  falhar → reverter), esta é uma prova de EXECUÇÃO: o gate roda e PASSA no
+  CI real, sem injeção. O contrato "injetar → exit 1 → reverter" da intro
+  se aplica às provas de falha; a Prova 7 fecha o outro lado do ciclo — o
+  push net dispara de verdade e o par completo fica verde, provando que o
+  BASELINE de 0 offenders nunca fica órfão de execução.
+
+## 8.1 Custo por push (medição 2026-08-09) — por que o no-filter continua
+
+**Dado medido** (breakdown por step do run 31336318902, do log do GitHub):
+
+| Step | Tempo | Observação |
+|---|---|---|
+| Set up job | 1s | overhead fixo do runner |
+| checkout | 4s | sempre roda |
+| setup-bun | 2s | sempre roda |
+| Cache node_modules (restore) | 11s | sempre roda |
+| **Install deps** | 9s | `bun install --frozen-lockfile` |
+| **Run guard vitest suites** | **4s** | o par em si (66 testes) |
+| Post Cache (upload) | 10s | sempre roda |
+| **Total job** | **~41s** | (45s com fila/overhead) |
+
+O custo REAL do par de suítes é **4s de CI** — o restante do job (~37s)
+é setup fixo (checkout + bun + cache + install + upload) que um filtro
+`paths:` não reduziria: um filtro só **skipa o job inteiro**, nunca deixa
+um job que roda mais barato. **Nota de precisão**: o run medido
+(31336318902) é anterior ao step `scan-timeouts` adicionado ao workflow
+depois — o job atual custa ~1-2s a mais (ground truth local 1.6s); a
+conclusão não muda. Ground truth local (Windows, cache quente):
+`bun run test:guard` 16.7s + `node scripts/scan-timeouts.mjs --ci` 1.6s +
+`bun install --frozen-lockfile` 3.4s.
+
+**Decisão (avaliada, 2026-08-09): o no-filter documentado continua
+correto.** Um filtro `paths:` por superfície de gate file teria que
+replicar a superfície derivada (`TARGET_DIRS` + gate files) num segundo
+lugar — um novo ponto de drift (a classe que o SPREAD CONTRACT elimina) —
+e um push tocando só uma árvore que o filtro esqueceu skiparia o net em
+silêncio: o risco de órfão que o workflow existe para fechar. Como o par
+custa 4s de CI, a economia máxima teórica de um filtro é ~4s por push que
+toca a superfície — e o único push skipável sem perda seria um docs-only
+(que a superfície não cobre mesmo). O net incondicional mantém o BASELINE
+estruturalmente garantido de rodar em todo merge.
+
+## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
 Nos dois runs acima (pré-reorder), o job `check` mostrava exatamente o
 problema que motivou a mudança de ordem dos steps:
@@ -254,19 +343,28 @@ padrão do GH Actions). Correção aplicada (ver o job `check` em
 Lint/Type check com `if: always()` — sem mascaramento em nenhuma direção.
 Esta seção serve de registro do porquê da ordem atual.
 
-## 9. Como adicionar uma nova prova
+## 10. Como adicionar uma nova prova
 
 1. Criar branch scratch `ci-proof/<nome>` a partir do HEAD, aplicar a injeção
    (byte, padrão, import) num arquivo de gate.
-2. Disparar o workflow relevante via `workflow_dispatch` (há `workflow_dispatch`
-   no `pr-check.yml`; branch `main` não existe no remoto, então PR real não
-   dispara `pull_request: branches: [main]`).
+2. Disparar o workflow relevante via `workflow_dispatch` — ATENÇÃO: o
+   dispatch via API (`gh workflow run` / API direta) só resolve workflows
+   que JÁ existem no default branch; um workflow novo (ainda não merged)
+   responde HTTP 404 (descoberto na Prova 7). Alternativas quando o
+   workflow não está no default branch: (a) um push temporário a `develop`
+   (escuta `push: [main, develop]` de workflows como o guard-gates.yml e
+   não tem deploy atrelado — deploy.yml só escuta `main`), seguido de
+   `git push origin --delete develop` após a prova. NOTA: o mesmo push
+   também dispara o `ci.yml` completo (lint/typecheck/test/build/budget —
+   runner minutes, normal, o CI precisa ver o push). Ou (b) esperar o
+   arquivo entrar no default branch. Branch `main` não existe no remoto, então PR real não
+   dispara `pull_request: branches: [main]`.
 3. Capturar o log do step que falhou (citar as linhas exatas aqui).
 4. Reverter a injeção, deletar o branch scratch e o branch remoto, confirmar
    `git status` limpo no worktree principal.
 5. Registrar na tabela da seção 1 com o run number.
 
-## 10. Referências
+## 11. Referências
 
 - Investigação da falha contínua do `security-headers`: `docs/security-headers-gate-2026-08.md`
   (DNS aponta para WordPress na Hostinger, não para o VPS — não é regressão do app).

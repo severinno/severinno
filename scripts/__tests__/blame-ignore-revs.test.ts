@@ -120,7 +120,7 @@ describe(".git-blame-ignore-revs", () => {
     for (const h of list) {
       expect(commitExists(h)).toBe(true)
     }
-  })
+  }, 60000)
 
   it("no listed hash is the current HEAD (a self-referencing entry would silently disable the guard)", () => {
     const list = entries()
@@ -128,12 +128,12 @@ describe(".git-blame-ignore-revs", () => {
       expect(isSelfReferencing(h)).toBe(false)
       expect(h).not.toBe(HEAD)
     }
-  })
+  }, 60000)
 
   it("MUTATION: a fabricated hash is rejected by the existence check", () => {
     const fake = "0000000000000000000000000000000000000000"
     expect(commitExists(fake)).toBe(false)
-  })
+  }, 60000)
 
   it("MUTATION: appending HEAD to the file is caught by the self-reference check", () => {
     // HEAD passes the existence check, so only the self-reference check can
@@ -144,5 +144,5 @@ describe(".git-blame-ignore-revs", () => {
     // Injecting HEAD into the entry list must fire the check (a mutation that
     // would silently disable the guard for every line HEAD introduces).
     expect([...entries(), HEAD].some(isSelfReferencing)).toBe(true)
-  })
+  }, 60000)
 })

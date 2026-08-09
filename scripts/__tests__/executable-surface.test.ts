@@ -130,7 +130,7 @@ describe("executable surface (2026-08 audit: no tracked executable in NO surface
     const rootRels = trackedRels().filter((r) => !r.includes("/") && isExecutable(r))
     const unclassified = rootRels.filter((r) => !ROOT_TOOLING.includes(r) && !ROOT_YML_OUT.includes(r))
     expect(unclassified, `root executables missing from ROOT_TOOLING / ROOT_YML_OUT:\n${unclassified.join("\n")}`).toEqual([])
-  })
+  }, 60000)
 
   it("DECISION B (frozen ROOT_YML_OUT): docker-compose / pnpm root YAML is NOT a gate file (declared data, out by design)", () => {
     const gate = gateRels()
@@ -143,7 +143,7 @@ describe("executable surface (2026-08 audit: no tracked executable in NO surface
     for (const f of ROOT_YML_OUT) {
       expect(tracked.has(f), `${f} is frozen on ROOT_YML_OUT but no longer tracked`).toBe(true)
     }
-  })
+  }, 60000)
 
   it("EXCLUDED_TREES executables (config/, examples/, prisma/, ...) never enter gateFiles()", () => {
     const gate = gateRels()
@@ -177,7 +177,7 @@ describe("executable surface (2026-08 audit: no tracked executable in NO surface
       orphans.push(rel)
     }
     expect(orphans, `tracked executable files in NO scan surface:\n${orphans.join("\n")}`).toEqual([])
-  })
+  }, 60000)
 
   it("DOC CONTRACT: docs/scan-surfaces.md documents the root executable tooling decision (Type A)", () => {
     const doc = fs.readFileSync(path.join(ROOT, "docs", "scan-surfaces.md"), "utf8")

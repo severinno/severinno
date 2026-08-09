@@ -154,9 +154,98 @@ Ask which question the list answers, then:
   `REAL_ROUTE_CHECKS` (budget) + `LHC_PATHS`/`LHC_URLS` (LHCI crawl).
 - "When does workflow Y run?" -> its own `paths:` block; there is no
   manifest, and that is by design.
+- "Can workflow Y be manually dispatched?" -> its `workflow_dispatch:`
+  must have a sibling trigger (hermetic) and exist on the default branch
+  (Prova 7 - dispatch 404s off the default branch; Type D, section 5).
+- "Which branch can a proof use without firing a deploy?" -> `ci-proof/*`
+  (Type E, section 6): no workflow's push filter matches it - the template
+  is a CONTRACT, not a convention, so it cannot silently stop being safe.
 
 The encoding-gate side of this matrix is mirrored in
 [`docs/ascii-safe.md`](ascii-safe.md) ("Who protects the docs?" section);
 the route/budget side is pinned by `scripts/__tests__/budget-routes.test.ts`.
 This file exists so the next audit starts from the taxonomy instead of
 re-deriving it from grep output.
+
+## 5. Type D - workflow_dispatch reachability (a workflow contract)
+
+### Type D
+
+Answers: **can a workflow be manually dispatched from the Actions tab?**
+
+Discovered in Prova 7 (2026-08): dispatching a workflow via the API/UI
+returns 404 when the workflow file does not exist on the DEFAULT branch -
+the Actions tab only sees workflows present there. A workflow added in a PR
+is therefore undispatchable until merged (inherent to GitHub, not a bug),
+but a dispatch workflow silently vanishing from the default branch is a
+reachability regression.
+
+Two rules, enforced by `scripts/__tests__/scan-surfaces-contract.test.ts`
+(no js-yaml - a minimal `on:` trigger parser with a whitelist of GitHub
+trigger keys, mirroring `extractPaths`):
+
+1. **HERMETIC (blocking):** `workflow_dispatch:` is never the ONLY trigger
+   of a workflow. A dispatch-only workflow has no automatic trigger, so it
+   is one unmerged push away from being simultaneously unreachable AND
+   undispatchable (not on the default branch yet). This rule needs no git
+   and fails the suite when violated.
+2. **GIT-AWARE (warning):** every workflow with `workflow_dispatch:` should
+   exist on the default branch (`origin/HEAD`). When a dispatch workflow is
+   missing there, the suite emits the Prova 7 warning line instead of
+   failing - a workflow added in the current PR branch is legitimately
+   absent from the default branch until merged, so the check must not block
+   the PR that introduces it. The check skips gracefully when the
+   default-branch ref is unavailable (shallow CI checkout).
+
+Current dispatch set (2026-08 snapshot) - all have a sibling trigger, none
+is dispatch-only:
+
+- `deploy.yml` - `push` + `workflow_dispatch:`
+- `e2e-cache.yml` - `pull_request`, `push`, `workflow_call` + `workflow_dispatch:`
+- `guard-gates.yml` - `push` + `workflow_dispatch:`
+- `lighthouse-ci.yml` - `pull_request`, `push`, `workflow_call` + `workflow_dispatch:`
+- `pr-check.yml` - `pull_request`, `merge_group` + `workflow_dispatch:`
+- `release-deploy.yml` - `push` + `workflow_dispatch:`
+- `ssh-composite-proof.yml` - `pull_request`, `push` + `workflow_dispatch:`
+
+The trigger parser and the `missingOnDefault` diff are pinned by synthetic
+mutation tests, so the warning's behavior is proven without depending on
+the repo's git state.
+
+## 6. ci-proof branch template (prova permanente de sentinela)
+
+### Type E
+
+Answers: **qual branch um proof pode usar sem disparar deploy?**
+
+Discovered in Prova 7 (2026-08): the sentinel proof ran on `develop` because
+pushing to `main` would have fired `deploy.yml` (production deploy). The
+branch/event risk matrix is FROZEN here (2026-08 snapshot) so the next proof
+does not re-derive it - and the `ci-proof/*` namespace is a CONTRACT (Type E
+below) so the template cannot silently stop being safe.
+
+| Ref / event | Workflows fired | Verdict |
+|---|---|---|
+| push to `main` | `deploy.yml` (**DEPLOY**), `ci.yml`, `guard-gates.yml`, `lighthouse-ci.yml`, `utf8-check.yml` + path-limited: `benchmark-auto-baseline`, `e2e-cache`, `ssh-composite-proof` | **DANGER - the deploy branch** |
+| push to `develop` | `ci.yml`, `guard-gates.yml`, `utf8-check.yml` (no deploy) | noisy, no deploy |
+| push tags `v*` | `release-deploy.yml` (**RELEASE + DEPLOY**) | **DANGER - never from a proof** |
+| push to `ci-proof/*` | nothing | **THE proof namespace** |
+| PR to `main` | `pr-check.yml`, `ci.yml` + path-limited: `e2e-cache`, `lighthouse-ci`, `ssh-composite-proof`, `utf8-auto-fix` (`deploy.yml` has NO pull_request trigger - PRs never deploy) | PR-gate proofs |
+| workflow_dispatch | only the dispatched workflow, any ref - but the workflow FILE must exist on the default branch (Prova 7: dispatch 404s off the default branch) | dispatch proofs |
+
+Note: `release/v0.4.0` (the default branch) currently has NO push listener,
+but it is the release line, not a proof namespace - use `ci-proof/*`.
+
+The `ci-proof/*` safety is a CONTRACT (Type E in
+`scripts/__tests__/scan-surfaces-contract.test.ts`): every workflow's `push:`
+and `pull_request:` block must carry a `branches:` (or `tags:`) filter, and NO
+branch pattern may match a `ci-proof/*` branch. A future `branches: ["**"]`
+or a filter-less `push:` block FAILS the suite - the template breaks loudly,
+not silently.
+
+Scope note: the invariant inspects `push:`/`pull_request:` only - the repo
+uses neither `pull_request_target:` nor `pull_request_review:` today; a
+future adoption must extend `triggerFilter` (and this section) before it
+lands, or a PR-gated workflow with a filter-less `pull_request_target:`
+would escape the invariant (it fires on PR events against a branch filter,
+not on branch pushes - a different event class than the push matrix above).

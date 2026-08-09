@@ -21,10 +21,26 @@
 #
 # NO paths filter BY DESIGN (same decision as utf8-check.yml): the guard
 # suites audit gate files (scripts/*, workflows, root *.sh, hooks) + e2e/ +
-# src/ + mini-services/ + .zscripts/. A paths filter limited to e2e/**
-# src/** would silently skip this net on exactly the gate-file changes
-# these suites exist to catch. The pair runs in <15s; filtering saves
-# nothing meaningful.
+# src/ + mini-services/ + .zscripts/ (TARGET_DIRS -- the derived surface).
+# A paths filter would have to replicate that derived surface, creating a
+# new drift point (exactly what the SPREAD CONTRACT eliminates) -- and a
+# push touching only a NEW surface the filter forgot would silently skip
+# this net: the orphan risk this workflow exists to close.
+#
+# COST MEASURED (run 31336318902, Prova 7): the guard pair itself runs in
+# 4s of CI time (step "Run guard vitest suites": 21:15:01 -> 21:15:05).
+# The job total is ~41s (~45s run-level with queue), and it is fixed setup
+# that a filter cannot reduce: checkout 4s + setup-bun 2s + cache restore
+# 11s + install 9s = 26s, plus post-step cache upload 10s. NOTE: the
+# measured run predates this workflow's scan-timeouts step (added later,
+# ~1-2s -- local ground truth 1.6s); the numbers above are the
+# pre-scan-timeouts baseline, and the conclusion is unchanged. A filter
+# only skips the WHOLE job -- it never makes a running job cheaper -- so it
+# would save nothing on gate/src changes and would only skip docs-only
+# pushes, which the scan surface does not cover anyway. Local ground truth
+# (Windows): test:guard 16.7s + scan-timeouts 1.6s + warm bun install
+# 3.4s. Filtering saves nothing meaningful; the unconditional net keeps
+# the BASELINE structurally guaranteed to run.
 # =============================================================================
 
 name: Guard Gates
@@ -69,3 +85,16 @@ jobs:
       # exactly like the pr-check twin.
       - name: Run guard vitest suites (BASELINE + divergence guards)
         run: bun run test:guard
+
+      # scan-timeouts — the versioned explicit-timeout gate (see the
+      # scanner's header): every subprocess-heavy it()/test() must carry an
+      # explicit timeout of its own (the global testTimeout: 30000 safety
+      # net in vitest.config.unit.ts covers only tests the guard does NOT
+      # flag — a subprocess-heavy test's ceiling must not depend on config
+      # defaults). Pure node, no bun deps — runs on the pre-installed runner
+      # node, so it sits here as a STANDALONE CLI step (the vitest twin —
+      # scripts/__tests__/scan-timeouts.test.ts, BASELINE over the whole
+      # surface — runs inside test:unit everywhere). Mirror of the PR side:
+      # pr-check.yml's fragile-guard job runs the SAME command.
+      - name: Scan subprocess-heavy tests for explicit timeouts
+        run: node scripts/scan-timeouts.mjs --ci

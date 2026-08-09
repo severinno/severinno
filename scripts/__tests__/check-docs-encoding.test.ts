@@ -12,6 +12,21 @@
  * Fixtures are written to an isolated temp dir (shared temp-dir registry
  * from golden-copy-utils, cleaned in afterEach) so the suite never touches
  * real repo files.
+ *
+ * SWEEP 2026-08 (GIT_DIR fragility class): the 'no files' test below is
+ * the ONLY suite in scripts/__tests__ that runs git from a tmp-dir CWD
+ * while DEPENDING on repo discovery FAILING. The other git spawns in the
+ * suite tree - blame-ignore-revs.test.ts (git cat-file / rev-parse) and
+ * executable-surface.test.ts (git ls-files) - all pass cwd: ROOT and
+ * INTENTIONALLY target the real repo: inherited GIT_DIR changes nothing
+ * there because discovery must SUCCEED. Scripts with internal git calls
+ * (verify-encoding.sh's YAML gate list, pre-commit-tests.mjs's diff
+ * scope) are invoked from the repo root by their tests, so real-repo
+ * resolution is the intended behavior there too. The hermetic GIT_DIR
+ * override below is required ONLY when a test runs git from a tmp dir
+ * and depends on git failing to find a repo. Proven by simulation:
+ * GIT_DIR=$PWD/.git vitest run (check-docs-encoding + blame-ignore-revs +
+ * executable-surface + verify-encoding + pre-commit-tests) -> 51/51 green.
  */
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"

@@ -124,36 +124,36 @@ describe("release-deploy.yml Camada A assert (awk Rotas block)", () => {
 
   it("passes (exit 0) when the tag's own Rotas block contains a /busca row", () => {
     expect(runAssert("v0.4.3", reportWithBlock("v0.4.3", ["/busca", "/dashboard"]))).toBe(0)
-  })
+  }, 60000)
 
   it("fails (exit 1) when the tag block has routes but NO /busca row", () => {
     expect(runAssert("v0.4.3", reportWithBlock("v0.4.3", ["/dashboard"]))).toBe(1)
-  })
+  }, 60000)
 
   it("fails (exit 1) when the tag's block is missing entirely (only an older release's block)", () => {
     expect(runAssert("v0.4.3", reportWithBlock("v0.4.2", ["/busca"]))).toBe(1)
-  })
+  }, 60000)
 
   it("fails (exit 1) when the report has NO ## Rotas section at all", () => {
     const md = "# Bundle Report — Severinno\n\n## Histórico\n\n| Versão | Gate |\n|---|---|\n| v0.4.3 | ✅ |\n"
     expect(runAssert("v0.4.3", md)).toBe(1)
-  })
+  }, 60000)
 
   it("fails (exit 1) on version-prefix collision: tag v0.4.3 must NOT match a v0.4.30 block", () => {
     expect(runAssert("v0.4.3", reportWithBlock("v0.4.30", ["/busca"]))).toBe(1)
-  })
+  }, 60000)
 
   it("passes (exit 0) with the real em-dash block header (`### v0.4.3 — <date>`)", () => {
     expect(runAssert("v0.4.3", reportWithBlock("v0.4.3", ["/busca"]))).toBe(0)
-  })
+  }, 60000)
 
   it("passes (exit 0) with CRLF line endings (Windows checkout via * text=auto)", () => {
     expect(runAssert("v0.4.3", reportWithBlock("v0.4.3", ["/busca"]), "\r\n")).toBe(0)
-  })
+  }, 60000)
 
   it("passes (exit 0) when /busca is not the first route row (block row order is irrelevant)", () => {
     expect(runAssert("v0.4.3", reportWithBlock("v0.4.3", ["/dashboard", "/u/[slug]", "/busca"]))).toBe(0)
-  })
+  }, 60000)
 
   it("fails (exit 1) on combined scoping: tag block has /dashboard AND an older release's block has /busca (the /busca must NOT satisfy the assert)", () => {
     // The awk scopes to the tag's own block (in_block) — a /busca row inside
@@ -162,7 +162,7 @@ describe("release-deploy.yml Camada A assert (awk Rotas block)", () => {
     // section, multiple `### version` blocks joined by blank lines.
     const md = reportWithBlocks([block("v0.4.3", ["/dashboard"]), block("v0.4.2", ["/busca"])])
     expect(runAssert("v0.4.3", md)).toBe(1)
-  })
+  }, 60000)
 
   it("DIVERGENCE GUARD: the workflow's awk program and the versioned golden copy (fixtures/route-gate-assert.awk) never diverge", () => {
     // Editing the awk inside release-deploy.yml's YAML literal block is easy

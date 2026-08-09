@@ -320,3 +320,14 @@ jobs:
 
       - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)
         run: bun run test:guard
+
+      # scan-timeouts — the versioned explicit-timeout gate, MIRROR of the
+      # push-net step in guard-gates.yml (same command, single source of
+      # truth): every subprocess-heavy it()/test() must carry an explicit
+      # timeout of its own (the global testTimeout: 30000 safety net in
+      # vitest.config.unit.ts covers only tests the guard does NOT flag).
+      # Pure node, no bun deps. The vitest twin
+      # (scripts/__tests__/scan-timeouts.test.ts) also runs inside test:unit
+      # in the check job.
+      - name: Scan subprocess-heavy tests for explicit timeouts
+        run: node scripts/scan-timeouts.mjs --ci

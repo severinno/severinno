@@ -467,25 +467,25 @@ describe("health-check.sh — single versioned health check (consolidation of th
       expect(r.status).toBe(0)
       // Empty docker log = the step body physically never ran (runner gate).
       expect(r.dockerLog).toBe("")
-    })
+    }, 60000)
 
     it("success=false (health check failed): the Housekeeping step is SKIPPED even when the caller opted in", () => {
       const r = runHousekeepingStep({ success: false, dockerPrune: true })
       expect(r.status).toBe(0)
       expect(r.dockerLog).toBe("")
-    })
+    }, 60000)
 
     it("docker-prune=true + success: the prune executes against DEPLOY_PATH", () => {
       const r = runHousekeepingStep({ success: true, dockerPrune: true })
       expect(r.status).toBe(0)
       expect(r.dockerLog).toContain("image prune -f")
-    })
+    }, 60000)
 
     it("docker-prune=true + success + prune FAILS: non-fatal — exit 0 with the ASCII warning", () => {
       const r = runHousekeepingStep({ success: true, dockerPrune: true, dockerFail: true })
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("WARNING: docker image prune -f failed (non-fatal - deploy stays green)")
-    })
+    }, 60000)
   })
 
   it("script is syntactically valid bash (bash -n)", () => {
