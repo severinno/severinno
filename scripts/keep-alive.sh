@@ -1,5 +1,5 @@
 #!/bin/bash
-# keep-alive.sh — Ensures the Next.js standalone server is running
+# keep-alive.sh - Ensures the Next.js standalone server is running
 # Usage: Run via cron every 2 minutes
 #   */2 * * * * /home/z/my-project/scripts/keep-alive.sh
 
@@ -15,7 +15,7 @@ if [ "$HTTP_CODE" = "200" ]; then
   exit 0
 fi
 
-# Server not responding — kill any remaining processes and restart
+# Server not responding - kill any remaining processes and restart
 pkill -9 -f "server.js" 2>/dev/null
 sleep 1
 

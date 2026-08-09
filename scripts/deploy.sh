@@ -1,44 +1,44 @@
 #!/usr/bin/env bash
-# ═══════════════════════════════════════════════════════════════════════════
-# deploy.sh — Severinno Marketplace Deploy Automático (One-Shot)
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+# deploy.sh - Severinno Marketplace Deploy Automatico (One-Shot)
+# ===========================================================================
 # Executa o deploy completo no VPS:
 #   1. Git pull + checkout do release branch/tag
 #   2. Docker compose pull/build
 #   3. Database migrations (Prisma)
-#   4. Docker compose up -d (todos os serviços)
-#   5. Healthcheck com retry (até 2 min)
-#   6. Rollback automático em caso de falha
+#   4. Docker compose up -d (todos os servicos)
+#   5. Healthcheck com retry (ate 2 min)
+#   6. Rollback automatico em caso de falha
 #   7. Cleanup de imagens antigas
 #
 # Uso:
 #   sudo bash scripts/deploy.sh                              # Deploy completo
-#   sudo bash scripts/deploy.sh --tag v0.4.0                 # Deploy de tag específica
+#   sudo bash scripts/deploy.sh --tag v0.4.0                 # Deploy de tag especifica
 #   sudo bash scripts/deploy.sh --branch release/v0.4.0      # Deploy de branch
 #   sudo bash scripts/deploy.sh --skip-build                 # Pular build (pull only)
 #   sudo bash scripts/deploy.sh --skip-migrate               # Pular migrations
-#   sudo bash scripts/deploy.sh --dry-run                    # Simular (sem alterações)
+#   sudo bash scripts/deploy.sh --dry-run                    # Simular (sem alteracoes)
 #   sudo bash scripts/deploy.sh --rollback                   # Reverter ao deploy anterior
 #   sudo bash scripts/deploy.sh --rollback=2                 # Reverter 2 deploys
 #   sudo bash scripts/deploy.sh --help                       # Esta ajuda
 #
 # Config:
 #   COMPOSE_FILE         Path do compose (default: docker-compose.prod.yml)
-#   DEPLOY_TIMEOUT       Tempo máximo do healthcheck (default: 120s)
-#   DEPLOY_DIR           Diretório do projeto (default: /opt/severinno)
-#   KEEP_RELEASES        Número de releases para manter (default: 5)
-#   SLACK_WEBHOOK        Webhook Slack opcional para notificações
+#   DEPLOY_TIMEOUT       Tempo maximo do healthcheck (default: 120s)
+#   DEPLOY_DIR           Diretorio do projeto (default: /opt/severinno)
+#   KEEP_RELEASES        Numero de releases para manter (default: 5)
+#   SLACK_WEBHOOK        Webhook Slack opcional para notificacoes
 #
 # Exit codes:
-#   0  → Deploy concluído com sucesso
-#   1  → Erro de pré-requisito
-#   2  → Falha no deploy (rollback ativado)
-#   3  → Falha no rollback
-# ═══════════════════════════════════════════════════════════════════════════
+#   0  -> Deploy concluido com sucesso
+#   1  -> Erro de pre-requisito
+#   2  -> Falha no deploy (rollback ativado)
+#   3  -> Falha no rollback
+# ===========================================================================
 
 set -euo pipefail
 
-# ── Config ────────────────────────────────────────────────────────────────
+# -- Config ----------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -58,7 +58,7 @@ DRY_RUN=false
 ROLLBACK=false
 ROLLBACK_STEPS=1
 
-# ── Cores ─────────────────────────────────────────────────────────────────
+# -- Cores -----------------------------------------------------------------
 
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
     RED=$(tput setaf 1); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3)
@@ -67,45 +67,45 @@ else
     RED=""; GREEN=""; YELLOW=""; CYAN=""; BLUE=""; BOLD=""; RESET=""
 fi
 
-info()  { echo -e "  ${CYAN}ℹ${RESET} $1"; }
-ok()    { echo -e "  ${GREEN}✔${RESET} $1"; }
-warn()  { echo -e "  ${YELLOW}⚠${RESET} $1"; }
-err()   { echo -e "  ${RED}✘${RESET} $1"; }
-step()  { echo ""; echo -e "${BLUE}${BOLD}◆ $1${RESET}"; echo "  ${BLUE}──────────────────────────────────────────────${RESET}"; }
+info()  { echo -e "  ${CYAN}[i]${RESET} $1"; }
+ok()    { echo -e "  ${GREEN}[OK]${RESET} $1"; }
+warn()  { echo -e "  ${YELLOW}[!]${RESET} $1"; }
+err()   { echo -e "  ${RED}[X]${RESET} $1"; }
+step()  { echo ""; echo -e "${BLUE}${BOLD}<> $1${RESET}"; echo "  ${BLUE}----------------------------------------------${RESET}"; }
 dry()   { echo -e "  ${YELLOW}[DRY-RUN]${RESET} $1"; }
 
-# ── Help ──────────────────────────────────────────────────────────────────
+# -- Help ------------------------------------------------------------------
 
 show_help() {
     cat <<'HELP'
 
-  ╔══════════════════════════════════════════════════════════╗
-  ║   Severinno Deploy Automático v1.0                       ║
-  ╚══════════════════════════════════════════════════════════╝
+  +==========================================================+
+  |   Severinno Deploy Automatico v1.0                       |
+  +==========================================================+
 
-  Uso: sudo bash scripts/deploy.sh [opções]
+  Uso: sudo bash scripts/deploy.sh [opcoes]
 
-  Opções:
-    --tag <tag>           Deploy de tag específica (ex: v0.4.0)
+  Opcoes:
+    --tag <tag>           Deploy de tag especifica (ex: v0.4.0)
     --branch <branch>     Deploy de branch (default: release/v0.4.0)
-    --skip-build          Pular build Docker (só pull)
+    --skip-build          Pular build Docker (so pull)
     --skip-migrate        Pular migrations do banco
     --dry-run             Simular (mostra comandos sem executar)
     --rollback[=N]        Reverter N deploys (default: 1)
     --help                Esta ajuda
 
-  Variáveis de ambiente:
+  Variaveis de ambiente:
     COMPOSE_FILE          Path do compose (default: docker-compose.prod.yml)
     DEPLOY_TIMEOUT        Timeout do healthcheck (default: 120s)
-    DEPLOY_DIR            Diretório do projeto (default: /opt/severinno)
+    DEPLOY_DIR            Diretorio do projeto (default: /opt/severinno)
     KEEP_RELEASES         Releases mantidos (default: 5)
-    SLACK_WEBHOOK         Webhook Slack para notificações
+    SLACK_WEBHOOK         Webhook Slack para notificacoes
 
   Exemplos:
     # Deploy completo
     sudo bash scripts/deploy.sh
 
-    # Deploy de tag específica
+    # Deploy de tag especifica
     sudo bash scripts/deploy.sh --tag v0.4.0
 
     # Apenas pull + restart (sem build, sem migrate)
@@ -118,7 +118,7 @@ HELP
     exit 0
 }
 
-# ── Argument parsing ──────────────────────────────────────────────────────
+# -- Argument parsing ------------------------------------------------------
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -136,11 +136,11 @@ while [[ $# -gt 0 ]]; do
                         shift ;;
         --rollback=*)   ROLLBACK=true; ROLLBACK_STEPS="${1#*=}"; shift ;;
         --help|-h)      show_help ;;
-        *)              echo "Opção desconhecida: $1"; show_help ;;
+        *)              echo "Opcao desconhecida: $1"; show_help ;;
     esac
 done
 
-# ── Helper functions ──────────────────────────────────────────────────────
+# -- Helper functions ------------------------------------------------------
 
 run() {
     if [ "$DRY_RUN" = true ]; then
@@ -151,7 +151,7 @@ run() {
     fi
 }
 
-# Notificação Slack (opcional)
+# Notificacao Slack (opcional)
 notify_slack() {
     local status="$1" message="$2"
     if [ -z "${SLACK_WEBHOOK:-}" ]; then
@@ -168,10 +168,10 @@ notify_slack() {
         "$SLACK_WEBHOOK" 2>/dev/null || true
 }
 
-# ── Prerequisites ─────────────────────────────────────────────────────────
+# -- Prerequisites ---------------------------------------------------------
 
 check_prerequisites() {
-    step "1/7 — Verificando pré-requisitos"
+    step "1/7 - Verificando pre-requisitos"
 
     # Root check (Docker commands need it in production)
     if [ "$(id -u)" -ne 0 ]; then
@@ -180,45 +180,45 @@ check_prerequisites() {
 
     # Docker
     if ! command -v docker &>/dev/null; then
-        err "Docker não encontrado! Instale: curl -fsSL https://get.docker.com | sh"
+        err "Docker nao encontrado! Instale: curl -fsSL https://get.docker.com | sh"
         exit 1
     fi
     ok "Docker: $(docker --version 2>/dev/null)"
 
     # Docker Compose
     if ! docker compose version &>/dev/null; then
-        err "Docker Compose não encontrado!"
+        err "Docker Compose nao encontrado!"
         exit 1
     fi
     ok "Docker Compose: $(docker compose version 2>/dev/null)"
 
     # docker compose file
     if [ ! -f "$COMPOSE_FILE" ]; then
-        err "Arquivo docker-compose não encontrado: $COMPOSE_FILE"
+        err "Arquivo docker-compose nao encontrado: $COMPOSE_FILE"
         exit 1
     fi
     ok "Compose file: $COMPOSE_FILE"
 
     # .env file
     if [ ! -f ".env.production.local" ] && [ ! -f ".env" ]; then
-        err "Arquivo .env não encontrado! Crie .env.production.local baseado no .env.production"
+        err "Arquivo .env nao encontrado! Crie .env.production.local baseado no .env.production"
         exit 1
     fi
     ok "Arquivo .env: $(ls -1 .env.production.local .env 2>/dev/null | head -1)"
 
     # curl (for healthcheck)
     if ! command -v curl &>/dev/null; then
-        err "curl não encontrado! Instale: apt install curl"
+        err "curl nao encontrado! Instale: apt install curl"
         exit 1
     fi
-    ok "curl disponível"
+    ok "curl disponivel"
 
     # git
     if ! command -v git &>/dev/null; then
-        err "git não encontrado!"
+        err "git nao encontrado!"
         exit 1
     fi
-    ok "git disponível"
+    ok "git disponivel"
 
     # Secrets directory
     if [ -d "secrets" ]; then
@@ -226,14 +226,14 @@ check_prerequisites() {
         secrets_count=$(find secrets/ -name '*.secret' -type f 2>/dev/null | wc -l)
         ok "Secrets: $secrets_count arquivos encontrados"
     else
-        warn "Diretório secrets/ não encontrado"
+        warn "Diretorio secrets/ nao encontrado"
     fi
 }
 
-# ── Git Operations ────────────────────────────────────────────────────────
+# -- Git Operations --------------------------------------------------------
 
 git_operations() {
-    step "2/7 — Sincronizando repositório Git"
+    step "2/7 - Sincronizando repositorio Git"
 
     # Salva o commit atual para rollback
     local current_commit
@@ -246,7 +246,7 @@ git_operations() {
     fi
 
     # Fetch
-    info "Buscando alterações do remote..."
+    info "Buscando alteracoes do remote..."
     run git fetch --tags --force
 
     # Checkout
@@ -265,15 +265,15 @@ git_operations() {
     ok "Commit atual: $new_commit"
 }
 
-# ── Docker Build/Pull ────────────────────────────────────────────────────
+# -- Docker Build/Pull ----------------------------------------------------
 
 docker_build() {
-    step "3/7 — Preparando imagens Docker"
+    step "3/7 - Preparando imagens Docker"
 
     # Validar compose file
     info "Validando sintaxe do docker-compose..."
     run docker compose -f "$COMPOSE_FILE" config -q
-    ok "Sintaxe válida"
+    ok "Sintaxe valida"
 
     if [ "$SKIP_BUILD" = true ]; then
         info "Pull das imagens (build ignorado)..."
@@ -287,24 +287,24 @@ docker_build() {
     fi
 }
 
-# ── Database Migrations ─────────────────────────────────────────────────
+# -- Database Migrations -------------------------------------------------
 
 run_migrations() {
-    step "4/7 — Executando migrations do banco"
+    step "4/7 - Executando migrations do banco"
 
     if [ "$SKIP_MIGRATE" = true ]; then
         warn "Migrations puladas (--skip-migrate)"
         return 0
     fi
 
-    # Verificar se o banco está acessível
-    info "Verificando conexão com banco..."
+    # Verificar se o banco esta acessivel
+    info "Verificando conexao com banco..."
 
     # Tenta via container app com bunx prisma
     if docker compose -f "$COMPOSE_FILE" ps --status running postgres 2>/dev/null | grep -q "Up"; then
-        ok "PostgreSQL está rodando"
+        ok "PostgreSQL esta rodando"
     else
-        warn "PostgreSQL não está rodando ainda — tentando iniciar..."
+        warn "PostgreSQL nao esta rodando ainda - tentando iniciar..."
         run docker compose -f "$COMPOSE_FILE" up -d postgres
         sleep 5
     fi
@@ -321,7 +321,7 @@ run_migrations() {
         ok "Migrations executadas com sucesso!"
     else
         # Fallback: db push
-        warn "Prisma Migrate falhou — tentando db push..."
+        warn "Prisma Migrate falhou - tentando db push..."
         local push_output push_exit
         push_output=$(run docker compose -f "$COMPOSE_FILE" run --rm --no-deps app \
             bunx prisma db push --accept-data-loss 2>&1) || true
@@ -329,7 +329,7 @@ run_migrations() {
         echo "$push_output" | tail -5
 
         if [ "$push_exit" -eq 0 ] || echo "$push_output" | grep -qi "success\|already\|applied"; then
-            warn "db push usado como fallback — schema atualizado"
+            warn "db push usado como fallback - schema atualizado"
         else
             err "Falha nas migrations do banco!"
             return 1
@@ -342,13 +342,13 @@ run_migrations() {
         bunx prisma generate
 }
 
-# ── Docker Up ────────────────────────────────────────────────────────────
+# -- Docker Up ------------------------------------------------------------
 
 docker_up() {
-    step "5/7 — Subindo serviços"
+    step "5/7 - Subindo servicos"
 
     # Core services (precisa subir primeiro)
-    info "Subindo serviços core (postgres, redis, minio, rabbitmq)..."
+    info "Subindo servicos core (postgres, redis, minio, rabbitmq)..."
     run docker compose -f "$COMPOSE_FILE" up -d postgres redis rabbitmq minio || return 1
 
     # PgBouncer (depende do postgres)
@@ -368,18 +368,18 @@ docker_up() {
     run docker compose -f "$COMPOSE_FILE" up -d --no-deps \
         email-worker notification-worker search-index-worker || return 1
 
-    # GlitchTip (profile separado — apenas se configurado)
+    # GlitchTip (profile separado - apenas se configurado)
     if [ -f ".env.glitchtip" ]; then
         info "Subindo GlitchTip..."
         run docker compose -f "$COMPOSE_FILE" --profile glitchtip \
-            --env-file .env.glitchtip up -d || warn "GlitchTip não subiu (verifique .env.glitchtip)"
+            --env-file .env.glitchtip up -d || warn "GlitchTip nao subiu (verifique .env.glitchtip)"
     fi
 }
 
-# ── Healthcheck ──────────────────────────────────────────────────────────
+# -- Healthcheck ----------------------------------------------------------
 
 healthcheck() {
-    step "6/7 — Aguardando healthcheck"
+    step "6/7 - Aguardando healthcheck"
 
     local max_attempts=$((DEPLOY_TIMEOUT / 5))
     local attempt=0
@@ -407,16 +407,16 @@ healthcheck() {
 
         if [ "$http_code" = "200" ] && [ "$unhealthy_count" -eq 0 ]; then
             echo ""
-            ok "Healthcheck passou! HTTP $http_code, todos os containers saudáveis"
+            ok "Healthcheck passou! HTTP $http_code, todos os containers saudaveis"
 
             # Mostrar status resumido
             echo ""
-            echo "  ${GREEN}Serviços ativos:${RESET}"
+            echo "  ${GREEN}Servicos ativos:${RESET}"
             echo "$status" | while IFS='||' read -r name st; do
                 if echo "$st" | grep -qi "up\|healthy"; then
-                    echo "    ${GREEN}✔${RESET} $name"
+                    echo "    ${GREEN}[OK]${RESET} $name"
                 else
-                    echo "    ${RED}✘${RESET} $name ($st)"
+                    echo "    ${RED}[X]${RESET} $name ($st)"
                 fi
             done
             echo ""
@@ -425,23 +425,23 @@ healthcheck() {
 
         # Progresso
         if [ $((attempt % 2)) -eq 0 ]; then
-            echo -ne "  Tentativa $attempt/$max_attempts — HTTP $http_code, unhealthy: $unhealthy_count, exited: $exited_count\\r"
+            echo -ne "  Tentativa $attempt/$max_attempts - HTTP $http_code, unhealthy: $unhealthy_count, exited: $exited_count\\r"
         fi
 
         sleep 5
     done
 
     echo ""
-    err "Healthcheck falhou após $max_attempts tentativas"
+    err "Healthcheck falhou apos $max_attempts tentativas"
 
-    # Diagnóstico
+    # Diagnostico
     warn "Status final dos containers:"
     docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | head -20 | while IFS= read -r line; do
         echo "  $line"
     done
 
-    # Últimos logs do app
-    warn "Últimos logs do app:"
+    # Ultimos logs do app
+    warn "Ultimos logs do app:"
     docker compose -f "$COMPOSE_FILE" logs --tail=10 app 2>/dev/null | while IFS= read -r line; do
         echo "  $line"
     done
@@ -449,14 +449,14 @@ healthcheck() {
     return 1
 }
 
-# ── Rollback ─────────────────────────────────────────────────────────────
+# -- Rollback -------------------------------------------------------------
 
 do_rollback() {
-    step "⏮ ROLLBACK — Revertendo deploy anterior"
+    step " ROLLBACK - Revertendo deploy anterior"
 
     local steps="${1:-1}"
 
-    # Se não tem releases anteriores, tenta via git
+    # Se nao tem releases anteriores, tenta via git
     if [ -d "$RELEASES_DIR" ]; then
         info "Procurando releases anteriores em $RELEASES_DIR..."
         local releases
@@ -471,11 +471,11 @@ do_rollback() {
         local target_release
         target_release=$(echo "$releases" | sed -n "${steps}p" 2>/dev/null || true)
         if [ -z "$target_release" ]; then
-            err "Release #${steps} não encontrado (só temos $(echo "$releases" | wc -l) releases)"
+            err "Release #${steps} nao encontrado (so temos $(echo "$releases" | wc -l) releases)"
             return 1
         fi
 
-        info "Releases disponíveis: $(echo "$releases" | tr '\n' ' ')"
+        info "Releases disponiveis: $(echo "$releases" | tr '\n' ' ')"
         info "Revertendo para: $target_release"
 
         # Swap o symlink ou restore o release
@@ -485,20 +485,20 @@ do_rollback() {
             run cp -a "$RELEASES_DIR/$target_release/"* "$DEPLOY_DIR/"
         fi
 
-        # Re-subir com a versão anterior
+        # Re-subir com a versao anterior
         run docker compose -f "$COMPOSE_FILE" up -d --force-recreate app
-        ok "Rollback concluído! App reiniciado com release $target_release"
+        ok "Rollback concluido! App reiniciado com release $target_release"
     else
         git_rollback
     fi
 }
 
 git_rollback() {
-    # Rollback via git — volta ao commit anterior
+    # Rollback via git - volta ao commit anterior
     local previous_file="/tmp/severinno_deploy_previous"
 
     if [ ! -f "$previous_file" ]; then
-        info "Sem arquivo de commit anterior — voltando HEAD^ (1 commit)"
+        info "Sem arquivo de commit anterior - voltando HEAD^ (1 commit)"
         run git checkout HEAD^ --force
     else
         local previous_commit
@@ -507,53 +507,53 @@ git_rollback() {
             info "Revertendo para commit: $previous_commit"
             run git checkout "$previous_commit" --force
         else
-            warn "Commit anterior ($previous_commit) inválido — voltando HEAD^"
+            warn "Commit anterior ($previous_commit) invalido - voltando HEAD^"
             run git checkout HEAD^ --force
         fi
     fi
 
     # Re-build e up
     if [ "$SKIP_BUILD" = false ]; then
-        info "Rebuildando versão anterior..."
+        info "Rebuildando versao anterior..."
         run docker compose -f "$COMPOSE_FILE" build app
     fi
     run docker compose -f "$COMPOSE_FILE" up -d --force-recreate app
 
-    ok "Rollback via git concluído!"
+    ok "Rollback via git concluido!"
     return 0
 }
 
-# ── Cleanup ──────────────────────────────────────────────────────────────
+# -- Cleanup --------------------------------------------------------------
 
 cleanup() {
-    step "7/7 — Limpeza"
+    step "7/7 - Limpeza"
 
-    # Remove imagens não utilizadas
-    info "Removendo imagens não utilizadas..."
+    # Remove imagens nao utilizadas
+    info "Removendo imagens nao utilizadas..."
     run docker image prune -f
 
-    # Remove volumes órfãos (apenas se explicitamente com --prune-volumes)
-    # docker volume prune -f é agressivo demais para rodar automaticamente.
-    # Use docker volume prune manualmente quando necessário.
+    # Remove volumes orfaos (apenas se explicitamente com --prune-volumes)
+    # docker volume prune -f e agressivo demais para rodar automaticamente.
+    # Use docker volume prune manualmente quando necessario.
 
     # Remove containers parados
     info "Removendo containers parados..."
     run docker container prune -f
 
-    ok "Limpeza concluída!"
+    ok "Limpeza concluida!"
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────
+# -- Main ------------------------------------------------------------------
 
 main() {
     echo ""
-    echo "  ╔══════════════════════════════════════════════════════════════╗"
-    echo "  ║   🚀 Severinno Deploy Automático v1.0                        ║"
-    echo "  ╚══════════════════════════════════════════════════════════════╝"
+    echo "  +==============================================================+"
+    echo "  |    Severinno Deploy Automatico v1.0                        |"
+    echo "  +==============================================================+"
     echo ""
 
     if [ "$DRY_RUN" = true ]; then
-        warn "Modo DRY-RUN — nenhuma alteração será feita!"
+        warn "Modo DRY-RUN - nenhuma alteracao sera feita!"
         echo ""
     fi
 
@@ -562,11 +562,11 @@ main() {
     local deploy_status="success"
     local deploy_error=""
 
-    # ── Rollback mode ───────────────────────────────────────────────────
+    # -- Rollback mode ---------------------------------------------------
     if [ "$ROLLBACK" = true ]; then
         if do_rollback "$ROLLBACK_STEPS"; then
             notify_slack "warning" "Rollback executado: ${ROLLBACK_STEPS} passo(s) no ${HOSTNAME}"
-            ok "Rollback concluído!"
+            ok "Rollback concluido!"
             return 0
         else
             notify_slack "failure" "Rollback FALHOU: ${ROLLBACK_STEPS} passo(s) no ${HOSTNAME}"
@@ -575,17 +575,17 @@ main() {
         fi
     fi
 
-    # ── Deploy normal ──────────────────────────────────────────────────
+    # -- Deploy normal --------------------------------------------------
 
-    # 1. Pré-requisitos
+    # 1. Pre-requisitos
     if ! check_prerequisites; then
-        err "Pré-requisitos não atendidos. Abortando."
+        err "Pre-requisitos nao atendidos. Abortando."
         exit 1
     fi
 
     # 2. Git
     if ! git_operations; then
-        err "Falha na sincronização Git. Abortando."
+        err "Falha na sincronizacao Git. Abortando."
         notify_slack "failure" "Deploy falhou (Git): ${HOSTNAME}"
         exit 1
     fi
@@ -608,7 +608,7 @@ main() {
 
     # 5. Docker up
     if ! docker_up; then
-        err "Falha ao subir serviços. Iniciando rollback..."
+        err "Falha ao subir servicos. Iniciando rollback..."
         notify_slack "failure" "Deploy falhou (docker up): ${HOSTNAME}"
         do_rollback 1
         exit 2
@@ -625,7 +625,7 @@ main() {
     # 7. Cleanup
     cleanup
 
-    # ── Resultado ──────────────────────────────────────────────────────
+    # -- Resultado ------------------------------------------------------
     local total_end
     total_end=$(date +%s)
     local total_elapsed=$((total_end - total_start))
@@ -633,32 +633,32 @@ main() {
     local seconds=$((total_elapsed % 60))
 
     echo ""
-    echo "  ╔══════════════════════════════════════════════════════════════╗"
-    echo "  ║   ${GREEN}✅ DEPLOY CONCLUÍDO COM SUCESSO!${RESET}                        ║"
-    echo "  ╚══════════════════════════════════════════════════════════════╝"
+    echo "  +==============================================================+"
+    echo "  |   ${GREEN}[OK] DEPLOY CONCLUIDO COM SUCESSO!${RESET}                        |"
+    echo "  +==============================================================+"
     echo ""
-    info "Duração: ${minutes}m ${seconds}s"
+    info "Duracao: ${minutes}m ${seconds}s"
     info "Branch:  $BRANCH"
     [ -n "$TAG" ] && info "Tag:     $TAG"
     info "Commit:  $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
     info "Data:    $(date '+%Y-%m-%d %H:%M:%S')"
     echo ""
 
-    notify_slack "success" "Deploy v${TAG#v} concluído em ${minutes}m${seconds}s: ${HOSTNAME}"
+    notify_slack "success" "Deploy v${TAG#v} concluido em ${minutes}m${seconds}s: ${HOSTNAME}"
 }
 
-# ── Trap para rollback automático em caso de erro não tratado ────────────
+# -- Trap para rollback automatico em caso de erro nao tratado ------------
 cleanup_on_error() {
     local exit_code=$?
     if [ $exit_code -ne 0 ] && [ "$DRY_RUN" = false ] && [ "$ROLLBACK" = false ]; then
         echo ""
-        err "Erro não tratado (exit code: $exit_code). Iniciando rollback..."
-        notify_slack "failure" "Deploy falhou com erro não tratado (${exit_code}): ${HOSTNAME}"
+        err "Erro nao tratado (exit code: $exit_code). Iniciando rollback..."
+        notify_slack "failure" "Deploy falhou com erro nao tratado (${exit_code}): ${HOSTNAME}"
         do_rollback 1 || true
     fi
     exit $exit_code
 }
 trap cleanup_on_error EXIT
 
-# ── Execute ──────────────────────────────────────────────────────────────
+# -- Execute --------------------------------------------------------------
 main "$@"

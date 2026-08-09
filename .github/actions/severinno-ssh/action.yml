@@ -1,0 +1,75 @@
+# =============================================================================
+# Severinno SSH — local composite action
+#
+# Single source of truth for VPS SSH access. Every deploy-related ssh call in
+# this repo (health check, housekeeping, DB migrations) used to repeat the
+# same appleboy/ssh-action@v1 block inline — the host/username/key trio was
+# copy-pasted across 4 steps in 3 workflows. This action pins the ssh action
+# version ONCE and centralizes the transport contract (port/timeout defaults),
+# so future ssh steps only pass `script`.
+#
+# NOTE on secrets: composite actions do NOT have access to the `secrets`
+# context (documented GitHub limitation) — the caller MUST pass the DEPLOY_*
+# values via `with:`. The DRY win is the pin + contract (one place to bump
+# appleboy/ssh-action), not hiding the secret references.
+#
+# DEPLOY_PATH is deliberately NOT an input: it is used inline inside each
+# caller's `script` (cd ${{ secrets.DEPLOY_PATH }}) because it varies per
+# call site and is script content, not transport config. Only the 3
+# connection secrets (host/username/key) are transport — they are inputs.
+#
+# Usage:
+#   - name: Run something on the VPS
+#     uses: ./.github/actions/severinno-ssh
+#     with:
+#       host: ${{ secrets.DEPLOY_HOST }}
+#       username: ${{ secrets.DEPLOY_USER }}
+#       key: ${{ secrets.DEPLOY_KEY }}
+#       script: |
+#         set -e
+#         cd ${{ secrets.DEPLOY_PATH }}
+#         <commands>
+#
+# VERSION BUMP POLICY: Renovate (renovate.json) manages this pin with
+# pinVersions:true — it converts the floating major tag (@v1) into a full
+# release pin (@v1.x.y) and opens a REVIEWABLE PR per bump, so the pin can
+# never silently drift. Do NOT edit the @v1 tag manually; let the Renovate
+# PR (group "appleboy vps actions") land, then re-run the guard suite.
+# =============================================================================
+name: Severinno SSH
+description: Run a script over SSH on the VPS (single pin of the ssh action + transport defaults).
+
+inputs:
+  host:
+    description: VPS host (pass secrets.DEPLOY_HOST).
+    required: true
+  username:
+    description: SSH user (pass secrets.DEPLOY_USER).
+    required: true
+  key:
+    description: SSH private key (pass secrets.DEPLOY_KEY).
+    required: true
+  script:
+    description: Shell commands to run on the VPS.
+    required: true
+  port:
+    description: SSH port.
+    required: false
+    default: "22"
+  timeout:
+    description: SSH command timeout.
+    required: false
+    default: "30s"
+
+runs:
+  using: composite
+  steps:
+    - name: Run script over SSH
+      uses: appleboy/ssh-action@v1
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.username }}
+        key: ${{ inputs.key }}
+        port: ${{ inputs.port }}
+        timeout: ${{ inputs.timeout }}
+        script: ${{ inputs.script }}

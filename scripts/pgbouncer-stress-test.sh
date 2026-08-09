@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# ═══════════════════════════════════════════════════════════════════════════
-# pgbouncer-stress-test.sh — PgBouncer Stress Test Wrapper
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+# pgbouncer-stress-test.sh - PgBouncer Stress Test Wrapper
+# ===========================================================================
 #
 # Uso:
 #   bash scripts/pgbouncer-stress-test.sh                    # Menu interativo
@@ -9,13 +9,13 @@
 #   bash scripts/pgbouncer-stress-test.sh --ramp             # Apenas ramp test
 #   bash scripts/pgbouncer-stress-test.sh --all              # Tudo
 #
-# Pré-requisitos:
+# Pre-requisitos:
 #   - pgBouncer rodando (docker compose -f docker-compose.prod.yml up -d pgbouncer)
 #   - bun instalado (para rodar o script TypeScript)
 #   - psql instalado (PostgreSQL client)
 #   - Variaveis de ambiente: PGHOST, PGPORT, PGUSER, PGPASSWORD
 #
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 set -euo pipefail
 
@@ -24,29 +24,29 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TS_SCRIPT="$PROJECT_DIR/scripts/pgbouncer-stress-test.ts"
 COMPOSE_FILE="$PROJECT_DIR/docker-compose.prod.yml"
 
-# ── Colors ─────────────────────────────────────────────────────────────────
+# -- Colors -----------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# ── Helpers ────────────────────────────────────────────────────────────────
-info()  { echo -e "${CYAN}  ℹ${NC} $1"; }
-ok()    { echo -e "${GREEN}  ✔${NC} $1"; }
-warn()  { echo -e "${YELLOW}  ⚠${NC} $1"; }
-err()   { echo -e "${RED}  ✘${NC} $1"; }
+# -- Helpers ----------------------------------------------------------------
+info()  { echo -e "${CYAN}  [i]${NC} $1"; }
+ok()    { echo -e "${GREEN}  [OK]${NC} $1"; }
+warn()  { echo -e "${YELLOW}  [!]${NC} $1"; }
+err()   { echo -e "${RED}  [X]${NC} $1"; }
 
-# ── Header ─────────────────────────────────────────────────────────────────
+# -- Header -----------------------------------------------------------------
 print_header() {
   echo ""
-  echo "  ╔══════════════════════════════════════════════════════════════╗"
-  echo "  ║   PgBouncer Stress Test — Severinno Marketplace             ║"
-  echo "  ╚══════════════════════════════════════════════════════════════╝"
+  echo "  +==============================================================+"
+  echo "  |   PgBouncer Stress Test - Severinno Marketplace             |"
+  echo "  +==============================================================+"
   echo ""
 }
 
-# ── Check dependencies ─────────────────────────────────────────────────────
+# -- Check dependencies -----------------------------------------------------
 check_deps() {
   local ok=true
 
@@ -79,7 +79,7 @@ check_deps() {
   $ok
 }
 
-# ── Auto-detect PgBouncer ─────────────────────────────────────────────────
+# -- Auto-detect PgBouncer -------------------------------------------------
 auto_detect_pgbouncer() {
   # If env vars are already set, skip detection
   if [[ -n "${PGHOST:-}" && -n "${PGPORT:-}" && -n "${PGUSER:-}" ]]; then
@@ -136,7 +136,7 @@ auto_detect_pgbouncer() {
   return 1
 }
 
-# ── Menu interativo ────────────────────────────────────────────────────────
+# -- Menu interativo --------------------------------------------------------
 show_menu() {
   print_header
 
@@ -148,12 +148,12 @@ show_menu() {
 
   echo "  Select test:"
   echo ""
-  echo "    ${CYAN}1${NC})  Quick check    — Verify environment + baseline"
-  echo "    ${CYAN}2${NC})  Ramp test      — Gradually increase to ${1:-80} connections"
-  echo "    ${CYAN}3${NC})  Burst test     — Sudden spike of ${2:-60} connections"
-  echo "    ${CYAN}4${NC})  Sustain test   — Hold ${3:-20} connections for ${4:-30}s"
-  echo "    ${CYAN}5${NC})  Full battery   — Ramp → Burst → Sustain + report"
-  echo "    ${CYAN}6${NC})  Show stats     — Current PgBouncer pool stats"
+  echo "    ${CYAN}1${NC})  Quick check    - Verify environment + baseline"
+  echo "    ${CYAN}2${NC})  Ramp test      - Gradually increase to ${1:-80} connections"
+  echo "    ${CYAN}3${NC})  Burst test     - Sudden spike of ${2:-60} connections"
+  echo "    ${CYAN}4${NC})  Sustain test   - Hold ${3:-20} connections for ${4:-30}s"
+  echo "    ${CYAN}5${NC})  Full battery   - Ramp -> Burst -> Sustain + report"
+  echo "    ${CYAN}6${NC})  Show stats     - Current PgBouncer pool stats"
   echo "    ${CYAN}q${NC})  Quit"
   echo ""
   read -r -p "  Choice [1-6/q]: " choice
@@ -170,7 +170,7 @@ show_menu() {
   esac
 }
 
-# ── Main ───────────────────────────────────────────────────────────────────
+# -- Main -------------------------------------------------------------------
 main() {
   print_header
 

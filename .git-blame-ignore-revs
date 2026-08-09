@@ -1,0 +1,29 @@
+# .git-blame-ignore-revs
+#
+# Commits listed here are ignored by `git blame` (and by GitHub's web blame,
+# which honors this file automatically when it sits at the repo root).
+#
+# Usage: one full 40-hex commit hash per line, no prefixes. Lines starting
+# with `#` are comments and are skipped.
+#
+# Local enablement (per-developer; cannot be committed):
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub needs no config: the web blame honors this file automatically.
+
+# =====================================================================
+# Mechanical banner conversion (fill in AFTER the thread commit lands)
+# =====================================================================
+# The 1:1 transliteration of the ops-script banners (.sh files:
+# box-drawing, emoji and em-dash glyphs -> pure ASCII) is UNCOMMITTED
+# working-tree state in this thread - `git blame` at HEAD still shows the
+# original glyphs. Once the conversion commit is on main, append its full
+# hash below so blame never attributes banner lines to the mechanical
+# conversion.
+#
+# Entry format (one hash per line, no prefixes):
+#   0123456789abcdef0123456789abcdef01234567
+#
+# Guard: scripts/__tests__/blame-ignore-revs.test.ts validates every entry
+# (40-hex format + must resolve to a real commit). Re-run that suite after
+# appending a hash.

@@ -31,8 +31,8 @@ on:
       - "src/lib/cpu-calibrate.ts"
       - "scripts/geo-benchmark.mjs"
       - "scripts/cache-benchmark.mjs"
-      - "scripts/compare-benchmarks.mjs
-      - "scripts/run-benchmark.mjs""
+      - "scripts/compare-benchmarks.mjs"
+      - "scripts/run-benchmark.mjs"
 
 concurrency:
   group: benchmark-baseline-${{ github.ref }}

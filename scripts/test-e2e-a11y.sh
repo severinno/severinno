@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# scripts/test-e2e-a11y.sh — Accessibility E2E Test Runner
+# scripts/test-e2e-a11y.sh - Accessibility E2E Test Runner
 #
 # Runs axe-core accessibility audits on the main pages using Playwright.
 # By default only runs on Chromium (a11y results are the same across browsers)
@@ -21,7 +21,7 @@ set -euo pipefail
 BASE_URL="${BASE_URL:-http://localhost:3000}"
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-echo "🧪 Accessibility Audit"
+echo " Accessibility Audit"
 echo "   Target: ${BASE_URL}"
 echo ""
 
@@ -57,4 +57,4 @@ case "${1:-}" in
 esac
 
 echo ""
-echo "✅ Audit complete."
+echo "[OK] Audit complete."

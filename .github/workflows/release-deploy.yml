@@ -355,7 +355,7 @@ jobs:
 
     steps:
       - name: Run database migrations
-        uses: appleboy/ssh-action@v1
+        uses: ./.github/actions/severinno-ssh
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}

@@ -1,0 +1,84 @@
+# =============================================================================
+# Severinno SCP — local composite action
+#
+# Single source of truth for VPS file copy (scp). Sibling of
+# .github/actions/severinno-ssh: the health-check workflow used to repeat the
+# same appleboy/scp-action@v1 block inline — the host/username/key trio was
+# copy-pasted across ssh AND scp steps. This action pins the scp action
+# version ONCE and centralizes the transport contract (port/timeout/strip
+# defaults), so future copy steps only pass source/target.
+#
+# NOTE on secrets: composite actions do NOT have access to the `secrets`
+# context (documented GitHub limitation) — the caller MUST pass the DEPLOY_*
+# values via `with:`. The DRY win is the pin + contract (one place to bump
+# appleboy/scp-action), not hiding the secret references.
+#
+# DEPLOY_PATH is deliberately NOT an input: it is the `target` for the copy
+# and is passed by the caller, which knows where on the VPS the file goes.
+#
+# Usage:
+#   - name: Copy a file to the VPS
+#     uses: ./.github/actions/severinno-scp
+#     with:
+#       host: ${{ secrets.DEPLOY_HOST }}
+#       username: ${{ secrets.DEPLOY_USER }}
+#       key: ${{ secrets.DEPLOY_KEY }}
+#       source: scripts/health-check.sh
+#       target: ${{ secrets.DEPLOY_PATH }}
+#       strip_components: 0   # optional (default 0)
+#
+# Guarded by scripts/__tests__/severinno-scp-golden.test.ts: the appleboy
+# scp pin must live ONLY here — never inline in a workflow.
+#
+# VERSION BUMP POLICY: Renovate (renovate.json) manages this pin with
+# pinVersions:true — it converts the floating major tag (@v1) into a full
+# release pin (@v1.x.y) and opens a REVIEWABLE PR per bump, so the pin can
+# never silently drift. Do NOT edit the @v1 tag manually; let the Renovate
+# PR (group "appleboy vps actions") land, then re-run the guard suite.
+# =============================================================================
+name: Severinno SCP
+description: Copy files to the VPS via scp (single pin of the scp action + transport defaults).
+
+inputs:
+  host:
+    description: VPS host (pass secrets.DEPLOY_HOST).
+    required: true
+  username:
+    description: SSH user (pass secrets.DEPLOY_USER).
+    required: true
+  key:
+    description: SSH private key (pass secrets.DEPLOY_KEY).
+    required: true
+  source:
+    description: Source path(s) to copy (space-separated globs allowed by scp-action).
+    required: true
+  target:
+    description: Destination directory on the VPS.
+    required: true
+  port:
+    description: SSH port.
+    required: false
+    default: "22"
+  timeout:
+    description: SSH command timeout.
+    required: false
+    default: "30s"
+  strip_components:
+    description: Number of leading path components to strip from the copied files.
+    required: false
+    default: "0"
+
+runs:
+  using: composite
+  steps:
+    - name: Copy files over SCP
+      uses: appleboy/scp-action@v1
+      with:
+        host: ${{ inputs.host }}
+        username: ${{ inputs.username }}
+        key: ${{ inputs.key }}
+        source: ${{ inputs.source }}
+        target: ${{ inputs.target }}
+        port: ${{ inputs.port }}
+        timeout: ${{ inputs.timeout }}
+        strip_components: ${{ inputs.strip_components }}

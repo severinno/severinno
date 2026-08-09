@@ -1,19 +1,19 @@
 #!/bin/bash
 # ============================================================================
-# Severinno Marketplace — Health Check & Pre-flight Diagnostic
+# Severinno Marketplace - Health Check & Pre-flight Diagnostic
 # ============================================================================
 # Verifica TUDO antes de tentar rodar o app. Detecta os problemas ANTES
 # deles quebrarem o build. Rode antes de qualquer outro comando:
 #
-#   ./scripts/check-health.sh           # Verificação completa
-#   ./scripts/check-health.sh --quick   # Só o essencial
+#   ./scripts/check-health.sh           # Verificacao completa
+#   ./scripts/check-health.sh --quick   # So o essencial
 #   ./scripts/check-health.sh --fix     # Tenta corrigir problemas detectados
 #   ./scripts/check-health.sh --watch   # Monitora em loop (a cada 30s)
 # ============================================================================
 
 set -euo pipefail
 
-# ── Colors ────────────────────────────────────────────────────────────────
+# -- Colors ----------------------------------------------------------------
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
     RED=$(tput setaf 1); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3)
     CYAN=$(tput setaf 6); WHITE=$(tput setaf 7); GRAY=$(tput setaf 8 2>/dev/null || echo "$(tput setaf 7)")
@@ -45,7 +45,7 @@ pass() { echo "  ${GREEN}[PASS]${RESET} $1"; PASS=$((PASS + 1)); }
 fail() { echo "  ${RED}[FAIL]${RESET} $1"; FAIL=$((FAIL + 1)); ERRORS+=("$1"); }
 warn() { echo "  ${YELLOW}[WARN]${RESET} $1"; WARN=$((WARN + 1)); }
 detail() { echo "         ${DIM}$1${RESET}"; }
-step() { echo ""; echo "${GRAY}══════════════════════════════════════${RESET}"; echo "  ${CYAN}$1${RESET}"; echo "${GRAY}══════════════════════════════════════${RESET}"; }
+step() { echo ""; echo "${GRAY}======================================${RESET}"; echo "  ${CYAN}$1${RESET}"; echo "${GRAY}======================================${RESET}"; }
 
 port_in_use() {
     local port=$1
@@ -89,22 +89,22 @@ mkdir -p "$TEMP_DIR" 2>/dev/null || true
 run_health_check() {
     PASS=0; FAIL=0; WARN=0; CRITICAL_FAIL=false; ERRORS=()
 
-    echo "${CYAN}${BOLD}╔══════════════════════════════════════════╗${RESET}"
-    echo "${CYAN}${BOLD}║  Severinno Health Check v1.0             ║${RESET}"
-    echo "${CYAN}${BOLD}╚══════════════════════════════════════════╝${RESET}"
-    echo "${GRAY}$(date '+%Y-%m-%d %H:%M:%S') — Modo: $MODE${RESET}"
+    echo "${CYAN}${BOLD}+==========================================+${RESET}"
+    echo "${CYAN}${BOLD}|  Severinno Health Check v1.0             |${RESET}"
+    echo "${CYAN}${BOLD}+==========================================+${RESET}"
+    echo "${GRAY}$(date '+%Y-%m-%d %H:%M:%S') - Modo: $MODE${RESET}"
     echo ""
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # 1. PRÉ-REQUISITOS
-    # ═══════════════════════════════════════════════════════════════════════
-    step "1. Pré-requisitos"
+    # =======================================================================
+    # 1. PRE-REQUISITOS
+    # =======================================================================
+    step "1. Pre-requisitos"
 
     # Bun
     if command -v bun >/dev/null 2>&1; then
         pass "Bun $(bun --version 2>/dev/null)"
     else
-        fail "Bun não instalado"
+        fail "Bun nao instalado"
     fi
 
     # Node modules
@@ -120,17 +120,17 @@ run_health_check() {
             warn "node_modules: estrutura incompleta"
             detail "Tentando verificar com 'bun why next'..."
             if $AUTO_FIX; then
-                detail "Instalando dependências..."
+                detail "Instalando dependencias..."
                 bun install 2>&1 | tail -3
-                pass "Dependências reinstaladas"
+                pass "Dependencias reinstaladas"
             fi
         fi
     else
-        fail "node_modules não existe"
+        fail "node_modules nao existe"
         if $AUTO_FIX; then
-            detail "Instalando dependências..."
+            detail "Instalando dependencias..."
             bun install 2>&1 | tail -3
-            pass "Dependências instaladas"
+            pass "Dependencias instaladas"
         fi
     fi
 
@@ -139,31 +139,31 @@ run_health_check() {
         if docker info >/dev/null 2>&1; then
             pass "Docker Desktop rodando"
         else
-            fail "Docker Desktop não está rodando"
+            fail "Docker Desktop nao esta rodando"
             CRITICAL_FAIL=true
         fi
     else
-        fail "Docker não instalado"
+        fail "Docker nao instalado"
         CRITICAL_FAIL=true
     fi
 
     # Docker Compose
     if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-        pass "Docker Compose disponível"
+        pass "Docker Compose disponivel"
     else
-        fail "Docker Compose não disponível"
+        fail "Docker Compose nao disponivel"
         CRITICAL_FAIL=true
     fi
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     # 2. ARQUIVO .env
-    # ═══════════════════════════════════════════════════════════════════════
-    step "2. Variáveis de ambiente"
+    # =======================================================================
+    step "2. Variaveis de ambiente"
 
     if [ -f ".env" ]; then
         pass ".env existe"
 
-        # Verificar variáveis obrigatórias
+        # Verificar variaveis obrigatorias
         local missing_vars=""
         for var in DATABASE_URL SESSION_SECRET; do
             if grep -q "^${var}=" .env 2>/dev/null; then
@@ -174,12 +174,12 @@ run_health_check() {
         done
 
         if [ -n "$missing_vars" ]; then
-            fail "Variáveis obrigatórias ausentes no .env:$missing_vars"
+            fail "Variaveis obrigatorias ausentes no .env:$missing_vars"
             if $AUTO_FIX; then
                 detail "Execute: ./scripts/setup.sh para recriar o .env"
             fi
         else
-            pass "Variáveis obrigatórias: OK"
+            pass "Variaveis obrigatorias: OK"
         fi
 
         # Verificar SESSION_SECRET length
@@ -189,16 +189,16 @@ run_health_check() {
             warn "SESSION_SECRET muito curta (< 32 caracteres)"
         fi
     else
-        fail ".env não existe"
+        fail ".env nao existe"
         CRITICAL_FAIL=true
         if $AUTO_FIX; then
             detail "Execute: ./scripts/setup.sh para criar automaticamente"
         fi
     fi
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     # 3. PORTAS
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     step "3. Portas"
 
     for entry in "5432:PostgreSQL" "6379:Redis" "6380:Redis(dev)" "3000:Next.js" "5672:RabbitMQ" "9000:MinIO" "9001:MinIO Console"; do
@@ -215,13 +215,13 @@ run_health_check() {
             fi
             pass "Porta $port ($svc): ocupada por $proc_name"
         else
-            warn "Porta $port ($svc): ninguém ouvindo"
+            warn "Porta $port ($svc): ninguem ouvindo"
         fi
     done
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     # 4. CONTAINERS DOCKER
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     step "4. Containers Docker"
 
     local containers
@@ -251,10 +251,10 @@ run_health_check() {
             fi
         done <<< "$containers"
 
-        pass "$healthy saudável(is)"
+        pass "$healthy saudavel(is)"
 
         if [ "$unhealthy" -gt 0 ]; then
-            fail "$unhealthy container(s) não saudável(is)"
+            fail "$unhealthy container(s) nao saudavel(is)"
         fi
 
         # Verificar containers essenciais
@@ -277,15 +277,15 @@ run_health_check() {
             fail "Nenhum container Redis rodando"
         }
 
-        # Verificar se tem PostGIS (não só PostgreSQL vanilla)
+        # Verificar se tem PostGIS (nao so PostgreSQL vanilla)
         if echo "$containers" | grep -qi "postgis"; then
             pass "PostGIS detectado"
         fi
     fi
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     # 5. ENCODING UTF-8
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     step "5. Encoding UTF-8"
 
     PYTHON=$(find_python)
@@ -313,7 +313,7 @@ else:
 " 2>&1) || true
 
         if echo "$utf8_result" | grep -q "^OK$"; then
-            pass "Encoding UTF-8: todos os source files válidos"
+            pass "Encoding UTF-8: todos os source files validos"
         else
             local count
             count=$(echo "$utf8_result" | grep -c "prisma/schema\|src/" 2>/dev/null || echo "1")
@@ -352,17 +352,17 @@ with open('$file', 'wb') as f:
     f.write(bytes(fixed))
 " 2>/dev/null || true
                 done
-                pass "UTF-8: correção automática aplicada"
+                pass "UTF-8: correcao automatica aplicada"
             fi
         fi
     else
-        warn "Python não disponível — verificação UTF-8 pulada"
+        warn "Python nao disponivel - verificacao UTF-8 pulada"
     fi
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # 6. CONEXÃO COM BANCO DE DADOS
-    # ═══════════════════════════════════════════════════════════════════════
-    step "6. Conexão com banco de dados"
+    # =======================================================================
+    # 6. CONEXAO COM BANCO DE DADOS
+    # =======================================================================
+    step "6. Conexao com banco de dados"
 
     # Tenta via container Docker
     local pg_container
@@ -370,13 +370,13 @@ with open('$file', 'wb') as f:
 
     if [ -n "$pg_container" ]; then
         if docker exec "$pg_container" pg_isready -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" 2>/dev/null | grep -q "accepting"; then
-            pass "PostgreSQL aceitando conexões"
+            pass "PostgreSQL aceitando conexoes"
             
-            # Verificar extensão PostGIS
+            # Verificar extensao PostGIS
             if docker exec "$pg_container" psql -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" -Atc "SELECT PostGIS_Version()" 2>/dev/null | grep -qE "^[0-9]"; then
-                pass "Extensão PostGIS ativa"
+                pass "Extensao PostGIS ativa"
             else
-                warn "PostGIS não está habilitado — migrations geoespaciais falharão"
+                warn "PostGIS nao esta habilitado - migrations geoespaciais falharao"
                 if $AUTO_FIX; then
                     docker exec "$pg_container" psql -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" -c "CREATE EXTENSION IF NOT EXISTS postgis;" 2>/dev/null || true
                     pass "PostGIS habilitado"
@@ -389,19 +389,19 @@ with open('$file', 'wb') as f:
             if [ "$table_count" -gt 0 ] 2>/dev/null; then
                 pass "Banco populado: $table_count tabelas"
             else
-                warn "Nenhuma tabela encontrada — execute: bun run db:seed"
+                warn "Nenhuma tabela encontrada - execute: bun run db:seed"
             fi
         else
-            fail "PostgreSQL não está aceitando conexões"
+            fail "PostgreSQL nao esta aceitando conexoes"
         fi
     else
-        fail "Container PostgreSQL não encontrado"
+        fail "Container PostgreSQL nao encontrado"
     fi
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # 7. CONEXÃO REDIS
-    # ═══════════════════════════════════════════════════════════════════════
-    step "7. Conexão Redis"
+    # =======================================================================
+    # 7. CONEXAO REDIS
+    # =======================================================================
+    step "7. Conexao Redis"
 
     local redis_container
     redis_container=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -iE "redis|valkey" | head -1 || true)
@@ -419,19 +419,19 @@ with open('$file', 'wb') as f:
             warn "Redis: ping falhou"
         fi
     else
-        warn "Container Redis não encontrado"
+        warn "Container Redis nao encontrado"
     fi
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     # 8. API HEALTH ENDPOINT
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     step "8. API Health"
 
     if command -v curl >/dev/null 2>&1; then
         if curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 http://localhost:3000 2>/dev/null | grep -q "200"; then
             pass "Next.js respondendo em http://localhost:3000"
 
-            # Health endpoint específico
+            # Health endpoint especifico
             local health_resp
             health_resp=$(curl -s --connect-timeout 5 http://localhost:3000/api/health 2>/dev/null || true)
             if [ -n "$health_resp" ]; then
@@ -440,18 +440,18 @@ with open('$file', 'wb') as f:
                 detail "$truncated"
                 pass "/api/health respondeu"
             else
-                warn "/api/health não respondeu"
+                warn "/api/health nao respondeu"
             fi
         else
-            warn "Next.js não está rodando em http://localhost:3000"
+            warn "Next.js nao esta rodando em http://localhost:3000"
         fi
     else
-        warn "curl não disponível — health check HTTP pulado"
+        warn "curl nao disponivel - health check HTTP pulado"
     fi
 
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     # SUMMARY
-    # ═══════════════════════════════════════════════════════════════════════
+    # =======================================================================
     step "Resumo Final"
 
     local TOTAL=$((PASS + FAIL + WARN))
@@ -460,29 +460,29 @@ with open('$file', 'wb') as f:
     echo ""
 
     if [ "$FAIL" -eq 0 ] && [ "$WARN" -eq 0 ]; then
-        echo "  ${GREEN}${BOLD}✅ Sistema 100% saudável!${RESET}"
+        echo "  ${GREEN}${BOLD}[OK] Sistema 100% saudavel!${RESET}"
     elif [ "$FAIL" -eq 0 ]; then
-        echo "  ${YELLOW}⚠️  Sistema saudável com ressalvas${RESET}"
+        echo "  ${YELLOW}[!]  Sistema saudavel com ressalvas${RESET}"
     elif $CRITICAL_FAIL; then
-        echo "  ${RED}❌ Problemas críticos detectados — corrija antes de rodar o app${RESET}"
+        echo "  ${RED}[FAIL] Problemas criticos detectados - corrija antes de rodar o app${RESET}"
         echo "  ${RED}   Execute: ./scripts/setup.sh${RESET}"
     else
-        echo "  ${RED}⚠️  Problemas detectados (não críticos)${RESET}"
+        echo "  ${RED}[!]  Problemas detectados (nao criticos)${RESET}"
     fi
     echo ""
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────
+# -- Main ------------------------------------------------------------------
 
 if $WATCH; then
     # Modo watch: executa a cada 30s
-    detail "Modo watch — verificando a cada 30 segundos..."
+    detail "Modo watch - verificando a cada 30 segundos..."
     detail "Pressione Ctrl+C para sair"
     echo ""
     while true; do
         run_health_check
-        echo "${DIM}──────────────────────────────────────${RESET}"
-        echo "${DIM}Próxima verificação em 30s... Ctrl+C para sair${RESET}"
+        echo "${DIM}--------------------------------------${RESET}"
+        echo "${DIM}Proxima verificacao em 30s... Ctrl+C para sair${RESET}"
         echo ""
         sleep 30
     done

@@ -79,3 +79,7 @@ lhci-reports-mobile/
 
 # AI agent skills and configurations
 .agents/
+# Python bytecode from the encoding-gate scripts (check_utf8.py runs under
+# python3 and drops .pyc next to it; never commit interpreter artifacts)
+__pycache__/
+*.pyc

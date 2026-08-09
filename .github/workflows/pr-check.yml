@@ -24,19 +24,23 @@ env:
 
 jobs:
   # ── UTF-8 Encoding Check ────────────────────────────────────────────────
-  # Fast gate: <10s, no dependencies beyond python3 (pre-installed on runners).
+  # Fast gate: <3s, no dependencies beyond python3 + node (both pre-installed on runners).
   # Runs in parallel with the main check job.
+  #
+  # SINGLE SOURCE OF TRUTH: the encoding gate (verify-encoding.sh --ci src/ -
+  # UTF-8 + VPS ASCII + strict ASCII proof + frozen baseline) lives ONLY in
+  # .github/workflows/utf8-check.yml (reusable). ci.yml, deploy.yml,
+  # e2e-cache.yml, release-deploy.yml and this workflow call the same reusable
+  # file — a future change to the gate is one edit.
+  # utf8-check.yml does NOT self-trigger on pull_request anymore (that was
+  # the triplication: its own PR trigger + ci.yml's workflow_call + this
+  # inline job); PR coverage comes from here + ci.yml, while utf8-check.yml's
+  # push trigger remains the always-on net for main/develop merges.
+  #
+  # PROOF that this gate really bites (run locally, no CI needed): see the
+  # header of .github/workflows/utf8-check.yml (5-step 0x97 injection repro).
   utf8-check:
-    name: UTF-8 Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run UTF-8 validation on all .ts files
-        run: bash scripts/check-utf8.sh --ci src/
-
-      - name: Summary
-        run: echo "All .ts files validated as valid UTF-8 encoding."
+    uses: ./.github/workflows/utf8-check.yml
 
   # ── Fuzz Tests ─────────────────────────────────────────────────────────
   # Runs in parallel with other checks. No external dependencies needed.

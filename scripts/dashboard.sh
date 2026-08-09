@@ -1,19 +1,19 @@
 #!/bin/bash
 # ============================================================================
-# Severinno Marketplace — Service Dashboard (TUI)
+# Severinno Marketplace - Service Dashboard (TUI)
 # ============================================================================
-# Mostra status dos serviços em tempo real, estilo htop.
+# Mostra status dos servicos em tempo real, estilo htop.
 # Atualiza a cada 3 segundos automaticamente.
 #
 # Usage:
 #   ./scripts/dashboard.sh              # Dashboard completo
 #   ./scripts/dashboard.sh --once       # Apenas um snapshot, sem loop
-#   ./scripts/dashboard.sh --interval 5 # Atualiza a cada 5s (padrão: 3)
+#   ./scripts/dashboard.sh --interval 5 # Atualiza a cada 5s (padrao: 3)
 # ============================================================================
 
 set -euo pipefail
 
-# ── Colors ────────────────────────────────────────────────────────────────
+# -- Colors ----------------------------------------------------------------
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
     RED=$(tput setaf 1); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3)
     CYAN=$(tput setaf 6); WHITE=$(tput setaf 7); GRAY=$(tput setaf 8 2>/dev/null || echo "$(tput setaf 7)")
@@ -39,39 +39,39 @@ for arg in "$@"; do
     esac
 done
 
-# ── Helpers ───────────────────────────────────────────────────────────────
+# -- Helpers ---------------------------------------------------------------
 status_icon() {
     case "$1" in
-        healthy|running|ok|PONG) echo "${GREEN}●${RESET}" ;;
-        unhealthy|error|fail)    echo "${RED}●${RESET}" ;;
-        starting|degraded)       echo "${YELLOW}●${RESET}" ;;
-        off|stopped|*)           echo "${DIM}○${RESET}" ;;
+        healthy|running|ok|PONG) echo "${GREEN}*${RESET}" ;;
+        unhealthy|error|fail)    echo "${RED}*${RESET}" ;;
+        starting|degraded)       echo "${YELLOW}*${RESET}" ;;
+        off|stopped|*)           echo "${DIM}o${RESET}" ;;
     esac
 }
 
 draw_box() {
     local title="$1" width=60
-    echo "  ${CYAN}┌─$(printf '─%.0s' $(seq 1 $width))─┐${RESET}"
-    echo "  ${CYAN}│${RESET}  ${BOLD}$title${RESET}$(printf ' %.0s' $(seq 1 $((width - ${#title} - 2))))${CYAN}│${RESET}"
-    echo "  ${CYAN}└─$(printf '─%.0s' $(seq 1 $width))─┘${RESET}"
+    echo "  ${CYAN}+-$(printf '-%.0s' $(seq 1 $width))-+${RESET}"
+    echo "  ${CYAN}|${RESET}  ${BOLD}$title${RESET}$(printf ' %.0s' $(seq 1 $((width - ${#title} - 2))))${CYAN}|${RESET}"
+    echo "  ${CYAN}+-$(printf '-%.0s' $(seq 1 $width))-+${RESET}"
 }
 
 render_dashboard() {
     local timestamp
     timestamp=$(date '+%H:%M:%S')
 
-    # ── Header ──────────────────────────────────────────────────────
+    # -- Header ------------------------------------------------------
     clear 2>/dev/null || true
     echo ""
     echo "${BG_CYAN}${WHITE}${BOLD}  Severinno Service Dashboard                                   ${RESET}"
-    echo "${GRAY}  Última atualização: $timestamp   (Ctrl+C para sair)${RESET}"
+    echo "${GRAY}  Ultima atualizacao: $timestamp   (Ctrl+C para sair)${RESET}"
     echo ""
 
     local pass=0 fail=0 warn=0
 
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     # DOCKER CONTAINERS
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     draw_box "Docker Containers"
 
     local containers
@@ -115,9 +115,9 @@ render_dashboard() {
     fi
     echo ""
 
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     # DATABASE
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     draw_box "Database & Cache"
 
     local pg_container
@@ -130,17 +130,17 @@ render_dashboard() {
             postgis_ver=$(docker exec "$pg_container" psql -U severinno -d severinno -Atc "SELECT PostGIS_Version()" 2>/dev/null || echo "off")
 
             if echo "$postgis_ver" | grep -qE "^[0-9]"; then
-                echo "  $(status_icon ok)  PostgreSQL    │ ${BOLD}$tables${RESET} tabelas │ PostGIS ${postgis_ver%% *}"
+                echo "  $(status_icon ok)  PostgreSQL    | ${BOLD}$tables${RESET} tabelas | PostGIS ${postgis_ver%% *}"
             else
-                echo "  $(status_icon ok)  PostgreSQL    │ ${BOLD}$tables${RESET} tabelas │ ${YELLOW}sem PostGIS${RESET}"
+                echo "  $(status_icon ok)  PostgreSQL    | ${BOLD}$tables${RESET} tabelas | ${YELLOW}sem PostGIS${RESET}"
             fi
             pass=$((pass + 1))
         else
-            echo "  $(status_icon error)  PostgreSQL    │ ${RED}não responde${RESET}"
+            echo "  $(status_icon error)  PostgreSQL    | ${RED}nao responde${RESET}"
             fail=$((fail + 1))
         fi
     else
-        echo "  $(status_icon off)  PostgreSQL    │ ${DIM}container não encontrado${RESET}"
+        echo "  $(status_icon off)  PostgreSQL    | ${DIM}container nao encontrado${RESET}"
         warn=$((warn + 1))
     fi
 
@@ -152,14 +152,14 @@ render_dashboard() {
         local redis_cmd="redis-cli"
         echo "$redis_container" | grep -qi "valkey" && redis_cmd="valkey-cli"
         if docker exec "$redis_container" $redis_cmd ping 2>/dev/null | grep -q "PONG"; then
-            echo "  $(status_icon ok)  Redis/Valkey  │ ${GREEN}PONG${RESET}"
+            echo "  $(status_icon ok)  Redis/Valkey  | ${GREEN}PONG${RESET}"
             pass=$((pass + 1))
         else
-            echo "  $(status_icon error)  Redis/Valkey  │ ${RED}sem resposta${RESET}"
+            echo "  $(status_icon error)  Redis/Valkey  | ${RED}sem resposta${RESET}"
             fail=$((fail + 1))
         fi
     else
-        echo "  $(status_icon off)  Redis/Valkey  │ ${DIM}não encontrado${RESET}"
+        echo "  $(status_icon off)  Redis/Valkey  | ${DIM}nao encontrado${RESET}"
         warn=$((warn + 1))
     fi
 
@@ -168,21 +168,21 @@ render_dashboard() {
     minio_container=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i "minio" | grep -iv "init" | head -1 || true)
     if [ -n "$minio_container" ]; then
         if curl -s -o /dev/null -w "" --connect-timeout 3 http://localhost:9000/minio/health/live 2>/dev/null; then
-            echo "  $(status_icon ok)  MinIO S3      │ ${GREEN}http://localhost:9000${RESET}"
+            echo "  $(status_icon ok)  MinIO S3      | ${GREEN}http://localhost:9000${RESET}"
             pass=$((pass + 1))
         else
-            echo "  $(status_icon error)  MinIO S3      │ ${RED}porta 9000 sem resposta${RESET}"
+            echo "  $(status_icon error)  MinIO S3      | ${RED}porta 9000 sem resposta${RESET}"
             warn=$((warn + 1))
         fi
     else
-        echo "  $(status_icon off)  MinIO S3      │ ${DIM}não encontrado${RESET}"
+        echo "  $(status_icon off)  MinIO S3      | ${DIM}nao encontrado${RESET}"
         warn=$((warn + 1))
     fi
     echo ""
 
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     # NEXT.JS SERVER
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     draw_box "Application Server"
 
     if command -v curl >/dev/null 2>&1; then
@@ -190,7 +190,7 @@ render_dashboard() {
         http_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 http://localhost:3000 2>/dev/null || echo "000")
 
         if [ "$http_code" = "200" ]; then
-            echo "  $(status_icon ok)  Next.js       │ ${GREEN}http://localhost:3000${RESET} │ HTTP $http_code"
+            echo "  $(status_icon ok)  Next.js       | ${GREEN}http://localhost:3000${RESET} | HTTP $http_code"
             pass=$((pass + 1))
 
             # Health endpoint
@@ -199,26 +199,26 @@ render_dashboard() {
             if [ -n "$health" ]; then
                 local health_trunc
                 health_trunc=$(echo "$health" | tr -d '\n' | cut -c1-80)
-                echo "  ${DIM}                   │ /api/health: $health_trunc${RESET}"
+                echo "  ${DIM}                   | /api/health: $health_trunc${RESET}"
             fi
         elif [ "$http_code" = "000" ]; then
-            echo "  $(status_icon off)  Next.js       │ ${DIM}http://localhost:3000${RESET} │ ${YELLOW}offline${RESET}"
+            echo "  $(status_icon off)  Next.js       | ${DIM}http://localhost:3000${RESET} | ${YELLOW}offline${RESET}"
             warn=$((warn + 1))
         else
-            echo "  $(status_icon error)  Next.js       │ ${RED}HTTP $http_code${RESET}"
+            echo "  $(status_icon error)  Next.js       | ${RED}HTTP $http_code${RESET}"
             fail=$((fail + 1))
         fi
     else
-        echo "  $(status_icon off)  curl não disponível"
+        echo "  $(status_icon off)  curl nao disponivel"
     fi
     echo ""
 
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     # SYSTEM RESOURCES
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     draw_box "System Resources"
 
-    # Disk space — pega os últimos 4 campos (evita espaços no nome do filesystem)
+    # Disk space - pega os ultimos 4 campos (evita espacos no nome do filesystem)
     if command -v df >/dev/null 2>&1; then
         local disk_info
         disk_info=$(df -h / 2>/dev/null | tail -1 | awk '{print $(NF-4), $(NF-3), $(NF-2), $(NF-1)}')
@@ -240,15 +240,15 @@ render_dashboard() {
         local docker_disk
         docker_disk=$(docker system df 2>/dev/null | tail -1 | awk '{print $4, $5}' || true)
         if [ -n "$docker_disk" ]; then
-            echo "  ${BOLD}Docker System${RESET}    │ $docker_disk"
+            echo "  ${BOLD}Docker System${RESET}    | $docker_disk"
         fi
 
         # Container CPU/Mem
         local stats
-        stats=$(docker stats --no-stream --format '{{.Name}}│{{.CPUPerc}}│{{.MemUsage}}│{{.MemPerc}}' 2>/dev/null | grep -v "glitchtip" || true)
+        stats=$(docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}' 2>/dev/null | grep -v "glitchtip" || true)
         if [ -n "$stats" ]; then
             echo "  ${BOLD}Container CPU/Mem:${RESET}"
-            while IFS='│' read -r cname cpu mem mempct; do
+            while IFS='|' read -r cname cpu mem mempct; do
                 local short_name
                 short_name=$(echo "$cname" | sed 's/^severinno-//' | sed 's/-1$//')
                 printf "    ${DIM}%-16s${RESET} %-7s  %-20s  %s\n" "$short_name" "$cpu" "$mem" "$mempct"
@@ -257,24 +257,24 @@ render_dashboard() {
     fi
     echo ""
 
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     # SUMMARY
-    # ════════════════════════════════════════════════════════════════
+    # ================================================================
     local total=$((pass + fail + warn))
-    echo "${CYAN}  ───────────────────────────────────────────────────────────${RESET}"
+    echo "${CYAN}  -----------------------------------------------------------${RESET}"
     echo "  ${GREEN}PASS: $pass${RESET}   ${RED}FAIL: $fail${RESET}   ${YELLOW}WARN: $warn${RESET}   Total: $total"
 
     if [ "$fail" -eq 0 ] && [ "$warn" -eq 0 ]; then
-        echo "  ${GREEN}✅ Todos os serviços saudáveis${RESET}"
+        echo "  ${GREEN}[OK] Todos os servicos saudaveis${RESET}"
     elif [ "$fail" -eq 0 ]; then
-        echo "  ${YELLOW}⚠️  Com ressalvas${RESET}"
+        echo "  ${YELLOW}[!]  Com ressalvas${RESET}"
     else
-        echo "  ${RED}❌ $fail falha(s) detectada(s)${RESET}"
+        echo "  ${RED}[FAIL] $fail falha(s) detectada(s)${RESET}"
     fi
     echo ""
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────
+# -- Main ------------------------------------------------------------------
 trap 'echo ""; echo "  Dashboard encerrado."; echo ""; exit 0' INT TERM
 
 if $ONCE; then

@@ -438,26 +438,30 @@ jobs:
           path: .next/standalone/
 
       # Example: SSH deploy to VPS
-      # Uncomment and configure secrets for your server:
+      # Uncomment and configure secrets for your server. VPS access goes
+      # through the local composite actions (.github/actions/severinno-ssh
+      # for ssh, .github/actions/severinno-scp for file copy) — the appleboy
+      # pins (ssh-action@v1, scp-action@v1) live ONLY there, never inline in
+      # a workflow.
       #
-      # - name: Deploy via SSH
-      #   uses: appleboy/scp-action@v0.1.7
+      # - name: Copy standalone build to VPS
+      #   uses: ./.github/actions/severinno-scp
       #   with:
       #     host: ${{ secrets.DEPLOY_HOST }}
       #     username: ${{ secrets.DEPLOY_USER }}
       #     key: ${{ secrets.DEPLOY_KEY }}
       #     source: ".next/standalone/*"
-      #     target: "/opt/severinno/"
+      #     target: ${{ secrets.DEPLOY_PATH }}
       #     strip_components: 2
       #
       # - name: Restart server
-      #   uses: appleboy/ssh-action@v1.2.0
+      #   uses: ./.github/actions/severinno-ssh
       #   with:
       #     host: ${{ secrets.DEPLOY_HOST }}
       #     username: ${{ secrets.DEPLOY_USER }}
       #     key: ${{ secrets.DEPLOY_KEY }}
       #     script: |
-      #       cd /opt/severinno
+      #       cd ${{ secrets.DEPLOY_PATH }}
       #       docker compose pull
       #       docker compose up -d --force-recreate
 

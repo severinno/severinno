@@ -1,13 +1,17 @@
 set -euo pipefail
 
-bash scripts/check-utf8.sh --dry-run --ci src/
+# Encoding gate unico (UTF-8 + VPS ASCII + ASCII-safe proof + baseline): o
+# mesmo gate que o CI roda em PR (pr-check.yml / utf8-check.yml) - um byte
+# non-ASCII num .sh/hook nunca chega nem ao git add. Custo medido ~1.4s
+# (batched, 2 spawns node + 1 python) - node+python3, sem rede.
+bash scripts/verify-encoding.sh --dry-run --ci src/
 node scripts/scan-lucide-icons.mjs --check
 bun x lint-staged
 
-# Typecheck: nenhum commit pode quebrar o build (tsc --noEmit --incremental — mesmo gate do CI).
+# Typecheck: nenhum commit pode quebrar o build (tsc --noEmit --incremental - mesmo gate do CI).
 # NOTA: o incremental (tsconfig.tsbuildinfo, gitignored) deixa o gate ~17-24s WARM; o primeiro
-# run após clone limpo ou mudança no tsconfig é ~55s (cold) — não desative o gate por causa disso.
-# Testes unitários das áreas tocadas: roda o vitest (unit config) só nos testes
-# mapeados dos arquivos staged (skip quando não há testes nas áreas tocadas).
+# run apos clone limpo ou mudanca no tsconfig e ~55s (cold) - nao desative o gate por causa disso.
+# Testes unitarios das areas tocadas: roda o vitest (unit config) so nos testes
+# mapeados dos arquivos staged (skip quando nao ha testes nas areas tocadas).
 bun run typecheck
 bun run pre-commit:test

@@ -1,21 +1,21 @@
 #!/bin/sh
 # ============================================================================
-# Severinno Marketplace SaaS — Production Entrypoint
+# Severinno Marketplace SaaS - Production Entrypoint
 # ============================================================================
 # Supports four modes via WORKER_TYPE env var:
-#   WORKER_TYPE=email          → runs email consumer
-#   WORKER_TYPE=notification   → runs notification consumer
-#   WORKER_TYPE=search-index   → runs search index reindex consumer
-#   (default/unset)            → runs Next.js server (with DB setup)
+#   WORKER_TYPE=email          -> runs email consumer
+#   WORKER_TYPE=notification   -> runs notification consumer
+#   WORKER_TYPE=search-index   -> runs search index reindex consumer
+#   (default/unset)            -> runs Next.js server (with DB setup)
 # ============================================================================
 
 set -e
 
 echo "========================================================================"
-echo " Severinno Marketplace — Starting..."
+echo " Severinno Marketplace - Starting..."
 echo "========================================================================"
 
-# ── Worker mode: skip DB setup, run consumer directly ──────────────────────
+# -- Worker mode: skip DB setup, run consumer directly ----------------------
 if [ "${WORKER_TYPE:-}" = "email" ]; then
     echo " Mode: Email Worker"
     echo " Starting email consumer..."
@@ -34,7 +34,7 @@ if [ "${WORKER_TYPE:-}" = "search-index" ]; then
     exec bun src/queue/search-index-consumer.ts
 fi
 
-# ── Graceful shutdown handler ──────────────────────────────────────────────
+# -- Graceful shutdown handler ----------------------------------------------
 # Ensures Prisma connections are closed and in-flight requests drain before
 # the container stops, preventing connection leaks on the PgBouncer side.
 _graceful_shutdown() {
@@ -47,7 +47,7 @@ _graceful_shutdown() {
 }
 trap _graceful_shutdown SIGTERM SIGINT
 
-# ── Server mode: full DB setup + Next.js start ─────────────────────────────
+# -- Server mode: full DB setup + Next.js start -----------------------------
 echo " Mode: Next.js Server"
 
 echo "[1/3] Generating Prisma Client..."
@@ -63,7 +63,7 @@ echo "      Done."
 
 if [ "${SEED_DB:-false}" = "true" ]; then
     echo "[3/3] Seeding database..."
-    bun run db:seed 2>/dev/null || echo "      Seed completed (or skipped — non-fatal)."
+    bun run db:seed 2>/dev/null || echo "      Seed completed (or skipped - non-fatal)."
 else
     echo "[3/3] Seed skipped. Set SEED_DB=true to seed on next restart."
 fi

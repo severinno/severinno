@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# fix-encoding.sh — scan and fix encoding for ALL project files
+# fix-encoding.sh - scan and fix encoding for ALL project files
 #
 # Checks for byte 0x97 (Windows-1252 em dash) and other non-UTF-8 bytes in:
 #   .ts, .tsx, .md, .json, .yml, .yaml
@@ -13,9 +13,9 @@
 #   ./scripts/fix-encoding.sh .              # scan current directory
 #
 # Exit codes:
-#   0 — all files are valid UTF-8
-#   1 — at least one file has invalid UTF-8 (--ci mode)
-#   2 — directory not found
+#   0 - all files are valid UTF-8
+#   1 - at least one file has invalid UTF-8 (--ci mode)
+#   2 - directory not found
 # =============================================================================
 
 set -euo pipefail

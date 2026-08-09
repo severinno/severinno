@@ -1,15 +1,15 @@
 #!/bin/bash
 # ==============================================================================
-# Severinno Marketplace — Dead-Letter Queue Monitor (RabbitMQ)
+# Severinno Marketplace - Dead-Letter Queue Monitor (RabbitMQ)
 # ==============================================================================
 #
-# Monitora filas de mensagens mortas (DLQ) e alerta se houver acúmulo.
+# Monitora filas de mensagens mortas (DLQ) e alerta se houver acumulo.
 # Ideal para rodar como cron job a cada 5 minutos.
 #
 # Uso:
 #   ./scripts/dlq-monitor.sh                  # Verifica e mostra status
 #   ./scripts/dlq-monitor.sh --alert=N         # Alerta se N+ mensagens na DLQ
-#   ./scripts/dlq-monitor.sh --prom-metrics    # Saída no formato Prometheus
+#   ./scripts/dlq-monitor.sh --prom-metrics    # Saida no formato Prometheus
 #   ./scripts/dlq-monitor.sh --purge           # Limpa todas as DLQs (CUIDADO!)
 #   ./scripts/dlq-monitor.sh --watch           # Monitora em tempo real
 #   ./scripts/dlq-monitor.sh --webhook=URL     # Envia alerta via webhook
@@ -20,7 +20,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# ── Config ─────────────────────────────────────────────────────────────────
+# -- Config -----------------------------------------------------------------
 RABBITMQ_HOST="${RABBITMQ_HOST:-localhost}"
 RABBITMQ_PORT="${RABBITMQ_PORT:-15672}"
 RABBITMQ_USER="${RABBITMQ_USER:-severinno}"
@@ -44,7 +44,7 @@ for arg in "$@"; do
   esac
 done
 
-# ── Colors ─────────────────────────────────────────────────────────────────
+# -- Colors -----------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -56,14 +56,14 @@ warn()   { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()  { echo -e "${RED}[ERR]${NC} $*" >&2; }
 info()   { echo -e "${CYAN}[..]${NC} $*"; }
 
-# ── Check dependencies ────────────────────────────────────────────────────
+# -- Check dependencies ----------------------------------------------------
 if ! command -v curl &>/dev/null; then
-  error "curl não disponível"
+  error "curl nao disponivel"
   exit 1
 fi
 
 if ! command -v jq &>/dev/null; then
-  warn "jq não disponível — instalando... (requer sudo)"
+  warn "jq nao disponivel - instalando... (requer sudo)"
   # Intenta instalar jq (funciona em Alpine, Debian, macOS)
   if command -v apk &>/dev/null; then
     apk add --no-cache jq 2>/dev/null || true
@@ -74,27 +74,27 @@ if ! command -v jq &>/dev/null; then
   fi
 
   if ! command -v jq &>/dev/null; then
-    error "jq é necessário — instale manualmente (apt install jq / brew install jq)"
+    error "jq e necessario - instale manualmente (apt install jq / brew install jq)"
     exit 1
   fi
 fi
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 # FUNCTIONS
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
 check_rabbitmq() {
   local status
   status=$(curl -sf -u "$RABBITMQ_USER:$RABBITMQ_PASS" "$RABBITMQ_API/overview" 2>/dev/null)
   if [ -z "$status" ]; then
-    error "RabbitMQ não está respondendo em $RABBITMQ_HOST:$RABBITMQ_PORT"
+    error "RabbitMQ nao esta respondendo em $RABBITMQ_HOST:$RABBITMQ_PORT"
     return 1
   fi
   local version
   version=$(echo "$status" | jq -r '.rabbitmq_version // "unknown"')
   local queue_count
   queue_count=$(curl -sf -u "$RABBITMQ_USER:$RABBITMQ_PASS" "$RABBITMQ_API/queues" 2>/dev/null | jq length)
-  info "RabbitMQ $version — $queue_count filas no total"
+  info "RabbitMQ $version - $queue_count filas no total"
   return 0
 }
 
@@ -154,39 +154,39 @@ send_alert() {
   local body="$2"
 
   # Log to stderr (captured by log aggregator)
-  echo "[ALERT] $subject — $body" >&2
+  echo "[ALERT] $subject - $body" >&2
 
   # Webhook (Slack / Discord / custom)
   if [ -n "$WEBHOOK_URL" ]; then
     local payload
-    payload=$(jq -n --arg text "⚠️ *Severinno DLQ Alert*: $subject\n\`\`\`$body\`\`\`" '{text: $text}')
+    payload=$(jq -n --arg text "[!] *Severinno DLQ Alert*: $subject\n\`\`\`$body\`\`\`" '{text: $text}')
     curl -sf -X POST -H "Content-Type: application/json" -d "$payload" "$WEBHOOK_URL" 2>/dev/null || \
       warn "Falha ao enviar webhook para $WEBHOOK_URL"
   fi
 }
 
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 # MAIN
-# ═════════════════════════════════════════════════════════════════════════════
+# =============================================================================
 
-# ── Purge mode ─────────────────────────────────────────────────────────────
+# -- Purge mode -------------------------------------------------------------
 if [ "$PURGE_MODE" = true ]; then
   echo ""
-  echo "╔══════════════════════════════════════════════════════╗"
-  echo "║     ⚠️  LIMPAR TODAS AS FILAS DLQ                     ║"
-  echo "╚══════════════════════════════════════════════════════╝"
+  echo "+======================================================+"
+  echo "|     [!]  LIMPAR TODAS AS FILAS DLQ                     |"
+  echo "+======================================================+"
   echo ""
   echo -n "Digite 'PURGE' para confirmar: "
   read -r CONFIRM
   if [ "$CONFIRM" = "PURGE" ]; then
     purge_dlqs
   else
-    info "Operação cancelada."
+    info "Operacao cancelada."
   fi
   exit 0
 fi
 
-# ── Watch mode ─────────────────────────────────────────────────────────────
+# -- Watch mode -------------------------------------------------------------
 if [ "$WATCH_MODE" = true ]; then
   info "Monitorando DLQs (Ctrl+C para sair)..."
   echo ""
@@ -217,14 +217,14 @@ if [ "$WATCH_MODE" = true ]; then
   exit 0
 fi
 
-# ── Prometheus metrics ─────────────────────────────────────────────────────
+# -- Prometheus metrics -----------------------------------------------------
 if [ "$PROM_MODE" = true ]; then
   prometheus_metrics
   exit 0
 fi
 
-# ── Standard check ─────────────────────────────────────────────────────────
-echo "=== Severinno Marketplace — DLQ Monitor ==="
+# -- Standard check ---------------------------------------------------------
+echo "=== Severinno Marketplace - DLQ Monitor ==="
 echo "  RabbitMQ: $RABBITMQ_HOST:$RABBITMQ_PORT"
 echo "  Threshold: $ALERT_THRESHOLD mensagens"
 echo "  $(date '+%Y-%m-%d %H:%M:%S')"
@@ -248,13 +248,13 @@ while IFS='|' read -r name ready unacked consumers; do
   total_messages=$((total_messages + total))
 
   if [ "$total" -gt "${ALERT_THRESHOLD}" ]; then
-    error "$name — $total mensagens (threshold: $ALERT_THRESHOLD)"
+    error "$name - $total mensagens (threshold: $ALERT_THRESHOLD)"
     alert_count=$((alert_count + 1))
-    alert_details="${alert_details}DLQ: $name — $total mensagens\n"
+    alert_details="${alert_details}DLQ: $name - $total mensagens\n"
   elif [ "$total" -gt 0 ]; then
-    warn "$name — $total mensagens (abaixo do threshold)"
+    warn "$name - $total mensagens (abaixo do threshold)"
   else
-    log "$name — vazia"
+    log "$name - vazia"
   fi
 done <<< "$dlqs"
 

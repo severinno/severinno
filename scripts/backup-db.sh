@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# ═══════════════════════════════════════════════════════════════════════════
-# backup-db.sh — PostgreSQL Backup Automático com Rotação
-# ═══════════════════════════════════════════════════════════════════════════
-# Cria backups do PostgreSQL usando pg_dump, com compressão gzip,
-# rotação automática (mantém N backups), e envio opcional para S3.
+# ===========================================================================
+# backup-db.sh - PostgreSQL Backup Automatico com Rotacao
+# ===========================================================================
+# Cria backups do PostgreSQL usando pg_dump, com compressao gzip,
+# rotacao automatica (mantem N backups), e envio opcional para S3.
 #
 # Uso:
 #   bash scripts/backup-db.sh                          # Backup manual
 #   bash scripts/backup-db.sh --cron                   # Modo cron (log + silent)
 #   bash scripts/backup-db.sh --restore <arquivo.sql.gz>  # Restaurar backup
 #
-# Cron (todo dia às 03:00):
+# Cron (todo dia as 03:00):
 #   0 3 * * * /opt/severinno/scripts/backup-db.sh --cron
 #
-# Pré-requisitos:
+# Pre-requisitos:
 #   - pg_dump instalado (vem com postgresql-client)
-#   - Variáveis de ambiente: PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
+#   - Variaveis de ambiente: PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
 #   - (Opcional) aws-cli para envio ao S3
 #
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 set -euo pipefail
 
-# ── Configuração ──────────────────────────────────────────────────────────
+# -- Configuracao ----------------------------------------------------------
 
-# Diretório de backups (bind mount no host ou volume Docker)
+# Diretorio de backups (bind mount no host ou volume Docker)
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/severinno/postgres}"
 
-# Rotação: manter N backups locais
+# Rotacao: manter N backups locais
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
 
 # Prefixo do arquivo de backup
@@ -36,25 +36,25 @@ BACKUP_PREFIX="${BACKUP_PREFIX:-severinno-db}"
 # S3 bucket opcional (ex: s3://severinno-backups/db/)
 S3_BUCKET="${S3_BUCKET:-}"
 
-# Limite de compressão (0-9, 9=máxima)
+# Limite de compressao (0-9, 9=maxima)
 GZIP_LEVEL="${GZIP_LEVEL:-6}"
 
 # Timestamp
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-# ── Cores ─────────────────────────────────────────────────────────────────
+# -- Cores -----------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-info()  { echo -e "${CYAN}  ℹ${NC} $1"; }
-ok()    { echo -e "${GREEN}  ✔${NC} $1"; }
-warn()  { echo -e "${YELLOW}  ⚠${NC} $1"; }
-err()   { echo -e "${RED}  ✘${NC} $1"; }
+info()  { echo -e "${CYAN}  [i]${NC} $1"; }
+ok()    { echo -e "${GREEN}  [OK]${NC} $1"; }
+warn()  { echo -e "${YELLOW}  [!]${NC} $1"; }
+err()   { echo -e "${RED}  [X]${NC} $1"; }
 
-# ── Helpers ───────────────────────────────────────────────────────────────
+# -- Helpers ---------------------------------------------------------------
 
 log() {
   if [[ "${1:-}" == "--cron" ]]; then
@@ -79,7 +79,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── Verificação de dependências ───────────────────────────────────────────
+# -- Verificacao de dependencias -------------------------------------------
 
 check_deps() {
   if ! command -v pg_dump &>/dev/null; then
@@ -93,14 +93,14 @@ check_deps() {
   fi
 }
 
-# ── Verificação de conexão ────────────────────────────────────────────────
+# -- Verificacao de conexao ------------------------------------------------
 
 check_connection() {
   local db_url="${DATABASE_URL:-}"
   local pg_host="${PGHOST:-}"
   local pg_port="${PGPORT:-5432}"
 
-  # Se DATABASE_URL não está definida, tenta usar env vars individuais
+  # Se DATABASE_URL nao esta definida, tenta usar env vars individuais
   if [ -z "$db_url" ]; then
     if [ -z "$pg_host" ]; then
       err "Defina DATABASE_URL ou PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE"
@@ -108,25 +108,25 @@ check_connection() {
     fi
   fi
 
-  # Testa conexão (usa DATABASE_URL se disponível, senão monta da env)
+  # Testa conexao (usa DATABASE_URL se disponivel, senao monta da env)
   if [ -n "$DATABASE_URL" ]; then
     if ! psql "$DATABASE_URL" -At -c "SELECT 1" &>/dev/null; then
-      err "Não foi possível conectar ao banco via DATABASE_URL"
+      err "Nao foi possivel conectar ao banco via DATABASE_URL"
       exit 1
     fi
   else
     if ! PGPASSWORD="${PGPASSWORD}" psql \
       -h "${PGHOST}" -p "${PGPORT}" -U "${PGUSER}" -d "${PGDATABASE}" \
       -At -c "SELECT 1" &>/dev/null; then
-      err "Não foi possível conectar ao banco: ${PGUSER}@${PGHOST}:${PGPORT}/${PGDATABASE}"
+      err "Nao foi possivel conectar ao banco: ${PGUSER}@${PGHOST}:${PGPORT}/${PGDATABASE}"
       exit 1
     fi
   fi
 
-  ok "Conexão com banco OK"
+  ok "Conexao com banco OK"
 }
 
-# ── Backup ─────────────────────────────────────────────────────────────────
+# -- Backup -----------------------------------------------------------------
 
 do_backup() {
   local mode="${1:-manual}"
@@ -135,10 +135,10 @@ do_backup() {
   mkdir -p "$BACKUP_DIR"
 
   info "Iniciando backup..."
-  info "  Diretório: $BACKUP_DIR"
+  info "  Diretorio: $BACKUP_DIR"
   info "  Arquivo:   $(basename "$backup_file")"
 
-  # Estatísticas antes do backup
+  # Estatisticas antes do backup
   local db_size
   if [ -n "${DATABASE_URL:-}" ]; then
     db_size=$(psql "$DATABASE_URL" -At -c \
@@ -150,7 +150,7 @@ do_backup() {
   fi
   info "  Tamanho:   $db_size"
 
-  # Executa pg_dump com compressão gzip
+  # Executa pg_dump com compressao gzip
   local start_time
   start_time=$(date +%s)
 
@@ -170,17 +170,17 @@ do_backup() {
 
   # Verifica integridade do arquivo
   if [ ! -f "$backup_file" ] || [ ! -s "$backup_file" ]; then
-    err "Arquivo de backup vazio ou não criado"
+    err "Arquivo de backup vazio ou nao criado"
     exit 1
   fi
 
   local backup_size
   backup_size=$(du -h "$backup_file" | cut -f1)
 
-  ok "Backup concluído: $backup_size em ${elapsed}s"
-  log --cron "Backup concluído: $(basename "$backup_file") ($backup_size, ${elapsed}s, mode=$mode)"
+  ok "Backup concluido: $backup_size em ${elapsed}s"
+  log --cron "Backup concluido: $(basename "$backup_file") ($backup_size, ${elapsed}s, mode=$mode)"
 
-  # Validação: testar integridade do gzip
+  # Validacao: testar integridade do gzip
   if ! gzip -t "$backup_file" 2>/dev/null; then
     err "Arquivo gzip corrompido"
     rm -f "$backup_file"
@@ -191,10 +191,10 @@ do_backup() {
   BACKUP_FILE="$backup_file"
 }
 
-# ── Rotação ────────────────────────────────────────────────────────────────
+# -- Rotacao ----------------------------------------------------------------
 
 do_rotation() {
-  info "Rotação: removendo backups com mais de ${RETENTION_DAYS} dias..."
+  info "Rotacao: removendo backups com mais de ${RETENTION_DAYS} dias..."
 
   local removed=0
   while IFS= read -r -d '' old_file; do
@@ -204,13 +204,13 @@ do_rotation() {
 
   if [ "$removed" -gt 0 ]; then
     ok "$removed backup(s) antigo(s) removido(s)"
-    log --cron "Rotação: $removed backups removidos (retenção: ${RETENTION_DAYS}d)"
+    log --cron "Rotacao: $removed backups removidos (retencao: ${RETENTION_DAYS}d)"
   else
     info "Nenhum backup antigo para remover"
   fi
 }
 
-# ── Envio para S3 (opcional) ───────────────────────────────────────────────
+# -- Envio para S3 (opcional) -----------------------------------------------
 
 do_s3_upload() {
   if [ -z "$S3_BUCKET" ]; then
@@ -218,7 +218,7 @@ do_s3_upload() {
   fi
 
   if ! command -v aws &>/dev/null && ! command -v mc &>/dev/null; then
-    warn "aws-cli ou mc não encontrados — pulando upload S3"
+    warn "aws-cli ou mc nao encontrados - pulando upload S3"
     warn "  Instale: apt install awscli"
     warn "  Ou configure S3_BUCKET vazio para pular"
     return 0
@@ -232,7 +232,7 @@ do_s3_upload() {
       ok "Backup enviado para S3: $target"
       log --cron "S3 upload OK: $target"
     else
-      warn "Falha no upload S3 (contínua sem ele)"
+      warn "Falha no upload S3 (continua sem ele)"
     fi
   elif command -v mc &>/dev/null; then
     if mc cp "$BACKUP_FILE" "s3/$target" 2>&1; then
@@ -243,17 +243,17 @@ do_s3_upload() {
   fi
 }
 
-# ── Restauração ────────────────────────────────────────────────────────────
+# -- Restauracao ------------------------------------------------------------
 
 do_restore() {
   local restore_file="$1"
 
   if [ ! -f "$restore_file" ]; then
-    err "Arquivo de backup não encontrado: $restore_file"
+    err "Arquivo de backup nao encontrado: $restore_file"
     exit 1
   fi
 
-  info "⚠️  RESTAURAÇÃO — Isso vai SUBSTITUIR o banco de dados atual!"
+  info "[!]  RESTAURACAO - Isso vai SUBSTITUIR o banco de dados atual!"
   info "  Arquivo: $restore_file"
   info "  Pressione Ctrl+C para cancelar (5s)..."
 
@@ -281,10 +281,10 @@ do_restore() {
   end_time=$(date +%s)
   local elapsed=$((end_time - start_time))
 
-  ok "Restauração concluída em ${elapsed}s"
+  ok "Restauracao concluida em ${elapsed}s"
 }
 
-# ── Main ───────────────────────────────────────────────────────────────────
+# -- Main -------------------------------------------------------------------
 
 main() {
   local mode="manual"
@@ -298,19 +298,19 @@ main() {
       --restore=*) action="restore"; RESTORE_FILE="${arg#*=}" ;;
       --help|-h)
         echo ""
-        echo "  Uso: bash scripts/backup-db.sh [opções]"
+        echo "  Uso: bash scripts/backup-db.sh [opcoes]"
         echo ""
-        echo "  Opções:"
+        echo "  Opcoes:"
         echo "    --cron                Modo cron (logs silenciosos para arquivo)"
         echo "    --restore <arquivo>   Restaurar backup"
         echo "    --help                Esta ajuda"
         echo ""
-        echo "  Configuração (env vars):"
-        echo "    BACKUP_DIR          Diretório de backups (padrão: /var/backups/severinno/postgres)"
-        echo "    RETENTION_DAYS     Retenção em dias (padrão: 30)"
+        echo "  Configuracao (env vars):"
+        echo "    BACKUP_DIR          Diretorio de backups (padrao: /var/backups/severinno/postgres)"
+        echo "    RETENTION_DAYS     Retencao em dias (padrao: 30)"
         echo "    S3_BUCKET           Bucket S3 opcional (ex: s3://severinno-backups/db/)"
-        echo "    GZIP_LEVEL          Nível de compressão 0-9 (padrão: 6)"
-        echo "    DATABASE_URL        URL de conexão (ou use PGHOST, PGPORT, PGUSER, ...)"
+        echo "    GZIP_LEVEL          Nivel de compressao 0-9 (padrao: 6)"
+        echo "    DATABASE_URL        URL de conexao (ou use PGHOST, PGPORT, PGUSER, ...)"
         echo ""
         exit 0
         ;;
@@ -318,9 +318,9 @@ main() {
   done
 
   echo ""
-  echo "  ╔══════════════════════════════════════════════════════════════╗"
-  echo "  ║   PostgreSQL Backup — Severinno Marketplace                 ║"
-  echo "  ╚══════════════════════════════════════════════════════════════╝"
+  echo "  +==============================================================+"
+  echo "  |   PostgreSQL Backup - Severinno Marketplace                 |"
+  echo "  +==============================================================+"
   echo ""
 
   check_deps
@@ -338,7 +338,7 @@ main() {
     do_s3_upload
   fi
 
-  # Cron: limpa log antigo (mantém últimos 1000 backups no log)
+  # Cron: limpa log antigo (mantem ultimos 1000 backups no log)
   if [ "$mode" = "cron" ]; then
     tail -n 1000 "$BACKUP_DIR/backup.log" > "$BACKUP_DIR/backup.log.tmp" 2>/dev/null || true
     mv "$BACKUP_DIR/backup.log.tmp" "$BACKUP_DIR/backup.log" 2>/dev/null || true

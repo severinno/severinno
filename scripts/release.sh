@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # =============================================================================
-# release.sh — version bump, changelog generation, and git tag
+# release.sh - version bump, changelog generation, and git tag
 #
 # Usage:
 #   ./scripts/release.sh               # show current version and help
-#   ./scripts/release.sh patch          # 0.2.0 → 0.2.1
-#   ./scripts/release.sh minor          # 0.2.0 → 0.3.0
-#   ./scripts/release.sh major          # 0.2.0 → 1.0.0
-#   ./scripts/release.sh minor cache    # 0.2.0 → 0.3.0-cache
+#   ./scripts/release.sh patch          # 0.2.0 -> 0.2.1
+#   ./scripts/release.sh minor          # 0.2.0 -> 0.3.0
+#   ./scripts/release.sh major          # 0.2.0 -> 1.0.0
+#   ./scripts/release.sh minor cache    # 0.2.0 -> 0.3.0-cache
 #   ./scripts/release.sh --dry-run patch  # show what would happen
 #
 # Exit codes:
-#   0 — release created successfully
-#   1 — error (invalid args, dirty working tree, etc.)
+#   0 - release created successfully
+#   1 - error (invalid args, dirty working tree, etc.)
 # =============================================================================
 
 set -euo pipefail
@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PACKAGE_JSON="$PROJECT_DIR/package.json"
 
-# ── Parse args ──────────────────────────────────────────────────────────────
+# -- Parse args --------------------------------------------------------------
 
 DRY_RUN=false
 BUMP=""
@@ -35,7 +35,7 @@ for arg in "$@"; do
   esac
 done
 
-# ── Help / current version ──────────────────────────────────────────────────
+# -- Help / current version --------------------------------------------------
 
 CURRENT_VERSION=$(grep '"version"' "$PACKAGE_JSON" | sed 's/.*: "//;s/".*//')
 CURRENT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "(no tag)")
@@ -50,7 +50,7 @@ if [ -z "$BUMP" ]; then
   echo "  ./scripts/release.sh <bump> [suffix] [--dry-run]"
   echo ""
   echo "Bump:  patch | minor | major"
-  echo "Suffix: optional tag suffix (e.g. 'cache' → v0.3.0-cache)"
+  echo "Suffix: optional tag suffix (e.g. 'cache' -> v0.3.0-cache)"
   echo ""
   echo "Examples:"
   echo "  ./scripts/release.sh patch          # v0.2.1"
@@ -59,14 +59,14 @@ if [ -z "$BUMP" ]; then
   exit 0
 fi
 
-# ── Validate working tree ───────────────────────────────────────────────────
+# -- Validate working tree ---------------------------------------------------
 
 if [ -n "$(git status --porcelain)" ]; then
-  echo "❌ Working tree is dirty. Commit or stash changes first."
+  echo "[FAIL] Working tree is dirty. Commit or stash changes first."
   exit 1
 fi
 
-# ── Bump version ────────────────────────────────────────────────────────────
+# -- Bump version ------------------------------------------------------------
 
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
 
@@ -84,10 +84,10 @@ else
   TAG="v${NEW_VERSION}"
 fi
 
-echo "🔖 Release: v$CURRENT_VERSION → $TAG"
+echo " Release: v$CURRENT_VERSION -> $TAG"
 echo ""
 
-# ── Generate changelog ──────────────────────────────────────────────────────
+# -- Generate changelog ------------------------------------------------------
 
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
 
@@ -110,7 +110,7 @@ fi
 echo "$CHANGELOG"
 echo ""
 
-# ── Tag stats ───────────────────────────────────────────────────────────────
+# -- Tag stats ---------------------------------------------------------------
 
 TS_COUNT=$(find src/ -name '*.ts' -o -name '*.tsx' 2>/dev/null | wc -l)
 TEST_COUNT_UNIT=$(npx vitest run --reporter=verbose 2>/dev/null | grep "Tests" | tail -1 | grep -o '[0-9]* passed' | grep -o '[0-9]*' || echo "?")
@@ -128,7 +128,7 @@ echo ""
 CHANGELOG_FILE="$PROJECT_DIR/CHANGELOG.md"
 
 if $DRY_RUN; then
-  echo "⚠️  DRY-RUN — no changes made"
+  echo "[!]  DRY-RUN - no changes made"
   echo "  Would update package.json version to: $NEW_VERSION"
   echo "  Would create tag: $TAG"
   echo "  Would write: CHANGELOG.md"

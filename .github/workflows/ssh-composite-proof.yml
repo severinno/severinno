@@ -1,0 +1,141 @@
+# =============================================================================
+# SSH Composite Proof - Severinno Marketplace
+#
+# Runtime proof that .github/actions/severinno-ssh actually WORKS, not just
+# that its YAML contract is right. The YAML guards (severinno-scp-golden.test.ts)
+# pin the inputs/pin/forwarding; this job proves the SEMANTICS: it boots a
+# local sshd (docker linuxserver/openssh-server) on the runner, generates an
+# ephemeral keypair, and runs the REAL composite against it end to end.
+#
+# The one non-obvious fact (pinned by a guard test):
+#   appleboy/ssh-action is a DOCKER container action. It runs as a sibling
+#   container on the runner's docker bridge network, so `localhost` inside it
+#   is the container itself - NOT the runner host. The correct host for a
+#   local docker sshd is the docker bridge gateway 172.17.0.1 (reaches the
+#   sshd container's published port 2222). `host: localhost` would silently
+#   fail; the guard test rejects it as a mutation.
+#
+# Remote-exec proof: the composite script writes /tmp/severinno-proof-marker
+# with a fixed payload. A later step reads it back via `docker exec` INSIDE
+# the sshd container. If the script ran on the runner instead of through ssh,
+# the marker would be on the runner's /tmp, not the container's - the
+# read-back fails. That is the semantic proof. The marker verify is ALSO the
+# backstop for the one runtime link no vitest guard can see: the multiline
+# private key flowing through the composite's `key` input to the appleboy
+# docker action (documented pattern, but if it ever gets mangled, the ssh
+# session dies and the marker never lands - the verify step fails).
+#
+# Triggered on:
+#   - PRs to main touching the composites, health-check.yml, or this workflow
+#   - Push to main (same paths - the composites ship in every release)
+#   - workflow_dispatch (manual)
+# =============================================================================
+
+name: SSH Composite Proof
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/actions/severinno-ssh/**"
+      - ".github/actions/severinno-scp/**"
+      - ".github/workflows/health-check.yml"
+      - ".github/workflows/ssh-composite-proof.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".github/actions/severinno-ssh/**"
+      - ".github/actions/severinno-scp/**"
+      - ".github/workflows/health-check.yml"
+      - ".github/workflows/ssh-composite-proof.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ssh-composite-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    name: Composite SSH semantics
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Ephemeral keypair - never committed, discarded with the runner.
+      # The private key is multiline, so it uses the GITHUB_OUTPUT heredoc
+      # form to flow through the composite's `key` input intact.
+      - name: Generate ephemeral SSH keypair
+        id: gen
+        run: |
+          ssh-keygen -t ed25519 -N "" -f /tmp/severinno_proof_key -C "severinno-proof@ci"
+          {
+            echo "PRIVATE_KEY<<EOF"
+            cat /tmp/severinno_proof_key
+            echo "EOF"
+            echo "PUBLIC_KEY=$(cat /tmp/severinno_proof_key.pub)"
+          } >> "$GITHUB_OUTPUT"
+
+      # linuxserver/openssh-server listens on 2222 internally; publish to the
+      # host bridge so the composite (docker container action) can reach it
+      # via 172.17.0.1.
+      - name: Start local sshd container
+        run: |
+          docker run -d \
+            --name severinno-sshd \
+            -p 2222:2222 \
+            -e PUID=1000 \
+            -e PGID=1000 \
+            -e TZ=Etc/UTC \
+            -e USER_NAME=severinno \
+            -e PUBLIC_KEY="${{ steps.gen.outputs.PUBLIC_KEY }}" \
+            -e PASSWORD_ACCESS=false \
+            lscr.io/linuxserver/openssh-server:latest
+
+      # Poll until sshd actually accepts the generated key (also proves the
+      # keypair + USER_NAME wiring before the composite runs).
+      - name: Wait for sshd to accept the generated key
+        run: |
+          for i in $(seq 1 30); do
+            if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                   -o BatchMode=yes -o ConnectTimeout=3 \
+                   -i /tmp/severinno_proof_key -p 2222 \
+                   severinno@172.17.0.1 true 2>/dev/null; then
+              echo "sshd ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "sshd did not become ready" >&2
+          exit 1
+
+      # THE PROOF: run the real composite against the local sshd. The script
+      # self-asserts the remote user and writes the marker file.
+      - name: PROOF - severinno-ssh composite executes a script on the sshd
+        id: proof
+        uses: ./.github/actions/severinno-ssh
+        with:
+          host: 172.17.0.1
+          port: "2222"
+          username: severinno
+          key: ${{ steps.gen.outputs.PRIVATE_KEY }}
+          script: |
+            set -e
+            test "$(whoami)" = "severinno"
+            echo "severinno-ssh-proof-ok" > /tmp/severinno-proof-marker
+            cat /tmp/severinno-proof-marker
+
+      # The semantic assertion: the marker must exist INSIDE the sshd
+      # container (written over ssh), not on the runner's /tmp.
+      - name: Verify remote execution happened INSIDE the container
+        run: |
+          marker=$(docker exec severinno-sshd cat /tmp/severinno-proof-marker)
+          echo "marker inside container: ${marker}"
+          test "$marker" = "severinno-ssh-proof-ok"
+
+      # Non-fatal: if the container never started (e.g. image pull failure),
+      # this cleanup must not add a second failure to an already-red run.
+      - name: Tear down sshd
+        if: always()
+        run: docker rm -f severinno-sshd || true

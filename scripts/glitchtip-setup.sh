@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# scripts/glitchtip-setup.sh — GlitchTip Setup Helpers
+# scripts/glitchtip-setup.sh - GlitchTip Setup Helpers
 #
 # Usage:
-#   ./scripts/glitchtip-setup.sh create-admin     ← Create first admin user
-#   ./scripts/glitchtip-setup.sh create-project   ← Create a project + get DSN
-#   ./scripts/glitchtip-setup.sh status           ← Check all services health
-#   ./scripts/glitchtip-setup.sh logs             ← Tail GlitchTip logs
+#   ./scripts/glitchtip-setup.sh create-admin     <- Create first admin user
+#   ./scripts/glitchtip-setup.sh create-project   <- Create a project + get DSN
+#   ./scripts/glitchtip-setup.sh status           <- Check all services health
+#   ./scripts/glitchtip-setup.sh logs             <- Tail GlitchTip logs
 #
 # Prerequisites:
 #   - docker compose running (docker compose -f docker-compose.prod.yml
@@ -24,7 +24,7 @@ COMPOSE_ENV="--env-file .env.glitchtip"
 GLITCHTIP_URL="${GLITCHTIP_URL:-http://localhost:8000}"
 COMPOSE_CMD="docker compose -f ${COMPOSE_FILE} ${COMPOSE_PROFILE} ${COMPOSE_ENV}"
 
-# ── Colors ─────────────────────────────────────────────────────────────────
+# -- Colors -----------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -36,7 +36,7 @@ ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
-# ── Health check ───────────────────────────────────────────────────────────
+# -- Health check -----------------------------------------------------------
 health_check() {
   local max_retries=30
   local retry=0
@@ -54,7 +54,7 @@ health_check() {
   ok "GlitchTip is healthy at ${GLITCHTIP_URL}"
 }
 
-# ── Status ─────────────────────────────────────────────────────────────────
+# -- Status -----------------------------------------------------------------
 cmd_status() {
   info "GlitchTip service status:"
   ${COMPOSE_CMD} ps
@@ -64,12 +64,12 @@ cmd_status() {
   curl -sf "${GLITCHTIP_URL}/api/health/" | python3 -m json.tool 2>/dev/null || echo "  (not ready yet)"
 }
 
-# ── Logs ───────────────────────────────────────────────────────────────────
+# -- Logs -------------------------------------------------------------------
 cmd_logs() {
   ${COMPOSE_CMD} logs --tail=100 -f
 }
 
-# ── Create Admin User ─────────────────────────────────────────────────────
+# -- Create Admin User -----------------------------------------------------
 cmd_create_admin() {
   health_check
 
@@ -101,7 +101,7 @@ cmd_create_admin() {
   info "Login at ${GLITCHTIP_URL}"
 }
 
-# ── Create Project + Get DSN ────────────────────────────────────────────
+# -- Create Project + Get DSN --------------------------------------------
 cmd_create_project() {
   health_check
 
@@ -124,7 +124,7 @@ cmd_create_project() {
     info ""
     info "Alternative: create the project manually in the UI"
     info "  1. Login at ${GLITCHTIP_URL}"
-    info "  2. Create a project → choose 'Next.js'"
+    info "  2. Create a project -> choose 'Next.js'"
     info "  3. Copy the DSN from the project settings"
     return 1
   }
@@ -166,12 +166,12 @@ except: pass
     echo ""
     ok "Project created!"
     echo ""
-    echo "─────────────────────────────────────────────────────────────"
+    echo "-------------------------------------------------------------"
     echo "  Add these to your .env file:"
     echo ""
     echo "  SENTRY_DSN=${DSN}"
     echo "  NEXT_PUBLIC_SENTRY_DSN=${DSN}"
-    echo "─────────────────────────────────────────────────────────────"
+    echo "-------------------------------------------------------------"
     echo ""
   else
     echo ""
@@ -184,7 +184,7 @@ except: pass
   fi
 }
 
-# ── Main ───────────────────────────────────────────────────────────────────
+# -- Main -------------------------------------------------------------------
 case "${1:-help}" in
   status)
     cmd_status

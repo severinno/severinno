@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
-# test-fail2ban-recidive.sh — Teste de verificação do Jail Recidive
+# test-fail2ban-recidive.sh - Teste de verificacao do Jail Recidive
 # =============================================================================
-# Simula um ataque cross-jail (múltiplos vetores) e verifica se o jail
+# Simula um ataque cross-jail (multiplos vetores) e verifica se o jail
 # recidive do fail2ban bloqueia o IP reincidente.
 #
 # Uso:
@@ -10,16 +10,16 @@
 #   sudo ./scripts/test-fail2ban-recidive.sh              # Modo interativo
 #   sudo ./scripts/test-fail2ban-recidive.sh --ci          # Modo CI (exit code)
 #   sudo ./scripts/test-fail2ban-recidive.sh --dry-run     # Apenas mostra o que faria
-#   sudo ./scripts/test-fail2ban-recidive.sh --quick       # Pula simulação sshd
+#   sudo ./scripts/test-fail2ban-recidive.sh --quick       # Pula simulacao sshd
 #   sudo ./scripts/test-fail2ban-recidive.sh cleanup       # Limpa IPs de teste
 #
-# ⚠️ Requer: fail2ban rodando, sudo, acesso ao fail2ban-client.
-# ⚠️ Usa IPs reservados (10.254.0.0/16) para não interferir com tráfego real.
+# [!] Requer: fail2ban rodando, sudo, acesso ao fail2ban-client.
+# [!] Usa IPs reservados (10.254.0.0/16) para nao interferir com trafego real.
 # =============================================================================
 
 set -euo pipefail
 
-# ── Cores ──────────────────────────────────────────────────────────────────
+# -- Cores ------------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -35,11 +35,11 @@ warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 err()     { echo -e "${RED}[ERRO]${NC} $1"; }
 pass()    { echo -e "${GREEN}[PASS]${NC} $1"; }
 fail()    { echo -e "${RED}[FAIL]${NC} $1"; }
-header()  { echo -e "\n${MAGENTA}${BOLD}═══ $1 ═══${NC}\n"; }
-subheader() { echo -e "${CYAN}── $1 ──${NC}"; }
+header()  { echo -e "\n${MAGENTA}${BOLD}=== $1 ===${NC}\n"; }
+subheader() { echo -e "${CYAN}-- $1 --${NC}"; }
 
-# ── Configuração ───────────────────────────────────────────────────────────
-TEST_IP="10.254.0.$((RANDOM % 250 + 2))"  # IP aleatório válido na faixa reservada (10.254.0.2–251)
+# -- Configuracao -----------------------------------------------------------
+TEST_IP="10.254.0.$((RANDOM % 250 + 2))"  # IP aleatorio valido na faixa reservada (10.254.0.2-251)
 
 DRY_RUN=false
 CI_MODE=false
@@ -48,19 +48,19 @@ ASSERTIONS_TOTAL=0
 ASSERTIONS_PASSED=0
 ASSERTIONS_FAILED=0
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # HELPERS
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 assert() {
   local description="$1"
   local result="$2"
   ASSERTIONS_TOTAL=$((ASSERTIONS_TOTAL + 1))
   if [[ "$result" == "true" ]]; then
-    pass "✓ $description"
+    pass "- $description"
     ASSERTIONS_PASSED=$((ASSERTIONS_PASSED + 1))
   else
-    fail "✗ $description"
+    fail "[X] $description"
     ASSERTIONS_FAILED=$((ASSERTIONS_FAILED + 1))
     EXIT_CODE=1
   fi
@@ -102,7 +102,7 @@ ban_ip_in_jail() {
   esac
 
   if [[ ! -f "$logpath" ]]; then
-    warn "Log $logpath não encontrado — não foi possível simular ataque no jail $jail"
+    warn "Log $logpath nao encontrado - nao foi possivel simular ataque no jail $jail"
     return 1
   fi
 
@@ -135,7 +135,7 @@ unban_ip_all_jails() {
       found=true
     fi
   done
-  $found || warn "  IP $ip não estava banido em nenhum jail"
+  $found || warn "  IP $ip nao estava banido em nenhum jail"
 }
 
 check_ip_banned_in_jail() {
@@ -146,25 +146,25 @@ check_ip_banned_in_jail() {
 
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # FASES DO TESTE
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 test_preflight() {
-  header "🔍 PRÉ-VOO — Verificações Iniciais"
+  header " PRE-VOO - Verificacoes Iniciais"
   local all_ok=true
 
-  # ── Root check ──────────────────────────────────────────────────────────
-  subheader "Verificando privilégios"
+  # -- Root check ----------------------------------------------------------
+  subheader "Verificando privilegios"
   if [[ $EUID -eq 0 ]]; then
     assert "Executando como root" "true"
   else
-    assert "Executando como root (necessário para fail2ban-client)" "false"
+    assert "Executando como root (necessario para fail2ban-client)" "false"
     err "Este script precisa de sudo. Execute: sudo $0"
     exit 1
   fi
 
-  # ── fail2ban instalado ──────────────────────────────────────────────────
+  # -- fail2ban instalado --------------------------------------------------
   subheader "Verificando fail2ban"
   if command -v fail2ban-client &>/dev/null; then
     local version
@@ -172,84 +172,84 @@ test_preflight() {
     assert "fail2ban instalado ($version)" "true"
   else
     assert "fail2ban instalado" "false"
-    err "fail2ban não está instalado. Execute: sudo ./scripts/fail2ban-setup.sh install"
+    err "fail2ban nao esta instalado. Execute: sudo ./scripts/fail2ban-setup.sh install"
     exit 1
   fi
 
-  # ── fail2ban rodando ────────────────────────────────────────────────────
+  # -- fail2ban rodando ----------------------------------------------------
   if systemctl is-active --quiet fail2ban 2>/dev/null; then
-    assert "fail2ban service está ativo" "true"
+    assert "fail2ban service esta ativo" "true"
   else
-    assert "fail2ban service está ativo" "false"
-    warn "fail2ban não está rodando. Tentando iniciar..."
+    assert "fail2ban service esta ativo" "false"
+    warn "fail2ban nao esta rodando. Tentando iniciar..."
     systemctl start fail2ban 2>/dev/null || true
     sleep 2
     if systemctl is-active --quiet fail2ban 2>/dev/null; then
       ok "fail2ban iniciado com sucesso"
     else
-      err "Não foi possível iniciar fail2ban"
+      err "Nao foi possivel iniciar fail2ban"
       all_ok=false
     fi
   fi
 
-  # ── Jails necessários ativos ────────────────────────────────────────────
-  subheader "Verificando jails obrigatórios"
+  # -- Jails necessarios ativos --------------------------------------------
+  subheader "Verificando jails obrigatorios"
   local required_jails=("sshd" "caddy-access" "caddy-badbots" "caddy-404-scan" "recidive")
   local all_jails_active=true
   for jail in "${required_jails[@]}"; do
     if fail2ban-cmd status "$jail" &>/dev/null; then
-      assert "Jail '$jail' está ativo" "true"
+      assert "Jail '$jail' esta ativo" "true"
     else
-      assert "Jail '$jail' está ativo" "false"
-      warn "Jail $jail não encontrado. Execute: sudo ./scripts/fail2ban-setup.sh install"
+      assert "Jail '$jail' esta ativo" "false"
+      warn "Jail $jail nao encontrado. Execute: sudo ./scripts/fail2ban-setup.sh install"
       all_jails_active=false
       all_ok=false
     fi
   done
 
-  # ── Recidive config correta ─────────────────────────────────────────────
-  subheader "Verificando configuração do jail recidive"
+  # -- Recidive config correta ---------------------------------------------
+  subheader "Verificando configuracao do jail recidive"
   if [[ -f "/etc/fail2ban/jail.local" ]]; then
     if grep -q "\[recidive\]" /etc/fail2ban/jail.local; then
-      assert "Seção [recidive] existe no jail.local" "true"
+      assert "Secao [recidive] existe no jail.local" "true"
       local recidive_enabled=$(grep -A20 '\[recidive\]' /etc/fail2ban/jail.local | grep 'enabled' | grep -c 'true')
       if [[ "$recidive_enabled" -ge 1 ]]; then
-        assert "Jail recidive está enabled = true" "true"
+        assert "Jail recidive esta enabled = true" "true"
       else
-        assert "Jail recidive está enabled = true" "false"
-        warn "Jail recidive está presente mas desabilitado (enabled != true)"
+        assert "Jail recidive esta enabled = true" "false"
+        warn "Jail recidive esta presente mas desabilitado (enabled != true)"
       fi
       local recidive_maxretry=$(grep -A20 '\[recidive\]' /etc/fail2ban/jail.local | grep 'maxretry' | head -1 | grep -oP '\d+')
-      assert "maxretry = $recidive_maxretry (3+ é seguro)" "true"
+      assert "maxretry = $recidive_maxretry (3+ e seguro)" "true"
       local recidive_bantime=$(grep -A20 '\[recidive\]' /etc/fail2ban/jail.local | grep 'bantime' | head -1 | grep -oP '\d+')
-      assert "bantime = $recidive_bantime (≥ 86400 = 1 dia)" "true"
+      assert "bantime = $recidive_bantime (>= 86400 = 1 dia)" "true"
       local recidive_findtime=$(grep -A20 '\[recidive\]' /etc/fail2ban/jail.local | grep 'findtime' | head -1 | grep -oP '\d+')
-      assert "findtime = $recidive_findtime (≥ 3600 = 1h)" "true"
+      assert "findtime = $recidive_findtime (>= 3600 = 1h)" "true"
     else
-      assert "Seção [recidive] existe no jail.local" "false"
-      err "Jail recidive não está configurado no jail.local!"
+      assert "Secao [recidive] existe no jail.local" "false"
+      err "Jail recidive nao esta configurado no jail.local!"
       all_ok=false
     fi
   else
     assert "Arquivo /etc/fail2ban/jail.local existe" "false"
-    err "jail.local não encontrado em /etc/fail2ban/"
+    err "jail.local nao encontrado em /etc/fail2ban/"
     all_ok=false
   fi
 
   if $all_ok; then
     echo ""
-    ok "✅ Pré-voo: todas as verificações passaram. Pronto para testar!"
+    ok "[OK] Pre-voo: todas as verificacoes passaram. Pronto para testar!"
   else
     echo ""
-    warn "⚠️ Algumas verificações falharam. O teste pode não funcionar completamente."
+    warn "[!] Algumas verificacoes falharam. O teste pode nao funcionar completamente."
   fi
 }
 
 test_single_jail_ban() {
-  header "🔴 FASE 1 — Banimento em Jail Único (sshd)"
+  header " FASE 1 - Banimento em Jail Unico (sshd)"
   info "IP de teste: $TEST_IP"
 
-  # ── Banir IP no sshd ────────────────────────────────────────────────────
+  # -- Banir IP no sshd ----------------------------------------------------
   subheader "Banindo IP $TEST_IP no jail sshd"
   if $DRY_RUN; then
     ok "(dry-run) IP $TEST_IP banido no sshd"
@@ -260,8 +260,8 @@ test_single_jail_ban() {
         assert "IP $TEST_IP foi banido no jail sshd" "true"
       else
         assert "IP $TEST_IP foi banido no jail sshd" "false"
-        warn "Não foi possível banir IP no jail sshd. Tentando injetar no log..."
-        warn "Você pode simular manualmente:"
+        warn "Nao foi possivel banir IP no jail sshd. Tentando injetar no log..."
+        warn "Voce pode simular manualmente:"
         echo ""
         echo "  echo '$(date '+%b %e %H:%M:%S') $(hostname) sshd[$$]: Failed password for admin from $TEST_IP port 22 ssh2' | sudo tee -a /var/log/auth.log"
         echo ""
@@ -271,28 +271,28 @@ test_single_jail_ban() {
       fi
     else
       assert "IP $TEST_IP foi banido no jail sshd" "false"
-      warn "Não foi possível simular ataque no sshd. Pulando para próximos testes."
+      warn "Nao foi possivel simular ataque no sshd. Pulando para proximos testes."
     fi
   fi
 
-  # ── Verificar que recidive NÃO pegou (apenas 1 ban) ────────────────────
-  subheader "Verificando que recidive NÃO acionou (apenas 1 jail)"
+  # -- Verificar que recidive NAO pegou (apenas 1 ban) --------------------
+  subheader "Verificando que recidive NAO acionou (apenas 1 jail)"
   sleep 1
   if check_ip_banned_in_jail "recidive" "$TEST_IP"; then
-    assert "IP $TEST_IP NÃO está no jail recidive (1 ban apenas)" "false"
-    warn "RECIDIVE ACIONOU PREMATURAMENTE! Isso significa que o findtime/maxretry está muito agressivo."
+    assert "IP $TEST_IP NAO esta no jail recidive (1 ban apenas)" "false"
+    warn "RECIDIVE ACIONOU PREMATURAMENTE! Isso significa que o findtime/maxretry esta muito agressivo."
     warn "Considere aumentar maxretry para 4+ ou diminuir findtime para 43200 (12h)."
   else
-    assert "IP $TEST_IP NÃO está no jail recidive (1 ban apenas)" "true"
-    ok "✔ recidive não acionou — apenas 1/3 bans necessários"
+    assert "IP $TEST_IP NAO esta no jail recidive (1 ban apenas)" "true"
+    ok "[OK] recidive nao acionou - apenas 1/3 bans necessarios"
   fi
 }
 
 test_cross_jail_second() {
-  header "🟠 FASE 2 — Segundo Jail (caddy-access)"
+  header " FASE 2 - Segundo Jail (caddy-access)"
   info "IP de teste: $TEST_IP"
 
-  # ── Banir IP no caddy-access ────────────────────────────────────────────
+  # -- Banir IP no caddy-access --------------------------------------------
   subheader "Banindo IP $TEST_IP no jail caddy-access"
   if $DRY_RUN; then
     ok "(dry-run) IP $TEST_IP banido no caddy-access"
@@ -309,26 +309,26 @@ test_cross_jail_second() {
     fi
   fi
 
-  # ── Verificar que recidive ainda NÃO pegou (apenas 2 bans) ────────────
-  subheader "Verificando que recidive NÃO acionou (2 jails — precisa de 3)"
+  # -- Verificar que recidive ainda NAO pegou (apenas 2 bans) ------------
+  subheader "Verificando que recidive NAO acionou (2 jails - precisa de 3)"
   sleep 1
   if check_ip_banned_in_jail "recidive" "$TEST_IP"; then
-    assert "IP $TEST_IP NÃO está no jail recidive (2 bans apenas)" "false"
+    assert "IP $TEST_IP NAO esta no jail recidive (2 bans apenas)" "false"
     warn "RECIDIVE ACIONOU COM APENAS 2 BANS!"
     warn "Verifique maxretry no [recidive]: deve ser >= 3"
     local actual_maxretry=$(grep -A20 '\[recidive\]' /etc/fail2ban/jail.local 2>/dev/null | grep 'maxretry' | head -1 | grep -oP '\d+')
-    info "maxretry atual no recidive: ${actual_maxretry:-não encontrado}"
+    info "maxretry atual no recidive: ${actual_maxretry:-nao encontrado}"
   else
-    assert "IP $TEST_IP NÃO está no jail recidive (2 bans apenas)" "true"
-    ok "✔ recidive ainda não acionou — 2/3 bans (mais um pra trigger)"
+    assert "IP $TEST_IP NAO esta no jail recidive (2 bans apenas)" "true"
+    ok "[OK] recidive ainda nao acionou - 2/3 bans (mais um pra trigger)"
   fi
 }
 
 test_recidive_trigger() {
-  header "🔴🟠 FASE 3 — TERCEIRO JAIL → RECIDIVE TRIGGER"
+  header " FASE 3 - TERCEIRO JAIL -> RECIDIVE TRIGGER"
   info "IP de teste: $TEST_IP"
 
-  # ── Banir IP no caddy-badbots (terceiro jail!) ─────────────────────────
+  # -- Banir IP no caddy-badbots (terceiro jail!) -------------------------
   subheader "Banindo IP $TEST_IP no jail caddy-badbots (terceiro jail)"
   if $DRY_RUN; then
     ok "(dry-run) IP $TEST_IP banido no caddy-badbots"
@@ -345,48 +345,48 @@ test_recidive_trigger() {
     fi
   fi
 
-  # ── Verificar que recidive ACIONOU (3 bans cross-jail) ─────────────────
-  subheader "🎯 Verificação CRÍTICA: recidive deve ter acionado"
+  # -- Verificar que recidive ACIONOU (3 bans cross-jail) -----------------
+  subheader " Verificacao CRITICA: recidive deve ter acionado"
   sleep 2  # Dar tempo para fail2ban processar o log e acionar recidive
 
   if check_ip_banned_in_jail "recidive" "$TEST_IP"; then
-    assert "🚨 IP $TEST_IP está no jail recidive (3 bans cross-jail)" "true"
+    assert " IP $TEST_IP esta no jail recidive (3 bans cross-jail)" "true"
     echo ""
-    ok "╔═══════════════════════════════════════════════════════════╗"
-    ok "║  ✅ RECIDIVE FUNCIONANDO!                               ║"
-    ok "║  IP reincidente em 3 jails foi banido por 14 dias!      ║"
-    ok "╚═══════════════════════════════════════════════════════════╝"
+    ok "+===========================================================+"
+    ok "|  [OK] RECIDIVE FUNCIONANDO!                               |"
+    ok "|  IP reincidente em 3 jails foi banido por 14 dias!      |"
+    ok "+===========================================================+"
   else
-    assert "🚨 IP $TEST_IP está no jail recidive (3 bans cross-jail)" "false"
+    assert " IP $TEST_IP esta no jail recidive (3 bans cross-jail)" "false"
     echo ""
-    warn "╔═══════════════════════════════════════════════════════════╗"
-    warn "║  ❌ RECIDIVE NÃO ACIONOU!                               ║"
-    warn "║  Possíveis causas:                                     ║"
-    warn "║  1. fail2ban precisa de mais tempo para processar log   ║"
-    warn "║  2. IP não aparece no fail2ban.log (log do recidive)    ║"
-    warn "║  3. maxretry/findtime muito permissivos                ║"
-    warn "╚═══════════════════════════════════════════════════════════╝"
+    warn "+===========================================================+"
+    warn "|  [FAIL] RECIDIVE NAO ACIONOU!                               |"
+    warn "|  Possiveis causas:                                     |"
+    warn "|  1. fail2ban precisa de mais tempo para processar log   |"
+    warn "|  2. IP nao aparece no fail2ban.log (log do recidive)    |"
+    warn "|  3. maxretry/findtime muito permissivos                |"
+    warn "+===========================================================+"
 
-    # Diagnóstico
-    subheader "Diagnóstico"
+    # Diagnostico
+    subheader "Diagnostico"
     info "Verificando se o IP aparece em outros jails..."
     for jail in sshd caddy-access caddy-badbots caddy-404-scan; do
       if check_ip_banned_in_jail "$jail" "$TEST_IP"; then
         ok "  IP encontrado no jail $jail"
       else
-        warn "  IP NÃO encontrado no jail $jail"
+        warn "  IP NAO encontrado no jail $jail"
       fi
     done
 
     if [[ -f "/var/log/fail2ban.log" ]]; then
-      info "Últimas linhas do fail2ban.log:"
-      tail -20 /var/log/fail2ban.log 2>/dev/null | head -20 || echo "(log vazio ou inacessível)"
+      info "Ultimas linhas do fail2ban.log:"
+      tail -20 /var/log/fail2ban.log 2>/dev/null | head -20 || echo "(log vazio ou inacessivel)"
     else
-      info "fail2ban.log não encontrado em /var/log/fail2ban.log"
+      info "fail2ban.log nao encontrado em /var/log/fail2ban.log"
     fi
 
     info "Status do jail recidive:"
-    fail2ban-cmd status recidive 2>&1 | head -10 || echo "  (jail inacessível)"
+    fail2ban-cmd status recidive 2>&1 | head -10 || echo "  (jail inacessivel)"
 
     warn "Para testar manualmente:"
     echo "    sudo fail2ban-client set sshd banip $TEST_IP"
@@ -396,7 +396,7 @@ test_recidive_trigger() {
   fi
 
   echo ""
-  info "📊 Bans ativos no servidor (todos os jails):"
+  info " Bans ativos no servidor (todos os jails):"
   for jail in sshd caddy-access caddy-badbots caddy-404-scan recidive; do
     local status=$(fail2ban-cmd status "$jail" 2>/dev/null | grep -E "(Total banned|Currently banned)" | tr -d '\n' || echo "  (inativo)")
     echo "    $jail: $status"
@@ -404,7 +404,7 @@ test_recidive_trigger() {
 }
 
 test_cleanup() {
-  header "🧹 FASE 4 — Limpeza"
+  header " FASE 4 - Limpeza"
   info "Removendo IP de teste $TEST_IP de todos os jails..."
 
   if $DRY_RUN; then
@@ -419,31 +419,31 @@ test_cleanup() {
   local still_banned=false
   for jail in sshd caddy-access caddy-badbots caddy-404-scan recidive; do
     if check_ip_banned_in_jail "$jail" "$TEST_IP"; then
-      warn "IP $TEST_IP ainda está banido no jail $jail"
+      warn "IP $TEST_IP ainda esta banido no jail $jail"
       still_banned=true
     fi
   done
 
   if $still_banned; then
     assert "Limpeza: IP $TEST_IP removido de todos os jails" "false"
-    warn "Alguns bans não foram removidos. Execute manualmente:"
+    warn "Alguns bans nao foram removidos. Execute manualmente:"
     warn "  sudo fail2ban-client set recidive unbanip $TEST_IP"
     warn "  sudo fail2ban-client set sshd unbanip $TEST_IP"
     warn "  sudo fail2ban-client set caddy-access unbanip $TEST_IP"
     warn "  sudo fail2ban-client set caddy-badbots unbanip $TEST_IP"
   else
     assert "Limpeza: IP $TEST_IP removido de todos os jails" "true"
-    ok "✔ Ambiente de teste limpo"
+    ok "[OK] Ambiente de teste limpo"
   fi
 
   echo ""
-  info "🧪 Teste concluído com IP $TEST_IP — você pode querer verificar:"
+  info " Teste concluido com IP $TEST_IP - voce pode querer verificar:"
   info "  sudo fail2ban-client status recidive"
   info "  tail -20 /var/log/fail2ban.log | grep $TEST_IP"
 }
 
 test_reports() {
-  header "📈 RESUMO DO TESTE"
+  header " RESUMO DO TESTE"
 
   local pass_rate=0
   if [[ $ASSERTIONS_TOTAL -gt 0 ]]; then
@@ -451,27 +451,27 @@ test_reports() {
   fi
 
   echo ""
-  echo "  Total de asserções: ${ASSERTIONS_TOTAL}"
-  echo "  ✅ Passaram:        ${ASSERTIONS_PASSED}"
-  echo "  ❌ Falharam:        ${ASSERTIONS_FAILED}"
-  echo "  📊 Taxa de sucesso: ${pass_rate}%"
+  echo "  Total de assercoes: ${ASSERTIONS_TOTAL}"
+  echo "  [OK] Passaram:        ${ASSERTIONS_PASSED}"
+  echo "  [FAIL] Falharam:        ${ASSERTIONS_FAILED}"
+  echo "   Taxa de sucesso: ${pass_rate}%"
   echo ""
 
   if [[ $ASSERTIONS_FAILED -eq 0 ]]; then
     echo -e "${GREEN}${BOLD}"
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║  ✅ TESTE COMPLETO — TODOS OS CHECKS PASSARAM!              ║"
-    echo "║  Recidive está funcionando corretamente.                   ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo "+==============================================================+"
+    echo "|  [OK] TESTE COMPLETO - TODOS OS CHECKS PASSARAM!              |"
+    echo "|  Recidive esta funcionando corretamente.                   |"
+    echo "+==============================================================+"
     echo -e "${NC}"
   else
     echo -e "${RED}${BOLD}"
-    echo "╔══════════════════════════════════════════════════════════════╗"
-    echo "║  ⚠️ TESTE INCOMPLETO — ${ASSERTIONS_FAILED} CHECK(S) FALHARAM              ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo "+==============================================================+"
+    echo "|  [!] TESTE INCOMPLETO - ${ASSERTIONS_FAILED} CHECK(S) FALHARAM              |"
+    echo "+==============================================================+"
     echo -e "${NC}"
-    echo "Revise as falhas acima e ajuste a configuração conforme necessário."
-    echo "Após ajustar, reinicie o fail2ban: sudo systemctl restart fail2ban"
+    echo "Revise as falhas acima e ajuste a configuracao conforme necessario."
+    echo "Apos ajustar, reinicie o fail2ban: sudo systemctl restart fail2ban"
   fi
   echo ""
 
@@ -480,12 +480,12 @@ test_reports() {
   fi
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
-# MODO CLEANUP — Remove IPs de teste residuais
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+# MODO CLEANUP - Remove IPs de teste residuais
+# ===========================================================================
 
 cmd_cleanup() {
-  header "🧹 Limpeza de IPs de Teste Residuais"
+  header " Limpeza de IPs de Teste Residuais"
   warn "Este comando remove bans de IPs na faixa 10.254.0.0/16 (reservada para testes)"
   warn "de todos os jails do fail2ban."
 
@@ -518,16 +518,16 @@ cmd_cleanup() {
   fi
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # MAIN
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 show_banner() {
   echo -e "${MAGENTA}${BOLD}"
-  echo "╔══════════════════════════════════════════════════════════════╗"
-  echo "║  🔒 TESTE DE VERIFICAÇÃO — FAIL2BAN JAIL RECIDIVE          ║"
-  echo "║  Simulação de ataque cross-jail (SSH + Caddy + Bad Bots)   ║"
-  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo "+==============================================================+"
+  echo "|   TESTE DE VERIFICACAO - FAIL2BAN JAIL RECIDIVE          |"
+  echo "|  Simulacao de ataque cross-jail (SSH + Caddy + Bad Bots)   |"
+  echo "+==============================================================+"
   echo -e "${NC}"
   echo "  IP de teste:       ${TEST_IP}"
   echo "  Modo CI:           ${CI_MODE}"
@@ -535,41 +535,41 @@ show_banner() {
 
   echo "  Data:              $(date '+%Y-%m-%d %H:%M:%S')"
   echo "  Hostname:          $(hostname)"
-  echo "  fail2ban versão:   $(fail2ban-client --version 2>&1 | head -1 || echo 'desconhecida')"
+  echo "  fail2ban versao:   $(fail2ban-client --version 2>&1 | head -1 || echo 'desconhecida')"
   echo ""
 }
 
 show_help() {
-  echo "Uso: $0 [opções]"
+  echo "Uso: $0 [opcoes]"
   echo ""
-  echo "Opções:"
+  echo "Opcoes:"
   echo "  --help, -h     Mostra esta ajuda"
   echo "  --ci           Modo CI (exit code 0/1, sem prompts interativos)"
-  echo "  --dry-run      Apenas mostra o que seria executado (não modifica nada)"
+  echo "  --dry-run      Apenas mostra o que seria executado (nao modifica nada)"
   echo "  --quick        Ignorado (precisa de 3 jails para cross-jail)"
   echo "  cleanup        Remove IPs de teste residuais (faixa 10.254.0.0/16)"
   echo ""
   echo "Exemplos:"
   echo "  sudo $0                    # Teste interativo completo"
-  echo "  sudo $0 --ci               # Teste CI (útil para pipelines)"
-  echo "  sudo $0 --dry-run          # Pré-visualização"
-  echo "  sudo $0 --quick --ci       # Teste rápido + CI"
+  echo "  sudo $0 --ci               # Teste CI (util para pipelines)"
+  echo "  sudo $0 --dry-run          # Pre-visualizacao"
+  echo "  sudo $0 --quick --ci       # Teste rapido + CI"
   echo "  sudo $0 cleanup            # Limpar IPs de teste"
 }
 
-# ── Parse args ─────────────────────────────────────────────────────────────
+# -- Parse args -------------------------------------------------------------
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --help|-h) show_help; exit 0 ;;
     --ci) CI_MODE=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
-    --quick) warn "--quick não é mais suportado (precisa de 3 jails para cross-jail). Ignorando."; shift ;;
+    --quick) warn "--quick nao e mais suportado (precisa de 3 jails para cross-jail). Ignorando."; shift ;;
     cleanup) cmd_cleanup; exit 0 ;;
-    *) err "Opção desconhecida: $1"; show_help; exit 1 ;;
+    *) err "Opcao desconhecida: $1"; show_help; exit 1 ;;
   esac
 done
 
-# ── Execução ───────────────────────────────────────────────────────────────
+# -- Execucao ---------------------------------------------------------------
 show_banner
 test_preflight
 test_single_jail_ban

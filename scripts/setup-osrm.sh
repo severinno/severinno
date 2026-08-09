@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# OSRM Data Setup — Governador Valadares / MG
+# OSRM Data Setup - Governador Valadares / MG
 # ============================================================================
 # This script downloads OSM data for the region around Governador Valadares,
 # processes it with OSRM extract/partition/customize, and places the
@@ -9,10 +9,10 @@
 # Uso:
 #   chmod +x scripts/setup-osrm.sh && bash scripts/setup-osrm.sh
 #
-# Pré-requisitos:
+# Pre-requisitos:
 #   - Docker instalado
 #   - osmium-tool instalado (apt install osmium-tool / brew install osmium-tool)
-#   - ~2 GB de espaço livre em disco
+#   - ~2 GB de espaco livre em disco
 # ============================================================================
 
 set -euo pipefail
@@ -25,15 +25,15 @@ GV_FILE="governador-valadares.osm.pbf"
 GV_OSRM="governador-valadares.osrm"
 
 # Bounding box for Governador Valadares region (approx 80km radius)
-# Covers: Governador Valadares, Coroaci, São João do Oriente, etc.
+# Covers: Governador Valadares, Coroaci, Sao Joao do Oriente, etc.
 BBOX="-42.15,-19.05,-41.55,-18.65"
 
-echo "=== OSRM Data Setup — Governador Valadares / MG ==="
+echo "=== OSRM Data Setup - Governador Valadares / MG ==="
 echo ""
 
 # Check prerequisites
 if ! command -v osmium &> /dev/null; then
-  echo "❌ osmium-tool is required but not installed."
+  echo "[FAIL] osmium-tool is required but not installed."
   echo ""
   echo "   Install it with one of:"
   echo "     apt install osmium-tool        (Debian/Ubuntu)"
@@ -54,29 +54,29 @@ mkdir -p "$DATA_DIR"
 
 # Step 1: Download Sudeste Brazil extract
 if [ ! -f "$DATA_DIR/$OSM_FILE" ]; then
-  echo "📥 Downloading Sudeste Brazil OSM extract..."
+  echo " Downloading Sudeste Brazil OSM extract..."
   echo "   URL: $OSM_URL"
   wget -c "$OSM_URL" -O "$DATA_DIR/$OSM_FILE" --progress=dot:giga
-  echo "   ✅ Download complete"
+  echo "   [OK] Download complete"
 else
-  echo "   ✅ $OSM_FILE already exists, skipping download"
+  echo "   [OK] $OSM_FILE already exists, skipping download"
 fi
 
 # Step 2: Clip to Governador Valadares bounding box
 if [ ! -f "$DATA_DIR/$GV_FILE" ]; then
-  echo "✂️  Clipping to Governador Valadares region (bbox: $BBOX)..."
+  echo "  Clipping to Governador Valadares region (bbox: $BBOX)..."
   osmium extract \
     --bbox "$BBOX" \
     --output "$DATA_DIR/$GV_FILE" \
     --overwrite \
     "$DATA_DIR/$OSM_FILE"
-  echo "   ✅ Clipped with osmium"
+  echo "   [OK] Clipped with osmium"
 else
-  echo "   ✅ $GV_FILE already exists"
+  echo "   [OK] $GV_FILE already exists"
 fi
 
-# Step 3: OSRM Extract (convert OSM → OSRM)
-echo "🔧 Running osrm-extract..."
+# Step 3: OSRM Extract (convert OSM -> OSRM)
+echo " Running osrm-extract..."
 docker run --rm -t \
   -v "$(pwd)/$DATA_DIR:/data" \
   "$OSRM_IMAGE" \
@@ -85,39 +85,39 @@ docker run --rm -t \
   --location-dependent-data /opt/names/osrmnames.names \
   /data/"$GV_FILE"
 
-echo "   ✅ osrm-extract complete"
+echo "   [OK] osrm-extract complete"
 
 # Step 4: OSRM Partition (MLD)
-echo "🔧 Running osrm-partition..."
+echo " Running osrm-partition..."
 docker run --rm -t \
   -v "$(pwd)/$DATA_DIR:/data" \
   "$OSRM_IMAGE" \
   osrm-partition \
   /data/"$GV_OSRM"
 
-echo "   ✅ osrm-partition complete"
+echo "   [OK] osrm-partition complete"
 
 # Step 5: OSRM Customize (MLD)
-echo "🔧 Running osrm-customize..."
+echo " Running osrm-customize..."
 docker run --rm -t \
   -v "$(pwd)/$DATA_DIR:/data" \
   "$OSRM_IMAGE" \
   osrm-customize \
   /data/"$GV_OSRM"
 
-echo "   ✅ osrm-customize complete"
+echo "   [OK] osrm-customize complete"
 
-# Step 6: Cleanup — remove the large regional file
-echo "🧹 Cleaning up..."
+# Step 6: Cleanup - remove the large regional file
+echo " Cleaning up..."
 rm -f "$DATA_DIR/$OSM_FILE"
-echo "   ✅ Removed regional extract"
+echo "   [OK] Removed regional extract"
 
 echo ""
-echo "🎉 OSRM data ready!"
+echo " OSRM data ready!"
 echo ""
-echo "▶️  Start OSRM server:"
+echo ">  Start OSRM server:"
 echo "   docker compose -f docker-compose.dev.yml --profile routing up -d osrm"
 echo ""
-echo "🧪 Test route:"
+echo " Test route:"
 echo '   curl "http://localhost:5000/route/v1/driving/-41.9736,-19.8125;-41.9481,-18.8505?overview=full&geometries=geojson"'
 echo ""

@@ -1,13 +1,13 @@
 #!/bin/sh
-# ═══════════════════════════════════════════════════════════════════════════
-# setup-secrets.sh — Criação de Docker Secrets para o Severinno
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
+# setup-secrets.sh - Criacao de Docker Secrets para o Severinno
+# ===========================================================================
 # Uso:
 #   ./scripts/setup-secrets.sh                    # Cria todos os secrets
 #   ./scripts/setup-secrets.sh --list             # Lista secrets existentes
 #   ./scripts/setup-secrets.sh --remove           # Remove todos os secrets
 #
-# Pré-requisitos:
+# Pre-requisitos:
 #   - Docker em Swarm mode (docker swarm init)
 #   - Arquivos .secret em ./secrets/ (copiados de .example)
 #
@@ -15,7 +15,7 @@
 #   cp secrets/postgres_password.secret.example secrets/postgres_password.secret
 #   echo "my_secure_password" > secrets/postgres_password.secret
 #   ./scripts/setup-secrets.sh
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 set -e
 
@@ -28,19 +28,19 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# ── Help ──────────────────────────────────────────────────────────────────
+# -- Help ------------------------------------------------------------------
 show_help() {
   cat <<EOF
-Uso: $0 [opção]
+Uso: $0 [opcao]
 
-Opções:
-  (sem opção)    Cria todos os Docker Secrets a partir dos arquivos .secret
+Opcoes:
+  (sem opcao)    Cria todos os Docker Secrets a partir dos arquivos .secret
   --list         Lista todos os Docker Secrets ativos
   --remove       Remove todos os Docker Secrets do namespace severinno
   --help         Mostra esta mensagem
 
-Pré-requisitos:
-  - Docker em modo Swarm: docker swarm init (se necessário)
+Pre-requisitos:
+  - Docker em modo Swarm: docker swarm init (se necessario)
   - Arquivos .secret em $SECRETS_DIR/
 
 Exemplo:
@@ -57,30 +57,30 @@ Exemplo:
 EOF
 }
 
-# ── List secrets ──────────────────────────────────────────────────────────
+# -- List secrets ----------------------------------------------------------
 list_secrets() {
-  echo "🔐 Docker Secrets ativos (namespace: $NAMESPACE):"
+  echo " Docker Secrets ativos (namespace: $NAMESPACE):"
   docker secret ls --format "table {{.ID}}\t{{.Name}}\t{{.CreatedAt}}" | \
     grep "$NAMESPACE" || echo "  (nenhum secret encontrado)"
 }
 
-# ── Remove secrets ────────────────────────────────────────────────────────
+# -- Remove secrets --------------------------------------------------------
 remove_secrets() {
-  echo "🗑️  Removendo todos os Docker Secrets do namespace $NAMESPACE..."
+  echo "  Removendo todos os Docker Secrets do namespace $NAMESPACE..."
   docker secret ls --format "{{.Name}}" | \
     grep "$NAMESPACE" | \
     while read -r secret; do
       echo "  Removendo: $secret"
       docker secret rm "$secret" 2>/dev/null || true
     done
-  echo "✅ Todos os secrets removidos."
+  echo "[OK] Todos os secrets removidos."
 }
 
-# ── Create secrets ────────────────────────────────────────────────────────
+# -- Create secrets --------------------------------------------------------
 create_secrets() {
-  echo "🔐 Criando Docker Secrets para o Severinno..."
+  echo " Criando Docker Secrets para o Severinno..."
   echo "   Namespace: $NAMESPACE"
-  echo "   Diretório: $SECRETS_DIR"
+  echo "   Diretorio: $SECRETS_DIR"
   echo ""
 
   created=0
@@ -99,32 +99,32 @@ create_secrets() {
       *.example) continue ;;
     esac
 
-    # Verifica se o arquivo contém placeholder
+    # Verifica se o arquivo contem placeholder
     if grep -qi "changeme\|your_secret_here\|replace_me" "$secret_file" 2>/dev/null; then
-      echo -e "  ${YELLOW}⚠  PULANDO${NC} $secret_name (contém placeholder — edite o arquivo primeiro)"
+      echo -e "  ${YELLOW}[!]  PULANDO${NC} $secret_name (contem placeholder - edite o arquivo primeiro)"
       skipped=$((skipped + 1))
       continue
     fi
 
-    # Verifica se o secret já existe
+    # Verifica se o secret ja existe
     if docker secret inspect "$swarm_name" >/dev/null 2>&1; then
-      echo -e "  ${YELLOW}⚠  EXISTE${NC}  $swarm_name (já existe — pulando)"
+      echo -e "  ${YELLOW}[!]  EXISTE${NC}  $swarm_name (ja existe - pulando)"
       skipped=$((skipped + 1))
       continue
     fi
 
     # Cria o secret
     if docker secret create "$swarm_name" "$secret_file" >/dev/null; then
-      echo -e "  ${GREEN}✓  CRIADO${NC}  $swarm_name ← $filename"
+      echo -e "  ${GREEN}-  CRIADO${NC}  $swarm_name <- $filename"
       created=$((created + 1))
     else
-      echo -e "  ${RED}✗  ERRO${NC}   $swarm_name (falha ao criar)"
+      echo -e "  ${RED}[X]  ERRO${NC}   $swarm_name (falha ao criar)"
       errors=$((errors + 1))
     fi
   done
 
   echo ""
-  echo "═══ Resumo ═══"
+  echo "=== Resumo ==="
   echo "  Criados:  $created"
   echo "  Pulados:  $skipped"
   echo "  Erros:    $errors"
@@ -134,7 +134,7 @@ create_secrets() {
   fi
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────
+# -- Main ------------------------------------------------------------------
 case "${1:-}" in
   --help|-h)
     show_help
@@ -146,9 +146,9 @@ case "${1:-}" in
     remove_secrets
     ;;
   "")
-    # Verifica se Docker Swarm está ativo
+    # Verifica se Docker Swarm esta ativo
     if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
-      echo -e "${YELLOW}⚠  Docker Swarm não está ativo.${NC}"
+      echo -e "${YELLOW}[!]  Docker Swarm nao esta ativo.${NC}"
       echo "   Execute 'docker swarm init' primeiro, ou use Docker Compose file:"
       echo "   docker compose -f docker-compose.prod.yml --env-file .env.production up -d"
       echo ""
@@ -156,7 +156,7 @@ case "${1:-}" in
     create_secrets
     ;;
   *)
-    echo "Opção desconhecida: $1"
+    echo "Opcao desconhecida: $1"
     show_help
     exit 1
     ;;

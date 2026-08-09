@@ -15,9 +15,9 @@
 #   bash scripts/run-fuzz.sh --verbose       # show raw vitest output
 #
 # Exit codes:
-#   0 — all fuzz tests passed
-#   1 — one or more fuzz tests failed
-#   2 — unexpected error
+#   0 - all fuzz tests passed
+#   1 - one or more fuzz tests failed
+#   2 - unexpected error
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -61,14 +61,14 @@ if [ -n "$ONLY" ]; then
 fi
 
 if [ ${#FUZZ_FILES[@]} -eq 0 ]; then
-  echo "❌ No fuzz files matched pattern '${ONLY:-*}'."
+  echo "[FAIL] No fuzz files matched pattern '${ONLY:-*}'."
   exit 2
 fi
 
 # Check prerequisites
 for cmd in npx node; do
   if ! command -v "$cmd" &>/dev/null; then
-    echo "❌ $cmd not found. Is Node.js installed?"
+    echo "[FAIL] $cmd not found. Is Node.js installed?"
     exit 2
   fi
 done
@@ -79,9 +79,9 @@ done
 
 if $VERBOSE; then
   echo ""
-  echo "╔══════════════════════════════════════════════════════════════════════╗"
-  echo "║                   Severinno — Fuzz Test Runner                     ║"
-  echo "╚══════════════════════════════════════════════════════════════════════╝"
+  echo "+======================================================================+"
+  echo "|                   Severinno - Fuzz Test Runner                     |"
+  echo "+======================================================================+"
   echo ""
   echo "  Seed:   42 (default)"
   echo ""
@@ -94,9 +94,9 @@ fi
 # ---------------------------------------------------------------------------
 
 echo ""
-echo "╔══════════════════════════════════════════════════════════════════════╗"
-echo "║                   Severinno — Fuzz Test Runner                     ║"
-echo "╚══════════════════════════════════════════════════════════════════════╝"
+echo "+======================================================================+"
+echo "|                   Severinno - Fuzz Test Runner                     |"
+echo "+======================================================================+"
 echo ""
 
 if [ -n "$ONLY" ]; then

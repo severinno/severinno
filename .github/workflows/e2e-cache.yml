@@ -33,6 +33,10 @@ on:
       - "e2e/providers-cache.spec.ts"
       - "scripts/validate-cache-manifest.ts"
       - "scripts/check-utf8.sh"
+      - "scripts/verify-encoding.sh"
+      - "scripts/verify-ascii-proof.sh"
+      - "scripts/scan-non-ascii.mjs"
+      - "scripts/fragile-range-patterns.mjs"
       - "scripts/fix-encoding.sh"
       - ".github/workflows/e2e-cache.yml"
   push:

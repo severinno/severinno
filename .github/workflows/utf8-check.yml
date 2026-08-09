@@ -1,5 +1,5 @@
 # =============================================================================
-# utf8-check — Reusable UTF-8 encoding validation workflow
+# utf8-check — Reusable encoding validation workflow
 #
 # Call from other workflows via:
 #
@@ -7,13 +7,45 @@
 #     utf8-check:
 #       uses: ./.github/workflows/utf8-check.yml
 #
-# Validates all .ts/.tsx source files against UTF-8 encoding to prevent
-# Windows-1252 byte-0x97 corruption (common on Brazilian Windows setups).
-# Uses Python's UTF-8 decoder (equivalent to iconv -f utf-8) with safe
-# byte-0x97 detection that avoids false positives on valid multi-byte
-# sequences (e.g. emoji like 🔗 = F0 9F 94 97).
+# SINGLE ENTRY (since 2026-08): the ONE command this workflow runs is
+#   bash scripts/verify-encoding.sh --ci src/
+# which consolidates the encoding gates that used to be separate steps
+# (they share ~0.9s of interpreter startup, so one step pays it once):
+#   1. check-utf8.sh — valid UTF-8 for .ts/.tsx/.sh (Windows-1252 byte-0x97
+#      prevention via Python's UTF-8 decoder, safe on valid multi-byte
+#      sequences e.g. emoji 🔗 = F0 9F 94 97). ALL .sh pure-ASCII checking
+#      is delegated to layer 2 (the always-on VPS gate and the --ascii
+#      opt-in scan were removed as redundant — see check-utf8.sh header).
+#   2. verify-ascii-proof.sh — strict repo-wide pure-ASCII proof on every .sh
+#      + .husky hook + the frozen docs/ascii-safe.md baseline drift check
+#   3. fragile-range-patterns.mjs --ci — the fragile character-class RANGE
+#      scan (the 2026-08 em-dash bug class: `[^ -~]`, `[\x80-\xFF]`,
+#      `[:print:]`, grep -P ranges). Same patterns the vitest guard imports;
+#      wired here so the class is blocked even when the gate runs without
+#      the vitest suite (someone running only check-utf8/verify-ascii-proof
+#      used to never execute the guard).
+# The exit code is the worst of the three layers. Scripts stay directly
+# invokable for their focused use (--fix, --sync, --dry-run).
 #
-# Fast gate: <10s, no dependencies beyond python3 (pre-installed on runners).
+# TRIGGER MODEL (single source of truth, since 2026-08): the check command
+# lives ONLY here, and every caller uses workflow_call — ci.yml, pr-check.yml,
+# deploy.yml, e2e-cache.yml, release-deploy.yml. There is NO pull_request
+# self-trigger anymore: that was triplication on PR (this workflow's own PR
+# trigger + ci.yml's workflow_call + pr-check.yml's inline copy). PR coverage
+# comes from the ci.yml + pr-check.yml callers; the push trigger remains the
+# always-on net for main/develop merges. Edit the step HERE only.
+#
+# PROOF that this gate really bites (run locally, no CI needed):
+#   1. cp scripts/health-check.sh /tmp/hc.bak
+#   2. printf '\x97' >> scripts/health-check.sh   # Windows-1252 em dash byte
+#   3. bash scripts/verify-encoding.sh --ci src/  # -> exit 1, flags health-check.sh
+#      (both layers hit: check_utf8.py byte-0x97 warning AND the delegated
+#       proof — layer 2 — reporting scripts/health-check.sh; line:col is the
+#       observed value, e.g. 50:1, and drifts as the script evolves)
+#   4. git checkout -- scripts/health-check.sh    # revert (verified byte-identical to HEAD)
+#   5. bash scripts/verify-encoding.sh --ci src/  # -> exit 0, all clean
+#
+# Fast gate: <3s, no dependencies beyond python3 + node (both pre-installed on runners).
 # =============================================================================
 
 name: UTF-8 Check
@@ -21,8 +53,6 @@ name: UTF-8 Check
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main]
   workflow_call:
 
 jobs:
@@ -32,8 +62,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run UTF-8 validation on all .ts and .tsx files
-        run: bash scripts/check-utf8.sh --ci src/
+      # ONE command = the whole encoding gate (see header): UTF-8 validity +
+      # VPS ASCII gate + strict repo-wide ASCII proof + frozen baseline +
+      # the fragile character-class RANGE scan (2026-08 bug class). The
+      # VPS-bound scan and the proof are covered by verify-encoding.sh now.
+      - name: Run encoding validation (UTF-8 + VPS ASCII + ASCII-proof + fragile-range + baseline)
+        run: bash scripts/verify-encoding.sh --ci src/
 
       - name: Summary
-        run: echo "All source files validated as valid UTF-8 encoding."
+        run: echo 'All sources validated (UTF-8 for .ts/.tsx/.sh, pure-ASCII for every .sh + .husky hook).'

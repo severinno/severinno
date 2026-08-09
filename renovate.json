@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["github-actions"],
+  "github-actions": {
+    "pinVersions": true,
+    "fileMatch": [
+      "(^|/)\\.github/workflows/.+\\.ya?ml$",
+      "(^|/)\\.github/actions/.+/action\\.ya?ml$",
+      "(^|/)action\\.ya?ml$"
+    ]
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["appleboy/ssh-action", "appleboy/scp-action"],
+      "groupName": "appleboy vps actions",
+      "description": "The appleboy ssh/scp pins live ONLY in .github/actions/severinno-{ssh,scp}/action.yml (guarded by scripts/__tests__/severinno-scp-golden.test.ts). pinVersions converts @v1 major tags into full @v1.x.y pins so each bump is a reviewable PR instead of a silent floating-major drift."
+    }
+  ]
+}

@@ -7,6 +7,11 @@
 #   .github/workflows/validate-cache.yml
 #   coverage-badge inline steps in test jobs
 #
+# NOTE: UTF-8/ASCII encoding is a SEPARATE always-on sibling gate
+# (.github/workflows/utf8-check.yml, <10s, python3+node only) and is NOT
+# part of this workflow, which needs bun install for every job. Callers
+# using ONLY quality-gate.yml must also invoke utf8-check.yml.
+#
 # Jobs (run in parallel):
 #   1. coverage-gaps   → npx tsx scripts/coverage-gaps.ts --ci
 #   2. cache-manifest  → npx tsx scripts/validate-cache-manifest.ts

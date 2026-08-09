@@ -1,31 +1,35 @@
 set -euo pipefail
 
-bash scripts/check-utf8.sh --dry-run --ci src/
-# Gate de fuzz ÚNICO: fuzz:ci é a reescrita Node do mesmo runner (o bash
-# run-fuzz.sh auto-descobre os mesmos *-fuzz*.test.{ts,tsx} — o .mjs é até um
-# pouco mais permissivo no match, então nada de cobertura se perde — e roda os
-# mesmos vitest com seed 42) — é o que o CI executa (pr-check.yml:
+# Encoding gate unico (UTF-8 + VPS ASCII + ASCII-safe proof + baseline): o
+# mesmo gate que o CI roda em PR (pr-check.yml / utf8-check.yml) - um byte
+# non-ASCII num .sh/hook nunca chega nem ao push. Custo medido ~1.4s
+# (batched, 2 spawns node + 1 python) - node+python3, sem rede.
+bash scripts/verify-encoding.sh --dry-run --ci src/
+# Gate de fuzz UNICO: fuzz:ci e a reescrita Node do mesmo runner (o bash
+# run-fuzz.sh auto-descobre os mesmos *-fuzz*.test.{ts,tsx} - o .mjs e ate um
+# pouco mais permissivo no match, entao nada de cobertura se perde - e roda os
+# mesmos vitest com seed 42) - e o que o CI executa (pr-check.yml:
 # "bun run fuzz:ci > fuzz-results.json"). O `bun run fuzz` (bash) era a MESMA
-# suíte rodada logo acima (~61s de trabalho duplicado): paralelizar os dois
-# rodaria a mesma coisa 2× com contenção de CPU, sem ganho de cobertura — por
+# suite rodada logo acima (~61s de trabalho duplicado): paralelizar os dois
+# rodaria a mesma coisa 2x com contencao de CPU, sem ganho de cobertura - por
 # isso o bash runner ficou fora do hook (continua no package.json p/ uso local).
 bun run fuzz:ci
 
 # Gates do CI antes do push (validate-cache-manifest + check-js-budget + testes
-# unitários das áreas tocadas) — espelhando o pre-commit: nenhum push pode
-# quebrar o que o CI verifica depois de já estar localmente verde.
+# unitarios das areas tocadas) - espelhando o pre-commit: nenhum push pode
+# quebrar o que o CI verifica depois de ja estar localmente verde.
 #
 # O stdin do hook traz uma linha por ref enviada: "<local ref> <local sha>
-# <remote ref> <remote sha>". Capturamos o remote sha da 1ª linha para o Gate 3
-# (pre-commit-tests.mjs --scope push) saber quais commits serão enviados
-# (range <remote sha>...HEAD). Só quando o stdin NÃO é um TTY (ou seja, o git
-# chamou o hook de verdade) — invocação manual interativa deixa vazio e o
+# <remote ref> <remote sha>". Capturamos o remote sha da 1a linha para o Gate 3
+# (pre-commit-tests.mjs --scope push) saber quais commits serao enviados
+# (range <remote sha>...HEAD). So quando o stdin NAO e um TTY (ou seja, o git
+# chamou o hook de verdade) - invocacao manual interativa deixa vazio e o
 # Gate 3 cai para staged + HEAD.
 if [ -t 0 ]; then
   PRE_PUSH_REMOTE_SHA=""
 else
-  # Multi-ref pushes trazem uma linha por branch; usamos o remote sha da 1ª
-  # linha — suficiente para o caso comum de push de branch única.
+  # Multi-ref pushes trazem uma linha por branch; usamos o remote sha da 1a
+  # linha - suficiente para o caso comum de push de branch unica.
   PRE_PUSH_REMOTE_SHA="$(awk 'NR == 1 { print $4 }')"
 fi
 export PRE_PUSH_REMOTE_SHA

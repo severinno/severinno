@@ -1,28 +1,28 @@
 #!/bin/bash
 # ============================================================================
-# Severinno Marketplace — Bootstrap Completo
+# Severinno Marketplace - Bootstrap Completo
 # ============================================================================
-# Faz TUDO que a gente fez manualmente na sessão, mas automagicamente:
-#   ✅ Verifica pré-requisitos (Bun, Docker)
-#   ✅ Detecta compose file correto
-#   ✅ Remove containers conflitantes nas portas
-#   ✅ Cria .env automaticamente com defaults
-#   ✅ Sobe infra Docker correta (PostGIS, não PostgreSQL vanilla)
-#   ✅ Aguarda serviços ficarem saudáveis
-#   ✅ Verifica encoding UTF-8 dos source files
-#   ✅ Gera Prisma Client, sincroniza schema, popula banco
-#   ✅ Inicia servidor dev
+# Faz TUDO que a gente fez manualmente na sessao, mas automagicamente:
+#   [OK] Verifica pre-requisitos (Bun, Docker)
+#   [OK] Detecta compose file correto
+#   [OK] Remove containers conflitantes nas portas
+#   [OK] Cria .env automaticamente com defaults
+#   [OK] Sobe infra Docker correta (PostGIS, nao PostgreSQL vanilla)
+#   [OK] Aguarda servicos ficarem saudaveis
+#   [OK] Verifica encoding UTF-8 dos source files
+#   [OK] Gera Prisma Client, sincroniza schema, popula banco
+#   [OK] Inicia servidor dev
 #
 # Usage:
 #   ./scripts/setup.sh              # Setup completo (recomendado)
-#   ./scripts/setup.sh --quick      # Pula seed, só levanta infra + dev
-#   ./scripts/setup.sh --docker     # Só infra Docker, sem app
-#   ./scripts/setup.sh --reset      # Destrói tudo e recria do zero
+#   ./scripts/setup.sh --quick      # Pula seed, so levanta infra + dev
+#   ./scripts/setup.sh --docker     # So infra Docker, sem app
+#   ./scripts/setup.sh --reset      # Destroi tudo e recria do zero
 # ============================================================================
 
 set -euo pipefail
 
-# ── Colors ────────────────────────────────────────────────────────────────
+# -- Colors ----------------------------------------------------------------
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
     RED=$(tput setaf 1); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3)
     CYAN=$(tput setaf 6); WHITE=$(tput setaf 7); GRAY=$(tput setaf 8 2>/dev/null || echo "$(tput setaf 7)")
@@ -31,7 +31,7 @@ else
     RED=""; GREEN=""; YELLOW=""; CYAN=""; WHITE=""; GRAY=""; BOLD=""; DIM=""; RESET=""
 fi
 
-# ── Config ────────────────────────────────────────────────────────────────
+# -- Config ----------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
@@ -50,11 +50,11 @@ pass() { echo "  ${GREEN}[PASS]${RESET} $1"; PASS=$((PASS + 1)); }
 fail() { echo "  ${RED}[FAIL]${RESET} $1"; FAIL=$((FAIL + 1)); }
 warn() { echo "  ${YELLOW}[WARN]${RESET} $1"; WARN=$((WARN + 1)); }
 detail() { echo "         ${DIM}$1${RESET}"; }
-step() { echo ""; echo "${GRAY}══════════════════════════════════════${RESET}"; echo "  ${CYAN}$1${RESET}"; echo "${GRAY}══════════════════════════════════════${RESET}"; }
+step() { echo ""; echo "${GRAY}======================================${RESET}"; echo "  ${CYAN}$1${RESET}"; echo "${GRAY}======================================${RESET}"; }
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # UTILITY FUNCTIONS
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 # Check if a process is listening on a port (non-docker)
 port_in_use() {
@@ -92,7 +92,7 @@ kill_port() {
     kill "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || taskkill //F //PID "$pid" 2>/dev/null || true
     sleep 2
     if port_in_use "$port"; then
-        warn "Não foi possível liberar porta $port"
+        warn "Nao foi possivel liberar porta $port"
         return 1
     fi
     pass "Porta $port liberada"
@@ -143,7 +143,7 @@ else:
     print('OK')
 " 2>&1) || true
         if echo "$result" | grep -q "OK"; then
-            pass "Encoding UTF-8: todos os source files válidos"
+            pass "Encoding UTF-8: todos os source files validos"
         else
             warn "Encoding UTF-8: arquivos corrompidos encontrados!"
             echo "$result" | while IFS= read -r line; do
@@ -152,7 +152,7 @@ else:
             has_issues=true
         fi
     else
-        warn "Python não disponível — pulando verificação UTF-8"
+        warn "Python nao disponivel - pulando verificacao UTF-8"
     fi
     $has_issues && return 1 || return 0
 }
@@ -231,33 +231,33 @@ with open('$TEMP_DIR/utf8-bad.txt', 'w') as f:
             pass "UTF-8: nenhum arquivo corrompido"
         fi
     else
-        warn "Python não disponível — não foi possível corrigir UTF-8"
+        warn "Python nao disponivel - nao foi possivel corrigir UTF-8"
     fi
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # MAIN
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 
 echo ""
-echo "${CYAN}${BOLD}╔══════════════════════════════════════════════════╗${RESET}"
-echo "${CYAN}${BOLD}║     Severinno Marketplace — Bootstrap v1.0      ║${RESET}"
-echo "${CYAN}${BOLD}╚══════════════════════════════════════════════════╝${RESET}"
+echo "${CYAN}${BOLD}+==================================================+${RESET}"
+echo "${CYAN}${BOLD}|     Severinno Marketplace - Bootstrap v1.0      |${RESET}"
+echo "${CYAN}${BOLD}+==================================================+${RESET}"
 echo "${GRAY}Projeto: $PROJECT_DIR${RESET}"
 echo "${GRAY}Modo: $MODE${RESET}"
 echo ""
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. PRÉ-REQUISITOS
-# ═══════════════════════════════════════════════════════════════════════════
-step "1. Pré-requisitos"
+# ===========================================================================
+# 1. PRE-REQUISITOS
+# ===========================================================================
+step "1. Pre-requisitos"
 
 # Bun
 if command -v bun >/dev/null 2>&1; then
     bun_ver=$(bun --version 2>/dev/null)
     pass "Bun: $bun_ver"
 else
-    fail "Bun não encontrado — instale com: curl -fsSL https://bun.sh/install | bash"
+    fail "Bun nao encontrado - instale com: curl -fsSL https://bun.sh/install | bash"
     exit 1
 fi
 
@@ -265,9 +265,9 @@ fi
 if [ -d "node_modules" ]; then
     pass "node_modules: existe"
 else
-    detail "Instalando dependências..."
+    detail "Instalando dependencias..."
     bun install 2>&1 | tail -3
-    pass "Dependências instaladas"
+    pass "Dependencias instaladas"
 fi
 
 # Docker
@@ -275,7 +275,7 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     docker_ver=$(docker --version 2>/dev/null)
     pass "Docker: $docker_ver"
 else
-    fail "Docker não está rodando — inicie o Docker Desktop primeiro"
+    fail "Docker nao esta rodando - inicie o Docker Desktop primeiro"
     exit 1
 fi
 
@@ -284,21 +284,21 @@ if docker compose version >/dev/null 2>&1; then
     dc_ver=$(docker compose version 2>/dev/null)
     pass "Docker Compose: $dc_ver"
 else
-    fail "Docker Compose não disponível"
+    fail "Docker Compose nao disponivel"
     exit 1
 fi
 
 # Python (para UTF-8 check)
 PYTHON=$(find_python)
 if [ -n "$PYTHON" ]; then
-    pass "${PYTHON} disponível"
+    pass "${PYTHON} disponivel"
 else
-    warn "Python não encontrado — verificação UTF-8 será pulada"
+    warn "Python nao encontrado - verificacao UTF-8 sera pulada"
 fi
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 2. ENV FILE
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 step "2. Arquivo .env"
 
 DETECTED_COMPOSE="docker-compose.yml"
@@ -307,7 +307,7 @@ if [ -f "docker-compose.dev.yml" ]; then
     # Check if dev.yml has PostGIS (which we need for migrations)
     if grep -q "postgis/postgis" docker-compose.dev.yml 2>/dev/null; then
         DETECTED_COMPOSE="docker-compose.dev.yml"
-        detail "Detectado: docker-compose.dev.yml (com PostGIS + serviços extras)"
+        detail "Detectado: docker-compose.dev.yml (com PostGIS + servicos extras)"
     fi
 fi
 
@@ -317,15 +317,15 @@ if [ -f ".env" ]; then
     if grep -q "DATABASE_URL" .env 2>/dev/null; then
         pass "DATABASE_URL: configurada"
     else
-        warn "DATABASE_URL não encontrada no .env"
+        warn "DATABASE_URL nao encontrada no .env"
     fi
 else
-    warn ".env não existe — criando com valores padrão..."
+    warn ".env nao existe - criando com valores padrao..."
     
     if echo "$DETECTED_COMPOSE" | grep -q "dev"; then
         # docker-compose.dev.yml defaults
         cat > .env << 'ENVEOF'
-# Severinno — Variáveis de ambiente (gerado automaticamente pelo setup.sh)
+# Severinno - Variaveis de ambiente (gerado automaticamente pelo setup.sh)
 DATABASE_URL="postgresql://severinno:severinno@localhost:5432/severinno"
 REDIS_URL="redis://localhost:6380"
 SESSION_SECRET="dev-secret-autogerada-mude-em-producao-123456"
@@ -339,7 +339,7 @@ ENVEOF
     else
         # docker-compose.yml defaults
         cat > .env << 'ENVEOF'
-# Severinno — Variáveis de ambiente (gerado automaticamente pelo setup.sh)
+# Severinno - Variaveis de ambiente (gerado automaticamente pelo setup.sh)
 DATABASE_URL="postgresql://severinno:severinno_dev@localhost:5432/severinno"
 REDIS_URL="redis://localhost:6379"
 SESSION_SECRET="dev-secret-autogerada-mude-em-producao-123456"
@@ -351,7 +351,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_WS_URL=ws://localhost:3001
 ENVEOF
     fi
-    pass ".env criado com valores padrão para $DETECTED_COMPOSE"
+    pass ".env criado com valores padrao para $DETECTED_COMPOSE"
 fi
 
 # Source .env
@@ -359,9 +359,9 @@ set -a
 source .env 2>/dev/null || true
 set +a
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 3. LIBERAR PORTAS
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 step "3. Verificando conflitos de porta"
 
 PORTS_TO_CHECK="5432:PostgreSQL 6379:Redis 6380:Redis(dev) 3000:Next.js 5672:RabbitMQ 9000:MinIO"
@@ -369,7 +369,7 @@ for entry in $PORTS_TO_CHECK; do
     port="${entry%%:*}"
     svc="${entry#*:}"
     
-    # Check for Docker containers first — they're fine, just note them
+    # Check for Docker containers first - they're fine, just note them
     docker_containers=$(docker ps --format '{{.Names}} {{.Ports}}' 2>/dev/null | grep ":$port->" || true)
     
     if port_in_use "$port"; then
@@ -394,10 +394,10 @@ for entry in $PORTS_TO_CHECK; do
     fi
 done
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 4. PARAR CONTAINERS CONFLITANTES
-# ═══════════════════════════════════════════════════════════════════════════
-step "4. Limpando containers órfãos/conflitantes"
+# ===========================================================================
+step "4. Limpando containers orfaos/conflitantes"
 
 # Se estamos usando docker-compose.yml, pare containers do dev.yml que conflitam
 if [ "$DETECTED_COMPOSE" = "docker-compose.yml" ]; then
@@ -426,9 +426,9 @@ if echo "$DETECTED_COMPOSE" | grep -q "dev"; then
     docker volume rm severinno_postgres_data 2>/dev/null || true
 fi
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 5. SUBIR INFRA DOCKER
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 step "5. Subindo infraestrutura Docker"
 
 if echo "$DETECTED_COMPOSE" | grep -q "dev"; then
@@ -440,7 +440,7 @@ else
     COMPOSE_FILE=""
     SERVICES="postgres redis minio"
     detail "Usando docker-compose.yml (PostgreSQL vanilla)"
-    detail "⚠️  ATENÇÃO: Este compose usa postgres:16-alpine SEM PostGIS!"
+    detail "[!]  ATENCAO: Este compose usa postgres:16-alpine SEM PostGIS!"
     detail "   Se precisar de PostGIS, use: docker-compose.dev.yml"
     detail "Subindo: $SERVICES"
 fi
@@ -452,10 +452,10 @@ docker compose $COMPOSE_FILE up -d $SERVICES 2>&1 | tail -5 || {
 }
 pass "Containers iniciados"
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. AGUARDAR SAÚDE DOS SERVIÇOS
-# ═══════════════════════════════════════════════════════════════════════════
-step "6. Aguardando serviços ficarem saudáveis"
+# ===========================================================================
+# 6. AGUARDAR SAUDE DOS SERVICOS
+# ===========================================================================
+step "6. Aguardando servicos ficarem saudaveis"
 
 MAX_RETRIES=30
 for svc in $SERVICES; do
@@ -463,10 +463,10 @@ for svc in $SERVICES; do
     for i in $(seq 1 $MAX_RETRIES); do
         status=$(docker compose $COMPOSE_FILE ps --format '{{.Status}}' "$svc" 2>/dev/null || echo "")
         if echo "$status" | grep -qi "healthy"; then
-            pass "$svc: saudável (${i}s)"
+            pass "$svc: saudavel (${i}s)"
             break
         elif echo "$status" | grep -qi "unhealthy"; then
-            warn "$svc: unhealthy — verificando logs..."
+            warn "$svc: unhealthy - verificando logs..."
             docker compose $COMPOSE_FILE logs --tail=5 "$svc" 2>/dev/null || true
             break
         fi
@@ -474,38 +474,38 @@ for svc in $SERVICES; do
     done
 done
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 7. HABILITAR POSTGIS (se necessário)
-# ═══════════════════════════════════════════════════════════════════════════
-step "7. Extensão PostGIS"
+# ===========================================================================
+# 7. HABILITAR POSTGIS (se necessario)
+# ===========================================================================
+step "7. Extensao PostGIS"
 
 # Se for postgres:16-alpine, precisamos trocar para postgis
 PG_CONTAINER=$(docker compose $COMPOSE_FILE ps --format '{{.Names}}' postgres postgis 2>/dev/null | head -1 || true)
 PG_IMAGE=$(docker container inspect "$PG_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || echo "")
 
 if echo "$PG_IMAGE" | grep -qi "postgis"; then
-    # PostGIS já está rodando
+    # PostGIS ja esta rodando
     docker exec "$PG_CONTAINER" psql -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" -c "CREATE EXTENSION IF NOT EXISTS postgis;" 2>/dev/null || true
     docker exec "$PG_CONTAINER" psql -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" -c "CREATE EXTENSION IF NOT EXISTS postgis_topology;" 2>/dev/null || true
     pass "PostGIS habilitado"
 elif [ -n "$PG_CONTAINER" ]; then
-    warn "PostgreSQL sem PostGIS — migrations podem falhar!"
+    warn "PostgreSQL sem PostGIS - migrations podem falhar!"
     detail "Recomendado: use docker-compose.dev.yml que tem postgis/postgis"
     detail "Ou troque manualmente a imagem no docker-compose.yml"
 else
-    warn "Container PostgreSQL não encontrado"
+    warn "Container PostgreSQL nao encontrado"
 fi
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 8. CORRIGIR ENCODING UTF-8
-# ═══════════════════════════════════════════════════════════════════════════
-step "8. Verificação de encoding UTF-8"
+# ===========================================================================
+step "8. Verificacao de encoding UTF-8"
 auto_fix_utf8
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 9. PRISMA: GENERATE + SYNC
-# ═══════════════════════════════════════════════════════════════════════════
-step "9. Prisma — Gerar cliente + sincronizar schema"
+# ===========================================================================
+step "9. Prisma - Gerar cliente + sincronizar schema"
 
 detail "Gerando Prisma Client..."
 bun run db:generate 2>&1 | tail -5 || {
@@ -517,32 +517,32 @@ pass "Prisma Client gerado"
 # Tentar db push primeiro (mais seguro que migrate)
 detail "Sincronizando schema com db push..."
 bunx prisma db push 2>&1 | tail -5 || {
-    warn "db push falhou — tentando abordagem alternativa..."
+    warn "db push falhou - tentando abordagem alternativa..."
     # Tenta aplicar migrations na ordem
     bunx prisma migrate reset --force 2>&1 | tail -10 || {
-        fail "Não foi possível sincronizar o banco"
+        fail "Nao foi possivel sincronizar o banco"
         exit 1
     }
 }
 pass "Schema sincronizado"
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 10. RESOLVER MIGRATIONS PENDENTES
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 step "10. Resolvendo migrations pendentes"
 
 # Lista de todas as migrations do projeto
 MIGRATIONS_DIR="prisma/migrations"
 if [ -d "$MIGRATIONS_DIR" ]; then
-    # Marcar todas as migrations como aplicadas (já que usamos db push)
+    # Marcar todas as migrations como aplicadas (ja que usamos db push)
     find "$MIGRATIONS_DIR" -maxdepth 1 -type d ! -name "migrations" | sort | while IFS= read -r mig_dir; do
         mig_name=$(basename "$mig_dir")
-        # Pular diretório manual/ se existir
+        # Pular diretorio manual/ se existir
         [ "$mig_name" = "manual" ] && continue
         
-        # Verificar se já está aplicada
+        # Verificar se ja esta aplicada
         if bunx prisma migrate status 2>/dev/null | grep -q "$mig_name"; then
-            detail "$mig_name: já aplicada"
+            detail "$mig_name: ja aplicada"
         else
             detail "Resolvendo: $mig_name"
             bunx prisma migrate resolve --applied "$mig_name" 2>/dev/null || true
@@ -551,26 +551,26 @@ if [ -d "$MIGRATIONS_DIR" ]; then
     pass "Migrations resolvidas"
 fi
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 11. SEED (exceto no modo --quick)
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 step "11. Populando banco com dados de teste"
 
 if [ "$MODE" = "quick" ]; then
     detail "Modo --quick: pulando seed"
-    pass "Seed pulado (modo rápido)"
+    pass "Seed pulado (modo rapido)"
 else
     detail "Executando seed..."
     if bun run db:seed 2>&1 | tail -10; then
-        pass "Banco populado com dados de demonstração"
+        pass "Banco populado com dados de demonstracao"
     else
-        warn "Seed falhou — banco vazio, mas app pode funcionar"
+        warn "Seed falhou - banco vazio, mas app pode funcionar"
     fi
 fi
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # 12. INICIAR SERVIDOR DEV
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 step "12. Iniciando servidor de desenvolvimento"
 
 # Mata qualquer servidor anterior na porta 3000
@@ -588,7 +588,7 @@ DEV_PID=$!
 for i in $(seq 1 20); do
     if curl -s -o /dev/null -w "" http://localhost:3000 2>/dev/null; then
         echo ""
-        echo "${GREEN}${BOLD}  ✅ Servidor pronto!${RESET}"
+        echo "${GREEN}${BOLD}  [OK] Servidor pronto!${RESET}"
         echo "  ${CYAN}http://localhost:3000${RESET}"
         echo ""
         break
@@ -596,9 +596,9 @@ for i in $(seq 1 20); do
     sleep 2
 done
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 # SUMMARY
-# ═══════════════════════════════════════════════════════════════════════════
+# ===========================================================================
 step "Resumo Final"
 
 TOTAL=$((PASS + FAIL + WARN))
@@ -607,11 +607,11 @@ echo "  ${WHITE}PASS: $PASS   FAIL: $FAIL   WARN: $WARN   Total: $TOTAL${RESET}"
 echo ""
 
 if [ "$FAIL" -eq 0 ] && [ "$WARN" -eq 0 ]; then
-    echo "  ${GREEN}${BOLD}✅ Setup completo — tudo funcionando!${RESET}"
+    echo "  ${GREEN}${BOLD}[OK] Setup completo - tudo funcionando!${RESET}"
 elif [ "$FAIL" -eq 0 ]; then
-    echo "  ${YELLOW}⚠️  Setup concluído com ressalvas (veja WARNs acima)${RESET}"
+    echo "  ${YELLOW}[!]  Setup concluido com ressalvas (veja WARNs acima)${RESET}"
 else
-    echo "  ${RED}❌ Setup com falhas — revise os erros acima${RESET}"
+    echo "  ${RED}[FAIL] Setup com falhas - revise os erros acima${RESET}"
 fi
 
 echo ""
@@ -620,7 +620,7 @@ echo "    Admin:    admin@severinno.com / admin123"
 echo "    Cliente:  cliente@severinno.com / cliente123"
 echo "    Prestador: carlos@severinno.com / provider123"
 echo ""
-echo "  ${CYAN}Serviços:${RESET}"
+echo "  ${CYAN}Servicos:${RESET}"
 echo "    App:      http://localhost:3000"
 echo "    MinIO:    http://localhost:9001 (severinno / severinno_minio_dev)"
 echo ""

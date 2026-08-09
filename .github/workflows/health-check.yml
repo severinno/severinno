@@ -6,6 +6,13 @@
 # scripts/health-check.sh to the VPS and run it over SSH after restarting the
 # services, with the retry/URL params driven by `with:` inputs.
 #
+# VPS access is 100% centralized in the local composite actions: the scp
+# step uses ./.github/actions/severinno-scp and every ssh step uses
+# ./.github/actions/severinno-ssh — the appleboy pins (scp-action@v1,
+# ssh-action@v1) live ONLY there, never inline in a workflow. The credential
+# trio (host/username/key) is passed through by each caller via `with:`
+# (composite actions cannot read the secrets context directly).
+#
 # Callers (job-level `uses:` — runs as its OWN job on its OWN runner):
 #   deploy-job-name:
 #     needs: <deploy step that restarts services>
@@ -54,7 +61,7 @@ on:
         type: number
         default: 200
       docker-prune:
-        description: "Run `docker image prune -f` on success"
+        description: "Run `docker image prune -f` as a post-deploy housekeeping step (only after a successful health check)"
         required: false
         type: boolean
         default: true
@@ -79,9 +86,10 @@ jobs:
       - uses: actions/checkout@v4
 
       # scp preserves the source path: scripts/health-check.sh lands at
-      # ${{ secrets.DEPLOY_PATH }}/scripts/health-check.sh.
+      # ${{ secrets.DEPLOY_PATH }}/scripts/health-check.sh. The appleboy
+      # scp pin lives in ./.github/actions/severinno-scp — never inline.
       - name: Copy health check script
-        uses: appleboy/scp-action@v1
+        uses: ./.github/actions/severinno-scp
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -90,7 +98,7 @@ jobs:
           target: ${{ secrets.DEPLOY_PATH }}
 
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
+        uses: ./.github/actions/severinno-ssh
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -111,5 +119,21 @@ jobs:
               HEALTH_ATTEMPTS=${{ inputs.attempts }} \
               HEALTH_SLEEP=${{ inputs.sleep }} \
               HEALTH_EXPECT_CODE=${{ inputs.expect-code }} \
-              HEALTH_DOCKER_PRUNE=${{ inputs.docker-prune && '1' || '0' }} \
               bash scripts/health-check.sh
+
+      # Housekeeping is SEPARATE from the health check on purpose: the deploy
+      # verdict is the app being up (the step above), not disk cleanup. This
+      # runs only when the health check SUCCEEDED (`success()`) AND the caller
+      # opted in (`inputs.docker-prune`); its failure is non-fatal (|| echo),
+      # ASCII-only for VPS locale robustness.
+      - name: Housekeeping (docker image prune)
+        if: ${{ success() && inputs.docker-prune }}
+        uses: ./.github/actions/severinno-ssh
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            docker image prune -f || echo "WARNING: docker image prune -f failed (non-fatal - deploy stays green)"

@@ -369,14 +369,14 @@ bun run e2e
 
 ## Encoding Guards
 
-Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:
+Camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório. Entry único: `scripts/verify-encoding.sh` (UTF-8 válido via `check_utf8.py` + ASCII puro repo-wide via `verify-ascii-proof.sh` com baseline congelado em `docs/ascii-safe.md`):
 
 | Camada | Gatilho | Comando | Tempo | Bloqueia? |
 |:------:|---------|---------|:-----:|:---------:|
-| 🏠 **Pre-commit** | `git commit` | `scripts/check-utf8.sh --dry-run --ci src/` | ~2s | ✅ Exit 1 |
-| 🚀 **Pre-push** | `git push` | `scripts/check-utf8.sh --dry-run --ci src/` | ~2s | ✅ Exit 1 |
-| 🔄 **CI/CD** | Push para `main`/`develop` | `scripts/check-utf8.sh --ci src/` (via `ci.yml`) | <10s | ✅ Bloqueia build |
-| 📋 **PR Check** | `pull_request` para `main` | `scripts/check-utf8.sh --ci src/` (via `pr-check.yml`) | <10s | ✅ Bloqueia merge |
+| 🏠 **Pre-commit** | `git commit` | `scripts/verify-encoding.sh --dry-run --ci src/` | ~1.4s | ✅ Exit 1 |
+| 🚀 **Pre-push** | `git push` | `scripts/verify-encoding.sh --dry-run --ci src/` | ~1.4s | ✅ Exit 1 |
+| 🔄 **CI/CD** | Push para `main`/`develop` | `scripts/verify-encoding.sh --ci src/` (via `utf8-check.yml`) | ~1.4s | ✅ Bloqueia build |
+| 📋 **PR Check** | `pull_request` para `main` | `scripts/verify-encoding.sh --ci src/` (via `pr-check.yml`) | ~1.4s | ✅ Bloqueia merge |
 
 **467 arquivos escaneados** (`.ts` + `.tsx`) em cada execução — zero corrupção encontrada.
 

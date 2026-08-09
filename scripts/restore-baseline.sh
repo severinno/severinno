@@ -22,8 +22,8 @@
 #   --token <s>    GitHub token (default: $GITHUB_TOKEN or $GH_TOKEN).
 #
 # Exit codes:
-#   0 — baseline restored
-#   1 — error (missing dependencies, no artifact found, etc.)
+#   0 - baseline restored
+#   1 - error (missing dependencies, no artifact found, etc.)
 # =============================================================================
 
 set -euo pipefail
@@ -45,7 +45,7 @@ BASELINE_FILES[cache]="cache-baseline.json"
 
 declare -A ARTIFACT_NAMES
 ARTIFACT_NAMES[geo]="geo-benchmark"
-ARTIFACT_NAMES[cache]="cache-benchmark"  # fallback — cache artifact may use different name
+ARTIFACT_NAMES[cache]="cache-benchmark"  # fallback - cache artifact may use different name
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
-      echo "❌ Unknown flag: $1"
+      echo "[FAIL] Unknown flag: $1"
       echo "Usage: bash scripts/restore-baseline.sh --type geo|cache [--dry-run] [--run-id <n>] [--token <s>]"
       exit 1
       ;;
@@ -87,12 +87,12 @@ done
 # ---------------------------------------------------------------------------
 
 if [[ -z "$TYPE" ]]; then
-  echo "❌ --type is required. Usage: bash scripts/restore-baseline.sh --type geo|cache"
+  echo "[FAIL] --type is required. Usage: bash scripts/restore-baseline.sh --type geo|cache"
   exit 1
 fi
 
 if [[ -z "${BASELINE_FILES[$TYPE]:-}" ]]; then
-  echo "❌ Unknown type '$TYPE'. Available: ${!BASELINE_FILES[*]}"
+  echo "[FAIL] Unknown type '$TYPE'. Available: ${!BASELINE_FILES[*]}"
   exit 1
 fi
 
@@ -115,27 +115,27 @@ if command -v curl &>/dev/null; then
 fi
 
 if ! command -v jq &>/dev/null; then
-  echo "❌ 'jq' is required for JSON parsing. Install it via your package manager."
+  echo "[FAIL] 'jq' is required for JSON parsing. Install it via your package manager."
   echo "   https://jqlang.github.io/jq/"
   exit 1
 fi
 
 if ! $HAVE_GH && ! $HAVE_CURL; then
-  echo "❌ Neither 'gh' (GitHub CLI) nor 'curl' is available."
+  echo "[FAIL] Neither 'gh' (GitHub CLI) nor 'curl' is available."
   echo "   Install gh: https://cli.github.com/"
   echo "   Or set GITHUB_TOKEN and ensure curl is installed."
   exit 1
 fi
 
 if ! $HAVE_GH && [[ -z "$TOKEN" ]]; then
-  echo "❌ curl mode requires GITHUB_TOKEN or GH_TOKEN environment variable."
+  echo "[FAIL] curl mode requires GITHUB_TOKEN or GH_TOKEN environment variable."
   echo "   Or install the GitHub CLI (gh) for tokenless authentication."
   exit 1
 fi
 
 # Validate --run-id if provided
 if [[ -n "$RUN_ID" ]] && ! [[ "$RUN_ID" =~ ^[0-9]+$ ]]; then
-  echo "❌ --run-id must be a positive integer, got: $RUN_ID"
+  echo "[FAIL] --run-id must be a positive integer, got: $RUN_ID"
   exit 1
 fi
 
@@ -154,16 +154,16 @@ if [[ -z "$REPO" ]]; then
 fi
 
 if [[ -z "$REPO" ]]; then
-  echo "❌ Could not determine GitHub repository."
+  echo "[FAIL] Could not determine GitHub repository."
   echo "   Set GITHUB_REPOSITORY environment variable, or run from a git clone."
   exit 1
 fi
 
-echo "  ℹ  Repository: $REPO"
-echo "  ℹ  Type:       $TYPE"
-echo "  ℹ  Artifact:   $ARTIFACT_NAME"
-echo "  ℹ  Target:     $OUT_DIR/$BASELINE_FILE"
-[[ -n "$RUN_ID" ]] && echo "  ℹ  Run ID:     $RUN_ID"
+echo "  [i]  Repository: $REPO"
+echo "  [i]  Type:       $TYPE"
+echo "  [i]  Artifact:   $ARTIFACT_NAME"
+echo "  [i]  Target:     $OUT_DIR/$BASELINE_FILE"
+[[ -n "$RUN_ID" ]] && echo "  [i]  Run ID:     $RUN_ID"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ echo ""
 # ---------------------------------------------------------------------------
 
 if [[ -z "$RUN_ID" ]]; then
-  echo "  ─── Finding latest successful '$WORKFLOW_NAME' run ───"
+  echo "  --- Finding latest successful '$WORKFLOW_NAME' run ---"
   echo ""
 
   RUN_JSON=""
@@ -194,17 +194,17 @@ if [[ -z "$RUN_ID" ]]; then
   fi
 
   if [[ -z "$RUN_JSON" ]] || [[ "$RUN_JSON" == "[]" ]] || [[ "$RUN_JSON" == "null" ]]; then
-    echo "❌ No successful '$WORKFLOW_NAME' runs found on main."
+    echo "[FAIL] No successful '$WORKFLOW_NAME' runs found on main."
     echo "   Try --run-id <n> to specify a specific run."
     exit 1
   fi
 
   if $HAVE_GH; then
     RUN_ID=$(echo "$RUN_JSON" | jq -r '.[0].databaseId')
-    echo "  ✅ Found run #$RUN_ID ($(echo "$RUN_JSON" | jq -r '.[0].createdAt' | head -c 10))"
+    echo "  [OK] Found run #$RUN_ID ($(echo "$RUN_JSON" | jq -r '.[0].createdAt' | head -c 10))"
   else
     RUN_ID=$(echo "$RUN_JSON" | jq -r '.workflow_runs[0].id')
-    echo "  ✅ Found run #$RUN_ID ($(echo "$RUN_JSON" | jq -r '.workflow_runs[0].createdAt' | head -c 10))"
+    echo "  [OK] Found run #$RUN_ID ($(echo "$RUN_JSON" | jq -r '.workflow_runs[0].createdAt' | head -c 10))"
   fi
   echo ""
 fi
@@ -213,7 +213,7 @@ fi
 # Step 2: Download the artifact
 # ---------------------------------------------------------------------------
 
-echo "  ─── Downloading '$ARTIFACT_NAME' artifact from run #$RUN_ID ───"
+echo "  --- Downloading '$ARTIFACT_NAME' artifact from run #$RUN_ID ---"
 echo ""
 
 TMP_DIR=$(mktemp -d)
@@ -223,7 +223,7 @@ if $DRY_RUN; then
   echo "  [dry-run] Would download artifact from run #$RUN_ID"
   echo "  [dry-run] Would extract to: $OUT_DIR/$BASELINE_FILE"
   echo ""
-  echo "  ✅ Dry-run complete. No files written."
+  echo "  [OK] Dry-run complete. No files written."
   rm -rf "$TMP_DIR"
   exit 0
 fi
@@ -236,7 +236,7 @@ if $HAVE_GH; then
     if [[ -n "$(find "$TMP_DIR" -name '*.json' -type f 2>/dev/null | head -1)" ]]; then
       DOWNLOAD_OK=true
     else
-      echo "  ⚠  gh download reported success but no JSON files found — falling back to curl"
+      echo "  [!]  gh download reported success but no JSON files found - falling back to curl"
     fi
   fi
 fi
@@ -257,7 +257,7 @@ if ! $DOWNLOAD_OK && $HAVE_CURL; then
   fi
 
   if [[ -z "$ARTIFACT_ID" ]]; then
-    echo "❌ No artifact named '$ARTIFACT_NAME' found in run #$RUN_ID."
+    echo "[FAIL] No artifact named '$ARTIFACT_NAME' found in run #$RUN_ID."
     echo "   Available artifacts:"
     curl -sfL \
       -H "Authorization: token $TOKEN" \
@@ -277,7 +277,7 @@ if ! $DOWNLOAD_OK && $HAVE_CURL; then
     -L -o "$TMP_ARCHIVE" \
     "https://api.github.com/repos/$REPO/actions/artifacts/$ARTIFACT_ID/zip" \
     2>/dev/null || {
-    echo "❌ Failed to download artifact."
+    echo "[FAIL] Failed to download artifact."
     rm -rf "$TMP_DIR"
     exit 1
   }
@@ -288,12 +288,12 @@ if ! $DOWNLOAD_OK && $HAVE_CURL; then
 fi
 
 if ! $DOWNLOAD_OK; then
-  echo "❌ Failed to download artifact using any available method."
+  echo "[FAIL] Failed to download artifact using any available method."
   rm -rf "$TMP_DIR"
   exit 1
 fi
 
-echo "  ✅ Artifact downloaded (size: $(du -h "$TMP_ARCHIVE" 2>/dev/null | cut -f1 || echo '?'))"
+echo "  [OK] Artifact downloaded (size: $(du -h "$TMP_ARCHIVE" 2>/dev/null | cut -f1 || echo '?'))"
 
 # ---------------------------------------------------------------------------
 # Step 3: Extract the baseline file
@@ -311,7 +311,7 @@ fi
 EXTRACTED_FILE=$(find "$TMP_DIR" -name '*.json' -type f 2>/dev/null | head -1)
 
 if [[ -z "$EXTRACTED_FILE" ]]; then
-  echo "❌ No JSON file found in the artifact."
+  echo "[FAIL] No JSON file found in the artifact."
   echo "   Artifact contents:"
   ls -la "$TMP_DIR" 2>/dev/null || true
   rm -rf "$TMP_DIR"
@@ -322,7 +322,7 @@ echo "  Extracted: $(basename "$EXTRACTED_FILE") ($(du -h "$EXTRACTED_FILE" | cu
 
 # Validate the JSON
 if ! jq empty "$EXTRACTED_FILE" 2>/dev/null; then
-  echo "❌ Extracted file is not valid JSON. Aborting."
+  echo "[FAIL] Extracted file is not valid JSON. Aborting."
   rm -rf "$TMP_DIR"
   exit 1
 fi
@@ -340,14 +340,14 @@ if [[ -f "$OUT_DIR/$BASELINE_FILE" ]]; then
 fi
 
 cp "$EXTRACTED_FILE" "$OUT_DIR/$BASELINE_FILE"
-echo "  ✅ Restored: $OUT_DIR/$BASELINE_FILE"
+echo "  [OK] Restored: $OUT_DIR/$BASELINE_FILE"
 
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
 echo ""
-echo "  ─── Summary ───────────────────────────────────────────────────"
+echo "  --- Summary ---------------------------------------------------"
 echo "  Repository:  $REPO"
 echo "  Workflow:    $WORKFLOW_NAME"
 echo "  Run #:       $RUN_ID"
@@ -360,4 +360,4 @@ echo ""
 # Cleanup
 rm -rf "$TMP_DIR"
 
-echo "  ✅ Baseline restored. Run the next CI comparison to verify."
+echo "  [OK] Baseline restored. Run the next CI comparison to verify."
