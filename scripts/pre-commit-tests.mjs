@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 /**
- * Pre-commit targeted unit tests — Severinno
+ * Targeted unit tests for touched areas — Severinno
  *
- * Runs the unit tests related to the files STAGED in git (`git diff --cached`),
- * so a commit can't land with a broken test in an area it touches — before the
- * full suite runs in CI. Mapping rules:
+ * Runs the unit tests related to the files in the git diff, so a commit/push
+ * can't land with a broken test in an area it touches — before the full suite
+ * runs in CI. Two scopes, selected by `--scope`:
+ *   - `cached` (default, pre-commit): files STAGED in git (`git diff --cached`);
+ *   - `push` (pre-push, Gate 3 of pre-push-gates.sh): the union of staged
+ *     (`git diff --cached`), HEAD (staged + unstaged leftovers, `git diff
+ *     HEAD`) and the pushed commits' range (`--since <remote-sha>` →
+ *     `git diff <sha>...HEAD`). The remote sha comes from the pre-push hook
+ *     stdin (`.husky/pre-push` captures the 1st ref line); absent or all-zeros
+ *     (first push of a new branch), it falls back to staged + HEAD.
+ *
+ * Mapping rules:
  *   - a staged `*.test.{ts,tsx}` file runs as-is (only if it still exists on
  *     disk — a staged DELETION of a test has nothing to run);
  *   - a staged source file (`*.ts|tsx|mjs`) runs its co-located tests:
@@ -81,13 +90,51 @@ export function collectTestFiles(staged, root = process.cwd()) {
 }
 
 /**
- * Staged file paths relative to cwd. Includes deletions (D) so a removed
- * source still runs its co-located test (fails loudly on the missing import).
- * Renames (R) appear under their new name with --name-only.
+ * CLI args for the two scopes:
+ *   --scope cached|push   (default cached — pre-commit)
+ *   --since <sha>         (push only — the remote sha of the pushed ref, from
+ *                          the pre-push hook stdin; optional)
  */
-function gitStagedFiles() {
+export function parseArgs(argv) {
+  const args = { scope: "cached", since: null }
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--scope") args.scope = argv[i + 1] ?? "cached"
+    else if (argv[i] === "--since") args.since = argv[i + 1] ?? null
+  }
+  if (args.scope !== "cached" && args.scope !== "push") args.scope = "cached"
+  return args
+}
+
+/**
+ * A remote sha of all zeros means a FIRST push of a new branch (the remote
+ * has no counterpart yet) — there is no meaningful range to diff, so the
+ * push scope falls back to staged + HEAD.
+ */
+export function isValidSince(since) {
+  return Boolean(since) && !/^0+$/.test(since.trim())
+}
+
+/**
+ * Pure union of the push scope's three sources (staged / HEAD / pushed-range),
+ * deduped — exported for unit tests (the git commands themselves stay private).
+ */
+export function mergePushScope(staged, headFiles, rangeFiles) {
+  const out = new Set()
+  for (const f of [...staged, ...headFiles, ...rangeFiles]) {
+    if (f) out.add(f)
+  }
+  return [...out]
+}
+
+/**
+ * File paths (relative to cwd) changed by a git diff. Includes deletions (D)
+ * so a removed source still runs its co-located test (fails loudly on the
+ * missing import). Renames (R) appear under their new name with --name-only.
+ * Empty output (and exit 0) for an empty diff.
+ */
+function gitDiffFiles(diffArgs) {
   try {
-    const out = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMRD"], {
+    const out = execFileSync("git", ["diff", ...diffArgs, "--name-only", "--diff-filter=ACMRD"], {
       cwd: process.cwd(),
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
@@ -98,21 +145,55 @@ function gitStagedFiles() {
   }
 }
 
+/** True when `sha` resolves to a local commit (safe to use in a diff range). */
+function gitRefExists(sha) {
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", `${sha}^{commit}`], { stdio: "ignore" })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Staged files (the pre-commit scope). */
+function gitStagedFiles() {
+  return gitDiffFiles(["--cached"])
+}
+
+/**
+ * Push scope (Gate 3 of pre-push-gates.sh): staged ∪ HEAD (staged + unstaged
+ * leftovers) ∪ the pushed commits' range (`<since>...HEAD`, three-dot = from
+ * the merge-base to HEAD). The since check guards against a first push
+ * (all-zeros) or a remote sha unknown locally (force-push), falling back to
+ * staged + HEAD.
+ */
+function gitPushScopeFiles(since) {
+  const staged = gitDiffFiles(["--cached"])
+  const head = gitDiffFiles(["HEAD"])
+  let range = []
+  if (isValidSince(since) && gitRefExists(since)) {
+    range = gitDiffFiles([`${since}...HEAD`])
+  }
+  return mergePushScope(staged, head, range)
+}
+
 function main() {
-  const staged = gitStagedFiles()
-  const tests = collectTestFiles(staged)
+  const { scope, since } = parseArgs(process.argv.slice(2))
+  const files = scope === "push" ? gitPushScopeFiles(since) : gitStagedFiles()
+  const tests = collectTestFiles(files)
+  const label = scope === "push" ? "pre-push" : "pre-commit"
   if (tests.length === 0) {
-    console.log("  pre-commit:test — nenhum teste unitário nas áreas tocadas (skip)")
+    console.log(`  ${label}:test — nenhum teste unitário nas áreas tocadas (skip)`)
     return
   }
-  console.log(`  pre-commit:test — ${tests.length} teste(s) nas áreas tocadas: ${tests.join(", ")}`)
+  console.log(`  ${label}:test — ${tests.length} teste(s) nas áreas tocadas: ${tests.join(", ")}`)
   const res = spawnSync(
     process.execPath,
     [VITEST_BIN, "run", ...tests, "--config", "vitest.config.unit.ts", "--passWithNoTests"],
     { cwd: process.cwd(), stdio: "inherit", env: process.env },
   )
   if (res.error) {
-    console.error(`  pre-commit:test — falha ao executar vitest: ${res.error.message}`)
+    console.error(`  ${label}:test — falha ao executar vitest: ${res.error.message}`)
     process.exit(1)
   }
   if (res.status !== 0) process.exit(res.status ?? 1)

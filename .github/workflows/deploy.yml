@@ -68,19 +68,15 @@ jobs:
         run: |
           docker run -d             --name severinno-test             -p 3000:3000             -e DATABASE_URL="postgresql://severinno:severinno@postgis:5432/severinno"             -e REDIS_URL=""             -e SESSION_SECRET="test-secret-at-least-32-chars-long"             -e NODE_ENV=production             severinno-test:latest
 
+      # NOT a reusable-workflow call (unlike the ssh deploys): the container
+      # runs on THIS job's runner, and a `uses:` workflow runs on a fresh
+      # runner that could not reach it. Keeps the inline call to the shared
+      # scripts/health-check.sh (env 20/3) — still DRY via the same script.
       - name: Wait for health check
-        run: |
-          for i in $(seq 1 20); do
-            sleep 3
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "Health check passed (HTTP $HTTP_CODE) after ${i}s"
-              exit 0
-            fi
-            echo "Attempt $i/20 - HTTP $HTTP_CODE"
-          done
-          echo "Health check failed after 20 attempts"
-          exit 1
+        env:
+          HEALTH_ATTEMPTS: 20
+          HEALTH_SLEEP: 3
+        run: bash scripts/health-check.sh
 
       - name: Show container logs on failure
         if: failure()
@@ -163,34 +159,16 @@ jobs:
 
   deploy:
     needs: migrate
-    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            echo "Pulling new images..."
-            docker compose pull app realtime email-worker notification-worker
-            echo "Restarting services..."
-            docker compose up -d --no-deps --remove-orphans app realtime
-            docker compose --profile workers up -d --no-deps email-worker notification-worker
-            echo "Waiting for health check..."
-            for i in $(seq 1 12); do
-              sleep 5
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
-              if [ "$HTTP_CODE" = "200" ]; then
-                echo "Health check passed (HTTP $HTTP_CODE)"
-                # Clean up old images
-                docker image prune -f
-                exit 0
-              fi
-              echo "Attempt $i/12 — HTTP $HTTP_CODE, retrying..."
-            done
-            echo "Health check failed after 12 attempts" && exit 1
+    uses: ./.github/workflows/health-check.yml
+    with:
+      url: http://localhost:3000/api/health
+      attempts: 12
+      sleep: 5
+      expect-code: 200
+      docker-prune: true
+    secrets:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

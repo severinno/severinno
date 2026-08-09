@@ -1,12 +1,13 @@
 /**
- * Unit tests for scripts/pre-commit-tests.mjs — the pre-commit hook that runs
- * unit tests related to the git-staged files.
+ * Unit tests for scripts/pre-commit-tests.mjs — the targeted-tests runner
+ * used by the pre-commit hook (--scope cached, git-staged files) and the
+ * pre-push Gate 3 (--scope push, staged + HEAD + pushed-commit range).
  *
  * collectTestFiles is exported pure (entry-point guarded), so it is tested
  * directly with a synthetic fixture tree — no git, no vitest subprocess
  * needed for the mapping logic itself.
  *
- * Covered scenarios:
+ * Covered scenarios (cached scope):
  *   1. Staged *.test.{ts,tsx} files are returned as-is
  *   2. Staged source maps to a same-dir <name>.test.ts sibling
  *   3. Staged source maps to a __tests__/<name>.test.ts sibling
@@ -22,7 +23,14 @@ import { describe, it, expect, afterEach } from "vitest"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { collectTestFiles, isTestFile, isSourceFile } from "../pre-commit-tests.mjs"
+import {
+  collectTestFiles,
+  isTestFile,
+  isSourceFile,
+  isValidSince,
+  mergePushScope,
+  parseArgs,
+} from "../pre-commit-tests.mjs"
 
 const tempDirs: string[] = []
 afterEach(() => {
@@ -134,5 +142,55 @@ describe("scripts/pre-commit-tests.mjs mapping", () => {
     expect(isSourceFile("scripts/foo.mjs")).toBe(true)
     expect(isSourceFile("src/lib/foo.test.ts")).toBe(false)
     expect(isSourceFile("README.md")).toBe(false)
+  })
+})
+
+describe("scripts/pre-commit-tests.mjs push scope (pre-push Gate 3)", () => {
+  it("parseArgs: defaults to cached scope with no args (pre-commit behavior)", () => {
+    expect(parseArgs([])).toEqual({ scope: "cached", since: null })
+  })
+
+  it("parseArgs: reads --scope push and --since", () => {
+    expect(parseArgs(["--scope", "push", "--since", "abc123def"])).toEqual({
+      scope: "push",
+      since: "abc123def",
+    })
+  })
+
+  it("parseArgs: unknown scope falls back to cached (never silently invents a scope)", () => {
+    expect(parseArgs(["--scope", "bogus"])).toEqual({ scope: "cached", since: null })
+  })
+
+  it("parseArgs: explicit empty --since (from the hook's :- expansion) yields empty string — which isValidSince rejects (honest skip)", () => {
+    expect(parseArgs(["--scope", "push", "--since", ""])).toEqual({ scope: "push", since: "" })
+    expect(isValidSince("")).toBe(false)
+  })
+
+  it("isValidSince: rejects empty, null and all-zeros (first push of a branch)", () => {
+    expect(isValidSince("")).toBe(false)
+    expect(isValidSince(null)).toBe(false)
+    expect(isValidSince("0000000000000000000000000000000000000000")).toBe(false)
+    expect(isValidSince("abc123def")).toBe(true)
+  })
+
+  it("mergePushScope: unions staged + HEAD + range files with dedup", () => {
+    const got = mergePushScope(
+      ["src/lib/a.ts", "src/lib/b.ts"],
+      ["src/lib/b.ts", "src/lib/c.ts"],
+      ["src/lib/c.ts", "src/lib/d.ts"],
+    )
+    expect(got.sort()).toEqual(["src/lib/a.ts", "src/lib/b.ts", "src/lib/c.ts", "src/lib/d.ts"])
+  })
+
+  it("mergePushScope: empty sources yield no files", () => {
+    expect(mergePushScope([], [], [])).toEqual([])
+  })
+
+  it("collectTestFiles still maps merged push-scope sources to co-located tests", () => {
+    const f = makeFixture()
+    f.write("src/lib/a.ts")
+    f.write("src/lib/a.test.ts")
+    const merged = mergePushScope(["src/lib/a.ts"], [], [])
+    expect(collectTestFiles(merged, f.dir)).toEqual(["src/lib/a.test.ts"])
   })
 })

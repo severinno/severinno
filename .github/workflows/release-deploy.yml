@@ -368,38 +368,17 @@ jobs:
 
   deploy:
     name: Deploy to VPS
-    runs-on: ubuntu-latest
     needs: [migrate]
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
-          script: |
-            set -e
-
-            echo "Pulling new images..."
-            docker compose pull app realtime email-worker notification-worker
-
-            echo "Restarting services..."
-            docker compose up -d --no-deps --remove-orphans app realtime
-            docker compose --profile workers up -d --no-deps email-worker notification-worker
-
-            echo "Waiting for health check..."
-            for i in $(seq 1 12); do
-              sleep 5
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
-              if [ "$HTTP_CODE" = "200" ]; then
-                echo "Health check passed (HTTP $HTTP_CODE)"
-                docker image prune -f
-                exit 0
-              fi
-              echo "Attempt $i/12 - HTTP $HTTP_CODE, retrying..."
-            done
-
-            echo "Health check failed after 12 attempts"
-            exit 1
+    uses: ./.github/workflows/health-check.yml
+    with:
+      url: http://localhost:3000/api/health
+      attempts: 12
+      sleep: 5
+      expect-code: 200
+      docker-prune: true
+    secrets:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}

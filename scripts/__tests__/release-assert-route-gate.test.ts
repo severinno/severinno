@@ -24,9 +24,7 @@
  *   - route order inside the block does not matter    → exit 0
  */
 import { describe, it, expect, afterEach } from "vitest"
-import { spawnSync } from "node:child_process"
 import fs from "node:fs"
-import os from "node:os"
 import path from "node:path"
 
 // js-yaml has no @types package in this repo (and its dist is an untyped
@@ -35,6 +33,7 @@ import path from "node:path"
 // of shimming the module project-wide.
 // @ts-expect-error js-yaml is untyped in this repo; only yaml.load is used
 import yaml from "js-yaml"
+import { canonicalProgram, cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 
 const WORKFLOW = path.resolve(process.cwd(), ".github", "workflows", "release-deploy.yml")
 // Versioned golden copy of the awk program (single source of truth for the
@@ -42,10 +41,7 @@ const WORKFLOW = path.resolve(process.cwd(), ".github", "workflows", "release-de
 // file, or vice-versa, fails the suite).
 const GOLDEN_AWK = path.resolve(process.cwd(), "scripts", "__tests__", "fixtures", "route-gate-assert.awk")
 
-const tempDirs: string[] = []
-afterEach(() => {
-  for (const d of tempDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true })
-})
+afterEach(cleanupTempDirs)
 
 interface AssertStep {
   name?: string
@@ -72,36 +68,18 @@ function extractAwkProgram(): string {
 
 /** Run ANY awk program against a synthetic report; returns its exit code. */
 function runAwkProgram(program: string, tag: string, reportMd: string, eol = "\n"): number {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "route-gate-awk-"))
-  tempDirs.push(dir)
+  const dir = createTempDir("route-gate-awk-")
   const reportPath = path.join(dir, "report.md")
   fs.writeFileSync(reportPath, reportMd.replace(/\n/g, eol))
   // Mirror the shell invocation `awk -v tag="### $TAG " '<program>' "$REPORT"`
   // — the trailing space in the tag value is the prefix-disambiguation.
-  const r = spawnSync("awk", ["-v", `tag=### ${tag} `, program, reportPath], { encoding: "utf8" })
+  const r = runSubprocess({ command: "awk", args: ["-v", `tag=### ${tag} `, program, reportPath] })
   return r.status ?? -1
 }
 
 /** Run the workflow's awk against a synthetic report; returns its exit code. */
 function runAssert(tag: string, reportMd: string, eol = "\n"): number {
   return runAwkProgram(extractAwkProgram(), tag, reportMd, eol)
-}
-
-/**
- * Canonical form for the divergence comparison: the workflow extraction
- * carries the YAML block's 2-space indent per line, while the golden copy is
- * written clean — so compare CONTENT, not layout. CRLF-tolerant (both sides
- * may be CRLF on a Windows checkout) and blank-line-tolerant (the golden
- * copy's trailing newline / leading comment must not matter). A changed awk
- * RULE still fails the comparison because its tokens land on a line.
- */
-function canonicalAwk(program: string): string {
-  return program
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((l) => l.trim()) // BOTH sides: extraction carries the YAML 2-space indent
-    .filter((l) => l.length > 0 && !l.startsWith("#"))
-    .join("\n")
 }
 
 /** One version's Rotas block (real em-dash header) — NO document header. */
@@ -140,8 +118,7 @@ describe("release-deploy.yml Camada A assert (awk Rotas block)", () => {
   })
 
   it("awk binary resolves in this environment (so failures below are logic failures, not spawn errors)", () => {
-    const r = spawnSync("awk", ["--version"], { encoding: "utf8" })
-    expect(r.error).toBeUndefined()
+    const r = runSubprocess({ command: "awk", args: ["--version"] })
     expect(r.status).toBe(0)
   })
 
@@ -195,8 +172,8 @@ describe("release-deploy.yml Camada A assert (awk Rotas block)", () => {
     // canonical CONTENT (rules), not the YAML indentation or comment layout.
     const extracted = extractAwkProgram()
     const golden = fs.readFileSync(GOLDEN_AWK, "utf8")
-    const cExtracted = canonicalAwk(extracted)
-    const cGolden = canonicalAwk(golden)
+    const cExtracted = canonicalProgram(extracted)
+    const cGolden = canonicalProgram(golden)
     // Diagnostics MUST run BEFORE the expect — expect().toBe() throws on a
     // mismatch, so a dump after it would be unreachable dead code. Show both
     // canonical forms so the culprit (workflow vs golden copy) is obvious.
