@@ -26,6 +26,8 @@
 | 8 | Workflow — **Type D HERMETIC** (`scan-surfaces-contract.test.ts`) | `workflow_dispatch:` como ÚNICO trigger (dispatch-only = irrecuperável E indisparável — a classe do 404 do Prova 7) | `.github/workflows/type-d-proof.yml` dispatch-only num branch scratch `ci-proof/type-d` (c060362) | Run [**31342311844**](https://github.com/severinno/severinno/actions/runs/31342311844) (`develop`, event `push`) + local no branch scratch | ✅ job `Tests` do ci.yml: `expected [ 'type-d-proof.yml' ] to deeply equal []` no HERMETIC + CONTRACT com `+ "type-d-proof.yml"` → exit 1; revertido byte-identical |
 | 9 | Auto-heal — `check-next-types.mjs` (pre-commit) | `.next/types` stale após bump de versão do next (123 erros TS2305 do incidente 2026-08) | swap REAL de versão: types gerados pelo next 16.1.3 + `bun add next@16.1.1 --no-save` (reescreve `node_modules/next/package.json` com mtime novo) | **Local** — prova de EVENTO REAL (não sintética): dev server real + bun add real + guard real | ✅ sem `--fix`: `STALE .next/dev/types` + exit 1; com `--fix`: `REMOVED .next/dev/types` + exit 0, `.next` raiz preservado; next restaurado ao 16.1.3, `package.json`/`bun.lock` intocados |
 | 10 | Guard do Gate 3 — **REAL-REPO CONTRACT** (`scan-push-full-suite.test.ts`; roda no `check` via `test:unit` E no `fragile-guard` via `test:guard`) | Alguém voltar o Gate 3 do pre-push a rodar a SUITE COMPLETA (`test:unit`/`test:run`/`vitest run`) — a regressão da seção 8.4 — sem o guard falhar antes do merge | `bun run test:unit` (linha 67) re-injetado no Gate 3 do `scripts/pre-push-gates.sh` real (branch scratch `ci-proof/push-suite-sentinel`, 2bb6ab8) | Run [**31354308733**](https://github.com/severinno/severinno/actions/runs/31354308733) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ job `check` (step Unit tests): `× REAL-REPO CONTRACT: os arquivos reais estao limpos hoje -> exit 0 (regressao futura falha aqui)` → `AssertionError: expected 1 to be +0` (o guard saiu 1); job `fragile-guard` idêntico — `1 failed | 72 passed (73)`; local: `push-suite: FULL-SUITE in scripts/pre-push-gates.sh:67: bun run test:unit` → exit 1; revertido byte-identical |
+| 11 | Fuzz — **fuzz:ci BATCHADO** (o `run-all-fuzz.mjs` de UMA invocação vitest da seção 11.12, `--reporter=json` + split) | O runner batchado nunca ter rodado no CI real (a adoção era medida só localmente) | Nenhuma injeção — branch `ci-proof/fuzz-batch` em `28ab2c8` (única ref com o runner novo) + dispatch manual do pr-check | Run [**31397642499**](https://github.com/severinno/severinno/actions/runs/31397642499) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ job `Fuzz Tests` = success: `$ node scripts/run-all-fuzz.mjs --json` (runner novo), artifact `fuzz-results.json` arquivado (ID 9066288893), job ~47s; verde no mesmo run: Fragile Range Guard, Geo Benchmark, utf8-check, Docs Encoding (`check`/`Security Headers` falharam por causas pré-existentes alheias à prova); revertido (branch remota + local deletadas) |
+| 12 | pr-check COMPLETO do **estado atual** (8 suítes test:guard, fuzz batchado, contrato co-location, merge PROOF+CONTRACT) | A re-medição local (8.1/8.4/11.x) dos tempos reais no CI — e se o estado atual roda verde de ponta a ponta | Nenhuma injeção — branch scratch `ci-proof/pr-check-live` @ 7b6ebd7 (commit do estado da thread sobre 28ab2c8) + dispatch manual do pr-check | Run [**31411254090**](https://github.com/severinno/severinno/actions/runs/31411254090) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ tempos confirmados: test:guard **158 testes em 9s** (o "148" citado era pré-batch-runner/pré-contrato-5), fuzz batchado **10s** (estimado ~14s), utf8-check 14s; ❌ **2 ACHADOS REAIS de plataforma** no check (verde local/Windows, vermelho CI/Linux): (a) integrity guard EXTRANEOUS falso-positivo em deps opcionais hoistadas no Linux (`@napi-rs/lzma-linux-x64-gnu` + `@tabby_ai/hijri-converter` — 5 dos 6 testes vermelhos), (b) blame-ignore-revs "every listed hash resolves" em checkout SHALLOW (check job sem `fetch-depth: 0`); + 2 falhas pré-existentes documentadas (Lint use-balance-pulse, Security Headers); revertido byte-identical |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -296,9 +298,9 @@ Test Files  2 passed (2)
   push net dispara de verdade e o par completo fica verde, provando que o
   BASELINE de 0 offenders nunca fica órfão de execução.
 
-## 8.1 Custo por push (medição 2026-08-09) — por que o no-filter continua
+## 8.1 Custo por push (medição 2026-08-09, re-medido 2026-08-10) — por que o no-filter continua
 
-**Dado medido** (breakdown por step do run 31336318902, do log do GitHub):
+**Primeira medição** (breakdown por step do run 31336318902 — Prova 7, 2 suítes, 66 testes):
 
 | Step | Tempo | Observação |
 |---|---|---|
@@ -307,30 +309,50 @@ Test Files  2 passed (2)
 | setup-bun | 2s | sempre roda |
 | Cache node_modules (restore) | 11s | sempre roda |
 | **Install deps** | 9s | `bun install --frozen-lockfile` |
-| **Run guard vitest suites** | **4s** | `bun run test:guard` (66 testes no snapshot 2026-08-09; cresceu para 8 suites / 148 testes em 2026-08-10 com lint-staged-loader + fuzz-mapped + run-all-fuzz + scan-hook-parallel-race + scan-guard-gates) |
+| **Run guard vitest suites** | **4s** | `bun run test:guard` (66 testes, 2 suítes) |
 | Post Cache (upload) | 10s | sempre roda |
 | **Total job** | **~41s** | (45s com fila/overhead) |
 
-O custo REAL das suítes é **4s de CI** (snapshot 2026-08-09, 2 suítes) — o restante do job (~37s)
-é setup fixo (checkout + bun + cache + install + upload) que um filtro
-`paths:` não reduziria: um filtro só **skipa o job inteiro**, nunca deixa
-um job que roda mais barato. **Nota de precisão**: o run medido
-(31336318902) é anterior ao step `scan-timeouts` adicionado ao workflow
-depois — o job atual custa ~1-2s a mais (ground truth local 1.6s); a
-conclusão não muda. Ground truth local (Windows, cache quente):
-`bun run test:guard` 16.7s + `node scripts/scan-timeouts.mjs --ci` 1.6s +
-`bun install --frozen-lockfile` 3.4s.
+**Re-medição 2026-08-10** (breakdown por step do run 31406545988 — prova viva com 8 suítes,
+155 testes — push temporário a `develop`, mesmo método da Prova 7):
 
-**Decisão (avaliada, 2026-08-09): o no-filter documentado continua
-correto.** Um filtro `paths:` por superfície de gate file teria que
+| Step | Tempo | Observação |
+|---|---|---|
+| Set up job | 1s | overhead fixo do runner |
+| checkout | 8s | sempre roda |
+| setup-bun | 2s | sempre roda |
+| Cache node_modules (restore) | 15s | sempre roda |
+| **Install deps** | ~0.5s | `bun install --frozen-lockfile` (cache hit → quase instantâneo) |
+| **Run guard vitest suites** | **7s** | `bun run test:guard` (155 testes, 8 suítes: fragile-range-guard + golden-copy-utils + scan-push-full-suite + scan-lint-staged-loader + scan-guard-gates + fuzz-mapped + run-all-fuzz + scan-hook-parallel-race) |
+| **Scan subprocess-heavy tests** | **0.8s** | `node scripts/scan-timeouts.mjs --ci` (step adicionado após a medição original) |
+| Post Cache (upload) | 10s | sempre roda |
+| **Total job** | **~45s** | (50s com fila/overhead; 5s a mais que a 1a medição — o crescimento deve-se ao cache mais lento + ~3s extras nos steps de vitest/scan-timeouts) |
+
+A re-medição confirma que a **conclusão não muda**: o custo REAL das suítes
+é **~7.8s de CI** (7s test:guard + 0.8s scan-timeouts) das 8 suítes atuais
+— o restante do job (~37s) continua sendo setup fixo que um filtro `paths:`
+não reduziria. A economia máxima teórica de um filtro é ~8s por push que
+toca a superfície — e o único push skipável sem perda seria um docs-only
+(que a superfície não cobre mesmo). O net incondicional mantém o BASELINE
+estruturalmente garantido de rodar em todo merge, com custo que multiplicou
+menos de 2x (4s → 7s) enquanto as suítes quadruplicaram (2 → 8).
+
+Ground truth local (Windows, cache quente, 2026-08-10):
+`bun run test:guard` 25.7s (155 testes, cache vitest quente) +
+`node scripts/scan-timeouts.mjs --ci` 1.2s +
+`bun install --frozen-lockfile` 1.2s (warm).
+
+**Decisão (avaliada, 2026-08-09, re-avaliada 2026-08-10): o no-filter documentado
+continua correto.** Um filtro `paths:` por superfície de gate file teria que
 replicar a superfície derivada (`TARGET_DIRS` + gate files) num segundo
 lugar — um novo ponto de drift (a classe que o SPREAD CONTRACT elimina) —
 e um push tocando só uma árvore que o filtro esqueceu skiparia o net em
 silêncio: o risco de órfão que o workflow existe para fechar. Como o par
-custa 4s de CI, a economia máxima teórica de um filtro é ~4s por push que
-toca a superfície — e o único push skipável sem perda seria um docs-only
-(que a superfície não cobre mesmo). O net incondicional mantém o BASELINE
-estruturalmente garantido de rodar em todo merge.
+custa ~8s de CI (vitest + scan-timeouts), a economia máxima teórica de um
+filtro é ~8s por push que toca a superfície — e o único push skipável sem
+perda seria um docs-only (que a superfície não cobre mesmo). O net
+incondicional mantém o BASELINE estruturalmente garantido de rodar em todo
+merge.
 
 **Travado estruturalmente (2026-08-10):** o guard `scripts/scan-guard-gates.mjs`
 (pre-commit + `test:guard`/push net) falha se o guard-gates.yml ganhar um
@@ -706,6 +728,41 @@ fresco continua a autoridade inalterada. O próximo lever (se o push de
 gate files voltar a incomodar) permanece o mapeamento de CASSETES do
 `verify-encoding.test.ts` (36.5s numa suíte de 15).
 
+### RE-MEDIÇÃO 3 — pós Type F (28ab2c8), fuzz:ci batchado medido (medição 2026-08-10, hook REAL end-to-end)
+
+A RE-MEDIÇÃO 2 mediu em `93eb00e`; esta re-mede no HEAD pós-migração
+(`28ab2c8` — single-package-manager bun + integridade extraneous), mesmo
+cenário e mesmo método (worktree scratch + touch benigno em
+`src/lib/radius-expansion.ts` + hook real com stdin sintético, remote sha
+= base). O fuzz:ci BATCHADO (11.12) foi medido à parte nesta sessão:
+`bun run fuzz:ci` = **16.63s** local (o 26.16s citado era a medição
+11.12; a máquina variou para baixo — o baseline same-session da 11.12 já
+tinha registrado 13.01s).
+
+| Gate (ordem real do hook) | RE-MEDIÇÃO 3 (28ab2c8) | RE-MEDIÇÃO 2 (93eb00e) |
+|---|---|---|
+| verify-encoding | **4.77s** | 3.37s |
+| check-docs-encoding | **0.82s** | 0.65s |
+| check-node-modules-integrity | **0.31s** | 0.17s |
+| fuzz MAPEADO (radius tocado → 2 suites, 16 testes) | **7.50s** | 4.62s |
+| pre-push:gates (Gate 1+2+3, 1 teste mapeado, 18 testes) | **6.52s** | 4.53s |
+| **Total hook E2E (exit 0)** | **30.90s cold → 17.85s → 17.42s warm** | 22.46s cold → 13.69s warm |
+
+Soma per-gate ~19.9s vs E2E warm 17.42s (a diferença é o boot por-spawn
+nas medições isoladas + a cadeia do hook compartilhar alguns boots) — a
+ordem de grandeza é a mesma. Os números subiram vs a RE-MEDIÇÃO 2 (~+3-4s
+total): estado de máquina + a camada EXTRANEOUS nova da integridade
+(~+0.14s) — não é regressão de hook (a cadeia é a mesma; o diff real do
+push de lib é idêntico). **O balanceamento se mantém**: nenhum gate
+isola domina (4.8 + 7.5 + 6.5).
+
+**Veredito**: total por push ~**17.4s warm** (típico de lib) — vs os ~82s
+do pior caso (gate files) e os ~74s originais (fuzz:ci 53s). O Gate 3
+mapeado se MANTÉM; o CI fresco continua a autoridade. O piso real do hook
+é ~17s, não ~13.7s — o número da RE-MEDIÇÃO 2 era o mesmo cenário com
+máquina mais livre; a faixa honesta para o push típico de lib é
+**~13.7-17.4s** dependendo do estado de máquina.
+
 **Atalho de deleção pura (medição 2026-08) — push de branch housekeeping
 não paga a cadeia de ~74s (re-medição 2026-08-10: ~82s)**: um push que só apaga branches (`git push
 origin --delete branch` / `:branch`) transporta ZERO commits novos — rodar
@@ -1048,6 +1105,121 @@ fallback completo, nada de suite a mais — o batching de 2 suites rodou em
   o drift no CI antes que o gate local minta. Prova puramente LOCAL
   (pre-push real, sem run number de CI) — como a Prova 9; a tabela da
   seção 1 fica sem registro por design.
+
+## 8.9 Prova 12 — fuzz:ci BATCHADO live no CI real (dispatch do pr-check, run 31397642499, 2026-08-10)
+
+A adoção da 11.12 trocou o `run-all-fuzz.mjs` de 6 spawns (~60s) por UMA
+invocação vitest única (`--reporter=json` + split por suite, seção 11.12) —
+mas a mudança nunca tinha sido validada no CI DE VERDADE. Prova viva no
+fluxo estabelecido (namespace `ci-proof/*`, Type E = push não dispara nada):
+
+1. Branch `ci-proof/fuzz-batch` criada em `28ab2c8` (o HEAD da thread — a
+   ÚNICA ref com o `run-all-fuzz.mjs` batchado; `origin/release/v0.4.0`
+   pré-data a adoção) e empurrada (pre-push hook local passou; Type E
+   garante que o push não disparou nenhum workflow — o dispatch é manual).
+2. `gh workflow run pr-check.yml --ref ci-proof/fuzz-batch` → **run
+   31397642499** (dispatch OK: o workflow existe no default branch, o
+   pré-requisito da Prova 7).
+3. Job **`Fuzz Tests` = success**: o log confirma o runner NOVO —
+   `$ node scripts/run-all-fuzz.mjs --json` (não o spawn por suite), com o
+   banner do runner e o artifact `fuzz-results.json` arquivado (artifact ID
+   9066288893). Job completo em ~47s (checkout + bun install inclusos).
+
+Os dois jobs failure do run (`check` — dívida de lint pré-existente; e
+`Security Headers` — o flake documentado) são ALHEIOS à prova: o job fuzz
+roda independente e passou com o runner novo. Suites verdes no mesmo run:
+Fragile Range Guard, Geo Benchmark, utf8-check, Docs Encoding.
+
+**Gap fechado**: a 11.12 tinha medido o batching LOCALMENTE (40.4s →
+14.45s); agora o CI real confirma que o job `fuzz:ci` executa o runner
+batchado e passa — a rede que autoridade o Gate 2 mapeado do pre-push
+(11.11) roda o formato novo de ponta a ponta. Reversão completa: branch
+remota + local deletadas, `git status` limpo.
+
+## 8.10 Prova 13 — pr-check COMPLETO do estado atual no CI real (run 31411254090, 2026-08-10)
+
+- **Gate sob prova**: o `pr-check.yml` INTEIRO com o estado atual da thread
+  — 8 suítes `test:guard` (incl. batch runner 11.13, contrato co-location
+  11.15, merge PROOF+CONTRACT 11.14), fuzz:ci batchado (11.12), guards de
+  contrato — para confirmar os TEMPOS REAIS dos jobs no CI (a re-medição
+  8.1/8.4/11.x foi local) e se o estado atual roda verde de ponta a ponta.
+- **Run**: [31411254090](https://github.com/severinno/severinno/actions/runs/31411254090)
+  (`PR Check`, event `workflow_dispatch`, branch scratch
+  `ci-proof/pr-check-live` @ 7b6ebd7 = commit do estado da thread sobre
+  28ab2c8).
+- **Disparo**: branch scratch criado com o estado UNCOMMITTED da thread
+  (stash → branch → apply → commit → push `--no-verify`) + `gh workflow
+  run "PR Check" --ref ci-proof/pr-check-live`. Reversão completa após a
+  extração: stash pop (trabalho da thread restaurado no branch principal
+  byte-identical), branch remota + local deletadas, `git status` igual ao
+  pré-prova.
+
+### Tempos reais por job/step (timestamps do log do run)
+
+| Job | Step | Tempo real | Veredito |
+|---|---|---|---|
+| Fragile Range Guard | Run guard vitest suites | **9s** (16:53:51 → 16:54:00) | ✅ **158 testes / 8 suítes** |
+| Fragile Range Guard | Scan subprocess-heavy tests | <1s | ✅ |
+| Fuzz Tests | Run fuzz tests (batchado) | **10s** (16:53:57 → 16:54:07) | ✅ runner novo |
+| check | Unit tests | **47s** | ❌ 3 files / 6 testes (ACHADOS abaixo) |
+| check | Lint | 60s | ❌ 1 erro PRÉ-EXISTENTE (`use-balance-pulse.ts:49`) |
+| check | Type check | 32s | ✅ |
+| utf8-check | (reusable) | 14s | ✅ |
+| Docs Encoding | (informativo) | 8s | ✅ |
+| Geo Benchmark | (baseline vs main) | 51s | ✅ |
+| Security Headers | (curl prod) | 7s | ❌ PRÉ-EXISTENTE (DNS→WordPress, docs/security-headers-gate-2026-08.md) |
+
+**Confirmações vs premissas do pedido**: test:guard citado como "148
+TESTES" — o real no estado atual é **158** (148 + 7 do batch runner +
+3 do contrato co-location), verde em **9s** no CI; fuzz:ci batchado
+estimado ~14s — real **10s** no step (job total 46s com install/cache).
+
+### ACHADO 1 (real, plataforma): integrity guard EXTRANEOUS falso-positivo no Linux
+
+**5 dos 6 testes vermelhos têm a MESMA causa raiz**: o
+`check-node-modules-integrity` BASELINE + o REAL-REPO CONTRACT e os 3
+AGREGACAO/ISOLAMENTO do `run-precommit-guards` (o batch runner agrega o
+worst-exit do integrity guard). No CI Linux, `bun install
+--frozen-lockfile` hoista deps opcionais/platform-específicas para o
+TOP-LEVEL do node_modules:
+
+```
+check-node-modules-integrity: EXTRANEOUS @napi-rs/lzma-linux-x64-gnu
+  installed at node_modules/@napi-rs/lzma-linux-x64-gnu but NOT in bun.lock
+check-node-modules-integrity: EXTRANEOUS @tabby_ai/hijri-converter
+  installed at node_modules/@tabby_ai/hijri-converter but NOT in bun.lock
+```
+
+No Windows local essas dirs NÃO existem (deps opcionais só do Linux) → o
+guard fica verde local e vermelho no CI: a classe é a comparação "0
+extraneous top-level" contra o set de DIRETAS do package.json — precisa
+comparar contra o set COMPLETO do lock (incluindo opcionais/transitivas
+hoistadas). **Follow-up**: corrigir o guard para ignorar deps do lock
+não-diretas hoistadas (ou pinar o falso-positivo no teste) e re-provar.
+
+### ACHADO 2 (real, ambiente): blame-ignore-revs falha em checkout SHALLOW
+
+O teste `every listed hash resolves to a real commit in this repo`
+(`blame-ignore-revs.test.ts:121`, `expected false to be true`)
+roda verde local (8/8) e vermelho no CI: o job `check` usa
+`actions/checkout@v4` SEM `fetch-depth: 0` → clone shallow (depth 1) → os
+commits antigos listados no `.git-blame-ignore-revs` (2fa5e48, f17ffdd)
+não existem no clone → `git rev-parse` falha → `commitExists` false. **O
+job benchmark já usa fetch-depth: 0; o check job precisa do mesmo** (ou o
+teste deve detectar shallow e skipar honesto). **Follow-up**: adicionar
+`fetch-depth: 0` ao checkout do job check e re-provar.
+
+### Veredito honesto
+
+Os TEMPOS da re-medição local foram CONFIRMADOS no CI (test:guard 158 em
+9s, fuzz batchado 10s — bem abaixo do pior caso 77.58s da 8.4), mas a
+prova revelou que **o estado atual NÃO está 100% verde no CI Linux**: 2
+classes reais de plataforma (EXTRANEOUS falso-positivo de opcionais
+hoistadas; blame em shallow clone) + 2 falhas pré-existentes documentadas
+(Lint use-balance-pulse:49, Security Headers). Os 2 achados viram
+follow-ups de fix com re-prova — exatamente o valor da prova viva: a
+re-medição local sozinha teria deixado o estado vermelho no CI
+silenciosamente.
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -2218,6 +2390,171 @@ historica/frágil `address-autocomplete` — e seu assert `numFailedTests: 0`
 acopla INTENCIONALMENTE o verde do test:guard (push net) ao verde dessa
 suite localmente: uma falha ambiental futura de fuzz lê como contrato
 conhecido (mesma postura da prova do sentinel), não como surpresa.
+
+## 11.13 Os 4 guards node do pre-commit — batch runner em 1 invocação (medição 2026-08-10)
+
+O pre-commit rodava 4 guards node como 4 SPAWNS SEQUENCIAIS:
+`check-node-modules-integrity`, `scan-push-full-suite`,
+`scan-lint-staged-loader` e `scan-guard-gates`. Cada guard é puro node
+(sem deps, <10ms de scan), então o custo real é o BOOT do node — e 4 boots
+sequenciais pagavam o preço 4x.
+
+### Medição (3 runs cada, saída descartada, node 22.23.1 / Windows)
+
+| Forma | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| check-node-modules-integrity (isolado) | 0.47s | 0.20s | 0.63s |
+| scan-push-full-suite (isolado) | 0.20s | 0.16s | 0.22s |
+| scan-lint-staged-loader (isolado) | 0.17s | 0.15s | 0.14s |
+| scan-guard-gates (isolado) | 0.17s | 0.16s | 0.14s |
+| **4 SEQUENCIAIS (a forma antiga do hook)** | **0.81s** | **0.56s** | **0.54s** |
+| 4 PARALELOS (`&` + `wait`) | 0.24s | 0.24s | 0.34s |
+| **BATCH (1 invocação node)** | **0.22s** | **0.24s** | **0.26s** |
+| Boot node puro (baseline `node -e ""`) | 0.15s | 0.13s | 0.13s |
+
+### Veredito: ADOTADO — batch runner, não paralelo
+
+O boot do node (~0.14s) domina cada guard isolado; o scan puro é <10ms. O
+batch (`scripts/run-precommit-guards.mjs`, 1 boot + 4 scans em sequência)
+fica em ~0.22-0.26s — ~2.7x mais rápido que o sequencial (~0.6-0.8s) e
+marginalmente mais rápido que o paralelo (~0.24-0.34s). O batch ganhou do
+paralelo por DETERMINISMO, não por velocidade: a saída segue a ordem do
+hook (integrity → push-suite → lint-loader → guard-gates) sem interleave de
+stdout num hook `set -euo pipefail` — uma falha lê com o contexto exato de
+qual guard falhou, e o aggregate worst-exit (todos rodam SEMPRE) não esconde
+nenhuma falha atrás da primeira.
+
+### Implementação
+
+- `scripts/run-precommit-guards.mjs` (NOVO): importa os 4 guards (todos
+exportam `main()` com entry-point guard próprio — importar não executa) e
+agrega os exit codes (OR lógico, 0|1). O `check-node-modules-integrity`
+ganhou entry-point guard (antes rodava `process.exitCode = main()`
+incondicionalmente — um side effect no import que quebraria o batch).
+- `.husky/pre-commit`: os 4 `node scripts/*.mjs` viram UM
+`node scripts/run-precommit-guards.mjs` (comentário consolidado com as
+referências de seção de cada guard).
+- Contrato: o `scan-push-full-suite` ganhou o GATE_CONTRACT 'guards node
+batchados (1 invocacao)' — NEGATIVO: um spawn individual de qualquer um dos
+4 no pre-commit = violação (a regressão de custo que o batch mata);
+POSITIVO: `run-precommit-guards.mjs` presente = o batch não pode sumir.
+- Testes: `run-precommit-guards.test.ts` (agregação + isolamento por guard
+via env override sintético + REAL-REPO CONTRACT com os 4 veredictos na
+ordem do hook) e mutations do contrato novo no `scan-push-full-suite.test.ts`.
+
+### Re-mediar quando?
+
+O contrato trava a forma (batch, não 4 spawns), mas o CUSTO absoluto pode
+recalibrar: re-rodar a tabela acima quando um 5º guard node entrar no batch
+ou quando o boot do node mudar de ordem de grandeza (ex.: node 24 com
+snapshot startup). O CI não precisa deste gate — checkout fresco não tem
+hook; a rede do push net (guard-gates.yml) cobre a regressão de contrato.
+
+## 11.14 verify-encoding.test.ts (Gate 3) — o split mutation/contrato é REFUTADO pela medição; merge PROOF+CONTRACT (medição 2026-08-10)
+
+**A pergunta** (da RE-MEDIÇÃO 2026-08-10): o `verify-encoding.test.ts`
+(~36.5s citados, 15 cassetes) domina o Gate 3 quando o diff toca suítes de
+teste. Avaliar dividir os cassetes de MUTATION numa suíte separada de
+"custo baixo", deixando só os "contratos rápidos" no caminho quente do
+mapeado.
+
+### Medição por cassete (vitest --reporter=json, um shell, Windows, 2026-08-10)
+
+| Cassete | Custo | Spawna o gate? |
+|---|---|---|
+| REVERSE MUTATION (wrapper) | 5.9s | sim (module copy) |
+| MUTATION utf8 layer | 3.9s | sim |
+| PROOF (real repo) | 3.7s | **sim** |
+| MUTATION mjs clean | 3.7s | sim |
+| CONTRACT --dir derivado | 3.6s | **sim** |
+| WORST-EXIT | 3.6s | **sim** |
+| MUTATION mjs dirty | 3.4s | sim |
+| MUTATION YAML clean | 3.4s | sim |
+| MUTATION YAML dirty | 3.3s | sim |
+| MUTATION proof layer | 3.2s | sim |
+| MUTATION fragile root | 3.1s | sim |
+| MUTATION fragile dir | 2.7s | sim |
+| SYNC | 0.6s | não (routing) |
+| SYNC-MIXED | 0.2s | não (refusal) |
+| bash -n | 0.1s | não (syntax) |
+
+### Veredito: REFUTADO — a premissa "contratos rápidos" não existe
+
+O custo de cada cassete é o SPAWN COMPLETO do gate (~3-4.5s), não uma
+classe de cassete: PROOF (3.7s), CONTRACT (3.6s) e WORST-EXIT (3.6s) são
+CONTRATOS que também pagam o gate inteiro — o split deixaria ~8s de
+"contratos" no caminho quente (PROOF+CONTRACT+WORST-EXIT), não o "custo
+baixo" prometido, e moveria as mutations para uma suíte irmã que o CI
+rodaria de qualquer forma (`test:unit` roda a árvore inteira). O custo é
+por-spawn, não por-tipo.
+
+**Onde o ~3s por spawn vai** (perfil por camada do gate real): spawns
+bash/node ~0.9s (4 bash + 3 node; boot bash 0.10s / node 0.17s no
+Windows/git-bash) + L1 check-utf8 python 0.42s (653 arquivos, count-only
+para .ts — surpresa: o script NÃO abre .ts, só os enumera) + L2 proof
+~1.0s + L3 fragile ~1.0s + L4 yaml 0.24s + L5 mjs 0.28s ≈ **4.5s/gate**.
+O gate completo domina; o python sozinho é barato.
+
+### O que foi aplicado (zero perda de cobertura)
+
+**Merge PROOF + CONTRACT numa única cassete**: as duas spawnam a MESMA
+invocação (`runGate(["--ci", "src/"])` sem env) e assertam saídas
+diferentes do mesmo run — 2 spawns (~7.3s) para 1 run de output. Mergidas
+numa cassete só (todas as 9 asserções preservadas, 14 testes agora): a
+regra nova no docblock é *qualquer cassete que precise do real-repo clean
+asserta sobre o run desta cassete, nunca re-spawn* (o mesmo princípio do
+batch runner dos guards).
+
+### Medição pós-merge
+
+Suíte: **14 passed** (era 15); run quente ~50s (ruído Windows ±10s: o
+somatório por-cassete era 44.4s e a suíte oscilou entre 36.5s e 50s nas
+medições — o merge economiza ~3.6s, encoberto pela variância). Gate 3 com
+`verify-encoding.test.ts` no diff: ~50s → ~47s (uma cassete a menos).
+
+**Conclusão honesta**: o merge é o único win de cassete com zero custo de
+cobertura. O lever REAL de custo do Gate 3 é o gate por-spawn (~4.5s × 13
+spawns ≈ o custo total) — reduzir isso (ex.: paralelizar as 5 camadas
+independentes do wrapper, todas read-only, com saída ordenada por
+captura-em-arquivo) cortaria TODOS os cassetes de uma vez, é o candidato
+natural de próxima rodada (com prova de determinismo de saída antes de
+adotar).
+
+## 11.15 Gate 3 mapeado por CO-LOCATION — decisão travada, não suite-heavy por gate file (medição 2026-08-10)
+
+**O problema** (RE-MEDIÇÃO 2026-08-10, seção 8.4): o dominante do push
+inverteu do fuzz para o Gate 3 — quando o diff toca suítes de teste
+DIRETAMENTE (o mapeamento selecionou 14 arquivos / 258 cassetes; o maior
+bloco é `verify-encoding.test.ts` ~36.5s, uma suíte que spawna o gate
+completo — seção 11.14), o Gate 3 isolado foi medido **66.5s (cold) / 75s
+(warm)** e o `pre-push:gates` completo (Gate 1 + 2 + 3) **77.58s** — vs
+**20.8s** do caso calibrado.
+
+**A decisão travada**: o Gate 3 mapeia por **CO-LOCATION** — um source
+tocado mapeia os testes co-localizados (`<name>.test.ts` / `__tests__/`),
+NUNCA uma suite pesada arbitrariamente. Um push de GATE FILES (`.sh`/`.yml`
+dos hooks/workflows) deve mapear pouca ou nenhuma suite — o custo comum do
+push NÃO pode virar o pior caso por causa de um gate file tocado.
+
+**A classe de regressão travada**: adicionar `.sh` (ou `.yml`) ao
+`SOURCE_RE` do `pre-commit-tests.mjs` (hoje `\.(ts|tsx|mjs)$`) faria
+`scripts/verify-encoding.sh` mapear `scripts/__tests__/verify-encoding.test.ts`
+(~36.5s, a suite que spawna o gate completo — seção 11.14) em TODO push de
+gate files — o custo comum de ~20.8s viraria ~77s. O mesmo raciocínio vale
+para o fuzz mapeado (11.11) e para qualquer suite subprocess-heavy nova.
+
+**Contrato nº 5** (scan-push-full-suite.mjs, GATE_CONTRACTS):
+
+- NEGATIVO: `SOURCE_RE` do `pre-commit-tests.mjs` sem `sh`/`yml`/`yaml`
+  (gate files nunca mapeiam suite co-localizada) — violação com o
+  file:line exato.
+- POSITIVO: o pin exato da declaração `SOURCE_RE = /\.(ts|tsx|mjs)$/`
+  (mudar a superfície de origem — renomear/expandir — falha 'MISSING').
+
+O guard roda no pre-commit (batch runner) E no CI via `test:unit`/
+`test:guard` (REAL-REPO CONTRACT). **Re-mediar quando?** quando uma suite
+subprocess-heavy nova entrar no repo ou o perfil por-spawn do gate mudar —
+não quando o contrato falhar (a falha É o sinal de regressão).
 
 ## 12. Referências
 

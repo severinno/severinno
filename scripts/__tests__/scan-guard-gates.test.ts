@@ -69,9 +69,38 @@ function writePkg(dir: string, testGuard = "vitest run scripts/__tests__/scan-pu
   )
 }
 
-/** Write a clean synthetic repo (workflow without filter + pkg with the suite). */
+/** Write a synthetic pr-check.yml with the fragile-guard job (the PR twin). */
+function writePRWorkflow(dir: string, extra = "") {
+  writeFile(
+    dir,
+    ".github/workflows/pr-check.yml",
+    [
+      "name: PR Check",
+      "on:",
+      "  pull_request:",
+      "    branches: [main]",
+      "jobs:",
+      "  check:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - name: Unit tests",
+      "        run: bun run test:unit",
+      "  fragile-guard:",
+      "    name: Fragile Range Guard",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - uses: actions/checkout@v4",
+      "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
+      "        run: bun run test:guard",
+      "",
+    ].join("\n") + extra,
+  )
+}
+
+/** Write a clean synthetic repo (both workflows + pkg with the suite). */
 function writeCleanRepo(dir: string) {
   writeWorkflow(dir)
+  writePRWorkflow(dir)
   writePkg(dir)
 }
 
@@ -94,11 +123,90 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     expect(r.stdout).toContain("clean")
   }, 60000)
 
+  it("MUTATION: pr-check.yml sem o job fragile-guard -> exit 1 com 'FRAGILE GUARD JOB MISSING' (o twin PR da rede nao pode sumir)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeWorkflow(dir)
+    writeFile(
+      dir,
+      ".github/workflows/pr-check.yml",
+      [
+        "name: PR Check",
+        "on:",
+        "  pull_request:",
+        "    branches: [main]",
+        "jobs:",
+        "  check:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Unit tests",
+        "        run: bun run test:unit",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("FRAGILE GUARD JOB MISSING")
+    expect(r.stdout).toContain("pr-check.yml")
+  }, 60000)
+
+  it("MUTATION: job fragile-guard sem o step test:guard -> exit 1 com 'TEST GUARD STEP MISSING' no pr-check.yml", () => {
+    const dir = createTempDir("guard-gates-")
+    writeWorkflow(dir)
+    writeFile(
+      dir,
+      ".github/workflows/pr-check.yml",
+      [
+        "name: PR Check",
+        "on:",
+        "  pull_request:",
+        "    branches: [main]",
+        "jobs:",
+        "  fragile-guard:",
+        "    name: Fragile Range Guard",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: lint",
+        "        run: bun run lint",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("TEST GUARD STEP MISSING in .github/workflows/pr-check.yml")
+  }, 60000)
+
+  it("MUTATION: job fragile-guard com needs: check -> exit 1 com 'FRAGILE GUARD NEEDS' (o skip vector do lint nao pode voltar)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeWorkflow(dir)
+    writePRWorkflow(
+      dir,
+      "  fragile-guard:\n    needs: check\n    name: Fragile Range Guard\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run guard vitest suites\n        run: bun run test:guard\n",
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("FRAGILE GUARD NEEDS")
+    expect(r.stdout).toContain("needs: check")
+  }, 60000)
+
+  it("comentario com 'test:guard' (o header explica o mirror em prosa) NAO tripa o step check", () => {
+    const dir = createTempDir("guard-gates-")
+    writeWorkflow(dir, "# (bun run test:guard - o script unico em package.json, single source of truth)\n")
+    writePRWorkflow(dir, "# o MESMO par de suites do push net guard-gates.yml (bun run test:guard)\n")
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("clean")
+  }, 60000)
+
   it("MUTATION: paths: filter no on.push -> exit 1 com o caminho exato (file:line + conteudo)", () => {
     const dir = createTempDir("guard-gates-")
     // A fixture tem 9 linhas de conteudo + a linha 10 do filtro (o ultimo
     // elemento vazio do array vira o \n final antes do extra)
     writeWorkflow(dir, "        paths:\n          - 'scripts/**'\n")
+    writePRWorkflow(dir)
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(1)
@@ -109,6 +217,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
   it("MUTATION: paths-ignore: filter -> exit 1 (a mesma classe, o filtro NEGATIVO do on.push)", () => {
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir, "        paths-ignore:\n          - 'docs/**'\n")
+    writePRWorkflow(dir)
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(1)
@@ -119,6 +228,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
   it("comentario com 'paths filter' NAO tripa (o header do workflow explica o POR QUE em prosa)", () => {
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir, "# NO paths filter BY DESIGN - a surface escaneada e derivada dos TARGET_DIRS\n")
+    writePRWorkflow(dir)
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(0)
@@ -152,6 +262,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
   it("MUTATION: scan-push-full-suite removido do test:guard -> exit 1 com 'GUARD SUITE MISSING' (assert positivo)", () => {
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir)
+    writePRWorkflow(dir)
     writePkg(dir, "vitest run scripts/__tests__/fragile-range-guard.test.ts --config vitest.config.unit.ts")
     const r = runGuard(dir)
     expect(r.status).toBe(1)
@@ -162,6 +273,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
   it("MUTATION: test:guard script deletado do package.json -> exit 1 (assert positivo)", () => {
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir)
+    writePRWorkflow(dir)
     writeFile(dir, "package.json", JSON.stringify({ name: "synthetic", scripts: {} }, null, 2))
     const r = runGuard(dir)
     expect(r.status).toBe(1)
@@ -180,23 +292,33 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
   it("package.json ausente (root sintetico minimo) -> clean (sem pkg = sem suite para validar)", () => {
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir)
+    writePRWorkflow(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("clean")
   }, 60000)
 
-  it("REAL-REPO CONTRACT: guard-gates.yml real sem paths filter + test:guard com a suite -> exit 0 (regressao futura falha aqui)", () => {
+  it("REAL-REPO CONTRACT: guard-gates.yml real sem paths filter + test:guard com a suite + pr-check.yml com o job fragile-guard -> exit 0 (regressao futura falha aqui)", () => {
     const r = runGuard(process.cwd())
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("clean")
-    // Pin the actual state: the workflow has no paths filter AND the step
+    // Pin the actual state: the push net has no paths filter AND the step
     // exists AND the suite is in test:guard (the premise of 8.4/11.11).
     const wf = fs.readFileSync(
       path.join(process.cwd(), ".github", "workflows", "guard-gates.yml"),
       "utf8",
     )
     expect(wf).not.toMatch(/^\s*paths(?:-ignore)?:/m)
-    expect(wf).toMatch(/bun\s+run\s+test:guard/)
+    expect(wf).toMatch(/^\s+run:\s+bun run test:guard\s*$/m)
+    // The PR-side twin: pr-check.yml carries the fragile-guard job with the
+    // test:guard step and NO needs: (the standalone-job immunity contract).
+    const pr = fs.readFileSync(
+      path.join(process.cwd(), ".github", "workflows", "pr-check.yml"),
+      "utf8",
+    )
+    expect(pr).toMatch(/^  fragile-guard:$/m)
+    expect(pr).toMatch(/^\s+run:\s+bun run test:guard\s*$/m)
+    expect(pr).not.toMatch(/^\s+needs:/m)
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
     expect(pkg.scripts["test:guard"]).toContain("scan-push-full-suite.test.ts")
   }, 60000)

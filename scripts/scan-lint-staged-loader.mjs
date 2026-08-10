@@ -112,7 +112,7 @@ export function scanLintStagedLoader(root = ROOT) {
   return { bunLoader, missingGate }
 }
 
-function main() {
+export function main() {
   const { bunLoader, missingGate } = scanLintStagedLoader()
   if (bunLoader.length === 0 && missingGate.length === 0) {
     console.log(

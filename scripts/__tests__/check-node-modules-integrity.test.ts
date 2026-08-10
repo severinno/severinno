@@ -450,4 +450,69 @@ describe("check-node-modules-integrity.mjs --check-lock - ALL direct packages vs
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("--check-lock clean (98 direct packages match bun.lock; 0 skipped non-registry)")
   }, 60000)
+
+  it("SPEC-FORMAT contract: every direct dep spec today is registry (98/98, 0 weird) and any format outside the lockKeyFor boundary trips - the SKIP-vs-include decision must be explicit", () => {
+    // The boundary pinned is the lockKeyFor non-registry skip in the module:
+    // /^(workspace:|link:|file:|git(?:[+:@]|$)|github:|http)/ - any spec NOT
+    // matching that regex AND not a bare registry name is an UNDECIDED format:
+    // it would silently fall into the UNVERIFIABLE fail-safe (or worse, be
+    // grepped as a lock key that does not exist). Reading the regex from the
+    // module source (not duplicating it here) keeps the contract drift-proof.
+    const src = fs.readFileSync(SCRIPT, "utf8")
+    // Match the literal source line: /^(workspace:|link:|file:|git(?:[+:@]|$)|github:|http)/.test(spec)
+    // (slashes escaped as \/, the `^` is a LITERAL in the source (simple
+    // group, no `?:`), and the `$` inside the git alternation as \$).
+    const m = src.match(
+      /\/\^\(workspace:\|link:\|file:\|git\(\?:\[\+:@\]\|\$\)\|github:\|http\)\/\.test\(spec\)/,
+    )
+    expect(m).not.toBeNull()
+    const nonRegistryRe = new RegExp("^(workspace:|link:|file:|git(?:[+:@]|$)|github:|http)")
+    const pkgJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), "package.json"), "utf8"))
+    const weird = []
+    let registry = 0
+    for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
+      for (const [name, spec] of Object.entries(pkgJson[section] || {})) {
+        if (typeof spec !== "string") {
+          weird.push(`${name}=[non-string ${typeof spec}]`)
+        } else if (nonRegistryRe.test(spec) || spec.startsWith("npm:")) {
+          // known non-registry (SKIP boundary) or alias - both explicitly handled
+        } else {
+          registry++
+        }
+      }
+    }
+    // 0 undecided formats today (98 registry + 0 known-skip + 0 alias).
+    expect(weird).toEqual([])
+    expect(registry).toBe(98)
+    // MUTATION (classifier guard): a NEW unknown spec format is NOT caught by
+    // the SKIP boundary - it would be treated as a registry name and grepped
+    // against the lock. Proving the classifier here pins the detection;
+    // the CLI-level consequence is proven by the synthetic-root test below.
+    expect(
+      ["custom:foo@1.0.0", "tarball:https://x/y.tgz"].filter(
+        (s) => nonRegistryRe.test(s) || s.startsWith("npm:"),
+      ),
+    ).toEqual([])
+  }, 60000)
+
+  it("SPEC-FORMAT mutation (CLI level): an undecided spec format in a synthetic root -> exit 1 UNVERIFIABLE, NEVER silent clean", () => {
+    // The '0 weird' contract is about the REAL repo today; this synthetic root
+    // proves the CONSEQUENCE of an undecided format appearing: lockKeyFor
+    // treats 'custom:foo@1.0.0' as a registry name (no SKIP boundary match),
+    // greps the lock for a key that does not exist -> the UNVERIFIABLE
+    // fail-safe fires with exit 1 - the honest loud failure, never a silent
+    // clean with the guard effectively bypassed. Deciding to include a new
+    // non-registry format means extending the lockKeyFor boundary; this test
+    // forces that decision to be made explicitly.
+    const dir = buildCheckLockRoot({
+      pkgJson: { "custom-pkg": "custom:foo@1.0.0", react: "^19.0.0" },
+      lock: { react: LOCKED },
+      installed: { react: LOCKED },
+    })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("--check-lock UNVERIFIABLE custom-pkg")
+    expect(r.stdout).toContain("lock format changed? update the guard")
+    expect(r.stdout).not.toContain("clean")
+  }, 60000)
 })

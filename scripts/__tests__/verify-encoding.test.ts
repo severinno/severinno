@@ -121,13 +121,26 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
   }, 60000)
 
   it(
-    "PROOF: the real repo run exits 0 - ALL layers clean (UTF-8 + ASCII + baseline + fragile + YAML gate + .mjs ASCII)",
+    "PROOF+CONTRACT: real repo exits 0 (all 5 layers clean) AND layer-3 targets DERIVED from TARGET_DIRS - one spawn, two contracts",
     () => {
+      // MERGED 2026-08-10 (measurement-driven - see gates-proofs.md 11.14):
+      // PROOF and CONTRACT were two cassettes spawning the IDENTICAL
+      // invocation (runGate(["--ci", "src/"]) with no env) - 2 full gate
+      // runs (~7.3s) for 1 run's worth of output. Merged into ONE spawn:
+      // every assertion is preserved, the real-repo path is exercised once.
+      // The per-spawn gate cost (~3-4.5s: 5 layers + bash/node spawns on
+      // Windows) is what dominates this suite - 13 of 15 cassettes pay it -
+      // so any cassette that can share an invocation MUST (same principle
+      // as the guard batch runner). A future cassette that needs the clean
+      // real-repo run should assert on THIS run's output, never re-spawn.
+      //
       // Exercises the full real-repo path: check-utf8.sh --ci src/ then the
       // proof against the frozen docs/ascii-safe.md baseline, then the
       // fragile character-class RANGE scan (layer 3), then the YAML gate
       // files --utf8 well-formedness scan (layer 4, blocking), then the
       // scripts/*.mjs pure-ASCII scan (layer 5, blocking).
+      const expected = expectedTargetFiles()
+      expect(expected).toBeGreaterThan(0)
       const r = runGate(["--ci", "src/"])
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("check-utf8: done (all clean)")
@@ -139,28 +152,16 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
       // ("scripts/*.mjs" with the literal asterisk - the wrapper prints
       // the pattern, not a resolved file list), so the regex escapes it.
       expect(r.stdout).toMatch(/mjs-gate: clean \(\d+ scripts\/\*\.mjs, pure ASCII\)/)
-    },
-    120000,
-  )
-
-  it(
-    "CONTRACT: layer-3 default --dir targets are DERIVED from the module's TARGET_DIRS (no hardcoded list)",
-    () => {
-      // The wrapper must not hardcode a second "e2e/ src/" list: its
-      // DEFAULT --dir args come from fragile-range-patterns.mjs
-      // --print-target-dirs (the module is the single source of truth).
-      // Proof: the real-repo run's layer-3 verdict must count exactly the
+      // CONTRACT (derived count): the wrapper must not hardcode a second
+      // "e2e/ src/..." list - its DEFAULT --dir args come from
+      // fragile-range-patterns.mjs --print-target-dirs (the module is the
+      // single source of truth). The layer-3 verdict must count exactly the
       // code files under the module's TARGET_DIRS trees (derived here by
-      // the shared expectedTargetFiles() helper — TARGET_DIRS + filesInDir
-      // from the module, RULE OF TWO USES in golden-copy-utils.ts). If the
-      // wrapper drifted from TARGET_DIRS - or derivation silently failed
-      // and degraded to gate-files-only - the count would differ and this
-      // breaks.
-      const expected = expectedTargetFiles()
-      expect(expected).toBeGreaterThan(0)
-      const r = runGate(["--ci", "src/"])
-      expect(r.status).toBe(0)
-      // Verdict shape: "fragile-range: clean (109 gate files + N target files, ...)".
+      // the shared expectedTargetFiles() helper - TARGET_DIRS + filesInDir
+      // from the module). If the wrapper drifted from TARGET_DIRS - or
+      // derivation silently failed and degraded to gate-files-only - the
+      // count would differ and this breaks. Verdict shape:
+      // "fragile-range: clean (109 gate files + N target files, ...)".
       // `files?` future-proofs the singular "target file" if a tree ever
       // shrinks to exactly one code file.
       expect(r.stdout).toMatch(new RegExp(`\\+ ${expected} target files?`))

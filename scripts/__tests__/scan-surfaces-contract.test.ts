@@ -73,6 +73,7 @@ import {
   YAML_GATE_PATTERNS,
 } from "../encoding-surface.mjs"
 import { EXCLUDED_TREES, TARGET_DIRS } from "../fragile-range-patterns.mjs"
+import { ALWAYS_RUN_SET, CI_PROOF_NAMESPACE, DANGER_REFS, DISPATCH_SET, GUARD_NET, GUARD_NET_JOB } from "../workflow-contracts.mjs"
 import { runSubprocess } from "./golden-copy-utils"
 
 const ROOT = process.cwd()
@@ -528,10 +529,43 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
       // guard-gates.yml joined the always-run set in 2026-08: the push net
       // for the guard vitest suites (fragile-range-guard + golden-copy-utils
       // em todo push a main/develop, imune a skip por lint). It has no
-      // paths: block BY DESIGN (same decision as utf8-check.yml) — a filter
+      // paths: block BY DESIGN (same decision as utf8-check.yml) - a filter
       // limited to e2e/** src/** would silently skip the net on exactly the
       // gate-file changes the guard suites exist to catch.
+      // The membership fact lives in the workflow-contracts MANIFEST (the
+      // single source of truth) - the doc must retell exactly that set, in
+      // the MANIFEST'S document order (not sorted - the sorted comparison
+      // below is the anti-drift literal pin in the doc's own order).
+      expect(docAlwaysRun).toEqual(ALWAYS_RUN_SET)
       expect(docAlwaysRun).toEqual(["ci.yml", "deploy.yml", "pr-check.yml", "guard-gates.yml"])
+    })
+
+    it("MANIFEST: the live always-run workflows (push BRANCHES-triggered with NO paths:) equal the workflow-contracts ALWAYS_RUN_SET", () => {
+      // The always-run membership is a manifest fact (workflow-contracts.mjs):
+      // the workflows that RUN on every push/PR to a BRANCH with NO paths:
+      // filter BY DESIGN (the 8.4 guarantee: a push to main always runs them).
+      // Two no-paths lookalikes are EXCLUDED by design: utf8-check.yml is a
+      // REUSABLE workflow (workflow_call - the always-run contract is about
+      // workflows that gate the push themselves, not the ones called BY the
+      // gates) and release-deploy.yml pushes on TAGS (v*) only - its trigger
+      // is a release event, not a branch push. A workflow gaining a branch
+      // push/PR trigger without a paths: filter - or losing paths: from an
+      // always-run member - must update the manifest, not drift silently.
+      const wfFiles = fs.readdirSync(WF_DIR).filter((f) => f.endsWith(".yml")).sort()
+      const alwaysRunLive = wfFiles.filter((f) => {
+        const src = fs.readFileSync(path.join(WF_DIR, f), "utf8")
+        // push or pull_request trigger present...
+        const hasPushPr = /^\s+(push|pull_request):\s*$/m.test(src)
+        if (!hasPushPr || extractPaths(src).length > 0) return false
+        // ...but a REUSABLE workflow (workflow_call: under on:) is called by
+        // the gates, not an always-run gate itself - excluded.
+        if (/^\s+workflow_call:\s*$/m.test(src)) return false
+        // ...and the push trigger must fire on BRANCHES (a tags:-only push is
+        // a release event, never a main-branch always-run).
+        if (/^\s+push:\s*$/m.test(src) && !/^\s+branches(?:-ignore)?:/m.test(src)) return false
+        return true
+      })
+      expect(alwaysRunLive).toEqual([...ALWAYS_RUN_SET].sort())
     })
 
     it("CONTRACT: the SET of workflows with a `paths:` block equals the documented trigger set", () => {
@@ -542,6 +576,34 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
       const wfFiles = fs.readdirSync(WF_DIR).filter((f) => f.endsWith(".yml")).sort()
       const withPaths = wfFiles.filter((f) => extractPaths(fs.readFileSync(path.join(WF_DIR, f), "utf8")).length > 0)
       expect(withPaths).toEqual([...docTriggers].sort())
+    })
+
+    it("MANIFEST: the live always-run workflows (push BRANCHES-triggered with NO paths:) equal the workflow-contracts ALWAYS_RUN_SET", () => {
+      // The always-run membership is a manifest fact (workflow-contracts.mjs):
+      // the workflows that RUN on every push/PR to a BRANCH with NO paths:
+      // filter BY DESIGN (the 8.4 guarantee: a push to main always runs them).
+      // Two no-paths lookalikes are EXCLUDED by design: utf8-check.yml is a
+      // REUSABLE workflow (workflow_call - the always-run contract is about
+      // workflows that gate the push themselves, not the ones called BY the
+      // gates) and release-deploy.yml pushes on TAGS (v*) only - its trigger
+      // is a release event, not a branch push. A workflow gaining a branch
+      // push/PR trigger without a paths: filter - or losing paths: from an
+      // always-run member - must update the manifest, not drift silently.
+      const wfFiles = fs.readdirSync(WF_DIR).filter((f) => f.endsWith(".yml")).sort()
+      const alwaysRunLive = wfFiles.filter((f) => {
+        const src = fs.readFileSync(path.join(WF_DIR, f), "utf8")
+        // push or pull_request trigger present...
+        const hasPushPr = /^\s+(push|pull_request):\s*$/m.test(src)
+        if (!hasPushPr || extractPaths(src).length > 0) return false
+        // ...but a REUSABLE workflow (workflow_call: under on:) is called by
+        // the gates, not an always-run gate itself - excluded.
+        if (/^\s+workflow_call:\s*$/m.test(src)) return false
+        // ...and the push trigger must fire on BRANCHES (a tags:-only push is
+        // a release event, never a main-branch always-run).
+        if (/^\s+push:\s*$/m.test(src) && !/^\s+branches(?:-ignore)?:/m.test(src)) return false
+        return true
+      })
+      expect(alwaysRunLive).toEqual([...ALWAYS_RUN_SET].sort())
     })
 
     it("ci.yml / deploy.yml / pr-check.yml actually have NO paths: block", () => {
@@ -583,6 +645,15 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
 
     it("CONTRACT: the SET of workflows with workflow_dispatch: equals the documented dispatch set", () => {
       expect([...dispatchWorkflows].sort()).toEqual([...new Set(docDispatch)].sort())
+    })
+
+    it("MANIFEST: the LIVE dispatch set equals the workflow-contracts DISPATCH_SET (a workflow gaining/losing workflow_dispatch: must update the manifest, not just the doc)", () => {
+      // The manifest is the single source of truth for the dispatch facts;
+      // this pins the LIVE tree against it (the registry cannot drift from
+      // reality - the workflow-contracts.test.ts suite pins the reverse
+      // direction on a synthetic copy). The doc retelling is validated
+      // against the manifest below.
+      expect([...dispatchWorkflows].sort()).toEqual([...DISPATCH_SET].sort())
     })
 
     it("HERMETIC: workflow_dispatch: is never the ONLY trigger of a workflow (dispatch-only compounds the Prova 7 404: unreachable AND undispatchable)", () => {
@@ -668,14 +739,17 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
 
     it("doc-alignment: the risk matrix names the two DANGER refs (main -> deploy, v* tags -> release) and cross-checks them against the real YAMLs", () => {
       // The doc section backticks the two dangerous workflows and the safe
-      // namespace; the real YAMLs must confirm the DANGER rows.
+      // namespace; the real YAMLs must confirm the DANGER rows. The DANGER
+      // ref facts live in the workflow-contracts MANIFEST (the canonical
+      // matrix) - the doc must name exactly those workflows + the namespace.
       expect(typeE).toContain("`deploy.yml`")
       expect(typeE).toContain("`release-deploy.yml`")
-      expect(typeE).toContain("ci-proof")
-      const deployPush = triggerFilter(fs.readFileSync(path.join(WF_DIR, "deploy.yml"), "utf8"), "push")
-      expect(deployPush.patterns).toContain("main")
-      const releasePush = triggerFilter(fs.readFileSync(path.join(WF_DIR, "release-deploy.yml"), "utf8"), "push")
-      expect(releasePush.patterns).toContain("v*")
+      expect(typeE).toContain(CI_PROOF_NAMESPACE)
+      for (const { ref, workflow } of DANGER_REFS) {
+        const wf = fs.readFileSync(path.join(WF_DIR, workflow), "utf8")
+        const push = triggerFilter(wf, "push")
+        expect(push.patterns, `${workflow} must fire on the manifest DANGER ref ${ref}`).toContain(ref)
+      }
       // deploy.yml is push-only to main: it must have NO pull_request block
       // (the doc claims PRs never deploy - that is exactly why).
       expect(triggerFilter(fs.readFileSync(path.join(WF_DIR, "deploy.yml"), "utf8"), "pull_request").present).toBe(false)
@@ -752,7 +826,7 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
         const src = fs.readFileSync(file, "utf8")
         src.split(/\r?\n/).forEach((line, i) => {
           // Comment lines are skipped: the doc's contract says prose does not
-          // count ("menção em prosa não conta") - a comment like
+          // count ("mencao em prosa nao conta") - a comment like
           // "# bunx (nao npx)" or a future "# use npx tsx here" is NOT an
           // invocation. Only run lines (workflow `run:`, Makefile recipes,
           // shell/ps1 bodies) trip the detector. All comment styles are

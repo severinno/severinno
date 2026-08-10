@@ -99,6 +99,10 @@ Answers: **WHEN does this workflow RUN?**
     (always run; guard-gates.yml é o push net do guard vitest -
     fragile-range-guard + golden-copy-utils em todo push a main/develop,
     imune a skip por lint - espelho do job fragile-guard do pr-check).
+    A MEMBERSHIP deste conjunto always-run é um fato versionado em
+    `scripts/workflow-contracts.mjs` (ALWAYS_RUN_SET - o mesmo padrão do
+    encoding-surface: export + --print-always-run); os guards e este doc
+    derivam dela, não re-derivam a lista.
 - **Failure mode is SAFE:** an over-narrow `paths:` only SKIPS a run (push
   to main still runs the full jobs via the always-run workflows); an
   over-narrow scan surface silently misses violations. Different failure

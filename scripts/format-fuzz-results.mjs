@@ -6,8 +6,10 @@
  * Reads one or more vitest JSON output files and prints a formatted
  * fuzz test summary table.
  *
- * Used by scripts/run-fuzz.sh - avoids /dev/stdin pipe issues on
- * Windows Git Bash by reading files directly.
+ * Used by the canonical runner scripts/run-all-fuzz.mjs (the batched
+ * single-invocation runner of secao 11.12; scripts/run-fuzz.sh is a thin
+ * wrapper over it). Reads files directly instead of /dev/stdin pipes,
+ * which break on Windows Git Bash.
  *
  * Usage:
  *   node scripts/format-fuzz-results.mjs <file1.json> [file2.json ...]

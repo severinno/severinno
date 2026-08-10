@@ -33,6 +33,32 @@
  *    check-utf8.sh fora de check-docs-encoding.sh nos hooks. POSITIVO:
  *    verify-encoding.sh DEVE existir em .husky/pre-commit E .husky/pre-push.
  *
+ * 4. GUARDS NODE BATCHADOS (secao 11.13, medido 2026-08): os 4 guards node
+ *    do pre-commit (check-node-modules-integrity, scan-push-full-suite,
+ *    scan-lint-staged-loader, scan-guard-gates) rodam em UMA invocacao
+ *    node (run-precommit-guards.mjs, ~0.22-0.26s - o boot node ~0.14s
+ *    dominava cada spawn; 4 sequenciais custavam ~0.54-0.81s). NEGATIVO:
+ *    um spawn INDIVIDUAL de qualquer um dos 4 no .husky/pre-commit (4
+ *    boots = a regressao de custo que o batch existe para matar).
+ *    POSITIVO: run-precommit-guards.mjs wired no .husky/pre-commit
+ *    (remover o batch = guards voltam a custar 4 boots = falha 'MISSING').
+ *
+ * 5. GATE 3 MAPEADO POR CO-LOCATION (secao 11.15, RE-MEDICAO 2026-08-10
+ *    77.58s vs 20.8s): o custo do Gate 3 depende do que o diff toca - o
+ *    pior caso (~75-77.58s) so ocorre quando suites de teste sao tocadas
+ *    DIRETAMENTE (correto: voce editou o teste, ele roda). Um push de
+ *    GATE FILES (.sh/.yml, os arquivos que esta thread protege) deve
+ *    mapear pouca ou nenhuma suite. A classe de regressao: adicionar
+ *    '.sh' ao SOURCE_RE do mapper (pre-commit-tests.mjs) - tocar
+ *    scripts/verify-encoding.sh passaria a mapear
+ *    scripts/__tests__/verify-encoding.test.ts (~36.5s, a suite que
+ *    spawna o gate completo - secao 11.14) em TODO push de gate files,
+ *    transformando o custo comum em ~77s. NEGATIVO: SOURCE_RE sem
+ *    .sh/.yml/.yaml (gate files nunca mapeiam suite co-localizada).
+ *    POSITIVO: o pin exato 'SOURCE_RE = /\.(ts|tsx|mjs)$/' (mudar a
+ *    superficie = falha 'MISSING'). Travado nos dois sentidos, mesmo
+ *    padrao dos contratos 1-4.
+ *
  * Linhas de comentario (primeiro char nao-branco = '#') sao ignoradas no
  * scan NEGATIVO: os headers dos hooks mencionam "suite completa"/"fuzz" em
  * prosa (o header do pre-push explica POR QUE o bash runner ficou fora).
@@ -85,6 +111,48 @@ const GATE_CONTRACTS = [
     positive: [
       { file: ".husky/pre-commit", re: /verify-encoding\.sh/ },
       { file: ".husky/pre-push", re: /verify-encoding\.sh/ },
+    ],
+  },
+  {
+    name: "guards node batchados (1 invocacao)",
+    negative: [
+      // Os 4 guards node NAO podem voltar a ser spawns INDIVIDUAIS no
+      // pre-commit (4 boots node ~0.54-0.81s vs 1 boot do batch ~0.22-0.26s,
+      // secao 11.13) - o caminho e o batch runner run-precommit-guards.mjs.
+      // O scan NEGATIVO ignora comentarios: o header do pre-commit menciona
+      // os nomes dos guards em prosa (o batch), so o SPAWN individual conta.
+      {
+        file: ".husky/pre-commit",
+        re: /node\s+scripts\/(?:check-node-modules-integrity|scan-push-full-suite|scan-lint-staged-loader|scan-guard-gates)\.mjs/,
+      },
+    ],
+    positive: [
+      // O batch runner DEVE estar wired no pre-commit (remover/trocar o batch
+      // = os guards voltam a custar 4 boots - falha 'MISSING').
+      { file: ".husky/pre-commit", re: /run-precommit-guards\.mjs/ },
+    ],
+  },
+  {
+    // Secao 11.15: o Gate 3 mapeia por CO-LOCATION - a superficie de
+    // ORIGEM do mapper e ts/tsx/mjs, entao um gate file (.sh/.yml) tocado
+    // mapeia NADA (nao ha suite co-localizada p/ ele). Adicionar '.sh' ao
+    // SOURCE_RE faria scripts/verify-encoding.sh mapear
+    // scripts/__tests__/verify-encoding.test.ts (~36.5s) em todo push de
+    // gate files - o custo comum viraria o pior caso (~77s). O NEGATIVO
+    // detecta .sh/.yml/.yaml DENTRO da declaracao SOURCE_RE; o POSITIVO
+    // pina a declaracao exata (renomear/mudar a superficie = MISSING).
+    name: "gate 3 mapeado por co-location (SOURCE_RE ts/tsx/mjs, sem gate files)",
+    negative: [
+      {
+        file: "scripts/pre-commit-tests.mjs",
+        re: /SOURCE_RE\s*=\s*\/[^/]*\b(?:sh|ya?ml)\b[^/]*\//,
+      },
+    ],
+    positive: [
+      {
+        file: "scripts/pre-commit-tests.mjs",
+        re: /SOURCE_RE\s*=\s*\/\\\.\(ts\|tsx\|mjs\)\$\//,
+      },
     ],
   },
 ]
@@ -160,7 +228,7 @@ export function scanPushFullSuite(root = ROOT, files = FILES) {
   return { fullSuite, missingMarker, gateViolations }
 }
 
-function main() {
+export function main() {
   const { fullSuite, missingMarker, gateViolations } = scanPushFullSuite()
   if (fullSuite.length === 0 && missingMarker.length === 0 && gateViolations.length === 0) {
     console.log(
@@ -182,7 +250,7 @@ function main() {
     }
   }
   console.log(
-    "push-suite: Gate 3 must run the MAPPED tests (pre-commit-tests.mjs --scope push), not the full suite (sec 8.4); the fuzz gate is the MAPPED runner in the pre-push only (run-mapped-fuzz.mjs --since, sec 11.11); verify-encoding.sh is the single encoding gate in both hooks",
+    "push-suite: Gate 3 must run the MAPPED tests (pre-commit-tests.mjs --scope push), not the full suite (sec 8.4); the fuzz gate is the MAPPED runner in the pre-push only (run-mapped-fuzz.mjs --since, sec 11.11); verify-encoding.sh is the single encoding gate in both hooks; the Gate 3 mapper surface stays ts/tsx/mjs (gate files .sh never map a co-located heavy suite - sec 11.15)",
   )
   return 1
 }

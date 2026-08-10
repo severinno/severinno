@@ -67,12 +67,12 @@ const CLEAN_PRE_PUSH = [
   "",
 ].join("\n")
 
-/** A legitimate .husky/pre-commit: verify-encoding gate, NO fuzz. */
+/** A legitimate .husky/pre-commit: verify-encoding gate, NO fuzz, guards node BATCHADOS (sec 11.13). */
 const CLEAN_PRE_COMMIT = [
   "#!/usr/bin/env bash",
   "set -euo pipefail",
   "bash scripts/verify-encoding.sh --dry-run --ci src/",
-  "node scripts/scan-push-full-suite.mjs",
+  "node scripts/run-precommit-guards.mjs",
   "",
 ].join("\n")
 
@@ -220,5 +220,76 @@ describe("scan-push-full-suite.mjs - contratos de gate (fuzz:ci + encoding, sec 
     const r = runGuard(dir)
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("clean")
+  }, 60000)
+
+  it("MUTATION: um guard node spawnado INDIVIDUALMENTE no .husky/pre-commit (4 boots, sec 11.13) -> exit 1 com o caminho exato", () => {
+    const dir = createTempDir("push-suite-")
+    writeCleanRepo(dir)
+    // The batch runner line swapped back to an individual spawn = the cost
+    // regression the batch exists to kill (4 node boots ~0.54-0.81s vs 1
+    // boot ~0.22-0.26s). Line lands at 6 (CLEAN_PRE_COMMIT has 5 lines).
+    writeGuardFile(
+      dir,
+      ".husky/pre-commit",
+      CLEAN_PRE_COMMIT.replace("node scripts/run-precommit-guards.mjs", "node scripts/scan-push-full-suite.mjs"),
+    )
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("CONTRACT 'guards node batchados (1 invocacao)' VIOLATED in .husky/pre-commit:4")
+    expect(r.stdout).toContain("node scripts/scan-push-full-suite.mjs")
+  }, 60000)
+
+  it("BATCH DELETADO: sem run-precommit-guards.mjs no .husky/pre-commit -> exit 1 (assert positivo - guards voltariam a custar 4 boots)", () => {
+    const dir = createTempDir("push-suite-")
+    writeCleanRepo(dir)
+    writeGuardFile(
+      dir,
+      ".husky/pre-commit",
+      CLEAN_PRE_COMMIT.replace("node scripts/run-precommit-guards.mjs\n", ""),
+    )
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("CONTRACT 'guards node batchados (1 invocacao)' MISSING in .husky/pre-commit")
+  }, 60000)
+})
+
+describe("scan-push-full-suite.mjs - Gate 3 mapeado por co-location (secao 11.15)", () => {
+  afterEach(cleanupTempDirs)
+
+  it("clean: mapper com SOURCE_RE ts/tsx/mjs presente -> exit 0 (contrato 5 nao tripa)", () => {
+    const dir = createTempDir("push-suite-coloc-")
+    writeCleanRepo(dir)
+    writeGuardFile(dir, "scripts/pre-commit-tests.mjs", "const SOURCE_RE = /\\.(ts|tsx|mjs)$/\n")
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("clean")
+  }, 60000)
+
+  it("MUTATION: SOURCE_RE com .sh (gate file mapearia a suite co-localizada pesada) -> exit 1 com o contrato e o caminho exato", () => {
+    const dir = createTempDir("push-suite-coloc-")
+    writeCleanRepo(dir)
+    // Adicionar '.sh' ao SOURCE_RE = tocar scripts/verify-encoding.sh
+    // passaria a mapear scripts/__tests__/verify-encoding.test.ts (~36.5s,
+    // sec 11.14) em todo push de gate files - o custo comum viraria ~77s.
+    writeGuardFile(dir, "scripts/pre-commit-tests.mjs", "const SOURCE_RE = /\\.(ts|tsx|mjs|sh)$/\n")
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(
+      "CONTRACT 'gate 3 mapeado por co-location (SOURCE_RE ts/tsx/mjs, sem gate files)' VIOLATED in scripts/pre-commit-tests.mjs:1",
+    )
+    expect(r.stdout).toContain("SOURCE_RE = /\\.(ts|tsx|mjs|sh)$/")
+  }, 60000)
+
+  it("MUTATION: superficie de origem MUDADA (positivo nao casa) -> exit 1 com 'MISSING'", () => {
+    const dir = createTempDir("push-suite-coloc-")
+    writeCleanRepo(dir)
+    // A superficie deixou de ser exatamente ts/tsx/mjs - o pin positivo
+    // (a declaracao SOURCE_RE exata) nao casa -> MISSING.
+    writeGuardFile(dir, "scripts/pre-commit-tests.mjs", "const SOURCE_RE = /\\.(tsx|mjs)$/\n")
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(
+      "CONTRACT 'gate 3 mapeado por co-location (SOURCE_RE ts/tsx/mjs, sem gate files)' MISSING in scripts/pre-commit-tests.mjs",
+    )
   }, 60000)
 })

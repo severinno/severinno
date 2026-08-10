@@ -93,6 +93,25 @@ describe("scripts/pre-commit-tests.mjs mapping", () => {
     expect(got).toEqual([])
   })
 
+  it("maps NOTHING for a staged gate file .sh even when its heavy co-located suite exists (sec 11.15 - the co-location cost guard)", () => {
+    // The Gate 3 cost guard (scan-push-full-suite GATE_CONTRACT #5, sec
+    // 11.15) pins the mapper's SOURCE_RE surface (ts/tsx/mjs) so a gate
+    // file like verify-encoding.sh maps to no suite. This test pins the
+    // SAME class at the mapper level, closing the bypass that the
+    // declaration pin alone would miss: a special-case in collectTestFiles
+    // (e.g. rel.endsWith(".sh")) that mapped gate files to their
+    // co-located heavy suite (scripts/__tests__/verify-encoding.test.ts,
+    // ~36.5s - sec 11.14) would make EVERY gate-file push pay the worst
+    // case (~77s) without touching SOURCE_RE. Belt-and-suspenders with
+    // the declaration pin: the .sh file IS present on disk (written) and
+    // its co-located test EXISTS - the mapping must still be empty.
+    const f = makeFixture()
+    f.write("scripts/verify-encoding.sh")
+    f.write("scripts/__tests__/verify-encoding.test.ts") // the heavy suite exists on disk
+    const got = collectTestFiles(["scripts/verify-encoding.sh"], f.dir)
+    expect(got).toEqual([])
+  })
+
   it("maps nothing when the staged source has no test file", () => {
     const f = makeFixture()
     f.write("src/lib/only-source.ts") // no test sibling anywhere

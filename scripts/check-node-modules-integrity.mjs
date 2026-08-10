@@ -70,6 +70,7 @@
  */
 import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 const ROOT = path.resolve(process.env.NODE_MODULES_ROOT || process.cwd())
 const LOCK = path.join(ROOT, "bun.lock")
@@ -241,7 +242,7 @@ function checkLock(lockText) {
   return 1
 }
 
-function main() {
+export function main() {
   if (!fs.existsSync(LOCK)) {
     console.log("check-node-modules-integrity: skip (no bun.lock to compare)")
     return 0
@@ -296,4 +297,10 @@ function main() {
   return 1
 }
 
-process.exitCode = main()
+// Entry-point guard: only run the CLI when executed directly (the batch
+// runner run-precommit-guards.mjs imports main() to aggregate the 4 guards in
+// ONE node process - an unconditional call here would run the check as a
+// side effect of the import and stomp the batch's aggregated exit code).
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main()
+}
