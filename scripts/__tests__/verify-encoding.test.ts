@@ -121,12 +121,13 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
   }, 60000)
 
   it(
-    "PROOF: the real repo run exits 0 - ALL layers clean (UTF-8 + ASCII + baseline + fragile + YAML gate)",
+    "PROOF: the real repo run exits 0 - ALL layers clean (UTF-8 + ASCII + baseline + fragile + YAML gate + .mjs ASCII)",
     () => {
       // Exercises the full real-repo path: check-utf8.sh --ci src/ then the
       // proof against the frozen docs/ascii-safe.md baseline, then the
       // fragile character-class RANGE scan (layer 3), then the YAML gate
-      // files --utf8 well-formedness scan (layer 4, blocking).
+      // files --utf8 well-formedness scan (layer 4, blocking), then the
+      // scripts/*.mjs pure-ASCII scan (layer 5, blocking).
       const r = runGate(["--ci", "src/"])
       expect(r.status).toBe(0)
       expect(r.stdout).toContain("check-utf8: done (all clean)")
@@ -134,6 +135,10 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
       expect(r.stdout).toContain("Baseline OK")
       expect(r.stdout).toContain("fragile-range: clean")
       expect(r.stdout).toMatch(/yaml-gate: clean \(\d+ YAML gate files, well-formed UTF-8\)/)
+      // The layer-5 verdict echoes the manifest pattern VERBATIM
+      // ("scripts/*.mjs" with the literal asterisk - the wrapper prints
+      // the pattern, not a resolved file list), so the regex escapes it.
+      expect(r.stdout).toMatch(/mjs-gate: clean \(\d+ scripts\/\*\.mjs, pure ASCII\)/)
     },
     120000,
   )
@@ -408,6 +413,53 @@ describe("verify-encoding.sh (single encoding gate entry)", () => {
     expect(r.stdout).toContain("INVALID-UTF8")
     expect(r.stdout).toContain(path.basename(workflow))
     expect(r.stderr).toContain("yaml-gate: FAILED")
+  }, 120000)
+
+  it("MUTATION (mjs gate layer): a non-ASCII byte in a synthetic .mjs fails layer 5 through the wrapper", () => {
+    // Wrapper-level proof of the layer-5 wiring without depending on the
+    // real repo: MJS_SCAN_FILES (env, space-separated) OVERRIDES the
+    // git-ls-files default surface, exactly mirroring the proof layer's
+    // VPS_SH_FILES/OPS_SH_FILES fixture pattern (and layer 4's
+    // YAML_GATE_FILES). A non-ASCII byte (0x97) in a gate .mjs is the
+    // silent-failure class layer 5 exists to block - a pure-ASCII gate
+    // script is the gate's own contract.
+    //
+    // The wrapper contract pinned HERE is aggregation + isolation +
+    // propagation: layers 1+2+3+4 keep scanning the real repo (clean),
+    // layer 5 surfaces the VIOLATION, and the aggregate exit is 1. The
+    // scanner detail (exact verdict line VIOLATION\t<path>) is
+    // scan-non-ascii.test.ts's job - here we pin the WIRING.
+    const dir = createTempDir("verify-encoding-mjs-")
+    const gate = path.join(dir, "gate.mjs")
+    fs.writeFileSync(
+      gate,
+      Buffer.concat([Buffer.from("#!/usr/bin/env node\nconsole.log('ok')\n", "utf8"), Buffer.from([0x97])]),
+    )
+
+    const r = runGate(["--ci", "src/"], { MJS_SCAN_FILES: gate })
+    expect(r.status).toBe(1)
+    // L1/L2/L3/L4 isolation: real repo still clean
+    expect(r.stdout).toContain("check-utf8: done (all clean)")
+    expect(r.stdout).toContain("verify-ascii-proof: done (all clean)")
+    expect(r.stdout).toContain("fragile-range: clean")
+    expect(r.stdout).toContain("yaml-gate: clean")
+    // L5 propagation: verdict + blocking summary
+    expect(r.stdout).toContain("VIOLATION")
+    expect(r.stdout).toContain(path.basename(gate))
+    expect(r.stderr).toContain("mjs-gate: FAILED")
+  }, 120000)
+
+  it("MUTATION (mjs gate layer): a CLEAN synthetic .mjs passes layer 5", () => {
+    // Hermetic clean case: MJS_SCAN_FILES pointing at a pure-ASCII .mjs -
+    // the layer must stay green and the aggregate exit 0.
+    const dir = createTempDir("verify-encoding-mjs-clean-")
+    const gate = path.join(dir, "clean.mjs")
+    fs.writeFileSync(gate, "#!/usr/bin/env node\nconsole.log('ok')\n", "utf8")
+
+    const r = runGate(["--ci", "src/"], { MJS_SCAN_FILES: gate })
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("mjs-gate: clean")
+    expect(r.stderr).not.toContain("mjs-gate: FAILED")
   }, 120000)
 
   it("MUTATION (YAML gate layer): a CLEAN synthetic workflow YAML passes layer 4 (legit accents allowed)", () => {

@@ -84,7 +84,7 @@ async function audit(page, { path, label }) {
 }
 
 async function main() {
-  console.log('🚀 Starting Playwright audit...\n');
+  console.log(' Starting Playwright audit...\n');
   
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -95,13 +95,13 @@ async function main() {
 
   const results = [];
   for (const p of PAGES) {
-    process.stdout.write(`  📄 ${p.label} (${p.path})... `);
+    process.stdout.write(`   ${p.label} (${p.path})... `);
     try {
       const result = await audit(page, p);
       results.push(result);
-      console.log(`✅ ${result.duration}ms`);
+      console.log(`[OK] ${result.duration}ms`);
     } catch (err) {
-      console.log(`❌ ${err.message.slice(0, 60)}`);
+      console.log(`[FAIL] ${err.message.slice(0, 60)}`);
       results.push({ page: p.label, url: `${TARGET_URL}${p.path}`, error: err.message });
     }
   }
@@ -110,42 +110,42 @@ async function main() {
 
   // Print results
   console.log('\n' + '='.repeat(70));
-  console.log('📊 AUDIT RESULTS\n');
+  console.log(' AUDIT RESULTS\n');
 
   for (const r of results) {
-    console.log(`── ${r.page} ─${'─'.repeat(60)}`);
+    console.log(`-- ${r.page} -${'-'.repeat(60)}`);
     if (r.error) {
-      console.log(`  ❌ Error: ${r.error}`);
+      console.log(`  [FAIL] Error: ${r.error}`);
       continue;
     }
     console.log(`  URL:        ${r.url}`);
     console.log(`  Load time:  ${r.duration}ms`);
-    console.log(`  ──── Web Vitals ────`);
+    console.log(`  ---- Web Vitals ----`);
     console.log(`  TTFB:       ${r.metrics.ttfb?.toFixed(1) || 'N/A'}ms`);
     console.log(`  FCP:        ${r.metrics.fcp?.toFixed(1) || 'N/A'}ms`);
     console.log(`  LCP:        ${r.metrics.lcp?.toFixed(1) || 'N/A'}ms`);
     console.log(`  CLS:        ${r.metrics.cls?.toFixed(3) || 'N/A'}`);
     console.log(`  DOM Content Loaded: ${r.metrics.domContentLoaded?.toFixed(1) || 'N/A'}ms`);
-    console.log(`  ──── Page Composition ────`);
+    console.log(`  ---- Page Composition ----`);
     console.log(`  DOM nodes:  ${r.metrics.domSize}`);
     console.log(`  Images:     ${r.metrics.imgCount}`);
     console.log(`  Scripts:    ${r.metrics.scriptCount}`);
-    console.log(`  ──── Accessibility ────`);
+    console.log(`  ---- Accessibility ----`);
     if (r.a11yViolations.length > 0) {
-      r.a11yViolations.forEach(v => console.log(`  ⚠️  ${v}`));
+      r.a11yViolations.forEach(v => console.log(`  [WARN]  ${v}`));
     } else {
-      console.log(`  ✅ No violations found`);
+      console.log(`  [OK] No violations found`);
     }
     if (r.consoleErrors.length > 0) {
-      console.log(`  ──── Console Errors ────`);
-      r.consoleErrors.forEach(e => console.log(`  ❌ ${e}`));
+      console.log(`  ---- Console Errors ----`);
+      r.consoleErrors.forEach(e => console.log(`  [FAIL] ${e}`));
     }
     console.log('');
   }
 
   // Score estimation
   console.log('='.repeat(70));
-  console.log('📈 PERFORMANCE SCORE ESTIMATION (Lighthouse-like)\n');
+  console.log(' PERFORMANCE SCORE ESTIMATION (Lighthouse-like)\n');
   
   for (const r of results) {
     if (r.error) continue;
@@ -175,7 +175,7 @@ async function main() {
     console.log(`  ${r.page.padEnd(15)} ~${Math.max(0, score)}% (est.)  |  LCP:${lcp?.toFixed(0) || 'N/A'}ms  FCP:${fcp?.toFixed(0) || 'N/A'}ms  CLS:${cls?.toFixed(3)}`);
   }
 
-  console.log('\n✅ Audit complete.');
+  console.log('\n[OK] Audit complete.');
 }
 
 main().catch(console.error);

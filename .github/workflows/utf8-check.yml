@@ -33,7 +33,14 @@
 #      docs surface (informational docs-encoding job) this layer BLOCKS.
 #      Legit accents/em-dashes in workflow comments are valid UTF-8 and
 #      pass. Surface: git ls-files of the gate files (not docker-compose*).
-# The exit code is the worst of the four layers. Scripts stay directly
+#   5. scan-non-ascii.mjs --report over the scripts/*.mjs GATE files —
+#      BLOCKING pure-ASCII scan (byte >= 0x80). The 1:1 ASCII conversion
+#      the .sh files got (f17ffdd) never reached the .mjs — a stray
+#      accent/emoji/em-dash in a gate .mjs is the same silent-failure
+#      class as a .sh. Surface DERIVED from encoding-surface.mjs
+#      --print-mjs-gate (MJS_GATE_PATTERNS), same single-source pattern
+#      as layer 4.
+# The exit code is the worst of the five layers. Scripts stay directly
 # invokable for their focused use (--fix, --sync, --dry-run).
 #
 # TRIGGER MODEL (single source of truth, since 2026-08): the check command
@@ -82,10 +89,11 @@ jobs:
 
       # ONE command = the whole encoding gate (see header): UTF-8 validity +
       # VPS ASCII gate + strict repo-wide ASCII proof + frozen baseline +
-      # the fragile character-class RANGE scan (2026-08 bug class). The
-      # VPS-bound scan and the proof are covered by verify-encoding.sh now.
-      - name: Run encoding validation (UTF-8 + VPS ASCII + ASCII-proof + fragile-range + baseline)
+      # the fragile character-class RANGE scan (2026-08 bug class) + the
+      # YAML gate UTF-8 scan + the scripts/*.mjs pure-ASCII scan. All
+      # covered by verify-encoding.sh now.
+      - name: Run encoding validation (UTF-8 + VPS ASCII + ASCII-proof + fragile-range + baseline + YAML gate + .mjs ASCII)
         run: bash scripts/verify-encoding.sh --ci src/
 
       - name: Summary
-        run: echo 'All sources validated (UTF-8 for .ts/.tsx/.sh, pure-ASCII for every .sh + .husky hook).'
+        run: echo 'All sources validated (UTF-8 for .ts/.tsx/.sh, pure-ASCII for every .sh + .husky hook + every scripts/*.mjs gate file).'

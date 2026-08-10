@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * cache-benchmark.mjs — standalone Redis cache benchmark
+ * cache-benchmark.mjs - standalone Redis cache benchmark
  *
  * Measures modelled throughput of common Redis operations used in
  * Severinno: SET, GET, DEL, SETEX (with TTL), and pipelined batches.
@@ -46,24 +46,24 @@ const jsonFile = jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsW
 // ---------------------------------------------------------------------------
 //
 // Model parameters (conservative for local Redis 7, loopback, no persistence):
-//   ┌────────────────────────┬───────────┬──────────────────────────────────┐
-//   │ Operation              │ Latency   │ Source                           │
-//   ├────────────────────────┼───────────┼──────────────────────────────────┤
-//   │ TCP round-trip         │   0.1 ms  │ loopback TCP ping                │
-//   │ SET (inline)           │   0.3 ms  │ redis-benchmark -c 1 -n 10000   │
-//   │ GET                    │   0.2 ms  │ redis-benchmark -c 1 -n 10000   │
-//   │ DEL                    │   0.1 ms  │ redis-benchmark -c 1 -n 10000   │
-//   │ SETEX (SET + EXPIRE)   │   0.4 ms  │ estimated (two commands)        │
-//   │ Pipeline overhead      │   0.1 ms  │ per extra command in pipeline   │
-//   │ Serialise 64-byte key  │   0.5 µs  │ negligible, amortised           │
-//   ├────────────────────────┼───────────┼──────────────────────────────────┤
-//   │ Single SET total       │   0.4 ms  │ model = 400 µs                  │
-//   │ Single GET total       │   0.3 ms  │ model = 300 µs                  │
-//   │ Single DEL total       │   0.2 ms  │ model = 200 µs                  │
-//   │ SETEX total            │   0.5 ms  │ model = 500 µs                  │
-//   │ Pipeline (3 ops)       │   0.6 ms  │ model = 600 µs                  │
-//   │ Batch 100× SET         │   6.0 ms  │ model = 6000 µs                 │
-//   └────────────────────────┴───────────┴──────────────────────────────────┘
+//   +------------------------+-----------+----------------------------------+
+//   | Operation              | Latency   | Source                           |
+//   +------------------------+-----------+----------------------------------+
+//   | TCP round-trip         |   0.1 ms  | loopback TCP ping                |
+//   | SET (inline)           |   0.3 ms  | redis-benchmark -c 1 -n 10000   |
+//   | GET                    |   0.2 ms  | redis-benchmark -c 1 -n 10000   |
+//   | DEL                    |   0.1 ms  | redis-benchmark -c 1 -n 10000   |
+//   | SETEX (SET + EXPIRE)   |   0.4 ms  | estimated (two commands)        |
+//   | Pipeline overhead      |   0.1 ms  | per extra command in pipeline   |
+//   | Serialise 64-byte key  |   0.5 us  | negligible, amortised           |
+//   +------------------------+-----------+----------------------------------+
+//   | Single SET total       |   0.4 ms  | model = 400 us                  |
+//   | Single GET total       |   0.3 ms  | model = 300 us                  |
+//   | Single DEL total       |   0.2 ms  | model = 200 us                  |
+//   | SETEX total            |   0.5 ms  | model = 500 us                  |
+//   | Pipeline (3 ops)       |   0.6 ms  | model = 600 us                  |
+//   | Batch 100x SET         |   6.0 ms  | model = 6000 us                 |
+//   +------------------------+-----------+----------------------------------+
 //
 // Reference:
 //   https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/benchmarks/
@@ -118,7 +118,7 @@ function redisBatch(count, latencyUs) {
 }
 
 // ---------------------------------------------------------------------------
-// Run benchmarks — collect structured results
+// Run benchmarks - collect structured results
 // ---------------------------------------------------------------------------
 
 function runAll() {
@@ -142,10 +142,10 @@ function runAll() {
       timestamp: new Date().toISOString(),
     },
     benchmarks: [
-      { name: "SET  × 1",        label: "cache_set_single",   ...sSet },
-      { name: "GET  × 1",        label: "cache_get_single",   ...sGet },
-      { name: "DEL  × 1",        label: "cache_del_single",   ...sDel },
-      { name: "SETEX × 1",       label: "cache_setex_single", ...sSetex },
+      { name: "SET  x 1",        label: "cache_set_single",   ...sSet },
+      { name: "GET  x 1",        label: "cache_get_single",   ...sGet },
+      { name: "DEL  x 1",        label: "cache_del_single",   ...sDel },
+      { name: "SETEX x 1",       label: "cache_setex_single", ...sSetex },
       { name: "Pipeline 3 ops",  label: "cache_pipeline_3",   ...pipeline },
       { name: "Batch SET 100",   label: "cache_set_batch_100",  ...batch100Set },
       { name: "Batch GET 100",   label: "cache_get_batch_100",  ...batch100Get },
@@ -175,48 +175,48 @@ function pad(s, w) {
 }
 
 console.log("")
-console.log("╔══════════════════════════════════════════════════════════════════════╗")
-console.log("║         Severinno — Redis Cache Benchmark (modelled)               ║")
-console.log("╚══════════════════════════════════════════════════════════════════════╝")
+console.log("+======================================================================+")
+console.log("|         Severinno - Redis Cache Benchmark (modelled)               |")
+console.log("+======================================================================+")
 console.log("")
 console.log(`  CPU:      ${ITERS_PER_MS.toFixed(0).padStart(5)} iters/ms  (calibrated busy-loop)`)
 console.log(`  Platform: ${process.platform} ${process.arch}  Node ${process.version}`)
 console.log("")
-console.log("  ┌──────────────────────┬──────────┬──────────┬──────────┬─────────────┐")
-console.log("  │ Benchmark            │   Mean   │   Min    │   Max    │   ops/sec   │")
-console.log("  ├──────────────────────┼──────────┼──────────┼──────────┼─────────────┤")
+console.log("  +----------------------+----------+----------+----------+-------------+")
+console.log("  | Benchmark            |   Mean   |   Min    |   Max    |   ops/sec   |")
+console.log("  +----------------------+----------+----------+----------+-------------+")
 
 for (const b of results.benchmarks) {
   console.log(
-    `  │ ${b.name.padEnd(20)} │ ${pad(b.mean, 6)} µs │ ${pad(b.min, 6)} µs │ ${pad(b.max, 6)} µs │ ${pad(b.opsPerSec, 9)}  │`,
+    `  | ${b.name.padEnd(20)} | ${pad(b.mean, 6)} us | ${pad(b.min, 6)} us | ${pad(b.max, 6)} us | ${pad(b.opsPerSec, 9)}  |`,
   )
 }
 
-console.log("  └──────────────────────┴──────────┴──────────┴──────────┴─────────────┘")
+console.log("  +----------------------+----------+----------+----------+-------------+")
 console.log("")
 console.log("  [model] = CPU-modelled estimate of local Redis operations.")
 console.log("           NOT a measurement against a real Redis instance.")
 console.log("")
-console.log("  ─── Model parameters ───────────────────────────────────────────────")
+console.log("  --- Model parameters -----------------------------------------------")
 console.log("")
-console.log(`    SET:    ~${SINGLE_SET_US} µs  (TCP + inline command)`)
-console.log(`    GET:    ~${SINGLE_GET_US} µs  (TCP + read)`)
-console.log(`    DEL:    ~${SINGLE_DEL_US} µs  (TCP + delete)`)
-console.log(`    SETEX:  ~${SINGLE_SETEX_US} µs  (SET + EXPIRE combined)`)
-console.log(`    Pipeline 3: ~${PIPELINE_3_US} µs  (SET + GET + DEL in one round-trip)`)
+console.log(`    SET:    ~${SINGLE_SET_US} us  (TCP + inline command)`)
+console.log(`    GET:    ~${SINGLE_GET_US} us  (TCP + read)`)
+console.log(`    DEL:    ~${SINGLE_DEL_US} us  (TCP + delete)`)
+console.log(`    SETEX:  ~${SINGLE_SETEX_US} us  (SET + EXPIRE combined)`)
+console.log(`    Pipeline 3: ~${PIPELINE_3_US} us  (SET + GET + DEL in one round-trip)`)
 console.log("")
-console.log("  ─── Practical guidance ─────────────────────────────────────────────")
+console.log("  --- Practical guidance ---------------------------------------------")
 console.log("")
-console.log("  • Redis is ~1000× faster than PostGIS for single-key lookups.")
-console.log("  • Pipelining reduces per-op overhead by ~3× vs individual commands.")
-console.log("  • TTL-based expiry (SETEX) adds ~25% overhead vs plain SET.")
-console.log("  • For the rate-limiter use case (INCR + PEXPIRE), expect ~350 µs.")
-console.log("  • For cache-aside (GET → miss → SETEX), total = GET + SETEX ≈ 800 µs.")
+console.log("  - Redis is ~1000x faster than PostGIS for single-key lookups.")
+console.log("  - Pipelining reduces per-op overhead by ~3x vs individual commands.")
+console.log("  - TTL-based expiry (SETEX) adds ~25% overhead vs plain SET.")
+console.log("  - For the rate-limiter use case (INCR + PEXPIRE), expect ~350 us.")
+console.log("  - For cache-aside (GET -> miss -> SETEX), total = GET + SETEX ~ 800 us.")
 console.log("")
 console.log("  Hazards to watch in production:")
-console.log("  • fsync=always: +2-5 ms per write (append-only log)")
-console.log("  • Network round-trip (not loopback): +0.3-2 ms per call")
-console.log("  • Eviction under maxmemory: +1-10 ms when key-space is full")
+console.log("  - fsync=always: +2-5 ms per write (append-only log)")
+console.log("  - Network round-trip (not loopback): +0.3-2 ms per call")
+console.log("  - Eviction under maxmemory: +1-10 ms when key-space is full")
 console.log("")
 
 // ---------------------------------------------------------------------------
@@ -226,6 +226,6 @@ console.log("")
 if (jsonFlag) {
   mkdirSync(dirname(jsonFile), { recursive: true })
   writeFileSync(jsonFile, JSON.stringify(results, null, 2), "utf-8")
-  console.log(`  📁 Results saved to ${jsonFile}`)
+  console.log(`   Results saved to ${jsonFile}`)
   console.log("")
 }

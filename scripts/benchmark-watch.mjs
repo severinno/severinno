@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * benchmark-watch.mjs — one-shot benchmark + watch mode
+ * benchmark-watch.mjs - one-shot benchmark + watch mode
  *
  * Runs the specified benchmark with --json output, then enters
  * --watch mode on compare-benchmarks.mjs so that every subsequent
@@ -24,9 +24,9 @@
  *   --threshold <n>  Passed through to compare-benchmarks.mjs --threshold.
  *
  * Exit code:
- *   0 — no regressions
- *   1 — at least one benchmark regressed (from last comparison)
- *   2 — unknown type, missing --type, or file read error
+ *   0 - no regressions
+ *   1 - at least one benchmark regressed (from last comparison)
+ *   2 - unknown type, missing --type, or file read error
  */
 
 import { execSync, spawn } from "node:child_process"
@@ -80,7 +80,7 @@ if (thresholdIndex !== -1 && args[thresholdIndex + 1] && !args[thresholdIndex + 
 // ---------------------------------------------------------------------------
 
 if (!type || !BENCHMARKS[type]) {
-  console.error("❌ Usage: node scripts/benchmark-watch.mjs --type geo|cache [--baseline <f>] [--filter <str>] [--threshold <n>]")
+  console.error("[FAIL] Usage: node scripts/benchmark-watch.mjs --type geo|cache [--baseline <f>] [--filter <str>] [--threshold <n>]")
   console.error(`   Available types: ${Object.keys(BENCHMARKS).join(", ")}`)
   process.exit(2)
 }
@@ -91,16 +91,16 @@ const latestPath = join(OUT_DIR, cfg.latest)
 const baselinePath = customBaseline || join(OUT_DIR, cfg.baseline)
 
 if (!existsSync(scriptPath)) {
-  console.error(`❌ Benchmark script not found: ${scriptPath}`)
+  console.error(`[FAIL] Benchmark script not found: ${scriptPath}`)
   process.exit(2)
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — run benchmark once with --json
+// Step 1 - run benchmark once with --json
 // ---------------------------------------------------------------------------
 
 console.log("")
-console.log(`  ═══  ${type.toUpperCase()} Benchmark — initial run  ═══`)
+console.log(`  ===  ${type.toUpperCase()} Benchmark - initial run  ===`)
 console.log("")
 
 const runCmd = `node "${scriptPath}" --json "${latestPath}"`
@@ -108,31 +108,31 @@ const runCmd = `node "${scriptPath}" --json "${latestPath}"`
 try {
   execSync(runCmd, { stdio: "inherit" })
 } catch (err) {
-  console.error(`❌ Benchmark failed: ${err.message}`)
+  console.error(`[FAIL] Benchmark failed: ${err.message}`)
   process.exit(1)
 }
 
 if (!existsSync(latestPath)) {
-  console.error(`❌ Benchmark did not produce output at ${latestPath}`)
+  console.error(`[FAIL] Benchmark did not produce output at ${latestPath}`)
   process.exit(2)
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — validate baseline
+// Step 2 - validate baseline
 // ---------------------------------------------------------------------------
 
 if (!existsSync(baselinePath)) {
-  console.log(`  ⚠  No baseline found at ${baselinePath}`)
-  console.log(`  ℹ  Run the benchmark once and save the result as baseline:`)
+  console.log(`  [WARN]  No baseline found at ${baselinePath}`)
+  console.log(`  [INFO]  Run the benchmark once and save the result as baseline:`)
   console.log(`       cp "${latestPath}" "${baselinePath}"`)
   console.log("")
-  console.log("  👋 Watch mode: waiting for baseline to appear…\n")
+  console.log("   Watch mode: waiting for baseline to appear...\n")
 
   // Poll for baseline to be created, then enter watch mode
   const pollInterval = setInterval(() => {
     if (existsSync(baselinePath)) {
       clearInterval(pollInterval)
-      console.log(`  ✅ Baseline detected at ${baselinePath}`)
+      console.log(`  [OK] Baseline detected at ${baselinePath}`)
       console.log("")
       enterWatchMode()
     }
@@ -141,7 +141,7 @@ if (!existsSync(baselinePath)) {
   // Keep alive
   process.on("SIGINT", () => {
     clearInterval(pollInterval)
-    console.log("\n  👋 Watch mode stopped.\n")
+    console.log("\n   Watch mode stopped.\n")
     process.exit(0)
   })
 } else {
@@ -149,7 +149,7 @@ if (!existsSync(baselinePath)) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — enter compare-benchmarks --watch
+// Step 3 - enter compare-benchmarks --watch
 // ---------------------------------------------------------------------------
 
 function enterWatchMode() {
@@ -164,12 +164,12 @@ function enterWatchMode() {
   compareArgs.push(`"${baselinePath}"`, `"${latestPath}"`)
 
   const fullCmd = compareArgs.join(" ")
-  console.log(`  ─── Entering watch mode ───────────────────────────────────`)
+  console.log(`  --- Entering watch mode -----------------------------------`)
   console.log(`  Baseline:  ${baselinePath}`)
   console.log(`  Current:   ${latestPath}`)
   if (filterPrefix) console.log(`  Filter:    ${filterPrefix}`)
   if (thresholdArg) console.log(`  Threshold: ${thresholdArg}%`)
-  console.log(`  👁  Watching for changes… (Ctrl+C to stop)`)
+  console.log(`    Watching for changes... (Ctrl+C to stop)`)
   console.log("")
 
   try {
@@ -179,7 +179,7 @@ function enterWatchMode() {
     if (err.status === 1) {
       process.exit(1)
     }
-    console.error(`❌ compare-benchmarks exited with code ${err.status}`)
+    console.error(`[FAIL] compare-benchmarks exited with code ${err.status}`)
     process.exit(err.status || 1)
   }
 }

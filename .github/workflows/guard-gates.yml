@@ -10,11 +10,11 @@
 # entirely (the exact failure mode a lint failure used to cause before the
 # test-first reorder). This workflow is the push-time net: a standalone job
 # with NO lint dependency — no lint step, no needs: on lint — running ONLY
-# the two guard suites on every push to main/develop. The BASELINE of 0
+# the guard suites on every push to main/develop. The BASELINE of 0
 # offenders can never become orphaned from execution.
 #
 # MIRROR of the PR side: pr-check.yml's fragile-guard job runs the SAME
-# pair on pull_request (test-first order + this standalone job = double
+# suites on pull_request (test-first order + this standalone job = double
 # immunity there); guard-gates.yml is the merge-side twin (push trigger).
 # Both run the identical vitest invocation, so the contract the suites pin
 # is exercised on every PR AND every push.

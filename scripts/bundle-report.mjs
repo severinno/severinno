@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Versioned bundle report generator — Severinno
+ * Versioned bundle report generator - Severinno
  *
  * Runs `scripts/check-js-budget.mjs --json` (requires a fresh
  * `ANALYZE=true next build --webpack` so .next/analyze/client.html +
@@ -11,11 +11,11 @@
  *
  * Usage:
  *   node scripts/bundle-report.mjs --version v0.4.0   # explicit version
- *   node scripts/bundle-report.mjs                    # git tag → package.json
- *   node scripts/bundle-report.mjs --version main     # rolling "main" row — upserted on
+ *   node scripts/bundle-report.mjs                    # git tag -> package.json
+ *   node scripts/bundle-report.mjs --version main     # rolling "main" row - upserted on
  *                                                     # EVERY push to main (ci.yml budget
  *                                                     # job), sorted ABOVE the versioned
- *                                                     # releases so Δ compares against the
+ *                                                     # releases so delta compares against the
  *                                                     # last release. Never accumulates
  *                                                     # duplicate rows (same label = upsert).
  *                                                     # ANTI-REGRESSION GATE: fails (exit 1)
@@ -35,13 +35,13 @@
  *                                                     # (per-route = check-7 real transfer; a route
  *                                                     # worsening 30 KB without touching / initial
  *                                                     # would otherwise escape the gate)
- *   node scripts/bundle-report.mjs --version develop  # rolling "develop" row — same upsert
+ *   node scripts/bundle-report.mjs --version develop  # rolling "develop" row - same upsert
  *                                                     # mechanism for push to develop (ci.yml),
  *                                                     # sorted BELOW main but ABOVE releases so
  *                                                     # feature-merge evolution is tracked in the
  *                                                     # report before reaching main. TRACKING
  *                                                     # ONLY: the anti-regression gate stays
- *                                                     # main-only by design (develop is WIP —
+ *                                                     # main-only by design (develop is WIP -
  *                                                     # merges there must not be blocked).
  *   node scripts/bundle-report.mjs --preview          # PR comment body: delta vs the
  *                                                     # last versioned release, printed
@@ -53,7 +53,7 @@
  * `--preview` is used by ci.yml on PRs (bundle-preview-comment.yml posts it).
  *
  * Also writes docs/bundle-badge.json (Shields.io endpoint badge: initial KB +
- * gate status of the latest release) — consumed by the README cover badge.
+ * gate status of the latest release) - consumed by the README cover badge.
  */
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -65,11 +65,11 @@ const CHECK = path.join(ROOT, "scripts", "check-js-budget.mjs")
 const REPORT = path.join(ROOT, "docs", "bundle-report.md")
 
 function fail(msg, code = 1) {
-  console.error("❌ bundle-report: " + msg)
+  console.error("[FAIL] bundle-report: " + msg)
   process.exit(code)
 }
 
-// ── Version resolution: --version > git tag > package.json ──────────────────
+// -- Version resolution: --version > git tag > package.json ------------------
 const args = process.argv.slice(2)
 const vi = args.indexOf("--version")
 const preview = args.includes("--preview")
@@ -82,7 +82,7 @@ if (!version) {
   version = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version
 }
 
-// ── Collect metrics from check-js-budget --json ─────────────────────────────
+// -- Collect metrics from check-js-budget --json -----------------------------
 const res = spawnSync(process.execPath, [CHECK, "--json"], { encoding: "utf8" })
 if (res.status === 2 || !res.stdout) {
   fail(
@@ -100,7 +100,7 @@ try {
 
 const today = new Date().toISOString().slice(0, 10)
 const num = (v) => (v == null ? null : +v.toFixed(1))
-const cell = (v) => (v == null ? "—" : v.toFixed(1))
+const cell = (v) => (v == null ? "-" : v.toFixed(1))
 
 /** Env override helper: positive finite number or fallback (KB, gzip). */
 const numEnv = (raw, fallback) => {
@@ -118,7 +118,7 @@ const entry = {
   rechartsKB: num(m.libs?.recharts?.gzipKB),
   framerKB: num(m.libs?.["framer-motion"]?.gzipKB),
   topChunks: Array.isArray(m.topChunks) ? m.topChunks : [],
-  // Real transfer per key route (check 7) — user-facing first-paint bytes per
+  // Real transfer per key route (check 7) - user-facing first-paint bytes per
   // page, parsed from the prerendered HTML script lists (worst case over
   // params). Same labels as the gate's REAL_ROUTE_CHECKS.
   routes: m.realRoutes
@@ -129,22 +129,22 @@ const entry = {
   ok: !!m.ok,
 }
 
-// ── Read existing history (docs/bundle-report.md table) ─────────────────────
-// Columns: Versão | Data | Initial (/) | Δ Init | Total | Δ Total | Largest |
-//          Δ Largest | Maplibre | Recharts | Framer | Δ Framer | Gate
+// -- Read existing history (docs/bundle-report.md table) ---------------------
+// Columns: Versao | Data | Initial (/) | delta Init | Total | delta Total | Largest |
+//          delta Largest | Maplibre | Recharts | Framer | delta Framer | Gate
 const HEADER = [
-  "Versão",
+  "Versao",
   "Data",
   "Initial (/)",
-  "Δ Init",
+  "delta Init",
   "Total",
-  "Δ Total",
+  "delta Total",
   "Largest",
-  "Δ Largest",
+  "delta Largest",
   "Maplibre",
   "Recharts",
   "Framer",
-  "Δ Framer",
+  "delta Framer",
   "Gate",
 ]
 
@@ -153,13 +153,13 @@ function parseTopChunks(md) {
   const map = {}
   // Split on /\r?\n (not "\n"): .gitattributes `* text=auto` checks the
   // committed docs out as CRLF on Windows, and a trailing \r silently
-  // broke every $-anchored regex below — baseline blocks parsed as empty
+  // broke every $-anchored regex below - baseline blocks parsed as empty
   // (gate skipped with "sem baseline por rota ainda") AND were dropped on
   // the next regeneration (data loss). Tolerating both is the durable fix.
   const lines = md.split(/\r?\n/)
   let cur = null
   for (const line of lines) {
-    const h = line.match(/^###\s+(v?[\w][\w.-]*)\s+—\s+(\d{4}-\d{2}-\d{2})$/)
+    const h = line.match(/^###\s+(v?[\w][\w.-]*)\s+-\s+(\d{4}-\d{2}-\d{2})$/)
     if (h) {
       cur = h[1]
       map[cur] = []
@@ -180,15 +180,15 @@ function parseRoutes(md) {
   const lines = md.split(/\r?\n/)
   let cur = null
   for (const line of lines) {
-    const h = line.match(/^###\s+(v?[\w][\w.-]*)\s+—\s+(\d{4}-\d{2}-\d{2})$/)
+    const h = line.match(/^###\s+(v?[\w][\w.-]*)\s+-\s+(\d{4}-\d{2}-\d{2})$/)
     if (h) {
       cur = h[1]
       map[cur] = []
       continue
     }
     if (!cur) continue
-    // Row: | /busca | 1 | 261.1 | — |   (route rows never match the Top-chunks
-    // numeric-first pattern, and chunk rows never match this one — safe to
+    // Row: | /busca | 1 | 261.1 | - |   (route rows never match the Top-chunks
+    // numeric-first pattern, and chunk rows never match this one - safe to
     // share the ### header format with parseTopChunks.)
     const row = line.match(/^\|\s*([^|]+?)\s*\|\s*(\d+)\s*\|\s*([\d.]+)\s*\|\s*([^|]*)\s*\|$/)
     if (row) map[cur].push({ label: row[1].trim(), files: Number(row[2]), gzipKB: Number(row[3]) })
@@ -207,7 +207,7 @@ function parseRows(md) {
     if (mm[1] === HEADER[0]) continue // header row (future-proof vs ASCII rename)
     const c = mm[2].split("|").map((s) => s.trim())
     if (c.length < 9) continue
-    const f = (s) => (s === "—" || s === "" ? null : Number(s))
+    const f = (s) => (s === "-" || s === "" ? null : Number(s))
     const legacy = c.length < 11
     rows.push({
       version: mm[1],
@@ -218,7 +218,14 @@ function parseRows(md) {
       maplibreKB: f(legacy ? c[5] : c[7]),
       rechartsKB: f(legacy ? c[6] : c[8]),
       framerKB: f(legacy ? c[7] : c[9]),
-      ok: (legacy ? c[8] : c[11]) === "✅",
+      // Gate cell: the committed docs/bundle-report.md rows carry the
+      // pre-ASCII checkmark marker (docs/ is excluded from the ASCII
+      // gates BY DESIGN - the committed file is only regenerated on the
+      // next release), so the parser accepts BOTH the current ASCII
+      // "[OK]" and the legacy "\u2705" escape (ASCII-safe source: the
+      // literal never appears as a raw byte in this file). Any other
+      // value ("[FAIL]", "\u274c" legacy cross) is not-ok.
+      ok: (legacy ? c[8] : c[11]) === "[OK]" || (legacy ? c[8] : c[11]) === "\u2705",
       topChunks: top[mm[1]] || [],
       routes: routes[mm[1]] || [],
     })
@@ -227,7 +234,7 @@ function parseRows(md) {
 }
 
 // Rolling branch rows (ci.yml budget job, push to main/develop): they track
-// per-merge evolution and never represent a release — so they must NEVER be
+// per-merge evolution and never represent a release - so they must NEVER be
 // the baseline for a delta/gate/preview comparison (those always target the
 // latest versioned RELEASE). `main` ranks first (newest), `develop` second;
 // both above every versioned release.
@@ -237,7 +244,7 @@ const isRollingRow = (v) => ROLLING_ROWS.has(String(v))
 function verKey(v) {
   const s = String(v)
   // Rolling rows (ci.yml, push to main/develop): rank ABOVE every versioned
-  // release so they stay at the top of the table and their Δ columns compare
+  // release so they stay at the top of the table and their delta columns compare
   // against the row below them. Without this they would parse as 0.0.0 and
   // sink to the bottom with meaningless deltas.
   if (s === "main") return [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, s]
@@ -260,32 +267,32 @@ function cmpVer(a, b) {
 const existing = fs.existsSync(REPORT) ? fs.readFileSync(REPORT, "utf8") : ""
 const rows = parseRows(existing).filter((r) => r.version !== entry.version)
 
-// ── --preview: PR comment body (read-only; NEVER touches docs/) ────────────
+// -- --preview: PR comment body (read-only; NEVER touches docs/) ------------
 // Used by ci.yml on PRs: prints a delta table vs the last versioned release
 // so bundle evolution is visible BEFORE merge. The comment workflow
 // (bundle-preview-comment.yml) finds/updates the comment by the marker
-// "## 📦 Bundle preview (PR)" — keep it stable.
+// "## Bundle preview (PR)" - keep it stable.
 if (preview) {
-  // Baseline for the PR comparison: the latest VERSIONED release — rolling
+  // Baseline for the PR comparison: the latest VERSIONED release - rolling
   // main/develop rows track merges and must never be the comparison target.
   const baseline =
     [...rows].sort((a, b) => cmpVer(a.version, b.version)).find((r) => !isRollingRow(r.version)) ?? null
-  const fmt = (v) => (v == null ? "—" : v.toFixed(1) + " KB")
+  const fmt = (v) => (v == null ? "-" : v.toFixed(1) + " KB")
   const delta = (cur, base) => {
-    if (cur == null || base == null) return "—"
+    if (cur == null || base == null) return "-"
     const d = +(cur - base).toFixed(1)
     return (d > 0 ? "+" : "") + d.toFixed(1)
   }
   const row = (label, cur, base) =>
     `| ${label} | ${fmt(base)} | ${fmt(cur)} | ${delta(cur, base)} |`
   const lines = [
-    "## 📦 Bundle preview (PR)",
+    "## Bundle preview (PR)",
     "",
     baseline
-      ? `_Comparado ao último release: **${baseline.version}** (${baseline.date})_`
-      : "_Nenhum release versionado ainda — esta comparação fica sem baseline até o primeiro release._",
+      ? `_Comparado ao ultimo release: **${baseline.version}** (${baseline.date})_`
+      : "_Nenhum release versionado ainda - esta comparacao fica sem baseline ate o primeiro release._",
     "",
-    "| Métrica | Release | Preview | Δ |",
+    "| Metrica | Release | Preview | delta |",
     "|---|---|---|---|",
     row("Initial JS (/)", entry.initialKB, baseline?.initialKB),
     row("Total JS", entry.totalKB, baseline?.totalKB),
@@ -293,7 +300,7 @@ if (preview) {
     row("Maplibre-gl", entry.maplibreKB, baseline?.maplibreKB),
     row("Recharts", entry.rechartsKB, baseline?.rechartsKB),
     row("Framer-motion", entry.framerKB, baseline?.framerKB),
-    `| Gate | ${baseline?.ok ? "✅" : "—"} | ${entry.ok ? "✅" : "❌"} | — |`,
+    `| Gate | ${baseline?.ok ? "[OK]" : "-"} | ${entry.ok ? "[OK]" : "[FAIL]"} | - |`,
   ]
   if (Array.isArray(entry.topChunks) && entry.topChunks.length) {
     lines.push(
@@ -307,14 +314,14 @@ if (preview) {
   }
   lines.push(
     "",
-    "> Δ Framer mede o total gzip da lib (modais lazy), não o initial JS.",
+    "> delta Framer mede o total gzip da lib (modais lazy), nao o initial JS.",
   )
   if (Array.isArray(entry.routes) && entry.routes.length) {
     lines.push(
       "",
       "### Rotas (real transfer, preview)",
       "",
-      "| Rota | Release | Preview | Δ |",
+      "| Rota | Release | Preview | delta |",
       "|---|---|---|---|",
     )
     for (const rt of entry.routes) {
@@ -327,10 +334,10 @@ if (preview) {
   }
   lines.push(
     "",
-    "_Fonte: `ANALYZE=true next build --webpack` + `scripts/check-js-budget.mjs` (KB gzip). Este preview é read-only e não altera `docs/bundle-report.md`._",
+    "_Fonte: `ANALYZE=true next build --webpack` + `scripts/check-js-budget.mjs` (KB gzip). Este preview e read-only e nao altera `docs/bundle-report.md`._",
   )
   // fs.writeSync (not console.log) + process.exit: stdout to a pipe is
-  // flushed asynchronously in Node, and process.exit() can truncate it —
+  // flushed asynchronously in Node, and process.exit() can truncate it -
   // exactly how CI consumes this output (`node ... | tee bundle-preview.md`).
   fs.writeSync(1, lines.join("\n") + "\n")
   process.exit(0)
@@ -339,10 +346,10 @@ if (preview) {
 rows.push(entry)
 rows.sort((a, b) => cmpVer(a.version, b.version))
 
-const fmtDelta = (d) => (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(1))
+const fmtDelta = (d) => (d == null ? "-" : (d > 0 ? "+" : "") + d.toFixed(1))
 const table = rows.map((r, i) => {
-  // Δ columns are DISPLAY-ONLY vs the row below (desc order) — so main's
-  // displayed Δ is vs the develop row when one exists. The anti-regression
+  // delta columns are DISPLAY-ONLY vs the row below (desc order) - so main's
+  // displayed delta is vs the develop row when one exists. The anti-regression
   // gate below compares against the latest RELEASE instead (releaseBaseline
   // skips rolling rows). The divergence is intentional: the table shows the
   // incremental last hop, the gate enforces the release target. Don't "fix".
@@ -351,47 +358,47 @@ const table = rows.map((r, i) => {
   const dTotal = prev && r.totalKB != null && prev.totalKB != null ? +(r.totalKB - prev.totalKB).toFixed(1) : null
   const dLargest = prev && r.largestKB != null && prev.largestKB != null ? +(r.largestKB - prev.largestKB).toFixed(1) : null
   const dFramer = prev && r.framerKB != null && prev.framerKB != null ? +(r.framerKB - prev.framerKB).toFixed(1) : null
-  return `| ${r.version} | ${r.date} | ${cell(r.initialKB)} | ${fmtDelta(dInit)} | ${cell(r.totalKB)} | ${fmtDelta(dTotal)} | ${cell(r.largestKB)} | ${fmtDelta(dLargest)} | ${cell(r.maplibreKB)} | ${cell(r.rechartsKB)} | ${cell(r.framerKB)} | ${fmtDelta(dFramer)} | ${r.ok ? "✅" : "❌"} |`
-})  // Footer da seção de libs: as colunas de lib (Maplibre/Recharts/Framer)
-  // medem o TOTAL gzip da lib no bundle — inclusive o que vive em modais
-  // lazy — NÃO o initial JS de nenhuma rota. Presença no primeiro paint é
-  // coberta pelo guard de lazy-load (check 5), não pela coluna da tabela.
-  // Nota recorrente em code review: o Δ Framer era lido como regressão de
-  // initial JS quando na verdade reflete só o peso total da lib.
+  return `| ${r.version} | ${r.date} | ${cell(r.initialKB)} | ${fmtDelta(dInit)} | ${cell(r.totalKB)} | ${fmtDelta(dTotal)} | ${cell(r.largestKB)} | ${fmtDelta(dLargest)} | ${cell(r.maplibreKB)} | ${cell(r.rechartsKB)} | ${cell(r.framerKB)} | ${fmtDelta(dFramer)} | ${r.ok ? "[OK]" : "[FAIL]"} |`
+})  // Footer da secao de libs: as colunas de lib (Maplibre/Recharts/Framer)
+  // medem o TOTAL gzip da lib no bundle - inclusive o que vive em modais
+  // lazy - NAO o initial JS de nenhuma rota. Presenca no primeiro paint e
+  // coberta pelo guard de lazy-load (check 5), nao pela coluna da tabela.
+  // Nota recorrente em code review: o delta Framer era lido como regressao de
+  // initial JS quando na verdade reflete so o peso total da lib.
   const LIBS_FOOTER =
-    "> ℹ️ As colunas de libs (Maplibre/Recharts/Framer) medem o **total gzip da lib no bundle**, " +
-    "incluindo o que vive em modais lazy — **Δ Framer, em particular, mede o total da lib, não o initial JS**. " +
-    "Presença no primeiro paint é garantida pelo guard de lazy-load (check 5), não pela coluna."
+    "> [INFO] As colunas de libs (Maplibre/Recharts/Framer) medem o **total gzip da lib no bundle**, " +
+    "incluindo o que vive em modais lazy - **delta Framer, em particular, mede o total da lib, nao o initial JS**. " +
+    "Presenca no primeiro paint e garantida pelo guard de lazy-load (check 5), nao pela coluna."
 
   // Honest-baseline note: when the local webpack build cannot prerender (Next
   // 16.1.x E696 on this Windows worktree), the initial-JS metric comes from
   // the rootMainFiles FALLBACK, which is NOT comparable to the real transfer
   // of the previous versions (rootMainFiles counts framework chunks only).
-  // Flag it so the Δ Init column is never misread as a genuine improvement.
+  // Flag it so the delta Init column is never misread as a genuine improvement.
   // CI (Linux) regenerates the real transfer at release time. Emitted as a
-  // blockquote line only — never touches table cells, so parseRows round-trip
+  // blockquote line only - never touches table cells, so parseRows round-trip
   // is unaffected.
   const INIT_FALLBACK_NOTE =
     m.initialSource !== "prerendered-html"
-      ? `\n> ⚠️ Initial (/) de ${entry.version} veio do fallback rootMainFiles (build local sem prerender completo — bug E696 do Next no Windows); o Δ Init não é comparável ao real transfer das versões anteriores. O CI (Linux) regenera o real transfer no release.\n`
+      ? `\n> [WARN] Initial (/) de ${entry.version} veio do fallback rootMainFiles (build local sem prerender completo - bug E696 do Next no Windows); o delta Init nao e comparavel ao real transfer das versoes anteriores. O CI (Linux) regenera o real transfer no release.\n`
       : ""
 
   // Per-version "Top 5 maiores chunks" blocks (gzip KB, from the analyzer
   // chartData attribution) so the report shows WHICH chunk grew between
-  // releases — not just the fixed per-library totals.
+  // releases - not just the fixed per-library totals.
 const topBlocks = rows
   .filter((r) => Array.isArray(r.topChunks) && r.topChunks.length > 0)
   .map((r) => {
     const lines = r.topChunks
       .map((c, i) => `| ${i + 1} | ${c.label} | ${c.gzipKB.toFixed(1)} |`)
       .join("\n")
-    return `### ${r.version} — ${r.date}\n| # | Chunk | KB gzip |\n|---|---|---|\n${lines}`
+    return `### ${r.version} - ${r.date}\n| # | Chunk | KB gzip |\n|---|---|---|\n${lines}`
   })
 
-// Per-version "Rotas (real transfer)" blocks — the check-7 real first-paint
-// bytes per key route (worst case over prerendered params), with Δ vs the
+// Per-version "Rotas (real transfer)" blocks - the check-7 real first-paint
+// bytes per key route (worst case over prerendered params), with delta vs the
 // previous version that tracked the same route. A route added later shows
-// Δ — (no baseline) until it appears in two consecutive versions.
+// delta - (no baseline) until it appears in two consecutive versions.
 const routeBlocks = []
 rows.forEach((r, i) => {
   if (!Array.isArray(r.routes) || r.routes.length === 0) return
@@ -403,15 +410,15 @@ rows.forEach((r, i) => {
       return `| ${rt.label} | ${rt.files} | ${cell(rt.gzipKB)} | ${fmtDelta(d)} |`
     })
     .join("\n")
-  routeBlocks.push(`### ${r.version} — ${r.date}\n| Rota | Params | KB gzip | Δ |\n|---|---|---|---|\n${lines}`)
+  routeBlocks.push(`### ${r.version} - ${r.date}\n| Rota | Params | KB gzip | delta |\n|---|---|---|---|\n${lines}`)
 })
 
 const md =
-  "# Bundle Report — Severinno\n\n" +
-  "> Gerado automaticamente a cada release pelo CI (job `budget`). Não editar manualmente.\n" +
+  "# Bundle Report - Severinno\n\n" +
+  "> Gerado automaticamente a cada release pelo CI (job `budget`). Nao editar manualmente.\n" +
   "> Fonte: `ANALYZE=true next build --webpack` + `scripts/check-js-budget.mjs` (KB gzip).\n" +
-  "> Δ = variação vs a versão anterior da tabela.\n\n" +
-  "## Histórico\n\n" +
+  "> delta = variacao vs a versao anterior da tabela.\n\n" +
+  "## Historico\n\n" +
   `| ${HEADER.join(" | ")} |\n` +
   `|${HEADER.map(() => "---").join("|")}|\n` +
   table.join("\n") +
@@ -420,36 +427,36 @@ const md =
   (routeBlocks.length
     ? `\n## Rotas (real transfer, KB gzip)\n\n${routeBlocks.join("\n\n")}\n`
     : "") +
-  `\n_Última atualização: ${today} (${entry.version})_\n`
+  `\n_Ultima atualizacao: ${today} (${entry.version})_\n`
 
 fs.mkdirSync(path.dirname(REPORT), { recursive: true })
 fs.writeFileSync(REPORT, md)
 
-// ── Shields.io endpoint badge (docs/bundle-badge.json) ─────────────────────
-// Consumed by the README cover badge (https://img.shields.io/endpoint?url=…)
+// -- Shields.io endpoint badge (docs/bundle-badge.json) ---------------------
+// Consumed by the README cover badge (https://img.shields.io/endpoint?url=...)
 // so the repo shows the initial JS KB + gate of the LATEST release without
-// hardcoding values in the README. Written only in write mode — --preview is
+// hardcoding values in the README. Written only in write mode - --preview is
 // read-only and never touches docs/ (verified by the read-only test).
 // NOTE: the badge reflects the SIZE-GATE status of the latest release
 // (entry.ok from check-js-budget), written BEFORE the anti-regression gate
-// below — a main push blocked by the delta gate still leaves a green ✅
+// below - a main push blocked by the delta gate still leaves a green [OK]
 // badge. That is intentional: the badge documents the release's size gate,
 // not per-merge anti-regression outcomes (those fail the CI job instead).
 // Rolling-row writes (--version develop) overwrite the badge with the
 // branch's own values and commit it on develop; the README endpoint resolves
-// from main, so it self-corrects on the next main push — the badge is only
+// from main, so it self-corrects on the next main push - the badge is only
 // meaningful on the deployed branch.
 const BADGE = path.join(ROOT, "docs", "bundle-badge.json")
 const badge = {
   schemaVersion: 1,
   label: "bundle",
-  message: `${cell(entry.initialKB)} KB ${entry.ok ? "✅" : "❌"}`,
+  message: `${cell(entry.initialKB)} KB ${entry.ok ? "[OK]" : "[FAIL]"}`,
   color: entry.ok ? "green" : "red",
 }
 fs.writeFileSync(BADGE, JSON.stringify(badge, null, 2) + "\n")
 
-// ── Anti-regression gate (rolling "main" row) ───────────────────────────────
-// The 'main' row (ci.yml, push to main) is not just tracking — it is a GATE:
+// -- Anti-regression gate (rolling "main" row) -------------------------------
+// The 'main' row (ci.yml, push to main) is not just tracking - it is a GATE:
 // if the merged bundle's Initial JS (/) or Total worsened by more than the
 // threshold vs the last versioned release, the budget job FAILS (exit 1). This
 // turns per-merge tracking into an anti-regression gate on push to main: a
@@ -457,18 +464,18 @@ fs.writeFileSync(BADGE, JSON.stringify(badge, null, 2) + "\n")
 // Thresholds in KB gzip, env-overridable (policy mirrored in ci.yml):
 //   JS_BUDGET_MAIN_DELTA_INITIAL_KB  (default 50)
 //   JS_BUDGET_MAIN_DELTA_TOTAL_KB    (default 200)
-// Only evaluated for the rolling "main" row — releases define the baseline,
+// Only evaluated for the rolling "main" row - releases define the baseline,
 // so comparing a release against itself makes no sense. Skipped when the
-// initial metric came from the rootMainFiles FALLBACK (non-comparable — same
+// initial metric came from the rootMainFiles FALLBACK (non-comparable - same
 // honesty rule as INIT_FALLBACK_NOTE) or when there is no versioned baseline
 // yet (first-ever main run). Report + badge are written BEFORE this check so
 // CI's always() commit step still records the regressed row.
 //
-// Comparison is STRICTLY GREATER than the threshold (>) — a regression
+// Comparison is STRICTLY GREATER than the threshold (>) - a regression
 // exactly equal to the limit (e.g. +50.0 KB initial) passes. If a hard
 // "no worse than X" ceiling is wanted, lower the policy env by the rounding
 // granularity (0.1 KB). Consistent with the size gate's > semantics.
-// numEnv: a threshold of 0 / negative / NaN falls back to the default — a
+// numEnv: a threshold of 0 / negative / NaN falls back to the default - a
 // "block ANY positive regression" (0) policy is intentionally NOT expressible
 // via env; use a tiny positive value like 0.05 for that intent.
 const MAIN_DELTA_INITIAL_KB = numEnv(process.env.JS_BUDGET_MAIN_DELTA_INITIAL_KB, 50)
@@ -476,27 +483,27 @@ const MAIN_DELTA_TOTAL_KB = numEnv(process.env.JS_BUDGET_MAIN_DELTA_TOTAL_KB, 20
 // Per-route real-transfer deltas (check 7): a route that worsens 30 KB on a
 // merge WITHOUT touching / initial would escape the Initial/Total gate alone,
 // so the 'main' gate also enforces per-route thresholds. DERIVED from
-// scripts/budget-routes.mjs (the versioned ROUTE REGISTRY) — every
+// scripts/budget-routes.mjs (the versioned ROUTE REGISTRY) - every
 // REAL_ROUTE_CHECKS entry carries its deltaEnvKey, and each route gets the
 // 30 KB default unless that env is overridden (policy mirrored in ci.yml).
 // A route ADDED to the registry is automatically gated on the next main push
-// (no second list to update — closing the gate-vs-report route divergence).
+// (no second list to update - closing the gate-vs-report route divergence).
 //
 // SEMANTICS: realRoutes is worst-case-over-prerendered-params (Math.max over
 // the per-param transfers, check 7). A build that prerenders a heavier new
 // param can legitimately jump a route's delta > 30 KB without a code change
-// — that is DESIRED (a heavier param IS a regression for that route's users),
+// - that is DESIRED (a heavier param IS a regression for that route's users),
 // not flakiness. Don't "fix" a param-driven jump by raising the threshold.
 const ROUTE_DELTA_KB = Object.fromEntries(
   REAL_ROUTE_CHECKS.map((r) => [r.label, numEnv(process.env[r.deltaEnvKey], 30)]),
 )
 // Baseline for the main gate: the latest VERSIONED release. Rolling rows
-// (main/develop) are explicitly EXCLUDED — once a develop row exists in the
+// (main/develop) are explicitly EXCLUDED - once a develop row exists in the
 // report, the gate must still compare against the release, not against
 // develop (develop is WIP and can legitimately carry a regression).
 const releaseBaseline =
   entry.version === "main" ? rows.find((r) => !isRollingRow(r.version)) : null
-// Single source of truth for the deltas — used BOTH by the gate comparison
+// Single source of truth for the deltas - used BOTH by the gate comparison
 // below AND by the observability log, so a future edit to one can never
 // silently desync the logged value from the compared value.
 // Rounded at the DISPLAYED 0.1 KB granularity: an exact-equal delta
@@ -505,7 +512,7 @@ const releaseBaseline =
 // 7.9000000000000004) would otherwise falsely block a merge whose delta is
 // exactly at the limit. (No false-negative window: entry metrics and the
 // parsed baseline are both already 1-decimal, so genuine deltas are always
-// multiples of 0.1 — only float noise lands in-between, which this absorbs.)
+// multiples of 0.1 - only float noise lands in-between, which this absorbs.)
 const gdInit =
   entry.version === "main" && releaseBaseline && entry.initialKB != null && releaseBaseline.initialKB != null
     ? +(entry.initialKB - releaseBaseline.initialKB).toFixed(1)
@@ -514,7 +521,7 @@ const gdTotal =
   entry.version === "main" && releaseBaseline && entry.totalKB != null && releaseBaseline.totalKB != null
     ? +(entry.totalKB - releaseBaseline.totalKB).toFixed(1)
     : null
-// Per-route deltas vs the release baseline — the SAME 0.1-KB float-safe
+// Per-route deltas vs the release baseline - the SAME 0.1-KB float-safe
 // rounding as gdInit/gdTotal. Only routes with a measured value on BOTH sides
 // are compared; a route that exists in only one (newly added since the
 // release, or removed) has no comparable delta and is skipped silently.
@@ -535,36 +542,36 @@ if (entry.version === "main" && releaseBaseline && m.initialSource === "prerende
   const dInit = gdInit
   if (dInit != null && dInit > MAIN_DELTA_INITIAL_KB) {
     console.error(
-      `❌ ANTI-REGRESSION GATE: 'main' Initial JS (/) piorou +${dInit.toFixed(1)} KB vs ` +
-        `${releaseBaseline.version} (${releaseBaseline.initialKB.toFixed(1)} → ${entry.initialKB.toFixed(1)} KB; ` +
-        `limite +${MAIN_DELTA_INITIAL_KB} KB). Bloqueado — reduza o initial JS antes do merge.`,
+      `[FAIL] ANTI-REGRESSION GATE: 'main' Initial JS (/) piorou +${dInit.toFixed(1)} KB vs ` +
+        `${releaseBaseline.version} (${releaseBaseline.initialKB.toFixed(1)} -> ${entry.initialKB.toFixed(1)} KB; ` +
+        `limite +${MAIN_DELTA_INITIAL_KB} KB). Bloqueado - reduza o initial JS antes do merge.`,
     )
     process.exit(1)
   }
   const dTotal = gdTotal
   if (dTotal != null && dTotal > MAIN_DELTA_TOTAL_KB) {
     console.error(
-      `❌ ANTI-REGRESSION GATE: 'main' Total piorou +${dTotal.toFixed(1)} KB vs ` +
-        `${releaseBaseline.version} (${releaseBaseline.totalKB.toFixed(1)} → ${entry.totalKB.toFixed(1)} KB; ` +
-        `limite +${MAIN_DELTA_TOTAL_KB} KB). Bloqueado — reduza o bundle total antes do merge.`,
+      `[FAIL] ANTI-REGRESSION GATE: 'main' Total piorou +${dTotal.toFixed(1)} KB vs ` +
+        `${releaseBaseline.version} (${releaseBaseline.totalKB.toFixed(1)} -> ${entry.totalKB.toFixed(1)} KB; ` +
+        `limite +${MAIN_DELTA_TOTAL_KB} KB). Bloqueado - reduza o bundle total antes do merge.`,
     )
     process.exit(1)
   }
-  // Per-route real-transfer regressions — checked AFTER initial/total so the
+  // Per-route real-transfer regressions - checked AFTER initial/total so the
   // most severe message wins when multiple gates trip; each failing route is
   // reported before exit.
   for (const gd of gdRoutes) {
     const limit = ROUTE_DELTA_KB[gd.label]
     // Defensive: ROUTE_DELTA_KB is DERIVED from REAL_ROUTE_CHECKS and
     // gdRoutes labels come from the same registry (check-js-budget --json
-    // realRoutes), so the limit is always present — the branch is kept only
+    // realRoutes), so the limit is always present - the branch is kept only
     // as a no-silent-ignore backstop, not a reachable policy path.
-    if (limit == null) continue // unreachable by design — see above
+    if (limit == null) continue // unreachable by design - see above
     if (gd.delta > limit) {
       console.error(
-        `❌ ANTI-REGRESSION GATE: 'main' rota ${gd.label} piorou +${gd.delta.toFixed(1)} KB vs ` +
-          `${releaseBaseline.version} (${gd.base.toFixed(1)} → ${gd.cur.toFixed(1)} KB; ` +
-          `limite +${limit.toFixed(1)} KB). Bloqueado — reduza o real transfer da rota antes do merge.`,
+        `[FAIL] ANTI-REGRESSION GATE: 'main' rota ${gd.label} piorou +${gd.delta.toFixed(1)} KB vs ` +
+          `${releaseBaseline.version} (${gd.base.toFixed(1)} -> ${gd.cur.toFixed(1)} KB; ` +
+          `limite +${limit.toFixed(1)} KB). Bloqueado - reduza o real transfer da rota antes do merge.`,
       )
       process.exit(1)
     }
@@ -572,83 +579,83 @@ if (entry.version === "main" && releaseBaseline && m.initialSource === "prerende
 }
 
 // Observability: the CI log must show whether the gate was evaluated and its
-// delta — or why it was skipped (fallback metric / no versioned baseline) —
+// delta - or why it was skipped (fallback metric / no versioned baseline) -
 // otherwise a green run is indistinguishable from a silent skip. Rolling
 // rows: main gets the gate; develop is tracking-only (no gate by design).
 if (entry.version === "develop") {
   console.log(
-    "   gate anti-regressão: n/a — develop é tracking-only (o gate bloqueia só push em main)",
+    "   gate anti-regressao: n/a - develop e tracking-only (o gate bloqueia so push em main)",
   )
 } else if (entry.version === "main") {
   if (!releaseBaseline) {
-    // rows here already contains the pushed entry — but releaseBaseline is
+    // rows here already contains the pushed entry - but releaseBaseline is
     // null, so no prior row is a versioned release. rows.length > 1 means
     // prior ROLLING rows exist (develop history) vs a true first-ever run.
     console.log(
       rows.length > 1
-        ? "   gate anti-regressão: skipped — sem release versionado ainda (só linhas rolling main/develop; o gate compara só vs releases)"
-        : "   gate anti-regressão: skipped — sem baseline versionado (primeiro run de main?)",
+        ? "   gate anti-regressao: skipped - sem release versionado ainda (so linhas rolling main/develop; o gate compara so vs releases)"
+        : "   gate anti-regressao: skipped - sem baseline versionado (primeiro run de main?)",
     )
   } else if (m.initialSource !== "prerendered-html") {
     console.log(
-      "   gate anti-regressão: skipped — initial veio do fallback rootMainFiles (métrica não comparável)",
+      "   gate anti-regressao: skipped - initial veio do fallback rootMainFiles (metrica nao comparavel)",
     )
   } else {
-    const sign = (d) => (d == null ? "—" : (d > 0 ? "+" : "") + d.toFixed(1))
+    const sign = (d) => (d == null ? "-" : (d > 0 ? "+" : "") + d.toFixed(1))
     // Distinguish "rotas dentro do limite" from "sem baseline por rota ainda"
-    // (releases antigos — v0.4.0/v0.4.1 — não têm blocos Rotas no markdown, e
-    // rotas novas só passam a ser comparadas quando o baseline as registra).
-    // Sem isto, o log silenciosamente omite rotas no primeiro run pós-change,
-    // indistinguível de "nenhuma rota medida".
+    // (releases antigos - v0.4.0/v0.4.1 - nao tem blocos Rotas no markdown, e
+    // rotas novas so passam a ser comparadas quando o baseline as registra).
+    // Sem isto, o log silenciosamente omite rotas no primeiro run pos-change,
+    // indistinguivel de "nenhuma rota medida".
     const entryRouteLabels = Array.isArray(entry.routes) ? entry.routes.map((r) => r.label) : []
     const baselineRouteLabels = Array.isArray(releaseBaseline.routes)
       ? releaseBaseline.routes.map((r) => r.label)
       : []
     const overlapLabels = entryRouteLabels.filter((l) => baselineRouteLabels.includes(l))
-    // Três estados de observabilidade por rota: (a) algo foi comparado → loga
-    // os deltas; (b) entry mediu rotas mas baseline NÃO tem blocos (release
-    // antigo) → "sem baseline por rota ainda"; (c) entry E baseline têm rotas,
+    // Tres estados de observabilidade por rota: (a) algo foi comparado -> loga
+    // os deltas; (b) entry mediu rotas mas baseline NAO tem blocos (release
+    // antigo) -> "sem baseline por rota ainda"; (c) entry E baseline tem rotas,
     // mas ZERO label em comum (release mediu outras rotas / labels divergiram)
-    // → "baseline sem overlap de labels" — e nunca "sem baseline por rota",
-    // que seria enganoso aqui. Baseline routes sempre têm gzipKB numérico
-    // (regex do parser), então gdRoutes vazio com baseline não-vazio ⟺ sem
-    // overlap — sem estado extra.
+    // -> "baseline sem overlap de labels" - e nunca "sem baseline por rota",
+    // que seria enganoso aqui. Baseline routes sempre tem gzipKB numerico
+    // (regex do parser), entao gdRoutes vazio com baseline nao-vazio <-> sem
+    // overlap - sem estado extra.
     const routeLog = gdRoutes.length
       ? ", rotas: " + gdRoutes.map((g) => `${g.label} ${sign(g.delta)} KB`).join(", ")
       : entryRouteLabels.length > 0
         ? baselineRouteLabels.length === 0
-          ? ", rotas: n/a — sem baseline por rota ainda"
-          : ", rotas: n/a — baseline sem overlap de labels"
+          ? ", rotas: n/a - sem baseline por rota ainda"
+          : ", rotas: n/a - baseline sem overlap de labels"
         : ""
     // Camada B do plano: quando este push do main MEDIU rotas (check 7) mas o
-    // gate anti-regressão por rota está DESARMADO — total (baseline sem blocos
+    // gate anti-regressao por rota esta DESARMADO - total (baseline sem blocos
     // Rotas, releases antigos) OU parcial (baseline com blocos, mas NENHUM
     // label em comum com as rotas medidas: o release mediu outras rotas ou os
-    // labels divergiram). Em ambos nada é comparado → uma rota poderia
-    // regredir no merge sem o gate perceber. Emite um ::warning:: (anotação
-    // do GitHub Actions, inofensiva fora do CI) — não bloqueia por design (um
-    // release legítimo pode ser anterior aos blocos); o próximo release
+    // labels divergiram). Em ambos nada e comparado -> uma rota poderia
+    // regredir no merge sem o gate perceber. Emite um ::warning:: (anotacao
+    // do GitHub Actions, inofensiva fora do CI) - nao bloqueia por design (um
+    // release legitimo pode ser anterior aos blocos); o proximo release
     // re-arma o gate, o que o release-deploy.yml asserta (Camada A).
     if (entryRouteLabels.length > 0 && baselineRouteLabels.length === 0) {
       console.log(
-        `::warning:: gate de rota desarmado — baseline ${releaseBaseline.version} sem blocos Rotas; ` +
-          "deltas por rota deste merge NÃO foram comparados. O próximo release re-arma (assertado no release-deploy.yml).",
+        `::warning:: gate de rota desarmado - baseline ${releaseBaseline.version} sem blocos Rotas; ` +
+          "deltas por rota deste merge NAO foram comparados. O proximo release re-arma (assertado no release-deploy.yml).",
       )
     } else if (entryRouteLabels.length > 0 && baselineRouteLabels.length > 0 && overlapLabels.length === 0) {
       console.log(
-        `::warning:: gate de rota PARCIALMENTE desarmado — baseline ${releaseBaseline.version} tem blocos Rotas ` +
+        `::warning:: gate de rota PARCIALMENTE desarmado - baseline ${releaseBaseline.version} tem blocos Rotas ` +
           `(${baselineRouteLabels.join(", ")}) mas NENHUM label coincide com as rotas medidas neste merge ` +
-          `(${entryRouteLabels.join(", ")}); deltas por rota NÃO foram comparados. ` +
+          `(${entryRouteLabels.join(", ")}); deltas por rota NAO foram comparados. ` +
           "Alinhe os labels (REAL_ROUTE_CHECKS) ou recalibre o baseline.",
       )
     }
     console.log(
-      `   gate anti-regressão: ok (Δ initial ${sign(gdInit)} KB, Δ total ${sign(gdTotal)} KB${routeLog} vs ${releaseBaseline.version})`,
+      `   gate anti-regressao: ok (delta initial ${sign(gdInit)} KB, delta total ${sign(gdTotal)} KB${routeLog} vs ${releaseBaseline.version})`,
     )
   }
 }
-console.log(`✅ bundle-report: ${entry.version} registrado em docs/bundle-report.md (+ docs/bundle-badge.json)`)
+console.log(`[OK] bundle-report: ${entry.version} registrado em docs/bundle-report.md (+ docs/bundle-badge.json)`)
 console.log(
   `   initial ${cell(entry.initialKB)} KB | total ${cell(entry.totalKB)} KB | ` +
-    `maplibre ${cell(entry.maplibreKB)} KB | recharts ${cell(entry.rechartsKB)} KB | framer ${cell(entry.framerKB)} KB | gate ${entry.ok ? "✅" : "❌"}`,
+    `maplibre ${cell(entry.maplibreKB)} KB | recharts ${cell(entry.rechartsKB)} KB | framer ${cell(entry.framerKB)} KB | gate ${entry.ok ? "[OK]" : "[FAIL]"}`,
 )

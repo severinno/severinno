@@ -29,9 +29,9 @@
  *                    detected.  The command is executed via execSync.
  *
  * Exit code:
- *   0 — no regressions (or only improvements / unchanged)
- *   1 — at least one benchmark regressed >threshold % in mean (among filtered set)
- *   2 — file read or parse error
+ *   0 - no regressions (or only improvements / unchanged)
+ *   1 - at least one benchmark regressed >threshold % in mean (among filtered set)
+ *   2 - file read or parse error
  */
 
 import { readFileSync, watchFile } from "node:fs"
@@ -65,7 +65,7 @@ if (thresholdIndex !== -1 && args[thresholdIndex + 1] && !args[thresholdIndex + 
   if (!isNaN(parsed) && parsed > 0) {
     threshold = parsed
   } else {
-    console.error("❌ --threshold must be a positive number")
+    console.error("[FAIL] --threshold must be a positive number")
     process.exit(2)
   }
 }
@@ -100,7 +100,7 @@ function load(path, label) {
     const raw = readFileSync(path, "utf-8")
     return JSON.parse(raw)
   } catch (err) {
-    console.error(`❌ Error loading ${label} (${path}): ${err.message}`)
+    console.error(`[FAIL] Error loading ${label} (${path}): ${err.message}`)
     process.exit(2)
   }
 }
@@ -108,7 +108,7 @@ function load(path, label) {
 const baseline = load(baselinePath, "baseline")
 
 // ---------------------------------------------------------------------------
-// Soft loader — returns null on error instead of exiting (for watch mode)
+// Soft loader - returns null on error instead of exiting (for watch mode)
 // ---------------------------------------------------------------------------
 
 function safeLoad(path) {
@@ -121,22 +121,22 @@ function safeLoad(path) {
 }
 
 // ---------------------------------------------------------------------------
-// main comparison — extracted so it can be reused in watch mode
+// main comparison - extracted so it can be reused in watch mode
 // ---------------------------------------------------------------------------
 
 function runComparison() {
   const current = safeLoad(currentPath)
   if (!current) {
     if (watchMode) {
-      console.error(`  ⚠  Could not parse current file (still being written?)`)
+      console.error(`  [WARN]  Could not parse current file (still being written?)`)
       return 2
     }
-    console.error(`❌ Error loading current (${currentPath})`)
+    console.error(`[FAIL] Error loading current (${currentPath})`)
     process.exit(2)
   }
 
 // ---------------------------------------------------------------------------
-// Environment check — warn if platforms differ
+// Environment check - warn if platforms differ
 // ---------------------------------------------------------------------------
 
 if (baseline.meta && current.meta) {
@@ -144,7 +144,7 @@ if (baseline.meta && current.meta) {
       baseline.meta.nodeVersion !== current.meta.nodeVersion ||
       baseline.meta.arch !== current.meta.arch) {
     console.warn(
-      "⚠  Warning: baseline and current were run on different environments.\n" +
+      "[WARN]  Warning: baseline and current were run on different environments.\n" +
       `     Baseline: ${baseline.meta.platform} ${baseline.meta.arch} Node ${baseline.meta.nodeVersion}\n` +
       `     Current:  ${current.meta.platform} ${current.meta.arch} Node ${current.meta.nodeVersion}\n` +
       "     Comparison may be misleading due to CPU/OS differences.\n",
@@ -175,18 +175,18 @@ function pad(s, w) {
   return String(s ?? "").padStart(w)
 }
 
-// ── Header ────────────────────────────────────────────────────────────────
+// -- Header ----------------------------------------------------------------
 
 console.log("")
-console.log("╔══════════════════════════════════════════════════════════════════════╗")
-console.log("║          Severinno — Geo-Benchmark Comparison (diff)               ║")
-console.log("╚══════════════════════════════════════════════════════════════════════╝")
+console.log("+======================================================================+")
+console.log("|          Severinno - Geo-Benchmark Comparison (diff)               |")
+console.log("+======================================================================+")
 console.log("")
 
 console.log(`  Baseline:  ${baselinePath}`)
-console.log(`             ${baseline.meta?.timestamp ?? "?"}  ·  ${baseline.meta?.platform ?? "?"} ${baseline.meta?.arch ?? "?"}  Node ${baseline.meta?.nodeVersion ?? "?"}`)
+console.log(`             ${baseline.meta?.timestamp ?? "?"}  -  ${baseline.meta?.platform ?? "?"} ${baseline.meta?.arch ?? "?"}  Node ${baseline.meta?.nodeVersion ?? "?"}`)
 console.log(`  Current:   ${currentPath}`)
-console.log(`             ${current.meta?.timestamp ?? "?"}  ·  ${current.meta?.platform ?? "?"} ${current.meta?.arch ?? "?"}  Node ${current.meta?.nodeVersion ?? "?"}`)
+console.log(`             ${current.meta?.timestamp ?? "?"}  -  ${current.meta?.platform ?? "?"} ${current.meta?.arch ?? "?"}  Node ${current.meta?.nodeVersion ?? "?"}`)
 
 if (diff.meta.elapsedMs > 0) {
   const hours = Math.floor(diff.meta.elapsedMs / 3600000)
@@ -198,7 +198,7 @@ if (filterPrefix) {
 }
 console.log("")
 
-// ── Table ─────────────────────────────────────────────────────────────────
+// -- Table -----------------------------------------------------------------
 
 if (diff.benchmarks.length === 0) {
   const hint = filterPrefix
@@ -209,17 +209,17 @@ if (diff.benchmarks.length === 0) {
   return 0
 }
 
-console.log("  ┌──────────────────────┬──────────────────┬──────────────────┬──────────────────┬──────────────────┐")
-console.log("  │ Benchmark            │  Mean (µs)       │  Min (µs)        │  Max (µs)        │  ops/sec         │")
-console.log("  ├──────────────────────┼──────────────────┼──────────────────┼──────────────────┼──────────────────┤")
+console.log("  +----------------------+------------------+------------------+------------------+------------------+")
+console.log("  | Benchmark            |  Mean (us)       |  Min (us)        |  Max (us)        |  ops/sec         |")
+console.log("  +----------------------+------------------+------------------+------------------+------------------+")
 
 for (const b of diff.benchmarks) {
   if (b.status === "new") {
-    console.log(`  │ ${b.name.padEnd(20)} │ ${"new (no baseline)".padStart(34)} │`)
+    console.log(`  | ${b.name.padEnd(20)} | ${"new (no baseline)".padStart(34)} |`)
     continue
   }
   if (b.status === "removed") {
-    console.log(`  │ ${b.name.padEnd(20)} │ ${"removed (no current)".padStart(34)} │`)
+    console.log(`  | ${b.name.padEnd(20)} | ${"removed (no current)".padStart(34)} |`)
     continue
   }
 
@@ -228,64 +228,64 @@ for (const b of diff.benchmarks) {
   const maxStr  = `${b.max.current} ${arrow(b.max.pct)} ${b.max.pct.toFixed(1)}%`
   const opsStr  = `${b.opsPerSec.current} ${arrow(b.opsPerSec.pct)} ${b.opsPerSec.pct.toFixed(1)}%`
 
-  const marker = b.status === "regression" ? "⚠" : " "
+  const marker = b.status === "regression" ? "[WARN]" : " "
 
   console.log(
-    `  │${marker} ${b.name.padEnd(19)} │ ${pad(meanStr, 16)} │ ${pad(minStr, 16)} │ ${pad(maxStr, 16)} │ ${pad(opsStr, 16)} │`,
+    `  |${marker} ${b.name.padEnd(19)} | ${pad(meanStr, 16)} | ${pad(minStr, 16)} | ${pad(maxStr, 16)} | ${pad(opsStr, 16)} |`,
   )
 }
 
-console.log("  └──────────────────────┴──────────────────┴──────────────────┴──────────────────┴──────────────────┘")
+console.log("  +----------------------+------------------+------------------+------------------+------------------+")
 console.log("")
 
-// ── Analysis diff ─────────────────────────────────────────────────────────
+// -- Analysis diff ---------------------------------------------------------
 
 if (diff.analysis) {
-  console.log("  ─── Haversine unit cost ────────────────────────────────────────")
+  console.log("  --- Haversine unit cost ----------------------------------------")
   console.log("")
 
   const a = diff.analysis
-  console.log(`    @ 100:     ${a.haversineUnitCosts.at100.current} µs/provider  (${arrow(a.haversineUnitCosts.at100.pct)} ${a.haversineUnitCosts.at100.pct}%)`)
-  console.log(`    @ 1 000:   ${a.haversineUnitCosts.at1000.current} µs/provider  (${arrow(a.haversineUnitCosts.at1000.pct)} ${a.haversineUnitCosts.at1000.pct}%)`)
-  console.log(`    @ 10 000:  ${a.haversineUnitCosts.at10000.current} µs/provider  (${arrow(a.haversineUnitCosts.at10000.pct)} ${a.haversineUnitCosts.at10000.pct}%)`)
-  console.log(`    Average:   ${a.avgHaversinePerProvider.current} µs/provider  (${arrow(a.avgHaversinePerProvider.pct)} ${a.avgHaversinePerProvider.pct}%)`)
+  console.log(`    @ 100:     ${a.haversineUnitCosts.at100.current} us/provider  (${arrow(a.haversineUnitCosts.at100.pct)} ${a.haversineUnitCosts.at100.pct}%)`)
+  console.log(`    @ 1 000:   ${a.haversineUnitCosts.at1000.current} us/provider  (${arrow(a.haversineUnitCosts.at1000.pct)} ${a.haversineUnitCosts.at1000.pct}%)`)
+  console.log(`    @ 10 000:  ${a.haversineUnitCosts.at10000.current} us/provider  (${arrow(a.haversineUnitCosts.at10000.pct)} ${a.haversineUnitCosts.at10000.pct}%)`)
+  console.log(`    Average:   ${a.avgHaversinePerProvider.current} us/provider  (${arrow(a.avgHaversinePerProvider.pct)} ${a.avgHaversinePerProvider.pct}%)`)
   console.log("")
 }
 
-// ── Summary ────────────────────────────────────────────────────────────────
+// -- Summary ----------------------------------------------------------------
 
 const total = diff.benchmarks.length
 const regressions = diff.regressions.length
 const changes = diff.benchmarks.filter((b) => b.status === "changed").length
 const unchanged = diff.benchmarks.filter((b) => b.status === "unchanged").length
 
-console.log("  ─── Summary ───────────────────────────────────────────────────")
+console.log("  --- Summary ---------------------------------------------------")
 console.log(`    Total benchmarks:  ${total}`)
-console.log(`    Regressions (ø):   ${regressions}`)
+console.log(`    Regressions (o):   ${regressions}`)
 console.log(`    Changed:           ${changes}`)
 console.log(`    Unchanged:         ${unchanged}`)
 console.log("")
 
 if (regressions > 0) {
-  console.log(`  ⚠  ${regressions} benchmark(s) regressed >${threshold} %:`)
+  console.log(`  [WARN]  ${regressions} benchmark(s) regressed >${threshold} %:`)
   for (const r of diff.regressions) {
-    console.log(`       · ${r.name}  —  mean ${r.mean.baseline} → ${r.mean.current} µs  (${r.mean.pct}%)`)
+    console.log(`       - ${r.name}  -  mean ${r.mean.baseline} -> ${r.mean.current} us  (${r.mean.pct}%)`)
   }
   console.log("")
   return 1
 } else {
-  console.log(`  ✅ All benchmarks within threshold (${threshold}%).  No regressions detected.`)
+  console.log(`  [OK] All benchmarks within threshold (${threshold}%).  No regressions detected.`)
   console.log("")
   return 0
 }
 }
 
-// ═════════════════════════════════════════════════════════════════════
+// =====================================================================
 // Dispatch: single run or --watch loop
-// ═════════════════════════════════════════════════════════════════════
+// =====================================================================
 
 if (watchMode) {
-  console.log(`  👁  Watching ${currentPath} for changes… (Ctrl+C to stop)`)
+  console.log(`    Watching ${currentPath} for changes... (Ctrl+C to stop)`)
   console.log("")
 
   // Run once immediately
@@ -312,19 +312,19 @@ if (watchMode) {
           try {
             execSync(onChangeCommand, { stdio: "ignore", timeout: 5000 })
           } catch (hookErr) {
-            console.error(`  ⚠  --on-change command failed: ${hookErr.message}`)
+            console.error(`  [WARN]  --on-change command failed: ${hookErr.message}`)
           }
         }
 
         if (code === 1) {
-          console.log(`  ⚠  Regression detected.`)
+          console.log(`  [WARN]  Regression detected.`)
           console.log("")
         }
       } catch (err) {
-        console.error(`  ⚠  Error re-comparing: ${err.message}`)
+        console.error(`  [WARN]  Error re-comparing: ${err.message}`)
       }
 
-      console.log(`  👁  Watching ${currentPath} for changes… (Ctrl+C to stop)`)
+      console.log(`    Watching ${currentPath} for changes... (Ctrl+C to stop)`)
       console.log("")
       pending = false
     }, 200)
@@ -333,7 +333,7 @@ if (watchMode) {
   // Keep the process alive
   process.on("SIGINT", () => {
     console.log("")
-    console.log("  👋 Watch mode stopped.")
+    console.log("   Watch mode stopped.")
     process.exit(0)
   })
 } else {

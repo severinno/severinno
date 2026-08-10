@@ -8,10 +8,10 @@
  * under scripts/ has minimum header documentation (Usage + Exit code).
  *
  * Barrels currently enforced:
- *   @/lib/geo-server     —  re-exports from distance-fallback, geo-shared
- *   @/lib/sql            —  re-exports from sql-builder, sql-booking-builder,
+ *   @/lib/geo-server     -  re-exports from distance-fallback, geo-shared
+ *   @/lib/sql            -  re-exports from sql-builder, sql-booking-builder,
  *                            sql-service-builder
- *   @/lib/__tests__      —  re-exports from fuzz-utils, helpers/api-test-utils,
+ *   @/lib/__tests__      -  re-exports from fuzz-utils, helpers/api-test-utils,
  *                            helpers/cache-test-utils
  *
  * Violations flagged:
@@ -38,10 +38,10 @@
  *   npm run barrel-lint
  *
  * Exit codes:
- *   0 — all clean
- *   1 — barrel import violations found
- *   2 — unexpected error
- *   3 — script header documentation violations found
+ *   0 - all clean
+ *   1 - barrel import violations found
+ *   2 - unexpected error
+ *   3 - script header documentation violations found
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs"
@@ -57,14 +57,14 @@ const SRC = join(ROOT, "src")
 
 /** Modules that should be imported only through the barrel. */
 const FORBIDDEN_IMPORTS = [
-  // Geo — barrel @/lib/geo-server
+  // Geo - barrel @/lib/geo-server
   "@/lib/distance-fallback",
   "@/lib/geo-shared",
-  // SQL — barrel @/lib/sql
+  // SQL - barrel @/lib/sql
   "@/lib/sql-builder",
   "@/lib/sql-booking-builder",
   "@/lib/sql-service-builder",
-  // Test helpers — barrel @/lib/__tests__
+  // Test helpers - barrel @/lib/__tests__
   "@/lib/__tests__/fuzz-utils",
   "@/lib/__tests__/helpers/api-test-utils",
   "@/lib/__tests__/helpers/cache-test-utils",
@@ -74,7 +74,7 @@ const FORBIDDEN_IMPORTS = [
  * Patterns for files/directories to exclude.
  *
  * Implementation modules are excluded because they are the source of the
- * re-exported symbols — they cannot import from the barrel that re-exports
+ * re-exported symbols - they cannot import from the barrel that re-exports
  * them (that would be a circular dependency).
  *
  * Test files (.test.ts, .spec.ts) are excluded because they often need to
@@ -83,14 +83,14 @@ const FORBIDDEN_IMPORTS = [
 const EXCLUDE_PATTERNS = [
   ".test.ts",
   ".spec.ts",
-  // Geo — implementation modules (circular if they import from the barrel)
+  // Geo - implementation modules (circular if they import from the barrel)
   "src/lib/distance-fallback.ts",
   "src/lib/geo-shared.ts",
-  // SQL — implementation modules
+  // SQL - implementation modules
   "src/lib/sql-builder.ts",
   "src/lib/sql-booking-builder.ts",
   "src/lib/sql-service-builder.ts",
-  // Test helpers — implementation modules (circular if they import from the barrel)
+  // Test helpers - implementation modules (circular if they import from the barrel)
   "src/lib/__tests__/fuzz-utils.ts",
   "src/lib/__tests__/helpers/api-test-utils.ts",
   "src/lib/__tests__/helpers/cache-test-utils.ts",
@@ -191,7 +191,7 @@ function main() {
   try {
     const srcStat = statSync(SRC)
     if (!srcStat.isDirectory()) {
-      console.error(`❌ Source directory not found: ${SRC}`)
+      console.error(`[FAIL] Source directory not found: ${SRC}`)
       process.exit(2)
     }
 
@@ -216,24 +216,24 @@ function main() {
       }
     }
 
-    // ── Report barrel violations ────────────────────────────────────────
+    // -- Report barrel violations ----------------------------------------
     if (violations.length > 0) {
       console.log("")
-      console.log("╔══════════════════════════════════════════════════════════════════════╗")
-      console.log("║              Barrel Lint — Direct Import Violations                ║")
-      console.log("╚══════════════════════════════════════════════════════════════════════╝")
+      console.log("+======================================================================+")
+      console.log("|              Barrel Lint - Direct Import Violations                |")
+      console.log("+======================================================================+")
       console.log("")
       console.log(`  The following files import directly from modules that should be`)
       console.log(`  accessed through a barrel (@/lib/geo-server or @/lib/sql):`)
       console.log("")
 
       for (const v of violations) {
-        console.log(`  ❌ ${v.file}:${v.line}`)
-        console.log(`     → ${v.text}`)
+        console.log(`  [FAIL] ${v.file}:${v.line}`)
+        console.log(`     -> ${v.text}`)
         console.log("")
       }
 
-      console.log(`  ─── ${violations.length} violation(s) found ───`)
+      console.log(`  --- ${violations.length} violation(s) found ---`)
       console.log("")
       console.log("  Fix: replace imports with the appropriate barrel:")
       console.log('    import { ... } from "@/lib/geo-server"')
@@ -241,9 +241,9 @@ function main() {
       console.log('    import { ... } from "@/lib/__tests__"')
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Check 2 — Script header documentation
-    // ═════════════════════════════════════════════════════════════════════
+    // =====================================================================
+    // Check 2 - Script header documentation
+    // =====================================================================
 
     const scriptsDir = join(ROOT, "scripts")
     const scriptEntries = readdirSync(scriptsDir, { withFileTypes: true })
@@ -261,30 +261,30 @@ function main() {
       }
     }
 
-    // ── Report header violations ────────────────────────────────────────
+    // -- Report header violations ----------------------------------------
     if (headerViolations.length > 0) {
       console.log("")
-      console.log("╔══════════════════════════════════════════════════════════════════════╗")
-      console.log("║         Script Header — Missing Documentation Violations           ║")
-      console.log("╚══════════════════════════════════════════════════════════════════════╝")
+      console.log("+======================================================================+")
+      console.log("|         Script Header - Missing Documentation Violations           |")
+      console.log("+======================================================================+")
       console.log("")
       console.log(`  These scripts are missing a header comment with both "Usage:"`)
       console.log(`  and "Exit code:" documentation:`)
       console.log("")
 
       for (const name of headerViolations) {
-        console.log(`  ❌ scripts/${name}`)
+        console.log(`  [FAIL] scripts/${name}`)
       }
 
       console.log("")
-      console.log(`  ─── ${headerViolations.length} violation(s) found ───`)
+      console.log(`  --- ${headerViolations.length} violation(s) found ---`)
       console.log("")
       console.log("  Fix: add a JSDoc/comment block at the top with at least:")
       console.log('    // Usage:\n    //   node scripts/<name>')
-      console.log('    //\n    // Exit codes:\n    //   0 — success\n    //   1 — failure')
+      console.log('    //\n    // Exit codes:\n    //   0 - success\n    //   1 - failure')
     }
 
-    // ── Final exit code ─────────────────────────────────────────────────
+    // -- Final exit code -------------------------------------------------
     if (violations.length > 0) {
       process.exit(1)
     }
@@ -292,15 +292,15 @@ function main() {
       process.exit(3)
     }
 
-    console.log("✅ Barrel lint passed — no violations.")
+    console.log("[OK] Barrel lint passed - no violations.")
     process.exit(0)
   } catch (err) {
-    console.error("❌ barrel-lint error:", err.message)
+    console.error("[FAIL] barrel-lint error:", err.message)
     process.exit(2)
   }
 }
 
-// Entry-point guard — unit tests import the pure helpers (hasMinimalHeader,
+// Entry-point guard - unit tests import the pure helpers (hasMinimalHeader,
 // hasViolation) without running the lint scan (same pattern as
 // scripts/pre-commit-tests.mjs).
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

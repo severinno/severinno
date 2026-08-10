@@ -1,4 +1,7 @@
 // @ts-nocheck
+// manifest-target: over-include: src/lib/__tests__/fuzz-utils.ts - a suite
+//   importa o .mjs diretamente (../fuzz-utils.mjs) e o .ts indiretamente via
+//   barrel @/lib/__tests__; tocar no .ts dispara TODAS via shared-helper.
 /**
  * fuzz-utils-consistency.test.ts
  *

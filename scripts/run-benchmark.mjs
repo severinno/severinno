@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * run-benchmark.mjs — unified benchmark runner
+ * run-benchmark.mjs - unified benchmark runner
  *
  * Dispatches to the appropriate benchmark script based on --type.
  * Each type saves to docs/benchmarks/<type>-latest.json and has its
@@ -24,9 +24,9 @@
  *   --all          Run all registered benchmark types
  *
  * Exit codes:
- *   0 — success
- *   1 — benchmark or comparison failed
- *   2 — unknown type or missing --type
+ *   0 - success
+ *   1 - benchmark or comparison failed
+ *   2 - unknown type or missing --type
  */
 
 import { execSync } from "node:child_process"
@@ -96,7 +96,7 @@ if (allFlag) {
 
 // --type geo|cache|all is required
 if (!type) {
-  console.error("❌ Usage: node scripts/run-benchmark.mjs --type geo|cache|all [--json] [--baseline] [--save] [--compare]")
+  console.error("[FAIL] Usage: node scripts/run-benchmark.mjs --type geo|cache|all [--json] [--baseline] [--save] [--compare]")
   console.error(`   Available types: ${BENCHMARK_TYPES.join(", ")}`)
   process.exit(2)
 }
@@ -114,13 +114,13 @@ function benchmarkPath(type, file) {
 function runSingle(type) {
   const cfg = BENCHMARKS[type]
   if (!cfg) {
-    console.error(`❌ Unknown benchmark type "${type}". Available: ${BENCHMARK_TYPES.join(", ")}`)
+    console.error(`[FAIL] Unknown benchmark type "${type}". Available: ${BENCHMARK_TYPES.join(", ")}`)
     process.exit(2)
   }
 
   const scriptPath = join(SCRIPTS_DIR, cfg.script)
   if (!existsSync(scriptPath)) {
-    console.error(`❌ Benchmark script not found: ${scriptPath}`)
+    console.error(`[FAIL] Benchmark script not found: ${scriptPath}`)
     process.exit(2)
   }
 
@@ -146,7 +146,7 @@ function runSingle(type) {
   }
 
   // Run the benchmark
-  console.log(`\n  ─── ${cfg.label} Benchmark ───────────────────────────────────\n`)
+  console.log(`\n  --- ${cfg.label} Benchmark -----------------------------------\n`)
   execSync(cmd, { stdio: "inherit" })
 
   // If --compare, run comparison against baseline
@@ -155,15 +155,15 @@ function runSingle(type) {
     const latestPath = benchmarkPath(type, cfg.latest)
 
     if (!existsSync(baselinePath)) {
-      console.log(`  ⚠  No baseline found at ${baselinePath} — skipping comparison.`)
+      console.log(`  [WARN]  No baseline found at ${baselinePath} - skipping comparison.`)
       return 0
     }
     if (!existsSync(latestPath)) {
-      console.log(`  ⚠  No latest results at ${latestPath} — skipping comparison.`)
+      console.log(`  [WARN]  No latest results at ${latestPath} - skipping comparison.`)
       return 0
     }
 
-    console.log(`\n  ─── Comparing ${type} against baseline ─────────────────────\n`)
+    console.log(`\n  --- Comparing ${type} against baseline ---------------------\n`)
 
     let compareCmd = `node "${join(SCRIPTS_DIR, "compare-benchmarks.mjs")}"`
     if (cfg.compareFilter) {
@@ -175,7 +175,7 @@ function runSingle(type) {
       execSync(compareCmd, { stdio: "inherit" })
       return 0
     } catch {
-      console.log(`\n  ⚠  Comparison failed — regression detected in ${type} benchmarks.`)
+      console.log(`\n  [WARN]  Comparison failed - regression detected in ${type} benchmarks.`)
       return 1
     }
   }

@@ -11,21 +11,21 @@
  * in isolation.
  *
  * Model parameters (conservative, local PG 16, warm buffer cache):
- *   ┌──────────────────────────┬──────────────────┬─────────────────────────┐
- *   │ Component                │ Latency          │ Source                  │
- *   ├──────────────────────────┼──────────────────┼─────────────────────────┤
- *   │ TCP round-trip           │       200 µs     │ loopback TCP ping       │
- *   │ Query parse / plan       │     1 800 µs     │ PG EXPLAIN ANALYZE      │
- *   │ GiST index scan          │ O(log N) µs      │ included below          │
- *   │ ST_Distance math         │   2 µs / row     │ PostGIS manual §8.12    │
- *   │ Serialise + transfer     │  20 µs / row     │ pgbench -f st_distance  │
- *   │ Haversine JS (1 call)    │   0.3 µs / call  │ measured via benchmark  │
- *   │ Haversine JS (10000)     │  ~500 µs / call  │ measured via benchmark  │
- *   ├──────────────────────────┼──────────────────┼─────────────────────────┤
- *   │ PostGIS combined (N,s)   │ 2000 + 22×N×s µs │ ST_DWithin + ST_Dist    │
- *   │ Haversine full-scan (N)  │  520 + 0.3×N µs  │ fetch all + filter +   │
- *   │                          │                  │ compute distances       │
- *   └──────────────────────────┴──────────────────┴─────────────────────────┘
+ *   +--------------------------+------------------+-------------------------+
+ *   | Component                | Latency          | Source                  |
+ *   +--------------------------+------------------+-------------------------+
+ *   | TCP round-trip           |       200 us     | loopback TCP ping       |
+ *   | Query parse / plan       |     1 800 us     | PG EXPLAIN ANALYZE      |
+ *   | GiST index scan          | O(log N) us      | included below          |
+ *   | ST_Distance math         |   2 us / row     | PostGIS manual sec 8.12    |
+ *   | Serialise + transfer     |  20 us / row     | pgbench -f st_distance  |
+ *   | Haversine JS (1 call)    |   0.3 us / call  | measured via benchmark  |
+ *   | Haversine JS (10000)     |  ~500 us / call  | measured via benchmark  |
+ *   +--------------------------+------------------+-------------------------+
+ *   | PostGIS combined (N,s)   | 2000 + 22xNxs us | ST_DWithin + ST_Dist    |
+ *   | Haversine full-scan (N)  |  520 + 0.3xN us  | fetch all + filter +   |
+ *   |                          |                  | compute distances       |
+ *   +--------------------------+------------------+-------------------------+
  *
  * Usage:
  *   node scripts/geo-pipeline-benchmark.mjs
@@ -97,15 +97,15 @@ const ITERS_PER_MS = calibrateBusyLoop()
  */
 function simulatedPostgisPipeline(totalProviders, filteredCount) {
   // Model parameters:
-  //   Fixed:     2000 µs  (TCP + parse/plan + GiST traversal)
-  //   Per row:      2 µs  (ST_Distance math for filtered rows only)
-  //   Serialize:   20 µs  (pg wire protocol, per filtered row)
+  //   Fixed:     2000 us  (TCP + parse/plan + GiST traversal)
+  //   Per row:      2 us  (ST_Distance math for filtered rows only)
+  //   Serialize:   20 us  (pg wire protocol, per filtered row)
   //
   // GiST index cost is O(log totalProviders) but negligible vs fixed overhead
-  // for our scale (500–10 000).  The index scan itself is ~0.5 µs per
+  // for our scale (500-10 000).  The index scan itself is ~0.5 us per
   // examined row, but only log(N) entries are visited.
   const fixedCost = 2   // ms
-  const perRowCost = 0.022  // ms (22 µs per filtered row)
+  const perRowCost = 0.022  // ms (22 us per filtered row)
   busyWait(fixedCost + perRowCost * filteredCount)
 }  /**
    * Simulated Haversine JS pipeline: fetch all, compute distances in JS.
@@ -120,7 +120,7 @@ function simulatedPostgisPipeline(totalProviders, filteredCount) {
    * @param {Array<{lat:number,lng:number}>} providers - Provider data
    */
   function simulatedHaversinePipeline(providers) {
-    // Fetch all: ~20 µs × N  (wire serialisation, CPU-modelled)
+    // Fetch all: ~20 us x N  (wire serialisation, CPU-modelled)
     // Haversine for ALL providers: real computation via haversineAll()
     const fetchCost = 0.020 * providers.length  // ms (transfer)
     busyWait(fetchCost)
@@ -138,27 +138,27 @@ function simulatedPostgisPipeline(totalProviders, filteredCount) {
  * selectivity = filteredCount / totalProviders
  *
  * For a uniform random distribution within a 100 km circle around center,
- * selectivity ≈ (radius / 100)²  (area ratio of two circles).
+ * selectivity ~ (radius / 100)^2  (area ratio of two circles).
  *
  * Scenarios:
- *   N=500,   radius=5km   →  ~0.25%  (very tight, dense metro area)
- *   N=500,   radius=10km  →  ~1%
- *   N=2000,  radius=10km  →  ~1%    (same selectivity, more providers)
- *   N=500,   radius=25km  →  ~6.25%
- *   N=2000,  radius=25km  →  ~6.25%
- *   N=10000, radius=10km  →  ~1%    (large city-wide search)
- *   N=10000, radius=50km  →  ~25%
- *   N=10000, radius=100km →  ~100%  (entire dataset)
+ *   N=500,   radius=5km   ->  ~0.25%  (very tight, dense metro area)
+ *   N=500,   radius=10km  ->  ~1%
+ *   N=2000,  radius=10km  ->  ~1%    (same selectivity, more providers)
+ *   N=500,   radius=25km  ->  ~6.25%
+ *   N=2000,  radius=25km  ->  ~6.25%
+ *   N=10000, radius=10km  ->  ~1%    (large city-wide search)
+ *   N=10000, radius=50km  ->  ~25%
+ *   N=10000, radius=100km ->  ~100%  (entire dataset)
  */
 const SCENARIOS = [
-  { name: "500 ×   5 km",  label: "pipeline_500_5km",  N: 500,  radius: 5   },
-  { name: "500 ×  10 km",  label: "pipeline_500_10km", N: 500,  radius: 10  },
-  { name: "500 ×  25 km",  label: "pipeline_500_25km", N: 500,  radius: 25  },
-  { name: "2000 × 10 km",  label: "pipeline_2000_10km",N: 2000, radius: 10  },
-  { name: "2000 × 25 km",  label: "pipeline_2000_25km",N: 2000, radius: 25  },
-  { name: "10000× 10 km",  label: "pipeline_10000_10km",N: 10000,radius: 10 },
-  { name: "10000× 50 km",  label: "pipeline_10000_50km",N: 10000,radius: 50 },
-  { name: "10000×100 km",  label: "pipeline_10000_100km",N: 10000,radius: 100},
+  { name: "500 x   5 km",  label: "pipeline_500_5km",  N: 500,  radius: 5   },
+  { name: "500 x  10 km",  label: "pipeline_500_10km", N: 500,  radius: 10  },
+  { name: "500 x  25 km",  label: "pipeline_500_25km", N: 500,  radius: 25  },
+  { name: "2000 x 10 km",  label: "pipeline_2000_10km",N: 2000, radius: 10  },
+  { name: "2000 x 25 km",  label: "pipeline_2000_25km",N: 2000, radius: 25  },
+  { name: "10000x 10 km",  label: "pipeline_10000_10km",N: 10000,radius: 10 },
+  { name: "10000x 50 km",  label: "pipeline_10000_50km",N: 10000,radius: 50 },
+  { name: "10000x100 km",  label: "pipeline_10000_100km",N: 10000,radius: 100},
 ]
 
 /** Estimate selectivity: fraction of uniform points within `radius` km of center. */
@@ -232,7 +232,7 @@ function runAll() {
   return {
     meta: {
       center: CENTER,
-      centerLabel: "São Paulo",
+      centerLabel: "Sao Paulo",
       spreadKm: 100,
       cpuItersPerMs: Math.round(ITERS_PER_MS),
       platform: process.platform,
@@ -262,49 +262,49 @@ function pad(s, w) {
 }
 
 console.log("")
-console.log("╔══════════════════════════════════════════════════════════════════════╗")
-console.log("║     Severinno — Geo-Pipeline Benchmark (PostGIS vs Haversine JS)    ║")
-console.log("╚══════════════════════════════════════════════════════════════════════╝")
+console.log("+======================================================================+")
+console.log("|     Severinno - Geo-Pipeline Benchmark (PostGIS vs Haversine JS)    |")
+console.log("+======================================================================+")
 console.log("")
-console.log("  Center:   %s, %s  (São Paulo, spread 100 km)", CENTER.lat, CENTER.lng)
+console.log("  Center:   %s, %s  (Sao Paulo, spread 100 km)", CENTER.lat, CENTER.lng)
 console.log("  CPU:      %s iters/ms  (calibrated busy-loop)", ITERS_PER_MS.toFixed(0).padStart(5))
 console.log("  Platform: %s %s  Node %s", process.platform, process.arch, process.version)
 console.log("")
 
-console.log("  ┌─────────────────────┬─────────┬──────────┬─────────────┬─────────────┬─────────┬────────┐")
-console.log("  │ Scenario            │  Total  │ Filtered │ PostGIS     │ Haversine   │ Winner  │ Speedup│")
-console.log("  ├─────────────────────┼─────────┼──────────┼─────────────┼─────────────┼─────────┼────────┤")
+console.log("  +---------------------+---------+----------+-------------+-------------+---------+--------+")
+console.log("  | Scenario            |  Total  | Filtered | PostGIS     | Haversine   | Winner  | Speedup|")
+console.log("  +---------------------+---------+----------+-------------+-------------+---------+--------+")
 
 for (const r of results.scenarios) {
   const pgMean = r.postgis.mean
   const hvMean = r.haversine.mean
-  const pgStr = pgMean >= 1000 ? `${(pgMean / 1000).toFixed(1)} ms` : `${Math.round(pgMean)} µs`
-  const hvStr = hvMean >= 1000 ? `${(hvMean / 1000).toFixed(1)} ms` : `${Math.round(hvMean)} µs`
-  const winner = r.winner === "PostGIS" ? "🗄 PostGIS" : "⚡ Haversine"
-  const speedup = `${r.speedup}×`
+  const pgStr = pgMean >= 1000 ? `${(pgMean / 1000).toFixed(1)} ms` : `${Math.round(pgMean)} us`
+  const hvStr = hvMean >= 1000 ? `${(hvMean / 1000).toFixed(1)} ms` : `${Math.round(hvMean)} us`
+  const winner = r.winner === "PostGIS" ? " PostGIS" : " Haversine"
+  const speedup = `${r.speedup}x`
 
   console.log(
-    `  │ ${r.scenario.name.padEnd(19)} │ ${pad(r.scenario.N, 7)} │ ${pad(r.filteredCount, 8)} │ ${pad(pgStr, 11)} │ ${pad(hvStr, 11)} │ ${winner.padEnd(7)} │ ${pad(speedup, 6)} │`,
+    `  | ${r.scenario.name.padEnd(19)} | ${pad(r.scenario.N, 7)} | ${pad(r.filteredCount, 8)} | ${pad(pgStr, 11)} | ${pad(hvStr, 11)} | ${winner.padEnd(7)} | ${pad(speedup, 6)} |`,
   )
 }
 
-console.log("  └─────────────────────┴─────────┴──────────┴─────────────┴─────────────┴─────────┴────────┘")
+console.log("  +---------------------+---------+----------+-------------+-------------+---------+--------+")
 console.log("")
-console.log("  [model] PostGIS = 2000 µs fixed + 22 µs/filtered-row. Haversine = 20 µs/total-row + 0.3 µs/total (filter) + 0.3 µs/filtered-row (result).")
+console.log("  [model] PostGIS = 2000 us fixed + 22 us/filtered-row. Haversine = 20 us/total-row + 0.3 us/total (filter) + 0.3 us/filtered-row (result).")
 console.log("")
 
 // ---------------------------------------------------------------------------
 // Crossover analysis
 // ---------------------------------------------------------------------------
 
-console.log("╔══════════════════════════════════════════════════════════════════════╗")
-console.log("║                    Pipeline Crossover Analysis                       ║")
-console.log("╚══════════════════════════════════════════════════════════════════════╝")
+console.log("+======================================================================+")
+console.log("|                    Pipeline Crossover Analysis                       |")
+console.log("+======================================================================+")
 console.log("")
 
-console.log("  T_postgis(N, s)  =  2000 + 22 × N × s   µs")
-console.log("  T_haversine(N, s)=  20 × N  +  0.3 × N  +  0.3 × N × s   µs")
-console.log("                    =  20.3 × N  +  0.3 × N × s   µs")
+console.log("  T_postgis(N, s)  =  2000 + 22 x N x s   us")
+console.log("  T_haversine(N, s)=  20 x N  +  0.3 x N  +  0.3 x N x s   us")
+console.log("                    =  20.3 x N  +  0.3 x N x s   us")
 console.log("")
 console.log("  where s = selectivity = filteredCount / totalProviders")
 console.log("")
@@ -315,9 +315,9 @@ console.log("")
 // 2000 = 20.3N - 21.7Ns
 // 2000 = N(20.3 - 21.7s)
 // N = 2000 / (20.3 - 21.7s)
-// For s=0.04 (5km):  N = 2000 / (20.3 - 21.7*0.04) = 2000 / 19.432 ≈ 103
-// For s=0.18 (10km): N = 2000 / (20.3 - 21.7*0.18) = 2000 / 16.394 ≈ 122
-// For s=0.50 (50km): N = 2000 / (20.3 - 21.7*0.50) = 2000 / 9.45 ≈ 212
+// For s=0.04 (5km):  N = 2000 / (20.3 - 21.7*0.04) = 2000 / 19.432 ~ 103
+// For s=0.18 (10km): N = 2000 / (20.3 - 21.7*0.18) = 2000 / 16.394 ~ 122
+// For s=0.50 (50km): N = 2000 / (20.3 - 21.7*0.50) = 2000 / 9.45 ~ 212
 
 console.log("  Crossover N (PostGIS wins above this threshold):")
 console.log("")
@@ -334,7 +334,7 @@ for (const cc of crossoverCases) {
   const denom = 20.3 - 21.7 * cc.s
   const crossoverN = denom > 0 ? Math.ceil(2000 / denom) : Infinity
   const crossoverStr = crossoverN === Infinity ? "Never" : `${crossoverN} providers`
-  console.log(`  ${cc.radius}  (s=${cc.s.toFixed(2)})  →  PostGIS wins with ≥ ${crossoverStr.padEnd(16)}  ${cc.label}`)
+  console.log(`  ${cc.radius}  (s=${cc.s.toFixed(2)})  ->  PostGIS wins with >= ${crossoverStr.padEnd(16)}  ${cc.label}`)
 }
 
 console.log("")
@@ -348,14 +348,14 @@ for (const r of results.scenarios) {
   if (savings > maxSavings) maxSavings = savings
 }
 
-console.log("  ─── Summary ────────────────────────────────────────────────")
+console.log("  --- Summary ------------------------------------------------")
 console.log("")
 console.log(`  PostGIS wins:  ${results.scenarios.filter(r => r.winner === "PostGIS").length}/${results.scenarios.length} scenarios`)
 console.log(`  Haversine wins: ${results.scenarios.filter(r => r.winner === "Haversine").length}/${results.scenarios.length} scenarios`)
-console.log(`  Max speedup:    ${Math.max(...results.scenarios.map(r => r.speedup)).toFixed(2)}×`)
+console.log(`  Max speedup:    ${Math.max(...results.scenarios.map(r => r.speedup)).toFixed(2)}x`)
 console.log("")
 console.log("  PostGIS is the clear winner for most real-world scenarios")
-console.log("  because the fixed overhead (~2000 µs) is amortized across all")
+console.log("  because the fixed overhead (~2000 us) is amortized across all")
 console.log("  filtered rows, and the GiST index avoids scanning irrelevant")
 console.log("  rows entirely.  Haversine only wins when selectivity is very")
 console.log("  high (>95%, e.g. 100 km radius covering the entire dataset)")
@@ -370,6 +370,6 @@ console.log("")
 if (jsonFlag) {
   mkdirSync(dirname(jsonFile), { recursive: true })
   writeFileSync(jsonFile, JSON.stringify(results, null, 2), "utf-8")
-  console.log(`  📁 Results saved to ${jsonFile}`)
+  console.log(`   Results saved to ${jsonFile}`)
   console.log("")
 }

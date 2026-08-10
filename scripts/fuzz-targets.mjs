@@ -38,10 +38,14 @@
  *     caminhos exatos; exit 0 = cobertura completa). Env override
  *     FUZZ_TARGETS_SCAN_ROOT aponta para um repo sintetico (testes
  *     hermeticos / provas), espelhando o PUSH_SUITE_SCAN_ROOT.
+ *   node scripts/fuzz-targets.mjs --verify-imports # falha se um alvo do
+ *     manifest nao e importado diretamente pela suite (exit 1 com o caminho
+ *     exato; exit 0 = todos os alvos tem import na suite). Suporta excecoes
+ *     inline via `// manifest-target: over-include: <razao>` no suite.
  *
  * Saida ASCII pura (gate file). Puro node, sem deps, <50ms.
  */
-import { readdirSync } from "node:fs"
+import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
@@ -155,11 +159,90 @@ export function missingManifestSuites(root = REPO_ROOT) {
   return discoverFuzzSuites(root).filter((s) => !manifestSet.has(s))
 }
 
+/**
+ * Extrai os import specifiers (static from + dynamic import()) de um arquivo
+ * de suite. Relativo ao dir do suite, resolvido contra o root. Retorna
+ * array de caminhos POSIX relativos ao root (sem extensao, normalizados).
+ */
+function extractImportTargets(suiteFile, rootP, src) {
+  const root = rootP
+  // src may be passed from the caller to avoid a redundant readFileSync;
+  // if absent (standalone call), read the file ourselves.
+  if (!src) src = readFileSync(suiteFile, "utf8")
+  const suiteDir = path.dirname(suiteFile)
+  const specs = new Set()
+  const re = /from\s+["'`]([^"'`]+)["'`]|import\(\s*["'`]([^"'`]+)["'`]\s*\)/g
+  let m
+  while ((m = re.exec(src)) !== null) {
+    const spec = m[1] ?? m[2]
+    if (!spec.startsWith(".")) continue // so relative imports
+    const resolved = path.resolve(suiteDir, spec)
+    const rel = path.relative(root, resolved).replace(/\\/g, "/")
+    specs.add(rel)
+  }
+  return [...specs]
+}
+
+/**
+ * Verifica se cada alvo do manifest e diretamente importado pela suite.
+ * Retorna array de violacoes (vazio = clean).
+ *
+ * Um alvo pode ser sobre-inclusao intencional (ex.: a suite de consistency
+ * testa o .mjs e o .ts, mas importa so o .mjs diretamente - o .ts e
+ * importado por outras suites e a aresta shared-helper garante que tocar
+ * no .ts dispara TODAS). Neste caso, anote o alvo com um comentario
+ * inline no suite: `// manifest-target: over-include: <razao>`.
+ */
+export function verifyTargetImports(root = REPO_ROOT) {
+  const violations = []
+  for (const entry of FUZZ_TARGETS) {
+    const suitePath = path.join(root, entry.suite)
+    let src
+    try {
+      src = readFileSync(suitePath, "utf8")
+    } catch {
+      violations.push(`IMPORT-VIOLATION: ${entry.suite} -> arquivo de suite nao encontrado em ${suitePath}`)
+      continue
+    }
+
+    for (const target of entry.targets) {
+      // Check for inline exception comment: // manifest-target: over-include:
+      const esc = target.replace(/[/\\^$*+?.()|[\]{}]/g, "\\$&")
+      const excRe = new RegExp(`//\\s*manifest-target:\\s+over-include:.*\\b${esc}\\b`, "i")
+      if (excRe.test(src)) continue
+
+      // Normalize: strip extension for comparison
+      const targetNoExt = target.replace(/\.[jt]sx?$/i, "")
+
+      // Extract all imports from the suite, reusing the already-read src
+      const imported = extractImportTargets(suitePath, root, src)
+      const match = imported.some((imp) => imp === targetNoExt || imp === target)
+      if (!match) {
+        violations.push(
+          `IMPORT-VIOLATION: ${entry.suite} -> ${target} (nenhum import relativo da suite aponta para este alvo. Se e sobre-inclusao intencional, adicione "// manifest-target: over-include: <razao>" no suite)`,
+        )
+      }
+    }
+  }
+  return violations
+}
+
 function main() {
   const args = process.argv.slice(2)
   const root = process.env.FUZZ_TARGETS_SCAN_ROOT
     ? path.resolve(process.env.FUZZ_TARGETS_SCAN_ROOT)
     : REPO_ROOT
+
+  if (args.includes("--verify-imports")) {
+    const violations = verifyTargetImports(root)
+    if (violations.length === 0) {
+      const n = FUZZ_TARGETS.length
+      console.log(`fuzz-targets: imports clean (${n} suites, todos os alvos sao importados pelas suites)`)
+      return 0
+    }
+    for (const v of violations) console.log(v)
+    return 1
+  }
 
   if (args.includes("--check-coverage")) {
     const missing = missingManifestSuites(root)

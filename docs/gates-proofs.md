@@ -307,11 +307,11 @@ Test Files  2 passed (2)
 | setup-bun | 2s | sempre roda |
 | Cache node_modules (restore) | 11s | sempre roda |
 | **Install deps** | 9s | `bun install --frozen-lockfile` |
-| **Run guard vitest suites** | **4s** | o par em si (66 testes) |
+| **Run guard vitest suites** | **4s** | `bun run test:guard` (66 testes no snapshot 2026-08-09; cresceu para 8 suites / 148 testes em 2026-08-10 com lint-staged-loader + fuzz-mapped + run-all-fuzz + scan-hook-parallel-race + scan-guard-gates) |
 | Post Cache (upload) | 10s | sempre roda |
 | **Total job** | **~41s** | (45s com fila/overhead) |
 
-O custo REAL do par de suítes é **4s de CI** — o restante do job (~37s)
+O custo REAL das suítes é **4s de CI** (snapshot 2026-08-09, 2 suítes) — o restante do job (~37s)
 é setup fixo (checkout + bun + cache + install + upload) que um filtro
 `paths:` não reduziria: um filtro só **skipa o job inteiro**, nunca deixa
 um job que roda mais barato. **Nota de precisão**: o run medido
@@ -331,6 +331,14 @@ custa 4s de CI, a economia máxima teórica de um filtro é ~4s por push que
 toca a superfície — e o único push skipável sem perda seria um docs-only
 (que a superfície não cobre mesmo). O net incondicional mantém o BASELINE
 estruturalmente garantido de rodar em todo merge.
+
+**Travado estruturalmente (2026-08-10):** o guard `scripts/scan-guard-gates.mjs`
+(pre-commit + `test:guard`/push net) falha se o guard-gates.yml ganhar um
+filtro `paths:`/`paths-ignore:`, perder o step `bun run test:guard` ou
+remover o `scan-push-full-suite.test.ts` do script `test:guard` — a
+premissa da recalibração 8.4/11.11 (o CI como autoridade incondicional)
+deixa de ser prosa e vira contrato testado (REAL-REPO CONTRACT no
+scan-guard-gates.test.ts).
 
 ## 8.2 Prova 8 — Type D HERMETIC live (run 31342311844)
 
@@ -474,8 +482,9 @@ outra dep mudando) confirma o veredito documentado — o guard não produz
 falso STALE. Efeito colateral honesto do experimento: `node_modules/uuid`
 ficou em 12.0.1 após o restore do lock (11.1.0) — a divergência pós-rollback
 de node_modules vs lock é exatamente a classe que o
-`check-node-modules-integrity.mjs` (secao 8.5) detecta no pre-commit
-(react/react-dom não foram tocados; o guard de integridade continua limpo).
+`check-node-modules-integrity.mjs` (secao 8.5) detecta no pre-commit E no
+pre-push (react/react-dom não foram tocados; o guard de integridade
+continua limpo).
 
 ### 8.3.1 A prova VITEST do par não-incidente (contratos de mtime preservado, 2026-08-10)
 
@@ -731,7 +740,7 @@ GATILHO do mix (escreveu por cima sem limpar o store), não a fonte.**
 |---|---|---|
 | Probe temporário de versão (ex.: testar next 16.1.1 sem persistir) | `bun add <pkg>@<ver> --no-save`, depois RESTAURAR com `bun add <pkg>@<ver-original> --no-save` (ou install limpo) | o flag não toca lock/package.json (provado acima) — o restore volta a árvore RESOLVÍVEL à versão original; o store pode RETER o pacote órfão (inofensivo se não resolvível; a limpeza definitiva é o install limpo, próxima linha) |
 | Dep que DEVE ficar (add/remove/bump real) | editar `package.json` + `bun install` | atualiza o `bun.lock` de verdade — o `--no-save` deixaria o lock desatualizado (o estado extraneous que derruba a suite) |
-| Depois de QUALQUER `--no-save` | `git status` de `package.json`/`bun.lock` (devem estar limpos) + conferir o guard check-node-modules-integrity (agora no pre-commit) | o flag pode deixar o node_modules com versões que o lock não resolve; o guard trava react/react-dom divergentes ANTES do tsc |
+| Depois de QUALQUER `--no-save` | `git status` de `package.json`/`bun.lock` (devem estar limpos) + conferir o guard check-node-modules-integrity (agora no pre-commit E no pre-push) | o flag pode deixar o node_modules com versões que o lock não resolve; o guard trava react/react-dom divergentes ANTES do tsc/fuzz |
 | Reparo de layout divergente (a classe da 8.5) | `rm -rf node_modules && bun install --frozen-lockfile` — o ÚNICO reparo confiável | `bun install` comum (com ou sem `--frozen-lockfile`) reporta "no changes" e não reconcilia store estrangeiro — o install limpo reconstrói o store do lock (provado na 8.5: lock byte-identical) |
 
 **Nota sobre o repo**: o histórico é MISTO (pnpm-lock.yaml + bun.lock
@@ -739,7 +748,11 @@ rastreados) — qualquer `bun add --no-save` sobre um node_modules com resíduo
 `.pnpm` corre o risco de duplicar pacotes. O guard
 `check-node-modules-integrity.mjs` (desta thread) agora fecha a classe:
 react/react-dom divergentes do lock falham o pre-commit com o comando de cura
-antes de o tsc/fuzz verem o sintoma.
+antes de o tsc/fuzz verem o sintoma. O guard roda TAMBÉM no pre-push (2026-08,
+<10ms), ANTES do fuzz mapeado (~53s no pior caso): a classe 8.5 é LOCAL (o CI
+instala do lock fresco em checkout), então o push não deve gastar fuzz/testes
+num node_modules divergente — o mesmo parâmetro do pre-commit, só que antes do
+gate caro.
 
 ## 8.7 Prova 10 — REAL-REPO CONTRACT do scan-push-full-suite live (run 31354308733)
 
@@ -967,6 +980,43 @@ continua instantâneo.
 
 Nota: a RUN1 (~27s ≈ o ~28s esperado) carrega custos one-time de boot (vitest/tsc
 estado inicial); o regime estável ~19s é o custo real por commit normal.
+
+**Re-medição 2 (2026-08-10, mesma sessão) — o total MEDIDO de ponta a ponta com o
+set real da thread (9 arquivos staged, 3 suites/35 testes mapeados):** o pedido
+era o total de ponta a ponta com o shim + paralelo em produção, não a soma de
+números separados da 11.8 (~33s). 3 runs completas do `.husky/pre-commit`:
+
+| Run | Total real | Nota |
+|---|---|---|
+| RUN1 | 123.0s | boot one-time: a maior parte é o tsc cold (~55s, rebuild do tsbuildinfo — a nota original da seção 11 já documentava cold ~55s) + daemon eslintd cold (~13-23s) + vitest cold |
+| RUN2 | 45.9s | regime warm |
+| RUN3 | 50.6s | regime warm |
+| **Regime estável** | **~46-51s** | o custo real por commit com o set atual |
+
+Componentes (mesma sessão, runs isoladas):
+
+| Componente | Re-medição 1 | Re-medição 2 | Δ |
+|---|---|---|---|
+| verify-encoding | 2.17s | 4.07s | +1.9s (máquina mais carregada) |
+| check-docs-encoding + scan-lucide + check-next-types | 0.87s | 1.11s | ~igual |
+| check-node-modules-integrity + scan-push-full-suite + scan-lint-staged-loader | 0.22s | 0.43s | ~igual |
+| **tsc --incremental (warm)** | **11.1s** | **~27s (26.9-28.0, 2 runs)** | **+16s — estado de máquina** |
+| **lint-staged (shim warm)** | **~1s** | **1.8s (5.9s na 1ª run pós-restart)** | ~igual |
+| **pre-commit:test** | **4.4s (6 testes)** | **11.6s (3 suites/35 testes)** | **+7.2s — escopo do mapping** |
+| **Total wall (lint ∥ tsc)** | **~19s** | **~46-51s** | |
+
+Soma: 5.6 (gates) + 27 (tsc) + 1.8 (lint) + 11.6 (testes) = ~46s; wall paralelo:
+5.6 + max(27, 1.8) + 11.6 = **~44.2s** — bate com o RUN2 (45.9s).
+
+**Por que não ~19s nem ~33s?** O custo por commit NÃO é uma constante — varia com
+dois eixos: (a) **estado de máquina do tsc** (11.1s na re-medição 1 → ~27s hoje;
+a 11.10 já documentava a faixa 10.9-16.5s, e hoje está acima dela — máquina mais
+carregada, não regressão do hook) e (b) **escopo do mapping de testes do set
+staged** (6 testes → 35 testes: fuzz-mapped 25 + scan-hook-parallel-race 10). O
+"~33s" da 11.8 foi a soma de números separados com 1 arquivo staged; o total real
+de ponta a ponta com o set atual é ~46-51s. O teto estrutural segue sendo o tsc
+(~27s = ~59% do wall); lint-staged shim warm (~1.8s) e gates de encoding (~5.6s)
+são estáveis.
 
 **Reprodução:**
 ```bash
@@ -1542,6 +1592,15 @@ pre-commit:test (~5s), o total fica **~33s**, contra os ~35s da tabela da
 seção 11 (era pré-shim: lint-staged 8.0-8.6s). O ganho líquido do
 shim+paralelo no total do hook é **~2s**, consistente com o ganho do par.
 
+NOTA (re-medição 2, 2026-08-10, seção 11): o total MEDIDO de ponta a ponta
+com o set real da thread (9 arquivos staged, 3 suites/35 testes mapeados)
+foi **~46-51s** — acima do ~33s estimado aqui porque (a) o tsc estava em
+~27s (estado de máquina, acima da faixa 10.9-16.5s da 11.10) e (b) o
+pre-commit:test mapeou 35 testes (fuzz-mapped 25 + scan-hook-parallel-race
+10), não os ~5s/6 testes desta medição. O ganho relativo do par (~2s)
+continua válido; o número absoluto depende do set staged e do estado de
+máquina.
+
 **Implementação (`.husky/pre-commit`):** o lint-staged roda em background
 PRIMEIRO (o fix de ~1s cai antes de o tsc ler a maioria dos arquivos —
 estreita a janela de raça), o tsc roda em foreground, e a agregação de exit
@@ -1568,6 +1627,25 @@ residual (raça estreita, amostra pequena) fica documentado: se um erro TS
 transitório aparecer num commit sem mudança de código, o primeiro suspeito
 é esta seção — o revert é trocar o bloco pelo `bun run typecheck`
 sequencial original (11.5 permanece como o recipe da recusa).
+
+**Guard de estabilidade (job dedicado, 2026-08):** a amostra de ~6 runs era
+pequena demais para provar a estabilidade do ADOTADO — o guard
+`scripts/scan-hook-parallel-race.mjs` fecha isso: roda o par REAL N vezes
+(default 10) num job dedicado (`hook-parallel-race.yml`, schedule semanal +
+workflow_dispatch — trigger irmão obrigatório pelo Type D HERMETIC) e FALHA
+se qualquer erro TS transitório aparecer (tsc exit != 0 com baseline verde =
+a raça materializou; baseline vermelho = erro TS REAL do repo, reportado à
+parte). Para a janela não ser ZERO no CI (checkout fresco sem nada staged),
+o guard cria um PROBE com violação fixable (`let raceProbeValue = 1` →
+`const raceProbeValue = 1` via prefer-const, provado empiricamente com o
+shim real 2026-08), faz `git add` e re-injeta a violação em CADA iteração —
+o lint-staged reescreve o probe enquanto o tsc lê, reproduzindo a condição
+da raça de verdade. A lógica (parse, probe, transient-detection, mutations
+com fake commands) é hermética em
+`scripts/__tests__/scan-hook-parallel-race.test.ts` (test:guard); o job
+roda a suite junto para a lógica não ficar órfã. Se o guard falhar no CI, a
+ação é a MESMA da nota: reverter o bloco paralelo para o `bun run
+typecheck` sequencial e atualizar esta seção com a evidência.
 
 ## 11.9 scan-push-full-suite no pre-commit — regressão da 8.4 travada antes do commit (medição 2026-08-09)
 
@@ -1782,6 +1860,34 @@ O pior caso real (17.98s) é o fallback de PRIMEIRO push — um evento raro; o
 típico push mapeado é ~5-6s e o skip de pushes docs/admin/ui é sub-segundo.
 O CI (`bun run fuzz:ci > fuzz-results.json`, checkout fresco) continua a
 autoridade inalterada.
+
+### RE-MEDIÇÃO 2026-08-10 (recalibração same-session — o baseline mudou)
+
+Proveniência dos baselines concorrentes: 53s (percepção pré-batching), 40.4s
+(11.11, 6 spawns), 59.96s/26.16s (11.12, ANTES/DEPOIS do batching) — todos
+estados de máquina diferentes. O número AUTORITATIVO é o A/B same-session
+abaixo: medir `bun run fuzz:ci` AGORA (13.01s) e o runner mapeado na MESMA
+sessão, back-to-back, seed 42:
+
+| Cenário (push real, same-session) | Medido | vs fuzz:ci (13.01s) |
+|---|---|---|
+| skip (diff sem superfície fuzz, `--since HEAD^`) | **0.50s** | **-12.5s** |
+| mapeado típico (2 suites de lib, 16 testes) | **5.76s** | **-7.3s** |
+| mapeado vitrine (1 suite, 20 testes — a lenta histórica) | **14.48s** | **+1.5s (wash)** |
+| fallback full (primeiro push, 6 suites) | ~13-15s | ~0 (igual por construção) |
+
+Veredito honesto: o valor do mapeamento concentra-se no skip (-12.5s,
+pushes docs/admin/ui) e no mapeado de lib (-7.3s). O caso vitrine é um WASH
+— a suite `address-autocomplete-fuzz` domina o custo do fuzz inteiro, então
+mapeá-la sozinha não economiza nada nesta máquina (e o fallback de primeiro
+push é igual ao fuzz:ci por construção — é o mesmo conjunto).O mapeamento continua valendo: nunca é pior que o full exceto o wash da
+vitrine (~igual, +1.5s de ruído), e o push típico (docs/admin/ui ou lib)
+corta 7-12s. O CI como autoridade permanece inalterado (checkout fresco
+roda o fuzz completo sempre). Nota de método:
+os números de vitest são diretos (runner = +~0.4s de boot+git diff, já
+incluído no skip 0.50s); a coluna usa fuzz:ci (13.01s, `--json`) como
+baseline, não o `npx vitest run` cru (~14.9s) — o runner do CI é a
+autoridade.
 
 **Contrato de cobertura** (o gap silencioso da secção 11.11 ponto 5):
 `fuzz-targets.mjs --check-coverage` falha com o caminho exato se uma suite

@@ -29,6 +29,7 @@ import { cleanupTempDirs, createTempDir, runSubprocess, writeModuleCopy, type Mo
 import {
   ALWAYS_SCAN_DIRS,
   DOCS_PATTERNS,
+  MJS_GATE_PATTERNS,
   OPS_SH_PATTERNS,
   VPS_SH_PATTERNS,
   YAML_GATE_PATTERNS,
@@ -54,6 +55,7 @@ const SURFACES: Record<string, string[]> = {
   VPS_SH_PATTERNS,
   OPS_SH_PATTERNS,
   YAML_GATE_PATTERNS,
+  MJS_GATE_PATTERNS,
   DOCS_PATTERNS,
 }
 
@@ -115,6 +117,14 @@ describe("encoding-surface.mjs - versioned encoding-surface manifest", () => {
     ])
   })
 
+  it("ABSOLUTE PIN: MJS_GATE_PATTERNS (verify-encoding.sh layer 5, blocking)", () => {
+    // The scripts/*.mjs gate files - pure-ASCII scan (--report). The 1:1
+    // ASCII conversion the .sh files got (f17ffdd) never reached the .mjs
+    // (banners/emoji/accents survived until the 2026-08 conversion); layer
+    // 5 closes the class.
+    expect(MJS_GATE_PATTERNS).toEqual(["scripts/*.mjs"])
+  })
+
   it("ABSOLUTE PIN: DOCS_PATTERNS (docs-encoding informational surface)", () => {
     expect(DOCS_PATTERNS).toEqual(["*.md", "*.css", "*.html"])
   })
@@ -134,10 +144,13 @@ describe("encoding-surface.mjs - versioned encoding-surface manifest", () => {
     expect(ops.stdout.trim()).toBe(OPS_SH_PATTERNS.join(" "))
   }, 60000)
 
-  it("CLI: --print-yaml-gate / --print-docs match the exported arrays", () => {
+  it("CLI: --print-yaml-gate / --print-mjs-gate / --print-docs match the exported arrays", () => {
     const yaml = runCli("--print-yaml-gate")
     expect(yaml.status).toBe(0)
     expect(yaml.stdout.trim()).toBe(YAML_GATE_PATTERNS.join(" "))
+    const mjs = runCli("--print-mjs-gate")
+    expect(mjs.status).toBe(0)
+    expect(mjs.stdout.trim()).toBe(MJS_GATE_PATTERNS.join(" "))
     const docs = runCli("--print-docs")
     expect(docs.status).toBe(0)
     expect(docs.stdout.trim()).toBe(DOCS_PATTERNS.join(" "))
@@ -190,6 +203,14 @@ describe("encoding-surface.mjs - versioned encoding-surface manifest", () => {
     expect(src).not.toContain("mapfile -t YAML_LIST < <(git ls-files '.github/workflows/*.yml'")
   })
 
+  it("CONTRACT: verify-encoding.sh layer 5 DERIVES the .mjs globs from the manifest", () => {
+    const src = fs.readFileSync(path.join(ROOT, "scripts", "verify-encoding.sh"), "utf8")
+    expect(src).toContain('--print-mjs-gate')
+    // The invocation must derive from MJS_PAT_ARR, not literal globs.
+    expect(src).toContain('git ls-files "${MJS_PAT_ARR[@]}"')
+    expect(src).not.toContain("mapfile -t MJS_LIST < <(git ls-files 'scripts/*.mjs'")
+  })
+
   it("CONTRACT: check-docs-encoding.sh DERIVES the docs globs from the manifest", () => {
     const src = fs.readFileSync(path.join(ROOT, "scripts", "check-docs-encoding.sh"), "utf8")
     expect(src).toContain('--print-docs')
@@ -217,6 +238,7 @@ describe("encoding-surface.mjs - versioned encoding-surface manifest", () => {
       { name: "VPS_SH_PATTERNS", flag: "--print-vps-sh", sentinel: "scripts/workers-check.sh" },
       { name: "OPS_SH_PATTERNS", flag: "--print-ops-sh", sentinel: ".husky/pre-push-extra" },
       { name: "YAML_GATE_PATTERNS", flag: "--print-yaml-gate", sentinel: ".github/workflows/worker.yml" },
+      { name: "MJS_GATE_PATTERNS", flag: "--print-mjs-gate", sentinel: "scripts/workers-gate.mjs" },
       { name: "DOCS_PATTERNS", flag: "--print-docs", sentinel: "*.toml" },
     ]
 

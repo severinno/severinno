@@ -1,25 +1,25 @@
 #!/usr/bin/env node
 /**
- * lhci-monitor.mjs — Core Web Vitals flake monitor for Lighthouse CI.
+ * lhci-monitor.mjs - Core Web Vitals flake monitor for Lighthouse CI.
  *
  * Aggregates LHCI filesystem reports (per-run *.report.json) grouped by URL
  * and compares the 5 audited CWV metrics against the assertion thresholds in
  * lighthouserc.json / lighthouserc.mobile.json.
  *
  * Semantics (matches how `lhci assert` actually evaluates):
- *   - GATE-FAIL — the REPRESENTATIVE run's value exceeds an ERROR threshold.
+ *   - GATE-FAIL - the REPRESENTATIVE run's value exceeds an ERROR threshold.
  *     `lhci assert` picks one representative run per URL (the run with the
  *     median performance score) and asserts all metrics on that single run.
- *     This is the signal that would have failed the CI gate — the one that
+ *     This is the signal that would have failed the CI gate - the one that
  *     should drive a mitigation decision (numberOfRuns, throttling, runner).
- *   - SPIKE     — an individual run exceeded the limit but the representative
- *     run did not (the gate passed). Informational — early flake evidence.
- *   - NEAR      — the per-URL max sits within --margin % of an ERROR limit
+ *   - SPIKE     - an individual run exceeded the limit but the representative
+ *     run did not (the gate passed). Informational - early flake evidence.
+ *   - NEAR      - the per-URL max sits within --margin % of an ERROR limit
  *     (flake risk zone, even though no run went over yet).
  *
  * Two input modes:
- *   default      — scan a local reports dir (--dir, default ./lhci-reports)
- *   --fetch N    — download the last N runs of the Lighthouse CI workflow(s)
+ *   default      - scan a local reports dir (--dir, default ./lhci-reports)
+ *   --fetch N    - download the last N runs of the Lighthouse CI workflow(s)
  *                  via the gh CLI (artifacts lhci-reports + lhci-reports-
  *                  mobile) into a temp dir and analyze them together. By
  *                  default queries BOTH lighthouse-ci.yml (push-to-main/PR)
@@ -65,7 +65,7 @@ function log(msg, opts = {}) {
 
 function printHelp() {
   console.log(`
-lhci-monitor.mjs — CWV flake monitor for Lighthouse CI
+lhci-monitor.mjs - CWV flake monitor for Lighthouse CI
 
 Usage:
   node scripts/lhci-monitor.mjs [options]
@@ -77,7 +77,7 @@ Options:
                      desktop + mobile artifacts (default branch: main)
   --branch <name>    filter lighthouse-ci.yml runs to a branch (default: main).
                      release-deploy.yml runs are always fetched WITHOUT a branch
-                     filter — tag pushes have head_branch null in the GitHub
+                     filter - tag pushes have head_branch null in the GitHub
                      API, so filtering would exclude the v* release runs
   --workflow <file>  restrict --fetch to one workflow (repeatable). Default:
                      lighthouse-ci.yml + release-deploy.yml (the latter covers
@@ -89,7 +89,7 @@ Options:
 
 Verdict semantics (same as \`lhci assert\`):
   GATE-FAIL = the representative run (median performance score per URL)
-              exceeds an ERROR limit (the gate would fail — drive mitigation
+              exceeds an ERROR limit (the gate would fail - drive mitigation
               from this)
   SPIKE     = an individual run above the limit, representative OK (gate passed)
   NEAR      = max within --margin % of an ERROR limit (risk zone)
@@ -161,7 +161,7 @@ function collectRunsFromDir(dir) {
         metrics,
       });
     } catch (err) {
-      log(`  ⚠ skipping ${f}: ${err.message}`, { quiet: false });
+      log(`  [WARN] skipping ${f}: ${err.message}`, { quiet: false });
     }
   }
   return runs;
@@ -182,7 +182,7 @@ function median(values) {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
-// The run with the median performance score — the same selection `lhci
+// The run with the median performance score - the same selection `lhci
 // assert` uses for the representative run. Falls back to null when no run
 // exposes a performance category (then per-metric medians are used instead).
 function selectRepresentative(urlRuns) {
@@ -280,21 +280,21 @@ function printReport(res, opts) {
     );
   }
   if (gateFails.length) {
-    log(`\n  🚨 GATE-FAIL (${gateFails.length}) — representative run above the ERROR limit, the CI gate would fail:`, opts);
+    log(`\n   GATE-FAIL (${gateFails.length}) - representative run above the ERROR limit, the CI gate would fail:`, opts);
     for (const f of gateFails) {
-      log(`    ${f.url} — ${f.auditId} representative ${f.isCls ? f.repVal.toFixed(3) : fmtMs(f.repVal)} > limit ${f.max}`, opts);
+      log(`    ${f.url} - ${f.auditId} representative ${f.isCls ? f.repVal.toFixed(3) : fmtMs(f.repVal)} > limit ${f.max}`, opts);
     }
   }
   if (spikes.length) {
-    log(`\n  ⚠ SPIKE (${spikes.length}) — a run went over but the representative run is OK (gate passed; flake evidence):`, opts);
+    log(`\n  [WARN] SPIKE (${spikes.length}) - a run went over but the representative run is OK (gate passed; flake evidence):`, opts);
     for (const s of spikes) {
-      log(`    ${s.url} — ${s.auditId} max ${s.isCls ? s.maxV.toFixed(3) : fmtMs(s.maxV)} > limit ${s.max} (representative ${s.isCls ? s.repVal.toFixed(3) : fmtMs(s.repVal)})`, opts);
+      log(`    ${s.url} - ${s.auditId} max ${s.isCls ? s.maxV.toFixed(3) : fmtMs(s.maxV)} > limit ${s.max} (representative ${s.isCls ? s.repVal.toFixed(3) : fmtMs(s.repVal)})`, opts);
     }
   }
   if (nears.length) {
-    log(`\n  ⚠ NEAR (${nears.length}) — max within ${opts.marginPct}% of an ERROR limit:`, opts);
+    log(`\n  [WARN] NEAR (${nears.length}) - max within ${opts.marginPct}% of an ERROR limit:`, opts);
     for (const n of nears) {
-      log(`    ${n.url} — ${n.auditId} max ${n.isCls ? n.maxV.toFixed(3) : fmtMs(n.maxV)} (limit ${n.max}, +${n.headroomPct.toFixed(0)}% headroom)`, opts);
+      log(`    ${n.url} - ${n.auditId} max ${n.isCls ? n.maxV.toFixed(3) : fmtMs(n.maxV)} (limit ${n.max}, +${n.headroomPct.toFixed(0)}% headroom)`, opts);
     }
   }
 }
@@ -323,7 +323,7 @@ function fetchCIRuns(n, branch, workflows) {
     for (const workflow of workflows) {
       let list;
       // Tag-triggered runs (v* releases, the deploy-blocking LHCI gate) have
-      // head_branch: null in the GitHub API — a --branch filter would silently
+      // head_branch: null in the GitHub API - a --branch filter would silently
       // exclude release-deploy.yml runs. Apply the filter only to
       // lighthouse-ci.yml (push-to-main / PR); fetch release-deploy.yml runs
       // unfiltered (tags + workflow_dispatch have no meaningful branch).
@@ -333,7 +333,7 @@ function fetchCIRuns(n, branch, workflows) {
       try {
         list = JSON.parse(gh(listArgs));
       } catch (err) {
-        log(`  ⚠ could not list runs for ${workflow}: ${err.message.split(':').pop().trim()}`, { quiet: false });
+        log(`  [WARN] could not list runs for ${workflow}: ${err.message.split(':').pop().trim()}`, { quiet: false });
         continue;
       }
       for (const run of list) {
@@ -346,7 +346,7 @@ function fetchCIRuns(n, branch, workflows) {
           try {
             gh(['run', 'download', id, '-n', artifact, '-D', dir]);
           } catch (err) {
-            log(`  ⚠ run ${id}: no ${artifact} artifact (${err.message.split(':').pop().trim()})`, { quiet: false });
+            log(`  [WARN] run ${id}: no ${artifact} artifact (${err.message.split(':').pop().trim()})`, { quiet: false });
           }
         }
         const desktop = collectRunsFromDir(path.join(dir, 'lhci-reports'));
@@ -380,7 +380,7 @@ function main() {
 
   if (opts.fetch > 0) {
     const workflows = opts.workflows || DEFAULT_WORKFLOWS;
-    log(`Fetching last ${opts.fetch} runs of ${workflows.join(', ')} (branch filter "${opts.branch}" applies to lighthouse-ci.yml only) via gh…`, opts);
+    log(`Fetching last ${opts.fetch} runs of ${workflows.join(', ')} (branch filter "${opts.branch}" applies to lighthouse-ci.yml only) via gh...`, opts);
     let fetched;
     try {
       fetched = fetchCIRuns(opts.fetch, opts.branch, workflows);
@@ -408,7 +408,7 @@ function main() {
 
   const totalRuns = results.reduce((acc, r) => acc + r.runsCount, 0);
   if (totalRuns === 0) {
-    console.error('No *.report.json files found — nothing to analyze (exit 2).');
+    console.error('No *.report.json files found - nothing to analyze (exit 2).');
     process.exit(2);
   }
 
@@ -419,14 +419,14 @@ function main() {
   const allNears = results.flatMap((r) => r.nears);
   const verdict =
     allGateFails.length === 0
-      ? `✅ No gate-fail — ${totalRuns} runs across ${results.length} preset(s).`
-      : `🚨 ${allGateFails.length} GATE-FAIL(s) across ${totalRuns} runs — the CI gate would have failed.`;
+      ? `[OK] No gate-fail - ${totalRuns} runs across ${results.length} preset(s).`
+      : ` ${allGateFails.length} GATE-FAIL(s) across ${totalRuns} runs - the CI gate would have failed.`;
   console.log(`\n${verdict}`);
   if (allSpikes.length) {
-    console.log(`⚠ ${allSpikes.length} spike(s) (runs over the limit, representative OK) — flake evidence, watch the next runs.`);
+    console.log(`[WARN] ${allSpikes.length} spike(s) (runs over the limit, representative OK) - flake evidence, watch the next runs.`);
   }
   if (allNears.length) {
-    console.log(`⚠ ${allNears.length} near-miss(es) within ${opts.marginPct}% of an ERROR limit — monitor these metrics on the next runs.`);
+    console.log(`[WARN] ${allNears.length} near-miss(es) within ${opts.marginPct}% of an ERROR limit - monitor these metrics on the next runs.`);
   }
   process.exit(allGateFails.length ? 1 : 0);
 }

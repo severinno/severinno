@@ -66,7 +66,9 @@ jobs:
 
       # ── Post / update PR comment ─────────────────────────────────────
       # Replaces any previous bundle-preview comment (identified by the
-      # stable "## 📦 Bundle preview" marker) so history stays clean.
+      # stable "## Bundle preview" marker - the ASCII rename of the
+      # pre-2026-08 "## 📦 Bundle preview" marker, matching the generator's
+      # output in bundle-report.mjs) so history stays clean.
       - name: Post/update PR comment
         if: steps.pr-info.outputs.skip == 'false'
         uses: actions/github-script@v7
@@ -79,7 +81,7 @@ jobs:
             try {
               body = fs.readFileSync('.bundle-preview/bundle-preview.md', 'utf-8');
             } catch (e) {
-              body = '## 📦 Bundle preview\n\n_Relatório não gerado nesta execução — o job `budget` do CI/CD não alcançou o passo "Generate bundle preview" (build ANALYZE provavelmente falhou antes)._';
+              body = '## Bundle preview\n\n_Relatorio nao gerado nesta execucao - o job `budget` do CI/CD nao alcancou o passo "Generate bundle preview" (build ANALYZE provavelmente falhou antes)._';
             }
 
             // Fetch existing comments to find and remove previous bundle-preview comments
@@ -90,7 +92,7 @@ jobs:
             });
 
             const botComments = comments.filter(c =>
-              c.user.type === 'Bot' && c.body?.startsWith('## 📦 Bundle preview')
+              c.user.type === 'Bot' && c.body?.startsWith('## Bundle preview')
             );
 
             for (const c of botComments) {

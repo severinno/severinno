@@ -18,7 +18,7 @@
  * API (importable - entry-point guarded):
  *   import {
  *     ALWAYS_SCAN_DIRS, VPS_SH_PATTERNS, OPS_SH_PATTERNS,
- *     YAML_GATE_PATTERNS, DOCS_PATTERNS,
+ *     YAML_GATE_PATTERNS, MJS_GATE_PATTERNS, DOCS_PATTERNS,
  *   } from "./encoding-surface.mjs"
  *
  *   ALWAYS_SCAN_DIRS    dirs check-utf8.sh ALWAYS scans (not overridable
@@ -30,6 +30,13 @@
  *                       wrapper, not here)
  *   YAML_GATE_PATTERNS  verify-encoding.sh layer 4 (YAML gate files)
  *                       git-ls-files globs - the BLOCKING --utf8 scan
+ *   MJS_GATE_PATTERNS   verify-encoding.sh layer 5 (scripts/*.mjs gate
+ *                       files) git-ls-files globs - the BLOCKING --report
+ *                       pure-ASCII scan. The .mjs gate files carry CLI
+ *                       output + docblocks: a stray accent/emoji/em-dash
+ *                       in them is the same silent-failure class as a .sh
+ *                       (the 2026-08 conversion that ASCII-fied the .sh
+ *                       files never reached the .mjs - layer 5 closes it).
  *   DOCS_PATTERNS       check-docs-encoding.sh + pr-check.yml docs-encoding
  *                       job git-ls-files globs (informational docs surface)
  *
@@ -42,6 +49,8 @@
  *     prints OPS_SH_PATTERNS.join(" ")
  *   node scripts/encoding-surface.mjs --print-yaml-gate
  *     prints YAML_GATE_PATTERNS.join(" ")
+ *   node scripts/encoding-surface.mjs --print-mjs-gate
+ *     prints MJS_GATE_PATTERNS.join(" ")
  *   node scripts/encoding-surface.mjs --print-docs
  *     prints DOCS_PATTERNS.join(" ")
  *   Combining print flags (or passing a scan flag) is a usage error
@@ -58,6 +67,7 @@ export const ALWAYS_SCAN_DIRS = ["scripts", ".github/workflows", ".zscripts"]
 export const VPS_SH_PATTERNS = ["scripts/health-check.sh", "*.sh"]
 export const OPS_SH_PATTERNS = ["scripts/*.sh", ".husky/pre-commit", ".husky/pre-push"]
 export const YAML_GATE_PATTERNS = [".github/workflows/*.yml", ".github/actions/*/action.yml"]
+export const MJS_GATE_PATTERNS = ["scripts/*.mjs"]
 export const DOCS_PATTERNS = ["*.md", "*.css", "*.html"]
 
 // Query mode -> exported surface array (module exports are NOT on
@@ -67,6 +77,7 @@ const QUERIES = {
   "--print-vps-sh": VPS_SH_PATTERNS,
   "--print-ops-sh": OPS_SH_PATTERNS,
   "--print-yaml-gate": YAML_GATE_PATTERNS,
+  "--print-mjs-gate": MJS_GATE_PATTERNS,
   "--print-docs": DOCS_PATTERNS,
 }
 
@@ -74,7 +85,7 @@ function main() {
   const args = process.argv.slice(2)
   if (args.length !== 1 || !(args[0] in QUERIES)) {
     console.error(
-      "usage: node scripts/encoding-surface.mjs <--print-always-dirs|--print-vps-sh|--print-ops-sh|--print-yaml-gate|--print-docs>",
+      "usage: node scripts/encoding-surface.mjs <--print-always-dirs|--print-vps-sh|--print-ops-sh|--print-yaml-gate|--print-mjs-gate|--print-docs>",
     )
     process.exit(2)
   }

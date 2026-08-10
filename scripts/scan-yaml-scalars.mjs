@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * scan-yaml-scalars.mjs — GitHub Actions YAML plain-scalar landmine scanner.
+ * scan-yaml-scalars.mjs - GitHub Actions YAML plain-scalar landmine scanner.
  *
  * WHY THIS EXISTS (read before you reach for a grep one-liner):
  *   A `name:` or `run:` value written as an UNQUOTED plain scalar must not
- *   contain `: ` (colon+space) or ` #` (space+hash) — both violate the YAML
+ *   contain `: ` (colon+space) or ` #` (space+hash) - both violate the YAML
  *   plain-scalar rules:
  *     - `: ` splits the line into a nested mapping -> js-yaml throws
  *       ("mapping values are not allowed in this context") -> the whole
  *       workflow fails to parse.
  *     - ` #` starts a comment -> the value is SILENTLY truncated at the '#'
- *       with NO parse error at all — the workflow stays green while the
+ *       with NO parse error at all - the workflow stays green while the
  *       name/command is quietly shortened (e.g. `run: echo a # b` becomes
  *       just `echo a`).
  *   The 2026-08 Summary-step breakage in this repo was exactly the `: ` case
@@ -21,13 +21,13 @@
  *
  * SAFE FORMS (never flagged):
  *   - quoted values ("..." / '...')
- *   - block scalars (`key: |` / `key: >` — their content lines are skipped)
+ *   - block scalars (`key: |` / `key: >` - their content lines are skipped)
  *   - colons NOT followed by space (12:30, http://host:8080, C:\path)
- *     — including a value ENDING in a bare ':' (`echo value:`), which is
+ *     - including a value ENDING in a bare ':' (`echo value:`), which is
  *     valid plain YAML (only ': ' splits a mapping)
  *   - `#` not preceded by space (# at value start is a comment)
  *
- * API (importable — entry-point guarded):
+ * API (importable - entry-point guarded):
  *   import { findPlainScalarCandidates, scanYamlContent, scanYamlFiles } from "./scan-yaml-scalars.mjs"
  *
  *   findPlainScalarCandidates(content) -> Array<{ line, key, value, issues }>
@@ -41,7 +41,7 @@
  *     avoided in comments because it would close the block comment)
  *     prints `file:line: key 'value' -> issue` per candidate.
  *
- * Exit codes: 0 = clean · 1 = candidates found · 2 = hard YAML parse error.
+ * Exit codes: 0 = clean - 1 = candidates found - 2 = hard YAML parse error.
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
@@ -58,7 +58,7 @@ function indentOf(line) {
  * explicit-indentation (digit) modifiers in EITHER order (YAML allows both
  * `|2-` and `|-2`) plus an optional trailing comment. The modifier class is
  * deliberately loose (`[0-9+-]*`): over-accepting a malformed header merely
- * treats the following lines as block content (safe — no false candidate),
+ * treats the following lines as block content (safe - no false candidate),
  * while under-accepting would scan real block content as plain scalars and
  * produce false positives. That bias is the whole point of the guard.
  * @param {string} trimmed
@@ -87,7 +87,7 @@ export function findPlainScalarCandidates(content) {
 
     if (inBlock) {
       // Content of a block scalar: blank lines and anything more indented
-      // than the opener are literal — a `: ` or ` #` there is SAFE.
+      // than the opener are literal - a `: ` or ` #` there is SAFE.
       if (trimmed === "" || indentOf(raw) > blockIndent) continue
       inBlock = false
     }
@@ -196,7 +196,7 @@ if (IS_MAIN) {
   for (const r of scanYamlFiles(paths)) {
     if (r.parseError) {
       hardBreaks++
-      console.log(`${r.path}: PARSE ERROR — ${r.parseError}`)
+      console.log(`${r.path}: PARSE ERROR - ${r.parseError}`)
     }
     for (const c of r.candidates) {
       candidates++
@@ -205,6 +205,6 @@ if (IS_MAIN) {
       }
     }
   }
-  console.log(`\n${paths.length} files · ${hardBreaks} parse errors · ${candidates} plain-scalar candidates`)
+  console.log(`\n${paths.length} files - ${hardBreaks} parse errors - ${candidates} plain-scalar candidates`)
   process.exit(hardBreaks > 0 ? 2 : candidates > 0 ? 1 : 0)
 }

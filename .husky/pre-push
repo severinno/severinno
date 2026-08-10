@@ -53,6 +53,18 @@ bash scripts/verify-encoding.sh --dry-run --ci src/
 # .md, 1 .css, 0 .html hoje). Custo medido < 1s.
 bash scripts/check-docs-encoding.sh
 
+# Guard de integridade do node_modules (2026-08, sec. 8.5 do gates-proofs.md):
+# o `bun install` COMUM confia no layout existente e NAO repara node_modules
+# divergente (reportou "no changes" com react/react-dom duplicados -> 114
+# testes vermelhos por invalid hook call, nao por regressao). A classe 8.5 e
+# LOCAL (o CI instala do lock fresco em checkout) - este guard roda tambem no
+# pre-commit e aqui, ANTES do fuzz mapeado abaixo, para um push nao gastar
+# ~53s de fuzz num node_modules divergente. Compara a versao instalada de
+# react/react-dom com a resolucao do bun.lock e falha com o comando de cura
+# (install limpo) quando divergem. Custo <10ms (2 reads de package.json + 1
+# do lock, puro node). O CI nao precisa (checkout fresco instala do lock).
+node scripts/check-node-modules-integrity.mjs
+
 # Gate de fuzz MAPEADO (adocao da secao 11.11, medicao 2026-08-10): o
 # fuzz:ci de 6 spawns custava ~40.4s (71% do push); o runner mapeado roda SO
 # as suites cujos alvos foram tocados no diff do push (mesmo escopo do Gate 3)

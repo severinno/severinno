@@ -67,6 +67,7 @@ import path from "node:path"
 import {
   ALWAYS_SCAN_DIRS,
   DOCS_PATTERNS,
+  MJS_GATE_PATTERNS,
   OPS_SH_PATTERNS,
   VPS_SH_PATTERNS,
   YAML_GATE_PATTERNS,
@@ -422,6 +423,7 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
       { name: "VPS_SH_PATTERNS", manifest: VPS_SH_PATTERNS },
       { name: "OPS_SH_PATTERNS", manifest: OPS_SH_PATTERNS },
       { name: "YAML_GATE_PATTERNS", manifest: YAML_GATE_PATTERNS },
+      { name: "MJS_GATE_PATTERNS", manifest: MJS_GATE_PATTERNS },
       { name: "DOCS_PATTERNS", manifest: DOCS_PATTERNS },
       { name: "TARGET_DIRS", manifest: TARGET_DIRS },
       { name: "EXCLUDED_TREES", manifest: EXCLUDED_TREES },

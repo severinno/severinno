@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * scan-timeouts.mjs — the versioned guard for the explicit-timeout contract
+ * scan-timeouts.mjs - the versioned guard for the explicit-timeout contract
  * on subprocess-heavy vitest tests.
  *
  * WHY THIS EXISTS (read before you skip it):
  *   In 2026-08 the CI was flaking because subprocess-heavy tests ran on
  *   vitest's IMPLICIT default timeout (5000ms): a test that shells out
  *   (spawnSync / runSubprocess / execSync ...) to node, bash or a script
- *   on a SLOW runner can exceed 5s even when it is deterministic — the
+ *   on a SLOW runner can exceed 5s even when it is deterministic - the
  *   flake class. The fix was a one-off sweep that standardized an EXPLICIT
  *   timeout (60000) on 137 subprocess-heavy tests across the scripts/
  *   suites. A sweep is a point-in-time action: nothing stops a NEW
@@ -18,7 +18,7 @@
  *   the class cannot come back.
  *
  *   NOTE ON THE GLOBAL TIMEOUT (2026-08, layered with this guard):
- *   vitest.config.unit.ts sets testTimeout: 30000 — a SAFETY NET for tests
+ *   vitest.config.unit.ts sets testTimeout: 30000 - a SAFETY NET for tests
  *   this guard does NOT flag (pure tests, and subprocess tests that slip
  *   past the three detection layers). The per-test explicit timeout remains
  *   the REQUIRED contract for subprocess-heavy tests: it is their own
@@ -26,7 +26,7 @@
  *   the 60000 sweep standard enforceable. The guard does not key on the
  *   global value; the global only widens the backstop.
  *
- * WHAT "subprocess-heavy" MEANS — three detection layers, so a test that
+ * WHAT "subprocess-heavy" MEANS - three detection layers, so a test that
  * shells out through a LOCAL HELPER is caught, not just direct calls:
  *   1. DIRECT token in the test body: spawnSync( execSync( execFileSync(
  *      spawn( fork( runSubprocess( process.execPath child_process.
@@ -37,7 +37,7 @@
  *      const-arrow defined in the SAME file whose own body (transitively)
  *      contains a subprocess token. The repo's suites shell out mostly
  *      through per-suite wrappers (runGate, runReport, runBudget, runCli,
- *      run, ...) that encapsulate runSubprocess/spawnSync — a token scan
+ *      run, ...) that encapsulate runSubprocess/spawnSync - a token scan
  *      of test bodies alone would miss them (measured: ~15 vs ~159). The
  *      helper analysis closes that gap.
  *   3. IMPORTED helper call: the test body calls a helper imported from a
@@ -48,11 +48,11 @@
  *   gets flagged and only costs an explicit timeout.
  *
  * WHAT "explicit timeout" MEANS (both vitest forms are accepted):
- *   it(name, fn, 60000)                  — positional 3rd arg, numeric
- *   it(name, { timeout: 60000 }, fn)     — jest-style options object
+ *   it(name, fn, 60000)                  - positional 3rd arg, numeric
+ *   it(name, { timeout: 60000 }, fn)     - jest-style options object
  *   (60_000 underscore literals count too.)
  *
- * API (importable — entry-point guarded, same pattern as
+ * API (importable - entry-point guarded, same pattern as
  * fragile-range-patterns.mjs / scan-non-ascii.mjs):
  *   import { codeMask, findTestCalls, scanTestFile, scanSurface,
  *            scanFiles } from "./scan-timeouts.mjs"
@@ -68,7 +68,7 @@
  * CLI (what CI calls):
  *   node scripts/scan-timeouts.mjs [--ci] [file...]
  *     With no files: scans the whole vitest surface (scripts/ + src/
- *     recursive *.test.{ts,tsx} — the same trees vitest.config.unit.ts
+ *     recursive *.test.{ts,tsx} - the same trees vitest.config.unit.ts
  *     includes, so a test the CI can run is a test this gate can scan).
  *     With files: scans exactly those (targeted CI / mutation proofs).
  *     --ci only documents intent (this gate is ALWAYS strict: exit 1 on
@@ -78,8 +78,8 @@
  *     env override scans a synthetic tree for fixture-driven tests /
  *     CI proofs without touching the real repo.
  *
- * Exit codes: 0 = clean · 1 = at least one subprocess-heavy test without
- * an explicit timeout · 2 = usage error.
+ * Exit codes: 0 = clean - 1 = at least one subprocess-heavy test without
+ * an explicit timeout - 2 = usage error.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
@@ -102,7 +102,7 @@ const SUBPROCESS_RE =
  * division. The standard tokenizer heuristic: the previous significant
  * code char is an operator, an opening bracket, a comma, or the start of
  * the file. `return /re/` is a known blind spot (previous char is a
- * letter) — rare in this repo's test bodies; the cost of a miss is a
+ * letter) - rare in this repo's test bodies; the cost of a miss is a
  * mis-parsed test, caught by the BASELINE count companion, not a silent
  * security hole.
  */
@@ -113,7 +113,7 @@ const REGEX_START_CHARS = new Set("([{,=:;!&|?+-*%~<>")
  * is part of a string literal, template literal, comment, or REGEX LITERAL
  * becomes a space; newlines are preserved so line numbers stay aligned.
  * The masked string is what the call-finder and the subprocess-token scan
- * run over — there is no way for a pattern inside prose (or a regex with
+ * run over - there is no way for a pattern inside prose (or a regex with
  * escaped parens like toMatch(/numEnv\(/)) to be mistaken for code.
  * Template-literal `${...}` interpolations are masked whole (a subprocess
  * token inside one would not be seen; no test in this repo does that).
@@ -297,9 +297,9 @@ function splitTopLevelArgs(masked, raw) {
 
 /** True when an explicit timeout is present in either vitest form. */
 function hasExplicitTimeout(args) {
-  // Form 1: it(name, fn, 60000) — positional numeric 3rd arg (underscores ok).
+  // Form 1: it(name, fn, 60000) - positional numeric 3rd arg (underscores ok).
   if (args.length >= 3 && /^\d[\d_]*$/.test(args[2].trim())) return true
-  // Form 2: it(name, { timeout: 60000 }, fn) — jest-style options object.
+  // Form 2: it(name, { timeout: 60000 }, fn) - jest-style options object.
   if (args.length >= 2 && args[1].trim().startsWith("{") && /timeout\s*:/.test(args[1])) {
     return true
   }
@@ -311,12 +311,12 @@ function hasExplicitTimeout(args) {
  * plain form, the .each table form (it.each([...])("name", fn[, timeout])),
  * the .each template-literal form (it.each`a,b`("name", fn[, timeout])),
  * and the .skip/.fails/.concurrent variants (a skipped subprocess-heavy
- * test still demands a timeout — if the skip is lifted later, the flake
+ * test still demands a timeout - if the skip is lifted later, the flake
  * class returns). Parsing runs over the CODE-MASKED source, so a paren or
  * comma inside a string / comment / regex literal cannot unbalance it.
  * @param {string} source
  * @param {Set<string>} [heavyCallables]  names of subprocess-heavy helpers
- *   (local + imported) — a body calling one is subprocess-heavy
+ *   (local + imported) - a body calling one is subprocess-heavy
  * @returns {Array<{ name: string, line: number, subprocessHeavy: boolean, hasTimeout: boolean }>}
  */
 export function findTestCalls(source, heavyCallables = new Set()) {
@@ -330,11 +330,11 @@ export function findTestCalls(source, heavyCallables = new Set()) {
     const mods = [...m[0].matchAll(/\.(\w+)/g)].map((x) => x[1])
     const isEach = mods.includes("each")
     const isTodo = mods.includes("todo")
-    if (isTodo) continue // it.todo("name") has no callback — nothing to time.
+    if (isTodo) continue // it.todo("name") has no callback - nothing to time.
 
     // Find the ARGS open paren. Plain form: the first `(` after the
     // identifier. .each PARENTHESIZED form (it.each([...])): the first `(`
-    // is the TABLE — balance it, then the args paren follows. .each
+    // is the TABLE - balance it, then the args paren follows. .each
     // TEMPLATE form (it.each`a,b`): the template content is masked to
     // spaces, so the first `(` after the identifier IS the args paren.
     let openIdx = masked.indexOf("(", identEnd)
@@ -371,7 +371,7 @@ export function findTestCalls(source, heavyCallables = new Set()) {
 
 /**
  * Top-level helper definitions in a source file (function declarations and
- * const-arrow functions with brace bodies) — the per-suite wrappers that
+ * const-arrow functions with brace bodies) - the per-suite wrappers that
  * encapsulate subprocess calls (runGate, runReport, runBudget, ...).
  * @param {string} source
  * @returns {Array<{ name: string, start: number, end: number }>}
@@ -522,7 +522,7 @@ export function scanTestFile(filePath) {
 
 /**
  * Recursively enumerate every vitest test file under scripts/ and src/
- * (the same trees vitest.config.unit.ts includes — *.test.{ts,tsx}).
+ * (the same trees vitest.config.unit.ts includes - *.test.{ts,tsx}).
  * @param {string} root
  * @returns {string[]}
  */

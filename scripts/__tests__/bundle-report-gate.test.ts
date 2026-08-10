@@ -19,7 +19,7 @@
  *   1. Total worsened beyond the threshold  → exit 1, "ANTI-REGRESSION GATE"
  *   2. Initial JS worsened beyond the threshold (the metric the gate was
  *      built for — the user-facing "+50 KB de initial" example)
- *   3. Within the threshold                 → exit 0, "gate anti-regressão: ok"
+ *   3. Within the threshold                 → exit 0, "gate anti-regressao: ok"
  *   4. No versioned baseline (first main)   → exit 0, "skipped — sem baseline"
  *   5. initialSource fallback (rootMainFiles, non-comparable) → exit 0, skipped
  *   6. Delta EXACTLY equal to the threshold → exit 0 (strictly-greater >
@@ -84,14 +84,14 @@ function asset(label: string, gzipSize: number): Record<string, unknown> {
 /** Baseline report table: header + ONE versioned release row (v0.4.2). */
 function baselineReport(initialKB: string, totalKB: string): string {
   return (
-    "# Bundle Report — Severinno\n\n" +
-    "> Gerado automaticamente a cada release pelo CI (job `budget`). Não editar manualmente.\n" +
+    "# Bundle Report - Severinno\n\n" +
+    "> Gerado automaticamente a cada release pelo CI (job `budget`). Nao editar manualmente.\n" +
     "> Fonte: `ANALYZE=true next build --webpack` + `scripts/check-js-budget.mjs` (KB gzip).\n" +
-    "> Δ = variação vs a versão anterior da tabela.\n\n" +
-    "## Histórico\n\n" +
-    "| Versão | Data | Initial (/) | Δ Init | Total | Δ Total | Largest | Δ Largest | Maplibre | Recharts | Framer | Δ Framer | Gate |\n" +
+    "> delta = variacao vs a versao anterior da tabela.\n\n" +
+    "## Historico\n\n" +
+    "| Versao | Data | Initial (/) | delta Init | Total | delta Total | Largest | delta Largest | Maplibre | Recharts | Framer | delta Framer | Gate |\n" +
     "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n" +
-    `| v0.4.2 | 2026-08-08 | ${initialKB} | — | ${totalKB} | — | 58.6 | — | 266.9 | 85.4 | — | — | ✅ |\n`
+    `| v0.4.2 | 2026-08-08 | ${initialKB} | - | ${totalKB} | - | 58.6 | - | 266.9 | 85.4 | - | - | [OK] |\n`
   )
 }
 
@@ -113,10 +113,10 @@ function baselineReportWithRoute(initialKB: string, totalKB: string, routeKB: st
   return (
     baselineReport(initialKB, totalKB) +
     "\n## Rotas (real transfer, KB gzip)\n\n" +
-    "### v0.4.2 — 2026-08-08\n" +
-    "| Rota | Params | KB gzip | Δ |\n" +
+    "### v0.4.2 - 2026-08-08\n" +
+    "| Rota | Params | KB gzip | delta |\n" +
     "|---|---|---|---|\n" +
-    `| /busca | 1 | ${routeKB} | — |\n`
+    `| /busca | 1 | ${routeKB} | - |\n`
   )
 }
 
@@ -186,12 +186,12 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     writePassBuild(f)
     f.write("docs/bundle-report.md", baselineReport("219.1", "80.0"))
 
-    // Δ total +7.9 KB < 200 → ok. The observability line must show the delta
+    // delta total +7.9 KB < 200 → ok. The observability line must show the delta
     // against the baseline so a green run is distinguishable from a skip.
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_TOTAL_KB: "200" })
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: ok")
-    expect(r.stdout).toContain("Δ total +7.9 KB")
+    expect(r.stdout).toContain("gate anti-regressao: ok")
+    expect(r.stdout).toContain("delta total +7.9 KB")
     expect(r.stdout).toContain("v0.4.2")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
   }, 60000)
@@ -227,8 +227,8 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     // semantics (only +7.91+ blocks).
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_TOTAL_KB: "7.9" })
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: ok")
-    expect(r.stdout).toContain("Δ total +7.9 KB")
+    expect(r.stdout).toContain("gate anti-regressao: ok")
+    expect(r.stdout).toContain("delta total +7.9 KB")
   }, 60000)
 
   it("develop row sorts BELOW main but ABOVE releases, with Δ vs the row below", () => {
@@ -247,7 +247,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(md.indexOf("| develop |")).toBeLessThan(md.indexOf("| v0.4.2 |"))
     expect(md).toContain("| 87.9 | +7.9 |")
     // No gate for develop: tracking-only by design.
-    expect(r.stdout).toContain("gate anti-regressão: n/a — develop é tracking-only")
+    expect(r.stdout).toContain("gate anti-regressao: n/a - develop e tracking-only")
   }, 60000)
 
   it("develop upsert: re-runs never accumulate duplicate develop rows", () => {
@@ -270,7 +270,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     // With a 0.05 KB threshold the main gate would fail; develop must NOT.
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_TOTAL_KB: "0.05" }, "develop")
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: n/a — develop é tracking-only")
+    expect(r.stdout).toContain("gate anti-regressao: n/a - develop e tracking-only")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
   }, 60000)
 
@@ -285,7 +285,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     f.write(
       "docs/bundle-report.md",
       baselineReport("219.1", "80.0") +
-        "| develop | 2026-08-08 | 219.1 | — | 83.0 | — | 58.6 | — | 266.9 | 85.4 | — | — | ✅ |\n",
+        "| develop | 2026-08-08 | 219.1 | - | 83.0 | - | 58.6 | - | 266.9 | 85.4 | - | - | [OK] |\n",
     )
 
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_TOTAL_KB: "5" })
@@ -312,7 +312,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     f.write(
       "docs/bundle-report.md",
       baselineReport("219.1", "80.0") +
-        "| develop | 2026-08-08 | 219.1 | — | 83.0 | — | 58.6 | — | 266.9 | 85.4 | — | — | ✅ |\n",
+        "| develop | 2026-08-08 | 219.1 | - | 83.0 | - | 58.6 | - | 266.9 | 85.4 | - | - | [OK] |\n",
     )
     // Remove the v0.4.2 row so ONLY the develop row remains.
     const p = path.join(f.dir, "docs", "bundle-report.md")
@@ -320,7 +320,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
 
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_TOTAL_KB: "0.01" })
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: skipped — sem release versionado ainda")
+    expect(r.stdout).toContain("gate anti-regressao: skipped - sem release versionado ainda")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
   }, 60000)
 
@@ -331,7 +331,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     // Even a tiny threshold must not fail: there is nothing to compare against.
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_TOTAL_KB: "0.01" })
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: skipped — sem baseline")
+    expect(r.stdout).toContain("gate anti-regressao: skipped - sem baseline")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
   }, 60000)
 
@@ -351,7 +351,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
 
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_TOTAL_KB: "0.01" })
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: skipped — initial veio do fallback")
+    expect(r.stdout).toContain("gate anti-regressao: skipped - initial veio do fallback")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
   }, 60000)
 
@@ -389,7 +389,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
 
     const r = runReport(f.dir, {})
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("gate anti-regressao: ok")
     expect(r.stdout).toContain("rotas: /busca")
     expect(r.stdout).toContain("v0.4.2")
   }, 60000)
@@ -407,7 +407,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
 
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB: "0.01" })
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("gate anti-regressao: ok")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
     // Camada B: o gate de rota está DESARMADO (baseline sem blocos Rotas) —
     // o run deve emitir o ::warning:: de desarme, nunca passar em silêncio.
@@ -429,15 +429,15 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
       "docs/bundle-report.md",
       baselineReport("219.1", "80.0") +
         "\n## Rotas (real transfer, KB gzip)\n\n" +
-        "### v0.4.2 — 2026-08-08\n" +
-        "| Rota | Params | KB gzip | Δ |\n" +
+        "### v0.4.2 - 2026-08-08\n" +
+        "| Rota | Params | KB gzip | delta |\n" +
         "|---|---|---|---|\n" +
-        "| /dashboard | 1 | 218.1 | — |\n",
+        "| /dashboard | 1 | 218.1 | - |\n",
     )
 
     const r = runReport(f.dir, {})
     expect(r.status).toBe(0) // warning is non-blocking
-    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("gate anti-regressao: ok")
     expect(r.stdout).toContain("::warning:: gate de rota PARCIALMENTE desarmado")
     expect(r.stdout).toContain("/dashboard")
     expect(r.stdout).toContain("/busca")
@@ -476,9 +476,9 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("::warning:: gate de rota desarmado")
     expect(r.stdout).toContain("v0.4.3") // baseline = the release just made
-    expect(r.stdout).toContain("O próximo release re-arma") // guidance tail
+    expect(r.stdout).toContain("O proximo release re-arma") // guidance tail
     expect(r.stdout).toContain("sem baseline por rota ainda")
-    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("gate anti-regressao: ok")
     // Exclusividade do if/else-if: baseline sem blocos ≠ sem overlap — o
     // warning PARCIAL não pode disparar junto com o total.
     expect(r.stdout).not.toContain("PARCIALMENTE desarmado")
@@ -501,7 +501,7 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
 
     const r = runReport(f.dir, { JS_BUDGET_MAIN_DELTA_ROUTE_BUSCA_KB: "0.01" })
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain("gate anti-regressão: ok")
+    expect(r.stdout).toContain("gate anti-regressao: ok")
     expect(r.stdout).toContain("registrado em docs/bundle-report.md")
   }, 60000)
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * geo-benchmark.mjs — standalone benchmark
+ * geo-benchmark.mjs - standalone benchmark
  *
  * Compares Haversine JS vs modelled PostGIS distance computation for
  * 100 / 1 000 / 10 000 providers.
@@ -78,7 +78,7 @@ const data10000 = generateProviders(10000, 50, CENTER)
 // ---------------------------------------------------------------------------
 
 /**
- * Compute Haversine distances for all providers — the real fallback path
+ * Compute Haversine distances for all providers - the real fallback path
  * used in `fetchProvidersData` when PostGIS is unavailable.
  *
  * Returns the sum of distances to prevent V8 dead-code elimination.
@@ -98,17 +98,17 @@ const ITERS_PER_MS = calibrateBusyLoop()
  * Modelled PostGIS ST_Distance query cost.
  *
  * Model parameters (conservative for local PG 16, warm cache):
- *   ┌──────────────────────┬───────────┬──────────────────────────┐
- *   │ Component            │ Latency   │ Source                   │
- *   ├──────────────────────┼───────────┼──────────────────────────┤
- *   │ TCP round-trip       │   0.2 ms  │ loopback TCP ping        │
- *   │ Query parse / plan   │   1.8 ms  │ PG EXPLAIN ANALYZE       │
- *   │ GiST index scan      │  O(log N) │ included in per-row cost │
- *   │ ST_Distance math     │   2 µs/row│ PostGIS manual §8.12     │
- *   │ Serialise + transfer │  20 µs/row│ pgbench -f st_distance   │
- *   ├──────────────────────┼───────────┼──────────────────────────┤
- *   │ Total                │ 2 + 0.022N│ model used below         │
- *   └──────────────────────┴───────────┴──────────────────────────┘
+ *   +----------------------+-----------+--------------------------+
+ *   | Component            | Latency   | Source                   |
+ *   +----------------------+-----------+--------------------------+
+ *   | TCP round-trip       |   0.2 ms  | loopback TCP ping        |
+ *   | Query parse / plan   |   1.8 ms  | PG EXPLAIN ANALYZE       |
+ *   | GiST index scan      |  O(log N) | included in per-row cost |
+ *   | ST_Distance math     |   2 us/row| PostGIS manual sec 8.12     |
+ *   | Serialise + transfer |  20 us/row| pgbench -f st_distance   |
+ *   +----------------------+-----------+--------------------------+
+ *   | Total                | 2 + 0.022N| model used below         |
+ *   +----------------------+-----------+--------------------------+
  *
  * Reference:
  *   https://postgis.net/docs/ST_Distance.html
@@ -119,7 +119,7 @@ function simulatedPostgisDistance(count) {
 }
 
 // ---------------------------------------------------------------------------
-// Run benchmarks — collect structured results
+// Run benchmarks - collect structured results
 // ---------------------------------------------------------------------------
 
 function runAll() {
@@ -142,7 +142,7 @@ function runAll() {
   return {
     meta: {
       center: CENTER,
-      centerLabel: "São Paulo",
+      centerLabel: "Sao Paulo",
       cpuItersPerMs: Math.round(ITERS_PER_MS),
       platform: process.platform,
       arch: process.arch,
@@ -156,8 +156,8 @@ function runAll() {
       { name: "PostGIS [model]  100",  label: "postgis_model_100",  ...pg100 },
       { name: "PostGIS [model] 1 000", label: "postgis_model_1000", ...pg1000 },
       { name: "PostGIS [model]10 000", label: "postgis_model_10000", ...pg10000 },
-      { name: "haversineKm × 1",      label: "haversine_single",    ...singleHaversine },
-      { name: "PostGIS [model] × 1",  label: "postgis_model_single", ...singlePg },
+      { name: "haversineKm x 1",      label: "haversine_single",    ...singleHaversine },
+      { name: "PostGIS [model] x 1",  label: "postgis_model_single", ...singlePg },
     ],
     analysis: {
       haversineUnitCosts: {
@@ -166,7 +166,7 @@ function runAll() {
         at10000: +h10kPer.toFixed(4),
       },
       avgHaversinePerProvider: +avgHaversinePerProvider.toFixed(4),
-      note: "Haversine JS is ~70× faster per call. PostGIS wins by FILTERING before computing (GiST index). Crossover depends on radius selectivity, not raw math throughput.",
+      note: "Haversine JS is ~70x faster per call. PostGIS wins by FILTERING before computing (GiST index). Crossover depends on radius selectivity, not raw math throughput.",
     },
   }
 }
@@ -182,26 +182,26 @@ function pad(s, w) {
 }
 
 console.log("")
-console.log("╔══════════════════════════════════════════════════════════════════════╗")
-console.log("║    Severinno — Geo-Distance Benchmark (PostGIS vs Haversine JS)    ║")
-console.log("╚══════════════════════════════════════════════════════════════════════╝")
+console.log("+======================================================================+")
+console.log("|    Severinno - Geo-Distance Benchmark (PostGIS vs Haversine JS)    |")
+console.log("+======================================================================+")
 console.log("")
-console.log(`  Center:   ${CENTER.lat}, ${CENTER.lng}  (São Paulo)`)
+console.log(`  Center:   ${CENTER.lat}, ${CENTER.lng}  (Sao Paulo)`)
 console.log(`  CPU:      ${ITERS_PER_MS.toFixed(0).padStart(5)} iters/ms  (calibrated busy-loop)`)
 console.log(`  Platform: ${process.platform} ${process.arch}  Node ${process.version}`)
 console.log("")
 
-console.log("  ┌──────────────────────┬──────────┬──────────┬──────────┬─────────────┐")
-console.log("  │ Benchmark            │   Mean   │   Min    │   Max    │   ops/sec   │")
-console.log("  ├──────────────────────┼──────────┼──────────┼──────────┼─────────────┤")
+console.log("  +----------------------+----------+----------+----------+-------------+")
+console.log("  | Benchmark            |   Mean   |   Min    |   Max    |   ops/sec   |")
+console.log("  +----------------------+----------+----------+----------+-------------+")
 
 for (const b of results.benchmarks) {
   console.log(
-    `  │ ${b.name.padEnd(20)} │ ${pad(b.mean, 6)} µs │ ${pad(b.min, 6)} µs │ ${pad(b.max, 6)} µs │ ${pad(b.opsPerSec, 9)}  │`,
+    `  | ${b.name.padEnd(20)} | ${pad(b.mean, 6)} us | ${pad(b.min, 6)} us | ${pad(b.max, 6)} us | ${pad(b.opsPerSec, 9)}  |`,
   )
 }
 
-console.log("  └──────────────────────┴──────────┴──────────┴──────────┴─────────────┘")
+console.log("  +----------------------+----------+----------+----------+-------------+")
 console.log("")
 console.log("  [model] = CPU-modelled estimate of a real PostGIS ST_Distance query.")
 console.log("           NOT a measurement against a real database.")
@@ -211,23 +211,23 @@ console.log("")
 // Crossover analysis
 // ---------------------------------------------------------------------------
 
-console.log("╔══════════════════════════════════════════════════════════════════════╗")
-console.log("║                    Crossover Threshold Analysis                     ║")
-console.log("╚══════════════════════════════════════════════════════════════════════╝")
+console.log("+======================================================================+")
+console.log("|                    Crossover Threshold Analysis                     |")
+console.log("+======================================================================+")
 console.log("")
 
 const uc = results.analysis.haversineUnitCosts
-console.log(`  Haversine unit cost:  ${uc.at100.toFixed(4)} µs / provider  (@ 100)`)
-console.log(`                         ${uc.at1000.toFixed(4)} µs / provider  (@ 1 000)`)
-console.log(`                         ${uc.at10000.toFixed(4)} µs / provider  (@ 10 000)`)
+console.log(`  Haversine unit cost:  ${uc.at100.toFixed(4)} us / provider  (@ 100)`)
+console.log(`                         ${uc.at1000.toFixed(4)} us / provider  (@ 1 000)`)
+console.log(`                         ${uc.at10000.toFixed(4)} us / provider  (@ 10 000)`)
 console.log("")
 
-console.log(`  Average Haversine:    ${results.analysis.avgHaversinePerProvider.toFixed(4)} µs / provider`)
+console.log(`  Average Haversine:    ${results.analysis.avgHaversinePerProvider.toFixed(4)} us / provider`)
 console.log("")
 
-console.log("  ─── Key insight ───────────────────────────────────────────────")
+console.log("  --- Key insight -----------------------------------------------")
 console.log("")
-console.log("  Haversine JS is ~70× faster per call than a single PostGIS")
+console.log("  Haversine JS is ~70x faster per call than a single PostGIS")
 console.log("  ST_Distance evaluation.  There is NO positive N at which")
 console.log("  PostGIS catches up in pure math throughput.")
 console.log("")
@@ -236,17 +236,17 @@ console.log("  the GiST index scans O(log N) candidates via ST_DWithin,")
 console.log("  then computes ST_Distance only for the filtered subset.")
 console.log("")
 
-console.log("  ─── Practical thresholds for Severinno ────────────────────────")
+console.log("  --- Practical thresholds for Severinno ------------------------")
 console.log("")
-console.log("  T_postgis_filtered(N, s)  =  2000 + 22 × N × s   µs")
-console.log("  T_haversine_full(N)       =  0.315 × N           µs  (plus data transfer)")
-console.log("  T_transfer(N)             =  20 × N              µs  (serialise + send)")
+console.log("  T_postgis_filtered(N, s)  =  2000 + 22 x N x s   us")
+console.log("  T_haversine_full(N)       =  0.315 x N           us  (plus data transfer)")
+console.log("  T_transfer(N)             =  20 x N              us  (serialise + send)")
 console.log("")
 console.log("  where s = selectivity (fraction of providers within radius).")
 console.log("")
 
 console.log(`  ${" Providers ".padStart(11)} ${" Radius ".padStart(9)} ${" Selectivity ".padStart(12)} ${" Faster ".padStart(26)}`)
-console.log(`  ${"".padStart(11,"─")} ${"".padStart(9,"─")} ${"".padStart(12,"─")} ${"".padStart(26,"─")}`)
+console.log(`  ${"".padStart(11,"-")} ${"".padStart(9,"-")} ${"".padStart(12,"-")} ${"".padStart(26,"-")}`)
 
 const scenarios = [
   [   500, "  5 km", " ~4 %",  "PostGIS (saves ~96 % data transfer)"],
@@ -276,6 +276,6 @@ console.log("")
 if (jsonFlag) {
   mkdirSync(dirname(jsonFile), { recursive: true })
   writeFileSync(jsonFile, JSON.stringify(results, null, 2), "utf-8")
-  console.log(`  📁 Results saved to ${jsonFile}`)
+  console.log(`   Results saved to ${jsonFile}`)
   console.log("")
 }

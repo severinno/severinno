@@ -49,8 +49,18 @@
 #                                      files (not docker-compose*.yml etc).
 #                                      YAML_GATE_FILES (space-separated)
 #                                      OVERRIDES the default for fixture tests.
+#   5. scan-non-ascii.mjs --report over the scripts/*.mjs GATE files
+#                                    - PURE-ASCII scan (byte >= 0x80). The
+#                                      1:1 ASCII conversion the .sh files got
+#                                      (f17ffdd) never reached the .mjs - a
+#                                      stray accent/emoji/em-dash in a gate
+#                                      .mjs is the same silent-failure class
+#                                      as a .sh. BLOCKING. Surface DERIVED
+#                                      from encoding-surface.mjs
+#                                      --print-mjs-gate. MJS_SCAN_FILES
+#                                      OVERRIDES for fixture tests.
 #
-# Exit code = the WORST of the four layers (0 all clean / 1 violation / 2
+# Exit code = the WORST of the five layers (0 all clean / 1 violation / 2
 # usage error), so a regression in any layer fails the single step.
 # Args are forwarded to check-utf8.sh (e.g. --ci src/, --dry-run, --ext md
 # for an on-demand doc audit); --sync is intercepted and routed to
@@ -195,6 +205,48 @@ if [ "${#YAML_LIST[@]}" -gt 0 ]; then
 fi
 if [ "$YAML_EXIT" -gt "$EXIT_CODE" ]; then
   EXIT_CODE=$YAML_EXIT
+fi
+
+# Layer 5: scripts/*.mjs gate files - PURE-ASCII scan (--report, byte
+# >= 0x80). The 1:1 ASCII conversion the .sh files got (f17ffdd) never
+# reached the .mjs - they carried box-drawing banners, em-dashes, emoji
+# and accents in CLI output/docblocks, and a stray non-ASCII byte in a
+# gate .mjs is the SAME silent-failure class as a .sh (e.g. the accented
+# byte that escaped this gate until a manual scan-non-ascii --report
+# caught it).
+# BLOCKING (unlike the informational docs-encoding job): scripts/*.mjs
+# are EXECUTABLE gate logic, so the scan is the ASCII-strictness mirror
+# of layer 2 for the .mjs surface. Legit accents in docblock prose are
+# NOT allowed here (layer 5 is byte-strict); the .md/.css/.html doc
+# surfaces keep their legit-unicode-by-design posture in the
+# informational job. Surface: git ls-files 'scripts/*.mjs' - DERIVED
+# from encoding-surface.mjs --print-mjs-gate (single source of truth,
+# same pattern as layer 4). MJS_SCAN_FILES (space-separated) OVERRIDES
+# the default for fixture-driven tests.
+MJS_EXIT=0
+MJS_LIST=()
+if [ -n "${MJS_SCAN_FILES:-}" ]; then
+  read -r -a MJS_LIST <<< "$MJS_SCAN_FILES"
+else
+  MJS_PATTERNS="$(node "$SCRIPT_DIR/encoding-surface.mjs" --print-mjs-gate)" || MJS_PATTERNS=""
+  if [ -z "$MJS_PATTERNS" ]; then
+    echo "verify-encoding: encoding-surface derivation failed (MJS_GATE_PATTERNS unavailable)" >&2
+    MJS_EXIT=2
+  else
+    read -r -a MJS_PAT_ARR <<< "$MJS_PATTERNS"
+    mapfile -t MJS_LIST < <(git ls-files "${MJS_PAT_ARR[@]}" 2>/dev/null || true)
+  fi
+fi
+if [ "${#MJS_LIST[@]}" -gt 0 ]; then
+  node "$SCRIPT_DIR/scan-non-ascii.mjs" --report "${MJS_LIST[@]}" || MJS_EXIT=$?
+  if [ "$MJS_EXIT" -eq 0 ]; then
+    echo "mjs-gate: clean (${#MJS_LIST[@]} scripts/*.mjs, pure ASCII)"
+  else
+    echo "mjs-gate: FAILED - non-ASCII byte in a scripts/*.mjs gate file (blocking)" >&2
+  fi
+fi
+if [ "$MJS_EXIT" -gt "$EXIT_CODE" ]; then
+  EXIT_CODE=$MJS_EXIT
 fi
 
 exit "$EXIT_CODE"

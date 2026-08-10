@@ -1,0 +1,73 @@
+# =============================================================================
+# hook-parallel-race - prova de estabilidade do par paralelo do pre-commit
+#
+# WHY (2026-08): a secao 11.8 do gates-proofs.md ADOTOU o paralelo
+# lint-staged | tsc no .husky/pre-commit com nota: a janela de raca
+# (eslint --fix reescreve um arquivo staged ENQUANTO o tsc --noEmit le os
+# mesmos arquivos -> erro TS transitorio) e estreita mas NAO e zero, e a
+# amostra da medicao foi ~6 runs. Este workflow e o job DEDICADO que roda o
+# par REAL N vezes (default 10) via scripts/scan-hook-parallel-race.mjs e
+# FALHA se qualquer erro TS transitorio aparecer - provando a estabilidade
+# do ADOTADO (ou sinalizando a reversao para o sequencial quando a janela
+# materializar).
+#
+# POR QUE NAO RODA EM TODO PR/PUSH: cada run do par custa o tsc real
+# (~17-55s), entao 10 runs ~= 3-9min - caro demais para o push net
+# (guard-gates.yml) ou para o PR check. E uma prova de estabilidade, nao um
+# gate de merge: roda SEMANAL (schedule) + manual (workflow_dispatch) - o
+# trigger irmao e obrigatorio pelo Type D HERMETIC (dispatch-only e
+# irrecuperavel e indisparavel; ver scan-surfaces-contract.test.ts).
+#
+# A prova usa um PROBE com violacao fixable (let -> const via prefer-const)
+# staged via git add em cada iteracao - sem probe, o lint-staged nao teria
+# nada para reescrever e a janela seria ZERO (prova vacua). O probe e
+# removido no finally.
+# =============================================================================
+
+name: Hook Parallel Race
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1' # weekly Monday 04:00 UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parallel-race:
+    name: Parallel race (tsc | lint-staged x 10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # O guard real: baseline tsc sozinho + N runs do par (lint em
+      # background, tsc em foreground - o MESMO shape do .husky/pre-commit)
+      # com o probe re-injetado + re-staged em cada iteracao. Exit 1 =
+      # transient TS error (a raca materializou) OU baseline vermelho (erro
+      # TS real do repo). Ver o header do scripts/scan-hook-parallel-race.mjs.
+      - name: Run the parallel pair 10x (sec 11.8 stability)
+        run: node scripts/scan-hook-parallel-race.mjs --iterations 10
+
+      # A suite vitest hermetica da logica do guard (parse, probe,
+      # transient-detection, mutations com fake commands) - roda aqui tambem
+      # para a logica nao ficar orfa de execucao (o mesmo papel do
+      # scan-timeouts no guard-gates.yml). O custo e ~2s (fake commands).
+      # bunx (nao npx) - a convencao bun do repo (setup-bun prove o binario).
+      - name: Guard vitest suite (hermetic logic + mutations)
+        run: bunx vitest run scripts/__tests__/scan-hook-parallel-race.test.ts --config vitest.config.unit.ts

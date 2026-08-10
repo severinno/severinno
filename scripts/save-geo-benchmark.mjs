@@ -7,8 +7,8 @@
  * date-stamped JSON file under docs/benchmarks/.
  *
  * Usage:
- *   node scripts/save-geo-benchmark.mjs          # → docs/benchmarks/geo-2026-07-26.json
- *   node scripts/save-geo-benchmark.mjs custom   # → docs/benchmarks/geo-custom.json
+ *   node scripts/save-geo-benchmark.mjs          # -> docs/benchmarks/geo-2026-07-26.json
+ *   node scripts/save-geo-benchmark.mjs custom   # -> docs/benchmarks/geo-custom.json
  */
 
 import { execSync } from "node:child_process";

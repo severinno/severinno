@@ -174,3 +174,179 @@ describe("check-node-modules-integrity.mjs - divergent node_modules guard (2026-
     expect(r.stdout).toContain("19.2.3/19.2.3")
   }, 60000)
 })
+
+describe("check-node-modules-integrity.mjs --check-lock - ALL direct packages vs bun.lock (2026-08)", () => {
+  afterEach(cleanupTempDirs)
+
+  /** Synthetic root with a package.json (deps) + bun.lock + installed set. */
+  function buildCheckLockRoot(opts: {
+    pkgJson?: Record<string, string> // package.json "dependencies"
+    lock?: Record<string, string> // lock entry name -> resolved version
+    installed?: Record<string, string | null> // name -> installed version (null = MISSING)
+    noPkgJson?: boolean
+    noLock?: boolean
+  }): string {
+    const dir = createTempDir("nm-integrity-")
+    if (!opts.noPkgJson) {
+      fs.writeFileSync(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name: "synthetic", dependencies: opts.pkgJson ?? {} }),
+      )
+    }
+    if (!opts.noLock) {
+      const lines = Object.entries(opts.lock ?? {})
+        .map(([pkg, ver]) => lockLine(pkg, ver))
+        .join("")
+      fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true })
+      fs.writeFileSync(
+        path.join(dir, "bun.lock"),
+        `{\n  "lockfileVersion": 1,\n  "packages": {\n${lines}  }\n}\n`,
+      )
+    }
+    for (const [pkg, ver] of Object.entries(opts.installed ?? {})) {
+      if (ver === null) continue // MISSING install
+      const p = path.join(dir, "node_modules", pkg, "package.json")
+      fs.mkdirSync(path.dirname(p), { recursive: true })
+      fs.writeFileSync(p, JSON.stringify({ name: pkg, version: ver }))
+    }
+    return dir
+  }
+
+  function runCheckLock(dir?: string) {
+    return runSubprocess({
+      command: process.execPath,
+      args: [SCRIPT, "--check-lock"],
+      ...(dir ? { env: { NODE_MODULES_ROOT: dir } } : {}),
+    })
+  }
+
+  it("clean: every direct pkg matches the lock -> exit 0, count-pin of the verified set", () => {
+    const dir = buildCheckLockRoot({
+      pkgJson: { react: "^19.0.0", lodash: "^4.17.0" },
+      lock: { react: LOCKED, lodash: "4.17.21" },
+      installed: { react: LOCKED, lodash: "4.17.21" },
+    })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("--check-lock clean (2 direct packages match bun.lock; 0 skipped non-registry)")
+  }, 60000)
+
+  it("DIVERGENT: one direct pkg (lodash) installed wrong version -> exit 1 + DIVERGENT line + CURE, sibling NOT flagged (single-failure count-pin)", () => {
+    const dir = buildCheckLockRoot({
+      pkgJson: { react: "^19.0.0", lodash: "^4.17.0" },
+      lock: { react: LOCKED, lodash: "4.17.21" },
+      installed: { react: LOCKED, lodash: "4.17.20" },
+    })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("DIVERGENT lodash installed=4.17.20 locked=4.17.21")
+    expect(r.stdout).toContain("CURE: rm -rf node_modules && bun install --frozen-lockfile")
+    // the healthy sibling is NOT flagged (only lodash diverged)
+    expect(r.stdout).not.toContain("DIVERGENT react")
+  }, 60000)
+
+  it("MISSING install of a direct pkg -> exit 1 DIVERGENT with MISSING", () => {
+    const dir = buildCheckLockRoot({
+      pkgJson: { react: "^19.0.0" },
+      lock: { react: LOCKED },
+      installed: { react: null },
+    })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("DIVERGENT react installed=MISSING locked=")
+  }, 60000)
+
+  it("MUTATION flip (the bun-install no-repair path): swap one installed version -> fail -> restore -> clean again", () => {
+    const dir = buildCheckLockRoot({
+      pkgJson: { react: "^19.0.0", lodash: "^4.17.0" },
+      lock: { react: LOCKED, lodash: "4.17.21" },
+      installed: { react: LOCKED, lodash: "4.17.21" },
+    })
+    expect(runCheckLock(dir).status).toBe(0)
+    const lodashPkg = path.join(dir, "node_modules", "lodash", "package.json")
+    fs.writeFileSync(lodashPkg, JSON.stringify({ name: "lodash", version: "4.17.20" }))
+    const bad = runCheckLock(dir)
+    expect(bad.status).toBe(1)
+    expect(bad.stdout).toContain("DIVERGENT lodash installed=4.17.20 locked=4.17.21")
+    fs.writeFileSync(lodashPkg, JSON.stringify({ name: "lodash", version: "4.17.21" }))
+    expect(runCheckLock(dir).status).toBe(0)
+  }, 60000)
+
+  it("scoped direct pkg (@scope/pkg) validated via the same lock entry format -> clean", () => {
+    const dir = buildCheckLockRoot({
+      pkgJson: { "@scope/pkg": "^1.0.0" },
+      lock: { "@scope/pkg": "1.2.3" },
+      installed: { "@scope/pkg": "1.2.3" },
+    })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("--check-lock clean (1 direct packages match bun.lock; 0 skipped non-registry)")
+  }, 60000)
+
+  it("non-registry spec (workspace:*) -> SKIP line, exit 0, excluded from the count (documented exclusion, never silent)", () => {
+    const dir = buildCheckLockRoot({
+      pkgJson: { react: "^19.0.0", "@repo/shared": "workspace:*" },
+      lock: { react: LOCKED },
+      installed: { react: LOCKED },
+    })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("SKIP @repo/shared (spec 'workspace:*') - non-registry")
+    expect(r.stdout).toContain("--check-lock clean (1 direct packages match bun.lock; 1 skipped non-registry)")
+  }, 60000)
+
+  it("npm: alias -> resolved against the REAL lock entry, installed read from the alias folder", () => {
+    const dir = buildCheckLockRoot({
+      pkgJson: { alias: "npm:real-pkg@2.0.0" },
+      lock: { "real-pkg": "2.0.0" },
+      installed: { alias: "2.0.0" },
+    })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("--check-lock clean (1 direct packages match bun.lock; 0 skipped non-registry)")
+    // flip the alias install -> DIVERGENT naming the alias key
+    const p = path.join(dir, "node_modules", "alias", "package.json")
+    fs.writeFileSync(p, JSON.stringify({ name: "real-pkg", version: "1.9.0" }))
+    const bad = runCheckLock(dir)
+    expect(bad.status).toBe(1)
+    expect(bad.stdout).toContain("DIVERGENT alias installed=1.9.0 locked=2.0.0")
+  }, 60000)
+
+  it("UNVERIFIABLE (v2-shaped lock): a direct pkg's entry is not grep-able -> exit 1 NEVER silent clean (the fail-safe direction)", () => {
+    const dir = createTempDir("nm-integrity-")
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "synthetic", dependencies: { react: "^19.0.0" } }),
+    )
+    fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, "bun.lock"),
+      `{\n  "lockfileVersion": 2,\n  "packages": {\n    "react": { "version": "19.2.3" }\n  }\n}\n`,
+    )
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("--check-lock UNVERIFIABLE react")
+    expect(r.stdout).toContain("lock format changed? update the guard")
+    expect(r.stdout).not.toContain("clean")
+  }, 60000)
+
+  it("no package.json -> --check-lock skip exit 0 (nothing to derive)", () => {
+    const dir = buildCheckLockRoot({ noPkgJson: true, lock: { react: LOCKED }, installed: { react: LOCKED } })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("--check-lock skip (no package.json to derive direct deps)")
+  }, 60000)
+
+  it("no bun.lock -> exit 0 skip (same as the default mode)", () => {
+    const dir = buildCheckLockRoot({ pkgJson: { react: "^19.0.0" }, noLock: true })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("skip (no bun.lock to compare)")
+  }, 60000)
+
+  it("BASELINE: real repo (no env override) --check-lock -> exit 0, ALL 98 direct packages match bun.lock (count-pin of the live manifest)", () => {
+    const r = runCheckLock()
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("--check-lock clean (98 direct packages match bun.lock; 0 skipped non-registry)")
+  }, 60000)
+})

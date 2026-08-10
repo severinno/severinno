@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * scan-non-ascii.mjs — reusable non-ASCII byte scanner for encoding gates.
+ * scan-non-ascii.mjs - reusable non-ASCII byte scanner for encoding gates.
  *
  * WHY THIS EXISTS (read before you reach for a grep one-liner):
  *   `LC_ALL=C grep -n '[^ -~]' file` LOOKS correct but FAILS SILENTLY: the
- *   character-class RANGE `[ -~]` (space 0x20 → tilde 0x7E) is locale- and
+ *   character-class RANGE `[ -~]` (space 0x20 -> tilde 0x7E) is locale- and
  *   quoting-dependent, and through some tooling paths it stops matching
- *   entirely — a file can hold real non-ASCII bytes (em-dash, accents,
+ *   entirely - a file can hold real non-ASCII bytes (em-dash, accents,
  *   emoji) while the scan reports zero hits. That exact failure slipped an
  *   em-dash into scripts/health-check.sh in this repo (2026-08) despite the
  *   gate. This module never builds a range and never depends on locale: it
  *   iterates raw BYTES and flags every byte >= 0x80. There is no pattern to
  *   break.
  *
- * API (importable — entry-point guarded):
+ * API (importable - entry-point guarded):
  *   import {
  *     findNonAsciiOffsets, scanFile, firstInvalidUtf8Offset, scanFileUtf8,
  *   } from "./scan-non-ascii.mjs"
@@ -23,7 +23,7 @@
  *   firstInvalidUtf8Offset(buf) -> number      offset of the first INVALID UTF-8
  *                                              sequence, or -1 when fully valid
  *   scanFileUtf8(path)      -> { path, validUtf8, hits }  (corruption scan:
- *                            well-formedness only — legit accents PASS)
+ *                            well-formedness only - legit accents PASS)
  *
  * CLI (what gates call):
  *   node scripts/scan-non-ascii.mjs <file...>
@@ -39,7 +39,7 @@
  *     this repo, the dominant cost of verify-ascii-proof.sh) while still
  *     reporting per-file verdicts.
  *   node scripts/scan-non-ascii.mjs --utf8 [--report] <file...>
- *     UTF-8 WELL-FORMEDNESS scan — the CORRUPTION alert (not the accent
+ *     UTF-8 WELL-FORMEDNESS scan - the CORRUPTION alert (not the accent
  *     presence scan above). Flags only INVALID sequences (stray continuation,
  *     truncated, overlong, UTF-16 surrogates, > U+10FFFF); legit accents and
  *     em-dashes PASS. exit 1 if any invalid file, else 0. With --report:
@@ -47,17 +47,17 @@
  *       INVALID-UTF8\t<path>\t<line>:<col>   (first invalid sequence)
  *       ERROR\t<path>
  *     This is what pr-check.yml's informational docs-encoding job runs over
- *     the docs surface (git ls-files '*.md' '*.css' '*.html') — it alerts on
+ *     the docs surface (git ls-files '*.md' '*.css' '*.html') - it alerts on
  *     corruption WITHOUT blocking and WITHOUT tripping on legit accents.
  *
- * Exit codes: 0 = clean · 1 = at least one offending byte/file.
+ * Exit codes: 0 = clean - 1 = at least one offending byte/file.
  */
 import { readFileSync } from "node:fs"
 import { pathToFileURL } from "node:url"
 
 /**
  * Byte offsets (0-based) of every byte >= 0x80 in a Buffer.
- * Pure byte iteration — no regex, no locale, no character-class range.
+ * Pure byte iteration - no regex, no locale, no character-class range.
  * @param {Buffer} buf
  * @returns {number[]}
  */
@@ -86,7 +86,7 @@ function positionOf(buf, offset) {
 
 /**
  * Scan one file for non-ASCII bytes.
- * Returns { path, nonAscii, hits } — hits = [{ offset, line, col }], empty
+ * Returns { path, nonAscii, hits } - hits = [{ offset, line, col }], empty
  * when the file is pure ASCII. Throws on read errors (caller decides).
  * @param {string} filePath
  * @returns {{ path: string, nonAscii: boolean, hits: Array<{ offset: number, line: number, col: number }> }}
@@ -116,7 +116,7 @@ export function scanFiles(paths) {
  * corruption (stray continuation / invalid lead bytes 0x80-0xC1 and
  * 0xF5-0xFF, truncated sequences, overlong encodings, UTF-16 surrogates
  * U+D800-U+DFFF, code points > U+10FFFF) is flagged at its first byte. Pure
- * byte iteration — the same no-pattern, no-locale promise as
+ * byte iteration - the same no-pattern, no-locale promise as
  * findNonAsciiOffsets (LC_ALL cannot change the verdict).
  * @param {Buffer} buf
  * @returns {number}
@@ -154,7 +154,7 @@ export function firstInvalidUtf8Offset(buf) {
 }
 
 /**
- * UTF-8 well-formedness scan of one file (corruption detection — NOT the
+ * UTF-8 well-formedness scan of one file (corruption detection - NOT the
  * non-ASCII presence scan scanFile performs). Returns the first invalid
  * sequence position, or an empty hits list when the file is valid UTF-8
  * (accents and em-dashes are valid and PASS). Throws on read errors (caller

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * Verify secret rotation status — Severinno
+ * Verify secret rotation status - Severinno
  *
  * Compares the LAST LEAKED value of each secret (from git history) against the
  * CURRENT value in the local env files (.env.production / .env), reporting only
- * a status + an 8-char sha256 prefix — NEVER the values themselves.
+ * a status + an 8-char sha256 prefix - NEVER the values themselves.
  *
- *   ✅ ROTACIONADO — current value differs from the leaked one
- *   ❌ IGUAL       — current value is still the leaked one (rotation pending)
- *   ⚠️  N/D        — key missing on one side (nothing to compare on this machine)
+ *   [OK] ROTACIONADO - current value differs from the leaked one
+ *   [FAIL] IGUAL       - current value is still the leaked one (rotation pending)
+ *   [WARN]  N/D        - key missing on one side (nothing to compare on this machine)
  *
  * Evidence basis: this machine's env files vs the git history. The live
  * server / CI secret store must be confirmed manually (see the checklist).
@@ -71,20 +71,20 @@ const CHECKS = [
   ["OPENSEARCH_URL", "OpenSearch", ".env.production"],
   ["S3_ACCESS_KEY", "S3/MinIO", ".env.production"],
   ["S3_SECRET_KEY", "S3/MinIO", ".env.production"],
-  ["SESSION_SECRET", "Auth (sessão)", ".env.production"],
+  ["SESSION_SECRET", "Auth (sessao)", ".env.production"],
   ["CRON_SECRET", "Jobs agendados", ".env.production"],
   ["PAYMENT_WEBHOOK_SECRET", "Webhooks Lytex", ".env.production"],
-  ["LYTEX_CLIENT_SECRET", "Integração Lytex", ".env.production"],
+  ["LYTEX_CLIENT_SECRET", "Integracao Lytex", ".env.production"],
   ["SMTP_PASS", "E-mail transacional", ".env.production"],
   ["VAPID_PRIVATE_KEY", "Push (web-push)", ".env.production"],
-  ["EVOLUTION_API_KEY", "Evolução/WhatsApp (prod)", ".env.production"],
+  ["EVOLUTION_API_KEY", "Evolucao/WhatsApp (prod)", ".env.production"],
   ["SENTRY_AUTH_TOKEN", "Sentry source maps", ".env.production"],
   ["SENTRY_DSN", "Sentry (DSN)", ".env.production"],
-  ["NEXT_PUBLIC_SENTRY_DSN", "Sentry (DSN público)", ".env.production"],
+  ["NEXT_PUBLIC_SENTRY_DSN", "Sentry (DSN publico)", ".env.production"],
   ["GLITCHTIP_DSN", "GlitchTip (DSN)", ".env.production"],
-  ["NEXT_PUBLIC_GLITCHTIP_DSN", "GlitchTip (DSN público)", ".env.production"],
+  ["NEXT_PUBLIC_GLITCHTIP_DSN", "GlitchTip (DSN publico)", ".env.production"],
   ["GROQ_API_KEY", "LLM (dev)", ".env"],
-  ["WHATSAPP_API_KEY", "Evolução/WhatsApp (dev)", ".env"],
+  ["WHATSAPP_API_KEY", "Evolucao/WhatsApp (dev)", ".env"],
   ["GLITCHTIP_SECRET", "GlitchTip (dev)", ".env"],
 ]
 
@@ -110,28 +110,28 @@ for (const [key, service, file] of CHECKS) {
   const C = current[file][key]
   let status, note
   if (L === undefined) {
-    status = "⚠️  N/D"
-    note = "não estava no último valor vazado desse arquivo"
+    status = "[WARN]  N/D"
+    note = "nao estava no ultimo valor vazado desse arquivo"
     unknown++
   } else if (C === undefined) {
-    status = "⚠️  N/D"
-    note = "ausente no env local atual (não verificável nesta máquina)"
+    status = "[WARN]  N/D"
+    note = "ausente no env local atual (nao verificavel nesta maquina)"
     unknown++
   } else if (C === "") {
-    status = "⚠️  VAZIO"
-    note = "valor atual é vazio — nada a rotacionar na cópia local; confirmar prod/CI"
+    status = "[WARN]  VAZIO"
+    note = "valor atual e vazio - nada a rotacionar na copia local; confirmar prod/CI"
     empty++
   } else if (C === L) {
-    status = "❌ IGUAL"
-    note = "valor atual ainda é o vazado — rotação pendente"
+    status = "[FAIL] IGUAL"
+    note = "valor atual ainda e o vazado - rotacao pendente"
     same++
   } else {
-    status = "✅ ROTACIONADO"
+    status = "[OK] ROTACIONADO"
     note = "valor atual difere do vazado"
     changed++
   }
-  const curHash = C === undefined ? "—" : hash8(C)
-  const leakHash = L === undefined ? "—" : hash8(L)
+  const curHash = C === undefined ? "-" : hash8(C)
+  const leakHash = L === undefined ? "-" : hash8(L)
   console.log(
     `${status.padEnd(14)} ${key.padEnd(28)} ${service.padEnd(22)} ` +
       `atual#${curHash} vazado#${leakHash} ${note}`,
@@ -139,10 +139,10 @@ for (const [key, service, file] of CHECKS) {
 }
 
 console.log(
-  `\nResumo: ${changed} ✅ rotacionado(s) | ${same} ❌ igual(is) | ${empty} ⚠️ vazio(s) | ` +
-    `${unknown} ⚠️ não verificável(is)`,
+  `\nResumo: ${changed} [OK] rotacionado(s) | ${same} [FAIL] igual(is) | ${empty} [WARN] vazio(s) | ` +
+    `${unknown} [WARN] nao verificavel(is)`,
 )
 console.log(
   `Fonte do vazado: .env.production@${leaked[".env.production"].commit || "?"} e ` +
-    `.env@${leaked[".env"].commit || "?"} (últimos commits com o arquivo).`,
+    `.env@${leaked[".env"].commit || "?"} (ultimos commits com o arquivo).`,
 )

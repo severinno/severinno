@@ -34,7 +34,8 @@ Answers: **WHICH FILES does this gate scan?**
     (`scripts/health-check.sh`, `*.sh`), `OPS_SH_PATTERNS` (`scripts/*.sh`,
     `.husky/pre-commit`, `.husky/pre-push`), `YAML_GATE_PATTERNS`
     (`.github/workflows/*.yml`, `.github/actions/*/action.yml`),
-    `DOCS_PATTERNS` (`*.md`, `*.css`, `*.html`).
+    `MJS_GATE_PATTERNS` (`scripts/*.mjs`), `DOCS_PATTERNS`
+    (`*.md`, `*.css`, `*.html`).
   - `scripts/fragile-range-patterns.mjs` - `TARGET_DIRS` (`e2e/`, `src/`,
     `mini-services/`, `.zscripts/`), `TARGET_EXTS`, `EXCLUDED_TREES`
     (`docs`, `public`, `examples`, `config`, `prisma`, `db`, `download`,
@@ -110,6 +111,7 @@ Answers: **WHEN does this workflow RUN?**
 | `verify-ascii-proof.sh` | A - code surface | `encoding-surface.mjs --print-vps-sh` / `--print-ops-sh` + frozen manifest in `ascii-safe.md` | blocking (ASCII, `--sync`) |
 | `fragile-range-patterns.mjs` (verify-encoding.sh layer 3) | A - code surface | its own `TARGET_DIRS` / `TARGET_EXTS` / `EXCLUDED_TREES` | blocking |
 | `verify-encoding.sh` layer 4 (YAML gate UTF-8) | A - code surface | `encoding-surface.mjs --print-yaml-gate` (`YAML_GATE_PATTERNS`) | blocking |
+| `verify-encoding.sh` layer 5 (scripts/*.mjs pure-ASCII) | A - code surface | `encoding-surface.mjs --print-mjs-gate` (`MJS_GATE_PATTERNS` = `scripts/*.mjs`) | blocking |
 | `docs-encoding` job / `check-docs-encoding.sh` | A - code surface | `encoding-surface.mjs --print-docs` (`DOCS_PATTERNS`) | informational |
 | `test:unit` (vitest.config.unit.ts) | A - code surface (test discovery) | `vitest.config.unit.ts` include/exclude, pinned by `unit-surface-contract.test.ts` | blocking (contract) |
 | `check-js-budget.mjs` check 7 (real routes) | B - runtime routes | `budget-routes.mjs --print-routes` (`REAL_ROUTE_CHECKS`) | blocking (per-route budgets) |
@@ -208,6 +210,7 @@ is dispatch-only:
 - `deploy.yml` - `push` + `workflow_dispatch:`
 - `e2e-cache.yml` - `pull_request`, `push`, `workflow_call` + `workflow_dispatch:`
 - `guard-gates.yml` - `push` + `workflow_dispatch:`
+- `hook-parallel-race.yml` - `schedule` (semanal) + `workflow_dispatch:` (prova de estabilidade do par paralelo tsc | lint-staged do pre-commit, secao 11.8 - nao e gate de merge, por isso schedule+manual e nao push/PR)
 - `lighthouse-ci.yml` - `pull_request`, `push`, `workflow_call` + `workflow_dispatch:`
 - `pr-check.yml` - `pull_request`, `merge_group` + `workflow_dispatch:`
 - `release-deploy.yml` - `push` + `workflow_dispatch:`

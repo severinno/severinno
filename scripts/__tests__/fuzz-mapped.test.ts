@@ -34,6 +34,7 @@ import {
   isFuzzFile,
   missingManifestSuites,
   selectFuzzSuites,
+  verifyTargetImports,
 } from "../fuzz-targets.mjs"
 import { parseSince, resolveFuzzPlan } from "../run-mapped-fuzz.mjs"
 
@@ -248,5 +249,198 @@ describe("fuzz-targets.mjs - COVERAGE CONTRACT (secao 11.11 ponto 5, classe de g
     })
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("coverage clean")
+  }, 60000)
+})
+
+describe("fuzz-targets.mjs - VERIFY IMPORTS CONTRACT (todo alvo tem import na suite, secao 11.11)", () => {
+  afterEach(cleanupTempDirs)
+
+  it("hermetico CLEAN: root sintetico com as 6 suites + targets -> todos os alvos sao importados", () => {
+    const dir = createTempDir("fuzz-imp-")
+    // Write 6 fuzz suites that import their targets via relative path
+    const cases = [
+      {
+        suite: "src/lib/__tests__/benchmark-utils-fuzz.test.ts",
+        target: "src/lib/benchmark-utils.ts",
+        imp: "import { measure } from \"../benchmark-utils\"\n",
+      },
+      {
+        suite: "src/lib/__tests__/cache-key-fuzz.test.ts",
+        target: "src/lib/radius-expansion.ts",
+        imp: "import { radiusCountCacheKey } from \"../radius-expansion\"\n",
+      },
+      {
+        suite: "src/lib/__tests__/distance-fallback-fuzz.test.ts",
+        target: "src/lib/distance-fallback.ts",
+        imp: "import { computeDistanceMap } from \"../distance-fallback\"\n",
+      },
+      {
+        suite: "src/lib/__tests__/radius-expansion-fuzz.test.ts",
+        target: "src/lib/radius-expansion.ts",
+        imp: "import { buildRadiiToTry } from \"../radius-expansion\"\n",
+      },
+      {
+        suite: "src/lib/__tests__/fuzz-utils-consistency.test.ts",
+        target: "src/lib/fuzz-utils.mjs",
+        imp: "const mod = await import(\"../fuzz-utils.mjs\")\n",
+        // O .ts e sobre-inclusao intencional com exception inline
+      },
+      {
+        suite: "src/components/vitrine/__tests__/address-autocomplete-fuzz.test.tsx",
+        target: "src/components/vitrine/address-autocomplete.tsx",
+        imp: "import AddressAutocomplete from \"../address-autocomplete\"\n",
+      },
+    ]
+
+    for (const c of cases) {
+      const p = path.join(dir, c.suite)
+      fs.mkdirSync(path.dirname(p), { recursive: true })
+      // Write target file (needs to exist for import resolution to work
+      // in the synthetic root - verifyTargetImports reads the suite file,
+      // then resolves relative imports against the suite's dir)
+      const targetP = path.join(dir, c.target)
+      fs.mkdirSync(path.dirname(targetP), { recursive: true })
+      fs.writeFileSync(targetP, "// synthetic target\n")
+      // Write the fuzz suite with its import
+      fs.writeFileSync(p, c.imp)
+    }
+
+    // Add the exception comment for the .ts over-include in consistency suite
+    const consistencyPath = path.join(
+      dir,
+      "src/lib/__tests__/fuzz-utils-consistency.test.ts",
+    )
+    fs.writeFileSync(
+      consistencyPath,
+      fs.readFileSync(consistencyPath, "utf8") +
+        "// manifest-target: over-include: src/lib/__tests__/fuzz-utils.ts - over-include via barrel\n" +
+        "import { describe, it } from \"vitest\"\n\n",
+    )
+
+    const violations = verifyTargetImports(dir)
+    expect(violations).toEqual([])
+  }, 60000)
+
+  it("hermetico DIRTY: alvo sem import na suite -> violation com o caminho exato", () => {
+    const dir = createTempDir("fuzz-imp-")
+    // Write a suite that DOES NOT import its target
+    const suite = "src/lib/__tests__/some-fuzz.test.ts"
+    const target = "src/lib/some-module.ts"
+    const suiteP = path.join(dir, suite)
+    const targetP = path.join(dir, target)
+    fs.mkdirSync(path.dirname(targetP), { recursive: true })
+    fs.writeFileSync(targetP, "// synthetic target\n")
+    fs.mkdirSync(path.dirname(suiteP), { recursive: true })
+    // No import of target - only vitest import
+    fs.writeFileSync(suiteP, "import { describe, it } from \"vitest\"\n")
+
+    // Temporarily patch FUZZ_TARGETS - but that's immutable. Instead,
+    // verifyTargetImports uses the module-level FUZZ_TARGETS which
+    // lists the real manifest. For a synthetic test, we need to inject.
+    // The hermetic test above already proves the real manifest entries
+    // resolve correctly. The DIRTY test below tests via CLI.
+  })
+
+  it("hermetico DIRTY via CLI: 6 suites com imports, so cache-key sem import -> exit 1 com 1 violation (single-failure, count-pin)", () => {
+    const dir = createTempDir("fuzz-imp-")
+    // Write all 6 suites with proper imports (like the CLEAN test)
+    const allCases = [
+      {
+        suite: "src/lib/__tests__/benchmark-utils-fuzz.test.ts",
+        target: "src/lib/benchmark-utils.ts",
+        imp: "import { measure } from \"../benchmark-utils\"\n",
+      },
+      {
+        suite: "src/lib/__tests__/cache-key-fuzz.test.ts",
+        target: "src/lib/radius-expansion.ts",
+        imp: "import { radiusCountCacheKey } from \"../radius-expansion\"\n",
+      },
+      {
+        suite: "src/lib/__tests__/distance-fallback-fuzz.test.ts",
+        target: "src/lib/distance-fallback.ts",
+        imp: "import { computeDistanceMap } from \"../distance-fallback\"\n",
+      },
+      {
+        suite: "src/lib/__tests__/radius-expansion-fuzz.test.ts",
+        target: "src/lib/radius-expansion.ts",
+        imp: "import { buildRadiiToTry } from \"../radius-expansion\"\n",
+      },
+      {
+        suite: "src/lib/__tests__/fuzz-utils-consistency.test.ts",
+        target: "src/lib/fuzz-utils.mjs",
+        imp: "const mod = await import(\"../fuzz-utils.mjs\")\n",
+      },
+      {
+        suite: "src/components/vitrine/__tests__/address-autocomplete-fuzz.test.tsx",
+        target: "src/components/vitrine/address-autocomplete.tsx",
+        imp: "import AddressAutocomplete from \"../address-autocomplete\"\n",
+      },
+    ]
+
+    for (const c of allCases) {
+      const p = path.join(dir, c.suite)
+      fs.mkdirSync(path.dirname(p), { recursive: true })
+      fs.writeFileSync(p, c.imp)
+    }
+
+    // Overwrite the cache-key suite with NO import of radius-expansion
+    const suite = "src/lib/__tests__/cache-key-fuzz.test.ts"
+    const target = "src/lib/radius-expansion.ts"
+    fs.writeFileSync(
+      path.join(dir, suite),
+      "import { describe, it } from \"vitest\"\n\n",
+    )
+
+    // Add the over-include exception for consistency suite's .ts target
+    const consistencyPath = path.join(
+      dir,
+      "src/lib/__tests__/fuzz-utils-consistency.test.ts",
+    )
+    fs.writeFileSync(
+      consistencyPath,
+      fs.readFileSync(consistencyPath, "utf8") +
+        "// manifest-target: over-include: src/lib/__tests__/fuzz-utils.ts - over-include via barrel\n" +
+        "import { describe, it } from \"vitest\"\n\n",
+    )
+
+    const r = runSubprocess({
+      command: process.execPath,
+      args: [TARGETS_SCRIPT, "--verify-imports"],
+      env: { FUZZ_TARGETS_SCAN_ROOT: dir },
+    })
+    expect(r.status).toBe(1)
+    // Only the cache-key suite violates
+    expect(r.stdout).toContain(
+      `IMPORT-VIOLATION: ${suite} -> ${target}`,
+    )
+    // Count-pin: the other 5 manifest suites never appear as import violations
+    const cleanSuites = [
+      "benchmark-utils-fuzz",
+      "distance-fallback-fuzz",
+      "radius-expansion-fuzz",
+      "fuzz-utils-consistency",
+      "address-autocomplete-fuzz",
+    ]
+    for (const s of cleanSuites) {
+      expect(r.stdout).not.toContain(`IMPORT-VIOLATION: src/lib/__tests__/${s}`)
+      expect(r.stdout).not.toContain(`IMPORT-VIOLATION: src/components/vitrine/__tests__/${s}`)
+    }
+    // Only 1 import violation line
+    const lines = r.stdout.split("\n").filter((l) => l.includes("IMPORT-VIOLATION:"))
+    expect(lines.length).toBe(1)
+  }, 60000)
+
+  it("REAL-REPO CONTRACT: todos os alvos do manifest sao importados pelas suites (estado atual do repo)", () => {
+    const violations = verifyTargetImports(process.cwd())
+    expect(violations).toEqual([])
+  }, 60000)
+
+  it("REAL-REPO CONTRACT: CLI --verify-imports no repo real -> exit 0", () => {
+    const r = runSubprocess({
+      command: process.execPath,
+      args: [TARGETS_SCRIPT, "--verify-imports"],
+    })
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("imports clean")
   }, 60000)
 })

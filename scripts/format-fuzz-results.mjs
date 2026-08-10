@@ -6,7 +6,7 @@
  * Reads one or more vitest JSON output files and prints a formatted
  * fuzz test summary table.
  *
- * Used by scripts/run-fuzz.sh — avoids /dev/stdin pipe issues on
+ * Used by scripts/run-fuzz.sh - avoids /dev/stdin pipe issues on
  * Windows Git Bash by reading files directly.
  *
  * Usage:
@@ -20,14 +20,14 @@ import { readFileSync } from "node:fs"
 // Helpers
 // ---------------------------------------------------------------------------
 
-function fmtDuration(µs) {
-  if (!µs || µs === 0) return "—"
-  if (µs < 1000) return `${Math.round(µs)} µs`
-  return `${(µs / 1000).toFixed(1)} ms`
+function fmtDuration(us) {
+  if (!us || us === 0) return "-"
+  if (us < 1000) return `${Math.round(us)} us`
+  return `${(us / 1000).toFixed(1)} ms`
 }
 
 function fmtWallClock(ms) {
-  if (!ms || ms === 0) return "—"
+  if (!ms || ms === 0) return "-"
   if (ms < 1000) return `${Math.round(ms)} ms`
   return `${(ms / 1000).toFixed(1)} s`
 }
@@ -43,7 +43,7 @@ function parseResults(jsonPath) {
     iterations = Number.parseInt(readFileSync(itersPath, "utf-8").trim(), 10)
     if (!Number.isFinite(iterations) || iterations < 0) iterations = 0
   } catch {
-    // .iters file not found — fall back to total test count
+    // .iters file not found - fall back to total test count
     iterations = data.numTotalTests ?? 0
   }
 
@@ -97,7 +97,7 @@ for (const f of files) {
   try {
     results.push(parseResults(f))
   } catch (err) {
-    console.error(`⚠ Error reading ${f}: ${err.message}`)
+    console.error(`[WARN] Error reading ${f}: ${err.message}`)
     results.push({
       file: f.replace(/^.*[/\\]/, "").replace(/\.json$/, ""),
       numTotalTests: 0,
@@ -125,18 +125,18 @@ if (jsonMode) {
     `  ${pad("File", 44)} ${padL("Iter", 5)} ${padL("Slowest", 7)} ${padL("Fastest", 7)} ${padL("Duration", 8)}   Result`,
   )
   console.log(
-    `  ${pad("─", 44).replace(/ /g, "─")} ${padL("─", 5).replace(/ /g, "─")} ${padL("─", 7).replace(/ /g, "─")} ${padL("─", 7).replace(/ /g, "─")} ${padL("─", 8).replace(/ /g, "─")}   ${padL("─", 6).replace(/ /g, "─")}`,
+    `  ${pad("-", 44).replace(/ /g, "-")} ${padL("-", 5).replace(/ /g, "-")} ${padL("-", 7).replace(/ /g, "-")} ${padL("-", 7).replace(/ /g, "-")} ${padL("-", 8).replace(/ /g, "-")}   ${padL("-", 6).replace(/ /g, "-")}`,
   )
 
   for (const r of results) {
     const status =
       r.numFailedTests === -1
-        ? "⚠ ERR"
+        ? "[WARN] ERR"
         : r.numFailedTests === 0
-          ? "✅ PASS"
-          : `❌ FAIL (${r.numFailedTests}/${r.numTotalTests})`
+          ? "[OK] PASS"
+          : `[FAIL] FAIL (${r.numFailedTests}/${r.numTotalTests})`
 
-    const iterLabel = r.iterations && r.iterations > 0 ? String(r.iterations) : "—"
+    const iterLabel = r.iterations && r.iterations > 0 ? String(r.iterations) : "-"
 
     console.log(
       `  ${pad(r.file, 44)} ${padL(iterLabel, 5)} ${padL(fmtDuration(r.slowestMicro), 7)} ${padL(fmtDuration(r.fastestMicro), 7)} ${padL(fmtWallClock(r.durationMs), 8)}   ${status}`,
@@ -146,14 +146,14 @@ if (jsonMode) {
   console.log("")
 
   if (results.some((r) => r.numFailedTests === -1)) {
-    console.log("  ⚠ Some results had errors (see above).")
+    console.log("  [WARN] Some results had errors (see above).")
   } else if (allPassed) {
-    console.log("  ✅ All fuzz tests passed.")
+    console.log("  [OK] All fuzz tests passed.")
   } else {
-    console.log("  ❌ Some fuzz tests failed.")
+    console.log("  [FAIL] Some fuzz tests failed.")
     for (const r of results) {
       if (r.numFailedTests > 0) {
-        console.log(`     ❌ ${r.file}`)
+        console.log(`     [FAIL] ${r.file}`)
       }
     }
   }

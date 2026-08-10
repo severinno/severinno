@@ -7,8 +7,8 @@
  * date-stamped JSON file under docs/benchmarks/.
  *
  * Usage:
- *   node scripts/save-cache-benchmark.mjs          # → docs/benchmarks/cache-2026-07-26.json
- *   node scripts/save-cache-benchmark.mjs custom   # → docs/benchmarks/cache-custom.json
+ *   node scripts/save-cache-benchmark.mjs          # -> docs/benchmarks/cache-2026-07-26.json
+ *   node scripts/save-cache-benchmark.mjs custom   # -> docs/benchmarks/cache-custom.json
  */
 
 import { execSync } from "node:child_process";

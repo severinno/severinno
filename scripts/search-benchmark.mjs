@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * search-benchmark.mjs — standalone search-index benchmark
+ * search-benchmark.mjs - standalone search-index benchmark
  *
  * Measures modelled throughput of common OpenSearch / full-text search
  * operations used in Severinno: exact-match, full-text, geo-search,
@@ -47,25 +47,25 @@ const jsonFile = jsonFlag && args[jsonIndex + 1] && !args[jsonIndex + 1].startsW
 // ---------------------------------------------------------------------------
 //
 // Model parameters (conservative for local OpenSearch 2.x, warm page cache):
-//   ┌───────────────────────────┬───────────┬───────────────────────────────┐
-//   │ Operation                 │ Latency   │ Source                        │
-//   ├───────────────────────────┼───────────┼───────────────────────────────┤
-//   │ HTTP round-trip           │   0.2 ms  │ localhost curl               │
-//   │ Exact-match (term) query  │   2.0 ms  │ OpenSearch benchmark API     │
-//   │ Full-text (match) query   │   4.0 ms  │ OpenSearch benchmark API     │
-//   │ Geo-distance query        │   3.0 ms  │ OpenSearch benchmark API     │
-//   │ Combined (text + geo)     │   5.0 ms  │ estimated (two clauses)      │
-//   │ Aggregation (faceted)     │   6.0 ms  │ OpenSearch benchmark API     │
-//   │ Bulk index (per doc)      │   0.5 ms  │ OpenSearch benchmark API     │
-//   │ Serialise 1 KB payload    │   1.0 µs  │ negligible, amortised        │
-//   ├───────────────────────────┼───────────┼───────────────────────────────┤
-//   │ Exact-match total         │   2.2 ms  │ model = 2200 µs              │
-//   │ Full-text total           │   4.2 ms  │ model = 4200 µs              │
-//   │ Geo-distance total        │   3.2 ms  │ model = 3200 µs              │
-//   │ Combined total            │   5.2 ms  │ model = 5200 µs              │
-//   │ Aggregation total         │   6.2 ms  │ model = 6200 µs              │
-//   │ Bulk 100 docs             │  70.0 ms  │ model = 70000 µs             │
-//   └───────────────────────────┴───────────┴───────────────────────────────┘
+//   +---------------------------+-----------+-------------------------------+
+//   | Operation                 | Latency   | Source                        |
+//   +---------------------------+-----------+-------------------------------+
+//   | HTTP round-trip           |   0.2 ms  | localhost curl               |
+//   | Exact-match (term) query  |   2.0 ms  | OpenSearch benchmark API     |
+//   | Full-text (match) query   |   4.0 ms  | OpenSearch benchmark API     |
+//   | Geo-distance query        |   3.0 ms  | OpenSearch benchmark API     |
+//   | Combined (text + geo)     |   5.0 ms  | estimated (two clauses)      |
+//   | Aggregation (faceted)     |   6.0 ms  | OpenSearch benchmark API     |
+//   | Bulk index (per doc)      |   0.5 ms  | OpenSearch benchmark API     |
+//   | Serialise 1 KB payload    |   1.0 us  | negligible, amortised        |
+//   +---------------------------+-----------+-------------------------------+
+//   | Exact-match total         |   2.2 ms  | model = 2200 us              |
+//   | Full-text total           |   4.2 ms  | model = 4200 us              |
+//   | Geo-distance total        |   3.2 ms  | model = 3200 us              |
+//   | Combined total            |   5.2 ms  | model = 5200 us              |
+//   | Aggregation total         |   6.2 ms  | model = 6200 us              |
+//   | Bulk 100 docs             |  70.0 ms  | model = 70000 us             |
+//   +---------------------------+-----------+-------------------------------+
 //
 // Reference:
 //   https://opensearch.org/docs/latest/benchmark/
@@ -100,7 +100,7 @@ function aggregation()    { simulatedSearchOp(AGGREGATION_US) }
 function bulkIndex100()  { simulatedSearchOp(BULK_100_US) }
 
 // ---------------------------------------------------------------------------
-// Run benchmarks — collect structured results
+// Run benchmarks - collect structured results
 // ---------------------------------------------------------------------------
 
 function runAll() {
@@ -153,42 +153,42 @@ function pad(s, w) {
 }
 
 console.log("")
-console.log("╔══════════════════════════════════════════════════════════════════════╗")
-console.log("║      Severinno — Search-Index Benchmark (modelled)                 ║")
-console.log("╚══════════════════════════════════════════════════════════════════════╝")
+console.log("+======================================================================+")
+console.log("|      Severinno - Search-Index Benchmark (modelled)                 |")
+console.log("+======================================================================+")
 console.log("")
 console.log(`  CPU:      ${ITERS_PER_MS.toFixed(0).padStart(5)} iters/ms  (calibrated busy-loop)`)
 console.log(`  Platform: ${process.platform} ${process.arch}  Node ${process.version}`)
 console.log("")
-console.log("  ┌──────────────────────┬──────────┬──────────┬──────────┬─────────────┐")
-console.log("  │ Benchmark            │   Mean   │   Min    │   Max    │   ops/sec   │")
-console.log("  ├──────────────────────┼──────────┼──────────┼──────────┼─────────────┤")
+console.log("  +----------------------+----------+----------+----------+-------------+")
+console.log("  | Benchmark            |   Mean   |   Min    |   Max    |   ops/sec   |")
+console.log("  +----------------------+----------+----------+----------+-------------+")
 for (const b of results.benchmarks) {
   console.log(
-    `  │ ${b.name.padEnd(20)} │ ${pad(b.mean, 6)} µs │ ${pad(b.min, 6)} µs │ ${pad(b.max, 6)} µs │ ${pad(b.opsPerSec, 9)}  │`,
+    `  | ${b.name.padEnd(20)} | ${pad(b.mean, 6)} us | ${pad(b.min, 6)} us | ${pad(b.max, 6)} us | ${pad(b.opsPerSec, 9)}  |`,
   )
 }
-console.log("  └──────────────────────┴──────────┴──────────┴──────────┴─────────────┘")
+console.log("  +----------------------+----------+----------+----------+-------------+")
 console.log("")
 console.log("  [model] = CPU-modelled estimate of local OpenSearch operations.")
 console.log("           NOT a measurement against a real search cluster.")
 console.log("")
-console.log("  ─── Model parameters ───────────────────────────────────────────────")
+console.log("  --- Model parameters -----------------------------------------------")
 console.log("")
-console.log(`    Exact-match (term):  ~${EXACT_MATCH_US} µs  (HTTP + Lucene term lookup)`)
-console.log(`    Full-text (match):   ~${FULLTEXT_US} µs  (HTTP + inverted index scan)`)
-console.log(`    Geo-distance:        ~${GEO_DISTANCE_US} µs  (HTTP + geo-hash filter)`)
-console.log(`    Combined (text+geo): ~${COMBINED_US} µs  (HTTP + two clauses)`)
-console.log(`    Aggregation:         ~${AGGREGATION_US} µs  (HTTP + term buckets)`)
-console.log(`    Bulk 100 docs:       ~${BULK_100_US} µs  (HTTP + indexing pipeline)`)
+console.log(`    Exact-match (term):  ~${EXACT_MATCH_US} us  (HTTP + Lucene term lookup)`)
+console.log(`    Full-text (match):   ~${FULLTEXT_US} us  (HTTP + inverted index scan)`)
+console.log(`    Geo-distance:        ~${GEO_DISTANCE_US} us  (HTTP + geo-hash filter)`)
+console.log(`    Combined (text+geo): ~${COMBINED_US} us  (HTTP + two clauses)`)
+console.log(`    Aggregation:         ~${AGGREGATION_US} us  (HTTP + term buckets)`)
+console.log(`    Bulk 100 docs:       ~${BULK_100_US} us  (HTTP + indexing pipeline)`)
 console.log("")
-console.log("  ─── Practical guidance ─────────────────────────────────────────────")
+console.log("  --- Practical guidance ---------------------------------------------")
 console.log("")
-console.log("  • Full-text search is ~2× slower than exact-match (inverted index).")
-console.log("  • Geo-distance adds ~50% overhead vs exact-match.")
-console.log("  • Combining text + geo is additive: ~5.2 ms total.")
-console.log("  • Aggregations add ~40% overhead vs simple search queries.")
-console.log("  • Bulk indexing amortises overhead: ~700 µs/doc at 100 docs/batch.")
+console.log("  - Full-text search is ~2x slower than exact-match (inverted index).")
+console.log("  - Geo-distance adds ~50% overhead vs exact-match.")
+console.log("  - Combining text + geo is additive: ~5.2 ms total.")
+console.log("  - Aggregations add ~40% overhead vs simple search queries.")
+console.log("  - Bulk indexing amortises overhead: ~700 us/doc at 100 docs/batch.")
 console.log("")
 
 // ---------------------------------------------------------------------------
@@ -198,6 +198,6 @@ console.log("")
 if (jsonFlag) {
   mkdirSync(dirname(jsonFile), { recursive: true })
   writeFileSync(jsonFile, JSON.stringify(results, null, 2), "utf-8")
-  console.log(`  📁 Results saved to ${jsonFile}`)
+  console.log(`   Results saved to ${jsonFile}`)
   console.log("")
 }
