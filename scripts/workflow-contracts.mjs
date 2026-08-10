@@ -36,6 +36,49 @@
  *                       net workflow to the END and it becomes the PR twin,
  *                       so update scan-guard-gates.mjs's twin logic (or
  *                       pin the pair again) when the net grows.
+ *   ENCODING_NET        the workflows that call the encoding gate
+ *                       (utf8-check.yml) on the MERGE PATH - ci.yml + its
+ *                       PR-side twin pr-check.yml. The 2026-08 audit of the
+ *                       workflow network (ci.yml + quality-gate.yml) found
+ *                       BOTH call sites currently WITHOUT `needs:` (immune
+ *                       to a lint skip today) but NOTHING pinned that
+ *                       immunity: a future `needs: lint` on the call site
+ *                       would silently create the skip vector the
+ *                       fragile-guard contract exists to close. scan-guard-
+ *                       gates rule 8 consumes this pair: every call site
+ *                       must exist (job key + uses: utf8-check.yml) and
+ *                       carry NO needs: - the same standalone-immunity
+ *                       contract as the guard/fuzz jobs. The OTHER callers
+ *                       (deploy.yml, e2e-cache.yml, release-deploy.yml) are
+ *                       deploy/release paths, NOT the merge path - the
+ *                       audit documented them as out of the rule 8 surface
+ *                       by design (scan-surfaces.md Type C).
+ *   ENCODING_JOB        the job key of the encoding-gate call site inside
+ *                       ENCODING_NET workflows (utf8-check). scan-guard-
+ *                       gates rule 8 derives it from here.
+ *   FUZZ_JOB            the job key inside pr-check.yml that must carry the
+ *                       batched fuzz:ci step (the 11.11/11.12 fuzz authority).
+ *                       scan-guard-gates.mjs consumes it with the SAME
+ *                       standalone-immunity contract as GUARD_NET_JOB (job
+ *                       present at root, no needs:, fuzz:ci step) - a PR
+ *                       proof of the batched fuzz only needs to read the
+ *                       fuzz job result, immune to a lint-failing check job.
+ *   BENCHMARK_JOB       the job key inside pr-check.yml that must carry the
+ *                       geo benchmark step (the 2026-08 network-audit rule
+ *                       9). scan-guard-gates.mjs consumes it with the SAME
+ *                       standalone-immunity contract (job present at root,
+ *                       no needs:, run-benchmark step) - the benchmark is a
+ *                       blocking gate on the merge path (fails the PR on
+ *                       geo regression >threshold) and today has no needs:
+ *                       (immune), but nothing pinned that immunity: a rename
+ *                       would silently stop the benchmark from running and
+ *                       a needs: would make it skippable by lint. The
+ *                       OTHER pr-check jobs were AUDITED as out of surface
+ *                       (scan-surfaces.md Type C, 2026-08): docs-encoding is
+ *                       informational (continue-on-error + exit 0 - a skip
+ *                       is harmless), security-headers curls a PRODUCTION
+ *                       URL (not a repo gate), and check is the main job
+ *                       whose loss is visible as a missing required check.
  *   GUARD_NET_JOB       the job key inside pr-check.yml that must carry
  *                       the test:guard step (the fragile-guard job).
  *   ALWAYS_RUN_SET      the workflows that run on EVERY push/PR with NO
@@ -52,18 +95,30 @@
  *                       workflow_dispatch: without updating the manifest
  *                       fails the contract test.
  *   CI_PROOF_INVARIANT  the ci-proof/* branch template facts: the proof
- *                       namespace itself and the two DANGER refs (push to
+ *                       namespace itself, the canonical probe branch
+ *                       (CI_PROOF_PROBE) and the two DANGER refs (push to
  *                       main fires deploy.yml; push v* tags fires
- *                       release-deploy.yml). The SAFETY invariant (no
- *                       workflow's push/PR filter may match ci-proof/*)
- *                       stays enforced by scan-surfaces-contract Type E
- *                       against the live tree; the DANGER refs are the
- *                       documented facts pinned here.
+ *                       release-deploy.yml). FACT vs RULE split: the
+ *                       NAMESPACE + PROBE + DANGER refs are FACTS (they
+ *                       live here, consumed by ci-proof-run.mjs and Type
+ *                       E); the SAFETY INVARIANT itself (the predicate "no
+ *                       workflow's push/PR filter may match ci-proof/*")
+ *                       is a RULE over the LIVE TREE - it stays enforced
+ *                       by scan-surfaces-contract Type E against the
+ *                       actual .github/workflows files, because a future
+ *                       workflow must be caught WITHOUT an entry here
+ *                       (pinning the forbidden set as a list would go
+ *                       stale - the drift class this manifest kills). The
+ *                       PROBE is the concrete branch the rule tests
+ *                       against (ci-proof/<segment> shape derived from the
+ *                       namespace - the same derivation ci-proof-run.mjs's
+ *                       isCiProofBranch applies).
  *
  * API (importable - entry-point guarded):
  *   import {
- *     GUARD_NET, GUARD_NET_JOB, ALWAYS_RUN_SET, DISPATCH_SET,
- *     CI_PROOF_NAMESPACE, DANGER_REFS, QUERIES,
+ *     GUARD_NET, GUARD_NET_JOB, ENCODING_NET, ENCODING_JOB, FUZZ_JOB,
+ *     BENCHMARK_JOB, ALWAYS_RUN_SET, DISPATCH_SET, CI_PROOF_NAMESPACE,
+ *     CI_PROOF_PROBE, DANGER_REFS, QUERIES,
  *   } from "./workflow-contracts.mjs"
  *
  * CLI (what guards call - STANDALONE ONLY, one flag per invocation):
@@ -71,6 +126,14 @@
  *     prints GUARD_NET.join(" ")  ->  ".github/workflows/guard-gates.yml .github/workflows/pr-check.yml"
  *   node scripts/workflow-contracts.mjs --print-guard-net-job
  *     prints GUARD_NET_JOB  ->  "fragile-guard"
+ *   node scripts/workflow-contracts.mjs --print-encoding-net
+ *     prints ENCODING_NET.join(" ")  ->  ".github/workflows/ci.yml .github/workflows/pr-check.yml"
+ *   node scripts/workflow-contracts.mjs --print-encoding-job
+ *     prints ENCODING_JOB  ->  "utf8-check"
+ *   node scripts/workflow-contracts.mjs --print-fuzz-job
+ *     prints FUZZ_JOB  ->  "fuzz"
+ *   node scripts/workflow-contracts.mjs --print-benchmark-job
+ *     prints BENCHMARK_JOB  ->  "benchmark"
  *   node scripts/workflow-contracts.mjs --print-always-run
  *     prints ALWAYS_RUN_SET.join(" ")  ->  "ci.yml deploy.yml pr-check.yml guard-gates.yml"
  *   node scripts/workflow-contracts.mjs --print-dispatch
@@ -91,6 +154,21 @@ export const GUARD_NET = [
 
 /** The pr-check.yml job key that must run the test:guard step. */
 export const GUARD_NET_JOB = "fragile-guard"
+
+/** The merge-path workflows that call the encoding gate (utf8-check.yml). */
+export const ENCODING_NET = [
+  ".github/workflows/ci.yml",
+  ".github/workflows/pr-check.yml",
+]
+
+/** The job key of the encoding-gate call site inside ENCODING_NET workflows. */
+export const ENCODING_JOB = "utf8-check"
+
+/** The pr-check.yml job key that must run the geo benchmark step (rule 9). */
+export const BENCHMARK_JOB = "benchmark"
+
+/** The pr-check.yml job key that must run the batched fuzz:ci step. */
+export const FUZZ_JOB = "fuzz"
 
 /** Workflows that run on every push/PR with NO paths: filter BY DESIGN. */
 export const ALWAYS_RUN_SET = ["ci.yml", "deploy.yml", "pr-check.yml", "guard-gates.yml"]
@@ -113,6 +191,15 @@ export const DISPATCH_SET = [
 /** The ci-proof branch template: the proof namespace. */
 export const CI_PROOF_NAMESPACE = "ci-proof"
 
+/**
+ * The canonical ci-proof probe branch (Type E safety invariant): the
+ * concrete branch the rule tests against - `ci-proof/<segment>` derived
+ * from the namespace (the SAME shape ci-proof-run.mjs's isCiProofBranch
+ * accepts). No workflow's push/PR filter may match this branch; the probe
+ * is the FACT, the live-tree scan that proves it stays in Type E.
+ */
+export const CI_PROOF_PROBE = `${CI_PROOF_NAMESPACE}/proof-branch`
+
 /** The two DANGER refs of the risk matrix (push main -> deploy, v* tags -> release). */
 export const DANGER_REFS = [
   { ref: "main", workflow: "deploy.yml" },
@@ -124,6 +211,10 @@ export const DANGER_REFS = [
 export const QUERIES = {
   "--print-guard-net": GUARD_NET,
   "--print-guard-net-job": [GUARD_NET_JOB],
+  "--print-encoding-net": ENCODING_NET,
+  "--print-encoding-job": [ENCODING_JOB],
+  "--print-fuzz-job": [FUZZ_JOB],
+  "--print-benchmark-job": [BENCHMARK_JOB],
   "--print-always-run": [...ALWAYS_RUN_SET].sort(),
   "--print-dispatch": [...DISPATCH_SET].sort(),
 }
@@ -132,7 +223,7 @@ function main() {
   const args = process.argv.slice(2)
   if (args.length !== 1 || !(args[0] in QUERIES)) {
     console.error(
-      "usage: node scripts/workflow-contracts.mjs <--print-guard-net|--print-guard-net-job|--print-always-run|--print-dispatch>",
+      "usage: node scripts/workflow-contracts.mjs <--print-guard-net|--print-guard-net-job|--print-encoding-net|--print-encoding-job|--print-fuzz-job|--print-benchmark-job|--print-always-run|--print-dispatch>",
     )
     process.exit(2)
   }

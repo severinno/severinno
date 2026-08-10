@@ -28,6 +28,9 @@
 | 10 | Guard do Gate 3 — **REAL-REPO CONTRACT** (`scan-push-full-suite.test.ts`; roda no `check` via `test:unit` E no `fragile-guard` via `test:guard`) | Alguém voltar o Gate 3 do pre-push a rodar a SUITE COMPLETA (`test:unit`/`test:run`/`vitest run`) — a regressão da seção 8.4 — sem o guard falhar antes do merge | `bun run test:unit` (linha 67) re-injetado no Gate 3 do `scripts/pre-push-gates.sh` real (branch scratch `ci-proof/push-suite-sentinel`, 2bb6ab8) | Run [**31354308733**](https://github.com/severinno/severinno/actions/runs/31354308733) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ job `check` (step Unit tests): `× REAL-REPO CONTRACT: os arquivos reais estao limpos hoje -> exit 0 (regressao futura falha aqui)` → `AssertionError: expected 1 to be +0` (o guard saiu 1); job `fragile-guard` idêntico — `1 failed | 72 passed (73)`; local: `push-suite: FULL-SUITE in scripts/pre-push-gates.sh:67: bun run test:unit` → exit 1; revertido byte-identical |
 | 11 | Fuzz — **fuzz:ci BATCHADO** (o `run-all-fuzz.mjs` de UMA invocação vitest da seção 11.12, `--reporter=json` + split) | O runner batchado nunca ter rodado no CI real (a adoção era medida só localmente) | Nenhuma injeção — branch `ci-proof/fuzz-batch` em `28ab2c8` (única ref com o runner novo) + dispatch manual do pr-check | Run [**31397642499**](https://github.com/severinno/severinno/actions/runs/31397642499) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ job `Fuzz Tests` = success: `$ node scripts/run-all-fuzz.mjs --json` (runner novo), artifact `fuzz-results.json` arquivado (ID 9066288893), job ~47s; verde no mesmo run: Fragile Range Guard, Geo Benchmark, utf8-check, Docs Encoding (`check`/`Security Headers` falharam por causas pré-existentes alheias à prova); revertido (branch remota + local deletadas) |
 | 12 | pr-check COMPLETO do **estado atual** (8 suítes test:guard, fuzz batchado, contrato co-location, merge PROOF+CONTRACT) | A re-medição local (8.1/8.4/11.x) dos tempos reais no CI — e se o estado atual roda verde de ponta a ponta | Nenhuma injeção — branch scratch `ci-proof/pr-check-live` @ 7b6ebd7 (commit do estado da thread sobre 28ab2c8) + dispatch manual do pr-check | Run [**31411254090**](https://github.com/severinno/severinno/actions/runs/31411254090) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ tempos confirmados: test:guard **158 testes em 9s** (o "148" citado era pré-batch-runner/pré-contrato-5), fuzz batchado **10s** (estimado ~14s), utf8-check 14s; ❌ **2 ACHADOS REAIS de plataforma** no check (verde local/Windows, vermelho CI/Linux): (a) integrity guard EXTRANEOUS falso-positivo em deps opcionais hoistadas no Linux (`@napi-rs/lzma-linux-x64-gnu` + `@tabby_ai/hijri-converter` — 5 dos 6 testes vermelhos), (b) blame-ignore-revs "every listed hash resolves" em checkout SHALLOW (check job sem `fetch-depth: 0`); + 2 falhas pré-existentes documentadas (Lint use-balance-pulse, Security Headers); revertido byte-identical |
+| 13 | Guard de integridade — **SPEC-FORMAT contract** (`check-node-modules-integrity.test.ts` `--check-lock`) | Um spec não-registry NOVO (fora da fronteira `lockKeyFor`) entrar no `package.json` sem decisão explícita SKIP-vs-include — passando como nome registry e quebrando silenciosamente o count-pin 98 | `"custom-pkg": "custom:foo@1.0.0"` injetado no `devDependencies` do package.json REAL (branch scratch `ci-proof/spec-format`, 2af1c62) | **Local** (prova de manifest REAL — o teste lê o package.json do repo; a rota sintética via `NODE_MODULES_ROOT` já é pinada hermeticamente pelo mutation test) | ✅ `--check-lock UNVERIFIABLE custom-pkg - resolved version not found in bun.lock` → exit 1; vitest: `AssertionError: expected 99 to be 98` (SPEC-FORMAT contract) + `AssertionError: expected 1 to be +0` (BASELINE --check-lock); revertido byte-identical (md5 30a16a0f...) → 4/4 verde + CLI `clean (98 direct packages match bun.lock; 0 skipped non-registry)` exit 0 |
+| 14 | Guard do push net — **FRAGILE GUARD NEEDS** (`scan-guard-gates.mjs` rule 5) | Um `needs:` voltar no job `fragile-guard` do pr-check.yml (ex.: `needs: check`) — o skip vector da classe que o job standalone existe para fechar (o check pode falhar no lint antes dos testes) | `needs: check` injetado no job `fragile-guard` do pr-check.yml REAL (branch scratch `ci-proof/guard-needs`, 2af1c62) | **Local** (prova de workflow REAL — o CLI + o REAL-REPO CONTRACT leem os arquivos reais; rota sintética já pinada hermeticamente pelo mutation test) | ✅ CLI: `guard-gates: FRAGILE GUARD NEEDS in .github/workflows/pr-check.yml (needs: check - o job standalone nao pode depender de outro...)` → exit 1; vitest: `AssertionError: expected 1 to be +0` (REAL-REPO CONTRACT; 1 failed | 17 passed; o mutation hermético segue verde); revertido byte-identical (md5 a2d3aba4...) → CLI clean exit 0 + suíte 18/18 verde |
+| 15 | Guard do push net — **FRAGILE GUARD NEEDS via CI real** (`scan-guard-gates.mjs` rule 5 + REAL-REPO CONTRACT no pr-check) | O `needs:` voltar no `fragile-guard` do pr-check.yml **no CI real** (o lado CI da Prova 15: a mesma injeção num `workflow_dispatch`, não só local) | `needs: check` no job `fragile-guard` do pr-check.yml REAL (branch scratch `ci-proof/guard-needs-ci`, 2af1c62) via **`ci-proof-run.mjs`** (o helper: ciclo prova-CI num comando) | Run [**31430040398**](https://github.com/severinno/severinno/actions/runs/31430040398) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ conclusion=`failure`; job `check` (step Unit tests): `× REAL-REPO CONTRACT ... → expected 1 to be +0` (scan-guard-gates **E** run-precommit-guards — DOIS guards vermelhos) + `+ guard-gates: FRAGILE GUARD NEEDS in .github/workflows/pr-check.yml (needs: check ...)` no log (5×); ACHADO: o **pre-commit hook local bloqueou o commit da mutação** na 1ª tentativa (rule 5 = tripla: hook + CLI + REAL-REPO CONTRACT) → re-run com `HUSKY=0` (CI = autoridade); revertido byte-identical |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -1221,6 +1224,199 @@ follow-ups de fix com re-prova — exatamente o valor da prova viva: a
 re-medição local sozinha teria deixado o estado vermelho no CI
 silenciosamente.
 
+## 8.11 Prova 14 — SPEC-FORMAT contract live (manifest REAL, local, 2026-08-10)
+
+**Pergunta da prova:** o count-pin `registry === 98` do teste SPEC-FORMAT
+contract (que lê o `package.json` REAL do repo) pega de verdade um spec
+não-registry novo entrando no manifest — ou só a fixture sintética trip?
+O contrato (8.10 da tabela acima) já provava a consequência CLI com repo
+sintético via `NODE_MODULES_ROOT`; esta prova fecha o OUTRO lado: o
+manifest real vivo.
+
+**Injeção (branch scratch `ci-proof/spec-format` @ 2af1c62, do HEAD da
+thread):** `"custom-pkg": "custom:foo@1.0.0"` adicionado ao
+`devDependencies` do `package.json` real. O spec `custom:foo@1.0.0` NÃO
+casa com a fronteira `lockKeyFor` (`/^(workspace:|link:|file:|git(?:[+:@]|$)|github:|http)/`)
+e não é `npm:` — exatamente a classe "undecided" que o contrato pina:
+ele passa pelo classificador como se fosse nome registry, então o que
+tripa é o COUNT-PIN (98 → 99) no teste e o fail-safe UNVERIFIABLE no CLI.
+
+**Sinais capturados (todos com a injeção no ar):**
+
+```
+$ node scripts/check-node-modules-integrity.mjs --check-lock
+check-node-modules-integrity: --check-lock UNVERIFIABLE custom-pkg - resolved version not found in bun.lock (lock format changed? update the guard)
+CLI_EXIT=1
+
+$ npx vitest run scripts/__tests__/check-node-modules-integrity.test.ts --config vitest.config.unit.ts -t SPEC-FORMAT
+× SPEC-FORMAT contract: every direct dep spec today is registry (98/98, 0 weird)...
+  → AssertionError: expected 99 to be 98 // Object.is equality
+  ✓ SPEC-FORMAT mutation (CLI level): ... exit 1 UNVERIFIABLE, NEVER silent clean (104ms)
+      Tests  1 failed | 1 passed | 26 skipped (28)
+
+$ npx vitest run ... -t BASELINE
+× BASELINE: real repo (no env override) --check-lock -> exit 0, ALL 98 direct packages...
+  → AssertionError: expected 1 to be +0 // Object.is equality
+  ✓ BASELINE: real repo (no env override) -> exit 0, react/react-dom... (168ms)
+      Tests  1 failed | 1 passed | 26 skipped (28)
+```
+
+Leitura dos sinais:
+1. **CLI real exit 1** — a consequência viva do fail-safe: spec undecided
+   vira chave grep-able que não existe no lock → `UNVERIFIABLE custom-pkg`
+   com o caminho exato (nunca clean silencioso).
+2. **SPEC-FORMAT contract `expected 99 to be 98`** — o count-pin é o que
+   pega a regressão REAL no manifest: o classificador sozinho não distingue
+   `custom:foo@1.0.0` de nome registry (a mutation do mesmo teste prova
+   isso hermeticamente), então sem o pin o contrato ficaria mudo.
+3. **BASELINE `expected 1 to be +0`** — o mesmo count-pin no teste do
+   manifest vivo; o default-mode BASELINE (par react/react-dom) segue
+   verde, isolando a falha ao `--check-lock`.
+
+**Revert (byte-identical):** a linha injetada foi removida e o `git diff
+package.json | md5sum` voltou a `30a16a0f...` (igual ao baseline pré-
+injeção). Pós-revert: `-t "SPEC-FORMAT|BASELINE"` → **4/4 verde** e o CLI
+real → `--check-lock clean (98 direct packages match bun.lock; 0 skipped
+non-registry)` exit 0. Branch scratch deletado (remoto nunca tocado).
+
+**Veredito:** o contrato SPEC-FORMAT pega regressão REAL no manifest (o
+count-pin 98 e o fail-safe UNVERIFIABLE, em camadas), não só fixture — a
+prova viva fecha a pergunta "quem protege o manifest?" para o caso
+undecided. Sem run number de CI (prova local, como a Prova 6/9/11); a
+mesma injeção num workflow_dispatch do pr-check produziria a falha
+idêntica no job `check` (test:unit roda a suíte) — não repetido por
+custo/ruído, já que a prova local exercita exatamente o mesmo código.
+
+## 8.12 Prova 15 — FRAGILE GUARD NEEDS live (workflow REAL, local, 2026-08-10)
+
+**Pergunta da prova:** o contrato rule 5 do scan-guard-gates (o job
+`fragile-guard` do pr-check.yml NÃO pode ter `needs:`) pega de verdade um
+`needs:` voltando ao workflow REAL — ou só a fixture sintética trip? O
+mutation test hermético já provava o comportamento em repo sintético; esta
+prova fecha o OUTRO lado: os arquivos reais que o CLI e o REAL-REPO
+CONTRACT leem.
+
+**Injeção (branch scratch `ci-proof/guard-needs` @ 2af1c62, do HEAD da
+thread):** `needs: check` inserido como primeira propriedade do job
+`fragile-guard:` (linha 302 do pr-check.yml real), antes de `name:`.
+
+**Sinais capturados (todos com a injeção no ar):**
+
+```
+$ node scripts/scan-guard-gates.mjs
+guard-gates: FRAGILE GUARD NEEDS in .github/workflows/pr-check.yml (needs: check - o job standalone nao pode depender de outro; um needs: cria o skip vector da classe que o job existe para fechar)
+guard-gates: guard-gates.yml + pr-check.yml (fragile-guard + fuzz) must run incondicionalmente (no paths filter, no needs:) com o test:guard completo (scan-push-full-suite incluso) - a premissa da recalibracao 8.4/11.11
+CLI_EXIT=1
+
+$ npx vitest run scripts/__tests__/scan-guard-gates.test.ts --config vitest.config.unit.ts
+✓ MUTATION: job fragile-guard com needs: check -> exit 1 com 'FRAGILE GUARD NEEDS' (120ms)  [hermético, segue verde]
+× REAL-REPO CONTRACT: ... pr-check.yml com o job fragile-guard -> exit 0 (regressao futura falha aqui)
+  → AssertionError: expected 1 to be +0 // Object.is equality
+      Tests  1 failed | 17 passed (18)
+```
+
+Leitura dos sinais:
+1. **CLI real exit 1** — o contrato lê os arquivos reais e sinaliza o
+   `needs: check` com o caminho exato (`.github/workflows/pr-check.yml`) e
+   o valor (`needs: check`) — nunca silencioso.
+2. **REAL-REPO CONTRACT `expected 1 to be +0`** — o teste que pina o estado
+   real do repo quebra ao vivo; o mutation hermético do mesmo contrato
+   segue verde, provando que a detecção não depende do fixture.
+3. O resto da rede (workflow presente, sem paths filter, test:guard step,
+   fuzz job standalone) permanece intacto — a falha é isolada à rule 5.
+
+**Revert (byte-identical):** a linha injetada foi removida e o md5 do
+pr-check.yml voltou a `a2d3aba4...` (igual ao baseline pré-injeção).
+Pós-revert: CLI → `guard-gates: clean (... fragile-guard job present
+without needs: ...)` exit 0; suíte → **18/18 verde**. Branch scratch
+deletado (remoto nunca tocado).
+
+**Veredito:** o contrato FRAGILE GUARD NEEDS pega regressão REAL no
+workflow (o skip vector do lint não volta em silêncio), não só fixture — a
+prova viva fecha a pergunta "quem protege a imunidade do job guard?" para
+o lado vivo. Sem run number de CI (prova local, como a Prova 6/9/11/14); a
+mesma injeção num workflow_dispatch do pr-check não mudaria o sinal — o
+scan-guard-gates roda nas suítes de guard de ambos os jobs (check via
+test:unit, guard via test:guard), e a prova local exercita exatamente o
+mesmo código. **Confirmação posterior (Prova 16, sec 8.13):** o sinal NO CI
+real bateu com a previsão — run 31430040398, conclusion=failure, `FRAGILE
+GUARD NEEDS` no log do job `check`; o custo/ruído que justificava não repetir
+caiu quando o `ci-proof-run.mjs` (o helper) automatizou o ciclo.
+
+## 8.13 Prova 16 — FRAGILE GUARD NEEDS live via CI real (workflow_dispatch do pr-check, 2026-08-10)
+
+**Pergunta da prova:** a Prova 15 (8.12) fechou o lado local (CLI + REAL-REPO
+CONTRACT sobre os arquivos reais) com veredito "sem run number de CI — o
+dispatch não mudaria o sinal". Esta prova fecha o OUTRO lado com o CI real:
+workflow_dispatch do pr-check com a MESMA injeção `needs: check`, usando o
+`ci-proof-run.mjs` (o helper que automatiza o ciclo prova-CI — branch scratch
+→ mutate → push → dispatch → poll → capture → verify → revert, com Type E e
+a Prova 7 travadas).
+
+**Injeção (branch scratch `ci-proof/guard-needs-ci` @ 2af1c62, do HEAD da
+thread):** `needs: check` como primeira propriedade do job `fragile-guard:`
+do pr-check.yml real (linha 302, antes do `name:` — a MESMA mutação da Prova
+15), via `--mutate "node scripts/prova16-mutate.mjs"` do helper (script
+temporário EOL-preserving, criado só para a prova e removido no revert).
+
+**ACHADO 1 — a camada local bloqueou o commit da própria mutação (na 1ª
+tentativa):** o `git commit` do helper disparou o pre-commit hook completo —
+e o batch runner (`run-precommit-guards.mjs`, que inclui o `scan-guard-gates`
+no batch da sec 11.13/11.16) pegou o `needs: check` injetado e falhou a cadeia
+(`guard-gates: FRAGILE GUARD NEEDS ...` + husky exit 1) ANTES do push. Ou
+seja: a rule 5 tem **tripla proteção** — o hook local já impede o commit de um
+`needs:` no pr-check.yml. Para a prova do lado CI, o commit precisou de
+`HUSKY=0` (o bypass oficial do husky: o shim `.husky/_/h` tem
+`[ "${HUSKY-}" = "0" ] && exit 0`) — o CI é a autoridade e a prova é sobre o
+CI, não sobre o hook (que já estava provado localmente).
+
+**Sinais capturados no CI (run 31430040398, log com 5686 linhas):**
+
+```
+check · Unit tests: × scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4/11.11) >
+  REAL-REPO CONTRACT: guard-gates.yml real sem paths filter + ... -> exit 0 (regressao futura falha aqui)
+     → expected 1 to be +0 // Object.is equality
+check · Unit tests: × run-precommit-guards.mjs - batch runner dos 4 guards node (sec 11.13) >
+  REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 4 veredictos clean na ORDEM do hook
+     → expected 1 to be +0 // Object.is equality
+check · Unit tests: + guard-gates: FRAGILE GUARD NEEDS in .github/workflows/pr-check.yml
+  (needs: check - o job standalone nao pode depender de outro; um needs: cria o skip vector
+  da classe que o job existe para fechar)   [4× no diff do assertion + 1× no titulo do teste hermetico]
+```
+
+Leitura dos sinais:
+1. **conclusion = `failure`** — o run inteiro caiu; o `--expect failure
+   --expect-log "REAL-REPO CONTRACT"` do helper casou (`verify:
+   conclusion=failure + log casou`).
+2. **DOIS REAL-REPO CONTRACTs vermelhos no job check** — não só o
+   `scan-guard-gates`: o `run-precommit-guards` (o batch runner) também varre
+   o workflow real e saiu 1 — o mesmo furo pego por DOIS guards independentes
+   no CI (defesa em profundidade: o guard da rede e o guard do batch).
+3. **A linha exata do CLI no log do CI** (`FRAGILE GUARD NEEDS in
+   .github/workflows/pr-check.yml (needs: check ...)`) — o stdout do guard
+   aparece **4× no diff do assertion** (o teste imprime o output recebido) + 1×
+   no título do teste hermético (que segue verde) — o caminho exato provado
+   no CI, não só local.
+4. **O mutation hermético seguiu verde** (`✓ MUTATION: job fragile-guard com
+   needs: check -> exit 1 com 'FRAGILE GUARD NEEDS'`) — a detecção não
+   depende de fixture.
+
+**Revert (byte-identical):** o helper revertiu sozinho — remote
+`ci-proof/guard-needs-ci` deletado, de volta a
+`freebuff/new-thread-thmsitz5qutoia`, branch local deletada. O pr-check.yml
+pós-revert com **0 ocorrências de `needs: check`**. O working tree voltou
+exatamente ao estado pré-prova (o delta de 25 arquivos da thread estava
+stasheado durante a prova e foi reposto; `git status --porcelain` bate 1:1
+com o snapshot pré-prova).
+
+**Veredito:** a Prova 15 (local) + esta Prova 16 (CI real, run 31430040398)
+fecham o par: o contrato FRAGILE GUARD NEEDS pega o `needs:` nos DOIS lados,
+com o caminho exato no log do CI. Bônus estrutural da 1ª tentativa: o
+pre-commit hook local também bloqueia o commit do furo — a rule 5 é tripla
+(hook local + CLI + REAL-REPO CONTRACT). Com o `ci-proof-run.mjs`, a prova
+completa virou UM comando (run number no summary, log capturado no tmpdir,
+revert automático) — o padrão manual das Provas 6-12 não precisa voltar.
+
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
 Nos dois runs acima (pré-reorder), o job `check` mostrava exatamente o
@@ -1425,6 +1621,48 @@ são estáveis.
 git add <arquivos-do-commit>
 for i in 1 2 3; do { time -p bash .husky/pre-commit > /dev/null; } 2>&1 | grep real; done
 ```
+
+**Re-medição 3 (2026-08-10, mesma sessão) — pós 6º guard do batch (sec 11.16) e
+set staged real da thread (25 arquivos):** o pedido era o total de ponta a
+ponta por commit com o batch em produção (6 guards em 1 invocação — o 6º
+guard `scan-batch-coverage` da sec 11.16 somou ~0.02s ao batch). Protocolo
+idêntico (stage do set real + md5 snapshot antes → 3 runs completas → md5
+byte-identical após → unstage; working tree verificado intacto). 3 runs
+completas do `.husky/pre-commit`:
+
+| Run | Total real | Nota |
+|---|---|---|
+| RUN1 | 124.8s | boot one-time: tsc cold/rebuild do tsbuildinfo + daemon eslintd cold + vitest cold |
+| RUN2 | 74.3s | regime warm |
+| RUN3 | 68.2s | regime warm |
+| **Regime estável** | **~68-74s** | o custo real por commit com o set atual |
+
+Componentes (mesma sessão, runs isoladas):
+
+| Componente | Re-medição 2 | Re-medição 3 | Δ |
+|---|---|---|---|
+| verify-encoding | 4.07s | 2.62s | -1.4s (máquina menos carregada) |
+| check-docs-encoding + scan-lucide + check-next-types | 1.11s | 0.88s | ~igual |
+| **batch (6 guards em 1 invocação)** | — (row separada na 2) | **0.21s** | o corte do batch mantido com 6 guards: 6 SEQUENCIAIS extrapolados ~0.8-1.2s (baseline 11.13: 4 sequenciais 0.54-0.81s + 2 guards ~0.3-0.4s) vs 6 BATCHADOS 0.21s; o 6º guard (sec 11.16) custa ~0.02s |
+| **tsc --incremental (warm)** | **~27s (26.9-28.0)** | **16.11s** | -11s — estado de máquina (a faixa 10.9-16.5s da 11.10) |
+| **lint-staged (shim warm)** | **1.8s (5.9s na 1ª run pós-restart)** | **4.73s (25 arquivos staged)** | +2.9s — mais arquivos staged no set da thread |
+| **pre-commit:test** | **11.6s (3 suites/35 testes)** | **45.41s (12 suites/246 testes)** | **+33.8s — o dominante mudou de novo** |
+| **Total wall (lint ∥ tsc)** | **~46-51s** | **~65-74s** | |
+
+Soma: 3.71 (gates de encoding) + max(16.11, 4.73) (lint ∥ tsc) + 45.41
+(pre-commit:test) = **~65.2s** — bate com o RUN3 (68.2s, +3s de overhead).
+
+**Por que o total subiu (46-51 → 68-74s) apesar do batch mais barato?** O
+dominante INVERTEU pela TERCEIRA vez: pre-commit:test agora é **~66% do
+wall** (45.4s) porque o set staged desta thread (25 arquivos, incluindo
+muitos `scripts/__tests__/*.test.ts`) mapeia **12 suítes / 246 testes** — vs
+3 suítes/35 testes na re-medição 2. NÃO é regressão do hook: é o escopo do
+mapping (a regra de co-locação da 11.15 — tocar suites de teste mapeia as
+suítes, correto). O batch segue o corte documentado (6 guards em 0.21s vs
+0.54-0.81s de 4 spawns sequenciais — o 6º guard custa ~0.02s, irrelevante);
+encoding (~3.7s) e tsc (~16s) são estáveis. O teto estrutural continua não
+sendo o tsc — é o mapping de testes do set staged: commit que toca muitas
+suítes custa ~45s de testes; commit docs-only continua instantâneo (skip).
 
 ## 11.1 eslint --cache no lint-staged — avaliado e RECUSADO (medição 2026-08-09)
 
@@ -2391,6 +2629,38 @@ acopla INTENCIONALMENTE o verde do test:guard (push net) ao verde dessa
 suite localmente: uma falha ambiental futura de fuzz lê como contrato
 conhecido (mesma postura da prova do sentinel), não como surpresa.
 
+**Medição CI vs LOCAL same-session (run 31397642499, branch
+ci-proof/fuzz-batch, 2026-08-10):** o run que provou o fuzz batchado no CI
+tem o job "Fuzz Tests" com 47s TOTAL, mas o step puro "Run fuzz tests"
+levou **9s** — a maior parte do job é setup fixo, não fuzz:
+
+| Step (job Fuzz Tests, run 31397642499) | Duração |
+|---|---|
+| Set up job | 1s |
+| actions/checkout@v4 | 3s |
+| oven-sh/setup-bun@v2 | 2s |
+| Cache node_modules | 10s |
+| Install deps | 11s |
+| **Run fuzz tests (o fuzz:ci puro)** | **9s** |
+| Archive fuzz results | 1s |
+| Post Cache + post setup-bun + post checkout + complete | ~8s |
+
+Local SAME-SESSION (Windows, 3 runs quentes): **13.10s / 12.60s /
+12.50s** (~12.5-13.1s; o 55.45s do 1º run era cold com reify/startup,
+mesma classe do cold documentado na 8.3). Os DOIS lados rodam as mesmas 6
+suites (mesmo manifest fuzz-targets); local 62 testes / 0 failed
+(JSON do runner); o CI concluiu o job com success (0 failed) — os counts
+exatos do lado CI não foram lidos do artifact, só o conclusion.
+
+**Veredito:** o fuzz EM SI é comparável — o CI (9s) é até um pouco mais
+rápido que o local warm (~12.5-13.1s) no step puro, a diferença esperada
+de runner Linux vs Windows local. A comparação ingênua "47s CI vs 13.7s
+local" mistura o custo do AMBIENTE (checkout+setup-bun+cache+install+post
+≈ 34s + ~4s de Set up/Archive/overhead = ~38s fixos por job, que nenhuma
+otimização de runner remove) com o custo do FUZZ (9s CI). Para medir
+ganho de runner no futuro, comparar SEMPRE o step "Run fuzz tests"
+isolado contra o local warm — nunca o total do job.
+
 ## 11.13 Os 4 guards node do pre-commit — batch runner em 1 invocação (medição 2026-08-10)
 
 O pre-commit rodava 4 guards node como 4 SPAWNS SEQUENCIAIS:
@@ -2555,6 +2825,105 @@ O guard roda no pre-commit (batch runner) E no CI via `test:unit`/
 `test:guard` (REAL-REPO CONTRACT). **Re-mediar quando?** quando uma suite
 subprocess-heavy nova entrar no repo ou o perfil por-spawn do gate mudar —
 não quando o contrato falhar (a falha É o sinal de regressão).
+
+## 11.16 scan-batch-coverage — contrato de crescimento do batch (2026-08-10)
+
+O contrato 4 do scan-push-full-suite pina os guards do batch por REGEX FIXO
+(os nomes hardcoded no `.husky/pre-commit`). A classe de drift que isso deixa
+aberta é exatamente a que o SPREAD CONTRACT dos TARGET_DIRS mata: um guard
+NOVO adicionado direto ao hook (sem entrar no batch) escapa do regex — o
+spawn individual passa, os boots voltam a somar, e nenhum gate acusa.
+
+### Decisão: DERIVAÇÃO, não regex fixo (mesmo padrão do spread dos TARGET_DIRS)
+
+`scripts/scan-batch-coverage.mjs` (6º guard do batch — o guard de cobertura é
+ele próprio batchado, rodando na MESMA invocação que ele policia) deriva a
+lista do batch dos IMPORTS VIVOS do `run-precommit-guards.mjs` (`import { main
+as X } from "./X.mjs"`) — nunca de uma lista copiada. Um guard adicionado ao
+batch fica automaticamente coberto; um guard fora do batch falha até entrar.
+
+Contrato bidirecional:
+- NEGATIVO: um `node scripts/X.mjs` direto no `.husky/pre-commit` onde X não é
+o batch runner. Duas subclasses:
+  - X está no batch DERIVADO → `ALREADY BATCHED` (o spawn direto é redundante,
+  double-run — o mesmo guard roda 2x por commit; remover a linha).
+  - X não está no batch nem na allowlist → `GUARD OUTSIDE BATCH` com o caminho
+exato (file:line + conteúdo) — o guard novo precisa ENTRAR no batch.
+- POSITIVO: o batch runner DEVE estar wired no hook (remover = `BATCH RUNNER
+MISSING` — os guards voltariam a custar N boots).
+- HOOK_ALLOWLIST (as 2 exceções deliberadas, pinadas com rationale):
+`scan-lucide-icons.mjs --check` (geração do mock a11y, ordem pré-batch) e
+`check-next-types.mjs --fix` (auto-heal do .next/types, ordem pré-tsc). Um 3º
+guard fora do batch exige editar a allowlist com justificativa (o padrão
+EXCLUDED_TREES do fragile-range).
+
+### Implementação
+
+- `scripts/scan-batch-coverage.mjs` (NOVO): `deriveBatchGuards(runnerSource)`
+(derivação pura, exportada) + `scanBatchCoverage(root)` + `main()` com env
+override `BATCH_COVERAGE_SCAN_ROOT` (repo sintético p/ o vitest). Saída ASCII
+pura, puro node, <10ms.
+- `run-precommit-guards.mjs`: 6º import + chamada (o guard de cobertura é
+batchado) e correção de drift real do header (dizia "4 guards", rodava 5 →
+agora 6).
+- `.husky/pre-commit`: comentário 5→6 guards + bullet do scan-batch-coverage.
+- `scan-push-full-suite.mjs` contrato 4: regex ganhou `scan-batch-coverage`
+(a lista fixa segue como camada histórica dos 6 conhecidos; a derivação é a
+camada de crescimento que cobre o 7º).
+- Testes: `scan-batch-coverage.test.ts` (REAL-REPO CONTRACT + GROWTH mutation
+com caminho exato + ALREADY BATCHED + SPREAD com runner patcheado de 7º
+import + SPREAD CONTROL sem o import + allowlist pinada + comentário-não-tripa
++ positivo + DERIVATION PIN dos 6 imports) e `run-precommit-guards.test.ts`
+atualizado para 6 veredictos na ordem.
+
+### Re-mediar quando?
+
+Quando um 7º guard entrar no batch: o DERIVATION PIN (os 6 imports) falha
+primeiro e força a atualização consciente; o SPREAD CONTRACT já prova que a
+derivação cobre o 7º sem mudar o guard. A allowlist é o único ponto de
+decisão manual (um guard fora do batch exige justificativa documentada).
+
+## 11.17 Pre-push NÃO é batchado — por que a assimetria é correta (avaliação 2026-08-10)
+
+**A pergunta**: o batch runner (11.13/11.16) cobre só o pre-commit; o
+`.husky/pre-push` ainda spawna `check-node-modules-integrity`
+INDIVIDUALMENTE (deliberado — antes do fuzz mapeado), além do
+`verify-encoding.sh` e do `run-mapped-fuzz.mjs`. Merecem o mesmo tratamento
+batch?
+
+**Medição** (mesma sessão, isolado, node 22.23.1 / Windows):
+
+| Gate do pre-push | Custo medido | Nota |
+|---|---|---|
+| check-node-modules-integrity (o ÚNICO node guard do pre-push) | 0.18 / 0.18 / 0.22s | ~0.19s já com boot node |
+| verify-encoding.sh --dry-run --ci src/ | 2.94s | gate BASH multi-camada (node+python internos), não node guard |
+| run-mapped-fuzz.mjs --since | 0.41s (skip: diff sem superfície fuzz) | invocação vitest pesada, não node guard |
+
+**O lever do batch não tem superfície aqui.** O batch economiza o BOOT node
+(~0.14s) consolidando N spawns em 1 — o pre-commit tinha 4-6 guards, logo
+4-6 boots. O pre-push tem EXATAMENTE UM node guard (integrity), que já custa
+~0.19s com boot: batchar economizaria ~0.14s num hook de dezenas de
+segundos — ruído. `verify-encoding` é um gate bash multi-camada (não é
+importável num runner node) e `run-mapped-fuzz` é uma invocação vitest
+pesada (categoria diferente do agregador síncrono de exit codes — não cabe
+no runner).
+
+**Veredito: manter a assimetria — o custo já é aceitável.** Os três gates do
+pre-push são classes diferentes (node guard de <0.2s, gate bash de ~3s,
+runner vitest de ~6s típico — ~14.5s no pior caso, sec 11.11) e o único
+batchável (integrity) é irrelevante de custo. Além disso, a ORDEM importa por design: integrity roda
+ANTES do fuzz mapeado para não gastar ~6s de fuzz num node_modules
+divergente (a classe da 8.5) — o batch pré-fuzz teria que preservar essa
+ordem de qualquer forma, sem ganho.
+
+**Já travado estruturalmente**: o contrato 4 do `scan-push-full-suite`
+(guards node batchados) tem o NEGATIVO (spawn individual) e o POSITIVO
+(batch wired) escopados a `.husky/pre-commit` — o spawn individual do
+integrity no `.husky/pre-push` fica FORA da superfície do contrato por
+design, sem precisar de allowlist (a mesma asimetria deliberada documentada
+no header do run-precommit-guards.mjs). Se um dia o pre-push ganhar um
+segundo node guard (<0.2s cada), aí o batch passa a valer — até lá, spawn
+individual é o certo.
 
 ## 12. Referências
 

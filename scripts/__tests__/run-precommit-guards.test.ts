@@ -1,21 +1,23 @@
 /**
- * run-precommit-guards.mjs - batch runner dos 4 guards node do pre-commit
- * (2026-08, secao 11.13): uma UNICA invocacao node agrega os exit codes.
+ * run-precommit-guards.mjs - batch runner dos 6 guards node do pre-commit
+ * (2026-08, secao 11.13/11.16): uma UNICA invocacao node agrega os exit codes.
  *
  * Hermetic tests via the guards' OWN env overrides (PUSH_SUITE_SCAN_ROOT /
- * LINT_LOADER_SCAN_ROOT / GUARD_GATES_SCAN_ROOT / NODE_MODULES_ROOT - the
- * same env-override pattern as FRAGILE_SCAN_ROOT): each test points ONE
- * override at a synthetic temp repo that FAILS that guard, while the OTHER
- * three guards scan the REAL repo (clean today) - proving:
+ * LINT_LOADER_SCAN_ROOT / GUARD_GATES_SCAN_ROOT / NODE_MODULES_ROOT /
+ * FUZZ_PRECOMMIT_SCAN_ROOT / BATCH_COVERAGE_SCAN_ROOT - the same env-override
+ * pattern as FRAGILE_SCAN_ROOT): each test points ONE override at a synthetic
+ * temp repo that FAILS that guard, while the OTHER five guards scan the REAL
+ * repo (clean today) - proving:
  *   1. AGREGACAO (worst-exit): um guard falho -> batch exit 1.
- *   2. ISOLAMENTO: os outros 3 guards RODAM MESMO ASSIM e reportam clean -
+ *   2. ISOLAMENTO: os outros 5 guards RODAM MESMO ASSIM e reportam clean -
  *      uma falha nunca esconde as demais (a razao do batch sobre o hook
  *      antigo com `set -e`, que parava no 1o erro e escondia o resto).
  *   3. ORDER (determinismo): a saida segue a ordem do hook (integrity,
- *      push-suite, lint-loader, guard-gates) - nunca interleaved, a vantagem
- *      do batch sobre o paralelo.
+ *      push-suite, lint-loader, guard-gates, fuzz-precommit,
+ *      batch-coverage) - nunca interleaved, a vantagem do batch sobre o
+ *      paralelo.
  * O REAL-REPO CONTRACT test roda o batch SEM env override (repo real limpo)
- * e asserta exit 0 + os 4 veredictos clean - o lock de regressao.
+ * e asserta exit 0 + os 6 veredictos clean - o lock de regressao.
  *
  * Subprocess-heavy (todo teste spawna o CLI via runSubprocess) -> timeout
  * EXPLICITO em todo it() (o scan-timeouts guard exige).
@@ -23,7 +25,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "run-precommit-guards.mjs")
 
@@ -74,37 +76,91 @@ function writeBunLoaderLintStaged(dir: string) {
   )
 }
 
-/** A synthetic root that FAILS scan-guard-gates: guard net sem test:guard step. */
+/**
+ * A synthetic root that FAILS scan-guard-gates: guard net sem test:guard step.
+ * The pr-check.yml keeps the FUZZ job WITH the fuzz:ci step + the BENCHMARK
+ * job WITH the run-benchmark step (sole-failure pin): the ONLY violation
+ * must be the missing test:guard step - a missing fuzz/benchmark job would
+ * ADD a 'FUZZ JOB MISSING'/'BENCHMARK JOB MISSING' line and muddy which
+ * contract the isolation test is proving. The ci.yml keeps the utf8-check
+ * call site (rule 8 scans ci.yml + pr-check.yml; a missing call site would
+ * ADD an 'ENCODING CALL SITE MISSING' line - the same sole-failure
+ * discipline).
+ */
 function writeBadGuardNet(dir: string) {
   fs.mkdirSync(path.join(dir, ".github", "workflows"), { recursive: true })
   fs.writeFileSync(
-    path.join(dir, ".github", "workflows", "guard-gates.yml"),
+    path.join(dir, GUARD_PUSH_NET),
     ["name: guard-gates", "on:", "  push:", "    branches: [main, develop]", "jobs:", "  guard-gates:", "    runs-on: ubuntu-latest", "    steps:", "      - run: echo no test:guard", ""].join("\n"),
   )
   fs.writeFileSync(
-    path.join(dir, ".github", "workflows", "pr-check.yml"),
-    ["name: pr-check", "on:", "  pull_request:", "jobs:", "  fragile-guard:", "    runs-on: ubuntu-latest", "    steps:", "      - run: echo no test:guard", ""].join("\n"),
+    path.join(dir, GUARD_PR_TWIN),
+    ["name: pr-check", "on:", "  pull_request:", "jobs:", "  utf8-check:", "    uses: ./.github/workflows/utf8-check.yml", "  fuzz:", "    name: Fuzz Tests", "    runs-on: ubuntu-latest", "    steps:", "      - name: Run fuzz tests", "        run: bun run fuzz:ci > fuzz-results.json", "  benchmark:", "    name: Geo Benchmark", "    runs-on: ubuntu-latest", "    steps:", "      - name: Run geo benchmark", "        run: |", "          node scripts/run-benchmark.mjs --type geo --json", "  fragile-guard:", "    runs-on: ubuntu-latest", "    steps:", "      - run: echo no test:guard", ""].join("\n"),
+  )
+  fs.writeFileSync(
+    path.join(dir, ENCODING_CI_NET),
+    ["name: ci", "on:", "  push:", "    branches: [main, develop]", "jobs:", "  utf8-check:", "    uses: ./.github/workflows/utf8-check.yml", ""].join("\n"),
   )
 }
 
-describe("run-precommit-guards.mjs - batch runner dos 4 guards node (sec 11.13)", () => {
+/** A synthetic root that FAILS scan-fuzz-precommit: --scope cached no .husky/pre-commit sem nota. */
+function writeCachedFuzzInPrecommit(dir: string) {
+  fs.mkdirSync(path.join(dir, ".husky"), { recursive: true })
+  fs.writeFileSync(
+    path.join(dir, ".husky", "pre-commit"),
+    ["#!/usr/bin/env bash", "set -euo pipefail", "node scripts/run-mapped-fuzz.mjs --scope cached", ""].join("\n"),
+  )
+  fs.writeFileSync(
+    path.join(dir, ".husky", "pre-push"),
+    ['node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"', ""].join("\n"),
+  )
+}
+
+describe("run-precommit-guards.mjs - batch runner dos 5 guards node (sec 11.13)", () => {
   afterEach(cleanupTempDirs)
 
-  it("REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 4 veredictos clean na ORDEM do hook", () => {
+  it("AGREGACAO + ISOLAMENTO: guard fora do batch (sintetico) -> exit 1, os outros 5 clean", () => {
+    const dir = createTempDir("run-guards-")
+    // A falha do scan-batch-coverage: um node guard spawnado direto no hook
+    // sintetico que nao e o batch runner nem allowlisted (GROWTH, sec 11.16).
+    fs.mkdirSync(path.join(dir, ".husky"), { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, ".husky", "pre-commit"),
+      ["#!/usr/bin/env bash", "node scripts/run-precommit-guards.mjs", "node scripts/scan-new-guard.mjs", ""].join("\n"),
+    )
+    const r = runBatch({ BATCH_COVERAGE_SCAN_ROOT: dir })
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("batch-coverage: GUARD OUTSIDE BATCH at .husky/pre-commit:3")
+    expect(r.stdout).toContain("scan-new-guard.mjs")
+    // ISOLAMENTO: os outros 5 guards escanearam o repo REAL (limpo) e
+    // rodaram MESMO com o guard 6 falho - nenhuma falha esconde as demais.
+    expect(r.stdout).toContain("check-node-modules-integrity: clean")
+    expect(r.stdout).toContain("push-suite: clean")
+    expect(r.stdout).toContain("lint-staged-loader: clean")
+    expect(r.stdout).toContain("guard-gates: clean")
+    expect(r.stdout).toContain("fuzz-precommit: clean")
+  }, 60000)
+
+  it("REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 6 veredictos clean na ORDEM do hook", () => {
     const r = runBatch()
     expect(r.status).toBe(0)
     // Determinismo: a ordem do hook (integrity, push-suite, lint-loader,
-    // guard-gates) - nunca interleaved (a vantagem do batch sobre o paralelo).
+    // guard-gates, fuzz-precommit, batch-coverage) - nunca interleaved (a
+    // vantagem do batch sobre o paralelo).
     const cleanIdx = [
       "check-node-modules-integrity: clean",
       "push-suite: clean",
       "lint-staged-loader: clean",
       "guard-gates: clean",
+      "fuzz-precommit: clean",
+      "batch-coverage: clean",
     ].map((v) => r.stdout.indexOf(v))
     expect(cleanIdx.every((i) => i >= 0)).toBe(true)
     expect(cleanIdx[0]).toBeLessThan(cleanIdx[1])
     expect(cleanIdx[1]).toBeLessThan(cleanIdx[2])
     expect(cleanIdx[2]).toBeLessThan(cleanIdx[3])
+    expect(cleanIdx[3]).toBeLessThan(cleanIdx[4])
+    expect(cleanIdx[4]).toBeLessThan(cleanIdx[5])
   }, 60000)
 
   it("AGREGACAO + ISOLAMENTO: push-suite falha (sintetico) -> exit 1, os outros 3 rodam e reportam clean", () => {
@@ -145,14 +201,27 @@ describe("run-precommit-guards.mjs - batch runner dos 4 guards node (sec 11.13)"
     expect(r.stdout).toContain("guard-gates: clean")
   }, 60000)
 
-  it("AGREGACAO + ISOLAMENTO: guard net sem test:guard (sintetico) -> exit 1, os outros 3 clean", () => {
+  it("AGREGACAO + ISOLAMENTO: guard net sem test:guard (sintetico) -> exit 1, os outros 4 clean", () => {
     const dir = createTempDir("run-guards-")
     writeBadGuardNet(dir)
     const r = runBatch({ GUARD_GATES_SCAN_ROOT: dir })
     expect(r.status).toBe(1)
-    expect(r.stdout).toContain("guard-gates: TEST GUARD STEP MISSING in .github/workflows/guard-gates.yml")
+    expect(r.stdout).toContain(`guard-gates: TEST GUARD STEP MISSING in ${GUARD_PUSH_NET}`)
     expect(r.stdout).toContain("check-node-modules-integrity: clean")
     expect(r.stdout).toContain("push-suite: clean")
     expect(r.stdout).toContain("lint-staged-loader: clean")
+    expect(r.stdout).toContain("fuzz-precommit: clean")
+  }, 60000)
+
+  it("AGREGACAO + ISOLAMENTO: --scope cached no pre-commit (sintetico) -> exit 1, os outros 4 clean", () => {
+    const dir = createTempDir("run-guards-")
+    writeCachedFuzzInPrecommit(dir)
+    const r = runBatch({ FUZZ_PRECOMMIT_SCAN_ROOT: dir })
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("fuzz-precommit: FUZZ IN PRE-COMMIT (--scope cached) at .husky/pre-commit:3")
+    expect(r.stdout).toContain("check-node-modules-integrity: clean")
+    expect(r.stdout).toContain("push-suite: clean")
+    expect(r.stdout).toContain("lint-staged-loader: clean")
+    expect(r.stdout).toContain("guard-gates: clean")
   }, 60000)
 })

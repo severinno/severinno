@@ -1,6 +1,7 @@
 /**
  * scan-push-full-suite.mjs - guard de CONTRATOS dos gates de custo nos hooks
- * (2026-08): Gate 3 mapeado + fuzz:ci pre-push-only + encoding gate unico.
+ * (2026-08): Gate 3 mapeado + fuzz:ci pre-push-only + encoding gate unico +
+ * divisao commit/push da 11.11.
  *
  * Hermetic tests via PUSH_SUITE_SCAN_ROOT (the same env-override pattern as
  * FRAGILE_SCAN_ROOT): each test builds an isolated temp dir with fake hook
@@ -8,13 +9,15 @@
  * synthetic root may omit one).
  *
  * The REAL-REPO CONTRACT test is the regression lock: it scans the ACTUAL
- * scripts/pre-push-gates.sh + .husky/pre-push + .husky/pre-commit and
- * asserts clean - if someone ever re-adds a full-suite invocation
- * (test:unit / vitest run / bare bun run test) to the Gate 3 path, moves
- * fuzz:ci/run-mapped-fuzz into the pre-commit, removes the mapped fuzz gate
- * from the pre-push, or swaps verify-encoding.sh for check-utf8.sh in a
- * hook, that test fails in CI (it runs under test:unit AND test:guard / the
- * guard-gates push net).
+ * scripts/pre-push-gates.sh + .husky/pre-push + .husky/pre-commit + (since
+ * contrato #6) package.json + scripts/run-mapped-fuzz.mjs and asserts clean
+ * - if someone ever re-adds a full-suite invocation (test:unit / vitest run
+ * / bare bun run test) to the Gate 3 path, moves fuzz:ci/run-mapped-fuzz
+ * into the pre-commit, removes the mapped fuzz gate from the pre-push,
+ * swaps verify-encoding.sh for check-utf8.sh in a hook, or blurs the
+ * commit/push division (pre-commit:test com --scope push no package.json,
+ * pre-commit:test fora do hook, runner sem --since), that test fails in CI
+ * (it runs under test:unit AND test:guard / the guard-gates push net).
  *
  * The guard is BIDIRECTIONAL for every contract:
  * - NEGATIVE (must NOT appear): full-suite invocations in the Gate-3 files,
@@ -67,12 +70,13 @@ const CLEAN_PRE_PUSH = [
   "",
 ].join("\n")
 
-/** A legitimate .husky/pre-commit: verify-encoding gate, NO fuzz, guards node BATCHADOS (sec 11.13). */
+/** A legitimate .husky/pre-commit: verify-encoding gate, NO fuzz, guards node BATCHADOS (sec 11.13) + pre-commit:test cached (sec 11.11). */
 const CLEAN_PRE_COMMIT = [
   "#!/usr/bin/env bash",
   "set -euo pipefail",
   "bash scripts/verify-encoding.sh --dry-run --ci src/",
   "node scripts/run-precommit-guards.mjs",
+  "bun run pre-commit:test",
   "",
 ].join("\n")
 
@@ -156,9 +160,9 @@ describe("scan-push-full-suite.mjs - contratos de gate (fuzz:ci + encoding, sec 
     writeGuardFile(dir, ".husky/pre-commit", CLEAN_PRE_COMMIT + "\nbun run fuzz:ci\n")
     const r = runGuard(dir)
     expect(r.status).toBe(1)
-    // CLEAN_PRE_COMMIT has 5 lines incl. the trailing-newline empty line, so
-    // the appended line lands at 6 - the exact line the guard reports.
-    expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' VIOLATED in .husky/pre-commit:6")
+    // CLEAN_PRE_COMMIT has 6 lines incl. the trailing-newline empty line, so
+    // the appended line lands at 7 - the exact line the guard reports.
+    expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' VIOLATED in .husky/pre-commit:7")
     expect(r.stdout).toContain("bun run fuzz:ci")
   }, 60000)
 
@@ -168,7 +172,7 @@ describe("scan-push-full-suite.mjs - contratos de gate (fuzz:ci + encoding, sec 
     writeGuardFile(dir, ".husky/pre-commit", CLEAN_PRE_COMMIT + "\nnode scripts/run-mapped-fuzz.mjs --since ${PRE_PUSH_REMOTE_SHA:-}\n")
     const r = runGuard(dir)
     expect(r.status).toBe(1)
-    expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' VIOLATED in .husky/pre-commit:6")
+    expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' VIOLATED in .husky/pre-commit:7")
     expect(r.stdout).toContain("run-mapped-fuzz")
   }, 60000)
 
@@ -227,7 +231,7 @@ describe("scan-push-full-suite.mjs - contratos de gate (fuzz:ci + encoding, sec 
     writeCleanRepo(dir)
     // The batch runner line swapped back to an individual spawn = the cost
     // regression the batch exists to kill (4 node boots ~0.54-0.81s vs 1
-    // boot ~0.22-0.26s). Line lands at 6 (CLEAN_PRE_COMMIT has 5 lines).
+    // boot ~0.22-0.26s). The swapped line keeps its position at 4.
     writeGuardFile(
       dir,
       ".husky/pre-commit",
@@ -290,6 +294,113 @@ describe("scan-push-full-suite.mjs - Gate 3 mapeado por co-location (secao 11.15
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(
       "CONTRACT 'gate 3 mapeado por co-location (SOURCE_RE ts/tsx/mjs, sem gate files)' MISSING in scripts/pre-commit-tests.mjs",
+    )
+  }, 60000)
+})
+
+describe("scan-push-full-suite.mjs - divisao commit/push (secao 11.11): pre-commit:test cached deterministico vs run-mapped-fuzz --since so", () => {
+  afterEach(cleanupTempDirs)
+
+  /** A legitimate package.json: pre-commit:test wired SEM --scope (default cached/staged). */
+  const CLEAN_PACKAGE_JSON = [
+    "{",
+    '  "scripts": {',
+    '    "pre-commit:test": "node scripts/pre-commit-tests.mjs",',
+    '    "pre-push:gates": "bash scripts/pre-push-gates.sh"',
+    "  }",
+    "}",
+    "",
+  ].join("\n")
+
+  /** A legitimate runner: parseSince reading --since (the push scope). */
+  const CLEAN_RUNNER = [
+    "export function parseSince(argv) {",
+    "  for (let i = 0; i < argv.length; i++) {",
+    '    if (argv[i] === "--since") return argv[i + 1] ?? ""',
+    "  }",
+    '  return ""',
+    "}",
+    "",
+  ].join("\n")
+
+  it("clean: package.json + runner + hook com a divisao commit/push correta -> exit 0", () => {
+    const dir = createTempDir("push-suite-div-")
+    writeCleanRepo(dir)
+    writeGuardFile(dir, "package.json", CLEAN_PACKAGE_JSON)
+    writeGuardFile(dir, "scripts/run-mapped-fuzz.mjs", CLEAN_RUNNER)
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("clean")
+  }, 60000)
+
+  it("MUTATION: pre-commit:test com --scope push no package.json (commit viraria estocastico) -> exit 1 com o caminho exato", () => {
+    const dir = createTempDir("push-suite-div-")
+    writeCleanRepo(dir)
+    // O script pre-commit:test ganhou --scope push: o commit rodaria o
+    // escopo do push (staged + HEAD + range) em vez do cached deterministico
+    // (staged) - a quebra da divisao da 11.11 que o contrato #6 trava.
+    writeGuardFile(
+      dir,
+      "package.json",
+      CLEAN_PACKAGE_JSON.replace(
+        "node scripts/pre-commit-tests.mjs",
+        "node scripts/pre-commit-tests.mjs --scope push",
+      ),
+    )
+    writeGuardFile(dir, "scripts/run-mapped-fuzz.mjs", CLEAN_RUNNER)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(
+      "CONTRACT 'divisao commit/push 11.11 (pre-commit:test cached deterministico; run-mapped-fuzz --since so)' VIOLATED in package.json:3",
+    )
+    expect(r.stdout).toContain("--scope push")
+  }, 60000)
+
+  it("MUTATION: pre-commit:test removido do package.json (commit sem teste deterministico) -> exit 1 'MISSING'", () => {
+    const dir = createTempDir("push-suite-div-")
+    writeCleanRepo(dir)
+    writeGuardFile(
+      dir,
+      "package.json",
+      CLEAN_PACKAGE_JSON.replace('    "pre-commit:test": "node scripts/pre-commit-tests.mjs",\n', ""),
+    )
+    writeGuardFile(dir, "scripts/run-mapped-fuzz.mjs", CLEAN_RUNNER)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(
+      "CONTRACT 'divisao commit/push 11.11 (pre-commit:test cached deterministico; run-mapped-fuzz --since so)' MISSING in package.json",
+    )
+  }, 60000)
+
+  it("MUTATION: bun run pre-commit:test fora do .husky/pre-commit (commit sem teste nas areas tocadas) -> exit 1 'MISSING'", () => {
+    const dir = createTempDir("push-suite-div-")
+    writeCleanRepo(dir)
+    writeGuardFile(dir, "package.json", CLEAN_PACKAGE_JSON)
+    writeGuardFile(dir, "scripts/run-mapped-fuzz.mjs", CLEAN_RUNNER)
+    writeGuardFile(dir, ".husky/pre-commit", CLEAN_PRE_COMMIT.replace("bun run pre-commit:test\n", ""))
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(
+      "CONTRACT 'divisao commit/push 11.11 (pre-commit:test cached deterministico; run-mapped-fuzz --since so)' MISSING in .husky/pre-commit",
+    )
+  }, 60000)
+
+  it("MUTATION: parseSince do runner nao le mais --since (fuzz sem diff do push) -> exit 1 'MISSING'", () => {
+    const dir = createTempDir("push-suite-div-")
+    writeCleanRepo(dir)
+    writeGuardFile(dir, "package.json", CLEAN_PACKAGE_JSON)
+    // parseSince trocado por uma logica que nao le --since (ex.: --scope)
+    // - o runner perderia o escopo do push e rodaria o fallback FULL em todo
+    // push (ou um modo cached, a divisao confusa da 11.11).
+    writeGuardFile(
+      dir,
+      "scripts/run-mapped-fuzz.mjs",
+      CLEAN_RUNNER.replace('if (argv[i] === "--since") return argv[i + 1] ?? ""', 'if (argv[i] === "--scope") return argv[i + 1] ?? ""'),
+    )
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(
+      "CONTRACT 'divisao commit/push 11.11 (pre-commit:test cached deterministico; run-mapped-fuzz --since so)' MISSING in scripts/run-mapped-fuzz.mjs",
     )
   }, 60000)
 })

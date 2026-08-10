@@ -25,6 +25,14 @@
  *    no .husky/pre-commit. POSITIVO: run-mapped-fuzz.mjs --since DEVE
  *    existir no .husky/pre-push (remover/trocar o gate = push sem fuzz que
  *    o CI rodaria = falha 'FUZZ GATE MISSING').
+ *    NOTA hard-lock (interacao com o scan-fuzz-precommit.mjs): este
+ *    NEGATIVO e INCONDICIONAL - uma secao ADOTADO datada no gates-proofs.md
+ *    (a trilha de reversao do scan-fuzz-precommit, padrao 11.7) NAO satisfaz
+ *    este contrato; reverter a 11.11 (fuzz no commit) exige EDItAR este
+ *    guard (a rede estrutural), nao so documentar. Os dois guards se
+ *    sobrepoem de proposito: o scan-fuzz-precommit e a camada doc-aware que
+ *    diagnostica a classe especifica --scope cached com a trilha documentada;
+ *    este e o lock duro que nenhuma nota contorna.
  *
  * 3. ENCODING GATE UNICO (medido ~1.4s): verify-encoding.sh (UTF-8 + VPS
  *    ASCII + proof + baseline) roda EM AMBOS os hooks - NAO pode ser
@@ -33,15 +41,21 @@
  *    check-utf8.sh fora de check-docs-encoding.sh nos hooks. POSITIVO:
  *    verify-encoding.sh DEVE existir em .husky/pre-commit E .husky/pre-push.
  *
- * 4. GUARDS NODE BATCHADOS (secao 11.13, medido 2026-08): os 4 guards node
+ * 4. GUARDS NODE BATCHADOS (secao 11.13, medido 2026-08): os 6 guards node
  *    do pre-commit (check-node-modules-integrity, scan-push-full-suite,
- *    scan-lint-staged-loader, scan-guard-gates) rodam em UMA invocacao
- *    node (run-precommit-guards.mjs, ~0.22-0.26s - o boot node ~0.14s
- *    dominava cada spawn; 4 sequenciais custavam ~0.54-0.81s). NEGATIVO:
- *    um spawn INDIVIDUAL de qualquer um dos 4 no .husky/pre-commit (4
- *    boots = a regressao de custo que o batch existe para matar).
- *    POSITIVO: run-precommit-guards.mjs wired no .husky/pre-commit
- *    (remover o batch = guards voltam a custar 4 boots = falha 'MISSING').
+ *    scan-lint-staged-loader, scan-guard-gates, scan-fuzz-precommit,
+ *    scan-batch-coverage) rodam em UMA invocacao node (run-precommit-guards.mjs,
+ *    ~0.22-0.26s - o boot node ~0.14s dominava cada spawn; 4 sequenciais
+ *    custavam ~0.54-0.81s). NEGATIVO: um spawn INDIVIDUAL de qualquer um dos
+ *    6 no .husky/pre-commit (6 boots = a regressao de custo que o batch
+ *    existe para matar). POSITIVO: run-precommit-guards.mjs wired no
+ *    .husky/pre-commit (remover o batch = guards voltam a custar 6 boots =
+ *    falha 'MISSING').
+ *    NOTA (sec 11.16): o scan-batch-coverage e o guard de CRESCIMENTO deste
+ *    contrato - a lista FIXA aqui nao pega um 7o guard novo; o batch-coverage
+ *    deriva a lista dos imports vivos do runner e falha todo guard fora do
+ *    batch com o caminho exato. Os dois se sobrepoem de proposito: este pina
+ *    os 6 conhecidos, aquele deriva o futuro.
  *
  * 5. GATE 3 MAPEADO POR CO-LOCATION (secao 11.15, RE-MEDICAO 2026-08-10
  *    77.58s vs 20.8s): o custo do Gate 3 depende do que o diff toca - o
@@ -58,6 +72,22 @@
  *    POSITIVO: o pin exato 'SOURCE_RE = /\.(ts|tsx|mjs)$/' (mudar a
  *    superficie = falha 'MISSING'). Travado nos dois sentidos, mesmo
  *    padrao dos contratos 1-4.
+ *
+ * 6. DIVISAO COMMIT/PUSH (secao 11.11, adotado 2026-08-10): o teste
+ *    unitario DETERMINISTICO do commit roda via pre-commit:test
+ *    (package.json -> pre-commit-tests.mjs SEM --scope, default cached =
+ *    git diff --cached/staged) - a rede ESTOCASTICA do push roda via
+ *    run-mapped-fuzz.mjs --since (o runner SO aceita --since; parseSince
+ *    nao tem modo cached, impossivel invoca-lo num commit). NEGATIVO:
+ *    pre-commit-tests.mjs --scope push no package.json (o pre-commit:test
+ *    viraria push = commit estocastico, quebra o determinismo medido da
+ *    11.11). POSITIVO: (a) pre-commit:test wired no package.json (node
+ *    scripts/pre-commit-tests.mjs), (b) `bun run pre-commit:test` no
+ *    .husky/pre-commit (remover = commit sem teste deterministico), (c) o
+ *    parseSince do runner lendo --since (perder o escopo do push = fuzz
+ *    sem diff). O --scope push LEGITIMO do pre-push (pre-push-gates.sh)
+ *    segue coberto pelo REQUIRED_MARKERS - este contrato so trava o lado
+ *    do COMMIT.
  *
  * Linhas de comentario (primeiro char nao-branco = '#') sao ignoradas no
  * scan NEGATIVO: os headers dos hooks mencionam "suite completa"/"fuzz" em
@@ -116,19 +146,19 @@ const GATE_CONTRACTS = [
   {
     name: "guards node batchados (1 invocacao)",
     negative: [
-      // Os 4 guards node NAO podem voltar a ser spawns INDIVIDUAIS no
-      // pre-commit (4 boots node ~0.54-0.81s vs 1 boot do batch ~0.22-0.26s,
+      // Os 6 guards node NAO podem voltar a ser spawns INDIVIDUAIS no
+      // pre-commit (6 boots node ~0.54-0.81s vs 1 boot do batch ~0.22-0.26s,
       // secao 11.13) - o caminho e o batch runner run-precommit-guards.mjs.
       // O scan NEGATIVO ignora comentarios: o header do pre-commit menciona
       // os nomes dos guards em prosa (o batch), so o SPAWN individual conta.
       {
         file: ".husky/pre-commit",
-        re: /node\s+scripts\/(?:check-node-modules-integrity|scan-push-full-suite|scan-lint-staged-loader|scan-guard-gates)\.mjs/,
+        re: /node\s+scripts\/(?:check-node-modules-integrity|scan-push-full-suite|scan-lint-staged-loader|scan-guard-gates|scan-fuzz-precommit|scan-batch-coverage)\.mjs/,
       },
     ],
     positive: [
       // O batch runner DEVE estar wired no pre-commit (remover/trocar o batch
-      // = os guards voltam a custar 4 boots - falha 'MISSING').
+      // = os guards voltam a custar 5 boots - falha 'MISSING').
       { file: ".husky/pre-commit", re: /run-precommit-guards\.mjs/ },
     ],
   },
@@ -152,6 +182,42 @@ const GATE_CONTRACTS = [
       {
         file: "scripts/pre-commit-tests.mjs",
         re: /SOURCE_RE\s*=\s*\/\\\.\(ts\|tsx\|mjs\)\$\//,
+      },
+    ],
+  },
+  {
+    // Secao 11.11: divisao deliberada commit/push - teste unitario
+    // DETERMINISTICO no commit (pre-commit:test = pre-commit-tests.mjs SEM
+    // --scope, default cached/staged) vs rede ESTOCASTICA no push
+    // (run-mapped-fuzz.mjs --since - o runner SO aceita --since, sem modo
+    // cached). O NEGATIVO detecta `--scope push` no script pre-commit:test
+    // do package.json (vazaria o escopo do push para dentro do commit); o
+    // POSITIVO pina os tres fios: o script wired no package.json, o hook
+    // rodando pre-commit:test, e o parseSince do runner lendo --since.
+    name: "divisao commit/push 11.11 (pre-commit:test cached deterministico; run-mapped-fuzz --since so)",
+    negative: [
+      // O pre-commit:test NAO pode virar --scope push (o default cached -
+      // staged - e o escopo deterministico do commit, sec 11.11). O scan
+      // NEGATIVO varre linha a linha; o package.json nao tem linhas de
+      // comentario, entao a declaracao do script e o alvo.
+      { file: "package.json", re: /pre-commit-tests\.mjs\s+--scope\s+push/ },
+    ],
+    positive: [
+      // (a) o script pre-commit:test wired: node scripts/pre-commit-tests.mjs
+      // (prefix - um `--scope cached` explicito equivalente nao quebra o pin;
+      // o `--scope push` e o que o NEGATIVO pega).
+      {
+        file: "package.json",
+        re: /"pre-commit:test"\s*:\s*"node scripts\/pre-commit-tests\.mjs/,
+      },
+      // (b) o hook do commit roda o teste deterministico das areas tocadas.
+      { file: ".husky/pre-commit", re: /bun\s+run\s+pre-commit:test/ },
+      // (c) o runner do fuzz mapeado SO le --since (o escopo do push) -
+      // um runner sem --since perderia o diff e o fallback FULL rodaria em
+      // todo push.
+      {
+        file: "scripts/run-mapped-fuzz.mjs",
+        re: /argv\[i\]\s*===\s*"--since"/,
       },
     ],
   },
@@ -232,7 +298,7 @@ export function main() {
   const { fullSuite, missingMarker, gateViolations } = scanPushFullSuite()
   if (fullSuite.length === 0 && missingMarker.length === 0 && gateViolations.length === 0) {
     console.log(
-      `push-suite: clean (${FILES.length} guard files, mapped Gate 3 present, no full-suite invocations, gate contracts ok)`,
+      `push-suite: clean (${FILES.length} guard files + ${GATE_CONTRACTS.length} gate contracts over the full surface incl. package.json/runner, mapped Gate 3 present, no full-suite invocations)`,
     )
     return 0
   }
@@ -250,7 +316,7 @@ export function main() {
     }
   }
   console.log(
-    "push-suite: Gate 3 must run the MAPPED tests (pre-commit-tests.mjs --scope push), not the full suite (sec 8.4); the fuzz gate is the MAPPED runner in the pre-push only (run-mapped-fuzz.mjs --since, sec 11.11); verify-encoding.sh is the single encoding gate in both hooks; the Gate 3 mapper surface stays ts/tsx/mjs (gate files .sh never map a co-located heavy suite - sec 11.15)",
+    "push-suite: Gate 3 must run the MAPPED tests (pre-commit-tests.mjs --scope push), not the full suite (sec 8.4); the fuzz gate is the MAPPED runner in the pre-push only (run-mapped-fuzz.mjs --since, sec 11.11); verify-encoding.sh is the single encoding gate in both hooks; the Gate 3 mapper surface stays ts/tsx/mjs (gate files .sh never map a co-located heavy suite - sec 11.15); pre-commit:test stays the deterministic CACHED scope and run-mapped-fuzz only accepts --since (commit/push division, sec 11.11)",
   )
   return 1
 }

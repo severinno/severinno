@@ -25,9 +25,9 @@ node scripts/scan-lucide-icons.mjs --check
 # Custo <10ms; CI nao precisa (checkout fresco, sem .next).
 node scripts/check-next-types.mjs --fix
 
-# 4 guards node em UMA invocacao (batch runner, medicao 2026-08, secao 11.13):
-# o boot do node (~0.14s) dominava cada guard isolado; os 4 spawns sequenciais
-# custavam ~0.54-0.81s por commit. O runner importa os 4 no MESMO processo (1
+# 6 guards node em UMA invocacao (batch runner, medicao 2026-08, secao 11.13/11.16):
+# o boot do node (~0.14s) dominava cada guard isolado; os 6 spawns sequenciais
+# custavam ~0.54-0.81s por commit. O runner importa os 6 no MESMO processo (1
 # boot) e agrega os exit codes - medido ~0.22-0.26s (~2.7x), saida ORDENADA
 # (melhor que o paralelo ~0.24-0.34s, que embaralharia os veredictos). Todos
 # rodam SEMPRE (worst-exit): uma falha nao esconde as demais.
@@ -40,6 +40,11 @@ node scripts/check-next-types.mjs --fix
 #    sem secao 11.x ADOTADO datada; o gate eslint nao sai do lint-staged.
 #  - scan-guard-gates (sec. 8.4/11.11): o push net guard-gates.yml roda
 #    incondicionalmente com test:guard completo.
+#  - scan-fuzz-precommit (sec. 11.11): o run-mapped-fuzz NAO ganha --scope
+#    cached no pre-commit sem nota 11.x ADOTADO datada (fuzz pre-push-only).
+#  - scan-batch-coverage (sec. 11.16): TODO node guard novo do pre-commit
+#    deve entrar no batch - um guard fora do batch falha com o caminho exato
+#    (o contrato de crescimento, padrao dos TARGET_DIRS).
 node scripts/run-precommit-guards.mjs
 
 # Typecheck e lint-staged em PARALELO (jobs independentes): medicao 2026-08-09 (secao 11.8 do

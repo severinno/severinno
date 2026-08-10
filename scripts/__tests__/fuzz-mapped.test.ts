@@ -17,6 +17,19 @@
  *     REAL-REPO CONTRACT (o repo real hoje: toda suite descoberta pelo
  *     run-all-fuzz tem manifest E toda entrada do manifest existe em src/ -
  *     sincronia nos dois sentidos, nenhuma orfa).
+ *  4. REAL-REPO CONTRACT DA FIACAO main() -> CLI: `node
+ *     scripts/run-mapped-fuzz.mjs --since 0000...` contra o repo real emite
+ *     '[fuzz] fallback: --since ausente/zeros' no stdout e roda o fuzz
+ *     COMPLETO batched com exit 0 - provando que a branch isValidSince do
+ *     main() (que decide FULL antes do mapeamento) chega ate o CLI real,
+ *     nao so o plan puro que o teste hermetico pina. Timeout alto (240s)
+ *     por rodar o fuzz completo.
+ *  5. DIVISAO COMMIT/PUSH (secao 11.11): o parseSince do runner SO le
+ *     --since - um `--scope` e IGNORADO (nao existe modo cached no runner;
+ *     a rede estocastica nao pode ser invocada num commit). O outro lado
+ *     da divisao (pre-commit:test = cached deterministico no package.json
+ *     e no hook, sem --scope push) e pinado pelo GATE_CONTRACT #6 do
+ *     scan-push-full-suite.mjs.
  *
  * Hermetico: os testes de selecao/plan sao puros (sem fs, sem git); os de
  * cobertura usam root sintetico via env override. Subprocess-heavy (CLI
@@ -39,6 +52,7 @@ import {
 import { parseSince, resolveFuzzPlan } from "../run-mapped-fuzz.mjs"
 
 const TARGETS_SCRIPT = path.resolve(process.cwd(), "scripts", "fuzz-targets.mjs")
+const RUNNER_SCRIPT = path.resolve(process.cwd(), "scripts", "run-mapped-fuzz.mjs")
 
 function runCheckCoverage(dir: string) {
   return runSubprocess({
@@ -204,6 +218,52 @@ describe("run-mapped-fuzz.mjs - resolveFuzzPlan (logica pura, sem git/fs)", () =
     expect(parseSince([])).toBe("")
     expect(parseSince(["--since"])).toBe("")
   }, 60000)
+
+  it("DIVISAO COMMIT/PUSH (secao 11.11): parseSince IGNORA --scope - o runner so aceita --since, nao existe modo cached", () => {
+    // A divisao deliberada da 11.11: o teste unitario deterministico do
+    // COMMIT roda via pre-commit:test (pre-commit-tests.mjs --scope cached
+    // / default staged), enquanto o run-mapped-fuzz e a rede ESTOCASTICA do
+    // PUSH - parseSince so entende --since. Um hipotetico `--scope cached`
+    // nao criaria um modo cached aqui: e descartado e o plan segue o --since
+    // (ou o fallback FULL quando ausente). Se alguem adicionar --scope ao
+    // runner, este teste quebra (a divisao virou confusa) - e o guard #6 do
+    // scan-push-full-suite pina o outro lado (pre-commit:test sem --scope
+    // push).
+    expect(parseSince(["--scope", "cached"])).toBe("")
+    expect(parseSince(["--scope", "push"])).toBe("")
+    expect(parseSince(["--since", "abc123", "--scope", "cached"])).toBe("abc123")
+  }, 60000)
+})
+
+describe("run-mapped-fuzz.mjs - REAL-REPO CONTRACT: CLI main() -> wiring (fuzz completo batched)", () => {
+  afterEach(cleanupTempDirs)
+
+  it("--since all-zeros no repo real -> fallback FULL com exit 0 (a fiacao main() -> CLI que o plan puro nao cobre)", () => {
+    const r = runSubprocess({
+      command: process.execPath,
+      args: [RUNNER_SCRIPT, "--since", "0".repeat(40)],
+      // full batched fuzz: the inner vitest spawn (runBatched) has its own
+      // 180s timeout - the OUTER one must allow the whole run (26s warm
+      // local / 10s CI measured, secao 11.12), so 240s with margin
+      timeoutMs: 240_000,
+    })
+    expect(r.status).toBe(0)
+    // the fallback line is emitted ONLY by the main() branch taken when
+    // isValidSince is false - the wiring proof (the hermetic plan test pins
+    // the return value; THIS pins that the real CLI actually takes it)
+    expect(r.stdout).toContain("[fuzz] fallback: --since ausente/zeros")
+    // derived count, never a magic literal: the FULL plan carries every
+    // manifest suite
+    expect(r.stdout).toContain(`(${FUZZ_TARGETS.length} suites, secao 11.11)`)
+    // a first-push range must NEVER resolve to skip/mapped at the CLI level
+    // (the isValidSince guard of the main, secao 11.11 ponto 4)
+    expect(r.stdout).not.toContain("[fuzz] skip:")
+    expect(r.stdout).not.toContain("[fuzz] mapeado:")
+    // the batched vitest run actually EXECUTED (stdio inherit pipes its
+    // output into our captured stdout) - the message alone could in
+    // principle print without a run; the vitest summary marker pins it
+    expect(r.stdout).toContain("Test Files")
+  }, 260_000)
 })
 
 describe("fuzz-targets.mjs - COVERAGE CONTRACT (secao 11.11 ponto 5, classe de gap silencioso)", () => {

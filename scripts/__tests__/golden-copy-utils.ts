@@ -33,6 +33,31 @@ import os from "node:os"
 import path from "node:path"
 import { expect } from "vitest"
 import { TARGET_DIRS, filesInDir } from "../fragile-range-patterns.mjs"
+import { ENCODING_NET, GUARD_NET } from "../workflow-contracts.mjs"
+
+/**
+ * RULE OF THREE (EXTRACTED 2026-08): the guard-net workflow rel-paths,
+ * DERIVED from the workflow-contracts manifest - the SAME derivation
+ * scan-guard-gates.mjs applies (guardNet[0] = the push net, guardNet[last]
+ * = the PR-side twin). Three suites read/write these workflows against the
+ * manifest: scan-guard-gates.test.ts (the REAL-REPO CONTRACT reads + the
+ * synthetic fixtures), workflow-contracts.test.ts (the LIVE TREE twin
+ * reads) and run-precommit-guards.test.ts (writeBadGuardNet runs the REAL
+ * guard against synthetic roots). Each previously hardcoded the three
+ * rel-paths; a rename in the manifest would have broken those suites for
+ * the WRONG reason (a fixture writing the old path -> WORKFLOW MISSING
+ * instead of the intended mutation). Derived here so a manifest change
+ * re-derives every consumer - the drift class the manifest exists to kill.
+ */
+export const GUARD_PUSH_NET = GUARD_NET[0]
+/** The PR-side twin (the LAST GUARD_NET entry - the same twin the guard derives). */
+export const GUARD_PR_TWIN = GUARD_NET[GUARD_NET.length - 1]
+/**
+ * The merge-path encoding caller (ci.yml): the ENCODING_NET entry that is
+ * NOT the PR twin - order-robust (a reorder of ENCODING_NET cannot silently
+ * swap which file the rule-8 asserts read).
+ */
+export const ENCODING_CI_NET = ENCODING_NET.find((rel) => rel !== GUARD_PR_TWIN) ?? ENCODING_NET[0]
 
 /** Canonical form for the divergence guards (content, not layout). */
 export function canonicalProgram(program: string): string {

@@ -24,12 +24,17 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { cleanupTempDirs, createTempDir, runSubprocess, writeModuleCopy, type ModulePatchOp } from "./golden-copy-utils"
+import { GUARD_PR_TWIN, cleanupTempDirs, createTempDir, runSubprocess, writeModuleCopy, type ModulePatchOp } from "./golden-copy-utils"
 import {
   ALWAYS_RUN_SET,
+  BENCHMARK_JOB,
   CI_PROOF_NAMESPACE,
+  CI_PROOF_PROBE,
   DANGER_REFS,
   DISPATCH_SET,
+  ENCODING_JOB,
+  ENCODING_NET,
+  FUZZ_JOB,
   GUARD_NET,
   GUARD_NET_FILES,
   GUARD_NET_JOB,
@@ -115,6 +120,22 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
     expect(GUARD_NET_JOB).toBe("fragile-guard")
   })
 
+  it("ABSOLUTE PIN: FUZZ_JOB (the pr-check.yml batched fuzz:ci authority job key)", () => {
+    expect(FUZZ_JOB).toBe("fuzz")
+  })
+
+  it("ABSOLUTE PIN: ENCODING_NET (the merge-path encoding-gate callers: ci.yml + pr-check.yml)", () => {
+    expect(ENCODING_NET).toEqual([
+      ".github/workflows/ci.yml",
+      ".github/workflows/pr-check.yml",
+    ])
+    expect(ENCODING_JOB).toBe("utf8-check")
+  })
+
+  it("ABSOLUTE PIN: BENCHMARK_JOB (the pr-check.yml geo benchmark gate job key)", () => {
+    expect(BENCHMARK_JOB).toBe("benchmark")
+  })
+
   it("ABSOLUTE PIN: ALWAYS_RUN_SET (NO paths: BY DESIGN)", () => {
     expect(ALWAYS_RUN_SET).toEqual(["ci.yml", "deploy.yml", "pr-check.yml", "guard-gates.yml"])
   })
@@ -134,12 +155,24 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
     )
   })
 
-  it("ABSOLUTE PIN: CI_PROOF_NAMESPACE + DANGER_REFS (the risk matrix facts)", () => {
+  it("ABSOLUTE PIN: CI_PROOF_NAMESPACE + CI_PROOF_PROBE + DANGER_REFS (the risk matrix facts)", () => {
     expect(CI_PROOF_NAMESPACE).toBe("ci-proof")
+    expect(CI_PROOF_PROBE).toBe("ci-proof/proof-branch")
+    expect(CI_PROOF_PROBE).toBe(`${CI_PROOF_NAMESPACE}/proof-branch`)
     expect(DANGER_REFS).toEqual([
       { ref: "main", workflow: "deploy.yml" },
       { ref: "v*", workflow: "release-deploy.yml" },
     ])
+  })
+
+  it("GROWTH/DERIVATION: CI_PROOF_PROBE follows the namespace (rename the namespace, the probe follows - the Type E probe cannot drift from the template)", () => {
+    // The probe is DERIVED from the namespace (ci-proof/<segment> - the
+    // same shape isCiProofBranch accepts): changing CI_PROOF_NAMESPACE must
+    // change the probe, so the Type E safety scan tests the CURRENT
+    // namespace, never a stale literal. This pin proves the derivation is
+    // structural (template literal), not a second hardcoded copy.
+    expect(CI_PROOF_PROBE.startsWith(`${CI_PROOF_NAMESPACE}/`)).toBe(true)
+    expect(CI_PROOF_PROBE.split("/")).toEqual([CI_PROOF_NAMESPACE, "proof-branch"])
   })
 
   it("CLI: --print-guard-net prints the space-joined GUARD_NET", () => {
@@ -148,10 +181,22 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
     expect(r.stdout.trim()).toBe(GUARD_NET.join(" "))
   }, 60000)
 
-  it("CLI: --print-guard-net-job / --print-always-run / --print-dispatch match the exports", () => {
+  it("CLI: --print-guard-net-job / --print-encoding-net / --print-encoding-job / --print-fuzz-job / --print-benchmark-job / --print-always-run / --print-dispatch match the exports", () => {
     const job = runCli("--print-guard-net-job")
     expect(job.status).toBe(0)
     expect(job.stdout.trim()).toBe(GUARD_NET_JOB)
+    const encNet = runCli("--print-encoding-net")
+    expect(encNet.status).toBe(0)
+    expect(encNet.stdout.trim()).toBe(ENCODING_NET.join(" "))
+    const encJob = runCli("--print-encoding-job")
+    expect(encJob.status).toBe(0)
+    expect(encJob.stdout.trim()).toBe(ENCODING_JOB)
+    const fuzz = runCli("--print-fuzz-job")
+    expect(fuzz.status).toBe(0)
+    expect(fuzz.stdout.trim()).toBe(FUZZ_JOB)
+    const bench = runCli("--print-benchmark-job")
+    expect(bench.status).toBe(0)
+    expect(bench.stdout.trim()).toBe(BENCHMARK_JOB)
     const always = runCli("--print-always-run")
     expect(always.status).toBe(0)
     expect(always.stdout.trim()).toBe([...ALWAYS_RUN_SET].sort().join(" "))
@@ -198,8 +243,46 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
       expect(src).toMatch(/^\s+run:\s+bun run test:guard\s*$/m)
     }
     // The PR twin carries the guarded job key.
-    const pr = fs.readFileSync(path.join(ROOT, ".github", "workflows", "pr-check.yml"), "utf8")
+    const pr = fs.readFileSync(path.join(ROOT, GUARD_PR_TWIN), "utf8")
     expect(pr).toMatch(new RegExp(`^  ${GUARD_NET_JOB}:$`, "m"))
+  })
+
+  it("LIVE TREE: pr-check.yml carries the FUZZ_JOB key with the batched fuzz:ci step (the 11.11/11.12 authority)", () => {
+    const pr = fs.readFileSync(path.join(ROOT, GUARD_PR_TWIN), "utf8")
+    expect(pr).toMatch(new RegExp(`^  ${FUZZ_JOB}:$`, "m"))
+    expect(pr).toMatch(/^\s+run:\s+bun run fuzz:ci\b/m)
+    // Standalone immunity: the fuzz job must NOT depend on the check job
+    // (a check failing on pre-existing lint debt must never skip fuzz).
+    expect(pr).not.toMatch(/^\s+needs:/m)
+  })
+
+  it("LIVE TREE: every ENCODING_NET workflow carries the encoding-gate call site WITHOUT needs: (rule 8 - the 2026-08 network audit)", () => {
+    // The 2026-08 audit of the workflow network (ci.yml + quality-gate.yml)
+    // found both encoding call sites currently WITHOUT needs: (immune to a
+    // lint skip today) but NOTHING pinned that immunity - a future
+    // `needs: lint` would silently recreate the skip vector. This pin makes
+    // the manifest-level expectation explicit; scan-guard-gates rule 8
+    // enforces it per-workflow. The call-site job key + uses: line must
+    // exist in EACH ENCODING_NET workflow.
+    for (const rel of ENCODING_NET) {
+      const src = fs.readFileSync(path.join(ROOT, rel), "utf8")
+      expect(src).toMatch(new RegExp(`^  ${ENCODING_JOB}:$`, "m"))
+      expect(src).toMatch(/^\s+uses:\s+\.\/\.github\/workflows\/utf8-check\.yml\s*$/m)
+    }
+  })
+
+  it("LIVE TREE: pr-check.yml carries the BENCHMARK_JOB key with the run-benchmark step (rule 9 - the 2026-08 network audit)", () => {
+    // Rule 9's manifest-level expectation: the geo benchmark gate must be a
+    // real standalone PR job (present at root + run-benchmark step), so a
+    // rename that silently stops the benchmark from running fails here
+    // before the guard's per-workflow scan is even needed.
+    const pr = fs.readFileSync(path.join(ROOT, GUARD_PR_TWIN), "utf8")
+    expect(pr).toMatch(new RegExp(`^  ${BENCHMARK_JOB}:$`, "m"))
+    expect(pr).toMatch(/^\s+node scripts\/run-benchmark\.mjs\b/m)
+    // Standalone immunity: the benchmark job must not depend on the check
+    // job (a check failing on pre-existing lint debt must never skip the
+    // geo gate).
+    expect(pr).not.toMatch(/^\s+needs:/m)
   })
 
   it("GROWTH CONTRACT: a 5th GUARD_NET entry (temp manifest copy) is reflected by --print-guard-net AND consumed by scan-guard-gates", () => {
@@ -230,5 +313,40 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
     expect(mut.status).toBe(1)
     expect(mut.stdout).toContain("WORKFLOW MISSING")
     expect(mut.stdout).toContain(sentinel)
+  }, 60000)
+
+  it("GROWTH CONTRACT: a 3rd ENCODING_NET entry (temp manifest copy) is reflected by --print-encoding-net AND consumed by scan-guard-gates rule 8", () => {
+    // The forward direction of rule 8: a hypothetical 3rd encoding caller
+    // added to the manifest must (a) appear in the --print-encoding-net
+    // query and (b) make scan-guard-gates rule 8 scan it via the
+    // WORKFLOW_CONTRACTS_MODULE override - zero edits in the guard.
+    const sentinel = ".github/workflows/e2e-cache.yml"
+    const dir = createTempDir("wc-encgrowth-")
+    const modPath = writePatchedManifest(dir, "ENCODING_NET", [...ENCODING_NET, sentinel])
+
+    const q = runSubprocess({ command: "node", args: [modPath, "--print-encoding-net"] })
+    expect(q.status).toBe(0)
+    expect(q.stdout.trim()).toBe([...ENCODING_NET, sentinel].join(" "))
+
+    // scan-guard-gates with the patched manifest: e2e-cache.yml EXISTS in
+    // the real tree but its utf8-check call site is a DEPLOY-path caller
+    // (documented as out of the rule 8 surface) - wait, e2e-cache.yml
+    // actually carries the call site. The sentinel MUST therefore be a
+    // workflow that (a) exists and (b) has no call site, so the guard flags
+    // the MISSING call site - proving rule 8 derives from the manifest.
+    // .github/workflows/guard-gates.yml exists and has no utf8-check call
+    // site: the perfect sentinel for the rule 8 growth direction.
+    const sentinel2 = ".github/workflows/guard-gates.yml"
+    const modPath2 = writePatchedManifest(dir, "ENCODING_NET", [...ENCODING_NET, sentinel2])
+    const mut = runSubprocess({
+      command: "node",
+      args: [path.join(ROOT, "scripts", "scan-guard-gates.mjs")],
+      env: { WORKFLOW_CONTRACTS_MODULE: modPath2 },
+    })
+    expect(mut.status).toBe(1)
+    expect(mut.stdout).toContain("ENCODING CALL SITE MISSING in .github/workflows/guard-gates.yml")
+    // Control: the real manifest stays clean.
+    const control = runSubprocess({ command: "node", args: [path.join(ROOT, "scripts", "scan-guard-gates.mjs")] })
+    expect(control.status).toBe(0)
   }, 60000)
 })

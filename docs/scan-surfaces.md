@@ -103,6 +103,62 @@ Answers: **WHEN does this workflow RUN?**
     `scripts/workflow-contracts.mjs` (ALWAYS_RUN_SET - o mesmo padrão do
     encoding-surface: export + --print-always-run); os guards e este doc
     derivam dela, não re-derivam a lista.
+
+  Além dos jobs do guard, o job `fuzz` do pr-check.yml é PINADO com o
+  mesmo contrato de imunidade standalone (sec 11.11/11.12): o key do job
+  vive no workflow-contracts manifest (FUZZ_JOB, `--print-fuzz-job`) e o
+  scan-guard-gates exige `fuzz:` no nível raiz, SEM `needs:` e com o step
+  `bun run fuzz:ci` - a autoridade fuzz:ci batchado roda em QUALQUER PR
+  independente do job check (que pode falhar por dívida de lint
+  pré-existente sem nunca esconder o resultado do fuzz).  AVALIADO 2026-08:
+  um job CI-only dedicado para o fuzz:ci (ex.: dentro do guard-gates.yml)
+  foi RECUSADO - adicionaria ~26s de fuzz completo em todo push a
+  main/develop sem ganho estrutural, pois o job fuzz do pr-check já é
+  standalone; o contrato custa zero CI e garante a mesma imunidade.
+
+  AUDITORIA DA REDE 2026-08 (ci.yml + quality-gate.yml): a mesma classe
+  de imunidade foi auditada nos OUTROS workflows que rodam gate. Achados:
+  - Os DOIS call sites do gate de encoding no caminho de merge - ci.yml
+    (job utf8-check: na linha 64) e pr-check.yml (job utf8-check: na
+    linha 42) - estão SEM needs: hoje (imunes a skip por lint), mas NADA
+    pina essa imunidade: um needs: lint futuro criaria silenciosamente o
+    skip vector que a regra 5 fecha para o fragile-guard. FECHADO com a
+    REGRA 8 do scan-guard-gates: o ENCODING_NET (ci.yml + pr-check.yml,
+    derivado do workflow-contracts manifest) DEVE ter o call site (job
+    key: uses: ./.github/workflows/utf8-check.yml) SEM needs: - deletar o
+    call site ou dar um needs: = falha 'ENCODING CALL SITE MISSING' /
+    'ENCODING CALL SITE NEEDS' com o caminho exato (mesmo contrato
+    standalone do fragile-guard/fuzz, aplicado ao gate de encoding).
+  - O job budget: do ci.yml tem needs: [lint, typecheck, utf8-check,
+    quality-gate] e roda o gate de JS - INTENCIONAL e FORA da surface da
+    regra 8: é um build pesado (analyze webpack, 30min) que só vale rodar
+    com lint/typecheck verdes (o gate de JS é um STEP dentro do job, não
+    um call site de gate standalone). O REAL-REPO CONTRACT pina a exclusão
+    explicitamente para a fronteira não virar acidente.
+  - O quality-gate.yml é workflow_call-only com jobs internos em paralelo
+    SEM needs: (barrel-lint, security-audit, coverage-gaps, cache-
+    manifest, validate-env, coverage-badge) - LIMPO POR DESIGN
+    (documentado no header dele); nenhum contrato adicional foi
+    adicionado.
+  - Os demais callers do utf8-check (deploy.yml, e2e-cache.yml,
+    release-deploy.yml) são caminhos de deploy/release, NÃO o caminho de
+    merge - documentados como fora do ENCODING_NET por design.
+
+  REGRA 9 - BENCHMARK JOB STANDALONE (extensão da rede uniforme): a mesma
+  auditoria aplicada aos jobs do pr-check.yml encontrou que o gate geo
+  (job benchmark:) era o único gate bloqueante do merge path (falha o PR em
+  regressão >threshold) imune hoje (sem needs:) mas SEM pin - renomear/
+  deletar o job ou dar um needs: passaria em silêncio (o benchmark
+  simplesmente pararia de rodar). O scan-guard-gates agora exige `benchmark:`
+  no nível raiz, SEM needs: e com o step node scripts/run-benchmark.mjs
+  (job key derivado do workflow-contracts manifest, BENCHMARK_JOB) - a rede
+  de gates do PR (fragile-guard, fuzz, utf8-check, benchmark) fica travada
+  de forma UNIFORME com o mesmo contrato standalone. AVALIADO como FORA da
+  surface (não contratados): o job docs-encoding é INFORMACIONAL
+  (continue-on-error + exit 0 - um skip é inofensivo), o security-headers
+  faz curl numa URL de PRODUÇÃO (não é gate de repo) e o job check é o
+  principal (a perda dele é visível como required check ausente no PR, não
+  silenciosa).
 - **Failure mode is SAFE:** an over-narrow `paths:` only SKIPS a run (push
   to main still runs the full jobs via the always-run workflows); an
   over-narrow scan surface silently misses violations. Different failure
@@ -257,12 +313,57 @@ branch pattern may match a `ci-proof/*` branch. A future `branches: ["**"]`
 or a filter-less `push:` block FAILS the suite - the template breaks loudly,
 not silently.
 
+FATO vs REGRA (2026-08): o invariante de safety ("nenhum filtro push/PR case
+com ci-proof/*") é uma REGRA sobre a ÁRVORE VIVA - o Type E varre os
+workflows REAIS e um workflow futuro é pego SEM entry no manifest (pinar o
+conjunto proibido como lista iria stalear - a classe de drift que o
+workflow-contracts manifest mata). Os FATOS que a regra consome vivem no
+manifest: o namespace (CI_PROOF_NAMESPACE, já consumido pelo
+ci-proof-run.mjs via isCiProofBranch) e o PROBE canônico (CI_PROOF_PROBE =
+ci-proof/proof-branch, derivado do namespace) - o probe que o Type E testa
+contra NÃO é mais um literal hardcoded no teste; renomear o namespace
+re-deriva o probe automaticamente (pinado em workflow-contracts.test.ts).
+A divisão espelha os demais contratos: fatos pinados no registry, regras
+aplicadas contra a árvore viva pelos guards/suítes.
+
 Scope note: the invariant inspects `push:`/`pull_request:` only - the repo
 uses neither `pull_request_target:` nor `pull_request_review:` today; a
 future adoption must extend `triggerFilter` (and this section) before it
 lands, or a PR-gated workflow with a filter-less `pull_request_target:`
 would escape the invariant (it fires on PR events against a branch filter,
 not on branch pushes - a different event class than the push matrix above).
+
+### The helper: `scripts/ci-proof-run.mjs` (ciclo prova-CI num comando, 2026-08)
+
+As Provas 6-12 eram um ciclo MANUAL de 3-5 tool calls (branch scratch -> mutacao
+-> push -> dispatch -> poll -> capturar log -> reverter). O helper automatiza o
+ciclo inteiro, travando os DOIS contratos que a prova depende:
+
+```
+node scripts/ci-proof-run.mjs \
+  --branch ci-proof/<nome> \
+  --workflow <file.yml> \
+  [--mutate "<shell cmd da mutacao>"] \
+  [--expect success|failure] [--expect-log "<regex no log>"] \
+  [--timeout <s>] [--keep-branch] [--dry-run]
+```
+
+- **Type E travado no CLI:** o prefixo deriva do workflow-contracts manifest
+  (CI_PROOF_NAMESPACE - nao hardcoded); main/develop/v* sao RECUSADOS com o
+  aviso dos DANGER_REFS (deploy.yml/release-deploy.yml).
+- **Prova 7 travada no CLI:** `gh workflow view <file>` roda ANTES do
+  dispatch - o gh resolve contra o DEFAULT branch, entao um 404 aqui e a
+  classe exata da Prova 7 (workflow so existe na branch scratch =
+  undispatchable ate merge).
+- Ciclo completo: cria/entra na branch, aplica --mutate + commit, push,
+  dispatch, poll (timeout default 900s), captura o log no tmpdir (repo
+  limpo), verify (--expect/--expect-log), e REVERTE (push --delete +
+  checkout + branch -D) - salvo --keep-branch. Exit 0 = esperado observado;
+  1 = expectation mismatch (revert MESMO ASSIM); 2 = usage; 3 = infra.
+- Hermetico: os testes usam CI_PROOF_GIT/CI_PROOF_GH apontando para o
+  fixture ci-proof-fake-bins.mjs (nenhum git/gh real roda) + --dry-run
+  (plano puro sem executar nada).
+
 
 ## 7. Unit test surface (test:unit / vitest.config.unit.ts) - a Type A contract
 
@@ -350,6 +451,22 @@ package.json próprios, instalada na própria imagem) e MANTÉM os seus
 lockfiles (bun.lock + package-lock.json próprios) - fora do escopo da raiz
 por design; o contrato é root-anchored (`git ls-files` filtrando paths sem
 `/`), então a unidade nunca é alcançada pela checagem.
+
+AUDITORIA DE MANIFESTS (2026-08-10): o repo NÃO tem dir `packages/` (a
+premissa de um mono-repo pnpm não se sustenta - os lockfiles pnpm foram
+removidos acima) e os manifests rastreados são EXATAMENTE dois: o root
+`package.json` (98 deps, 100% registry - o surface do `--check-lock` e do
+SPEC-FORMAT contract) e o `mini-services/realtime/package.json` (1 dep
+registry, `socket.io@^4.8.1` - a unidade separada acima). ZERO specs
+`workspace:`/`file:`/`link:` em qualquer manifest rastreado. DECISÃO: o
+`--check-lock` NÃO ganha suporte a workspace/file deps - não há o que
+suportar hoje; o MANIFEST SURFACE contract
+(`check-node-modules-integrity.test.ts`) pina o SET exato de manifests via
+`git ls-files` (cwd = ROOT) + 0 non-registry em CADA um + count-pin 99 (98
+root + 1 mini-services), então um futuro `packages/` ou um spec
+`workspace:`/`file:` em QUALQUER manifest rastreado quebra LOUDLY e força
+a decisão explícita SKIP-vs-include (a mesma classe do SPEC-FORMAT,
+extendida do root para a superfície completa).
 
 Nenhuma superfície executável pode INVOCAR um package manager não-bun:
 workflows/composite actions, hooks, `scripts/*.{mjs,sh,ps1}`,

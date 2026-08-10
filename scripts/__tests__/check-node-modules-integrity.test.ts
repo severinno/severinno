@@ -396,6 +396,33 @@ describe("check-node-modules-integrity.mjs --check-lock - ALL direct packages vs
     expect(r.stdout).toContain("--check-lock clean (1 direct packages match bun.lock; 1 skipped non-registry)")
   }, 60000)
 
+  it.each([
+    ["git@github.com:org/repo.git"],
+    ["git+ssh://git@github.com/org/repo.git"],
+    ["github:org/repo"],
+    ["http://example.com/repo.tgz"],
+    ["https://example.com/repo.tgz"],
+    ["file:../shared"],
+    ["link:../shared"],
+  ])("non-registry boundary SKIP: spec '%s' -> exit 0, SKIP line with the EXACT spec, excluded from the count", (spec) => {
+    // Cada alternativo da fronteira lockKeyFor
+    // (/^(workspace:|link:|file:|git(?:[+:@]|$)|github:|http)/) DEVE cair no
+    // SKIP explicito - nunca virar chave registry greppable (que quebraria com
+    // o UNVERIFIABLE fail-safe e a mensagem ERRADA "lock format changed?") nem
+    // contar como registry. O workspace:* e pinado pelo teste acima; esta
+    // tabela parametrizada pina cada OUTRO ramo do regex: git@ (ssh-style),
+    // git+ (git+ssh://), github:, http (cobre http:// E https://), file:, link:.
+    const dir = buildCheckLockRoot({
+      pkgJson: { react: "^19.0.0", "@repo/shared": spec },
+      lock: { react: LOCKED },
+      installed: { react: LOCKED },
+    })
+    const r = runCheckLock(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain(`SKIP @repo/shared (spec '${spec}') - non-registry`)
+    expect(r.stdout).toContain("--check-lock clean (1 direct packages match bun.lock; 1 skipped non-registry)")
+  }, 60000)
+
   it("npm: alias -> resolved against the REAL lock entry, installed read from the alias folder", () => {
     const dir = buildCheckLockRoot({
       pkgJson: { alias: "npm:real-pkg@2.0.0" },
@@ -514,5 +541,65 @@ describe("check-node-modules-integrity.mjs --check-lock - ALL direct packages vs
     expect(r.stdout).toContain("--check-lock UNVERIFIABLE custom-pkg")
     expect(r.stdout).toContain("lock format changed? update the guard")
     expect(r.stdout).not.toContain("clean")
+  }, 60000)
+
+  it("MANIFEST SURFACE: every TRACKED package.json is 100% registry (0 non-registry) - the audit 2026-08-10 closes 'quem protege os manifests' beyond the root", () => {
+    // AUDIT 2026-08-10 (user question: o mono-repo packages/ do pnpm poderia
+    // ter workspace: deps?): NAO existe dir packages/, os lockfiles pnpm
+    // foram REMOVIDOS (28ab2c8, Type F single-package-manager bun) e os
+    // unicos manifests rastreados sao o root package.json (98 deps registry)
+    // + mini-services/realtime/package.json (1 dep registry: socket.io@^4.8.1
+    // - unidade SEPARADA de deploy com Dockerfile/bun.lock proprios,
+    // documentada fora do surface do --check-lock no scan-surfaces.md). ZERO
+    // specs workspace:/file:/link: em qualquer manifest rastreado.
+    // Este teste PINA essa superficie: enumera TODOS os package.json
+    // rastreados via git ls-files (cwd = ROOT, o mesmo padrao do
+    // executable-surface.test.ts) e asserta o set exato + 0 non-registry em
+    // CADA um - um spec workspace:/file: adicionado a QUALQUER manifest
+    // (root, mini-services ou um futuro packages/) trip aqui e forca a
+    // decisao explicita SKIP-vs-include. O SPEC-FORMAT contract acima so
+    // cobre o root; este fecha a classe para a superficie completa.
+    const r = runSubprocess({
+      command: "git",
+      args: ["ls-files"],
+      cwd: path.resolve(process.cwd()),
+    })
+    expect(r.status).toBe(0)
+    const manifests = r.stdout
+      .split("\n")
+      .filter((f) => f.endsWith("package.json") && f !== "")
+      .sort()
+    // O set exato hoje: root + a unidade separada de deploy. Um novo manifest
+    // (ex.: packages/foo/package.json) quebra este pin - forcando a decisao.
+    expect(manifests).toEqual(["mini-services/realtime/package.json", "package.json"])
+    // Drift-proof: a fronteira precisa existir verbatim no modulo (o regex
+    // abaixo e uma copia; este assert pina que o modulo ainda a usa).
+    const src = fs.readFileSync(SCRIPT, "utf8")
+    expect(src).toContain("/^(workspace:|link:|file:|git(?:[+:@]|$)|github:|http)/.test(spec)")
+    const nonRegistryRe = new RegExp("^(workspace:|link:|file:|git(?:[+:@]|$)|github:|http)")
+    const weird = []
+    const registryByManifest: Record<string, number> = {}
+    for (const rel of manifests) {
+      const pkgJson = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), rel), "utf8"))
+      for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
+        for (const [name, spec] of Object.entries(pkgJson[section] || {})) {
+          if (typeof spec !== "string") {
+            weird.push(`${rel}:${name}=[non-string ${typeof spec}]`)
+          } else if (nonRegistryRe.test(spec) || spec.startsWith("npm:")) {
+            // known non-registry (SKIP boundary) or alias - both explicitly handled
+          } else {
+            registryByManifest[rel] = (registryByManifest[rel] ?? 0) + 1
+          }
+        }
+      }
+    }
+    expect(weird).toEqual([])
+    // count-pin POR manifest (mais forte que o agregado 99): um spec
+    // workspace:/file: num manifest (a) reduz o count dele -> trip, e mesmo
+    // que venha acompanhado de uma dep registry nova (count agregado
+    // mantido), o pin individual ainda trip - o edge de mascaramento do
+    // count agregado. Hoje: root 98 (SPEC-FORMAT) + mini-services 1 (socket.io).
+    expect(registryByManifest["package.json"]).toBe(98)
+    expect(registryByManifest["mini-services/realtime/package.json"]).toBe(1)
   }, 60000)
 })

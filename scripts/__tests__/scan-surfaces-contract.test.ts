@@ -73,7 +73,7 @@ import {
   YAML_GATE_PATTERNS,
 } from "../encoding-surface.mjs"
 import { EXCLUDED_TREES, TARGET_DIRS } from "../fragile-range-patterns.mjs"
-import { ALWAYS_RUN_SET, CI_PROOF_NAMESPACE, DANGER_REFS, DISPATCH_SET, GUARD_NET, GUARD_NET_JOB } from "../workflow-contracts.mjs"
+import { ALWAYS_RUN_SET, CI_PROOF_NAMESPACE, CI_PROOF_PROBE, DANGER_REFS, DISPATCH_SET, GUARD_NET, GUARD_NET_JOB } from "../workflow-contracts.mjs"
 import { runSubprocess } from "./golden-copy-utils"
 
 const ROOT = process.cwd()
@@ -709,8 +709,13 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
     const typeE = typeEText(doc)
     const wfFiles = fs.readdirSync(WF_DIR).filter((f) => f.endsWith(".yml")).sort()
     // The canonical probe: a branch named ci-proof/<slug> must match ZERO
-    // push/PR filters for the template to be safe.
-    const PROBE = "ci-proof/proof-branch"
+    // push/PR filters for the template to be safe. CONSUMED FACT: the probe
+    // derives from the workflow-contracts manifest (CI_PROOF_PROBE =
+    // ci-proof/proof-branch, derived from CI_PROOF_NAMESPACE) - the Type E
+    // rule stays a live-tree scan, but the branch it tests against is no
+    // longer a hardcoded literal here (renaming the namespace re-derives
+    // the probe automatically; pinned in workflow-contracts.test.ts).
+    const PROBE = CI_PROOF_PROBE
 
     it("SAFETY invariant: no workflow's push/pull_request filter matches a ci-proof/* branch (the template is a contract, not a convention)", () => {
       for (const f of wfFiles) {
