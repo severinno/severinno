@@ -31,7 +31,10 @@
  *   4. --mutate <cmd> (opcional): roda o shell command da mutacao na
  *      branch scratch e commit (`git add -A` + commit com a msg
  *      "ci-proof: <branch>"). Sem --mutate, empurra a branch como esta
- *      (o caso de o dev ja ter commitado a mutacao).
+ *      (o caso de o dev ja ter commitado a mutacao). Use --no-verify
+ *      quando a mutacao viola um gate local (Prova 16): o pre-commit
+ *      hook BLOQUEIA o commit ANTES do push - a flag seta HUSKY=0 no
+ *      env de todos os spawns (commit + push + push --delete).
  *   5. git push origin <branch>.
  *   6. gh workflow view <file> (o pre-check da Prova 7).
  *   7. gh workflow run <file> --ref <branch> (dispatch).
@@ -71,11 +74,12 @@
  * mutacao que viole um gate local (o batch runner inclui o scan-guard-gates;
  * um needs: no pr-check.yml trava o git commit ANTES do push - exit 3 sem
  * revert, a arvore fica suja na branch scratch). Para provar uma mutacao
- * que e exatamente a classe que os guards locais protegem, rode o helper
- * com HUSKY=0 no ambiente (o bypass oficial do husky: o shim .husky/_/h
- * tem `[ "${HUSKY-}" = "0" ] && exit 0`) - o CI e a autoridade da prova,
- * nao o hook local. Apos o run, limpe a arvore manualmente (git reset
- * --hard + checkout da branch original + branch -D da scratch).
+ * que e exatamente a classe que os guards locais protegem, use a flag
+ * --no-verify: ela seta HUSKY=0 no env de TODOS os spawns do ciclo
+ * (commit + push + push --delete) - o bypass oficial do husky (o shim
+ * .husky/_/h tem `[ "${HUSKY-}" = "0" ] && exit 0`) - o CI e a autoridade
+ * da prova, nao o hook local. Apos o run, limpe a arvore manualmente (git
+ * reset --hard + checkout da branch original + branch -D da scratch).
  * ASCII puro (gate file). Puro node, sem deps.
  */
 import { spawnSync } from "node:child_process"
@@ -98,7 +102,7 @@ export function parseArgs(argv) {
   // SEMPRE retorna a shape completa com error: null no sucesso - o tipo
   // uniao `{...opts} | {error}` quebraria o acesso a propriedades nos
   // testes (TS2339) e o `if (opts.error)` do main() continua valido.
-  const out = { branch: null, workflow: null, mutate: null, expect: null, expectLog: null, timeout: DEFAULT_TIMEOUT_S, keep: false, dryRun: false, error: null }
+  const out = { branch: null, workflow: null, mutate: null, expect: null, expectLog: null, timeout: DEFAULT_TIMEOUT_S, keep: false, dryRun: false, noVerify: false, error: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--branch") { out.branch = argv[i + 1] ?? null; i++ }
@@ -109,11 +113,12 @@ export function parseArgs(argv) {
     else if (a === "--timeout") { out.timeout = Number(argv[i + 1]) || DEFAULT_TIMEOUT_S; i++ }
     else if (a === "--keep-branch") out.keep = true
     else if (a === "--dry-run") out.dryRun = true
-    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--keep-branch] [--dry-run]"; break }
+    else if (a === "--no-verify") out.noVerify = true
+    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--keep-branch] [--no-verify] [--dry-run]"; break }
     else { out.error = `flag desconhecida: ${a}`; break }
   }
   if (!out.error && (!out.branch || !out.workflow)) {
-    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--keep-branch] [--dry-run]"
+    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--keep-branch] [--no-verify] [--dry-run]"
   }
   return out
 }
@@ -123,6 +128,18 @@ export function parseArgs(argv) {
  * `ci-proof` (sem barra) e `ci-proof/a/b` (aninhado) sao recusados - o
  * template e UMA branch de prova simples, e o namespace aninhado nao e o
  * que a matriz de risco documenta. Pure (exported for tests).
+ *
+ * PROBE BOUNDARY (2026-08-10): o CI_PROOF_PROBE do manifest
+ * (`ci-proof/proof-branch`) e ACEITO por este regex - deliberado. O probe
+ * e um FIXTURE do Type E (a string que o invariant usa para provar que
+ * nenhum workflow casa `ci-proof/*`), NAO uma branch reservada: ele esta
+ * DENTRO do namespace provadamente filter-safe (Type E) e FORA dos
+ * DANGER_REFS (main/develop/v*). Rejeita-lo adicionaria zero seguranca
+ * (nenhum workflow o escuta) e rejeitaria a branch MAIS provada do repo.
+ * O limite correto e o namespace: qualquer `ci-proof/<segment>` e segura
+ * por construcao, incluindo o probe. Travado pelo E2E de aceitacao em
+ * ci-proof-run.test.ts (o runner roda o ciclo completo com --branch =
+ * CI_PROOF_PROBE e sai 0).
  */
 export function isCiProofBranch(branch, namespace = CI_PROOF_NAMESPACE) {
   return new RegExp(`^${namespace}/[^/]+$`).test(branch)
@@ -143,6 +160,9 @@ export function planSteps(opts, originalBranch) {
     steps.push(`git: add -A && commit -m "ci-proof: ${b}"`)
   } else {
     steps.push(`git: (sem --mutate - empurra a branch scratch como esta)`)
+  }
+  if (opts.noVerify) {
+    steps.push(`env: HUSKY=0 (--no-verify: bypass do husky local no commit/push - Prova 16)`)
   }
   steps.push(`git: push origin ${b}`)
   steps.push(`gh: workflow view ${opts.workflow}  (Prova 7: resolve contra o DEFAULT branch - 404 = undispatchable)`)
@@ -226,6 +246,19 @@ export async function main() {
     console.log(`ci-proof-run: PLAN (dry-run) branch=${opts.branch} workflow=${opts.workflow} (nenhum comando executado)`)
     for (const s of planSteps(opts, originalBranch)) console.log(`  ${s}`)
     return 0
+  }
+
+  // PROVA 16 (2026-08): --no-verify = HUSKY=0 first-class. O pre-commit
+  // hook local bloqueia o commit de mutacao de gate file (batch runner com
+  // scan-guard-gates) - o env HUSKY=0 em todos os spawns abaixo (git/gh via
+  // runBin, mutate via spawnSync) e o bypass oficial do husky. O CI e a
+  // autoridade da prova, nao o hook local. Setado no process.env para os
+  // subprocessos herdarem (o mesmo efeito de rodar `HUSKY=0 node ...`).
+  // (Depois do dry-run early-return: --dry-run --no-verify imprime o plano
+  // com o passo HUSKY=0 mas NAO muta o env - pureza do dry-run.)
+  if (opts.noVerify) {
+    process.env.HUSKY = "0"
+    console.log("ci-proof-run: --no-verify - HUSKY=0 (bypass do husky local no ciclo - CI = autoridade, Prova 16)")
   }
 
   // 3. Cria/entra na branch scratch.

@@ -29,6 +29,7 @@ import {
   ALWAYS_RUN_SET,
   BENCHMARK_JOB,
   CI_PROOF_NAMESPACE,
+  CI_PROOF_PATTERN,
   CI_PROOF_PROBE,
   DANGER_REFS,
   DISPATCH_SET,
@@ -38,6 +39,7 @@ import {
   GUARD_NET,
   GUARD_NET_FILES,
   GUARD_NET_JOB,
+  GUARD_NET_PUSH_JOB,
 } from "../workflow-contracts.mjs"
 
 const ROOT = process.cwd()
@@ -120,6 +122,14 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
     expect(GUARD_NET_JOB).toBe("fragile-guard")
   })
 
+  it("ABSOLUTE PIN: GUARD_NET_PUSH_JOB (the guard-gates.yml guard job key - the rule-5 PUSH-NET side, Prova 19)", () => {
+    // The manifest names the SAME job key that scan-guard-gates rule 5
+    // checks on guard-gates.yml (the twin of the fragile-guard PR job). A
+    // renamed push-net job must update this fact AND the guard's
+    // GUARD GATES JOB MISSING/NEEDS signals - the pair stays in lockstep.
+    expect(GUARD_NET_PUSH_JOB).toBe("guard-gates")
+  })
+
   it("ABSOLUTE PIN: FUZZ_JOB (the pr-check.yml batched fuzz:ci authority job key)", () => {
     expect(FUZZ_JOB).toBe("fuzz")
   })
@@ -155,24 +165,32 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
     )
   })
 
-  it("ABSOLUTE PIN: CI_PROOF_NAMESPACE + CI_PROOF_PROBE + DANGER_REFS (the risk matrix facts)", () => {
+  it("ABSOLUTE PIN: CI_PROOF_NAMESPACE + CI_PROOF_PROBE + CI_PROOF_PATTERN + DANGER_REFS (the risk matrix facts)", () => {
     expect(CI_PROOF_NAMESPACE).toBe("ci-proof")
     expect(CI_PROOF_PROBE).toBe("ci-proof/proof-branch")
     expect(CI_PROOF_PROBE).toBe(`${CI_PROOF_NAMESPACE}/proof-branch`)
+    // CI_PROOF_PATTERN is the FORBIDDEN glob form of the namespace (the
+    // shape the Type E invariant tests against - NO workflow filter may
+    // match it). Same derivation rule as the probe: never a hardcoded copy.
+    expect(CI_PROOF_PATTERN).toBe("ci-proof/**")
+    expect(CI_PROOF_PATTERN).toBe(`${CI_PROOF_NAMESPACE}/**`)
     expect(DANGER_REFS).toEqual([
       { ref: "main", workflow: "deploy.yml" },
       { ref: "v*", workflow: "release-deploy.yml" },
     ])
   })
 
-  it("GROWTH/DERIVATION: CI_PROOF_PROBE follows the namespace (rename the namespace, the probe follows - the Type E probe cannot drift from the template)", () => {
-    // The probe is DERIVED from the namespace (ci-proof/<segment> - the
-    // same shape isCiProofBranch accepts): changing CI_PROOF_NAMESPACE must
-    // change the probe, so the Type E safety scan tests the CURRENT
-    // namespace, never a stale literal. This pin proves the derivation is
-    // structural (template literal), not a second hardcoded copy.
+  it("GROWTH/DERIVATION: CI_PROOF_PROBE + CI_PROOF_PATTERN follow the namespace (rename the namespace, probe AND pattern follow - the Type E facts cannot drift from the template)", () => {
+    // Both facts are DERIVED from the namespace (the probe is the concrete
+    // ci-proof/<segment> branch the rule tests; the pattern is the glob
+    // FORM of the same shape): changing CI_PROOF_NAMESPACE must change BOTH,
+    // so the Type E safety scan tests the CURRENT namespace, never a stale
+    // literal. This pin proves the derivations are structural (template
+    // literals), not second hardcoded copies.
     expect(CI_PROOF_PROBE.startsWith(`${CI_PROOF_NAMESPACE}/`)).toBe(true)
     expect(CI_PROOF_PROBE.split("/")).toEqual([CI_PROOF_NAMESPACE, "proof-branch"])
+    expect(CI_PROOF_PATTERN.startsWith(`${CI_PROOF_NAMESPACE}/`)).toBe(true)
+    expect(CI_PROOF_PATTERN.split("/")).toEqual([CI_PROOF_NAMESPACE, "**"])
   })
 
   it("CLI: --print-guard-net prints the space-joined GUARD_NET", () => {
@@ -181,10 +199,13 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
     expect(r.stdout.trim()).toBe(GUARD_NET.join(" "))
   }, 60000)
 
-  it("CLI: --print-guard-net-job / --print-encoding-net / --print-encoding-job / --print-fuzz-job / --print-benchmark-job / --print-always-run / --print-dispatch match the exports", () => {
+  it("CLI: --print-guard-net-job / --print-guard-net-push-job / --print-encoding-net / --print-encoding-job / --print-fuzz-job / --print-benchmark-job / --print-always-run / --print-dispatch / --print-ci-proof-pattern match the exports", () => {
     const job = runCli("--print-guard-net-job")
     expect(job.status).toBe(0)
     expect(job.stdout.trim()).toBe(GUARD_NET_JOB)
+    const pushJob = runCli("--print-guard-net-push-job")
+    expect(pushJob.status).toBe(0)
+    expect(pushJob.stdout.trim()).toBe(GUARD_NET_PUSH_JOB)
     const encNet = runCli("--print-encoding-net")
     expect(encNet.status).toBe(0)
     expect(encNet.stdout.trim()).toBe(ENCODING_NET.join(" "))
@@ -203,6 +224,9 @@ describe("workflow-contracts.mjs - versioned workflow-contracts manifest", () =>
     const dispatch = runCli("--print-dispatch")
     expect(dispatch.status).toBe(0)
     expect(dispatch.stdout.trim()).toBe([...DISPATCH_SET].sort().join(" "))
+    const pattern = runCli("--print-ci-proof-pattern")
+    expect(pattern.status).toBe(0)
+    expect(pattern.stdout.trim()).toBe(CI_PROOF_PATTERN)
   }, 60000)
 
   it("CLI: zero flags is a usage error (exit 2, no silent default)", () => {

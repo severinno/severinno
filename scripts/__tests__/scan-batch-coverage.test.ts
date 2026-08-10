@@ -125,7 +125,7 @@ describe("scan-batch-coverage.mjs - contrato de crescimento do batch (sec 11.16)
     expect(r.stdout).toContain("remove the redundant direct spawn")
   }, 60000)
 
-  it("SPREAD CONTRACT: runner patcheado com 7o import -> spawn direto do guard futuro vira 'ALREADY BATCHED' (derivado), nao 'GUARD OUTSIDE BATCH'", () => {
+  it("SPREAD CONTRACT: runner patcheado com import extra -> spawn direto do guard futuro vira 'ALREADY BATCHED' (derivado), nao 'GUARD OUTSIDE BATCH'", () => {
     const dir = createTempDir("batch-cov-")
     writePatchedRunner(dir, 'import { main as futureGuardMain } from "./scan-future-guard.mjs"')
     writeHook(dir, [
@@ -188,7 +188,7 @@ describe("scan-batch-coverage.mjs - contrato de crescimento do batch (sec 11.16)
     expect(r.stdout).toContain("BATCH RUNNER MISSING in .husky/pre-commit")
   }, 60000)
 
-  it("DERIVATION PIN: o runner REAL deriva exatamente os 6 guards (5 + o proprio batch-coverage) na ordem dos imports", () => {
+  it("DERIVATION PIN: o runner REAL deriva exatamente os 7 guards (6 + o proprio batch-coverage) na ordem dos imports", () => {
     const src = fs.readFileSync(RUNNER, "utf8")
     expect(deriveBatchGuards(src)).toEqual([
       "check-node-modules-integrity.mjs",
@@ -197,6 +197,7 @@ describe("scan-batch-coverage.mjs - contrato de crescimento do batch (sec 11.16)
       "scan-guard-gates.mjs",
       "scan-fuzz-precommit.mjs",
       "scan-batch-coverage.mjs",
+      "scan-prepush-batch.mjs",
     ])
   })
 

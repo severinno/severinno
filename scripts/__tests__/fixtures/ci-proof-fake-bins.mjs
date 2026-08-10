@@ -54,6 +54,14 @@ function saveState(s) {
 }
 function record() {
   fs.appendFileSync(logFile, `${kind}:${args.join(" ")}\n`)
+  // --no-verify: quando o ciclo roda com HUSKY=0, as invocacoes TAMBEM vao
+  // para husky.log (um log SEPARADO - o invocations.log acima e usado pelos
+  // asserts exatos de ordem dos testes existentes). O teste do --no-verify
+  // prova o env wiring (commit + push + push --delete herdaram HUSKY=0)
+  // sem tocar nos asserts de ordem.
+  if (process.env.HUSKY === "0") {
+    fs.appendFileSync(path.join(stateDir, "husky.log"), `${kind}:${args.join(" ")}\n`)
+  }
 }
 function out(s) {
   process.stdout.write(s)

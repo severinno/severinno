@@ -31,6 +31,8 @@
 | 13 | Guard de integridade — **SPEC-FORMAT contract** (`check-node-modules-integrity.test.ts` `--check-lock`) | Um spec não-registry NOVO (fora da fronteira `lockKeyFor`) entrar no `package.json` sem decisão explícita SKIP-vs-include — passando como nome registry e quebrando silenciosamente o count-pin 98 | `"custom-pkg": "custom:foo@1.0.0"` injetado no `devDependencies` do package.json REAL (branch scratch `ci-proof/spec-format`, 2af1c62) | **Local** (prova de manifest REAL — o teste lê o package.json do repo; a rota sintética via `NODE_MODULES_ROOT` já é pinada hermeticamente pelo mutation test) | ✅ `--check-lock UNVERIFIABLE custom-pkg - resolved version not found in bun.lock` → exit 1; vitest: `AssertionError: expected 99 to be 98` (SPEC-FORMAT contract) + `AssertionError: expected 1 to be +0` (BASELINE --check-lock); revertido byte-identical (md5 30a16a0f...) → 4/4 verde + CLI `clean (98 direct packages match bun.lock; 0 skipped non-registry)` exit 0 |
 | 14 | Guard do push net — **FRAGILE GUARD NEEDS** (`scan-guard-gates.mjs` rule 5) | Um `needs:` voltar no job `fragile-guard` do pr-check.yml (ex.: `needs: check`) — o skip vector da classe que o job standalone existe para fechar (o check pode falhar no lint antes dos testes) | `needs: check` injetado no job `fragile-guard` do pr-check.yml REAL (branch scratch `ci-proof/guard-needs`, 2af1c62) | **Local** (prova de workflow REAL — o CLI + o REAL-REPO CONTRACT leem os arquivos reais; rota sintética já pinada hermeticamente pelo mutation test) | ✅ CLI: `guard-gates: FRAGILE GUARD NEEDS in .github/workflows/pr-check.yml (needs: check - o job standalone nao pode depender de outro...)` → exit 1; vitest: `AssertionError: expected 1 to be +0` (REAL-REPO CONTRACT; 1 failed | 17 passed; o mutation hermético segue verde); revertido byte-identical (md5 a2d3aba4...) → CLI clean exit 0 + suíte 18/18 verde |
 | 15 | Guard do push net — **FRAGILE GUARD NEEDS via CI real** (`scan-guard-gates.mjs` rule 5 + REAL-REPO CONTRACT no pr-check) | O `needs:` voltar no `fragile-guard` do pr-check.yml **no CI real** (o lado CI da Prova 15: a mesma injeção num `workflow_dispatch`, não só local) | `needs: check` no job `fragile-guard` do pr-check.yml REAL (branch scratch `ci-proof/guard-needs-ci`, 2af1c62) via **`ci-proof-run.mjs`** (o helper: ciclo prova-CI num comando) | Run [**31430040398**](https://github.com/severinno/severinno/actions/runs/31430040398) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ conclusion=`failure`; job `check` (step Unit tests): `× REAL-REPO CONTRACT ... → expected 1 to be +0` (scan-guard-gates **E** run-precommit-guards — DOIS guards vermelhos) + `+ guard-gates: FRAGILE GUARD NEEDS in .github/workflows/pr-check.yml (needs: check ...)` no log (5×); ACHADO: o **pre-commit hook local bloqueou o commit da mutação** na 1ª tentativa (rule 5 = tripla: hook + CLI + REAL-REPO CONTRACT) → re-run com `HUSKY=0` (CI = autoridade); revertido byte-identical |
+| 16 | Guard do push net — **multi-violação AGREGADA live** (`scan-guard-gates.mjs` rules 1-4, 6-9 no CLI real, repo REAL) | O CLI listar SÓ a primeira violação quando VÁRIAS regras estão quebradas ao mesmo tempo — o comportamento multi-violação como contrato (a Prova 15 provou rule 5; rules 1-4/6-9 só tinham prova sintética) | Run 1: guard-gates.yml DELETADO + pr-check.yml sem fragile-guard/fuzz/benchmark/utf8-check + ci.yml sem utf8-check + test:guard sem a suite (rules 1,3,4,6,7,8,9); Run 2: guard-gates.yml restaurado com `paths:` + sem o step test:guard (rules 2,3) | **Local** (prova de workflow REAL — o CLI + os arquivos reais, revert byte-identical via backup md5) | ✅ **Run 1**: exit 1 listando **8 sinais num único run** com os caminhos exatos (`WORKFLOW MISSING` guard-gates.yml, `TEST GUARD STEP MISSING` pr-check.yml, `FRAGILE GUARD JOB MISSING` pr-check.yml, `GUARD SUITE MISSING` package.json, `FUZZ JOB MISSING`, `BENCHMARK JOB MISSING`, `ENCODING CALL SITE MISSING` ci.yml + pr-check.yml); **Run 2**: exit 1 com `PATHS FILTER in guard-gates.yml:51` + `TEST GUARD STEP MISSING in guard-gates.yml` + as mesmas 6 do lado PR; revertido byte-identical (md5 + git diff vazio) |
+| 17 | Pre-push — **integrity ANTES do fuzz mapeado** (simulação de pre-push real com node_modules divergente, sec. 11.19) | Um node_modules divergente gastar ~6-14s de fuzz mapeado ANTES de o integrity falhar — a ORDEM do hook decidida nas secs. 11.17/11.18 | `node_modules/react` instalado em 19.2.99 vs locked 19.2.3 num repo sintético via `NODE_MODULES_ROOT` + stdin de push REAL (1 ref não-deleção) no hook `.husky/pre-push` completo | **Local** (hook REAL; repo real intocado — fixtures em /tmp via `cygpath -w`, a classe 8.5 é local) | ✅ exit 1 com `DIVERGENT react installed=19.2.99 locked=19.2.3` + CURE como **última** saída; `run-mapped-fuzz` **nunca invocado** (0 execuções; as 6 menções a fuzz no log são nomes de gate files no ASCII-OK do verify-encoding); wall-clock 6.45s sem os ~6-14s do fuzz; controle: root clean → `clean (react/react-dom match bun.lock: 19.2.3/19.2.3; 0 extraneous)` exit 0 |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -1370,6 +1372,15 @@ seja: a rule 5 tem **tripla proteção** — o hook local já impede o commit de
 `[ "${HUSKY-}" = "0" ] && exit 0`) — o CI é a autoridade e a prova é sobre o
 CI, não sobre o hook (que já estava provado localmente).
 
+**Travado (2026-08-10):** o helper `ci-proof-run.mjs` ganhou a flag
+`--no-verify` — o HUSKY=0 virou first-class (seta `HUSKY=0` no env de TODOS
+os spawns do ciclo: commit + push + push --delete), com o wiring provado por
+E2E hermético (`husky.log` do fixture: o triplo git de escrita herda o env) e
+a cadeia do trip pinada por REAL-REPO CONTRACT (`.husky/pre-commit` →
+`run-precommit-guards.mjs` → `scan-guard-gates`). O próximo usuário não
+redescobre o bloqueio: `--no-verify` é a resposta documentada na própria
+usage do helper.
+
 **Sinais capturados no CI (run 31430040398, log com 5686 linhas):**
 
 ```
@@ -1416,6 +1427,73 @@ pre-commit hook local também bloqueia o commit do furo — a rule 5 é tripla
 (hook local + CLI + REAL-REPO CONTRACT). Com o `ci-proof-run.mjs`, a prova
 completa virou UM comando (run number no summary, log capturado no tmpdir,
 revert automático) — o padrão manual das Provas 6-12 não precisa voltar.
+
+## 8.14 Prova 17 — multi-violação AGREGADA live (rules 1-4, 6-9 no CLI real, local, 2026-08-10)
+
+- **Gate**: `scripts/scan-guard-gates.mjs` — o guard do CONTRATO do push net
+  (rules 1-9). A Prova 15 provou a rule 5 (FRAGILE GUARD NEEDS) ao vivo; as
+  rules 1-4 e 6-9 (workflow presente, no paths filter, test:guard step, job
+  fragile-guard presente, guard suite no test:guard, fuzz job standalone,
+  encoding call sites, benchmark job) só tinham prova **sintética** (fixtures
+  herméticas). Esta prova injeta TODAS as violações de uma vez no repo real e
+  confirma que o CLI lista todas com os caminhos exatos — o comportamento
+  multi-violação vira contrato.
+- **Run 1 (rules 1,3,4,6,7,8,9)** — mutação via `scripts/prova17-mutate.mjs`
+  (TEMP, deletado após a prova): guard-gates.yml DELETADO (rule 1: WORKFLOW
+  MISSING — o net não pode sumir); pr-check.yml reescrito SEM os jobs
+  utf8-check/fuzz/benchmark/fragile-guard (rules 4,7,9 + encoding call site);
+  ci.yml sem o call site utf8-check (rule 8); `package.json` test:guard sem a
+  suite scan-push-full-suite (rule 6). CLI real → exit 1 com **8 sinais no
+  MESMO run**, cada um com o caminho exato:
+
+```
+guard-gates: WORKFLOW MISSING - .github/workflows/guard-gates.yml nao existe (a guard net, sec 8.4/11.11)
+guard-gates: TEST GUARD STEP MISSING in .github/workflows/pr-check.yml (run: bun run test:guard required - the guard net, sec 8.4/11.11)
+guard-gates: FRAGILE GUARD JOB MISSING in .github/workflows/pr-check.yml:? (job fragile-guard: required - o twin PR do push net, sec 8.4/11.11)
+guard-gates: GUARD SUITE MISSING in package.json test:guard (scan-push-full-suite.test.ts required - the 8.4 REAL-REPO CONTRACT lock)
+guard-gates: FUZZ JOB MISSING in .github/workflows/pr-check.yml (job fuzz: required - a autoridade fuzz:ci batchado, sec 11.11/11.12, standalone em qualquer PR)
+guard-gates: BENCHMARK JOB MISSING in .github/workflows/pr-check.yml (job benchmark: required - o gate geo do merge path, sec scan-surfaces.md Type C - auditoria da rede 2026-08)
+guard-gates: ENCODING CALL SITE MISSING in .github/workflows/ci.yml (job utf8-check: com uses: ./.github/workflows/utf8-check.yml required - o gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)
+guard-gates: ENCODING CALL SITE MISSING in .github/workflows/pr-check.yml (job utf8-check: com uses: ./.github/workflows/utf8-check.yml required - o gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)
+```
+
+  O CLI NÃO short-circuita na primeira violação — reporta TODAS, provando o
+  contrato multi-violação (um refactor futuro que pare no primeiro erro
+  quebraria esta prova E o teste MUTATION COMBINADA da suíte).
+- **Run 2 (rules 2,3)** — o par rule 1 ⊥ rule 2 é mutuamente exclusivo por
+  construção (deletar o arquivo = WORKFLOW MISSING; manter com paths = PATHS
+  FILTER — a mesma exclusividade da rule 4 ⊥ 5). O Run 2 restaura o
+  guard-gates.yml do backup e injeta `paths:` no on.push (rule 2) + remove o
+  step `run: bun run test:guard` (rule 3); pr-check/ci/pkg permanecem no
+  estado do Run 1. CLI real → exit 1 com:
+
+```
+guard-gates: PATHS FILTER in .github/workflows/guard-gates.yml:51: paths:
+guard-gates: TEST GUARD STEP MISSING in .github/workflows/guard-gates.yml (run: bun run test:guard required - the guard net, sec 8.4/11.11)
+```
+
+  + as mesmas 6 linhas do lado PR (FRAGILE GUARD JOB MISSING, GUARD SUITE
+  MISSING, FUZZ JOB MISSING, BENCHMARK JOB MISSING, ENCODING CALL SITE MISSING
+  ci.yml + pr-check.yml). O `PATHS FILTER` veio com file:line exato
+  (`:51` — a linha real do paths: no on.push após a injeção).
+- **Cobertura fechada**: entre os dois runs, TODAS as rules 1-9 têm prova
+  viva no repo real (rule 5 já tinha a Prova 15; as demais agora também). A
+  exclusividade estrutural rule 1 ⊥ rule 2 (e rule 4 ⊥ rule 5) é a razão dos
+  DOIS runs — não um gap.
+- **ACHADO de método**: o guard-gates.yml real é CRLF no working tree (git
+  autocrlf) — a 1ª tentativa de injeção com âncora `\n` falhou silenciosamente
+  (o replace não casou no `\r\n`); o script passou a normalizar para LF antes
+  das substituições (o restore via `git checkout`/backup devolve o estado
+  git-canonical, confirmado por md5 + `git diff` vazio).
+- **Reversão**: `git checkout` dos 4 arquivos + `rm scripts/prova17-mutate.mjs`;
+  md5 byte-identical vs o snapshot pré-prova (guard-gates.yml
+  `773542ee...`, pr-check.yml `a2d3aba4...`, package.json `2d158d31...`; o
+  ci.yml difere no md5 cru por normalização de EOL LF→CRLF do git, mas `git
+  diff` vazio confirma a árvore idêntica — único arquivo modificado: o teste
+  FUZZ combinado da thread, pré-existente).
+- **Gap protegido**: um futuro refactor que faça o guard parar na PRIMEIRA
+  violação (early-return) deixaria de listar as demais — a classe que esta
+  prova (e o teste MUTATION COMBINADA da suíte) trava.
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -2924,6 +3002,152 @@ design, sem precisar de allowlist (a mesma asimetria deliberada documentada
 no header do run-precommit-guards.mjs). Se um dia o pre-push ganhar um
 segundo node guard (<0.2s cada), aí o batch passa a valer — até lá, spawn
 individual é o certo.
+
+**LOCK ESTRUTURAL (2026-08-10)**: a condição acima agora é um guard
+(`scripts/scan-prepush-batch.mjs`, wired no batch runner do pre-commit
+como 7º guard — o scan-batch-coverage deriva a lista dos imports vivos, e
+os pins do DERIVATION PIN/order test acompanharam): um node guard novo no
+`.husky/pre-push` fora do conjunto pinado (integrity + check-push-deletion
++ run-mapped-fuzz — a taxonomia da 11.17) falha com o caminho exato até
+uma seção numerada `11.x` com `pre-push` + `ADOTADO` + a re-medição datada
+reverter o veredito; o integrity continua pinado como spawn individual lá
+(positivo relaxado sob a nota). O veredito não vive mais só na doc —
+reverter a 11.17 exige EDItAR a rede estrutural, não só documentar.
+
+**DERIVATION PIN (2026-08-10)**: a claim "exatamente UM node guard" agora
+é um teste: o `scan-prepush-batch.mjs` exporta `derivePrepushSpawns` (o
+padrão do `deriveBatchGuards` do pre-commit aplicado ao OUTRO hook — a
+lista de node guards do `.husky/pre-push` é DERIVADA dos spawns reais,
+nunca hardcoded), o scan consome a MESMA derivação (fonte única) e o
+`scan-prepush-batch.test.ts` pina a lista viva: os 3 spawns na ordem
+(checker de deleção, integrity, runner vitest) com EXATAMENTE 1 node guard
+(o integrity). Um 2º guard no pre-push muda a lista derivada e o pin
+quebra antes de o scan precisar — o spread contract dos TARGET_DIRS
+aplicado aos node guards do pre-push.
+
+## 11.18 O sub-caminho de housekeeping de branches — deleção pura vs misto, o checker entra no batch? (medição 2026-08-10)
+
+**A pergunta**: a 11.17 mediu o custo do node guard do pre-push (integrity
+~0.19s com boot de ~0.14s) e manteve o spawn individual. O
+`check-push-deletion.mjs` (atalho de deleção pura) também é um node spawn
+no pre-push — o caminho completo de housekeeping de branches (deleção pura
+vs misto) merece a mesma análise de custo: o batch de gate files do
+pre-push vale a pena NESSE sub-caminho?
+
+**Medição** (mesma sessão, isolado, node 22.23.1 / Windows, 3 runs — o 1º
+run frio de cada entrada é o boot do node + cold fs):
+
+| Caminho | 3 runs | Média warm | Nota |
+|---|---|---|---|
+| boot node puro (`node -e ""`) | 102 / 75 / 67ms | ~0.07s | o piso do spawn |
+| checker puro — DELEÇÃO PURA (1 ref all-zeros) | 318 / 83 / 87ms | ~0.08s | exit 0 = skip da cadeia; boot-domínio (lógica ~10ms) |
+| checker puro — MISTO (deleção + ref real) | 86 / 88 / 82ms | ~0.08s | exit 1 = cadeia roda |
+| checker puro — stdin vazio (manual) | 84 / 87 / 87ms | ~0.08s | exit 1 = cadeia roda |
+| integrity (comparação, sec 11.17) | 171 / 163 / 160ms | ~0.16s | o node guard do caminho de código |
+| batch runner (7 guards em 1 boot, sec 11.13) | 188 / 170 / 170ms | ~0.17s | 7 guards ≈ 1 integrity: o boot é o piso |
+| **caminho completo do hook — DELEÇÃO PURA** (stdin capture + awk + checker exit 0 + skip) | 231 / 215 / 208ms | **~0.21s** | o housekeeping de branches inteiro |
+| caminho completo do hook — MISTO (checker exit 1, ANTES da cadeia) | 214 / 206 / 201ms | ~0.20s | o checker é ~0.2s de um push de dezenas de segundos |
+
+**O que os números dizem**:
+
+1. **O caminho de deleção pura já é o mínimo.** Housekeeping completo
+   (stdin + awk + checker + exit 0 + skip) ≈ ~0.21s warm — o checker é o
+   ÚNICO node spawn desse caminho (integrity nem roda: a cadeia é pulada).
+   Não há N boots para consolidar — há UM.
+
+2. **Batchar NÃO economiza aqui — e o argumento honesto é semântico, não
+   de custo.** Um batch checker+integrity (1 boot, ~0.07s) custaria
+   ~0.17-0.19s no caminho de deleção pura — igual ou LIGEIRAMENTE mais
+   barato que o ~0.21s atual (o boot é amortizado). O ponto não é
+   wall-clock: o batch é um agregador worst-exit que roda TODOS os guards
+   — não pode pular o integrity condicionalmente após a decisão de skip.
+   Forçaria o integrity (scan real de ~0.09s sobre o boot) a rodar num
+   push que carrega ZERO código — exatamente o desperdício que o atalho
+   existe para evitar (o checker short-circuita o hook ANTES de qualquer
+   gate). Batchar trocaria uma economia de ~0.02-0.04s por rodar um scan
+   real em housekeeping vazio.
+
+3. **O misto é dominado pela cadeia.** O passo de detecção (~0.2s
+   incluindo captura+awk; o checker puro ~0.08s) é ~0.4% de um push misto
+   de dezenas de segundos (fuzz ~6-14s + gates + encoding). Batchar
+   economizaria ~1 boot (~0.07s) num push de ~53s — ruído, a mesma
+   conclusão da 11.17.
+
+4. **O checker é uma DECISÃO DE BRANCH, não um gate agregável.** Seu exit
+   code decide SKIP vs RODA-A-CADEIA (short-circuit do hook) — categoria
+   diferente do agregador síncrono de exit codes do batch (que roda todos
+   e OR os resultados). Mesmo que coubesse no batch, o runner teria que
+   devolver o controle ao hook com a decisão de skip — a semântica não
+   compõe com o worst-exit.
+
+**Veredito: manter o spawn individual — a assimetria da 11.17 se estende ao
+housekeeping.** A condição que tornaria o batch válido é a MESMA da 11.17
+(travada pelo scan-prepush-batch.mjs): se o pre-push ganhar um 2º node
+guard <0.2s no caminho de deleção (o checker + mais um), aí o batch passa
+a valer NESSE sub-caminho. Até lá, o checker individual (~0.08s + decisão
+de skip no hook) é o certo — e a ORDEM importa por design: o checkerroda ANTES de qualquer gate para a deleção pura não gastar nem o encoding.
+
+## 11.19 Prova 18 — integrity falha ANTES do fuzz mapeado (simulação de pre-push real com node_modules divergente, local, 2026-08-10)
+
+**A pergunta**: a 11.17 (e a 11.18, para o housekeeping) decidiu que o
+integrity roda como node guard INDIVIDUAL no pre-push, ANTES do fuzz mapeado
+— mas a decisão vivia como medição de custo, sem prova viva. Esta prova
+simula um pre-push real com node_modules divergente e confirma que o
+integrity falha ANTES do `run-mapped-fuzz` (exit 1 sem gastar ~6-14s de
+fuzz) — o lado viva da decisão.
+
+**Método** (sem tocar no repo real — a classe 8.5 é LOCAL e o CI instala do
+lock fresco em checkout):
+
+1. Repo sintético `/tmp/nmi-proof/{divergent,clean}`: `bun.lock` REAL copiado
+   (resolve react/react-dom@19.2.3) + `node_modules/react/package.json` em
+   19.2.99 (divergente) ou 19.2.3 (clean); react-dom em 19.2.3 nos dois.
+2. `NODE_MODULES_ROOT` apontado para o root sintético (o env override do
+   guard, via `cygpath -w` — o node no Windows resolve `C:\...`, não o
+   `/tmp` do git-bash).
+3. Hook `.husky/pre-push` REAL executado com stdin de push real (1 ref
+   não-deleção: `refs/heads/ci-proof <local-sha> refs/heads/ci-proof
+   <parent-sha>`) — a cadeia completa roda de verdade.
+
+**Observado** (node 22.23.1 / Windows, git-bash, 2026-08-10):
+
+```
+$ { time -p printf '%s\n' "$STDIN_LINE" | NODE_MODULES_ROOT="$WIN_DIVERGENT" bash .husky/pre-push; } 2> time
+HOOK_EXIT=1
+real 6.45
+...
+check-push-deletion: not a pure deletion (0/1 refs are deletions) - run gates   <- nao e delecao: a cadeia roda
+check-utf8: done (all clean)                                                     <- verify-encoding (UTF-8)
+fragile-range: clean (150 gate files + 476 target files, ...)                    <- verify-encoding (layer 3)
+UTF8-OK ... (~75 arquivos)                                                       <- check-docs-encoding (informativo)
+check-node-modules-integrity: DIVERGENT react installed=19.2.99 locked=19.2.3    <- integrity: ULTIMA saida
+check-node-modules-integrity: CURE: rm -rf node_modules && bun install --frozen-lockfile
+```
+
+**Evidências**:
+
+1. **exit 1 e o integrity é a ÚLTIMA linha de saída** — o hook aborta ali
+   (`set -euo pipefail`); o `run-mapped-fuzz` (linha 79 do hook) NUNCA é
+   invocado: 0 execuções no log (as 6 menções a "fuzz" são os NOMES dos
+   gate files listados pelo ASCII-OK do verify-encoding — run-fuzz.sh,
+   format-fuzz-results.mjs, fuzz-targets.mjs, run-all-fuzz.mjs,
+   run-mapped-fuzz.mjs, scan-fuzz-precommit.mjs).
+2. **Wall-clock 6.45s** (verify-encoding + docs-encoding + integrity) — sem
+   os ~6-14s típicos do fuzz mapeado (11.11): o integrity curto-circuitou o
+   hook no 4º passo, exatamente o design da 11.17. Se o fuzz rodasse, o
+   total seria ~12-20s.
+3. **Controle (fixture válida)**: root clean → `clean (react/react-dom
+   match bun.lock: 19.2.3/19.2.3; 0 extraneous top-level packages)` exit 0
+   — o fixture sintético funciona; SÓ a divergência tripa.
+4. **Ordem estrutural**: integrity na linha 66 do `.husky/pre-push`, fuzz
+   na linha 79 — o integrity SEMPRE roda antes (e o DERIVATION PIN do
+   scan-prepush-batch.test.ts trava a lista dos spawns).
+
+**Gap protegido**: um node_modules divergente nunca mais gasta ~6-14s de
+fuzz mapeado antes de falhar — o integrity (o guard da classe 8.5) aborta o
+push no passo 4 com o caminho de cura exato, e o `run-mapped-fuzz` só roda
+com layout íntegro. Repo real intocado (fixtures em /tmp, removidas ao
+final; `git status` limpo).
 
 ## 12. Referências
 

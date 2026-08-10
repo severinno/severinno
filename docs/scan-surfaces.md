@@ -319,10 +319,12 @@ workflows REAIS e um workflow futuro é pego SEM entry no manifest (pinar o
 conjunto proibido como lista iria stalear - a classe de drift que o
 workflow-contracts manifest mata). Os FATOS que a regra consome vivem no
 manifest: o namespace (CI_PROOF_NAMESPACE, já consumido pelo
-ci-proof-run.mjs via isCiProofBranch) e o PROBE canônico (CI_PROOF_PROBE =
-ci-proof/proof-branch, derivado do namespace) - o probe que o Type E testa
-contra NÃO é mais um literal hardcoded no teste; renomear o namespace
-re-deriva o probe automaticamente (pinado em workflow-contracts.test.ts).
+ci-proof-run.mjs via isCiProofBranch), o PROBE canônico (CI_PROOF_PROBE =
+ci-proof/proof-branch, derivado do namespace) e o PADRÃO PROIBIDO
+(CI_PROOF_PATTERN = ci-proof/**, a forma glob da MESMA shape - o glob que
+nenhum filtro push/PR pode casar) - o probe E o padrão que o Type E testa
+contra NÃO são mais literais hardcoded no teste; renomear o namespace
+re-deriva AMBOS automaticamente (pinado em workflow-contracts.test.ts).
 A divisão espelha os demais contratos: fatos pinados no registry, regras
 aplicadas contra a árvore viva pelos guards/suítes.
 

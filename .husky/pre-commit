@@ -25,9 +25,9 @@ node scripts/scan-lucide-icons.mjs --check
 # Custo <10ms; CI nao precisa (checkout fresco, sem .next).
 node scripts/check-next-types.mjs --fix
 
-# 6 guards node em UMA invocacao (batch runner, medicao 2026-08, secao 11.13/11.16):
-# o boot do node (~0.14s) dominava cada guard isolado; os 6 spawns sequenciais
-# custavam ~0.54-0.81s por commit. O runner importa os 6 no MESMO processo (1
+# 7 guards node em UMA invocacao (batch runner, medicao 2026-08, secao 11.13/11.16):
+# o boot do node (~0.14s) dominava cada guard isolado; os 7 spawns sequenciais
+# custavam ~0.54-0.81s por commit. O runner importa os 7 no MESMO processo (1
 # boot) e agrega os exit codes - medido ~0.22-0.26s (~2.7x), saida ORDENADA
 # (melhor que o paralelo ~0.24-0.34s, que embaralharia os veredictos). Todos
 # rodam SEMPRE (worst-exit): uma falha nao esconde as demais.
@@ -45,6 +45,9 @@ node scripts/check-next-types.mjs --fix
 #  - scan-batch-coverage (sec. 11.16): TODO node guard novo do pre-commit
 #    deve entrar no batch - um guard fora do batch falha com o caminho exato
 #    (o contrato de crescimento, padrao dos TARGET_DIRS).
+#  - scan-prepush-batch (sec. 11.17): o pre-push NAO e batchado por design -
+#    o batch so passa a valer se o pre-push ganhar um 2o node guard (<0.2s);
+#    valida o working tree do pre-push (mesmo padrao do scan-push-full-suite).
 node scripts/run-precommit-guards.mjs
 
 # Typecheck e lint-staged em PARALELO (jobs independentes): medicao 2026-08-09 (secao 11.8 do

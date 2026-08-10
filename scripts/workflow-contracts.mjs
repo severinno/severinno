@@ -81,6 +81,16 @@
  *                       whose loss is visible as a missing required check.
  *   GUARD_NET_JOB       the job key inside pr-check.yml that must carry
  *                       the test:guard step (the fragile-guard job).
+ *   GUARD_NET_PUSH_JOB  the job key inside guard-gates.yml that must run
+ *                       the test:guard step STANDALONE (no needs:) - the
+ *                       push-net side of the rule-5 immunity contract
+ *                       (scan-guard-gates rule 5 covers BOTH sides: the
+ *                       fragile-guard PR twin AND the guard-gates push-net
+ *                       job - the 2026-08-10 Prova 19 closure of the pair
+ *                       Prova 16 proved on the PR side). A needs: on the
+ *                       push-net job would invalidate the workflow (undefined
+ *                       dependency job) or create a skip vector - either way
+ *                       the BASELINE orphaning this net exists to close.
  *   ALWAYS_RUN_SET      the workflows that run on EVERY push/PR with NO
  *                       paths: filter BY DESIGN (ci.yml, deploy.yml,
  *                       pr-check.yml, guard-gates.yml - the always-run
@@ -96,29 +106,36 @@
  *                       fails the contract test.
  *   CI_PROOF_INVARIANT  the ci-proof/* branch template facts: the proof
  *                       namespace itself, the canonical probe branch
- *                       (CI_PROOF_PROBE) and the two DANGER refs (push to
- *                       main fires deploy.yml; push v* tags fires
- *                       release-deploy.yml). FACT vs RULE split: the
- *                       NAMESPACE + PROBE + DANGER refs are FACTS (they
- *                       live here, consumed by ci-proof-run.mjs and Type
- *                       E); the SAFETY INVARIANT itself (the predicate "no
- *                       workflow's push/PR filter may match ci-proof/*")
- *                       is a RULE over the LIVE TREE - it stays enforced
- *                       by scan-surfaces-contract Type E against the
- *                       actual .github/workflows files, because a future
- *                       workflow must be caught WITHOUT an entry here
- *                       (pinning the forbidden set as a list would go
- *                       stale - the drift class this manifest kills). The
- *                       PROBE is the concrete branch the rule tests
- *                       against (ci-proof/<segment> shape derived from the
+ *                       (CI_PROOF_PROBE), the FORBIDDEN glob the invariant
+ *                       tests against (CI_PROOF_PATTERN = ci-proof/** - the
+ *                       pattern NO workflow push/PR filter may match) and
+ *                       the two DANGER refs (push to main fires deploy.yml;
+ *                       push v* tags fires release-deploy.yml). FACT vs
+ *                       RULE split: the NAMESPACE + PROBE + PATTERN +
+ *                       DANGER refs are FACTS (they live here, consumed by
+ *                       ci-proof-run.mjs and Type E); the SAFETY INVARIANT
+ *                       itself (the predicate "no workflow's push/PR filter
+ *                       may match a ci-proof/* branch") is a RULE over the
+ *                       LIVE TREE - it stays enforced by
+ *                       scan-surfaces-contract Type E against the actual
+ *                       .github/workflows files, because a future workflow
+ *                       must be caught WITHOUT an entry here (pinning the
+ *                       forbidden set as a list would go stale - the drift
+ *                       class this manifest kills). The PROBE is the
+ *                       concrete branch the rule tests against
+ *                       (ci-proof/<segment> shape derived from the
  *                       namespace - the same derivation ci-proof-run.mjs's
- *                       isCiProofBranch applies).
+ *                       isCiProofBranch applies); CI_PROOF_PATTERN is the
+ *                       glob FORM of the same namespace, so renaming the
+ *                       namespace re-derives probe AND pattern together
+ *                       (pinned in workflow-contracts.test.ts GROWTH).
  *
  * API (importable - entry-point guarded):
  *   import {
- *     GUARD_NET, GUARD_NET_JOB, ENCODING_NET, ENCODING_JOB, FUZZ_JOB,
- *     BENCHMARK_JOB, ALWAYS_RUN_SET, DISPATCH_SET, CI_PROOF_NAMESPACE,
- *     CI_PROOF_PROBE, DANGER_REFS, QUERIES,
+ *     GUARD_NET, GUARD_NET_JOB, GUARD_NET_PUSH_JOB, ENCODING_NET,
+ *     ENCODING_JOB, FUZZ_JOB, BENCHMARK_JOB, ALWAYS_RUN_SET, DISPATCH_SET,
+ *     CI_PROOF_NAMESPACE, CI_PROOF_PROBE, CI_PROOF_PATTERN, DANGER_REFS,
+ *     QUERIES,
  *   } from "./workflow-contracts.mjs"
  *
  * CLI (what guards call - STANDALONE ONLY, one flag per invocation):
@@ -126,6 +143,8 @@
  *     prints GUARD_NET.join(" ")  ->  ".github/workflows/guard-gates.yml .github/workflows/pr-check.yml"
  *   node scripts/workflow-contracts.mjs --print-guard-net-job
  *     prints GUARD_NET_JOB  ->  "fragile-guard"
+ *   node scripts/workflow-contracts.mjs --print-guard-net-push-job
+ *     prints GUARD_NET_PUSH_JOB  ->  "guard-gates"
  *   node scripts/workflow-contracts.mjs --print-encoding-net
  *     prints ENCODING_NET.join(" ")  ->  ".github/workflows/ci.yml .github/workflows/pr-check.yml"
  *   node scripts/workflow-contracts.mjs --print-encoding-job
@@ -138,6 +157,9 @@
  *     prints ALWAYS_RUN_SET.join(" ")  ->  "ci.yml deploy.yml pr-check.yml guard-gates.yml"
  *   node scripts/workflow-contracts.mjs --print-dispatch
  *     prints DISPATCH_SET.join(" ")  ->  the 8 dispatch workflows (sorted)
+ *   node scripts/workflow-contracts.mjs --print-ci-proof-pattern
+ *     prints CI_PROOF_PATTERN  ->  "ci-proof/**" (the forbidden glob the
+ *     Type E invariant tests against - derived from the namespace)
  *   Combining print flags (or passing no flag) is a usage error (exit 2) -
  *   same no-silent-ignore posture as encoding-surface.mjs.
  *
@@ -154,6 +176,9 @@ export const GUARD_NET = [
 
 /** The pr-check.yml job key that must run the test:guard step. */
 export const GUARD_NET_JOB = "fragile-guard"
+
+/** The guard-gates.yml job key that must run the test:guard step standalone (no needs: - rule 5, push-net side). */
+export const GUARD_NET_PUSH_JOB = "guard-gates"
 
 /** The merge-path workflows that call the encoding gate (utf8-check.yml). */
 export const ENCODING_NET = [
@@ -200,6 +225,17 @@ export const CI_PROOF_NAMESPACE = "ci-proof"
  */
 export const CI_PROOF_PROBE = `${CI_PROOF_NAMESPACE}/proof-branch`
 
+/**
+ * The FORBIDDEN glob the Type E invariant tests against: `ci-proof/**`
+ * (derived from the namespace - the glob FORM of the same shape the probe
+ * is the concrete instance of). NO workflow push/PR filter may match a
+ * `ci-proof/*` branch: branchPatternMatches(CI_PROOF_PATTERN, probe) is the
+ * predicate the rule pins, and the glob is a FACT here so the tests never
+ * hardcode `ci-proof/**` (renaming the namespace re-derives probe AND
+ * pattern together - pinned in workflow-contracts.test.ts GROWTH).
+ */
+export const CI_PROOF_PATTERN = `${CI_PROOF_NAMESPACE}/**`
+
 /** The two DANGER refs of the risk matrix (push main -> deploy, v* tags -> release). */
 export const DANGER_REFS = [
   { ref: "main", workflow: "deploy.yml" },
@@ -211,19 +247,21 @@ export const DANGER_REFS = [
 export const QUERIES = {
   "--print-guard-net": GUARD_NET,
   "--print-guard-net-job": [GUARD_NET_JOB],
+  "--print-guard-net-push-job": [GUARD_NET_PUSH_JOB],
   "--print-encoding-net": ENCODING_NET,
   "--print-encoding-job": [ENCODING_JOB],
   "--print-fuzz-job": [FUZZ_JOB],
   "--print-benchmark-job": [BENCHMARK_JOB],
   "--print-always-run": [...ALWAYS_RUN_SET].sort(),
   "--print-dispatch": [...DISPATCH_SET].sort(),
+  "--print-ci-proof-pattern": [CI_PROOF_PATTERN],
 }
 
 function main() {
   const args = process.argv.slice(2)
   if (args.length !== 1 || !(args[0] in QUERIES)) {
     console.error(
-      "usage: node scripts/workflow-contracts.mjs <--print-guard-net|--print-guard-net-job|--print-encoding-net|--print-encoding-job|--print-fuzz-job|--print-benchmark-job|--print-always-run|--print-dispatch>",
+      "usage: node scripts/workflow-contracts.mjs <--print-guard-net|--print-guard-net-job|--print-guard-net-push-job|--print-encoding-net|--print-encoding-job|--print-fuzz-job|--print-benchmark-job|--print-always-run|--print-dispatch|--print-ci-proof-pattern>",
     )
     process.exit(2)
   }

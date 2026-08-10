@@ -34,10 +34,18 @@
  *    o job = o guard vitest para de rodar no PR = falha 'FRAGILE GUARD JOB
  *    MISSING'. A IMMUNITY a skip vem de duas frentes: o reorder do check job
  *    (test:unit antes do lint) e este job standalone sem `needs:`.
- * 5. NO NEEDS: (NEGATIVO, lado PR): o job fragile-guard NAO pode ter
- *    `needs:` (ex.: needs: check) - um needs tornaria o job dependente de
- *    um job que pode falhar no lint ANTES dos testes, o skip da classe que
- *    o job standalone existe para fechar = falha 'FRAGILE GUARD NEEDS'.
+ * 5. NO NEEDS: (NEGATIVO, AMBOS os lados da rede): o job fragile-guard
+ *    (PR) E o job guard-gates (push net) NAO podem ter `needs:` - um needs
+ *    tornaria o job dependente de um job que pode falhar no lint ANTES dos
+ *    testes (o skip da classe que o job standalone existe para fechar). No
+ *    push net, um needs: e ainda pior: o guard-gates.yml tem UM unico job,
+ *    entao um needs: para um job inexistente INVALIDA o workflow inteiro no
+ *    GitHub (o BASELINE nem chega a rodar - orfao total). = falha
+ *    'FRAGILE GUARD NEEDS' (PR) / 'GUARD GATES JOB NEEDS' (push net).
+ *    PROVA 19 (2026-08-10): o par fechado nos DOIS lados - a Prova 16
+ *    provou o lado PR via CI real (needs: check no fragile-guard); esta
+ *    prova injeta needs: check no job guard-gates do guard-gates.yml e
+ *    dispara via push real a develop, fechando o irmao do push net.
  * 6. SCAN-PUSH-FULL-SUITE EM test:guard (POSITIVO): o script `test:guard`
  *    do package.json DEVE incluir `scan-push-full-suite.test.ts` (o
  *    REAL-REPO CONTRACT que trava a 8.4) - remover a suite da lista = a
@@ -103,7 +111,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { BENCHMARK_JOB, ENCODING_JOB, ENCODING_NET, FUZZ_JOB, GUARD_NET, GUARD_NET_JOB } from "./workflow-contracts.mjs"
+import { BENCHMARK_JOB, ENCODING_JOB, ENCODING_NET, FUZZ_JOB, GUARD_NET, GUARD_NET_JOB, GUARD_NET_PUSH_JOB } from "./workflow-contracts.mjs"
 
 const ROOT = path.resolve(process.env.GUARD_GATES_SCAN_ROOT || process.cwd())
 // POSIX rel paths (the repo convention for reported paths - the same as the
@@ -230,6 +238,7 @@ function defaultContract() {
   return {
     guardNet: GUARD_NET,
     prJobKey: GUARD_NET_JOB,
+    pushNetJobKey: GUARD_NET_PUSH_JOB,
     encodingNet: ENCODING_NET,
     encodingJob: ENCODING_JOB,
     benchmarkJob: BENCHMARK_JOB,
@@ -249,7 +258,7 @@ function defaultContract() {
  * clean = clean. Exported for unit tests.
  */
 export function scanGuardGates(root = ROOT, contract = defaultContract()) {
-  const { guardNet, prJobKey, encodingNet, encodingJob, benchmarkJob } = contract
+  const { guardNet, prJobKey, pushNetJobKey, encodingNet, encodingJob, benchmarkJob } = contract
   const prWorkflow = guardNet[guardNet.length - 1] // the PR-side twin (last)
 
   // Every net workflow must EXIST (a manifest entry without a real file is
@@ -284,6 +293,7 @@ export function scanGuardGates(root = ROOT, contract = defaultContract()) {
     }
   }
   const prJob = prGuardJob(root, prWorkflow, prJobKey)
+  const pushNetJob = prGuardJob(root, guardNet[0], pushNetJobKey)
   const fuzzJob = prGuardJob(root, prWorkflow, FUZZ_JOB, FUZZ_STEP_RE)
   const benchmarkJobInfo = prGuardJob(root, prWorkflow, benchmarkJob, BENCHMARK_STEP_RE)
   if (missingStep === null && prJob && !prJob.stepPresent) {
@@ -332,7 +342,7 @@ export function scanGuardGates(root = ROOT, contract = defaultContract()) {
     }
   }
 
-  return { missingWorkflow, pathsFilter, missingStep, missingSuite, prJob, fuzzJob, encodingBad, benchmarkJob: benchmarkJobInfo }
+  return { missingWorkflow, pathsFilter, missingStep, missingSuite, prJob, pushNetJob, fuzzJob, encodingBad, benchmarkJob: benchmarkJobInfo }
 }
 
 export async function main() {
@@ -351,14 +361,17 @@ export async function main() {
     ? {
         guardNet: mod.GUARD_NET,
         prJobKey: mod.GUARD_NET_JOB,
+        pushNetJobKey: mod.GUARD_NET_PUSH_JOB,
         encodingNet: mod.ENCODING_NET,
         encodingJob: mod.ENCODING_JOB,
         benchmarkJob: mod.BENCHMARK_JOB,
       }
     : defaultContract()
   const prWorkflow = contract.guardNet[contract.guardNet.length - 1]
-  const { missingWorkflow, pathsFilter, missingStep, missingSuite, prJob, fuzzJob, encodingBad, benchmarkJob } = scanGuardGates(ROOT, contract)
+  const pushNet = contract.guardNet[0]
+  const { missingWorkflow, pathsFilter, missingStep, missingSuite, prJob, pushNetJob, fuzzJob, encodingBad, benchmarkJob } = scanGuardGates(ROOT, contract)
   const prBad = prJob !== null && (!prJob.present || prJob.needs !== null)
+  const pushNetBad = pushNetJob !== null && (!pushNetJob.present || pushNetJob.needs !== null)
   // The fuzz:ci authority must be a standalone PR job (the check job may
   // fail on pre-existing lint debt - the fuzz result must stay readable).
   const fuzzBad = fuzzJob !== null && (!fuzzJob.present || fuzzJob.needs !== null || !fuzzJob.stepPresent)
@@ -369,12 +382,13 @@ export async function main() {
     missingStep === null &&
     missingSuite === null &&
     !prBad &&
+    !pushNetBad &&
     !fuzzBad &&
     !benchmarkBad &&
     encodingBad.length === 0
   ) {
     console.log(
-      "guard-gates: clean (workflow present, no paths filter, test:guard step in BOTH workflows, fragile-guard job present without needs:, scan-push-full-suite in test:guard, fuzz job standalone com fuzz:ci, benchmark job standalone, encoding call sites sem needs: - sec 8.4/11.11 premise locked)",
+      "guard-gates: clean (workflow present, no paths filter, test:guard step in BOTH workflows, fragile-guard job present without needs:, guard-gates job present without needs:, scan-push-full-suite in test:guard, fuzz job standalone com fuzz:ci, benchmark job standalone, encoding call sites sem needs: - sec 8.4/11.11 premise locked)",
     )
     return 0
   }
@@ -399,6 +413,16 @@ export async function main() {
   if (prJob !== null && prJob.needs !== null) {
     console.log(
       `guard-gates: FRAGILE GUARD NEEDS in ${prWorkflow} (${prJob.needs} - o job standalone nao pode depender de outro; um needs: cria o skip vector da classe que o job existe para fechar)`,
+    )
+  }
+  if (pushNetJob !== null && !pushNetJob.present) {
+    console.log(
+      `guard-gates: GUARD GATES JOB MISSING in ${pushNet} (job ${contract.pushNetJobKey}: required - o job standalone do push net, sec 8.4/11.11)`,
+    )
+  }
+  if (pushNetJob !== null && pushNetJob.needs !== null) {
+    console.log(
+      `guard-gates: GUARD GATES JOB NEEDS in ${pushNet} (${pushNetJob.needs} - o job standalone do push net nao pode depender de outro; um needs: para um job inexistente INVALIDA o workflow (guard-gates.yml tem UM job) e o BASELINE nem roda - Prova 19 fecha o par nos dois lados da rede)`,
     )
   }
   if (missingSuite !== null) {
@@ -456,7 +480,7 @@ export async function main() {
     }
   }
   console.log(
-    "guard-gates: guard-gates.yml + pr-check.yml (fragile-guard + fuzz + benchmark) + ci.yml/pr-check.yml (utf8-check) must run incondicionalmente (no paths filter, no needs:) com o test:guard completo (scan-push-full-suite incluso) - a premissa da recalibracao 8.4/11.11",
+    "guard-gates: guard-gates.yml + pr-check.yml (fragile-guard + fuzz + benchmark) + ci.yml/pr-check.yml (utf8-check) must run incondicionalmente (no paths filter, no needs: em NENHUM job standalone - fragile-guard, guard-gates, fuzz, benchmark, utf8-check) com o test:guard completo (scan-push-full-suite incluso) - a premissa da recalibracao 8.4/11.11",
   )
   return 1
 }

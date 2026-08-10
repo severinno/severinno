@@ -266,6 +266,53 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     expect(r.stdout).toContain("needs: check")
   }, 60000)
 
+  it("MUTATION: guard-gates.yml sem o job guard-gates -> exit 1 com 'GUARD GATES JOB MISSING' (o job standalone do PUSH NET nao pode sumir - Prova 19)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeFile(
+      dir,
+      GUARD_PUSH_NET,
+      [
+        "name: Guard Gates",
+        "on:",
+        "  push:",
+        "    branches: [main, develop]",
+        "jobs:",
+        "  lint:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run lint",
+        "",
+      ].join("\n"),
+    )
+    writeCIWorkflow(dir)
+    writePRWorkflow(dir)
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("GUARD GATES JOB MISSING")
+    expect(r.stdout).toContain(GUARD_PUSH_NET)
+  }, 60000)
+
+  it("MUTATION: job guard-gates do push net com needs: check -> exit 1 com 'GUARD GATES JOB NEEDS' (o par da Prova 16 fechado no outro lado da rede)", () => {
+    const dir = createTempDir("guard-gates-")
+    // A base writeWorkflow JA tem o job guard-gates - um segundo bloco
+    // APPENDADO com needs: e a mutacao (o parser re-entry le o ULTIMO bloco:
+    // o mesmo padrao do teste FRAGILE GUARD NEEDS). Um needs: no push net
+    // referencia um job inexistente (guard-gates.yml tem UM job) e INVALIDA
+    // o workflow no GitHub - o BASELINE nem chega a rodar (orfao total).
+    writeWorkflow(
+      dir,
+      "  guard-gates:\n    needs: check\n    name: Guard Gates\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run guard vitest suites\n        run: bun run test:guard\n",
+    )
+    writeCIWorkflow(dir)
+    writePRWorkflow(dir)
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("GUARD GATES JOB NEEDS")
+    expect(r.stdout).toContain("needs: check")
+  }, 60000)
+
   it("comentario com 'test:guard' (o header explica o mirror em prosa) NAO tripa o step check", () => {
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir, "# (bun run test:guard - o script unico em package.json, single source of truth)\n")
@@ -477,6 +524,108 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const r = runGuard(dir)
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("clean")
+  }, 60000)
+
+  it("MUTATION COMBINADA (classe FUZZ fechada no padrao da Prova 15): fixture completa com os 3 furos do fuzz job -> os 3 sinais (MISSING + NEEDS + STEP) pinados de uma vez, incluindo a multi-violacao num unico stdout", () => {
+    // FURO 1+2 no MESMO fixture: o job fuzz existe mas com needs: check E
+    // sem o step fuzz:ci (run: test:unit no lugar). O CLI deve reportar
+    // FUZZ JOB NEEDS E FUZZ STEP MISSING num unico stdout - a multi-
+    // violacao que os testes sole-failure acima nao cobrem (cada um so
+    // remove UMA violacao por vez). O FUZZ JOB MISSING e mutuamente
+    // exclusivo com os outros dois (job ausente = present:false -> o
+    // prGuardJob nao reporta needs/step), entao o terceiro furo usa a
+    // SEGUNDA fixture: pr-check.yml SEM o job fuzz.
+    const dir = createTempDir("guard-gates-")
+    writeWorkflow(dir)
+    writeCIWorkflow(dir)
+    writeFile(
+      dir,
+      GUARD_PR_TWIN,
+      [
+        "name: PR Check",
+        "on:",
+        "  pull_request:",
+        "    branches: [main]",
+        "jobs:",
+        "  utf8-check:",
+        "    uses: ./.github/workflows/utf8-check.yml",
+        "  check:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Unit tests",
+        "        run: bun run test:unit",
+        "  fuzz:",
+        "    needs: check",
+        "    name: Fuzz Tests",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run something else",
+        "        run: bun run test:unit",
+        "  benchmark:",
+        "    name: Geo Benchmark",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run geo benchmark",
+        "        run: |",
+        "          node scripts/run-benchmark.mjs --type geo --json",
+        "  fragile-guard:",
+        "    name: Fragile Range Guard",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
+        "        run: bun run test:guard",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("FUZZ JOB NEEDS")
+    expect(r.stdout).toContain("needs: check")
+    expect(r.stdout).toContain("FUZZ STEP MISSING")
+    expect(r.stdout).toContain("fuzz:ci")
+    // O terceiro furo: o job fuzz AUSENTE (mutuamente exclusivo - o mesmo
+    // teste pina os 3 sinais de uma vez, no padrao da Prova 15).
+    const dir2 = createTempDir("guard-gates-")
+    writeWorkflow(dir2)
+    writeCIWorkflow(dir2)
+    writeFile(
+      dir2,
+      GUARD_PR_TWIN,
+      [
+        "name: PR Check",
+        "on:",
+        "  pull_request:",
+        "    branches: [main]",
+        "jobs:",
+        "  utf8-check:",
+        "    uses: ./.github/workflows/utf8-check.yml",
+        "  check:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Unit tests",
+        "        run: bun run test:unit",
+        "  benchmark:",
+        "    name: Geo Benchmark",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run geo benchmark",
+        "        run: |",
+        "          node scripts/run-benchmark.mjs --type geo --json",
+        "  fragile-guard:",
+        "    name: Fragile Range Guard",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
+        "        run: bun run test:guard",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir2)
+    const r2 = runGuard(dir2)
+    expect(r2.status).toBe(1)
+    expect(r2.stdout).toContain("FUZZ JOB MISSING")
+    expect(r2.stdout).toContain(GUARD_PR_TWIN)
   }, 60000)
 
   it("MUTATION: workflow DELETADO (so package.json) -> exit 1 com 'WORKFLOW MISSING' (a rede orfa nao passa em silencio)", () => {
@@ -777,6 +926,14 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     expect(pr).toMatch(/^  fragile-guard:$/m)
     expect(pr).toMatch(/^\s+run:\s+bun run test:guard\s*$/m)
     expect(pr).not.toMatch(/^\s+needs:/m)
+    // Rule 5, PUSH-NET side (Prova 19 - the pair Prova 16 proved on the PR
+    // side, closed on the OTHER side of the net): the guard-gates job of
+    // guard-gates.yml itself must carry the test:guard step WITHOUT needs:.
+    // A needs: here references a non-existent job (guard-gates.yml has ONE
+    // job) and INVALIDATES the workflow - the BASELINE never runs (orphan).
+    expect(wf).toMatch(/^  guard-gates:$/m)
+    expect(wf).toMatch(/^\s+run:\s+bun run test:guard\s*$/m)
+    expect(wf).not.toMatch(/^\s+needs:/m)
     // The fuzz:ci authority (sec 11.11/11.12): a standalone PR job with the
     // batched fuzz step - the check job may fail on pre-existing lint debt
     // without ever skipping the fuzz result.

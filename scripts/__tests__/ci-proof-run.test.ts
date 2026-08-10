@@ -26,7 +26,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
-import { CI_PROOF_NAMESPACE, DANGER_REFS } from "../workflow-contracts.mjs"
+import { CI_PROOF_NAMESPACE, CI_PROOF_PROBE, DANGER_REFS } from "../workflow-contracts.mjs"
 import { isCiProofBranch, parseArgs, planSteps, verifyOutcome } from "../ci-proof-run.mjs"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "ci-proof-run.mjs")
@@ -84,7 +84,7 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--bogus"]).error).toContain("flag desconhecida")
   })
 
-  it("parseArgs: defaults (timeout 900, keep false, dryRun false) + flags parse", () => {
+  it("parseArgs: defaults (timeout 900, keep false, dryRun false, noVerify false) + flags parse", () => {
     const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--mutate", "echo hi", "--expect", "failure", "--expect-log", "FUZZ", "--timeout", "60", "--keep-branch", "--dry-run"])
     expect(o.error).toBeNull()
     expect(o.branch).toBe("ci-proof/x")
@@ -95,6 +95,14 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(o.timeout).toBe(60)
     expect(o.keep).toBe(true)
     expect(o.dryRun).toBe(true)
+    expect(o.noVerify).toBe(false)
+  })
+
+  it("parseArgs: --no-verify parseia e o usage lista a flag (Prova 16 first-class)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--no-verify"])
+    expect(o.error).toBeNull()
+    expect(o.noVerify).toBe(true)
+    expect(parseArgs(["--help"]).error).toContain("--no-verify")
   })
 
   // ── PURE: Type E namespace contract ────────────────────────────────────
@@ -145,6 +153,15 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(mut.join("\n")).toContain('commit -m "ci-proof: ci-proof/x"')
   })
 
+  it("planSteps: --no-verify adiciona o passo HUSKY=0 (bypass do husky local)", () => {
+    const withFlag = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false, noVerify: true }, "main")
+    const joined = withFlag.join("\n")
+    expect(joined).toContain("env: HUSKY=0 (--no-verify: bypass do husky local no commit/push - Prova 16)")
+    expect(joined.indexOf("HUSKY=0")).toBeLessThan(joined.indexOf("push origin ci-proof/x"))
+    const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false }, "main")
+    expect(without.join("\n")).not.toContain("HUSKY=0")
+  })
+
   // ── PURE: outcome check ────────────────────────────────────────────────
   it("verifyOutcome: expect conclusion + expect-log regex (match e mismatch)", () => {
     expect(verifyOutcome("failure", "failure", "log FUZZ JOB line", "FUZZ JOB").ok).toBe(true)
@@ -183,6 +200,19 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(inv.indexOf("git:push origin --delete ci-proof/e2e-ok")).toBeLessThan(inv.indexOf("git:branch -D ci-proof/e2e-ok"))
   }, 60000)
 
+  // ── FAKE-BIN E2E: o probe CI_PROOF_PROBE e aceito (PROBE BOUNDARY) ────
+  it("E2E PROBE BOUNDARY: --branch = CI_PROOF_PROBE (ci-proof/proof-branch) e ACEITO -> exit 0 com o ciclo completo (o probe e fixture do Type E, NAO branch reservada - rejeita-lo nao adicionaria seguranca; o limite e o namespace, travado pelo header do isCiProofBranch)", () => {
+    const { result, stateDir } = runCli(["--branch", CI_PROOF_PROBE, "--workflow", "pr-check.yml", "--expect", "success"])
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain(`dispatched pr-check.yml on ${CI_PROOF_PROBE}`)
+    expect(result.stdout).toContain("DONE run=777")
+    // O ciclo completo roda com a branch do probe - o runner nao a recusa.
+    const inv = invJoined(stateDir)
+    expect(inv).toContain(`git:checkout -b ${CI_PROOF_PROBE}`)
+    expect(inv).toContain(`gh:workflow run pr-check.yml --ref ${CI_PROOF_PROBE}`)
+    expect(inv.indexOf(`git:push origin ${CI_PROOF_PROBE}`)).toBeLessThan(inv.indexOf("gh:workflow run"))
+  }, 60000)
+
   // ── FAKE-BIN E2E: expect mismatch reverts anyway ──────────────────────
   it("E2E mismatch: --expect success mas conclusion=failure -> exit 1 (revert MESMO ASSIM)", () => {
     const { result } = runCli(["--branch", "ci-proof/e2e-mismatch", "--workflow", "pr-check.yml", "--expect", "success"], {
@@ -206,6 +236,52 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(inv).toContain("git:commit -m ci-proof: ci-proof/e2e-mut")
     expect(inv.indexOf("git:add -A")).toBeLessThan(inv.indexOf("git:commit"))
     expect(inv.indexOf("git:commit")).toBeLessThan(inv.indexOf("git:push origin ci-proof/e2e-mut"))
+  }, 60000)
+
+  // ── FAKE-BIN E2E: --no-verify (Prova 16 first-class) ───────────────────
+  it("E2E --no-verify: a flag seta HUSKY=0 no env de TODOS os spawns git (commit + push + push --delete) - husky.log registra o wiring", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-noverify", "--workflow", "pr-check.yml", "--no-verify", "--mutate", "echo mutation"], {
+      CI_PROOF_FAKE_DIRTY: "1",
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("--no-verify - HUSKY=0 (bypass do husky local no ciclo")
+    const huskyLog = path.join(stateDir, "husky.log")
+    expect(fs.existsSync(huskyLog)).toBe(true)
+    const h = fs.readFileSync(huskyLog, "utf8")
+    // O triplo git de escrita do ciclo herda HUSKY=0 (commit bloqueado pelo
+    // pre-commit, push e push --delete bloqueados pelo pre-push - Prova 16).
+    expect(h).toContain("git:commit -m ci-proof: ci-proof/e2e-noverify")
+    expect(h).toContain("git:push origin ci-proof/e2e-noverify")
+    expect(h).toContain("git:push origin --delete ci-proof/e2e-noverify")
+    // O invocations.log segue intacto para os asserts de ordem existentes.
+    const inv = invJoined(stateDir)
+    expect(inv.indexOf("git:commit")).toBeLessThan(inv.indexOf("git:push origin ci-proof/e2e-noverify"))
+    expect(inv.indexOf("git:push origin ci-proof/e2e-noverify")).toBeLessThan(inv.indexOf("git:push origin --delete"))
+  }, 60000)
+
+  it("E2E sem --no-verify: NENHUM spawn recebe HUSKY=0 (husky.log ausente) - o bypass e opt-in", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-plain", "--workflow", "pr-check.yml", "--mutate", "echo mutation"], {
+      CI_PROOF_FAKE_DIRTY: "1",
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).not.toContain("--no-verify")
+    expect(fs.existsSync(path.join(stateDir, "husky.log"))).toBe(false)
+  }, 60000)
+
+  // ── REAL-REPO CONTRACT: a cadeia do trip do hook local (Prova 16) ──────
+  it("REAL-REPO CONTRACT (Prova 16 ACHADO): a mutacao de um gate file TRIPA o hook local - pre-commit roda o batch (run-precommit-guards) que importa scan-guard-gates (o guard de gate file); o bypass e o HUSKY=0 do --no-verify", () => {
+    const preCommit = fs.readFileSync(path.resolve(process.cwd(), ".husky", "pre-commit"), "utf8")
+    const batch = fs.readFileSync(path.resolve(process.cwd(), "scripts", "run-precommit-guards.mjs"), "utf8")
+    // O pre-commit invoca o batch runner dos guards node (sec 11.13/11.16).
+    expect(preCommit).toContain("node scripts/run-precommit-guards.mjs")
+    // O batch inclui o scan-guard-gates - o guard que falha quando um gate
+    // file (pr-check.yml/guard-gates.yml) muda de forma errada (regras 1-9).
+    // Logo, um commit que mute um gate file e bloqueado pelo hook local
+    // ANTES do push - o ACHADO da Prova 16 (needs: check travou o commit).
+    expect(batch).toContain('from "./scan-guard-gates.mjs"')
+    // O bypass oficial (shim .husky/_/h) NAO e rastreado (husky regenera no
+    // install) - por isso o contrato pina o HUSKY=0 via env wiring no E2E
+    // acima (husky.log), nao o conteudo do shim.
   }, 60000)
 
   // ── FAKE-BIN E2E: --expect-log mismatch ────────────────────────────────

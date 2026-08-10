@@ -116,7 +116,7 @@ function writeCachedFuzzInPrecommit(dir: string) {
   )
 }
 
-describe("run-precommit-guards.mjs - batch runner dos 5 guards node (sec 11.13)", () => {
+describe("run-precommit-guards.mjs - batch runner dos 7 guards node (sec 11.13)", () => {
   afterEach(cleanupTempDirs)
 
   it("AGREGACAO + ISOLAMENTO: guard fora do batch (sintetico) -> exit 1, os outros 5 clean", () => {
@@ -141,12 +141,12 @@ describe("run-precommit-guards.mjs - batch runner dos 5 guards node (sec 11.13)"
     expect(r.stdout).toContain("fuzz-precommit: clean")
   }, 60000)
 
-  it("REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 6 veredictos clean na ORDEM do hook", () => {
+  it("REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 7 veredictos clean na ORDEM do hook", () => {
     const r = runBatch()
     expect(r.status).toBe(0)
     // Determinismo: a ordem do hook (integrity, push-suite, lint-loader,
-    // guard-gates, fuzz-precommit, batch-coverage) - nunca interleaved (a
-    // vantagem do batch sobre o paralelo).
+    // guard-gates, fuzz-precommit, batch-coverage, prepush-batch) - nunca
+    // interleaved (a vantagem do batch sobre o paralelo).
     const cleanIdx = [
       "check-node-modules-integrity: clean",
       "push-suite: clean",
@@ -154,6 +154,7 @@ describe("run-precommit-guards.mjs - batch runner dos 5 guards node (sec 11.13)"
       "guard-gates: clean",
       "fuzz-precommit: clean",
       "batch-coverage: clean",
+      "prepush-batch: clean",
     ].map((v) => r.stdout.indexOf(v))
     expect(cleanIdx.every((i) => i >= 0)).toBe(true)
     expect(cleanIdx[0]).toBeLessThan(cleanIdx[1])
@@ -161,6 +162,7 @@ describe("run-precommit-guards.mjs - batch runner dos 5 guards node (sec 11.13)"
     expect(cleanIdx[2]).toBeLessThan(cleanIdx[3])
     expect(cleanIdx[3]).toBeLessThan(cleanIdx[4])
     expect(cleanIdx[4]).toBeLessThan(cleanIdx[5])
+    expect(cleanIdx[5]).toBeLessThan(cleanIdx[6])
   }, 60000)
 
   it("AGREGACAO + ISOLAMENTO: push-suite falha (sintetico) -> exit 1, os outros 3 rodam e reportam clean", () => {

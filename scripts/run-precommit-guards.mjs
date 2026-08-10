@@ -30,6 +30,13 @@
  *      CRESCIMENTO do proprio batch - todo node guard novo no pre-commit
  *      deve entrar AQUI (o guard de cobertura e ele proprio batchado; a
  *      lista vem dos imports vivos, nao de regex fixo).
+ *   7. scan-prepush-batch.mjs            (sec 11.17): o pre-push NAO e
+ *      batchado - o batch so passa a valer se o pre-push ganhar um SEGUNDO
+ *      node guard (<0.2s cada). Este guard trava a condicao: um node guard
+ *      novo no .husky/pre-push falha com o caminho exato (ate uma secao
+ *      11.x ADOTADO datada reverter o veredito) e o integrity segue como
+ *      spawn individual la. Ele roda NO BATCH do pre-commit (a validacao
+ *      do working tree do pre-push, mesmo padrao do scan-push-full-suite).
  * O scan-guard-gates main() e ASYNC (override WORKFLOW_CONTRACTS_MODULE via
  * import dinamico) - o runner o aguarda antes de agregar.
  *
@@ -55,6 +62,7 @@ import { main as lintLoaderMain } from "./scan-lint-staged-loader.mjs"
 import { main as guardGatesMain } from "./scan-guard-gates.mjs"
 import { main as fuzzPrecommitMain } from "./scan-fuzz-precommit.mjs"
 import { main as batchCoverageMain } from "./scan-batch-coverage.mjs"
+import { main as prepushBatchMain } from "./scan-prepush-batch.mjs"
 
 /**
  * Run the 5 guards in hook order and aggregate the exit codes. Every guard
@@ -73,6 +81,7 @@ async function runPrecommitGuards() {
     await guardGatesMain(),
     fuzzPrecommitMain(),
     batchCoverageMain(),
+    prepushBatchMain(),
   ]
   const worst = codes.some((c) => c !== 0) ? 1 : 0
   process.exitCode = worst

@@ -41,21 +41,28 @@
  *    check-utf8.sh fora de check-docs-encoding.sh nos hooks. POSITIVO:
  *    verify-encoding.sh DEVE existir em .husky/pre-commit E .husky/pre-push.
  *
- * 4. GUARDS NODE BATCHADOS (secao 11.13, medido 2026-08): os 6 guards node
+ * 4. GUARDS NODE BATCHADOS (secao 11.13, medido 2026-08): os 7 guards node
  *    do pre-commit (check-node-modules-integrity, scan-push-full-suite,
  *    scan-lint-staged-loader, scan-guard-gates, scan-fuzz-precommit,
- *    scan-batch-coverage) rodam em UMA invocacao node (run-precommit-guards.mjs,
- *    ~0.22-0.26s - o boot node ~0.14s dominava cada spawn; 4 sequenciais
- *    custavam ~0.54-0.81s). NEGATIVO: um spawn INDIVIDUAL de qualquer um dos
- *    6 no .husky/pre-commit (6 boots = a regressao de custo que o batch
- *    existe para matar). POSITIVO: run-precommit-guards.mjs wired no
- *    .husky/pre-commit (remover o batch = guards voltam a custar 6 boots =
- *    falha 'MISSING').
+ *    scan-batch-coverage, scan-prepush-batch) rodam em UMA invocacao node
+ *    (run-precommit-guards.mjs, ~0.22-0.26s - o boot node ~0.14s dominava
+ *    cada spawn; 4 sequenciais custavam ~0.54-0.81s). NEGATIVO: um spawn
+ *    INDIVIDUAL de qualquer um dos 7 no .husky/pre-commit (7 boots = a
+ *    regressao de custo que o batch existe para matar). POSITIVO:
+ *    run-precommit-guards.mjs wired no .husky/pre-commit (remover o batch =
+ *    guards voltam a custar 7 boots = falha 'MISSING').
  *    NOTA (sec 11.16): o scan-batch-coverage e o guard de CRESCIMENTO deste
- *    contrato - a lista FIXA aqui nao pega um 7o guard novo; o batch-coverage
+ *    contrato - a lista FIXA aqui nao pega um 8o guard novo; o batch-coverage
  *    deriva a lista dos imports vivos do runner e falha todo guard fora do
  *    batch com o caminho exato. Os dois se sobrepoem de proposito: este pina
- *    os 6 conhecidos, aquele deriva o futuro.
+ *    os 7 conhecidos, aquele deriva o futuro.
+ *    NOTA (sec 11.17): o scan-prepush-batch e o 7o guard - ele guarda o
+ *    PRE-PUSH (nao o pre-commit): o pre-push NAO e batchado por design, e o
+ *    guard trava a condicao 'se um 2o node guard aparecer, o batch passa a
+ *    valer' contra regressao futura. O spawn individual do integrity no
+ *    pre-push fica FORA da superficie deste contrato (a asimetria da 11.17),
+ *    e o guard roda NO BATCH do pre-commit validando o working tree do
+ *    pre-push (mesmo padrao dos demais).
  *
  * 5. GATE 3 MAPEADO POR CO-LOCATION (secao 11.15, RE-MEDICAO 2026-08-10
  *    77.58s vs 20.8s): o custo do Gate 3 depende do que o diff toca - o
@@ -146,14 +153,14 @@ const GATE_CONTRACTS = [
   {
     name: "guards node batchados (1 invocacao)",
     negative: [
-      // Os 6 guards node NAO podem voltar a ser spawns INDIVIDUAIS no
-      // pre-commit (6 boots node ~0.54-0.81s vs 1 boot do batch ~0.22-0.26s,
+      // Os 7 guards node NAO podem voltar a ser spawns INDIVIDUAIS no
+      // pre-commit (7 boots node ~0.54-0.81s vs 1 boot do batch ~0.22-0.26s,
       // secao 11.13) - o caminho e o batch runner run-precommit-guards.mjs.
       // O scan NEGATIVO ignora comentarios: o header do pre-commit menciona
       // os nomes dos guards em prosa (o batch), so o SPAWN individual conta.
       {
         file: ".husky/pre-commit",
-        re: /node\s+scripts\/(?:check-node-modules-integrity|scan-push-full-suite|scan-lint-staged-loader|scan-guard-gates|scan-fuzz-precommit|scan-batch-coverage)\.mjs/,
+        re: /node\s+scripts\/(?:check-node-modules-integrity|scan-push-full-suite|scan-lint-staged-loader|scan-guard-gates|scan-fuzz-precommit|scan-batch-coverage|scan-prepush-batch)\.mjs/,
       },
     ],
     positive: [

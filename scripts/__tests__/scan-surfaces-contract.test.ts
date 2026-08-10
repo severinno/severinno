@@ -73,7 +73,8 @@ import {
   YAML_GATE_PATTERNS,
 } from "../encoding-surface.mjs"
 import { EXCLUDED_TREES, TARGET_DIRS } from "../fragile-range-patterns.mjs"
-import { ALWAYS_RUN_SET, CI_PROOF_NAMESPACE, CI_PROOF_PROBE, DANGER_REFS, DISPATCH_SET, GUARD_NET, GUARD_NET_JOB } from "../workflow-contracts.mjs"
+import { ALWAYS_RUN_SET, CI_PROOF_NAMESPACE, CI_PROOF_PATTERN, CI_PROOF_PROBE, DANGER_REFS, DISPATCH_SET, GUARD_NET, GUARD_NET_JOB } from "../workflow-contracts.mjs"
+import { isCiProofBranch } from "../ci-proof-run.mjs"
 import { runSubprocess } from "./golden-copy-utils"
 
 const ROOT = process.cwd()
@@ -767,13 +768,48 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
       expect(f.patterns).toEqual([])
     })
 
-    it("MUTATION: branches: ['**'] / ci-proof/** match the probe; main and v* tags do not; branches-ignore is INVERTED (also a breaker)", () => {
+    it("MUTATION: branches: ['**'] / CI_PROOF_PATTERN match the probe; main and v* tags do not; branches-ignore is INVERTED (also a breaker)", () => {
+      // O glob proibido deriva do MANIFEST (CI_PROOF_PATTERN = ci-proof/**,
+      // a forma glob da mesma shape do probe) - o teste nunca hardcoda o
+      // literal (renomear o namespace re-deriva probe E pattern juntos).
       expect(branchPatternMatches("**", PROBE)).toBe(true)
-      expect(branchPatternMatches("ci-proof/**", PROBE)).toBe(true)
+      expect(branchPatternMatches(CI_PROOF_PATTERN, PROBE)).toBe(true)
       expect(branchPatternMatches("main", PROBE)).toBe(false)
       expect(branchPatternMatches("v*", PROBE)).toBe(false)
       const inv = triggerFilter("on:\n  push:\n    branches-ignore: [main]\n", "push")
       expect(inv.ignore).toBe(true)
+    })
+
+    it("CONTRACT: o probe CI_PROOF_PROBE casa com o isCiProofBranch real (a shape ci-proof/<segment> e UNICA nas 3 derivacoes: manifest, helper, Type E glob)", () => {
+      // A shape ci-proof/<segment> e derivada em TRES lugares separados: o
+      // fato do manifest (CI_PROOF_PROBE = ci-proof/proof-branch), o
+      // validador do helper (isCiProofBranch, regex ^ci-proof/[^/]+$) e o
+      // glob do Type E (CI_PROOF_PATTERN = ci-proof/**, a forma glob da
+      // MESMA shape - tambem um fato do manifest, nao um literal deste
+      // bloco). Um drift em QUALQUER um (ex.: o probe ganhar um 2o segmento,
+      // ou o regex aceitar aninhamento) faria o probe deixar de ser um
+      // branch de prova valido sem nenhum teste apontar a divergencia. Este
+      // pin trava a shape unica: o probe (o FATO do manifest) DEVE ser
+      // aceito pelo validador REAL do helper E pelo glob do Type E - os
+      // tres consomem a mesma shape.
+      expect(isCiProofBranch(CI_PROOF_PROBE)).toBe(true)
+      expect(branchPatternMatches(CI_PROOF_PATTERN, CI_PROOF_PROBE)).toBe(true)
+      // A fronteira e assertada no validador (o mesmo regex que o probe
+      // precisa casar): um branch aninhado ci-proof/a/b NAO e um branch de
+      // prova valido (o regex recusa; o probe e um unico segmento, nunca
+      // aninhado) - a shape e exatamente <ns>/<segment>. O glob do Type E
+      // (CI_PROOF_PATTERN) e MAIS ABRANGENTE por construcao (`**` cruza
+      // `/`, entao o pattern casaria ate um aninhado) - e exatamente por
+      // isso que o invariant testa o PROBE concreto de UM segmento, nao um
+      // padrao; so o namespace puro e excluido pelos dois lados.
+      expect(isCiProofBranch("ci-proof/a/b")).toBe(false)
+      expect(isCiProofBranch(CI_PROOF_NAMESPACE)).toBe(false)
+      // O probe e o pattern derivam do namespace: renomear o namespace
+      // re-deriva os dois (pinned no workflow-contracts GROWTH) E o regex
+      // do helper (default param) - todos seguem o mesmo fato, sem literal
+      // hardcoded.
+      expect(CI_PROOF_PROBE).toBe(`${CI_PROOF_NAMESPACE}/proof-branch`)
+      expect(CI_PROOF_PATTERN).toBe(`${CI_PROOF_NAMESPACE}/**`)
     })
 
     it("MUTATION: flow and block branch forms parse identically (quotes stripped, deduped); tags: counts as a filter; workflow_call-only has no push", () => {
