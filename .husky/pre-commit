@@ -18,6 +18,14 @@ bash scripts/check-docs-encoding.sh
 node scripts/scan-lucide-icons.mjs --check
 bun x lint-staged
 
+# Auto-heal do .next/types stale (2026-08): quando o next instalado muda de versao (package.json
+# ^16.1.1 -> bun install resolve 16.1.3), o surface de types gerado por uma versao anterior
+# importa membros que o next novo nao exporta mais (TS2305 em TODO o .next/types) e o tsc abaixo
+# falharia em todo commit ate o cache ser limpo. Deteccao por mtime (instalacao mais nova que a
+# geracao = stale); --fix remove SO .next/types + .next/dev/types (regenerados no proximo dev/build).
+# Custo <10ms; CI nao precisa (checkout fresco, sem .next).
+node scripts/check-next-types.mjs --fix
+
 # Typecheck: nenhum commit pode quebrar o build (tsc --noEmit --incremental - mesmo gate do CI).
 # NOTA: o incremental (tsconfig.tsbuildinfo, gitignored) deixa o gate ~17-24s WARM; o primeiro
 # run apos clone limpo ou mudanca no tsconfig e ~55s (cold) - nao desative o gate por causa disso.

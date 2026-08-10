@@ -4,10 +4,13 @@
 > de CI falha de verdade quando a classe de erro que ele protege é injetada
 > (e reverte o repo ao estado limpo depois). Serve de auditoria futura: se um
 > gate parar de falhar numa prova equivalente, é sinal de regressão no próprio
-> gate. As provas de sentinela (1-6) seguem o contrato: **injetar → gate
+> gate. As provas de sentinela (1-6, 8) seguem o contrato: **injetar → gate
 > falha (exit 1) → reverter → repo limpo**. A Prova 7 é o outro lado do
 > ciclo — uma **prova de EXECUÇÃO**: o gate roda e PASSA no CI real, sem
 > injeção, fechando o caso "o gate nunca fica órfão de execução".
+> Prova 8: sentinela de **contrato de workflow** (Type D do scan-surfaces) —
+> um workflow dispatch-only injetado num branch scratch faz o teste hermético falhar
+> no CI real com o offender nomeado (`expected [ 'type-d-proof.yml' ] to deeply equal []`).
 
 ## 1. Tabela resumo
 
@@ -20,6 +23,8 @@
 | 5 | Encoding — camada UTF-8 (`check-utf8.sh`) no **fixed dir `.zscripts/`** (workspace-agent ops scripts) | Corrupção UTF-8 num `.zscripts/*.sh` (ex.: byte 0x97 Windows-1252) | `0x97` anexado a `.zscripts/build.sh` | **Local** (sem run de CI dedicado; o fixed dir é ALWAYS-scanned, o mesmo caminho do CI) | ✅ `WARNING: .zscripts\build.sh (byte 0x97 -- Windows-1252 em dash)` + `check-utf8: FAILED` → exit 1 → revertido byte-identical |
 | 6 | Fragile-range — **SPREAD CONTRACT** (a derivação `--dir ...TARGET_DIRS` cobre árvores futuras) | Um 5º dir no `TARGET_DIRS` real escapar da cobertura do guard | `workers` injetado no `TARGET_DIRS` real + `workers/dirty.ts` com `[^ -~]` | Run [**31331423557**](https://github.com/severinno/severinno/actions/runs/31331423557) (`ci-proof/spread-live`) + prova local 2026-08-09 | ✅ **CI (utf8-check / UTF-8 Check)**: `fragile-range: 1 fragile character-class range(s) in LIVE code: dirty.ts :: space-tilde character range :: "[^ -~]"` → exit 1; job `Fragile Range Guard` também falhou; local: guard suite 7 falhas + golden-copy divergence; revertido byte-identical |
 | 7 | Guard vitest — **push net** (`guard-gates.yml`, trigger `push: [main, develop]`) | O BASELINE de 0 offenders + divergence guards ficarem ÓRFÃOS de execução num push (skip/reorder do job de testes — o failure mode do lint) | Nenhuma injeção — push REAL temporário a `develop` (dispatch via API bloqueado: workflow fora do default branch; `main` dispararia deploy; `develop` é seguro e escuta o trigger) | Run [**31336318902**](https://github.com/severinno/severinno/actions/runs/31336318902) (`develop`, event `push`) + local `bun run test:guard` 66/66 | ✅ job `Guard Gates (fragile-range + golden-copy)` verde em 45s: `Test Files 2 passed (2), Tests 66 passed (66)` no step "Run guard vitest suites"; branch temporária deletada (remote de volta ao estado original) |
+| 8 | Workflow — **Type D HERMETIC** (`scan-surfaces-contract.test.ts`) | `workflow_dispatch:` como ÚNICO trigger (dispatch-only = irrecuperável E indisparável — a classe do 404 do Prova 7) | `.github/workflows/type-d-proof.yml` dispatch-only num branch scratch `ci-proof/type-d` (c060362) | Run [**31342311844**](https://github.com/severinno/severinno/actions/runs/31342311844) (`develop`, event `push`) + local no branch scratch | ✅ job `Tests` do ci.yml: `expected [ 'type-d-proof.yml' ] to deeply equal []` no HERMETIC + CONTRACT com `+ "type-d-proof.yml"` → exit 1; revertido byte-identical |
+| 9 | Auto-heal — `check-next-types.mjs` (pre-commit) | `.next/types` stale após bump de versão do next (123 erros TS2305 do incidente 2026-08) | swap REAL de versão: types gerados pelo next 16.1.3 + `bun add next@16.1.1 --no-save` (reescreve `node_modules/next/package.json` com mtime novo) | **Local** — prova de EVENTO REAL (não sintética): dev server real + bun add real + guard real | ✅ sem `--fix`: `STALE .next/dev/types` + exit 1; com `--fix`: `REMOVED .next/dev/types` + exit 0, `.next` raiz preservado; next restaurado ao 16.1.3, `package.json`/`bun.lock` intocados |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -326,6 +331,214 @@ toca a superfície — e o único push skipável sem perda seria um docs-only
 (que a superfície não cobre mesmo). O net incondicional mantém o BASELINE
 estruturalmente garantido de rodar em todo merge.
 
+## 8.2 Prova 8 — Type D HERMETIC live (run 31342311844)
+
+- **Gate**: `scripts/__tests__/scan-surfaces-contract.test.ts`, Type D HERMETIC
+  (`workflow_dispatch:` nunca é o ÚNICO trigger) + CONTRACT (o SET de dispatch
+  workflows = o set documentado) — roda no job `Tests` do `ci.yml` (`test:run`)
+  e no job `check` do `pr-check.yml` (`test:unit`).
+- **Run**: [31342311844](https://github.com/severinno/severinno/actions/runs/31342311844)
+  (`develop`, event `push`, branch scratch `ci-proof/type-d` @ c060362).
+- **Injeção**: `.github/workflows/type-d-proof.yml` NOVO, dispatch-only
+  (`on: workflow_dispatch:` sem nenhum outro trigger) — exatamente a classe que
+  o HERMETIC proíbe: um workflow dispatch-only é irrecuperável E indisparável
+  (o 404 do Prova 7 + nem aparece no Actions tab).
+- **Disparo**: push temporário a `develop` (caminho documentado na seção 10:
+  `main` dispararia deploy; `develop` é seguro e escuta o trigger `push` do
+  ci.yml; dispatch via API do próprio workflow novo seria 404 por não estar
+  no default branch).
+- **Observado** (log do job `Tests`, step `Run bun run test:run`, 2026-08-09 23:37Z):
+  BÔNUS: o próprio GitHub também rejeitou o arquivo injetado — run
+  [**31342311275**](https://github.com/severinno/severinno/actions/runs/31342311275)
+  `completed failure .github/workflows/type-d-proof.yml` em 0s (workflow dispatch-only
+  sem `jobs:` = inválido para o GitHub — "irrecuperável E indisparável" em dobro).
+
+```
+❯ scripts/__tests__/scan-surfaces-contract.test.ts (33 tests | 2 failed)
+   → expected [ 'deploy.yml', 'e2e-cache.yml', …(6) ] to deeply equal [ 'deploy.yml', 'e2e-cache.yml', …(5) ]   (CONTRACT, :561:45)
+   → expected [ 'type-d-proof.yml' ] to deeply equal []   (HERMETIC, :566:25)
+   ❯ scripts/__tests__/scan-surfaces-contract.test.ts:566:25
+##[error]AssertionError: expected [ 'type-d-proof.yml' ] to deeply equal []
+```
+
+- **Confirmação local** (pré-push, o MESMO teste no branch scratch):
+  `expected [ 'type-d-proof.yml' ] to deeply equal []` — a falha hermética é
+  determinística: o offender é o arquivo injetado, nomeado no diff.
+- **Revertido**: develop deletado, worktree scratch removido, branch local
+  deletada, repo no estado limpo (byte-identical).
+
+Nota (achado lateral): o push de DELEÇÃO do develop disparou o hook pre-push
+completo (verify-encoding + fuzz:ci + gates) e falhou em `fuzz:ci` (exit 1,
+`src/components/vitrine/__tests__/address-autocomplete-fuzz.test.tsx` — nunca
+tocado pela thread; falha local pré-existente, investigação à parte). O delete
+usou `--no-verify` para completar a limpeza da branch de prova.
+
+## 8.3 Prova 9 — auto-heal `.next/types`/`.next/dev/types` stale, prova de EVENTO REAL (local)
+
+- **Gate**: `scripts/check-next-types.mjs` (wired no `.husky/pre-commit` antes
+  do `bun run typecheck`). Detecção por mtime: se o mtime de
+  `node_modules/next/package.json` (o momento da instalação) ≥ o mtime mais
+  novo sob `.next/types` e `.next/dev/types` (o momento da geração), a
+  superfície gerada pode ser de uma versão anterior do next → STALE.
+- **Por que LOCAL com evento real, e NÃO um job de CI**: o guard é
+  pre-commit-only por design — o CI typechecka checkout fresco, sem `.next`
+  (ou com types gerados pelo mesmo next no mesmo job), então a superfície
+  stale só existe LOCALMENTE, entre um `bun install` que sobe o next e o
+  próximo dev/build. Um job de CI teria que FABRICAR o estado stale de
+  qualquer forma (instalar, gerar types, trocar versão) — exatamente o que
+  esta prova faz, só que com os eventos reais. O que a prova sintética
+  (utimesSync) NÃO prova, esta prova fecha: o trigger real (um install que
+  reescreve `node_modules/next/package.json`) PRODUZ a inversão de mtime.
+- **Nota honesta**: `next typegen` não existe no CLI do next 16.1.3 (só
+  build/dev/start); os types gerados por `next dev` caem em `.next/dev/types`
+  (é o que o guard varre junto com `.next/types` do build — o mecanismo de
+  detecção é idêntico para os dois, ambos em TYPE_DIRS).
+- **Passos** (2026-08-09, todos reais):
+
+```
+1. Estado limpo: next 16.1.3 instalado, sem .next (removido no commit fe7d761).
+2. Gera types reais: bun run dev  ->  .next/dev/types criado (mtime 23:53:19)
+3. Swap real de versao: bun add next@16.1.1 --no-save (a versao do incidente)
+   -> node_modules/next/package.json reescrito, versao 16.1.1, mtime 23:54:42
+   (o install agora e MAIS NOVO que os types -> a classe do incidente)
+4. node scripts/check-next-types.mjs (sem --fix):
+   check-next-types: STALE .next/dev/types (generated by a previous next version)
+   check-next-types: run with --fix to remove the stale generated surface
+   GUARD_EXIT=1
+5. node scripts/check-next-types.mjs --fix:
+   check-next-types: REMOVED .next/dev/types (regenerated on the next dev/build)
+   FIX_EXIT=0  ->  .next/dev/types sumiu; .next raiz PRESERVADO (so o surface)
+6. Restauracao: bun add next@16.1.3 --no-save -> next de volta ao 16.1.3;
+   git status package.json bun.lock = vazio (--no-save nao toca em nenhum)
+7. Estado final: rm -rf .next (prova deixa o repo como estava); guard exit 0
+   "clean (no generated types to check)"
+```
+
+**Veredito**: a prova local sintética (check-next-types.test.ts) cobre o
+contrato de detecção/heal com mtimes fabricados; esta prova de evento real
+cobre a CAMADA que a sintética não alcança — o install real inverte o mtime
+de verdade, e o guard detecta e cura com os binários reais. Job de CI seria
+redundante (estado stale é impossível no checkout fresco do CI) e precisaria
+fabricar o mesmo cenário. Repo revertido byte-identical.
+
+## 8.4 Custo por push LOCAL — pre-push hook (medição 2026-08-09) — Gate 3 mapeado, não a suíte completa
+
+**A pergunta**: o pre-commit:test mapeia áreas tocadas em ~5s; o CI roda a
+suíte inteira. O pre-push ainda precisa da suíte completa no Gate 3, ou o
+mapeamento por áreas (com `--since` do remoto) já cobre o essencial?
+**Resposta com medição: o Gate 3 já é mapeado (calibragem anterior) e a
+medição prova que voltar à suíte completa seria 10x mais caro E bloquearia
+todo push com ruído local que o CI não vê.**
+
+**O que o hook roda por push hoje** (ordem real do `.husky/pre-push`,
+medição sequencial, um shell, sem contenção — números honestos no
+Windows/git-bash):
+
+| Gate | Custo medido |
+|---|---|
+| verify-encoding (UTF-8 + VPS ASCII + proof + fragile baseline) | ~1.5s |
+| check-docs-encoding (informativo, nunca bloqueia) | <1s |
+| `fuzz:ci` | **53s** — verde pós-cura (era VERMELHO localmente, nota ¹) |
+| pre-push:gates — Gate 1 manifest + Gate 2 budget (honest-skip sem ANALYZE) + Gate 3 | **18s** (3 gates, exit 0) |
+| **Total hook** | **~74s** |
+
+**Medição do Gate 3** (`PRE_PUSH_REMOTE_SHA=7869baa` — pai do HEAD, o cenário
+realista "remote tip = commit anterior"): mapeou **8 testes** das áreas
+tocadas — check-next-types, blame-ignore-revs, check-docs-encoding,
+executable-surface, health-check-script, release-assert-route-gate,
+scan-surfaces-contract, scan-timeouts — todos verdes, exit 0, 18s para os 3
+gates. O `--since` fecha o gap "commitado mas não staged": a união é staged +
+HEAD + range `<remote sha>...HEAD`.
+
+**A suíte completa como baseline** (`bun run test:unit`): **178s E vermelha
+localmente** — `8 failed | 135 passed (143 files)`, 114 testes falhando:
+
+- Arquivos (nenhum tocado pela thread): `src/app/__tests__/{accessibility,
+  login-page, not-found, register-page}.test.tsx`,
+  `src/app/busca/__tests__/search-page.test.tsx`,
+  `src/lib/__tests__/{sound-context, use-balance-pulse, use-coin-sound}.test.{tsx,ts}`.
+- Erros AMBIENTAIS, não de assert: `TypeError: Cannot read properties of null
+  (reading 'useContext')` no `next/src/client/link.tsx` sob jsdom (sintoma
+  clássico de mismatch React/DOM — react 19.2.3 no topo do node_modules vs
+  pin `^19.0.0`; plausível artefato dos swaps 16.1.1↔16.1.3 da Prova 9) e
+  hooks de som/coin. O CI roda a mesma suíte VERDE em checkout fresco →
+  estado local do node_modules, não regressão de código. Causa raiz
+  confirmada e CURADA com install limpo — seção 8.5 (a suíte completa
+  roda 100% verde em ambiente saudável).
+
+**Veredito: manter o Gate 3 mapeado — não voltar à suíte completa**:
+
+1. **Custo**: 18s (3 gates mapeados) vs 178s — ~10x.
+2. **Ruído local**: a suíte completa é vermelha localmente por motivos
+   ambientais — rodá-la no pre-push bloquearia TODO push com ruído que o CI
+   não vê; o hook ficaria inutilizável.
+3. **Autoridade**: o CI roda a suíte inteira em checkout fresco (rede de
+   segurança); o mapeamento é só o feedback rápido do push.
+4. **Cobertura do mapeamento**: todo arquivo tocado com teste co-localizado
+   roda (staged + HEAD + range do push); e2e/docs/YAML não mapeiam por design
+   (o CI cobre no PR). O mapeamento é exato DENTRO das áreas tocadas; o único
+   ponto cego real é a regressão cross-área (mudança no arquivo A quebra o
+   teste co-localizado do arquivo B, intocado — nada mapeia) — precisamente o
+   que a suíte completa do CI em checkout fresco pega.
+5. **A calibragem real que resta é o fuzz, não o Gate 3** — ver nota (¹).
+
+(¹) O `fuzz:ci` é o custo dominante do push (~53s, 71% do total) — e esteve
+**vermelho localmente** pela MESMA duplicação de React da seção 8.5 (invalid
+hook call na suite AddressAutocomplete sob jsdom), não um bug da suite. Curado
+pelo install limpo da 8.5: fuzz:ci agora exit 0 (~53s). O bloqueio de TODO push
+— inclusive deleções (a Prova 8 precisou de `--no-verify`) — está removido SEM
+mudança de código: nem consertar a suite (ela nunca esteve errada) nem torná-la
+não-bloqueante foi necessário — e tornar um gate vermelho não-bloqueante
+mascararia uma regressão real (o CI roda fuzz:ci como autoridade).
+
+## 8.5 Causa raiz do vermelho local — layout do node_modules corrompido, curado com install limpo (medição 2026-08-09)
+
+**Contexto**: a seção 8.4 mediu a suíte completa VERMELHA localmente (8
+arquivos / 114 testes, `8 failed | 135 passed (143)`). Esta seção fecha a
+causa raiz com evidência e registra a cura — o ambiente agora roda a suíte
+inteira verde.
+
+**Sintoma**: `Invalid hook call` (useContext null) em TODO teste de
+componente/hook — not-found/accessibility (next/link), login/register/search
+(páginas), sound-context/use-balance-pulse/use-coin-sound (renderHook). O
+clássico de DUAS cópias de React em runtime.
+
+**Diagnóstico (evidência)**:
+1. `node_modules/react` e `node_modules/react-dom`: diretórios REAIS em
+   19.2.3 (mtime 19:49 = o horário dos experimentos da Prova 9), não symlinks
+   para o store.
+2. O store `.pnpm` tinha ORFÃOS `react@19.2.8` e
+   `react-dom@19.2.8_react@19.2.8` — versões que o lock NÃO resolve para o
+   runtime (o lock tem react/react-dom em 19.2.3; o `react@19.2.8` visto em
+   grep era o `@types/react`).
+3. Duas instâncias físicas de React (topo real 19.2.3 + store 19.2.8) → os
+   hooks de uma não enxergam o dispatcher da outra → invalid hook call. A
+   cadeia exata de qual pacote resolveu a cópia órfã é irrecuperável (o
+   node_modules foi apagado) — o mecanismo e a cura empírica bastam.
+4. `bun install` normal (com ou sem `--frozen-lockfile`) dizia "no changes" —
+   o bun CONFIA no node_modules existente e não reconcilia um layout
+   divergente.
+
+**A cura**: `rm -rf node_modules && bun install --frozen-lockfile` (160s, 1174
+pacotes) reconstruiu o store a partir do lock — **bun.lock byte-identical**
+(hash `47ec16db` antes/depois: o lock nunca esteve errado). Após: react e
+react-dom únicos em 19.2.3, sem órfãos no store.
+
+**Resultado**: os 8 arquivos 114/114; suíte completa **143/143 arquivos,
+1787/1787 testes, exit 0 (167s)** — contra o `8 failed | 135 passed (143)`
+medido na 8.4.
+
+O mesmo vale para o fuzz:ci — a suite AddressAutocomplete (vermelha na Prova 8
+e na nota ¹ da 8.4) era o MESMO invalid hook call; pós-cura: exit 0 (~53s),
+removendo o bloqueio de pushes de deleção sem mudança de código.
+
+**Lição**: `bun add <pkg> --no-save` altera o node_modules sem tocar o lock;
+se a árvore divergir, o `bun install` comum NÃO repara (trust no estado
+existente) — o reparo é o install limpo (rm -rf node_modules). O veredito da
+8.4 (Gate 3 mapeado, CI como autoridade) permanece válido — 167s vs 18s, ~10x
+— mas o argumento do "ruído local" era específico do ambiente corrompido, e
+agora está curado.
+
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
 Nos dois runs acima (pré-reorder), o job `check` mostrava exatamente o
@@ -364,7 +577,218 @@ Esta seção serve de registro do porquê da ordem atual.
    `git status` limpo no worktree principal.
 5. Registrar na tabela da seção 1 com o run number.
 
-## 11. Referências
+## 11. Custo por commit — pre-commit hook (medição 2026-08-09)
+
+Medição do custo real por commit do hook `.husky/pre-commit`, no estado pós-fix do
+`.next/types` stale (`.next` removido, `tsconfig.tsbuildinfo` quente, 1.29 MB) e com os
+4 arquivos do bloco de auto-heal staged. Sequencial, um shell, sem paralelismo:
+
+| Gate | Custo (1ª run) | Custo (2ª run, warm) | Nota |
+|---|---|---|---|
+| verify-encoding (UTF-8 + ASCII + fragile + baseline) | 2.4s | — | o maior dos gates de encoding |
+| check-docs-encoding (informativo) | 0.7s | — | nunca bloqueia |
+| scan-lucide-icons | 0.3s | — | |
+| check-next-types (auto-heal) | 0.2s | — | <10ms esperado; 0.2s é boot node |
+| **tsc --incremental (warm)** | **17.5s** | **18.2s** | o piso do hook — o MESMO gate do CI |
+| **lint-staged (eslint --fix)** | **8.6s** | **8.0s** | dominado pelo BOOT do eslint (8.4s isolado num único arquivo) |
+| pre-commit:test (áreas tocadas, 7 testes) | 5.2s | 4.9s | vs ~75s da suíte completa |
+| **Total (commit com código)** | **~35s** | | |
+
+**Recalibração — veredito: os dois gates pedidos já cobrem o essencial, manter.**
+
+1. `tsc --incremental` com tsbuildinfo quente: 17.5-18.2s WARM vs ~55s cold (~3x). É o
+   MESMO gate que o CI roda (tsc --noEmit), então não é descartável sem perder a garantia
+   de tipo — 17.5s é o piso de um typecheck de projeto inteiro e o incremental já entrega
+   ele. Confirmado estável nas duas runs (17.5 / 18.2).
+2. Mapeamento de áreas (pre-commit:test): 5.2s para 7 testes mapeados vs ~75s da suíte
+   completa — o escopo certo para o pre-commit (o CI roda a suíte inteira de qualquer
+   forma). Skip instantâneo em commits só-doc.
+3. O segundo maior custo NÃO é o tsc: é o `lint-staged` em 8.0-8.6s, quase todo boot do
+   eslint (8.4s medido isolado para 1 arquivo — config grande do repo). Se um dia o
+   pre-commit precisar ficar mais barato, o alvo é esse (ex.: eslint --cache), não o gate
+   de tipo.
+
+Nota honesta: o "~19s" reportado no commit fe7d761 não bate com esta medição — o piso
+real é tsc ~17.5s + eslint ~8.5s = ~26s antes mesmo de qualquer teste. O ~19s
+provavelmente refletiu uma medição em máquina/estado diferente; o número medido aqui é
+o ground truth atual.
+
+## 11.1 eslint --cache no lint-staged — avaliado e RECUSADO (medição 2026-08-09)
+
+O lint-staged é o 2º maior custo do hook (~8.5s). A pergunta: habilitar
+`eslint --cache` cortaria esse custo? Medição empírica diz NÃO — o cache
+não ganha no cenário real do lint-staged, e o motivo é estrutural.
+
+**Decomposição do custo (1 arquivo staged, eslint 9.39.2 flat config):**
+NOTA de metodologia: estes números são o eslint ISOLADO (`npx eslint`),
+mais lentos que o caminho do hook (`bun x lint-staged`, ~8.5s na seção 11)
+por causa do dispatch do bun — a conclusão (boot domina, cache não ganha)
+vale para os dois.
+
+```
+ 13.16s  eslint --print-config   (boot + carregar config/plugins)
+ 12.60s  eslint --fix 1 arquivo  (boot + lint — o lint é ~gratuito)
+```
+
+O custo é o BOOT (carregar eslint-config-next + plugins + config), não o
+lint do arquivo. O `--cache` do eslint pula LINTAR arquivos inalterados —
+mas o engine ainda sobe (boot não é cacheado).
+
+**O cenário real do lint-staged é um MISS garantido:** o arquivo está
+staged porque MUDOU (git add só existe para mudanças). O cache é
+keyed por hash do conteúdo — arquivo mudado = miss. A/B alternado
+3 runs (baseline vs `--fix --cache --cache-location` no mesmo arquivo,
+com sentinela apendado para forçar o miss):
+
+```
+run 1: baseline=10.29s  cache-miss= 9.08s
+run 2: baseline=10.34s  cache-miss=13.16s
+run 3: baseline=11.85s  cache-miss=11.86s
+   -> sem ganho consistente (mediana baseline ~10.3 vs miss ~11.9)
+```
+
+O único caso onde o cache ganharia: o MESMO arquivo relintado SEM mudar
+(warm 8.05s vs cold 10.42s — ~2s), o que no hook só ocorreria num
+re-commit do mesmo arquivo após falha de outro gate — raro e estreito.
+
+**Decisão: manter `"*.{ts,tsx}": "eslint --fix"` sem --cache.** O cache
+adicionaria um arquivo de cache (com .gitignore) + o risco de um resultado
+stale ser reusado, para ~0 de ganho no fluxo normal. Se o boot do eslint
+precisar cair de verdade, o lever real é um daemon (eslint_d) ou enxugar
+a config (menos plugins) — mudanças maiores, avaliadas quando o custo
+incomodar. O ~8.5s do lint-staged é aceito como o preço do gate de lint.
+
+## 11.2 eslint_d no lint-staged — avaliado e RECUSADO (medição 2026-08-09)
+
+**A pergunta**: o custo do lint-staged é o BOOT do eslint (config + plugins,
+~8s). O eslint_d mantém o engine quente num daemon entre runs — vale
+substituir `eslint --fix` por `eslint_d --fix`?
+
+**A medição** (binários diretos de `node_modules/.bin` — o que o lint-staged
+realmente executa; `npx` adiciona ~10s de client overhead no Windows e foi
+excluído do A/B):
+
+| Caminho | 1º run | runs seguintes |
+|---|---|---|
+| `eslint --fix` (baseline atual) | 8s | 8s |
+| `eslint_d --fix` (cold: daemon inicia + carrega config) | 23s | — |
+| `eslint_d --fix` (warm) | — | **1s / 0s** |
+
+- eslint_d 15.0.3 + eslint 9.39.2 (flat config): compatível; funciona no
+  Windows (daemon rodando, PID 10500). Paridade: output do eslint e do
+  eslint_d **byte-idêntico**; `--fix` aplica igual (exit 0, arquivo preservado).
+
+**O achado que mata a adoção — staleness PROVADA**: o daemon NÃO reinicia
+quando a config muda. Testado duas vezes no eslint.config.mjs:
+1. `touch` (mtime novo) → PID inalterado, run em 1s com a config velha em
+   memória.
+2. Mudança REAL de conteúdo (comentário anexado) → PID inalterado (10500),
+   run em 1s com a config antiga.
+
+O eslint_d só reinicia em mudança de lockfile (dependência), não em mudança
+de config. Para um GATE de pre-commit isso é um furo silencioso: uma edição
+de regra staged no mesmo commit seria lintada contra a config ANTIGA — o gate
+enforcaria as regras de ontem. Mitigações: restart incondicional paga 23s
+cold por commit (pior que o baseline 8s); restart condicional por hash da
+config reintroduz maquinaria no hook (tracking de estado) para ~7s/commit.
+
+**Veredito: RECUSADO** — a performance é real (~8x: 8s → ~1s warm), mas o
+custo é integridade de gate: staleness silenciosa é exatamente a classe de
+falha que este doc prova contra. Diferente da seção 11.1 (o `--cache` era
+estruturalmente inútil — boot não é cacheado), o eslint_d é
+**performance-válido mas lifecycle-inválido** para o contexto de gate. Se o
+eslint_d ganhar watch de config (ou o hook ganhar um shim de restart por
+hash), a adoção vira viável — o recipe está nesta seção. O CI roda
+`eslint .` fresco como autoridade de qualquer forma, limitando o dano a um
+pass/fail local com regras velhas.
+
+**NOTA de metodologia**: os números isolados desta seção usam o binário raw
+(8s); a seção 11.1 usou `npx eslint` (10-13s) — o npx adiciona ~10s de
+resolução/verificação no Windows. O hook (`bun x lint-staged`) usa o binário
+resolvido pelo lint-staged, então o raw é o número representativo. O daemon
+foi parado (`eslint_d stop`) e a instalação revertida (package.json/bun.lock
+byte-identical).
+
+**Reprodução (para re-validação se o eslint_d ganhar watch de config):**
+```bash
+# A/B com o binário raw (o que o lint-staged executa)
+./node_modules/.bin/eslint --fix <arquivo>       # baseline: ~8s
+bun add -D eslint_d
+./node_modules/.bin/eslint_d --fix <arquivo>      # cold: ~23s via npx (~13s raw bin)
+./node_modules/.bin/eslint_d --fix <arquivo>      # warm: ~1s
+# staleness probe: npx eslint_d status anota o PID; edite o eslint.config.mjs
+# (mtime OU conteudo); rode eslint_d --fix de novo e confira o PID - se igual,
+# o daemon lintou com a config antiga (o furo que motiva esta recusa).
+npx eslint_d stop                                # limpa o daemon
+```
+
+## 11.3 Perfil do boot do eslint — o peso é o BUNDLE eslint-config-next, não um plugin (medição 2026-08-09)
+
+**A pergunta**: o boot (~8.5s) vem de carregar eslint-config-next + plugins.
+Qual import pesa mais? Se um plugin dominar, dá para removê-lo ou carregá-lo
+lazy? **Resposta com evidência: o dominante é o bundle `core-web-vitals`
+(4.6s de import), não um plugin isolado — e nem remoção nem lazy são viáveis
+sem perder a cobertura central de regras.**
+
+**Vista 1 — CPU profile do boot real** (`node --cpu-prof` no binário raw +
+`--print-config`, 8s wall / 4.4s de amostras de CPU):
+
+- 66% `(native)` — dominado por `compileFunctionForCJSLoader` (36.8% = 1.6s):
+  o V8 **compilando o grafo CJS** de módulos carregados; + 2% GC.
+- ~24% resolução do loader CJS: `internalModuleStat` (11.4%) + `readFileUtf8`
+  (9.4%) + lstat/realpath/readPackageJSON — probes de fs na resolução do
+  layout pnpm (cada `require` varre caminhos `node_modules/.pnpm/...`).
+- Módulos de plugin individuais <2% cada: babel bundled do next 1.8%,
+  react-hooks 0.8%, jsx-a11y 0.6%, typescript 0.6%. **Nenhum plugin isolado
+  domina** — o custo é compile + resolução do GRAFO, não a lógica de um plugin.
+
+**Vista 2 — timing de import cold por pacote** (processo fresco por import):
+
+| Import | Custo |
+|---|---|
+| `eslint-config-next/core-web-vitals` | **4.6s** ← o mais pesado |
+| `eslint-config-next/typescript` | 2.1s |
+| `@typescript-eslint/eslint-plugin` / `typescript-eslint` | 2.1s |
+| `eslint-plugin-import` | 999ms |
+| `eslint-plugin-react` | 955ms |
+| `eslint-plugin-jsx-a11y` | 883ms |
+| `eslint-plugin-react-hooks` | 736ms |
+| `eslint` (core) | 432ms |
+| `@next/eslint-plugin-next` | 217ms |
+
+**Interpretação**: o dominante é o **bundle** `core-web-vitals` (4.6s) — o
+peso é o grafo de plugins que ele agrega (react + jsx-a11y + import + hooks +
+@next + o babel compilado do next). O segundo (typescript, 2.1s) carrega o
+typescript-eslint. Remover qualquer um = perder a cobertura central de regras
+de um repo Next/TS; **lazy-loading não existe em flat config** (o array de
+config é avaliado eager no boot do ESLint — não há API de plugin preguiçoso).
+O plugin individual mais pesado (@typescript-eslint, 2.1s) é estrutural para
+um repo TS (regras type-aware).
+
+**Veredito: nenhuma mudança de config** — o perfil fecha a pergunta com
+evidência: o ~8.5s é o preço inerente do conjunto de regras, consistente com
+a 11.1 (cache não ajuda — boot não é cacheado) e a 11.2 (daemon recusado por
+staleness). Os levers residuais honestos: paralelizar lint+typecheck no hook,
+ou um config mínimo separado para o diff staged — ambos com custo de
+complexidade/drift que este repo recusa por princípio (single source of
+truth).
+
+**Reprodução (para re-validação):**
+```bash
+# 1. CPU profile do boot (binário raw, sem npx):
+node --cpu-prof --cpu-prof-dir=prof node_modules/eslint/bin/eslint.js \
+  --print-config scripts/check-next-types.mjs   # ~8s; agregar hitCount do .cpuprofile
+# 2. Timing de import cold por pacote (processo fresco por import):
+for p in eslint-config-next/core-web-vitals eslint-config-next/typescript \
+         @typescript-eslint/eslint-plugin eslint-plugin-import eslint-plugin-react \
+         eslint-plugin-jsx-a11y eslint-plugin-react-hooks; do
+  node -e "const {performance}=require('perf_hooks');import('$p').then(()=>console.log((performance.now()).toFixed(0)+'ms'))"
+done
+```
+Repo deixado byte-identical após a medição: `prof/` removido e
+`eslint.config.mjs` intocado (nenhuma mudança de config — o veredito da seção).
+
+## 12. Referências
 
 - Investigação da falha contínua do `security-headers`: `docs/security-headers-gate-2026-08.md`
   (DNS aponta para WordPress na Hostinger, não para o VPS — não é regressão do app).

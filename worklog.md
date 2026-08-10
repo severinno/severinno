@@ -474,3 +474,28 @@ Work Log:
 
 Stage Summary:
 - O entry f17ffdd no .git-blame-ignore-revs fica (pratica padrao, inofensivo e util p/ futuros commits ws-only), mas a expectativa correta: blame das linhas de banner vai continuar mostrando f17ffdd, porque a conversao foi mudanca de conteudo, nao de whitespace.
+
+---
+Incident: .next/types stale bloqueando o pre-commit (123 erros TS2305) — 2026-08-09
+
+Sintoma: o pre-commit hook falhava no `tsc --noEmit --incremental` com 123 erros, TODOS em
+`.next/types/**` do tipo: `Module '"next/dist/build/segment-config/app/app-segment-config.js"' has no
+exported member 'InstantConfigForTypeCheckInternal'` (TS2305). Nenhum arquivo de src/ estava
+envolvido — o diff da thread era todo de scripts/__tests__ e docs.
+
+Causa raiz: o tsconfig.json inclui `.next/types/**/*.ts` e `.next/dev/types/**/*.ts`. O package.json
+pinava `"next": "^16.1.1"`; um `bun install` resolveu 16.1.3, mas o `.next/types` cacheado tinha sido
+gerado por um 16.1.x ANTERIOR — a versao nova removeu o membro que o surface antigo importa. O cache
+de types e um artefato gitignored; o fix manual era `rm -rf .next` (perde TODO o cache de build).
+
+Fix manual (fallback, se o auto-heal nao estiver disponivel):
+    rm -rf .next/types .next/dev/types     # so o surface gerado; regenera no proximo next dev/build
+
+Auto-heal versionado (implementado): `scripts/check-next-types.mjs --fix`, rodado no pre-commit
+antes do tsc. Deteccao por mtime (node_modules/next/package.json mais novo que o mtime mais recente
+sob .next/types/.next/dev/types = stale) — nenhum parsing de mensagem de erro, nenhum nome de membro
+hardcoded. Coberto por scripts/__tests__/check-next-types.test.ts (repo sintetico via NEXT_TYPES_ROOT,
+mtime setado por utimesSync). CI nao precisa: typechecka checkout fresco, sem .next.
+
+Licao: quando o tsc falhar com TS2305 apenas em `.next/` (gitignored), e cache de types stale por
+bump de versao do next, nao codigo — o guard do pre-commit agora cura sozinho antes do tsc rodar.
