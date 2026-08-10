@@ -53,15 +53,18 @@ bash scripts/verify-encoding.sh --dry-run --ci src/
 # .md, 1 .css, 0 .html hoje). Custo medido < 1s.
 bash scripts/check-docs-encoding.sh
 
-# Gate de fuzz UNICO: fuzz:ci e a reescrita Node do mesmo runner (o bash
-# run-fuzz.sh auto-descobre os mesmos *-fuzz*.test.{ts,tsx} - o .mjs e ate um
-# pouco mais permissivo no match, entao nada de cobertura se perde - e roda os
-# mesmos vitest com seed 42) - e o que o CI executa (pr-check.yml:
-# "bun run fuzz:ci > fuzz-results.json"). O `bun run fuzz` (bash) era a MESMA
-# suite rodada logo acima (~61s de trabalho duplicado): paralelizar os dois
-# rodaria a mesma coisa 2x com contencao de CPU, sem ganho de cobertura - por
-# isso o bash runner ficou fora do hook (continua no package.json p/ uso local).
-bun run fuzz:ci
+# Gate de fuzz MAPEADO (adocao da secao 11.11, medicao 2026-08-10): o
+# fuzz:ci de 6 spawns custava ~40.4s (71% do push); o runner mapeado roda SO
+# as suites cujos alvos foram tocados no diff do push (mesmo escopo do Gate 3)
+# e BATCHA numa unica invocacao vitest - tipico ~6-14s, ate o pior caso
+# (helper compartilhado = todas as 6) e ~14.5s vs 40.4s. Sem range (primeiro
+# push da branch / rodada manual, --since all-zeros) -> fallback para o fuzz
+# COMPLETO batched. Zero suites mapeadas (docs/admin/ui) -> skip exit 0.
+# O CI continua rodando `bun run fuzz:ci` (run-all-fuzz.mjs --json) em
+# checkout fresco como AUTORIDADE inalterada - o runner local nunca mascara o
+# CI, so corta o custo. O contrato do scan-push-full-suite.mjs trava este
+# comando (positivo) e o fuzz fora do pre-commit (negativo).
+node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"
 
 # Gates do CI antes do push (validate-cache-manifest + check-js-budget + testes
 # unitarios das areas tocadas) - espelhando o pre-commit: nenhum push pode

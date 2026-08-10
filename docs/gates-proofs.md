@@ -823,6 +823,50 @@ padrão do GH Actions). Correção aplicada (ver o job `check` em
 Lint/Type check com `if: always()` — sem mascaramento em nenhuma direção.
 Esta seção serve de registro do porquê da ordem atual.
 
+### 9.1 Custo do job `check` no CI + paralelismo nativo lint ∥ typecheck (medição 2026-08-10)
+
+**Dado medido** (run real do PR Check 31354308733, job `check`, ubuntu-latest
+— os timestamps por step do log do GitHub):
+
+| Step | Janela (UTC) | Duração |
+|---|---|---|
+| Set up job + checkout + setup-bun | 04:03:08 → 04:03:12 | ~4s |
+| Cache node_modules | 04:03:12 → 04:03:23 | ~11s (restore, cache hit) |
+| Install deps (`bun install`) | 04:03:23 → 04:03:31 | ~8s |
+| Generate Prisma client | 04:03:31 → 04:03:34 | ~3s |
+| **Unit tests** (`test:unit`, o 1º) | 04:03:34 → 04:04:07 | **~33s** |
+| **Lint** (`eslint .`, `if: always()`) | 04:04:07 → 04:05:01 | **~54s** |
+| **Type check** (`tsc --noEmit`) | 04:05:01 → 04:05:31 | **~30s** |
+
+Wall do job: **~2m25s** (04:03:06 → 04:05:31, `startedAt`→`completedAt` por
+step, valores exatos do log do GitHub) — o par lint+typecheck sequencial
+custa **~84s** (~58% do wall), dominado pelo lint (~54s, o mesmo BOOT do
+bundle eslint-config-next que a 11.3 perfilou; o CI não usa o shim — o
+daemon é otimização de hook).
+
+**Paralelismo NATIVO por jobs (lint ∥ typecheck como jobs separados) — a
+pergunta: resolve a raça sem shim?** **NÃO — e nem pode, porque a raça é
+local-only.** A raça que a 11.5 recusou (e a 11.8 estreitou) é o
+`eslint --fix` do lint-staged reescrevendo os arquivos staged ENQUANTO o
+`tsc` lê — só existe no hook, onde o lint MODIFICA arquivos. No CI o lint
+roda `eslint .` SEM `--fix` (nada reescreve): não há janela de escrita,
+logo não há raça a resolver, com ou sem jobs paralelos. O shim da 11.6 é
+otimização do ciclo local (8.5s → ~1s warm), não uma correção de CI.
+
+**E o ganho de wall de jobs paralelos?** Se Lint e Type check virassem jobs
+separados, o par cairia de ~84s para ~54s no caminho crítico (o max, não a
+soma — ~30s de ganho), MAS cada job novo duplica setup+install (~26s por
+job). Com 2 jobs paralelos o wall total ficaria ~setup(26) + unit(33) + max(
+54,30) ≈ **~113s vs ~145s atuais — economia ~32s (~22%) no wall do job**. O
+custo: jobs em paralelo duplicam checkout/install/prisma e dividem runners
+com os outros jobs do workflow (fuzz, benchmark, utf8-check já rodam em
+paralelo). Veredito: o ganho é real mas marginal no contexto do PR inteiro
+(o `fuzz` e o `benchmark` já dominam o wall do workflow); a duplicação de
+setup é o preço. Deixado COMO ESTÁ (steps sequenciais com `if: always()`)
+— a ordem test-first continua sendo a proteção contra mascaramento, e o
+paralelismo nativo seria um lever só se o wall do check fosse o gargalo do
+workflow (hoje não é).
+
 ## 10. Como adicionar uma nova prova
 
 1. Criar branch scratch `ci-proof/<nome>` a partir do HEAD, aplicar a injeção
@@ -879,6 +923,56 @@ Nota honesta: o "~19s" reportado no commit fe7d761 não bate com esta medição 
 real é tsc ~17.5s + eslint ~8.5s = ~26s antes mesmo de qualquer teste. O ~19s
 provavelmente refletiu uma medição em máquina/estado diferente; o número medido aqui é
 o ground truth atual.
+
+**Re-medição 2026-08-10 (shim em produção) — o total real por commit:**
+
+daemon do shim quente (o estado de produção — o daemon fica vivo entre commits),
+tsbuildinfo quente, staged set real da thread (docs + shim + os 2 contratos novos = 2
+suites/6 testes mapeados). 3 runs completas do `.husky/pre-commit`:
+
+| Run | Total real |
+|---|---|
+| RUN1 (boot one-time) | ~27s |
+| RUN2 | 19.8s |
+| RUN3 | 18.6s |
+| **Regime estável** | **~19s** |
+
+Componentes (mesma sessão, daemon quente):
+
+| Componente | 2026-08-09 (pré-shim) | 2026-08-10 (shim) | Δ |
+|---|---|---|---|
+| verify-encoding | 2.4s | 2.17s | ~igual |
+| check-docs-encoding | 0.7s | 0.59s | ~igual |
+| scan-lucide-icons | 0.3s | 0.17s | ~igual |
+| check-next-types | 0.2s | 0.11s | ~igual |
+| check-node-modules-integrity + scan-push-full-suite | (novos pós-08-09) | 0.11s + 0.11s | |
+| **lint-staged (eslint --fix)** | **8.0-8.6s** | **0.98s (shim warm, 1 arquivo medido — 2 staged no hook)** | **-7.5s** |
+| **tsc --incremental (warm)** | **17.5-18.2s** | **11.1s** | ver nota abaixo |
+| pre-commit:test (áreas tocadas) | 5.2s (7 testes) | 4.4s (6 testes) | ~igual |
+| **Total (wall, lint ∥ tsc)** | **~35s** | **~19s steady (RUN1 ~27s)** | **-16s** |
+
+Soma sequencial dos componentes: 3.3 + 11.1 + 1.0 + 4.4 = **19.8s**; wall paralelo
+(lint ∥ tsc): 3.3 + max(1.0, 11.1) + 4.4 = **18.8s** — bate com as runs 2-3
+(18.6-19.8s). O `pre-commit:test` pós-shim segue ~4.4s; o skip em commits só-doc
+continua instantâneo.
+
+**Atribuição honesta da queda (~35 → ~19):**
+
+1. **O shim (o pedido desta medição): -7.5s** — lint-staged 8.5s → 1.0s warm. É a
+   adoção da 11.6 medida de ponta a ponta no hook real.
+2. **Estado de máquina do tsc: -6.4s** — 17.5-18.2s (2026-08-09) → 11.1s hoje; a faixa
+   10.9-16.5s já documentada na 11.10 (o tsc warm varia com o estado da máquina). NÃO
+   é o shim. Mantendo o tsc no estado antigo (17.5s), o wall pós-shim seria ~25s —
+   consistente com a 11.8 (sequencial 25.6s / paralelo 23.8s, medido 2026-08-09).
+
+Nota: a RUN1 (~27s ≈ o ~28s esperado) carrega custos one-time de boot (vitest/tsc
+estado inicial); o regime estável ~19s é o custo real por commit normal.
+
+**Reprodução:**
+```bash
+git add <arquivos-do-commit>
+for i in 1 2 3; do { time -p bash .husky/pre-commit > /dev/null; } 2>&1 | grep real; done
+```
 
 ## 11.1 eslint --cache no lint-staged — avaliado e RECUSADO (medição 2026-08-09)
 
@@ -971,7 +1065,12 @@ pass/fail local com regras velhas.
 
 **Upstream (rastreabilidade, verificado 2026-08-09 via API do GitHub):** a
 staleness NÃO é específica do v15.3/Windows — é comportamento documentado do
-daemon. Issue mais próxima: [#281](https://github.com/mantoni/eslint_d.js/issues/281)
+daemon. A rastreabilidade é travada por contrato
+(`scripts/__tests__/upstream-links-contract.test.ts`): o doc DEVE citar
+#281/#276 como links do mantoni/eslint_d.js (PARSE CONTRACT, sem rede) e as
+URLs devem responder HTTP 200 (LIVE CHECK — 404/410 = link rot falha;
+rede indisponível/429 faz skip honesto). Se um dos links quebrar, o teste
+acusa antes de a seção virar referência morta. Issue mais próxima: [#281](https://github.com/mantoni/eslint_d.js/issues/281)
 "PSA: ESLINT_USE_FLAT_CONFIG is only evaluated when the daemon
 starts/restarts" (closed 2024-07-28) — a config/ambiente é locked no start, e
 o fix documentado é `eslint_d restart` manual. A
@@ -1002,6 +1101,50 @@ bun add -D eslint_d
 # o daemon lintou com a config antiga (o furo que motiva esta recusa).
 npx eslint_d stop                                # limpa o daemon
 ```
+
+### 11.2.1 Política de re-verificação periódica do upstream (2026-08-10)
+
+A pesquisa do upstream (issues #281/#276, ausência de watch) é um SNAPSHOT de
+2026-08-09 — a decisão da 11.2 (recusa do daemon puro) e a 11.6 (adoção do
+shim) dependem do estado do upstream e podem ficar stale se ele mudar. Para a
+decisão não virar staleness ela mesma:
+
+**Triggers de re-verificação** (qualquer um dispara o recipe abaixo):
+
+1. **Release novo do eslint_d** (bump de `eslint_d` em package.json ou aviso
+   de versão no `eslint_d status`) — o trigger principal: uma versão nova
+   pode ganhar watch/reload de config (a condição da recusa da 11.2).
+2. **Mudança de comportamento observada no shim** (ex.: restart
+   condicional que deixa de detectar uma edição real de config — sintoma de
+   que o fingerprint e o daemon divergiram).
+3. **Cadência máxima de 6 meses** — mesmo sem release, re-rodar o recipe a
+   cada ~2 releases ou semestralmente; o custo é < 5 min.
+4. **Contrato de links falhando** (`upstream-links-contract.test.ts`: 404/410)
+   — se o repo/issues mudarem de lugar, a rastreabilidade quebrou e a
+   verificação manual precisa ser refeita junto.
+
+**Recipe de re-verificação** (o mesmo da "Reprodução" acima + o que a 11.2
+verificou via API):
+
+```bash
+# 1. Estado do daemon + versoes
+node_modules/.bin/eslint_d status                 # PID + versao do eslint carregada
+# 2. Staleness probe (o furo da 11.2): PID antes, edita o eslint.config.mjs
+#    (conteudo), roda de novo, PID DEPOIS - se nao mudou, o daemon continua
+#    sem reload (e o shim resta por hash, correto).
+# 3. Watch no upstream: buscar open issues com "config watch/reload" no
+#    mantoni/eslint_d.js - se aparecer uma issue aberta de watch, a condicao
+#    da recusa da 11.2 tem tracker para seguir (reavaliar daemon puro).
+# 4. Re-medir warm/cold do shim (tabela da 11.6) e atualizar os numeros se
+#    a versao do eslint/daemon mudou.
+```
+
+**Registro**: cada re-verificação atualiza o bloco "Upstream
+(rastreabilidade...)" desta seção (novo carimbo de data) e, se o veredito
+mudar (watch ganho, reload implementado), reverte a 11.6 para a avaliação de
+daemon puro com o recipe desta seção. O contrato `upstream-links-contract.test.ts`
+continua pinando os links; a data de verificação no doc é o registro humano
+do snapshot.
 
 ## 11.3 Perfil do boot do eslint — o peso é o BUNDLE eslint-config-next, não um plugin (medição 2026-08-09)
 
@@ -1200,7 +1343,29 @@ normais pagam só o warm (~0.8s).
 estável (warm 0.78s vs 10.45s) o hook economiza ~9.7s por commit (~28% dos
 ~35s totais); o restart (5.2-13s, só quando a config ou deps mudam) é pago
 em commits raros de edição de regra — o trade-off líquido é fortemente
-positivo para o fluxo normal. O hook agora usa o shim no lint-staged
+positivo para o fluxo normal.
+
+**Re-medição 2026-08-10 (sessão atual, daemon vivo + stamp batendo) — o
+custo de hash+restart condicional vs o baseline de 8s da 11.2, em peças:**
+
+| Componente | Custo medido | Interpretação |
+|---|---|---|
+| `eslint --fix` raw (baseline 11.2) | **6.38 / 6.69s** | o ~8s citado, 2 runs consistentes |
+| HASH puro (o fingerprint, sem lint) | **0.38 / 0.40 / 0.41s** | o overhead fixo do shim é sub-0.5s — o custo do gate de hash é desprezível |
+| Shim WARM (stamp bate, daemon quente) | **0.80 / 0.86 / 1.05s** | **~8x mais rápido que o baseline** — o commit normal paga só isso |
+| Shim COLD (stamp zerado → restart + lint) | **5.36s** | PID PROVADO 10708 → 21028 (restart aconteceu); stamp re-escrito |
+| Warm pós-restart | 0.85s | de volta ao regime rápido |
+
+**Conclusão da re-medição**: o shim é viável como alternativa ao daemon
+puro — e superior a ele para o contexto de gate — porque (1) o restart
+condicional por hash fecha o furo de lifecycle da 11.2 (staleness silenciosa
+em mudança de config: o fingerprint por CONTEÚDO detecta a edição real e
+ignora mtime puro); (2) o custo do gate de hash é ~0.4s (menos que 5% do
+custo de um commit normal); (3) o restart (5.36s medido, faixa 5.2-13s
+histórica) só é pago quando a config/deps mudam — raro no fluxo normal. O
+custo total por commit no regime estável fica ~0.8s + ~0.4s de hash ≈
+**1.2s**, vs o baseline de ~8s — a adoção com integridade de gate é o
+caminho que a conclusão da verificação de watch (sem issue aberta) aponta. O hook agora usa o shim no lint-staged
 (package.json: `"*.{ts,tsx}": "bash scripts/eslintd-shim.sh --fix"`); o CI
 continua rodando `eslint .` fresco como autoridade. O shim entrou no baseline
 ASCII-safe (`verify-ascii-proof.sh --sync`, 42 arquivos) — gate file.
@@ -1213,6 +1378,83 @@ bash scripts/eslintd-shim.sh --fix <arquivo>                                # co
 # prova do restart: anote o PID (eslint_d status), anexe um comentario no
 # eslint.config.mjs, rode o shim de novo e confira o PID novo - se mudou,
 # o daemon carregou a config nova (o furo da 11.2 fechado).
+```
+
+### 11.6.1 Prova viva — contraparte da 11.2 (2026-08-10): a regra NOVA é usada
+
+A 11.2 recusou o daemon puro pelo furo de lifecycle (uma edição de regra
+staged seria lintada com a config ANTIGA); a 11.6 adotou o shim para fechá-
+lo. Esta prova roda o cenário vivo que a 11.2 só descreveu: editar uma regra
+do `eslint.config.mjs` e confirmar qual config o lint usa — a contraparte do
+probe de staleness da 11.2.
+
+**Probe**: `scripts/__tests__/fixtures/debugger-probe.ts` (temporário, com
+`debugger;` — `no-debugger` não é auto-fixável, então o `--fix` do
+lint-staged não mascara o resultado) + flip de `no-debugger: warn ↔ off` no
+`eslint.config.mjs`.
+
+**Resultado 1 — baseline (regra ANTIGA viva)**: shim + daemon quente com
+`warn` → `4:3 warning Unexpected 'debugger' statement no-debugger`.
+
+**Resultado 2 — SURPRESA: o furo da 11.2 NÃO reproduz no eslint_d v15.0.3**.
+Com o flip para `off` e o daemon VIVO (PID estável), o `eslint_d <probe>`
+DIRETO (sem shim, sem restart) lintou limpo — o daemon honrou o disco. O
+teste inverso confirmou: daemon nascido com `off` (PID 12336), flip para
+`warn`, `eslint_d` direto → warning imediato, PID estável. Nas duas direções
+a edição de regra é honrada por request, sem restart.
+
+**Mecanismo na fonte (v15.0.3)**: `service.js` — `handleLintRequest` executa
+`eslint.execute(argv, text, true)` (o CLI do eslint) **a cada request**; a
+config é relida por lint, PID estável. Os únicos gatilhos nativos de restart
+são ECONNREFUSED (daemon morto), remoção do config file (`watchConfig`,
+rename), SIGTERM e morte do ppid. `filesHash` (hash de lockfiles → restart)
+existe em `hash.js` mas **nunca é chamado** — código morto; o restart por
+hash que a 11.2 assumia não existe nesta versão.
+
+**Consequência para o shim**: o restart por edição de CONFIG é redundante (o
+eslint_d v15 já honra o disco; custo do restart redundante: ~5s cold no
+commit raro que edita a config). O valor REAL do fingerprint é a dimensão de
+**versão de plugins/deps**: `eslint.config.mjs` inalterado + bump de plugin
+no node_modules → o require cache do daemon segue servindo o módulo VELHO —
+só o fingerprint do shim detecta. É exatamente o contrato que
+`eslintd-fingerprint-contract.test.ts` trava (a enumeração do shim vs a
+árvore real de plugins). NOTA DE MÉTODO: esta última afirmação (bump de
+plugin) é inferida do mecanismo (require cache — o A/B empírico desta prova
+cobriu só edição de config, nas duas direções); uma prova empírica do bump
+seria um experimento separado (tocar um plugin em node_modules + re-lint
+sem restart).
+
+**Prova do pre-commit completo**: com o flip (`off`) ativo e o probe staged,
+`.husky/pre-commit` rodou **verde (exit 0)** — gates de encoding OK,
+check-next-types clean, node-modules-integrity clean, lint-staged (que
+invoca exatamente `bash scripts/eslintd-shim.sh --fix`) lintou o probe com a
+regra NOVA (sem warning), e o `eslint_d <probe>` direto pós-run confirmou
+limpo. Revert completo: config restaurada para `warn`, probe removido,
+daemon re-aquecido (PID 2240, stamp c5adfd2cc210f927 batendo), working tree
+limpo.
+
+**Veredito**: a prova de contraparte confirma o lado positivo que a 11.2 não
+testou — a regra NOVA é usada — mas refina o racional: para edições de
+config o eslint_d v15 é seguro por si; o shim existe para o caso que o
+eslint_d não cobre (versão de plugins), onde o fingerprint é necessário. A
+receita de reprodução da 11.6 (herdada do racional da 11.2 — "PID muda ao
+editar a config") deve ser relida: a mudança de PID na edição de config hoje
+vem do RESTART do shim, não é condição necessária — a condição necessária é
+só para bump de plugin/deps.
+
+**Reprodução:**
+```bash
+# 1. baseline (regra ANTIGA): daemon quente com no-debugger:warn
+bash scripts/eslintd-shim.sh scripts/__tests__/fixtures/debugger-probe.ts   # warning no-debugger
+# 2. flip para off + eslint_d DIRETO (sem shim) — o daemon honra o disco por request
+sed -i 's/"no-debugger": "warn",/"no-debugger": "off",/' eslint.config.mjs
+node_modules/.bin/eslint_d scripts/__tests__/fixtures/debugger-probe.ts      # limpo, PID estável
+node_modules/.bin/eslint_d status                                            # PID NÃO muda (sem restart)
+# 3. shim: restart por fingerprint (stamp diverge) — cobertura de plugins/deps
+bash scripts/eslintd-shim.sh scripts/__tests__/fixtures/debugger-probe.ts    # limpo, PID muda (restart)
+# 4. pre-commit completo com o flip ativo + probe staged -> exit 0
+git add eslint.config.mjs scripts/__tests__/fixtures/debugger-probe.ts && bash .husky/pre-commit
+# 5. revert: git restore eslint.config.mjs; rm probe; re-aquecer o shim
 ```
 
 ## 11.7 O loader do bun vs node no boot do eslint — A/B honesto, RECUSADO (medição 2026-08-09)
@@ -1260,6 +1502,15 @@ for i in 1 2 3; do { time -p node node_modules/eslint/bin/eslint.js --fix $FILE 
 for i in 1 2 3; do { time -p bun node_modules/eslint/bin/eslint.js --fix $FILE > /dev/null 2>&1; } 2>&1 | grep real; done
 for i in 1 2 3; do { time -p bunx eslint --fix $FILE > /dev/null 2>&1; } 2>&1 | grep real; done
 ```
+
+**Trava do veredito (2026-08-10)**: esta recusa é travada pelo
+`scan-lint-staged-loader.mjs` (pre-commit + `test:guard`, padrão do
+scan-push-full-suite): se o lint-staged voltar a rodar o eslint por um
+loader bun (`bunx eslint`, `bun eslint`, `bun run lint`, ...) sem re-medir,
+o guard falha — a única forma de passar é uma seção numerada 11.x que
+declare o loader ADOTADO com a re-medição datada (o mesmo padrão de
+reversão das outras seções; prosa explicando a regra não satisfaz o
+contrato — o marcador exige o header de seção).
 
 ## 11.8 Paralelismo lint-staged ∥ tsc no hook — medido pós-shim, ADOTADO com nota (medição 2026-08-09)
 
@@ -1318,14 +1569,6 @@ transitório aparecer num commit sem mudança de código, o primeiro suspeito
 é esta seção — o revert é trocar o bloco pelo `bun run typecheck`
 sequencial original (11.5 permanece como o recipe da recusa).
 
-## 12. Referências
-
-- Investigação da falha contínua do `security-headers`: `docs/security-headers-gate-2026-08.md`
-  (DNS aponta para WordPress na Hostinger, não para o VPS — não é regressão do app).
-- Gates de encoding: `scripts/verify-encoding.sh`, `scripts/scan-non-ascii.mjs`,
-  `scripts/fragile-range-patterns.mjs`, `scripts/verify-ascii-proof.sh`.
-- Guard de bundle: `scripts/check-js-budget.mjs` + `docs/bundle-report.md`.
-
 ## 11.9 scan-push-full-suite no pre-commit — regressão da 8.4 travada antes do commit (medição 2026-08-09)
 
 O guard do Gate 3 do pre-push (`scan-push-full-suite.mjs` — trava a decisão da
@@ -1360,3 +1603,248 @@ commit fica bloqueado de propósito até o arquivo estar consistente.
 for i in 1 2 3 4 5; do { time -p node scripts/scan-push-full-suite.mjs > /dev/null; } 2>&1 | grep real; done
 for i in 1 2 3; do { time -p bash -c 'node scripts/scan-push-full-suite.mjs' > /dev/null; } 2>&1 | grep real; done
 ```
+
+## 11.10 O loader do bun vs node no tsc --incremental — A/B honesto, loader IRRELEVANTE (medição 2026-08-10)
+
+A 11.7 mostrou que o loader do bun economiza ~8% no boot do eslint (RECUSADO
+como lever). O tsc --incremental é o piso do hook (o gate de typecheck): a
+mesma pergunta aplicada a ele — o loader muda o custo real, ou o tsc é
+CPU-bound demais para o loader aparecer? A/B honesto no padrão da 11.7
+(binário raw, saída descartada, exit-code de paridade). Versões: tsc 5.9.3,
+bun 1.3.14, node v22.23.1.
+
+**NOTA de metodologia 1**: no Git Bash (Windows) o `time -p` NÃO agrega CPU
+dos processos filhos — user/sys ≈ 0s com real de 10-16s (verificado em
+campo) — `real` é a única métrica honesta aqui.
+
+**NOTA de metodologia 2 (a que importa)**: a ordem das medições CONTAMINA o
+resultado. A 1ª sessão (bun primeiro, máquina fria) mostrou bun ~16s vs node
+~10.9s — um gap de ~5s que sugeria o OPOSTO do eslint. No A/B INTERLEAVED
+(node <-> bun run, 3 pares — cancela o drift térmico/IO do ambiente) o gap
+colapsou para ~0.5s. Sessão sequencial = viés; interleaved = verdade.
+
+| Caminho (warm, tsbuildinfo quente) | Sessão bun-primeiro | Sessão node-primeiro | Interleaved | Leitura global |
+|---|---|---|---|---|
+| `node node_modules/typescript/bin/tsc --noEmit --incremental` | 10.80/10.91/11.14 | 10.48/10.35/10.50 | 10.49/10.97/11.34 | **mediana ~10.8s**, spread 10.35-11.34 (~9%) |
+| `bun run typecheck` (o caminho do hook) | 16.26/16.50/15.98 | 12.10/11.89/12.21 | 10.92/11.46/11.82 | **mediana ~12.1s**, spread 10.92-16.50 (~51%) |
+| `bunx tsc --noEmit --incremental` | 16.30/15.47/15.51 | 11.86/13.27/12.61 | — | mediana ~14.4s (as 2 sessões dela straddle 11.9-16.3 — mesmo drift do bun run) |
+| `bun <bin> tsc` (loader puro) | 84.54*/21.38/11.30 | 14.11/13.45/12.80 | — | mediana ~13.5s (*outlier one-time ~84s) |
+
+**Interleaved (a metodologia confiável)**: node ~10.9s (10.49/10.97/11.34)
+vs bun ~11.4s (10.92/11.46/11.82) — **~0.5s (~4%)**, bun marginalmente mais
+lento. O gap grande da 1ª sessão era drift do ambiente, não loader.
+
+**Cold** (rm tsbuildinfo antes de cada variante, 1 run): bun run **41.88s** /
+node **42.57s** / bunx **41.64s** — **idêntico** (~42s, dif <1s). A full
+program check é CPU-bound; o loader não aparece nem aqui.
+
+**O que sobra de real — a VARIÂNCIA**: bun ≥ node em TODAS as sessões (o
+mínimo e o teto do bun nunca bateram os do node), mas o cluster de ~16s vem
+de UMA única sessão — a 1ª, a mais fria/carregada (o próprio warmup dela foi
+20.65s). Nas sessões 2-3 o bun ficou em 10.92-12.21s (~11% de spread,
+comparável ao ~9% do node) e no interleaved o spread intra-sessão do bun
+(0.9s) ≈ o do node (0.85s). Se o cluster de 16s é sensibilidade própria do
+bun ou um evento pontual da máquina, o dado NÃO resolve (n=1 sessão fria) —
+e é exatamente por isso que, se a variância um dia incomodar, `node <bin>` é
+o substituto determinístico.
+
+**Paridade**: exit 0 em todos os 30 runs; o CI roda `bunx tsc --noEmit` (sem
+`--incremental`; checkout fresco = sem buildinfo = sempre cold) → 41.6-42.6s
+idêntico entre loaders — **o CI é indiferente à escolha do loader**.
+
+**Veredito: loader IRRELEVANTE para o tsc — RECUSADO como lever** (confirma
+a hipótese da pergunta). Oposto do eslint (11.7: bun ~8% mais rápido no boot
+por vencer milhares de requires pequenos): o tsc é um arquivo de 8.8MB +
+checagem CPU-bound — não há resolução CJS para o resolver nativo do bun
+vencer. O piso de ~11-17s do hook (sessão atual; o doc antigo citava 17-24s
+em outro estado de máquina) é o preço do typecheck em si, não do loader; o
+único lever restante seria reduzir a superfície do programa (tsconfig
+paths/exclusões), fora do escopo desta medição. Se a variância do bun um dia
+incomodar (pior run 16.5s vs teto do node 11.3s), `node <bin>` é o
+substituto determinístico — mas ~4% não justifica tocar o script do hook
+hoje.
+
+**Reprodução:**
+```bash
+# interleaved (cancela drift): node <-> bun run, 3 pares
+for i in 1 2 3; do { time -p node node_modules/typescript/bin/tsc --noEmit --incremental > /dev/null; } 2>&1 | grep real; { time -p bun run typecheck > /dev/null; } 2>&1 | grep real; done
+# cold: rm tsbuildinfo antes de cada variante
+rm -f tsconfig.tsbuildinfo && { time -p bun run typecheck > /dev/null; } 2>&1 | grep real
+```
+
+## 11.11 Fuzz mapeado por diff — avaliação (medição 2026-08-10)
+
+O fuzz:ci é o custo dominante do push (seção 8.4 nota 1): 53s (2026-08-09) /
+**40.4s (re-medição hoje)** — 71% do total. O Gate 3 foi calibrado por
+mapeamento de áreas (`pre-commit-tests.mjs --scope push`, `--since` do
+remoto, 8.4: 18s vs 178s ~10x). A pergunta: o fuzz deve ganhar o MESMO
+tratamento — rodar só as suites fuzz cujos alvos foram tocados, com o CI
+rodando o fuzz completo como autoridade.
+
+**Alvos reais (manifest — o nome-colocado do collectTestFiles NÃO cobre
+fuzz**: `address-autocomplete-fuzz.test.tsx` ≠ `__tests__/address-autocomplete.test.tsx`):
+
+| Suite fuzz | Alvo |
+|---|---|
+| `benchmark-utils-fuzz.test.ts` | `src/lib/benchmark-utils.ts` |
+| `cache-key-fuzz.test.ts` | `src/lib/radius-expansion.ts` |
+| `distance-fallback-fuzz.test.ts` | `src/lib/distance-fallback.ts` |
+| `radius-expansion-fuzz.test.ts` | `src/lib/radius-expansion.ts` |
+| `fuzz-utils-consistency.test.ts` | `src/lib/fuzz-utils.mjs` + `src/lib/__tests__/fuzz-utils.ts` |
+| `address-autocomplete-fuzz.test.tsx` | `src/components/vitrine/address-autocomplete.tsx` |
+
+Todas as suites importam o helper `@/lib/__tests__` (fuzz-utils.ts) — a aresta
+SHARED-HELPER: tocar `src/lib/__tests__/fuzz-utils.ts` ou `src/lib/fuzz-utils.mjs`
+dispara TODAS as suites.
+
+**Custos por suite** (spawn individual, config default — o que o
+run-all-fuzz.mjs executa; NOTA de método: a soma das suites (~44.7s) excede
+o total do runner (40.4s) — ambos incluem o boot por-spawn; a diferença de
+~4s é variância de estado de máquina entre os lotes de medição):
+
+| Suite | Custo |
+|---|---|
+| benchmark-utils-fuzz | 7.97s |
+| cache-key-fuzz | 5.81s |
+| distance-fallback-fuzz | 5.62s |
+| fuzz-utils-consistency | 5.55s |
+| radius-expansion-fuzz | 5.55s |
+| address-autocomplete-fuzz | **14.18s** (o maior — 6 spawns somam ~44.7s) |
+
+**O insight do BATCHING** (o mesmo do encoder do verify-encoding — spawns por
+seção, não por arquivo): 6 suites numa ÚNICA invocação vitest = **14.45s** vs
+40.4s de 6 spawns — o boot por-spawn (~4-5s × 6) domina o custo. Qualquer
+runner mapeado precisa BATCHAR as suites selecionadas numa invocação.
+
+**Cenários mapeados (batch, uma invocação):**
+
+| Cenário de push | Suites selecionadas | Custo |
+|---|---|---|
+| touch `src/lib/radius-expansion.ts` | cache-key + radius-expansion | **5.80s** |
+| touch `address-autocomplete.tsx` | address-autocomplete | 14.18s (spawn único) |
+| touch helper compartilhado | TODAS as 6 (aresta shared-helper) | **14.45s** (batch) |
+| touch fora das superfícies fuzz (admin/docs/ui) | nenhuma | ~0s + boot do runner |
+| hoje (fuzz:ci, 6 spawns) | todas | **40.4s** |
+
+**Novo custo por push (estimado)**: típico ~6-14s vs 40.4s hoje (-26 a
+-34s); o pior caso (helper compartilhado) é 14.45s — AINDA -26s vs hoje,
+porque o batching elimina 6 boots. Total do hook cai de ~60s (estado atual)
+para ~25-34s.
+
+**Design (se adotado):**
+1. Manifest `scripts/fuzz-targets.mjs`: suite → alvos + a aresta
+   shared-helper (o helper → TODAS as suites).
+2. Runner `run-mapped-fuzz.mjs --since <sha>`: diff do range (padrão do Gate
+   3: união staged + HEAD + `<sha>...HEAD`), resolve alvos → suites, roda
+   BATCHADO numa invocação vitest (config default, o mesmo do run-all-fuzz);
+   zero suites → skip com mensagem (exit 0 — NÃO o exit-2 do `--only` do
+   run-all-fuzz); primeiro push (--since all-zeros) → fallback para o fuzz:ci
+   COMPLETO (sem range = sem mapa = a autoridade do CI).
+3. Gate 2 do pre-push troca `bun run fuzz:ci` pelo runner; o CI (`fuzz:ci`)
+   continua rodando o fuzz completo como autoridade.
+4. Guard: o `scan-push-full-suite.mjs` trava hoje `bun run fuzz:ci` positivo
+   no .husky/pre-push + negativo no pre-commit — a adoção exige atualizar o
+   contrato (positivo: `run-mapped-fuzz` presente no pre-push; negativo:
+   `fuzz:ci`/`run-mapped-fuzz` fora do pre-commit).
+5. Contrato de cobertura do manifest (a classe de gap silencioso): uma suite
+   `*-fuzz*.test.{ts,tsx}` NOVA em src/ sem entrada no `fuzz-targets.mjs`
+   rodaria só no CI (o runner local não a selecionaria) — o manifest precisa
+   de um contrato de cobertura (teste: toda suite que o run-all-fuzz.mjs
+   auto-descobre tem entrada no manifest), no padrão dos contratos
+   scan-surfaces/fragile-range.
+
+**Veredito: VALE ADOTAR** — o mapeamento + batching corta o custo do fuzz de
+40.4s para ~6-14s (típico), e até o pior caso (helper compartilhado) é -26s
+por causa do batching. O CI como autoridade fica inalterado (checkout fresco
+roda o fuzz completo sempre).
+
+### IMPLEMENTADO (medição 2026-08-10)
+
+Pacote completo adotado — Gate 2 do pre-push agora roda o runner mapeado:
+
+| Arquivo | Papel |
+|---|---|
+| `scripts/fuzz-targets.mjs` | Manifest suite → alvos + aresta shared-helper (barrel `@/lib/__tests__` + fuzz-utils.mjs → TODAS); CLI `--check-coverage` com env override `FUZZ_TARGETS_SCAN_ROOT` (padrão PUSH_SUITE_SCAN_ROOT) |
+| `scripts/run-mapped-fuzz.mjs` | Runner `--since` do Gate 2: reusa `gitPushScopeFiles` (exportado do pre-commit-tests.mjs — o MESMO diff do Gate 3, fonte única), `resolveFuzzPlan` puro, batch numa invocação vitest (config default, o mesmo do run-all-fuzz), zero-suites = skip exit 0, `--since` ausente/zeros = fallback fuzz COMPLETO batched |
+| `.husky/pre-push` | Gate 2 trocou `bun run fuzz:ci` pelo `node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"` |
+| `scripts/scan-push-full-suite.mjs` | Contrato atualizado: positivo = `run-mapped-fuzz.mjs --since` no pre-push; negativo = `fuzz:ci`/`run-mapped-fuzz` fora do pre-commit |
+| `scripts/__tests__/fuzz-mapped.test.ts` | Suíte hermética: seleção do manifest, `resolveFuzzPlan` (full/skip/mapped), COVERAGE CONTRACT hermetizado + REAL-REPO CONTRACT bidirecional (nenhuma suite sem manifest, nenhuma orfa, todos os alvos existem) |
+
+**Custo real por push (runner real, seed 42, batch):**
+
+| Cenário | Medido | vs fuzz:ci (40.4s) |
+|---|---|---|
+| skip (diff sem superfície fuzz) | **0.46s** | -40s |
+| mapeado (radius tocado → 2 suites) | **5.68s** | -34.7s |
+| fallback full (primeiro push, 6 suites batched) | **17.98s** | -22.4s |
+
+O pior caso real (17.98s) é o fallback de PRIMEIRO push — um evento raro; o
+típico push mapeado é ~5-6s e o skip de pushes docs/admin/ui é sub-segundo.
+O CI (`bun run fuzz:ci > fuzz-results.json`, checkout fresco) continua a
+autoridade inalterada.
+
+**Contrato de cobertura** (o gap silencioso da secção 11.11 ponto 5):
+`fuzz-targets.mjs --check-coverage` falha com o caminho exato se uma suite
+`*-fuzz*.test.{ts,tsx}` nova em src/ não tiver entrada no manifest (rodaria
+só no CI) — travado pelo REAL-REPO CONTRACT do fuzz-mapped.test.ts nos dois
+sentidos. O guard do push-suite (`test:guard` + push net) inclui a suíte
+nova e o contrato de gate atualizado.
+
+## 11.12 Fuzz:ci BATCHADO — o mesmo lever do encoder aplicado ao runner (medição 2026-08-10)
+
+O batching descoberto na 11.11 (6 suites numa única invocação vitest vs 6
+spawns) valia também para o fuzz COMPLETO do CI. Aplicado ao
+`run-all-fuzz.mjs` (o que o `fuzz:ci` executa): UMA invocação
+`vitest run <6 suites> --reporter=json`, doc único re-splitado por suite via
+`splitPerSuiteResults` (exportado, entry-point guard adicionado) no EXATO
+shape do formatter antigo.
+
+**Medição A/B same-session (2026-08-10, o baseline de 40.4s da 11.11 era
+outro estado de máquina):**
+
+| | fuzz:ci | Δ |
+|---|---|---|
+| ANTES (6 spawns) | **59.96s** | — |
+| DEPOIS (1 spawn batch) | **26.16s** | **-33.8s (~2.3x)** |
+
+**Formato de saída preservado (o contrato do CI `fuzz:ci >
+fuzz-results.json`):** array de 6 entradas por-suite, as MESMAS 9 keys do
+formatter (file, numTotalTests, numPassedTests, numFailedTests, durationMs,
+slowestMicro, fastestMicro, iterations, tests), mesmo set de files, 0
+failed. Verificado por comparação direta dos dois JSONs.
+
+**Bônus do split:** o vitest 3.1.1 não emite `duration` no top-level do doc
+único — ANTES a coluna Duration do formatter era sempre "—" (0); agora
+`durationMs` = endTime-startTime por suite (wall-clock real), preenchida em
+cada entrada.
+
+**Descoberta centralizada:** o runner agora usa `discoverFuzzSuites` do
+fuzz-targets.mjs (a MESMA fonte do run-mapped-fuzz) — fechando a duplicação
+de walkDir/isFuzzFile entre os dois runners. O contrato de cobertura da
+11.11 (toda suite descoberta tem manifest) agora garante os DOIS runners de
+uma vez.
+
+**Gate 3 do pre-push:** a pergunta "vale também para o Gate 3 mapeado" já
+estava respondida — o `pre-commit-tests.mjs` spawna UMA invocação vitest
+com todos os testes mapeados desde a adoção (é por isso que é 18s vs 178s
+na 8.4). O lever do batching já está aplicado lá; nada a mudar.
+
+**Guarda do refactor:** `scripts/__tests__/run-all-fuzz.test.ts` (no
+test:guard): testes herméticos do split (counts por suite, duration
+endTime-startTime nunca negativa, suite vazia, doc sem testResults) +
+REAL-REPO CONTRACT (runner real `--only` → exit 0 e o ARRAY shape do
+formatter no stdout, provando a fiação spawn→split→formatter). O contract
+mira `radius-expansion` de propósito — uma suite de lib estável, NÃO a
+historica/frágil `address-autocomplete` — e seu assert `numFailedTests: 0`
+acopla INTENCIONALMENTE o verde do test:guard (push net) ao verde dessa
+suite localmente: uma falha ambiental futura de fuzz lê como contrato
+conhecido (mesma postura da prova do sentinel), não como surpresa.
+
+## 12. Referências
+
+- Investigação da falha contínua do `security-headers`: `docs/security-headers-gate-2026-08.md`
+  (DNS aponta para WordPress na Hostinger, não para o VPS — não é regressão do app).
+- Gates de encoding: `scripts/verify-encoding.sh`, `scripts/scan-non-ascii.mjs`,
+  `scripts/fragile-range-patterns.mjs`, `scripts/verify-ascii-proof.sh`.
+- Guard de bundle: `scripts/check-js-budget.mjs` + `docs/bundle-report.md`.
+

@@ -11,15 +11,17 @@
  * scripts/pre-push-gates.sh + .husky/pre-push + .husky/pre-commit and
  * asserts clean - if someone ever re-adds a full-suite invocation
  * (test:unit / vitest run / bare bun run test) to the Gate 3 path, moves
- * fuzz:ci into the pre-commit, removes the fuzz gate from the pre-push, or
- * swaps verify-encoding.sh for check-utf8.sh in a hook, that test fails in
- * CI (it runs under test:unit AND test:guard / the guard-gates push net).
+ * fuzz:ci/run-mapped-fuzz into the pre-commit, removes the mapped fuzz gate
+ * from the pre-push, or swaps verify-encoding.sh for check-utf8.sh in a
+ * hook, that test fails in CI (it runs under test:unit AND test:guard / the
+ * guard-gates push net).
  *
  * The guard is BIDIRECTIONAL for every contract:
  * - NEGATIVE (must NOT appear): full-suite invocations in the Gate-3 files,
- *   fuzz:ci in .husky/pre-commit, check-utf8.sh in the hooks.
+ *   fuzz:ci/run-mapped-fuzz in .husky/pre-commit, check-utf8.sh in the hooks.
  * - POSITIVE (must exist): the mapped Gate-3 marker in pre-push-gates.sh,
- *   bun run fuzz:ci in .husky/pre-push, verify-encoding.sh in both hooks.
+ *   run-mapped-fuzz.mjs --since in .husky/pre-push, verify-encoding.sh in
+ *   both hooks.
  * Deleting a gate entirely now fails with a 'MISSING' assert.
  *
  * Subprocess-heavy (every test spawns the CLI via runSubprocess) -> an
@@ -54,12 +56,12 @@ const CLEAN_GATE3 = [
   "",
 ].join("\n")
 
-/** A legitimate .husky/pre-push: verify-encoding + fuzz:ci + mapped Gate 3 (sec 8.4). */
+/** A legitimate .husky/pre-push: verify-encoding + mapped fuzz gate (sec 11.11) + Gate 3. */
 const CLEAN_PRE_PUSH = [
   "#!/usr/bin/env bash",
   "set -euo pipefail",
   "bash scripts/verify-encoding.sh --dry-run --ci src/",
-  "bun run fuzz:ci",
+  'node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"',
   'echo "-- Gate 3/3 --"',
   'node scripts/pre-commit-tests.mjs --scope push --since "${PRE_PUSH_REMOTE_SHA:-}"',
   "",
@@ -156,17 +158,36 @@ describe("scan-push-full-suite.mjs - contratos de gate (fuzz:ci + encoding, sec 
     expect(r.status).toBe(1)
     // CLEAN_PRE_COMMIT has 5 lines incl. the trailing-newline empty line, so
     // the appended line lands at 6 - the exact line the guard reports.
-    expect(r.stdout).toContain("CONTRACT 'fuzz:ci pre-push-only' VIOLATED in .husky/pre-commit:6")
+    expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' VIOLATED in .husky/pre-commit:6")
     expect(r.stdout).toContain("bun run fuzz:ci")
   }, 60000)
 
-  it("FUZZ GATE DELETADO: sem bun run fuzz:ci no .husky/pre-push -> exit 1 (assert positivo)", () => {
+  it("MUTATION: run-mapped-fuzz no .husky/pre-commit -> exit 1 (o runner de fuzz tambem e pre-push-only)", () => {
     const dir = createTempDir("push-suite-")
     writeCleanRepo(dir)
-    writeGuardFile(dir, ".husky/pre-push", CLEAN_PRE_PUSH.replace("bun run fuzz:ci\n", ""))
+    writeGuardFile(dir, ".husky/pre-commit", CLEAN_PRE_COMMIT + "\nnode scripts/run-mapped-fuzz.mjs --since ${PRE_PUSH_REMOTE_SHA:-}\n")
     const r = runGuard(dir)
     expect(r.status).toBe(1)
-    expect(r.stdout).toContain("CONTRACT 'fuzz:ci pre-push-only' MISSING in .husky/pre-push")
+    expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' VIOLATED in .husky/pre-commit:6")
+    expect(r.stdout).toContain("run-mapped-fuzz")
+  }, 60000)
+
+  it("FUZZ GATE DELETADO: sem run-mapped-fuzz no .husky/pre-push -> exit 1 (assert positivo)", () => {
+    const dir = createTempDir("push-suite-")
+    writeCleanRepo(dir)
+    writeGuardFile(dir, ".husky/pre-push", CLEAN_PRE_PUSH.replace('node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"\n', ""))
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' MISSING in .husky/pre-push")
+  }, 60000)
+
+  it("FUZZ GATE REGRESSIU para bun run fuzz:ci (o runner mapeado sumiu) -> exit 1 (assert positivo)", () => {
+    const dir = createTempDir("push-suite-")
+    writeCleanRepo(dir)
+    writeGuardFile(dir, ".husky/pre-push", CLEAN_PRE_PUSH.replace('node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"', "bun run fuzz:ci"))
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' MISSING in .husky/pre-push")
   }, 60000)
 
   it("ENCODING TROCADO: check-utf8.sh no .husky/pre-commit -> exit 1 (o bloco VPS_ASCII_FILES duplicado nao volta)", () => {

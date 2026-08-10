@@ -1,30 +1,30 @@
 #!/usr/bin/env node
 /**
- * Targeted unit tests for touched areas — Severinno
+ * Targeted unit tests for touched areas - Severinno
  *
  * Runs the unit tests related to the files in the git diff, so a commit/push
- * can't land with a broken test in an area it touches — before the full suite
+ * can't land with a broken test in an area it touches - before the full suite
  * runs in CI. Two scopes, selected by `--scope`:
  *   - `cached` (default, pre-commit): files STAGED in git (`git diff --cached`);
  *   - `push` (pre-push, Gate 3 of pre-push-gates.sh): the union of staged
  *     (`git diff --cached`), HEAD (staged + unstaged leftovers, `git diff
- *     HEAD`) and the pushed commits' range (`--since <remote-sha>` →
+ *     HEAD`) and the pushed commits' range (`--since <remote-sha>` ?
  *     `git diff <sha>...HEAD`). The remote sha comes from the pre-push hook
  *     stdin (`.husky/pre-push` captures the 1st ref line); absent or all-zeros
  *     (first push of a new branch), it falls back to staged + HEAD.
  *
  * Mapping rules:
  *   - a staged `*.test.{ts,tsx}` file runs as-is (only if it still exists on
- *     disk — a staged DELETION of a test has nothing to run);
+ *     disk - a staged DELETION of a test has nothing to run);
  *   - a staged source file (`*.ts|tsx|mjs`) runs its co-located tests:
  *     `<dir>/<name>.test.{ts,tsx}` and `<dir>/__tests__/<name>.test.{ts,tsx}`
  *     (the `scripts/__tests__/` convention is covered by the latter). This
  *     includes staged DELETIONS of sources (diff-filter D): the co-located
  *     test still exists on disk, so it runs and fails loudly on the missing
- *     import — exactly what you want when a source is removed without its test;
+ *     import - exactly what you want when a source is removed without its test;
  *   - anything else (docs, workflow YAML, e2e specs, ...) maps to nothing.
  * When no unit tests map to the staged files, it prints a skip line and exits 0
- * (fast path for doc-only commits — the pre-commit hook must not block those).
+ * (fast path for doc-only commits - the pre-commit hook must not block those).
  *
  * Tests run under `vitest.config.unit.ts` (jsdom + forks pool, the stable unit
  * config) with `--passWithNoTests` as a guard. `collectTestFiles` is exported
@@ -40,7 +40,7 @@ import { fileURLToPath } from "node:url"
 
 const require = createRequire(import.meta.url)
 // Resolve vitest's real CLI entry from the local install (same pattern as
-// bundle-report.mjs spawning check-js-budget with process.execPath) — avoids
+// bundle-report.mjs spawning check-js-budget with process.execPath) - avoids
 // relying on `bun`/`npx` being on PATH inside the hook's spawn environment.
 const VITEST_BIN = require.resolve("vitest/vitest.mjs")
 
@@ -66,7 +66,7 @@ export function collectTestFiles(staged, root = process.cwd()) {
   for (const rel of staged) {
     if (isTestFile(rel)) {
       // diff-filter D includes deleted tests; passing a non-existent path to
-      // vitest would error — skip staged test files that no longer exist.
+      // vitest would error - skip staged test files that no longer exist.
       if (fs.existsSync(path.join(root, rel))) out.add(rel)
       continue
     }
@@ -91,8 +91,8 @@ export function collectTestFiles(staged, root = process.cwd()) {
 
 /**
  * CLI args for the two scopes:
- *   --scope cached|push   (default cached — pre-commit)
- *   --since <sha>         (push only — the remote sha of the pushed ref, from
+ *   --scope cached|push   (default cached - pre-commit)
+ *   --since <sha>         (push only - the remote sha of the pushed ref, from
  *                          the pre-push hook stdin; optional)
  */
 export function parseArgs(argv) {
@@ -107,7 +107,7 @@ export function parseArgs(argv) {
 
 /**
  * A remote sha of all zeros means a FIRST push of a new branch (the remote
- * has no counterpart yet) — there is no meaningful range to diff, so the
+ * has no counterpart yet) - there is no meaningful range to diff, so the
  * push scope falls back to staged + HEAD.
  */
 export function isValidSince(since) {
@@ -116,7 +116,7 @@ export function isValidSince(since) {
 
 /**
  * Pure union of the push scope's three sources (staged / HEAD / pushed-range),
- * deduped — exported for unit tests (the git commands themselves stay private).
+ * deduped - exported for unit tests (the git commands themselves stay private).
  */
 export function mergePushScope(staged, headFiles, rangeFiles) {
   const out = new Set()
@@ -161,13 +161,18 @@ function gitStagedFiles() {
 }
 
 /**
- * Push scope (Gate 3 of pre-push-gates.sh): staged ∪ HEAD (staged + unstaged
- * leftovers) ∪ the pushed commits' range (`<since>...HEAD`, three-dot = from
+ * Push scope (Gate 3 of pre-push-gates.sh): staged ? HEAD (staged + unstaged
+ * leftovers) ? the pushed commits' range (`<since>...HEAD`, three-dot = from
  * the merge-base to HEAD). The since check guards against a first push
  * (all-zeros) or a remote sha unknown locally (force-push), falling back to
  * staged + HEAD.
+ *
+ * EXPORTED (2026-08) for run-mapped-fuzz.mjs - the mapped-fuzz runner reuses
+ * the EXACT same diff union as the Gate 3 (single source of truth for the
+ * pushed surface): a push touching the same files must map the same fuzz
+ * suites it maps unit tests for. Both callers keep using it unchanged.
  */
-function gitPushScopeFiles(since) {
+export function gitPushScopeFiles(since) {
   const staged = gitDiffFiles(["--cached"])
   const head = gitDiffFiles(["HEAD"])
   let range = []
@@ -183,17 +188,17 @@ function main() {
   const tests = collectTestFiles(files)
   const label = scope === "push" ? "pre-push" : "pre-commit"
   if (tests.length === 0) {
-    console.log(`  ${label}:test — nenhum teste unitário nas áreas tocadas (skip)`)
+    console.log(`  ${label}:test - nenhum teste unit?rio nas ?reas tocadas (skip)`)
     return
   }
-  console.log(`  ${label}:test — ${tests.length} teste(s) nas áreas tocadas: ${tests.join(", ")}`)
+  console.log(`  ${label}:test - ${tests.length} teste(s) nas ?reas tocadas: ${tests.join(", ")}`)
   const res = spawnSync(
     process.execPath,
     [VITEST_BIN, "run", ...tests, "--config", "vitest.config.unit.ts", "--passWithNoTests"],
     { cwd: process.cwd(), stdio: "inherit", env: process.env },
   )
   if (res.error) {
-    console.error(`  ${label}:test — falha ao executar vitest: ${res.error.message}`)
+    console.error(`  ${label}:test - falha ao executar vitest: ${res.error.message}`)
     process.exit(1)
   }
   if (res.status !== 0) process.exit(res.status ?? 1)

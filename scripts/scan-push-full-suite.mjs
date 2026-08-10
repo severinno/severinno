@@ -16,12 +16,15 @@
  *    pre-commit-tests.mjs --scope push em scripts/pre-push-gates.sh
  *    (deletar o Gate 3 = push sem testes = falha 'GATE 3 MISSING').
  *
- * 2. FUZZ:CI PRE-PUSH-ONLY (secao 8.4 nota 1, medido 53s = 71% do custo do
- *    push): o fuzz roda SO no pre-push (bun run fuzz:ci, o mesmo que o CI
- *    executa) - 53s num pre-commit destruiria o ciclo de commit. NEGATIVO:
- *    fuzz:ci/fuzz NAO pode aparecer no .husky/pre-commit. POSITIVO: fuzz:ci
- *    DEVE existir no .husky/pre-push (remover o gate = push sem fuzz que o
- *    CI rodaria = falha 'FUZZ GATE MISSING').
+ * 2. FUZZ MAPEADO PRE-PUSH-ONLY (secao 11.11, adotado 2026-08-10): o gate
+ *    de fuzz do pre-push roda o runner mapeado (run-mapped-fuzz.mjs
+ *    --since, o MESMO diff do Gate 3, suites batched ~6-14s tipico vs
+ *    ~40.4s do fuzz:ci de 6 spawns; primeiro push = fallback fuzz completo
+ *    batched) - o CI continua rodando fuzz:ci completo em checkout fresco
+ *    como autoridade. NEGATIVO: fuzz:ci/run-mapped-fuzz NAO pode aparecer
+ *    no .husky/pre-commit. POSITIVO: run-mapped-fuzz.mjs --since DEVE
+ *    existir no .husky/pre-push (remover/trocar o gate = push sem fuzz que
+ *    o CI rodaria = falha 'FUZZ GATE MISSING').
  *
  * 3. ENCODING GATE UNICO (medido ~1.4s): verify-encoding.sh (UTF-8 + VPS
  *    ASCII + proof + baseline) roda EM AMBOS os hooks - NAO pode ser
@@ -69,9 +72,9 @@ const REQUIRED_MARKERS = [
  */
 const GATE_CONTRACTS = [
   {
-    name: "fuzz:ci pre-push-only",
-    negative: [{ file: ".husky/pre-commit", re: /\bfuzz:ci\b/ }],
-    positive: [{ file: ".husky/pre-push", re: /bun\s+run\s+fuzz:ci/ }],
+    name: "fuzz mapeado pre-push-only",
+    negative: [{ file: ".husky/pre-commit", re: /fuzz:ci\b|run-mapped-fuzz/ }],
+    positive: [{ file: ".husky/pre-push", re: /run-mapped-fuzz\.mjs\s+--since/ }],
   },
   {
     name: "encoding gate unico",
@@ -179,7 +182,7 @@ function main() {
     }
   }
   console.log(
-    "push-suite: Gate 3 must run the MAPPED tests (pre-commit-tests.mjs --scope push), not the full suite (sec 8.4); fuzz:ci is pre-push-only (53s, sec 8.4); verify-encoding.sh is the single encoding gate in both hooks",
+    "push-suite: Gate 3 must run the MAPPED tests (pre-commit-tests.mjs --scope push), not the full suite (sec 8.4); the fuzz gate is the MAPPED runner in the pre-push only (run-mapped-fuzz.mjs --since, sec 11.11); verify-encoding.sh is the single encoding gate in both hooks",
   )
   return 1
 }

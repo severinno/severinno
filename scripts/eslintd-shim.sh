@@ -43,14 +43,16 @@ FINGERPRINT="$(
     for pkg_path in "$ROOT/node_modules/eslint/package.json" "$ROOT/node_modules/eslint_d/package.json"; do
       if [ -f "$pkg_path" ]; then cat "$pkg_path"; fi
     done
-    # deps de plugin: os package.json das packages que a config pode carregar
+    # deps que a config carrega: os package.json das packages que o
+    # eslint-config-next puxa (plugins + meta-package typescript-eslint + o
+    # parser que ele agrega - travados pelo eslintd-fingerprint-contract).
     for p in eslint-config-next/core-web-vitals eslint-config-next/typescript; do
       pkg="$ROOT/node_modules/$p/package.json"
       if [ -f "$pkg" ]; then cat "$pkg"; fi
     done
     for p in eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-jsx-a11y \
              eslint-plugin-import @typescript-eslint/eslint-plugin @next/eslint-plugin-next \
-             eslint-plugin-react-compiler; do
+             @typescript-eslint/parser typescript-eslint; do
       pkg="$ROOT/node_modules/$p/package.json"
       if [ -f "$pkg" ]; then cat "$pkg"; fi
     done
