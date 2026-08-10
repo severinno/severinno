@@ -392,6 +392,7 @@ scripts/diagnose-docker.sh
 scripts/dlq-monitor.sh
 scripts/docker-entrypoint.sh
 scripts/entrypoint.sh
+scripts/eslintd-shim.sh
 scripts/fail2ban-setup.sh
 scripts/fix-encoding.sh
 scripts/glitchtip-alerts.sh

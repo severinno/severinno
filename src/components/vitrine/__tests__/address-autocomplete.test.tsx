@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
 import { render, screen, fireEvent, act } from "@testing-library/react"
-import AddressAutocomplete from "../address-autocomplete"
 
+// Mocks MUST be registered before the component import (vitest.setup
+// contract). This file runs under BOTH configs; vitest.config.unit.ts has
+// no vitrine setupFile, so the import order is what makes it self-contained.
 import {
   MOCK_RESULTS,
   mockGeoStore,
@@ -12,6 +14,8 @@ import {
   resetCommonMocks,
   flushDebounce,
 } from "./test-utils"
+
+import AddressAutocomplete from "../address-autocomplete"
 
 const mockToast = getMockToast()
 

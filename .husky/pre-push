@@ -1,5 +1,43 @@
 set -euo pipefail
 
+# stdin do hook (single-read: o stream so pode ser lido UMA vez): capturamos
+# tudo de uma vez e derivamos dele (a) o remote sha da 1a linha para o Gate 3
+# e (b) a deteccao de push de DELECAO PURA. So quando o stdin NAO e um TTY
+# (ou seja, o git chamou o hook de verdade) - invocacao manual interativa
+# deixa vazio e o Gate 3 cai para staged + HEAD.
+if [ -t 0 ]; then
+  PRE_PUSH_REMOTE_SHA=""
+  PRE_PUSH_STDIN=""
+else
+  PRE_PUSH_STDIN="$(cat)"
+  # Multi-ref pushes trazem uma linha por branch; usamos o remote sha da 1a
+  # linha NAO-delecao (local sha != all-zeros) - em push misto (delecao + ref
+  # real), a 1a linha pode ser a delecao e seu remote sha (tip do branch
+  # apagado) seria uma base errada para o range do Gate 3. Cai para a 1a
+  # linha se nao houver ref real (caso impossivel de alcancar aqui - delecao
+  # pura ja saiu acima - mas seguro).
+  # awk: guarda o $4 da 1a linha em `first`; qualquer linha NAO-delecao
+  # (local sha != all-zeros) seta `real`; no END imprime `real` se existir,
+  # senao `first`. SEM `exit` no corpo: exit dispararia o END e imprimiria
+  # DUAS linhas ($4 + first) - o comando substitution capturaria um remote
+  # sha multi-linha e quebraria o --since do Gate 3.
+  PRE_PUSH_REMOTE_SHA="$(printf '%s' "$PRE_PUSH_STDIN" | awk 'NR == 1 { first = $4 } $2 !~ /^0+$/ { real = $4 } END { print (real != "" ? real : first) }')"
+fi
+export PRE_PUSH_REMOTE_SHA
+
+# ATALHO DE DELECAO PURA (medicao 2026-08, secao 8.4: ~74s por push): um push
+# que so apaga branches (`git push origin --delete x` / `:x`) nao transporta
+# NENHUM commit novo - rodar a cadeia inteira e testar nada.
+# check-push-deletion.mjs exit 0 quando TODAS as refs tem local sha
+# all-zeros; pulamos a cadeia com aviso (~74s -> ~0.4s medido, node boot - o
+# checker puro custa ~10ms, o caminho do hook ~0.4s). Push MISTO (delecao
+# + ref real na mesma chamada) roda os gates normal - carrega codigo. Stdin
+# vazio (invocacao manual) tambem roda normal.
+if [ -n "$PRE_PUSH_STDIN" ] && printf '%s' "$PRE_PUSH_STDIN" | node scripts/check-push-deletion.mjs; then
+  echo "[skip] pre-push: push de delecao pura (sem commits novos) - gates pulados (housekeeping de branches, secao 8.4)"
+  exit 0
+fi
+
 # Encoding gate unico (UTF-8 + VPS ASCII + ASCII-safe proof + baseline): o
 # mesmo gate que o CI roda em PR (pr-check.yml / utf8-check.yml) - um byte
 # non-ASCII num .sh/hook nunca chega nem ao push. Custo medido ~1.4s
@@ -28,20 +66,6 @@ bun run fuzz:ci
 # Gates do CI antes do push (validate-cache-manifest + check-js-budget + testes
 # unitarios das areas tocadas) - espelhando o pre-commit: nenhum push pode
 # quebrar o que o CI verifica depois de ja estar localmente verde.
-#
-# O stdin do hook traz uma linha por ref enviada: "<local ref> <local sha>
-# <remote ref> <remote sha>". Capturamos o remote sha da 1a linha para o Gate 3
-# (pre-commit-tests.mjs --scope push) saber quais commits serao enviados
-# (range <remote sha>...HEAD). So quando o stdin NAO e um TTY (ou seja, o git
-# chamou o hook de verdade) - invocacao manual interativa deixa vazio e o
-# Gate 3 cai para staged + HEAD.
-if [ -t 0 ]; then
-  PRE_PUSH_REMOTE_SHA=""
-else
-  # Multi-ref pushes trazem uma linha por branch; usamos o remote sha da 1a
-  # linha - suficiente para o caso comum de push de branch unica.
-  PRE_PUSH_REMOTE_SHA="$(awk 'NR == 1 { print $4 }')"
-fi
-export PRE_PUSH_REMOTE_SHA
-
+# (O stdin do hook ja foi capturado no topo - o PRE_PUSH_REMOTE_SHA exportado
+# alimenta o Gate 3 e o atalho de delecao pura acima.)
 bun run pre-push:gates

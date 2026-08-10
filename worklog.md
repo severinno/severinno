@@ -499,3 +499,42 @@ mtime setado por utimesSync). CI nao precisa: typechecka checkout fresco, sem .n
 
 Licao: quando o tsc falhar com TS2305 apenas em `.next/` (gitignored), e cache de types stale por
 bump de versao do next, nao codigo — o guard do pre-commit agora cura sozinho antes do tsc rodar.
+
+---
+Incident: Surface gap do test:unit — AddressAutocomplete so coberto por fuzz — [2026-08-09]
+
+Sintoma: AddressAutocomplete falhava so no fuzz (seed 42) porque vive em src/components,
+excluida do test:unit. Nenhuma suite regular cobria o componente, e o mapeamento por areas
+do pre-commit pulava silenciosamente edits de componente ("No test files found" +
+--passWithNoTests = skip mudo).
+
+Causa raiz: vitest.config.unit.ts excluia blanket `src/components/**/*.test.{ts,tsx}`.
+O smoke test que o pedido pedia JA EXISTIA (address-autocomplete.test.tsx, 32 testes
+deterministicos com fake timers, fora do fuzz) — o gap era a superficie, nao a ausencia de
+teste. As 22/32 falhas sob unit config tinham 2 causas: (1) a exclusao blanket; (2) ordem
+de imports — o vitrine setup e setupFile so no config default, entao o teste importava o
+componente ANTES do test-utils (que registra os vi.mock).
+
+Lever findings (vitest 3.1.1, probeado empiricamente): negacao `!` em include/exclude NAO
+funciona (silenciosamente ignorada); extglob `!(...)` FUNCIONA — o unico mecanismo viavel
+de re-inclusao.
+
+Fix: re-incluir via extglob — `src/components/!(vitrine)/**/*.test.{ts,tsx}` + sufixos
+*fuzz*/*a11y*/*accessibility*/*snapshot* no exclude do config unit; reordenar imports do
+address-autocomplete.test.tsx (test-utils ANTES do componente). Resultado: 35/35 sob unit
+config, 52/52 no default (sem regressao), full unit suite 148 arquivos / 1849 testes verde,
+fuzz:ci imune (run-all-fuzz.mjs usa o config default, sem --config).
+
+Contrato: scripts/__tests__/unit-surface-contract.test.ts pina a superficie (extrai o bloco
+exclude do TEXTO do config — importar o config direto falha por invariant do vite —
++ picomatch + mutation): um novo teste vitrine plain AUTO-ENTRA no test:unit (growth
+contract); o pin real-tree (EXATAMENTE 2 arquivos) quebra RUIDOSAMENTE de proposito quando
+isso acontecer.
+
+Residual documentado: edits em componentes nao-vitrine (admin/client/provider) ainda pulam
+silenciosamente no pre-commit — o contrato pina o residual. Abrir a arvore inteira de
+componentes ao test:unit e deliberadamente NAO feito (muitas suites axe/snapshot lentas
+lentificariam o gate local).
+
+Licao: antes de criar um smoke test novo, verifique se ele JA EXISTE mas esta fora da
+superficie — o gap costuma ser a config de discovery, nao a ausencia de cobertura.

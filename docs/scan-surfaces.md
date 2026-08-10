@@ -111,6 +111,7 @@ Answers: **WHEN does this workflow RUN?**
 | `fragile-range-patterns.mjs` (verify-encoding.sh layer 3) | A - code surface | its own `TARGET_DIRS` / `TARGET_EXTS` / `EXCLUDED_TREES` | blocking |
 | `verify-encoding.sh` layer 4 (YAML gate UTF-8) | A - code surface | `encoding-surface.mjs --print-yaml-gate` (`YAML_GATE_PATTERNS`) | blocking |
 | `docs-encoding` job / `check-docs-encoding.sh` | A - code surface | `encoding-surface.mjs --print-docs` (`DOCS_PATTERNS`) | informational |
+| `test:unit` (vitest.config.unit.ts) | A - code surface (test discovery) | `vitest.config.unit.ts` include/exclude, pinned by `unit-surface-contract.test.ts` | blocking (contract) |
 | `check-js-budget.mjs` check 7 (real routes) | B - runtime routes | `budget-routes.mjs --print-routes` (`REAL_ROUTE_CHECKS`) | blocking (per-route budgets) |
 | `bundle-report.mjs` ROUTE_DELTA_KB (main anti-regression) | B - runtime routes | `budget-routes.mjs` `deltaEnvKey` per route (default 30 KB) | blocking on main |
 | `lighthouserc.json` / `lighthouserc.mobile.json` | B - runtime routes | `budget-routes.mjs --print-lhci-urls` (`LHC_URLS`) | CWV audits |
@@ -150,6 +151,10 @@ Ask which question the list answers, then:
 - "What does gate X scan?" -> find its manifest export (`encoding-surface.mjs`
   or `fragile-range-patterns.mjs`), run its `--print-*`, check the CONTRACT
   test pins it.
+- "Which tests does the local `test:unit` run?" -> `vitest.config.unit.ts`
+  include/exclude, pinned by `unit-surface-contract.test.ts` (extglob
+  `!(...)` is the only working negation on vitest 3.1.1 - `!` silently
+  fails; section 7).
 - "Which pages are budgeted?" -> `scripts/budget-routes.mjs`
   `REAL_ROUTE_CHECKS` (budget) + `LHC_PATHS`/`LHC_URLS` (LHCI crawl).
 - "When does workflow Y run?" -> its own `paths:` block; there is no
@@ -249,3 +254,69 @@ future adoption must extend `triggerFilter` (and this section) before it
 lands, or a PR-gated workflow with a filter-less `pull_request_target:`
 would escape the invariant (it fires on PR events against a branch filter,
 not on branch pushes - a different event class than the push matrix above).
+
+## 7. Unit test surface (test:unit / vitest.config.unit.ts) - a Type A contract
+
+Answers: **WHICH test files does the local `test:unit` suite run, and which
+are excluded?**
+
+Context (2026-08): the `AddressAutocomplete` component was only covered by
+the fuzz suite (seed 42) because `vitest.config.unit.ts` blanket-excluded
+`src/components/**/*.test.{ts,tsx}` - a surface gap: NO regular suite
+covered the component, and the pre-commit area-mapping silently skipped
+component edits ("No test files found" + `--passWithNoTests` = mute skip).
+
+The smoke test the fix needed ALREADY EXISTED (`address-autocomplete.test.tsx`,
+32 deterministic tests with fake timers, outside the fuzz) - the gap was the
+surface, not missing coverage, so no duplicate was created.
+
+Lever findings (probed empirically on vitest 3.1.1):
+
+- `!` glob NEGATION in include/exclude does NOT work (silently ignored).
+- EXTGLOB `!(...)` DOES work - the only viable re-inclusion mechanism.
+
+Fix: replace the blanket exclusion with an extglob re-inclusion admitting
+exactly the deterministic vitrine suites:
+
+```
+exclude: [
+  // extglob !(...) is the ONLY working negation on vitest 3.1.1
+  // other component trees stay out of test:unit (blanket exclusion removed)
+  "src/components/!(vitrine)/**/*.test.{ts,tsx}",
+  // vitrine slow/brittle kinds: fuzz (real timers + axe), a11y/accessibility (axe), snapshot (golden)
+  "src/components/vitrine/__tests__/*fuzz*.test.{ts,tsx}",
+  "src/components/vitrine/__tests__/*a11y*.test.{ts,tsx}",
+  "src/components/vitrine/__tests__/*accessibility*.test.{ts,tsx}",
+  "src/components/vitrine/__tests__/*snapshot*.test.{ts,tsx}",
+  "node_modules",
+  ".next",
+],
+```
+
+Everything else under `vitrine/__tests__/` is unit-visible: today exactly
+`address-autocomplete.test.tsx` (32 deterministic) + `provider-card.test.tsx`
+(3 deterministic) - 35/35. The fuzz suites still run via
+`scripts/run-all-fuzz.mjs` under the DEFAULT config (no `--config` flag), so
+excluding `*fuzz*` from the unit config does not affect `fuzz:ci`.
+
+Direct benefit: the pre-commit area-mapping now maps a vitrine edit (e.g.
+`address-autocomplete.tsx`) to REAL deterministic tests instead of the
+mute "No test files found" skip.
+
+Import-order contract: under unit config the vitrine setup is NOT a
+setupFile (only `vitest.config.ts` default has it), so vitrine test files
+must import `./test-utils` (which registers the `vi.mock` calls) BEFORE the
+component - the suite is then self-contained under BOTH configs.
+
+Pinned by `scripts/__tests__/unit-surface-contract.test.ts` (extracts the
+exclude block from the CONFIG TEXT - importing the vitest config directly
+fails on a vite invariant - + picomatch + mutation): a NEW plain vitrine
+test AUTO-JOINS test:unit (growth contract); the real-tree pin (EXACTLY 2
+files) breaks LOUDLY by design the day that happens - update
+`EXPECTED_INCLUDED` consciously.
+
+Residual (documented, not a bug): non-vitrine component edits (admin,
+client, provider trees) still silently skip in the pre-commit mapping - the
+contract pins that residual too. Opening the whole `src/components` tree to
+test:unit is deliberately NOT done (many axe/snapshot-heavy suites would
+slow the local gate); the vitrine tree is the deterministic/small one.

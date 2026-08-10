@@ -25,6 +25,7 @@
 | 7 | Guard vitest — **push net** (`guard-gates.yml`, trigger `push: [main, develop]`) | O BASELINE de 0 offenders + divergence guards ficarem ÓRFÃOS de execução num push (skip/reorder do job de testes — o failure mode do lint) | Nenhuma injeção — push REAL temporário a `develop` (dispatch via API bloqueado: workflow fora do default branch; `main` dispararia deploy; `develop` é seguro e escuta o trigger) | Run [**31336318902**](https://github.com/severinno/severinno/actions/runs/31336318902) (`develop`, event `push`) + local `bun run test:guard` 66/66 | ✅ job `Guard Gates (fragile-range + golden-copy)` verde em 45s: `Test Files 2 passed (2), Tests 66 passed (66)` no step "Run guard vitest suites"; branch temporária deletada (remote de volta ao estado original) |
 | 8 | Workflow — **Type D HERMETIC** (`scan-surfaces-contract.test.ts`) | `workflow_dispatch:` como ÚNICO trigger (dispatch-only = irrecuperável E indisparável — a classe do 404 do Prova 7) | `.github/workflows/type-d-proof.yml` dispatch-only num branch scratch `ci-proof/type-d` (c060362) | Run [**31342311844**](https://github.com/severinno/severinno/actions/runs/31342311844) (`develop`, event `push`) + local no branch scratch | ✅ job `Tests` do ci.yml: `expected [ 'type-d-proof.yml' ] to deeply equal []` no HERMETIC + CONTRACT com `+ "type-d-proof.yml"` → exit 1; revertido byte-identical |
 | 9 | Auto-heal — `check-next-types.mjs` (pre-commit) | `.next/types` stale após bump de versão do next (123 erros TS2305 do incidente 2026-08) | swap REAL de versão: types gerados pelo next 16.1.3 + `bun add next@16.1.1 --no-save` (reescreve `node_modules/next/package.json` com mtime novo) | **Local** — prova de EVENTO REAL (não sintética): dev server real + bun add real + guard real | ✅ sem `--fix`: `STALE .next/dev/types` + exit 1; com `--fix`: `REMOVED .next/dev/types` + exit 0, `.next` raiz preservado; next restaurado ao 16.1.3, `package.json`/`bun.lock` intocados |
+| 10 | Guard do Gate 3 — **REAL-REPO CONTRACT** (`scan-push-full-suite.test.ts`; roda no `check` via `test:unit` E no `fragile-guard` via `test:guard`) | Alguém voltar o Gate 3 do pre-push a rodar a SUITE COMPLETA (`test:unit`/`test:run`/`vitest run`) — a regressão da seção 8.4 — sem o guard falhar antes do merge | `bun run test:unit` (linha 67) re-injetado no Gate 3 do `scripts/pre-push-gates.sh` real (branch scratch `ci-proof/push-suite-sentinel`, 2bb6ab8) | Run [**31354308733**](https://github.com/severinno/severinno/actions/runs/31354308733) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ job `check` (step Unit tests): `× REAL-REPO CONTRACT: os arquivos reais estao limpos hoje -> exit 0 (regressao futura falha aqui)` → `AssertionError: expected 1 to be +0` (o guard saiu 1); job `fragile-guard` idêntico — `1 failed | 72 passed (73)`; local: `push-suite: FULL-SUITE in scripts/pre-push-gates.sh:67: bun run test:unit` → exit 1; revertido byte-identical |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -421,6 +422,87 @@ de verdade, e o guard detecta e cura com os binários reais. Job de CI seria
 redundante (estado stale é impossível no checkout fresco do CI) e precisaria
 fabricar o mesmo cenário. Repo revertido byte-identical.
 
+**Nota — o par incidente↔não-incidente (medição 2026-08-09)**: o passo 3
+desta prova é o INCIDENTE — o install re-resolve o next (16.1.1 no lugar do
+16.1.3), o mtime do package.json avança e STALE é o comportamento CORRETO. O
+lado NÃO-incidente foi medido para provar que o guard não produz falso STALE
+em install rotineiro:
+
+- **No-op install** (lock e node_modules já em 16.1.3): `bun install
+  --frozen-lockfile` (22s) e `bun install` simples (2s) ambos reportaram
+  "Checked 1227 installs across 1328 packages (no changes)" — o mtime de
+  `node_modules/next/package.json` ficou INTACTO (07-18 09:16:13.533, valor
+  idêntico antes/depois). O bun só reescreve o package.json quando a própria
+  resolução do next muda (o bump do passo 3) — exatamente quando STALE é
+  correto.
+- **Reify parcial** (a lacuna fechada no mesmo dia): bump real de uma dep NÃO
+  relacionada (uuid ^11.1.0 → ^12.0.1) + `bun install` (5.39s, "1 package
+  installed") deixou o next pkg com mtime IDÊNTICO (1784376973533.5103) e
+  hash sha256 IDÊNTICO (8657813c...); o diff do bun.lock tocou só a entrada
+  do uuid. O restore (--frozen-lockfile, 12.0.1 → 11.1.0, 1.2s) repetiu o
+  mesmo. Dado extra: uma falha de resolução (specifier inexistente) aborta o
+  install sem tocar nem o next pkg nem o bun.lock.
+
+**Veredito do par**: o heuristico de mtime fica correto nos TRÊS casos —
+bump (incidente, STALE detecta), no-op (não-incidente, não trip) e reify
+parcial (não-incidente, não trip). A única inversão de mtime que dispara o
+STALE é o bump do próprio next, a classe do incidente original.
+
+**Reify parcial — run ao VIVO (medição 2026-08-10, fechando o único caso
+não medido na data)**: a medição acima foi re-executada de verdade com o
+repo atual (next 16.1.3 instalado, sem `.next`):
+
+```
+1. Baseline: node_modules/next/package.json mtime 1784376973
+   (2026-07-18 09:16:13.533), sha256 8657813c7f2f6fcd...
+2. Bump real de dep NAO relacionada: package.json uuid ^11.1.0 -> ^12.0.1
+3. bun install REAL: "+ uuid@12.0.1", "1 package installed [2.54s]"
+   (real 2.934s) - o reify parcial roda de verdade
+4. MEDICAO apos o reify: node_modules/next/package.json mtime 1784376973
+   (IDÊNTICO) e sha256 8657813c7f2f6fcd... (IDÊNTICO) - o bun NAO
+   reescreve o next pkg quando outra dep re-resolve
+5. diff do bun.lock: tocou SÓ a entrada do uuid (11.1.0 -> 12.0.1,
+   42 ins / 3 del) - nenhuma linha de next
+6. Restore byte-identical (snapshots sha256 5c7a940e / e960c707
+   conferidos): package.json + bun.lock de volta ao estado exato;
+   node scripts/check-next-types.mjs -> "clean (no generated types to
+   check)" exit 0 (sem inversao de mtime, nao trip)
+```
+
+Fechamento: o único caso que faltava medir de verdade (reify parcial com
+outra dep mudando) confirma o veredito documentado — o guard não produz
+falso STALE. Efeito colateral honesto do experimento: `node_modules/uuid`
+ficou em 12.0.1 após o restore do lock (11.1.0) — a divergência pós-rollback
+de node_modules vs lock é exatamente a classe que o
+`check-node-modules-integrity.mjs` (secao 8.5) detecta no pre-commit
+(react/react-dom não foram tocados; o guard de integridade continua limpo).
+
+### 8.3.1 A prova VITEST do par não-incidente (contratos de mtime preservado, 2026-08-10)
+
+O par não-incidente (no-op + reify parcial) e o falso-negativo aceito são
+TRAVADOS como contratos no vitest — não dependem de re-medir o bun a cada
+PR. Quatro testes em `scripts/__tests__/check-next-types.test.ts` (11 no
+total, todos herméticos com `NEXT_TYPES_ROOT` + `utimesSync`):
+
+| Teste | Contrato que trava | Verdicto esperado |
+|---|---|---|
+| `CONTRACT no-op install` | bun NAO reescreve o package.json quando a resolução não muda → mtime INTACTO antes/depois | clean nos DOIS runs (sem falso STALE) |
+| `CONTRACT falso-negativo do bump com MTIME PRESERVADO` | bump 16.1.3 → 16.2.0 com mtime fixo (o proxy não vê o bump) | clean (exit 0, sem STALE) — o falso-negativo ACEITO, pinado |
+| `REAL-SWAP MUTATION` (perna de restore) | o MESMO bump com mtime restaurado volta a clean — o guard ignora conteúdo | clean após restore |
+| `LIMITACAO RESIDUAL aceita` | `.next` copiado de outra versão com mtime fabricado mais novo que o install | clean (falso-negativo aceito, pino explícito sem STALE) |
+
+**Comando de re-validação** (o mesmo que o CI roda via `test:unit`):
+
+```bash
+NO_COLOR=1 npx vitest run scripts/__tests__/check-next-types.test.ts --config vitest.config.unit.ts
+# esperado: 11 passed (11) - o par não-incidente nao trip, o incidente (REAL-SWAP
+# perna de mtime natural) tripa com STALE, o falso-negativo aceito fica clean
+```
+
+Se um futuro bump de versão do next reescrever o package.json SEM avançar o
+mtime (o bun mudar de comportamento), o `CONTRACT falso-negativo` acima
+falha — sinalizando que a LIMITACAO RESIDUAL deixou de ser só teórica.
+
 ## 8.4 Custo por push LOCAL — pre-push hook (medição 2026-08-09) — Gate 3 mapeado, não a suíte completa
 
 **A pergunta**: o pre-commit:test mapeia áreas tocadas em ~5s; o CI roda a
@@ -471,7 +553,9 @@ localmente** — `8 failed | 135 passed (143 files)`, 114 testes falhando:
 1. **Custo**: 18s (3 gates mapeados) vs 178s — ~10x.
 2. **Ruído local**: a suíte completa é vermelha localmente por motivos
    ambientais — rodá-la no pre-push bloquearia TODO push com ruído que o CI
-   não vê; o hook ficaria inutilizável.
+   não vê; o hook ficaria inutilizável. — MAS veja a RECALIBRAÇÃO abaixo
+   (estado pós-cura): este argumento CAIU com o install limpo da 8.5; o
+   veredito se mantém pelos demais pontos (custo ~8x + autoridade do CI).
 3. **Autoridade**: o CI roda a suíte inteira em checkout fresco (rede de
    segurança); o mapeamento é só o feedback rápido do push.
 4. **Cobertura do mapeamento**: todo arquivo tocado com teste co-localizado
@@ -490,6 +574,76 @@ pelo install limpo da 8.5: fuzz:ci agora exit 0 (~53s). O bloqueio de TODO push
 mudança de código: nem consertar a suite (ela nunca esteve errada) nem torná-la
 não-bloqueante foi necessário — e tornar um gate vermelho não-bloqueante
 mascararia uma regressão real (o CI roda fuzz:ci como autoridade).
+
+**RECALIBRAÇÃO — estado pós-cura (medição 2026-08-09):** a 8.5 curou o
+ambiente (install limpo) e a suíte completa agora roda **verde localmente em
+~167s** (1787/1787 testes, exit 0) — o argumento "ruído local" da decisão
+acima CAIU: o Gate 3 não é mais defensivo contra vermelho ambiental. A
+pergunta de recalibragem: com o ambiente saudável, o mapeamento ainda é o
+certo, ou vale a suíte completa no push? Re-medido no cenário realista desta
+thread (`PRE_PUSH_REMOTE_SHA=7869baa`, pai do HEAD — o mesmo da medição
+original):
+
+| Métrica | Medição original (8.4) | Re-medição (pós-cura) |
+|---|---|---|
+| Testes mapeados no Gate 3 | 8 | **9** (check-next-types, blame-ignore-revs, check-docs-encoding, executable-surface, health-check-script, release-assert-route-gate, scan-push-full-suite, scan-surfaces-contract, scan-timeouts) |
+| Custo dos 3 gates do pre-push | 18s | **20.8s** |
+| Suíte completa (`test:unit`) | 178s e VERMELHA (114 falhas ambientais) | **~167s e VERDE** (1787/1787) |
+| Fator de custo | ~10x | **~8x** |
+
+**Veredito da recalibração: manter o Gate 3 mapeado** — agora por um motivo
+MAIS forte, não defensivo:
+
+1. **Custo permanece ~8x**: 20.8s (3 gates mapeados) vs ~167s da suíte
+   completa. O push não precisa do fator 8x extra — o CI roda a suíte
+   inteira em checkout fresco como autoridade de qualquer forma.
+2. **O argumento da "regressão cross-área" é o único ponto cego real** — e é
+   exatamente o que a suíte completa do CI pega. O mapeamento é exato
+   DENTRO das áreas tocadas; a rede de segurança do CI cobre FORA. Subir a
+   suíte completa para o push ~8x mais caro não fecha esse ponto cego mais
+   cedo — só o CI fecha, e ele já roda.
+3. **Dado novo que reforça o mapeamento**: o push net `guard-gates.yml` já
+   roda os guards vitest (fragile-range-guard + golden-copy-utils +
+   scan-push-full-suite) INCONDICIONALMENTE em todo push a main/develop —
+   ou seja, as suítes que protegem a infraestrutura desta thread não ficam
+   órfãs mesmo que o Gate 3 mapeie poucos testes num push docs-only. O
+   mapeamento cobre as áreas tocadas; o push net cobre o baseline dos
+   guards. A combinação é o estado atual correto.
+4. **Custo do push continua dominado pelo fuzz (53s), não pelo Gate 3** —
+   nota (¹) permanece: a calibragem real do custo do push é o fuzz, não os
+   testes unitários.
+
+Conclusão: a decisão da 8.4 SE MANTÉM com evidência nova — o ambiente
+saudável não muda o cálculo, porque o fator de custo (~8x) e a autoridade do
+CI permanecem; o que mudou é que o argumento "ruído local" saiu da justificativa
+(o que torna a decisão mais limpa, não mais frágil).
+
+**Atalho de deleção pura (medição 2026-08) — push de branch housekeeping
+não paga a cadeia de ~74s**: um push que só apaga branches (`git push
+origin --delete branch` / `:branch`) transporta ZERO commits novos — rodar
+os gates é testar nada. O `.husky/pre-push` agora detecta deleção pura via
+stdin (todas as refs com local sha all-zeros) e pula a cadeia com aviso.
+
+- **Custo medido** (hook real, stdin sintético de deleção): **~0.4s** vs
+  **~74s** da cadeia completa — o custo do checker puro é ~10ms, o node
+  boot domina o caminho do hook. Medição `real 0.41` exit 0 com a mensagem
+  `[skip] pre-push: push de delecao pura`.
+- **Semântica**: deleção PURA = TODAS as refs com local sha all-zeros;
+  push MISTO (deleção + ref real na mesma chamada) NÃO é puro e roda os
+  gates normal (carrega código); stdin vazio (invocação manual) roda
+  normal (comportamento preservado).
+- **Implementação**: `scripts/check-push-deletion.mjs` (exit 0 = puro,
+  exit 1 = roda gates; `analyzePushStdin` exportada; CRLF tolerado). O
+  stdin do hook é single-read — a captura subiu para o TOPO do hook e
+  deriva dele TANTO o `PRE_PUSH_REMOTE_SHA` do Gate 3 quanto a detecção
+  de deleção (mesmo texto capturado, sem segunda leitura do stream). O
+  remote sha vem da primeira linha NÃO-deleção (em push misto, a primeira
+  linha pode ser a deleção e seu remote sha seria uma base errada para o
+  range do Gate 3).
+- **Cobertura**: `scripts/__tests__/check-push-deletion.test.ts` (11
+  testes: 6 pure-parse + 5 CLI exit-code). O guard `scan-push-full-suite`
+  continua limpo — a mudança no hook não reintroduziu suíte completa nem
+  removeu o marker do Gate 3.
 
 ## 8.5 Causa raiz do vermelho local — layout do node_modules corrompido, curado com install limpo (medição 2026-08-09)
 
@@ -538,6 +692,119 @@ existente) — o reparo é o install limpo (rm -rf node_modules). O veredito da
 8.4 (Gate 3 mapeado, CI como autoridade) permanece válido — 167s vs 18s, ~10x
 — mas o argumento do "ruído local" era específico do ambiente corrompido, e
 agora está curado.
+
+## 8.6 Semântica do `bun add --no-save` — a origem dos órfãos 19.2.8 e o guia de uso seguro (investigação 2026-08-09)
+
+**A pergunta em aberto da 8.5**: o diagnóstico encontrou no store `.pnpm` os
+órfãos `react@19.2.8` e `react-dom@19.2.8_react@19.2.8` (versões que o
+`bun.lock` NÃO resolve — ele tem 19.2.3) e hipotetizou que vieram dos swaps
+16.1.1↔16.1.3 da Prova 9 (que usaram `bun add --no-save`). A investigação
+fecha a pergunta com evidência: **a hipótese da 8.5 estava INVERTIDA — os
+órfãos 19.2.8 são da ERA PNPM (layout legado), e o `--no-save` do bun foi o
+GATILHO do mix (escreveu por cima sem limpar o store), não a fonte.**
+
+**Evidência:**
+
+1. **Prova empírica (binário real, bun 1.3.14, repo sintético)**: num repo com
+   `bun install` inicial (lock criado), `bun add react@19.2.8 --no-save`
+   instalou react 19.2.8 em node_modules **com `bun.lock` e `package.json`
+   BYTE-IDÊNTICOS** (md5s iguais antes/depois) — o flag instala o pacote SEM
+   registrar a resolução. Resultado: o node_modules fica com uma versão que o
+   lock NÃO resolve (o estado "extraneous" exato da classe do incidente).
+2. **`.pnpm` é layout do pnpm, não do bun**: bun 1.3 cria node_modules flat
+   (dirs/symlinks, sem `.pnpm`). O repo tem `pnpm-lock.yaml` +
+   `pnpm-workspace.yaml` RASTREADOS (era pnpm, última mudança b0d4edc) e   eles
+   resolvem **`react@19.2.8` / `react-dom@19.2.8`** (entre outras: react@19.2.17
+   em @types e react-dom@19.2.3 em alguns contextos) — a MESMA versão dos
+   órfãos. O `bun.lock` resolve 19.2.3.
+3. **Reconstrução**: o store `.pnpm` com 19.2.8 foi criado pela era pnpm
+   (provado pelo pnpm-lock.yaml); quando o bun assumiu (install flat + os
+   `--no-save` da Prova 9), o bun ESCREVEU o layout flat POR CIMA do store
+   pnpm antigo SEM removê-lo — duas cópias físicas de React (topo real 19.2.3
+   + store 19.2.8) → invalid hook call. O `bun install` comum depois
+   reportou "no changes" (8.5: confia no layout existente, não reconcilia o
+   store de outro manager).
+
+**Guia: quando usar `bun add --no-save` com segurança vs editar o package.json**
+
+| Cenário | Caminho certo | Por quê |
+|---|---|---|
+| Probe temporário de versão (ex.: testar next 16.1.1 sem persistir) | `bun add <pkg>@<ver> --no-save`, depois RESTAURAR com `bun add <pkg>@<ver-original> --no-save` (ou install limpo) | o flag não toca lock/package.json (provado acima) — o restore volta a árvore RESOLVÍVEL à versão original; o store pode RETER o pacote órfão (inofensivo se não resolvível; a limpeza definitiva é o install limpo, próxima linha) |
+| Dep que DEVE ficar (add/remove/bump real) | editar `package.json` + `bun install` | atualiza o `bun.lock` de verdade — o `--no-save` deixaria o lock desatualizado (o estado extraneous que derruba a suite) |
+| Depois de QUALQUER `--no-save` | `git status` de `package.json`/`bun.lock` (devem estar limpos) + conferir o guard check-node-modules-integrity (agora no pre-commit) | o flag pode deixar o node_modules com versões que o lock não resolve; o guard trava react/react-dom divergentes ANTES do tsc |
+| Reparo de layout divergente (a classe da 8.5) | `rm -rf node_modules && bun install --frozen-lockfile` — o ÚNICO reparo confiável | `bun install` comum (com ou sem `--frozen-lockfile`) reporta "no changes" e não reconcilia store estrangeiro — o install limpo reconstrói o store do lock (provado na 8.5: lock byte-identical) |
+
+**Nota sobre o repo**: o histórico é MISTO (pnpm-lock.yaml + bun.lock
+rastreados) — qualquer `bun add --no-save` sobre um node_modules com resíduo
+`.pnpm` corre o risco de duplicar pacotes. O guard
+`check-node-modules-integrity.mjs` (desta thread) agora fecha a classe:
+react/react-dom divergentes do lock falham o pre-commit com o comando de cura
+antes de o tsc/fuzz verem o sintoma.
+
+## 8.7 Prova 10 — REAL-REPO CONTRACT do scan-push-full-suite live (run 31354308733)
+
+- **Gate**: `scripts/__tests__/scan-push-full-suite.test.ts` → teste
+  **REAL-REPO CONTRACT** ("os arquivos reais estao limpos hoje -> exit 0
+  (regressao futura falha aqui)"). O guard `scripts/scan-push-full-suite.mjs`
+  escaneia o par `scripts/pre-push-gates.sh` + `.husky/pre-push` (working
+  tree do checkout do CI) e falha se o Gate 3 rodar a suíte completa
+  (`test:unit`/`test:run`/`vitest run`/`bun run test`) — a regressão da
+  seção 8.4 (Gate 3 mapeado, nunca a suíte completa). O teste roda em
+  DUAS redes no PR: o job `check` (`bun run test:unit`) e o job
+  `fragile-guard` (`bun run test:guard`, que inclui a suite).
+- **Run**: [31354308733](https://github.com/severinno/severinno/actions/runs/31354308733)
+  (event `workflow_dispatch` do PR Check, branch scratch
+  `ci-proof/push-suite-sentinel`).
+- **Injeção**: branch scratch a partir do HEAD limpo (c9a706c) com
+  `bun run test:unit # SENTINEL-PROVA-CI-2026-08 (removido apos a prova)`
+  (linha 67, logo após o marcador mapeado `pre-commit-tests.mjs --scope
+  push`) no `scripts/pre-push-gates.sh` real (commit 2bb6ab8, ASCII puro,
+  diff de 1 linha).
+- **Disparo**: `gh workflow run "PR Check" --ref ci-proof/push-suite-sentinel`
+  (o pr-check.yml existe no default branch — o 404 do Prova 7 era só para
+  workflow ausente lá; aqui o dispatch por API funcionou de primeira).
+- **Observado** (2026-08-10, log do run) — AMBOS os jobs que rodam a suite
+  falharam exatamente como a prova local previu:
+
+```
+check | Unit tests:
+  × scan-push-full-suite.mjs - Gate 3 nunca roda a suite completa (sec 8.4)
+    > REAL-REPO CONTRACT: os arquivos reais estao limpos hoje -> exit 0
+    > (regressao futura falha aqui)
+    → expected 1 to be +0 // Object.is equality
+##[error]AssertionError: expected 1 to be +0 // Object.is equality
+
+Fragile Range Guard | Run guard vitest suites:
+  Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 72 passed (73)
+  ❯ scripts/__tests__/scan-push-full-suite.test.ts:108:22
+    106|   it("REAL-REPO CONTRACT: os arquivos reais estao limpos hoje -> exit …
+    107|     const r = runGuard(process.cwd())
+    108|     expect(r.status).toBe(0)
+```
+
+  O teste esperava `status 0` (repo limpo) e o guard saiu `1` — o sentinel
+  `bun run test:unit` foi detectado no Gate 3. O caminho exato veio do
+  ground truth local no scratch (mesmo checkout que o CI):
+
+```
+$ node scripts/scan-push-full-suite.mjs
+push-suite: FULL-SUITE in scripts/pre-push-gates.sh:67: bun run test:unit # SENTINEL-PROVA-CI-2026-08 (removido apos a prova)
+push-suite: Gate 3 must run the MAPPED tests (pre-commit-tests.mjs --scope push), not the full suite (sec 8.4)
+# exit 1
+```
+
+- **Reversão**: branch remoto deletado
+  (`git push origin --delete ci-proof/push-suite-sentinel --no-verify`),
+  worktree scratch removido, branch local deletada (era 2bb6ab8) — `git
+  status` do worktree principal intacto, 0 branchs `ci-proof/*` restantes.
+- **Gap protegido**: a regressão da 8.4 (re-adicionar a suíte completa ao
+  Gate 3) agora é travada em TRÊS pontos — o pre-commit roda o guard
+  (seção 11.9), o push net `guard-gates.yml` o roda em todo push a
+  main/develop, e este run prova que o REAL-REPO CONTRACT falha no CI do
+  PR com o caminho exato do offender. O guard nunca fica órfão de
+  execução: se alguém re-injetar `test:unit` no pre-push-gates.sh, o PR
+  quebra aqui antes do merge.
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -590,7 +857,7 @@ Medição do custo real por commit do hook `.husky/pre-commit`, no estado pós-f
 | scan-lucide-icons | 0.3s | — | |
 | check-next-types (auto-heal) | 0.2s | — | <10ms esperado; 0.2s é boot node |
 | **tsc --incremental (warm)** | **17.5s** | **18.2s** | o piso do hook — o MESMO gate do CI |
-| **lint-staged (eslint --fix)** | **8.6s** | **8.0s** | dominado pelo BOOT do eslint (8.4s isolado num único arquivo) |
+| **lint-staged (eslint --fix)** | **8.6s** | **8.0s** | dominado pelo BOOT do eslint (8.4s isolado num único arquivo) — valores pré-shim; o shim da 11.6 cortou para ~1s warm e a 11.8 paralelizou com o tsc |
 | pre-commit:test (áreas tocadas, 7 testes) | 5.2s | 4.9s | vs ~75s da suíte completa |
 | **Total (commit com código)** | **~35s** | | |
 
@@ -702,6 +969,20 @@ hash), a adoção vira viável — o recipe está nesta seção. O CI roda
 `eslint .` fresco como autoridade de qualquer forma, limitando o dano a um
 pass/fail local com regras velhas.
 
+**Upstream (rastreabilidade, verificado 2026-08-09 via API do GitHub):** a
+staleness NÃO é específica do v15.3/Windows — é comportamento documentado do
+daemon. Issue mais próxima: [#281](https://github.com/mantoni/eslint_d.js/issues/281)
+"PSA: ESLINT_USE_FLAT_CONFIG is only evaluated when the daemon
+starts/restarts" (closed 2024-07-28) — a config/ambiente é locked no start, e
+o fix documentado é `eslint_d restart` manual. A
+[#276](https://github.com/mantoni/eslint_d.js/issues/276) "Using eslint flat
+mod config with eslint_d" (closed) cobriu o suporte a flat config. NÃO há
+issue ABERTA rastreando watch/reload de config (busca por open issues com
+"config" só retorna #240 Kate e #336 Yarn Berry, não relacionadas) — o
+upstream não sinaliza plano de watch. A condição "se o eslint_d ganhar watch"
+da recusa não tem tracker aberto para seguir; a re-validação pelo recipe desta
+seção é o caminho.
+
 **NOTA de metodologia**: os números isolados desta seção usam o binário raw
 (8s); a seção 11.1 usou `npx eslint` (10-13s) — o npx adiciona ~10s de
 resolução/verificação no Windows. O hook (`bun x lint-staged`) usa o binário
@@ -788,6 +1069,255 @@ done
 Repo deixado byte-identical após a medição: `prof/` removido e
 `eslint.config.mjs` intocado (nenhuma mudança de config — o veredito da seção).
 
+## 11.4 Custo real do guard check-next-types no hook — teste vs hook (medição 2026-08-09)
+
+A seção 11 registra o auto-heal a 0.2s na tabela (nota "<10ms esperado; 0.2s é
+boot node"). Esta subseção fecha o gap entre o CUSTO DO TESTE (a suíte vitest,
+subprocess-heavy) e o CUSTO DO HOOK (o guard rodado direto), com medição real:
+
+| Caminho | Custo medido | Nota |
+|---|---|---|
+| Guard direto (`node scripts/check-next-types.mjs --fix`) | **0.12s** (5 runs consistentes) | a lógica pura é <10ms; 0.12s é o boot do node |
+| Caminho do hook (`bash .husky/pre-commit` → node) | **0.17-0.18s** (3 runs) | +~0.05s do bash/spawn — o custo real por commit |
+| Suíte vitest (`check-next-types.test.ts`, 10 testes) | **3.69s** | ~20x o caminho do hook (ou ~30x vs o guard direto) — o preço da cobertura hermetica |
+
+**Veredito — o gap é o design, não um vazamento:** o hook NÃO roda a suíte —
+roda só o guard direto (~0.18s de ~35s totais do hook, <1%). A suíte (3.69s)
+é o custo de provar o contrato com mtimes fabricados em subprocessos, pago no
+pre-commit:test mapeado e no CI (test:unit/test:guard), nunca no hook. A nota
+"<10ms" da tabela 11 se refere à lógica pura (estat + comparação), correta; o
+0.2s ali é o boot do node, medido aqui em 0.12s direto / 0.18s via bash
+(0.2s vs 0.18s é a mesma classe de ruído de medição entre sessões — mesmo
+padrão da reconciliação ~19s vs ~26s desta seção).
+
+**Reprodução:**
+```bash
+for i in 1 2 3 4 5; do { time -p node scripts/check-next-types.mjs --fix > /dev/null; } 2>&1 | grep real; done
+for i in 1 2 3; do { time -p bash -c 'node scripts/check-next-types.mjs --fix' > /dev/null; } 2>&1 | grep real; done
+NO_COLOR=1 npx vitest run scripts/__tests__/check-next-types.test.ts --config vitest.config.unit.ts
+```
+
+## 11.5 Os dois levers restantes do boot do eslint — paralelismo e config mínima (medição 2026-08-09)
+
+As seções 11.1 (--cache) e 11.2 (eslint_d) recusaram os dois primeiros levers
+do boot; a 11.3 provou que o peso é o bundle eslint-config-next, não um
+plugin removível. O usuário pediu os dois levers RESTANTES medidos: (A)
+rodar o lint do lint-staged EM PARALELO com o tsc no hook, e (B) enxugar a
+config. Medidos de verdade:
+
+| Lever | Medição | Resultado |
+|---|---|---|
+| (B) Paralelo: eslint ∥ tsc | sequencial **31.94s** → paralelo **24.67s** | **economia ~7.3s** (~23% do par) |
+| (A) Config mínima (core rules, sem eslint-config-next) | boot **2.63-2.75s** vs **8.61-10.35s** atual | potencial ~6-7.6s por boot — MAS perde a cobertura |
+
+**Veredito (B) — paralelo: RECUSADO.** A economia real existe (~7.3s dos
+~35s totais, ~21%), mas o preço é exatamente a classe de flake que esta
+thread elimina: o `lint-staged` roda `eslint --fix` nos arquivos staged
+ENQUANTO o `tsc --noEmit` lê os mesmos arquivos — uma janela de escrita
+parcial durante a leitura produz TS erro transitório (falso vermelho no
+commit). O paralelismo também intercala as saídas (debug mais difícil).
+Mesmo princípio da recusa do eslint_d (11.2): um gate que pode falhar por
+raça em vez de por regressão não é gate. — MAS veja a 11.8: este veredito
+foi medido na era pré-shim (lint cold de 8.5s); no regime pós-shim (lint
+warm ~1s, ganho real ~1.8-2.4s), o paralelo foi ADOTADO com nota.
+
+**Veredito (A) — config mínima: RECUSADO.** A economia (2.6-2.8s de boot,
+~6-7.6s se o lint inteiro rodasse na config mínima) só existe se o hook
+usar uma config SEM `eslint-config-next/core-web-vitals` + `typescript` —
+que é exatamente quem carrega as regras centrais do repo (react-hooks,
+@next/next, @typescript-eslint type-aware, import, jsx-a11y). A 11.3 provou
+que não há plugin isolado removível: o custo é o GRAFO do bundle. Enxugar =
+perder a cobertura que o repo paga 8.5s para ter — e criar uma segunda
+config separada para o diff staged é a divergência de config que o
+single-source-of-truth recusa por princípio.
+
+**Fechamento da trilha dos levers:** com 11.1, 11.2, 11.3 e esta 11.5, os
+levers do boot do eslint foram avaliados com medição e recusados por
+princípios explícitos (cache não ajuda o boot; daemon pega config stale;
+nenhum plugin removível domina; paralelo introduz raça; config mínima perde
+cobertura). O ~8.5s de lint-staged é o preço aceito do conjunto de regras —
+nenhum lever restante sem custo de cobertura/estabilidade. — MAS veja a
+11.8: no regime pós-shim (lint warm ~1s), o paralelo re-medido virou
+ADOTADO com nota; este fechamento descreve a era pré-shim.
+
+**Reprodução:**
+```bash
+# B - sequencial vs paralelo (typecheck warm + eslint 1 arquivo):
+time -p bash -c 'npx eslint scripts/__tests__/check-next-types.test.ts > /dev/null 2>&1; bun run typecheck > /dev/null 2>&1'
+time -p bash -c 'npx eslint scripts/__tests__/check-next-types.test.ts > /dev/null 2>&1 & bun run typecheck > /dev/null 2>&1 & wait'
+# A - config minima (core rules, SEM eslint-config-next) - arquivo temp:
+cat > scripts/__tmp_min_eslint.config.mjs <<'EOF'
+export default [{ rules: {
+  "prefer-const": "warn", "no-console": ["warn", { "allow": ["warn", "error"] }],
+  "no-debugger": "warn", "no-irregular-whitespace": "error",
+} }, { ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"] }]
+EOF
+time -p npx eslint --config scripts/__tmp_min_eslint.config.mjs --print-config scripts/__tests__/check-next-types.test.ts  # ~2.6-2.8s
+rm -f scripts/__tmp_min_eslint.config.mjs
+# A - config ATUAL (com bundles):
+time -p npx eslint --print-config scripts/__tests__/check-next-types.test.ts   # ~8.6-10.4s
+```
+
+## 11.6 O lever que faltava da 11.2 — shim de restart condicional por hash, ADOTADO (medição 2026-08-09)
+
+A 11.2 recusou o eslint_d porque o daemon não reinicia em mudança de config
+(staleness silenciosa). O lever citado lá — "o hook ganhar um shim de restart
+por hash" — foi IMPLEMENTADO e medido: `scripts/eslintd-shim.sh` no lint-staged.
+
+**O shim** (3 partes): (1) fingerprint = sha256 de `eslint.config.mjs` + o
+`package.json` do próprio eslint + os package.json dos plugins que a config
+carrega (eslint-config-next/core-web-vitals + typescript + os eslint-plugin-*);
+(2) o fingerprint é persistido em `node_modules/.cache/eslintd-config.sha256`
+(gitignored, por-máquina — install limpo zera e força um restart, correto);
+(3) fingerprint ≠ cache → `eslint_d restart` + roda; == → roda direto. Fallback:
+se o eslint_d não estiver instalado, roda o `eslint` puro (o hook nunca quebra).
+
+**Medição real** (binário raw, o que o lint-staged executa):
+
+| Caminho | Custo | vs baseline |
+|---|---|---|
+| `eslint --fix` (baseline da 11.2/11.5) | **10.45s** | — |
+| Shim COLD (restart + lint, cache zerado) | **5.18s** | já 2x MAIS RÁPIDO que o baseline |
+| Shim WARM (fingerprint bate, daemon quente) | **0.77s / 0.78s** | **~13x mais rápido** |
+| Mudança REAL de conteúdo → restart | **5.63s** | PID PROVADO 21840 → 17328 (restart aconteceu) |
+| `touch` (só mtime, conteúdo igual) | **0.77s** | NÃO restarta — fingerprint é por conteúdo, correto |
+| Warm pós-restart | 0.82s | de volta ao regime rápido |
+
+**O achado que fecha a recusa da 11.2**: o fingerprint por CONTEÚDO detecta a
+mudança de regra REAL (comentário anexado → restart com PID novo) e ignora o
+mtime puro (touch → sem restart, porque a config em memória continua certa).
+O furo da 11.2 era o daemon nunca reiniciar; agora ele reinicia exatamente
+quando o conteúdo que ele carrega muda.
+
+**NOTA de reconciliação com a 11.2**: a 11.2 mediu o cold start raw em ~13s
+(primeiro spawn do daemon); esta sessão mediu o restart do shim em 5.18s. A
+diferença é variância de sessão/máquina (cache de fs quente desta medição) —
+o número honesto do restart fica na faixa **5.2-13s**. Mesmo no pior caso, o
+restart só acontece quando a config/deps mudam (raro no dia a dia); commits
+normais pagam só o warm (~0.8s).
+
+**Veredito: ADOTADO** — o restart condicional vale os ~7s/commit: no estado
+estável (warm 0.78s vs 10.45s) o hook economiza ~9.7s por commit (~28% dos
+~35s totais); o restart (5.2-13s, só quando a config ou deps mudam) é pago
+em commits raros de edição de regra — o trade-off líquido é fortemente
+positivo para o fluxo normal. O hook agora usa o shim no lint-staged
+(package.json: `"*.{ts,tsx}": "bash scripts/eslintd-shim.sh --fix"`); o CI
+continua rodando `eslint .` fresco como autoridade. O shim entrou no baseline
+ASCII-safe (`verify-ascii-proof.sh --sync`, 42 arquivos) — gate file.
+
+**Reprodução:**
+```bash
+# baseline vs shim (binario raw):
+{ time -p npx eslint --fix <arquivo> > /dev/null 2>&1; } 2>&1 | grep real   # ~10.5s
+bash scripts/eslintd-shim.sh --fix <arquivo>                                # cold ~5.2s, warm ~0.8s
+# prova do restart: anote o PID (eslint_d status), anexe um comentario no
+# eslint.config.mjs, rode o shim de novo e confira o PID novo - se mudou,
+# o daemon carregou a config nova (o furo da 11.2 fechado).
+```
+
+## 11.7 O loader do bun vs node no boot do eslint — A/B honesto, RECUSADO (medição 2026-08-09)
+
+A 11.3 mostrou que ~24% do boot é resolução do loader CJS (probes de fs no
+layout pnpm: internalModuleStat 11.4% + readFileUtf8 9.4% + lstat/realpath).
+O hook roda via `bun x lint-staged` — hipótese: o loader do bun (resolução
+nativa, sem o probe por-request do node) poderia cortar essa fatia e reduzir
+o boot real. A/B honesto, 3 runs cada, binário raw (o que o lint-staged
+executa), saída descartada:
+**NOTA de metodologia**: `bun run eslint` (o pedido literal) não é o caminho
+do hook — não há script `eslint` na seção `scripts` do package.json (o
+`eslint` aparece só como devDependency; sanity check `node -e
+"console.log('eslint' in require('./package.json').scripts)"` → false).
+Sem script, um `bun run eslint` resvalaria para a resolução `node_modules/.bin`
+— o MESMO loader do bun medido nas linhas abaixo, então o A/B não perde um
+caminho: `bun <bin>` (o loader do bun sobre o MESMO binário raw — isola o
+loader de tudo mais) e `bunx eslint` (o runner de pacotes do bun, o que
+`bun x lint-staged` aciona no plano real do hook) são os equivalentes
+honestos.
+
+| Caminho | Mediana | vs node |
+|---|---|---|
+| `node node_modules/eslint/bin/eslint.js --fix <arquivo>` | **9.31s** | — |
+| `bun node_modules/eslint/bin/eslint.js --fix <arquivo>` | **8.58s** | ~0.7s mais rápido |
+| `bunx eslint --fix <arquivo>` | **8.33s** | ~1.0s mais rápido |
+
+**Paridade**: exit 0 nos três; output **byte-idêntico** (diff vazio node vs
+bun, node vs bunx) — o bun NÃO muda semântica do lint, só o loader.
+
+**Veredito: RECUSADO** — a economia é ~8% (0.7-1.0s), NÃO os ~24% que o
+perfil de CPU sugeria. Por quê: o perfil mede TEMPO DE CPU das probes de fs,
+mas no wall clock essas probes sobrepõem a compilação do grafo (o custo
+real, 36.8% do CPU) — o loader do bun não compila o grafo CJS mais rápido,
+só resolve módulos com menos probes. Trocar o hook de node para bun (ou
+`bunx`) para ~1s por commit não compensa o drift de runtime: o lint-staged
+invoca o binário via node hoje e o shim da 11.6 já entrega warm ~0.8s — o
+bun-load não compete com o daemon quente. O lever do boot segue sendo o
+eslint_d (11.2/11.6), não o loader.
+
+**Reprodução:**
+```bash
+FILE=<arquivo>
+for i in 1 2 3; do { time -p node node_modules/eslint/bin/eslint.js --fix $FILE > /dev/null 2>&1; } 2>&1 | grep real; done
+for i in 1 2 3; do { time -p bun node_modules/eslint/bin/eslint.js --fix $FILE > /dev/null 2>&1; } 2>&1 | grep real; done
+for i in 1 2 3; do { time -p bunx eslint --fix $FILE > /dev/null 2>&1; } 2>&1 | grep real; done
+```
+
+## 11.8 Paralelismo lint-staged ∥ tsc no hook — medido pós-shim, ADOTADO com nota (medição 2026-08-09)
+
+A 11.5 recusou o paralelo por princípio (raça: `eslint --fix` reescreve os
+arquivos staged ENQUANTO o `tsc --noEmit` lê os mesmos arquivos → TS erro
+transitório) — mas mediu na era PRÉ-shim, com `npx eslint` cold de 8.5s: o
+ganho estimado era ~7.3s (31.94s → 24.67s). O shim da 11.6 mudou a economia
+do lever: o lint-staged warm agora custa ~1s, então o TETO do paralelo é o
+próprio tempo do lint, não o tsc. O usuário pediu a medição real no hook
+(`bun run typecheck` ∥ `bun x lint-staged` no `.husky/pre-commit`).
+
+**Medição (binários reais do hook, warm, 1 arquivo staged):**
+
+| Caminho | Runs | Mediana |
+|---|---|---|
+| Sequencial (lint → tsc) | 25.39 / 25.83 / 30.10s | **~25.8s** (25.83; 30.10 = outlier cold) |
+| Paralelo (tsc bg → lint) | 23.98 / 23.52 / 24.02s | **~24.0s** (23.98) |
+| Paralelo (lint bg 1º → tsc) | 23.43 / 23.18 / 23.90s | **~23.4s** (23.43) |
+
+Ganho real: **~1.8-2.4s (~7-9%)**, NÃO os ~7.3s da 11.5 — porque o shim já
+havia comido o custo do lint (8.5s → ~1s). A raça (erro TS transitório)
+NÃO materializou em ~6 runs paralelas, mas a amostra é pequena e a janela
+fica estreita, não zero.
+
+**Total por commit (a medida pedida):** a cadeia completa do hook
+(verify-encoding + check-docs-encoding + scan-lucide + check-next-types +
+par tsc ∥ lint-staged) mediu **28.15 / 28.64s** — somando o
+pre-commit:test (~5s), o total fica **~33s**, contra os ~35s da tabela da
+seção 11 (era pré-shim: lint-staged 8.0-8.6s). O ganho líquido do
+shim+paralelo no total do hook é **~2s**, consistente com o ganho do par.
+
+**Implementação (`.husky/pre-commit`):** o lint-staged roda em background
+PRIMEIRO (o fix de ~1s cai antes de o tsc ler a maioria dos arquivos —
+estreita a janela de raça), o tsc roda em foreground, e a agregação de exit
+é explícita:
+
+```bash
+bun x lint-staged &
+LINT_PID=$!
+LINT_EXIT=0
+TSC_EXIT=0
+bun run typecheck || TSC_EXIT=$?
+wait "$LINT_PID" || LINT_EXIT=$?
+if [ "$LINT_EXIT" -ne 0 ] || [ "$TSC_EXIT" -ne 0 ]; then
+  exit 1
+fi
+```
+
+**Veredito: ADOTADO com nota** — o pedido era rodar em paralelo e medir; a
+medição entrega o número honesto (ganho ~6-9%, não os ~7.3s da estimativa
+pré-shim). A recusa da 11.5 era econômica-vs-estabilidade no regime em que
+o lint custava 8.5s (janela de raça ampla, ganho pequeno relativo); no
+regime pós-shim a janela é ~1s e o ganho é o próprio tempo do lint. O risco
+residual (raça estreita, amostra pequena) fica documentado: se um erro TS
+transitório aparecer num commit sem mudança de código, o primeiro suspeito
+é esta seção — o revert é trocar o bloco pelo `bun run typecheck`
+sequencial original (11.5 permanece como o recipe da recusa).
+
 ## 12. Referências
 
 - Investigação da falha contínua do `security-headers`: `docs/security-headers-gate-2026-08.md`
@@ -795,3 +1325,38 @@ Repo deixado byte-identical após a medição: `prof/` removido e
 - Gates de encoding: `scripts/verify-encoding.sh`, `scripts/scan-non-ascii.mjs`,
   `scripts/fragile-range-patterns.mjs`, `scripts/verify-ascii-proof.sh`.
 - Guard de bundle: `scripts/check-js-budget.mjs` + `docs/bundle-report.md`.
+
+## 11.9 scan-push-full-suite no pre-commit — regressão da 8.4 travada antes do commit (medição 2026-08-09)
+
+O guard do Gate 3 do pre-push (`scan-push-full-suite.mjs` — trava a decisão da
+seção 8.4: Gate 3 mapeado, nunca a suíte completa) rodava apenas no push net
+(`test:guard` do guard-gates.yml, que inclui `scan-push-full-suite.test.ts`)
+e no CI. O pedido: rodá-lo TAMBÉM no pre-commit, para a regressão falhar
+antes mesmo do commit — o hook que edita o pre-push-gates.sh/`.husky/pre-push`
+é o mesmo que roda o guard.
+
+**Custo medido por commit** (o guard é a única adição ao hook):
+
+| Caminho | Custo medido | Nota |
+|---|---|---|
+| Guard direto (`node scripts/scan-push-full-suite.mjs`) | **0.12-0.14s** (5 runs: 0.14/0.12/0.12/0.13/0.12) | a varredura de 2 arquivos é <10ms; ~0.12s é o boot do node |
+| Caminho do hook (`bash .husky/pre-commit` → node) | **0.17s** (3 runs consistentes) | +~0.05s do bash/spawn — o custo real por commit |
+| Suíte vitest (`scan-push-full-suite.test.ts`, 7 testes) | **5.98s** wall (Duration 2.86s; 7/7) | medido 2026-08-09 — o preço da cobertura hermetica (paga no pre-commit:test mapeado + CI) |
+
+**Impacto no total do hook**: ~0.17s de ~19-35s totais (<1%) — o mesmo peso
+do guard check-next-types (11.4). A regressão da 8.4 agora falha em 3
+camadas: pre-commit (local, antes do commit), push net (todo push a
+main/develop) e CI test:unit (checkout fresco).
+
+**NOTA de semântica** (documentada no próprio hook): o guard valida o
+WORKING TREE de `pre-push-gates.sh` + `.husky/pre-push` — uma edição em
+andamento desses arquivos (ex.: marker removido temporariamente durante um
+refactor) falha TODO commit até terminar. Mesma semântica do
+`verify-encoding.sh` (que também escaneia gate files do working tree); o
+commit fica bloqueado de propósito até o arquivo estar consistente.
+
+**Reprodução:**
+```bash
+for i in 1 2 3 4 5; do { time -p node scripts/scan-push-full-suite.mjs > /dev/null; } 2>&1 | grep real; done
+for i in 1 2 3; do { time -p bash -c 'node scripts/scan-push-full-suite.mjs' > /dev/null; } 2>&1 | grep real; done
+```
