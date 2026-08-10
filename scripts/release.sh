@@ -113,7 +113,7 @@ echo ""
 # -- Tag stats ---------------------------------------------------------------
 
 TS_COUNT=$(find src/ -name '*.ts' -o -name '*.tsx' 2>/dev/null | wc -l)
-TEST_COUNT_UNIT=$(npx vitest run --reporter=verbose 2>/dev/null | grep "Tests" | tail -1 | grep -o '[0-9]* passed' | grep -o '[0-9]*' || echo "?")
+TEST_COUNT_UNIT=$(bunx vitest run --reporter=verbose 2>/dev/null | grep "Tests" | tail -1 | grep -o '[0-9]* passed' | grep -o '[0-9]*' || echo "?")
 E2E_COUNT="160 (5 browsers)"
 
 echo "---"

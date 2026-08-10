@@ -5,7 +5,7 @@
  *    Use the standalone benchmark instead:
  *      node scripts/geo-benchmark.mjs
  *    or:
- *      npm run benchmark:geo
+ *      bun run benchmark:geo
  *
  * Benchmark comparing two strategies for computing provider distances:
  *

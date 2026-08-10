@@ -12,17 +12,27 @@
  * byte-identical). Este guard e o sinal barato que trava essa classe ANTES de
  * o tsc/testes falharem com sintomas confusos.
  *
- * DETECCAO (default): compara a VERSAO instalada de react e react-dom (via
- * leitura direta de node_modules/<pkg>/package.json, sem require() - mais
- * barato e imune a cache de modulos; o "require" do pedido, implementado
- * assim) com a versao RESOLVIDA no bun.lock (grep da linha
- * `"react": ["react@19.2.3", ...]` do lock JSON do bun - o 1o elemento do
- * array da entrada e o specifier resolvido). Divergiu = o node_modules nao
- * reflete o lock -> o bun install comum nao repara -> falha com o comando de
- * cura. Dois pacotes basta: o par react/react-dom e o que, duplicado,
- * derruba a suite inteira (a classe da 8.5); uma divergencia em qualquer
- * outro pacote relevante aparece como sintoma em tsc/testes, mas este guard
- * cobre o par que transforma um commit limpo em 114 falhas ambientais.
+ * DETECCAO (default, DUAS camadas):
+ *   1. PAR (o legado da 8.5): compara a VERSAO instalada de react e
+ *      react-dom (via leitura direta de node_modules/<pkg>/package.json, sem
+ *      require() - mais barato e imune a cache de modulos) com a versao
+ *      RESOLVIDA no bun.lock (grep da linha `"react": ["react@19.2.3", ...]`
+ *      do lock JSON do bun - o 1o elemento do array da entrada e o
+ *      specifier resolvido). Divergiu = o node_modules nao reflete o lock
+ *      -> o bun install comum nao repara -> falha com o comando de cura.
+ *      Dois pacotes bastam: o par react/react-dom e o que, duplicado,
+ *      derruba a suite inteira (a classe da 8.5); uma divergencia em
+ *      qualquer outro pacote relevante aparece como sintoma em tsc/testes.
+ *   2. EXTRANEOUS (o esquecido da 8.6): varre os pacotes de TOPO do
+ *      node_modules (dirs diretos + cada `@scope/pkg` filho; pula dirs
+ *      dot-prefixed - .bin/.cache/.prisma/.vite/.package-lock.json - e
+ *      arquivos soltos) e cruza com o CONJUNTO de chaves do bun.lock
+ *      (entradas array-valued `"key": ["key@ver", ...]`; specs de
+ *      dependencia dentro de uma entrada sao string/object-valued e nunca
+ *      casam). Um pacote instalado que NAO tem chave no lock = o resquicio
+ *      do `bun add --no-save` sem restore (sec. 8.6): instalado fora do
+ *      lock, invisivel para o bun install comum. Falha com a mesma cura.
+ *      Custo ~10-30ms (regex de chaves + readdir do topo) - cabe no hook.
  *
  * --check-lock (OPCIONAL): o MESMO conceito estendido a TODOS os pacotes
  * diretos do package.json (dependencies + devDependencies +
@@ -51,11 +61,12 @@
  * existe (repo nao instalado) o guard faz skip exit 0 - o CI e o setup
  * inicial cuidam disso; o hook so corre com node_modules presente.
  *
- * CUSTO: default <10ms (2 reads de package.json + 1 read do lock, puro node,
- * sem deps); --check-lock ~100-300ms (1 read do package.json do repo + N
- * reads de node_modules/<pkg>/package.json). Env override NODE_MODULES_ROOT
- * (repo sintetico p/ o vitest - espelha o NEXT_TYPES_ROOT do check-next-types
- * e o FRAGILE_SCAN_ROOT do fragile-range). Saida ASCII pura (gate file).
+ * CUSTO: default <10-30ms (2 reads de package.json + 1 read do lock + 1
+ * readdir do topo do node_modules + regex de chaves, puro node, sem deps);
+ * --check-lock ~100-300ms (1 read do package.json do repo + N reads de
+ * node_modules/<pkg>/package.json). Env override NODE_MODULES_ROOT (repo
+ * sintetico p/ o vitest - espelha o NEXT_TYPES_ROOT do check-next-types e o
+ * FRAGILE_SCAN_ROOT do fragile-range). Saida ASCII pura (gate file).
  */
 import fs from "node:fs"
 import path from "node:path"
@@ -85,6 +96,65 @@ function installedVersion(pkg) {
   return fs.existsSync(installedPath)
     ? JSON.parse(fs.readFileSync(installedPath, "utf8")).version
     : null
+}
+
+/**
+ * O CONJUNTO de chaves de pacote do bun.lock. Uma entrada de pacote e
+ * array-valued (`"pkg": ["pkg@ver", "https://...", ...]`); specs de
+ * dependencia dentro de uma entrada sao string/object-valued e nunca
+ * casam com o padrao. Scoped entra como `@scope/pkg`.
+ */
+function lockedKeys(lockText) {
+  const keys = new Set()
+  for (const m of lockText.matchAll(/"([^"]+)": \[/g)) keys.add(m[1])
+  return keys
+}
+
+/**
+ * Os pacotes de TOPO do node_modules (dirs diretos + cada `@scope/pkg`
+ * filho). Pula dot-prefixed (`.bin`/`.cache`/`.prisma`/`.vite`/
+ * `.package-lock.json`) e arquivos soltos. statSync protegido: um symlink
+ * quebrado no topo nao pode derrubar o guard com throw (exit != 0 falso).
+ */
+function topLevelPackages() {
+  const nm = path.join(ROOT, "node_modules")
+  if (!fs.existsSync(nm)) return []
+  const out = []
+  for (const entry of fs.readdirSync(nm)) {
+    if (entry.startsWith(".")) continue
+    const full = path.join(nm, entry)
+    let isDir = false
+    try {
+      isDir = fs.statSync(full).isDirectory()
+    } catch {
+      continue // symlink quebrado / race - nao e pacote instalado
+    }
+    if (!isDir) continue
+    if (entry.startsWith("@")) {
+      for (const sub of fs.readdirSync(full)) {
+        let subDir = false
+        try {
+          subDir = fs.statSync(path.join(full, sub)).isDirectory()
+        } catch {
+          continue
+        }
+        if (subDir) out.push(`${entry}/${sub}`)
+      }
+      continue
+    }
+    out.push(entry)
+  }
+  return out
+}
+
+/**
+ * Extraneous: instalado no TOPO do node_modules sem chave no lock - o
+ * resquicio do `bun add --no-save` sem restore (sec. 8.6). O bun install
+ * comum nao o remove (confia no layout existente - a mesma trust da 8.5).
+ */
+function extraneousTopLevel(lockText) {
+  const keys = lockedKeys(lockText)
+  return topLevelPackages().filter((p) => !keys.has(p))
 }
 
 /**
@@ -202,7 +272,19 @@ function main() {
   }
   if (diverged.length === 0) {
     const versions = PKGS.map((p) => lockedVersion(lockText, p)).join("/")
-    console.log(`check-node-modules-integrity: clean (react/react-dom match bun.lock: ${versions})`)
+    const extraneous = extraneousTopLevel(lockText)
+    if (extraneous.length > 0) {
+      for (const p of extraneous) {
+        console.log(
+          `check-node-modules-integrity: EXTRANEOUS ${p} installed at node_modules/${p} but NOT in bun.lock (bun add --no-save sem restore?)`,
+        )
+      }
+      printCure()
+      return 1
+    }
+    console.log(
+      `check-node-modules-integrity: clean (react/react-dom match bun.lock: ${versions}; 0 extraneous top-level packages)`,
+    )
     return 0
   }
   for (const d of diverged) {

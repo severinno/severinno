@@ -107,7 +107,7 @@ jobs:
           SESSION_SECRET: ci-session-secret-at-least-32-characters-long
 
       - name: Generate coverage badge (for commit)
-        run: npx tsx scripts/coverage-badge.ts --save
+        run: bunx tsx scripts/coverage-badge.ts --save
 
       - name: Commit updated badge (tag pushes only)
         # This workflow is triggered by v* tags; the badge commit on main is
@@ -166,7 +166,7 @@ jobs:
 
       # --webpack is required: @next/bundle-analyzer only emits reports for
       # webpack builds. analyze:webpack is package-manager agnostic (plain
-      # `next build`), so it works under bun in CI and pnpm locally.
+      # `next build`), so it works under bun in CI and locally.
       - name: Analyze build (webpack + bundle report)
         run: bun run analyze:webpack
         env:

@@ -47,10 +47,12 @@ Answers: **WHICH FILES does this gate scan?**
     eslint.config.mjs, dev.ps1, test-prisma7.mjs, ...) - a fragile
     character-class range in any of them is the same silent-failure bug
     class as the 2026-08 em-dash in a gate script. Root `docker-compose*.yml`
-    and `pnpm-*.yaml` stay OUT BY DESIGN (declared container/package data,
-    not executable gate logic - the same class as the `config/`,
-    `examples/`, `prisma/` tree exclusions). Frozen lists + the NO-ORPHAN
-    contract: `scripts/__tests__/executable-surface.test.ts`.
+    stays OUT BY DESIGN (declared container data, not executable gate logic
+    - the same class as the `config/`, `examples/`, `prisma/` tree
+    exclusions); `pnpm-lock.yaml`/`pnpm-workspace.yaml` were REMOVED
+    2026-08-10 (bun.lock is the ONLY root lockfile - see section 8,
+    Type F). Frozen lists + the NO-ORPHAN contract:
+    `scripts/__tests__/executable-surface.test.ts`.
 
 ### Type B - Runtime routes (rotas de runtime)
 
@@ -323,3 +325,49 @@ client, provider trees) still silently skip in the pre-commit mapping - the
 contract pins that residual too. Opening the whole `src/components` tree to
 test:unit is deliberately NOT done (many axe/snapshot-heavy suites would
 slow the local gate); the vitrine tree is the deterministic/small one.
+
+## 8. Type F - package manager single-source (bun is the ONLY package manager)
+
+### Type F
+
+Answers: **qual package manager o repo usa, e como a classe de erro 8.5/8.6
+(lockfile mix corrompendo node_modules) não volta?**
+
+FROZEN decision (2026-08-10): o repo instala EXCLUSIVAMENTE com bun. A raiz
+tem EXATAMENTE UM lockfile rastreado: `bun.lock`. Os lockfiles não-bun
+stale foram REMOVIDOS da raiz (2026-08-10): `pnpm-lock.yaml`,
+`pnpm-workspace.yaml` e `package-lock.json` (este último da mesma classe -
+lockfile npm órfão). Eles estão root-anchored no `.gitignore`
+(`/pnpm-lock.yaml`, `/pnpm-workspace.yaml`, `/package-lock.json`) para não
+poderem voltar em silêncio.
+
+O `mini-services/realtime/` é uma UNIDADE SEPARADA de deploy (Dockerfile +
+package.json próprios, instalada na própria imagem) e MANTÉM os seus
+lockfiles (bun.lock + package-lock.json próprios) - fora do escopo da raiz
+por design; o contrato é root-anchored (`git ls-files` filtrando paths sem
+`/`), então a unidade nunca é alcançada pela checagem.
+
+Nenhuma superfície executável pode INVOCAR um package manager não-bun:
+workflows/composite actions, hooks, `scripts/*.{mjs,sh,ps1}`,
+`.zscripts/*.sh`, `Makefile`, `package.json` e root
+`*.{sh,ps1,mjs,ts}` (o surface ROOT_TOOLING: `start-server.sh`,
+`dev.ps1`, `test-prisma7.mjs`, `eslint.config.mjs`, `next.config.ts`, ...)
+não podem conter `pnpm`/`npm`/`npx` seguido de verbo de instalação
+(`install|add|run|exec|ci|dlx|audit|rebuild|update|remove|uninstall|link|
+test|start|publish|pack|prune|dedupe|version|whoami|login|logout|view|
+search|help|docs|--|...`) nem `npx <comando>`. Menção em prosa não conta:
+linhas INTEIRAS de COMENTÁRIO são puladas pelo scan (ex.: o comentário
+`bunx (nao npx)` do hook-parallel-race.yml); detecção de layout `.pnpm`
+no check-health (`node_modules/.pnpm` = check de saúde defensivo, não
+invocação) também não conta - o contrato mira INVOCAÇÃO em linhas que
+executam.
+
+Pinned por `scripts/__tests__/scan-surfaces-contract.test.ts` (Type F):
+- POSITIVO: `git ls-files` root-anchored == EXATAMENTE `['bun.lock']`
+  (qualquer segundo lockfile de raiz - pnpm, npm, yarn - quebra LOUDLY).
+- NEGATIVO: scan das superfícies executáveis por invocação `pnpm|npm|npx`
+  == `[]`; MUTATION prova que o regex vê `pnpm install`/`npm run`/`npx tsx`
+  mas NÃO vê `bun install`/`bunx`/prosa/`.pnpm` layout.
+- A decisão da 8.5/8.6 (cura com install limpo + `bun add --no-save`
+  proibido) fica travada pela raiz: sem segundo lockfile, não há como
+  outro manager re-resolver o layout.

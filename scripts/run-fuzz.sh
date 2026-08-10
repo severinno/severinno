@@ -66,9 +66,9 @@ if [ ${#FUZZ_FILES[@]} -eq 0 ]; then
 fi
 
 # Check prerequisites
-for cmd in npx node; do
+for cmd in bunx node; do
   if ! command -v "$cmd" &>/dev/null; then
-    echo "[FAIL] $cmd not found. Is Node.js installed?"
+    echo "[FAIL] $cmd not found. Is bun (bunx) / Node.js installed?"
     exit 2
   fi
 done
@@ -85,7 +85,7 @@ if $VERBOSE; then
   echo ""
   echo "  Seed:   42 (default)"
   echo ""
-  npx vitest run "${FUZZ_FILES[@]}" --reporter=verbose
+  bunx vitest run "${FUZZ_FILES[@]}" --reporter=verbose
   exit $?
 fi
 
@@ -124,7 +124,7 @@ for file in "${FUZZ_FILES[@]}"; do
   fi
 
   # Capture stdout only (vitest outputs progress on stderr)
-  npx vitest run "$file" --reporter=json > "$json_out" 2>/dev/null || true
+  bunx vitest run "$file" --reporter=json > "$json_out" 2>/dev/null || true
 
   # Write iteration count alongside the JSON so the formatter can read it
   echo "$iters" > "$TEMP_DIR/$label.iters"

@@ -45,6 +45,10 @@ function buildRoot(opts: {
   lockReact?: string
   lockReactDom?: string
   noLock?: boolean
+  /** Extra top-level dirs (each gets a package.json so it looks installed). */
+  extraTop?: string[]
+  /** Dot dirs to create (e.g. ".bin") - skipped by design, never extraneous. */
+  dotDirs?: string[]
 }): string {
   const dir = createTempDir("nm-integrity-")
   const lock = opts.noLock
@@ -62,6 +66,8 @@ function buildRoot(opts: {
   }
   writePkg("react", opts.react)
   writePkg("react-dom", opts.reactDom)
+  for (const name of opts.extraTop ?? []) writePkg(name, "1.0.0")
+  for (const d of opts.dotDirs ?? []) fs.mkdirSync(path.join(dir, "node_modules", d), { recursive: true })
   return dir
 }
 
@@ -164,7 +170,7 @@ describe("check-node-modules-integrity.mjs - divergent node_modules guard (2026-
     expect(r.stdout).not.toContain("clean")
   }, 60000)
 
-  it("BASELINE: real repo (no env override) -> exit 0, react/react-dom match bun.lock", () => {
+  it("BASELINE: real repo (no env override) -> exit 0, react/react-dom match bun.lock + 0 extraneous top-level", () => {
     const r = runGuard()
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("clean")
@@ -172,6 +178,101 @@ describe("check-node-modules-integrity.mjs - divergent node_modules guard (2026-
     // The live versions today (2026-08): 19.2.3/19.2.3 - pinning the contract
     // that the environment is healthy, the state the guard exists to defend.
     expect(r.stdout).toContain("19.2.3/19.2.3")
+    // The live extraneous state: every top-level node_modules dir (792 today)
+    // has a bun.lock key (1407 keys) - 0 installed-but-not-locked packages.
+    expect(r.stdout).toContain("0 extraneous top-level packages")
+  }, 60000)
+
+  it("count-pin: the clean message names the extraneous count (0) explicitly", () => {
+    const dir = buildRoot({ react: LOCKED, reactDom: LOCKED })
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("clean (react/react-dom match bun.lock: 19.2.3/19.2.3; 0 extraneous top-level packages)")
+  }, 60000)
+
+  it("EXTRANEOUS: a top-level dir not in bun.lock (the forgot-restore 8.6 class) -> exit 1 + EXTRANEOUS line + CURE", () => {
+    const dir = buildRoot({ react: LOCKED, reactDom: LOCKED, extraTop: ["leftover-pkg"] })
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("EXTRANEOUS leftover-pkg installed at node_modules/leftover-pkg but NOT in bun.lock")
+    expect(r.stdout).toContain("CURE: rm -rf node_modules && bun install --frozen-lockfile")
+    // the healthy pair is NOT flagged (single-failure count-pin)
+    expect(r.stdout).not.toContain("DIVERGENT")
+  }, 60000)
+
+  it("EXTRANEOUS scoped: @scope/pkg dir not in lock -> flagged with the full key", () => {
+    const dir = buildRoot({ react: LOCKED, reactDom: LOCKED, extraTop: ["@scope/stray"] })
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("EXTRANEOUS @scope/stray installed at node_modules/@scope/stray")
+  }, 60000)
+
+  it("inverse MUTATION: a top-level dir WITH a lock key (hoisted transitive like lodash) is NOT extraneous -> still clean, 0 extraneous", () => {
+    // The false-positive class: a hoisted transitive lands at top-level
+    // node_modules/lodash AND has a bun.lock entry (it IS locked). The guard
+    // keys on the lock, so it must NOT flag it - the same reason the real
+    // repo's 792 dirs / 1407 keys report 0 extraneous. buildRoot writes a
+    // lodash lock entry + installed package.json; only the pair-count-pin
+    // message changes (the extra entry is invisible to the pair message).
+    const dir = buildRoot({ react: LOCKED, reactDom: LOCKED, extraTop: ["lodash"] })
+    fs.writeFileSync(
+      path.join(dir, "bun.lock"),
+      `{\n  "lockfileVersion": 1,\n  "packages": {\n${lockLine("react", LOCKED)}${lockLine("react-dom", LOCKED)}${lockLine("lodash", "4.17.21")}  }\n}\n`,
+    )
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("0 extraneous top-level packages")
+    expect(r.stdout).not.toContain("EXTRANEOUS")
+    // The key-scan specificity the reviewer asked for: the count alone could
+    // pass even if lockedKeys() silently stopped matching lodash specifically
+    // (e.g. a regex narrowing) - so pin that the top-level set was actually
+    // crossed against the lodash key by probing the OPPOSITE direction:
+    // drop lodash's lock entry (same installed dir, key gone) -> the same
+    // name now trips, proving the guard reads lodash's key, not the pair.
+    fs.writeFileSync(
+      path.join(dir, "bun.lock"),
+      `{\n  "lockfileVersion": 1,\n  "packages": {\n${lockLine("react", LOCKED)}${lockLine("react-dom", LOCKED)}  }\n}\n`,
+    )
+    const bad = runGuard(dir)
+    expect(bad.status).toBe(1)
+    expect(bad.stdout).toContain("EXTRANEOUS lodash")
+    // and the DOCUMENTED boundary: the same name REMOVED from node_modules
+    // (lock keeps the key) is NOT extraneous - the guard scans INSTALLED
+    // dirs, it never flags 'locked but not installed' (the pair-layer covers
+    // the critical missing install; a general missing-pkg scan is out of
+    // scope, the same trust boundary as the version-only proxy of 8.5).
+    const stray = path.join(dir, "node_modules", "lodash", "package.json")
+    fs.rmSync(path.dirname(stray), { recursive: true, force: true })
+    fs.writeFileSync(
+      path.join(dir, "bun.lock"),
+      `{\n  "lockfileVersion": 1,\n  "packages": {\n${lockLine("react", LOCKED)}${lockLine("react-dom", LOCKED)}${lockLine("lodash", "4.17.21")}  }\n}\n`,
+    )
+    const absent = runGuard(dir)
+    expect(absent.status).toBe(0)
+    expect(absent.stdout).toContain("0 extraneous top-level packages")
+  }, 60000)
+
+  it("dot-dirs (.bin, .cache) are SKIPPED - never extraneous (bun/installer internals)", () => {
+    const dir = buildRoot({ react: LOCKED, reactDom: LOCKED, dotDirs: [".bin", ".cache", ".vite"] })
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("0 extraneous top-level packages")
+  }, 60000)
+
+  it("MUTATION flip (forgot-restore path): clean -> stray top-level dir appears -> exit 1 EXTRANEOUS -> removed -> clean again", () => {
+    const dir = buildRoot({ react: LOCKED, reactDom: LOCKED })
+    expect(runGuard(dir).status).toBe(0)
+    // Simulate `bun add leftover-pkg --no-save` leaving node_modules/leftover-pkg
+    const stray = path.join(dir, "node_modules", "leftover-pkg", "package.json")
+    fs.mkdirSync(path.dirname(stray), { recursive: true })
+    fs.writeFileSync(stray, JSON.stringify({ name: "leftover-pkg", version: "1.0.0" }))
+    const bad = runGuard(dir)
+    expect(bad.status).toBe(1)
+    expect(bad.stdout).toContain("EXTRANEOUS leftover-pkg")
+    expect(bad.stdout).toContain("CURE:")
+    // The restore (rm -rf node_modules && bun install --frozen-lockfile)
+    fs.rmSync(path.join(dir, "node_modules", "leftover-pkg"), { recursive: true, force: true })
+    expect(runGuard(dir).status).toBe(0)
   }, 60000)
 })
 

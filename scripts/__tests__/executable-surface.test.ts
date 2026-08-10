@@ -79,10 +79,12 @@ const ROOT_TOOLING = [
 
 /**
  * FROZEN decision B — root YAML orchestration/package data that stays OUT
- * BY DESIGN. Declared container (docker-compose) / package-manager (pnpm)
- * data, not executable gate logic; a fragile range there cannot silently
- * fail an encoding check (docker-compose does not run the gates). Same
- * rationale class as the EXCLUDED_TREES tree decisions.
+ * BY DESIGN. Declared container (docker-compose) data, not executable gate
+ * logic; a fragile range there cannot silently fail an encoding check
+ * (docker-compose does not run the gates). Same rationale class as the
+ * EXCLUDED_TREES tree decisions. (pnpm-lock.yaml / pnpm-workspace.yaml
+ * were REMOVED 2026-08-10 - bun.lock is the only root lockfile, pinned by
+ * the Type F single-package-manager contract in scan-surfaces-contract.)
  */
 const ROOT_YML_OUT = [
   "docker-compose.dev.yml",
@@ -90,8 +92,6 @@ const ROOT_YML_OUT = [
   "docker-compose.prod.yml",
   "docker-compose.test.yml",
   "docker-compose.yml",
-  "pnpm-lock.yaml",
-  "pnpm-workspace.yaml",
 ]
 
 /** Tracked files, root-relative, forward slashes (git ls-files is

@@ -35,7 +35,7 @@
  *
  * Usage:
  *   node scripts/barrel-lint.mjs
- *   npm run barrel-lint
+ *   bun run barrel-lint
  *
  * Exit codes:
  *   0 - all clean

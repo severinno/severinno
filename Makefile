@@ -154,7 +154,7 @@ test-e2e:
 lint:
 	@echo "$(CYAN)[..] Rodando linter + typecheck...$(NC)"
 	bun run lint
-	npx tsc --noEmit
+	bunx tsc --noEmit
 	@echo "$(GREEN)[OK] Lint + typecheck concluidos$(NC)"
 
 # ═════════════════════════════════════════════════════════════════════════════

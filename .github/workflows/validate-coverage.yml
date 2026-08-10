@@ -36,4 +36,4 @@ jobs:
         run: bunx prisma generate
 
       - name: Validate all API routes have test coverage
-        run: npx tsx scripts/coverage-gaps.ts --ci
+        run: bunx tsx scripts/coverage-gaps.ts --ci

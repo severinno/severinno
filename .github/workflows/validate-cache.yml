@@ -37,4 +37,4 @@ jobs:
         run: bunx prisma generate
 
       - name: Validate cache manifest against route handlers
-        run: npx tsx scripts/validate-cache-manifest.ts
+        run: bunx tsx scripts/validate-cache-manifest.ts

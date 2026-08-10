@@ -150,6 +150,24 @@ describe("run-mapped-fuzz.mjs - resolveFuzzPlan (logica pura, sem git/fs)", () =
     }
   }, 60000)
 
+  it("CONTRATO primeiro push: since all-zeros vence ANTES do mapeamento - touched mapeavel (staged+HEAD) NUNCA resolve MAPPED", () => {
+    // A guarda do main (`isValidSince(since) ? gitPushScopeFiles(since) : []`)
+    // existe para um primeiro push NUNCA virar mapped staged+HEAD: mesmo que
+    // um bug remova a guarda e o touched chegue com arquivos que mapeiam
+    // suites (incl. o shared-helper fuzz-utils.ts, que mapeia TODAS), o
+    // isValidSince decide PRIMEIRO - all-zeros => FULL, sempre.
+    for (const since of ["0".repeat(40), "0".repeat(7)]) {
+      const plan = resolveFuzzPlan({
+        since,
+        touched: ["src/lib/radius-expansion.ts", "src/lib/__tests__/fuzz-utils.ts"],
+        allSuites: allFuzzSuites(),
+      })
+      expect(plan).toEqual({ mode: "full", suites: allFuzzSuites() })
+      expect(plan.mode).not.toBe("mapped")
+      expect(plan.mode).not.toBe("skip")
+    }
+  }, 60000)
+
   it("since valido + diff sem superficie fuzz -> SKIP (exit 0, fast path docs/admin/ui)", () => {
     const plan = resolveFuzzPlan({
       since: "abc123",

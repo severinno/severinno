@@ -97,6 +97,20 @@ beforeAll(async () => {
   registry = await import("../budget-routes.mjs")
 })
 
+/**
+ * Package-manager INVOCATION detector (Type F, negative contract).
+ *
+ * Two shapes: `(pnpm|npm|npx) <verb>` with a known install verb, and
+ * `npx <command>` (npx takes a package/command, not a verb - `npx tsx`).
+ * Requires WHITESPACE after the manager name, so prose
+ * ("bunx (nao npx)" - the hook-parallel-race comment) and layout
+ * DETECTION ("node_modules/.pnpm" - check-health defensive check) never
+ * trip: `.pnpm` has a `/` right after pnpm, not whitespace. "pnpm hoisting"
+ * (prose in check-health.sh) has a non-verb after pnpm - also safe.
+ */
+const PKG_MGR_INVOCATION_RE =
+  /\b(?:pnpm|npm|npx)\s+(?:install|add|run|exec|ci|dlx|audit|rebuild|update|remove|uninstall|link|outdated|why|test|t|start|init|publish|pack|prune|dedupe|version|whoami|login|logout|view|search|help|docs|i|un|up|rm|rb|ls|--)(?:\s|$)|\bnpx\s+[\w@.\/-]+/
+
 function docText(): string {
   return fs.readFileSync(DOC, "utf8")
 }
@@ -310,6 +324,14 @@ function typeDText(doc: string): string {
 function typeEText(doc: string): string {
   const i = doc.indexOf("### Type E")
   if (i === -1) throw new Error(`scan-surfaces.md: header "### Type E" not found - update this extractor`)
+  const j = doc.indexOf("### Type F", i)
+  return j === -1 ? doc.slice(i) : doc.slice(i, j)
+}
+
+/** Type F section text (throws if the header moved - same rule as sectionBetween). */
+function typeFText(doc: string): string {
+  const i = doc.indexOf("### Type F")
+  if (i === -1) throw new Error(`scan-surfaces.md: header "### Type F" not found - update this extractor`)
   return doc.slice(i)
 }
 
@@ -688,6 +710,108 @@ describe("scan-surfaces.md <-> real manifests (doc cannot drift from code)", () 
       // workflow_call-only workflow: push trigger absent (present=false).
       const callOnly = triggerFilter("on:\n  workflow_call:\n    inputs:\n      url:\n", "push")
       expect(callOnly.present).toBe(false)
+    })
+  })
+
+  describe("Type F - package manager single-source (bun is the ONLY package manager)", () => {
+    const typeF = typeFText(doc)
+
+    it("the doc documents the single-package-manager contract and names the removed lockfiles", () => {
+      expect(typeF).toContain("bun.lock")
+      expect(typeF).toContain("pnpm-lock.yaml")
+      expect(typeF).toContain("pnpm-workspace.yaml")
+      expect(typeF).toContain("package-lock.json")
+      expect(typeF).toContain("mini-services/realtime")
+    })
+
+    it(
+      "CONTRACT: the ROOT tracked lockfile set equals EXACTLY ['bun.lock'] (root-anchored git ls-files; realtime/ is a separate unit and keeps its own)",
+      { timeout: 60_000 },
+      () => {
+      // Root-anchored: only paths with NO slash. realtime/bun.lock and
+      // realtime/package-lock.json live under a subdir and are excluded by
+      // the anchor - the separate deployment unit keeps its own lockfiles.
+      const r = runSubprocess({ command: "git", args: ["ls-files"], timeoutMs: 60_000 })
+      expect(r.status).toBe(0)
+      const rootLockfiles = r.stdout
+        .split(/\r?\n/)
+        .filter((p) => !p.includes("/") && /^(bun\.lock|pnpm-lock\.yaml|pnpm-workspace\.yaml|package-lock\.json|yarn\.lock|npm-shrinkwrap\.json)$/.test(p))
+        expect(rootLockfiles).toEqual(["bun.lock"])
+      },
+    )
+
+    it("NEGATIVE: no executable surface INVOKES pnpm/npm/npx (workflows, composite actions, hooks, scripts/*.{mjs,sh,ps1}, .zscripts, Makefile, package.json, root *.sh)", () => {
+      // Scan the executable surfaces for package-manager INVOCATIONS. The
+      // regex needs a whitespace+verb (or an npx command) after the manager
+      // name, so prose ("bunx (nao npx)") and layout DETECTION
+      // ("node_modules/.pnpm" has no whitespace after pnpm) never trip.
+      const offenders: string[] = []
+      const scan = (file: string, label: string) => {
+        // Directory guard: .husky/_ (husky v9 internals), readdir noise, etc.
+        if (!fs.existsSync(file) || !fs.statSync(file).isFile()) return
+        const src = fs.readFileSync(file, "utf8")
+        src.split(/\r?\n/).forEach((line, i) => {
+          // Comment lines are skipped: the doc's contract says prose does not
+          // count ("menção em prosa não conta") - a comment like
+          // "# bunx (nao npx)" or a future "# use npx tsx here" is NOT an
+          // invocation. Only run lines (workflow `run:`, Makefile recipes,
+          // shell/ps1 bodies) trip the detector. All comment styles are
+          // covered because the surface includes .ts/.mjs root tooling
+          // (`//` + `*` docblock continuation lines) as well as
+          // sh/yml/ps1/Makefile (`#` comments). A real run line never
+          // starts with any of these (a YAML `*anchor` ref is a value, not
+          // a `run:` command - and it cannot carry a package-manager verb).
+          const t = line.trim()
+          if (t.startsWith("#") || t.startsWith("//") || t.startsWith("*")) return
+          if (PKG_MGR_INVOCATION_RE.test(line)) offenders.push(`${label}:${i + 1}: ${line.trim()}`)
+        })
+      }
+      for (const f of fs.readdirSync(path.join(ROOT, ".github", "workflows")).filter((f) => f.endsWith(".yml"))) {
+        scan(path.join(ROOT, ".github", "workflows", f), `.github/workflows/${f}`)
+      }
+      const actionsDir = path.join(ROOT, ".github", "actions")
+      if (fs.existsSync(actionsDir)) {
+        const walk = (dir: string) => {
+          for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+            const p = path.join(dir, e.name)
+            if (e.isDirectory()) walk(p)
+            else if (e.name.endsWith(".yml")) scan(p, path.relative(ROOT, p).split(path.sep).join("/"))
+          }
+        }
+        walk(actionsDir)
+      }
+      for (const f of fs.readdirSync(path.join(ROOT, ".husky"))) scan(path.join(ROOT, ".husky", f), `.husky/${f}`)
+      for (const f of fs.readdirSync(path.join(ROOT, "scripts")).filter((f) => /\.(mjs|sh|ps1)$/.test(f))) {
+        scan(path.join(ROOT, "scripts", f), `scripts/${f}`)
+      }
+      const z = path.join(ROOT, ".zscripts")
+      if (fs.existsSync(z)) for (const f of fs.readdirSync(z).filter((f) => f.endsWith(".sh"))) scan(path.join(z, f), `.zscripts/${f}`)
+      scan(path.join(ROOT, "Makefile"), "Makefile")
+      scan(path.join(ROOT, "package.json"), "package.json")
+      // Root executable scripts: .sh, .ps1 AND .mjs/.ts tooling
+      // (start-server.sh, dev.ps1, test-prisma7.mjs, eslint.config.mjs,
+      // next.config.ts, ... - the ROOT_TOOLING surface). A package-manager
+      // invocation hidden in a root config script is the same class.
+      for (const f of fs.readdirSync(ROOT).filter((f) => /\.(sh|ps1|mjs|ts)$/.test(f))) scan(path.join(ROOT, f), f)
+      expect(offenders, `pnpm/npm/npx invocation in an executable surface:\n${offenders.join("\n")}`).toEqual([])
+    })
+
+    it("MUTATION: the invocation regex sees real package-manager commands but NOT bun/prose/.pnpm layout", () => {
+      expect(PKG_MGR_INVOCATION_RE.test("pnpm install --frozen-lockfile")).toBe(true)
+      expect(PKG_MGR_INVOCATION_RE.test("npm run dev")).toBe(true)
+      expect(PKG_MGR_INVOCATION_RE.test("npm uninstall foo")).toBe(true)
+      expect(PKG_MGR_INVOCATION_RE.test("npm test")).toBe(true)
+      expect(PKG_MGR_INVOCATION_RE.test("npm start")).toBe(true)
+      expect(PKG_MGR_INVOCATION_RE.test("npm publish")).toBe(true)
+      expect(PKG_MGR_INVOCATION_RE.test("npx tsx scripts/coverage-gaps.ts --ci")).toBe(true)
+      expect(PKG_MGR_INVOCATION_RE.test("bun install --frozen-lockfile")).toBe(false)
+      expect(PKG_MGR_INVOCATION_RE.test("bunx tsx scripts/coverage-gaps.ts --ci")).toBe(false)
+      expect(PKG_MGR_INVOCATION_RE.test("# bunx (nao npx) - a convencao bun")).toBe(false)
+      expect(PKG_MGR_INVOCATION_RE.test('Test-Path "node_modules/.pnpm"')).toBe(false)
+      expect(PKG_MGR_INVOCATION_RE.test("pnpm hoisting correctly")).toBe(false)
+      // A whitespace-followed prose mention would trip the raw regex - the
+      // NEGATIVE scan skips comment lines so this stays a non-invocation.
+      expect(PKG_MGR_INVOCATION_RE.test("# use npx tsx here")).toBe(true)
     })
   })
 })

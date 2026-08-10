@@ -373,7 +373,7 @@ main() {
     echo "     nano $PROJECT_DIR/.env.production.local"
     echo ""
     echo "  3. Gerar VAPID keys (se precisar):"
-    echo "     npx web-push generate-vapid-keys"
+    echo "     bunx web-push generate-vapid-keys"
     echo ""
     echo "  4. Configurar DNS:"
     echo "     severinno.com.br -> A -> $(curl -s ifconfig.me 2>/dev/null || echo '<IP_DO_VPS>')"

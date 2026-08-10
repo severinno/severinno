@@ -156,7 +156,7 @@ jobs:
       # Push schema instead of running full migrations — faster and sufficient
       # for Lighthouse (we need the schema + deterministic seed data).
       - name: Push Prisma schema to test database
-        run: npx prisma db push --accept-data-loss --skip-generate
+        run: bunx prisma db push --accept-data-loss --skip-generate
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
@@ -180,7 +180,7 @@ jobs:
           DATABASE_URL="${{ env.DATABASE_URL }}" \
           REDIS_URL="${{ env.REDIS_URL }}" \
           SESSION_SECRET="${{ env.SESSION_SECRET }}" \
-          npx next start -p 3000 &>/tmp/nextserver.log &
+          bunx next start -p 3000 &>/tmp/nextserver.log &
           echo "PID=$!"
           # Wait for server to respond
           for i in $(seq 1 30); do
@@ -217,7 +217,7 @@ jobs:
       # artifacts (desktop/mobile) don't collide.
       - name: Run Lighthouse CI (${{ matrix.preset }})
         run: |
-          npx -y @lhci/cli@0.15.1 autorun --config=${{ matrix.lhci_config }}
+          bunx @lhci/cli@0.15.1 autorun --config=${{ matrix.lhci_config }}
 
       - name: Upload Lighthouse reports (${{ matrix.preset }})
         if: always()

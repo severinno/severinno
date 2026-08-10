@@ -30,6 +30,13 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# stale non-bun lockfiles removed 2026-08-10 (single-package-manager contract:
+# bun.lock is the ONLY root lockfile - see docs/scan-surfaces.md Type F).
+# Root-anchored so mini-services/realtime/ keeps its own lockfiles.
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+/package-lock.json
+
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example

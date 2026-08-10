@@ -13,9 +13,9 @@
 # using ONLY quality-gate.yml must also invoke utf8-check.yml.
 #
 # Jobs (run in parallel):
-#   1. coverage-gaps   → npx tsx scripts/coverage-gaps.ts --ci
-#   2. cache-manifest  → npx tsx scripts/validate-cache-manifest.ts
-#   3. coverage-badge  → npx tsx scripts/coverage-badge.ts --save
+#   1. coverage-gaps   → bunx tsx scripts/coverage-gaps.ts --ci
+#   2. cache-manifest  → bunx tsx scripts/validate-cache-manifest.ts
+#   3. coverage-badge  → bunx tsx scripts/coverage-badge.ts --save
 #
 # Usage:
 #   jobs:
@@ -91,7 +91,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Validate all API routes have test coverage
-        run: npx tsx scripts/coverage-gaps.ts --ci
+        run: bunx tsx scripts/coverage-gaps.ts --ci
 
   # ── Cache Manifest ────────────────────────────────────────────────────────
   # Validates the CACHED_ROUTES manifest matches actual route handlers.
@@ -109,7 +109,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Validate cache manifest against route handlers
-        run: npx tsx scripts/validate-cache-manifest.ts
+        run: bunx tsx scripts/validate-cache-manifest.ts
 
   # ── Validate .env.production ──────────────────────────────────────────────
   # Compares the production env against the Zod schema (src/lib/env.schema.ts
@@ -149,7 +149,7 @@ jobs:
           printf '%s' "$ENV_PRODUCTION" > .env.production
 
       - name: Validate against Zod schema
-        run: npx tsx scripts/validate-env.ts --ci
+        run: bunx tsx scripts/validate-env.ts --ci
 
   # ── Coverage Badge ────────────────────────────────────────────────────────
   # Generates the shields.io-style coverage badge SVG.
@@ -171,7 +171,7 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Generate coverage badge SVG
-        run: npx tsx scripts/coverage-badge.ts --save
+        run: bunx tsx scripts/coverage-badge.ts --save
 
       - name: Upload badge artifact
         uses: actions/upload-artifact@v4

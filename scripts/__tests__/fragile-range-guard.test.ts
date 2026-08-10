@@ -878,9 +878,11 @@ describe("fragile-range guard (class closure for the 2026-08 em-dash bug)", () =
       expect(files.some((f) => rel(f) === "test-prisma7.mjs")).toBe(true)
       expect(files.some((f) => rel(f) === "Makefile")).toBe(true)
       expect(files.some((f) => rel(f) === "Dockerfile")).toBe(true)
-      // Root *.yml orchestration/package data (docker-compose, pnpm lock) is
-      // NOT executable gate logic - declared container/package data, out by
-      // design (same class as the config/ examples/ prisma/ exclusions).
+      // Root *.yml orchestration/container data (docker-compose) is NOT
+      // executable gate logic - declared container data, out by design
+      // (same class as the config/ examples/ prisma/ exclusions). pnpm
+      // lockfiles were removed 2026-08-10 - bun.lock is the only root
+      // lockfile (Type F contract in scan-surfaces-contract.test.ts).
       expect(files.some((f) => rel(f) === "docker-compose.yml")).toBe(false)
       expect(files.some((f) => rel(f) === "pnpm-lock.yaml")).toBe(false)
       // Non-test helpers in scripts/__tests__ ARE scanned (executable

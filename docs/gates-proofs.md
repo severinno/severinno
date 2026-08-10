@@ -575,7 +575,9 @@ localmente** — `8 failed | 135 passed (143 files)`, 114 testes falhando:
    que a suíte completa do CI em checkout fresco pega.
 5. **A calibragem real que resta é o fuzz, não o Gate 3** — ver nota (¹).
 
-(¹) O `fuzz:ci` é o custo dominante do push (~53s, 71% do total) — e esteve
+(¹) [SUPERSEDIDA pela RE-MEDIÇÃO 2026-08-10 abaixo: o pre-push não roda
+mais `fuzz:ci` (runner mapeado da 11.11) e o dominante inverteu para o
+Gate 3.] O `fuzz:ci` era o custo dominante do push (~53s, 71% do total) — e esteve
 **vermelho localmente** pela MESMA duplicação de React da seção 8.5 (invalid
 hook call na suite AddressAutocomplete sob jsdom), não um bug da suite. Curado
 pelo install limpo da 8.5: fuzz:ci agora exit 0 (~53s). O bloqueio de TODO push
@@ -619,22 +621,100 @@ MAIS forte, não defensivo:
    mapeamento cobre as áreas tocadas; o push net cobre o baseline dos
    guards. A combinação é o estado atual correto.
 4. **Custo do push continua dominado pelo fuzz (53s), não pelo Gate 3** —
-   nota (¹) permanece: a calibragem real do custo do push é o fuzz, não os
-   testes unitários.
+   nota (¹) permanecia: a calibragem real do custo do push era o fuzz, não os
+   testes unitários. (SUPERSEDIDA pela RE-MEDIÇÃO 2026-08-10 abaixo — o
+   dominante inverteu para o Gate 3 mapeado.)
 
 Conclusão: a decisão da 8.4 SE MANTÉM com evidência nova — o ambiente
 saudável não muda o cálculo, porque o fator de custo (~8x) e a autoridade do
 CI permanecem; o que mudou é que o argumento "ruído local" saiu da justificativa
 (o que torna a decisão mais limpa, não mais frágil).
 
+### RE-MEDIÇÃO 2026-08-10 (ponta a ponta real, pós 11.11/11.12/93eb00e — o dominante mudou)
+
+A premissa "o fuzz (53s) domina o push" ficou **desatualizada** com a adoção
+do runner mapeado (11.11) e do fuzz:ci batchado (11.12): o `.husky/pre-push`
+não roda mais `bun run fuzz:ci` — o Gate de fuzz é o `run-mapped-fuzz.mjs
+--since`. Medição real de ponta a ponta (mesma sessão, sequencial, um shell,
+`PRE_PUSH_REMOTE_SHA=977fa5c` = pai do HEAD 93eb00e, diff do commit
+recente):
+
+| Gate (ordem real do hook) | Medido 2026-08-10 | Anterior (8.4) |
+|---|---|---|
+| verify-encoding (agora com layer 5 .mjs) | **3.37s** | ~1.5s |
+| check-docs-encoding (informativo) | **0.63s** | <1s |
+| check-node-modules-integrity | **0.13s** | (novo) |
+| fuzz MAPEADO (skip: diff sem superfície fuzz) | **0.33s** | fuzz:ci **53s** |
+| pre-push:gates (Gate 1 + 2 + 3) | **77.58s** | 18s → 20.8s |
+| **Total hook** | **~82s** | ~74s |
+
+**O dominante inverteu**: o fuzz caiu de 53s para **0.33s** (skip) no push
+de gate files — e até o pior caso local (fallback full) é ~14-15s, não 53s.
+Quem domina agora é o **Gate 3 mapeado**: medido 66.5s (cold) / 75s (warm) —
+muito acima dos 20.8s da recalibração, porque o diff do commit recente tocou
+suítes de teste DIRETAMENTE (o mapeamento selecionou 14 arquivos / 258
+cassetes): o maior bloco é `verify-encoding.test.ts` (15 cassetes, ~36.5s —
+a suíte spawna o gate completo várias vezes), seguido de
+bundle-report-gate (~6.4s), check-node-modules-integrity (~3.4s) e
+scan-hook-parallel-race (~3.4s).
+
+**Veredito honesto da re-medição**: a decisão "Gate 3 mapeado" SE MANTÉM
+(custo ~8x vs suíte completa ~167s), mas a justificativa da 8.4 "a
+calibragem real é o fuzz" CAIU — o custo por push depende agora do que o
+diff toca: um push de gate files (o caso medido) paga ~82s dominados pelo
+Gate 3 subprocess-heavy; um push docs-only paga sub-segundo (skip de fuzz +
+sem testes mapeados). Se o Gate 3 voltar a ser o gargalo em pushes de
+suítes, o próximo lever é mapear o custo dos CASSETES (o `verify-encoding.test.ts`
+36.5s numa suíte de 15 é o maior alvo — poderia ser dividido ou
+removido do mapeado quando só o gate em si for tocado).
+
+### RE-MEDIÇÃO 2 — push típico de lib, Gate 2 MAPEADO (medição 2026-08-10, hook REAL end-to-end)
+
+A RE-MEDIÇÃO anterior mediu o PIOR caso (push de gate files cujo diff
+tocava suítes de teste diretamente → Gate 3 subprocess-heavy ~75s). O push
+TÍPICO de lib foi medido agora no hook REAL, end-to-end, no cenário da
+Prova 11: worktree scratch a partir de 93eb00e + touch benigno em
+`src/lib/radius-expansion.ts` + commit, hook rodado com stdin sintético
+(remote sha = 93eb00e → diff = só o touch de lib):
+
+| Gate (ordem real do hook) | Medido (warm) |
+|---|---|
+| verify-encoding (UTF-8 + VPS ASCII + proof + fragile baseline) | **3.37s** |
+| check-docs-encoding (informativo) | **0.65s** |
+| check-node-modules-integrity | **0.17s** |
+| fuzz MAPEADO (radius tocado → 2 suites, 16 testes) | **4.62s** |
+| pre-push:gates — Gate 1 manifest + Gate 2 budget (honest-skip sem ANALYZE) + Gate 3 (1 teste: radius-expansion.test.ts, 18 testes) | **4.53s** |
+| **Total hook E2E (hook real, exit 0)** | **~13.7s warm** (3 runs: 22.46s cold pós-install → 15.08s → 13.69s) |
+
+**O dominante morreu — o custo agora é BALANCEADO**: nenhum gate isolado
+domina (os três maiores — verify-encoding 3.4s + fuzz 4.6s + pre-push:gates
+4.5s — ~= distribuição plana; docs 0.65s e integrity 0.17s completam a
+cadeia). EXCEÇÃO ao balanceamento: um push que toque a vitrine
+(`address-autocomplete.tsx`) ainda é dominado pela suite fuzz isolada
+(14.18s, o wash da 11.11) — o plano aplica a pushes de lib/docs/admin, o
+típico. vs o ~82s do pior caso (gate files) e os ~74s originais (fuzz:ci
+53s), o push típico caiu para **~13.7s — ~5-6x mais barato**. NOTA de escopo honesto: o pre-push NÃO roda
+typecheck (é gate do pre-commit, paralelo com lint-staged na 11.8) — o
+total medido é a cadeia real do hook, sem tsc. Se o typecheck fosse
+adicionado ao push, seria +17-24s warm (o piso da secção 11) — por isso
+continua fora.
+
+**Veredito da recalibração**: a decisão "Gate 3 mapeado" se MANTÉM mais
+forte ainda — o custo por push depende do que o diff toca (lib ~13.7s,
+docs/admin sub-segundo, gate files ~82s pior caso), e o CI em checkout
+fresco continua a autoridade inalterada. O próximo lever (se o push de
+gate files voltar a incomodar) permanece o mapeamento de CASSETES do
+`verify-encoding.test.ts` (36.5s numa suíte de 15).
+
 **Atalho de deleção pura (medição 2026-08) — push de branch housekeeping
-não paga a cadeia de ~74s**: um push que só apaga branches (`git push
+não paga a cadeia de ~74s (re-medição 2026-08-10: ~82s)**: um push que só apaga branches (`git push
 origin --delete branch` / `:branch`) transporta ZERO commits novos — rodar
 os gates é testar nada. O `.husky/pre-push` agora detecta deleção pura via
 stdin (todas as refs com local sha all-zeros) e pula a cadeia com aviso.
 
 - **Custo medido** (hook real, stdin sintético de deleção): **~0.4s** vs
-  **~74s** da cadeia completa — o custo do checker puro é ~10ms, o node
+  **~74s** da cadeia completa à época (re-medição 2026-08-10: ~82s — a
+  economia da deleção só cresceu) — o custo do checker puro é ~10ms, o node
   boot domina o caminho do hook. Medição `real 0.41` exit 0 com a mensagem
   `[skip] pre-push: push de delecao pura`.
 - **Semântica**: deleção PURA = TODAS as refs com local sha all-zeros;
@@ -702,6 +782,17 @@ existente) — o reparo é o install limpo (rm -rf node_modules). O veredito da
 — mas o argumento do "ruído local" era específico do ambiente corrompido, e
 agora está curado.
 
+**RAIZ ELIMINADA (2026-08-10)**: o ambiente tinha UM segundo par de
+lockfiles rastreados na raiz (`pnpm-lock.yaml` + `pnpm-workspace.yaml`) além
+do `bun.lock` — a fonte do mix de package managers (e ainda um
+`package-lock.json` npm órfão, mesma classe). Todos os três foram
+REMOVIDOS; a raiz agora tem EXATAMENTE um lockfile (`bun.lock`), travado
+pelo contrato Type F do scan-surfaces (root-anchored git ls-files ==
+`['bun.lock']` + NEGATIVO: nenhuma superfície executável pode invocar
+pnpm/npm/npx). Sem segundo lockfile, não existe mais o caminho para outro
+manager re-resolver o layout — a classe 8.5/8.6 morre pela raiz, não pela
+cura repetida.
+
 ## 8.6 Semântica do `bun add --no-save` — a origem dos órfãos 19.2.8 e o guia de uso seguro (investigação 2026-08-09)
 
 **A pergunta em aberto da 8.5**: o diagnóstico encontrou no store `.pnpm` os
@@ -753,6 +844,67 @@ antes de o tsc/fuzz verem o sintoma. O guard roda TAMBÉM no pre-push (2026-08,
 instala do lock fresco em checkout), então o push não deve gastar fuzz/testes
 num node_modules divergente — o mesmo parâmetro do pre-commit, só que antes do
 gate caro.
+
+**FORGOT-RESTORE (2026-08-10)**: o guia da 8.6 documenta o `--no-save` seguro,
+mas nada impedia um dev de rodar `bun add <pkg> --no-save` e ESQUECER o
+restore — o pacote fica instalado no topo do node_modules SEM chave no lock
+(visível para o require do app, invisível para o bun install comum, que
+confia no layout existente). O guard agora cobre também essa classe: a camada
+EXTRANEOUS do `check-node-modules-integrity.mjs` varre os pacotes de TOPO do
+node_modules (dirs diretos + `@scope/pkg` filhos; pula dot-prefixed
+`.bin`/`.cache`/`.vite`/`.package-lock.json` e arquivos soltos) e cruza com o
+CONJUNTO de chaves do bun.lock (entradas array-valued `"key": ["key@ver", ...]`;
+specs de dependência string/object nunca casam). Instalado sem chave no lock =
+EXTRANEOUS + o comando de cura, exit 1 no pre-commit/pre-push. Custo ~10-30ms
+no hook. BASELINE real (2026-08-10): 792 dirs top-level vs 1407 chaves do
+lock, 0 extraneous — o estado saudável que o guard defende.
+
+### 8.6.1 Inventário de divergência pnpm-lock ↔ bun.lock (auditoria 2026-08-10)
+
+O par órfão 19.2.8 (pnpm) vs 19.2.3 (bun) nunca foi isolado: a pergunta
+"quantos outros diretos divergiam?" ficou em aberto até esta auditoria. Fonte
+auditável: o pnpm-lock.yaml do HEAD (o arquivo saiu da árvore na eliminação do
+segundo lockfile — o commit de remoção está staged, o snapshot vive no git).
+Reprodutível com o script versionado `scripts/audit-lockfile-divergence.mjs`:
+
+```bash
+git show HEAD:pnpm-lock.yaml > /tmp/pnpm-lock-head.yaml
+node scripts/audit-lockfile-divergence.mjs --pnpm /tmp/pnpm-lock-head.yaml
+```
+
+**Resultado: 51 divergências em 98 pacotes diretos.** Os dois locks NUNCA
+resolveram a mesma árvore — cada `bun install`/`pnpm install` alternando entre
+eles teria produzido um node_modules diferente. O veredito reforça a
+eliminação: o segundo lockfile não era só ruído, era uma segunda verdade de
+resolução. Destaques (pnpm → bun):
+
+| pacote | pnpm | bun |
+|---|---|---|
+| react | 19.2.8 | 19.2.3 |
+| react-dom | 19.2.8 | 19.2.3 |
+| react-hook-form | 7.82.0 | 7.71.1 |
+| next | 16.2.11 | 16.1.3 |
+| eslint-config-next | 16.2.11 | 16.1.3 |
+| next-intl | 4.13.4 | 4.7.0 |
+| @types/react | 19.2.17 | 19.2.8 |
+| @prisma/client | 6.19.3 | 6.19.2 |
+| prisma | 6.19.3 | 6.19.2 |
+| tailwindcss | 4.3.3 | 4.1.18 |
+| zod | 4.4.3 | 4.3.5 |
+| zustand | 5.0.14 | 5.0.10 |
+
+(47 restantes: divergências de patch/minor em radix-ui, aws-sdk e outros — o
+list completo sai do script. eslint_d é o único ABSENT no pnpm: dep adicionada
+só na era bun.)
+
+**Interpretação honesta:** os dois locks foram gerados em momentos diferentes
+do tempo de resolução — o pnpm resolveu ranges com um registro mais novo. A
+divergência NÃO prova que a migração introduziu bug algum; prova que o par de
+locks era inerentemente conflitante e que qualquer alternância pnpm↔bun na
+mesma árvore re-resolveria pacotes — exatamente a classe de divergência que a
+seção 8.5 documentou como corrompedora do layout local. O bun.lock vigente é
+a única verdade desde a eliminação; o script fica como a prova auditável para
+quem quiser re-verificar.
 
 ## 8.7 Prova 10 — REAL-REPO CONTRACT do scan-push-full-suite live (run 31354308733)
 
@@ -818,6 +970,84 @@ push-suite: Gate 3 must run the MAPPED tests (pre-commit-tests.mjs --scope push)
   PR com o caminho exato do offender. O guard nunca fica órfão de
   execução: se alguém re-injetar `test:unit` no pre-push-gates.sh, o PR
   quebra aqui antes do merge.
+
+## 8.8 Prova 11 — Gate 2 fuzz MAPEADO live (pre-push real, 2026-08-10)
+
+A adoção do runner mapeado (seção 11.11) trocou o `fuzz:ci` de 6 spawns
+(~40.4s) pelo `run-mapped-fuzz.mjs --since` (só as suites cujos alvos foram
+tocados, batched numa invocação). A prova viva do Gate 2: um touch real em
+`src/lib/radius-expansion.ts` num push real deve selecionar EXATAMENTE as 2
+suites do manifest que apontam para ele (`cache-key-fuzz` +
+`radius-expansion-fuzz`) — e o push passar.
+
+**Setup**: branch scratch `ci-proof/fuzz-mapped-radius` criada a partir de
+`93eb00e` (o HEAD local — o único ref com o Gate 2; a release remota
+`release/v0.4.0` pré-data o runner, detalhe da base que o Type E exige
+re-verificar por prova), worktree scratch + `bun install --frozen-lockfile`
+(1187 pacotes, react 19.2.3 = lock, integrity guard verde) + `.env` copiado
+do worktree principal. Touch benigno = 1 linha de comentário ASCII puro no
+fim do arquivo (o `scan-non-ascii` flagra 1 VIOLATION pré-existente — um
+em-dash U+2014 na linha 11 do arquivo, válido em UTF-8 e fora da superfície
+ASCII-pura; não afeta os gates). Commit com `--no-verify`: o pre-commit do
+scratch falhava no scan-lucide por fixture `vitrine-a11y-setup.tsx` stale no
+commit base (regenerada só no trabalho não-commitado do thread — fora do
+escopo desta prova).
+
+**Push 1 (criação da branch — `--since` all-zeros → fallback fuzz completo)**:
+
+```
+PUSH1_EXIT=0
+[fuzz] fallback: --since ausente/zeros (primeiro push ou rodada manual) -> fuzz COMPLETO batched (6 suites, secao 11.11)
+To github.com:severinno/severinno.git
+ * [new branch]      ci-proof/fuzz-mapped-radius -> ci-proof/fuzz-mapped-radius
+```
+
+(Semântica documentada e correta: sem range não há mapa. O push passa e a
+branch fica rastreada em `59615b5` — que vira o `--since` do push 2.)
+
+**Push 2 (—since real = 59615b5 → diff = só o 2o touch → mapeado)**:
+
+```
+PUSH2_EXIT=0
+[fuzz] mapeado: 2 suite(s) para o diff do push (secao 11.11):
+  - src/lib/__tests__/cache-key-fuzz.test.ts
+  - src/lib/__tests__/radius-expansion-fuzz.test.ts
+Test Files  2 passed (2)
+      Tests  16 passed (16)
+To github.com:severinno/severinno.git
+   59615b5..63063ce  ci-proof/fuzz-mapped-radius -> ci-proof/fuzz-mapped-radius
+```
+
+O Gate 3 mapeado também passou no mesmo push 2 (a área tocada mapeou para o
+teste unitário do arquivo):
+
+```
+-- Gate 3/3: testes unitarios das areas tocadas (staged + HEAD + range do push) --
+  pre-push:test - 1 teste(s) nas ?reas tocadas: src/lib/__tests__/radius-expansion.test.ts
+```
+
+**O contrato foi provado nos dois sentidos**: (1) o runner selecionou
+EXATAMENTE as 2 suites do manifest para `radius-expansion.ts` (nada de
+fallback completo, nada de suite a mais — o batching de 2 suites rodou em
+~16 testes verdes); (2) o push passou com a cadeia inteira — verify-encoding
+3 camadas (`fragile-range: clean (141 gate files + 476 target files)`),
+`yaml-gate: clean`, `mjs-gate: clean (34 scripts/*.mjs)`,
+`check-node-modules-integrity: clean (react/react-dom match bun.lock:
+19.2.3/19.2.3)` e o Gate 3 mapeado.
+
+- **Reversão**: branch remoto deletado (`git push origin --delete
+  ci-proof/fuzz-mapped-radius`), worktree scratch removido, branch local
+  deletada (era 63063ce) — `git status` do worktree principal intacto, 0
+  branchs `ci-proof/*` restantes.
+- **Gap protegido**: a premissa da recalibração 8.4/11.11 (Gate 2 mapeado
+  em vez do fuzz completo local, CI como autoridade) agora tem prova viva:
+  um push real seleciona e roda o subconjunto correto. Se o manifest
+  perder a aresta `radius-expansion.ts → 2 suites` (drift do FUZZ_TARGETS),
+  este mesmo push selecionaria o número errado — e os contratos
+  `fuzz-mapped.test.ts` + `scan-push-full-suite` (positivo/negativo) travam
+  o drift no CI antes que o gate local minta. Prova puramente LOCAL
+  (pre-push real, sem run number de CI) — como a Prova 9; a tabela da
+  seção 1 fica sem registro por design.
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -1895,6 +2125,49 @@ autoridade.
 só no CI) — travado pelo REAL-REPO CONTRACT do fuzz-mapped.test.ts nos dois
 sentidos. O guard do push-suite (`test:guard` + push net) inclui a suíte
 nova e o contrato de gate atualizado.
+
+### Por que o fuzz NÃO vai para o pre-commit (avaliação 2026-08-10)
+
+Pergunta: o fuzz mapeado (~5.7s típico) também cabe no pre-commit,
+espelhando o scan-push-full-suite (que roda nos dois hooks)? **Resposta:
+NÃO — fuzz fica pre-push-only**, e o contrato que a secção 11.11 já pinava
+é o que trava isso (GATE_CONTRACTS do scan-push-full-suite: NEGATIVO
+`fuzz:ci|run-mapped-fuzz` fora do `.husky/pre-commit`; POSITIVO
+`run-mapped-fuzz.mjs --since` no `.husky/pre-push`).
+
+O número de ~5.7s NÃO transfere para o commit, porque a seleção mapeada
+depende de um `--since` REAL (o sha remoto do push) — e no pre-commit não
+existe range empurrado. As duas fiações ingênuas foram MEDIDAS:
+
+| Fiação no pre-commit | Comportamento real medido | Veredito |
+|---|---|---|
+| `--since HEAD` (diff `HEAD...HEAD`, vazio) | `[fuzz] skip: nenhuma suite mapeada` — exit 0, **nada roda NUNCA** | gate no-op silencioso (falso verde) |
+| sem `--since` (wiring naive) | fallback fuzz COMPLETO batched: **14.69s** a CADA commit (6 suites) | o custo exato que o runner mapeado existe para evitar — ~+45% no total medido do hook (11.8, ~33s) |
+| `--since HEAD~1` (diff do commit anterior) | seleciona o diff do commit ANTERIOR, não o staged | escopo errado (testa o que já foi commitado) |
+
+A única fiação correta seria um modo STAGED no runner (`gitStagedFiles` /
+`--scope cached` do pre-commit-tests.mjs) — uma FEATURE nova, não wiring —
+e mesmo assim a suite vitrine (14.18s isolada) tornaria o imposto por
+commit dominante. Por que a decisão é a certa:
+
+1. **O pre-commit já cobre as áreas tocadas deterministicamente** via
+   `pre-commit:test` (unit tests mapeados dos arquivos staged) — o fuzz é a
+   camada ESTOCÁSTICA, cujo valor está no range real do push + no CI fresco.
+2. **A rede de fuzz tem dois níveis e ambos continuam**: pre-push mapeado
+   (~5-6s típico) + CI completo em checkout fresco (autoridade). O commit
+   é o ponto de feedback rápido e determinístico; o push, o ponto da rede
+   estocástica.
+3. **O contrato já pinava a decisão** (secção 11.11, adotado 2026-08-10) —
+   esta subsecção documenta o PORQUÊ que o contrato só assere, fechando a
+   lacuna de racional registrado (o mesmo padrão da auditoria de árvores).
+4. **Semântica honesta**: adicionar o gate ao pre-commit sem modo staged
+   produziria um no-op silencioso (`--since HEAD`) ou +14.69s/commit (full
+   fallback) — os dois violam a postura de custo medida em toda a secção 11.
+
+Se um dia o fuzz pré-commit fizer sentido, o caminho é: adicionar
+`--scope cached` ao run-mapped-fuzz.mjs, re-medir o custo por commit e
+atualizar o GATE_CONTRACTS (negativo → positivo nos dois hooks). Até lá,
+pre-push-only é o estado travado.
 
 ## 11.12 Fuzz:ci BATCHADO — o mesmo lever do encoder aplicado ao runner (medição 2026-08-10)
 

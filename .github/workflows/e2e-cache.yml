@@ -121,7 +121,7 @@ jobs:
       # 1. Manifest contract: CACHED_ROUTES must match the actual route
       #    handlers + the stale-while-revalidate header format.
       - name: Gate — validate cache manifest
-        run: npx tsx scripts/validate-cache-manifest.ts
+        run: bunx tsx scripts/validate-cache-manifest.ts
 
       # 2. SWR header unit tests: cacheControlPublic must keep emitting
       #    stale-while-revalidate for every public cached route, and the
@@ -140,7 +140,7 @@ jobs:
       # for cache header testing (we don't need data, just the schema)
       - name: Push Prisma schema to test database
         run: |
-          npx prisma db push --accept-data-loss --skip-generate
+          bunx prisma db push --accept-data-loss --skip-generate
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
@@ -157,7 +157,7 @@ jobs:
           DATABASE_URL="${{ env.DATABASE_URL }}" \
           REDIS_URL="${{ env.REDIS_URL }}" \
           SESSION_SECRET="${{ env.SESSION_SECRET }}" \
-          npx next start -p 3000 &>/tmp/nextserver.log &
+          bunx next start -p 3000 &>/tmp/nextserver.log &
           echo "PID=$!"
           # Wait for server to respond
           for i in $(seq 1 30); do

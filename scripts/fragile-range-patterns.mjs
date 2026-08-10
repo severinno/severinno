@@ -215,9 +215,10 @@ export function gateFiles(root = REPO_ROOT) {
   // same bug class, so the root gate surface is the full executable set,
   // not just *.sh. (Root config DATA - .prettierrc, lighthouserc*.json -
   // is not executable code; not scanned. The extension set mirrors
-  // TARGET_EXTS minus .ya?ml - root yml (docker-compose/pnpm) is declared
-  // container/package data, OUT BY DESIGN; yml is scanned only under
-  // .github/workflows and .github/actions. Makefile/Dockerfile are
+  // TARGET_EXTS minus .ya?ml - root yml (docker-compose) is declared
+  // container data, OUT BY DESIGN; yml is scanned only under
+  // .github/workflows and .github/actions. (pnpm-workspace.yaml was
+  // removed 2026-08-10 - see the Type F contract.) Makefile/Dockerfile are
   // extension-less build files, matched by name.)
   for (const f of readdirSync(root)) {
     if (

@@ -162,7 +162,7 @@ function main() {
 
   // ---- --verbose mode: run vitest inline (already a single batch) ----
   if (VERBOSE) {
-    log(`  Running: npx vitest run ${fuzzFiles.join(" ")} --reporter=verbose\n`)
+    log(`  Running: bunx vitest run ${fuzzFiles.join(" ")} --reporter=verbose\n`)
     const res = spawnSync(
       process.execPath,
       [VITEST_BIN, "run", ...fuzzFiles, "--reporter=verbose"],
