@@ -172,7 +172,7 @@ const MAX_TIME_RE = /--max-time\b/
 export const FRONTIERS = [
   { id: "eval-built-curl", kind: "escape", protection: "tripwire", marker: "TRIPWIRE (sec 11.36): the eval+curl FORM", ref: "11.30/11.36" },
   { id: "quoted-token", kind: "escape", protection: "counterfactual", marker: "QUOTED absolute path - ESCAPE ACEITO", ref: "11.31" },
-  { id: "split-form-eval", kind: "escape", protection: "counterfactual", marker: "SEPARATE physical lines", ref: "11.36" },
+  { id: "split-form-eval", kind: "escape", protection: "counterfactual", marker: "REAL-REPO CONTRACT (BASELINE companion da residual, sec 11.36): a superficie derivada atual tem ZERO usos do split-form", ref: "11.36" },
   { id: "short-form-m", kind: "overflag", protection: "matrix", marker: "short form -m 20 OVER-FLAGS", ref: "11.31" },
   { id: "case-variant", kind: "overflag", protection: "matrix", marker: "case-variant --MAX-TIME OVER-FLAGS", ref: "11.31" },
   { id: "alias-name", kind: "overflag", protection: "matrix", marker: "alias curl=", ref: "11.31" },
@@ -280,6 +280,62 @@ export function scanEvalCurl(relPath, root = ROOT) {
       })
     }
     baseLine += logical.split("\n").length
+  }
+  return warnings
+}
+
+/**
+ * scanSplitEvalCurl - o BASELINE companion da residual do split-form (sec
+ * 11.36). Diferente do scanEvalCurl (o tripwire, linha LOGICA unica), este
+ * scanner procura a FORMA DIVIDIDA: uma atribuicao `VAR=...curl...` numa
+ * linha fisica e `eval "$VAR"` numa linha POSTERIOR, SEM continuacao `\`
+ * entre elas (a residual que o tripwire nao cobre por decisao - fechar
+ * custa rastreamento de variaveis, o custo que a 11.30 recusou).
+ *
+ * POR QUE EXISTE (e o que NAO faz): a residual e ACEITA por decisao - o
+ * CLI/guard NAO falha nela. Este scanner e EVIDENCIA DE TESTE apenas (o
+ * REAL-REPO CONTRACT pina 0 usos na superficie derivada atual): se a forma
+ * aparecer num gate script, o teste quebra com o path:line exato, forcando
+ * a decisao humana em vez de um furo silencioso. NAO e wired no
+ * scanCurlTimeouts nem no CLI - o contrato do guard fica intacto (a
+ * residual continua aceita); so o teste consome este export.
+ *
+ * Logica: linha fisica = atribuicao cujo valor contem token curl (o token
+ * vive NA STRING, mesmo raw) -> registra a variavel; linha posterior com
+ * `eval` referenciando essa variavel -> warning na linha do eval. Linhas de
+ * comentario e continuacoes `\` excluidas (a continuacao e territorio do
+ * tripwire - o joinContinuations dela ja cobre a forma unida).
+ */
+export function scanSplitEvalCurl(relPath, root = ROOT) {
+  const abs = path.join(root, relPath)
+  if (!fs.existsSync(abs)) return []
+  const raw = fs.readFileSync(abs, "utf8")
+  const lines = raw.split(/\r?\n/)
+  // Passo 1: registra as atribuicoes cujo valor carrega um token curl.
+  const curlVars = new Map() // varName -> linha da atribuicao (1-based)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (isCommentLine(line)) continue
+    if (/\\\s*$/.test(line)) continue // continuacao: territorio do tripwire
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=/)
+    if (m && CURL_INVOKE_RE.test(line)) {
+      curlVars.set(m[1], i + 1)
+    }
+  }
+  // Passo 2: um `eval "$VAR"` posterior referenciando uma var-curl = split.
+  const warnings = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (isCommentLine(line)) continue
+    if (/\\\s*$/.test(line)) continue
+    if (!EVAL_TOKEN_RE.test(line)) continue
+    for (const [varName, assignLine] of curlVars) {
+      if (i + 1 <= assignLine) continue // eval antes/na propria linha da atribuicao
+      const ref = new RegExp(`\\$\\{${varName}\\}|\\$${varName}\\b`)
+      if (ref.test(line)) {
+        warnings.push({ line: i + 1, text: line.trim().slice(0, 80) })
+      }
+    }
   }
   return warnings
 }

@@ -33,8 +33,13 @@
  *   CI_PROOF_FAKE_GH_JOB_STATUS "in_progress" (default) | "completed".
  *   CI_PROOF_FAKE_GH_JOB_CONCLUSION "success" (default) | "failure"
  *                               (used when the job is completed).
+ *   CI_PROOF_FAKE_DIRTY_BEFORE  "1" = git status --porcelain is dirty
+ *                               BEFORE the cycle (the sec 8.21 guard -
+ *                               the pre-checkout status runs while the
+ *                               current branch is still the BASE).
  *   CI_PROOF_FAKE_DIRTY         "1" = git status --porcelain is dirty
- *                               (the --mutate commit path).
+ *                               AFTER the branch switch (the --mutate
+ *                               commit path).
  *   CI_PROOF_FAKE_LOCAL_BATCH_EXIT  the exit code of the pre-commit batch
  *                               runner role ('batch' - the
  *                               --expect-local-block check): 0 (default) =
@@ -126,7 +131,55 @@ if (kind === "git") {
     ok()
   }
   if (args[0] === "status") {
-    out(process.env.CI_PROOF_FAKE_DIRTY === "1" ? " M mutated.ts\n" : "")
+    // sec 8.21: o guard da arvore suja roda ANTES do checkout -b (branch
+    // ainda base) - FAKE_DIRTY_BEFORE simula a sujeira pre-ciclo; a
+    // checagem pos-mutacao (commit path) roda na branch scratch -
+    // FAKE_DIRTY (o env historico dos testes de mutate). Distingue pela
+    // branch atual, sem custo nos testes existentes (FAKE_DIRTY=1 continua
+    // clean na checagem pre-ciclo).
+    const preCycle = state.currentBranch === "base"
+    const dirty = preCycle
+      ? process.env.CI_PROOF_FAKE_DIRTY_BEFORE === "1"
+      : process.env.CI_PROOF_FAKE_DIRTY === "1"
+    out(dirty ? " M mutated.ts\n" : "")
+    ok()
+  }
+  if (args[0] === "stash" && args[1] === "push") {
+    // --stash-uncommitted (sec 8.21): o delta nao-commitado vai pro stash.
+    // O fixture registra a MENSAGEM do stash (o nome deterministico do
+    // ciclo `ci-proof: <branch> (delta nao-commitado)`) para o `stash
+    // list` devolver - sec 11.44: o revert localiza o stash do ciclo pela
+    // mensagem, nao pelo topo cego. args: stash push -u -m <message>.
+    state.cycleStashMessage = args[4] ?? null
+    saveState(state)
+    ok()
+  }
+  if (args[0] === "stash" && args[1] === "list") {
+    // Sec 11.44: o revert pede `git stash list` e localiza o stash do
+    // ciclo pela mensagem. CI_PROOF_FAKE_EXTRA_STASH=1 simula um stash
+    // ALHEIO empilhado POR CIMA (o lint-staged do pre-commit num --mutate
+    // sem --no-verify): o stash do ciclo fica em stash@{1} e o revert
+    // precisa mira-lo pelo nome, nao pelo topo cego stash@{0}.
+    const msg = state.cycleStashMessage ?? "ci-proof: ci-proof/unknown (delta nao-commitado)"
+    if (process.env.CI_PROOF_FAKE_EXTRA_STASH === "1") {
+      out(`stash@{0}: On base: lint-staged automatic backup\nstash@{1}: On base: ${msg}\n`)
+    } else {
+      out(`stash@{0}: On base: ${msg}\n`)
+    }
+    ok()
+  }
+  if (args[0] === "stash" && args[1] === "pop") {
+    // Sec 11.44: o pop agora recebe o ref do stash do ciclo (`git stash
+    // pop stash@{N}` - mirado pela mensagem, nao o topo cego).
+    // CI_PROOF_FAKE_STASH_POP_FAIL=1 simula um pop conflitante (o revert
+    // vira parcial - exit 3, o delta SEGUE no stash, o pop falho nao
+    // remove). No sucesso, o stash do ciclo e consumido (a mensagem some).
+    if (process.env.CI_PROOF_FAKE_STASH_POP_FAIL === "1") {
+      process.stderr.write("fake git: stash pop conflitou (delta mantido no stash)\n")
+      process.exit(1)
+    }
+    state.cycleStashMessage = null
+    saveState(state)
     ok()
   }
   if (args[0] === "add") {

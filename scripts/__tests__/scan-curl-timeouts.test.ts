@@ -55,6 +55,7 @@ import {
   scanCurlTimeouts,
   scanEvalCurl,
   scanGateScript,
+  scanSplitEvalCurl,
 } from "../scan-curl-timeouts.mjs"
 
 const ROOT = process.cwd()
@@ -316,6 +317,43 @@ describe("scripts/scan-curl-timeouts.mjs - masking + parser", () => {
     expect(w[0].text).toContain("eval")
   })
 
+  it("SPLIT-FORM SCANNER (a residual companion, sec 11.36): o split CMD=... / eval em linhas separadas E flagrado na linha do eval - e o contrafactual (mesma forma numa linha unica) fica com o TRIPWIRE, provando scanners complementares, nao redundantes", () => {
+    // The residual scanner (test-evidence only, NOT wired into the CLI -
+    // the frontier stays accepted) proves it is NOT vacuous: the split
+    // form IS detectable when you look for it. The domain separation is
+    // the contract: the split form belongs to scanSplitEvalCurl (eval
+    // line), the same-line form belongs to the tripwire scanEvalCurl -
+    // each scanner owns exactly one half of the boundary.
+    const dir = createTempDir("curl-timeouts-split-scan-")
+    const gate = path.join(dir, "scripts", "gate.sh")
+    fs.mkdirSync(path.dirname(gate), { recursive: true })
+    fs.writeFileSync(
+      gate,
+      ['#!/usr/bin/env bash', 'CMD="curl -s -o /dev/null "$HEALTH_URL""', 'eval "$CMD"'].join("\n"),
+      "utf8",
+    )
+    const splitWarnings = scanSplitEvalCurl("scripts/gate.sh", dir)
+    expect(splitWarnings).toHaveLength(1)
+    expect(splitWarnings[0].line).toBe(3) // a linha do eval, nao a da atribuicao
+    expect(splitWarnings[0].text).toContain("eval")
+    // O tripwire NAO ve o split (a fronteira da 11.36 continua) - o
+    // scanner da residual e quem o pega.
+    expect(scanEvalCurl("scripts/gate.sh", dir)).toEqual([])
+    // CONTRAFACTUAL (dominio separado): a MESMA forma numa linha unica e
+    // do tripwire - o scanner do split NAO a reporta (cada scanner um
+    // lado da fronteira, nunca os dois no mesmo furo).
+    const gate2 = path.join(dir, "scripts", "gate2.sh")
+    fs.writeFileSync(
+      gate2,
+      ['#!/usr/bin/env bash', 'CMD="curl -s -o /dev/null "$HEALTH_URL""; eval "$CMD"'].join("\n"),
+      "utf8",
+    )
+    expect(scanSplitEvalCurl("scripts/gate2.sh", dir)).toEqual([])
+    const trip = scanEvalCurl("scripts/gate2.sh", dir)
+    expect(trip).toHaveLength(1)
+    expect(trip[0].line).toBe(2)
+  })
+
   it("TRIPWIRE continuation: the form split by a backslash continuation is ONE logical line -> trips at the START line", () => {
     // joinContinuations (the same helper the --max-time detector uses for
     // the TLS-check form) makes the split-by-backslash pair a single
@@ -326,12 +364,207 @@ describe("scripts/scan-curl-timeouts.mjs - masking + parser", () => {
     fs.mkdirSync(path.dirname(gate), { recursive: true })
     fs.writeFileSync(
       gate,
-      ['#!/usr/bin/env bash', 'set -euo pipefail', 'CMD="curl -s -o /dev/null \"$HEALTH_URL\"" \\', '  eval "$CMD"'].join("\n"),
+      ['#!/usr/bin/env bash', 'set -euo pipefail', 'CMD="curl -s -o /dev/null "$HEALTH_URL"" \\', '  eval "$CMD"'].join("\n"),
       "utf8",
     )
     const w = scanEvalCurl("scripts/gate.sh", dir)
     expect(w).toHaveLength(1)
     expect(w[0].line).toBe(3)
+  })
+
+  it("TRI-CASO da linha logica (sec 11.36, o padrao da matriz INVOCATION-FORM aplicado ao tripwire): linha unica -> trip na linha 3, continuacao \\ -> trip na linha INICIAL (3), split sem continuacao -> [] - a tabela da 11.36 travada como comportamento num unico it parametrizado", () => {
+    // The tri-caso of sec 11.36 (the logical-line boundary) previously
+    // lived in SEPARATE tests (TRIPWIRE boundary + TRIPWIRE continuation)
+    // plus the doc prose (the tri-caso paragraph). THIS test pins the
+    // WHOLE table in ONE parametrized it - the INVOCATION-FORM MATRIX
+    // pattern (sec 11.31) applied to the tripwire scanEvalCurl instead of
+    // the detector scanGateScript: each row is a physical form, the
+    // expected is the trip count + the exact trip line. The rule: the
+    // boundary is the LOGICAL line - continuing with \\ is JOINING (one
+    // logical line, trip at the START line, Prova 31); breaking without
+    // \\ is SEPARATING (two logical lines, no trip - the accepted
+    // residual, Prova 30); the single-line form is the base trip (Prova
+    // 29). The Prova 29/30/31 live-CI pair is now mirrored hermetically
+    // as a single behavioral table.
+    const cases: Array<[string, number, number, string]> = [
+      ['CMD="curl -s -o /dev/null "$HEALTH_URL""; eval "$CMD"', 1, 3, "linha unica (Prova 29 - o caso base do tripwire)"],
+      ['CMD="curl -s -o /dev/null "$HEALTH_URL"" \\n  eval "$CMD"', 1, 3, "continuacao \\ (Prova 31 - o joinContinuations dobra; trip na linha INICIAL do comando logico)"],
+      ['CMD="curl -s -o /dev/null "$HEALTH_URL""\neval "$CMD"', 0, 0, "split sem continuacao (Prova 30 - a residual ACEITA, nao trip)"],
+    ]
+    for (const [line, expected, expectedLine, label] of cases) {
+      const dir = createTempDir("curl-timeouts-tricaso-")
+      writeSyntheticRoot(dir, line)
+      const w = scanEvalCurl("scripts/gate.sh", dir)
+      expect(w.length, label).toBe(expected)
+      if (expected > 0) expect(w[0].line, label).toBe(expectedLine)
+    }
+  })
+
+  it("SPLIT-FORM MATRIX (a tabela irma da residual, sec 11.36): as formas que o scanSplitEvalCurl DEVE flagrar (var curl em linha anterior + eval em linha posterior, sem continuacao) e as que NAO (linha unica, continuacao, var sem curl, eval antes da atribuicao, comentario, eval com continuacao) - o tri-caso do tripwire espelhado no scanner da residual, medido por probe 2026-08-11", () => {
+    // The sister table of the TRI-CASO: the tripwire scanEvalCurl owns the
+    // same-LOGICAL-line form; the residual scanner scanSplitEvalCurl owns
+    // the SPLIT form (assignment on one physical line, eval on a LATER one,
+    // no backslash continuation). The probe 2026-08-11 measured the 14-form
+    // surface; THIS pins the whole table in one parametrized it - the
+    // INVOCATION-FORM MATRIX pattern applied to the residual scanner. The
+    // rule (the mirror of the tri-caso): continuation (joinContinuations
+    // folds it -> tripwire) and same-line (the i+1 <= assignLine guard)
+    // forms belong to the TRIPWIRE, never to the residual; the residual's
+    // territory is the split without continuation - each scanner owns
+    // exactly one half of the boundary, never both in the same hole.
+    const cases: Array<[string[], number, number[], string]> = [
+      [['CMD="curl -s -o /dev/null "$HEALTH_URL""', 'eval "$CMD"'], 1, [3], "split base: var curl + eval na linha seguinte -> flag na linha do eval"],
+      [['CMD="curl -s -o /dev/null "$HEALTH_URL""', 'eval "${CMD}"'], 1, [3], "brace-form ${CMD}: a referencia com chaves casa o mesmo registo"],
+      [['CMD="curl -s -o /dev/null "$HEALTH_URL""', 'eval $CMD'], 1, [3], "unquoted-eval: a forma crua $CMD sem aspas tambem casa"],
+      [['CMD="curl -s -o /dev/null "$HEALTH_URL""', 'CMD="echo hi"', 'eval "$CMD"'], 1, [4], "var REATRIBUIDA sem curl: ainda flagra (over-flag direcao segura - o scanner nao rastreia dataflow, a reatribuicao nao limpa o registo)"],
+      [['FOO="bar"', 'eval "$FOO"'], 0, [], "var sem curl: nao registra"],
+      [['eval "$CMD"', 'CMD="curl -s -o /dev/null "$HEALTH_URL""'], 0, [], "eval ANTES da atribuicao: fora de ordem nao casa (guard i+1 <= assignLine)"],
+      [['# CMD="curl -s"', 'eval "$CMD"'], 0, [], "atribuicao em comentario: linha de comentario excluida"],
+      [["CMD='curl -s -o /dev/null \"$HEALTH_URL\"'", 'eval "$CMD"'], 1, [3], "single-quoted assign: o token curl na linha crua registra igual (o registo e por linha raw, nao por conteudo de string)"],
+      [['CMD="curl -s -o /dev/null "$HEALTH_URL""', 'eval "$CMD" \\', '  more'], 0, [], "eval com continuacao: a linha do eval terminando em \\ e excluida (territorio do tripwire)"],
+      [['CMD="curl -s"', 'URL2="curl -s -o /dev/null"', 'eval "$CMD $URL2"'], 2, [4, 4], "duas vars curl num eval: UM warning por var que casa (a linha do eval aparece 2x)"],
+      [['eval "$CMD"; CMD="curl -s -o /dev/null "$HEALTH_URL""'], 0, [], "mesma linha eval-depois: a linha nao comeca com VAR=, nao registra (e o mesmo-line e do tripwire)"],
+      [['CMD="curl -s -o /dev/null "$HEALTH_URL""', 'eval "$CMD"', 'eval "$CMD"'], 2, [3, 4], "var eval'dada duas vezes: UM warning por linha de eval"],
+      [['CMD="curl -s -o /dev/null "$HEALTH_URL""; eval "$CMD"'], 0, [], "linha unica: territorio do tripwire (guard i+1 <= assignLine) - nunca os dois scanners no mesmo furo"],
+      [['CMD="curl -s -o /dev/null "$HEALTH_URL"" \\', '  eval "$CMD"'], 0, [], "continuacao \\: territorio do tripwire (joinContinuations dobra o par) - a residual exclui continuacoes por design"],
+    ]
+    for (const [lines, expected, expectedLines, label] of cases) {
+      const dir = createTempDir("curl-timeouts-splitmatrix-")
+      const gate = path.join(dir, "scripts", "gate.sh")
+      fs.mkdirSync(path.dirname(gate), { recursive: true })
+      fs.writeFileSync(gate, ["#!/usr/bin/env bash", ...lines].join("\n"), "utf8")
+      const w = scanSplitEvalCurl("scripts/gate.sh", dir)
+      expect(w.length, label).toBe(expected)
+      if (expected > 0) expect(w.map((x) => x.line), label).toEqual(expectedLines)
+    }
+  })
+
+  it("JOIN-CONTINUATIONS CONTRACT (the helper the tri-caso depends on, sec 11.36): toda linha fisica com trailing backslash termina UNIDA ao par - o join nunca produz linha logica truncada (lossless: nenhum conteudo de continuacao se perde, nenhuma linha logica termina em \\\\)", () => {
+    // The tri-caso decision (sec 11.36) rides on joinContinuations: case 2
+    // (continuation \\ + eval on the next line) trips ONLY because the
+    // helper folds the pair into ONE logical line. If a refactor ever
+    // produced a TRUNCATED logical line (e.g. pushed the current buffer on
+    // a continuation, or dropped the pair), the tripwire would silently
+    // miss the form while the TRI-CASO test's fixture (a continuation that
+    // HAPPENS to be correctly joined) kept passing. THIS test pins the
+    // helper's integrity directly, independent of any specific fixture.
+    //
+    // The contract (the losslessness invariant):
+    //   1. NO logical line ends with a continuation backslash (every
+    //      continuation physical line is joined with its pair - no
+    //      truncated logical line ever exists).
+    //   2. NO content is lost: flattening the logical lines (a trailing
+    //      backslash is a JOIN marker, not content) reconstructs the input
+    //      byte-for-byte - every continuation-line's content survives in
+    //      exactly one logical line.
+    const physical = [
+      'tls_info=$(curl -sI --tlsv1.2 --tls-max 1.3 \\',
+      '  --max-time 20 --connect-timeout 10 \\',
+      '  -o /dev/null -w "%{ssl_verify_result}" "$url")',
+      '',
+      'CMD="curl -s -o /dev/null \"$HEALTH_URL\"" \\',
+      '  eval "$CMD"',
+      'echo done',
+    ]
+    const logical = joinContinuations(physical)
+    // Invariant 1: no logical line ends in a continuation backslash (the
+    // exact truncation class this pins - a dangling \\ would silently
+    // separate what the tripwire must see joined). The probe 2026-08-11
+    // confirmed the helper NEVER emits a truncated logical line.
+    for (const line of logical) {
+      expect(/\\\s*$/.test(line), JSON.stringify(line)).toBe(false)
+    }
+    // Invariant 2 (lossless): flattening the logical lines reproduces the
+    // input - a trailing backslash is a JOIN marker (stripped by the
+    // flatten), nothing else is ever altered. The pattern is built via
+    // RegExp (not a regex literal) so the backslash-n stays an ESCAPE
+    // sequence in the source - a raw newline inside a literal would break
+    // the TS parser (the TS1161 class).
+    const flatten = (ls: string[]) => ls.join("\n").replace(new RegExp("\\n"), "\n")
+    expect(flatten(logical)).toBe(physical.join("\n"))
+    // The two continuation PAIRS of the fixture are single logical lines
+    // (the tri-caso case 2 shape + the TLS-check form); the EMPTY physical
+    // line is preserved as its own logical line (the helper's honest
+    // behavior, observed in the probe - empty lines are never swallowed
+    // into a continuation pair). The pair the tri-caso depends on is
+    // exactly the pair this contract protects.
+    expect(logical).toHaveLength(4) // TLS pair, empty line, eval pair, echo
+    expect(logical[2]).toContain('eval "$CMD"')
+  })
+
+  it("BASELINE com 2+ continuacoes (o numero que o path:line das provas depende, sec 11.36): numa linha logica com 2 continuacoes, a linha reportada e a INICIAL do comando logico - um par ANTERIOR desloca a contagem e distingue o baseLine correto (logical.split length) de um bug +=1 por linha logica", () => {
+    // The JOIN-CONTINUATIONS CONTRACT pins losslessness; the SPLIT-FORM
+    // MATRIX pins the forms. THIS pins the baseLine accounting - the number
+    // that the live proofs' path:line depends on (Prova 29/31/34 reported
+    // the START line of the logical command: health-check.sh:58 was the CMD
+    // line, not the eval line). The TRI-CASO case 2 (1 continuation, content
+    // at line 3) CANNOT distinguish a correct `baseLine += logical.split("\n").length`
+    // from a naive `baseLine += 1` per logical line - a single pair reports
+    // the same line either way. The distinguisher (probe 2026-08-11): a
+    // PRECEDING continuation pair (FOO="bar" \\ + baz = 2 physical lines)
+    // shifts the count. With the correct accounting the eval+curl pair (2
+    // continuations, physical lines 5-7) reports its START line 5; the
+    // +=1-per-logical-line bug would report 4 (only 3 logical lines before
+    // it); the end-of-pair bug would report 7. Pins the exact number the
+    // proofs depend on.
+    const dir = createTempDir("curl-timeouts-baseline2-")
+    const gate = path.join(dir, "scripts", "gate.sh")
+    fs.mkdirSync(path.dirname(gate), { recursive: true })
+    fs.writeFileSync(
+      gate,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'FOO="bar" \\',
+        "  baz",
+        'CMD="curl -s -o /dev/null "$HEALTH_URL"" \\',
+        "  --retry 2 \\",
+        '  eval "$CMD"',
+      ].join("\n"),
+      "utf8",
+    )
+    const w = scanEvalCurl("scripts/gate.sh", dir)
+    expect(w).toHaveLength(1)
+    expect(w[0].line).toBe(5) // the START line, not 4 (+=1 bug) nor 7 (pair end)
+    // The DETECTOR twin: a bare curl across 2 continuations, same preceding
+    // pair - reported at its START line 5 too (the --max-time missing on the
+    // whole logical line flags the initial line).
+    const gate2 = path.join(dir, "scripts", "gate2.sh")
+    fs.writeFileSync(
+      gate2,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'FOO="bar" \\',
+        "  baz",
+        "curl -s -o /dev/null \\",
+        '  -w "%{http_code}" \\',
+        '  "$HEALTH_URL" 2>/dev/null',
+      ].join("\n"),
+      "utf8",
+    )
+    const v = scanGateScript("scripts/gate2.sh", dir)
+    expect(v).toHaveLength(1)
+    expect(v[0].line).toBe(5)
+    // The positive half (BASELINE stays green): the TLS-check form with the
+    // --max-time on a MID-pair continuation line still co-locates on the
+    // logical line (the flag on the 2nd physical line of a 3-line command
+    // counts for the whole command - the same-logical-line contract).
+    const gate3 = path.join(dir, "scripts", "gate3.sh")
+    fs.writeFileSync(
+      gate3,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'FOO="bar" \\',
+        "  baz",
+        "tls_info=$(curl -sI --tlsv1.2 \\",
+        "  --max-time 20 --connect-timeout 10 \\",
+        '  -o /dev/null -w "%{ssl_verify_result}" "$url")',
+      ].join("\n"),
+      "utf8",
+    )
+    expect(scanGateScript("scripts/gate3.sh", dir)).toEqual([])
   })
 
   it("INVOCATION-FORM MATRIX (sec 11.31): the guard recognizes ONLY the literal token curl + the literal flag --max-time - every other form is measured and pinned, and the connect-timeout-alone decision is FAIL (it bounds only the connect phase, never the total)", () => {
@@ -441,6 +674,78 @@ describe("scripts/scan-curl-timeouts.mjs - derivation + CLI + BASELINE (the live
     const curlLine = logical.find((l) => l.includes("curl") && l.includes("$HEALTH_URL")) ?? ""
     expect(curlLine).toContain("$HEALTH_URL")
     expect(curlLine).toContain("--max-time")
+  })
+
+  it("REAL-REPO CONTRACT (a rede viva da truncagem, sec 11.36): o par TLS-check real tem a flag --max-time numa linha de CONTINUACAO - o BASELINE do DETECTOR e a rede viva da truncagem (join truncado => violations 0 -> 1 em scripts/test-security-headers.sh:325), nao o tripwire (0 formas eval no repo real)", () => {
+    // The JOIN-CONTINUATIONS CONTRACT pins losslessness hermetically, but
+    // the honest question was: does a truncation mutation get caught by a
+    // LIVE baseline, or would the surface stay green because the real repo
+    // has no continuation pairs? The probe 2026-08-11 INVERTED the premise:
+    // the real repo DOES have a continuation pair - the TLS-check in
+    // test-security-headers.sh:325 (`curl ... --tls-max 1.3 \` with the
+    // --max-time 20 on the continuation line 326). With the real join the
+    // logical line co-locates curl + flag (BASELINE green); with a
+    // truncated join (each physical line its own logical line) the curl
+    // line loses its --max-time and the DETECTOR flags it: violations
+    // 0 -> 1 at scripts/test-security-headers.sh:325 (the TRIPWIRE stays
+    // at 0 - the truncation class is not an eval class). So the truncation
+    // class HAS a live CI net: the detector BASELINE, not the tripwire.
+    const raw = fs.readFileSync(path.join(ROOT, "scripts", "test-security-headers.sh"), "utf8")
+    const physical = raw.split(/\r?\n/)
+    // The TLS-check pair: a physical line ending in \ carrying curl, and
+    // the --max-time on a LATER physical line of the same logical command.
+    const tlsIdx = physical.findIndex((l) => l.includes("curl") && l.includes("--tls-max"))
+    expect(tlsIdx).toBeGreaterThanOrEqual(0)
+    expect(/\\\s*$/.test(physical[tlsIdx])).toBe(true)
+    const flagIdx = physical.slice(tlsIdx).findIndex((l) => l.includes("--max-time"))
+    expect(flagIdx).toBeGreaterThan(0) // flag on a LATER line, not the curl line
+    // With the REAL join, the logical line co-locates curl + flag (the
+    // BASELINE of the DETECTOR stays green - this is the 9:08-class lock).
+    expect(scanGateScript("scripts/test-security-headers.sh", ROOT)).toEqual([])
+    // COUNTERFACTUAL (the truncation class is LIVE, never vacuous): a
+    // truncated join (each physical line its own logical line - the
+    // mutation the CONTRACT pins against) makes the detector flag the curl
+    // line: the --max-time moved off its logical line. The exact signal
+    // the BASELINE would break with: scripts/test-security-headers.sh:325.
+    const truncated = physical.map((l) => l.replace(/\r$/, ""))
+    let baseLine = 1
+    const fake = []
+    for (const logical of truncated) {
+      const masked = maskBashStrings(logical)
+      if (/^\s*#/.test(masked)) {
+        baseLine += 1
+        continue
+      }
+      const hasInvocation = /\bcurl\b/.test(masked) && !/\bcommand\s+-v\s+curl\b/.test(masked)
+      if (hasInvocation && !/--max-time\b/.test(masked)) {
+        fake.push({ line: baseLine })
+      }
+      baseLine += 1
+    }
+    expect(fake.map((x) => x.line)).toContain(tlsIdx + 1)
+  })
+
+  it("REAL-REPO CONTRACT (BASELINE companion da residual, sec 11.36): a superficie derivada atual tem ZERO usos do split-form - se a forma aparecer, quebra com o path:line exato", () => {
+    // The residual of sec 11.36: CMD=...curl... on one line and
+    // eval \"$CMD\" on a LATER line (no continuation) does NOT trip the
+    // tripwire (closing it costs variable tracking - the cost 11.30
+    // refused). The frontier is ACCEPTED, but the '0 usos na superficie
+    // derivada' claim that justifies it must be EVIDENCE, not prose. THIS
+    // test pins it: scanSplitEvalCurl (the residual scanner, test-evidence
+    // only - NOT wired into the CLI) runs over the real derived surface
+    // and asserts 0 uses. The day the form lands in a gate script, this
+    // breaks with the exact file:line - the decision becomes loud, never
+    // a silent escape.
+    const derived = deriveGateScripts(ROOT)
+    expect(derived.length).toBeGreaterThan(0)
+    const all: Array<{ file: string; line: number; text: string }> = []
+    for (const rel of derived) {
+      const gateRel = `scripts/${rel}`
+      for (const w of scanSplitEvalCurl(gateRel, ROOT)) {
+        all.push({ file: gateRel, line: w.line, text: w.text })
+      }
+    }
+    expect(all).toEqual([])
   })
 
   it("BASELINE companion: every derived gate-script name resolves to a REAL file (no vacuous pass)", () => {

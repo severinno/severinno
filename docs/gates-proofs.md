@@ -43,6 +43,11 @@
 | 26 | Decisão da 11.31 — **`--connect-timeout` SOZINHO falha observado no pipeline real** (Prova 27, sec 8.22; `scan-curl-timeouts.mjs --ci` no job `Guard Gates` — a decisão da matriz como comportamento OBSERVADO no CI, não só no teste hermético) | A 11.31 travou a decisão no teste (linha da matriz) e no header; faltava a contraparte viva: o `--ci` REAL no pipeline com um gate script usando `curl --connect-timeout 10` SEM `--max-time` falhando com o caminho exato | linha `HTTP_CODE=$(curl -s -o /dev/null --connect-timeout 10 "$HEALTH_URL" 2>/dev/null || echo "000")` anexada ao fim do `scripts/health-check.sh` REAL (linha 57; branch scratch `ci-proof/connect-timeout-live` via **`ci-proof-run --workflow guard-gates.yml --expect failure --expect-log 'CURL WITHOUT --max-time in scripts/health-check.sh:57' --no-verify`**; mutation script `scripts/prova27-mutate.mjs` TEMP + self-delete — o ACHADO da sec 8.17) | Run [**31487497462**](https://github.com/severinno/severinno/actions/runs/31487497462) (`Guard Gates`, event `workflow_dispatch`, branch scratch; ciclo do helper com poll) | ✅ job `Guard Gates (fragile-range + golden-copy)` conclusion=`failure` — step `Scan gate-script curls for explicit timeouts`: `CURL WITHOUT --max-time in scripts/health-check.sh:57: HTTP_CODE=$(curl -s -o /dev/null --connect-timeout 10 ...` → exit 1 — a DECISÃO da 11.31 (connect-timeout sozinho NÃO bounds o total) observada no pipeline com o caminho :57 exato; **0 linhas `EVAL CURL` no log** — o tripwire não tripou (sem eval), só o DETECTOR falhou (o que prova que é a decisão da matriz, não o early-warning); revertido byte-identical (delta de 13 arquivos stashado ANTES do ciclo — o padrão da Prova 25 — e restaurado no pop, health-check.sh de volta a 56 linhas, mutation script self-deletado, branch deletada) | | A 11.30 provou localmente (probe + vitest) que o guard --max-time não vê o curl escondido em string avaliada depois; faltava a contraparte viva: o comportamento do `--ci` REAL no pipeline com um gate script usando `CMD="curl ..."; eval "$CMD"` sem timeout — a premissa original ('exit 0') estava SUPERSEDED pela 11.36 (o tripwire falha a forma) | linha `CMD="curl -s -o /dev/null -w \"%{http_code}\" \"$HEALTH_URL\" 2>/dev/null"; eval "$CMD"` anexada ao fim do `scripts/health-check.sh` REAL (linha 57; branch scratch `ci-proof/eval-live` via **`ci-proof-run --workflow guard-gates.yml --expect failure --expect-log 'EVAL CURL' --no-verify`**; mutation script `scripts/prova26-mutate.mjs` TEMP + self-delete — o ACHADO da sec 8.17) | Run [**31485163704**](https://github.com/severinno/severinno/actions/runs/31485163704) (`Guard Gates`, event `workflow_dispatch`, branch scratch; ciclo do helper **1m15s** — inclui o poll; a duração do job no run é menor, a convenção da sec 11.20) | ✅ job `Guard Gates (fragile-range + golden-copy)` conclusion=`failure` — step `Scan gate-script curls for explicit timeouts`: `EVAL CURL (sec 11.30) in scripts/health-check.sh:57: CMD="curl ..."; eval` → exit 1; **0 linhas `CURL WITHOUT --max-time` no log inteiro** — o falso-negativo do DETECTOR (11.30) observado vivo (o token mascarado realmente não gera violação de timeout) MAS o tripwire (11.36) falha a forma: o 'exit 0' da 11.30 está SUPERSEDED (virou exit 1 com o aviso); revertido byte-identical (13 arquivos do delta restaurados do commit scratch 86ff0b3, health-check.sh de volta a 56 linhas, branch deletada) |
 | 27 | Regra 11 — **DANGLING NEEDS: a prova viva é ESTRUTURALMENTE IMPOSSÍVEL com a regra só no delta** (Prova 28, sec 8.23 — o ACHADO: o CI roda o HEAD, não o working tree; uma regra que vive só no delta não-commitado NUNCA chega ao CI pelo ciclo do helper) | A regra 11 (sec 11.33) só tinha prova sintética + REAL-REPO CONTRACT (o contrato falha LOCALMENTE com a mutação — o working tree tem a regra); faltava o lado vivo: o sinal `DANGLING NEEDS` no pipeline real | mutação `deleted-job-xyz` no `needs:` do job build do `.github/workflows/ci.yml` (linha 125; branch scratch `ci-proof/dangling-needs-live` via **`ci-proof-run --only-jobs check --expect failure --expect-log 'DANGLING NEEDS' --no-verify --timeout 900`**; mutation script `scripts/prova28-mutate.mjs` TEMP + self-delete; delta de 13 arquivos STASHADO antes do ciclo — o padrão da Prova 25) | Run [**31488081528**](https://github.com/severinno/severinno/actions/runs/31488081528) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs check`) | ❌ **INCONCLUSIVA — o sinal NÃO pode disparar**: job `check` conclusion=`failure` MAS `DANGLING NEEDS` = **0 ocorrências** em 4458 linhas de log — o scratch branch nasce de HEAD via `git checkout -b` (helper) e o delta (com a regra 11) estava stashado: o CI rodou o scanner do HEAD de3994c, que NÃO tem a regra (grep `DANGLING NEEDS`: **0 no HEAD** vs **6 no working tree**); as 8 falhas do job (3 arquivos) foram AMBIENTAIS, NÃO da mutação: check-node-modules-integrity BASELINE (`expected 1 to be +0` — classe EXTRANEOUS hoist, Prova 13) + 6 cascatas no run-precommit-guards (o integrity sai 1 → batch sai 1) + blame-ignore-revs (shallow, Prova 13); scan-guard-gates.test.ts **passou** (a versão do HEAD não tem o contrato da regra 11 — a divergência com o probe local explicada); revertido byte-identical (delta restaurado do stash, branch deletada) — **a receita**: commit do delta primeiro, depois re-rodar o MESMO ciclo (ver sec 8.23) |
 | 28 | Tripwire eval+curl — **lado PR no CI real** (Prova 29, sec 8.24; `scan-curl-timeouts.mjs --ci` no job `Fragile Range Guard` do pr-check — o par da Prova 26 fechado no OUTRO lado da rede, como as Provas 16/19) | A Prova 26 (sec 8.21, run 31485163704) provou o tripwire `EVAL CURL (sec 11.30)` no lado PUSH NET (guard-gates.yml); faltava o lado PR: o MESMO step `scan-curl-timeouts --ci` no job fragile-guard do pr-check falhando com a forma `CMD="curl ..."; eval "$CMD"` commitada | linha `CMD="curl -s -o /dev/null -w \"%{http_code}\" \"$HEALTH_URL\" 2>/dev/null"; eval "$CMD"` anexada ao fim do `scripts/health-check.sh` REAL (linha 58; branch scratch `ci-proof/eval-pr-live` via **`ci-proof-run --workflow pr-check.yml --only-jobs "Fragile Range Guard" --expect failure --expect-log 'EVAL CURL' --no-verify --timeout 600`**; mutation script `scripts/prova29-mutate.mjs` TEMP + self-delete runner-owned — o ACHADO da sec 8.17; delta com o tripwire varrido para o scratch pelo `git add -A` (padrão da Prova 26 — o CI roda o scanner COM o tripwire), backup md5 `cd1ed6a6...` tomado antes) | Run [**31492035257**](https://github.com/severinno/severinno/actions/runs/31492035257) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs` — o run seguia em background quando o job concluiu) | ✅ job `Fragile Range Guard` conclusion=`failure` — step `Scan gate-script curls for explicit timeouts`: `EVAL CURL (sec 11.30) in scripts/health-check.sh:58: CMD="curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null"; eval` → exit 1 (o caminho :58 exato; log via `gh api .../actions/jobs/93780586908/logs` — o capture job-scoped do helper veio vazio porque o run ainda estava in_progress, o MESMO ACHADO da sec 8.20/Prova 25; helper exit 1 no verify, sinal confirmado pelo fallback da API); **0 linhas `CURL WITHOUT --max-time`** — o falso-negativo do DETECTOR (11.30) E o tripwire (11.36) convivendo no MESMO step do lado PR; revertido byte-identical (delta restaurado do patch backup md5 pré=pós `cd1ed6a6...`, health-check.sh de volta a 56 linhas, mutation script self-deletado, branch deletada) |
+| 29 | Residual split-form do tripwire — **exit 0 observado no pipeline real** (Prova 30, sec 8.25; `scan-curl-timeouts.mjs --ci` no job `Fragile Range Guard` do pr-check — a contraparte viva do exit 0 que a 11.30 prometia e a 11.36 removeu para a forma de linha única) | A Prova 29 (sec 8.24) provou o tripwire falhando a forma de LINHA ÚNICA (`CMD="curl ..."; eval "$CMD"` → exit 1); faltava o lado inverso: a residual ACEITA — `CMD="curl ..."` numa linha e `eval "$CMD"` na seguinte SEM continuação — passando no `--ci` REAL (o tripwire checa cada linha lógica com eval E curl juntos; o split tem curl na linha 58 e eval na 59, nenhuma tripa) | linhas `CMD="curl -s -o /dev/null -w \"%{http_code}\" \"$HEALTH_URL\" 2>/dev/null"` + `eval "$CMD"` em linhas SEPARADAS SEM continuação anexadas ao fim do `scripts/health-check.sh` REAL (linhas 58-59; branch scratch `ci-proof/split-live` via **`ci-proof-run --workflow pr-check.yml --only-jobs "Fragile Range Guard" --expect success --no-verify --timeout 600`**; mutation script `scripts/prova30-mutate.mjs` TEMP + self-delete runner-owned — o ACHADO da sec 8.17; dry-run local ANTES do ciclo: `SCAN_EXIT=0` + `EVAL CURL warnings: 0`; backup md5 `e15ea80b...` tomado antes) | Run [**31496492582**](https://github.com/severinno/severinno/actions/runs/31496492582) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs` — o run seguia em background quando o job concluiu) | ✅ job `Fragile Range Guard` conclusion=`success` — step `Scan gate-script curls for explicit timeouts`: `curl-timeouts: clean (6 gate script(s) from workflows, every curl has --max-time and no eval+curl form - sec security-headers-gate ADOTADO / 11.36)` → exit 0 com o split-form commitado (log via `gh api .../actions/jobs/93795421197/logs` — o capture job-scoped do helper veio vazio/1-linha, o MESMO ACHADO da sec 8.20/Prova 25; sinal confirmado pelo fallback da API); **0 linhas `EVAL CURL` e 0 `CURL WITHOUT`** — a residual ACEITA (sec 11.36, split-form) atravessou o pipeline inteiro; o par fechado: linha única → exit 1 (Prova 29), split sem continuação → exit 0 (esta prova); revertido byte-identical (delta de 5 arquivos varrido para o scratch pelo `git add -A` do helper e restaurado do patch backup md5 pré=pós `e15ea80b...`, health-check.sh de volta a 56 linhas, mutation script self-deletado pelo runner, branch deletada) |
+| 30 | Continuation-form do tripwire — **exit 1 observado no pipeline real** (Prova 31, sec 8.26; `scan-curl-timeouts.mjs --ci` no job `Fragile Range Guard` do pr-check — a contraparte viva do caso 2 da 11.36) | A Prova 30 (sec 8.25) provou a residual SEM continuação passando exit 0; o TERCEIRO caso da fronteira (sec 11.36, sondado 2026-08-11) — `CMD="curl ..." \` (backslash no fim da linha) + `eval "$CMD"` na linha seguinte COM continuação — é exatamente o que o joinContinuations junta numa linha lógica: o tripwire DEVERIA tripar na linha inicial; faltava a prova viva | linhas `CMD="curl -s -o /dev/null -w \"%{http_code}\" \"$HEALTH_URL\" 2>/dev/null" \` + `  eval "$CMD"` (linhas 57-59, o `\n` inicial do append cria a 57 vazia; branch scratch `ci-proof/cont-live` via **`ci-proof-run --workflow pr-check.yml --only-jobs "Fragile Range Guard" --expect failure --expect-log "EVAL CURL (sec 11.30) in scripts/health-check.sh:58" --no-verify --stash-uncommitted --timeout 600`**; mutation script `$TMPDIR/prova31-cont-mutate.mjs` fora do repo (nunca varrido pelo stash do `--stash-uncommitted` nem pelo `git add -A`) + self-delete runner-owned; dry-run local ANTES do ciclo: `SCAN_EXIT=1` + `EVAL CURL (sec 11.30) in scripts/health-check.sh:58`; backup md5 `54534137...` tomado antes) | Run [**31506284327**](https://github.com/severinno/severinno/actions/runs/31506284327) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs` — o poll termina quando o job conclui) | ❌ job `Fragile Range Guard` conclusion=`failure` — `EVAL CURL (sec 11.30) in scripts/health-check.sh:58` no log do step `Scan gate-script curls for explicit timeouts` (log via `gh api .../actions/jobs/93828572718/logs` — o capture job-scoped do helper veio 1-linha, o MESMO ACHADO da sec 8.20/Prova 25; sinal confirmado pelo fallback da API); **o tripwire TRIPOU na linha INICIAL do comando lógico (58)** — o joinContinuations dobrou o par COM continuação numa linha lógica, o caso 2 da 11.36; o par fechado: linha única → exit 1 (Prova 29), split SEM continuação → exit 0 (Prova 30), continuação `\` → exit 1 (esta prova) — o que separa a residual do tripwire é a linha LÓGICA; revertido byte-identical (md5 `54534137...` pré=pós, health-check.sh de volta a 56 linhas, mutation script removido do tmpdir, branch deletada remote + local) |
+| 31 | Lado POSITIVO do guard da sec 11.41 provado ao vivo: ciclo `ci-proof-run --stash-uncommitted` REAL com o delta não-commitado da thread — o stash preserva o delta durante o ciclo e o revert o restaura **byte-identical** (exit 0, run 31511149307) | O guard da sec 11.41 tinha prova LOCAL só do lado negativo (fail-loud exit 3 no repo real SEM a flag); o lado positivo (`--stash-uncommitted` preserva + restaura) tinha apenas prova hermética (E2Es com fake bins) — faltava a prova viva com um delta real | working tree com o delta de 12 arquivos da thread (10 M + 2 untracked); ciclo `ci-proof-run --branch ci-proof/stash-live2 --workflow pr-check.yml --only-jobs "utf8-check / UTF-8 Check" --expect success --stash-uncommitted --timeout 420`; baseline md5 pré-ciclo: STATUS `2c5fdcca...` + DELTA `2897b9b9...` + STASH 19 | Run [**31511149307**](https://github.com/severinno/severinno/actions/runs/31511149307) (`PR Check`, event `workflow_dispatch`, branch scratch `ci-proof/stash-live2`) | ✅ **exit 0** — `delta nao-commitado stasheado (git stash push -u)` → ciclo (job `utf8-check / UTF-8 Check` completed success) → `delta nao-commitado restaurado (git stash pop - sec 8.21)` + `revertido (... delta restaurado)`; pós-ciclo: STATUS `2c5fdcca...` (idêntico), DELTA `2897b9b9...` (**byte-identical**), STASH 19 (os pré-existentes intactos, o stash do helper consumido pelo pop), branch de volta em `freebuff/new-thread-thmsitz5qutoia`, remote limpo; ACHADO duplo na sec 8.27 (o nome composto dos reusable workflow calls + a re-normalização de EOL no round-trip do stash) |
+| 32 | DOC COVERAGE do scan-exit-claims **falha com a seção exata no CI real** (Prova 33, sec 8.28; `workflow_dispatch` do pr-check com uma claim fake na sec 11.99 — o lado CI da classe 'claim de doc sem pin' da 11.42) | O DOC COVERAGE (doc → manifest: toda claim detectada tem entrada no EXIT_CLAIMS) tinha prova LOCAL sintética + o ACHADO do 1º run mostrou a premissa errada (a suíte é untracked, o CI roda o tree commitado SEM ela) — faltava o lado CI: uma claim fake injetada numa secção 11.x da doc real derrubando o teste no pipeline | ACHADO DO RUN 1 (#31515253099): `scripts/scan-exit-claims.mjs` + `scan-exit-claims.test.ts` são UNTRACKED (delta não-commitado da thread) — o CI roda o tree COMMITADO onde a suíte não existe, então o DOC COVERAGE NUNCA rodou (8 falhas pré-existentes de outras suítes, zero do scan-exit-claims); FIX: a mutação materializa os 12 arquivos do delta no scratch (o estado verde local) + injeta a secção fake `## 11.99 Claim fake da prova viva` com `**Exit codes**: exit code 3` antes do `## 12.` (branch scratch `ci-proof/exit-claims-live2` via **`ci-proof-run --workflow pr-check.yml --only-jobs check --expect failure --expect-log "doc -> manifest" --no-verify --stash-uncommitted --timeout 900`**; mutation script `$TMPDIR/prova33b-ec-mutate.mjs` fora do repo, lê os 12 arquivos de `/tmp/ec-src` copiados antes do ciclo; pre-flight hermético com `EXIT_CLAIMS_DOC` → `claim na secao 11.99 nao esta no EXIT_CLAIMS`) | Run [**31516054686**](https://github.com/severinno/severinno/actions/runs/31516054686) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs` — o poll termina quando o job conclui) | ❌ job `check` conclusion=`failure` — no log do step `Unit tests`: `× scripts/scan-exit-claims.mjs - DOC COVERAGE bidirecional (sec 11.42) > doc -> manifest: toda claim de exit code detectada no doc REAL tem entrada no manifest` + `→ expected [ '11.99' ] to deeply equal []` (a SEÇÃO EXATA no assertion); 3 testes do scan-exit-claims falharam pela MESMA raiz (doc → manifest + checkExitClaims + REAL-REPO CONTRACT do CLI — todas flagrando a 11.99 não registrada); revertido byte-identical (STATUS `2c5fdcca...` e DELTA `8431a460...` pré=pós, STASH 19, branch de volta, remote limpo) |
+| 33 | Tri-caso do tripwire **AGREGADO observado no pipeline real** (Prova 34, sec 8.29; `scan-curl-timeouts.mjs --ci` no job `Fragile Range Guard` do pr-check — as 3 formas na MESMA branch, em gate scripts DISTINTOS) | As Provas 29/30/31 provaram cada forma isolada em branch separada (linha única → exit 1, split → exit 0, continuação → exit 1); faltava o comportamento MULTI-FORMA num único pipeline: injetar os 3 casos de uma vez e confirmar que o job reporta EXATAMENTE os 2 que devem falhar e passa o split | 3 linhas anexadas ao fim de 3 gate scripts distintos numa branch scratch `ci-proof/tricase-live` via **`ci-proof-run --workflow pr-check.yml --only-jobs "Fragile Range Guard" --expect failure --expect-log "EVAL CURL (sec 11.30) in scripts/health-check.sh:58" --no-verify --stash-uncommitted --timeout 600`** (mutation script `$TMPDIR/prova34-tricase-mutate.mjs` fora do repo, self-delete runner-owned, caminho Windows via `cygpath -w` — o ACHADO da Prova 33); dry-run local ANTES do ciclo: `SCAN_EXIT=1` + exatamente **2 `EVAL CURL`** (health-check.sh:58 linha única + test-security-headers.sh:439 continuação) + zero para o split (check-utf8.sh) | Run [**31518328191**](https://github.com/severinno/severinno/actions/runs/31518328191) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs` — o poll termina quando o job conclui) | ❌ job `Fragile Range Guard` conclusion=`failure` — log via `gh api .../actions/jobs/93868917658/logs` (o capture job-scoped do helper veio 1-linha, o MESMO ACHADO da sec 8.20/Prova 25): `curl-timeouts: 2 eval+curl form(s)` com **`EVAL CURL (sec 11.30) in scripts/health-check.sh:58`** E **`EVAL CURL (sec 11.30) in scripts/test-security-headers.sh:439`** — as 2 formas que devem trip, juntas, e **ZERO menção ao check-utf8.sh** (o split sem continuação passou na MESMA árvore); o comportamento multi-forma observado = a soma dos singles das Provas 29/31 com a residual da 30, agora num único pipeline; revertido byte-identical (STATUS `b67aa585...` pré=pós, STASH 19, alvos de volta a 56/437/167 linhas, branch deletada remote + local) |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -2003,7 +2008,10 @@ test:unit — medido no package.json).
    delta não-commitado da thread (13 arquivos) — recuperado do commit
    scratch 86ff0b3 (cherry-pick -n + unstage + `git checkout HEAD --
    scripts/health-check.sh` para desfazer a mutação); git status = delta
-   original intacto, health-check.sh 56 linhas.
+   original intacto, health-check.sh 56 linhas. **FECHADO pela sec 11.41**
+   (o runner agora tem o guard da árvore suja — fail-loud exit 3 antes do
+   ciclo — + `--stash-uncommitted`: o delta é preservado e restaurado no
+   revert; a classe não volta a ocorrer).
 
 **O veredito**: a fronteira está documentada como comportamento OBSERVADO
 no pipeline: a 11.30 (falso-negativo do detector) continua verdadeira em CI
@@ -2170,6 +2178,315 @@ nos DOIS lados da rede — Prova 26 (guard-gates.yml / push net) + Prova 29
 na FORMA eval+curl) vale nos dois jobs que rodam `scan-curl-timeouts
 --ci`; quem ler a 11.36 vê o mecanismo; quem ler as Provas 26 + 29 vê o
 par fechado.
+
+## 8.25 Prova 30 — a residual split-form do tripwire atravessa o pipeline real (exit 0, run 31496492582, 2026-08-11)
+
+**A pergunta**: a Prova 29 (sec 8.24) provou o tripwire falhando a forma
+de LINHA ÚNICA (`CMD="curl ..."; eval "$CMD"` → exit 1). O lado INVERSO
+da decisão — a residual ACEITA da 11.36: `CMD="curl ..."` numa linha e
+`eval "$CMD"` na seguinte SEM continuação — tem só prova hermética (o
+teste TRIPWIRE boundary com contrafactual embutido, sec 11.36). A
+contraparte viva: o `--ci` REAL no pipeline com o split-form commitado
+passando (exit 0) — o exit 0 que a 11.30 prometia e a 11.36 removeu para
+a forma de linha única, agora observado para a forma que ficou de fora
+por decisão.
+
+**A premissa (medida ANTES do ciclo, dry-run local)**: anexar o split-form
+ao health-check.sh REAL → `node scripts/scan-curl-timeouts.mjs --ci` =
+`SCAN_EXIT=0` + `scanEvalCurl("scripts/health-check.sh")` = `EVAL CURL
+warnings: 0` — o tripwire checa cada LINHA LÓGICA com eval E curl juntos;
+o split tem curl na linha 58 e eval na 59, nenhuma linha lógica tem
+ambos (sem continuação, `joinContinuations` não junta nada; o `\n`
+inicial do append cria a linha 57 vazia — CMD cai na 58 e eval na 59, o
+MESMO offset da Prova 29).
+
+**A mutação**: linhas `CMD="curl -s -o /dev/null -w \"%{http_code}\"
+\"$HEALTH_URL\" 2>/dev/null"` (linha 58) + `eval "$CMD"` (linha 59) em
+linhas SEPARADAS SEM continuação anexadas ao fim do
+`scripts/health-check.sh` REAL — o MESMO conteúdo da Prova 29, só que
+dividido (branch scratch `ci-proof/split-live` via **`ci-proof-run
+--workflow pr-check.yml --only-jobs "Fragile Range Guard" --expect
+success --no-verify --timeout 600`**; mutation script
+`scripts/prova30-mutate.mjs` TEMP + self-delete runner-owned — o ACHADO
+da sec 8.17; backup md5 `e15ea80b...` tomado antes — o delta de 5
+arquivos foi varrido para o scratch pelo `git add -A` do helper, o padrão
+da Prova 26/29).
+
+**O resultado observado** (run [31496492582](https://github.com/severinno/severinno/actions/runs/31496492582),
+`--only-jobs` — o poll termina quando o job conclui; o run seguia em
+background quando o job terminou):
+
+- job `Fragile Range Guard` conclusion=`success` — step `Scan gate-script
+  curls for explicit timeouts`: `curl-timeouts: clean (6 gate script(s)
+  from workflows, every curl has --max-time and no eval+curl form - sec
+  security-headers-gate ADOTADO / 11.36)` → **exit 0** com o split-form
+  commitado (log via `gh api .../actions/jobs/93795421197/logs` — o
+  capture job-scoped do helper veio vazio/1-linha, o MESMO ACHADO da sec
+  8.20/Prova 25; sinal confirmado pelo fallback da API);
+- **0 linhas `EVAL CURL` e 0 linhas `CURL WITHOUT --max-time`** no log do
+  step inteiro — a residual atravessou o pipeline sem nenhum early-warning
+  disparar (nem o detector, nem o tripwire);
+- **O PAR FECHADO**: linha única `; eval` → exit 1 `EVAL CURL` (Prova 29,
+  sec 8.24); split em duas linhas SEM continuação → exit 0 clean (esta
+  prova) — a fronteira da 11.36 é provadamente a LINHA, nunca o conteúdo;
+- revertido byte-identical (delta de 5 arquivos restaurado do patch
+  backup md5 pré=pós `e15ea80b...`, health-check.sh de volta a 56 linhas,
+  mutation script removido pelo runner antes do `git add -A`, branch
+  scratch deletada remote + local).
+
+**O veredito**: a residual ACEITA da 11.36 está documentada como
+comportamento OBSERVADO no pipeline real — o exit 0 que a 11.30 prometia
+para o eval vale EXATAMENTE para a forma que o tripwire deixou de fora
+por decisão (rastreamento de variáveis = custo recusado, forma com 0 usos
+na superfície). O par linha-única/split está fechado nos DOIS sentidos
+com prova viva: quem ler a 11.36 vê a decisão + o teste com contrafactual;
+quem ler as Provas 29 + 30 vê a fronteira da linha observada no CI.
+
+## 8.26 Prova 31 — o continuation-form do tripwire falha no pipeline real (exit 1, run 31506284327, 2026-08-11)
+
+**A pergunta**: a sec 11.36 nomeia o tri-caso da linha lógica — (1) linha
+única → TRIPA (Prova 29), (2) continuação `\` → dobra e TRIPA na linha
+inicial (sondado local, probe real 2026-08-11), (3) split SEM continuação
+→ residual ACEITA, NÃO tripa (Prova 30). Os casos 1 e 3 têm prova viva no
+CI; o caso 2 — `CMD="curl ..." \` (backslash no fim da linha) + `eval
+"$CMD"` na linha seguinte COM continuação — é exatamente o que o
+joinContinuations dobra numa linha lógica única, então o tripwire DEVERIA
+tripar na linha inicial. Faltava a contraparte viva no pipeline real.
+
+**A premissa (medida ANTES do ciclo, dry-run local)**: anexar o
+continuation-form ao health-check.sh REAL → `node
+scripts/scan-curl-timeouts.mjs --ci` = `SCAN_EXIT=1` + `EVAL CURL (sec
+11.30) in scripts/health-check.sh:58` — o tripwire checa cada linha
+LÓGICA com eval E curl juntos; o joinContinuations une a linha 58 (CMD
+com `\` final) + 59 (eval) numa ÚNICA linha lógica que começa na 58 — o
+tripwire tripa na linha INICIAL do comando lógico (o `\n` inicial do
+append cria a 57 vazia, CMD cai na 58).
+
+**A mutação**: linhas `CMD="curl -s -o /dev/null -w \"%{http_code}\"
+\"$HEALTH_URL\" 2>/dev/null" \` (linha 58, com backslash final) + `
+  eval "$CMD"` (linha 59) anexadas ao fim do `scripts/health-check.sh`
+REAL — o MESMO conteúdo da Prova 30, só que com a continuação `\` (branch
+scratch `ci-proof/cont-live` via **`ci-proof-run --workflow pr-check.yml
+--only-jobs "Fragile Range Guard" --expect failure --expect-log "EVAL
+CURL (sec 11.30) in scripts/health-check.sh:58" --no-verify
+--stash-uncommitted --timeout 600`**; mutation script
+`$TMPDIR/prova31-cont-mutate.mjs` FORA do repo — o delta não-commitado da
+thread foi stasheado pelo `--stash-uncommitted` e o script no tmpdir nunca
+é varrido nem pelo stash (só varre o repo) nem pelo `git add -A` do
+commit scratch; self-delete runner-owned removendo-o antes do commit — o
+padrão da sec 8.17; backup md5 `54534137...` tomado antes).
+
+**O resultado observado** (run [31506284327](https://github.com/severinno/severinno/actions/runs/31506284327),
+`--only-jobs` — o poll termina quando o job conclui):
+
+- job `Fragile Range Guard` conclusion=`failure` — step `Scan gate-script
+  curls for explicit timeouts`: `curl-timeouts: 1 eval+curl form(s) em
+  linha logica...` + **`EVAL CURL (sec 11.30) in scripts/health-check.sh:58`**
+  → **exit 1** com o continuation-form commitado (log via `gh api
+  .../actions/jobs/93828572718/logs` — o capture job-scoped do helper veio
+  1-linha, o MESMO ACHADO da sec 8.20/Prova 25; sinal confirmado pelo
+  fallback da API);
+- **1 linha `EVAL CURL` e 0 linhas `CURL WITHOUT --max-time`** no log do
+  step — o tripwire disparou na forma COM continuação, o detector
+  permaneceu mudo (o token mascarado, a fronteira 11.30 intacta);
+- **O TRI-CASO FECHADO**: linha única `; eval` → exit 1 `EVAL CURL`
+  (Prova 29, sec 8.24); split em duas linhas SEM continuação → exit 0
+  clean (Prova 30, sec 8.25); continuação `\` (o joinContinuations dobra
+  numa linha lógica) → exit 1 `EVAL CURL` na linha inicial (esta prova) —
+  a fronteira da 11.36 é provadamente a LINHA LÓGICA: continuar com `\` é
+  JUNTAR (tripwire), quebrar sem `\` é SEPARAR (residual);
+- revertido byte-identical (md5 `54534137...` pré=pós, health-check.sh de
+  volta a 56 linhas, mutation script removido do tmpdir, branch scratch
+  deletada remote + local, delta não-commitado restaurado pelo stash pop).
+
+**O veredito**: o caso 2 da 11.36 está documentado como comportamento
+OBSERVADO no pipeline real — a forma COM continuação TRIPA no `--ci`
+(exit 1) exatamente na linha inicial do comando lógico, o espelho da
+residual da Prova 30. NOTA de honestidade (o mesmo espírito dos ACHADOs):
+o ciclo saiu com `CYCLE_EXIT=1` — o verify do `--expect-log` no nível do
+helper NÃO casou a regex porque o capture job-scoped veio com 1 linha (o
+ACHADO da sec 8.20/Prova 25); a evidência da prova é a conclusão
+`failure` observada (o `--expect failure` casou) + o sinal `EVAL CURL
+(sec 11.30) in scripts/health-check.sh:58` confirmado pelo fallback da
+API. Quem re-rodar o comando documentado verá exit 1 no helper e a
+conclusão failure no run — não é uma prova falha, é o capture ACHADO. O
+tri-caso da linha lógica está fechado nos DOIS sentidos com prova viva:
+quem ler a 11.36 vê a decisão + o teste com contrafactual; quem ler as
+Provas 29 + 30 + 31 vê a fronteira da linha observada no CI — continuar
+com `\` é juntar (tripwire), quebrar sem `\` é separar (residual).
+
+## 8.27 Prova 32 — o lado POSITIVO do guard da sec 11.41 ao vivo: `--stash-uncommitted` preserva e o revert restaura byte-identical (exit 0, run 31511149307, 2026-08-11)
+
+**A pergunta**: o guard da árvore suja (sec 11.41) foi provado LOCALMENTE no
+lado negativo — working tree suja SEM a flag = fail-loud exit 3 no repo
+real. O lado positivo (`--stash-uncommitted` preserva o delta não-commitado
+durante o ciclo e o revert o restaura) tinha apenas prova hermética (os
+E2Es com fake bins da suíte do ci-proof-run). Faltava a prova viva com um
+delta REAL na working tree: exatamente a classe que a sec 8.21 (o ACHADO
+da Prova 26) descreve — o delta que o `git add -A` do commit scratch
+varreria e o revert apagaria.
+
+**O estado**: nenhuma mutação — o delta real da thread (12 arquivos: 10
+modificados + 2 untracked, o trabalho acumulado das rodadas) já vivia na
+working tree da branch `freebuff/new-thread-thmsitz5qutoia`. Baseline
+pré-ciclo: STATUS_MD5 `2c5fdcca...`, DELTA_MD5 `2897b9b9...`, STASH_COUNT
+19 (os 19 stashes pré-existentes — lint-staged backups + antigos), branch
+atual resolvida como destino do revert.
+
+**O ciclo** (`ci-proof-run --branch ci-proof/stash-live2 --workflow
+pr-check.yml --only-jobs "utf8-check / UTF-8 Check" --expect success
+--stash-uncommitted --timeout 420`): `delta nao-commitado stasheado (git
+stash push -u)` → checkout da scratch → push → dispatch → poll → job
+`utf8-check / UTF-8 Check` completed (success) → verify `conclusion=success`
+→ revert: `delta nao-commitado restaurado (git stash pop - sec 8.21)` +
+`revertido (remote deletado, de volta em freebuff/new-thread-thmsitz5qutoia,
+local deletado, delta restaurado)` → **DONE run=31511149307
+conclusion=success** → **CYCLE_EXIT=0**. Pós-ciclo: STATUS_MD5
+`2c5fdcca...` (idêntico), DELTA_MD5 `2897b9b9...` (**byte-identical**),
+STASH_COUNT 19 (o stash do helper consumido pelo pop, os 19 antigos
+intactos), branch restaurada, remote sem leftover (`REMOTE_LEFTOVER=0`).
+
+**ACHADO 1 — o nome composto dos reusable workflow calls**: a primeira
+tentativa usou `--only-jobs utf8-check` e saiu exit 3 (`job 'utf8-check'
+nao encontrado no run #31510668278`) — MESMO com o job concluindo
+success. O display name na API de um job que é um reusable workflow call
+(`uses: ./.github/workflows/utf8-check.yml`) é o composto **`utf8-check /
+UTF-8 Check`** (key / name interno), não a key crua — e o `--only-jobs`
+casa com o display name. Um proof futuro mirando um reusable call precisa
+do nome composto. O revert aconteceu MESMO no exit 3 (o delta foi
+restaurado na 1ª tentativa também — o md5 diferiu só pelo EOL, ACHADO 2).
+
+**ACHADO 2 — a re-normalização de EOL no round-trip do stash**: o 1º ciclo
+mudou o DELTA_MD5 (`2e84e454` → `2897b9b9`) com o STATUS_MD5 idêntico — o
+round-trip `stash push -u` → `checkout` → `stash pop` re-normalizou os
+arquivos de LF (o estado em que o sed da thread os deixou) para **CRLF**
+(o `text=auto` do .gitattributes converte no checkout em Windows — o
+estado natural do repo; o index normaliza EOL, então `git diff` não vê
+diferença). A 2ª rodada com o baseline CRLF-estável (já `2897b9b9`)
+fechou byte-identical pré=pós. Lição: o md5 de working-tree inclui o EOL;
+a identidade funcional do delta é provada pelo diff/index normalizado +
+os md5 com baseline estável.
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts --config vitest.config.unit.ts`
+(o guard da sec 11.41 + os E2Es de stash) + `gates-proofs-ordering.test.ts`
+valida a monotonia 8.26 → 8.27 → 9; tsc 0; eslint 0 erros; UTF-8 do doc
+OK; ASCII-OK nos gate files.
+
+## 8.28 Prova 33 — o DOC COVERAGE do scan-exit-claims falha com a seção exata no CI real (run 31516054686, 2026-08-11)
+
+**A pergunta**: o DOC COVERAGE (sec 11.42, doc → manifest: toda claim de
+exit code detectada no doc REAL tem entrada no EXIT_CLAIMS) tinha prova
+local sintética (fixtures + o CLI com `EXIT_CLAIMS_DOC` apontando um doc
+mutado) mas nenhuma prova no CI real — o pr-check.yml roda `test:unit` no
+job `check` (que inclui o scan-exit-claims), então uma claim fake injetada
+numa secção 11.x da doc real deveria derrubar o teste no pipeline. O
+pedido: a prova viva do lado CI da classe 'claim de doc sem pin'.
+
+**O ACHADO do RUN 1 (#31515253099) — a premissa estava errada**: o ciclo
+rodou com a mutação que injetava a `## 11.99` na doc (o commit scratch
+c326ffa tinha a secção, confirmado via `git show`), o job `check` falhou
+mas as 8 falhas do test:unit eram de OUTRAS suítes (blame-ignore-revs por
+shallow clone `--depth=1`, check-node-modules-integrity, run-precommit-
+guards) — **zero do scan-exit-claims**. A causa: `scripts/scan-exit-
+claims.mjs` e `scan-exit-claims.test.ts` são UNTRACKED (parte do delta
+não-commitado da thread) e o CI roda o tree COMMITADO — a suíte não
+existia no run, então o DOC COVERAGE nunca rodou. A premissa "o pr-check
+roda test:unit que inclui o scan-exit-claims" só vale para o tree
+commitado; no ciclo de prova a suíte precisa ser MATERIALIZADA.
+
+**A decisão (o fix do método)**: a mutação do RUN 2 materializa os 12
+arquivos do delta da thread no working tree do scratch (copiados para
+`/tmp/ec-src` ANTES do ciclo — o mesmo padrão Prova 31 do script fora do
+repo, agora para um CONJUNTO) + injeta a secção fake `## 11.99 Claim
+fake da prova viva (nao registrada, injetada 2026-08-11)` com `**Exit
+codes**: exit code 3` antes do `## 12.` (o eol-aware, aceita CRLF/LF).
+Com a suíte presente no tree do scratch, o DOC COVERAGE roda e o detector
+acha a 11.99 que o manifest não registra — a falha com a seção exata.
+
+**O ciclo (RUN 2)**: branch scratch `ci-proof/exit-claims-live2` via
+`ci-proof-run --workflow pr-check.yml --only-jobs check --expect failure
+--expect-log "doc -> manifest" --no-verify --stash-uncommitted --timeout
+900` — `--only-jobs check` (o job que roda test:unit ANTES de lint/tsc,
+que ficam com `if: always()`), `--expect failure` + `--expect-log "doc ->
+manifest"` (o título do teste no output do vitest, o sinal pinado),
+`--stash-uncommitted` (o delta da thread preservado e restaurado),
+`--no-verify` (o pre-commit local bloquearia o commit da doc mutada via
+mapped tests). Exit 0 = failure observado E revertido.
+
+**Evidência** (job `check` conclusion=`failure`, step `Unit tests`): `×
+scripts/scan-exit-claims.mjs - DOC COVERAGE bidirecional (sec 11.42) >
+doc -> manifest: toda claim de exit code detectada no doc REAL tem
+entrada no manifest` + `→ expected [ '11.99' ] to deeply equal []` — a
+SEÇÃO EXATA no assertion do vitest. 3 testes do scan-exit-claims falham
+pela MESMA raiz (doc → manifest + checkExitClaims + REAL-REPO CONTRACT
+do CLI, todos flagrando a 11.99 não registrada) — o detector acha, o
+manifest não registra, o teste derruba no pipeline. As falhas
+pré-existentes do RUN 1 (shallow clone etc.) seguem presentes no RUN 2
+(ruído de ambiente, não da mutação) — o `--expect-log` pina o sinal do
+DOC COVERAGE entre elas.
+
+**Revert byte-identical**: STATUS_MD5 `2c5fdcca...` pré=pós, DELTA_MD5
+`8431a460...` pré=pós, STASH 19 (os pré-existentes intactos, o stash do
+ciclo consumido pelo pop), branch de volta em
+`freebuff/new-thread-thmsitz5qutoia`, remote limpo (REMOTE_LEFTOVER=0).
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts`
+(o DOC COVERAGE contra a doc real sem a 11.99 — 14/14 verde) +
+`gates-proofs-ordering.test.ts` valida a monotonia 8.27 → 8.28 → 9; tsc
+0; eslint 0 erros; UTF-8 do doc OK; ASCII-OK nos gate files.
+
+## 8.29 Prova 34 — o tri-caso do tripwire AGREGADO observado no pipeline real (run 31518328191, 2026-08-11)
+
+**A pergunta**: a sec 11.36 nomeia o tri-caso da linha lógica — (1) linha
+única `CMD="curl ..."; eval "$CMD"` TRIP, (2) continuação `\` + eval na
+linha seguinte (o joinContinuations junta numa linha lógica) TRIP na linha
+inicial, (3) split sem continuação (curl na linha N, eval na N+1) PASSA —
+e as Provas 29/30/31 provaram cada forma ISOLADA em branch separada. Faltava
+o comportamento MULTI-FORMA num único pipeline: as 3 formas na MESMA branch
+em gate scripts DISTINTOS, para o CI observar a soma dos singles de uma vez.
+
+**A prova**: branch scratch `ci-proof/tricase-live` com 3 anexos no fim de 3
+gate scripts distintos (o mutation script em `$TMPDIR` fora do repo,
+self-delete runner-owned, caminho Windows via `cygpath -w` — o ACHADO da
+Prova 33): `CMD="curl ..."; eval "$CMD"` numa linha em
+`scripts/health-check.sh` (forma 1), `CMD="curl ..." \` + `  eval "$CMD"`
+em `scripts/test-security-headers.sh` (forma 2, continuação), e o split
+`CMD="curl ..."` / `eval "$CMD"` em linhas separadas SEM continuação em
+`scripts/check-utf8.sh` (forma 3, residual). Ciclo via
+**`ci-proof-run --workflow pr-check.yml --only-jobs "Fragile Range Guard"
+--expect failure --expect-log "EVAL CURL (sec 11.30) in
+scripts/health-check.sh:58" --no-verify --stash-uncommitted --timeout 600`**
+(o `--no-verify` garante que o hook local não interfere — o
+scan-curl-timeouts não roda no pre-commit, é step `--ci` dos workflows; o
+CI é a autoridade; o `--stash-uncommitted` preserva o delta da thread).
+
+**Dry-run local ANTES do ciclo** (contra cópia, `CURL_TIMEOUTS_SCAN_ROOT`):
+`SCAN_EXIT=1` com exatamente **2 `EVAL CURL`** — `health-check.sh:58`
+(linha única) e `test-security-headers.sh:439` (continuação) — e **zero**
+para o check-utf8.sh (o split não tripa). O sinal esperado pinado antes do
+ciclo gastar um poll.
+
+**Observado no pipeline real** (run [**31518328191**](https://github.com/severinno/severinno/actions/runs/31518328191)):
+job `Fragile Range Guard` conclusion=`failure`, log via `gh api
+.../actions/jobs/93868917658/logs` (o capture job-scoped do helper veio
+1-linha — o MESMO ACHADO da sec 8.20/Prova 25, confirmado pelo fallback da
+API): `curl-timeouts: 2 eval+curl form(s) em linha logica` com **`EVAL CURL
+(sec 11.30) in scripts/health-check.sh:58`** E **`EVAL CURL (sec 11.30) in
+scripts/test-security-headers.sh:439`** — as 2 formas que devem trip,
+reportadas JUNTAS no mesmo job — e **ZERO menção ao check-utf8.sh** (o
+split sem continuação passou na MESMA árvore). O comportamento multi-forma
+é a soma dos singles das Provas 29 (linha única) e 31 (continuação) com a
+residual da Prova 30 (split) — agora observado num único pipeline.
+
+**ACHADO (o capture 1-linha de novo)**: o `gh run view --job <id> --log` do
+helper devolveu 1 linha de novo — o sinal do job só apareceu via `gh api
+.../actions/jobs/<id>/logs` (o mesmo fallback das Provas 25/31/33). O
+verify saiu 1 (a regex não casou no log 1-linha) mas o revert aconteceu por
+design (a branch scratch nunca fica no remote) — o run number + o log via
+API são a prova, não o exit do helper.
+
+**Revert**: byte-identical (STATUS `b67aa585...` pré=pós, STASH 19, os 3
+alvos de volta a 56/437/167 linhas, branch deletada remote + local).
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -4773,6 +5090,141 @@ rastreamento e editar o contrato conscientemente. Re-validação: `npx vitest
 run scripts/__tests__/scan-curl-timeouts.test.ts --config
 vitest.config.unit.ts`.
 
+**O terceiro caso — a continuação `\` (sondado 2026-08-11, probe real)**:
+a fronteira tem TRÊS formas físicas, não duas. `CMD="curl ..." \`
+(backslash no fim da linha) + `eval "$CMD"` na linha seguinte NÃO é a
+residual — o joinContinuations (o MESMO helper que o detector usa para a
+forma TLS-check) dobra o par numa ÚNICA linha lógica, e o tripwire TRIPA na
+linha INICIAL do comando lógico (probe `node --input-type=module -e ...`
+num fixture `CMD=... \`/`eval "$CMD"`: `scanEvalCurl` → `[{line:3,
+text:"CMD=...\\neval \"$CMD\""}]`; o scanner da residual retorna `[]` — a
+continuação é território do tripwire POR DESIGN, documentado no header do
+scanSplitEvalCurl). A matriz INVOCATION-FORM (sec 11.31) é do DETECTOR
+(scanGateScript, token+flag) — a continuação não pertence lá: ela é
+invisível ao detector (o token mascarado, a fronteira 11.30) e visível ao
+tripwire. DECISÃO: a forma JÁ está pinada por teste commitado (`TRIPWIRE
+continuation: the form split by a backslash continuation is ONE logical
+line -> trips at the START line` — o par irmão do TRIPWIRE boundary, que
+asserta len 1 na linha inicial) — NÃO ganha linha nova na matriz (casa
+errada: matriz = detector, não tripwire) nem entrada FRONTIERS (não é
+escape: TRIPA, não passa silencioso). O que faltava era a doc nomear o
+tri-caso explicitamente para o leitor não re-derivar: (1) linha única →
+TRIPA (Prova 29, sec 8.24); (2) continuação `\` → dobra e TRIPA na linha
+inicial (este probe; o mesmo caso da linha única na visão do
+joinContinuations); (3) split SEM continuação → residual ACEITA, NÃO tripa
+(Prova 30, sec 8.25; 0 usos, BASELINE companion). O teste `TRIPWIRE
+continuation` pina o caso (2) e o par boundary + continuation fecha a
+tabela: o que separa a residual do tripwire é a linha LÓGICA — continuar
+com `\` é juntar, é o tripwire; quebrar sem `\` é separar, é a residual.
+
+**O tri-caso pinado como comportamento (o padrão da matriz aplicado ao
+tripwire)**: a tabela acima vivia em prosa + testes separados (TRIPWIRE
+boundary + TRIPWIRE continuation). Agora existe um ÚNICO `it`
+parametrizado no padrão da matriz INVOCATION-FORM (sec 11.31) aplicado ao
+scanEvalCurl: cada forma física é uma linha da tabela com o trip esperado
++ a linha exata — linha única → trip na 3; continuação `\` → trip na
+linha INICIAL (3); split sem continuação → `[]` (0). O par de Provas vivas
+29/30/31 (o tri-caso observado no CI) tem o espelho hermético numa única
+tabela de comportamento — quem refatorar o tripwire quebra a tabela
+inteira de uma vez, não um caso por vez.
+
+**O pin do HELPER (JOIN-CONTINUATIONS CONTRACT)**: o caso (2) da tabela só
+tripa porque o joinContinuations dobra o par numa linha lógica — a
+decisão inteira cavalga na integridade do helper. Um refactor que
+produzisse linha lógica truncada (empurrar o buffer na continuação ou
+dropar o par) faria o tripwire errar o caso (2) SILENCIOSAMENTE, com o
+fixture do tri-caso (uma continuação que por acaso junta certo) seguindo
+verde. O JOIN-CONTINUATIONS CONTRACT (it dedicado na suíte do guard, probe
+2026-08-11) pina a invariante de losslessness direto no helper,
+independente de fixture: (1) nenhuma linha lógica termina em `\` (nenhuma
+continuação fica truncada); (2) o flatten das linhas lógicas (o `\` é
+marcador de JOIN, não conteúdo) reconstrói o input byte a byte — o
+conteúdo de toda linha de continuação sobrevive em exatamente uma linha
+lógica. O probe também revelou um fato honesto do helper que o teste
+pina: a linha VAZIA entre pares é preservada como linha lógica própria
+(LOGICAL_COUNT=4 num fixture de 2 pares + echo), nunca engolida pelo par.
+
+**A prova viva da truncagem (probe 2026-08-11) — a rede viva é o BASELINE
+do DETECTOR, não o tripwire**: o JOIN-CONTINUATIONS CONTRACT pina a
+losslessness hermeticamente, mas a pergunta honesta era: se um refactor
+truncar o join (empurrar o buffer na continuação ou dropar o par), o
+BASELINE vivo detecta, ou o repo real não tem pares de continuação e o
+scan seguiria verde? O probe INVERTEU a premissa do medo: o repo real TEM
+par de continuação — o TLS-check do test-security-headers.sh:325
+(`curl ... --tls-max 1.3 \` com o `--max-time 20` na linha de continuação
+326). Com o join real, a linha lógica co-loca curl + flag (BASELINE do
+detector verde — o lock da classe 9:08); com join TRUNCADO (cada linha
+física vira sua própria linha lógica), o curl da linha 325 perde o
+--max-time e o DETECTOR flagra: violations 0 → 1 em
+`scripts/test-security-headers.sh:325` — o TRIPWIRE segue em 0 (a classe
+da truncagem não é eval, o tripwire só vê formas eval+curl). DECISÃO: o
+contrato NÃO precisa de um caminho CI próprio — a rede viva da truncagem
+JÁ existe no BASELINE do detector (o step `scan-curl-timeouts --ci` dos
+dois workflows): se a truncagem acontecer de verdade, o CI falha com o
+path:line exato, sem depender do teste hermético. O CONTRACT hermético é
+o pin DIRETO da invariante (falha no commit local, antes do push); o
+REAL-REPO CONTRACT novo (probe 2026-08-11) pina a PREMISSA dessa rede
+viva — o par TLS-check com a flag em linha de continuação existe na
+superfície derivada — para um refactor legítimo que mova o --max-time
+para a linha física do curl (matando a rede viva) quebrar o teste e
+exigir re-decisão, em vez de a rede morrer silenciosamente.
+
+**O pin do baseLine (probe 2026-08-11) — a linha INICIAL do comando
+lógico é o número que o path:line das provas depende**: os três
+consumidores do joinContinuations (scanEvalCurl, scanGateScript e o
+REAL-REPO CONTRACT do health-check.sh) reportam a linha INICIAL da linha
+lógica — o número que o path:line das Provas 29/31/34 carrega
+(health-check.sh:58 era a linha do CMD, não a do eval). O JOIN-
+CONTINUATIONS CONTRACT pina a losslessness do helper; o BASELINE com 2+
+continuações pina a CONTAGEM do baseLine — e o TRI-CASO (caso 2, 1
+continuação) NÃO consegue distinguir a contagem correta
+(`baseLine += logical.split("\n").length`) de um bug `+=1` por linha
+lógica: um único par reporta a mesma linha nas duas contagens. O
+DISTINGUISHER (probe 2026-08-11, fixture medido): um par de continuação
+ANTERIOR (`FOO="bar" \` + `baz` = 2 linhas físicas) desloca a contagem —
+com a contagem correta o par eval+curl (2 continuações, linhas físicas
+5-7) reporta a linha INICIAL 5; o bug `+=1` reportaria 4 (só 3 linhas
+lógicas antes dele); o bug fim-do-par reportaria 7. O teste pina os DOIS
+scanners (tripwire e detector reportam 5) + o positivo (TLS-form com a
+flag numa linha de continuação do MEIO do par co-loca na linha lógica e
+o BASELINE segue verde — a mesma co-locação do health-check.sh real).
+DECISÃO: o teste é o pin da contagem que o path:line das provas depende
+— um refactor que mudasse a aritmética do baseLine quebraria o teste com
+o número errado, em vez de as provas apontarem para a linha errada no
+futuro.
+
+**O BASELINE companion da residual (REAL-REPO CONTRACT)**: o tripwire cobre
+a forma de linha única; o scanner da residual (`scanSplitEvalCurl`,
+EVIDÊNCIA DE TESTE apenas — NÃO wired no CLI, o guard continua aceitando a
+forma por decisão) procura a FORMA DIVIDIDA (atribuição `VAR=...curl...`
+numa linha + `eval "$VAR"` numa linha posterior, sem continuação) e pina o
+lado "0 usos na superfície derivada": o REAL-REPO CONTRACT deriva os 6
+gate scripts dos workflows e asserta `[]` — se a forma aparecer, quebra
+com o path:line exato (forçando a decisão humana, nunca um furo
+silencioso). A separação de domínio é o contrato: o split pertence ao
+scanSplitEvalCurl (linha do eval), a forma de linha única pertence ao
+tripwire scanEvalCurl — cada scanner um lado da fronteira, nunca os dois
+no mesmo furo (pinned por mutation com os DOIS lados no mesmo it).
+
+**A SPLIT-FORM MATRIX (a tabela irmã hermética da residual)**: o tri-caso
+da 11.36 (linha única → trip, continuação → trip na linha inicial, split →
+[]) virou um `it` parametrizado único para o TRIPWIRE; o scanner da
+residual ganhou o ESPELHO — um `it` parametrizado irmão (SPLIT-FORM
+MATRIX, probe 2026-08-11, 14 formas medidas) que pina as formas que o
+scanSplitEvalCurl DEVE flagrar (var curl em linha anterior + eval em linha
+posterior sem continuação → flag na linha do eval) e as que NÃO deve
+(linha única, continuação, var sem curl, eval antes da atribuição,
+comentário, eval com continuação → todos []). Destaques medidos: a var
+REATRIBUIDA sem curl ainda flagra (over-flag direção segura — o scanner
+não rastreia dataflow, a reatribuição não limpa o registo); duas vars curl
+num eval → UM warning por var que casa; var evaldada duas vezes → UM
+warning por linha de eval. A fronteira de domínio é o espelho do tri-caso:
+continuação (joinContinuations dobra → tripwire) e mesma linha (guard
+i+1 <= assignLine) pertencem ao TRIPWIRE, nunca à residual — cada scanner
+um lado, nunca os dois no mesmo furo (o mesmo contrato do BASELINE
+companion acima, agora com a superfície de FORMAS medida em vez de só o
+positivo/negativo).
+
 **O contrafactual embutido**: o teste ACCEPTED da 11.30 (scanGateScript
 `[]` no eval-built curl, com o contrafactual do curl direto flagado)
 permanece no MESMO suite — o par detector-aberto + tripwire-trip prova que
@@ -4825,13 +5277,18 @@ parameterizar ARGS, nunca o NOME da API: `const cmd = 'node x.mjs';
 execSync(cmd)` → subprocessHeavy=true (o token fica literal fora da
 string, detectado). O análogo plausível da construção dinâmica
 (interpolação de template literal `${...}`) é fronteira NOMEADA no header
-do guard (mascarada inteira; "nenhum teste do repo faz isso") — nomeada,
-NÃO test-pinned (o regression dispatchWarning, scan-timeouts.test.ts:201,
-pina a classe VIZINHA do vazamento de span do matchBrace em helper puro
-— não a interpolação; citação corrigida em review). Fechar o eval
-custaria rastreamento de
-variáveis — o MESMO custo que a 11.30 recusou — para uma forma com 0
-usos E 0 plausibilidade acidental.
+do guard (mascarada inteira; "nenhum teste do repo faz isso") — e agora
+PINADA por contrato (o teste INTERPOLATION-FRONTIER, scan-timeouts.test.ts
+agora com 24 it() blocks — a nova no describe de parser, padrão
+11.29/11.30: o token DENTRO de `${...}` escapa → ACEITO,
+o contrafactual do MESMO token direto flagra → o detector funciona, e o
+idioma real de args-interpolação (token fora do template) é detectado →
+os dois eixos da decisão provados num único teste). O regression
+dispatchWarning (scan-timeouts.test.ts:201) segue pinando a classe
+VIZINHA do vazamento de span do matchBrace em helper puro — uma classe
+separada, agora com pin próprio além do vizinho. Fechar o eval custaria
+rastreamento de variáveis — o MESMO custo que a 11.30 recusou — para uma
+forma com 0 usos E 0 plausibilidade acidental.
 2. **scan-eol-anchor (JS test/mutation files)** — a classe NEM ESCAPA na
 forma comum: strings passam BYTE-IDENTICAL pelo maskComments (mascarar
 strings mataria a própria detecção), então `eval('.replace("foo\nbar",
@@ -4855,20 +5312,96 @@ nomeada. Um teste de contrato irmão em qualquer das duas suítes pinaria uma
 forma artificial (scan-timeouts) ou inexistente (scan-eol-anchor) — o
 oposto da cultura de honestidade das provas.
 
-**ACHADO incidental (não mudado, fora do escopo)**: o scan-eol-anchor.mjs
-NÃO tem entry-point guard — `process.exitCode = main()` roda no import
-(diferente do scan-timeouts.mjs, que tem IS_MAIN). O probe flagrou o
-PRÓPRIO arquivo de probe ao importar o módulo (a superfície real foi
-varrida e o exitCode do processo do probe foi setado). Com o repo limpo é
-inofensivo (exit 0), mas é uma assimetria latente — candidata a fix futuro
-(guardar o entry-point como os irmãos), não mudado aqui por estar fora do
-escopo da avaliação.
+**Recipe de re-validação (30s, os comandos EXATOS da medição — rodados e
+validados 2026-08-11, sem re-derivar os casos)**: re-rodar os probes
+baixa os mesmos resultados; se qualquer linha divergir, a fronteira
+mudou e a decisão precisa ser re-aberta.
 
-**Implementação** (2 headers + docs, ZERO lógica): scan-timeouts.mjs e
-scan-eol-anchor.mjs ganham a nota da fronteira/não-fronteira do eval no
-header — o lugar onde as decisões de fronteira vivem (o mesmo padrão da
-11.29/11.30 no curl-timeouts) — para o próximo dev não re-derivar a
-avaliação; a sec 11.37 registra os probes e o veredito.
+Probe 1 — scan-timeouts (a classe ESCAPA no eval; o idioma real é
+detectado; esperado `false, false, true, true, true`):
+
+```bash
+node --input-type=module -e '
+import { findTestCalls } from "./scripts/scan-timeouts.mjs"
+const forms = {
+  "eval(execSync string)": "it(\"x\", () => { eval(\"execSync(\\\\\"node x.mjs\\\\\" , {})\") })",
+  "eval(var spawnSync)": "it(\"x\", () => { const c = \"spawnSync(\\\\\"x\\\\\")\"; eval(c) })",
+  "direto (contrafactual)": "it(\"x\", () => { execSync(\"node x.mjs\") })",
+  "arg param, token literal": "it(\"x\", () => { const cmd = \"node x.mjs\"; execSync(cmd) })",
+  "interpolacao template": "it(\"x\", () => { execSync(`node ${file}.mjs`) })",
+}
+for (const [k, src] of Object.entries(forms)) {
+  const calls = findTestCalls(src)
+  console.log(k.padEnd(30), "subprocessHeavy=", calls[0]?.subprocessHeavy)
+}
+'
+```
+
+Probe 2 — scan-eol-anchor (a classe NEM escapa — bytes visíveis dentro
+do eval; esperado `hits=1, hits=1, hits=0`):
+
+```bash
+node --input-type=module -e '
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
+import { scanFileEolAnchor } from "./scripts/scan-eol-anchor.mjs"
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eol-probe-"))
+const esc = "\\" + "n"
+const forms = {
+  "eval(.replace) -> NAO escapa (bytes visiveis)": `eval('\''content.replace("foo${esc}bar", "")'\'')`,
+  "direto -> FLAGRA": `content.replace("foo${esc}bar", "")`,
+  "aspa escapada -> NAO flagra (fronteira do header)": `content.replace("foo\\\"${esc}bar", "")`,
+}
+for (const [k, src] of Object.entries(forms)) {
+  const f = path.join(dir, "probe.ts")
+  fs.writeFileSync(f, src + "\n", "utf8")
+  console.log(k.padEnd(50), "hits=", scanFileEolAnchor(f).length)
+}
+fs.rmSync(dir, { recursive: true, force: true })
+'
+```
+
+NOTA de método do probe 2: a sequência `\n` é montada por concatenação
+(`esc = "\\" + "n"`) e interpolada via template literal — o escape de 2
+chars nunca fica contíguo NO CÓDIGO do comando (o guard varre os gate
+files; contíguo = auto-flag no próprio script de probe, a mesma NOTA da
+suíte).
+
+NOTA de leitura do probe 1 (evita um falso conflito com a prosa): a linha
+`interpolacao template → true` mede a interpolação de ARGS com o token
+LITERAL fora do template — `execSync` + template com `${file}` como
+argumento — o idioma real, detectado. A fronteira "mascarada inteira" da
+prosa é o token DENTRO de `${...}` (nenhum teste do repo faz isso) —
+casos diferentes; os dois são consistentes com a decisão.
+
+**ACHADO incidental — FECHADO (2026-08-11, fix implementado)**: o
+scan-eol-anchor.mjs NÃO tinha entry-point guard — `process.exitCode =
+main()` rodava no import (diferente do scan-timeouts.mjs, que tem IS_MAIN).
+O probe flagrou o PRÓPRIO arquivo de probe ao importar o módulo (a
+superfície real foi varrida e o exitCode do processo do probe foi setado).
+FIX: o módulo ganhou o guard IS_MAIN (mirror do scan-timeouts.mjs —
+`import.meta.url === pathToFileURL(process.argv[1]).href`), então importar
+(o vitest unit de parsing) não varre a superfície nem seta exitCode; o CLI
+só roda quando executado direto. O teste IMPORT (scan-eol-anchor.test.ts,
+10ª it) prova com contrafactual embutido: superfície sintética ENVENENADA +
+import dinâmico cache-busted → exitCode intacto + o módulo expõe as
+funções puras, E chamar `scanEolAnchors()` explicitamente na MESMA
+superfície acha a violação (o no-scan do import é o guard funcionando,
+nunca um detector morto — o assert do exitCode pega a classe: sem o
+guard, o main() rodaria e setaria exitCode 1 na superfície envenenada).
+
+**Implementação original** (2 headers + docs, ZERO lógica — a avaliação
+não mudou comportamento): scan-timeouts.mjs e scan-eol-anchor.mjs ganham
+a nota da fronteira/não-fronteira do eval no header — o lugar onde as
+decisões de fronteira vivem (o mesmo padrão da 11.29/11.30 no
+curl-timeouts) — para o próximo dev não re-derivar a avaliação; a sec
+11.37 registra os probes e o veredito.
+
+**Implementação do fechamento do ACHADO** (1 gate file + 1 suite + docs,
+LÓGICA mínima): scan-eol-anchor.mjs ganha o guard IS_MAIN (2 linhas +
+import pathToFileURL) e o header nota o entry-point guard; o teste IMPORT
+(10ª it da suite) prova o contrato com contrafactual embutido.
 
 **Re-validação**: vitest **39/39** (3 suítes: scan-timeouts 23 +
 scan-eol-anchor 9 + gates-proofs-ordering 7) — verdes; ordering 11.36 →
@@ -4876,7 +5409,14 @@ scan-eol-anchor 9 + gates-proofs-ordering 7) — verdes; ordering 11.36 →
 tsc 0; eslint 0 erros; reviewer 0 blockers (2 nits de precisão — a
 citação do dispatchWarning como pin da interpolação quando ele pina a
 classe vizinha do matchBrace, e o count de gate files 3→2 — aplicados e
-confirmados).
+confirmados). **Pós-fechamento**: vitest **40/40** (scan-eol-anchor 10 com
+a IMPORT + scan-timeouts 23 + ordering 7) — verdes; tsc 0; eslint 0 erros;
+ASCII-OK no gate file (guard + header tocados); UTF-8 OK no doc; reviewer
+0 blockers. **Pós-pin da interpolação**: vitest **41/41** (scan-timeouts 24
+com a INTERPOLATION-FRONTIER + scan-eol-anchor 10 + ordering 7) — verdes;
+tsc 0; eslint 0 erros; ASCII-OK no gate file (header tocado); UTF-8 OK no
+doc; reviewer 0 blockers (nit de precisão — "24ª it" posicional → "24
+it() blocks", a nova no describe de parser — aplicado e confirmado).
 
 ## 11.38 Por que cada detector mantém a matriz própria — a classe "só o literal canônico" é filosofia compartilhada, a MATRIZ é superfície-específica (decisão 2026-08-11)
 
@@ -5073,6 +5613,327 @@ a infra já existente (ROOT/path/fs) — sem fixtures novas, sem dep nova.
 + ordering 11.39 → 11.40 → 12; UTF-8 OK no doc + ASCII-OK no gate file;
 tsc 0; eslint 0 erros.
 
+
+## 11.41 O guard da árvore suja + `--stash-uncommitted` — o ACHADO da sec 8.21 fechado no runner (decisão 2026-08-11)
+
+**A pergunta**: a Prova 26 (sec 8.21, run 31485163704) observou ao vivo
+que o `git add -A` do commit scratch do `ci-proof-run.mjs` varreu TODO o
+delta não-commitado da thread (13 arquivos) e o revert (`git checkout
+<original>`) os apagou da working tree — recuperados só via cherry-pick do
+commit scratch 86ff0b3. O ACHADO vive SÓ na prosa do doc; o runner não
+protege o delta: qualquer ciclo futuro com working tree suja repetiria o
+acidente. Fechar a classe no próprio helper.
+
+**A decisão (fail-loud por default + `--stash-uncommitted` como escape)**:
+o guard roda `git status --porcelain` ANTES do `git checkout -b` (a ordem
+importa: o checkout CARREGA os arquivos sujos para a scratch e o `add -A`
+os varreria; o revert os apagaria). Árvore suja SEM a flag = exit 3
+fail-loud com a nota do ACHADO (o ciclo não pode varrer um delta que o
+revert apaga). Com `--stash-uncommitted`, o runner preserva o delta
+(`git stash push -u` — untracked incluídas, o delta pode ter arquivos
+novos) e o restaura no revert (`git stash pop` após o checkout da branch
+original); um pop CONFLITANTE vira revert parcial (AVISO + exit 3, o stash
+permanece recuperável via `git stash list`) — o delta nunca se perde em
+silêncio.
+
+**Implementação** (`ci-proof-run.mjs` + fixture fake + suíte): parseArgs
+(flag + usage) · planSteps (o passo `git: status --porcelain` ANTES do
+checkout -b + `git: stash push` / `git: stash pop` quando a flag está) ·
+main() (o guard roda após o rev-parse/dry-run e ANTES do checkout -b;
+stash push fail-loud; revert ganhou o stash pop com participação no exit
+code) · fixture (status branch-aware: `CI_PROOF_FAKE_DIRTY_BEFORE` simula
+a sujeira pré-ciclo na branch base, `FAKE_DIRTY` a pós-mutação na scratch —
+os testes históricos com `FAKE_DIRTY=1` continuam verdes porque a
+checagem pré-ciclo vê clean na base; handlers `stash push`/`stash pop` +
+`CI_PROOF_FAKE_STASH_POP_FAIL`).
+
+**Testes**: PURE parseArgs/planSteps (flag + a ordem
+status→stash→checkout e checkout→stash pop→branch -D no plano) · E2E
+fail-loud (dirty antes sem flag → exit 3, ZERO invocations além do status —
+nem checkout -b) · E2E stash happy path (exit 0, stash push antes do
+checkout, stash pop antes do branch -D, mensagens de preservado/restaurado)
+· E2E pop conflitante (exit 3, AVISO revert parcial, `stash pop=FALHOU`) ·
+REAL-REPO CONTRACT (o `status --porcelain` vem antes do `checkout -b` no
+código + o stash push/pop wired).
+
+**O paralelo com o check-push-deletion (RECUSADO, 2026-08-11)**: o
+check-push-deletion.mjs (sec 11.21) pula a cadeia de gates do pre-push em
+push de deleção pura (local sha all-zeros) — o push não transporta
+NENHUM commit novo, rodar ~74s de gates testaria nada; é housekeeping
+(~74s → ~0.4s). A pergunta: o guard desta secção deveria ganhar o mesmo
+skip em casos "deleção-like"? A premissa implícita é "deleção não roda
+gates → não precisa proteger delta". **NÃO** — a analogia quebra na
+classe, por cinco razões:
+
+1. **Levers incomensuráveis**: o check-push-deletion é um lever de TEMPO
+   (gates que testariam nada num push de housekeeping); este guard é um
+   lever de INTEGRIDADE DE DADOS (o delta não-commitado seria varrido
+   pelo `git add -A` do commit scratch e apagado pelo revert — a Prova
+   26). "Nada a testar" ≠ "nada a perder": o primeiro otimiza um custo
+   recuperável (re-push), o segundo protege trabalho irreversível.
+2. **Não existe ciclo "deleção-like" no ci-proof-run**: todo ciclo faz
+   checkout -b + push + dispatch + poll — o ciclo É os gates (a prova só
+   existe porque o workflow roda no ref empurrado). Não há forma de
+   invocação que "não rode gates" e, portanto, nenhum caso onde o delta
+   não esteja em risco. (Nota de conservadorismo honesto: o sweep do `git
+   add -A` só materializa com `--mutate` — sem a flag o ciclo nem
+   commita — mas o guard dispara MESMO sem ela (o E2E fail-loud usa
+   `--branch` + `--workflow` sem `--mutate`). Esse over-fire é
+   deliberado e parte da decisão: o guard roda ANTES do checkout -b e
+   não pode prever o que o ciclo fará depois; o default fail-loud custa
+   ~10ms e o escape `--stash-uncommitted` existe. Um skip "só quando tem
+   --mutate" seria otimizar a proteção por uma premissa que o ciclo
+   pode quebrar no passo seguinte.) O push de deleção pura é housekeeping do HOOK
+   (apagar branches no remote), não um propósito do ciclo.
+3. **Assimetria de falha**: um skip agressivo demais do check-push-
+   deletion deixa um push sem vetar — recuperável (re-push). Um skip
+   indevido deste guard DESTRÓI o delta — irreversível (a Prova 26 só
+   recuperou os 13 arquivos via cherry-pick do commit scratch). O default
+   fail-loud existe POR essa assimetria.
+4. **O escape já existe e PRESERVA**: `--stash-uncommitted` é o "skip"
+   sancionado — mas um skip que protege o delta (stash push -u + pop no
+   revert) em vez de abandoná-lo. Quem precisa rodar um ciclo com árvore
+   suja usa a flag; o guard nunca descarta o delta ao chão.
+5. **Complementaridade, não concorrência**: o próprio revert do ciclo faz
+   `git push origin --delete <scratch>` — uma deleção pura que o
+   check-push-deletion JÁ fast-pathada no hook (quando o hook roda; com
+   `--no-verify` o push do revert sai do hook, mas o revert é o mesmo).
+   Os dois levers atuam em camadas diferentes (custo do hook vs.
+   integridade do ciclo) — não há sobreposição a resolver, e o guard não
+   "pega emprestado" o skip do hook.
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts --config vitest.config.unit.ts`
++ `npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts`
+(a cobertura bidirecional lê esta secção — as claims registradas da 11.41
+não mudaram: sem flag → exit code 3, --stash-uncommitted → 0/3) +
+`gates-proofs-ordering.test.ts` valida a monotonia 11.40 → 11.41 → 12;
+tsc 0; eslint 0 erros; UTF-8 do doc OK; ASCII-OK nos gate files.
+
+
+## 11.42 Contrato da classe 'claim de doc sem pin' — o manifest EXIT_CLAIMS (decisão 2026-08-11)
+
+**A classe travada**: o SUPERSEDED da sec 11.30 virou um padrão — uma
+decisão documentada como exit code 0 que uma mudança posterior (a sec
+11.36, o tripwire) inverteu SILENCIOSAMENTE na doc. O leitor da sec 11.30
+confiava numa premissa morta (o pedido original da thread usava a 11.30
+como base e precisou da 11.36 para ser corrigido). A classe é: **claim de
+exit code na doc sem contraparte atual pinada por teste**.
+
+**O contrato**: `scripts/scan-exit-claims.mjs` (padrão FRONTIERS da sec
+11.40 — manifest exportado + detector + main() IS_MAIN guardado, SEM
+superfície `--print-*`; fora de forma como o FRONTIERS/fuzz-targets, a
+LIVE TREE check do manifest-registry não o flagra) + a suíte
+`scripts/__tests__/scan-exit-claims.test.ts`:
+
+1. **ABS PIN**: o manifest EXIT_CLAIMS registra EXATAMENTE as 24 seções
+   11.x com claim de exit code medidas no doc (11.2, 11.6, 11.7, 11.8,
+   11.10, 11.11, 11.12, 11.17, 11.18, 11.19, 11.20, 11.21, 11.27, 11.28,
+   11.30, 11.31, 11.33, 11.36, 11.38, 11.39, 11.41, 11.42, 11.43, 11.44).
+   Uma claim nova sem registro (ou uma seção renumerada) falha — registrar
+   é a decisão consciente, nunca o silêncio.
+2. **PIN REALITY**: toda entrada `current` tem pin REAL (arquivo de suite
+   existe + marker presente no conteúdo, lido do disco — o padrão
+   manifest-registry). Nenhuma claim de comportamento atual vive só na
+   prosa.
+3. **SUPERSEDED CHAIN**: toda entrada `superseded` aponta um `supersededBy`
+   que É `current` com pin real. O par canônico pinado: **11.30 → 11.36**
+   — o leitor da 11.30 é redirecionado para a verdade atual (o tripwire)
+   com pin em `scan-curl-timeouts.test.ts`. Se um dia outra decisão for
+   invertida, a seção antiga vira `superseded` apontando a nova (com pin)
+   — nunca fica um exit code morto na doc.
+4. **MEASUREMENT HONESTY**: entradas `measurement` (11.2: estado upstream
+   do eslint_d, verificação manual + receita na própria seção; 11.10:
+   lever RECUSADO medido uma vez, o loader do bun é irrelevante no tsc)
+   carregam `note` explicando por que não há pin — classificação
+   consciente, não silenciosa.
+5. **DOC COVERAGE bidirecional**: o detector honesto (`scanDocExitClaims`,
+   regex `\bexit[\s-]+(code|status)?[\s-]*[0-3]\b` por linha sob headers
+   `## 11.N` — aceita `exit 0`, `exit code 0`, `exit status 0`,
+   `exit-code 0`; o re-frasear com palavra entre `exit` e o número NÃO
+   escapa) varre o doc real; toda claim detectada tem entrada (doc →
+   manifest) E toda entrada tem claim detectada (manifest → doc, drift de
+   seção renumerada/removida falha — o `stale`).
+6. **MUTATION**: o teste prova que o checker pega a classe real (claim em
+   seção não registrada; sucessor ausente / não-current na cadeia; entrada
+   stale sem claim no doc) — não é assert que passa por acaso.
+7. **SELF-GUARD**: a própria sec 11.42 menciona exit code 0/1 do CLI — é
+   UMA claim registrada (a 24ª), pinned pela própria suite (REAL-REPO
+   CONTRACT do CLI + o exit-1 path). O guard guarda a si mesmo: nenhuma
+   seção 11.x escapa, nem a que o descreve.
+
+**O inventário das 24 claims** (seção → kind → pin): 21 `current` com pin
+(11.6/11.7 em `scan-lint-staged-loader`, 11.8 em `scan-hook-parallel-race`,
+11.11/11.12 em `fuzz-mapped`, 11.17 em `scan-prepush-batch`, 11.18/11.21 em
+`check-push-deletion`, 11.19 em `check-node-modules-integrity`, 11.20/11.27/
+11.28/11.41/11.43/11.44 em `ci-proof-run`, 11.31/11.36/11.38 em
+`scan-curl-timeouts`, 11.33/11.39 em `scan-guard-gates`, 11.42 na PRÓPRIA
+suite) · 1 `superseded` (11.30 → 11.36) · 2 `measurement` (11.2, 11.10).
+
+**Onde roda**: via `test:unit` (o MESMO canal do `gates-proofs-ordering` —
+o contrato de doc não entra no test:guard de 20s) E, desde o REFINAMENTO
+2026-08-11 (o tripwire, bloco abaixo), como **8º guard do batch runner do
+pre-commit** (`run-precommit-guards.mjs`). O CLI `node
+scripts/scan-exit-claims.mjs --check` sai exit code 0 no doc real
+(REAL-REPO CONTRACT) e exit code 1 listando as claims não registradas / pins
+quebrados / cadeias quebradas.
+
+**O tripwire do pre-commit (REFINAMENTO 2026-08-11)**: o SELF-GUARD da
+11.42 travava a própria seção, mas o mecanismo dependia de quem edita
+lembrar de rodar o teste — o `pre-commit:test` mapeia docs para NADA
+(`pre-commit-tests.mjs` só mapeia `*.test.{ts,tsx}` e fontes `*.ts|tsx|mjs`;
+uma edição do gates-proofs.md com uma claim não-registrada, o hook inteiro
+passava: encoding OK, os guards não varrem doc, lint/tsc não tocam md, e o
+pre-commit:test imprimia skip) e a falha só aparecia no CI (pr-check, job
+check roda test:unit). O tripwire fecha o gap: o CLI do contrato roda como
+8º guard do batch runner do pre-commit, INCONDICIONAL (a invariante do
+repo: guards baratos não ganham condição — o batch roda sempre, worst-exit).
+Medição DIRETA do incremento (3 runs, node 22.23.1, warm — o precedente
+da sec 11.18: substituir extrapolação por número medido): o CLI standalone
+custa ~0.14-0.16s; medindo a varredura in-process (boot + scan em 0.14-0.15s
+vs boot puro 0.10-0.12s), o scan do exit-claims adiciona ~30-40ms por
+commit ao batch (o boot é compartilhado) — o batch de 8 guards warm fica em
+~0.29-0.31s vs ~0.26-0.43s do de 7. O mesmo lever do scan-batch-coverage,
+agora aplicado ao contrato de doc.
+Alternativa avaliada e RECUSADA: spawn condicional (`if git diff --cached |
+grep gates-proofs.md; then node ...`) — criaria a classe de condição que os
+contratos anti-paths-filter do repo travam, e o custo por commit de doc
+(~0.15s standalone de boot) seria MAIOR que o incremento do batch. O
+contrato de crescimento do batch (sec 11.16) foi atualizado na mesma
+edição: o DERIVATION PIN do scan-batch-coverage agora pina os 8 imports e o
+REAL-REPO CONTRACT do runner os 8 veredictos em ordem — um 9º guard futuro
+também entra pelo mesmo caminho sancionado.**O escopo 11.x basta — as seções 8.x (Provas e medições) são registros de
+evento, não claims de comportamento (RECUSADO, 2026-08-11)**: o detector varre só as
+seções 11.x (`scanDocExitClaims` casa `^## (11\.\d+)` e zera em qualquer
+outro `^## \d`). A região 8.x tem **87 citações** de exit-code (41 `exit
+0`, 40 `exit 1`, 4 `exit 3`, 2 outras — 33 na tabela de Provas + 54 nas
+seções 8.2–8.28) e a avaliação de estender com um segundo manifest
+EXIT_CLAIMS_8 concluiu **RECUSADO** por 5 razões:
+
+1. **Direção da verdade oposta** — 11.x são claims NORMATIVAS (o código
+   DEVE sair exit N sob condição; o pin prova que sai). 8.x são registros
+   DESCRITIVOS (este run SAIU exit N no run/date X; a âncora é o run
+   number, não o código). A classe que o contrato trava é 'claim sem
+   contraparte ATUAL pinada' — uma Prova não é uma claim atual, é um fato
+   histórico congelado.
+2. **Pin impossível no repo** — o `resolvePin` exige arquivo + marker
+   LIDOS DO DISCO. Uma claim de Prova é ancorada no log do run no GitHub
+   Actions (fora do repo). EXIT_CLAIMS_8 seria um manifest de fatos
+   não-verificáveis no repo — o oposto do PIN REALITY.
+3. **Falso-positivo estrutural** — a maioria das citações `exit 1` nas
+   8.x registra uma MUTAÇÃO que esperadamente falhou (a prova do guard
+   funcionando). O detector flagraria o registro da própria prova como
+   drift a corrigir — estender criaria uma taxa de manutenção por Prova
+   nova (uma entrada de manifest "é registro, não claim"), exatamente o
+   custo que o contrato recusou por design.
+4. **A tabela de Provas nem é seção** — 33 das 87 citações vivem nas rows
+   1–32 (tabela), que o modelo de parser por headers não cobre; um
+   EXIT_CLAIMS_8 teria que inventar um modelo de tabela além do modelo de
+   seção.
+5. **A rastreabilidade já existe** — cada Prova cita o run number e a sec
+   11.x correspondente; o leitor que quer a verdade ATUAL vai à 11.x
+   PINADA. O contrato trava a classe no lugar certo: a 11.x é a fronteira
+   da verdade atual.
+
+**Nota de conservadorismo honesto**: o reset `^## \d` do detector já
+limita o escopo estruturalmente — estender exigiria um segundo header
+pattern `## 8.\d+` + um segundo manifest, e a decisão é que o custo (taxa
+de manutenção por Prova + pin impossível) não compra sinal nenhum:
+nenhuma claim 8.x é de comportamento atual do repo.
+
+**A convenção do redirect (fecha a aresta de escape silencioso)**: se um
+dia alguém escrever uma claim NORMATIVA de exit code ("o código DEVE sair
+exit N") numa seção 8.x, ela escaparia do contrato — o detector varre só
+11.x POR ESTA CONVENÇÃO. A regra para o escritor: claim normativa vive na
+11.x correspondente; a 8.x é o lar de registros de evento, não de claims.
+Um leitor que encontrar uma claim normativa numa 8.x deve movê-la para a
+11.x (e registrá-la no manifest) — a decisão não é "claims 8.x não
+importam", é "a 8.x não é o lar de claims, redirecione para a 11.x" (o
+mesmo argumento da rastreabilidade da razão 5).
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts`
++ `gates-proofs-ordering.test.ts` valida a monotonia 11.41 → 11.42 → 12;
+tsc 0; eslint 0 erros; UTF-8 do doc OK; ASCII-OK nos gate files.
+
+## 11.43 --expect-success-implies-clean — a classe 'passou mas com warning inesperado' travada no runner (decisão 2026-08-11)
+
+**O problema**: a Prova 30 (sec 8.25) usou `--only-jobs` + `--expect success` —
+o ciclo provou que o job concluiu `success`. Mas o sucesso de um job de CI não
+prova que o log está limpo: um step pode emitir uma anotação de warning e
+ainda sair exit 0 (o caso real do repo: o step docs-encoding do pr-check.yml
+emite `::warning::` e não bloqueia o PR — informacional). Um proof que registra
+"success" sem olhar o log esconde a classe — o sucesso observado vira premissa
+para o leitor da prova.
+
+**A flag**: `--expect-success-implies-clean` — quando setada, o verify compõe:
+`conclusion==success` (o `--expect` existente) E 0 warning-lines no log
+capturado (`scanLogWarnings`/`verifyCleanLog`, exports puros). Requer `--expect
+success` (a flag só faz sentido quando o sucesso é o esperado) e é
+incompatível com `--expect-parse-reject` (as duas definem o resultado por
+inteiro — success+0 warnings vs failure+0 jobs). Qualquer warning-line = o
+verify falha com exit code 1 (revert MESMO ASSIM — a branch scratch nunca fica
+no remote) com as linhas listadas (número + até 3 + total) — o autor da prova
+decide (corrige, documenta ou não usa a flag). Log limpo = exit code 0.
+
+**A definição da warning-line (a decisão)**: o canal de anotação do GitHub
+Actions — `::warning::` (formato novo) e `##[warning]` (legado). É o sinal
+DELIBERADO de "avisa mas não falha" de um step. Tool noise em stderr (npm
+warn, eslint warning) NÃO é warning-line: o ruído de install/eslint aparece em
+TODO proof e faria a flag inútil; o canal de anotação é determinístico (um
+step ou emite a anotação ou não). O baseline do repo (grep 2026-08-11): as
+anotações deliberadas existem (pr-check.yml:92 docs-encoding informativo,
+ci.yml:405 bundle preview skipped, bundle-report.mjs:641/646 gate desarmado)
+mas disparam SÓ em estados degradados — um proof healthy tem 0, exatamente a
+classe que a flag pega.
+
+**Exit codes**: 0 = success + 0 warning-lines observados E revertido; 1 = a
+conclusão divergiu OU o log tem warning-lines (revert mesmo assim); 2 = uso
+errado (flag sem `--expect success`, incompatibilidade com parse-reject).
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts --config vitest.config.unit.ts`
+(parseArgs + scanLogWarnings/verifyCleanLog puros + planSteps + os 3 E2Es com
+fake bins: warning -> exit 1, clean -> exit 0, sem `--expect success` -> exit 2);
+`gates-proofs-ordering.test.ts` valida a monotonia 11.42 → 11.43 → 12;
+tsc 0; eslint 0 erros; UTF-8 do doc OK; ASCII-OK nos gate files.
+
+## 11.44 O revert do stash do ciclo mira PELA MENSAGEM + o recipe de cura no AVISO (decisão 2026-08-11)
+
+**O problema**: o revert parcial (stash pop conflitante, sec 8.21/11.41)
+avisava que "o delta segue no stash (git stash list/show para recuperar)"
+— mas ninguém recuperava: com 19+ stashes pré-existentes (lint-staged
+backups + antigos, o estado real da Prova 32), qual deles era o delta? O
+AVISO dizia onde procurar, não O QUE rodar. E havia uma segunda classe: o
+`git stash pop` cego (stash@{0}) restauraria o stash ERRADO se algo
+empilhou um stash por cima do do ciclo durante ele — o lint-staged do
+pre-commit cria um "automatic backup" num commit com tree suja (um
+`--mutate` sem `--no-verify`) — e o delta seguiria enterrado na stack com
+o revert dizendo "delta restaurado" falsamente.
+
+**A decisão (os DOIS lados do pedido avaliados)**:
+1. **O recipe de cura no AVISO (ADOTADO)**: o AVISO de conflito agora
+   identifica o **ref exato** do stash do ciclo (localizado pela mensagem)
+   e carrega os comandos de recuperação: `git stash show -p <ref>`
+   (inspecionar o delta) + `git stash apply <ref>` (recuperar — o apply
+   mantém o stash até confirmar). Quem lê o AVISO sabe exatamente o que
+   rodar, sem re-derivar com 19 stashes na frente.
+2. **O `--stash-name` (RECUSADO como flag redundante)**: a intenção — "o
+   pop mira o stash certo do ciclo" — é fechada SEM flag: o push -u JÁ
+   nomeia o stash determinísticamente (`ci-proof: <branch> (delta
+   nao-commitado)`), e o revert agora localiza o stash do ciclo PELA
+   MENSAGEM (`findStashRef` + `git stash pop <ref>`, sec 11.44) em vez do
+   topo cego. Uma flag `--stash-name` adicionaria uma segunda fonte de
+   verdade para um nome que já existe — o ref é derivado do branch, não
+   digitado. O nome é o contrato: `git stash list | grep 'ci-proof:
+   <branch>'` funciona manualmente do mesmo jeito.
+
+**Exit codes**: exit code 0 = stash do ciclo restaurado pelo ref (pop
+<ref> ok); exit code 3 = pop conflitante (o delta segue no stash com o
+ref + CURE no AVISO) ou o stash do ciclo não encontrado no list (pode já ter sido recuperado).
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts --config vitest.config.unit.ts`
+(findStashRef puro + o E2E do stash alheio empilhado por cima — o pop mira
+stash@{1} pela mensagem, nunca o topo cego — + os asserts do CURE no AVISO)
++ `gates-proofs-ordering.test.ts` valida a monotonia 11.43 → 11.44 → 12;
+tsc 0; eslint 0 erros; UTF-8 do doc OK; ASCII-OK nos gate files.
 
 ## 12. Referências
 

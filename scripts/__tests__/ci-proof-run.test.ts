@@ -27,7 +27,7 @@ import os from "node:os"
 import path from "node:path"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 import { CI_PROOF_NAMESPACE, CI_PROOF_PROBE, DANGER_REFS } from "../workflow-contracts.mjs"
-import { isCiProofBranch, parseArgs, planSteps, verifyOutcome, verifyParseReject } from "../ci-proof-run.mjs"
+import { findStashRef, isCiProofBranch, parseArgs, planSteps, scanLogWarnings, verifyCleanLog, verifyOutcome, verifyParseReject } from "../ci-proof-run.mjs"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "ci-proof-run.mjs")
 const FAKE = path.resolve(process.cwd(), "scripts", "__tests__", "fixtures", "ci-proof-fake-bins.mjs")
@@ -166,6 +166,25 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(o.error).toContain("--expect-parse-reject e incompativel com --only-jobs")
   })
 
+  it("parseArgs: --expect-success-implies-clean parseia e o usage lista a flag (sec 11.43 - o sucesso observado so vale com 0 warning-lines no log)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--expect", "success", "--expect-success-implies-clean"])
+    expect(o.error).toBeNull()
+    expect(o.expectSuccessImpliesClean).toBe(true)
+    expect(parseArgs(["--help"]).error).toContain("--expect-success-implies-clean")
+    // Sem a flag, expectSuccessImpliesClean fica false (default).
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml"]).expectSuccessImpliesClean).toBe(false)
+  })
+
+  it("parseArgs: --expect-success-implies-clean requer --expect success (sem a expectativa de sucesso o veredito limpo nao faz sentido - a flag so pina a classe quando o sucesso E o esperado)", () => {
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--expect-success-implies-clean"]).error).toContain("--expect-success-implies-clean requer --expect success")
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--expect", "failure", "--expect-success-implies-clean"]).error).toContain("--expect-success-implies-clean requer --expect success")
+  })
+
+  it("parseArgs: --expect-success-implies-clean e incompativel com --expect-parse-reject (as duas flags definem o resultado esperado por inteiro - success+0 warnings vs failure+0 jobs)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--expect", "success", "--expect-success-implies-clean", "--expect-parse-reject"])
+    expect(o.error).toContain("--expect-success-implies-clean e incompativel com --expect-parse-reject")
+  })
+
   it("parseArgs: default de --timeout calibrado (sec 11.20) - 300s com --only-jobs, 900s sem; --timeout explicito vence", () => {
     // Sem --only-jobs, o default continua 900s (o ciclo completo pode
     // incluir jobs lentos - Security Headers 9:08 no run 31430040398).
@@ -176,6 +195,15 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     // Um --timeout explicito SEMPRE vence o default calibrado.
     expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--only-jobs", "check", "--timeout", "60"]).timeout).toBe(60)
     expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--timeout", "120"]).timeout).toBe(120)
+  })
+
+  it("parseArgs: --stash-uncommitted parseia e o usage lista a flag (sec 8.21 - o delta nao-commitado preservado no ciclo)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--stash-uncommitted"])
+    expect(o.error).toBeNull()
+    expect(o.stashUncommitted).toBe(true)
+    expect(parseArgs(["--help"]).error).toContain("--stash-uncommitted")
+    // Sem a flag, stashUncommitted fica false (default).
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml"]).stashUncommitted).toBe(false)
   })
 
   // ── PURE: Type E namespace contract ────────────────────────────────────
@@ -281,6 +309,26 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(explicit.join("\n")).toContain("timeout 60s")
   })
 
+  it("planSteps: o guard da arvore suja (sec 8.21) roda ANTES do checkout -b; --stash-uncommitted adiciona stash push antes do checkout e stash pop no revert (apos o checkout da original, antes do branch -D)", () => {
+    const withFlag = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false, stashUncommitted: true }, "main")
+    const joined = withFlag.join("\n")
+    expect(joined).toContain("git: status --porcelain")
+    expect(joined).toContain("git: stash push -u -m")
+    // O guard (status) e o stash rodam ANTES do checkout -b (o checkout
+    // carregaria os arquivos sujos para a scratch).
+    expect(joined.indexOf("git: status --porcelain")).toBeLessThan(joined.indexOf("git: checkout -b ci-proof/x"))
+    expect(joined.indexOf("git: stash push -u -m")).toBeLessThan(joined.indexOf("git: checkout -b ci-proof/x"))
+    // O pop restaura o delta no revert: apos o checkout da original, antes
+    // do branch -D.
+    expect(joined.indexOf("git: checkout main")).toBeLessThan(joined.indexOf("git: stash pop"))
+    expect(joined.indexOf("git: stash pop")).toBeLessThan(joined.indexOf("git: branch -D"))
+    const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false }, "main")
+    expect(without.join("\n")).not.toContain("git: stash push")
+    expect(without.join("\n")).not.toContain("git: stash pop")
+    // O guard (status) roda SEMPRE, com ou sem a flag.
+    expect(without.join("\n")).toContain("git: status --porcelain")
+  })
+
   // ── PURE: outcome check ────────────────────────────────────────────────
   it("verifyOutcome: expect conclusion + expect-log regex (match e mismatch)", () => {
     expect(verifyOutcome("failure", "failure", "log FUZZ JOB line", "FUZZ JOB").ok).toBe(true)
@@ -299,6 +347,45 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(verifyParseReject("failure", 0).message).toContain("0 jobs")
   })
 
+  it("scanLogWarnings: encontra as warning-lines do canal de anotacao do GitHub (::warning:: e ##[warning]) com numero de linha 1-based; log limpo -> 0 (sec 11.43)", () => {
+    expect(scanLogWarnings("real-repo contract line\n::warning::docs-encoding: invalid UTF-8\nline3\n##[warning]deprecated")).toEqual([
+      { line: 2, text: "::warning::docs-encoding: invalid UTF-8" },
+      { line: 4, text: "##[warning]deprecated" },
+    ])
+    // Tool noise em stderr NAO e warning-line (a decisao da sec 11.43: o
+    // ruido de install/eslint falharia TODO proof - a classe e o canal de
+    // anotacao, deterministico).
+    expect(scanLogWarnings("npm warn deprecated\nwarning in eslint output\nclean line")).toEqual([])
+  })
+
+  it("verifyCleanLog: 0 warning-lines -> ok; qualquer warning-line -> fail com as linhas listadas (numero + ate 3 + total - o autor decide, nunca um aviso generico)", () => {
+    expect(verifyCleanLog("a\nb").ok).toBe(true)
+    const r = verifyCleanLog("a\n::warning::w1\nb\n::warning::w2\nc")
+    expect(r.ok).toBe(false)
+    expect(r.message).toContain("2 warning-linha(s)")
+    expect(r.message).toContain("L2: ::warning::w1")
+    expect(r.message).toContain("L4: ::warning::w2")
+    const many = verifyCleanLog(["w0", "::warning::1", "::warning::2", "::warning::3", "::warning::4"].join("\n"))
+    expect(many.message).toContain("(+1)")
+  })
+
+  it("findStashRef: localiza o stash do ciclo PELA MENSAGEM determinística (ci-proof: <branch>) na saida do git stash list - ignora stashes alheios e devolve o ref certo; null quando ausente (sec 11.44)", () => {
+    const list = "stash@{0}: On base: lint-staged automatic backup\nstash@{1}: On base: ci-proof: ci-proof/x (delta nao-commitado)\n"
+    expect(findStashRef(list, "ci-proof/x")).toBe("stash@{1}")
+    // A mensagem do CICLO e a que casa - um branch diferente nao casa.
+    expect(findStashRef(list, "ci-proof/y")).toBeNull()
+    // Lista vazia / sem o stash do ciclo -> null (ja recuperado/removido).
+    expect(findStashRef("", "ci-proof/x")).toBeNull()
+    expect(findStashRef("stash@{0}: On base: lint-staged automatic backup\n", "ci-proof/x")).toBeNull()
+    // Boundary (review nit, sec 11.44): um stash de um branch IRMAO com
+    // prefixo comum (ci-proof/xy) NAO false-matcheia o ciclo de ci-proof/x
+    // - o needle exige o " (" apos o nome do branch (a mensagem do ciclo e
+    // `ci-proof: <branch> (delta nao-commitado)`), entao "ci-proof/xy"
+    // nunca casa com o prefixo "ci-proof/x (".
+    expect(findStashRef("stash@{0}: On base: ci-proof: ci-proof/xy (delta nao-commitado)\n", "ci-proof/x")).toBeNull()
+    expect(findStashRef("stash@{0}: On base: ci-proof: ci-proof/x (delta nao-commitado)\n", "ci-proof/x")).toBe("stash@{0}")
+  })
+
   it("planSteps: --expect-parse-reject troca o verify pelo parse-reject (jobs query + conclusao fixa - sem linha de log para casar)", () => {
     const withFlag = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false, expectParseReject: true }, "main")
     const joined = withFlag.join("\n")
@@ -307,6 +394,13 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(joined).not.toContain("conclusion==")
     const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false }, "main")
     expect(without.join("\n")).not.toContain("parse-reject")
+  })
+
+  it("planSteps: --expect-success-implies-clean adiciona a clausula 0 warning-lines ao verify (sec 11.43 - o plano e honesto sobre a exigencia extra)", () => {
+    const withFlag = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: "success", expectLog: null, keep: false, expectSuccessImpliesClean: true }, "main")
+    expect(withFlag.join("\n")).toContain("0 warning-lines (success-implies-clean, sec 11.43)")
+    const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: "success", expectLog: null, keep: false }, "main")
+    expect(without.join("\n")).not.toContain("warning-lines")
   })
 
   // ── FAKE-BIN E2E: full cycle success ──────────────────────────────────
@@ -352,6 +446,89 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(inv.indexOf(`git:push origin ${CI_PROOF_PROBE}`)).toBeLessThan(inv.indexOf("gh:workflow run"))
   }, 60000)
 
+  // ── FAKE-BIN E2E: sec 8.21 - guard da arvore suja + --stash-uncommitted ─
+  it("E2E guard arvore suja (sec 8.21, o ACHADO da Prova 26): working tree suja ANTES do ciclo SEM --stash-uncommitted -> exit 3 fail-loud ANTES do checkout -b (o git add -A varreria o delta e o revert o apagaria - 13 arquivos na Prova 26)", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-dirty", "--workflow", "pr-check.yml"], {
+      CI_PROOF_FAKE_DIRTY_BEFORE: "1",
+    })
+    expect(result.status).toBe(3)
+    expect(allOutput(result)).toContain("working tree suja ANTES do ciclo")
+    expect(allOutput(result)).toContain("sec 8.21")
+    expect(allOutput(result)).toContain("--stash-uncommitted")
+    // Nenhum passo do ciclo rodou alem do status: nem checkout -b, nem
+    // add/commit/push, nem gh - a falha e ANTES de tocar a branch scratch.
+    const inv = invocations(stateDir)
+    expect(inv).toContain("git:status --porcelain")
+    expect(inv).not.toContain("git:checkout -b")
+    expect(inv).not.toContain("git:add -A")
+    expect(inv).not.toContain("git:push origin")
+    expect(inv).not.toContain("gh:")
+  }, 60000)
+
+  it("E2E --stash-uncommitted (sec 8.21): working tree suja ANTES do ciclo + flag -> o delta e stasheado (git stash push -u) ANTES do checkout -b e restaurado no revert (git stash pop apos o checkout da original) - exit 0", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-stash", "--workflow", "pr-check.yml", "--stash-uncommitted"], {
+      CI_PROOF_FAKE_DIRTY_BEFORE: "1",
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("delta nao-commitado stasheado")
+    expect(result.stdout).toContain("delta nao-commitado restaurado (git stash pop")
+    expect(result.stdout).toContain("revertido (remote ci-proof/e2e-stash deletado, de volta em base, local deletado, delta restaurado)")
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("git:stash push -u -m")
+    expect(inv).toContain("git:stash list")
+    expect(inv).toContain("git:stash pop")
+    // Ordem: status (guard) -> stash push -> checkout -b ... checkout base
+    // -> stash list -> stash pop <ref> -> branch -D (sec 11.44: o ref e
+    // localizado pela mensagem ANTES do pop).
+    expect(inv.indexOf("git:status --porcelain")).toBeLessThan(inv.indexOf("git:stash push -u -m"))
+    expect(inv.indexOf("git:stash push -u -m")).toBeLessThan(inv.indexOf("git:checkout -b ci-proof/e2e-stash"))
+    expect(inv.indexOf("git:checkout base")).toBeLessThan(inv.indexOf("git:stash list"))
+    expect(inv.indexOf("git:stash list")).toBeLessThan(inv.indexOf("git:stash pop"))
+    expect(inv.indexOf("git:stash pop")).toBeLessThan(inv.indexOf("git:branch -D ci-proof/e2e-stash"))
+  }, 60000)
+
+  it("E2E --stash-uncommitted com pop CONFLITANTE: o revert vira PARCIAL (AVISO + exit 3) - o delta nao se perde em silencio e o AVISO carrega o RECIPE DE CURA (sec 11.44): o ref exato do stash do ciclo + git stash show -p para inspecionar + git stash apply para recuperar", () => {
+    const { result } = runCli(["--branch", "ci-proof/e2e-stash-fail", "--workflow", "pr-check.yml", "--stash-uncommitted"], {
+      CI_PROOF_FAKE_DIRTY_BEFORE: "1",
+      CI_PROOF_FAKE_STASH_POP_FAIL: "1",
+    })
+    expect(result.status).toBe(3)
+    expect(result.stdout).toContain("AVISO git stash pop falhou")
+    expect(result.stdout).toContain("delta segue no stash")
+    expect(result.stdout).toContain("AVISO revert parcial")
+    expect(result.stdout).toContain("stash pop=FALHOU")
+    // O RECIPE DE CURA (sec 11.44): o AVISO identifica o ref exato do
+    // stash do ciclo (a classe 'ninguem recupera' fechada - quem le o
+    // AVISO sabe o que rodar, sem re-derivar).
+    expect(result.stdout).toContain("CURE (sec 11.44)")
+    expect(result.stdout).toContain("git stash show -p stash@{0}")
+    expect(result.stdout).toContain("git stash apply stash@{0}")
+    expect(result.stdout).toContain("identificado pela mensagem 'ci-proof: ci-proof/e2e-stash-fail'")
+  }, 60000)
+
+  it("E2E sec 11.44: um stash ALHEIO empilhado por cima (lint-staged do pre-commit) NAO desvia o revert - o pop mira o stash do ciclo PELA MENSAGEM (stash@{1}), nunca o topo cego stash@{0}", () => {
+    // A classe que o --stash-name avaliado fecharia: se algo empilhou um
+    // stash por cima do do ciclo (o lint-staged cria 'automatic backup'
+    // num commit com tree suja - um --mutate sem --no-verify), o pop cego
+    // (stash@{0}) restauraria o stash ERRADO e o delta seguiria enterrado
+    // na stack. O fix SEM flag: o push -u ja nomeou o stash
+    // (`ci-proof: <branch> (delta nao-commitado)`) e o revert localiza o
+    // ref pela mensagem - o pop mira stash@{1}, o stash do ciclo.
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-stash-target", "--workflow", "pr-check.yml", "--stash-uncommitted"], {
+      CI_PROOF_FAKE_DIRTY_BEFORE: "1",
+      CI_PROOF_FAKE_EXTRA_STASH: "1",
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("delta nao-commitado restaurado (git stash pop stash@{1}")
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("git:stash list")
+    expect(inv).toContain("git:stash pop stash@{1}")
+    expect(inv).not.toContain("git:stash pop stash@{0}")
+    // "revertido" e console.log do CLI, nao invocacao - o assert usa o
+    // result.stdout (o mesmo pattern do E2E sec 8.21, linhas 409/468).
+    expect(result.stdout).toContain("revertido (remote ci-proof/e2e-stash-target deletado, de volta em base, local deletado, delta restaurado)")
+  }, 60000)
+
   // ── FAKE-BIN E2E: expect mismatch reverts anyway ──────────────────────
   it("E2E mismatch: --expect success mas conclusion=failure -> exit 1 (revert MESMO ASSIM)", () => {
     const { result } = runCli(["--branch", "ci-proof/e2e-mismatch", "--workflow", "pr-check.yml", "--expect", "success"], {
@@ -361,6 +538,49 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(result.stdout).toContain("verify: conclusion=failure != esperado success")
     expect(result.stdout).toContain("revertido")
     expect(result.stdout).toContain("DONE run=777")
+  }, 60000)
+
+  // ── FAKE-BIN E2E: --expect-success-implies-clean (sec 11.43) ──────────
+  it("E2E --expect-success-implies-clean WARNING: success observado MAS o log tem ::warning:: -> exit 1 com as linhas listadas (o success esconde avisos - a classe sec 11.43), revert MESMO ASSIM", () => {
+    const { result } = runCli(["--branch", "ci-proof/e2e-clean-warn", "--workflow", "pr-check.yml", "--expect", "success", "--expect-success-implies-clean"], {
+      CI_PROOF_FAKE_GH_LOG: "real-repo contract line\n::warning::docs-encoding: invalid UTF-8 detected\n",
+    })
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain("1 warning-linha(s) no log do job")
+    expect(result.stdout).toContain("L2: ::warning::docs-encoding: invalid UTF-8 detected")
+    expect(result.stdout).toContain("revertido")
+    expect(result.stdout).toContain("DONE run=777")
+  }, 60000)
+
+  it("E2E --expect-success-implies-clean CLEAN: log sem warning-lines + success -> exit 0 (o shape da Prova 30 com a garantia extra de log limpo)", () => {
+    const { result } = runCli(["--branch", "ci-proof/e2e-clean-ok", "--workflow", "pr-check.yml", "--expect", "success", "--expect-success-implies-clean"], {
+      CI_PROOF_FAKE_GH_LOG: "clean job log line\n",
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("success-implies-clean: 0 warning-lines")
+    expect(result.stdout).toContain("DONE run=777")
+  }, 60000)
+
+  it("E2E --only-jobs + --expect-success-implies-clean (o shape da Prova 30, sec 11.43): o log capturado via --job com ##[warning] (formato legado) -> exit 1 com a linha listada - a classe no caminho do JOB", () => {
+    const { result } = runCli(["--branch", "ci-proof/e2e-clean-oj", "--workflow", "pr-check.yml", "--only-jobs", "check", "--expect", "success", "--expect-success-implies-clean"], {
+      CI_PROOF_FAKE_GH_JOBS: "1",
+      CI_PROOF_FAKE_GH_JOB_NAME: "check",
+      CI_PROOF_FAKE_GH_JOB_STATUS: "completed",
+      CI_PROOF_FAKE_GH_JOB_CONCLUSION: "success",
+      CI_PROOF_FAKE_GH_LOG: "job line\n##[warning]deprecated step\n",
+    })
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain("run #777 job 'check' completed (success)")
+    expect(result.stdout).toContain("1 warning-linha(s) no log do job")
+    expect(result.stdout).toContain("L2: ##[warning]deprecated step")
+    expect(result.stdout).toContain("revertido")
+  }, 60000)
+
+  it("E2E --expect-success-implies-clean sem --expect success: usage error (exit 2) ANTES de qualquer spawn", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-clean-usage", "--workflow", "pr-check.yml", "--expect-success-implies-clean"])
+    expect(result.status).toBe(2)
+    expect(allOutput(result)).toContain("--expect-success-implies-clean requer --expect success")
+    expect(invocations(stateDir)).toEqual([])
   }, 60000)
 
   it("E2E mutate: --mutate altera a tree (FAKE_DIRTY) -> add + commit no ciclo", () => {
@@ -735,8 +955,12 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     // O runner e o dono do self-delete (nao o script): rmSync + fail-loud.
     expect(cli).toContain("fs.rmSync(selfDel")
     // A ordem: rmSync acontece ANTES do git status/add -A (o commit scratch
-    // nunca carrega o script TEMP - o ACHADO da sec 8.17).
-    expect(cli.indexOf("fs.rmSync(selfDel")).toBeLessThan(cli.indexOf('git(["status", "--porcelain"])'))
+    // nunca carrega o script TEMP - o ACHADO da sec 8.17). NOTA: o source
+    // tem DUAS ocorrencias de git(["status", ...]) desde a sec 11.41 (o
+    // guard da arvore suja, ANTES do checkout -b, e a pos-mutacao) - a
+    // ancora e a ULTIMA (a pos-mutacao, a checagem que decide o commit do
+    // ciclo; o guard pre-ciclo roda ANTES do rmSync por construcao).
+    expect(cli.indexOf("fs.rmSync(selfDel")).toBeLessThan(cli.lastIndexOf('git(["status", "--porcelain"])'))
     // A flag e first-class (usage + parseArgs + validador requer --mutate).
     expect(cli).toContain("--mutate-self-delete <path>")
     expect(cli).toContain("--mutate-self-delete requer --mutate")
@@ -848,6 +1072,23 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(cli).toContain("verifyParseReject")
     expect(cli).toContain('gh(["run", "view", String(runInfo.databaseId), "--json", "jobs"])')
     expect(cli).toContain("parse-reject: ")
+  }, 60000)
+
+  // ── REAL-REPO CONTRACT: o guard da arvore suja (sec 8.21) ──────────────
+  it("REAL-REPO CONTRACT (sec 8.21): o CLI roda o guard da arvore suja (git status --porcelain ANTES do checkout -b) e wired o --stash-uncommitted (stash push -u pre-ciclo + stash pop no revert) - o ACHADO da Prova 26 fechado no codigo", () => {
+    const cli = fs.readFileSync(path.resolve(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+    // O guard roda ANTES do checkout -b (o checkout carregaria os arquivos
+    // sujos para a scratch; o add -A os varreria; o revert os apagaria).
+    expect(cli.indexOf('git(["status", "--porcelain"])')).toBeLessThan(cli.indexOf('git(["checkout", "-b", opts.branch])'))
+    expect(cli).toContain("working tree suja ANTES do ciclo")
+    expect(cli).toContain("--stash-uncommitted")
+    // O stash preserva o delta (push -u) e o revert o restaura pelo ref
+    // da mensagem (sec 11.44): stash list + pop <ref> - nunca o pop cego.
+    expect(cli).toContain('git(["stash", "push", "-u"')
+    expect(cli).toContain('git(["stash", "list"])')
+    expect(cli).toContain('git(["stash", "pop", ref])')
+    expect(cli.indexOf('git(["stash", "push", "-u"')).toBeLessThan(cli.indexOf('git(["checkout", "-b", opts.branch])'))
+    expect(cli.indexOf('git(["stash", "list"])')).toBeLessThan(cli.indexOf('git(["stash", "pop", ref])'))
   }, 60000)
 
   // ── REAL-REPO CONTRACT: dry-run contra o repo real (sem env fake) ──────

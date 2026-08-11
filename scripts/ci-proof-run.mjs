@@ -26,9 +26,16 @@
  *   1. parse + validacao: --branch (ci-proof/*) + --workflow obrigatorios.
  *   2. resolver a branch atual (git rev-parse --abbrev-ref HEAD) = a branch
  *      de RETORNO no revert.
- *   3. criar/entrar na branch scratch: git checkout -b <branch> (ou
+ *   3. guard da arvore suja (sec 8.21, o ACHADO da Prova 26): git status
+ *      --porcelain ANTES do checkout -b. Suja = fail-loud exit 3 (o git
+ *      add -A do commit scratch varreria o delta nao-commitado e o revert
+ *      o apagaria - os 13 arquivos da Prova 26, recuperados via
+ *      cherry-pick). Com --stash-uncommitted, o delta e preservado (git
+ *      stash push -u) e restaurado no revert (git stash pop apos o
+ *      checkout da branch original).
+ *   4. criar/entrar na branch scratch: git checkout -b <branch> (ou
  *      checkout se ja existir - um re-run nao recria).
- *   4. --mutate <cmd> (opcional): roda o shell command da mutacao na
+ *   5. --mutate <cmd> (opcional): roda o shell command da mutacao na
  *      branch scratch e commit (`git add -A` + commit com a msg
  *      "ci-proof: <branch>"). Sem --mutate, empurra a branch como esta
  *      (o caso de o dev ja ter commitado a mutacao). Use --no-verify
@@ -43,10 +50,10 @@
  *      script (sem a flag, o padrao SCRIPT-OWNED da sec 11.28 vale: o
  *      script pode se auto-deletar como ultima linha). Fail-loud
  *      se o path nao existir apos a mutacao.
- *   5. git push origin <branch>.
- *   6. gh workflow view <file> (o pre-check da Prova 7).
- *   7. gh workflow run <file> --ref <branch> (dispatch).
- *   8. poll: gh run list --workflow <file> --branch <branch> --limit 1 ate
+ *   6. git push origin <branch>.
+ *   7. gh workflow view <file> (o pre-check da Prova 7).
+ *   8. gh workflow run <file> --ref <branch> (dispatch).
+ *   9. poll: gh run list --workflow <file> --branch <branch> --limit 1 ate
  *      um run com status completed (timeout --timeout s; default 900s, ou
  *      300s com --only-jobs - o default calibrado do sec 11.20). Com *   --only-jobs <job>, o poll termina quando o JOB alvo conclui (o run
  *      pode seguir em background rodando os demais jobs) - o sinal da
@@ -57,10 +64,10 @@
  *      DISPLAY name do job (o name: ou o key quando nao ha name:) - ex.:
  *      --only-jobs check e --only-jobs "Fuzz Tests" funcionam, mas o key
  *      cru "fuzz" nao casaria com o display "Fuzz Tests".
- *   9. captura: gh run view <id> --log (ou --job <jobId> --log com
+ *   10. captura: gh run view <id> --log (ou --job <jobId> --log com
  *      --only-jobs) -> <os.tmpdir()>/ci-proof-<b>-<id>.log (o tmpdir
  *      mantem o repo limpo; o path e impresso).
- *   10. verify: --expect <conclusion> (success/failure/...) + --expect-log
+ *   11. verify: --expect <conclusion> (success/failure/...) + --expect-log
  *       <regex> (linha obrigatoria no log capturado). Nenhum = qualquer
  *       completed passa; --expect falha se a conclusion divergir;
  *       --expect-log falha se a regex nao casar.
@@ -74,20 +81,49 @@
  *       verificado por regex. Incompativel com --expect (a conclusao e
  *       fixa), --expect-log (nao ha log para casar) e --only-jobs (0 jobs
  *       = nao ha job alvo para o poll por job).
- *   11. revert (salvo --keep-branch): git push origin --delete <branch>,
- *       git checkout <original>, git branch -D <branch>. NOTA: rodar o
- *       helper JA estando na branch scratch (re-run) deixa original ==
- *       branch - o checkout vira no-op e o branch -D local falha (nao da
- *       pra deletar a branch em que voce esta); o AVISO de revert parcial
- *       aparece e o fluxo pretendido e rodar de uma branch base.
- *   12. summary: run id + url + conclusion + log path (para registrar a
+ *       --expect-success-implies-clean (2026-08-11, sec 11.43): o
+ *       sucesso observado nao basta - o log do step precisa ter ZERO
+ *       warning-lines. A warning-line e definida como o CANAL DE
+ *       ANOTACAO do GitHub Actions (`::warning::` / `##[warning]`): o
+ *       sinal DELIBERADO de "avisa mas nao falha" de um step. Tool noise
+ *       (npm warn / eslint warning em stderr) NAO e a classe - o ruido de
+ *       install falharia TODO proof. Requer --expect success (a flag so
+ *       faz sentido quando o sucesso e o esperado) e e incompativel com
+ *       --expect-parse-reject (que ja exige a ausencia de --expect).
+ *       Quando setada, o verify compoe: conclusion==success (verifyOutcome)
+ *       E scanLogWarnings == 0 (verifyCleanLog). Qualquer warning-line
+ *       encontrada = o verify FALHA (exit 1, revert MESMO ASSIM - a
+ *       branch scratch nunca fica no remote) com as linhas listadas no
+ *       message - a classe 'passou mas com warning inesperado' vira LOUD
+ *       em vez de silenciosa: o autor da prova decide (corrige, documenta
+ *       ou nao usa a flag).
+ *   12. revert (salvo --keep-branch): git push origin --delete <branch>,
+ *       git checkout <original>, git branch -D <branch>. Com
+ *       --stash-uncommitted, o delta e restaurado pelo stash do ciclo
+ *       LOCALIZADO PELA MENSAGEM (findStashRef + `git stash pop <ref>` -
+ *       sec 11.44): o push -u ja nomeou o stash `ci-proof: <branch>
+ *       (delta nao-commitado)`, e o pop mira o ref da mensagem, nao o
+ *       topo cego stash@{0} (se algo empilhou um stash por cima durante
+ *       o ciclo - ex.: lint-staged do pre-commit num --mutate sem
+ *       --no-verify - o pop cego restauraria o stash errado e o delta
+ *       seguiria enterrado). Um pop conflitante = AVISO + revert parcial
+ *       COM O RECIPE DE CURA (sec 11.44): `git stash show -p <ref>` para
+ *       inspecionar + `git stash apply <ref>` para recuperar (o apply
+ *       mantem o stash ate confirmar). NOTA: rodar o helper JA estando
+ *       na branch scratch (re-run) deixa original == branch - o checkout
+ *       vira no-op e o branch -D local falha (nao da pra deletar a
+ *       branch em que voce esta); o AVISO de revert parcial aparece e o
+ *       fluxo pretendido e rodar de uma branch base.
+ *   13. summary: run id + url + conclusion + log path (para registrar a
  *       prova no gates-proofs.md).
  *
  * Exit codes: 0 = resultado esperado observado E revertido; 1 = a
- * conclusion ou o log divergiram do --expect/--expect-log (revert MESMO
+ * conclusion ou o log divergiram do --expect/--expect-log, ou o log
+ * contem warning-lines com --expect-success-implies-clean (revert MESMO
  * ASSIM - a branch scratch nunca fica no remote); 2 = usage (flag
  * faltando/invalida); 3 = falha de infra (gh ausente, dispatch 404 da
- * Prova 7, timeout de poll, ou o revert do sucesso nao completou - uma
+ * Prova 7, timeout de poll, working tree suja antes do ciclo (o guard
+ * fail-loud da sec 8.21, ou o revert do sucesso nao completou - uma
  * branch scratch deixada no remote nao pode passar como exit 0) OU o
  * --expect-local-block nao observou o trip (o batch runner do pre-commit
  * saiu 0 = a mutacao nao viola gate nenhum - o --no-verify mascararia um
@@ -175,7 +211,7 @@ export function parseArgs(argv) {
   // SEMPRE retorna a shape completa com error: null no sucesso - o tipo
   // uniao `{...opts} | {error}` quebraria o acesso a propriedades nos
   // testes (TS2339) e o `if (opts.error)` do main() continua valido.
-  const out = { branch: null, workflow: null, mutate: null, mutateSelfDelete: null, expect: null, expectLog: null, expectParseReject: false, timeout: null, keep: false, dryRun: false, noVerify: false, expectLocalBlock: false, onlyJobs: null, error: null }
+  const out = { branch: null, workflow: null, mutate: null, mutateSelfDelete: null, expect: null, expectLog: null, expectParseReject: false, expectSuccessImpliesClean: false, timeout: null, keep: false, dryRun: false, noVerify: false, expectLocalBlock: false, stashUncommitted: false, onlyJobs: null, error: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--branch") { out.branch = argv[i + 1] ?? null; i++ }
@@ -185,6 +221,7 @@ export function parseArgs(argv) {
     else if (a === "--expect") { out.expect = argv[i + 1] ?? null; i++ }
     else if (a === "--expect-log") { out.expectLog = argv[i + 1] ?? null; i++ }
     else if (a === "--expect-parse-reject") out.expectParseReject = true
+    else if (a === "--expect-success-implies-clean") out.expectSuccessImpliesClean = true
     // NOTA (pre-existente, intencional): `--timeout 0` cai no || e vira
     // DEFAULT_TIMEOUT_S (900) - o 0 nao e respeitado. Quirk mantido (um
     // timeout de 0s nao faz sentido); o resolveTimeout so ve numeros > 0
@@ -195,11 +232,12 @@ export function parseArgs(argv) {
     else if (a === "--dry-run") out.dryRun = true
     else if (a === "--no-verify") out.noVerify = true
     else if (a === "--expect-local-block") out.expectLocalBlock = true
-    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--expect-parse-reject] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"; break }
+    else if (a === "--stash-uncommitted") out.stashUncommitted = true
+    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--expect-parse-reject] [--expect-success-implies-clean] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--stash-uncommitted] [--dry-run]"; break }
     else { out.error = `flag desconhecida: ${a}`; break }
   }
   if (!out.error && (!out.branch || !out.workflow)) {
-    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--expect-parse-reject] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"
+    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--expect-parse-reject] [--expect-success-implies-clean] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--stash-uncommitted] [--dry-run]"
   }
   // --expect-local-block (2026-08-11): so faz sentido com o bypass (o check
   // prova que o --no-verify mascara um trip REAL) E com --mutate (roda
@@ -215,6 +253,18 @@ export function parseArgs(argv) {
   // ANTES do git add -A - sem mutacao nao ha script TEMP a remover).
   if (!out.error && out.mutateSelfDelete && !out.mutate) {
     out.error = "--mutate-self-delete requer --mutate (o self-delete remove o script TEMP da mutacao ANTES do git add -A)"
+  }
+  // --expect-success-implies-clean (2026-08-11, sec 11.43): o sucesso
+  // observado so vale com 0 warning-lines no log. A flag so faz sentido
+  // quando o ESPERADO e success (o veredito "limpo" e a consequencia de
+  // um sucesso, nao de uma falha) - exige --expect success explicito. E
+  // incompativel com --expect-parse-reject (que ja exige a ausencia de
+  // --expect - as duas flags definem resultados por inteiro).
+  if (!out.error && out.expectSuccessImpliesClean && out.expect !== "success") {
+    out.error = "--expect-success-implies-clean requer --expect success (a flag exige 0 warning-lines ALEM da conclusao success - sem a expectativa de sucesso o veredito limpo nao faz sentido, sec 11.43)"
+  }
+  if (!out.error && out.expectSuccessImpliesClean && out.expectParseReject) {
+    out.error = "--expect-success-implies-clean e incompativel com --expect-parse-reject (as duas flags definem o resultado esperado por inteiro - a primeira exige success + 0 warning-lines, a segunda failure + 0 jobs)"
   }
   // --expect-parse-reject (2026-08-11, a classe da Prova 24/sec 8.19): o
   // workflow e REJEITADO no parse do GitHub - o run nasce failure com 0
@@ -273,8 +323,18 @@ export function planSteps(opts, originalBranch) {
   const timeoutS = resolveTimeout(opts.onlyJobs, opts.timeout)
   const steps = [
     `git: rev-parse --abbrev-ref HEAD (branch de retorno: ${originalBranch})`,
-    `git: checkout -b ${b}  (cria a branch scratch de prova)`,
+    // sec 8.21 (o ACHADO da Prova 26): o guard da arvore suja roda ANTES
+    // do checkout -b - o checkout CARREGA os arquivos sujos para a scratch
+    // e o git add -A os varreria; o revert os apagaria (recuperados via
+    // cherry-pick na Prova 26). Suja SEM --stash-uncommitted = fail-loud
+    // exit 3; com a flag, o delta e preservado (git stash push -u) e
+    // restaurado no revert (git stash pop apos o checkout da original).
+    `git: status --porcelain  (sec 8.21: arvore suja ANTES do ciclo = fail-loud exit 3, ou --stash-uncommitted preserva o delta)`,
   ]
+  if (opts.stashUncommitted) {
+    steps.push(`git: stash push -u -m "ci-proof: ${b} (delta nao-commitado)"  (--stash-uncommitted: delta preservado - restaurado no revert)`)
+  }
+  steps.push(`git: checkout -b ${b}  (cria a branch scratch de prova)`)
   if (opts.mutate) {
     steps.push(`shell: ${opts.mutate}  (a mutacao da prova, na branch scratch)`)
     if (opts.mutateSelfDelete) {
@@ -312,14 +372,17 @@ export function planSteps(opts, originalBranch) {
     steps.push(`gh: run view <id> --json jobs  (parse-reject: conta os jobs - esperado 0, a classe Prova 24/sec 8.19)`)
     steps.push("verify: parse-reject (conclusion=failure + 0 jobs - o log nao existe, 0 jobs = nenhum job rodou)")
   } else {
-    steps.push(`verify: conclusion==${opts.expect ?? "qualquer completed"}${opts.expectLog ? `, log ~= /${opts.expectLog}/` : ""}`)
+    steps.push(`verify: conclusion==${opts.expect ?? "qualquer completed"}${opts.expectLog ? `, log ~= /${opts.expectLog}/` : ""}${opts.expectSuccessImpliesClean ? ", 0 warning-lines (success-implies-clean, sec 11.43)" : ""}`)
   }
   if (!opts.keep) {
     steps.push(`git: push origin --delete ${b}`)
     steps.push(`git: checkout ${originalBranch}`)
+    if (opts.stashUncommitted) {
+      steps.push(`git: stash pop  (delta nao-commitado restaurado - sec 8.21)`)
+    }
     steps.push(`git: branch -D ${b}`)
   } else {
-    steps.push(`git: (--keep-branch: branch scratch mantida para inspecao)`)
+    steps.push(`git: (--keep-branch: branch scratch mantida para inspecao${opts.stashUncommitted ? " - o delta segue no stash, git stash pop para restaurar (sec 8.21)" : ""})`)
   }
   return steps
 }
@@ -362,6 +425,89 @@ export function verifyParseReject(conclusion, jobsCount) {
     return { ok: false, message: `jobs=${jobsCount} != 0 esperado (o workflow NAO foi rejeitado no parse - jobs rodaram: o sinal da classe Prova 24/sec 8.19 e a ausencia total de jobs)` }
   }
   return { ok: true, message: "conclusion=failure + 0 jobs (workflow rejeitado no parse - a classe Prova 24/sec 8.19)" }
+}
+
+/**
+ * A warning-line (sec 11.43): o CANAL DE ANOTACAO do GitHub Actions -
+ * `::warning::` (formato novo) e `##[warning]` (formato legado). Este e o
+ * sinal DELIBERADO de "avisa mas nao falha" que um step emite via
+ * `echo \"::warning::...\"` - exatamente a classe 'passou mas com warning
+ * inesperado' que o --expect-success-implies-clean pina. Tool noise em
+ * stderr (npm warn, eslint warning) NAO e warning-line POR DECISAO (sec
+ * 11.43): o ruido de install/eslint aparece em TODO proof e faria a flag
+ * inutil; o canal de anotacao e deterministico (um step ou emite a
+ * anotacao ou nao) e o baseline do repo e 0 em proofs healthy (as
+ * anotacoes deliberadas do repo - docs-encoding, bundle preview, gate
+ * desarmado - disparam so em estados DEGRADADOS, a classe que a flag deve
+ * pegar).
+ */
+export const WARNING_LINE_RE = /::warning::|##\[warning\]/
+
+/**
+ * Scan a captured job log for warning-lines (sec 11.43). Returns
+ * [{ line, text }] - line e 1-based, text e a linha crua truncada a 120
+ * chars (a mensagem do verify precisa ser acionavel, nao o log inteiro).
+ * Pure (exported for tests).
+ */
+export function scanLogWarnings(log, re = WARNING_LINE_RE) {
+  const warnings = []
+  const lines = (log || "").split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    if (re.test(lines[i])) {
+      warnings.push({ line: i + 1, text: lines[i].trim().slice(0, 120) })
+    }
+  }
+  return warnings
+}
+
+/**
+ * The clean-log check (sec 11.43 - o --expect-success-implies-clean): o
+ * sucesso observado so vale com ZERO warning-lines no log capturado. {
+ * ok: true } exatamente quando scanLogWarnings == []; a falha lista ate 3
+ * linhas com numero + o total (o autor da prova ve o que ha para decidir,
+ * nunca um `warning detected` generico). Pure (exported for tests).
+ */
+export function verifyCleanLog(log, re = WARNING_LINE_RE) {
+  const w = scanLogWarnings(log, re)
+  if (w.length === 0) {
+    return { ok: true, message: "0 warning-lines (success-implies-clean - sec 11.43)" }
+  }
+  const shown = w
+    .slice(0, 3)
+    .map((x) => `L${x.line}: ${x.text}`)
+    .join(" | ")
+  return {
+    ok: false,
+    message: `${w.length} warning-linha(s) no log do job (o success esconde avisos - sec 11.43): ${shown}${w.length > 3 ? ` ... (+${w.length - 3})` : ""}`,
+  }
+}
+
+/**
+ * findStashRef - localiza o stash do ciclo PELA MENSAGEM (sec 11.44). O
+ * --stash-uncommitted nomeia o stash no push -u (`ci-proof: <branch>
+ * (delta nao-commitado)`) - esta funcao varre a saida de `git stash list`
+ * e devolve o ref (`stash@{N}`) da entrada cuja mensagem contem
+ * `ci-proof: <branch>`. O revert usa o ref para `git stash pop <ref>`
+ * mirar o stash CERTO do ciclo (nao o topo cego stash@{0}: se algo
+ * empilhou um stash por cima durante o ciclo - ex.: o lint-staged do
+ * pre-commit num --mutate sem --no-verify - o pop cego restauraria o
+ * stash errado e o delta seguiria enterrado na stack). Retorna null
+ * quando o stash do ciclo nao esta na lista (ja recuperado/removido).
+ * Pure (exported for tests).
+ */
+export function findStashRef(stashList, branch) {
+  // BOUNDARY (review nit, sec 11.44): o needle exige o " (" apos o nome do
+  // branch - a mensagem do ciclo e `ci-proof: <branch> (delta
+  // nao-commitado)`. Um `.includes("ci-proof: <branch>")` puro false-matchearia
+  // um stash de um branch IRMAO com prefixo comum ("ci-proof: ci-proof/xy".includes("ci-proof: ci-proof/x")
+  // = true) - o " (" garante que o nome do branch termina onde a mensagem
+  // continua, nao apenas que e prefixo de um nome mais longo.
+  const needle = `ci-proof: ${branch} (`
+  for (const line of (stashList || "").split(/\r?\n/)) {
+    const m = line.match(/^(stash@\{\d+\}):\s(.*)$/)
+    if (m && m[2].includes(needle)) return m[1]
+  }
+  return null
 }
 
 /**
@@ -446,24 +592,58 @@ export async function main() {
     console.log("ci-proof-run: --no-verify - HUSKY=0 (bypass do husky local no ciclo - CI = autoridade, Prova 16)")
   }
 
-  // 3. Cria/entra na branch scratch.
+  // 3. (sec 8.21, o ACHADO da Prova 26) GUARD DA ARVORE SUJA: git status
+  // --porcelain ANTES do checkout -b. O checkout CARREGA os arquivos sujos
+  // para a scratch e o git add -A do commit os varreria; o revert (checkout
+  // da original) os apagaria da working tree - na Prova 26, 13 arquivos
+  // nao-commitados foram varridos e recuperados via cherry-pick do commit
+  // scratch. Suja SEM --stash-uncommitted = fail-loud exit 3 (o ciclo nao
+  // pode varrer um delta que o revert apaga); com a flag, o delta e
+  // preservado (git stash push -u) e restaurado no revert (git stash pop
+  // apos o checkout da branch original). O stash e -u (untracked incluidas)
+  // porque o delta pode ter arquivos novos (o ACHADO nao distingue).
+  const st = git(["status", "--porcelain"])
+  const treeDirty = (st.stdout ?? "").trim() !== ""
+  let stashedDelta = false
+  // NOTA (review nit, sec 11.41): os fail paths ANTES do primeiro revert
+  // (checkout, mutate, self-delete, commit, push) NAO chamam revert() - o
+  // stash fica para o usuario restaurar. A mensagem de cada falha dessas
+  // carrega a nota explicita (o delta nunca se perde - segue no stash).
+  const stashLeftNote = " - o delta nao-commitado segue no stash (git stash pop para restaurar - sec 8.21)"
+  if (treeDirty) {
+    if (opts.stashUncommitted) {
+      const sh = git(["stash", "push", "-u", "-m", `ci-proof: ${opts.branch} (delta nao-commitado)`])
+      if (sh.status !== 0) {
+        return fail(3, `git stash push falhou (exit ${sh.status}): ${sh.stderr.trim()} - o delta nao-commitado NAO foi preservado (sec 8.21)`)
+      }
+      stashedDelta = true
+      console.log(`ci-proof-run: --stash-uncommitted: delta nao-commitado stasheado (git stash push -u) - restaurado no revert (sec 8.21)`)
+    } else {
+      return fail(
+        3,
+        `working tree suja ANTES do ciclo (sec 8.21, o ACHADO da Prova 26): o git add -A do commit scratch varreria o delta nao-commitado e o revert o apagaria (13 arquivos na Prova 26, recuperados via cherry-pick). Commite ou stashe o delta manualmente, OU use --stash-uncommitted (o runner preserva o delta e o restaura no revert). Linhas: ${(st.stdout ?? "").trim().split("\n").slice(0, 3).join(" | ")}`,
+      )
+    }
+  }
+
+  // 4. Cria/entra na branch scratch.
   const exists = git(["rev-parse", "--verify", "--quiet", `refs/heads/${opts.branch}`])
   if (exists.status === 0) {
     const co = git(["checkout", opts.branch])
-    if (co.status !== 0) return fail(3, `git checkout ${opts.branch} falhou: ${co.stderr.trim()}`)
+    if (co.status !== 0) return fail(3, `git checkout ${opts.branch} falhou: ${co.stderr.trim()}${stashedDelta ? stashLeftNote : ""}`)
     console.log(`ci-proof-run: branch ${opts.branch} ja existia - checkout (re-run)`)
   } else {
     const cb = git(["checkout", "-b", opts.branch])
-    if (cb.status !== 0) return fail(3, `git checkout -b ${opts.branch} falhou: ${cb.stderr.trim()}`)
+    if (cb.status !== 0) return fail(3, `git checkout -b ${opts.branch} falhou: ${cb.stderr.trim()}${stashedDelta ? stashLeftNote : ""}`)
     console.log(`ci-proof-run: branch scratch ${opts.branch} criada de HEAD`)
   }
 
-  // 4. Mutacao (opcional) + commit.
+  // 5. Mutacao (opcional) + commit.
   if (opts.mutate) {
     console.log(`ci-proof-run: aplicando mutacao: ${opts.mutate}`)
     const mut = spawnSync(opts.mutate, { shell: true, encoding: "utf8", cwd: process.cwd() })
     if (mut.status !== 0) {
-      return fail(3, `--mutate falhou (exit ${mut.status}): ${(mut.stderr ?? mut.stdout ?? "").trim()}`)
+      return fail(3, `--mutate falhou (exit ${mut.status}): ${(mut.stderr ?? mut.stdout ?? "").trim()}${stashedDelta ? stashLeftNote : ""}`)
     }
     // --mutate-self-delete (2026-08-11, Prova 22/sec 8.17 first-class): o
     // script de mutacao e TEMP por design (nunca deve entrar no commit
@@ -490,7 +670,7 @@ export async function main() {
       if (!isFile) {
         return fail(
           3,
-          `--mutate-self-delete: ${opts.mutateSelfDelete} nao existe apos a mutacao (ou nao e um arquivo) - o self-delete e do runner (Prova 22/sec 8.17): o script TEMP deve existir para ser removido; um path errado deixaria o script no commit scratch. Ajuste o path ou remova o self-delete do proprio script`,
+          `--mutate-self-delete: ${opts.mutateSelfDelete} nao existe apos a mutacao (ou nao e um arquivo) - o self-delete e do runner (Prova 22/sec 8.17): o script TEMP deve existir para ser removido; um path errado deixaria o script no commit scratch. Ajuste o path ou remova o self-delete do proprio script${stashedDelta ? stashLeftNote : ""}`,
         )
       }
       fs.rmSync(selfDel, { force: true })
@@ -509,35 +689,35 @@ export async function main() {
       if (opts.expectLocalBlock) {
         const lb = runLocalBatch()
         if (lb.status === null) {
-          return fail(3, `--expect-local-block: batch runner do pre-commit nao encontrado (spawnSync ENOENT)`)
+          return fail(3, `--expect-local-block: batch runner do pre-commit nao encontrado (spawnSync ENOENT)${stashedDelta ? stashLeftNote : ""}`)
         }
         if (lb.status === 0) {
           return fail(
             3,
-            `--expect-local-block: o batch runner do pre-commit NAO tripou (exit 0: ${(lb.stdout || "").trim().split("\n")[0] || "clean"}) - a mutacao nao viola nenhum gate local; o --no-verify mascararia um FALSO POSITIVO, nao um trip real (Prova 16). Revise a mutacao - a arvore ficou suja na branch scratch (git reset --hard + checkout da branch original + branch -D)`,
+            `--expect-local-block: o batch runner do pre-commit NAO tripou (exit 0: ${(lb.stdout || "").trim().split("\n")[0] || "clean"}) - a mutacao nao viola nenhum gate local; o --no-verify mascararia um FALSO POSITIVO, nao um trip real (Prova 16). Revise a mutacao - a arvore ficou suja na branch scratch (git reset --hard + checkout da branch original + branch -D${stashedDelta ? stashLeftNote : ""})`,
           )
         }
         console.log(`ci-proof-run: --expect-local-block OK - o batch runner do pre-commit tripou (exit ${lb.status}) - o --no-verify mascara um trip real`)
       }
       git(["add", "-A"])
       const cm = git(["commit", "-m", `ci-proof: ${opts.branch}`])
-      if (cm.status !== 0) return fail(3, `git commit falhou: ${cm.stderr.trim()}`)
+      if (cm.status !== 0) return fail(3, `git commit falhou: ${cm.stderr.trim()}${stashedDelta ? stashLeftNote : ""}`)
       console.log(`ci-proof-run: mutacao commitada em ${opts.branch}`)
     } else {
       console.log(`ci-proof-run: --mutate nao alterou nada - sem commit`)
     }
   }
 
-  // 5. Push da branch scratch.
+  // 6. Push da branch scratch.
   const push = git(["push", "origin", opts.branch])
-  if (push.status !== 0) return fail(3, `git push origin ${opts.branch} falhou: ${push.stderr.trim()}`)
+  if (push.status !== 0) return fail(3, `git push origin ${opts.branch} falhou: ${push.stderr.trim()}${stashedDelta ? stashLeftNote : ""}`)
   console.log(`ci-proof-run: pushed origin/${opts.branch}`)
 
-  // 6. Pre-check da Prova 7 (gh workflow view resolve contra o DEFAULT branch).
+  // 7. Pre-check da Prova 7 (gh workflow view resolve contra o DEFAULT branch).
   const wf = gh(["workflow", "view", opts.workflow])
   if (wf.status !== 0) {
     // Revert antes de sair - a branch scratch nao pode ficar no remote.
-    if (!opts.keep) revert(opts.branch, originalBranch)
+    if (!opts.keep) revert(opts.branch, originalBranch, stashedDelta)
     // status === null = spawnSync nao achou o binario (ENOENT) - NAO e um
     // 404 da Prova 7: a mensagem tem que ser acionavel (instalar o gh).
     if (wf.status === null) {
@@ -550,15 +730,15 @@ export async function main() {
     )
   }
 
-  // 7. Dispatch.
+  // 8. Dispatch.
   const run = gh(["workflow", "run", opts.workflow, "--ref", opts.branch])
   if (run.status !== 0) {
-    if (!opts.keep) revert(opts.branch, originalBranch)
+    if (!opts.keep) revert(opts.branch, originalBranch, stashedDelta)
     return fail(3, `gh workflow run falhou (exit ${run.status}): ${run.stderr.trim()}`)
   }
   console.log(`ci-proof-run: dispatched ${opts.workflow} on ${opts.branch}`)
 
-  // 8. Poll ate completed (ou timeout). Com --only-jobs, o poll termina
+  // 9. Poll ate completed (ou timeout). Com --only-jobs, o poll termina
   // quando o JOB alvo conclui (o run pode seguir em background rodando os
   // demais jobs) - o sinal da prova vive num job especifico, e esperar o
   // run inteiro queima minutos em jobs nao relacionados (medicao 2026-08-10,
@@ -602,7 +782,7 @@ export async function main() {
         if (runInfo.status === "completed" && !target) {
           // O run completou sem o job alvo = nome errado (o poll nao pode
           // ficar em loop ate o timeout com um nome que nunca casa).
-          if (!opts.keep) revert(opts.branch, originalBranch)
+          if (!opts.keep) revert(opts.branch, originalBranch, stashedDelta)
           return fail(3, `job '${opts.onlyJobs}' nao encontrado no run #${runInfo.databaseId} (jobs: ${jobs.map((j) => j.name).join(", ") || "nenhum"})`)
         }
       } else if (runInfo.status === "completed") {
@@ -612,15 +792,15 @@ export async function main() {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
   }
   if (!runInfo) {
-    if (!opts.keep) revert(opts.branch, originalBranch)
+    if (!opts.keep) revert(opts.branch, originalBranch, stashedDelta)
     return fail(3, `timeout apos ${opts.timeout}s - nenhum run encontrado para ${opts.workflow} em ${opts.branch}`)
   }
   if (opts.onlyJobs && !onlyJobInfo) {
-    if (!opts.keep) revert(opts.branch, originalBranch)
+    if (!opts.keep) revert(opts.branch, originalBranch, stashedDelta)
     return fail(3, `timeout apos ${opts.timeout}s - job '${opts.onlyJobs}' nao completou no run #${runInfo.databaseId} para ${opts.workflow} em ${opts.branch}`)
   }
   if (!opts.onlyJobs && runInfo.status !== "completed") {
-    if (!opts.keep) revert(opts.branch, originalBranch)
+    if (!opts.keep) revert(opts.branch, originalBranch, stashedDelta)
     return fail(3, `timeout apos ${opts.timeout}s - nenhum run completed para ${opts.workflow} em ${opts.branch}`)
   }
   // A conclusao verificada: a do JOB quando --only-jobs (o run pode nem ter
@@ -632,7 +812,7 @@ export async function main() {
       : `ci-proof-run: run #${runInfo.databaseId} completed (${observedConclusion}) - ${runInfo.url}`,
   )
 
-  // 9. Captura do log (tmpdir mantem o repo limpo). O nome do arquivo
+  // 10. Captura do log (tmpdir mantem o repo limpo). O nome do arquivo
   // SLUGIFICA o branch (o "/" do ci-proof/<nome> viraria um subdir
   // inexistente no tmpdir e o writeFileSync falharia com ENOENT em TODO
   // run - o review pegou esse bug antes do 1o uso real). Com --only-jobs,
@@ -646,7 +826,7 @@ export async function main() {
   fs.writeFileSync(logPath, log.stdout, "utf8")
   console.log(`ci-proof-run: log capturado em ${logPath} (${(log.stdout || "").split("\n").length} linhas)`)
 
-  // 10. Verify. Com --expect-parse-reject (2026-08-11, sec 11.35 - a classe
+  // 11. Verify. Com --expect-parse-reject (2026-08-11, sec 11.35 - a classe
   // Prova 24/sec 8.19), o sinal NAO e uma linha de log: e a CONTAGEM de
   // jobs. O workflow rejeitado no parse completa failure com 0 jobs e SEM
   // log ("This run likely failed because of a workflow file issue") - a
@@ -681,32 +861,93 @@ export async function main() {
     check = verifyParseReject(observedConclusion, jobs.length)
   } else {
     check = verifyOutcome(observedConclusion, opts.expect, log.stdout, opts.expectLog)
+    // --expect-success-implies-clean (sec 11.43): o sucesso observado so
+    // vale com ZERO warning-lines no log capturado (o canal de anotacao
+    // do GitHub - `::warning::`/`##[warning]`). So roda quando o verify
+    // base ja passou (conclusion==success) - uma conclusao divergente
+    // falha antes, o check de warning-lines nunca mascararia um mismatch
+    // de conclusao. Qualquer warning-line = verify falha (exit 1, revert
+    // MESMO ASSIM) com as linhas listadas - o autor da prova decide.
+    if (check.ok && opts.expectSuccessImpliesClean) {
+      const clean = verifyCleanLog(log.stdout)
+      if (!clean.ok) {
+        check = clean
+      } else {
+        console.log(`ci-proof-run: success-implies-clean: ${clean.message}`)
+      }
+    }
   }
   console.log(`ci-proof-run: verify: ${check.message}`)
 
-  // 11. Revert (a branch scratch NAO fica no remote - salvo --keep-branch).
+  // 12. Revert (a branch scratch NAO fica no remote - salvo --keep-branch).
   // O resultado do revert PARTICIPA do exit code do sucesso: uma branch
   // scratch deixada no remote (push --delete falhou) nao pode passar como
-  // exit 0 - o docblock promete "esperado observado E revertido".
-  const reverted = opts.keep ? true : revert(opts.branch, originalBranch)
+  // exit 0 - o docblock promete "esperado observado E revertido". Com
+  // --stash-uncommitted, o delta e restaurado (git stash pop apos o
+  // checkout da original - sec 8.21).
+  const reverted = opts.keep ? true : revert(opts.branch, originalBranch, stashedDelta)
 
-  // 12. Summary (para registrar no gates-proofs.md). A conclusao e a
+  // 13. Summary (para registrar no gates-proofs.md). A conclusao e a
   // observada (do job quando --only-jobs - o run pode nao ter terminado).
+  // Review nit (sec 11.41): --keep-branch + --stash-uncommitted nao reverte
+  // (sem stash pop) - o delta segue no stash e o DONE tem que dizer isso
+  // (o usuario manteve a branch para inspecao, mas o delta nao voltou
+  // sozinho - git stash pop para restaurar).
+  if (opts.keep && stashedDelta) {
+    console.log(`ci-proof-run: --keep-branch + --stash-uncommitted: o delta nao-commitado segue no stash (git stash pop para restaurar - sec 8.21)`)
+  }
   console.log(`ci-proof-run: DONE run=${runInfo.databaseId} url=${runInfo.url} conclusion=${observedConclusion} log=${logPath}`)
   if (!check.ok) return 1
   return reverted ? 0 : 3
 }
 
-/** Revert the scratch branch: delete remote, checkout original, delete local. */
-function revert(branch, originalBranch) {
+/**
+ * Revert the scratch branch: delete remote, checkout original, restore the
+ * stashed delta (--stash-uncommitted, sec 8.21), delete local. The stash pop
+ * PARTICIPA do resultado: um pop conflitante = revert parcial (exit 3) com
+ * o AVISO - o delta nao pode se perder em silencio (o git mantem o stash
+ * num pop conflitante - recuperavel via git stash list).
+ */
+function revert(branch, originalBranch, stashedDelta = false) {
   const del = git(["push", "origin", "--delete", branch])
   const co = git(["checkout", originalBranch])
+  let popOk = true
+  if (stashedDelta) {
+    // Sec 11.44: o pop mira o stash do ciclo PELO NOME deterministico (o
+    // push -u ja o nomeou `ci-proof: <branch> (delta nao-commitado)`). O
+    // `git stash pop` cego (stash@{0}) restauraria o stash ERRADO se algo
+    // empilhou um stash por cima durante o ciclo (ex.: o lint-staged do
+    // pre-commit num --mutate sem --no-verify) - o findStashRef localiza
+    // o stash do ciclo pela mensagem e o `git stash pop <ref>` mira
+    // exatamente ele (o delta nunca fica enterrado na stack). O AVISO de
+    // conflito carrega o RECIPE DE CURA (sec 11.44): show -p para
+    // inspecionar + apply para recuperar (o apply mantem o stash ate
+    // confirmar).
+    const list = git(["stash", "list"])
+    const ref = findStashRef(list.stdout, branch)
+    if (ref) {
+      const pop = git(["stash", "pop", ref])
+      popOk = pop.status === 0
+      if (popOk) {
+        console.log(`ci-proof-run: delta nao-commitado restaurado (git stash pop ${ref} - sec 8.21)`)
+      } else {
+        console.log(
+          `ci-proof-run: AVISO git stash pop falhou (exit ${pop.status}): ${pop.stderr.trim()} - o delta segue no stash '${ref}' (identificado pela mensagem 'ci-proof: ${branch}'). CURE (sec 11.44): git stash show -p ${ref} (inspecionar o delta) + git stash apply ${ref} (recuperar - o apply mantem o stash ate confirmar), revert parcial`,
+        )
+      }
+    } else {
+      popOk = false
+      console.log(
+        `ci-proof-run: AVISO stash do ciclo 'ci-proof: ${branch}' nao encontrado no git stash list - o delta pode ja ter sido recuperado; git stash list para conferir, revert parcial`,
+      )
+    }
+  }
   const bd = git(["branch", "-D", branch])
-  const ok = del.status === 0 && co.status === 0 && bd.status === 0
+  const ok = del.status === 0 && co.status === 0 && bd.status === 0 && popOk
   console.log(
     ok
-      ? `ci-proof-run: revertido (remote ${branch} deletado, de volta em ${originalBranch}, local deletado)`
-      : `ci-proof-run: AVISO revert parcial - push --delete=${del.status} checkout=${co.status} branch -D=${bd.status}`,
+      ? `ci-proof-run: revertido (remote ${branch} deletado, de volta em ${originalBranch}, local deletado${stashedDelta ? ", delta restaurado" : ""})`
+      : `ci-proof-run: AVISO revert parcial - push --delete=${del.status} checkout=${co.status} branch -D=${bd.status}${stashedDelta ? ` stash pop=${popOk ? "ok" : "FALHOU"}` : ""}`,
   )
   return ok
 }

@@ -72,9 +72,16 @@
  * o CURL_TIMEOUTS_SCAN_ROOT do scan-curl-timeouts). Saida ASCII pura (gate
  * file). Puro node, sem deps, <10ms. Flags: --ci (intent-only, espelho do
  * scan-timeouts) / flag desconhecida = exit 2 com usage.
+ *
+ * ENTRY-POINT GUARD (IS_MAIN, mirror scan-timeouts.mjs / scan-timeouts): o
+ * CLI roda SO quando executado direto (node scripts/scan-eol-anchor.mjs).
+ * Importar o modulo (unit tests de parsing, probes) NAO varre a superficie
+ * nem seta exitCode - o ACHADO da sec 11.37 (o probe flagrou o proprio
+ * arquivo ao importar) fechado por este guard.
  */
 import fs from "node:fs"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 
 const ROOT = path.resolve(process.env.EOL_ANCHOR_SCAN_ROOT || process.cwd())
 
@@ -249,4 +256,14 @@ export function main(argv = process.argv.slice(2)) {
   return 0
 }
 
-process.exitCode = main()
+// Entry-point guard (mirror scan-timeouts.mjs / scan-curl-timeouts.mjs -
+// ACHADO da sec 11.37 fechado): o CLI roda SOMENTE quando executado
+// direto. O 11.37 provou que um `process.exitCode = main()` cru varria a
+// superficie INTEIRA a cada import (o probe flagrou o proprio arquivo de
+// probe + setou o exitCode do processo). vitest importa o modulo para os
+// testes de unidade (parsing) sem efeito colateral nenhum agora.
+const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (IS_MAIN) {
+  process.exitCode = main()
+}

@@ -6,18 +6,18 @@
  * LINT_LOADER_SCAN_ROOT / GUARD_GATES_SCAN_ROOT / NODE_MODULES_ROOT /
  * FUZZ_PRECOMMIT_SCAN_ROOT / BATCH_COVERAGE_SCAN_ROOT - the same env-override
  * pattern as FRAGILE_SCAN_ROOT): each test points ONE override at a synthetic
- * temp repo that FAILS that guard, while the OTHER five guards scan the REAL
+ * temp repo that FAILS that guard, while the OTHER guards scan the REAL
  * repo (clean today) - proving:
  *   1. AGREGACAO (worst-exit): um guard falho -> batch exit 1.
- *   2. ISOLAMENTO: os outros 5 guards RODAM MESMO ASSIM e reportam clean -
+ *   2. ISOLAMENTO: os outros guards RODAM MESMO ASSIM e reportam clean -
  *      uma falha nunca esconde as demais (a razao do batch sobre o hook
  *      antigo com `set -e`, que parava no 1o erro e escondia o resto).
  *   3. ORDER (determinismo): a saida segue a ordem do hook (integrity,
  *      push-suite, lint-loader, guard-gates, fuzz-precommit,
- *      batch-coverage) - nunca interleaved, a vantagem do batch sobre o
- *      paralelo.
+ *      batch-coverage, prepush-batch, exit-claims) - nunca interleaved, a
+ *      vantagem do batch sobre o paralelo.
  * O REAL-REPO CONTRACT test roda o batch SEM env override (repo real limpo)
- * e asserta exit 0 + os 6 veredictos clean - o lock de regressao.
+ * e asserta exit 0 + os 8 veredictos clean - o lock de regressao.
  *
  * Subprocess-heavy (todo teste spawna o CLI via runSubprocess) -> timeout
  * EXPLICITO em todo it() (o scan-timeouts guard exige).
@@ -123,10 +123,10 @@ function writeCachedFuzzInPrecommit(dir: string) {
   )
 }
 
-describe("run-precommit-guards.mjs - batch runner dos 7 guards node (sec 11.13)", () => {
+describe("run-precommit-guards.mjs - batch runner dos 8 guards node (sec 11.13)", () => {
   afterEach(cleanupTempDirs)
 
-  it("AGREGACAO + ISOLAMENTO: guard fora do batch (sintetico) -> exit 1, os outros 5 clean", () => {
+  it("AGREGACAO + ISOLAMENTO: guard fora do batch (sintetico) -> exit 1, os outros guards clean", () => {
     const dir = createTempDir("run-guards-")
     // A falha do scan-batch-coverage: um node guard spawnado direto no hook
     // sintetico que nao e o batch runner nem allowlisted (GROWTH, sec 11.16).
@@ -139,8 +139,8 @@ describe("run-precommit-guards.mjs - batch runner dos 7 guards node (sec 11.13)"
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("batch-coverage: GUARD OUTSIDE BATCH at .husky/pre-commit:3")
     expect(r.stdout).toContain("scan-new-guard.mjs")
-    // ISOLAMENTO: os outros 5 guards escanearam o repo REAL (limpo) e
-    // rodaram MESMO com o guard 6 falho - nenhuma falha esconde as demais.
+    // ISOLAMENTO: os outros guards escanearam o repo REAL (limpo) e rodaram
+    // MESMO com o guard falho - nenhuma falha esconde as demais.
     expect(r.stdout).toContain("check-node-modules-integrity: clean")
     expect(r.stdout).toContain("push-suite: clean")
     expect(r.stdout).toContain("lint-staged-loader: clean")
@@ -148,12 +148,13 @@ describe("run-precommit-guards.mjs - batch runner dos 7 guards node (sec 11.13)"
     expect(r.stdout).toContain("fuzz-precommit: clean")
   }, 60000)
 
-  it("REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 7 veredictos clean na ORDEM do hook", () => {
+  it("REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 8 veredictos clean na ORDEM do hook", () => {
     const r = runBatch()
     expect(r.status).toBe(0)
     // Determinismo: a ordem do hook (integrity, push-suite, lint-loader,
-    // guard-gates, fuzz-precommit, batch-coverage, prepush-batch) - nunca
-    // interleaved (a vantagem do batch sobre o paralelo).
+    // guard-gates, fuzz-precommit, batch-coverage, prepush-batch,
+    // exit-claims) - nunca interleaved (a vantagem do batch sobre o
+    // paralelo).
     const cleanIdx = [
       "check-node-modules-integrity: clean",
       "push-suite: clean",
@@ -162,6 +163,7 @@ describe("run-precommit-guards.mjs - batch runner dos 7 guards node (sec 11.13)"
       "fuzz-precommit: clean",
       "batch-coverage: clean",
       "prepush-batch: clean",
+      "exit-claims: clean",
     ].map((v) => r.stdout.indexOf(v))
     expect(cleanIdx.every((i) => i >= 0)).toBe(true)
     expect(cleanIdx[0]).toBeLessThan(cleanIdx[1])
@@ -170,6 +172,7 @@ describe("run-precommit-guards.mjs - batch runner dos 7 guards node (sec 11.13)"
     expect(cleanIdx[3]).toBeLessThan(cleanIdx[4])
     expect(cleanIdx[4]).toBeLessThan(cleanIdx[5])
     expect(cleanIdx[5]).toBeLessThan(cleanIdx[6])
+    expect(cleanIdx[6]).toBeLessThan(cleanIdx[7])
   }, 60000)
 
   it("AGREGACAO + ISOLAMENTO: push-suite falha (sintetico) -> exit 1, os outros 3 rodam e reportam clean", () => {

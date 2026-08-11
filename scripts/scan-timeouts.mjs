@@ -38,10 +38,13 @@
  *      classe do tripwire do curl-timeouts NAO se aplica aqui POR IDIOMA:
  *      JS test code nunca parameteriza o NOME da API (parameterizar ARGS
  *      mantem o token literal e e detectado); o analogo real (interpolacao
- *      de template literal ${...}) ja e fronteira pinada (o regression
- *      dispatchWarning). 0 usos + 0 plausibilidade - sem tripwire, a
- *      fronteira fica nomeada (fechar custaria rastreamento de variaveis,
- *      o mesmo custo da sec 11.30).
+ *      de template literal ${...}) ja e fronteira PINADA por contrato
+ *      (INTERPOLATION-FRONTIER, sec 11.37: token dentro de ${...} escapa
+ *      ACEITO + contrafactual do mesmo token direto flagra + o idioma real
+ *      de args-interpolacao detectado - o padrao 11.29/11.30). 0 usos + 0
+ *      plausibilidade - sem tripwire, a fronteira fica nomeada E pinada
+ *      (fechar custaria rastreamento de variaveis, o mesmo custo da sec
+ *      11.30).
  *      NAO-MATRIZ (sec 11.38, MEDIDO): o curl-timeouts compartilha a
  *      filosofia masking+fronteira, mas a classe de variantes AQUI e
  *      INDIRECAO (o token some atras de OUTRO nome - runCli, runSubprocess

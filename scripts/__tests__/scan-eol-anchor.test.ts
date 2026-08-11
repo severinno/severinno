@@ -31,6 +31,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-eol-anchor.mjs")
@@ -152,5 +153,46 @@ describe("scan-eol-anchor.mjs - CLI", () => {
     const { status, stderr } = runCli({ root: process.cwd(), extraArgs: ["--bogus"] })
     expect(status).toBe(2)
     expect(stderr).toContain("usage: node scripts/scan-eol-anchor.mjs [--ci]")
+  }, 60000)
+})
+
+describe("scan-eol-anchor.mjs - entry-point guard (IS_MAIN, sec 11.37 ACHADO fechado)", () => {
+  interface EolAnchorModule {
+    main: (argv?: string[]) => number
+    scanEolAnchors: (root?: string) => { files: string[]; violations: { path: string; line: number }[] }
+  }
+
+  it("IMPORT: importar o modulo NAO varre a superficie nem seta exitCode - o ACHADO da 11.37 fechado", async () => {
+    // The 11.37 probe proved the bug: `process.exitCode = main()` ran on
+    // EVERY import - the probe file itself was flagged and the process
+    // exitCode was set. The IS_MAIN guard (mirror scan-timeouts.mjs) fixes
+    // it. Proof: a POISONED synthetic surface + a fresh dynamic import
+    // (cache-busted) must NOT scan (exitCode untouched, nothing written) -
+    // and the embedded counterfactual: calling scanEolAnchors() EXPLICITLY
+    // on that same surface DOES find the violation (the detector works, the
+    // import just does not auto-run it - deliberate, never a dead module).
+    const dir = createTempDir("eol-anchor-import-")
+    writeRawAnchorFile(dir, "mutate.mjs")
+    const prevEnv = process.env.EOL_ANCHOR_SCAN_ROOT
+    process.env.EOL_ANCHOR_SCAN_ROOT = dir
+    const prevExitCode = process.exitCode
+    try {
+      const mod = (await import(
+        pathToFileURL(SCRIPT).href + `?import-test=${Date.now()}`,
+      )) as unknown as EolAnchorModule
+      // The module is importable and exposes the pure functions (the reason
+      // it gets imported at all - unit tests of the parsing).
+      expect(typeof mod.main).toBe("function")
+      expect(typeof mod.scanEolAnchors).toBe("function")
+      // The bug's observable (11.37): the import must NOT have set exitCode.
+      expect(process.exitCode).toBe(prevExitCode)
+      // The embedded counterfactual: the SAME poisoned surface IS scanned
+      // when the function runs explicitly - the import no-scan is the guard
+      // at work, not a detector that stopped working.
+      expect(mod.scanEolAnchors().violations).toHaveLength(1)
+    } finally {
+      if (prevEnv === undefined) delete process.env.EOL_ANCHOR_SCAN_ROOT
+      else process.env.EOL_ANCHOR_SCAN_ROOT = prevEnv
+    }
   }, 60000)
 })

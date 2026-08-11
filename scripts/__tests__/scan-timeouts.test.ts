@@ -106,6 +106,31 @@ describe("scripts/scan-timeouts.mjs — parser", () => {
     expect(calls[0].subprocessHeavy).toBe(false)
   })
 
+  it("ACCEPTED false-negative (the template-interpolation frontier, sec 11.37): a subprocess token INSIDE a ${...} interpolation escapes subprocessHeavy - masked whole, and this is DECIDED (the counterfactual proves the detector works)", () => {
+    // The frontier named in the header (masked whole) is now a contract: a
+    // subprocess token inside a template-literal ${...} interpolation is
+    // consumed by codeMask - no token survives for SUBPROCESS_RE, so the
+    // test is NOT subprocess-heavy. ACCEPTED (no test in this repo does
+    // it; closing it would require interpolation tracking for a form with
+    // 0 uses - the same cost sec 11.30 refused) - pinning it keeps a
+    // reader from reading the named frontier as an undecided hole. The
+    // \\${...} escapes keep the sequence LITERAL in this test's source
+    // (it must not interpolate HERE - it must stay a masked string).
+    const hidden = `it("x", () => { eval(\`\${execSync}("node x.mjs")\`) })`
+    expect(findTestCalls(hidden)[0].subprocessHeavy).toBe(false)
+    // WHY it passes (the mechanism, pinned on the SAME source): codeMask
+    // consumes the interpolation - the token disappears.
+    expect(codeMask(hidden)).not.toContain("execSync")
+    // COUNTERFACTUAL (the decision is DELIBERATE, not a dead detector):
+    // the SAME token DIRECT (outside any template) IS flagged.
+    const direct = `it("x", () => { execSync("node x.mjs") })`
+    expect(findTestCalls(direct)[0].subprocessHeavy).toBe(true)
+    // The real idiom (distinct, still detected): the token OUTSIDE the
+    // template with only ARGS interpolated - the token stays literal.
+    const idiom = `it("x", () => { execSync(\`node \${file}.mjs\`) })`
+    expect(findTestCalls(idiom)[0].subprocessHeavy).toBe(true)
+  })
+
   it("findTestCalls: it.each TABLE form parses the args paren after the table", () => {
     const calls = findTestCalls(
       `it.each([1, 2])("case %i", () => { ${SH_SNIPPET} }, 60000)\n`,

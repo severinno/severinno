@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * run-precommit-guards.mjs - batch runner dos 6 guards node do pre-commit
- * (2026-08, secao 11.13/11.16): uma UNICA invocacao node em vez de 6 spawns.
+ * run-precommit-guards.mjs - batch runner dos 8 guards node do pre-commit
+ * (2026-08, secao 11.13/11.16): uma UNICA invocacao node em vez de 8 spawns.
  *
  * WHY: o boot do node (~0.14s) dominava cada guard isolado (0.14-0.63s
  * medido); os spawns sequenciais do hook custavam ~0.54-0.81s por commit.
- * Este runner importa os 6 guards no MESMO processo (1 boot) e roda os scans
+ * Este runner importa os 8 guards no MESMO processo (1 boot) e roda os scans
  * em sequencia, agregando os exit codes: medido ~0.22-0.26s - ~2.7x mais
  * rapido que o sequencial e mais deterministico que o paralelo (saida
  * ORDENADA, sem interleave de stdout num hook set -euo pipefail; o paralelo
@@ -37,10 +37,19 @@
  *      11.x ADOTADO datada reverter o veredito) e o integrity segue como
  *      spawn individual la. Ele roda NO BATCH do pre-commit (a validacao
  *      do working tree do pre-push, mesmo padrao do scan-push-full-suite).
+ *   8. scan-exit-claims.mjs              (sec 11.42, REFINAMENTO 2026-08-11
+ *      - o tripwire do hook): o CLI do CONTRATO 'claim de doc sem pin'
+ *      roda como guard do pre-commit - uma claim de exit code nova numa
+ *      secao 11.x do gates-proofs.md sem registro no EXIT_CLAIMS falha
+ *      ANTES do commit. O gap fechado: o pre-commit:test mapeia docs para
+ *      NADA (pre-commit-tests.mjs), entao o SELF-GUARD original dependia
+ *      de rodar a suite (test:unit no CI). O batch roda incondicional
+ *      (invariante do repo: guards baratos nao ganham condicao) - o
+ *      incremento medido e ~15-25ms (boot compartilhado).
  * O scan-guard-gates main() e ASYNC (override WORKFLOW_CONTRACTS_MODULE via
  * import dinamico) - o runner o aguarda antes de agregar.
  *
- * Exit: 0 = todos os 6 limpos; 1 = pelo menos um falhou (worst-exit - os
+ * Exit: 0 = todos os 8 limpos; 1 = pelo menos um falhou (worst-exit - os
  * exit codes dos guards sao 0/1 puros, entao o agregado e o OR logico).
  * Env overrides dos guards sao herdados (PUSH_SUITE_SCAN_ROOT,
  * LINT_LOADER_SCAN_ROOT, GUARD_GATES_SCAN_ROOT, NODE_MODULES_ROOT) - os
@@ -63,6 +72,7 @@ import { main as guardGatesMain } from "./scan-guard-gates.mjs"
 import { main as fuzzPrecommitMain } from "./scan-fuzz-precommit.mjs"
 import { main as batchCoverageMain } from "./scan-batch-coverage.mjs"
 import { main as prepushBatchMain } from "./scan-prepush-batch.mjs"
+import { main as exitClaimsMain } from "./scan-exit-claims.mjs"
 
 /**
  * Run the 5 guards in hook order and aggregate the exit codes. Every guard
@@ -82,6 +92,7 @@ async function runPrecommitGuards() {
     fuzzPrecommitMain(),
     batchCoverageMain(),
     prepushBatchMain(),
+    exitClaimsMain(),
   ]
   const worst = codes.some((c) => c !== 0) ? 1 : 0
   process.exitCode = worst
