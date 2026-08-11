@@ -33,7 +33,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import { emittedSignals, scanGuardGates } from "../scan-guard-gates.mjs"
-import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, writeGuardGatesWorkflow } from "./golden-copy-utils"
+import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, SCANNER_BLOCKS, cleanupTempDirs, createTempDir, replaceEolAgnostic, writeCIWorkflow, writeGuardGatesWorkflow } from "./golden-copy-utils"
 
 const PUSH = GUARD_PUSH_NET
 const TWIN = GUARD_PR_TWIN
@@ -174,8 +174,141 @@ function* reachableResults() {
 }
 
 // ---------------------------------------------------------------------------
+// Rule 10 (sec 11.32) - the SCANNER mini-model. The 6 scanner signals (the 3
+// versioned scanner steps --ci, per target) couple to the main model ONLY
+// through the WORKFLOW MISSING pairs and the per-step-key single-valued
+// selection: a missing file emits no scanner signal of its own (WORKFLOW
+// MISSING@push bot K@push, WORKFLOW MISSING@twin bot K@twin) but a missing
+// PUSH net still lets the twin's scanner signals emit (WORKFLOW MISSING@push
+// coexists with K@twin), and the SAME step-key never reports both targets
+// (K@push bot K@twin - the first existing net workflow missing the step,
+// mirroring missingStep). NO other cross pair is exclusive: every scanner
+// signal coexists with every main signal (a file can carry a paths filter
+// AND lack the curl step; the twin can lack the fuzz job AND the eol step;
+// encoding lives in other files). So the scanner space is a SEPARATE
+// 256-state enumeration (2x2x8x8) whose exclusive set UNIONs into the
+// derivation - modeling 6 scanner booleans in the main Dims would multiply
+// the 112k state space ~64x for zero additional exclusivity info.
+// ---------------------------------------------------------------------------
+
+/** The 3 scanner step-keys, in the guard's SCANNER_STEPS order. */
+const SCAN_KEYS = ["SCAN TIMEOUTS STEP MISSING", "CURL TIMEOUTS STEP MISSING", "EOL ANCHOR STEP MISSING"]
+
+/**
+ * The scanner-only result shape (the mini universe: WORKFLOW MISSING +
+ * the 6 scanner signals). Mirrors scanGuardGates' rule-10 loop: per step-key,
+ * the FIRST existing net workflow missing the step (net order: push before
+ * twin) reports, exactly like missingStep.
+ */
+function scannerResultOf(d: { pushExists: boolean; twinExists: boolean; pushMask: number; twinMask: number }) {
+  // mask bit k = the k-th scanner step present in that file
+  const missingWorkflow = !d.pushExists ? PUSH : !d.twinExists ? TWIN : null
+  const missingScanSteps: { key: string; file: string }[] = []
+  for (let k = 0; k < SCAN_KEYS.length; k++) {
+    const bit = 1 << k
+    if (d.pushExists && (d.pushMask & bit) === 0) missingScanSteps.push({ key: SCAN_KEYS[k], file: PUSH })
+    else if (d.twinExists && (d.twinMask & bit) === 0) missingScanSteps.push({ key: SCAN_KEYS[k], file: TWIN })
+  }
+  return {
+    missingWorkflow,
+    pathsFilter: [],
+    missingStep: null,
+    missingScanSteps,
+    missingSuite: null,
+    prJob: null,
+    pushNetJob: null,
+    fuzzJob: null,
+    encodingBad: [],
+    benchmarkJob: null,
+  }
+}
+
+/** All scanner-reachable results: push/twin existence x 3-bit step masks (256 states). */
+function* scannerResults() {
+  for (const pushExists of [false, true])
+    for (const twinExists of [false, true])
+      for (let pushMask = 0; pushMask < 8; pushMask++)
+        for (let twinMask = 0; twinMask < 8; twinMask++)
+          yield scannerResultOf({ pushExists, twinExists, pushMask, twinMask })
+}
+
+// ---------------------------------------------------------------------------
+// Rule 11 (sec 11.33) - the DANGLING-NEEDS mini-model. The 3 dangling signals
+// (a needs: ref in one of the net-surface workflows resolving to a job key
+// missing from the SAME workflow - the Prova 24 class: build/budget kept
+// citing the DELETED utf8-check and the workflow was rejected at parse with
+// 0 jobs) couple to the main model ONLY through the three file-missing
+// signals (a missing file has no needs graph to parse):
+//   WORKFLOW MISSING@push bot DANGLING NEEDS@push,
+//   WORKFLOW MISSING@twin bot DANGLING NEEDS@twin,
+//   ENCODING WORKFLOW MISSING@CI bot DANGLING NEEDS@CI (via the encodingBad
+//   'workflow' kind - the ci file absent reports the encoding workflow as
+//   missing, and its needs graph is never parsed).
+// NO other cross pair is exclusive: a workflow can carry a paths filter / a
+// missing step / a missing job AND a dangling needs at the same time - the
+// Prova 24 CO-EMIT: build/budget keep needs: [.., utf8-check, ..] while the
+// utf8-check job is deleted, so ENCODING CALL SITE MISSING@CI AND DANGLING
+// NEEDS@CI fire TOGETHER. So the rule-11 space is a SEPARATE 64-state
+// enumeration (3 files x {exists, dangling}, 2^6) whose exclusive set UNIONs
+// into the derivation - modeling 6 dangling booleans in the main Dims would
+// multiply the 112k state space ~64x for exactly three exclusive pairs.
+// ---------------------------------------------------------------------------
+const DANGLING_FILES = [PUSH, TWIN, CI]
+
+/**
+ * The dangling-only result shape (the mini universe: the 3 file-missing
+ * signals + the 3 dangling signals). Mirrors scanGuardGates' rule-11 loop:
+ * every workflow of the net surface (guardNet + encodingNet, deduped =
+ * push/twin/ci) whose needs graph contains a ref to a job key missing from
+ * the same workflow reports a DANGLING NEEDS signal; a missing file reports
+ * its file-missing signal and never a dangling one.
+ */
+function danglingResultOf(d: { exists: Record<string, boolean>; dangling: Record<string, boolean> }) {
+  const missingWorkflow = !d.exists[PUSH] ? PUSH : !d.exists[TWIN] ? TWIN : null
+  const encodingBad: { rel: string; kind: string }[] = d.exists[CI] ? [] : [{ rel: CI, kind: "workflow" }]
+  const danglingNeeds: { file: string; job: string; ref: string; line: number }[] = []
+  for (const rel of DANGLING_FILES) {
+    if (d.exists[rel] && d.dangling[rel]) danglingNeeds.push({ file: rel, job: "build", ref: "missing", line: 1 })
+  }
+  return {
+    missingWorkflow,
+    pathsFilter: [],
+    missingStep: null,
+    missingScanSteps: [],
+    missingSuite: null,
+    prJob: null,
+    pushNetJob: null,
+    fuzzJob: null,
+    encodingBad,
+    benchmarkJob: null,
+    danglingNeeds,
+  }
+}
+
+/** All dangling-reachable results: 3 net-surface files x {exists, dangling} (64 states). */
+function* danglingResults() {
+  for (const pushExists of [false, true])
+    for (const twinExists of [false, true])
+      for (const ciExists of [false, true])
+        for (const pushDangling of [false, true])
+          for (const twinDangling of [false, true])
+            for (const ciDangling of [false, true])
+              yield danglingResultOf({
+                exists: { [PUSH]: pushExists, [TWIN]: twinExists, [CI]: ciExists },
+                dangling: { [PUSH]: pushDangling, [TWIN]: twinDangling, [CI]: ciDangling },
+              })
+}
+
+// ---------------------------------------------------------------------------
 // The DERIVATION: co-occurrence over the reachable space -> the exclusive set
-// (pairs that never co-emit). Computed ONCE (lazy) - 112k reachable states.
+// (pairs that never co-emit). Computed ONCE (lazy) - 112k main states + 256
+// scanner states. The two partitions are UNIONED, never merged into one
+// co-occurrence map: a merged map would mark cross pairs (e.g. K@push x
+// PATHS FILTER@push) exclusive by ABSENCE - neither partition emits both,
+// but they coexist in reality. Each partition computes its OWN exclusive set
+// over its OWN universe, and the union is exact because every cross pair
+// coexists (only the WORKFLOW MISSING pairs are exclusive, and both live
+// inside the scanner universe).
 // ---------------------------------------------------------------------------
 
 let derivedCache: { reachable: Set<string>; exclusive: Set<string> } | null = null
@@ -205,6 +338,63 @@ function derive() {
       if (!coOccur.has(pair)) exclusive.add(pair)
     }
   }
+  // Scanner mini-partition: its OWN reachable + co-occurrence over the 256
+  // states, then its own exclusive pairs over the mini universe.
+  const miniReachable = new Set<string>()
+  const miniCoOccur = new Set<string>()
+  for (const r of scannerResults()) {
+    const ids = emittedSignals(r, CTX).map(sigId)
+    for (const id of ids) miniReachable.add(id)
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = ids[i]
+        const b = ids[j]
+        miniCoOccur.add(a < b ? `${a}|${b}` : `${b}|${a}`)
+      }
+    }
+  }
+  const miniAll = [...miniReachable].sort()
+  for (let i = 0; i < miniAll.length; i++) {
+    for (let j = i + 1; j < miniAll.length; j++) {
+      const a = miniAll[i]
+      const b = miniAll[j]
+      const pair = a < b ? `${a}|${b}` : `${b}|${a}`
+      if (!miniCoOccur.has(pair)) exclusive.add(pair)
+    }
+  }
+  // Rule 11 (sec 11.33) dangling mini-partition: the SAME partition
+  // argument as the scanner mini-model - the 3 dangling signals couple to
+  // the main model ONLY through the three file-missing signals, ALL of
+  // which live inside this mini universe, so its own exclusive set unions
+  // exactly (no cross-partition false exclusives: a dangling needs coexists
+  // with every main signal - the Prova 24 co-emit with ENCODING CALL SITE
+  // MISSING@CI is the documented counter-example).
+  const miniDanglingReachable = new Set<string>()
+  const miniDanglingCoOccur = new Set<string>()
+  for (const r of danglingResults()) {
+    const ids = emittedSignals(r, CTX).map(sigId)
+    for (const id of ids) miniDanglingReachable.add(id)
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = ids[i]
+        const b = ids[j]
+        miniDanglingCoOccur.add(a < b ? `${a}|${b}` : `${b}|${a}`)
+      }
+    }
+  }
+  const miniDanglingAll = [...miniDanglingReachable].sort()
+  for (let i = 0; i < miniDanglingAll.length; i++) {
+    for (let j = i + 1; j < miniDanglingAll.length; j++) {
+      const a = miniDanglingAll[i]
+      const b = miniDanglingAll[j]
+      const pair = a < b ? `${a}|${b}` : `${b}|${a}`
+      if (!miniDanglingCoOccur.has(pair)) exclusive.add(pair)
+    }
+  }
+  // Merge both mini universes' reachable into the shared universe (the
+  // sanity test lists the 24 main + 6 scanner + 3 dangling signals).
+  for (const id of miniReachable) reachable.add(id)
+  for (const id of miniDanglingReachable) reachable.add(id)
   derivedCache = { reachable, exclusive }
   return derivedCache
 }
@@ -239,17 +429,14 @@ function writeTwin(dir: string, opts: { fragile?: boolean; fuzzNeeds?: boolean; 
     else lines.push("      - name: Unit tests", "        run: bun run test:unit")
   }
   if (opts.fragile) {
-    lines.push("  fragile-guard:", "    name: Fragile Range Guard", "    runs-on: ubuntu-latest", "    steps:", "      - name: Run guard vitest suites", "        run: bun run test:guard")
+    // The fragile-guard block carries the 3 scanner steps (rule 10, sec
+    // 11.32) - the same steps as the REAL pr-check.yml fragile-guard job,
+    // so the REAL anchors stay clean on rule 10 (a twin without them would
+    // emit 3 scanner signals and break the model-vs-real equality).
+    lines.push("  fragile-guard:", "    name: Fragile Range Guard", "    runs-on: ubuntu-latest", "    steps:", "      - name: Run guard vitest suites", "        run: bun run test:guard", ...SCANNER_BLOCKS.timeouts, ...SCANNER_BLOCKS.curl, ...SCANNER_BLOCKS.eol)
   }
   lines.push("")
   writeFile(dir, TWIN, lines.join("\n"))
-}
-
-function writeCi(dir: string, opts: { enc?: boolean } = {}) {
-  const lines = ["name: CI", "on:", "  push:", "    branches: [main, develop]", "jobs:", "  lint:", "    runs-on: ubuntu-latest", "    steps:", "      - run: bun run lint"]
-  if (opts.enc) lines.push("  utf8-check:", "    uses: ./.github/workflows/utf8-check.yml")
-  lines.push("")
-  writeFile(dir, CI, lines.join("\n"))
 }
 
 function writePkg(dir: string, suite: boolean) {
@@ -263,7 +450,7 @@ function writePkg(dir: string, suite: boolean) {
 describe("scan-guard-gates exclusivity - derivacao do espaco alcancavel (sec 8.14)", () => {
   afterEach(cleanupTempDirs)
 
-  it("sanity: as 24 signals esperadas sao alcancaveis no espaco do modelo (membros - nao exaustivo)", () => {
+  it("sanity: as 33 signals esperadas sao alcancaveis no espaco do modelo (membros - nao exaustivo)", () => {
     const { reachable } = derive()
     const expected = [
       `WORKFLOW MISSING@${PUSH}`,
@@ -292,6 +479,20 @@ describe("scan-guard-gates exclusivity - derivacao do espaco alcancavel (sec 8.1
       // O 24o sinal alcancavel: ENCODING WORKFLOW MISSING@TWIN (twin ausente
       // -> kind 'workflow' no encodingBad + WORKFLOW MISSING@TWIN co-emitem).
       `ENCODING WORKFLOW MISSING@${TWIN}`,
+      // Os 6 sinais da regra 10 (sec 11.32): os 3 scanner steps --ci, por
+      // target - o mini-modelo de 256 estados os alcanca (cada mask 3-bit).
+      `SCAN TIMEOUTS STEP MISSING@${PUSH}`,
+      `SCAN TIMEOUTS STEP MISSING@${TWIN}`,
+      `CURL TIMEOUTS STEP MISSING@${PUSH}`,
+      `CURL TIMEOUTS STEP MISSING@${TWIN}`,
+      `EOL ANCHOR STEP MISSING@${PUSH}`,
+      `EOL ANCHOR STEP MISSING@${TWIN}`,
+      // Os 3 sinais da regra 11 (sec 11.33): DANGLING NEEDS por arquivo da
+      // superficie do net (guardNet + encodingNet deduped = push/twin/ci) -
+      // o mini-modelo de 64 estados os alcanca.
+      `DANGLING NEEDS@${PUSH}`,
+      `DANGLING NEEDS@${TWIN}`,
+      `DANGLING NEEDS@${CI}`,
     ]
     for (const id of expected) expect(reachable.has(id), id).toBe(true)
   }, 120000)
@@ -391,11 +592,69 @@ describe("scan-guard-gates exclusivity - derivacao do espaco alcancavel (sec 8.1
     expect(exclusive.has(pairOf(`ENCODING CALL SITE MISSING@${CI}`, `ENCODING CALL SITE MISSING@${TWIN}`))).toBe(false)
   }, 120000)
 
+  it("VALIDACAO rule 10 (sec 11.32): os 3 scanner steps sao single-valued POR STEP-KEY - K@push nunca coexiste com K@twin (o PRIMEIRO workflow existente sem o step reporta, o mirror do missingStep)", () => {
+    const { exclusive } = derive()
+    const keys = ["SCAN TIMEOUTS STEP MISSING", "CURL TIMEOUTS STEP MISSING", "EOL ANCHOR STEP MISSING"]
+    for (const k of keys) {
+      expect(exclusive.has(pairOf(`${k}@${PUSH}`, `${k}@${TWIN}`)), `${k}@push|${k}@twin`).toBe(true)
+    }
+  }, 120000)
+
+  it("VALIDACAO rule 11 (sec 11.33): DANGLING NEEDS@X bot o file-missing do PROPRIO arquivo - os 3 pares (um arquivo ausente nao tem grafo needs para parsear; o CI reporta via o kind 'workflow' do encodingBad)", () => {
+    const { exclusive } = derive()
+    expect(exclusive.has(pairOf(`WORKFLOW MISSING@${PUSH}`, `DANGLING NEEDS@${PUSH}`))).toBe(true)
+    expect(exclusive.has(pairOf(`WORKFLOW MISSING@${TWIN}`, `DANGLING NEEDS@${TWIN}`))).toBe(true)
+    expect(exclusive.has(pairOf(`ENCODING WORKFLOW MISSING@${CI}`, `DANGLING NEEDS@${CI}`))).toBe(true)
+  }, 120000)
+
+  it("REFINAMENTO rule 11 (sec 11.33, o co-emit da Prova 24): DANGLING NEEDS@CI COEXISTE com ENCODING CALL SITE MISSING@CI - deletar o job utf8-check do ci.yml dispara os DOIS juntos (build/budget seguem citando o job deletado em needs: E o call site sumiu) - a matriz nunca pode marcar esse par como exclusivo", () => {
+    const { exclusive } = derive()
+    expect(exclusive.has(pairOf(`DANGLING NEEDS@${CI}`, `ENCODING CALL SITE MISSING@${CI}`))).toBe(false)
+    // Prova de coexistencia: o mini-modelo da regra 11 tem um estado com o
+    // ci presente + dangling; o modelo principal tem o cenario do call site
+    // ausente - mas a coexistencia REAL so o scan vivo mostra (a fixture do
+    // REAL ANCHOR abaixo). Aqui pinamos apenas o NEGATIVO (nao exclusivo).
+  }, 120000)
+
+  it("VALIDACAO rule 10 (sec 11.32): WORKFLOW MISSING@X bot K@X - um workflow ausente nao emite scanner signal do proprio arquivo (os 6 pares)", () => {
+    const { exclusive } = derive()
+    const keys = ["SCAN TIMEOUTS STEP MISSING", "CURL TIMEOUTS STEP MISSING", "EOL ANCHOR STEP MISSING"]
+    for (const k of keys) {
+      expect(exclusive.has(pairOf(`WORKFLOW MISSING@${PUSH}`, `${k}@${PUSH}`))).toBe(true)
+      expect(exclusive.has(pairOf(`WORKFLOW MISSING@${TWIN}`, `${k}@${TWIN}`))).toBe(true)
+    }
+  }, 120000)
+
+  it("REFINAMENTO rule 10: WORKFLOW MISSING@push COEXISTE com K@twin (deletar o push net NAO suprime os scanners do twin) e K@push coexiste com L@twin (K≠L: arquivos diferentes podem faltar steps diferentes)", () => {
+    const { exclusive } = derive()
+    const keys = ["SCAN TIMEOUTS STEP MISSING", "CURL TIMEOUTS STEP MISSING", "EOL ANCHOR STEP MISSING"]
+    for (const k of keys) {
+      expect(exclusive.has(pairOf(`WORKFLOW MISSING@${PUSH}`, `${k}@${TWIN}`))).toBe(false)
+    }
+    // K@push coexiste com L@twin para K≠L (o mini-modelo: push sem timeouts
+    // + twin sem curl -> ambos emitem no MESMO scan).
+    expect(exclusive.has(pairOf(`SCAN TIMEOUTS STEP MISSING@${PUSH}`, `CURL TIMEOUTS STEP MISSING@${TWIN}`))).toBe(false)
+    let sawCoexist = false
+    for (const r of scannerResults()) {
+      const ids = new Set(emittedSignals(r, CTX).map(sigId))
+      if (ids.has(`SCAN TIMEOUTS STEP MISSING@${PUSH}`) && ids.has(`CURL TIMEOUTS STEP MISSING@${TWIN}`)) {
+        sawCoexist = true
+        break
+      }
+    }
+    expect(sawCoexist).toBe(true)
+  }, 120000)
+
   it("SNAPSHOT: o conjunto exclusivo completo derivado (pin - qualquer rule change que altere uma exclusividade quebra aqui)", () => {
     const { exclusive } = derive()
-    // SNAPSHOT regenerado da derivacao REAL do modelo (2026-08): 45 pares
-    // exclusivos. Regra: se o modelo derivar um conjunto diferente, este pin
-    // quebra - regenere do modelo, nunca ajuste a mao para casar a doc.
+    // SNAPSHOT regenerado da derivacao REAL do modelo (2026-08): 57 pares
+    // exclusivos = 45 do modelo principal + 9 da regra 10 (3 keys x {K@push
+    // bot K@twin, WORKFLOW MISSING@push bot K@push, WORKFLOW MISSING@twin
+    // bot K@twin}) + 3 da regra 11 (DANGLING NEEDS@X bot o file-missing do
+    // PROPRIO arquivo - push/twin via WORKFLOW MISSING, ci via o kind
+    // 'workflow' do encodingBad). Regra: se o modelo derivar um conjunto
+    // diferente, este pin quebra - regenere do modelo, nunca ajuste a mao
+    // para casar a doc.
     const snapshot = [
       `BENCHMARK JOB MISSING@${TWIN}|BENCHMARK JOB NEEDS@${TWIN}`,
       `BENCHMARK JOB MISSING@${TWIN}|BENCHMARK STEP MISSING@${TWIN}`,
@@ -404,8 +663,14 @@ describe("scan-guard-gates exclusivity - derivacao do espaco alcancavel (sec 8.1
       `BENCHMARK JOB NEEDS@${TWIN}|ENCODING WORKFLOW MISSING@${TWIN}`,
       `BENCHMARK JOB NEEDS@${TWIN}|WORKFLOW MISSING@${TWIN}`,
       `BENCHMARK STEP MISSING@${TWIN}|ENCODING WORKFLOW MISSING@${TWIN}`,
-      `BENCHMARK STEP MISSING@${TWIN}|WORKFLOW MISSING@${TWIN}`,
-      `ENCODING CALL SITE MISSING@${CI}|ENCODING CALL SITE NEEDS@${CI}`,
+    `BENCHMARK STEP MISSING@${TWIN}|WORKFLOW MISSING@${TWIN}`,
+    `CURL TIMEOUTS STEP MISSING@${PUSH}|CURL TIMEOUTS STEP MISSING@${TWIN}`,
+    `CURL TIMEOUTS STEP MISSING@${PUSH}|WORKFLOW MISSING@${PUSH}`,
+    `CURL TIMEOUTS STEP MISSING@${TWIN}|WORKFLOW MISSING@${TWIN}`,
+    `DANGLING NEEDS@${CI}|ENCODING WORKFLOW MISSING@${CI}`,
+    `DANGLING NEEDS@${PUSH}|WORKFLOW MISSING@${PUSH}`,
+    `DANGLING NEEDS@${TWIN}|WORKFLOW MISSING@${TWIN}`,
+    `ENCODING CALL SITE MISSING@${CI}|ENCODING CALL SITE NEEDS@${CI}`,
       `ENCODING CALL SITE MISSING@${CI}|ENCODING CALL SITE STEP MISSING@${CI}`,
       `ENCODING CALL SITE MISSING@${CI}|ENCODING WORKFLOW MISSING@${CI}`,
       `ENCODING CALL SITE MISSING@${TWIN}|ENCODING CALL SITE NEEDS@${TWIN}`,
@@ -425,8 +690,11 @@ describe("scan-guard-gates exclusivity - derivacao do espaco alcancavel (sec 8.1
       `ENCODING WORKFLOW MISSING@${TWIN}|FUZZ JOB MISSING@${TWIN}`,
       `ENCODING WORKFLOW MISSING@${TWIN}|FUZZ JOB NEEDS@${TWIN}`,
       `ENCODING WORKFLOW MISSING@${TWIN}|FUZZ STEP MISSING@${TWIN}`,
-      `ENCODING WORKFLOW MISSING@${TWIN}|TEST GUARD STEP MISSING@${TWIN}`,
-      `FRAGILE GUARD JOB MISSING@${TWIN}|FRAGILE GUARD NEEDS@${TWIN}`,
+    `ENCODING WORKFLOW MISSING@${TWIN}|TEST GUARD STEP MISSING@${TWIN}`,
+    `EOL ANCHOR STEP MISSING@${PUSH}|EOL ANCHOR STEP MISSING@${TWIN}`,
+    `EOL ANCHOR STEP MISSING@${PUSH}|WORKFLOW MISSING@${PUSH}`,
+    `EOL ANCHOR STEP MISSING@${TWIN}|WORKFLOW MISSING@${TWIN}`,
+    `FRAGILE GUARD JOB MISSING@${TWIN}|FRAGILE GUARD NEEDS@${TWIN}`,
       `FRAGILE GUARD JOB MISSING@${TWIN}|WORKFLOW MISSING@${TWIN}`,
       `FRAGILE GUARD NEEDS@${TWIN}|WORKFLOW MISSING@${TWIN}`,
       `FUZZ JOB MISSING@${TWIN}|FUZZ JOB NEEDS@${TWIN}`,
@@ -437,8 +705,11 @@ describe("scan-guard-gates exclusivity - derivacao do espaco alcancavel (sec 8.1
       `GUARD GATES JOB MISSING@${PUSH}|GUARD GATES JOB NEEDS@${PUSH}`,
       `GUARD GATES JOB MISSING@${PUSH}|WORKFLOW MISSING@${PUSH}`,
       `GUARD GATES JOB NEEDS@${PUSH}|WORKFLOW MISSING@${PUSH}`,
-      `PATHS FILTER@${PUSH}|WORKFLOW MISSING@${PUSH}`,
-      `TEST GUARD STEP MISSING@${PUSH}|TEST GUARD STEP MISSING@${TWIN}`,
+    `PATHS FILTER@${PUSH}|WORKFLOW MISSING@${PUSH}`,
+    `SCAN TIMEOUTS STEP MISSING@${PUSH}|SCAN TIMEOUTS STEP MISSING@${TWIN}`,
+    `SCAN TIMEOUTS STEP MISSING@${PUSH}|WORKFLOW MISSING@${PUSH}`,
+    `SCAN TIMEOUTS STEP MISSING@${TWIN}|WORKFLOW MISSING@${TWIN}`,
+    `TEST GUARD STEP MISSING@${PUSH}|TEST GUARD STEP MISSING@${TWIN}`,
       `TEST GUARD STEP MISSING@${PUSH}|WORKFLOW MISSING@${PUSH}`,
       `TEST GUARD STEP MISSING@${TWIN}|WORKFLOW MISSING@${TWIN}`,
       `WORKFLOW MISSING@${PUSH}|WORKFLOW MISSING@${TWIN}`,
@@ -454,7 +725,7 @@ describe("scan-guard-gates exclusivity - REAL anchors (modelo vs codigo real)", 
     const dir = createTempDir("guard-gates-excl-")
     writeGuardGatesWorkflow(dir, { runsOn: true, extra: "        paths:\n          - 'scripts/**'\n" })
     writeTwin(dir, { fragile: true, fuzzNeeds: true, fuzzStep: false })
-    writeCi(dir, { enc: true })
+    writeCIWorkflow(dir)
     writePkg(dir, true)
     const real = emittedSignals(scanGuardGates(dir), CTX).map(sigId).sort()
     // resultOf para os mesmos dims do fixture: o twin NAO tem job benchmark
@@ -493,7 +764,7 @@ describe("scan-guard-gates exclusivity - REAL anchors (modelo vs codigo real)", 
         "",
       ].join("\n"),
     )
-    writeCi(dir, { enc: true })
+    writeCIWorkflow(dir)
     writePkg(dir, true)
     const real = new Set(emittedSignals(scanGuardGates(dir), CTX).map(sigId))
     expect(real.has(`FRAGILE GUARD NEEDS@${TWIN}`)).toBe(true)
@@ -503,7 +774,7 @@ describe("scan-guard-gates exclusivity - REAL anchors (modelo vs codigo real)", 
   it("REAL ANCHOR rule 1 bot rule 2 (precise): push net DELETADO -> WORKFLOW MISSING@push SEM PATHS FILTER (o scan de paths nao roda em arquivo ausente)", () => {
     const dir = createTempDir("guard-gates-excl-")
     writeTwin(dir, { fragile: true })
-    writeCi(dir, { enc: true })
+    writeCIWorkflow(dir)
     writePkg(dir, true)
     const real = new Set(emittedSignals(scanGuardGates(dir), CTX).map(sigId))
     expect(real.has(`WORKFLOW MISSING@${PUSH}`)).toBe(true)
@@ -513,11 +784,133 @@ describe("scan-guard-gates exclusivity - REAL anchors (modelo vs codigo real)", 
   it("REAL ANCHOR coexistencia (refinamento): twin DELETADO + paths no push net -> WORKFLOW MISSING@twin E PATHS FILTER no MESMO scan (a forma global do rule 1 bot 2 nao vale)", () => {
     const dir = createTempDir("guard-gates-excl-")
     writeGuardGatesWorkflow(dir, { runsOn: true, extra: "        paths:\n          - 'scripts/**'\n" })
-    writeCi(dir, { enc: true })
+    writeCIWorkflow(dir)
     writePkg(dir, true)
     const real = new Set(emittedSignals(scanGuardGates(dir), CTX).map(sigId))
     expect(real.has(`WORKFLOW MISSING@${TWIN}`)).toBe(true)
     expect(real.has(`PATHS FILTER@${PUSH}`)).toBe(true)
+  }, 30000)
+
+  it("REAL ANCHOR rule 10 (sec 11.32): push net SEM os 3 scanner steps -> os 3 sinais @push juntos, o twin (com scanners) limpo - o mini-modelo prevê o mesmo para os mesmos masks", () => {
+    const dir = createTempDir("guard-gates-excl-")
+    writeGuardGatesWorkflow(dir, { omitScanners: true })
+    // fuzzStep + bench: o twin com TODOS os jobs standalone presentes (o
+    // mesmo shape clean do MODEL ANCHOR) - so os 3 sinais de scanner devem
+    // aparecer (sem FUZZ/BENCHMARK JOB MISSING mascarando a comparacao).
+    writeTwin(dir, { fragile: true, fuzzStep: true, bench: true })
+    writeCIWorkflow(dir)
+    writePkg(dir, true)
+    const real = emittedSignals(scanGuardGates(dir), CTX).map(sigId).sort()
+    const model = emittedSignals(scannerResultOf({ pushExists: true, twinExists: true, pushMask: 0, twinMask: 7 }), CTX)
+      .map(sigId)
+      .sort()
+    expect(real).toEqual(model)
+    expect(real).toContain(`SCAN TIMEOUTS STEP MISSING@${PUSH}`)
+    expect(real).toContain(`CURL TIMEOUTS STEP MISSING@${PUSH}`)
+    expect(real).toContain(`EOL ANCHOR STEP MISSING@${PUSH}`)
+    expect(real).not.toContain(`SCAN TIMEOUTS STEP MISSING@${TWIN}`)
+  }, 30000)
+
+  it("REAL ANCHOR rule 10 single-valued (o mirror do missingStep): push net limpo + twin SEM o step eol -> SO EOL ANCHOR STEP MISSING@twin (os outros 2 keys ficam calados)", () => {
+    const dir = createTempDir("guard-gates-excl-")
+    writeGuardGatesWorkflow(dir)
+    writeTwin(dir, { fragile: true })
+    // Remove o step eol do twin escrito (o idioma replaceEolAgnostic da
+    // Prova 17: conteudo LF sintetico, o replace cru funciona, mas a
+    // constante e a MESMA dos fixtures para nao driftar).
+    const twinAbs = path.join(dir, TWIN)
+    const twin = fs.readFileSync(twinAbs, "utf8")
+    const eolBlock = [SCANNER_BLOCKS.eol[0], SCANNER_BLOCKS.eol[1]].join("\n")
+    fs.writeFileSync(twinAbs, replaceEolAgnostic(twin, `${eolBlock}\n`, "", "REAL ANCHOR rule 10 twin-eol"))
+    writeCIWorkflow(dir)
+    writePkg(dir, true)
+    const real = new Set(emittedSignals(scanGuardGates(dir), CTX).map(sigId))
+    expect(real.has(`EOL ANCHOR STEP MISSING@${TWIN}`)).toBe(true)
+    expect(real.has(`SCAN TIMEOUTS STEP MISSING@${PUSH}`)).toBe(false)
+    expect(real.has(`CURL TIMEOUTS STEP MISSING@${PUSH}`)).toBe(false)
+  }, 30000)
+
+  it("REAL ANCHOR rule 11 (sec 11.33): ci.yml com needs: pendurado (build cita job inexistente) -> SO DANGLING NEEDS@CI (o resto do net limpo) - o mini-modelo prevê o mesmo para os mesmos dims", () => {
+    const dir = createTempDir("guard-gates-excl-")
+    writeGuardGatesWorkflow(dir)
+    writeTwin(dir, { fragile: true, fuzzStep: true, bench: true })
+    // ci.yml com o call site utf8-check presente MAS um needs: pendurado no
+    // job build (a classe da Prova 24 - so o grafo, sem tocar no call site).
+    writeFile(
+      dir,
+      CI,
+      [
+        "name: CI",
+        "on:",
+        "  push:",
+        "    branches: [main, develop]",
+        "jobs:",
+        "  lint:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run lint",
+        "  utf8-check:",
+        "    uses: ./.github/workflows/utf8-check.yml",
+        "  build:",
+        "    name: Build",
+        "    needs: [lint, nonexistent]",
+        "    runs-on: ubuntu-latest",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir, true)
+    const real = emittedSignals(scanGuardGates(dir), CTX).map(sigId).sort()
+    const model = emittedSignals(
+      danglingResultOf({
+        exists: { [PUSH]: true, [TWIN]: true, [CI]: true },
+        dangling: { [PUSH]: false, [TWIN]: false, [CI]: true },
+      }),
+      CTX,
+    )
+      .map(sigId)
+      .sort()
+    expect(real).toEqual(model)
+    expect(real).toContain(`DANGLING NEEDS@${CI}`)
+    expect(real).not.toContain(`DANGLING NEEDS@${PUSH}`)
+    expect(real).not.toContain(`DANGLING NEEDS@${TWIN}`)
+  }, 30000)
+
+  it("REAL ANCHOR rule 11 co-emit (o cenario EXATO da Prova 24): utf8-check DELETADO do ci.yml + build/budget seguem citando-o em needs: -> ENCODING CALL SITE MISSING@CI E DANGLING NEEDS@CI JUNTOS no mesmo scan (a coexistencia que a matriz documenta - os dois sinais sao a MESMA injecao)", () => {
+    const dir = createTempDir("guard-gates-excl-")
+    writeGuardGatesWorkflow(dir)
+    writeTwin(dir, { fragile: true, fuzzStep: true, bench: true })
+    // O cenario da Prova 24 agregacao: o job utf8-check NAO existe no
+    // ci.yml (rule 8: ENCODING CALL SITE MISSING) MAS build/budget ainda o
+    // citam em needs: (rule 11: DANGLING NEEDS) - os DOIS sinais num unico
+    // scan, provando que o par nunca pode ser exclusivo.
+    writeFile(
+      dir,
+      CI,
+      [
+        "name: CI",
+        "on:",
+        "  push:",
+        "    branches: [main, develop]",
+        "jobs:",
+        "  lint:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run lint",
+        "  build:",
+        "    name: Build",
+        "    needs: [lint, typecheck, utf8-check, quality-gate, test]",
+        "    runs-on: ubuntu-latest",
+        "  budget:",
+        "    name: JS Bundle Budget",
+        "    needs: [lint, typecheck, utf8-check, quality-gate]",
+        "    runs-on: ubuntu-latest",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir, true)
+    const real = new Set(emittedSignals(scanGuardGates(dir), CTX).map(sigId))
+    expect(real.has(`DANGLING NEEDS@${CI}`)).toBe(true)
+    expect(real.has(`ENCODING CALL SITE MISSING@${CI}`)).toBe(true)
   }, 30000)
 
   it("REAL-REPO CONTRACT: o repo real deriva o conjunto VAZIO (a matriz documentada se sustenta no estado atual - regressao futura falha aqui)", () => {

@@ -27,7 +27,7 @@ import os from "node:os"
 import path from "node:path"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 import { CI_PROOF_NAMESPACE, CI_PROOF_PROBE, DANGER_REFS } from "../workflow-contracts.mjs"
-import { isCiProofBranch, parseArgs, planSteps, verifyOutcome } from "../ci-proof-run.mjs"
+import { isCiProofBranch, parseArgs, planSteps, verifyOutcome, verifyParseReject } from "../ci-proof-run.mjs"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "ci-proof-run.mjs")
 const FAKE = path.resolve(process.cwd(), "scripts", "__tests__", "fixtures", "ci-proof-fake-bins.mjs")
@@ -142,6 +142,28 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     // Sem a flag, onlyJobs fica null (default).
     expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml"]).onlyJobs).toBeNull()
     expect(parseArgs(["--help"]).error).toContain("--only-jobs")
+  })
+
+  it("parseArgs: --expect-parse-reject parseia e o usage lista a flag (a classe Prova 24/sec 8.19 - workflow rejeitado no parse)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--expect-parse-reject"])
+    expect(o.error).toBeNull()
+    expect(o.expectParseReject).toBe(true)
+    expect(parseArgs(["--help"]).error).toContain("--expect-parse-reject")
+  })
+
+  it("parseArgs: --expect-parse-reject e incompativel com --expect (a flag define o resultado esperado POR INTEIRO: conclusion=failure + 0 jobs)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--expect-parse-reject", "--expect", "failure"])
+    expect(o.error).toContain("--expect-parse-reject e incompativel com --expect")
+  })
+
+  it("parseArgs: --expect-parse-reject e incompativel com --expect-log (nao ha log para casar - 0 jobs, nenhum job rodou)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--expect-parse-reject", "--expect-log", "FUZZ"])
+    expect(o.error).toContain("--expect-parse-reject e incompativel com --expect-log")
+  })
+
+  it("parseArgs: --expect-parse-reject e incompativel com --only-jobs (0 jobs = nao ha job alvo para o poll por job)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--expect-parse-reject", "--only-jobs", "check"])
+    expect(o.error).toContain("--expect-parse-reject e incompativel com --only-jobs")
   })
 
   it("parseArgs: default de --timeout calibrado (sec 11.20) - 300s com --only-jobs, 900s sem; --timeout explicito vence", () => {
@@ -265,6 +287,26 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(verifyOutcome("success", null, "anything", null).ok).toBe(true)
     expect(verifyOutcome("success", "failure", "log", null).ok).toBe(false)
     expect(verifyOutcome("success", "success", "log", "NOT THERE").ok).toBe(false)
+  })
+
+  it("verifyParseReject: failure + 0 jobs = ok (a classe Prova 24/sec 8.19 - workflow rejeitado no parse); qualquer outro par = nao ok", () => {
+    expect(verifyParseReject("failure", 0).ok).toBe(true)
+    expect(verifyParseReject("failure", 1).ok).toBe(false)
+    expect(verifyParseReject("success", 0).ok).toBe(false)
+    expect(verifyParseReject("success", 1).ok).toBe(false)
+    // A mensagem pina a contagem de jobs (o sinal verificavel), nao o log.
+    expect(verifyParseReject("failure", 1).message).toContain("jobs=1 != 0 esperado")
+    expect(verifyParseReject("failure", 0).message).toContain("0 jobs")
+  })
+
+  it("planSteps: --expect-parse-reject troca o verify pelo parse-reject (jobs query + conclusao fixa - sem linha de log para casar)", () => {
+    const withFlag = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false, expectParseReject: true }, "main")
+    const joined = withFlag.join("\n")
+    expect(joined).toContain("gh: run view <id> --json jobs")
+    expect(joined).toContain("verify: parse-reject (conclusion=failure + 0 jobs")
+    expect(joined).not.toContain("conclusion==")
+    const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false }, "main")
+    expect(without.join("\n")).not.toContain("parse-reject")
   })
 
   // ── FAKE-BIN E2E: full cycle success ──────────────────────────────────
@@ -435,6 +477,65 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(inv).toContain("git:commit -m ci-proof: ci-proof/e2e-selfdel-script")
     expect(inv.indexOf("git:status --porcelain")).toBeLessThan(inv.indexOf("git:add -A"))
     expect(inv.indexOf("git:add -A")).toBeLessThan(inv.indexOf("git:commit"))
+  }, 60000)
+
+  it("CONTRACT (sec 11.27/11.28): o par mutuamente exclusivo num UNICO lugar - o MESMO script auto-deletado com flag -> exit 3 fail-loud (o path sumiu ANTES do runner olhar, SEM add/commit/push) e sem flag -> ciclo exit 0 (SCRIPT-OWNED, o script some no spawn e o commit acontece)", () => {
+    // A fronteira runner-owned (11.27) vs SCRIPT-OWNED (11.28) provada como
+    // par com a MESMA arma nos dois lados: o script TEMP que se auto-deleta
+    // como ultima linha. Com a flag, o runner olha o path DEPOIS do spawn e
+    // o acha sumido -> fail-loud exit 3 (a contradicao documentada: flag +
+    // script auto-deletado = o path sumiu antes do runner olhar, e um no-op
+    // silencioso deixaria o script no commit scratch). Sem a flag, o
+    // self-delete acontece DURANTE o spawn do mutate e o git status/add -A
+    // sequencial nunca o ve -> ciclo exit 0 com o tree limpo. As duas
+    // ownerships sao MUTUAMENTE EXCLUSIVAS: o mesmo script, resultados
+    // opostos conforme a flag.
+    const tmpDir = createTempDir("ci-proof-selfdel-contract-")
+    const scriptPath = path.join(tmpDir, "mutate-script.mjs")
+    const markerA = path.join(tmpDir, "mutated-a.txt")
+    const scriptBody = [
+      'import fs from "node:fs"',
+      'import { fileURLToPath } from "node:url"',
+      'fs.writeFileSync(process.env.MUT_MARKER, "mutated")',
+      'fs.rmSync(fileURLToPath(import.meta.url))',
+    ].join("\n")
+
+    // Lado A (runner-owned): flag + script auto-deletado -> exit 3 fail-loud.
+    fs.writeFileSync(scriptPath, scriptBody, "utf8")
+    const a = runCli(
+      ["--branch", "ci-proof/contract-runner", "--workflow", "pr-check.yml", "--mutate", `node "${scriptPath}"`, "--mutate-self-delete", scriptPath],
+      { CI_PROOF_FAKE_DIRTY: "1", MUT_MARKER: markerA },
+    )
+    expect(a.result.status).toBe(3)
+    expect(allOutput(a.result)).toContain("--mutate-self-delete:")
+    expect(allOutput(a.result)).toContain("nao existe apos a mutacao")
+    // O script RODOU e se auto-deletou (o marcador existe, o path sumiu) - o
+    // que distingue este caso do teste do path NUNCA-criado: aqui a
+    // contradicao documentada (flag + script auto-deletado = o path sumiu
+    // ANTES do runner olhar) e provada, nao so um path errado.
+    expect(fs.existsSync(markerA)).toBe(true)
+    expect(fs.existsSync(scriptPath)).toBe(false)
+    // Nenhum git de escrita rodou (a falha e ANTES do status/add -A).
+    expect(invocations(a.stateDir)).not.toContain("git:add -A")
+    expect(invocations(a.stateDir)).not.toContain("git:commit")
+
+    // Lado B (SCRIPT-OWNED): o MESMO script sem flag -> exit 0, o script
+    // some no spawn (nunca chega ao add -A) e a mutacao e commitada.
+    fs.writeFileSync(scriptPath, scriptBody, "utf8") // o lado A sumiu com o script
+    const markerB = path.join(tmpDir, "mutated-b.txt")
+    const b = runCli(
+      ["--branch", "ci-proof/contract-script", "--workflow", "pr-check.yml", "--mutate", `node "${scriptPath}"`],
+      { CI_PROOF_FAKE_DIRTY: "1", MUT_MARKER: markerB },
+    )
+    expect(b.result.status).toBe(0)
+    expect(fs.existsSync(markerB)).toBe(true) // o script RODOU (a mutacao aconteceu)
+    expect(fs.existsSync(scriptPath)).toBe(false) // e se auto-deletou durante o spawn
+    expect(b.result.stdout).not.toContain("--mutate-self-delete: removido") // a remocao foi do SCRIPT
+    expect(b.result.stdout).toContain("mutacao commitada em ci-proof/contract-script")
+    const invB = invJoined(b.stateDir)
+    expect(invB).toContain("git:add -A")
+    expect(invB).toContain("git:commit -m ci-proof: ci-proof/contract-script")
+    expect(invB.indexOf("git:add -A")).toBeLessThan(invB.indexOf("git:commit"))
   }, 60000)
 
   // ── FAKE-BIN E2E: --only-jobs (sec 11.20 - poll por JOB, nao pelo run) ─
@@ -651,6 +752,47 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(result.stdout).toContain("revertido")
   }, 60000)
 
+  // ── FAKE-BIN E2E: --expect-parse-reject (sec 11.35, a classe Prova 24) ─
+  it("E2E parse-reject: run failure + 0 jobs + log vazio -> exit 0 (o workflow rejeitado no parse e o resultado ESPERADO, nao uma falha - a classe Prova 24/sec 8.19)", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-parse-reject", "--workflow", "ci.yml", "--expect-parse-reject"], {
+      CI_PROOF_FAKE_GH_CONCLUSION: "failure",
+      CI_PROOF_FAKE_GH_LOG: "", // 0 jobs = nenhum job rodou = sem log
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("run #777 completed (failure)")
+    expect(result.stdout).toContain("parse-reject: 0 job(s) no run #777 (esperado 0)")
+    expect(result.stdout).toContain("verify: conclusion=failure + 0 jobs (workflow rejeitado no parse")
+    expect(result.stdout).toContain("DONE run=777 url=https://github.com/severinno/severinno/actions/runs/777 conclusion=failure")
+    expect(result.stdout).toContain("revertido")
+    // O ciclo consulta os jobs do run (o sinal verificavel da classe) -
+    // e NAO casa regex de log (nao ha log para casar).
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("gh:run view 777 --json jobs")
+    expect(inv).toContain("gh:run view 777 --log")
+    expect(inv.indexOf("gh:run view 777 --json jobs")).toBeLessThan(inv.indexOf("git:push origin --delete ci-proof/e2e-parse-reject"))
+  }, 60000)
+
+  it("E2E parse-reject NEGATIVO: run failure MAS com jobs (o workflow NAO foi rejeitado no parse) -> exit 1 com 'jobs=1 != 0 esperado' (a contagem de jobs e o sinal, nao a conclusao)", () => {
+    const { result } = runCli(["--branch", "ci-proof/e2e-parse-reject-jobs", "--workflow", "ci.yml", "--expect-parse-reject"], {
+      CI_PROOF_FAKE_GH_CONCLUSION: "failure",
+      CI_PROOF_FAKE_GH_JOBS: "1", // 1 job rodou = nao foi rejeitado no parse
+      CI_PROOF_FAKE_GH_JOB_NAME: "check",
+      CI_PROOF_FAKE_GH_JOB_STATUS: "completed",
+      CI_PROOF_FAKE_GH_JOB_CONCLUSION: "failure",
+    })
+    expect(result.status).toBe(1)
+    expect(result.stdout).toContain("parse-reject: 1 job(s) no run #777 (esperado 0)")
+    expect(result.stdout).toContain("verify: jobs=1 != 0 esperado")
+    expect(result.stdout).toContain("revertido")
+  }, 60000)
+
+  it("E2E parse-reject usage: --expect-parse-reject --expect failure -> exit 2 ANTES de qualquer spawn (a flag define o resultado por inteiro)", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-parse-reject-usage", "--workflow", "ci.yml", "--expect-parse-reject", "--expect", "failure"])
+    expect(result.status).toBe(2)
+    expect(allOutput(result)).toContain("--expect-parse-reject e incompativel com --expect")
+    expect(invocations(stateDir)).toEqual([])
+  }, 60000)
+
   it("E2E dry-run: imprime o plano, SO o git rev-parse read-only roda (nenhuma mutacao/push/dispatch)", () => {
     const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-dry", "--workflow", "pr-check.yml", "--dry-run"])
     expect(result.status).toBe(0)
@@ -692,6 +834,20 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
       expect(allOutput(result)).toContain("fora do namespace ci-proof/*")
       expect(invocations(stateDir)).toEqual([])
     }
+  }, 60000)
+
+  // ── REAL-REPO CONTRACT: o wiring do --expect-parse-reject (sec 11.35) ──
+  it("REAL-REPO CONTRACT (sec 11.35): o CLI consulta os jobs do run (--json jobs) e verifica a classe parse-reject (failure + 0 jobs) - o log vazio e consequencia de 0 jobs, o sinal e a contagem", () => {
+    const cli = fs.readFileSync(path.resolve(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+    // A flag e first-class (usage + parseArgs + validadores de exclusividade).
+    expect(cli).toContain("--expect-parse-reject")
+    expect(cli).toContain("--expect-parse-reject e incompativel com --expect")
+    expect(cli).toContain("--expect-parse-reject e incompativel com --expect-log")
+    expect(cli).toContain("--expect-parse-reject e incompativel com --only-jobs")
+    // O verify dedicado: consulta os jobs (o sinal verificavel) e pina 0.
+    expect(cli).toContain("verifyParseReject")
+    expect(cli).toContain('gh(["run", "view", String(runInfo.databaseId), "--json", "jobs"])')
+    expect(cli).toContain("parse-reject: ")
   }, 60000)
 
   // ── REAL-REPO CONTRACT: dry-run contra o repo real (sem env fake) ──────

@@ -123,6 +123,37 @@ const PR_JOB_BENCHMARK = [
   "          node scripts/run-benchmark.mjs --type geo --json",
 ]
 
+/**
+ * The 3 versioned scanner steps (rule 10 of scan-guard-gates, sec 11.32) -
+ * the standalone CLI gate scanners that must run in BOTH net workflows. The
+ * real guard-gates.yml + pr-check.yml fragile-guard job carry these SAME 3
+ * steps (name + `run: node scripts/scan-<x>.mjs --ci`), so the fixture
+ * blocks stay canonical SUBSETs of the real workflows (sec 11.25 drift
+ * contract). Exported as a RECORD (granular strip in the rule-10 mutation
+ * tests) + a flat SCANNER_STEPS (the base/block builders spread it).
+ */
+export const SCANNER_BLOCKS: Record<"timeouts" | "curl" | "eol", [string, string]> = {
+  timeouts: [
+    "      - name: Scan subprocess-heavy tests for explicit timeouts",
+    "        run: node scripts/scan-timeouts.mjs --ci",
+  ],
+  curl: [
+    "      - name: Scan gate-script curls for explicit timeouts",
+    "        run: node scripts/scan-curl-timeouts.mjs --ci",
+  ],
+  eol: [
+    "      - name: Scan string \\n anchors in the test/mutation surface",
+    "        run: node scripts/scan-eol-anchor.mjs --ci",
+  ],
+}
+
+/** The flat scanner-step lines (the 3 blocks in order) - the base builders spread it. */
+export const SCANNER_STEPS: string[] = [
+  ...SCANNER_BLOCKS.timeouts,
+  ...SCANNER_BLOCKS.curl,
+  ...SCANNER_BLOCKS.eol,
+]
+
 const PR_JOB_FRAGILE = [
   "  fragile-guard:",
   "    name: Fragile Range Guard",
@@ -131,6 +162,7 @@ const PR_JOB_FRAGILE = [
   "      - uses: actions/checkout@v4",
   "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
   "        run: bun run test:guard",
+  ...SCANNER_STEPS,
 ]
 
 /**
@@ -242,6 +274,10 @@ export interface GuardGatesWorkflowOpts {
   runsOn?: boolean
   /** Replace the test:guard step with the lint step (the TEST GUARD STEP MISSING shape). */
   step?: boolean
+  /** Remove ALL 3 scanner steps (the rule-10 all-missing shape, sec 11.32). */
+  omitScanners?: boolean
+  /** Remove ONE scanner step (the rule-10 single-step shape, sec 11.32). */
+  omitScanner?: "timeouts" | "curl" | "eol"
   /** Append raw YAML lines after the base (the re-entry append pattern - the parser reads the LAST block). */
   extra?: string
 }
@@ -250,6 +286,9 @@ export interface GuardGatesWorkflowOpts {
  * The push-net base (guard-gates.yml shape) - exported for the same
  * fixture-vs-real contract (sec 11.25): the base must remain a canonical
  * SUBSET of the REAL guard-gates.yml (the push-net twin of the PR blocks).
+ * The 3 scanner steps (rule 10, sec 11.32) live AFTER the test:guard step,
+ * mirroring the real workflow - so the base now has 15 content lines (the
+ * `extra` append starts at line 16, not 10: the PATHS FILTER `:16` pin).
  */
 export const GUARD_PUSH_BASE = [
   "name: Guard Gates",
@@ -261,30 +300,113 @@ export const GUARD_PUSH_BASE = [
   "    steps:",
   "      - name: Run guard vitest suites (BASELINE + divergence guards)",
   "        run: bun run test:guard",
+  ...SCANNER_STEPS,
 ]
 
 /**
  * Write the CLEAN synthetic guard-gates.yml (the push net) - the shared base
  * for every push-net fixture (scan-guard-gates.test.ts, the exclusivity
  * suite, run-precommit-guards.test.ts). The base is BYTE-IDENTICAL to the
- * local writeWorkflow it replaces: the PATHS FILTER `:10` line pin depends
- * on the exact 9 content lines + the trailing "" element (the extra append
- * starts at line 10). `extra` appends raw YAML - the re-entry append pattern
- * for the needs:/paths mutations (the parser reads the LAST job block).
- * `runsOn` and `step` cover the exclusivity shape (runs-on in the job, lint
- * step for the TEST GUARD STEP MISSING mutation); `name` covers the
- * run-precommit shape ("guard-gates"). The step NAME is cosmetic (the
- * scanner anchors on the `run:` key, never the name).
+ * local writeWorkflow it replaces: the PATHS FILTER `:16` line pin depends
+ * on the exact 15 content lines (9 base + 6 scanner steps, rule 10, sec
+ * 11.32) + the trailing "" element (the extra append starts at line 16).
+ * `extra` appends raw YAML - the re-entry append pattern for the
+ * needs:/paths mutations (the parser reads the LAST job block). `runsOn`
+ * and `step` cover the exclusivity shape (runs-on in the job, lint step
+ * for the TEST GUARD STEP MISSING mutation); `name` covers the
+ * run-precommit shape ("guard-gates"); `omitScanners`/`omitScanner` cover
+ * the rule-10 shapes (all 3 scanner steps missing / one step missing). The
+ * step NAME is cosmetic (the scanner anchors on the `run:` key, never the
+ * name). `step:false` targets the test:guard step BY INDEX (findIndex), NOT
+ * the tail - the scanner steps sit AFTER it now.
  */
 export function writeGuardGatesWorkflow(dir: string, opts: GuardGatesWorkflowOpts = {}): void {
   const lines = [...GUARD_PUSH_BASE]
   if (opts.name) lines[0] = opts.name
   if (opts.runsOn) lines.splice(6, 0, "    runs-on: ubuntu-latest")
   if (opts.step === false) {
-    // Replace the two test:guard step lines with the lint step (STEP MISSING shape).
-    lines.splice(lines.length - 2, 2, "      - name: lint", "        run: bun run lint")
+    const runIdx = lines.findIndex((l) => l.includes("run: bun run test:guard"))
+    lines.splice(runIdx - 1, 2, "      - name: lint", "        run: bun run lint")
+  }
+  if (opts.omitScanners) {
+    lines.splice(lines.length - SCANNER_STEPS.length, SCANNER_STEPS.length)
+  } else if (opts.omitScanner) {
+    const block = SCANNER_BLOCKS[opts.omitScanner]
+    const idx = lines.findIndex((l) => l === block[0])
+    // fail-loud on drift (o mesmo postura do replaceEolAgnostic): um
+    // findIndex -1 viraria um splice(-1, 2) silencioso removendo o tail -
+    // impossivel com as constantes estaticas (o drift contract da 11.25 as
+    // pina), mas o -1 nunca pode virar um no-op silencioso.
+    if (idx < 0) throw new Error(`omitScanner: bloco ${opts.omitScanner} nao encontrado no GUARD_PUSH_BASE (drift das constantes)`)
+    lines.splice(idx, 2)
   }
   const abs = path.join(dir, GUARD_PUSH_NET)
+  fs.mkdirSync(path.dirname(abs), { recursive: true })
+  fs.writeFileSync(abs, [...lines, ""].join("\n") + (opts.extra ?? ""))
+}
+
+/**
+ * RULE OF USES (EXTRACTED 2026-08): the synthetic ci.yml (the ENCODING_NET
+ * merge-path caller, rule 8/11 of scan-guard-gates) was duplicated INLINE in
+ * THREE suites with TWO shapes: scan-guard-gates.test.ts (the local
+ * writeCIWorkflow, ~30 call sites, utf8-check call site ALWAYS in the base)
+ * and guard-gates-exclusivity.test.ts (the local writeCi, 6 call sites,
+ * utf8-check OPT-IN via { enc: true }) - plus the inert inline in
+ * run-precommit-guards.test.ts (writeBadGuardNet, sec 11.26 left it as "a
+ * unica variante que fica inline" - that frontier decision MOVES: the
+ * shared builder below replaces the inline too). Two repeated shapes
+ * crossed the rule-of-two threshold - extracted here so a 4th fixture
+ * builds on the shared base. The blocks mirror the REAL ci.yml shape the
+ * guard parses: lint (the base job) + the utf8-check call site (rule 8/11
+ * anchor). Single-use variants stay inline by the rule: the rule-11
+ * mutations that rewrite the whole ci.yml (dangling needs, call-site
+ * missing) and the rule-8 needs:/step mutations keep their full-file
+ * inline writes (each is a sole-failure shape).
+ */
+
+const CI_HEADER = ["name: CI", "on:", "  push:", "    branches: [main, develop]", "jobs:"]
+
+const CI_JOB_LINT = ["  lint:", "    runs-on: ubuntu-latest", "    steps:", "      - run: bun run lint"]
+
+const CI_JOB_UTF8 = ["  utf8-check:", "    uses: ./.github/workflows/utf8-check.yml"]
+
+/**
+ * The ci.yml job blocks keyed by JOB KEY - exported so the fixture-vs-real
+ * contract (golden-copy-utils.test.ts, sec 11.25) can compare each shared
+ * block against the SAME job in the REAL ci.yml (canonical SUBSET: every
+ * fixture line must appear in the real job block). The keys are the two
+ * jobs of the shared base - lint is a cosmetic filler (no guard rule scans
+ * it; the pin rationale, reviewer nit sec 11.34) and utf8-check is the
+ * call-site anchor (rule 8/11). A 3rd job joining the shared base MUST
+ * grow this record AND the shape pin in the contract (the growth
+ * direction the pin enforces).
+ */
+export const CI_JOB_BLOCKS: Record<string, string[]> = {
+  lint: CI_JOB_LINT,
+  "utf8-check": CI_JOB_UTF8,
+}
+
+export interface CIWorkflowOpts {
+  /** Include the utf8-check call site (default true - the scan-guard-gates base shape). */
+  enc?: boolean
+  /** Append raw YAML lines after the base (the re-entry append pattern - the parser reads the LAST block). */
+  extra?: string
+}
+
+/**
+ * Write the CLEAN synthetic ci.yml (the merge-path encoding caller) - the
+ * shared base for every ci.yml fixture (scan-guard-gates.test.ts, the
+ * exclusivity suite, run-precommit-guards.test.ts). `enc` defaults to true
+ * (the scan-guard-gates shape always carries the utf8-check call site; the
+ * exclusivity call sites ALL pass { enc: true }, so the merged default is
+ * byte-identical for every current consumer). `extra` is the re-entry
+ * append pattern (the parser reads the LAST job block) - the prose-comment
+ * mutations pass their raw lines there, exactly like the old call sites.
+ */
+export function writeCIWorkflow(dir: string, opts: CIWorkflowOpts = {}): void {
+  const lines = [...CI_HEADER, ...CI_JOB_LINT]
+  if (opts.enc !== false) lines.push(...CI_JOB_UTF8)
+  const abs = path.join(dir, ENCODING_CI_NET)
   fs.mkdirSync(path.dirname(abs), { recursive: true })
   fs.writeFileSync(abs, [...lines, ""].join("\n") + (opts.extra ?? ""))
 }

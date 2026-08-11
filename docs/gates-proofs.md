@@ -39,6 +39,10 @@
 | 21 | Guard do push net — **multi-violação AGREGADA via CI real** (Prova 22, sec 8.17; `scan-guard-gates.mjs` rules 1-4, 6-9 — o lado CI da Prova 17, que era local) | A Prova 17 provou a multi-violação AGREGADA no CLI real LOCALMENTE (8 sinais num run, repo real, revert byte-identical); faltava o lado CI: a MESMA injeção agregada num `workflow_dispatch` real, com o job check (REAL-REPO CONTRACT) **E** o batch runner (run-precommit-guards) falhando com os mesmos sinais | A MESMA injecao da Prova 17 Run 1 (guard-gates.yml DELETADO + pr-check.yml sem utf8-check/fuzz/benchmark/fragile-guard + ci.yml sem utf8-check + package.json test:guard sem scan-push-full-suite) via **`ci-proof-run --branch ci-proof/aggr-live --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT' --no-verify`** (mutation script `scripts/prova22-mutate.mjs` TEMP, CRLF-safe + **self-delete** antes do `git add -A` — nunca entrou no commit scratch) | Run [**31446588931**](https://github.com/severinno/severinno/actions/runs/31446588931) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock 204.91s (~3.4min)** com `time -p`; helper **exit 0**; job `check` conclusion=`failure` com **88 linhas `guard-gates:` no log job-scoped** — os **8 sinais** da agregacao (WORKFLOW MISSING + TEST GUARD STEP MISSING + FRAGILE GUARD JOB MISSING + GUARD SUITE MISSING + FUZZ JOB MISSING + BENCHMARK JOB MISSING + ENCODING CALL SITE MISSING ×2 + ENCODING WORKFLOW MISSING) — e as DUAS suites vermelhas: `scan-guard-gates.test.ts (30 tests | 1 failed)` (REAL-REPO CONTRACT, 1115ms) **E** `run-precommit-guards.test.ts (7 tests | 7 failed)` (o batch runner — TODOS os 7 guards vermelhos, incluindo o REAL-REPO CONTRACT do batch); os GROWTH CONTRACTs do workflow-contracts também vermelhos (mesma raiz: guard-gates.yml sumiu); revertido byte-identical (13 arquivos do delta restaurados do backup md5 **OK 13/13**; mutation script self-deletado; `git status` = delta original intacto) |
 | 22 | Guard do veredito da 11.17 — **SEGUNDO NODE GUARD live** (`scan-prepush-batch.mjs`, o guard novo wired no batch do pre-commit) | O NEGATIVO INCONDICIONAL do REFINAMENTO da 11.17 (um 2º node guard no `.husky/pre-push` fora do `ALLOWED_NODE_GUARDS` falha MESMO com a nota ADOTADO — a LISTA é o pin estrutural, o espelho do HOOK_ALLOWLIST da 11.16) só tinha prova sintética (fixtures) | `node scripts/scan-new-guard.mjs` anexado ao `.husky/pre-push` REAL como linha 87 (backup md5 `74df8979...`) | **Local** — prova de hook REAL (o CLI + o batch runner + o REAL-REPO CONTRACT leem os arquivos reais; a rota sintética já está pinada pelos mutation tests) | ✅ CLI real: `SECOND NODE GUARD at .husky/pre-push:87: node scripts/scan-new-guard.mjs (... edit ALLOWED_NODE_GUARDS ...)` → **exit 1**; batch runner real (7º guard) **exit 1** com o mesmo sinal; vitest: **2 failed | 12 passed** — `DERIVATION PIN` (`expected [ 'check-push-deletion.mjs', …(3) ] to deeply equal [ 'check-push-deletion.mjs', …(2) ]`) + `REAL-REPO CONTRACT` (`expected 1 to be +0`); revertido byte-identical (md5 `74df8979...`) → CLI `clean` exit 0 + suíte 14/14 verde |
 | 23 | Guard da agregação — **lado PUSH NET via push real** (Prova 24, sec 8.19; a MESMA agregação da Prova 22 no OUTRO lado da rede — o par fechado como as Provas 16/19 fizeram para o needs:) | O órfão TOTAL do push net: deletar o guard-gates.yml faz o GitHub NÃO criar run NENHUM do Guard Gates (o workflow some silenciosamente) e o ci.yml (o backstop do push) fica INVÁLIDO no parse porque build/budget ainda citam `needs: [..., utf8-check, ...]` — a agregação quebra o pipeline inteiro sem o guard sequer rodar | A MESMA injecao da Prova 22 (guard-gates.yml DELETADO + pr-check.yml sem utf8-check/fuzz/benchmark/fragile-guard + ci.yml sem utf8-check + test:guard sem scan-push-full-suite) via **push REAL temporario a develop** (branch scratch `ci-proof/aggr-push-live`, commit 70fe6c5; mutation script TEMP CRLF-safe self-delete — o ACHADO da sec 8.17) | Run [**31461526068**](https://github.com/severinno/severinno/actions/runs/31461526068) (`CI/CD`, event `push`, branch develop) + [31461526553](https://github.com/severinno/severinno/actions/runs/31461526553) (`UTF-8 Check`) | ✅ **CI/CD = failure com 0 jobs** (o workflow foi rejeitado no parse — build/budget ainda tem `needs: [..., utf8-check, ...]` mas o job foi removido = a classe (inferida) "workflow file issue" da Prova 18; nenhum job rodou, nem o REAL-REPO CONTRACT); **UTF-8 Check = success** (encoding limpo, isolando a falha ao contrato); **NENHUM run do Guard Gates criado para o sha 70fe6c5** (gh run list --workflow guard-gates.yml = vazio — o órfão total provado vivo: deletar o push net não deixa rastro de run); revertido byte-identical (md5 8/8, develop deletado, scratch deletada) |
+| 24 | Encoding — **scan-eol-anchor BASELINE live no CI real** (Prova 25, sec 8.20; `scan-eol-anchor.mjs --ci` no job fragile-guard — a MESMA classe de step que a rule 10/sec 11.32 pina nos dois lados da rede) | O BASELINE local do eol-anchor (fixtures sintéticas) sem contraparte viva: um `.replace("...\n...")` cru commitado num teste seria pego localmente, mas faltava o guard `--ci` real falhar de ponta a ponta no CI com o caminho exato | `scripts/__tests__/prova25-eol-anchor.test.ts` com a âncora crua `.replace("...\n...")` na linha 7 (branch scratch `ci-proof/eol-anchor-live` via **`ci-proof-run --only-jobs "Fragile Range Guard" --expect failure --expect-log 'eol-anchor: string anchor with newline escape' --no-verify`**; mutation script `scripts/prova25-mutate.mjs` TEMP + self-delete — o ACHADO da sec 8.17; delta rule-10 stashed antes do ciclo para o `git add -A` do commit scratch não o varrer) | Run [**31480438465**](https://github.com/severinno/severinno/actions/runs/31480438465) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ job `Fragile Range Guard` conclusion=`failure` — `eol-anchor: string anchor with newline escape in scripts/__tests__/prova25-eol-anchor.test.ts:7 (CRLF gate files silently no-op on newline anchors - Prova 17 ACHADO, sec 8.14; use replaceEolAgnostic from golden-copy-utils.ts)` → exit 1 com o caminho :7 exato (log via `gh api .../actions/jobs/93743904484/logs` — o capture job-scoped do helper veio vazio porque o run ainda estava in_progress quando o job Fragile Range Guard concluiu; ACHADO do helper na sec 8.20); revertido byte-identical (delta rule-10 restaurado do stash, 7 arquivos intactos, mutation script self-deletado) |
+| 26 | Decisão da 11.31 — **`--connect-timeout` SOZINHO falha observado no pipeline real** (Prova 27, sec 8.22; `scan-curl-timeouts.mjs --ci` no job `Guard Gates` — a decisão da matriz como comportamento OBSERVADO no CI, não só no teste hermético) | A 11.31 travou a decisão no teste (linha da matriz) e no header; faltava a contraparte viva: o `--ci` REAL no pipeline com um gate script usando `curl --connect-timeout 10` SEM `--max-time` falhando com o caminho exato | linha `HTTP_CODE=$(curl -s -o /dev/null --connect-timeout 10 "$HEALTH_URL" 2>/dev/null || echo "000")` anexada ao fim do `scripts/health-check.sh` REAL (linha 57; branch scratch `ci-proof/connect-timeout-live` via **`ci-proof-run --workflow guard-gates.yml --expect failure --expect-log 'CURL WITHOUT --max-time in scripts/health-check.sh:57' --no-verify`**; mutation script `scripts/prova27-mutate.mjs` TEMP + self-delete — o ACHADO da sec 8.17) | Run [**31487497462**](https://github.com/severinno/severinno/actions/runs/31487497462) (`Guard Gates`, event `workflow_dispatch`, branch scratch; ciclo do helper com poll) | ✅ job `Guard Gates (fragile-range + golden-copy)` conclusion=`failure` — step `Scan gate-script curls for explicit timeouts`: `CURL WITHOUT --max-time in scripts/health-check.sh:57: HTTP_CODE=$(curl -s -o /dev/null --connect-timeout 10 ...` → exit 1 — a DECISÃO da 11.31 (connect-timeout sozinho NÃO bounds o total) observada no pipeline com o caminho :57 exato; **0 linhas `EVAL CURL` no log** — o tripwire não tripou (sem eval), só o DETECTOR falhou (o que prova que é a decisão da matriz, não o early-warning); revertido byte-identical (delta de 13 arquivos stashado ANTES do ciclo — o padrão da Prova 25 — e restaurado no pop, health-check.sh de volta a 56 linhas, mutation script self-deletado, branch deletada) | | A 11.30 provou localmente (probe + vitest) que o guard --max-time não vê o curl escondido em string avaliada depois; faltava a contraparte viva: o comportamento do `--ci` REAL no pipeline com um gate script usando `CMD="curl ..."; eval "$CMD"` sem timeout — a premissa original ('exit 0') estava SUPERSEDED pela 11.36 (o tripwire falha a forma) | linha `CMD="curl -s -o /dev/null -w \"%{http_code}\" \"$HEALTH_URL\" 2>/dev/null"; eval "$CMD"` anexada ao fim do `scripts/health-check.sh` REAL (linha 57; branch scratch `ci-proof/eval-live` via **`ci-proof-run --workflow guard-gates.yml --expect failure --expect-log 'EVAL CURL' --no-verify`**; mutation script `scripts/prova26-mutate.mjs` TEMP + self-delete — o ACHADO da sec 8.17) | Run [**31485163704**](https://github.com/severinno/severinno/actions/runs/31485163704) (`Guard Gates`, event `workflow_dispatch`, branch scratch; ciclo do helper **1m15s** — inclui o poll; a duração do job no run é menor, a convenção da sec 11.20) | ✅ job `Guard Gates (fragile-range + golden-copy)` conclusion=`failure` — step `Scan gate-script curls for explicit timeouts`: `EVAL CURL (sec 11.30) in scripts/health-check.sh:57: CMD="curl ..."; eval` → exit 1; **0 linhas `CURL WITHOUT --max-time` no log inteiro** — o falso-negativo do DETECTOR (11.30) observado vivo (o token mascarado realmente não gera violação de timeout) MAS o tripwire (11.36) falha a forma: o 'exit 0' da 11.30 está SUPERSEDED (virou exit 1 com o aviso); revertido byte-identical (13 arquivos do delta restaurados do commit scratch 86ff0b3, health-check.sh de volta a 56 linhas, branch deletada) |
+| 27 | Regra 11 — **DANGLING NEEDS: a prova viva é ESTRUTURALMENTE IMPOSSÍVEL com a regra só no delta** (Prova 28, sec 8.23 — o ACHADO: o CI roda o HEAD, não o working tree; uma regra que vive só no delta não-commitado NUNCA chega ao CI pelo ciclo do helper) | A regra 11 (sec 11.33) só tinha prova sintética + REAL-REPO CONTRACT (o contrato falha LOCALMENTE com a mutação — o working tree tem a regra); faltava o lado vivo: o sinal `DANGLING NEEDS` no pipeline real | mutação `deleted-job-xyz` no `needs:` do job build do `.github/workflows/ci.yml` (linha 125; branch scratch `ci-proof/dangling-needs-live` via **`ci-proof-run --only-jobs check --expect failure --expect-log 'DANGLING NEEDS' --no-verify --timeout 900`**; mutation script `scripts/prova28-mutate.mjs` TEMP + self-delete; delta de 13 arquivos STASHADO antes do ciclo — o padrão da Prova 25) | Run [**31488081528**](https://github.com/severinno/severinno/actions/runs/31488081528) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs check`) | ❌ **INCONCLUSIVA — o sinal NÃO pode disparar**: job `check` conclusion=`failure` MAS `DANGLING NEEDS` = **0 ocorrências** em 4458 linhas de log — o scratch branch nasce de HEAD via `git checkout -b` (helper) e o delta (com a regra 11) estava stashado: o CI rodou o scanner do HEAD de3994c, que NÃO tem a regra (grep `DANGLING NEEDS`: **0 no HEAD** vs **6 no working tree**); as 8 falhas do job (3 arquivos) foram AMBIENTAIS, NÃO da mutação: check-node-modules-integrity BASELINE (`expected 1 to be +0` — classe EXTRANEOUS hoist, Prova 13) + 6 cascatas no run-precommit-guards (o integrity sai 1 → batch sai 1) + blame-ignore-revs (shallow, Prova 13); scan-guard-gates.test.ts **passou** (a versão do HEAD não tem o contrato da regra 11 — a divergência com o probe local explicada); revertido byte-identical (delta restaurado do stash, branch deletada) — **a receita**: commit do delta primeiro, depois re-rodar o MESMO ciclo (ver sec 8.23) |
+| 28 | Tripwire eval+curl — **lado PR no CI real** (Prova 29, sec 8.24; `scan-curl-timeouts.mjs --ci` no job `Fragile Range Guard` do pr-check — o par da Prova 26 fechado no OUTRO lado da rede, como as Provas 16/19) | A Prova 26 (sec 8.21, run 31485163704) provou o tripwire `EVAL CURL (sec 11.30)` no lado PUSH NET (guard-gates.yml); faltava o lado PR: o MESMO step `scan-curl-timeouts --ci` no job fragile-guard do pr-check falhando com a forma `CMD="curl ..."; eval "$CMD"` commitada | linha `CMD="curl -s -o /dev/null -w \"%{http_code}\" \"$HEALTH_URL\" 2>/dev/null"; eval "$CMD"` anexada ao fim do `scripts/health-check.sh` REAL (linha 58; branch scratch `ci-proof/eval-pr-live` via **`ci-proof-run --workflow pr-check.yml --only-jobs "Fragile Range Guard" --expect failure --expect-log 'EVAL CURL' --no-verify --timeout 600`**; mutation script `scripts/prova29-mutate.mjs` TEMP + self-delete runner-owned — o ACHADO da sec 8.17; delta com o tripwire varrido para o scratch pelo `git add -A` (padrão da Prova 26 — o CI roda o scanner COM o tripwire), backup md5 `cd1ed6a6...` tomado antes) | Run [**31492035257**](https://github.com/severinno/severinno/actions/runs/31492035257) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs` — o run seguia em background quando o job concluiu) | ✅ job `Fragile Range Guard` conclusion=`failure` — step `Scan gate-script curls for explicit timeouts`: `EVAL CURL (sec 11.30) in scripts/health-check.sh:58: CMD="curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null"; eval` → exit 1 (o caminho :58 exato; log via `gh api .../actions/jobs/93780586908/logs` — o capture job-scoped do helper veio vazio porque o run ainda estava in_progress, o MESMO ACHADO da sec 8.20/Prova 25; helper exit 1 no verify, sinal confirmado pelo fallback da API); **0 linhas `CURL WITHOUT --max-time`** — o falso-negativo do DETECTOR (11.30) E o tripwire (11.36) convivendo no MESMO step do lado PR; revertido byte-identical (delta restaurado do patch backup md5 pré=pós `cd1ed6a6...`, health-check.sh de volta a 56 linhas, mutation script self-deletado, branch deletada) |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -1897,6 +1901,275 @@ BATCH_EXIT=1   (mesmo sinal via run-precommit-guards.mjs)
   file issue" no push — e o órfão total do push net (deletar o workflow =
   silêncio de run) fica registrado como comportamento observado, não só
   inferido.
+
+## 8.20 Prova 25 — eol-anchor BASELINE live no CI real (run 31480438465, 2026-08-11)
+
+- **Por que esta prova (a avaliação VALE ADOTAR)**: o scan-eol-anchor (o guard
+  de âncoras de string com newline em gate files — o ACHADO da Prova 17, sec
+  8.14) tinha BASELINE local (fixtures sintéticas em
+  `scan-eol-anchor.test.ts`) mas nenhuma prova viva no CI real: um
+  `.replace("...\n...")` cru commitado num teste seria pego LOCALMENTE pelo
+  pre-commit, mas faltava o lado CI — o step `node scripts/scan-eol-anchor.mjs
+  --ci` do job fragile-guard (a MESMA classe de step que a rule 10/sec 11.32
+  pina nos dois lados da rede) falhar de ponta a ponta no pipeline com o
+  caminho exato.
+- **A injeção** (branch scratch `ci-proof/eol-anchor-live`): mutation script
+  TEMP `scripts/prova25-mutate.mjs` (CRLF-safe, self-delete antes do `git add
+  -A` — o ACHADO da sec 8.17) que escreve `scripts/__tests__/prova25-eol-anchor.test.ts`
+  com a âncora crua na linha 7: `.replace("...\n...")` — o escape de newline
+  em string que o guard sinaliza.
+- **Disparo**: **`ci-proof-run --branch ci-proof/eol-anchor-live --workflow
+  .github/workflows/pr-check.yml --only-jobs "Fragile Range Guard" --expect
+  failure --expect-log 'eol-anchor: string anchor with newline escape'
+  --no-verify`** (o delta rule-10 uncommitted foi STASHED antes do ciclo — o
+  `git add -A` do commit scratch varreria o delta para o commit de prova e o
+  perderia no revert; restaurado do stash após, como nas Provas 22/24 com o
+  backup md5). O `--only-jobs` mirou o job Fragile Range Guard (display name do
+  job fragile-guard — o mesmo que roda o eol-anchor `--ci`), não o run inteiro.
+- **O sinal (2026-08-11 10:03Z)** — job `Fragile Range Guard` (job
+  93743904484) conclusion=`failure`, step `node scripts/scan-eol-anchor.mjs
+  --ci`:
+
+```
+eol-anchor: string anchor with newline escape in scripts/__tests__/prova25-eol-anchor.test.ts:7 (CRLF gate files silently no-op on newline anchors - Prova 17 ACHADO, sec 8.14; use replaceEolAgnostic from golden-copy-utils.ts)
+```
+
+  → **exit 1 com o caminho :7 exato** — o guard `--ci` real falhou com a
+  MESMA mensagem do BASELINE local (probe local pré-ciclo: o MESMO sinal,
+  exit 1). O ACHADO da sec 8.14 agora tem prova viva do outro lado do ciclo:
+  o pre-commit local E o CI real travam a classe.
+- **ACHADO do helper (captura job-scoped)**: o `--job --log` do ci-proof-run
+  capturou **1 linha** (`run 31480438465 is still in progress; logs will be
+  available when it is complete`) — o run INTEIRO ainda estava in_progress
+  quando o job Fragile Range Guard concluiu (o job `check` seguia rodando), e
+  o `gh run view --job --log` se recusa a capturar enquanto o RUN (não o job)
+  não completou. O log foi obtido via a API de logs do job — `gh api
+  repos/severinno/severinno/actions/jobs/93743904484/logs` — que funciona
+  mid-run. O sinal está no log API (linha 299), não no log do helper.
+  Consequência honesta: o helper saiu **exit 1** (o `--expect-log` não casou
+  com a captura vazia — o verify do helper falhou, mas o revert aconteceu
+  mesmo assim, o contrato do helper: a branch scratch nunca fica no remote).
+  Limitação real do helper a considerar (decisão de fix à parte, registrada
+  aqui como comportamento observado).
+- **Reversão**: revert byte-identical — o ciclo reverteu (push --delete da
+  scratch, checkout da original, branch -D); o delta rule-10 (7 arquivos
+  modificados) restaurado do stash com `git status` idêntico ao pré-ciclo
+  (stash pop → 7 arquivos M exatos); mutation script TEMP self-deletado (zero
+  resíduos).
+- **Gap protegido**: o BASELINE do eol-anchor agora tem prova viva do outro
+  lado do ciclo — o guard `--ci` no job fragile-guard falha de verdade no CI
+  real com o caminho exato quando a classe é injetada, e a MESMA superfície
+  (os 3 scanner steps `--ci`) é pinada pela rule 10/sec 11.32 nos dois lados
+  da rede (remover o step do workflow quebra o contrato do push net).
+
+## 8.21 Prova 26 — o falso-negativo do `eval` observado no pipeline real (run 31485163704, 2026-08-11)
+
+**A pergunta**: a 11.30 provou localmente (probe + vitest) que o guard
+--max-time NÃO vê um curl escondido em string avaliada depois
+(`CMD="curl ..."; eval "$CMD"` — o token vive DENTRO da string, o
+maskBashStrings o consome). Faltava a contraparte viva: o comportamento do
+`scan-curl-timeouts --ci` REAL no pipeline com a forma num gate script de
+verdade.
+
+**A premissa corrigida (medição antes de decidir)**: o pedido assumia
+'confirme que passa (exit 0)' — a premissa da 11.30. MAS a 11.36 (o
+tripwire) mudou o comportamento do CLI: a forma agora FALHA (exit 1) com o
+aviso `EVAL CURL (sec 11.30)`. A prova viva não confirma o exit 0 — ela
+observa a fronteira COMO ESTÁ hoje: o falso-negativo do DETECTOR (nenhum
+`CURL WITHOUT --max-time`) E o tripwire (o aviso) convivendo no MESMO step.
+
+**A mutação**: linha `CMD="curl -s -o /dev/null -w \"%{http_code}\"
+\"$HEALTH_URL\" 2>/dev/null"; eval "$CMD"` (a forma EXATA da 11.30)
+anexada ao fim do `scripts/health-check.sh` real (linha 57), branch scratch
+`ci-proof/eval-live`, via **`ci-proof-run --workflow guard-gates.yml
+--expect failure --expect-log 'EVAL CURL' --no-verify`** (mutation script
+TEMP + self-delete, o ACHADO da sec 8.17). O dispatch do guard-gates.yml
+(workflow_dispatch, job único) roda o step `node scripts/scan-curl-timeouts.mjs
+--ci` de ponta a ponta no runner real — sem test:guard na frente que
+masque o step (o scan-curl-timeouts.test.ts NÃO está no test:guard, só no
+test:unit — medido no package.json).
+
+**O resultado observado** (run 31485163704, ciclo do helper 1m15s — o wall-clock LOCAL do ci-proof-run inclui o poll; a duração do job no run é menor, convenção da sec 11.20 —, helper exit 0):
+1. **Step `Scan gate-script curls for explicit timeouts` → failure**:
+   `EVAL CURL (sec 11.30) in scripts/health-check.sh:57: CMD="curl -s -o
+   /dev/null -w \"%{http_code}\" \"$HEALTH_URL\" 2>/dev/null"; eval` →
+   exit 1 (job `Guard Gates (fragile-range + golden-copy)`
+   conclusion=failure).
+2. **0 linhas `CURL WITHOUT --max-time` no log inteiro** — o falso-negativo
+   do DETECTOR (11.30) observado no pipeline: o curl eval'd realmente não
+   gera violação de timeout (o token mascarado é invisível ao
+   scanGateScript). A ÚNICA razão do exit 1 é o tripwire (11.36).
+3. Revertido byte-identical: o `git add -A` do commit scratch varreu TODO o
+   delta não-commitado da thread (13 arquivos) — recuperado do commit
+   scratch 86ff0b3 (cherry-pick -n + unstage + `git checkout HEAD --
+   scripts/health-check.sh` para desfazer a mutação); git status = delta
+   original intacto, health-check.sh 56 linhas.
+
+**O veredito**: a fronteira está documentada como comportamento OBSERVADO
+no pipeline: a 11.30 (falso-negativo do detector) continua verdadeira em CI
+(sem CURL WITHOUT) — mas o CLI exit 0 da 11.30 está SUPERSEDED pela 11.36
+(o tripwire falha a forma com o aviso). O par fecha: quem ler a 11.30 vê o
+mecanismo real no pipeline; quem ler a 11.36 vê que a forma não passa mais
+em silêncio (EVAL CURL, exit 1).
+
+## 8.22 Prova 27 — a decisão do `--connect-timeout` sozinho observada no pipeline real (run 31487497462, 2026-08-11)
+
+**A pergunta**: a 11.31 travou a decisão do `--connect-timeout` sozinho
+(FALHA — ele bounds apenas a fase de connect, um stall de corpo pós-
+connect ainda penduraria o CI; só o `--max-time` bounds o TOTAL, a classe-
+killer) como contrato no teste (a linha da matriz) e no header. Faltava a
+contraparte viva: o comportamento do `scan-curl-timeouts --ci` REAL no
+pipeline com a forma num gate script de verdade.
+
+**A prova** (branch scratch `ci-proof/connect-timeout-live` via
+`ci-proof-run --workflow guard-gates.yml --expect failure --expect-log
+'CURL WITHOUT --max-time in scripts/health-check.sh:57' --no-verify`;
+mutation script `scripts/prova27-mutate.mjs` TEMP + self-delete — o ACHADO
+da sec 8.17; o delta de 13 arquivos da thread foi STASHADO antes do ciclo —
+o padrão da Prova 25 — para o `git add -A` do commit scratch não o varrer):
+
+1. **A mutação**: a forma da decisão — `HTTP_CODE=$(curl -s -o /dev/null
+   --connect-timeout 10 "$HEALTH_URL" 2>/dev/null || echo "000")` —
+   anexada ao fim do `scripts/health-check.sh` REAL (linha 57; o mesmo
+gate script e a mesma posição da Prova 26).
+2. **O observado** (run 31487497462): job `Guard Gates (fragile-range +
+   golden-copy)` → **failure**; step `Scan gate-script curls for explicit
+timeouts`: `CURL WITHOUT --max-time in scripts/health-check.sh:57:
+HTTP_CODE=$(curl -s -o /dev/null --connect-timeout 10 "$HEALTH_URL"
+2>/dev/null` → exit 1 com o caminho :57 exato. **E 0 linhas `EVAL CURL`
+no log inteiro** — o tripwire (11.36) não tripou (sem eval na linha); a
+falha é SÓ do detector, o que prova que é a DECISÃO da matriz (connect-
+timeout sozinho não bounds o total) observada no pipeline, não o early-
+warning.
+3. **Revertido byte-identical**: `git stash pop` restaurou o delta de 13
+   arquivos intacto (o stash antes do ciclo — o padrão da Prova 25 que
+   evita o incidente de sweep da Prova 26); health-check.sh de volta a 56
+   linhas; mutation script self-deletado; branch scratch deletada.
+
+**O veredito**: a decisão da 11.31 está documentada como comportamento
+OBSERVADO no pipeline — a forma `--connect-timeout` sozinha falha com o
+caminho exato no CI real, exatamente como a linha da matriz do teste pina.
+O par fecha com a Prova 26: quem ler a 11.31 vê a decisão; quem ler a 8.22
+vê o mesmo sinal vivo; e o `0 EVAL CURL` separa as duas classes (a decisão
+da matriz vs o early-warning do tripwire).
+
+## 8.23 Prova 28 — a regra 11 só no delta: o CI roda o HEAD, não o working tree (run 31488081528, 2026-08-11)
+
+**A pergunta**: prova viva da regra 11 (DANGLING NEEDS, sec 11.33) no
+padrão das Provas 26/27: um `needs:` pendurado no ci.yml real + `--expect-log
+'DANGLING NEEDS'`.
+
+**A mutação**: `deleted-job-xyz` adicionado ao `needs:` do job build do
+`.github/workflows/ci.yml` (linha 125) — verificada LOCALMENTE primeiro
+(guard real com a mutação: exit 1, `DANGLING NEEDS in
+.github/workflows/ci.yml:125 (job build: needs deleted-job-xyz nao
+existe...)`, revertido antes do ciclo).
+
+**O ciclo**: `ci-proof-run --only-jobs check --expect failure --expect-log
+'DANGLING NEEDS' --no-verify --timeout 900` na branch scratch
+`ci-proof/dangling-needs-live`; delta de 13 arquivos stashado antes (padrão
+Prova 25).
+
+**O observado** (run 31488081528): job `check` conclusion=`failure` — MAS
+`DANGLING NEEDS` = **0 ocorrências** em 4458 linhas de log. As 8 falhas (3
+arquivos) foram ambientais e NÃO da mutação:
+
+- `check-node-modules-integrity.test.ts` (1): BASELINE `expected 1 to be
+  +0` — a classe EXTRANEOUS hoist (Prova 13) no CI.
+- `run-precommit-guards.test.ts` (6): cascata — o integrity sai 1
+  ambientalmente → o batch sai 1 → o REAL-REPO CONTRACT e os isolamentos
+  falham juntos.
+- `blame-ignore-revs.test.ts` (1): shallow (classe Prova 13).
+- `scan-guard-gates.test.ts` **passou** (entre os 164 passed/167): a versão
+  do HEAD não tem o contrato da regra 11 — a MESMA mutação que falha o
+  contrato LOCALMENTE (working tree com a regra) passa no CI (HEAD sem a
+  regra).
+
+**O ACHADO** (a raiz, medida não conjectura): o `git checkout -b` do helper
+(linha 29-30 do ci-proof-run.mjs) cria a branch scratch A PARTIR do HEAD —
+o commit scratch carrega o HEAD + o script de mutação, NUNCA o working
+tree não-commitado (que estava stashado). A regra 11 existe SÓ no delta
+(grep: 0 no HEAD vs 6 no working tree). Logo: **uma prova viva de uma
+regra que vive só no delta é estruturalmente impossível** — o CI nunca
+executa o código da regra, e o `--expect-log` não pode casar um sinal que
+o scanner do HEAD não conhece. (Contraste: as Provas 26/27 provaram guards
+que já estavam commitados — o scan-curl-timeouts era HEAD-state no commit
+5ca9400.)
+
+**A receita**: commit do delta primeiro (a regra 11 entra no HEAD), depois
+re-rodar o MESMO ciclo — aí o scratch branch carrega a regra, o REAL-REPO
+CONTRACT falha com `DANGLING NEEDS in .github/workflows/ci.yml:125` e o
+`--expect-log` casa. A prova fica PENDENTE do commit do delta (o estado
+natural do fluxo: a regra é commitada, depois provada).
+
+**Revert**: byte-identical — delta restaurado do stash (13 arquivos
+intactos), mutation script self-deletado, branch scratch deletada, ci.yml
+de volta ao estado do HEAD.
+
+**Consequência metodológica** (o valor da prova): documenta a fronteira do
+helper — o ci-proof-run prova o estado COMMITADO do repo, não o working
+tree. É a mesma família dos ACHADOs das sec 8.20 (capture job-scoped
+vazio) e 8.17 (sweep do `git add -A`): o ciclo do helper tem uma superfície
+de validade que agora está nomeada.
+
+## 8.24 Prova 29 — o tripwire `eval`+`curl` observado no lado PR do pipeline real (run 31492035257, 2026-08-11)
+
+**A pergunta**: a Prova 26 (sec 8.21, run 31485163704) provou o tripwire
+`EVAL CURL (sec 11.30)` no lado PUSH NET — o job `Guard Gates` do
+guard-gates.yml. O mesmo contrato tem um irmão no pr-check.yml: o job
+`fragile-guard` (display `Fragile Range Guard`) roda o MESMO step `node
+scripts/scan-curl-timeouts.mjs --ci` (o mirror do push net, single source
+of truth). Faltava a prova viva do lado PR — o par fechado nos DOIS lados
+da rede, como as Provas 16/19 fizeram para o `needs:` e a 22/23 para a
+agregação.
+
+**A premissa (o ACHADO da Prova 28 aplicado)**: o tripwire vive SÓ no
+delta não-commitado da thread (grep `scanEvalCurl`: 0 no HEAD de3994c vs 5
+no working tree) — o CI roda o HEAD, não o working tree. A receita é o
+PADRÃO da Prova 26: NÃO stashar, deixar o `git add -A` do commit scratch
+varrer o delta (com o tripwire) para o scratch, e restaurar o delta do
+backup md5 no revert. Backup tomado ANTES do ciclo (`git diff >
+/tmp/pre-prova29-delta.patch`, 13 arquivos, md5 `cd1ed6a6...`).
+
+**A mutação**: linha `CMD="curl -s -o /dev/null -w \"%{http_code}\"
+\"$HEALTH_URL\" 2>/dev/null"; eval "$CMD"` (a forma EXATA da 11.30)
+anexada ao fim do `scripts/health-check.sh` real (derived gate script: 3
+workflows o citam), branch scratch `ci-proof/eval-pr-live`, via
+**`ci-proof-run --workflow pr-check.yml --only-jobs "Fragile Range Guard"
+--expect failure --expect-log 'EVAL CURL' --no-verify --timeout 600`**
+(mutation script `scripts/prova29-mutate.mjs` TEMP, runner-owned
+self-delete via `--mutate-self-delete` — o ACHADO da sec 8.17). NOTA de
+precisão: o script anexou `\n`+linha+`\n` a um arquivo que termina em
+`exit 1\n`, então a linha caiu na **58** (não 57 como nas Provas 26/27 —
+o sinal independe do número, o tripwire reporta o file:line real).
+
+**O resultado observado** (run 31492035257, `--only-jobs` — o poll termina
+quando o JOB conclui, não o run; o run inteiro seguia em background):
+1. **Job `Fragile Range Guard` conclusion=`failure`** — step `Scan
+gate-script curls for explicit timeouts`: `EVAL CURL (sec 11.30) in
+scripts/health-check.sh:58: CMD="curl -s -o /dev/null -w
+\"%{http_code}\" \"$HEALTH_URL\" 2>/dev/null"; eval` → exit 1 (o
+caminho :58 exato, o mesmo formato da Prova 26).
+2. **0 linhas `CURL WITHOUT --max-time` no log inteiro** — o
+falso-negativo do DETECTOR (11.30) observado de novo no pipeline, agora no
+lado PR: a ÚNICA razão do exit 1 é o tripwire (11.36).
+3. **ACHADO do helper (o MESMO da sec 8.20/Prova 25)**: o capture
+job-scoped do ci-proof-run veio vazio (1 linha) porque o run ainda estava
+in_progress quando o job Fragile Range Guard concluiu — o helper saiu exit
+1 (verify falhou no log vazio), MAS o sinal foi confirmado via o fallback
+documentado: `gh api repos/severinno/severinno/actions/jobs/93780586908/logs`
+→ o `EVAL CURL` com o caminho exato no log do step.
+4. Revertido byte-identical: delta restaurado do patch backup (md5
+`cd1ed6a6...` pré = pós, `cmp` OK — 13 arquivos intactos), health-check.sh
+de volta a 56 linhas, mutation script self-deletado pelo runner, branch
+scratch deletada (remote + local), git status = delta original intacto.
+
+**O veredito**: o tripwire está documentado como comportamento OBSERVADO
+nos DOIS lados da rede — Prova 26 (guard-gates.yml / push net) + Prova 29
+(pr-check.yml / PR, job Fragile Range Guard). A fronteira 11.36 (fail-loud
+na FORMA eval+curl) vale nos dois jobs que rodam `scan-curl-timeouts
+--ci`; quem ler a 11.36 vê o mecanismo; quem ler as Provas 26 + 29 vê o
+par fechado.
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -3941,10 +4214,11 @@ foi recusado: a flag é 10 linhas, o helper seria um segundo caminho de
 criação de script a manter — a regra dos usos ainda não pede (1 uso real: a
 Prova 22).
 
-**Re-validação**: `ci-proof-run.test.ts` (46 testes — 39 + 7 novos) +
-`scan-timeouts.test.ts` (BASELINE) — verdes; `gates-proofs-ordering.test.ts`
-valida a monotonia da nova seção 11.27 (11.26 antes, 12 depois); tsc 0;
-eslint 0 erros; UTF-8 do doc OK.
+**Re-validação**: `ci-proof-run.test.ts` (58 testes, incl. o CONTRACT do
+par mutuamente exclusivo com o SCRIPT-OWNED da 11.28 — sec 11.27/11.28
+pinadas num único teste) + `scan-timeouts.test.ts` (BASELINE) — verdes;
+`gates-proofs-ordering.test.ts` valida a monotonia da nova seção 11.27
+(11.26 antes, 12 depois); tsc 0; eslint 0 erros; UTF-8 do doc OK.
 
 ## 11.28 O self-delete SCRIPT-OWNED — o padrão ORIGINAL da Prova 22 como contrato (decisão 2026-08-11)
 
@@ -3984,10 +4258,13 @@ asserção real é que o arquivo não existe quando o add varre). A limpeza do
 CI tree fica travada pelos dois caminhos: o do runner (11.27) e o do script
 (11.28).
 
-**Re-validação**: `ci-proof-run.test.ts` (47) + `scan-timeouts.test.ts`
-(BASELINE) — verdes; `gates-proofs-ordering.test.ts` valida a monotonia da
-nova seção 11.28 (11.27 antes, 12 depois); tsc 0; eslint 0 erros; UTF-8 do
-doc OK.
+**Re-validação**: `ci-proof-run.test.ts` (58) + `scan-timeouts.test.ts`
+(BASELINE) — verdes; o teste CONTRACT do par (sec 11.27/11.28) prova o
+lado runner-owned (flag + script auto-deletado = exit 3 fail-loud com o
+marker escrito — o script RODOU e sumiu ANTES do runner olhar) e o lado
+SCRIPT-OWNED (mesmo script sem flag = exit 0) num único lugar;
+`gates-proofs-ordering.test.ts` valida a monotonia da nova seção 11.28
+(11.27 antes, 12 depois); tsc 0; eslint 0 erros; UTF-8 do doc OK.
 
 ## 11.29 O padrão `$HEALTH_URL` parametrizável — o guard pega o curl sem timeout MESMO via variável (decisão 2026-08-11)
 
@@ -4040,6 +4317,762 @@ e a flag na mesma linha).
 (BASELINE) — verdes; `gates-proofs-ordering.test.ts` valida a monotonia da
 nova seção 11.29 (11.28 antes, 12 depois); tsc 0; eslint 0 erros; UTF-8 do
 doc OK.
+
+## 11.30 O falso-negativo do `eval` — a fronteira documentada da 11.29 vira contrato ACEITO (decisão 2026-08-11)
+
+**A pergunta**: a 11.29 documenta (em prosa) que o escape que o guard NÃO
+cobre é esconder o TOKEN `curl` (não o URL) dentro de uma string avaliada
+depois (`CMD="curl ..."; eval "$CMD"`) — o token mascarado não é uma
+invocação real para o detector. Avaliar um teste de contrato que pince esse
+falso-negativo como comportamento ACEITO, para o leitor da fronteira nunca
+ler a 11.29 como um furo não decidido.
+
+**O achado (medição antes de decidir)**: probe real do guard — um gate
+script sintético com `CMD="curl -s -o /dev/null -w \"%{http_code}\"
+\"$HEALTH_URL\" 2>/dev/null"; eval "$CMD"` varre CLEAN (violations `[]`,
+CLI exit 0) e o `maskBashStrings` mostra o porquê: o token `curl` vive DENTRO
+da string mascarada (`MASKED: "CMD=\"...\"; eval \"...\""` — o conteúdo
+vira espaços), então `CURL_INVOKE_RE` não vê invocação nenhuma. A fronteira
+documentada é comportamento REAL, não uma conjectura.
+
+**VALE ADOTAR com o contrafactual embutido**: o teste não pode ser um pass
+vácuo (um detector que casa nada passaria nos dois lados) — o par pina os
+dois lados da decisão no MESMO teste:
+
+1. **PURE (o ACEITO)**: o eval-built curl sem `--max-time` → scanGateScript
+   retorna `[]` (clean) E o masked mostra o mecanismo (o token consumido pela
+   máscara — `not.toContain("curl")` no `maskBashStrings`).
+2. **COUNTERFACTUAL (a prova de que é deliberado, não detector morto)**: o
+   MESMO curl como invocação direta (token fora de string) É flagado (1
+   violação) — se um refactor futuro silenciosamente quebrar o detector, é
+   ESTA metade que quebra; a fronteira aceita fica um limite nomeado, nunca
+   um pass vácuo.
+3. **CLI (o end-to-end)**: o eval-built curl num root sintético → exit 0
+   "clean" — o contrato do CLI mostra os dois lados (bare curl → exit 1 das
+   MUTATIONs; eval token → exit 0 ACEITO).
+   ⚠️ **SUPERSEDIDO (sec 11.36 + Prova 26, sec 8.21, run 31485163704)**: o
+   tripwire da 11.36 mudou o CLI — a forma agora FALHA (exit 1) com `EVAL
+   CURL (sec 11.30)` + file:line, observado ao vivo no pipeline real (o
+   falso-negativo do DETECTOR — nenhum `CURL WITHOUT --max-time` no log —
+   segue verdadeiro; a única razão do exit 1 é o aviso do tripwire).
+
+**Fronteira travada**: o custo de fechar o eval (rastrear `eval` de strings
+com `curl`) segue alto demais para uma forma que NÃO existe na superfície
+(0 gate scripts usam); o teste vira o registro estrutural da decisão — quem
+ler a 11.29 vê que o falso-negativo foi MEDIDO, PINADO e ACEITO, não
+esquecido.
+
+**Implementação** (`scan-curl-timeouts.test.ts`, 17 → 19 testes): 1 PURE com
+contrafactual + 1 CLI, seguindo o padrão bidirecional das suítes irmãs.
+
+**Re-validação**: `scan-curl-timeouts.test.ts` (19) + `scan-timeouts.test.ts`
+(BASELINE) — verdes; `gates-proofs-ordering.test.ts` valida a monotonia da
+nova seção 11.30 (11.29 antes, 12 depois); tsc 0; eslint 0 erros; UTF-8 do
+doc OK.
+
+## 11.31 A superfície de formas de invocação — só `curl` + `--max-time` literal, e `--connect-timeout` sozinho FALHA por decisão (decisão 2026-08-11)
+
+**A pergunta**: o detector chaveia no token `curl` + a flag `--max-time` —
+mas a forma curta (`-m 20`), um wrapper (`curl2() { curl "$@"; }`) ou um
+`alias` passariam? E o `--connect-timeout` sozinho (sem `--max-time`) deve
+falhar ou passar? Avaliar a superfície de formas que o guard reconhece hoje
+e documentar a decisão.
+
+**A medição (probe real, 18 formas — a premissa do pedido estava PARCIALMENTE
+errada; a rodada do token-surface 2026-08-11 adicionou 6 formas, TODAS
+pinadas na matriz)**: varri cada forma num gate script sintético (token curl
+fora de string, linha 3):
+
+| Forma | Guard | Por quê |
+|---|---|---|
+| `curl ... "$URL"` (bare) | **FLAG** | a classe |
+| `curl ... -m 20 "$URL"` | **FLAG** | a forma curta NÃO é reconhecida — over-flag (direção segura) |
+| `curl ... --MAX-TIME 20 "$URL"` | **FLAG** | case-variante NÃO casa (MAX_TIME_RE é case-sensitive, sem flag i) — over-flag direção segura; a forma é também ERRO do curl (fail-loud, nunca hang) |
+| `curl ... --Max-Time 20 "$URL"` | **FLAG** | a MESMA classe (case-variante pinada) |
+| `curl ... --max-time 20` | clean | o contrato literal |
+| `curl ... --connect-timeout 10` | **FLAG** | só bounds a fase de connect, não o total |
+| `--max-time 20 --connect-timeout 10` | clean | o par saudável |
+| `curl2() { curl "$@"; }` (DEF sem bound) | **FLAG** | o token real vive no CORPO — o DEF é o chokepoint |
+| `curl2() { curl --max-time 20 "$@"; }` (DEF com bound) | clean | a indireção segura é permitida |
+| `curl2 ...` (CALL) | clean | `curl2` não casa `\bcurl\b` — invisível, mas o DEF já guarda o script |
+| `alias curl='curl --max-time 20'` | **FLAG** | o token NOME do alias (fora da string) over-flags |
+| `CURL_BIN=curl` | **FLAG** | o over-flag documentado do header |
+| `command -v curl` | clean | probe de existência, excluído explicitamente |
+| `/usr/bin/curl ... "$URL"` (caminho absoluto) | **FLAG** | COBERTO — a premissa INVERTIDA: o `\bcurl\b` casa na borda `/` (probe 2026-08-11) |
+| `env curl ... "$URL"` | **FLAG** | COBERTO — o espaço é borda de palavra; mesma inversão de premissa |
+| `env CURL_TIMEOUT=20 curl ... "$URL"` | **FLAG** | COBERTO — o prefixo `VAR=` não muda a borda (o token segue fora de string, detectado) |
+| `"/usr/bin/curl" ... "$URL"` (quotado) | clean | **ESCAPE ACEITO** — o maskBashStrings consome o token na string; a classe irmã do eval SEM o trigger `eval` (o tripwire 11.36 não a pega) |
+| `"$(command -v curl)" ... "$URL"` (quotado) | clean | **ESCAPE ACEITO** — idem; o idioma de resolução portátil quotada é exatamente o que o masking esconde |
+| `CURL=$(command -v curl); "$CURL" ...` | clean | excluído pela regra do probe de existência (a linha contém `command -v curl`) — e a invocação `$CURL` é variável (token ausente); mecanismos sobrepostos, documentado |
+
+**Achados (por que a decisão é manter, não ampliar)**:
+
+1. **A premissa "a forma curta passaria" está errada** — `-m 20` FLAGIA.
+   O detector reconhece SÓ o token literal `--max-time`; a forma curta
+   over-flaga, e isso é a direção SEGURA (o custo é o mesmo `--max-time`
+   explícito, a classe de custo documentada — nunca um furo). A forma longa
+   é o canônico do guard; ampliar para `-m` adicionaria ambiguidade de
+   parsing (um `-m` solto em flag combi) para zero ganho de classe.
+2. **O wrapper NÃO é um furo** — o token real vive no corpo da função, então
+   o DEF é o chokepoint exato: um wrapper sem bound no corpo FALHA onde o
+   bound pertence (e a correção — pôr `--max-time` no corpo — bounds TODAS
+   as chamadas); com o bound, a indireção segura passa. O CALL é invisível,
+   mas o DEF da mesma linha de função já guarda o script inteiro.
+3. **`--connect-timeout` sozinho: MANTER FAIL** — ele bounds apenas a fase
+   de connect; um stall de corpo pós-connect (banda lenta, servidor
+   engasgado) continuaria pendurando o CI minutos. Só o `--max-time` bounds
+   o TOTAL — a classe-killer do incidente (9:08). A decisão é explícita:
+   connect-timeout é RECOMENDADO como complemento, nunca substituto.
+4. **`alias curl='curl --max-time 20'` over-flaga** (o token NOME do alias,
+   fora da string) — direção segura; o alias que ADICIONA o bound ainda
+   custa a forma explícita (ou a correção documentada de pôr a flag onde o
+   guard a vê). NOTA (consistência com a 11.30): este caso é o ESPELHO da
+   fronteira do `eval` — o bound está escondido DENTRO da string do alias,
+   então o guard vê o nome do alias mas não o bound contido na string; a
+   irmã (11.30) esconde o TOKEN, esta esconde o FLAG — o MESMO mecanismo de
+   masking em string, nas duas direções, ambas decididas como direção segura.
+5. **Case-sensitivity VERIFICADA (probe 2026-08-11, curl 8.21.0)**: o
+   MAX_TIME_RE NÃO tem flag i (`/--max-time\b/`) — `--MAX-TIME` e
+   `--Max-Time` NÃO casam e over-flagam (direção segura, a mesma classe de
+   custo do `-m`: um `--max-time` explícito). E o curl REJEITA a case-variante
+   (opções longas são case-sensitive: `option --MAX-TIME: is unknown` →
+   fail-loud exit 2, nunca um hang) — logo NÃO existe spelling que bound o
+   total E escape o regex: o under-flag hipotético NÃO existe, só o over-flag
+   já documentado. O CURL_INVOKE_RE segue o mesmo princípio (um `CURL`
+   maiúsculo não é comando válido — falha na hora, sem risco de stall).
+6. **A premissa do token por caminho está INVERTIDA (probe 2026-08-11)**: o
+   pedido hipotetizava que `/usr/bin/curl` e `env curl` NÃO casariam o
+   `\bcurl\b` — o probe mostrou que CASAM (a borda de palavra vale na `/`
+   e no espaço): ambas as formas são COBERTO (FLAG sem --max-time, nunca
+   um under-flag). O ESCAPE real está uma camada antes: o token QUOTADO
+   (`"/usr/bin/curl"`, `"$(command -v curl)"`) — o maskBashStrings consome
+   a string inteira e o token some do CURL_INVOKE_RE. É a classe irmã do
+   eval (11.30) SEM o trigger `eval` (o tripwire 11.36 chaveia na palavra
+   `eval`, então não a pega). Decisão: fronteira ACEITA — 0 usos quotados
+   na superfície derivada (health-check.sh e test-security-headers.sh
+   invocam curl bare, medido na varredura 2026-08-11); fechar custa
+   parsing de posição de comando quotado (distinguir `"curl"` comando de
+   `"via curl"` prosa), a mesma classe de custo que a 11.30 recusou. O
+   contrafactual (o mesmo caminho SEM aspas → FLAG) pina que a decisão é
+   deliberada, nunca um detector morto.
+
+**VALE ADOTAR como contrato da matriz (não como mudança de detector)**: a
+superfície medida vira um teste de tabela (19 formas × resultado esperado)
+que trava a superfície atual contra regressão E contra um futuro
+"conserto" do `-m` sem re-medição. O header do guard ganha o bloco FORMAS
+DE INVOCAÇÃO documentando a fronteira no próprio detector.
+
+**Implementação** (2 arquivos):
+- `scan-curl-timeouts.test.ts` (28 → 29 testes): 1 PURE com a matriz de 19
+  formas via `writeSyntheticRoot` + `scanGateScript` (cada linha com label
+  para o failure message nomear a forma que quebrou; as 2 linhas
+  case-variantes — `--MAX-TIME`/`--Max-Time` → FLAG — foram adicionadas em
+  2026-08-11, pinando a case-sensitivity do MAX_TIME_RE na mesma matriz;
+  as 4 linhas do token-surface — caminho absoluto/env COBERTO + token
+  quotado ESCAPE ACEITO — em 2026-08-11) + 1 PURE de contrafactual do
+  token quotado (mesmo caminho sem aspas → FLAG).
+- `scan-curl-timeouts.mjs`: header ganha o bloco FORMAS DE INVOCAÇÃO
+  (superfície medida, decisão do connect-timeout, chokepoint do wrapper).
+
+**Fronteira travada**: a decisão do `--connect-timeout` sozinho (FAIL) agora
+é contrato — quem tentar "relaxar" o guard para aceitar connect-timeout
+como bound único quebra a linha da matriz com o label exato; quem quiser
+reconhecer `-m` precisa re-medir e editar a matriz conscientemente.
+
+**PROVADO VIVO (Prova 27, sec 8.22, run 31487497462)**: a decisão agora
+foi observada no pipeline real — `curl --connect-timeout 10` sem
+`--max-time` no `scripts/health-check.sh:57` REAL falhou o step
+`Scan gate-script curls for explicit timeouts` com `CURL WITHOUT --max-time
+in scripts/health-check.sh:57` → exit 1, com **0 linhas `EVAL CURL`** (o
+tripwire não tripou — é a decisão da matriz, não o early-warning).
+
+**Re-validação**: `scan-curl-timeouts.test.ts` (29) + `scan-timeouts.test.ts`
+(BASELINE) — verdes; `gates-proofs-ordering.test.ts` valida a monotonia da
+nova seção 11.31 (11.30 antes, 12 depois); tsc 0; eslint 0 erros; UTF-8 do
+doc OK.
+
+## 11.32 Regra 10 do scan-guard-gates — os 3 scanner steps `--ci` nos DOIS lados da rede (decisão 2026-08-11)
+
+**O pedido**: o scan-guard-gates pinava os jobs/steps de gate do push net,
+mas NÃO os steps dos scanners `--ci` — remover o `scan-curl-timeouts --ci`
+do guard-gates.yml mudaria o push net sem o guard travar (a mesma classe de
+órfão das regras 1-9). A proposta citava 2 steps (curl-timeouts + eol-anchor).
+
+**A descoberta que expandiu o escopo de 2 para 3**: a classe tem TRÊS
+membros. O `scan-timeouts --ci` vive nos MESMOS 2 workflows do net
+(guard-gates.yml + o job fragile-guard do pr-check.yml), é a MESMA classe de
+step scanner standalone e NÃO era pinado por nenhum guard (o grep só achou
+referências em comentários de doc). Fechar só 2 de 3 deixaria um furo
+visível — a regra 10 exige os 3, com cada step-key single-valued em net
+order (o mirror exato do `missingStep` da regra 3: o PRIMEIRO workflow
+existente sem o step reporta, nunca os dois).
+
+**Os sinais** (com o caminho exato, ancorados no `run:` key — comentários em
+prosa não tripam):
+
+- `SCAN TIMEOUTS STEP MISSING in <workflow>` — `run: node
+  scripts/scan-timeouts.mjs --ci`
+- `CURL TIMEOUTS STEP MISSING in <workflow>` — `run: node
+  scripts/scan-curl-timeouts.mjs --ci`
+- `EOL ANCHOR STEP MISSING in <workflow>` — `run: node
+  scripts/scan-eol-anchor.mjs --ci`
+
+**O modelo de exclusividade (sec 8.14/11.31, guard-gates-exclusivity.test.ts)**:
+os 6 sinais de scanner (3 keys × 2 targets) acoplam ao modelo principal
+APENAS pelos pares WORKFLOW MISSING e pela seleção single-valued por
+step-key — nenhum outro cross pair é exclusivo (um arquivo pode ter paths
+filter E faltar o step curl; o twin pode faltar o job fuzz E o step eol;
+encoding vive em outros arquivos). Por isso o mini-modelo de 256 estados
+(2×2×8×8: push/twin existência × masks 3-bit dos steps) roda como partição
+SEPARADA cujo conjunto exclusivo UNION no `derive()` — modelar 6 booleans
+no Dims principal multiplicaria o espaço de 112k em ~64× para zero info de
+exclusividade. A partição é exata porque todo cross pair coexiste; os 9
+pares exclusivos novos (3 keys × {K@push bot K@twin, WORKFLOW MISSING@push
+bot K@push, WORKFLOW MISSING@twin bot K@twin}) vivem dentro do universo do
+mini-modelo. SNAPSHOT regenerado: 45 → **54 pares**.
+
+**Fixtures** (golden-copy-utils.ts): `GUARD_PUSH_BASE` e `PR_JOB_FRAGILE`
+ganham os 3 scanner steps (canonical SUBSET dos workflows reais — o drift
+contract da 11.25 continua verde); o pin `:10` do PATHS FILTER vira `:16`
+(a base cresceu de 9 para 15 linhas); `step:false` passa a mirar o step
+test:guard POR ÍNDICE (findIndex), não pelo tail — os scanners ficam
+depois dele; novas opções `omitScanners`/`omitScanner` cobrem as shapes da
+regra 10. Mutações: curl missing (só o curl some), all-3 (os 3 sinais
+juntos), twin eol (single-valued pega o twin), prose (comentário não
+tripa).
+
+**Re-validação**: vitest 5 suítes (scan-guard-gates, guard-gates-
+exclusivity com novo SNAPSHOT 54, golden-copy-utils, run-precommit-guards)
++ BASELINE scan-timeouts = 109/109 — verdes; ordering 11.31 → 11.32 → 12;
+UTF-8 dos arquivos OK; tsc 0; eslint 0 erros; reviewer 0 blockers.
+
+## 11.33 Regra 11 do scan-guard-gates — DANGLING NEEDS (o grafo needs: do net, decisão 2026-08-11)
+
+**A classe** (observada ao vivo na Prova 24, sec 8.19): deletar um job de
+um workflow do net (ex.: utf8-check do ci.yml) sem remover as referências
+`needs:` que o citam (build/budget) faz o GitHub **rejeitar o workflow no
+parse** — o run nasce `failure` com **0 jobs**, NENHUM contrato roda, e o
+net fica órfão silencioso. A Prova 24 provou o fenômeno ao vivo (CI/CD
+failure com 0 jobs); faltava o guard que inspeciona o grafo needs: — a
+classe que este guard (scan-guard-gates) não cobria.
+
+**A regra 11** (positivo + negativo): sobre a superfície do net (a união
+guardNet + encodingNet — os arquivos que este guard já lê, deduped), TODA
+referência `needs:` de qualquer job precisa resolver para um job declarado
+no MESMO workflow. O parser `danglingNeedsIn` reconhece as 3 formas YAML
+de needs (inline `needs: [a, b]` — a forma do ci.yml hoje —, single
+`needs: a` e o bloco `needs:` + `- a`), pula comentários (uma menção em
+prosa de needs: não pode dar falso-positivo) e reporta TODA referência
+pendurada com `{ job, ref, line }` — **multi-valued**, o padrão da Prova
+22. Cada ref pendurada emite um sinal `DANGLING NEEDS` com o caminho
+exato: `guard-gates: DANGLING NEEDS in <file>:<line> (job <job>: needs
+<ref> nao existe no workflow - um needs: pendurado INVALIDA o workflow no
+parse do GitHub (0 jobs), a classe observada na Prova 24/sec 8.19)`.
+
+**Co-emissão honesta** (header do guard): quando o workflow de encoding
+está ausente do net, o encoding dispara ENCODING CALL SITE MISSING E
+DANGLING NEEDS JUNTOS — os dois sinais coexistem no mesmo scan (são
+independentes, não exclusivos); a matriz de exclusividade só deriva os
+pares que NÃO podem coexistir.
+
+**O modelo de exclusividade** (guard-gates-exclusivity.test.ts): a regra
+11 segue o padrão da regra 10/sec 11.32 — uma **mini-partição SEPARADA de
+64 estados** (2 workflows × 2 existências × 4 masks de needs por workflow)
+cujo conjunto exclusivo UNION no `derive()`, em vez de crescer o Dims
+principal (modelar needs no modelo de 112k multiplicaria o espaço por
+arquivo). A partição é exata: os únicos acoplamentos exclusivos são os 2
+pares WORKFLOW MISSING + o par same-key ci/pr (DANGLING@ci × DANGLING@pr)
+— todo o resto coexiste. **3 pares exclusivos novos**; SNAPSHOT regenerado
+da derivação real: 54 → **57 pares** (nunca por mão); sanity 30 → 33
+sinais.
+
+**Fixtures e testes** (scan-guard-gates.test.ts): mutações — dangling
+single no ci.yml (uma ref), dangling multi (duas refs em jobs diferentes),
+dangling no pr-check (o twin), comment prose (menção em comentário NÃO
+tripa) e o VALID needs graph clean (needs: resolvendo para job real NÃO
+tripa — o positivo). REAL-REPO CONTRACT estendido: o grafo needs: real do
+repo resolve (0 penduradas) — um job removido sem limpar as refs quebra o
+contrato no CI antes do merge.
+
+**Prova viva (2026-08-11, run 31488081528 — INCONCLUSIVA)**: o ciclo
+`--only-jobs check --expect failure --expect-log 'DANGLING NEEDS'`com a mutação no ci.yml rodou, mas `DANGLING NEEDS` = 0 no log — o scratch
+branch nasce de HEAD, e a regra 11 vive só no delta (0 no HEAD vs 6 no
+working tree): o CI executou o scanner SEM a regra. A prova vira válida
+DEPOIS do commit do delta (ver sec 8.23).
+
+**Extensão repo-wide (2026-08-11)**: a superfície da regra 11 foi
+ampliada do net (guardNet + encodingNet = guard-gates.yml + pr-check.yml
++ ci.yml) para **TODOS os workflows de `.github/workflows/`** — a classe
+do órfão silencioso é workflow-agnóstica: um `needs:` pendurado num
+deploy.yml mataria o deploy no parse do GitHub com 0 jobs, a MESMA classe
+da Prova 24 mas fora da rede. Medição antes de adotar (probe real com
+`danglingNeedsIn` sobre os 18 workflows): **18 workflows, 5 carregam
+`needs:` REAL (guard-gates.yml e health-check.yml citam `needs:` só em
+comentário — o count-pin usa o regex `^\s*needs:` que os ignora por
+design; 4 fora do net: benchmark-auto-baseline, deploy, e2e-cache,
+release-deploy), 0 dangling hoje** — a extensão é um forward lock
+repo-wide com superfície limpa. A superfície é **derivada por
+listagem do diretório** (self-maintaining: um workflow NOVO entra na
+cobertura sem editar o manifest — o net exigiria editar GUARD_NET a cada
+workflow novo; `.yml` e `.yaml` ambos cobertos). Custo: zero lógica nova
+(`danglingNeedsIn` já era pura e exportada; a iteração mudou de 3 para 18
+arquivos). O contrato: mutation novo (deploy.yml fora do net -> DANGLING
+NEEDS) + REAL-REPO CONTRACT com count-pin (18 workflows, 5 com needs:
+real, 0 dangling) — o CLI exit 0 agora cobre os 18.
+
+**Re-validação**: vitest 124/124 (5 suítes: scan-guard-gates com o
+mutation novo repo-wide, guard-gates-exclusivity com novo SNAPSHOT 57,
+golden-copy-utils, run-precommit-guards + BASELINE scan-timeouts) +
+ordering guard 7/7 (11.32 → 11.33 → 12); UTF-8 OK; tsc 0; eslint 0
+erros (a classe de warnings no-console do main do guard, exit 0);
+reviewer 0 blockers (2 rodadas: nit do `.yaml` aplicado — o filtro da
+superfície agora cobre `.yml` e `.yaml` — e o count-pin corrigido para o
+número honesto 5/4: guard-gates.yml e health-check.yml citam `needs:` só
+em comentário).
+
+## 11.34 O ci.yml ganha a família de fixtures compartilhada (writeCIWorkflow + CI_JOB_BLOCKS, decisão 2026-08-11)
+
+**A regra dos usos aplicada ao ci.yml**: o ci.yml sintético (o caller do
+merge path, a âncora das regras 8/11 do scan-guard-gates) estava inline
+em TRÊS suítes com DUAS shapes repetidas: scan-guard-gates.test.ts (a
+local `writeCIWorkflow`, ~30 call sites, call site utf8-check SEMPRE na
+base) e guard-gates-exclusivity.test.ts (a local `writeCi`, 6 call sites,
+utf8-check OPT-IN via `{ enc: true }`) — mais a inline inerte de
+run-precommit-guards.test.ts (`writeBadGuardNet`, que a sec 11.26 deixou
+como "a única variante que fica inline" por decisão de fronteira). Duas
+shapes repetidas cruzaram o threshold da regra dos usos — a mesma
+fronteira que extraiu writePRWorkflow (11.25) e writeGuardGatesWorkflow
+(11.26).
+
+**O que mudou** (4 arquivos + docs):
+
+1. **`golden-copy-utils.ts`** — `CI_HEADER` + `CI_JOB_BLOCKS` (record
+   exportado: `lint` + `utf8-check`, as 2 jobs da base compartilhada — o
+   lint é filler cosmético, o utf8-check é a âncora do call site) +
+   `writeCIWorkflow(dir, opts)` exportado: `enc` (default true — a shape
+   do scan-guard-gates; as 6 call sites do exclusivity TODAS passam
+   `{ enc: true }`, então o default mergeado é byte-identical para todo
+   consumidor atual) + `extra` (o padrão re-entry append das mutações
+   de prosa).
+2. **`scan-guard-gates.test.ts`** — a local `writeCIWorkflow` morre; os ~30
+   call sites importam a compartilhada; os 2 call sites com `extra` viram
+   `writeCIWorkflow(dir, { extra: "..." })`.
+3. **`guard-gates-exclusivity.test.ts`** — a local `writeCi` morre; os 6
+   call sites viram `writeCIWorkflow(dir)` (default enc=true ≡ o antigo
+   `{ enc: true }`).
+4. **`run-precommit-guards.test.ts`** — a inline da sec 11.26 morre: o
+   `writeBadGuardNet` usa `writeCIWorkflow(dir)`. O lint job novo não
+   introduz sinal (o guard só ancora o call site utf8-check + o grafo
+   needs: — ambos limpos), então o pin sole-failure do teste (a ÚNICA
+   violação é o TEST GUARD STEP MISSING do push net) é preservado. A
+   decisão de fronteira da 11.26 é SUPERADA: o ci.yml não é mais a
+   "única variante inline" — a família CI agora é compartilhada como as
+   outras duas.
+5. **`golden-copy-utils.test.ts`** — o drift contract da sec 11.25 cresce
+   com a família CI: REAL (todo bloco de CI_JOB_BLOCKS é SUBSET canônico
+   do seu job no ci.yml real), SHAPE PIN (a família cobre EXATAMENTE as 2
+   jobs da base compartilhada — lint filler + utf8-check âncora; uma 3ª
+   job deve crescer o record + o pin) e 3 MUTATIONs (step renomeado, job
+   key renomeado fail-loud, uses: alterado — o call site âncora).
+
+**Fronteira honesta** (a mesma da 11.25): variantes single-use ficam
+inline pela regra — as mutações da regra 11 que reescrevem o ci.yml
+inteiro (dangling needs, call site missing) e as mutações needs:/step da
+regra 8 mantêm seus writeFile completos (cada uma é uma shape sole-
+failure que não repete a base).
+
+**Re-validação**: vitest **123/123** (5 suítes: scan-guard-gates,
+guard-gates-exclusivity, golden-copy-utils, run-precommit-guards +
+BASELINE scan-timeouts) — verdes; ordering 11.33 → 11.34 → 12; UTF-8 OK
+em todos os 6 arquivos tocados; tsc 0; eslint 0 erros; reviewer 0
+blockers (3 micro-nits de precisão aplicados e confirmados).
+
+## 11.35 O ci-proof-run ganha o modo --expect-parse-reject (a classe Prova 24/sec 8.19 automatizada, decisão 2026-08-11)
+
+**A classe** (observada ao vivo na Prova 24, sec 8.19, e na Prova 18): um
+workflow **rejeitado no parse** pelo GitHub — o run nasce `failure` com
+**0 jobs** e **SEM log** ("This run likely failed because of a workflow
+file issue"; nenhum job chega a rodar, então `gh run view --log` não
+tem nada para devolver). O ci-proof-run tratava esse desfecho como
+qualquer outro failure — sem saber que 0 jobs + sem log É o resultado
+esperado da classe (e não uma falha de infra).
+
+**A flag `--expect-parse-reject`** (2026-08-11): define o resultado
+esperado POR INTEIRO — o verify dedicado `verifyParseReject(conclusion,
+jobsCount)` pina `conclusion=failure` E `jobsCount=0`. O log vazio é
+CONSEQUÊNCIA de 0 jobs (nenhum job rodou) — o sinal verificável é a
+contagem de jobs, não uma linha de log — então o modo consulta os jobs do
+run (`gh run view <id> --json jobs`) e NÃO casa regex de log (não há log
+para casar).
+
+**Exclusividades** (parseArgs, fail-loud antes de qualquer spawn):
+incompatível com `--expect` (a conclusão é fixa), com `--expect-log` (0
+jobs = nenhum job rodou = sem log para casar) e com `--only-jobs` (0
+jobs = não há job alvo para o poll por job — o run inteiro é o sinal).
+
+**O fluxo com a flag**: o ciclo roda igual (branch scratch → mutação →
+push → dispatch → poll até completed) e, no verify, o modo consulta os
+jobs e pina a contagem. Um run que complete failure MAS com jobs (o
+workflow NÃO foi rejeitado) falha com `jobs=N != 0 esperado` — a prova
+da classe exige a ausência TOTAL de jobs, não só o failure.
+
+**Re-validação**: vitest **80/80** (2 suítes: ci-proof-run com a nova
+matriz pure + 3 E2Es parse-reject + o REAL-REPO CONTRACT do wiring, +
+BASELINE scan-timeouts) — verdes; ordering 11.34 → 11.35 → 12; UTF-8 OK
+nos 2 arquivos; tsc 0; eslint 0 erros; reviewer 0 blockers (2 micro-nits
+de precisão — o count concreto e o query de jobs falho distinto do "0
+observado" — aplicados e confirmados).
+
+## 11.36 O tripwire `eval`+`curl` — o early-warning da fronteira 11.30 (decisão 2026-08-11)
+
+**A pergunta**: a 11.30 decidiu ACEITAR o falso-negativo do `eval`
+(`CMD="curl ..."; eval "$CMD"` — o token curl vive DENTRO da string, o
+maskBashStrings o consome, o detector --max-time não o vê) porque fechar
+custaria rastreamento de variáveis para uma forma com 0 usos na superfície
+(medido: os 6 gate scripts derivados não têm NENHUM eval). Mas a fronteira
+decidida não pode virar um buraco silencioso: SE um dia o repo usar a forma
+de verdade, ninguém seria avisado — o escape entraria sem ruído.
+
+**A decisão**: VALE ADOTAR um tripwire BARATO e ORTOGONAL ao detector — um
+grep ASCII por `eval` + `curl` na MESMA linha lógica (continuações `\`
+unidas, o mesmo joinContinuations do detector) dos gate scripts, que FALHA
+(exit 1) com aviso quando a forma aparecer. O detector --max-time NÃO é
+fechado (o scanGateScript segue retornando `[]` para o token mascarado — o
+falso-negativo aceito da 11.30 permanece pinado no MESMO suite); o tripwire
+é uma checagem SEPARADA (scanEvalCurl) que convive com ele e emite o sinal
+`EVAL CURL (sec 11.30)` com o file:line exato — forçando a decisão humana
+(refatorar para invocação direta com --max-time OU documentar formalmente)
+em vez de um pass silencioso.
+
+**Por que fail-loud (exit 1) e não warn-only**: um step de CI que passa
+imprimindo um aviso é invisível (verde não se lê); o tripwire falha para
+que ALGUÉM seja avisado — o objetivo explícito do early-warning.
+
+**Fronteiras (barato POR DESIGN, nomeadas)**: form-based (um --max-time
+DENTRO da string eval'd ainda trip — o conteúdo mascarado não é verificável
+estaticamente, o aviso é sobre a FORMA, não sobre a flag); mesma linha
+lógica apenas (a forma dividida em duas linhas SEM continuação — `CMD=...`
+numa linha, `eval "$CMD"` noutra — NÃO trip: fechar custa rastreamento de
+variáveis, o MESMO custo que a 11.30 recusou; a residual fica nomeada);
+linhas de comentário excluídas (a regra barata do detector); SEM masking (o
+masking mataria o próprio sinal — o token vive na string); prosa em
+strings mencionando os dois tokens over-flags (direção segura, o mesmo
+custo do detector).
+
+**A residual do split-form — contrato ACEITO (padrão 11.30)**: a forma
+dividida em duas linhas físicas SEM continuação (`CMD="curl ..."` numa
+linha, `eval "$CMD"` noutra) NÃO tripa — decisão ACEITA, o MESMO custo que
+a 11.30 recusou (rastreamento de variáveis para uma forma com 0 usos na
+superfície derivada, medido). A fronteira é pinada como contrato
+bidirecional no padrão da 11.30 (o teste TRIPWIRE boundary, um it com os
+DOIS lados): o split NÃO tripa (`[]`) E o contrafactual — a MESMA forma
+numa única linha lógica — TRIPA (`len 1`, linha 2) — provando que a
+fronteira é a LINHA, nunca um detector morto que passaria vazio nos dois
+lados. Quem tentar "fechar" o split precisa re-medir o custo do
+rastreamento e editar o contrato conscientemente. Re-validação: `npx vitest
+run scripts/__tests__/scan-curl-timeouts.test.ts --config
+vitest.config.unit.ts`.
+
+**O contrafactual embutido**: o teste ACCEPTED da 11.30 (scanGateScript
+`[]` no eval-built curl, com o contrafactual do curl direto flagado)
+permanece no MESMO suite — o par detector-aberto + tripwire-trip prova que
+a decisão é deliberada, nunca um detector morto que passaria vazio nos dois
+lados.
+
+**Implementação** (`scan-curl-timeouts.mjs` + teste, 20 → 28 testes):
+scanEvalCurl exportado (pure, espelha o scanGateScript: joinContinuations +
+exclusão de comentário, SEM masking) + `evalWarnings` no retorno do
+scanCurlTimeouts + seção EVAL CURL no CLI — violations e tripwire convivem
+no MESMO exit 1, cada um com sua seção e file:line (agregação, o padrão da
+Prova 22). ZERO mudança de wiring: o scanner já é step standalone `--ci` no
+guard-gates.yml e no pr-check.yml — sem step novo, o mini-modelo da regra
+10/sec 11.32 (os 3 scanner steps versionados) fica intacto.
+
+**Re-validação**: vitest **58/58** (3 suítes: scan-curl-timeouts com a nova
+matriz TRIPWIRE — 6 PURE + BASELINE + 2 CLI — + BASELINE scan-timeouts +
+gates-proofs-ordering) — verdes; ordering 11.35 → 11.36 → 12; UTF-8 OK no
+doc + ASCII-OK no gate file (o .mjs é gate); tsc 0; eslint 0 erros (exit
+0, warnings tolerados); reviewer 0 blockers (3 nits de precisão do doc —
+o typo "es taticamente", a Re-validação escrita antes da rodada e a
+contagem 19→28 quando a base era 20 — aplicados e confirmados).
+
+**Provas vivas do tripwire (o par nos DOIS lados da rede)**: o fail-loud da
+FORMA `eval`+`curl` está observado no pipeline real em ambos os jobs que
+rodam `scan-curl-timeouts --ci` — **Prova 26** (sec 8.21, run
+31485163704): lado PUSH NET (guard-gates.yml, job `Guard Gates`);
+**Prova 29** (sec 8.24, run 31492035257): lado PR (pr-check.yml, job
+`Fragile Range Guard`, `EVAL CURL (sec 11.30) in scripts/health-check.sh:58`
+→ exit 1, 0 linhas `CURL WITHOUT`). Quem ler esta decisão vê o mecanismo;
+quem ler as duas provas vê o par fechado.
+
+## 11.37 Por que o tripwire `eval` é exclusivo do curl-timeouts — a classe nas suítes irmãs (decisão 2026-08-11)
+
+**A pergunta**: o scan-curl-timeouts mascara strings e chaveia no token `curl`
+— o MESMO padrão masking+fronteira existe no scan-timeouts (codeMask) e no
+scan-eol-anchor (maskComments). A classe "token escondido em string avaliada
+depois" (`CMD="curl ..."; eval "$CMD"`, o tripwire da 11.36) merece um
+teste de contrato irmão nessas suítes, ou a fronteira é exclusiva do
+curl-timeouts?
+
+**O achado (medição antes de decidir, probes 2026-08-11 sobre as funções
+puras reais — não conjectura)**:
+
+1. **scan-timeouts (JS test files)** — a classe ESCAPA estruturalmente:
+   `eval('execSync("...")')` e `const c = 'spawnSync("x")'; eval(c)` →
+   subprocessHeavy=false (o token morre no codeMask); o contrafactual
+direto → true (o detector funciona). MAS o idioma real de JS test code é
+parameterizar ARGS, nunca o NOME da API: `const cmd = 'node x.mjs';
+execSync(cmd)` → subprocessHeavy=true (o token fica literal fora da
+string, detectado). O análogo plausível da construção dinâmica
+(interpolação de template literal `${...}`) é fronteira NOMEADA no header
+do guard (mascarada inteira; "nenhum teste do repo faz isso") — nomeada,
+NÃO test-pinned (o regression dispatchWarning, scan-timeouts.test.ts:201,
+pina a classe VIZINHA do vazamento de span do matchBrace em helper puro
+— não a interpolação; citação corrigida em review). Fechar o eval
+custaria rastreamento de
+variáveis — o MESMO custo que a 11.30 recusou — para uma forma com 0
+usos E 0 plausibilidade acidental.
+2. **scan-eol-anchor (JS test/mutation files)** — a classe NEM ESCAPA na
+forma comum: strings passam BYTE-IDENTICAL pelo maskComments (mascarar
+strings mataria a própria detecção), então `eval('.replace("foo\nbar",
+"")')` continua com o padrão de bytes visível → flagrado=true (probe). A
+ÚNICA variante que escapa (aspas escapadas `\"` — o byte shape muda) é
+EXATAMENTE a fronteira "aspa escapada" já documentada no header. Não há
+classe nova para pinar — um teste irmão estaria assertando uma
+não-fronteira.
+3. **curl-timeouts (bash)** — o tripwire da 11.36 foi justificado porque
+`CMD="curl ..."; eval "$CMD"` é IDIOMA real de bash: o comando INTEIRO,
+incluindo o nome da ferramenta, vai para a variável — o uso acidental é
+plausível. É o único dos três guards com esse perfil.
+
+**A decisão**: VALE DOCUMENTAR, NÃO pinar irmãos. A fronteira é exclusiva
+do curl-timeouts por DOIS eixos medidos: (a) plausibilidade do idioma —
+bash constrói comandos inteiros em variáveis; JS test code nunca esconde o
+NOME da API num eval (parameterizar args mantém o token literal e é
+detectado); (b) visibilidade de bytes — o eol-anchor vê o padrão mesmo
+dentro de eval (strings byte-identical); o único escape é a fronteira já
+nomeada. Um teste de contrato irmão em qualquer das duas suítes pinaria uma
+forma artificial (scan-timeouts) ou inexistente (scan-eol-anchor) — o
+oposto da cultura de honestidade das provas.
+
+**ACHADO incidental (não mudado, fora do escopo)**: o scan-eol-anchor.mjs
+NÃO tem entry-point guard — `process.exitCode = main()` roda no import
+(diferente do scan-timeouts.mjs, que tem IS_MAIN). O probe flagrou o
+PRÓPRIO arquivo de probe ao importar o módulo (a superfície real foi
+varrida e o exitCode do processo do probe foi setado). Com o repo limpo é
+inofensivo (exit 0), mas é uma assimetria latente — candidata a fix futuro
+(guardar o entry-point como os irmãos), não mudado aqui por estar fora do
+escopo da avaliação.
+
+**Implementação** (2 headers + docs, ZERO lógica): scan-timeouts.mjs e
+scan-eol-anchor.mjs ganham a nota da fronteira/não-fronteira do eval no
+header — o lugar onde as decisões de fronteira vivem (o mesmo padrão da
+11.29/11.30 no curl-timeouts) — para o próximo dev não re-derivar a
+avaliação; a sec 11.37 registra os probes e o veredito.
+
+**Re-validação**: vitest **39/39** (3 suítes: scan-timeouts 23 +
+scan-eol-anchor 9 + gates-proofs-ordering 7) — verdes; ordering 11.36 →
+11.37 → 12; UTF-8 OK no doc + ASCII-OK nos 2 gate files (headers tocados);
+tsc 0; eslint 0 erros; reviewer 0 blockers (2 nits de precisão — a
+citação do dispatchWarning como pin da interpolação quando ele pina a
+classe vizinha do matchBrace, e o count de gate files 3→2 — aplicados e
+confirmados).
+
+## 11.38 Por que cada detector mantém a matriz própria — a classe "só o literal canônico" é filosofia compartilhada, a MATRIZ é superfície-específica (decisão 2026-08-11)
+
+**A pergunta**: o scan-curl-timeouts e o scan-timeouts agora compartilham a
+mesma filosofia de masking+fronteira+matriz. A classe "só o literal
+canônico é reconhecido, variantes over-flagam" merece um teste de forma
+COMPARTILHADO entre as duas suítes (o guard dos guards), ou cada detector
+mantém a matriz própria?
+
+**A medição (probe 2026-08-11, o SUBPROCESS_RE real + as duas suítes)**: a
+classe NÃO tem a mesma forma nos dois guards — ela difere em KIND, não em
+grau:
+
+| Eixo | scan-curl-timeouts (bash) | scan-timeouts (JS test) |
+|---|---|---|
+| O literal canônico | `curl` + `--max-time` (2 tokens) | 6 nomes de API (spawnSync/execSync/execFileSync/spawn/fork/runSubprocess) + 2 padrões (process.execPath/child_process) |
+| As variantes | MESMA superfície de token, formas diferentes: `-m 20`, case-variante, wrapper DEF/CALL, alias, env, path absoluto, token quotado | NOME DIFERENTE (indireção): `runCli("x")` NÃO casa SUBPROCESS_RE — o token some atrás de OUTRO nome |
+| Como a classe é pinada | matriz de 19 formas (tabela) | regressions LOCAL/IMPORTED HELPER + fixpoint heavyHelperNames (a análise de helper, não uma tabela de tokens) |
+| Case-variante | `--MAX-TIME` é ERRO do curl (fail-loud, exit 2) | `SPAWNSYNC(` não é API real — ReferenceError loud, nunca hang silencioso |
+| Medida da classe real | a superficie de FORMAS é rica (o bash constrói comandos por texto) | ~15 diretas vs ~159 via helper (a indireção é a classe dominante, medida no header) |
+
+**Achados (por que a decisão é documentar, não pinar irmão)**:
+
+1. **As variantes são classes ESTRUTURALMENTE diferentes, não formas da
+   mesma classe**. No curl-timeouts, a variante é o MESMO token `curl`/
+   `--max-time` escrito de outro jeito (curto, maiúsculo, em alias, com
+   path, quotado) — uma matriz de formas é o pin natural. No scan-timeouts,
+   a variante que importa é o token substituído por OUTRO NOME (`runCli`,
+   `runSubprocess` importado) — isso não é uma "forma" do token, é
+   indireção, e é pinada por um mecanismo COMPLETAMENTE diferente (a
+   análise fixpoint de helpers, ~15 vs ~159 medidos). Uma matriz de formas
+   no scan-timeouts estaria pinando a classe ERRADA (a case-variante
+   `SPAWNSYNC(` não é API real — o próprio detector a ignora porque ela
+   falha loud, nunca pendura).
+2. **A filosofia compartilhada JÁ está pinada por suíte, separadamente**:
+   masking (codeMask vs maskBashStrings), fronteira do eval (11.30 vs
+   11.37), over-flag-safe como direção aceita, BASELINE + companion de
+   superfície não-vazia, mutation CLI. Um teste compartilhado DUPLICARIA
+   esses pins sem adicionar sinal — o padrão de teste irmão artificial que
+   a 11.37 recusou (cada guard pina a própria classe no próprio formato).
+3. **A matriz de 19 formas é exclusiva do curl-timeouts POR CONSTRUÇÃO**:
+   o bash constrói comandos por TEXTO (flag curta, case, alias, env, path
+   absoluto, quoting) — uma superfície de formas rica. A JS test surface
+   não tem esse espaço de formas; a classe dela é a indireção. Forçar um
+   teste de forma compartilhado seria pinar um formato artificial numa
+   suíte onde a classe não existe nesse formato.
+
+**VEREDITO**: DOCUMENTAR a exclusividade — a filosofia (masking +
+fronteira + over-flag-safe + BASELINE) é compartilhada e pinada por suíte;
+a MATRIZ é superfície-específica porque a classe de variantes difere em
+KIND (mesmo-token-spelling no bash vs indireção na JS test surface).
+
+**Implementação** (2 headers + docs, ZERO lógica): scan-timeouts.mjs ganha
+a nota NAO-MATRIZ no bloco das camadas de detecção (a classe aqui é
+indireção, pinada pelas regressions de helper, não por tabela de tokens; a
+matriz de 19 formas é exclusiva do curl-timeouts); scan-curl-timeouts.mjs
+ganha a nota da exclusividade no bloco FORMAS DE INVOCAÇÃO (o scan-timeouts
+compartilha a filosofia mas não tem matriz — a tabela existe aqui porque a
+superfície de formas do bash é rica).
+
+**Fronteira travada**: a decisão de NÃO ter teste compartilhado vive nos
+dois headers + nesta seção — quem quiser criar um teste de forma
+compartilhado precisa re-medir a classe de variantes (o KIND difere) e
+editar a sec 11.38 conscientemente; quem quiser "consertar" a matriz do
+scan-timeouts (adicionar formas de token) quebra as regressions de helper
+que pinam a classe real.
+
+**Re-validação**: vitest **59/59** (3 suítes: scan-timeouts 23 +
+scan-curl-timeouts 29 + gates-proofs-ordering 7) — verdes; ordering 11.37→ 11.38 → 12; UTF-8 OK no doc + ASCII-OK nos 2 gate files (headers
+tocados); tsc 0; eslint 0 erros.
+
+## 11.39 Por que NÃO adotar js-yaml no danglingNeedsIn — a fronteira das 3 formas basta (decisão 2026-08-11)
+
+**A pergunta**: o `danglingNeedsIn` (regra 11) usa regex sobre as 3 formas
+YAML (inline `[a, b]`, single `a`, bloco `needs:` + `- a`). Um parser YAML
+real (js-yaml) reduziria a superfície de formas (anchors/aliases, merge
+keys, flow multi-linha, needs: herdado por include) — ou a fronteira
+documentada basta? Medição antes de decidir.
+
+**A medição** (probe real, 2026-08-11 — não conjectura):
+
+| Eixo | Medido |
+|---|---|
+| **Paridade regex vs js-yaml** (os 18 workflows reais) | **0 vs 0 dangling, 0 divergências** — js-yaml não acharia NADA que o regex não acha hoje |
+| **Custo de boot** (3 runs cada) | **idêntico ~0.12s** (regex 0.11–0.14 vs js-yaml 0.11–0.13) — ambos dominados pelo boot do node, não pelo parser |
+| **Dependência** | js-yaml **NÃO é declarada** no package.json — só resolve transitiva via @mdxeditor/editor (dep de UI, não de gate) |
+| **Anchors/aliases reais** | 0 em `needs:` — o único anchor do repo (e2e-cache.yml `&cache_paths`) vive em `on.pull_request.paths`, **FORA de `jobs:`** onde o parser escopa; o `&limit=1` é query string de URL, não anchor |
+| **Merge keys / needs quotado / flow multi-linha / bloco-form real** | **0 usos** em todos os 18 |
+| **Formas reais de needs:** | só inline `[a, b]` e single `a` — as 2 das 3 formas que o regex cobre |
+
+**O comportamento das formas exóticas no regex** (probe da função pura):
+`needs: *deps` (anchor/alias YAML — a única forma que um parser real
+resolveria) → o regex reporta o alias cru como ref pendurada:
+`DANGLING NEEDS (job b: needs *deps)` — **OVER-FLAG na direção SEGURA**
+(falha alto, um humano revisa; nunca passa silencioso). Ou seja: mesmo se
+uma forma exótica aparecer amanhã, o guard TRIPA — a fronteira não é um
+furo, é um over-flag nomeado.
+
+**O veredito — RECUSAR js-yaml** (o precedente das 11.30/11.37/11.38): a
+fronteira das 3 formas basta PORQUE (1) a superfície real é exatamente as
+2 formas canônicas — js-yaml reduziria 0 formas, (2) a paridade é
+perfeita nos 18 workflows — zero sinal novo, (3) o custo não vale: dep
+não-declarada (adotar = declarar uma dep de gate só para igualar o que o
+regex já faz, com lockfile/install/CI impact) e boot idêntico, (4) a
+direção de falha das formas exóticas é over-flag (seguro), nunca under-flag
+silencioso. Adotar js-yaml trocaria um parser de 40 linhas sem dep por uma
+dep de 300KB+ para ganhar 0 formas reais.
+
+**O que mudou** (pin da decisão): nota NAO-JS-YAML no header do bloco rule
+11 do scan-guard-gates.mjs (a fronteira nomeada); teste hermético novo
+(`needs: *deps` → exit 1 DANGLING NEEDS — o over-flag provado, a direção
+segura pinada); pin no REAL-REPO CONTRACT (0 formas exóticas reais nos 18
+workflows — o regex `^\s*needs:.*(\*|&|"|'|\[\s*$)` casa 0 arquivos).
+
+**Re-validação**: vitest **125/125** (scan-guard-gates com o mutation
+novo do anchor/alias `needs: *deps` + o pin de 0 formas exóticas dentro do
+REAL-REPO CONTRACT + exclusivity + run-precommit-guards + golden-copy-utils
++ BASELINE scan-timeouts) + ordering 11.38 → 11.39 → 12; UTF-8 OK no doc +
+ASCII-OK no gate file (header tocado); tsc 0; eslint 0 erros.
+
+
+## 11.40 O guard dos guards de fronteira — toda fronteira DECIDIDA-ACEITA do
+scan-curl-timeouts precisa de tripwire OU contrafactual pinado (manifest
+FRONTIERS, decisão 2026-08-11)
+
+**A pergunta**: o detector tem hoje DOIS early-warnings de fronteira aceita
+— o BASELINE companion (o detector varre uma superfície não-vazia, nunca
+um pass vacuo) e o tripwire do eval (sec 11.36). Mas as demais fronteiras
+decididas (token quotado, split-form, `-m 20`, `CURL_BIN=curl`, wrapper,
+`--connect-timeout` sozinho, caminho absoluto, `env curl`, `$HEALTH_URL`,
+`command -v curl`) vivem em prosa + linhas da matriz INVOCATION-FORM —
+NADA as enumera com a classe de proteção. Um refactor futuro que drope um
+pin (um teste de contrafactual, uma linha da matriz, o próprio tripwire)
+sem o contrato travar? A avaliação mede o estado de proteção e decide se um
+manifest estrutural vale o custo.
+
+**A medição** (probe da superfície real, 2026-08-11):
+
+| Fronteira decidida-aceita | Classe | Proteção hoje | Onde |
+|---|---|---|---|
+| `eval` (`CMD="curl ..."; eval "$CMD"`) | escape | **tripwire** (scanEvalCurl) + contrafactual | 11.30/11.36 |
+| token quotado (`"/usr/bin/curl"`, `"$(command -v curl)"`) | escape | **contrafactual** (quotado passa, mesmo path bare flaga) | 11.31 |
+| split-form (`CMD=...` / `eval "$CMD"` em linhas separadas) | escape | **contrafactual** (split não tripa, mesma forma numa linha tripa) | 11.36 |
+| forma curta `-m 20` | overflag | **matrix** (expected 1 — over-flags, direção segura) | 11.31 |
+| case-variante `--MAX-TIME`/`--Max-Time` | overflag | **matrix** (expected 1 — case-sensitive, também erro do curl) | 11.31 |
+| `alias curl='...'` (token NOME) | overflag | **matrix** (expected 1) | 11.31 |
+| `CURL_BIN=curl` (atribuição) | overflag | **matrix** (expected 1 — o over-flag documentado do header) | header |
+| wrapper `curl2()` (DEF sem bound) | overflag | **matrix** (expected 1 — o DEF é o chokepoint) | 11.31 |
+| `--connect-timeout` SOZINHO | fail-decision | **matrix** (expected 1 — FALHA POR DECISÃO) | 11.31 |
+| caminho absoluto `/usr/bin/curl` | covered | **matrix** (expected 1 — o probe inverteu a premissa) | 11.31 |
+| `env curl` / `env VAR= curl` | covered | **matrix** (expected 1) | 11.31 |
+| `$HEALTH_URL` parametrizável | covered | **contrafactual** (MUTATION — o URL variável não escapa) | 11.29 |
+| `command -v curl` (probe) | excluded | **matrix** (expected 0 — regra explícita) | 11.31 |
+| `CURL=$(command -v curl); "$CURL"` | excluded | **matrix** (expected 0 — regra do probe, linha inteira) | 11.31 |
+
+**O achado**: TODAS as 14 fronteiras decididas JÁ têm proteção individual —
+o tripwire cobre o `eval`, os contrafactuais cobrem as três classes de
+escape (quotado, split-form, URL variável), as 11 linhas da matriz cobrem
+os over-flags/covered/excluded/fail-decision. MAS nada **enumera** a
+superfície com a classe de proteção: um refactor que drope um pin passa
+silencioso (o teste some, o doc fica). É a MESMA classe de drift que o
+manifest-registry / scan-batch-coverage já travam — a fronteira do
+scan-curl-timeouts é a única superfície decidida sem manifest.
+
+**O veredito — VALE ADOTAR** (o custo é um export + 4 asserts, o benefício
+é travar a superfície inteira): o manifest FRONTIERS exportado do próprio
+scanner (a fonte da verdade, não um arquivo paralelo) com `kind`
+(escape/overflag/covered/excluded/fail-decision), `protection`
+(tripwire/counterfactual/matrix), `marker` (o substring EXATO que a suite
+deve conter) e `ref` (a seção que decidiu). O contrato prova: (1) o
+ABSOLUTE PIN — as 14 ids registradas, um crescimento novo tem que entrar
+AQUI conscientemente; (2) oINVARIANT — toda fronteira `escape` tem tripwire OU contrafactual (uma
+escape pinada só por matrix seria um furo indecidido, nunca uma fronteira
+decidida); as demais classes (overflag/covered/excluded/fail-decision)
+NUNCA são tripwire (o scanEvalCurl é o pin reservado do eval) e são
+pinadas por matrix com o expected documentado OU por contrafactual — o
+caso do `$HEALTH_URL` (covered + contrafactual) mostra a exceção legítima
+ao matrix-only; (3) os MARKERS — o guard lê o próprio test file
+(o padrão manifest-registry) e falha se o marker de QUALQUER fronteira
+sumir do código; (4) os EARLY-WARNINGS — os dois layers da superfície
+protegida (BASELINE companion + tripwire) continuam existindo como it
+blocks separados. Um refactor que drope o contrafactual do quotado, a
+matriz do `-m`, ou o próprio tripwire → o marker some → o contrato trava
+com o caminho exato.
+
+**O que mudou** (2 arquivos): `scripts/scan-curl-timeouts.mjs` exporta
+`FRONTIERS` (14 entradas, ASCII puro, header documentando as classes);
+`scripts/__tests__/scan-curl-timeouts.test.ts` ganha o describe FRONTIER
+GUARD com os 4 testes (manifest, invariant, markers, early-warnings) usando
+a infra já existente (ROOT/path/fs) — sem fixtures novas, sem dep nova.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-curl-timeouts.test.ts --config vitest.config.unit.ts`
+(36 testes) + manifest-registry (o FRONTIERS é um manifest novo na família)
++ ordering 11.39 → 11.40 → 12; UTF-8 OK no doc + ASCII-OK no gate file;
+tsc 0; eslint 0 erros.
+
 
 ## 12. Referências
 

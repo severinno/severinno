@@ -103,6 +103,40 @@
  *    ausente no PR, nao silenciosa). O job key deriva do workflow-contracts
  *    manifest (BENCHMARK_JOB) - uma renomeacao de job deve atualizar o
  *    manifest, nao este guard.
+ * 10. SCANNER STEPS (POSITIVO, AMBOS os lados da rede): os 3 gate scanners
+ *     versionados (scan-timeouts.mjs --ci, scan-curl-timeouts.mjs --ci e
+ *     scan-eol-anchor.mjs --ci) DEVEM rodar como steps em AMBOS os
+ *     workflows do net - o push net (guard-gates.yml) e o twin PR
+ *     (pr-check.yml, job fragile-guard). AVALIADO 2026-08 (sec 11.32): o
+ *     scan-guard-gates pinava os jobs/steps de gate mas NAO os steps dos
+ *     scanners --ci - remover o scan-curl-timeouts do workflow mudaria o
+ *     push net sem este guard travar (a mesma classe de orfao das regras
+ *     1-9). Os 3 steps vivem nos MESMOS 2 workflows, entao a regra exige
+ *     os 3 (fechar so 2 de 3 deixaria um furo visivel). A checagem e
+ *     SINGLE-VALUED por step-key em net order (o PRIMEIRO workflow
+ *     existente sem o step - o mirror exato do missingStep da regra 3):
+ *     remover um step = falha 'SCAN TIMEOUTS STEP MISSING' /
+ *     'CURL TIMEOUTS STEP MISSING' / 'EOL ANCHOR STEP MISSING' com o
+ *     arquivo exato. O ancoramento no `run:` key (o mesmo do
+ *     TEST_GUARD_STEP_RE) exclui comentarios em prosa.
+ * 11. DANGLING NEEDS (POSITIVO + NEGATIVO, o grafo needs: do repo): em
+ *     TODOS os workflows de .github/workflows/ (repo-wide, sec 11.33 - a
+ *     superficie era guardNet + encodingNet; estendida 2026-08-11: a
+ *     classe do orfao silencioso e workflow-agnostica, medida 0 dangling
+ *     em 18 workflows com 5 needs: reais - 4 fora do net), TODA referencia `needs:` de
+ *     um job DEVE resolver para um job key que existe no MESMO workflow -
+ *     um needs: pendurado (job removido/renomeado) INVALIDA o workflow no
+ *     parse do GitHub (0 jobs, nada roda) - a classe observada AO VIVO na
+ *     Prova 24/sec 8.19: a agregacao deletou o job utf8-check do ci.yml
+ *     mas build/budget ainda o citavam em needs: e o CI/CD foi rejeitado
+ *     com 0 jobs ANTES de qualquer guard rodar. O scan cobre as 3 formas
+ *     do YAML (inline `needs: [a, b]` - a forma do ci.yml hoje - single
+ *     `needs: a` e o bloco `needs:` + `- a`), pula comentarios, e e
+ *     MULTI-VALUED (cada ref pendurada reporta com job + ref + linha, o
+ *     padrao da Prova 22): = falha 'DANGLING NEEDS' com o caminho exato.
+ *     O CO-EMIT com a regra 8 e a MESMA Prova 24: deletar o call site de
+ *     encoding dispara ENCODING CALL SITE MISSING E DANGLING NEEDS juntos
+ *     (o par que a suite de exclusividade prova coexistir).
  *
  * Env override GUARD_GATES_SCAN_ROOT (repo sintetico p/ o vitest - espelha
  * o PUSH_SUITE_SCAN_ROOT do scan-push-full-suite). Saida ASCII pura (gate
@@ -170,6 +204,86 @@ const ENCODING_STEP_RE = /^\s+uses:\s+\.\/\.github\/workflows\/utf8-check\.yml\s
  * line can never match (a comment starts with `#`, never `node`).
  */
 const BENCHMARK_STEP_RE = /^\s+(?:run:\s+)?node scripts\/run-benchmark\.mjs\b/
+
+/**
+ * The 3 versioned scanner steps (rule 10, sec 11.32) - the standalone CLI
+ * gate scanners that must run in BOTH net workflows (guard-gates.yml + the
+ * pr-check.yml fragile-guard job). Line-anchored on the `run:` key + the
+ * `--ci` flag (the same anchor as TEST_GUARD_STEP_RE, so a prose mention in
+ * a COMMENT cannot false-positive): the step MUST invoke the scanner with
+ * --ci on a single logical line. key = the emitted signal.
+ */
+const SCANNER_STEPS = [
+  { key: "SCAN TIMEOUTS STEP MISSING", re: /^\s+run:\s+node scripts\/scan-timeouts\.mjs\s+--ci\s*$/m },
+  { key: "CURL TIMEOUTS STEP MISSING", re: /^\s+run:\s+node scripts\/scan-curl-timeouts\.mjs\s+--ci\s*$/m },
+  { key: "EOL ANCHOR STEP MISSING", re: /^\s+run:\s+node scripts\/scan-eol-anchor\.mjs\s+--ci\s*$/m },
+]
+
+/**
+ * Rule 11 (sec 11.33) - the DANGLING-NEEDS check over ONE workflow's needs
+ * graph: every `needs:` reference (from any job) must resolve to a job key
+ * declared in the SAME workflow. A needs: to a job that does not exist makes
+ * GitHub INVALIDATE the workflow at parse (0 jobs, nothing runs) - the class
+ * Prova 24 observed live: the aggregation deleted the utf8-check job from
+ * ci.yml but build/budget still cited it in needs:, and the CI/CD workflow
+ * was rejected with 0 jobs BEFORE any guard ran. Forms covered: inline list
+ * (`needs: [a, b]` - the form ci.yml uses today), single ref (`needs: a`)
+ * and the YAML block form (`needs:` + `      - a` items). Comment lines are
+ * skipped (a prose mention of needs: cannot false-positive). Returns
+ * [{ job, ref, line }] for EVERY dangling ref - multi-valued, the Prova 22
+ * pattern (the CLI lists all violations, never short-circuits). Exported
+ * for unit tests.
+ */
+export function danglingNeedsIn(text) {
+  const lines = text.split(/\r?\n/)
+  const jobKeys = new Set()
+  const dangling = []
+  let inJobs = false
+  let currentJob = null
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (isComment(line)) continue
+    // The `jobs:` root key (0-indent) opens the jobs section - everything
+    // before it (on:, env:, concurrency:, etc.) is not a job block, so a
+    // `push:` key under on: can never be mistaken for a job key.
+    if (!inJobs) {
+      if (/^jobs:\s*$/.test(line)) inJobs = true
+      continue
+    }
+    // A root-level job key (2-space indent, `name:` shape) collects the key
+    // AND becomes the current job for subsequent needs: lines.
+    const key = line.match(/^  ([A-Za-z0-9_-]+):\s*$/)
+    if (key) {
+      jobKeys.add(key[1])
+      currentJob = key[1]
+      continue
+    }
+    if (currentJob === null) continue
+    const needs = line.match(/^    needs:\s*(.*)$/)
+    if (!needs) continue
+    const inline = needs[1].trim().replace(/\s*#.*$/, "")
+    if (inline) {
+      // Inline list `needs: [a, b]` or single ref `needs: a`.
+      const refs = inline.startsWith("[")
+        ? inline.slice(1, -1).split(",").map((s) => s.trim()).filter(Boolean)
+        : [inline]
+      for (const ref of refs) {
+        if (ref && !jobKeys.has(ref)) dangling.push({ job: currentJob, ref, line: i + 1 })
+      }
+    } else {
+      // YAML block form: `needs:` followed by 6-space `- a` items.
+      let j = i + 1
+      while (j < lines.length) {
+        const item = lines[j].match(/^      - (\S+)\s*$/)
+        if (!item) break
+        const ref = item[1]
+        if (!jobKeys.has(ref)) dangling.push({ job: currentJob, ref, line: j + 1 })
+        j++
+      }
+    }
+  }
+  return dangling
+}
 
 /** A `needs:` key (job-level dependency - a skip vector for the guard job). */
 const NEEDS_RE = /^\s*needs:/
@@ -293,6 +407,24 @@ export function scanGuardGates(root = ROOT, contract = defaultContract()) {
       break
     }
   }
+
+  // Rule 10 - the scanner steps (sec 11.32): each of the 3 versioned gate
+  // scanners (scan-timeouts / scan-curl-timeouts / scan-eol-anchor with
+  // --ci) must run in BOTH net workflows. Single-valued PER STEP-KEY in
+  // guardNet order (the FIRST existing workflow missing the step - the
+  // exact mirror of missingStep above): a push net without the curl step
+  // reports CURL TIMEOUTS STEP MISSING@guard-gates.yml, never a twin
+  // signal, and the OTHER two step-keys stay silent (they exist).
+  const missingScanSteps = []
+  for (const step of SCANNER_STEPS) {
+    for (const rel of guardNet) {
+      const abs = path.join(root, rel)
+      if (fs.existsSync(abs) && !step.re.test(fs.readFileSync(abs, "utf8"))) {
+        missingScanSteps.push({ key: step.key, file: rel })
+        break
+      }
+    }
+  }
   const prJob = prGuardJob(root, prWorkflow, prJobKey)
   const pushNetJob = prGuardJob(root, guardNet[0], pushNetJobKey)
   const fuzzJob = prGuardJob(root, prWorkflow, FUZZ_JOB, FUZZ_STEP_RE)
@@ -343,7 +475,49 @@ export function scanGuardGates(root = ROOT, contract = defaultContract()) {
     }
   }
 
-  return { missingWorkflow, pathsFilter, missingStep, missingSuite, prJob, pushNetJob, fuzzJob, encodingBad, benchmarkJob: benchmarkJobInfo }
+  // Rule 11 (sec 11.33) - the DANGLING-NEEDS graph over EVERY workflow in
+  // .github/workflows/ (repo-wide, not just the net - the silent-orphan
+  // class is workflow-agnostic: a needs: to a removed/renamed job
+  // invalidates THAT workflow at GitHub parse with 0 jobs, nothing runs;
+  // Prova 24 observed it live on ci.yml, but a dangling needs in deploy.yml
+  // or release-deploy.yml would kill a deploy the same way). Surface
+  // measured 2026-08-11: 18 workflows, 5 carry REAL needs: (4 outside the
+  // net: benchmark-auto-baseline, deploy, e2e-cache, release-deploy -
+  // guard-gates.yml and health-check.yml only mention needs: in comments),
+  // 0 dangling today - the extension is a forward lock on the whole repo.
+  // Derived by listing the dir (self-maintaining: a NEW workflow is
+  // auto-covered, no manifest edit). Both .yml and .yaml are covered (the
+  // count-pin filters the same way). Multi-valued: every dangling ref
+  // reports with file + job + ref + line (the Prova 22 pattern - the CLI
+  // lists all violations).
+  // NAO-JS-YAML (sec 11.39, MEDIDO): a fronteira das 3 formas basta - o
+  // parser regex cobre as formas reais do GitHub Actions (inline list,
+  // single ref, YAML block); js-yaml NAO reduz a superficie (paridade
+  // medida 2026-08-11: 0 vs 0 dangling, 0 divergencias nos 18 workflows;
+  // as formas exoticas - anchors/aliases, merge keys, flow multi-linha -
+  // tem 0 usos reais e o unico anchor do repo (e2e-cache.yml) vive em
+  // on.pull_request.paths, FORA de jobs: onde este parser escopa) e o
+  // custo nao vale: js-yaml NAO e dep declarada (so transitiva via
+  // @mdxeditor/editor, uma dep de UI) e o boot e identico (~0.12s ambos,
+  // dominado pelo node). Fronteira nomeada: forms exoticas sobre-flagam
+  // (needs: *deps -> DANGLING NEEDS, direcao segura - falha alto, nunca
+  // passa silencioso).
+  const wfDir = path.join(root, ".github", "workflows")
+  const allWorkflows = fs.existsSync(wfDir)
+    ? fs.readdirSync(wfDir)
+        .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+        .map((f) => path.posix.join(".github/workflows", f))
+    : []
+  const danglingNeeds = []
+  for (const rel of allWorkflows) {
+    const abs = path.join(root, rel)
+    if (!fs.existsSync(abs)) continue
+    for (const d of danglingNeedsIn(fs.readFileSync(abs, "utf8"))) {
+      danglingNeeds.push({ file: rel, job: d.job, ref: d.ref, line: d.line })
+    }
+  }
+
+  return { missingWorkflow, pathsFilter, missingStep, missingScanSteps, missingSuite, prJob, pushNetJob, fuzzJob, encodingBad, benchmarkJob: benchmarkJobInfo, danglingNeeds }
 }
 
 /**
@@ -362,6 +536,7 @@ export function emittedSignals(f, ctx) {
   if (f.missingWorkflow !== null) out.push({ key: "WORKFLOW MISSING", target: f.missingWorkflow })
   for (const o of f.pathsFilter) out.push({ key: "PATHS FILTER", target: o.file, line: o.line, text: o.text })
   if (f.missingStep !== null) out.push({ key: "TEST GUARD STEP MISSING", target: f.missingStep })
+  for (const m of f.missingScanSteps || []) out.push({ key: m.key, target: m.file })
   if (f.prJob !== null && !f.prJob.present) {
     out.push({ key: "FRAGILE GUARD JOB MISSING", target: prWorkflow, jobLine: f.prJob.jobLine })
   }
@@ -397,6 +572,10 @@ export function emittedSignals(f, ctx) {
     else if (e.kind === "step") out.push({ key: "ENCODING CALL SITE STEP MISSING", target: e.rel })
     else out.push({ key: "ENCODING CALL SITE NEEDS", target: e.rel, needs: e.needs })
   }
+  // Rule 11 (sec 11.33): one signal per dangling needs: ref (multi-valued -
+  // the Prova 22 pattern). || [] keeps older result shapes (the main
+  // exclusivity model without the field) emit-compatible.
+  for (const d of f.danglingNeeds || []) out.push({ key: "DANGLING NEEDS", target: d.file, job: d.job, ref: d.ref, line: d.line })
   return out
 }
 
@@ -435,7 +614,7 @@ export async function main() {
   const sigs = emittedSignals(facts, { prWorkflow, pushNet })
   if (sigs.length === 0) {
     console.log(
-      "guard-gates: clean (workflow present, no paths filter, test:guard step in BOTH workflows, fragile-guard job present without needs:, guard-gates job present without needs:, scan-push-full-suite in test:guard, fuzz job standalone com fuzz:ci, benchmark job standalone, encoding call sites sem needs: - sec 8.4/11.11 premise locked)",
+      "guard-gates: clean (workflow present, no paths filter, test:guard step in BOTH workflows, fragile-guard job present without needs:, guard-gates job present without needs:, scan-push-full-suite in test:guard, fuzz job standalone com fuzz:ci, benchmark job standalone, encoding call sites sem needs:, os 3 scanner steps --ci (scan-timeouts/scan-curl-timeouts/scan-eol-anchor) nos DOIS workflows, grafo needs: da rede sem refs penduradas (rule 11) - sec 8.4/11.11 premise locked)",
     )
     return 0
   }
@@ -449,6 +628,18 @@ export async function main() {
     } else if (s.key === "TEST GUARD STEP MISSING") {
       console.log(
         `guard-gates: TEST GUARD STEP MISSING in ${s.target} (run: bun run test:guard required - the guard net, sec 8.4/11.11)`,
+      )
+    } else if (s.key === "SCAN TIMEOUTS STEP MISSING") {
+      console.log(
+        `guard-gates: SCAN TIMEOUTS STEP MISSING in ${s.target} (run: node scripts/scan-timeouts.mjs --ci required - o scanner de timeouts do net, sec 11.32)`,
+      )
+    } else if (s.key === "CURL TIMEOUTS STEP MISSING") {
+      console.log(
+        `guard-gates: CURL TIMEOUTS STEP MISSING in ${s.target} (run: node scripts/scan-curl-timeouts.mjs --ci required - o scanner de curl timeouts do net, sec 11.32)`,
+      )
+    } else if (s.key === "EOL ANCHOR STEP MISSING") {
+      console.log(
+        `guard-gates: EOL ANCHOR STEP MISSING in ${s.target} (run: node scripts/scan-eol-anchor.mjs --ci required - o scanner de eol anchors do net, sec 11.32)`,
       )
     } else if (s.key === "FRAGILE GUARD JOB MISSING") {
       console.log(
@@ -506,6 +697,10 @@ export async function main() {
       console.log(
         `guard-gates: ENCODING CALL SITE STEP MISSING in ${s.target} (uses: ./.github/workflows/utf8-check.yml required - o call site do gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
       )
+    } else if (s.key === "DANGLING NEEDS") {
+      console.log(
+        `guard-gates: DANGLING NEEDS in ${s.target}:${s.line} (job ${s.job}: needs ${s.ref} nao existe no workflow - um needs: pendurado INVALIDA o workflow no parse do GitHub (0 jobs), a classe observada na Prova 24/sec 8.19)`,
+      )
     } else {
       console.log(
         `guard-gates: ENCODING CALL SITE NEEDS in ${s.target} (${s.needs} - o call site do gate de encoding nao pode depender de outro job; um needs: criaria o skip vector do lint sobre o gate de encoding)`,
@@ -513,7 +708,7 @@ export async function main() {
     }
   }
   console.log(
-    "guard-gates: guard-gates.yml + pr-check.yml (fragile-guard + fuzz + benchmark) + ci.yml/pr-check.yml (utf8-check) must run incondicionalmente (no paths filter, no needs: em NENHUM job standalone - fragile-guard, guard-gates, fuzz, benchmark, utf8-check) com o test:guard completo (scan-push-full-suite incluso) - a premissa da recalibracao 8.4/11.11",
+    "guard-gates: guard-gates.yml + pr-check.yml (fragile-guard + fuzz + benchmark) + ci.yml/pr-check.yml (utf8-check) must run incondicionalmente (no paths filter, no needs: em NENHUM job standalone - fragile-guard, guard-gates, fuzz, benchmark, utf8-check) com o test:guard completo (scan-push-full-suite incluso), os 3 scanner steps --ci (scan-timeouts/scan-curl-timeouts/scan-eol-anchor) nos DOIS workflows e o grafo needs: da rede sem refs penduradas (rule 11) - a premissa da recalibracao 8.4/11.11",
   )
   return 1
 }

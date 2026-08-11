@@ -33,6 +33,24 @@
  *      Strings, comments and REGEX LITERALS are code-masked before the
  *      scan, so prose quoting these tokens (or a toMatch(/...\(/) regex)
  *      cannot false-positive.
+ *      FRONTEIRA DO EVAL (sec 11.37, MEDIDO): esconder o TOKEN num
+ *      eval'd string (`eval('execSync("...")')`) escapa o codeMask - a
+ *      classe do tripwire do curl-timeouts NAO se aplica aqui POR IDIOMA:
+ *      JS test code nunca parameteriza o NOME da API (parameterizar ARGS
+ *      mantem o token literal e e detectado); o analogo real (interpolacao
+ *      de template literal ${...}) ja e fronteira pinada (o regression
+ *      dispatchWarning). 0 usos + 0 plausibilidade - sem tripwire, a
+ *      fronteira fica nomeada (fechar custaria rastreamento de variaveis,
+ *      o mesmo custo da sec 11.30).
+ *      NAO-MATRIZ (sec 11.38, MEDIDO): o curl-timeouts compartilha a
+ *      filosofia masking+fronteira, mas a classe de variantes AQUI e
+ *      INDIRECAO (o token some atras de OUTRO nome - runCli, runSubprocess
+ *      - a medida ~15 vs ~159 do header), nao same-token spelling; case-
+ *      variante nao e API real (ReferenceError loud, nunca hang) e o
+ *      spacing e absorvido por \\s*\\(. Por isso NAO ha matriz de formas
+ *      aqui - a classe e pinada pelas regressions LOCAL/IMPORTED HELPER,
+ *      nao por uma tabela de tokens (a matriz de 19 formas e exclusiva do
+ *      curl-timeouts, cuja superficie de FORMAS e rica).
  *   2. LOCAL HELPER call: the test body calls a top-level function /
  *      const-arrow defined in the SAME file whose own body (transitively)
  *      contains a subprocess token. The repo's suites shell out mostly

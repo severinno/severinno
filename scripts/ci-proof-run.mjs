@@ -38,8 +38,10 @@
  *      --mutate-self-delete <path> (2026-08-11, Prova 22/sec 8.17
  *      first-class): o script de mutacao e TEMP por design - o runner o
  *      remove ANTES do git add -A (o CI tree fica limpo, sem residuos de
- *      tooling da prova no commit scratch; o script NAO deve se
- *      auto-deletar - o self-delete e do runner, nao do script). Fail-loud
+ *      tooling da prova no commit scratch; QUANDO A FLAG EXISTE o script
+ *      NAO deve se auto-deletar - o self-delete e do runner, nao do
+ *      script (sem a flag, o padrao SCRIPT-OWNED da sec 11.28 vale: o
+ *      script pode se auto-deletar como ultima linha). Fail-loud
  *      se o path nao existir apos a mutacao.
  *   5. git push origin <branch>.
  *   6. gh workflow view <file> (o pre-check da Prova 7).
@@ -62,6 +64,16 @@
  *       <regex> (linha obrigatoria no log capturado). Nenhum = qualquer
  *       completed passa; --expect falha se a conclusion divergir;
  *       --expect-log falha se a regex nao casar.
+ *       --expect-parse-reject (2026-08-11, sec 11.35): o resultado
+ *       ESPERADO e a classe da Prova 24/sec 8.19 - um workflow REJEITADO
+ *       no parse do GitHub: o run completa failure com 0 jobs e SEM log
+ *       (nenhum job rodou; "This run likely failed because of a workflow
+ *       file issue"). A flag troca o verify: consulta os jobs do run
+ *       (`gh run view <id> --json jobs`) e exige EXATAMENTE 0 jobs +
+ *       conclusion=failure - o log vazio (consequencia de 0 jobs) nao e
+ *       verificado por regex. Incompativel com --expect (a conclusao e
+ *       fixa), --expect-log (nao ha log para casar) e --only-jobs (0 jobs
+ *       = nao ha job alvo para o poll por job).
  *   11. revert (salvo --keep-branch): git push origin --delete <branch>,
  *       git checkout <original>, git branch -D <branch>. NOTA: rodar o
  *       helper JA estando na branch scratch (re-run) deixa original ==
@@ -163,7 +175,7 @@ export function parseArgs(argv) {
   // SEMPRE retorna a shape completa com error: null no sucesso - o tipo
   // uniao `{...opts} | {error}` quebraria o acesso a propriedades nos
   // testes (TS2339) e o `if (opts.error)` do main() continua valido.
-  const out = { branch: null, workflow: null, mutate: null, mutateSelfDelete: null, expect: null, expectLog: null, timeout: null, keep: false, dryRun: false, noVerify: false, expectLocalBlock: false, onlyJobs: null, error: null }
+  const out = { branch: null, workflow: null, mutate: null, mutateSelfDelete: null, expect: null, expectLog: null, expectParseReject: false, timeout: null, keep: false, dryRun: false, noVerify: false, expectLocalBlock: false, onlyJobs: null, error: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--branch") { out.branch = argv[i + 1] ?? null; i++ }
@@ -172,6 +184,7 @@ export function parseArgs(argv) {
     else if (a === "--mutate-self-delete") { out.mutateSelfDelete = argv[i + 1] ?? null; i++ }
     else if (a === "--expect") { out.expect = argv[i + 1] ?? null; i++ }
     else if (a === "--expect-log") { out.expectLog = argv[i + 1] ?? null; i++ }
+    else if (a === "--expect-parse-reject") out.expectParseReject = true
     // NOTA (pre-existente, intencional): `--timeout 0` cai no || e vira
     // DEFAULT_TIMEOUT_S (900) - o 0 nao e respeitado. Quirk mantido (um
     // timeout de 0s nao faz sentido); o resolveTimeout so ve numeros > 0
@@ -182,11 +195,11 @@ export function parseArgs(argv) {
     else if (a === "--dry-run") out.dryRun = true
     else if (a === "--no-verify") out.noVerify = true
     else if (a === "--expect-local-block") out.expectLocalBlock = true
-    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"; break }
+    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--expect-parse-reject] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"; break }
     else { out.error = `flag desconhecida: ${a}`; break }
   }
   if (!out.error && (!out.branch || !out.workflow)) {
-    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"
+    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--expect-parse-reject] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"
   }
   // --expect-local-block (2026-08-11): so faz sentido com o bypass (o check
   // prova que o --no-verify mascara um trip REAL) E com --mutate (roda
@@ -202,6 +215,22 @@ export function parseArgs(argv) {
   // ANTES do git add -A - sem mutacao nao ha script TEMP a remover).
   if (!out.error && out.mutateSelfDelete && !out.mutate) {
     out.error = "--mutate-self-delete requer --mutate (o self-delete remove o script TEMP da mutacao ANTES do git add -A)"
+  }
+  // --expect-parse-reject (2026-08-11, a classe da Prova 24/sec 8.19): o
+  // workflow e REJEITADO no parse do GitHub - o run nasce failure com 0
+  // jobs e SEM log ("This run likely failed because of a workflow file
+  // issue"). A flag define o resultado esperado POR INTEIRO (conclusion =
+  // failure E 0 jobs) - entao e mutuamente exclusiva com --expect (a
+  // conclusao e fixa), --expect-log (nao ha log para casar: nenhum job
+  // rodou) e --only-jobs (0 jobs = nao ha job alvo para o poll por job).
+  if (!out.error && out.expectParseReject && out.expect) {
+    out.error = "--expect-parse-reject e incompativel com --expect (a flag ja define o resultado esperado por inteiro: conclusion=failure + 0 jobs - a classe da Prova 24/sec 8.19)"
+  }
+  if (!out.error && out.expectParseReject && out.expectLog) {
+    out.error = "--expect-parse-reject e incompativel com --expect-log (um run rejeitado no parse NAO tem log - 0 jobs, nenhum job rodou; o sinal e a contagem de jobs, nao uma linha de log)"
+  }
+  if (!out.error && out.expectParseReject && out.onlyJobs) {
+    out.error = "--expect-parse-reject e incompativel com --only-jobs (0 jobs = nao ha job alvo para o poll por job - o run inteiro e o sinal)"
   }
   // Resolve o default calibrado (sec 11.20): SEMPRE retorna um numero - o
   // timeout nunca fica null (a shape completa promete timeout numerico). O
@@ -275,7 +304,16 @@ export function planSteps(opts, originalBranch) {
   } else {
     steps.push(`gh: run view <id> --log > <tmp>/ci-proof-${b}-<id>.log`)
   }
-  steps.push(`verify: conclusion==${opts.expect ?? "qualquer completed"}${opts.expectLog ? `, log ~= /${opts.expectLog}/` : ""}`)
+  if (opts.expectParseReject) {
+    // A classe da Prova 24/sec 8.19: workflow rejeitado no parse = run
+    // failure com 0 jobs e SEM log. O verify pina a contagem de jobs (0) -
+    // o log e vazio POR CONSTRUCAO (nenhum job rodou), entao nao ha linha
+    // para casar.
+    steps.push(`gh: run view <id> --json jobs  (parse-reject: conta os jobs - esperado 0, a classe Prova 24/sec 8.19)`)
+    steps.push("verify: parse-reject (conclusion=failure + 0 jobs - o log nao existe, 0 jobs = nenhum job rodou)")
+  } else {
+    steps.push(`verify: conclusion==${opts.expect ?? "qualquer completed"}${opts.expectLog ? `, log ~= /${opts.expectLog}/` : ""}`)
+  }
   if (!opts.keep) {
     steps.push(`git: push origin --delete ${b}`)
     steps.push(`git: checkout ${originalBranch}`)
@@ -302,6 +340,28 @@ export function verifyOutcome(conclusion, expectConcl, log, expectLog) {
     }
   }
   return { ok: true, message: `conclusion=${conclusion}${expectLog ? " + log casou" : ""}` }
+}
+
+/**
+ * The parse-reject outcome check (2026-08-11, sec 11.35 - the class Prova
+ * 24/sec 8.19 observed LIVE): a workflow REJECTED at parse by GitHub - the
+ * run completes `failure` with ZERO jobs and NO log ("This run likely
+ * failed because of a workflow file issue"; no job ever runs, so `gh run
+ * view --log` returns nothing). The flag makes that the EXPECTED outcome
+ * instead of a failure: { ok: true } exactly when conclusion=="failure"
+ * AND jobsCount==0. The log absence is a CONSEQUENCE of 0 jobs (no job
+ * ran) - the jobs count is the verifiable signal, so the verify pins the
+ * count, not the (necessarily empty) log. Returns { ok, message } - pure,
+ * exported for tests.
+ */
+export function verifyParseReject(conclusion, jobsCount) {
+  if (conclusion !== "failure") {
+    return { ok: false, message: `conclusion=${conclusion} != esperado failure (o workflow rejeitado no parse termina em failure)` }
+  }
+  if (jobsCount !== 0) {
+    return { ok: false, message: `jobs=${jobsCount} != 0 esperado (o workflow NAO foi rejeitado no parse - jobs rodaram: o sinal da classe Prova 24/sec 8.19 e a ausencia total de jobs)` }
+  }
+  return { ok: true, message: "conclusion=failure + 0 jobs (workflow rejeitado no parse - a classe Prova 24/sec 8.19)" }
 }
 
 /**
@@ -409,8 +469,10 @@ export async function main() {
     // script de mutacao e TEMP por design (nunca deve entrar no commit
     // scratch - um .mjs solto poluiria a superficie de executaveis e o CI
     // tree, o ACHADO da sec 8.17). O runner assume o self-delete: remove o
-    // path ANTES do git status/add -A (o script NAO deve se auto-deletar -
-    // o contrato e do runner, nao do script). Fail-loud se o path nao
+    // path ANTES do git status/add -A (QUANDO A FLAG EXISTE o script NAO
+    // deve se auto-deletar - o contrato e do runner, nao do script; sem a
+    // flag, o padrao SCRIPT-OWNED da sec 11.28 vale: o script pode se
+    // auto-deletar como ultima linha). Fail-loud se o path nao
     // existir apos a mutacao (path errado = um temp script real escaparia
     // no commit - o no-op silencioso e a classe que o flag fecha).
     if (opts.mutateSelfDelete) {
@@ -584,8 +646,42 @@ export async function main() {
   fs.writeFileSync(logPath, log.stdout, "utf8")
   console.log(`ci-proof-run: log capturado em ${logPath} (${(log.stdout || "").split("\n").length} linhas)`)
 
-  // 10. Verify (contra a conclusao do job quando --only-jobs).
-  const check = verifyOutcome(observedConclusion, opts.expect, log.stdout, opts.expectLog)
+  // 10. Verify. Com --expect-parse-reject (2026-08-11, sec 11.35 - a classe
+  // Prova 24/sec 8.19), o sinal NAO e uma linha de log: e a CONTAGEM de
+  // jobs. O workflow rejeitado no parse completa failure com 0 jobs e SEM
+  // log ("This run likely failed because of a workflow file issue") - a
+  // consulta de jobs + o verify dedicado substituem o verifyOutcome (o
+  // log vazio nao pode ser verificado por regex). A captura acima ainda
+  // escreve o arquivo (vazio para o run rejeitado) - o summary preserva o
+  // path, mas o veredito vem dos jobs.
+  let check
+  if (opts.expectParseReject) {
+    const jv = gh(["run", "view", String(runInfo.databaseId), "--json", "jobs"])
+    let jobs = []
+    // Review nit (sec 11.35): um query falho (status != 0 ou payload
+    // inparseavel) NAO pode mentir como "0 jobs observados" - a mensagem
+    // distingue o que foi observado (a contagem real) do que foi assumido
+    // (query falhou = tratado como 0, honesto para a classe parse-reject
+    // onde o run pode nao devolver payload de jobs limpo).
+    let jobsQueryOk = false
+    if (jv.status === 0 && jv.stdout.trim()) {
+      try {
+        const parsed = JSON.parse(jv.stdout.trim())
+        jobs = parsed.jobs || []
+        jobsQueryOk = true
+      } catch {
+        jobs = []
+      }
+    }
+    console.log(
+      jobsQueryOk
+        ? `ci-proof-run: parse-reject: ${jobs.length} job(s) no run #${runInfo.databaseId} (esperado 0)`
+        : `ci-proof-run: parse-reject: query de jobs falhou (exit ${jv.status}) - assumido 0 jobs (honesto para a classe parse-reject, onde o run pode nao devolver payload de jobs)`,
+    )
+    check = verifyParseReject(observedConclusion, jobs.length)
+  } else {
+    check = verifyOutcome(observedConclusion, opts.expect, log.stdout, opts.expectLog)
+  }
   console.log(`ci-proof-run: verify: ${check.message}`)
 
   // 11. Revert (a branch scratch NAO fica no remote - salvo --keep-branch).

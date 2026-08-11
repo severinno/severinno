@@ -58,6 +58,16 @@
  * estreito; nenhum gate file do repo usa aspa escapada em ancora de
  * mutacao hoje).
  *
+ * FRONTEIRA DO EVAL (sec 11.37, NAO-fronteira - MEDIDO): a classe 'token
+ * em string avaliada depois' NEM ESCAPA aqui - strings passam
+ * BYTE-IDENTICAL pelo maskComments (mascarar strings mataria a propria
+ * deteccao), entao `eval('.replace("foo\nbar", "")')` continua com o
+ * padrao de bytes visivel e E flagrado. A unica variante que escapa (a
+ * aspa escapada, que muda o byte shape) e EXATAMENTE a fronteira fina
+ * acima. Sem tripwire necessario; o curl-timeouts (bash, onde o comando
+ * INTEIRO - incluindo o nome da ferramenta - vai pra variavel) e o unico
+ * dos tres guards com idioma plausivel de uso acidental.
+ *
  * Env override EOL_ANCHOR_SCAN_ROOT (repo sintetico p/ o vitest - espelha
  * o CURL_TIMEOUTS_SCAN_ROOT do scan-curl-timeouts). Saida ASCII pura (gate
  * file). Puro node, sem deps, <10ms. Flags: --ci (intent-only, espelho do

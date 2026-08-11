@@ -30,6 +30,10 @@
  * (FUZZ_TARGETS exports + fuzz-mapped.test.ts) but its CLI is a
  * DEFAULT-PRINT + --check-coverage runner, NOT a --print-* query mode - a
  * different CLI contract, excluded by design (its own suite pins it).
+ * FRONTIERS (scan-curl-timeouts.mjs, sec 11.40) is also out of shape:
+ * export + contract suite (FRONTIER GUARD), no --print-* query surface -
+ * a contract-support artifact like fuzz-targets, excluded by design (its
+ * own suite pins it; the LIVE TREE check proves no drift).
  *
  * Subprocess-heavy (every CLI check spawns `node <module> <query>` via
  * runSubprocess) -> an EXPLICIT timeout on every it() (the scan-timeouts

@@ -25,7 +25,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { ENCODING_CI_NET, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writeGuardGatesWorkflow, writePRWorkflow } from "./golden-copy-utils"
+import { GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writeCIWorkflow, writeGuardGatesWorkflow, writePRWorkflow } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "run-precommit-guards.mjs")
 
@@ -101,10 +101,13 @@ function writeBadGuardNet(dir: string) {
   writeGuardGatesWorkflow(dir, { name: "guard-gates", runsOn: true, step: false })
   // O twin PR e a shape CLEAN compartilhada (writePRWorkflow, sec 11.26).
   writePRWorkflow(dir)
-  fs.writeFileSync(
-    path.join(dir, ENCODING_CI_NET),
-    ["name: ci", "on:", "  push:", "    branches: [main, develop]", "jobs:", "  utf8-check:", "    uses: ./.github/workflows/utf8-check.yml", ""].join("\n"),
-  )
+  // O ci.yml e a shape CLEAN compartilhada (writeCIWorkflow, sec 11.34) - o
+  // inline da sec 11.26 ("a unica variante que fica inline") morre aqui: a
+  // fronteira moveu com a extracao da familia CI. O lint job novo nao
+  // introduz sinal (o guard so ancora o call site utf8-check + o grafo
+  // needs: - ambos limpos), entao o pin sole-failure do teste (a UNICA
+  // violacao e o TEST GUARD STEP MISSING do push net) e preservado.
+  writeCIWorkflow(dir)
 }
 
 /** A synthetic root that FAILS scan-fuzz-precommit: --scope cached no .husky/pre-commit sem nota. */

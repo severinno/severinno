@@ -31,7 +31,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writeGuardGatesWorkflow, writePRWorkflow, writePRWorkflowFuzzQuebrado, writePRWorkflowSemFuzz } from "./golden-copy-utils"
+import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, SCANNER_BLOCKS, cleanupTempDirs, createTempDir, runSubprocess, writeCIWorkflow, writeGuardGatesWorkflow, writePRWorkflow, writePRWorkflowFuzzQuebrado, writePRWorkflowSemFuzz } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-guard-gates.mjs")
 
@@ -46,28 +46,6 @@ function writePkg(dir: string, testGuard = "vitest run scripts/__tests__/scan-pu
     dir,
     "package.json",
     JSON.stringify({ name: "synthetic", scripts: { "test:guard": testGuard } }, null, 2),
-  )
-}
-
-/** Write a synthetic ci.yml with the utf8-check call site (the ENCODING_NET merge-path caller). */
-function writeCIWorkflow(dir: string, extra = "") {
-  writeFile(
-    dir,
-    ENCODING_CI_NET,
-    [
-      "name: CI",
-      "on:",
-      "  push:",
-      "    branches: [main, develop]",
-      "jobs:",
-      "  lint:",
-      "    runs-on: ubuntu-latest",
-      "    steps:",
-      "      - run: bun run lint",
-      "  utf8-check:",
-      "    uses: ./.github/workflows/utf8-check.yml",
-      "",
-    ].join("\n") + extra,
   )
 }
 
@@ -256,15 +234,16 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: paths: filter no on.push -> exit 1 com o caminho exato (file:line + conteudo)", () => {
     const dir = createTempDir("guard-gates-")
-    // A fixture tem 9 linhas de conteudo + a linha 10 do filtro (o ultimo
-    // elemento vazio do array vira o \n final antes do extra)
+    // A fixture tem 15 linhas de conteudo (9 base + 6 scanner steps, regra
+    // 10 sec 11.32) + a linha 16 do filtro (o ultimo elemento vazio do
+    // array vira o \n final antes do extra)
     writeGuardGatesWorkflow(dir, { extra: "        paths:\n          - 'scripts/**'\n" })
     writeCIWorkflow(dir)
     writePRWorkflow(dir)
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(1)
-    expect(r.stdout).toContain(`PATHS FILTER in ${GUARD_PUSH_NET}:10`)
+    expect(r.stdout).toContain(`PATHS FILTER in ${GUARD_PUSH_NET}:16`)
     expect(r.stdout).toContain("paths:")
   }, 60000)
 
@@ -276,7 +255,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(1)
-    expect(r.stdout).toContain(`PATHS FILTER in ${GUARD_PUSH_NET}:10`)
+    expect(r.stdout).toContain(`PATHS FILTER in ${GUARD_PUSH_NET}:16`)
     expect(r.stdout).toContain("paths-ignore:")
   }, 60000)
 
@@ -302,6 +281,66 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const r = runGuard(dir)
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("TEST GUARD STEP MISSING")
+  }, 60000)
+
+  it("MUTATION (regra 10, sec 11.32): scan-curl-timeouts --ci removido do push net -> exit 1 com 'CURL TIMEOUTS STEP MISSING' no caminho exato (o step sozinho - os outros 2 scanners seguem presentes)", () => {
+    const dir = createTempDir("guard-gates-")
+    // A shape compartilhada do golden-copy-utils: omitScanner remove SO o
+    // step curl - o contrato single-valued por step-key: o push net ainda
+    // tem timeouts + eol, entao SO o curl reporta, no arquivo exato.
+    writeGuardGatesWorkflow(dir, { omitScanner: "curl" })
+    writeCIWorkflow(dir)
+    writePRWorkflow(dir)
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(`CURL TIMEOUTS STEP MISSING in ${GUARD_PUSH_NET}`)
+    expect(r.stdout).not.toContain("SCAN TIMEOUTS STEP MISSING")
+    expect(r.stdout).not.toContain("EOL ANCHOR STEP MISSING")
+  }, 60000)
+
+  it("MUTATION (regra 10): TODOS os 3 scanner steps --ci removidos do push net -> exit 1 com os 3 sinais juntos (a multi-violacao da regra)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir, { omitScanners: true })
+    writeCIWorkflow(dir)
+    writePRWorkflow(dir)
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(`SCAN TIMEOUTS STEP MISSING in ${GUARD_PUSH_NET}`)
+    expect(r.stdout).toContain(`CURL TIMEOUTS STEP MISSING in ${GUARD_PUSH_NET}`)
+    expect(r.stdout).toContain(`EOL ANCHOR STEP MISSING in ${GUARD_PUSH_NET}`)
+  }, 60000)
+
+  it("MUTATION (regra 10): scan-eol-anchor --ci removido do TWIN (pr-check.yml) -> exit 1 com 'EOL ANCHOR STEP MISSING' no twin (o push net tem os 3, o single-valued pega o primeiro existente sem o step)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir)
+    writeCIWorkflow(dir)
+    writePRWorkflow(dir)
+    // Remove o step eol do twin: a shape compartilhada do golden-copy-utils
+    // escreve o twin clean (com os 3 scanners) - o teste reescreve o arquivo
+    // sem o bloco eol (o mesmo idioma replaceEolAgnostic de Prova 17: o
+    // conteudo e LF sintetico, o replace cru funciona, mas a constante e a
+    // MESMA dos fixtures para nao driftar).
+    const twinAbs = path.join(dir, GUARD_PR_TWIN)
+    const twin = fs.readFileSync(twinAbs, "utf8")
+    const eolBlock = [SCANNER_BLOCKS.eol[0], SCANNER_BLOCKS.eol[1]].join("\n")
+    fs.writeFileSync(twinAbs, twin.replace(`${eolBlock}\n`, ""))
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(`EOL ANCHOR STEP MISSING in ${GUARD_PR_TWIN}`)
+  }, 60000)
+
+  it("comentario com 'node scripts/scan-timeouts.mjs --ci' em prosa NAO tripa o scanner step (o ancoramento no run: key exclui comentarios - a mesma classe do TEST_GUARD_STEP_RE)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir, { extra: "      # run: node scripts/scan-timeouts.mjs --ci (prosa no header)\n" })
+    writeCIWorkflow(dir)
+    writePRWorkflow(dir, "# o mirror do push net: node scripts/scan-eol-anchor.mjs --ci (prosa)\n")
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("clean")
   }, 60000)
 
   it("MUTATION: scan-push-full-suite removido do test:guard -> exit 1 com 'GUARD SUITE MISSING' (assert positivo)", () => {
@@ -687,7 +726,260 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const dir = createTempDir("guard-gates-")
     writeGuardGatesWorkflow(dir)
     writePRWorkflow(dir, "# (utf8-check.yml - o gate de encoding, sec 8.x; o mirror e explicado no header)\n")
-    writeCIWorkflow(dir, "# Reusable via .github/workflows/utf8-check.yml\n")
+    writeCIWorkflow(dir, { extra: "# Reusable via .github/workflows/utf8-check.yml\n" })
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("clean")
+  }, 60000)
+
+  it("MUTATION (regra 11, sec 11.33): ci.yml com needs: para job inexistente -> exit 1 com 'DANGLING NEEDS' no caminho exato (job + ref + linha)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir)
+    writePRWorkflow(dir)
+    // build cita `nonexistent` em needs: - o job nao existe no mesmo
+    // workflow. A classe observada AO VIVO na Prova 24 (build/budget
+    // citavam o utf8-check deletado): o GitHub INVALIDA o workflow no
+    // parse com 0 jobs - o scan-guard-gates agora trava ANTES, com a
+    // ref pendurada nomeada.
+    writeFile(
+      dir,
+      ENCODING_CI_NET,
+      [
+        "name: CI",
+        "on:",
+        "  push:",
+        "    branches: [main, develop]",
+        "jobs:",
+        "  lint:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run lint",
+        "  utf8-check:",
+        "    uses: ./.github/workflows/utf8-check.yml",
+        "  build:",
+        "    name: Build",
+        "    needs: [lint, nonexistent]",
+        "    runs-on: ubuntu-latest",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(`DANGLING NEEDS in ${ENCODING_CI_NET}`)
+    expect(r.stdout).toContain("job build")
+    expect(r.stdout).toContain("needs nonexistent")
+  }, 60000)
+
+  it("MUTATION (regra 11): DUAS refs penduradas no mesmo workflow (build + budget) -> AMBAS reportadas num unico stdout (multi-violacao, o padrao da Prova 22 - o CLI nunca short-circuita na primeira)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir)
+    writePRWorkflow(dir)
+    writeFile(
+      dir,
+      ENCODING_CI_NET,
+      [
+        "name: CI",
+        "on:",
+        "  push:",
+        "    branches: [main, develop]",
+        "jobs:",
+        "  lint:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run lint",
+        "  utf8-check:",
+        "    uses: ./.github/workflows/utf8-check.yml",
+        "  build:",
+        "    name: Build",
+        "    needs: [lint, missing-a]",
+        "    runs-on: ubuntu-latest",
+        "  budget:",
+        "    name: JS Bundle Budget",
+        "    needs: [lint, missing-b]",
+        "    runs-on: ubuntu-latest",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("needs missing-a")
+    expect(r.stdout).toContain("needs missing-b")
+    const count = (r.stdout.match(/DANGLING NEEDS in /g) ?? []).length
+    expect(count).toBe(2)
+  }, 60000)
+
+  it("MUTATION (regra 11): needs pendurado no pr-check.yml (o twin PR da rede) -> exit 1 com 'DANGLING NEEDS' no twin", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir)
+    writeCIWorkflow(dir)
+    // O check job cita `lint` em needs: - o pr-check.yml NAO tem job lint
+    // (o lint e do ci.yml). A MESMA classe da Prova 24 aplicada ao twin PR:
+    // um needs: pendurado no pr-check invalida o workflow no parse.
+    writeFile(
+      dir,
+      GUARD_PR_TWIN,
+      [
+        "name: PR Check",
+        "on:",
+        "  pull_request:",
+        "    branches: [main]",
+        "jobs:",
+        "  utf8-check:",
+        "    uses: ./.github/workflows/utf8-check.yml",
+        "  check:",
+        "    needs: [lint]",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Unit tests",
+        "        run: bun run test:unit",
+        "  fuzz:",
+        "    name: Fuzz Tests",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run fuzz tests",
+        "        run: bun run fuzz:ci > fuzz-results.json",
+        "  benchmark:",
+        "    name: Geo Benchmark",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run geo benchmark",
+        "        run: |",
+        "          node scripts/run-benchmark.mjs --type geo --json",
+        "  fragile-guard:",
+        "    name: Fragile Range Guard",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
+        "        run: bun run test:guard",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain(`DANGLING NEEDS in ${GUARD_PR_TWIN}`)
+    expect(r.stdout).toContain("needs lint")
+  }, 60000)
+
+  it("MUTATION (regra 11, sec 11.33): needs pendurado num workflow FORA do net (deploy.yml) -> exit 1 com 'DANGLING NEEDS' no caminho exato (a superficie e REPO-WIDE, nao so guardNet + encodingNet)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir)
+    writePRWorkflow(dir)
+    writeCIWorkflow(dir)
+    // deploy.yml NAO esta no net (guardNet + encodingNet = guard-gates +
+    // pr-check + ci) - a extensao repo-wide (2026-08-11): a classe do
+    // orfao silencioso e workflow-agnostica, e um needs: pendurado num
+    // deploy mataria o deploy no parse do GitHub com 0 jobs - o net nao
+    // pegaria, a superficie nova pega.
+    writeFile(
+      dir,
+      ".github/workflows/deploy.yml",
+      [
+        "name: Deploy",
+        "on:",
+        "  push:",
+        "    branches: [main]",
+        "jobs:",
+        "  build:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run build",
+        "  deploy:",
+        "    needs: [build, removed-job]",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run deploy",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("DANGLING NEEDS in .github/workflows/deploy.yml")
+    expect(r.stdout).toContain("job deploy")
+    expect(r.stdout).toContain("needs removed-job")
+  }, 60000)
+
+  it("MUTATION (regra 11, sec 11.39): needs: *deps (anchor/alias YAML, a unica forma exotica que js-yaml resolveria) -> exit 1 com 'DANGLING NEEDS' ref *deps - a fronteira NAO-JS-YAML: forms exoticas SOBRE-FLAGAM (direcao segura, falha alto, nunca passam silenciosas)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir)
+    writePRWorkflow(dir)
+    writeCIWorkflow(dir)
+    // O anchor/alias YAML e a classe que um parser real (js-yaml) resolveria
+    // (a alias apontaria para o anchor real no mesmo arquivo). O regex NAO
+    // resolve aliases - nao pode, sem parser YAML completo - e reporta o
+    // alias cru como ref pendurada: OVER-FLAG na direcao SEGURA (o guard
+    // falha alto e um humano revisa, nunca passa silencioso). A fronteira
+    // documentada na sec 11.39 e: forms exoticas tripam, nunca escapam.
+    writeFile(
+      dir,
+      ".github/workflows/deploy.yml",
+      [
+        "name: Deploy",
+        "on:",
+        "  push:",
+        "    branches: [main]",
+        "jobs:",
+        "  build:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run build",
+        "  deploy:",
+        "    needs: *deps",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run deploy",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("DANGLING NEEDS in .github/workflows/deploy.yml")
+    expect(r.stdout).toContain("job deploy")
+    expect(r.stdout).toContain("needs *deps")
+  }, 60000)
+
+  it("grafo needs: VALIDO (todas as refs resolvem para jobs do mesmo workflow) -> clean (a regra 11 nao e um ban de needs:, e um ban de refs PENDURADAS)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir)
+    writePRWorkflow(dir)
+    writeFile(
+      dir,
+      ENCODING_CI_NET,
+      [
+        "name: CI",
+        "on:",
+        "  push:",
+        "    branches: [main, develop]",
+        "jobs:",
+        "  lint:",
+        "    runs-on: ubuntu-latest",
+        "    steps:",
+        "      - run: bun run lint",
+        "  utf8-check:",
+        "    uses: ./.github/workflows/utf8-check.yml",
+        "  build:",
+        "    name: Build",
+        "    needs: [lint, utf8-check]",
+        "    runs-on: ubuntu-latest",
+        "",
+      ].join("\n"),
+    )
+    writePkg(dir)
+    const r = runGuard(dir)
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("clean")
+  }, 60000)
+
+  it("comentario com 'needs:' em prosa NAO tripa a regra 11 (linha de comentario e ignorada - o parser so le needs: dentro de um bloco de job)", () => {
+    const dir = createTempDir("guard-gates-")
+    writeGuardGatesWorkflow(dir)
+    writePRWorkflow(dir, "# (needs: [lint] - prosa no header do PR twin)\n")
+    writeCIWorkflow(dir, { extra: "# needs: [nonexistent] - prosa no header do ci.yml, nunca um job real\n" })
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(0)
@@ -737,6 +1029,15 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     expect(pr).not.toMatch(/^\s+needs:/m)
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
     expect(pkg.scripts["test:guard"]).toContain("scan-push-full-suite.test.ts")
+    // Rule 10 (sec 11.32): the 3 versioned scanner steps (--ci) run in BOTH
+    // net workflows - removing one changes the push net without the guard
+    // tripping (the class this rule exists to close).
+    const scannerRunRe = /^\s+run:\s+node scripts\/scan-(?:timeouts|curl-timeouts|eol-anchor)\.mjs\s+--ci\s*$/m
+    const scannerCount = (wf2: string) => (wf2.match(/^\s+run:\s+node scripts\/scan-(?:timeouts|curl-timeouts|eol-anchor)\.mjs\s+--ci\s*$/gm) ?? []).length
+    expect(scannerCount(wf)).toBe(3)
+    expect(scannerCount(pr)).toBe(3)
+    expect(wf).toMatch(scannerRunRe)
+    expect(pr).toMatch(scannerRunRe)
     // Rule 8 (2026-08 audit): the encoding-gate call sites on the merge path
     // (ci.yml + pr-check.yml) carry the utf8-check call site WITHOUT needs:
     // - a future `needs: lint` would silently recreate the lint skip vector
@@ -752,5 +1053,42 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     // an accident.
     expect(ci).toMatch(/^  budget:$/m)
     expect(ci).toMatch(/^\s+needs: \[lint, typecheck, utf8-check, quality-gate\]$/m)
+    // Rule 11 (sec 11.33): the real ci.yml needs graph RESOLVES - every
+    // needs: reference names a job that exists in the same workflow (the
+    // class Prova 24 observed: build/budget kept citing the DELETED
+    // utf8-check and the workflow was rejected at parse with 0 jobs). The
+    // regression lock: a future dangling needs: ANYWHERE in .github/workflows/
+    // (repo-wide surface, extended 2026-08-11 - not just the net) fails
+    // this guard; the CLI run above (exit 0) now covers all 18 workflows.
+    // Count-pin the repo-wide surface: 18 workflows, 5 carry REAL needs:
+    // keys (4 outside the net: benchmark-auto-baseline, deploy, e2e-cache,
+    // release-deploy - guard-gates.yml and health-check.yml only mention
+    // needs: in comments, so the regex misses them by design), 0 dangling
+    // today.
+    const wfDir = path.join(process.cwd(), ".github", "workflows")
+    const wfFiles = fs.readdirSync(wfDir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+    expect(wfFiles.length).toBe(18)
+    const withNeeds = wfFiles.filter((f) =>
+      /^\s*needs:/m.test(fs.readFileSync(path.join(wfDir, f), "utf8")),
+    )
+    expect(withNeeds.length).toBe(5)
+    // Rule 11 (sec 11.39): the repo has ZERO exotic needs: forms (anchors/
+    // aliases, quoted refs, multi-line flow) - the regex 3-form frontier
+    // covers the real surface BY MEASUREMENT (parity probe vs js-yaml:
+    // 0 divergences on all 18), and an exotic form that DOES appear would
+    // OVER-FLAG (safe direction) rather than pass silently (pinned by the
+    // needs: *deps mutation test above).
+    const exotic = wfFiles.filter((f) =>
+      /^\s*needs:.*(\*|&|"|'|\[\s*$)/m.test(fs.readFileSync(path.join(wfDir, f), "utf8")),
+    )
+    expect(exotic.length).toBe(0)
+    const buildNeeds = ci.match(/^\s+needs: \[lint, typecheck, utf8-check, quality-gate, test\]$/m)
+    expect(buildNeeds).not.toBeNull()
+    const deployNeeds = ci.match(/^\s+needs: \[build, budget\]$/m)
+    expect(deployNeeds).not.toBeNull()
+    const ciJobKeys = [...ci.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map((m) => m[1])
+    for (const needs of ["lint", "typecheck", "utf8-check", "quality-gate", "test", "build", "budget"]) {
+      expect(ciJobKeys).toContain(needs)
+    }
   }, 60000)
 })

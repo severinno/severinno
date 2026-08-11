@@ -22,6 +22,8 @@ import { afterEach, describe, it, expect } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import {
+  CI_JOB_BLOCKS,
+  ENCODING_CI_NET,
   GUARD_PR_TWIN,
   GUARD_PUSH_BASE,
   GUARD_PUSH_NET,
@@ -424,5 +426,47 @@ describe("golden-copy fixture blocks vs the REAL workflows (fixture-vs-real drif
     const mutated = real.replace("run: bun run test:guard", "run: bun run test:guard2")
     expect(mutated).not.toBe(real)
     expect(() => assertFixtureSubset(PR_JOB_BLOCKS["fragile-guard"], realJobBlock(mutated, "fragile-guard"), "fragile-guard")).toThrow()
+  })
+
+  it("REAL: every shared CI job block (CI_JOB_BLOCKS, sec 11.34) is a canonical SUBSET of its real job in ci.yml (no drift today)", () => {
+    const real = fs.readFileSync(path.join(process.cwd(), ENCODING_CI_NET), "utf8")
+    for (const [key, fixture] of Object.entries(CI_JOB_BLOCKS)) {
+      assertFixtureSubset(fixture, realJobBlock(real, key), key)
+    }
+  }, 30000)
+
+  it("SHAPE PIN: the shared CI family covers EXACTLY the 2 jobs of the shared base (lint filler + utf8-check call-site anchor) - a 3rd job must grow the record + this pin", () => {
+    // Honest rationale (reviewer nit, sec 11.34): lint is NOT guard-anchored
+    // - no rule of scan-guard-gates scans it (rule 8 anchors the utf8-check
+    // call site; rule 11 anchors the needs graph). It is a cosmetic filler
+    // job in the shared base (the minimal jobs: section). The pin still
+    // protects the family: if a 3rd job joins the shared base, the record
+    // AND this pin must grow - otherwise the fixture-vs-real contract
+    // would silently ignore it.
+    expect(Object.keys(CI_JOB_BLOCKS).sort()).toEqual(["lint", "utf8-check"])
+  })
+
+  it("MUTATION: a renamed STEP in the real ci.yml breaks the subset (the lint run: anchor the scanner reads)", () => {
+    const real = normalizeCrlf(fs.readFileSync(path.join(process.cwd(), ENCODING_CI_NET), "utf8"))
+    // UNIQUENESS: "run: bun run lint" appears once in ci.yml today - the
+    // .replace touches the FIRST occurrence (same assumption as the
+    // pr-check fuzz step mutation, sec 11.25).
+    const mutated = real.replace("run: bun run lint", "run: bun run lint2")
+    expect(mutated).not.toBe(real)
+    expect(() => assertFixtureSubset(CI_JOB_BLOCKS.lint, realJobBlock(mutated, "lint"), "lint")).toThrow()
+  })
+
+  it("MUTATION: a renamed JOB KEY in the real ci.yml is fail-loud (realJobBlock throws - no silent empty block)", () => {
+    const real = normalizeCrlf(fs.readFileSync(path.join(process.cwd(), ENCODING_CI_NET), "utf8"))
+    const mutated = real.replace(/^  lint:$/m, "  lint-test:")
+    expect(mutated).not.toBe(real)
+    expect(() => realJobBlock(mutated, "lint")).toThrowError(/not found/)
+  })
+
+  it("MUTATION: a changed uses: value in the real ci.yml breaks the subset (the utf8-check call-site anchor)", () => {
+    const real = normalizeCrlf(fs.readFileSync(path.join(process.cwd(), ENCODING_CI_NET), "utf8"))
+    const mutated = real.replace("uses: ./.github/workflows/utf8-check.yml", "uses: ./.github/workflows/utf8-check2.yml")
+    expect(mutated).not.toBe(real)
+    expect(() => assertFixtureSubset(CI_JOB_BLOCKS["utf8-check"], realJobBlock(mutated, "utf8-check"), "utf8-check")).toThrow()
   })
 })
