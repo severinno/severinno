@@ -33,7 +33,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import { emittedSignals, scanGuardGates } from "../scan-guard-gates.mjs"
-import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir } from "./golden-copy-utils"
+import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, writeGuardGatesWorkflow } from "./golden-copy-utils"
 
 const PUSH = GUARD_PUSH_NET
 const TWIN = GUARD_PR_TWIN
@@ -212,18 +212,6 @@ function derive() {
 // ---------------------------------------------------------------------------
 // REAL fixtures for the anchors (small synthetic repos, CRLF-agnostic LF).
 // ---------------------------------------------------------------------------
-
-function writePush(dir: string, opts: { paths?: boolean; step?: boolean; jobNeeds?: boolean } = {}) {
-  const lines = ["name: Guard Gates", "on:", "  push:", "    branches: [main, develop]"]
-  if (opts.paths) lines.push("        paths:", "          - 'scripts/**'")
-  lines.push("jobs:")
-  if (opts.jobNeeds) lines.push("  guard-gates:", "    needs: check", "    runs-on: ubuntu-latest", "    steps:")
-  else lines.push("  guard-gates:", "    runs-on: ubuntu-latest", "    steps:")
-  if (opts.step !== false) lines.push("      - name: Run guard vitest suites", "        run: bun run test:guard")
-  else lines.push("      - name: lint", "        run: bun run lint")
-  lines.push("")
-  writeFile(dir, PUSH, lines.join("\n"))
-}
 
 function writeTwin(dir: string, opts: { fragile?: boolean; fuzzNeeds?: boolean; fuzzStep?: boolean; bench?: boolean } = {}) {
   const lines = [
@@ -464,7 +452,7 @@ describe("scan-guard-gates exclusivity - REAL anchors (modelo vs codigo real)", 
 
   it("MODEL ANCHOR: um repo sintetico real produz EXATAMENTE o que resultOf preve para os mesmos dims (fuzz needs + step errado -> NEEDS + STEP MISSING juntos)", () => {
     const dir = createTempDir("guard-gates-excl-")
-    writePush(dir, { paths: true, step: true })
+    writeGuardGatesWorkflow(dir, { runsOn: true, extra: "        paths:\n          - 'scripts/**'\n" })
     writeTwin(dir, { fragile: true, fuzzNeeds: true, fuzzStep: false })
     writeCi(dir, { enc: true })
     writePkg(dir, true)
@@ -485,7 +473,7 @@ describe("scan-guard-gates exclusivity - REAL anchors (modelo vs codigo real)", 
 
   it("REAL ANCHOR rule 4 bot rule 5: job fragile-guard com needs -> so FRAGILE GUARD NEEDS, nunca JOB MISSING (o CLI real)", () => {
     const dir = createTempDir("guard-gates-excl-")
-    writePush(dir, { step: true })
+    writeGuardGatesWorkflow(dir, { runsOn: true })
     writeFile(
       dir,
       TWIN,
@@ -524,7 +512,7 @@ describe("scan-guard-gates exclusivity - REAL anchors (modelo vs codigo real)", 
 
   it("REAL ANCHOR coexistencia (refinamento): twin DELETADO + paths no push net -> WORKFLOW MISSING@twin E PATHS FILTER no MESMO scan (a forma global do rule 1 bot 2 nao vale)", () => {
     const dir = createTempDir("guard-gates-excl-")
-    writePush(dir, { paths: true, step: true })
+    writeGuardGatesWorkflow(dir, { runsOn: true, extra: "        paths:\n          - 'scripts/**'\n" })
     writeCi(dir, { enc: true })
     writePkg(dir, true)
     const real = new Set(emittedSignals(scanGuardGates(dir), CTX).map(sigId))

@@ -38,6 +38,7 @@
 | 20 | Guard do push net — **FUZZ JOB NEEDS + FUZZ STEP MISSING via CI real** (Prova 21, sec 8.16; `scan-guard-gates.mjs` rule 7, o lado CI da classe FUZZ — o par da Prova 17 fechado no pr-check real) | A classe FUZZ (needs: + step errado no job fuzz do pr-check.yml) ter prova só sintética — a Prova 17 provou a multi-violação AGREGADA local; faltava o lado CI: a MESMA injeção combinada num `workflow_dispatch` real, com o `Fuzz Tests: skipped` como prova viva do skip vector | `needs: check` + step `bun run fuzz:ci` trocado por `bun run lint` no job `fuzz` do pr-check.yml REAL (branch scratch `ci-proof/fuzz-needs-live`) via **`ci-proof-run --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT' --no-verify`** | Run [**31444762608**](https://github.com/severinno/severinno/actions/runs/31444762608) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock 206.76s (~3.5min)** com `time -p`; helper **exit 0**; job `check` (~2:51, 00:05:04→00:07:55) conclusion=`failure` com os DOIS sinais no log job-scoped: `guard-gates: FUZZ JOB NEEDS in .github/workflows/pr-check.yml (needs: check ...)` + `guard-gates: FUZZ STEP MISSING in .github/workflows/pr-check.yml (run: bun run fuzz:ci required ...)` + `scan-guard-gates.test.ts (30 tests | 1 failed)` (REAL-REPO CONTRACT); **`Fuzz Tests: skipped`** (00:07:55) — o `needs: check` fez o fuzz depender do check falho, o skip vector provado vivo; revertido byte-identical (11 arquivos do delta restaurados do backup md5-identical) |
 | 21 | Guard do push net — **multi-violação AGREGADA via CI real** (Prova 22, sec 8.17; `scan-guard-gates.mjs` rules 1-4, 6-9 — o lado CI da Prova 17, que era local) | A Prova 17 provou a multi-violação AGREGADA no CLI real LOCALMENTE (8 sinais num run, repo real, revert byte-identical); faltava o lado CI: a MESMA injeção agregada num `workflow_dispatch` real, com o job check (REAL-REPO CONTRACT) **E** o batch runner (run-precommit-guards) falhando com os mesmos sinais | A MESMA injecao da Prova 17 Run 1 (guard-gates.yml DELETADO + pr-check.yml sem utf8-check/fuzz/benchmark/fragile-guard + ci.yml sem utf8-check + package.json test:guard sem scan-push-full-suite) via **`ci-proof-run --branch ci-proof/aggr-live --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT' --no-verify`** (mutation script `scripts/prova22-mutate.mjs` TEMP, CRLF-safe + **self-delete** antes do `git add -A` — nunca entrou no commit scratch) | Run [**31446588931**](https://github.com/severinno/severinno/actions/runs/31446588931) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock 204.91s (~3.4min)** com `time -p`; helper **exit 0**; job `check` conclusion=`failure` com **88 linhas `guard-gates:` no log job-scoped** — os **8 sinais** da agregacao (WORKFLOW MISSING + TEST GUARD STEP MISSING + FRAGILE GUARD JOB MISSING + GUARD SUITE MISSING + FUZZ JOB MISSING + BENCHMARK JOB MISSING + ENCODING CALL SITE MISSING ×2 + ENCODING WORKFLOW MISSING) — e as DUAS suites vermelhas: `scan-guard-gates.test.ts (30 tests | 1 failed)` (REAL-REPO CONTRACT, 1115ms) **E** `run-precommit-guards.test.ts (7 tests | 7 failed)` (o batch runner — TODOS os 7 guards vermelhos, incluindo o REAL-REPO CONTRACT do batch); os GROWTH CONTRACTs do workflow-contracts também vermelhos (mesma raiz: guard-gates.yml sumiu); revertido byte-identical (13 arquivos do delta restaurados do backup md5 **OK 13/13**; mutation script self-deletado; `git status` = delta original intacto) |
 | 22 | Guard do veredito da 11.17 — **SEGUNDO NODE GUARD live** (`scan-prepush-batch.mjs`, o guard novo wired no batch do pre-commit) | O NEGATIVO INCONDICIONAL do REFINAMENTO da 11.17 (um 2º node guard no `.husky/pre-push` fora do `ALLOWED_NODE_GUARDS` falha MESMO com a nota ADOTADO — a LISTA é o pin estrutural, o espelho do HOOK_ALLOWLIST da 11.16) só tinha prova sintética (fixtures) | `node scripts/scan-new-guard.mjs` anexado ao `.husky/pre-push` REAL como linha 87 (backup md5 `74df8979...`) | **Local** — prova de hook REAL (o CLI + o batch runner + o REAL-REPO CONTRACT leem os arquivos reais; a rota sintética já está pinada pelos mutation tests) | ✅ CLI real: `SECOND NODE GUARD at .husky/pre-push:87: node scripts/scan-new-guard.mjs (... edit ALLOWED_NODE_GUARDS ...)` → **exit 1**; batch runner real (7º guard) **exit 1** com o mesmo sinal; vitest: **2 failed | 12 passed** — `DERIVATION PIN` (`expected [ 'check-push-deletion.mjs', …(3) ] to deeply equal [ 'check-push-deletion.mjs', …(2) ]`) + `REAL-REPO CONTRACT` (`expected 1 to be +0`); revertido byte-identical (md5 `74df8979...`) → CLI `clean` exit 0 + suíte 14/14 verde |
+| 23 | Guard da agregação — **lado PUSH NET via push real** (Prova 24, sec 8.19; a MESMA agregação da Prova 22 no OUTRO lado da rede — o par fechado como as Provas 16/19 fizeram para o needs:) | O órfão TOTAL do push net: deletar o guard-gates.yml faz o GitHub NÃO criar run NENHUM do Guard Gates (o workflow some silenciosamente) e o ci.yml (o backstop do push) fica INVÁLIDO no parse porque build/budget ainda citam `needs: [..., utf8-check, ...]` — a agregação quebra o pipeline inteiro sem o guard sequer rodar | A MESMA injecao da Prova 22 (guard-gates.yml DELETADO + pr-check.yml sem utf8-check/fuzz/benchmark/fragile-guard + ci.yml sem utf8-check + test:guard sem scan-push-full-suite) via **push REAL temporario a develop** (branch scratch `ci-proof/aggr-push-live`, commit 70fe6c5; mutation script TEMP CRLF-safe self-delete — o ACHADO da sec 8.17) | Run [**31461526068**](https://github.com/severinno/severinno/actions/runs/31461526068) (`CI/CD`, event `push`, branch develop) + [31461526553](https://github.com/severinno/severinno/actions/runs/31461526553) (`UTF-8 Check`) | ✅ **CI/CD = failure com 0 jobs** (o workflow foi rejeitado no parse — build/budget ainda tem `needs: [..., utf8-check, ...]` mas o job foi removido = a classe (inferida) "workflow file issue" da Prova 18; nenhum job rodou, nem o REAL-REPO CONTRACT); **UTF-8 Check = success** (encoding limpo, isolando a falha ao contrato); **NENHUM run do Guard Gates criado para o sha 70fe6c5** (gh run list --workflow guard-gates.yml = vazio — o órfão total provado vivo: deletar o push net não deixa rastro de run); revertido byte-identical (md5 8/8, develop deletado, scratch deletada) |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -1839,6 +1840,64 @@ BATCH_EXIT=1   (mesmo sinal via run-precommit-guards.mjs)
   runner), no `test:guard`/push net e no pre-push (via DERIVATION PIN) — a
   re-medição consciente da 11.17 travada estruturalmente, não só na doc.
 
+## 8.19 Prova 24 — agregação no lado PUSH NET via push real (run 31461526068, 2026-08-11)
+
+- **Por que esta prova (a avaliação VALE ADOTAR)**: a Prova 22 (8.17) provou a
+  agregação multi-violação no lado PR (workflow_dispatch do pr-check). O MESMO
+  contrato tem um irmão no push net guard-gates.yml — e o par 16/19 (needs:)
+  fechou os dois lados da rede; faltava o par da agregação. O lado push tem um
+  observável ÚNICO que o lado PR não pode mostrar: a agregação **DELETA** o
+  guard-gates.yml (rule 1 WORKFLOW MISSING), então o push net não gera run
+  NENHUM — e o ci.yml (o backstop do push) fica **INVÁLIDO no parse** porque
+  build/budget ainda citam `needs: [..., utf8-check, ...]` mas o job foi
+  removido (rule 8) → o CI/CD rejeita o workflow em ~0s (a classe "workflow
+  file issue" da Prova 18), sem rodar job nenhum — nem o REAL-REPO CONTRACT. O
+  sinal do lado push é a REJEIÇÃO da plataforma + o órfão silencioso, não o
+  guard listando os sinais (que é o sinal do lado PR).
+- **A injeção** (branch scratch `ci-proof/aggr-push-live`, commit 70fe6c5): a
+  MESMA da Prova 22 (mutation script TEMP CRLF-safe self-delete — o ACHADO da
+  sec 8.17): guard-gates.yml DELETADO; pr-check.yml reescrito SEM os jobs
+  utf8-check/fuzz/benchmark/fragile-guard mantendo check + docs-encoding +
+  security-headers + workflow_dispatch no on:; ci.yml SEM o job utf8-check
+  (build/budget com needs pendurado); package.json test:guard sem a suite
+  scan-push-full-suite.
+- **Disparo**: push REAL temporário a `develop` (`git push origin HEAD:develop`
+  com HUSKY=0 — o trigger push: [main, develop] do ci.yml; develop é o caminho
+  seguro documentado da Prova 7/18; main dispararia deploy). O guard-gates.yml
+  DELETADO não está no ref pusheado → o GitHub não cria run do Guard Gates.
+- **O sinal (2026-08-11 05:24Z)** — dois runs criados pelo push:
+  - **CI/CD (run 31461526068) = `failure` com 0 jobs**: `gh run view
+    31461526068 --json jobs` → `jobs_count=0` e `gh run view --log` → "log not
+    found" — o workflow foi rejeitado no parse ANTES de qualquer job rodar
+    (build/budget citam `needs: [..., utf8-check, ...]` que a agregação
+    removeu). A mensagem exata do GitHub não foi capturada (log not found): a
+    classe "workflow file issue" da Prova 18/19 é INFERIDA dos 0 jobs + needs
+    pendurado, não observada literalmente. Nem o REAL-REPO CONTRACT chegou a
+    rodar — a plataforma aborta o workflow inteiro.
+  - **UTF-8 Check (run 31461526553) = `success`**: o gate de encoding correto
+    (o utf8-check.yml tem trigger push próprio e a agregação não sujou
+    encoding) — isolando a falha ao contrato de workflow, não ao encoding.
+  - **NENHUM run do Guard Gates para o sha 70fe6c5**: `gh run list
+    --workflow guard-gates.yml` + select por headSha = **vazio** — o órfão
+    TOTAL provado vivo: deletar o push net não deixa rastro de run nenhum no
+    GitHub (a classe que o workflow existe para fechar, agora demonstrada no
+    seu pior caso: o próprio net deletado).
+- **Reversão**: revert manual byte-identical — `git push origin --delete
+  develop` + `git checkout freebuff/new-thread-thmsitz5qutoia` + `git branch -D
+  ci-proof/aggr-push-live`; os 8 arquivos do delta da thread (que o `git add -A`
+  do commit scratch varreu, o padrão da Prova 22) restaurados do backup
+  `/tmp/prova24-backup` com md5 **byte-identical 8/8**; `git status` = o delta
+  original intacto; mutation script TEMP self-deletado (zero resíduos).
+- **Gap protegido**: a Prova 22 (PR, dispatch) + esta Prova 24 (push net, push
+  real) formam o par da classe agregação nos dois lados da rede — o mesmo
+  tratamento que as Provas 16/19 deram ao needs:. Um refactor futuro que faça o
+  guard parar na PRIMEIRA violação (early-return) quebraria a Prova 22 (os 8
+  sinais no CLI); uma regressão que remova o utf8-check do ci.yml sem ajustar o
+  needs do build/budget agora tem esta prova documentando a classe "workflow
+  file issue" no push — e o órfão total do push net (deletar o workflow =
+  silêncio de run) fica registrado como comportamento observado, não só
+  inferido.
+
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
 Nos dois runs acima (pré-reorder), o job `check` mostrava exatamente o
@@ -2085,6 +2144,53 @@ suítes, correto). O batch segue o corte documentado (6 guards em 0.21s vs
 encoding (~3.7s) e tsc (~16s) são estáveis. O teto estrutural continua não
 sendo o tsc — é o mapping de testes do set staged: commit que toca muitas
 suítes custa ~45s de testes; commit docs-only continua instantâneo (skip).
+
+**Re-medição 4 (2026-08-11) — o total real de ponta a ponta + CORREÇÃO DE PREMISSA:
+`scan-curl-timeouts`/`scan-eol-anchor` são CI-ONLY, não estão no batch do pre-commit.**
+
+O pedido assumia que o pre-commit ganhou 2 guards novos (`scan-curl-timeouts` +
+`scan-eol-anchor`) no batch runner. **A premissa está incorreta** — verificado nos
+arquivos reais: os 2 guards estão wired SÓ no CI (`guard-gates.yml` e
+`pr-check.yml` como steps `node scripts/scan-curl-timeouts.mjs --ci` e `node
+scripts/scan-eol-anchor.mjs --ci`, sec 8.1), e suas suítes vitest
+(`scan-curl-timeouts.test.ts` + `scan-eol-anchor.test.ts`) rodam no
+`test:unit` (job `check`) e `test:run` (job `Tests`) — NÃO no `test:guard` (a
+lista do script tem 13 suítes e não os inclui) e NÃO no `.husky/pre-commit` (o `run-precommit-guards.mjs`
+segue com os MESMOS 7 guards; o hook não os chama). O custo do pre-commit local é
+portanto INALTERADO por esses guards — a medição abaixo é o ground truth atual do
+hook de ponta a ponta (protocolo das re-medições 1-3: stage do set real + md5
+snapshot 8/8 → 3 runs → md5 byte-identical 8/8 + unstage):
+
+| Run | Total real | Nota |
+|---|---|---|
+| RUN1 | 166.7s | boot one-time: tsc cold/rebuild do tsbuildinfo + daemon eslintd cold + vitest cold (mais pesado que os ~124s das re-medições 2-3 — máquina mais carregada) |
+| RUN2 | 63.1s | regime warm |
+| RUN3 | 55.6s | regime warm |
+| **Regime estável** | **~56-63s** | o custo real por commit com o set atual (8 arquivos staged) |
+
+Componentes (mesma sessão, runs isoladas):
+
+| Componente | Re-medição 3 | Re-medição 4 | Δ |
+|---|---|---|---|
+| verify-encoding | 2.62s | 2.55s | ~igual |
+| check-docs-encoding + scan-lucide + check-next-types | 0.88s | 0.90s | ~igual |
+| **batch (7 guards em 1 invocação)** | **0.21s** | **0.21s** | estável — o 7º guard (sec 11.17) custa ~0.02s; o batch NÃO carrega curl-timeouts/eol-anchor (CI-only) |
+| **tsc --incremental (warm)** | **16.11s** | **12.72s** | -3.4s — estado de máquina (faixa 10.9-16.5s da 11.10) |
+| **lint-staged (shim warm)** | **4.73s (25 arquivos staged)** | **3.71s (6 ts staged)** | ~igual por arquivo |
+| **pre-commit:test** | **45.41s (12 suites/246 testes)** | **33.50s (5 suites/124 testes)** | **-11.9s — escopo do mapping (8 arquivos staged desta thread)** |
+| **Total wall (lint ∥ tsc)** | **~65-74s** | **~56-63s** | |
+
+Soma: 3.66 (gates) + max(12.72, 3.71) (lint ∥ tsc) + 33.50 (pre-commit:test) =
+**~49.9s** — bate com o RUN3 (55.6s, +5.7s de overhead).
+
+**Veredito honesto**: o total caiu (65-74 → 56-63s) NÃO por causa de guards novos
+no hook (não há — os 2 são CI-only), mas pelo escopo do mapping de testes do set
+staged (12 suites/246 → 5 suites/124 testes) e pelo estado de máquina do tsc
+(16.11 → 12.72s). O teto estrutural segue sendo o pre-commit:test (~60% do wall)
+quando o commit toca muitas suítes; o batch segue o corte documentado (7 guards em
+0.21s). Se o intento era ter `curl-timeouts`/`eol-anchor` LOCAIS também, isso é
+uma decisão separada (adicioná-los ao `run-precommit-guards.mjs` — custo marginal
+~0.05-0.1s) — não foi o que o pedido fez, e a re-medição documenta o estado real.
 
 ## 11.1 eslint --cache no lint-staged — avaliado e RECUSADO (medição 2026-08-09)
 
@@ -3610,7 +3716,31 @@ JOB (start→completed) — a janela real do poll inclui também fila/startup
 do runner antes do primeiro `completed` (no run 31430040398 a fila foi
 ~4s, mas dias de fila cheia comem margem); 300s deixa ~2min de cabeça
 sobre o job + fila típica, e o `--timeout` explícito existe para casos
-patológicos de fila. A
+patológicos de fila.
+
+**Medição da fila real via API (2026-08-11, job started_at vs run
+created_at — a lacuna margem documentada ↔ observada fechada):**
+
+| Run | fila run→job (s) | job check (s) | janela total (s) | headroom 300s |
+|---|---|---|---|---|
+| Prova 16 (31430040398) | 4 | 167 | 171 | 129 |
+| Prova 20 (31442006152) | 4 | 182 | 186 | 114 |
+| Prova 21 (31444762608) | 9 | 171 | 180 | 120 |
+| Prova 22 (31446588931) | 3 | 178 | 181 | 119 |
+
+**Os três achados**: (1) a fila observada (3–9s, mediana 4s) **confirma**
+o "~4s" documentado — o run criado e o job começam na mesma dezena de
+segundos nos 4 runs; (2) o "2:47" documentado era o **mínimo** — o job
+real variou 167–182s (o check não é determinístico em duração); (3) a
+janela real run→completed é 171–186s, deixando **114–129s de headroom**
+sobre o default de 300s (~1.6× a pior janela observada — 300/186). Para o
+300s estourar num dia de fila cheia, a fila precisaria crescer **~14–41×**
+sobre o observado (a derivação por linha: o 300s estoura quando fila >
+300−job → Prova 16: 133/4 = 33×, Prova 20: 118/4 = 30×, Prova 21: 129/9 =
+14×, Prova 22: 122/3 = 41× — o pior caso é o da Prova 21, fila 9s com job
+171s) — a margem documentada "~2min de cabeça" é **confirmada pela
+medição**, não só estimada; o `--timeout` explícito continua sendo a
+válvula para o caso patológico. A
 resolução vive numa função única (`resolveTimeout` em ci-proof-run.mjs,
 compartilhada por parseArgs e planSteps — regra dos 2 usos): sem
 `--only-jobs` o default continua 900s (o ciclo completo pode incluir jobs
@@ -3691,6 +3821,225 @@ helper).
 **Custo por push**: o front path é o custo fixo de TODO push (deleção, misto, normal) — economiza ~0.11s/push. Pequeno, mas é o único spawn de subprocesso removível do caminho quente do hook (o integrity e o fuzz mapeado são gates reais, não fundíveis).
 
 **Simulação viva pós-rewire** (2026-08-11, hook REAL, stdin sintético pipado): deleção pura → exit 0 com `[skip] pre-push: push de delecao pura` em **0.21s** (sem rodar a cadeia); misto (1 deleção + 1 ref real) → exit 0 com a cadeia RODANDO e passando (`[OK] pre-push: todos os gates passaram`, 0 `[skip]`) — o checker retorna exit 1 no misto e o hook corretamente roda os gates em vez de pular.
+
+## 11.22 Poll adaptativo no ci-proof-run — avaliado e RECUSADO pela medição (avaliação 2026-08-11)
+
+**A pergunta**: o `POLL_INTERVAL_MS` do ci-proof-run.mjs é fixo em 10s. Avaliar um poll adaptativo — frequente no início (5s até 60s de ciclo), espaçado depois (20s) — para o `--only-jobs` detectar a conclusão do job "~2x mais rápido" sem multiplicar as chamadas à API do GitHub em ciclos longos.
+
+**A simulação honesta** (modelo fiel do loop: 1ª poll imediata em t=0, depois sleep do intervalo a cada iteração; detecção = 1ª poll com t >= conclusão; calls = polls até a detecção):
+
+| Conclusão do job | fixed 10s | adapt 5s→60s→20s | Delta detecção | Delta calls |
+|---|---|---|---|---|
+| 7s (utf8-check) | 10s / 2 | 10s / 3 | 0s | +1 |
+| 12s | 20s / 3 | 15s / 4 | **−5s** | +1 |
+| 30s | 30s / 4 | 30s / 7 | 0s | +3 |
+| 60s (fronteira) | 60s / 7 | 60s / 13 | 0s | +6 |
+| **167s (o job check — o SINAL de toda prova, sec 11.20)** | **170s / 18** | **180s / 19** | **+10s MAIS LENTO** | +1 |
+| 300s (timeout default do --only-jobs) | 300s / 31 | 300s / 25 | 0s | −6 |
+| 552s (run completo 9:12) | 560s / 57 | 560s / 38 | 0s | −19 |
+| 900s (timeout do ciclo completo) | 900s / 91 | 900s / 55 | 0s | −36 |
+
+**O achado honesto**: a premissa "~2x mais rápido" vale só para jobs que concluem entre ~11-15s — a janela de 5s de granularidade fina antes do salto. O job que TODAS as provas esperam (o `check`, ~2:47 = 167s, sec 11.20) cai DENTRO da fase lenta (20s após 60s): detecção 180s vs 170s — **+10s PIOR** com +1 chamada. O adaptativo troca latência de detecção por parsimônia de API no EXATO caso que o helper existe para acelerar; e a economia de chamadas (−36 no run de 900s) vive no modo ciclo-completo que o `--only-jobs` (11.20) foi criado para evitar — onde 91 vs 55 chamadas por prova é ruído frente ao rate limit do GitHub (5.000/h autenticado; o ciclo de prova roda no máximo algumas vezes por sessão).
+
+**Decisão: RECUSADO — `POLL_INTERVAL_MS` fixo em 10s mantido.** O lever real do wall-clock de prova não é o intervalo do poll (a detecção adiciona no máximo UM intervalo ao ciclo: 10s de ~3.5min = ~5%), é o próprio job (o `check`, 167s) e o setup do run. O 10s fixo é o ponto médio honesto entre granularidade (a detecção nunca atrasa mais que 10s além da conclusão) e volume de chamadas (≤91 num ciclo de 900s completo — irrelevante para rate limit). Um adaptativo que desse o "2x" prometido (5s fixo até a fronteira certa) multiplicaria as chamadas por ~2 na fase que importa — o trade que a proposta tenta evitar. Se um dia o run completo (sem --only-jobs) dominar as provas de novo, re-avaliar ancorando o threshold na DURAÇÃO REAL do job alvo — e a âncora DEVE passar da conclusão esperada (ex.: 5s até ~1.2× a mediana do check), nunca ficar abaixo (um threshold < conclusão manda o job alvo para a fase lenta e piora a detecção — o 0.8× avaliado aqui seria auto-derrotante: 134s < 167s → detecção ~175s, pior que o 170s fixo). Mesmo assim, com 5s até 1.2× a detecção só EMPATA com o 10s fixo ao custo de ~2× as chamadas — o 10s fixo continua o ponto médio honesto; a re-avaliação só valeria se o job alvo mudar de ordem de grandeza.
+
+**Re-validação**: a decisão é doc-only (nenhum código mudou — o `POLL_INTERVAL_MS = Number(process.env.CI_PROOF_POLL_MS || 10_000)` e o seam `CI_PROOF_POLL_MS` dos testes E2E ficam intactos); `gates-proofs-ordering.test.ts` valida a monotonia da nova seção 11.22 (antes de 12).
+
+## 11.23 Calibração de timeout por forma de ciclo — exclusiva do ci-proof-run (avaliação 2026-08-11)
+
+**A pergunta**: o `resolveTimeout()` do ci-proof-run.mjs é o single source do default calibrado por forma de ciclo (900s ciclo completo, 300s com `--only-jobs`, um `--timeout` explícito sempre vence — sec 11.20) — mas só o helper o usa. Avaliar se o mesmo padrão deveria valer para outros waits de prova: o "poll do guard-gates no pre-commit" e o timeout do vitest nos E2E — ou documentar por que a calibração é exclusiva do helper de prova-CI.
+
+**A checagem de premissa (a varredura dos waits reais do repo)**:
+
+1. **Não existe poll no pre-commit (nem no pre-push).** O `.husky/pre-commit` é uma cadeia SÍNCRONA de gates locais (encoding + docs + lucide + next-types + batch runner + lint ∥ tsc + testes mapeados); o scan-guard-gates roda dentro do batch runner (run-precommit-guards.mjs) lendo arquivos, sem `setTimeout`/`sleep`/loop de espera. O grep de `while|until|sleep|poll|timeout` nos dois hooks é **vazio** — não há wait para calibrar onde a premissa sugere que exista.
+2. **Os E2E não têm espera externa.** Os testes subprocess-heavy do ci-proof-run já carregam timeout EXPLÍCITO (`, 60000` — 22 ocorrências na suíte, o padrão do scan-timeouts guard que varreu 137 testes da classe de flake) e o `vitest.config.unit.ts` tem o `testTimeout: 30000` global como safety net documentado. Mas o ciclo E2E é hermético (fake bins + `CI_PROOF_POLL_MS=50`): cada teste conclui em segundos — o 60000 é um TETO DE FALHA para CI lento (fail loud), não um wait cuja duração a calibração deva otimizar. "Calibrar por forma de ciclo" ali seria calibrar nada.
+3. **O único wait remoto do repo é o poll do ci-proof-run.** A varredura de `setTimeout|sleep|--poll|poll(` nos scripts (fora de __tests__) confirma: só o `ci-proof-run.mjs:505` espera um sistema EXTERNO (a API do GitHub) cuja duração é controlada pelos runners do GitHub — não-limitável localmente, não-observável sem poll. (O `setTimeout` de compare-benchmarks.mjs:303 é um teto de kill do subprocesso benchmark, local — não um wait externo; os `sleep` de backup-db.sh/check-health.sh/deploy.sh e demais scripts de ops são cadência operacional, fora do escopo de prova.)
+
+**Decisão: RECUSADO — a calibração por forma de ciclo é exclusiva do helper de prova-CI, e por construção.** O `resolveTimeout` existe porque o ci-proof-run é o ÚNICO script com um wait cujo custo é wall-clock por prova (o poll remoto) e cuja duração vem de fora (GitHub). Um default calibrado só tem o que calibrar onde o wait é (a) externo e não-limitável, e (b) o gargalo do custo do ciclo — as duas condições só o poll do helper satisfaz. Os gates locais (pre-commit/pre-push) são síncronos e limitados pelo runtime local (fs + node + vitest): um default por forma não teria o que otimizar. Os timeouts do vitest são limites de FALHA (fail loud em CI lento), já padronizados pelo scan-timeouts guard (explicito 60000 + safety net 30000) — propósito oposto ao do default de espera, que otimiza o caso de sucesso.
+
+**Condição de fronteira documentada**: se um SEGUNDO script ganhar um poll remoto (ex.: um futuro ci-helper de outro gate), o padrão do `resolveTimeout` deve ser EXTRAÍDO para um módulo compartilhado (a regra dos 2 usos do repo — como `parseRefLines`/`expectedTargetFiles`), NÃO duplicado — e o default por forma calibrado com a medição daquele wait específico. Até lá, o single source do ci-proof-run é o lugar certo e único.
+
+**Re-validação**: a decisão é doc-only (nenhum código mudou — `resolveTimeout` segue exportado e consumido por parseArgs + planSteps dentro do helper, o single source da regra dos 2 usos); `gates-proofs-ordering.test.ts` valida a monotonia da nova seção 11.23 (11.22 antes, 12 depois).
+
+## 11.24 writeGuardGatesWorkflow extraído — o 2º shape do push net (decisão 2026-08-11)
+
+**A pergunta**: a família de fixtures do golden-copy-utils cobre o pr-check.yml (o twin PR — writePRWorkflow + irmãs), mas o guard-gates.yml (o push net) ainda era montado INLINE nos testes do scan-guard-gates (o writeWorkflow local). Avaliar se um 2º shape de mutação do push net já existe e merece um `writeGuardGatesWorkflow` irmão no golden-copy-utils, no mesmo padrão da regra dos usos.
+
+**A checagem (o inventário dos shapes do push net — 3 suítes, 2 shapes + 1 variante)**:
+
+1. **scan-guard-gates.test.ts — writeWorkflow local (~27 call sites)**: a base CLEAN (name: Guard Gates, on.push, jobs.guard-gates com o step test:guard) + o padrão `extra` de re-entry append (paths/paths-ignore/needs/comentários anexados após a linha 10 — o PIN `:10` do PATHS FILTER depende da base byte-identical: 9 linhas de conteúdo + o elemento vazio final que vira o `\n` antes do extra).
+2. **guard-gates-exclusivity.test.ts — writePush local (3 call sites)**: o SEGUNDO shape — a mesma base do writeWorkflow MAS com `runs-on: ubuntu-latest` no job block, `paths` INLINE (após branches, não em extra) e o toogle `step:false` (o step lint no lugar do test:guard). 3 call sites (MODEL ANCHOR, REAL ANCHOR rule 4, REAL ANCHOR coexistencia).
+3. **run-precommit-guards.test.ts — writeBadGuardNet (1 site)**: o push net com `runs-on` + step ERRADO (echo no test:guard) — a variante que dispara o TEST GUARD STEP MISSING no batch runner.
+
+**Decisão: VALE ADOTAR — a regra dos usos está satisfeita (2 shapes repetidas × 3 suítes).** O `writeGuardGatesWorkflow(dir, opts)` extraído cobre as 3: a base byte-identical ao writeWorkflow antigo (o PIN `:10` do PATHS FILTER sobrevive — 9 linhas + `\n` + extra), com opts `{ name?, runsOn?, step?, extra? }`. O scanner ancora o step no `run:` key (TEST_GUARD_STEP_RE), NUNCA no nome do step — então o toogle `step:false` (lint step) e o `runsOn` são seguros para as 3 suítes sem mudar os sinais.
+
+**O que cada consumidor ganhou**: scan-guard-gates perdeu o writeWorkflow local (27 call sites → helper, extra → `{ extra }`, o STEP MISSING inline → `{ step: false }`); o exclusivity perdeu o writePush local (3 call sites → `{ runsOn: true }` + paths via extra — o shape paths INLINE morreu, unificado no mecanismo extra que preserva o pin `:10`); o run-precommit perdeu o inline do push net do writeBadGuardNet (→ `{ name: "guard-gates", runsOn: true, step: false }`). **Ficou de fora por design** (regra dos usos — variantes single-use): o fixture do GUARD GATES JOB MISSING (job `lint:` no lugar de `guard-gates:` — shape distinta, 1 uso) e o twin PR (que já tem a família própria).
+
+**Re-validação**: `golden-copy-utils.test.ts` (divergence guards) + `scan-guard-gates.test.ts` (30 stdout pins) + `guard-gates-exclusivity.test.ts` (matriz derivada + REAL anchors) + `run-precommit-guards.test.ts` (batch runner) — todas verdes; `gates-proofs-ordering.test.ts` valida a monotonia da nova seção 11.24 (11.23 antes, 12 depois).
+
+## 11.25 Contrato fixture-vs-real — os blocos compartilhados vs os workflows reais (decisão 2026-08-11)
+
+**A pergunta**: os job-blocks sintéticos (PR_JOB_BLOCKS no golden-copy-utils) espelham a shape real do pr-check.yml, mas nada garantia isso se o workflow real mudasse (ex.: novo job, step renomeado) — o fixture ficaria testando uma shape que o workflow real não tem mais. Avaliar um teste de contrato que compare os blocos compartilhados contra o pr-check.yml real via canonicalProgram — fechando o drift fixture-vs-real na mesma classe dos golden copies.
+
+**O design (subset canônico, NÃO igualdade — o ponto honesto)**: os fixtures são MINIMAL por design — os jobs reais carregam checkout/setup-bun/cache/install que as fixtures omitem de propósito — então o contrato é: **cada linha canônica do fixture deve aparecer no bloco do job real** (subset), nunca igualdade (que quebraria por excesso de linhas reais). O helper `realJobBlock` extrai o bloco real do job key até o próximo job key de 2 espaços (ou EOF) e falha LOUD se o key sumiu (renomeio/remoção de job é fail-loud, nunca bloco vazio silencioso); `assertFixtureSubset` compara via canonicalProgram (indent/CRLF/comentários colapsam, token muda).
+
+**O que o contrato pega** (a classe de drift dos golden copies aplicada aos fixtures): step renomeado (a linha do fixture deixa de aparecer), job key renomeado (realJobBlock lança), run: value mudado (o anchor que o scanner lê), job removido. **O que ele NÃO pega (e não deve)**: novas linhas reais (checkout etc.) — subset tolera por construção.
+
+**Implementação**: `PR_JOB_BLOCKS` + `GUARD_PUSH_BASE` agora EXPORTADOS do golden-copy-utils.ts (o contrato precisa deles); novo describe no golden-copy-utils.test.ts com 6 testes: 2 REAL (PR twin + push net), 1 SHAPE PIN (a família cobre EXATAMENTE os 5 jobs ancorados pelo scanner — um 6º job ancorado precisa crescer o record E o pin, a direção de crescimento), 3 MUTATION (step renomeado, job key renomeado, run: value mudado).
+
+**Re-validação**: `golden-copy-utils.test.ts` (32 testes, incl. o novo contrato) + `scan-timeouts.test.ts` (BASELINE) + suites irmãs (scan-guard-gates 30, exclusivity 15, run-precommit 7) — todas verdes; `gates-proofs-ordering.test.ts` valida a monotonia da nova seção 11.25 (11.24 antes, 12 depois).
+
+## 11.26 O twin do writeBadGuardNet consome a família writePRWorkflow (decisão 2026-08-11)
+
+**A pergunta**: o run-precommit-guards.test.ts também monta um pr-check.yml sintético (o twin PR do writeBadGuardNet) — avaliar se ele pode consumir a família writePRWorkflow do golden-copy-utils em vez do próprio inline, ou documentar por que a variante é shape única por design.
+
+**O ACHADO (a razão de a resposta ser VALE ADOTAR)**: o twin inline antigo carregava um fragile-guard QUEBRADO (`- run: echo no test:guard` em vez do step test:guard) — mas esse step era **INERTE para o sinal**: o `missingStep` do scanner é SINGLE-VALUED (o PRIMEIRO workflow da rede sem o step, na ordem do manifest — GUARD_NET[0] = push net primeiro). O push net já reclama o missingStep, então o step quebrado do twin nunca aparecia na saída — o sole-failure pin ("a única violação é o TEST GUARD STEP MISSING do push net") valia APESAR do twin quebrado, não por causa dele.
+
+**Decisão: VALE ADOTAR — o twin vira a shape CLEAN compartilhada (`writePRWorkflow(dir)`).** Benefícios vs o inline quebrado: (1) o pin sole-failure é PRESERVADO (a única violação continua sendo o push net — o twin limpo não adiciona linha nenhuma); (2) o twin limpo ganha a cobertura de drift da sec 11.25 (os blocos compartilhados são validados contra o pr-check.yml REAL — o twin antigo estava FORA dessa rede de proteção); (3) o inline de 24 linhas morre — o writeBadGuardNet agora usa só helpers compartilhados (writeGuardGatesWorkflow pro push net + writePRWorkflow pro twin) + o ci.yml (única variante que fica inline, a mesma decisão de fronteira da 11.24).
+
+**Fronteira documentada (o que NÃO migrou)**: o ci.yml do writeBadGuardNet continua inline — é a 3ª shape de ci.yml (writeCIWorkflow no scan-guard-gates, writeCi no exclusivity, esta no run-precommit), a candidata a um writeCIWorkflow irmão quando a regra dos usos pedir (3 shapes já existem — decisão de extração em aberto, não desta seção).
+
+**Re-validação**: `run-precommit-guards.test.ts` (7 testes, o teste do writeBadGuardNet asserta `TEST GUARD STEP MISSING in ${GUARD_PUSH_NET}` — inalterado) + `golden-copy-utils.test.ts` (32, o contrato fixture-vs-real agora cobre o twin limpo do batch runner) + `scan-guard-gates.test.ts` (30) + `scan-timeouts.test.ts` (BASELINE) — todas verdes; `gates-proofs-ordering.test.ts` valida a monotonia da nova seção 11.26 (11.25 antes, 12 depois).
+
+## 11.27 `--mutate-self-delete` — o self-delete do script TEMP como contrato do runner (decisão 2026-08-11)
+
+**A pergunta**: o ACHADO da Prova 22 (sec 8.17) — o script de mutação TEMP
+(`scripts/prova22-mutate.mjs`) precisa se auto-deletar antes do `git add -A`
+do helper, senão um `.mjs` solto entra no commit scratch (a superfície de
+executáveis classificaria o arquivo e poluiria o sinal) — vive SÓ na prosa do
+doc. A próxima prova teria que re-derivar o método. Avaliar uma flag
+`--mutate-self-delete` (ou um helper de mutation script) no `ci-proof-run.mjs`
+que embuta o self-delete como contrato.
+
+**A decisão (VALE ADOTAR — flag, não helper de script)**: o self-delete vira
+**propriedade do runner**, não do script. A flag `--mutate-self-delete <path>`
+remove o path ANTES do `git status`/`git add -A` do ciclo (a ordem exata do
+Prova 22), com **fail-loud**: se o path não existir após a mutação (ou não
+for um arquivo — o guard de `lstatSync().isFile()` cobre diretório, que
+passaria no `existsSync` e lançaria ERR_FS_EISDIR não tratado), exit 3
+com a nota — um path errado deixaria um temp script real escapar no commit
+(o no-op silencioso é a classe que o flag fecha). O script de mutação NÃO
+deve mais se auto-deletar (o contrato é único — do runner); a docblock do
+helper registra essa fronteira.
+
+**Implementação** (`ci-proof-run.mjs` + `ci-proof-run.test.ts`): parseArgs
+(flag + usage + validação `requer --mutate` — sem mutação não há script TEMP
+a remover) · planSteps (passo `self-delete:` renderizado ENTRE o `shell:` e o
+`git: add -A && commit` — a ordem do contrato no dry-run) · main()
+(`path.resolve` + `fs.existsSync` fail-loud + `fs.rmSync` ANTES do `git
+status --porcelain`). Testes: 3 PURE (parse/usage + requer --mutate; planSteps
+com/sem a flag) · 3 FAKE-BIN E2E (sucesso: mutate cria script TEMP num tmpdir
+hermético → runner o remove → commit acontece SEM o script, exit 0; fail-loud:
+path inexistente → exit 3 SEM add/commit/push; usage: sem --mutate → exit 2,
+zero invocations) · 1 REAL-REPO CONTRACT (o CLI real tem `fs.rmSync` ANTES do
+`git status` + a flag no usage).
+
+**Fronteira honesta**: a flag assume que a mutação cria o script no path
+passado — o fail-loud cobre o caso de path errado (o recurso mais barato de
+proteger). O helper de mutation script (gerar o script + auto-delete embutido)
+foi recusado: a flag é 10 linhas, o helper seria um segundo caminho de
+criação de script a manter — a regra dos usos ainda não pede (1 uso real: a
+Prova 22).
+
+**Re-validação**: `ci-proof-run.test.ts` (46 testes — 39 + 7 novos) +
+`scan-timeouts.test.ts` (BASELINE) — verdes; `gates-proofs-ordering.test.ts`
+valida a monotonia da nova seção 11.27 (11.26 antes, 12 depois); tsc 0;
+eslint 0 erros; UTF-8 do doc OK.
+
+## 11.28 O self-delete SCRIPT-OWNED — o padrão ORIGINAL da Prova 22 como contrato (decisão 2026-08-11)
+
+**A pergunta**: a 11.27 travou o self-delete **do runner** (`--mutate-self-delete`
++ fail-loud — o script NÃO deve se auto-deletar quando a flag existe), mas o
+método ORIGINAL da Prova 22 (sec 8.17) era **script-owned**: o
+`scripts/prova22-mutate.mjs` se auto-deletava como última linha
+(`fs.rmSync` de si mesmo via `fileURLToPath(import.meta.url)`), sem flag
+nenhuma — e o CI tree ficava limpo. Nenhum teste pinava esse lado: o único
+contrato de limpeza do tree era o do runner. Avaliar um teste de contrato
+que prove que um mutate script auto-deletado não aparece no git status
+pós-ciclo.
+
+**A decisão (VALE ADOTAR — E2E hermético do caminho script-owned, sem código
+novo)**: o par é mutuamente exclusivo POR DESIGN — flag + script que se
+auto-deleta = fail-loud exit 3 (o path sumiu durante o spawn, antes de o
+runner verificar — a classe que a 11.27 fecha) · sem flag + script que se
+auto-deleta = o script próprio mantém o tree limpo e o ciclo segue. O teste
+novo pina o SEGUNDO lado: um script REAL (num tmpdir hermético) que escreve
+um marcador E se auto-deleta como última linha, rodado via `--mutate "node
+<path>"` SEM flag. O observável: o script EXISTE antes do ciclo, o spawn do
+mutate o roda (o marcador prova que executou) e o self-delete o remove
+DURANTE o spawn — o `git status`/`git add -A` do ciclo (sequencial, DEPOIS
+do spawn) nunca o vê. Asserts: exit 0 · marcador existe · `fs.existsSync` do
+script = false pós-ciclo · stdout SEM a mensagem de remoção do runner (a
+remoção foi do SCRIPT, não do runner) · commit aconteceu depois do spawn.
+
+**Implementação** (`ci-proof-run.test.ts`, 46 → 47 testes): 1 FAKE-BIN E2E
+novo (`E2E self-delete SCRIPT-OWNED`) ao lado dos três da 11.27 — o mesmo
+padrão de tmpdir hermético + `MUT_MARKER` env para provar que o script
+rodou antes de sumir.
+
+**Fronteira honesta**: o contrato prova o SUMIÇO do script do disco e a
+ordem do ciclo (spawn → status → add → commit) — não a saída textual do
+`git status` (o fake bin scripta o status via `CI_PROOF_FAKE_DIRTY`; a
+asserção real é que o arquivo não existe quando o add varre). A limpeza do
+CI tree fica travada pelos dois caminhos: o do runner (11.27) e o do script
+(11.28).
+
+**Re-validação**: `ci-proof-run.test.ts` (47) + `scan-timeouts.test.ts`
+(BASELINE) — verdes; `gates-proofs-ordering.test.ts` valida a monotonia da
+nova seção 11.28 (11.27 antes, 12 depois); tsc 0; eslint 0 erros; UTF-8 do
+doc OK.
+
+## 11.29 O padrão `$HEALTH_URL` parametrizável — o guard pega o curl sem timeout MESMO via variável (decisão 2026-08-11)
+
+**A pergunta**: o `scan-curl-timeouts` chaveia no token `curl` + flag
+`--max-time` na linha lógica — mas o `health-check.sh:39` usa `$HEALTH_URL`
+parametrizável (`HTTP_CODE=$(curl ... --max-time 20 --connect-timeout 10
+"$HEALTH_URL" ...)`). Avaliar um teste de contrato que prove que o guard NÃO
+deixa um curl sem timeout escapar via variável (o padrão que o incidente
+original usava — o curl do test-security-headers.sh sem bound).
+
+**O achado (por que VALE ADOTAR com 3 testes, não 1)**: o detector é
+FLAG-based, não URL-form-based — o `maskBashStrings` mascarara o conteúdo da
+string `"$HEALTH_URL"` mas o token `curl` (fora de string) e a flag
+`--max-time` (literal na linha lógica) são o que conta. Logo o formato do
+URL (literal vs variável) é IRRELEVANTE para a detecção — a indireção por
+variável do URL não cria escape. O que faltava era NOMEAR essa fronteira: o
+mutation `GATE_CURL` existente já usava `"$url"` (variável) e era flagado,
+mas de forma incidental. Os 3 testes novos fecham a classe explicitamente:
+
+1. **MUTATION (o padrão do incidente)**: `curl ... "$HEALTH_URL"` SEM
+   `--max-time` → 1 violação na linha 3 (o URL ser variável não contrabandeia
+   um curl sem bound).
+2. **MUTATION (positiva)**: o MESMO formato com `--max-time "$HEALTH_TIMEOUT"
+   --connect-timeout "$HEALTH_CONNECT"` (valores TAMBÉM parametrizados) →
+   clean — o contrato é a PRESENÇA da flag literal, nunca o valor ou o
+   formato do URL. Parametrizar o VALOR do timeout é o padrão saudável
+   (single source of truth), nunca um bypass.
+3. **REAL-REPO CONTRACT**: o `health-check.sh` real — o `--max-time` divide a
+   MESMA linha lógica do `"$HEALTH_URL"` e o guard varre o arquivo real
+   clean; um refactor futuro que mova o URL para variável SEM manter a flag
+   na linha da invocação quebra o BASELINE — a fronteira vira contrato
+   nomeado, não implicita pelo scan da superfície inteira.
+
+**Fronteira honesta**: o escape que o guard NÃO cobre é o oposto do pedido —
+esconder o TOKEN `curl` (não o URL) dentro de uma string avaliada depois
+(ex.: `CMD="curl ..."; eval "$CMD"`): o `curl` mascarado não é uma
+invocação real para o detector. Nenhum gate script do repo usa essa forma
+hoje (mesma fronteira já documentada do masking: "a real invocation outside a
+string counts") — e o custo de fechá-la (rastrear `eval` de strings com
+`curl`) é alto demais para uma forma que não existe na superfície. A classe
+que o pedido fechou — o URL parametrizável — está travada pelos 3 testes
+acima.
+
+**Implementação** (`scan-curl-timeouts.test.ts`, 14 → 17 testes): 3 novos ao
+lado do mutation existente — 2 PURE (scanGateScript com root sintético) + 1
+REAL-REPO (lê o health-check.sh real, asserta a linha do curl com `$HEALTH_URL`
+e a flag na mesma linha).
+
+**Re-validação**: `scan-curl-timeouts.test.ts` (17) + `scan-timeouts.test.ts`
+(BASELINE) — verdes; `gates-proofs-ordering.test.ts` valida a monotonia da
+nova seção 11.29 (11.28 antes, 12 depois); tsc 0; eslint 0 erros; UTF-8 do
+doc OK.
 
 ## 12. Referências
 

@@ -123,6 +123,18 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(o.error).toContain("--expect-local-block requer --mutate")
   })
 
+  it("parseArgs: --mutate-self-delete parseia e o usage lista a flag (Prova 22/sec 8.17 - self-delete do script TEMP no runner)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--mutate", "node s.mjs", "--mutate-self-delete", "scripts/s.mjs"])
+    expect(o.error).toBeNull()
+    expect(o.mutateSelfDelete).toBe("scripts/s.mjs")
+    expect(parseArgs(["--help"]).error).toContain("--mutate-self-delete")
+  })
+
+  it("parseArgs: --mutate-self-delete requer --mutate (sem mutacao nao ha script TEMP a remover)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--mutate-self-delete", "scripts/s.mjs"])
+    expect(o.error).toContain("--mutate-self-delete requer --mutate")
+  })
+
   it("parseArgs: --only-jobs parseia e o usage lista a flag (sec 11.20 - poll por job, nao pelo run)", () => {
     const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--only-jobs", "check"])
     expect(o.error).toBeNull()
@@ -200,6 +212,16 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(joined.indexOf("local-check:")).toBeLessThan(joined.indexOf('git: add -A && commit'))
     const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: "touch dirty.ts", expect: null, expectLog: null, keep: false }, "main")
     expect(without.join("\n")).not.toContain("local-check:")
+  })
+
+  it("planSteps: --mutate-self-delete adiciona o passo self-delete ENTRE o shell e o git add -A (a ordem da Prova 22/sec 8.17 - remover antes do commit)", () => {
+    const withFlag = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: "node s.mjs", mutateSelfDelete: "scripts/s.mjs", expect: null, expectLog: null, keep: false }, "main")
+    const joined = withFlag.join("\n")
+    expect(joined).toContain("self-delete: scripts/s.mjs")
+    expect(joined.indexOf("shell: node s.mjs")).toBeLessThan(joined.indexOf("self-delete:"))
+    expect(joined.indexOf("self-delete:")).toBeLessThan(joined.indexOf("git: add -A && commit"))
+    const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: "node s.mjs", expect: null, expectLog: null, keep: false }, "main")
+    expect(without.join("\n")).not.toContain("self-delete:")
   })
 
   it("planSteps: --no-verify adiciona o passo HUSKY=0 (bypass do husky local)", () => {
@@ -311,6 +333,108 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(inv).toContain("git:commit -m ci-proof: ci-proof/e2e-mut")
     expect(inv.indexOf("git:add -A")).toBeLessThan(inv.indexOf("git:commit"))
     expect(inv.indexOf("git:commit")).toBeLessThan(inv.indexOf("git:push origin ci-proof/e2e-mut"))
+  }, 60000)
+
+  it("E2E --mutate-self-delete: a mutacao cria um script TEMP e o runner o deleta ANTES do git add -A (exit 0, commit acontece SEM o script - o CI tree fica limpo)", () => {
+    // O mutate cria um script TEMP real (via env target num tmpdir hermetico)
+    // e a flag o remove - o commit scratch nunca carrega o script (Prova
+    // 22/sec 8.17). A arvore suja (FAKE_DIRTY) vem da MUTACAO, nao do script.
+    const tmpDir = createTempDir("ci-proof-selfdel-")
+    const scriptPath = path.join(tmpDir, "mutate-script.mjs")
+    const { result, stateDir } = runCli(
+      ["--branch", "ci-proof/e2e-selfdel", "--workflow", "pr-check.yml", "--mutate", `node -e "require('fs').writeFileSync(process.env.MUT_TARGET, 'x')"`, "--mutate-self-delete", scriptPath],
+      { CI_PROOF_FAKE_DIRTY: "1", MUT_TARGET: scriptPath },
+    )
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("--mutate-self-delete: removido")
+    // O script TEMP foi removido pelo runner (nao existe mais apos o run).
+    expect(fs.existsSync(scriptPath)).toBe(false)
+    // O commit da mutacao aconteceu na ordem (o script NAO entrou no add).
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("git:add -A")
+    expect(inv).toContain("git:commit -m ci-proof: ci-proof/e2e-selfdel")
+    expect(inv.indexOf("git:add -A")).toBeLessThan(inv.indexOf("git:commit"))
+    expect(inv.indexOf("git:commit")).toBeLessThan(inv.indexOf("git:push origin ci-proof/e2e-selfdel"))
+  }, 60000)
+
+  it("E2E --mutate-self-delete: path que nao existe apos a mutacao -> exit 3 com a nota fail-loud (um path errado deixaria o script no commit), SEM add/commit/push", () => {
+    // Fail-loud: o path passado nao foi criado pela mutacao (path errado) -
+    // o no-op silencioso e a classe que o flag fecha (o script TEMP real
+    // escaparia para o commit scratch).
+    const tmpDir = createTempDir("ci-proof-selfdel-missing-")
+    const missingPath = path.join(tmpDir, "never-created.mjs")
+    const { result, stateDir } = runCli(
+      ["--branch", "ci-proof/e2e-selfdel-missing", "--workflow", "pr-check.yml", "--mutate", "echo mutation", "--mutate-self-delete", missingPath],
+      { CI_PROOF_FAKE_DIRTY: "1" },
+    )
+    expect(result.status).toBe(3)
+    // A mensagem real e `--mutate-self-delete: <path> nao existe apos a
+    // mutacao` - o path fica ENTRE os dois trechos (asserts separados).
+    expect(allOutput(result)).toContain("--mutate-self-delete:")
+    expect(allOutput(result)).toContain("nao existe apos a mutacao")
+    // Nenhum git de escrita rodou (a falha e ANTES do status/add -A).
+    const inv = invocations(stateDir)
+    expect(inv).not.toContain("git:add -A")
+    expect(inv).not.toContain("git:commit")
+    expect(inv).not.toContain("git:push origin ci-proof/e2e-selfdel-missing")
+  }, 60000)
+
+  it("E2E --mutate-self-delete sem --mutate: usage error (exit 2) ANTES de qualquer spawn", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-selfdel-usage", "--workflow", "pr-check.yml", "--mutate-self-delete", "scripts/s.mjs"], {
+      CI_PROOF_FAKE_DIRTY: "1",
+    })
+    expect(result.status).toBe(2)
+    expect(allOutput(result)).toContain("--mutate-self-delete requer --mutate")
+    expect(invocations(stateDir)).toEqual([])
+  }, 60000)
+
+  it("E2E self-delete SCRIPT-OWNED (Prova 22/sec 8.17): um mutate script REAL que se auto-deleta como ultima linha NAO aparece no git status pos-ciclo - o script some no spawn do mutate (antes do add -A), o ciclo commita so a mutacao e o tree fica limpo SEM a flag do runner", () => {
+    // O padrao ORIGINAL da Prova 22 (anterior a 11.27): o script de mutacao
+    // TEMP se auto-deleta como ultima linha (fs.rmSync de si mesmo via
+    // fileURLToPath(import.meta.url)) - SEM nenhuma flag. A 11.27 travou o
+    // caminho do RUNNER (--mutate-self-delete + fail-loud: flag + script
+    // auto-deletado = exit 3, o path sumiu antes do runner olhar); este pina
+    // o caminho do SCRIPT (o lado positivo do par mutuamente exclusivo). O
+    // observavel hermetico: o script EXISTE antes do ciclo, o spawn do mutate
+    // o roda (escreve o marcador) e o self-delete o remove DURANTE o spawn -
+    // o git status/add -A do ciclo (sequencial, DEPOIS do spawn) nunca o ve.
+    const tmpDir = createTempDir("ci-proof-selfdel-script-")
+    const scriptPath = path.join(tmpDir, "mutate-script.mjs")
+    const markerPath = path.join(tmpDir, "mutated.txt")
+    // O script REAL: escreve o marcador (a mutacao) E se auto-deleta.
+    fs.writeFileSync(
+      scriptPath,
+      [
+        'import fs from "node:fs"',
+        'import { fileURLToPath } from "node:url"',
+        'fs.writeFileSync(process.env.MUT_MARKER, "mutated")',
+        'fs.rmSync(fileURLToPath(import.meta.url))',
+      ].join("\n"),
+      "utf8",
+    )
+    const { result, stateDir } = runCli(
+      ["--branch", "ci-proof/e2e-selfdel-script", "--workflow", "pr-check.yml", "--mutate", `node "${scriptPath}"`],
+      { CI_PROOF_FAKE_DIRTY: "1", MUT_MARKER: markerPath },
+    )
+    expect(result.status).toBe(0)
+    // O script RODOU (o marcador existe) E se auto-deletou durante o spawn do
+    // mutate - o git status/add -A do ciclo (sequencial, apos o spawn) nunca
+    // o viu: o CI tree fica limpo sem a flag do runner.
+    expect(fs.existsSync(markerPath)).toBe(true)
+    expect(fs.existsSync(scriptPath)).toBe(false)
+    // A remocao foi do SCRIPT, nao do runner: o runner NAO emitiu a msg de
+    // remocao (a flag nao foi passada) e o script sumiu sozinho.
+    expect(result.stdout).not.toContain("--mutate-self-delete: removido")
+    // A mutacao foi commitada normalmente (a sujeira veio do FAKE_DIRTY
+    // scriptado - o contrato aqui e o SUMICO do script, nao o conteudo do
+    // commit; o commit acontece DEPOIS do spawn, quando o script ja sumiu).
+    expect(result.stdout).toContain("mutacao commitada em ci-proof/e2e-selfdel-script")
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("git:status --porcelain")
+    expect(inv).toContain("git:add -A")
+    expect(inv).toContain("git:commit -m ci-proof: ci-proof/e2e-selfdel-script")
+    expect(inv.indexOf("git:status --porcelain")).toBeLessThan(inv.indexOf("git:add -A"))
+    expect(inv.indexOf("git:add -A")).toBeLessThan(inv.indexOf("git:commit"))
   }, 60000)
 
   // ── FAKE-BIN E2E: --only-jobs (sec 11.20 - poll por JOB, nao pelo run) ─
@@ -503,6 +627,18 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(preCommit).toContain("node scripts/run-precommit-guards.mjs")
     expect(cli).toContain("run-precommit-guards.mjs")
     expect(cli).toContain("CI_PROOF_LOCAL_BATCH")
+  }, 60000)
+
+  it("REAL-REPO CONTRACT (Prova 22/sec 8.17): o self-delete do script TEMP e do RUNNER - o CLI remove o path ANTES do git status/add -A (rmSync antes do add) e a flag aparece no usage", () => {
+    const cli = fs.readFileSync(path.resolve(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+    // O runner e o dono do self-delete (nao o script): rmSync + fail-loud.
+    expect(cli).toContain("fs.rmSync(selfDel")
+    // A ordem: rmSync acontece ANTES do git status/add -A (o commit scratch
+    // nunca carrega o script TEMP - o ACHADO da sec 8.17).
+    expect(cli.indexOf("fs.rmSync(selfDel")).toBeLessThan(cli.indexOf('git(["status", "--porcelain"])'))
+    // A flag e first-class (usage + parseArgs + validador requer --mutate).
+    expect(cli).toContain("--mutate-self-delete <path>")
+    expect(cli).toContain("--mutate-self-delete requer --mutate")
   }, 60000)
 
   // ── FAKE-BIN E2E: --expect-log mismatch ────────────────────────────────

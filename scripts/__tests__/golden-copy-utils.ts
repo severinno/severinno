@@ -133,6 +133,23 @@ const PR_JOB_FRAGILE = [
   "        run: bun run test:guard",
 ]
 
+/**
+ * The PR-twin job blocks keyed by JOB KEY - exported so the fixture-vs-real
+ * contract (golden-copy-utils.test.ts, sec 11.25) can compare each shared
+ * block against the SAME job in the REAL pr-check.yml (canonical SUBSET:
+ * every fixture line must appear in the real job block). The keys are the
+ * scanner-anchored jobs (utf8-check call site + check + fuzz + benchmark +
+ * fragile-guard) - a 6th anchored job MUST grow this record AND the shape
+ * pin in the contract (the growth direction the pin enforces).
+ */
+export const PR_JOB_BLOCKS: Record<string, string[]> = {
+  "utf8-check": PR_JOB_UTF8,
+  check: PR_JOB_CHECK,
+  fuzz: PR_JOB_FUZZ,
+  benchmark: PR_JOB_BENCHMARK,
+  "fragile-guard": PR_JOB_FRAGILE,
+}
+
 function writePRWorkflowFile(dir: string, jobs: string[], extra = ""): void {
   const abs = path.join(dir, GUARD_PR_TWIN)
   fs.mkdirSync(path.dirname(abs), { recursive: true })
@@ -198,6 +215,78 @@ export function writePRWorkflowFuzzQuebrado(dir: string, opts: PRWorkflowFuzzOpt
     ...PR_JOB_FRAGILE,
   ]
   writePRWorkflowFile(dir, jobs)
+}
+
+/**
+ * RULE OF USES (EXTRACTED 2026-08): the synthetic guard-gates.yml (push net)
+ * fixtures were duplicated INLINE in scan-guard-gates.test.ts (the local
+ * writeWorkflow, ~27 call sites) while TWO sibling suites built the SAME
+ * workflow with DIFFERENT shapes: guard-gates-exclusivity.test.ts (the local
+ * writePush, 3 call sites, runs-on + paths INLINE in the job block) and
+ * run-precommit-guards.test.ts (writeBadGuardNet's push net, inline). Two
+ * repeated shapes crossed the rule-of-two threshold - extracted here so a
+ * 4th fixture builds on the shared base.
+ *
+ * The base is BYTE-IDENTICAL to the old writeWorkflow: the PATHS FILTER
+ * `:10` line pin depends on the exact 9 content lines + the trailing ""
+ * element (the extra append starts at line 10). `extra` is the re-entry
+ * append pattern (the parser reads the LAST job block) - the paths/needs
+ * mutations pass their raw YAML there, exactly like the old call sites.
+ * Single-use variants stay inline by the rule: the JOB MISSING fixture
+ * (a `lint:` job instead of `guard-gates:`) and the twin mutations.
+ */
+export interface GuardGatesWorkflowOpts {
+  /** Workflow name line (default "Guard Gates"). */
+  name?: string
+  /** Include `runs-on: ubuntu-latest` in the guard-gates job (the exclusivity fixture shape). */
+  runsOn?: boolean
+  /** Replace the test:guard step with the lint step (the TEST GUARD STEP MISSING shape). */
+  step?: boolean
+  /** Append raw YAML lines after the base (the re-entry append pattern - the parser reads the LAST block). */
+  extra?: string
+}
+
+/**
+ * The push-net base (guard-gates.yml shape) - exported for the same
+ * fixture-vs-real contract (sec 11.25): the base must remain a canonical
+ * SUBSET of the REAL guard-gates.yml (the push-net twin of the PR blocks).
+ */
+export const GUARD_PUSH_BASE = [
+  "name: Guard Gates",
+  "on:",
+  "  push:",
+  "    branches: [main, develop]",
+  "jobs:",
+  "  guard-gates:",
+  "    steps:",
+  "      - name: Run guard vitest suites (BASELINE + divergence guards)",
+  "        run: bun run test:guard",
+]
+
+/**
+ * Write the CLEAN synthetic guard-gates.yml (the push net) - the shared base
+ * for every push-net fixture (scan-guard-gates.test.ts, the exclusivity
+ * suite, run-precommit-guards.test.ts). The base is BYTE-IDENTICAL to the
+ * local writeWorkflow it replaces: the PATHS FILTER `:10` line pin depends
+ * on the exact 9 content lines + the trailing "" element (the extra append
+ * starts at line 10). `extra` appends raw YAML - the re-entry append pattern
+ * for the needs:/paths mutations (the parser reads the LAST job block).
+ * `runsOn` and `step` cover the exclusivity shape (runs-on in the job, lint
+ * step for the TEST GUARD STEP MISSING mutation); `name` covers the
+ * run-precommit shape ("guard-gates"). The step NAME is cosmetic (the
+ * scanner anchors on the `run:` key, never the name).
+ */
+export function writeGuardGatesWorkflow(dir: string, opts: GuardGatesWorkflowOpts = {}): void {
+  const lines = [...GUARD_PUSH_BASE]
+  if (opts.name) lines[0] = opts.name
+  if (opts.runsOn) lines.splice(6, 0, "    runs-on: ubuntu-latest")
+  if (opts.step === false) {
+    // Replace the two test:guard step lines with the lint step (STEP MISSING shape).
+    lines.splice(lines.length - 2, 2, "      - name: lint", "        run: bun run lint")
+  }
+  const abs = path.join(dir, GUARD_PUSH_NET)
+  fs.mkdirSync(path.dirname(abs), { recursive: true })
+  fs.writeFileSync(abs, [...lines, ""].join("\n") + (opts.extra ?? ""))
 }
 
 /** Canonical form for the divergence guards (content, not layout). */

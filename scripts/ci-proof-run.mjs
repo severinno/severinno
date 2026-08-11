@@ -35,6 +35,12 @@
  *      quando a mutacao viola um gate local (Prova 16): o pre-commit
  *      hook BLOQUEIA o commit ANTES do push - a flag seta HUSKY=0 no
  *      env de todos os spawns (commit + push + push --delete).
+ *      --mutate-self-delete <path> (2026-08-11, Prova 22/sec 8.17
+ *      first-class): o script de mutacao e TEMP por design - o runner o
+ *      remove ANTES do git add -A (o CI tree fica limpo, sem residuos de
+ *      tooling da prova no commit scratch; o script NAO deve se
+ *      auto-deletar - o self-delete e do runner, nao do script). Fail-loud
+ *      se o path nao existir apos a mutacao.
  *   5. git push origin <branch>.
  *   6. gh workflow view <file> (o pre-check da Prova 7).
  *   7. gh workflow run <file> --ref <branch> (dispatch).
@@ -157,12 +163,13 @@ export function parseArgs(argv) {
   // SEMPRE retorna a shape completa com error: null no sucesso - o tipo
   // uniao `{...opts} | {error}` quebraria o acesso a propriedades nos
   // testes (TS2339) e o `if (opts.error)` do main() continua valido.
-  const out = { branch: null, workflow: null, mutate: null, expect: null, expectLog: null, timeout: null, keep: false, dryRun: false, noVerify: false, expectLocalBlock: false, onlyJobs: null, error: null }
+  const out = { branch: null, workflow: null, mutate: null, mutateSelfDelete: null, expect: null, expectLog: null, timeout: null, keep: false, dryRun: false, noVerify: false, expectLocalBlock: false, onlyJobs: null, error: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--branch") { out.branch = argv[i + 1] ?? null; i++ }
     else if (a === "--workflow") { out.workflow = argv[i + 1] ?? null; i++ }
     else if (a === "--mutate") { out.mutate = argv[i + 1] ?? null; i++ }
+    else if (a === "--mutate-self-delete") { out.mutateSelfDelete = argv[i + 1] ?? null; i++ }
     else if (a === "--expect") { out.expect = argv[i + 1] ?? null; i++ }
     else if (a === "--expect-log") { out.expectLog = argv[i + 1] ?? null; i++ }
     // NOTA (pre-existente, intencional): `--timeout 0` cai no || e vira
@@ -175,11 +182,11 @@ export function parseArgs(argv) {
     else if (a === "--dry-run") out.dryRun = true
     else if (a === "--no-verify") out.noVerify = true
     else if (a === "--expect-local-block") out.expectLocalBlock = true
-    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"; break }
+    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"; break }
     else { out.error = `flag desconhecida: ${a}`; break }
   }
   if (!out.error && (!out.branch || !out.workflow)) {
-    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"
+    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--mutate-self-delete <path>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"
   }
   // --expect-local-block (2026-08-11): so faz sentido com o bypass (o check
   // prova que o --no-verify mascara um trip REAL) E com --mutate (roda
@@ -189,6 +196,12 @@ export function parseArgs(argv) {
   }
   if (!out.error && out.expectLocalBlock && !out.mutate) {
     out.error = "--expect-local-block requer --mutate (o check roda contra a mutacao na working tree ANTES do commit)"
+  }
+  // --mutate-self-delete (2026-08-11, Prova 22/sec 8.17 first-class): so faz
+  // sentido com --mutate (o self-delete remove o script TEMP da mutacao
+  // ANTES do git add -A - sem mutacao nao ha script TEMP a remover).
+  if (!out.error && out.mutateSelfDelete && !out.mutate) {
+    out.error = "--mutate-self-delete requer --mutate (o self-delete remove o script TEMP da mutacao ANTES do git add -A)"
   }
   // Resolve o default calibrado (sec 11.20): SEMPRE retorna um numero - o
   // timeout nunca fica null (a shape completa promete timeout numerico). O
@@ -235,6 +248,9 @@ export function planSteps(opts, originalBranch) {
   ]
   if (opts.mutate) {
     steps.push(`shell: ${opts.mutate}  (a mutacao da prova, na branch scratch)`)
+    if (opts.mutateSelfDelete) {
+      steps.push(`self-delete: ${opts.mutateSelfDelete}  (--mutate-self-delete: removido ANTES do git add -A - o CI tree fica limpo, Prova 22/sec 8.17)`)
+    }
     if (opts.expectLocalBlock) {
       steps.push(`local-check: node scripts/run-precommit-guards.mjs  (--expect-local-block: o batch runner do pre-commit DEVE trip - exit != 0, ANTES do commit)`)
     }
@@ -388,6 +404,35 @@ export async function main() {
     const mut = spawnSync(opts.mutate, { shell: true, encoding: "utf8", cwd: process.cwd() })
     if (mut.status !== 0) {
       return fail(3, `--mutate falhou (exit ${mut.status}): ${(mut.stderr ?? mut.stdout ?? "").trim()}`)
+    }
+    // --mutate-self-delete (2026-08-11, Prova 22/sec 8.17 first-class): o
+    // script de mutacao e TEMP por design (nunca deve entrar no commit
+    // scratch - um .mjs solto poluiria a superficie de executaveis e o CI
+    // tree, o ACHADO da sec 8.17). O runner assume o self-delete: remove o
+    // path ANTES do git status/add -A (o script NAO deve se auto-deletar -
+    // o contrato e do runner, nao do script). Fail-loud se o path nao
+    // existir apos a mutacao (path errado = um temp script real escaparia
+    // no commit - o no-op silencioso e a classe que o flag fecha).
+    if (opts.mutateSelfDelete) {
+      const selfDel = path.resolve(process.cwd(), opts.mutateSelfDelete)
+      // Guard de ARQUIVO (review nit, sec 11.27): existsSync sozinho passaria
+      // num DIRETORIO e o rmSync lancaria ERR_FS_EISDIR nao tratado (stack
+      // trace em vez do fail-loud limpo). lstatSync + isFile no try/catch
+      // cobre inexistente E diretorio com a MESMA mensagem de contrato.
+      let isFile = false
+      try {
+        isFile = fs.lstatSync(selfDel).isFile()
+      } catch {
+        isFile = false // inexistente (ou lstat quebrou) = fail-loud abaixo
+      }
+      if (!isFile) {
+        return fail(
+          3,
+          `--mutate-self-delete: ${opts.mutateSelfDelete} nao existe apos a mutacao (ou nao e um arquivo) - o self-delete e do runner (Prova 22/sec 8.17): o script TEMP deve existir para ser removido; um path errado deixaria o script no commit scratch. Ajuste o path ou remova o self-delete do proprio script`,
+        )
+      }
+      fs.rmSync(selfDel, { force: true })
+      console.log(`ci-proof-run: --mutate-self-delete: removido ${opts.mutateSelfDelete} antes do git add -A (CI tree limpo - Prova 22/sec 8.17)`)
     }
     const st = git(["status", "--porcelain"])
     const dirty = (st.stdout ?? "").trim() !== ""

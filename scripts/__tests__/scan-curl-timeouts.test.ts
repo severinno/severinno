@@ -42,6 +42,7 @@ import path from "node:path"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 import {
   deriveGateScripts,
+  joinContinuations,
   maskBashStrings,
   scanCurlTimeouts,
   scanGateScript,
@@ -123,6 +124,33 @@ describe("scripts/scan-curl-timeouts.mjs - masking + parser", () => {
     expect(scanGateScript("scripts/gate.sh", dir)).toEqual([])
   })
 
+  it("MUTATION (the $HEALTH_URL incident pattern): a curl whose URL is a parametrizable VARIABLE without --max-time IS flagged - the variable indirection does NOT create an escape (the detector keys on the curl token + flag, not the URL form)", () => {
+    // The exact health-check.sh shape (scripts/health-check.sh:39) minus the
+    // timeout: HTTP_CODE=$(curl ... "$HEALTH_URL" ...). The URL being a
+    // variable is irrelevant to the scan - the curl token is literal and no
+    // --max-time exists on the logical line, so the parametrizable pattern
+    // of the incident cannot smuggle a bare curl past the guard.
+    const dir = createTempDir("curl-timeouts-varurl-")
+    writeSyntheticRoot(dir, `HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo "000")`)
+    const v = scanGateScript("scripts/gate.sh", dir)
+    expect(v).toHaveLength(1)
+    expect(v[0].line).toBe(3)
+    expect(v[0].text).toContain("$HEALTH_URL")
+  })
+
+  it("MUTATION (positive - the SAME variable form WITH --max-time): a curl with a variable URL AND a variable TIMEOUT VALUE passes - the contract is the flag's PRESENCE (literal --max-time), not the flag's value or the URL's form", () => {
+    // The parametrizable pair (HEALTH_URL + HEALTH_TIMEOUT): the --max-time
+    // token survives the string masking (it is outside the quotes), so a
+    // timeout defined via variable is still a bound - parametrizing the
+    // VALUE is the healthy pattern (single source of truth), never a bypass.
+    const dir = createTempDir("curl-timeouts-varurl-ok-")
+    writeSyntheticRoot(
+      dir,
+      `HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time "$HEALTH_TIMEOUT" --connect-timeout "$HEALTH_CONNECT" "$HEALTH_URL" 2>/dev/null || echo "000")`,
+    )
+    expect(scanGateScript("scripts/gate.sh", dir)).toEqual([])
+  })
+
   it("scanGateScript: --max-time on a continuation line counts (the TLS-check form)", () => {
     const dir = createTempDir("curl-timeouts-continued-")
     const gate = path.join(dir, "scripts", "gate.sh")
@@ -158,6 +186,28 @@ describe("scripts/scan-curl-timeouts.mjs - derivation + CLI + BASELINE (the live
     // The two known gate scripts with curls are in the surface.
     expect(r.files).toContain("test-security-headers.sh")
     expect(r.files).toContain("health-check.sh")
+  })
+
+  it("REAL-REPO CONTRACT (the live parametrizable pattern): health-check.sh's curl with \"$HEALTH_URL\" stays bounded - the --max-time flag shares the SAME logical line as the variable URL, and the guard scans the real file clean (the variable indirection never decouples the flag from the invocation)", () => {
+    // The user's frontier: scripts/health-check.sh:39 is
+    // `HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20
+    // --connect-timeout 10 "$HEALTH_URL" ...)` - the URL is parametrizable
+    // but the flag lives on the SAME logical line, so the detector (token +
+    // flag) keeps it bounded. A future refactor that moves the URL to a
+    // variable WITHOUT keeping --max-time on the invocation line breaks the
+    // BASELINE; this test names the frontier explicitly instead of leaving
+    // it implied by the whole-surface scan.
+    const v = scanGateScript("scripts/health-check.sh", ROOT)
+    expect(v).toEqual([])
+    const raw = fs.readFileSync(path.join(ROOT, "scripts", "health-check.sh"), "utf8")
+    // A co-locacao e em LINHA LOGICA (o mesmo joinContinuations do guard -
+    // review nit, sec 11.29): se um refactor legitimo mover o --max-time
+    // para uma linha de continuacao (a forma TLS-check), o guard segue
+    // clean via join e o teste NAO pode false-failhar por linha fisica.
+    const logical = joinContinuations(raw.split("\n"))
+    const curlLine = logical.find((l) => l.includes("curl") && l.includes("$HEALTH_URL")) ?? ""
+    expect(curlLine).toContain("$HEALTH_URL")
+    expect(curlLine).toContain("--max-time")
   })
 
   it("BASELINE companion: every derived gate-script name resolves to a REAL file (no vacuous pass)", () => {

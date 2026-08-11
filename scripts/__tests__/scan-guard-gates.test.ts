@@ -31,33 +31,13 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writePRWorkflow, writePRWorkflowFuzzQuebrado, writePRWorkflowSemFuzz } from "./golden-copy-utils"
+import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writeGuardGatesWorkflow, writePRWorkflow, writePRWorkflowFuzzQuebrado, writePRWorkflowSemFuzz } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-guard-gates.mjs")
 
 function writeFile(dir: string, rel: string, content: string) {
   fs.mkdirSync(path.join(dir, path.dirname(rel)), { recursive: true })
   fs.writeFileSync(path.join(dir, rel), content)
-}
-
-/** Write a synthetic guard-gates.yml WITHOUT a paths filter (the clean base). */
-function writeWorkflow(dir: string, extra = "") {
-  writeFile(
-    dir,
-    GUARD_PUSH_NET,
-    [
-      "name: Guard Gates",
-      "on:",
-      "  push:",
-      "    branches: [main, develop]",
-      "jobs:",
-      "  guard-gates:",
-      "    steps:",
-      "      - name: Run guard vitest suites (BASELINE + divergence guards)",
-      "        run: bun run test:guard",
-      "",
-    ].join("\n") + extra,
-  )
 }
 
 /** Write a synthetic package.json whose test:guard keeps the 8.4 suite. */
@@ -93,7 +73,7 @@ function writeCIWorkflow(dir: string, extra = "") {
 
 /** Write a clean synthetic repo (both workflows + pkg with the suite). */
 function writeCleanRepo(dir: string) {
-  writeWorkflow(dir)
+  writeGuardGatesWorkflow(dir)
   writePRWorkflow(dir)
   writeCIWorkflow(dir)
   writePkg(dir)
@@ -120,7 +100,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: pr-check.yml sem o job fragile-guard -> exit 1 com 'FRAGILE GUARD JOB MISSING' (o twin PR da rede nao pode sumir)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writeFile(
       dir,
@@ -163,7 +143,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: job fragile-guard sem o step test:guard -> exit 1 com 'TEST GUARD STEP MISSING' no pr-check.yml", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writeFile(
       dir,
@@ -206,7 +186,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: job fragile-guard com needs: check -> exit 1 com 'FRAGILE GUARD NEEDS' (o skip vector do lint nao pode voltar)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writePRWorkflow(
       dir,
@@ -253,10 +233,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     // o mesmo padrao do teste FRAGILE GUARD NEEDS). Um needs: no push net
     // referencia um job inexistente (guard-gates.yml tem UM job) e INVALIDA
     // o workflow no GitHub - o BASELINE nem chega a rodar (orfao total).
-    writeWorkflow(
-      dir,
-      "  guard-gates:\n    needs: check\n    name: Guard Gates\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run guard vitest suites\n        run: bun run test:guard\n",
-    )
+    writeGuardGatesWorkflow(dir, { extra: "  guard-gates:\n    needs: check\n    name: Guard Gates\n    runs-on: ubuntu-latest\n    steps:\n      - name: Run guard vitest suites\n        run: bun run test:guard\n" })
     writeCIWorkflow(dir)
     writePRWorkflow(dir)
     writePkg(dir)
@@ -268,7 +245,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("comentario com 'test:guard' (o header explica o mirror em prosa) NAO tripa o step check", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir, "# (bun run test:guard - o script unico em package.json, single source of truth)\n")
+    writeGuardGatesWorkflow(dir, { extra: "# (bun run test:guard - o script unico em package.json, single source of truth)\n" })
     writeCIWorkflow(dir)
     writePRWorkflow(dir, "# o MESMO par de suites do push net guard-gates.yml (bun run test:guard)\n")
     writePkg(dir)
@@ -281,7 +258,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const dir = createTempDir("guard-gates-")
     // A fixture tem 9 linhas de conteudo + a linha 10 do filtro (o ultimo
     // elemento vazio do array vira o \n final antes do extra)
-    writeWorkflow(dir, "        paths:\n          - 'scripts/**'\n")
+    writeGuardGatesWorkflow(dir, { extra: "        paths:\n          - 'scripts/**'\n" })
     writeCIWorkflow(dir)
     writePRWorkflow(dir)
     writePkg(dir)
@@ -293,7 +270,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: paths-ignore: filter -> exit 1 (a mesma classe, o filtro NEGATIVO do on.push)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir, "        paths-ignore:\n          - 'docs/**'\n")
+    writeGuardGatesWorkflow(dir, { extra: "        paths-ignore:\n          - 'docs/**'\n" })
     writeCIWorkflow(dir)
     writePRWorkflow(dir)
     writePkg(dir)
@@ -305,7 +282,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("comentario com 'paths filter' NAO tripa (o header do workflow explica o POR QUE em prosa)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir, "# NO paths filter BY DESIGN - a surface escaneada e derivada dos TARGET_DIRS\n")
+    writeGuardGatesWorkflow(dir, { extra: "# NO paths filter BY DESIGN - a surface escaneada e derivada dos TARGET_DIRS\n" })
     writeCIWorkflow(dir)
     writePRWorkflow(dir)
     writePkg(dir)
@@ -316,22 +293,9 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: step test:guard removido do workflow -> exit 1 com 'TEST GUARD STEP MISSING' (assert positivo)", () => {
     const dir = createTempDir("guard-gates-")
-    writeFile(
-      dir,
-      GUARD_PUSH_NET,
-      [
-        "name: Guard Gates",
-        "on:",
-        "  push:",
-        "    branches: [main, develop]",
-        "jobs:",
-        "  guard-gates:",
-        "    steps:",
-        "      - name: lint",
-        "        run: bun run lint",
-        "",
-      ].join("\n"),
-    )
+    // A shape compartilhada do golden-copy-utils: o step lint substitui o
+    // test:guard (TEST GUARD STEP MISSING) - o mesmo shape do exclusivity.
+    writeGuardGatesWorkflow(dir, { step: false })
     writeCIWorkflow(dir)
     writePRWorkflow(dir)
     writePkg(dir)
@@ -342,7 +306,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: scan-push-full-suite removido do test:guard -> exit 1 com 'GUARD SUITE MISSING' (assert positivo)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writePRWorkflow(dir)
     writePkg(dir, "vitest run scripts/__tests__/fragile-range-guard.test.ts --config vitest.config.unit.ts")
     const r = runGuard(dir)
@@ -353,7 +317,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: test:guard script deletado do package.json -> exit 1 (assert positivo)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writePRWorkflow(dir)
     writeCIWorkflow(dir)
     writeFile(dir, "package.json", JSON.stringify({ name: "synthetic", scripts: {} }, null, 2))
@@ -364,7 +328,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: pr-check.yml sem o job fuzz -> exit 1 com 'FUZZ JOB MISSING' (a autoridade fuzz:ci nao pode sumir do PR)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     // SEM FUZZ: a shape compartilhada do golden-copy-utils (o mesmo shape do
     // fixture 2 da MUTATION COMBINADA) - utf8-check + check + benchmark +
@@ -379,7 +343,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: job fuzz com needs: check -> exit 1 com 'FUZZ JOB NEEDS' (o skip vector do check nao pode alcancar o fuzz)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writePRWorkflow(
       dir,
@@ -394,7 +358,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: job fuzz sem o step fuzz:ci -> exit 1 com 'FUZZ STEP MISSING' (o step e a autoridade batchada)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     // FUZZ QUEBRADO (omitCheck: a shape do FUZZ STEP MISSING): o job fuzz
     // existe mas roda test:unit - a unica violacao e o step fuzz:ci ausente
@@ -409,7 +373,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("comentario com 'bun run fuzz:ci' em prosa NAO tripa o step check (o ancoramento no run: key exclui comentarios)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writePRWorkflow(dir, "# (bun run fuzz:ci > fuzz-results.json - o batched authority do PR, sec 11.11/11.12)\n")
     writePkg(dir)
@@ -428,7 +392,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     // prGuardJob nao reporta needs/step), entao o terceiro furo usa a
     // SEGUNDA fixture: pr-check.yml SEM o job fuzz.
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     // FUZZ QUEBRADO com needs: check (a shape compartilhada do MUTATION
     // COMBINADA fixture 1) - os DOIS furos juntos num unico stdout.
@@ -443,7 +407,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     // O terceiro furo: o job fuzz AUSENTE (mutuamente exclusivo - o mesmo
     // teste pina os 3 sinais de uma vez, no padrao da Prova 15).
     const dir2 = createTempDir("guard-gates-")
-    writeWorkflow(dir2)
+    writeGuardGatesWorkflow(dir2)
     writeCIWorkflow(dir2)
     writePRWorkflowSemFuzz(dir2)
     writePkg(dir2)
@@ -464,7 +428,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("package.json ausente (root sintetico minimo) -> clean (sem pkg = sem suite para validar)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writePRWorkflow(dir)
     writeCIWorkflow(dir)
     const r = runGuard(dir)
@@ -474,7 +438,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: ci.yml sem o call site utf8-check -> exit 1 com 'ENCODING CALL SITE MISSING' (o gate de encoding nao pode sumir do merge path)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writePRWorkflow(dir)
     writeFile(
       dir,
@@ -501,7 +465,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: pr-check.yml sem o call site utf8-check -> exit 1 com 'ENCODING CALL SITE MISSING' (o twin PR do encoding gate)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writeFile(
       dir,
@@ -547,7 +511,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: pr-check.yml sem o job benchmark -> exit 1 com 'BENCHMARK JOB MISSING' (o gate geo do merge path nao pode sumir do PR)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writeFile(
       dir,
@@ -589,7 +553,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: job benchmark com needs: check -> exit 1 com 'BENCHMARK JOB NEEDS' (o skip vector do check nao pode alcancar o gate geo)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writePRWorkflow(
       dir,
@@ -604,7 +568,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: job benchmark sem o step run-benchmark -> exit 1 com 'BENCHMARK STEP MISSING' (o step e o gate geo)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     // A base writePRWorkflow JA tem o run-benchmark step - um segundo bloco
     // APPENDADO nao remove o step do primeiro (stepPresent ficaria true).
@@ -652,7 +616,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("comentario com 'node scripts/run-benchmark.mjs' em prosa NAO tripa o step check (comentario nunca comeca com node)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writeCIWorkflow(dir)
     writePRWorkflow(dir, "# (node scripts/run-benchmark.mjs - o gate geo do PR, sec scan-surfaces.md Type C - auditoria da rede 2026-08)\n")
     writePkg(dir)
@@ -663,7 +627,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: call site utf8-check com needs: lint no ci.yml -> exit 1 com 'ENCODING CALL SITE NEEDS' (o skip vector do lint sobre o encoding gate)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writePRWorkflow(dir)
     writeFile(
       dir,
@@ -693,7 +657,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("MUTATION: call site sem a linha uses (job vazio) -> exit 1 com 'ENCODING CALL SITE STEP MISSING'", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writePRWorkflow(dir)
     writeFile(
       dir,
@@ -721,7 +685,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
 
   it("comentario com 'utf8-check.yml' em prosa NAO tripa o call site (o ancoramento no uses: key exclui comentarios)", () => {
     const dir = createTempDir("guard-gates-")
-    writeWorkflow(dir)
+    writeGuardGatesWorkflow(dir)
     writePRWorkflow(dir, "# (utf8-check.yml - o gate de encoding, sec 8.x; o mirror e explicado no header)\n")
     writeCIWorkflow(dir, "# Reusable via .github/workflows/utf8-check.yml\n")
     writePkg(dir)

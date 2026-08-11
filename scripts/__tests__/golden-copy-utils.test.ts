@@ -22,10 +22,15 @@ import { afterEach, describe, it, expect } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import {
+  GUARD_PR_TWIN,
+  GUARD_PUSH_BASE,
+  GUARD_PUSH_NET,
+  PR_JOB_BLOCKS,
   assertScopeMatchesGolden,
   canonicalProgram,
   cleanupTempDirs,
   createTempDir,
+  normalizeCrlf,
   writeModuleCopy,
 } from "./golden-copy-utils"
 
@@ -326,5 +331,98 @@ describe("golden-copy-utils — writeModuleCopy (shared module-patch scaffold)",
     const out = writeModuleCopy(dir, f, [])
     expect(path.basename(out)).toBe("budget-routes.mjs")
     expect(fs.readFileSync(out, "utf8")).toBe("export const A = [1]\n")
+  })
+})
+
+/**
+ * FIXTURE-vs-REAL drift contract (sec 11.25, 2026-08): the shared PR-twin
+ * job blocks (PR_JOB_BLOCKS) and the push-net base (GUARD_PUSH_BASE) mirror
+ * the REAL workflows (pr-check.yml / guard-gates.yml) the guard parses. The
+ * synthetic fixtures are MINIMAL by design - the real jobs carry checkout /
+ * setup-bun / cache / install steps the fixtures intentionally omit - so
+ * the contract is a canonical SUBSET (every fixture line must appear in the
+ * real job block), never equality. Catches the golden-copy drift class
+ * applied to the fixture family: a renamed step, a renamed job key, a
+ * changed run: value, a removed job - exactly the drift that would leave
+ * the synthetic mutations testing a shape the real workflow no longer has.
+ * Pure fs reads (no subprocess) - no explicit timeout needed.
+ */
+describe("golden-copy fixture blocks vs the REAL workflows (fixture-vs-real drift contract, sec 11.25)", () => {
+  /** Extract a real job block: from the 2-space-indented `<key>:` line until
+   * the next 2-space job key or EOF (the fixture blocks mirror job blocks).
+   * Throws when the job key is absent - a renamed/removed job is fail-loud,
+   * never a silent empty block. */
+  function realJobBlock(yaml: string, jobKey: string): string[] {
+    const lines = normalizeCrlf(yaml).split("\n")
+    const start = lines.findIndex((l) => l === `  ${jobKey}:`)
+    if (start < 0) throw new Error(`fixture-vs-real: job "${jobKey}" not found in the real workflow`)
+    const block: string[] = []
+    for (let i = start; i < lines.length; i++) {
+      const line = lines[i]
+      if (i > start && /^  [a-z0-9_-]+:$/.test(line)) break // next 2-space job key ends the block
+      block.push(line)
+    }
+    return block
+  }
+
+  /** Assert the fixture block is a canonical SUBSET of the real job block. */
+  function assertFixtureSubset(fixture: string[], realBlock: string[], label: string): void {
+    const fixtureLines = canonicalProgram(fixture.join("\n")).split("\n")
+    const realLines = canonicalProgram(realBlock.join("\n")).split("\n")
+    for (const line of fixtureLines) {
+      expect(realLines, `${label}: fixture line ${JSON.stringify(line)} missing from the real ${label}`).toContain(line)
+    }
+  }
+
+  it("REAL: every shared PR-twin job block is a canonical SUBSET of its real job in pr-check.yml (no drift today)", () => {
+    const real = fs.readFileSync(path.join(process.cwd(), GUARD_PR_TWIN), "utf8")
+    for (const [key, fixture] of Object.entries(PR_JOB_BLOCKS)) {
+      assertFixtureSubset(fixture, realJobBlock(real, key), key)
+    }
+  }, 30000)
+
+  it("REAL: the push-net base (GUARD_PUSH_BASE) is a canonical SUBSET of the real guard-gates.yml (the same drift class, push side)", () => {
+    const real = fs.readFileSync(path.join(process.cwd(), GUARD_PUSH_NET), "utf8")
+    const realLines = canonicalProgram(real).split("\n")
+    for (const line of canonicalProgram(GUARD_PUSH_BASE.join("\n")).split("\n")) {
+      expect(realLines, `push-net base line ${JSON.stringify(line)} missing from the real guard-gates.yml`).toContain(line)
+    }
+  }, 30000)
+
+  it("SHAPE PIN: the shared PR family covers EXACTLY the 5 scanner-anchored jobs (a 6th anchored job must grow the record + this pin)", () => {
+    // The guard anchors utf8-check (call site) + check + fuzz + benchmark +
+    // fragile-guard. If a 6th job becomes scanner-anchored, the fixture
+    // family MUST grow a block AND this pin - otherwise the fixture-vs-real
+    // contract would silently ignore the new job (the growth direction).
+    expect(Object.keys(PR_JOB_BLOCKS).sort()).toEqual(["benchmark", "check", "fragile-guard", "fuzz", "utf8-check"])
+  })
+
+  it("MUTATION: a renamed STEP in the real pr-check.yml breaks the subset (the fixture line no longer appears)", () => {
+    const real = normalizeCrlf(fs.readFileSync(path.join(process.cwd(), GUARD_PR_TWIN), "utf8"))
+    // UNIQUENESS ASSUMPTION (reviewer nit, sec 11.25): "- name: Run fuzz
+    // tests" is unique in pr-check.yml today - .replace touches the FIRST
+    // occurrence, and a future edit that duplicates the step name across
+    // jobs would make this mutation not-apply to the fuzz block (the subset
+    // would still find the fixture line in the OTHER block and NOT throw -
+    // a confusing failure). Keep the name unique or pin the fuzz block
+    // directly if it ever duplicates.
+    const mutated = real.replace("- name: Run fuzz tests", "- name: Run fuzz testz")
+    // Sanity: the mutation IS a real text difference.
+    expect(mutated).not.toBe(real)
+    expect(() => assertFixtureSubset(PR_JOB_BLOCKS.fuzz, realJobBlock(mutated, "fuzz"), "fuzz")).toThrow()
+  })
+
+  it("MUTATION: a renamed JOB KEY in the real pr-check.yml is fail-loud (realJobBlock throws - no silent empty block)", () => {
+    const real = normalizeCrlf(fs.readFileSync(path.join(process.cwd(), GUARD_PR_TWIN), "utf8"))
+    const mutated = real.replace(/^  fuzz:$/m, "  fuzz-test:")
+    expect(mutated).not.toBe(real)
+    expect(() => realJobBlock(mutated, "fuzz")).toThrowError(/not found/)
+  })
+
+  it("MUTATION: a changed run: value in the real pr-check.yml breaks the subset (the anchor the scanner reads)", () => {
+    const real = normalizeCrlf(fs.readFileSync(path.join(process.cwd(), GUARD_PR_TWIN), "utf8"))
+    const mutated = real.replace("run: bun run test:guard", "run: bun run test:guard2")
+    expect(mutated).not.toBe(real)
+    expect(() => assertFixtureSubset(PR_JOB_BLOCKS["fragile-guard"], realJobBlock(mutated, "fragile-guard"), "fragile-guard")).toThrow()
   })
 })

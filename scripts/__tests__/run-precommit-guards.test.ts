@@ -25,7 +25,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { ENCODING_CI_NET, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writeGuardGatesWorkflow, writePRWorkflow } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "run-precommit-guards.mjs")
 
@@ -78,25 +78,29 @@ function writeBunLoaderLintStaged(dir: string) {
 
 /**
  * A synthetic root that FAILS scan-guard-gates: guard net sem test:guard step.
- * The pr-check.yml keeps the FUZZ job WITH the fuzz:ci step + the BENCHMARK
- * job WITH the run-benchmark step (sole-failure pin): the ONLY violation
- * must be the missing test:guard step - a missing fuzz/benchmark job would
- * ADD a 'FUZZ JOB MISSING'/'BENCHMARK JOB MISSING' line and muddy which
- * contract the isolation test is proving. The ci.yml keeps the utf8-check
- * call site (rule 8 scans ci.yml + pr-check.yml; a missing call site would
- * ADD an 'ENCODING CALL SITE MISSING' line - the same sole-failure
- * discipline).
+ * The pr-check.yml is the SHARED CLEAN family shape (writePRWorkflow, sec
+ * 11.26): all five jobs standalone with the CORRECT steps (utf8-check call
+ * site + check + fuzz:ci + run-benchmark + fragile-guard test:guard). The
+ * ACHADO of the 11.26 extraction: the OLD inline twin carried a BROKEN
+ * fragile-guard step (`- run: echo no test:guard`) - but it was INERT for
+ * the signal: the scanner's missingStep is SINGLE-VALUED (the FIRST net
+ * workflow missing the step, GUARD_NET[0] push net first) - the push net
+ * already claims it, so the twin's broken step never surfaced and the
+ * sole-failure pin held. The CLEAN twin preserves that pin (the ONLY
+ * violation stays the push-net TEST GUARD STEP MISSING) AND gains the
+ * fixture-vs-real drift coverage of sec 11.25 (the shared blocks are
+ * validated against the real pr-check.yml) - strictly better than the old
+ * inert-broken inline. The ci.yml keeps the utf8-check call site (rule 8
+ * scans ci.yml + pr-check.yml; a missing call site would ADD an 'ENCODING
+ * CALL SITE MISSING' line - the same sole-failure discipline).
  */
 function writeBadGuardNet(dir: string) {
   fs.mkdirSync(path.join(dir, ".github", "workflows"), { recursive: true })
-  fs.writeFileSync(
-    path.join(dir, GUARD_PUSH_NET),
-    ["name: guard-gates", "on:", "  push:", "    branches: [main, develop]", "jobs:", "  guard-gates:", "    runs-on: ubuntu-latest", "    steps:", "      - run: echo no test:guard", ""].join("\n"),
-  )
-  fs.writeFileSync(
-    path.join(dir, GUARD_PR_TWIN),
-    ["name: pr-check", "on:", "  pull_request:", "jobs:", "  utf8-check:", "    uses: ./.github/workflows/utf8-check.yml", "  fuzz:", "    name: Fuzz Tests", "    runs-on: ubuntu-latest", "    steps:", "      - name: Run fuzz tests", "        run: bun run fuzz:ci > fuzz-results.json", "  benchmark:", "    name: Geo Benchmark", "    runs-on: ubuntu-latest", "    steps:", "      - name: Run geo benchmark", "        run: |", "          node scripts/run-benchmark.mjs --type geo --json", "  fragile-guard:", "    runs-on: ubuntu-latest", "    steps:", "      - run: echo no test:guard", ""].join("\n"),
-  )
+  // O push net com o step ERRADO (sem test:guard) - a shape compartilhada do
+  // golden-copy-utils (name + runsOn + step:false = TEST GUARD STEP MISSING).
+  writeGuardGatesWorkflow(dir, { name: "guard-gates", runsOn: true, step: false })
+  // O twin PR e a shape CLEAN compartilhada (writePRWorkflow, sec 11.26).
+  writePRWorkflow(dir)
   fs.writeFileSync(
     path.join(dir, ENCODING_CI_NET),
     ["name: ci", "on:", "  push:", "    branches: [main, develop]", "jobs:", "  utf8-check:", "    uses: ./.github/workflows/utf8-check.yml", ""].join("\n"),
