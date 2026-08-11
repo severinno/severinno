@@ -7,9 +7,13 @@
  * 11.36) inverteu silenciosamente na doc. Um leitor da sec 11.30 confiava
  * numa premissa morta. Este suite torna a classe um CONTRATO:
  *
- *   - ABS PIN (growth): o manifest EXIT_CLAIMS tem EXATAMENTE as 21
- *     secoes medidas. Uma claim nova sem registro (ou uma secao
- *     renumerada) falha alto - registrar e a decisao consciente.
+ *   - ABS PIN (content, sec 11.50): o teste pina o CONTEUDO do manifest
+ *     (o snapshot ABS_PIN_SNAPSHOT: section + kind + claim das 27
+ *     entradas) - a lista de secoes e DERIVADA do EXIT_CLAIMS no assert
+ *     (o padrao dos fatos consumidos, nao uma copia que driftara). Uma
+ *     claim nova (ou reescrita / kind trocado) exige editar o snapshot
+ *     conscientemente - registrar e a decisao, nunca o silencio (o growth
+ *     contract aplicado ao conteudo, nao so ao numero).
  *   - MANIFEST SHAPE: kinds validos (current/superseded/measurement),
  *     superseded tem supersededBy, measurement tem note.
  *   - PIN REALITY (manifest-registry pattern): toda entrada current tem
@@ -34,8 +38,15 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
-import { EXIT_CLAIMS, checkExitClaims, resolveChain, resolvePin, scanDocExitClaims } from "../scan-exit-claims.mjs"
+import { createRequire } from "node:module"
+import { cleanupTempDirs, createTempDir, runSubprocess, writeModuleCopy, type ModulePatchOp } from "./golden-copy-utils"
+import { EXIT_CLAIMS, EXIT_CLAIM_RE, checkExitClaims, resolveChain, resolvePin, scanDocExitClaims } from "../scan-exit-claims.mjs"
+
+// O MESMO padrao do unit-surface-contract.test.ts: picomatch (o motor de
+// glob do vitest, transitivo garantido ao lado do vitest) para casar globs
+// do config contra arquivos reais - nao um regex manual reimplementado.
+const require = createRequire(import.meta.url)
+const picomatch = require("picomatch")
 
 const ROOT = process.cwd()
 const DOC = path.join(ROOT, "docs", "gates-proofs.md")
@@ -58,38 +69,51 @@ const CLAIM_LINES = [
   "linha sem claim",
 ]
 
+/**
+ * O snapshot do CONTEUDO pinado (sec 11.50): section + kind + claim das 27
+ * entradas do EXIT_CLAIMS, na ORDEM do manifest. A lista de secoes NAO e
+ * mais uma copia separada no teste (o drift class que o pedido matou) - e
+ * a projecao deste snapshot; editar o manifest (adicionar/re-escrever uma
+ * claim, trocar kind) exige editar ESTE snapshot conscientemente (o growth
+ * contract aplicado ao conteudo, nao so ao numero).
+ */
+const ABS_PIN_SNAPSHOT: Array<[string, string, string]> = [
+  ["11.2", "measurement", "eslint_d aplica --fix (exit code 0, arquivo preservado)"],
+  ["11.6", "current", "pre-commit com o shim eslintd flippado roda verde (exit code 0)"],
+  ["11.7", "current", "paridade de loader: exit code 0 nos tres (veredito RECUSADO do bun)"],
+  ["11.8", "current", "o par paralelo lint-staged | tsc: race materializada -> exit code 1"],
+  ["11.10", "measurement", "paridade do tsc nos loaders: exit code 0 em todos os runs (A/B)"],
+  ["11.11", "current", "run-mapped-fuzz --since: zero suites -> skip com exit code 0"],
+  ["11.12", "current", "REAL-REPO CONTRACT do runner --only: exit code 0 e o ARRAY shape"],
+  ["11.17", "current", "scan-prepush-batch: 2o node guard -> exit code 1; lista editada -> exit code 0"],
+  ["11.18", "current", "checker de delecao: pura -> exit code 0 (skip); mista/stdin vazio -> exit code 1"],
+  ["11.19", "current", "integrity falha ANTES do fuzz mapeado (exit code 1, sem gastar ~6-14s)"],
+  ["11.20", "current", "ci-proof-run: job concluido no 1o poll -> exit code 0; job nao encontrado/timeout -> exit code 3"],
+  ["11.21", "current", "contrato de saida do checker: delecao pura -> exit code 0 com [skip]"],
+  ["11.27", "current", "--mutate: runner remove o script -> exit code 0; path inexistente -> exit code 3; sem --mutate -> exit code 2"],
+  ["11.28", "current", "runner-owned (flag + auto-delete) -> exit code 3; SCRIPT-OWNED (sem flag) -> exit code 0"],
+  ["11.30", "superseded", "eval-built curl passa pelo detector (exit code 0 ACEITO)"],
+  ["11.31", "current", "connect-timeout sozinho -> fail-loud exit code 2; health-check.sh:57 sem --max-time -> exit code 1"],
+  ["11.33", "current", "CLI do guard-gates: exit code 0 cobrindo 18 workflows (0 dangling)"],
+  ["11.36", "current", "tripwire eval+curl na mesma linha logica -> exit code 1 (agregado por arquivo:linha)"],
+  ["11.38", "current", "case-variante --MAX-TIME: erro do curl -> fail-loud exit code 2 (matriz)"],
+  ["11.39", "current", "dangling needs no ci.yml -> exit code 1 (DANGLING NEEDS)"],
+  ["11.41", "current", "guard da arvore suja: sem flag -> exit code 3; --stash-uncommitted -> exit code 0/3 (pop conflitante)"],
+  ["11.42", "current", "o CLI scan-exit-claims sai exit code 0 no doc real (REAL-REPO CONTRACT) e exit code 1 com violacoes listadas"],
+  ["11.43", "current", "ci-proof-run --expect-success-implies-clean: 0 warning-lines no log -> exit code 0; warning-lines (canal ::warning::/##[warning]) -> exit code 1"],
+  ["11.44", "current", "ci-proof-run revert do stash do ciclo PELA MENSAGEM (findStashRef + git stash pop <ref>): restaurado -> exit code 0; pop conflitante (com CURE no AVISO) ou stash nao encontrado -> exit code 3"],
+  ["11.45", "current", "utf8-check.yml roda o gate consolidado verify-encoding.sh --ci src/ (o comando unico cujo layer 5 e o scan-non-ascii --report sobre scripts/*.mjs - a classe 'acento em gate .mjs' ja esta no CI): step interno regredido para check-utf8 puro -> exit code 1 do contrato; o gate real com byte nao-ASCII num .mjs -> exit code 1 (probe 2026-08-11)"],
+  ["11.47", "current", "scan-guard-gates: um sufixo --since/--scope no step test:guard (push net guard-gates.yml OU twin pr-check.yml fragile-guard) -> exit code 1 do guard com 'TEST GUARD STEP MISSING' no caminho exato (o regex EXATO rejeita qualquer sufixo - o lock da recalibracao 8.1, sem trilha de doc)"],
+  ["11.49", "current", "check-exit-claims-push (o guard git-based do doc commitado): doc commitado com claim nao-registrada -> exit code 1 com as secoes; doc commitado limpo (ou apenas claims pre-existentes no base) -> exit code 0; git show HEAD falhou -> exit code 3"],
+]
+
 afterEach(() => {
   cleanupTempDirs()
 })
 
 describe("scripts/scan-exit-claims.mjs - EXIT CLAIMS MANIFEST (sec 11.42)", () => {
-  it("ABS PIN: as 24 secoes medidas (21 + a SELF-GUARD 11.42 + a flag 11.43 + o revert 11.44) - uma claim nova deve ser registrada conscientemente", () => {
-    expect(EXIT_CLAIMS.map((e) => e.section)).toEqual([
-      "11.2",
-      "11.6",
-      "11.7",
-      "11.8",
-      "11.10",
-      "11.11",
-      "11.12",
-      "11.17",
-      "11.18",
-      "11.19",
-      "11.20",
-      "11.21",
-      "11.27",
-      "11.28",
-      "11.30",
-      "11.31",
-      "11.33",
-      "11.36",
-      "11.38",
-      "11.39",
-      "11.41",
-      "11.42",
-      "11.43",
-      "11.44",
-    ])
+  it("ABS PIN (content, sec 11.50): o EXIT_CLAIMS pinado pelo CONTEUDO (section + kind + claim) - a lista de secoes e DERIVADA do manifest no assert (o padrao dos fatos consumidos, nao uma copia que driftara); editar uma claim exige editar o snapshot conscientemente", () => {
+    expect(EXIT_CLAIMS.map((e) => [e.section, e.kind, e.claim])).toEqual(ABS_PIN_SNAPSHOT)
   })
 
   it("MANIFEST SHAPE: kinds validos + superseded tem supersededBy + measurement tem note + toda entrada tem ref", () => {
@@ -164,6 +188,107 @@ describe("scripts/scan-exit-claims.mjs - DOC COVERAGE bidirecional (sec 11.42)",
   })
 })
 
+describe("scripts/scan-exit-claims.mjs - SCOPE FRONTIER 11.x-only (sec 11.51)", () => {
+  // A fronteira do escopo do detector: a sec 11.42 documenta a decisao
+  // RECUSADO de estender as secoes 8.x (Provas = registros de evento, nao
+  // claims de comportamento) - mas so em prosa. ESTE describe pina a
+  // fronteira como contrato: o detector e 11.x-only POR ESCOPO, nao por
+  // acidente. Tres direcoes: (1) NEGATIVO real (nenhuma chave 8.x no doc
+  // real, com sanity de que o detector ACHA as 11.x); (2) NAO-VACUIDADE (a
+  // regiao 8.x TEM citacoes exit-code-like - a exclusao e intencional, nao
+  // um doc 8.x vazio); (3) MUTATION hermetico (a MESMA linha sob ## 8.99
+  // nao e detectada e sob ## 11.98 e - a fronteira e o HEADER, nao o
+  // conteudo).
+  it("REAL-REPO: o detector NUNCA retorna chave 8.x no doc real (o escopo 11.x e estrutural - o reset ^## \\d zera em 8.x tambem)", () => {
+    const detected = scanDocExitClaims(DOC)
+    const eightX = [...detected.keys()].filter((s) => s.startsWith("8."))
+    expect(eightX).toEqual([])
+    // sanity: o detector ACHA as 11.x (nao e um detector vazio que passa
+    // por acaso - a exclusao 8.x so e significativa porque ha 11.x vistas).
+    expect(detected.size).toBeGreaterThanOrEqual(EXIT_CLAIMS.length)
+  })
+
+  it("REAL-REPO (nao-vacuidade): a regiao 8.x TEM citacoes exit-code-like no doc real (piso = o valor MEDIDO atual, probe 2026-08-11) - a exclusao e intencional, nao acidente de doc vazio", () => {
+    const lines = fs.readFileSync(DOC, "utf8").split(/\r?\n/)
+    // O MESMO regex do detector (importado - o modulo e a fonte unica, nao
+    // uma copia inline que pode driftar se o EXIT_CLAIM_RE mudar de forma).
+    let in8 = false
+    let count = 0
+    for (const line of lines) {
+      if (/^## 8\./.test(line)) in8 = true
+      else if (/^## [0-9]/.test(line) && !/^## 8\./.test(line) && in8) in8 = false
+      if (in8 && EXIT_CLAIM_RE.test(line)) count++
+    }
+    // O piso e o valor MEDIDO atual (80 citacoes nas secoes 8.x, probe
+    // 2026-08-11) - NAO um numero emprestado de outra contagem (a nota da
+    // 11.42 dizia 54 para as secoes 8.2-8.28, medida em estado/contagem
+    // diferente; a divergencia de metodo e exatamente por que o teto
+    // nao e pinado). Adicoes de Prova nova (8.31+) SO SOBEM o count - o
+    // piso nunca churn com o crescimento; so uma remocao abaixo do
+    // medido (drift real) falha.
+    expect(count).toBeGreaterThanOrEqual(80)
+  })
+
+  it("MUTATION hermetico: claim sob header ## 8.99 NAO e detectada (o reset ^## \\d zera em 8.x); a MESMA linha sob ## 11.98 E detectada - a fronteira e o header, nao o conteudo", () => {
+    const dir8 = createTempDir("sec11-51-")
+    const eightPath = writeSyntheticDoc(dir8, [{ header: "## 8.99 Prova ficticia", body: CLAIM_LINES }])
+    expect(scanDocExitClaims(eightPath).has("8.99")).toBe(false)
+    const dir11 = createTempDir("sec11-51-")
+    const elevenPath = writeSyntheticDoc(dir11, [{ header: "## 11.98 Claim real", body: CLAIM_LINES }])
+    expect(scanDocExitClaims(elevenPath).has("11.98")).toBe(true)
+  })
+})
+
+describe("scripts/scan-exit-claims.mjs - DEFAULT CONFIG INCLUDE (sec 11.53)", () => {
+  // A premissa do pedido da sec 11.53: "o ci.yml roda test:run (nao
+  // test:unit) no push - a claim que escapar do guard 11.49 e do CI de PR
+  // so e pega pelo pr-check". O fato (probe 2026-08-11): test:run =
+  // `vitest run` com o config DEFAULT (vitest.config.ts), cujo include
+  // cobre scripts/**/*.test.{ts,tsx} - o DOC COVERAGE desta suite (le o
+  // doc REAL via scanDocExitClaims(DOC)) RODA no push do ci.yml. ESTE
+  // describe pina a premissa: se alguem estreitar o include do config
+  // default, o push do ci.yml perde o DOC COVERAGE silenciosamente e a
+  // premissa do pedido vira verdade - o pin falha alto antes (o padrao do
+  // unit-surface-contract aplicado ao config DEFAULT, nao ao unit).
+  const DEFAULT_CONFIG = path.join(ROOT, "vitest.config.ts")
+
+  /** O include TOP-LEVEL (test) do config default, lido do TEXTO (o mesmo
+   *  padrao do unit-surface-contract - importar o config in-process quebra
+   *  o invariante do vite; o texto e a fonte estavel).
+   *  FIRST-MATCH: o regex casa o PRIMEIRO bloco `include:` do arquivo - o
+   *  test-level (linha ~15, com os dois globs) PRECISA preceder o
+   *  coverage-level (linha ~23, so src/**). Um reorder do config casaria o
+   *  bloco errado e o assert do glob scripts falharia alto (seguro, mas o
+   *  comentario evita a confusao de leitura). */
+  function testLevelInclude(configText: string): string[] {
+    const m = configText.match(/include:\s*\[([\s\S]*?)\]/)
+    if (!m) {
+      throw new Error("default-config: include: block not found in vitest.config.ts - update this extractor")
+    }
+    return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1])
+  }
+
+  it("REAL-REPO: o include do vitest.config.ts contem scripts/**/*.test.{ts,tsx} (o test:run do ci.yml roda o DOC COVERAGE no push - a premissa do pedido e FALSA)", () => {
+    const include = testLevelInclude(fs.readFileSync(DEFAULT_CONFIG, "utf8"))
+    expect(include).toContain("scripts/**/*.test.{ts,tsx}")
+    expect(include).toContain("src/**/*.test.{ts,tsx}")
+  })
+
+  it("REAL-REPO: o proprio arquivo desta suite casa com o glob scripts/** via picomatch (o DOC COVERAGE real roda sob o config default - 18 testes, probe 2026-08-11)", () => {
+    const include = testLevelInclude(fs.readFileSync(DEFAULT_CONFIG, "utf8"))
+    const scriptsGlob = include.find((p) => p.includes("scripts"))!
+    expect(picomatch(scriptsGlob)("scripts/__tests__/scan-exit-claims.test.ts")).toBe(true)
+  })
+
+  it("MUTATION: config default SEM o glob scripts/** (include estreitado para src apenas) -> o pin DETECTA a perda (a cobertura do push regrediria silenciosamente sem este contrato)", () => {
+    const src = fs.readFileSync(DEFAULT_CONFIG, "utf8")
+    const mutated = src.replace(', "scripts/**/*.test.{ts,tsx}"', "")
+    expect(mutated).not.toBe(src)
+    const include = testLevelInclude(mutated)
+    expect(include).not.toContain("scripts/**/*.test.{ts,tsx}")
+  })
+})
+
 describe("scripts/scan-exit-claims.mjs - MUTATION (a classe real, sec 11.42)", () => {
   it("claim em secao NAO registrada -> checkExitClaims flagra (o growth contract)", () => {
     const dir = createTempDir("sec11-42-")
@@ -232,6 +357,50 @@ describe("scripts/scan-exit-claims.mjs - MUTATION (a classe real, sec 11.42)", (
     expect(detected.has("11.98")).toBe(true)
     expect(detected.get("11.98")).toHaveLength(3)
   })
+
+  it("ABS PIN MUTATION (sec 11.50): um manifest PATCHADO com a claim 11.50 diverge do ABS_PIN_SNAPSHOT (o pin le o EXIT_CLAIMS vivo - nao e copia estatica que passa por acaso)", () => {
+    const dir = createTempDir("sec11-50-")
+    // O scaffold compartilhado writeModuleCopy (o MESMO do patchModuleCopy /
+    // runReverseMutation): le o modulo real, patcha na ancora estrutural do
+    // fim do EXIT_CLAIMS e escreve uma copia temp. A ancora "  },\n]\n" e o
+    // fechamento do array inteiro (o "}," da ultima entrada real + o "]") -
+    // unica no modulo (nenhum outro bloco termina com entrada + "]"). O
+    // replacement RE-EMITE o "  },\n" da ancora (fechando a 11.49) ANTES do
+    // entry novo - a 1a tentativa consumia o fechamento da ultima entrada
+    // sem re-emiti-lo e o patch quebrava o parse (probe 2026-08-11, o
+    // blocker do reviewer): a 11.49 ficava com o "{" aberto.
+    const ENTRY_1150 =
+      '  {\n    section: "11.50",\n    claim: "claim fake da mutacao ABS PIN",\n    kind: "current",\n    pin: { file: "scripts/__tests__/scan-exit-claims.test.ts", marker: "sec 11.50" },\n    ref: "mutacao",\n  },\n'
+    const ops: ModulePatchOp[] = [
+      {
+        anchor: "  },\n]\n",
+        replace: () => "  },\n" + ENTRY_1150 + "]\n",
+        onMissing: "ABS PIN MUTATION: fechamento do EXIT_CLAIMS (entrada + colchete) nao encontrado no modulo real — atualize o harness",
+      },
+    ]
+    const modPath = writeModuleCopy(dir, path.join(ROOT, "scripts", "scan-exit-claims.mjs"), ops)
+    // O probe importa a copia patchada num processo node REAL (o vitest nao
+    // resolve imports fora da raiz - os.tmpdir) e imprime as triplas - o
+    // mesmo padrao do runReverseMutation (runner + runSubprocess).
+    const runnerPath = path.join(dir, "run-probe.mjs")
+    fs.writeFileSync(
+      runnerPath,
+      [
+        `import { EXIT_CLAIMS } from "./scan-exit-claims.mjs"`,
+        `process.stdout.write(JSON.stringify(EXIT_CLAIMS.map((e) => [e.section, e.kind, e.claim])))`,
+        "",
+      ].join("\n"),
+    )
+    const r = runSubprocess({ command: process.execPath, args: [runnerPath] })
+    expect(r.status).toBe(0)
+    const triples = JSON.parse(r.stdout) as Array<[string, string, string]>
+    expect(triples).toHaveLength(ABS_PIN_SNAPSHOT.length + 1)
+    // As 27 reais continuam identicas ao snapshot (o patch so ACRESCENTA).
+    expect(triples.slice(0, ABS_PIN_SNAPSHOT.length)).toEqual(ABS_PIN_SNAPSHOT)
+    // A claim nova diverge do pin - o growth contract aplicado ao conteudo.
+    expect(triples).not.toEqual(ABS_PIN_SNAPSHOT)
+    expect(modPath).toContain("scan-exit-claims.mjs")
+  }, 60000)
 })
 
 describe("scripts/scan-exit-claims.mjs - REAL-REPO CONTRACT do CLI (sec 11.42)", () => {
@@ -283,5 +452,11 @@ describe("scripts/scan-exit-claims.mjs - REAL-REPO CONTRACT do CLI (sec 11.42)",
     const stderr = res.stderr ?? ""
     expect(stderr).toContain("claim na secao 11.99")
     expect(stderr).toContain("EXIT_CLAIMS")
+    expect(stderr).toContain("CURE: registre a claim no EXIT_CLAIMS") // sec 11.54: o comando de cura compartilhado
+    // O doc sintetico tem SO a 11.99 -> as 27 entradas do manifest viram
+    // stale (secao renumerada/removida) e o bloco stale imprime o pointer
+    // de desambiguacao (sec 11.55): a CURE de registrar NAO se aplica a
+    // classe stale (a direcao e oposta - a entrada ja existe).
+    expect(stderr).toContain("stale nao tem CURE de registrar")
   }, 60000)
 })

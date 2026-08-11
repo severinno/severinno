@@ -32,6 +32,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, SCANNER_BLOCKS, cleanupTempDirs, createTempDir, runSubprocess, writeCIWorkflow, writeGuardGatesWorkflow, writePRWorkflow, writePRWorkflowFuzzQuebrado, writePRWorkflowSemFuzz } from "./golden-copy-utils"
+import { hardLockAsymmetry } from "../scan-guard-gates.mjs"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-guard-gates.mjs")
 
@@ -281,6 +282,56 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const r = runGuard(dir)
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("TEST GUARD STEP MISSING")
+  }, 60000)
+
+  it("MUTATION (sec 11.47): test:guard com filtro --since / --scope no push net -> exit 1 com 'TEST GUARD STEP MISSING' no caminho exato (o lock da recalibracao 8.1: a suite COMPLETA e a autoridade, um filtro mapeado quebraria a premissa)", () => {
+    // O TEST_GUARD_STEP_RE e um regex EXATO (`^\s+run:\s+bun run test:guard\s*$`
+    // ancorado no run: key) - QUALQUER sufixo (--since main, --scope cached)
+    // faz o match falhar e o step vira TEST GUARD STEP MISSING no arquivo
+    // exato. A sec 11.47 documenta a avaliacao: o lock e DURO (sem trilha de
+    // doc, ao contrario do scan-fuzz-precommit), mais forte que o pedido
+    // original ('sem re-medicao'). Esta mutacao pina o sufijo de filtro como
+    // classe - nao so a remocao do step (o teste anterior).
+    for (const suffix of ["--since main", "--scope cached"]) {
+      const dir = createTempDir("guard-gates-")
+      writeGuardGatesWorkflow(dir)
+      writeCIWorkflow(dir)
+      writePRWorkflow(dir)
+      writePkg(dir)
+      const abs = path.join(dir, GUARD_PUSH_NET)
+      const wf = fs.readFileSync(abs, "utf8")
+      fs.writeFileSync(abs, wf.replace("run: bun run test:guard", `run: bun run test:guard ${suffix}`))
+      const r = runGuard(dir)
+      expect(r.status, suffix).toBe(1)
+      expect(r.stdout, suffix).toContain(`TEST GUARD STEP MISSING in ${GUARD_PUSH_NET}`)
+    }
+  }, 60000)
+
+  it("MUTATION IRMA (sec 11.47): test:guard com filtro --since / --scope no TWIN pr-check.yml -> exit 1 com 'TEST GUARD STEP MISSING' no caminho exato (o par fechado nos DOIS lados da rede)", () => {
+    // O TEST_GUARD_STEP_RE e uma const COMPARTILHADA (o loop missingStep
+    // sobre guardNet + o prGuardJob do twin usam o MESMO regex) - um sufixo
+    // no twin ja triparia hoje pelo mesmo mecanismo do push net. MAS o pin
+    // da classe de sufixo so existia no push net (a mutacao 11.47 acima):
+    // o prGuardJob aceita um stepRe PROPRIO por job (FUZZ_STEP_RE,
+    // ENCODING_STEP_RE, BENCHMARK_STEP_RE) - um refactor futuro que desse
+    // ao fragile-guard um override tolerante a sufixo passaria no teste do
+    // push net (regex do push net intacto) e o twin aceitaria o filtro
+    // mapeado silenciosamente, matando a autoridade da 8.1 no lado PR. A
+    // irma fecha o par - o padrao das Provas 16/19 (needs: nos DOIS lados)
+    // e do EOL ANCHOR no twin.
+    for (const suffix of ["--since main", "--scope cached"]) {
+      const dir = createTempDir("guard-gates-")
+      writeGuardGatesWorkflow(dir)
+      writeCIWorkflow(dir)
+      writePRWorkflow(dir)
+      writePkg(dir)
+      const abs = path.join(dir, GUARD_PR_TWIN)
+      const pr = fs.readFileSync(abs, "utf8")
+      fs.writeFileSync(abs, pr.replace("run: bun run test:guard", `run: bun run test:guard ${suffix}`))
+      const r = runGuard(dir)
+      expect(r.status, suffix).toBe(1)
+      expect(r.stdout, suffix).toContain(`TEST GUARD STEP MISSING in ${GUARD_PR_TWIN}`)
+    }
   }, 60000)
 
   it("MUTATION (regra 10, sec 11.32): scan-curl-timeouts --ci removido do push net -> exit 1 com 'CURL TIMEOUTS STEP MISSING' no caminho exato (o step sozinho - os outros 2 scanners seguem presentes)", () => {
@@ -1090,5 +1141,84 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     for (const needs of ["lint", "typecheck", "utf8-check", "quality-gate", "test", "build", "budget"]) {
       expect(ciJobKeys).toContain(needs)
     }
+  }, 60000)
+})
+
+describe("DESIGN ASYMMETRY (sec 11.52): o test:guard lock e DURO - o guard-gates nunca ganha REVERSAL_RE sem trilha de doc ADOTADO datada", () => {
+  // A assimetria de desenho (sec 11.47 vs 11.11): o scan-fuzz-precommit tem
+  // um REVERSAL_RE (trilha de doc - um header 11.x com fuzz+ADOTADO reverte
+  // o negativo), o scan-guard-gates NAO (lock duro, sem trilha - o regex
+  // EXATO e a autoridade da 8.1). O pin comportamental da 11.47 (sufixo ->
+  // TEST GUARD STEP MISSING) nao cobre a classe do MECANISMO: alguem que
+  // adicionasse um REVERSAL_RE ao scan-guard-gates (convertendo o lock duro
+  // em mole, como o fuzz) manteria as mutacoes 11.47 verdes (elas nunca
+  // injetam trilha de doc). Este describe pina a ASSIMETRIA como contrato:
+  // o guard-gates so pode ganhar o mecanismo com a DECISAO REGISTRADA (uma
+  // secao 11.x ADOTADO datada mencionando test:guard no gates-proofs.md).
+  // A funcao hardLockAsymmetry e PURA (recebe os sources + doc como
+  // strings) - todos os testes rodam em memoria, sem subprocess.
+  const GUARD_SRC = path.join(process.cwd(), "scripts", "scan-guard-gates.mjs")
+  const FUZZ_SRC = path.join(process.cwd(), "scripts", "scan-fuzz-precommit.mjs")
+  const DOC = path.join(process.cwd(), "docs", "gates-proofs.md")
+
+  it("REAL-REPO NEGATIVE: scan-guard-gates.mjs NAO declara REVERSAL_RE (o lock duro) E a doc real NAO tem a trilha test:guard+ADOTADO -> violated false (a assimetria se mantem hoje)", () => {
+    const guardSrc = fs.readFileSync(GUARD_SRC, "utf8")
+    const fuzzSrc = fs.readFileSync(FUZZ_SRC, "utf8")
+    const doc = fs.readFileSync(DOC, "utf8")
+    const facts = hardLockAsymmetry(guardSrc, fuzzSrc, doc)
+    expect(facts.guardHasReversal).toBe(false)
+    // NOTA (growth-pin): este assert flippa quando uma reversao LEGITIMA
+    // existir (uma secao 11.x datada com test:guard + ADOTADO no header) -
+    // a decisao registrada exige a edicao consciente deste teste, o mesmo
+    // mecanismo do REVERSAL_RE do fuzz.
+    expect(facts.guardDocTrail).toBe(false)
+    expect(facts.violated).toBe(false)
+  }, 60000)
+
+  it("REAL-REPO non-vacuidade: scan-fuzz-precommit.mjs DECLARA REVERSAL_RE (o irmao com trilha - a assimetria e REAL, o lock duro nao e um vacuo do detector)", () => {
+    const guardSrc = fs.readFileSync(GUARD_SRC, "utf8")
+    const fuzzSrc = fs.readFileSync(FUZZ_SRC, "utf8")
+    const doc = fs.readFileSync(DOC, "utf8")
+    const facts = hardLockAsymmetry(guardSrc, fuzzSrc, doc)
+    expect(facts.fuzzHasReversal).toBe(true)
+    expect(facts.guardHasReversal).toBe(false)
+  }, 60000)
+
+  it("MUTATION: REVERSAL_RE injetado no source REAL do guard-gates SEM trilha de doc -> violated true (abrandar o lock duro sem decisao registrada e a classe)", () => {
+    const guardSrc = fs.readFileSync(GUARD_SRC, "utf8")
+    const fuzzSrc = fs.readFileSync(FUZZ_SRC, "utf8")
+    const doc = fs.readFileSync(DOC, "utf8")
+    // Injeta a declaracao do mecanismo do irmao (o shape exato do
+    // scan-fuzz-precommit: `const REVERSAL_RE = /^##\s+11\.\d+.../im`)
+    // antes do TEST_GUARD_STEP_RE - o abrandamento hipotetico que a 11.47
+    // comportamental nao pegaria (o regex do step continua exato).
+    const mutated = guardSrc.replace(
+      "const TEST_GUARD_STEP_RE",
+      "const REVERSAL_RE = /^##\\s+11\\.\\d+.*\\btest:guard\\b.*\\b(?:ADOTADO|ALLOWED)\\b/im\nconst TEST_GUARD_STEP_RE",
+    )
+    expect(mutated).not.toBe(guardSrc)
+    const facts = hardLockAsymmetry(mutated, fuzzSrc, doc)
+    expect(facts.guardHasReversal).toBe(true)
+    expect(facts.guardDocTrail).toBe(false)
+    expect(facts.violated).toBe(true)
+  }, 60000)
+
+  it("MUTATION com trilha: a MESMA injecao + doc com secao 11.x test:guard ADOTADO datada -> violated false (a decisao registrada legitima o abrandamento - o padrao do REVERSAL_RE do fuzz)", () => {
+    const guardSrc = fs.readFileSync(GUARD_SRC, "utf8")
+    const fuzzSrc = fs.readFileSync(FUZZ_SRC, "utf8")
+    const doc = fs.readFileSync(DOC, "utf8")
+    const mutated = guardSrc.replace(
+      "const TEST_GUARD_STEP_RE",
+      "const REVERSAL_RE = /^##\\s+11\\.\\d+.*\\btest:guard\\b.*\\b(?:ADOTADO|ALLOWED)\\b/im\nconst TEST_GUARD_STEP_RE",
+    )
+    // A trilha datada: um header 11.x declarando o test:guard ADOTADO - o
+    // MESMO shape que o REVERSAL_RE do fuzz exige (11.x + alvo + ADOTADO na
+    // mesma linha do header). Com a decisao registrada, o abrandamento e um
+    // ato consciente (a secao revisada), nao uma edicao silenciosa.
+    const docComTrilha = doc + "\n## 11.99 test:guard filtro mapeado - ADOTADO (medicao 2026-08-11)\n"
+    const facts = hardLockAsymmetry(mutated, fuzzSrc, docComTrilha)
+    expect(facts.guardHasReversal).toBe(true)
+    expect(facts.guardDocTrail).toBe(true)
+    expect(facts.violated).toBe(false)
   }, 60000)
 })

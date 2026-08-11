@@ -233,13 +233,17 @@ describe("scan-prepush-batch.mjs - pre-push NAO batchado (sec 11.17, padrao 11.1
     expect(r.stdout).toContain("clean")
   }, 60000)
 
-  it("ALLOWED pin: o conjunto pinado (taxonomia 11.17) tem exatamente os 3 (integrity, delecao, fuzz vitest)", () => {
-    // O pin do conjunto: um 4o entry exige re-mediacao consciente (nao uma
-    // allowlist generica que cresce no acaso).
+  it("ALLOWED pin: o conjunto pinado (taxonomia 11.17 + a 4a entrada da sec 11.49) tem exatamente os 4 (integrity, delecao, fuzz vitest, exit-claims-push)", () => {
+    // O pin do conjunto: um 5o entry exige re-mediacao consciente (nao uma
+    // allowlist generica que cresce no acaso). A 4a entrada (a sec 11.49) foi
+    // a edicao consciente que a propria secao 11.49 registrou - o guard
+    // git-based do doc commitado fechando a classe HUSKY=0/--no-verify no
+    // push net (custo ~0.44s, acima do limiar <0.2s do batch-worthiness).
     expect(ALLOWED_NODE_GUARDS).toEqual([
       "check-node-modules-integrity.mjs",
       "check-push-deletion.mjs",
       "run-mapped-fuzz.mjs",
+      "check-exit-claims-push.mjs",
     ])
   })
 
@@ -253,15 +257,18 @@ describe("scan-prepush-batch.mjs - pre-push NAO batchado (sec 11.17, padrao 11.1
     const prePush = fs.readFileSync(path.join(process.cwd(), ".husky", "pre-push"), "utf8")
     const derived = derivePrepushSpawns(prePush).map((s) => s.module)
     // Ordem real do hook: (1) o atalho de delecao pura no shortcut, (2) o
-    // integrity - o UNICO node guard legitimo (a 11.17), (3) o runner
+    // integrity - o UNICO node guard legitimo (a 11.17), (3) o guard
+    // git-based do doc commitado (a 4a entrada da sec 11.49), (4) o runner
     // vitest do fuzz mapeado (nao cabe no batch, sec 11.17/11.18).
     expect(derived).toEqual([
       "check-push-deletion.mjs",
       "check-node-modules-integrity.mjs",
+      "check-exit-claims-push.mjs",
       "run-mapped-fuzz.mjs",
     ])
-    // A claim da 11.17: exatamente UM node guard (o integrity) - os outros
-    // dois sao a taxonomia de NAO-guards (atalho de delecao + runner vitest).
+    // A claim da 11.17: exatamente UM node guard local (o integrity) - o
+    // exit-claims-push e a excecao documentada da sec 11.49 (guard git-based
+    // do doc commitado, ~0.44s acima do limiar <0.2s do batch-worthiness).
     const guards = derived.filter((m) => m === "check-node-modules-integrity.mjs")
     expect(guards.length).toBe(1)
   }, 60000)

@@ -42,14 +42,17 @@
 # 3.4s. Filtering saves nothing meaningful; the unconditional net keeps
 # the BASELINE structurally guaranteed to run.
 #
-# RE-MEASURED (run 31453991361, 2026-08-11, sec 8.1 of gates-proofs.md):
-# test:guard grew to 13 suites / 236 tests and the step now takes 20s of
-# CI time (02:59:18 -> 02:59:38); the three scanner steps (timeouts +
-# curls + eol-anchor) add ~2s; job total stayed stable at ~43s because
-# fixed setup (checkout + setup-bun + cache + post) dominates and a paths
-# filter cannot reduce it. Local ground truth (Windows, warm): test:guard
-# 41.2s + scan-timeouts 1.3s. The no-filter decision is unchanged - sec
-# 8.1 recalibrated on the new numbers, conclusion intact.
+# RE-MEASURED (run 31522760166, 2026-08-11, sec 8.1 of gates-proofs.md):
+# test:guard still 13 suites but tests grew 236 -> 269 (+14%); the step
+# stayed FLAT at ~20.9s (20s before - vitest parallelism absorbs the
+# growth). The scan-exit-claims 8th guard is NOT in test:guard (it is a
+# pre-commit batch guard; its suite runs via test:unit) - the push net
+# suite count is unchanged. Job total ~57s this run (vs ~43s before) -
+# the variance is 100% fixed setup (install 9.8s vs ~1s, cache miss on
+# this runner), the class a paths filter cannot reduce. Local ground
+# truth (Windows, warm): test:guard 53.2s + scan-timeouts ~1.3s. The
+# no-filter decision is unchanged - sec 8.1 recalibrated, conclusion
+# intact and now stronger.
 # =============================================================================
 
 name: Guard Gates

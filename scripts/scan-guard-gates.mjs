@@ -345,6 +345,45 @@ export function prGuardJob(root, prWorkflow, job, stepRe = TEST_GUARD_STEP_RE) {
 }
 
 /**
+ * The HARD-LOCK asymmetry (sec 11.52) - the design fact that the test:guard
+ * step of the guard net is a HARD lock (exact TEST_GUARD_STEP_RE, NO doc
+ * trail), unlike the fuzz verdict (scan-fuzz-precommit.mjs carries a
+ * REVERSAL_RE doc trail - a dated 11.x ADOTADO section reverses the
+ * negative). Exported for the contract test: someone "softening" the exact
+ * regex by ADDING a REVERSAL_RE mechanism to THIS module would silently
+ * convert the hard lock into a soft one (like the fuzz) - the behavioral
+ * pins of sec 11.47 (any suffix -> TEST GUARD STEP MISSING) stay green
+ * because they never inject a doc trail. The asymmetry contract pins the
+ * MECHANISM: the guard-gates MAY only gain a REVERSAL_RE declaration with a
+ * REGISTERED decision - a dated 11.x ADOTADO section in gates-proofs.md
+ * explicitly mentioning test:guard (the mirror of the fuzz REVERSAL_RE
+ * header). Pure: receives the sources + doc text as strings (hermetic
+ * tests, no disk reads at runtime).
+ */
+export function hardLockAsymmetry(guardSrc, fuzzSrc, docText) {
+  // Line-anchored declaration (the mechanism, never a prose mention): a
+  // comment explaining the asymmetry in the docblock can NEVER match (no
+  // line here starts with "const REVERSAL_RE ="). The fuzz sibling declares
+  // `const REVERSAL_RE = ...` - the same shape the mutation injects.
+  const declRe = /^(?:const|let)\s+REVERSAL_RE\s*=/m
+  const guardHasReversal = declRe.test(guardSrc)
+  const fuzzHasReversal = declRe.test(fuzzSrc)
+  // The registered-decision trail: a dated 11.x ADOTADO section header
+  // explicitly naming test:guard (the mirror of the fuzz REVERSAL_RE which
+  // anchors on \bfuzz\b + ADOTADO/ALLOWED on the SAME header line).
+  const guardDocTrail = /^##\s+11\.\d+.*\btest:guard\b.*\b(?:ADOTADO|ALLOWED)\b/im.test(docText)
+  return {
+    guardHasReversal,
+    fuzzHasReversal,
+    guardDocTrail,
+    // violated: the guard-gates gained the reversal mechanism WITHOUT the
+    // registered dated decision (the asymmetry class this contract exists
+    // to close - the hard lock must stay hard by default).
+    violated: guardHasReversal && !guardDocTrail,
+  }
+}
+
+/**
  * The guard-net contract facts (workflow pair + PR job key). Defaults to the
  * workflow-contracts manifest exports; tests pass an override (patched
  * manifest) to prove the guard derives from the manifest.

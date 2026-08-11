@@ -73,6 +73,19 @@ bash scripts/check-docs-encoding.sh
 # do lock, puro node). O CI nao precisa (checkout fresco instala do lock).
 node scripts/check-node-modules-integrity.mjs
 
+# Guard git-based do doc commitado (2026-08-11, sec 11.49): o tripwire do
+# scan-exit-claims roda no batch do pre-commit contra a WORKING TREE - mas um
+# commit com HUSKY=0/--no-verify o bypassa. O Gate 3 mapeado mapeia docs/* ->
+# NENHUMA suite, entao o pre-push local nao pega a classe (o CI pega so
+# DEPOIS do push). Este guard materializa o doc COMMITADO (git show
+# HEAD:docs/gates-proofs.md - o estado exato empurrado, nao a working tree)
+# e roda o detector na direcao UNICA .unregistered (claim no doc sem entrada
+# no EXIT_CLAIMS - o stale e ruido de delta, o probe da sec 11.49). Custo
+# ~0.44s medido, acima do limiar <0.2s do batch-worthiness da 11.17 (o
+# veredito NAO-batchado permanece - sec 11.49). O ALLOWED_NODE_GUARDS do
+# scan-prepush-batch foi editado conscientemente (a 4a entrada).
+node scripts/check-exit-claims-push.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"
+
 # Gate de fuzz MAPEADO (adocao da secao 11.11, medicao 2026-08-10): o
 # fuzz:ci de 6 spawns custava ~40.4s (71% do push); o runner mapeado roda SO
 # as suites cujos alvos foram tocados no diff do push (mesmo escopo do Gate 3)

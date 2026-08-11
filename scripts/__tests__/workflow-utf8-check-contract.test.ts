@@ -152,4 +152,37 @@ describe("utf8-check single-source-of-truth contract", () => {
     expect(isReusableCall(job)).toBe(false)
     expect(job?.uses).toBeUndefined()
   })
+
+  it("11.45: utf8-check.yml's own job step runs the consolidated gate verify-encoding.sh --ci src/ (layer 5 = the .mjs ASCII scan lives INSIDE that one command)", () => {
+    // The caller-side pins above guarantee the reusable workflow is used;
+    // THIS pin guarantees the workflow still runs the CONSOLIDATED gate
+    // (verify-encoding.sh --ci src/) whose layer 5 is the mjs-gate
+    // (scan-non-ascii --report over scripts/*.mjs, sec 11.45). Without it,
+    // a step regressed to `bash scripts/check-utf8.sh --ci src/` would drop
+    // layers 3-5 (fragile-range, YAML gate, .mjs ASCII) from CI with every
+    // caller-side contract still green.
+    const wf = loadWorkflow("utf8-check.yml")
+    const job = wf.jobs?.["utf8-check"]
+    expect(job).toBeDefined()
+    const steps = job?.steps ?? []
+    const gateSteps = steps.filter((s) => typeof s.run === "string" && s.run.includes("verify-encoding.sh"))
+    expect(gateSteps).toHaveLength(1)
+    expect(gateSteps[0]?.run).toBe("bash scripts/verify-encoding.sh --ci src/")
+  })
+
+  it("MUTATION (11.45): swapping the step to a bare check-utf8 call (layers 3-5 dropped) fails the guard", () => {
+    const wf = loadWorkflow("utf8-check.yml")
+    const job = wf.jobs?.["utf8-check"]
+    expect(job).toBeDefined()
+    const steps = (job?.steps ?? []).map((s) =>
+      typeof s.run === "string" && s.run.includes("verify-encoding.sh")
+        ? { ...s, run: "bash scripts/check-utf8.sh --ci src/" }
+        : s,
+    )
+    const mutated: WorkflowDoc = { ...wf, jobs: { ...wf.jobs, "utf8-check": { ...job, steps } } }
+    const gateSteps = (mutated.jobs?.["utf8-check"]?.steps ?? []).filter(
+      (s) => typeof s.run === "string" && s.run.includes("verify-encoding.sh"),
+    )
+    expect(gateSteps).toHaveLength(0)
+  })
 })

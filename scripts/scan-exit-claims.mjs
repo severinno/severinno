@@ -230,6 +230,27 @@ export const EXIT_CLAIMS = [
     pin: { file: "scripts/__tests__/ci-proof-run.test.ts", marker: "11.44" },
     ref: "gates-proofs.md sec 11.44 (decisao 2026-08-11)",
   },
+  {
+    section: "11.45",
+    claim: "utf8-check.yml roda o gate consolidado verify-encoding.sh --ci src/ (o comando unico cujo layer 5 e o scan-non-ascii --report sobre scripts/*.mjs - a classe 'acento em gate .mjs' ja esta no CI): step interno regredido para check-utf8 puro -> exit code 1 do contrato; o gate real com byte nao-ASCII num .mjs -> exit code 1 (probe 2026-08-11)",
+    kind: "current",
+    pin: { file: "scripts/__tests__/workflow-utf8-check-contract.test.ts", marker: "11.45" },
+    ref: "gates-proofs.md sec 11.45 (avaliacao 2026-08-11) - premissa invertida: o mjs-gate ja roda no CI via layer 5 do verify-encoding.sh",
+  },
+  {
+    section: "11.47",
+    claim: "scan-guard-gates: um sufixo --since/--scope no step test:guard (push net guard-gates.yml OU twin pr-check.yml fragile-guard) -> exit code 1 do guard com 'TEST GUARD STEP MISSING' no caminho exato (o regex EXATO rejeita qualquer sufixo - o lock da recalibracao 8.1, sem trilha de doc)",
+    kind: "current",
+    pin: { file: "scripts/__tests__/scan-guard-gates.test.ts", marker: "11.47" },
+    ref: "gates-proofs.md sec 11.47 (avaliacao 2026-08-11) - a classe do filtro ja travada pelo regex exato; as mutacoes irma --since/--scope pinam o sufixo nos DOIS lados da rede",
+  },
+  {
+    section: "11.49",
+    claim: "check-exit-claims-push (o guard git-based do doc commitado): doc commitado com claim nao-registrada -> exit code 1 com as secoes; doc commitado limpo (ou apenas claims pre-existentes no base) -> exit code 0; git show HEAD falhou -> exit code 3",
+    kind: "current",
+    pin: { file: "scripts/__tests__/check-exit-claims-push.test.ts", marker: "11.49" },
+    ref: "gates-proofs.md sec 11.49 (avaliacao 2026-08-11) - a classe 'commit com HUSKY=0/--no-verify esconde claim nova' fechada no push net (Gate 3 mapeia docs -> nada; direcao unica .unregistered - o stale e ruido de delta)",
+  },
 ]
 
 /** Exit codes que o contrato reconhece como claims (0-3, o padrao do repo).
@@ -237,7 +258,20 @@ export const EXIT_CLAIMS = [
  * status 0`, `exit-code 0` (o hyphen e coberto por [\\s-]+) - a classe
  * 'claim de exit code' nao pode escapar por re-frasear com uma palavra
  * entre `exit` e o numero (o gap que o reviewer da sec 11.42 apontou). */
-const EXIT_CLAIM_RE = /\bexit[\s-]+(code|status)?[\s-]*[0-3]\b/i
+export const EXIT_CLAIM_RE = /\bexit[\s-]+(code|status)?[\s-]*[0-3]\b/i
+
+/**
+ * EXIT_CLAIMS_CURE - o comando de cura da classe unregistered (sec 11.54):
+ * o fix exato (registrar a claim no EXIT_CLAIMS) + a confirmacao (o CLI
+ * --check sai limpo). O padrao do --check-lock da sec 8.5/8.6 (o integrity
+ * imprime CURE: rm -rf node_modules && bun install --frozen-lockfile). A
+ * string e COMPARTILHADA entre o CLI (scan-exit-claims.mjs, stderr) e o
+ * guard do push (check-exit-claims-push.mjs, stdout) - a fonte unica da
+ * regra dos 2 usos, para o fix nunca driftar entre os dois pontos de erro
+ * da MESMA classe.
+ */
+export const EXIT_CLAIMS_CURE =
+  "CURE: registre a claim no EXIT_CLAIMS de scripts/scan-exit-claims.mjs (sec 11.42) e confirme com: node scripts/scan-exit-claims.mjs --check"
 
 /**
  * scanDocExitClaims - o DETECTOR HONESTO das claims de exit code nas
@@ -339,10 +373,12 @@ export function main() {
   if (unregistered.length > 0) {
     process.stderr.write(`exit-claims: ${unregistered.length} claim(s) de exit code SEM registro no manifest (sec 11.42):\n`)
     for (const s of unregistered) process.stderr.write(`  claim na secao ${s} nao esta no EXIT_CLAIMS\n`)
+    process.stderr.write(`  ${EXIT_CLAIMS_CURE}\n`)
   }
   if (stale.length > 0) {
-    process.stderr.write(`exit-claims: ${stale.length} entrada(s) do manifest SEM claim detectada no doc (secao renumerada/removida - sec 11.42):\n`)
+    process.stderr.write(`exit-claims: ${stale.length} entrada(s) do manifest SEM claim detectada no doc (secao renumerada/removida - sec 11.42/11.55):\n`)
     for (const s of stale) process.stderr.write(`  entrada ${s} sem claim no doc atual\n`)
+    process.stderr.write(`  stale nao tem CURE de registrar - a secao foi renumerada/removida: atualize a secao no EXIT_CLAIMS ou remova a entrada (sec 11.42/11.55)\n`)
   }
   if (brokenPins.length > 0) {
     process.stderr.write(`exit-claims: ${brokenPins.length} pin(s) de claim current quebrados (arquivo/marker ausente - sec 11.42):\n`)

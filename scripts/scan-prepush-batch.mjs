@@ -7,12 +7,15 @@
  * WHY: a 11.17 mediu os gates do pre-push (integrity 0.19s, verify-encoding
  * 2.94s bash multi-camada, run-mapped-fuzz 0.41s+ invocacao vitest) e
  * manteve a assimetria deliberada: o batch economiza o BOOT node (~0.14s)
- * consolidando N spawns em 1 - o pre-push tem EXATAMENTE UM node guard
- * (check-node-modules-integrity), entao batchar economizaria ~0.14s num
- * hook de dezenas de segundos (ruido). A condicao documentada na 11.17:
- * "se um dia o pre-push ganhar um segundo node guard (<0.2s cada), ai o
- * batch passa a valer - ate la, spawn individual e o certo". O veredito
- * vivia SO na doc; este guard TRAVA a condicao estruturalmente.
+ * consolidando N spawns em 1 - o pre-push tem UM node guard local barato
+ * (check-node-modules-integrity, 0.19s) + o guard git-based da sec 11.49
+ * (check-exit-claims-push, ~0.44s - ACIMA do limiar <0.2s do batch-worthiness),
+ * entao batchar economizaria ~0.14s num hook de dezenas de segundos (ruido).
+ * A condicao documentada na 11.17: "se um dia o pre-push ganhar um segundo
+ * node guard (<0.2s cada), ai o batch passa a valer - ate la, spawn
+ * individual e o certo". A 4a entrada (a sec 11.49) NAO dispara a condicao
+ * (0.44s > 0.2s) - o veredito NAO-batchado permanece. O veredito vivia SO
+ * na doc; este guard TRAVA a condicao estruturalmente.
  *
  * CONTRATO BIDIRECIONAL (mesmo padrao do scan-fuzz-precommit da 11.11):
  * - NEGATIVO (INCONDICIONAL - o espelho do HOOK_ALLOWLIST do pre-commit,
@@ -89,9 +92,10 @@ const DOC = "docs/gates-proofs.md"
  * list WITH the re-measured section 11.x, never a silent addition.
  */
 export const ALLOWED_NODE_GUARDS = [
-  "check-node-modules-integrity.mjs", // o UNICO node guard legitimo (~0.19s, sec 11.17)
+  "check-node-modules-integrity.mjs", // o UNICO node guard legitimo local (~0.19s, sec 11.17)
   "check-push-deletion.mjs", // atalho de housekeeping (delecao pura) - nao e um gate
   "run-mapped-fuzz.mjs", // invocacao vitest pesada, nao cabe no batch (sec 11.17)
+  "check-exit-claims-push.mjs", // guard git-based do doc commitado (sec 11.49) - ~0.44s, acima do limiar <0.2s do batch-worthiness da 11.17 (a 4a entrada foi a edicao consciente da sec 11.49)
 ]
 
 /**

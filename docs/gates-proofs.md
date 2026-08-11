@@ -48,6 +48,11 @@
 | 31 | Lado POSITIVO do guard da sec 11.41 provado ao vivo: ciclo `ci-proof-run --stash-uncommitted` REAL com o delta não-commitado da thread — o stash preserva o delta durante o ciclo e o revert o restaura **byte-identical** (exit 0, run 31511149307) | O guard da sec 11.41 tinha prova LOCAL só do lado negativo (fail-loud exit 3 no repo real SEM a flag); o lado positivo (`--stash-uncommitted` preserva + restaura) tinha apenas prova hermética (E2Es com fake bins) — faltava a prova viva com um delta real | working tree com o delta de 12 arquivos da thread (10 M + 2 untracked); ciclo `ci-proof-run --branch ci-proof/stash-live2 --workflow pr-check.yml --only-jobs "utf8-check / UTF-8 Check" --expect success --stash-uncommitted --timeout 420`; baseline md5 pré-ciclo: STATUS `2c5fdcca...` + DELTA `2897b9b9...` + STASH 19 | Run [**31511149307**](https://github.com/severinno/severinno/actions/runs/31511149307) (`PR Check`, event `workflow_dispatch`, branch scratch `ci-proof/stash-live2`) | ✅ **exit 0** — `delta nao-commitado stasheado (git stash push -u)` → ciclo (job `utf8-check / UTF-8 Check` completed success) → `delta nao-commitado restaurado (git stash pop - sec 8.21)` + `revertido (... delta restaurado)`; pós-ciclo: STATUS `2c5fdcca...` (idêntico), DELTA `2897b9b9...` (**byte-identical**), STASH 19 (os pré-existentes intactos, o stash do helper consumido pelo pop), branch de volta em `freebuff/new-thread-thmsitz5qutoia`, remote limpo; ACHADO duplo na sec 8.27 (o nome composto dos reusable workflow calls + a re-normalização de EOL no round-trip do stash) |
 | 32 | DOC COVERAGE do scan-exit-claims **falha com a seção exata no CI real** (Prova 33, sec 8.28; `workflow_dispatch` do pr-check com uma claim fake na sec 11.99 — o lado CI da classe 'claim de doc sem pin' da 11.42) | O DOC COVERAGE (doc → manifest: toda claim detectada tem entrada no EXIT_CLAIMS) tinha prova LOCAL sintética + o ACHADO do 1º run mostrou a premissa errada (a suíte é untracked, o CI roda o tree commitado SEM ela) — faltava o lado CI: uma claim fake injetada numa secção 11.x da doc real derrubando o teste no pipeline | ACHADO DO RUN 1 (#31515253099): `scripts/scan-exit-claims.mjs` + `scan-exit-claims.test.ts` são UNTRACKED (delta não-commitado da thread) — o CI roda o tree COMMITADO onde a suíte não existe, então o DOC COVERAGE NUNCA rodou (8 falhas pré-existentes de outras suítes, zero do scan-exit-claims); FIX: a mutação materializa os 12 arquivos do delta no scratch (o estado verde local) + injeta a secção fake `## 11.99 Claim fake da prova viva` com `**Exit codes**: exit code 3` antes do `## 12.` (branch scratch `ci-proof/exit-claims-live2` via **`ci-proof-run --workflow pr-check.yml --only-jobs check --expect failure --expect-log "doc -> manifest" --no-verify --stash-uncommitted --timeout 900`**; mutation script `$TMPDIR/prova33b-ec-mutate.mjs` fora do repo, lê os 12 arquivos de `/tmp/ec-src` copiados antes do ciclo; pre-flight hermético com `EXIT_CLAIMS_DOC` → `claim na secao 11.99 nao esta no EXIT_CLAIMS`) | Run [**31516054686**](https://github.com/severinno/severinno/actions/runs/31516054686) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs` — o poll termina quando o job conclui) | ❌ job `check` conclusion=`failure` — no log do step `Unit tests`: `× scripts/scan-exit-claims.mjs - DOC COVERAGE bidirecional (sec 11.42) > doc -> manifest: toda claim de exit code detectada no doc REAL tem entrada no manifest` + `→ expected [ '11.99' ] to deeply equal []` (a SEÇÃO EXATA no assertion); 3 testes do scan-exit-claims falharam pela MESMA raiz (doc → manifest + checkExitClaims + REAL-REPO CONTRACT do CLI — todas flagrando a 11.99 não registrada); revertido byte-identical (STATUS `2c5fdcca...` e DELTA `8431a460...` pré=pós, STASH 19, branch de volta, remote limpo) |
 | 33 | Tri-caso do tripwire **AGREGADO observado no pipeline real** (Prova 34, sec 8.29; `scan-curl-timeouts.mjs --ci` no job `Fragile Range Guard` do pr-check — as 3 formas na MESMA branch, em gate scripts DISTINTOS) | As Provas 29/30/31 provaram cada forma isolada em branch separada (linha única → exit 1, split → exit 0, continuação → exit 1); faltava o comportamento MULTI-FORMA num único pipeline: injetar os 3 casos de uma vez e confirmar que o job reporta EXATAMENTE os 2 que devem falhar e passa o split | 3 linhas anexadas ao fim de 3 gate scripts distintos numa branch scratch `ci-proof/tricase-live` via **`ci-proof-run --workflow pr-check.yml --only-jobs "Fragile Range Guard" --expect failure --expect-log "EVAL CURL (sec 11.30) in scripts/health-check.sh:58" --no-verify --stash-uncommitted --timeout 600`** (mutation script `$TMPDIR/prova34-tricase-mutate.mjs` fora do repo, self-delete runner-owned, caminho Windows via `cygpath -w` — o ACHADO da Prova 33); dry-run local ANTES do ciclo: `SCAN_EXIT=1` + exatamente **2 `EVAL CURL`** (health-check.sh:58 linha única + test-security-headers.sh:439 continuação) + zero para o split (check-utf8.sh) | Run [**31518328191**](https://github.com/severinno/severinno/actions/runs/31518328191) (`PR Check`, event `workflow_dispatch`, branch scratch; `--only-jobs` — o poll termina quando o job conclui) | ❌ job `Fragile Range Guard` conclusion=`failure` — log via `gh api .../actions/jobs/93868917658/logs` (o capture job-scoped do helper veio 1-linha, o MESMO ACHADO da sec 8.20/Prova 25): `curl-timeouts: 2 eval+curl form(s)` com **`EVAL CURL (sec 11.30) in scripts/health-check.sh:58`** E **`EVAL CURL (sec 11.30) in scripts/test-security-headers.sh:439`** — as 2 formas que devem trip, juntas, e **ZERO menção ao check-utf8.sh** (o split sem continuação passou na MESMA árvore); o comportamento multi-forma observado = a soma dos singles das Provas 29/31 com a residual da 30, agora num único pipeline; revertido byte-identical (STATUS `b67aa585...` pré=pós, STASH 19, alvos de volta a 56/437/167 linhas, branch deletada remote + local) |
+| 34 | O push net **roda test:guard com as 13 suítes do package.json** (Prova 35, sec 8.30; `guard-gates.yml` via `workflow_dispatch` no job `Guard Gates` — a premissa invertida da sec 8.1, "scan-exit-claims FORA do test:guard", agora com prova viva) | O veredito da sec 8.1 ("test:guard = 13 suítes; o scan-exit-claims é um guard de batch do pre-commit que roda via test:unit, não no push net") tinha só prova local (grep + medição); faltava o log do CI mostrando o vitest rodando EXATAMENTE o conjunto do package.json — a evidência de que o 8º guard não pode entrar silenciosamente no net sem mudar o package.json | ciclo **`ci-proof-run --branch ci-proof/tg-suite-list --workflow guard-gates.yml --only-jobs "Guard Gates (fragile-range + golden-copy)" --expect success --stash-uncommitted --timeout 360`** (SEM mutação — a prova é o dispatch do workflow real na branch scratch; `--stash-uncommitted` preserva o delta da thread) | Run [**31526224328**](https://github.com/severinno/severinno/actions/runs/31526224328) (`Guard Gates`, event `workflow_dispatch`, branch scratch `ci-proof/tg-suite-list`; `--only-jobs` — o poll termina quando o job conclui) | ✅ job `Guard Gates` conclusion=`success` — log: **`Test Files 13 passed (13)`**; as 13 suítes listadas = **byte-exatas** às 13 do `test:guard` do package.json (fragile-range-guard, fuzz-mapped, golden-copy-utils, guard-gates-exclusivity, manifest-registry, run-all-fuzz, scan-batch-coverage, scan-prepush-batch, scan-fuzz-precommit, scan-guard-gates, scan-hook-parallel-race, scan-lint-staged-loader, scan-push-full-suite); **0 ocorrências de `scan-exit-claims`** no log inteiro (288 linhas) — a premissa da sec 8.1 confirmada no pipeline real; revertido byte-identical (STASH 19, branch deletada remote + local) |
+| 35 | Guard do push net — **o sufixo `--since` no test:guard falha no CI real** (Prova 36, sec 8.31; `guard-gates.yml` via `workflow_dispatch` no job `Guard Gates` — a prova viva da sec 11.47) | A sec 11.47 registrou o veredito do lock (sufixo → `TEST GUARD STEP MISSING` com o path exato) mas sem prova viva no CI; faltava a contraparte observada: o sufixo `--since main` commitado no guard-gates.yml real fazendo o job do push net falhar de ponta a ponta no pipeline | `run: bun run test:guard` → `run: bun run test:guard --since main` no `guard-gates.yml` REAL (branch scratch `ci-proof/tg-suffix-live` via **`ci-proof-run --workflow guard-gates.yml --expect failure --expect-log "CACError" --no-verify --stash-uncommitted --timeout 360`**; mutation script `/tmp/prova36-suffix-mutate.mjs` fora do repo + self-delete runner-owned — o ACHADO da sec 8.17; pre-flight local: CLI real reporta `TEST GUARD STEP MISSING in .github/workflows/guard-gates.yml`) | Run [**31533234250**](https://github.com/severinno/severinno/actions/runs/31533234250) (`Guard Gates`, event `workflow_dispatch`, branch scratch `ci-proof/tg-suffix-live`; `--only-jobs` — o poll termina quando o job conclui) | ❌ job `Guard Gates` conclusion=`failure` — **ACHADO: o lock da 11.47 é DUPLO** — o step `Run guard vitest suites` rodou `bun run test:guard --since main` e o **vitest 3.1.1 NÃO tem a flag `--since`** (só `--changed`): `$ vitest run ... --since main` → `CACError: Unknown option '--since'` → exit 1 ANTES de qualquer suíte rodar (**0 ocorrências de `TEST GUARD STEP MISSING` no log — o guard nem chegou a rodar**; a classe do sufixo é travada pelo regex do scanner E pelo próprio CLI do vitest, dois locks independentes); revertido byte-identical (`run: bun run test:guard` de volta na linha 99, 0 ocorrências de `--since`, STASH 19 restaurado, branch deletada remote + local) |
+| 36 | Guard git-based do doc commitado — **claim fake 11.99 bloqueia o push no pre-push local** (Prova 37, sec 8.32; `check-exit-claims-push.mjs` — a prova viva da sec 11.49, o guard local-only no hook) | A sec 11.49 tinha prova hermética (mutações + REAL-REPO CONTRACT do CLI) e real-repo local (controle `clean` exit 0), mas sem prova viva: faltava um commit REAL feito com HUSKY=0 escondendo uma claim nova ser bloqueado pelo push ANTES do fuzz mapeado — a classe 'commit com HUSKY=0/--no-verify esconde claim nova' | scratch `ci-proof/exit-claims-live` com o delta materializado (commit `40ad1d0`, o estado verde local — padrão da Prova 33) + claim fake `## 11.99` com `**Exit codes**: exit code 3` injetada antes do `## 12.` e **COMMITADA via `HUSKY=0 git commit`** (commit `ffb58de` — o commit que esconde a claim; o pre-commit local teria tripado o batch, daí o HUSKY=0) | **Local** — prova de hook REAL (o guard roda no `.husky/pre-push`; o CI nunca executa hooks locais — o padrão da Prova 17): push simulado `printf 'refs/heads/ci-proof/exit-claims-live <ffb58de> refs/heads/ci-proof/exit-claims-live <40ad1d0>' | bash .husky/pre-push` com `time -p` | ✅ hook **exit 1 em 4.47s real** — encoding gates limpos (UTF-8 OK + mjs-gate clean 47 files + fragile-range clean + yaml-gate clean) + integrity `clean` + **`exit-claims-push: 1 claim(s) NAO-registrada(s) no doc COMMITADO (HEAD) - sec 11.42/11.49:` → `claim na secao 11.99 nao esta no EXIT_CLAIMS (doc commitado - um commit com HUSKY=0/--no-verify pode ter escondido; registrar a claim - sec 11.49)`** → o hook morreu NO GUARD (`set -euo pipefail`): **0 execuções do run-mapped-fuzz** (as únicas menções a fuzz no log são os listings `ASCII-OK scripts/run-mapped-fuzz.mjs` da varredura mjs-gate, não o runner — o bloqueio veio ANTES do fuzz mapeado de ~6-14s); stderr: `check-push-deletion: not a pure deletion (0/1 refs are deletions) - run gates` (o atalho de deleção pura não interferiu); revertido byte-identical (MD5_IDENTICAL pré=pós nos 4 arquivos + STATUS_IDENTICAL, branch deletada, delta restaurado do patch + untracked) |
+| 37 | Guard do push net — **a linha CURE como ÚLTIMA saída do bloqueio** (Prova 38, sec 8.33; `check-exit-claims-push.mjs` no pre-push local — a prova viva da CURE da sec 11.54/11.55 no hook) | A CURE da sec 11.54 foi pinada hermeticamente (testes do CLI + guard) mas sem prova viva no hook: faltava confirmar que o bloqueio do pre-push com a claim fake termina com a linha CURE no stdout — o dev bloqueado sabe EXATAMENTE como curar na hora, não só que foi bloqueado | claim fake `## 11.99 Claim fake da prova viva` / `**Exit codes**: exit code 3` injetada antes do `## 12.` e **COMMITADA via `HUSKY=0 git commit`** (commit `f00b59c` — o commit que esconde; scratch `ci-proof/cure-live` com o delta materializado `20e1e46`, o padrão da Prova 37) | **Local** — prova de hook REAL (o guard roda no `.husky/pre-push`; o CI nunca executa hooks locais — o padrão da Prova 17): push simulado `printf 'refs/heads/ci-proof/cure-live <f00b59c> refs/heads/ci-proof/cure-live <20e1e46>' | bash .husky/pre-push` com `time -p` | ✅ hook **exit 1 em 5.05s real** — encoding gates limpos (UTF-8 OK + mjs-gate clean, o listing ASCII-OK no log confirma que a varredura rodou e passou) + integrity `clean` + **`exit-claims-push: 1 claim(s) NAO-registrada(s) no doc COMMITADO (HEAD)` → `claim na secao 11.99 ...` → `CURE: registre a claim no EXIT_CLAIMS de scripts/scan-exit-claims.mjs (sec 11.42) e confirme com: node scripts/scan-exit-claims.mjs --check`** como **linha 210, a ÚLTIMA saída do guard** (nada roda depois — `set -euo pipefail` mata o hook ali); **0 execuções do run-mapped-fuzz** (só o listing ASCII-OK); pre-flight: guard exit 1 com a CURE na última linha; revert byte-identical (MD5 pré=pós + STATUS_IDENTICAL, branch deletada, delta restaurado) + controle pós-ciclo: guard exit 0 clean |
+| 38 | Guard do push net — **o PAR CURE+stale no CLI real** (Prova 39, sec 8.34; `scan-exit-claims.mjs --check` contra a seção renumerada — a prova viva da sec 11.55, o pointer do stale no mesmo caminho de erro da CURE) | A sec 11.55 adicionou o pointer stale (a CURE de registrar é ENGANOSA para a classe stale — direção oposta) com pin hermético, mas sem prova viva: faltava confirmar que o CLI real, contra uma seção renumerada no doc COMMITADO, imprime o pointer stale JUNTO com a CURE — o dev vê os dois comandos no mesmo run | rename `## 11.42 ` → `## 11.98 ` no doc REAL (a seção 11.42 vira stale — entrada no EXIT_CLAIMS sem claim detectada — e a 11.98 vira unregistered — claim sem registro; **1 rename produz os DOIS sinais**, o par) COMMITADO via `HUSKY=0 git commit` (commit `befec6e` — o commit que esconde; scratch `ci-proof/stale-live` com o delta materializado `1bb6bbb`, o padrão da Prova 38) | **Local** — prova de CLI REAL (o mesmo detector que o batch do pre-commit e o test:unit rodam; a classe stale é CLI-only por design — o guard do push é direction-unique `.unregistered`, sec 11.49): `node scripts/scan-exit-claims.mjs --check` no scratch | ✅ CLI **exit 1** com o par completo: **`claim na secao 11.98` + `CURE: registre a claim no EXIT_CLAIMS...`** (bloco unregistered) **E** **`entrada 11.42 sem claim no doc atual` + `stale nao tem CURE de registrar - a secao foi renumerada/removida: atualize a secao no EXIT_CLAIMS ou remova a entrada (sec 11.42/11.55)`** (bloco stale) — as 4 linhas-chave, 1 ocorrência cada, no MESMO run; **o CONTRASTE**: o guard do push (`check-exit-claims-push.mjs`) no MESMO scratch lista SO o 11.98 (unregistered) e **0 menções a stale** — a divisão de trabalho da sec 11.49 (stale = ruído de delta, direction-unique) observada viva; revert byte-identical (STATUS IDENTICO + MD5 PRE=POS nos 5 arquivos, branch deletada, delta restaurado) + controle pós-ciclo: CLI `clean (27 claims)` exit 0 + 0 headers `## 11.98` reais |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -380,10 +385,51 @@ cresceram +62% e os testes +52% — crescimento que um filtro por superfície
 derivada não conteria sem reintroduzir o ponto de drift que o SPREAD
 CONTRACT elimina.
 
+**Re-medição 2026-08-11 (2)** (breakdown por step do run
+[31522760166](https://github.com/severinno/severinno/actions/runs/31522760166) — prova viva com
+**13 suítes / 269 testes** — dispatch do guard-gates.yml via ci-proof-run
+numa branch scratch `ci-proof/guard-remed`, mesmo estado commitado
+0508202, método da Prova 7):
+
+| Step | Tempo | Observação |
+|---|---|---|
+| Set up job | 1.0s | overhead fixo do runner |
+| checkout | 2.5s | sempre roda |
+| setup-bun | 1.8s | sempre roda |
+| Cache node_modules (restore) | 9.6s | sempre roda |
+| **Install deps** | **9.8s** | `bun install --frozen-lockfile` (miss de cache do runner NESTE run — a variância do setup fixo, não das suítes) |
+| **Run guard vitest suites** | **20.9s** | `bun run test:guard` (269 testes, 13 suítes) |
+| **Scan subprocess-heavy tests** | 0.8s | `node scripts/scan-timeouts.mjs --ci` |
+| **Scan gate-script curls** | 0.1s | `node scripts/scan-curl-timeouts.mjs --ci` |
+| **Scan string \\n anchors** | 0.4s | `node scripts/scan-eol-anchor.mjs --ci` |
+| Post Cache (upload) | 8.5s | sempre roda |
+| **Total job** | **~57s** | job 18:26:58 → 18:27:55 — a variância vs ~43s da medição anterior é do SETUP fixo (install 9.8s vs ~1s neste run), não das suítes |
+
+**A premissa do pedido invertida (medido)**: o 8º guard do batch
+(scan-exit-claims, sec 11.42) NÃO entrou no test:guard — `grep
+scan-exit-claims package.json` = 0. Ele é um guard do pre-commit
+(run-precommit-guards.mjs), e a suíte dele (`scan-exit-claims.test.ts`)
+roda via test:unit (config padrão), não no push net. O push net segue com
+**13 suítes** — MAS os testes internos cresceram **236 → 269 (+33,
++14%)**, vindo das suítes do test:guard modificadas na thread
+(scan-guard-gates regras 10/11, scan-batch-coverage DERIVATION PIN 7→8,
+run-all-fuzz, etc.). O step test:guard ficou **plano**: 20.9s vs 20s
+(+0.9s para +33 testes) — o +14% foi absorvido pelo paralelismo do
+vitest sem custo marginal mensurável. A variância do TOTAL (~57s vs ~43s)
+é 100% do setup fixo (install 9.8s vs ~1s — miss de cache do runner), a
+classe que um filtro `paths:` não reduziria. **O no-filter continua
+calibrado — agora mais forte**: o 8º guard nem toca o push net (é
+pre-commit + test:unit), e o crescimento interno foi absorvido com custo
+plano.
+
 Ground truth local (Windows, cache quente, 2026-08-11):
-`bun run test:guard` 41.2s (236 testes, 13 suítes; 1º run frio 57.5s, 2º
-run warm 41.2s) + `node scripts/scan-timeouts.mjs --ci` 1.3s + `bun
-install --frozen-lockfile` ~1.2s (warm).
+`bun run test:guard` 53.2s (269 testes, 13 suítes; 1º run frio 77.3s, 2º
+run warm 53.2s) + `node scripts/scan-timeouts.mjs --ci` ~1.3s + `bun
+install --frozen-lockfile` ~1.2s (warm). O local quente subiu 41.2s →
+53.2s (+29% — as duas medições são de sessões DIFERENTES com variância
+de carga, não um A/B limpo do +14% de testes; a CI absorveu o mesmo
+crescimento com step plano 20→20.9s pelo paralelismo multi-runner, a
+leitura honesta).
 
 **Decisão (avaliada, 2026-08-09, re-avaliada 2026-08-10 e 2026-08-11): o
 no-filter documentado continua correto.** Um filtro `paths:` por superfície
@@ -2487,6 +2533,262 @@ API são a prova, não o exit do helper.
 
 **Revert**: byte-identical (STATUS `b67aa585...` pré=pós, STASH 19, os 3
 alvos de volta a 56/437/167 linhas, branch deletada remote + local).
+
+## 8.30 Prova 35 — o push net roda test:guard com as 13 suítes do package.json, sem scan-exit-claims (run 31526224328, 2026-08-11)
+
+Prova viva da premissa invertida da sec 8.1: o veredito "o scan-exit-claims
+NÃO está no test:guard" tinha prova local (grep no package.json + medição
+local do run 31522760166), mas nenhum log de CI mostrava o conjunto real
+que o push net executa. Esta prova fecha o lado CI: dispatch do
+`guard-gates.yml` real numa branch scratch e inspeção do log do step "Run
+guard vitest suites".
+
+**O que foi observado** (ciclo via **`ci-proof-run --branch
+ci-proof/tg-suite-list --workflow guard-gates.yml --only-jobs "Guard Gates
+(fragile-range + golden-copy)" --expect success --stash-uncommitted
+--timeout 360`** — SEM mutação: a prova é o dispatch do workflow real na
+branch scratch; `--stash-uncommitted` preserva o delta da thread):
+
+- Run [**31526224328**](https://github.com/severinno/severinno/actions/runs/31526224328),
+  job `Guard Gates (fragile-range + golden-copy)`, conclusion=`success`.
+- **`Test Files 13 passed (13)`** — o vitest rodou **exatamente 13 suítes**
+  no step "Run guard vitest suites".
+- As 13 suítes listadas no log são **byte-exatas** às 13 do `test:guard` do
+  package.json (a fonte única da invocação, o comentário do step: "the
+  SAME script as pr-check.yml's fragile-guard job"): fragile-range-guard,
+  fuzz-mapped, golden-copy-utils, guard-gates-exclusivity,
+  manifest-registry, run-all-fuzz, scan-batch-coverage, scan-prepush-batch,
+  scan-fuzz-precommit, scan-guard-gates, scan-hook-parallel-race,
+  scan-lint-staged-loader, scan-push-full-suite.
+- **0 ocorrências de `scan-exit-claims`** nas 288 linhas do log — o 8º guard
+  do batch do pre-commit (sec 11.42) não faz parte do net por construção:
+  ele está no `test:unit` (check job, ci.yml + pr-check.yml) e no batch
+  runner local, não no `test:guard`. Um dev que queira o detector no push
+  net precisaria editar o `test:guard` do package.json — a mudança visível
+  e revisável que a sec 8.1 pressupõe.
+
+**Bônus da prova (custo)**: os timestamps do log DESTE run medem o step
+"Run guard vitest suites" em **~20.5s** (19:07:41.687 → 19:08:02.148) com
+as 269 testes — a mesma faixa flat da medição da sec 8.1 (20.9s no run
+31522760166, 236 testes): o vitest absorve o +14% de testes sem custo
+adicional no net, e o job total segue dominado pelo setup fixo (install
+~9.8s vs ~1s da run com cache hit — a classe que um paths filter não
+reduz).
+
+**Revert**: byte-identical (STASH 19, branch `ci-proof/tg-suite-list`
+deletada remote + local, delta restaurado).
+
+## 8.31 Prova 36 — o sufixo `--since` no test:guard falha no CI real, com o lock DUPLO observado (run 31533234250, 2026-08-11)
+
+Prova viva da sec 11.47: o veredito do lock (qualquer sufixo no step
+`run: bun run test:guard` do push net → `TEST GUARD STEP MISSING` com o
+path exato) tinha prova hermética (mutações 11.47, push net + twin IRMÃ)
+e pre-flight local do CLI real, mas nenhum log de CI mostrava o
+comportamento observado. Esta prova fecha o lado CI: mutação do
+`guard-gates.yml` real com `--since main` e dispatch numa branch scratch
+segura.
+
+**O que foi observado** (ciclo via **`ci-proof-run --workflow guard-gates.yml
+--expect failure --expect-log "CACError" --no-verify --stash-uncommitted
+--timeout 360`** na branch scratch `ci-proof/tg-suffix-live`; mutation
+script `/tmp/prova36-suffix-mutate.mjs` fora do repo + self-delete
+runner-owned — o ACHADO da sec 8.17; o pre-commit local foi ignorado com
+`--no-verify` porque o guard rule 5 trava o commit da mutação — o ACHADO
+da Prova 16; `--stash-uncommitted` preserva o delta da thread; pre-flight
+local ANTES do ciclo com o probe `/tmp/preflight-tg.mjs`: o CLI real contra
+o workflow mutado reporta `TEST GUARD STEP MISSING in
+.github/workflows/guard-gates.yml` — o sinal da 11.47 no caminho exato):
+
+- Run [**31533234250**](https://github.com/severinno/severinno/actions/runs/31533234250),
+  job `Guard Gates (fragile-range + golden-copy)`, conclusion=`failure`.
+- O step `Run guard vitest suites (BASELINE + divergence guards)` rodou
+  `bun run test:guard --since main` → o bun expandiu para
+  `$ vitest run <13 suítes> --config vitest.config.unit.ts --since main`.
+- **`CACError: Unknown option '--since'`** (cac.DK21mt6F.js:403) →
+  `error: script "test:guard" exited with code 1` → `Process completed with
+  exit code 1`.
+
+**O ACHADO (o lock DUPLO)**: o sinal observado no CI real NÃO foi o
+`TEST GUARD STEP MISSING` do scanner — foi o **próprio vitest rejeitando a
+flag**. O vitest 3.1.1 não tem `--since` (só `--changed`), então o step
+mutado morre no parse do CLI ANTES de qualquer suíte rodar: **0 ocorrências
+de `TEST GUARD STEP MISSING` nas 253 linhas do log** (o scan-guard-gates
+nem chegou a executar). Ou seja, a classe do sufixo da 11.47 é travada por
+DOIS locks independentes: (1) o regex do scanner (`TEST_GUARD_STEP_RE`,
+hermético + mutações nos dois lados da rede) e (2) o próprio CLI do vitest,
+que não aceita a flag inventada. A regressão precisaria vencer os DOIS para
+entrar silenciosamente.
+
+**Revert**: byte-identical — `run: bun run test:guard` de volta na linha
+99 do guard-gates.yml (0 ocorrências de `--since` no arquivo), STASH 19
+restaurado, branch `ci-proof/tg-suffix-live` deletada remote + local, delta
+da thread intacto.
+
+## 8.32 Prova 37 — a claim fake 11.99 commitada via HUSKY=0 bloqueia o push no pre-push local, ANTES do fuzz mapeado (2026-08-11)
+
+Prova viva da sec 11.49: o guard `check-exit-claims-push.mjs` (o 4º node
+guard do pre-push, `ALLOWED_NODE_GUARDS`) tinha prova hermética (mutações
++ REAL-REPO CONTRACT do CLI com `CHECK_EXIT_CLAIMS_PUSH_DOC`) e real-repo
+local (controle `clean` exit 0), mas nenhuma prova viva do ciclo completo:
+um commit REAL com a claim fake 11.99 (feito com HUSKY=0, bypassando o
+batch do pre-commit que teria tripado) sendo bloqueado pelo hook de push.
+Esta prova é **local por design** — o guard roda no `.husky/pre-push`, que
+o CI nunca executa (o mesmo padrão da Prova 17, sec 8.19): o "CI" da
+classe é o hook local, e a prova simula o push real via stdin.
+
+**O que foi observado** (ciclo manual com backup do delta ANTES — o padrão
+da Prova 33):
+
+- Scratch `ci-proof/exit-claims-live` criado de HEAD com o delta da thread
+  materializado num commit (`40ad1d0`, `HUSKY=0 git commit` — o estado
+  verde local, sem `.probe-tmp`).
+- Claim fake `## 11.99 Claim fake da prova viva` + `**Exit codes**: exit
+  code 3 aqui.` injetada no `docs/gates-proofs.md` REAL antes do `## 12.`
+  (CRLF-safe via node) e **commitada via `HUSKY=0 git commit`**
+  (`ffb58de`). O pre-commit local teria tripado o batch (o 8º guard, sec
+  11.42) na working tree — o HUSKY=0 é exatamente a classe: o commit que
+  esconde a claim. Pre-flight ANTES do ciclo: `node
+  scripts/check-exit-claims-push.mjs` contra o HEAD do scratch → exit 1
+  com `claim na secao 11.99`.
+- Push simulado real no hook:
+  `printf 'refs/heads/ci-proof/exit-claims-live <ffb58de>
+  refs/heads/ci-proof/exit-claims-live <40ad1d0>' | bash .husky/pre-push`
+  (1 ref não-deleção, `time -p`).
+
+**O resultado**: hook **exit 1 em 4.47s real**. A cadeia que RODOU antes
+do guard: check-push-deletion (não é deleção pura → roda gates),
+verify-encoding (UTF-8 OK, fragile-range clean, mjs-gate clean 47 files,
+yaml-gate clean), check-docs-encoding, integrity `clean` — todos verdes. O
+guard então bloqueou com o sinal EXATO da 11.49: `exit-claims-push: 1
+claim(s) NAO-registrada(s) no doc COMMITADO (HEAD) - sec 11.42/11.49:` e
+`claim na secao 11.99 nao esta no EXIT_CLAIMS (doc commitado - um commit
+com HUSKY=0/--no-verify pode ter escondido; registrar a claim - sec
+11.49)`. `set -euo pipefail` matou o hook ali: **0 execuções do
+run-mapped-fuzz** — as únicas menções a fuzz nas 4.47s de log são os
+listings `ASCII-OK scripts/run-mapped-fuzz.mjs` e `format-fuzz-results.mjs`
+da varredura mjs-gate (nomes de arquivo, não o runner). O push foi
+bloqueado ANTES de gastar os ~6-14s do fuzz mapeado — a mesma classe de
+custo que a Prova 17 provou para o integrity.
+
+**Revert**: byte-identical — branch deletada (`git branch -D
+ci-proof/exit-claims-live`), delta restaurado (`git apply` do patch de
+1249 linhas + untracked copiados de volta + `.probe-tmp` limpo), MD5
+pré=pós idêntico nos 4 arquivos (docs/gates-proofs.md, guard, pre-push,
+scan-exit-claims.mjs) e `git status` idêntico ao snapshot pré-ciclo.
+
+## 8.33 Prova 38 — a CURE como ÚLTIMA saída do bloqueio do pre-push (2026-08-11)
+
+Prova viva da CURE da sec 11.54/11.55 no hook real: a sec 11.54 adicionou o
+`EXIT_CLAIMS_CURE` compartilhado (CLI stderr + guard stdout) e a 11.55 o
+pointer do stale — ambos pinados HERMETICAMENTE (os testes do CLI e do
+guard exigem a CURE), mas sem prova viva no hook: faltava confirmar que o
+bloqueio do pre-push com a claim fake termina com a linha CURE no stdout —
+o dev bloqueado sabe EXATAMENTE como curar no momento do bloqueio, não só
+que foi bloqueado.
+
+**O ciclo (padrão Prova 37 — backup do delta antes)**:
+1. **Backup**: patch do delta tracked (1604 linhas) + untracked copiados
+   (`.probe-tmp/t.md`, `check-exit-claims-push.test.ts`,
+   `scan-cures-contract.test.ts`, `check-exit-claims-push.mjs`) + md5
+   baseline + snapshot do `git status`.
+2. **Scratch** `ci-proof/cure-live`: delta materializado num commit
+   (`20e1e46`, o estado verde local — o guard COM a CURE, pois o
+   check-exit-claims-push.mjs e o scan-exit-claims.mjs fazem parte do delta).
+3. **A classe exata**: claim fake `## 11.99 Claim fake da prova viva` /
+   `**Exit codes**: exit code 3` injetada no doc REAL antes do `## 12.`
+   (linha 6744) e **commitada via `HUSKY=0 git commit`** (`f00b59c` — o
+   commit que esconde; o pre-commit local teria tripado o batch com o
+   8º guard da sec 11.42).
+4. **Pre-flight**: guard real contra o HEAD do scratch → **exit 1** com a
+   claim listada e a CURE como última linha.
+5. **Push simulado**: `printf 'refs/heads/ci-proof/cure-live <f00b59c>
+   refs/heads/ci-proof/cure-live <20e1e46>' | bash .husky/pre-push`.
+
+**O resultado**: hook **exit 1 em 5.05s real** (`time -p`). A cadeia antes
+do guard passou (encoding gates UTF-8 OK + mjs-gate clean — o listing
+`ASCII-OK` do run-mapped-fuzz.mjs no log confirma que a varredura rodou e
+passou — + integrity `clean`) e o guard bloqueou com a sequência completa
+no stdout:
+```
+exit-claims-push: 1 claim(s) NAO-registrada(s) no doc COMMITADO (HEAD) - sec 11.42/11.49:
+  claim na secao 11.99 nao esta no EXIT_CLAIMS (doc commitado - um commit com HUSKY=0/--no-verify pode ter escondido; registrar a claim - sec 11.49)
+  CURE: registre a claim no EXIT_CLAIMS de scripts/scan-exit-claims.mjs (sec 11.42) e confirme com: node scripts/scan-exit-claims.mjs --check
+```
+A **linha 210 do log do hook é a CURE — a ÚLTIMA saída do guard** (nada
+roda depois; `set -euo pipefail` mata o hook ali): a prova de que a CURE
+chega ao dev no MOMENTO do bloqueio, não só no teste hermético. **0
+execuções do run-mapped-fuzz** (a única menção a fuzz no log é o listing
+`ASCII-OK scripts/run-mapped-fuzz.mjs` da varredura mjs-gate — o nome do
+arquivo, não o runner): o push foi bloqueado antes de gastar os ~6-14s do
+fuzz mapeado, com a cura à mão.
+
+**Revert**: byte-identical (branch `ci-proof/cure-live` deletada, patch
+re-aplicado, untracked restaurados — MD5 pré=pós nos 5 arquivos +
+`git status` idêntico ao snapshot). **Controle pós-ciclo**: guard real exit
+0 `clean` no HEAD da thread + 0 headers `## 11.99` reais na doc (as 2
+menções restantes são as registros históricos das Provas 33/34, não o
+header injetado).
+
+**O que a prova cobre (e o que a Prova 37 já cobria)**: a 37 provou o
+bloqueio ANTES do fuzz (o guard pára o push); esta prova adiciona o elo
+final da cadeia de cura — a linha `CURE:` é a última coisa que o dev vê
+antes do exit 1, tornando o bloqueio auto-suficiente (o fix está nopróprio erro, sem consultar a doc). Registro de evento 8.x (fronteira de
+escopo da sec 11.51: Provas = registros de evento, não claims de
+comportamento) — sem entrada no EXIT_CLAIMS.
+
+## 8.34 Prova 39 — o PAR CURE+stale no CLI real, com a seção renumerada (2026-08-11)
+
+Prova viva da sec 11.55 (o pointer do stale) no CLI real — a prova irmã da
+Prova 38: a 38 provou a CURE da sec 11.54 no hook (pre-push); esta prova
+fecha o OUTRO sinal do MESMO caminho de erro — o pointer do stale — no CLI
+(o mesmo detector que o batch do pre-commit e o test:unit rodam). A classe
+stale é CLI-only por design (sec 11.49: o guard do push é direction-unique
+`.unregistered`, o stale é ruído de delta), então a prova viva é o CLI real
+contra o doc COMMITADO com a mutação.
+
+**O ciclo (padrão Prova 38 — backup do delta antes)**:
+1. **Backup**: patch do delta tracked (1667 linhas) + untracked copiados +
+   md5 baseline (5 arquivos) + snapshot do `git status`.
+2. **Scratch** `ci-proof/stale-live`: delta materializado num commit
+   (`1bb6bbb`, o estado verde local — o CLI com a CURE e o pointer stale).
+3. **A classe exata — 1 rename produz o PAR**: `## 11.42 ` → `## 11.98 `
+   no doc REAL (a seção 11.42, linha 5962 do scratch — a SELF-GUARD do
+   próprio contrato, a escolha deliberada: renumerar a seção que descreve
+   o CLI). O rename gera os DOIS sinais de uma vez: a entrada 11.42 no
+   EXIT_CLAIMS fica STALE (sem claim detectada — a seção mudou de número)
+   e a 11.98 vira UNREGISTERED (claim detectada sem entrada no manifest).
+   Commitado via `HUSKY=0 git commit` (`befec6e` — o commit que esconde; o
+   pre-commit local teria tripado o batch).
+4. **Pre-flight**: CLI real contra o doc mutado → exit 1 com o par.
+
+**O resultado**: CLI **exit 1** com as 4 linhas-chave do par, 1 ocorrência
+cada, no MESMO run:
+```
+exit-claims: 1 claim(s) de exit code SEM registro no manifest (sec 11.42):
+  claim na secao 11.98 nao esta no EXIT_CLAIMS
+  CURE: registre a claim no EXIT_CLAIMS de scripts/scan-exit-claims.mjs (sec 11.42) e confirme com: node scripts/scan-exit-claims.mjs --check
+exit-claims: 1 entrada(s) do manifest SEM claim detectada no doc (secao renumerada/removida - sec 11.42/11.55):
+  entrada 11.42 sem claim no doc atual
+  stale nao tem CURE de registrar - a secao foi renumerada/removida: atualize a secao no EXIT_CLAIMS ou remova a entrada (sec 11.42/11.55)
+```
+O dev vê os DOIS comandos no mesmo erro: a CURE (para a claim nova) E o
+pointer que desambigua (para a entrada órfã) — a divisão de cura da sec
+11.54/11.55 observada viva.
+
+**O CONTRASTE (a divisão de trabalho da sec 11.49 observada)**: o guard do
+push (`check-exit-claims-push.mjs`) no MESMO scratch lista SO o 11.98
+(unregistered, com a CURE) e **0 menções a stale** — o guard é
+direction-unique `.unregistered` por design (o stale false-positivaria com
+o delta da working tree). A prova observa os DOIS lados no mesmo estado:
+CLI = superfície completa (CURE + stale pointer), guard = só unregistered.
+
+**Revert**: byte-identical (branch `ci-proof/stale-live` deletada, patch
+re-aplicado, untracked restaurados — MD5 pré=pós nos 5 arquivos +
+`git status` idêntico ao snapshot). **Controle pós-ciclo**: CLI `clean (27
+claims)` exit 0 + 0 headers `## 11.98` reais na doc (a única menção
+restante é este registro histórico). Registro de evento 8.x (fronteira de
+escopo da sec 11.51) — sem entrada no EXIT_CLAIMS.
+
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -5759,15 +6061,19 @@ LIVE TREE check do manifest-registry não o flagra) + a suíte
 7. **SELF-GUARD**: a própria sec 11.42 menciona exit code 0/1 do CLI — é
    UMA claim registrada (a 24ª), pinned pela própria suite (REAL-REPO
    CONTRACT do CLI + o exit-1 path). O guard guarda a si mesmo: nenhuma
-   seção 11.x escapa, nem a que o descreve.
+   seção 11.x escapa, nem a que o descreve. (A 25ª, a sec 11.45, segue o
+   mesmo padrão — a claim do step do utf8-check pinada na própria suite
+   que o valida.)
 
-**O inventário das 24 claims** (seção → kind → pin): 21 `current` com pin
+**O inventário das 27 claims** (seção → kind → pin): 24 `current` com pin
 (11.6/11.7 em `scan-lint-staged-loader`, 11.8 em `scan-hook-parallel-race`,
 11.11/11.12 em `fuzz-mapped`, 11.17 em `scan-prepush-batch`, 11.18/11.21 em
 `check-push-deletion`, 11.19 em `check-node-modules-integrity`, 11.20/11.27/
 11.28/11.41/11.43/11.44 em `ci-proof-run`, 11.31/11.36/11.38 em
-`scan-curl-timeouts`, 11.33/11.39 em `scan-guard-gates`, 11.42 na PRÓPRIA
-suite) · 1 `superseded` (11.30 → 11.36) · 2 `measurement` (11.2, 11.10).
+`scan-curl-timeouts`, 11.33/11.39/11.47 em `scan-guard-gates`, 11.42 na
+PRÓPRIA suite, 11.45 em `workflow-utf8-check-contract`, 11.49 em
+`check-exit-claims-push`) · 1 `superseded`
+(11.30 → 11.36) · 2 `measurement` (11.2, 11.10).
 
 **Onde roda**: via `test:unit` (o MESMO canal do `gates-proofs-ordering` —
 o contrato de doc não entra no test:guard de 20s) E, desde o REFINAMENTO
@@ -5934,6 +6240,675 @@ ref + CURE no AVISO) ou o stash do ciclo não encontrado no list (pode já ter s
 stash@{1} pela mensagem, nunca o topo cego — + os asserts do CURE no AVISO)
 + `gates-proofs-ordering.test.ts` valida a monotonia 11.43 → 11.44 → 12;
 tsc 0; eslint 0 erros; UTF-8 do doc OK; ASCII-OK nos gate files.
+
+## 11.45 A classe 'acento em gate .mjs' JÁ está no CI — premissa invertida + o step interno do utf8-check pinado (avaliação 2026-08-11)
+
+**Pergunta**: o mjs-gate bloqueou um commit por 2 bytes não-ASCII em
+comentários (`scan-curl-timeouts.mjs:298` e `ci-proof-fake-bins.mjs:149`) —
+a classe 'acento em gate .mjs' teria escapado do verify-encoding (que cobre
+src/) e só o scan-non-ascii do hook local pegaria? Avaliar estender o
+utf8-check.yml para rodar `scan-non-ascii --report` sobre scripts/*.mjs no
+CI.
+
+**Veredito (AVALIADO — premissa INVERTIDA, com um gap residual fechado)**: o
+mjs-gate NÃO é um scan separado do hook — ele é o LAYER 5 do
+`verify-encoding.sh` (`scan-non-ascii --report` sobre scripts/*.mjs,
+BLOCKING, superfície derivada de `encoding-surface.mjs --print-mjs-gate`), e
+o `utf8-check.yml` JÁ roda esse gate consolidado no CI (`bash
+scripts/verify-encoding.sh --ci src/`, o comando único). O pre-commit roda o
+MESMO gate (`--dry-run --ci src/`) — o commit foi bloqueado localmente pela
+MESMA cadeia que o CI executa em todo PR/merge. A classe nunca saiu do CI: o
+probe 2026-08-11 rodou o gate REAL (via `MJS_SCAN_FILES`) contra um .mjs com
+byte não-ASCII → `VIOLATION scripts/__tests__/tmp-probe-poison.mjs 2:30` +
+`mjs-gate: FAILED - non-ASCII byte in a scripts/*.mjs gate file (blocking)`
++ exit code 1 (o sinal exato que o CI daria).
+
+**O gap residual fechado (o que ESTE pin adiciona)**: os contratos existentes
+(workflow-utf8-check-contract) pínham os CALL SITES (os `uses:` dos
+callers), mas NINGUÉM pínava o comando do step DENTRO do utf8-check.yml — um
+step regredido para `bash scripts/check-utf8.sh --ci src/` (dropando os
+layers 3-5: fragile-range, yaml-gate, mjs-gate) passaria em TODOS os
+contratos verdes. O novo teste no `workflow-utf8-check-contract.test.ts`
+pina o passo interno: o step run do utf8-check.yml DEVE ser exatamente
+`bash scripts/verify-encoding.sh --ci src/` (exit code 0 = gate intacto; a
+mutação trocando por check-utf8 puro falha o guard). A classe 'acento em
+gate .mjs' fica travada nos DOIS elos: o layer 5 existe no script E o step
+que o executa no CI não pode regredir silenciosamente.
+
+**Exit codes**: exit code 0 = step interno do utf8-check.yml roda o gate
+consolidado; exit code 1 = step regredido (contrato) / byte não-ASCII num
+.mjs (gate real, probe).
+
+**Re-validação**: `npx vitest run scripts/__tests__/workflow-utf8-check-contract.test.ts --config vitest.config.unit.ts`
+(step interno + mutação) + `npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts`
+(claim 11.45 registrada, ABS PIN 25) + `gates-proofs-ordering.test.ts`
+valida a monotonia 11.44 → 11.45 → 12; tsc 0; eslint 0 erros; UTF-8 do doc
+OK; ASCII-OK nos gate files.
+
+## 11.46 A classe 'seção 11.x nova sem entrada no manifest' JÁ é fechada — auditoria das 11.41/11.43/11.44 (avaliação 2026-08-11)
+
+**Pergunta**: o commit 0508202 nasceu 4 seções novas (11.41–11.44), mas a
+percepção era de que o EXIT_CLAIMS registrara só a 11.42 (a SELF-GUARD). As
+seções 11.41/11.43/11.44 com claims de exit code estão TODAS registradas? E
+um teste de contrato que pince 'toda seção 11.x nova num commit tem entrada
+no manifest' fecharia a classe de drift no momento do commit?
+
+**Auditoria (probe 2026-08-11)**: a premissa está INVERTIDA — as 4 seções do
+commit estão TODAS no manifest (a 11.42 era a SELF-GUARD, mas 11.41/11.43/
+11.44 também nasceram com entrada própria). O detector honesto no doc real
+(`scanDocExitClaims` + `checkExitClaims`): **25 seções detectadas = 25
+registradas, 0 unregistered, 0 stale** — o DOC COVERAGE bidirecional já fez
+exatamente o trabalho que o teste proposto faria.
+
+**Veredito (RECUSADO — a classe já está fechada em TRÊS camadas)**:
+1. **DOC COVERAGE doc→manifest** (o teste 'toda claim de exit code
+detectada no doc REAL tem entrada no manifest'): uma seção 11.x nova com
+claim e sem registro → `unregistered` → o CLI sai com código de saída 1. É
+a versão PRECISA do contrato proposto — e o literal 'toda seção nova tem
+entrada' seria OVER-STRICT: uma seção 11.x nova SEM claims de exit code
+(decisão em prosa pura) não precisa e não deve ter entrada. O detector
+honesto (regex `exit [0-3]` nas formas naturais) é quem decide o que conta
+como claim — não a presença da seção.
+2. **ABS PIN** (o teste da lista exata de 25 seções): pina o lado do
+MANIFEST — toda entrada nova no EXIT_CLAIMS precisa entrar na lista do
+pin (edição consciente). O lado doc com claims é o DOC COVERAGE (camada
+1); uma seção de prosa sem claims é legitimamente invisível aos dois —
+não é claim, não precisa de entrada.
+3. **O TRIPWIRE (8º guard do batch do pre-commit)**: o CLI roda como guard
+incondicional do hook — a falha vem ANTES do commit, não só no CI. O teste
+proposto 'no momento do commit' já existe com esse nome: o tripwire da sec
+11.42 (REFINAMENTO 2026-08-11).
+
+**Conclusão**: nada a implementar. O teste proposto seria DUPLICAÇÃO do DOC
+COVERAGE doc→manifest (mesmo assert, mesma direção), e o literal 'toda
+seção nova tem entrada' geraria falso positivo para seções sem claims
+(decididas em prosa). A evidência da auditoria (25=25, 0/0) é o pin vivo da
+cobertura — registrada aqui como a contraparte das seções nascidas no
+commit.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts`
++ `node scripts/scan-exit-claims.mjs --check` (25 claims, clean); ordering
+11.45 → 11.46 → 12; UTF-8 do doc OK.
+
+## 11.47 O filtro --since/--scope no test:guard do push net — JÁ travado pelo regex EXATO, sem trilha de doc (avaliação 2026-08-11)
+
+**Pergunta**: a re-medição da sec 8.1 (run 31522760166) confirmou o no-filter
+calibrado, e o guard-gates.yml já tem contrato próprio (scan-guard-gates,
+regra 2: NO PATHS FILTER). Avaliar estender esse contrato para também pinar
+que o step test:guard do workflow não ganhe um filtro `--since`/`--scope` no
+futuro sem a sec 8.1 ser re-medida — travando a premissa da recalibração
+estruturalmente.
+
+**Veredito (AVALIADO — a classe JÁ está fechada, e por um mecanismo mais
+forte que o pedido)**: o `TEST_GUARD_STEP_RE` do scan-guard-gates é um regex
+EXATO (`^\s+run:\s+bun run test:guard\s*$`, ancorado no `run:` key) —
+QUALQUER sufixo (`--since main`, `--scope cached`, `--only x`, até um
+`--config` ou redirect) faz o match falhar e o step vira `TEST GUARD STEP
+MISSING` no arquivo exato, com exit code 1 do guard. O probe 2026-08-11
+(repo sintético, `GUARD_GATES_SCAN_ROOT`): `run: bun run test:guard --since
+main` no push net → `missingStep = .github/workflows/guard-gates.yml` → o
+CLI reporta `TEST GUARD STEP MISSING in .github/workflows/guard-gates.yml`.
+O passo exato: o filtro mapeado NÃO casa o regex do step — a suite completa
+(13 suítes/269 testes, a autoridade da sec 8.1) deixa de rodar, e o guard
+trava na hora.
+
+**A diferença de desenho vs o scan-fuzz-precommit (sec 11.11)**: o guard do
+fuzz tem uma TRILHA DE DOC (uma seção 11.x com ADOTADO + re-medição datada
+reverte o negativo — o fuzz foi avaliado como movível). O test:guard do push
+net NÃO tem trilha: a premissa da 8.1 (CI roda a suite completa como
+AUTORIDADE em checkout fresco) é o alicerce da recalibração, e o regex exato
+trava qualquer derivação do comando canônico — sem exceção de doc. Reverter
+essa decisão exigiria editar o próprio regex (uma mudança de guard, revisada
+como tal), não só escrever uma seção. O pedido original ('que ele não ganhe
+um filtro sem a sec 8.1 ser re-medida') é atendido com SOBRA: nem com
+re-medição o filtro entra sem passar pelo código do guard.
+
+**O que ESTE registro adiciona**: a mutação que pina a classe do SUFIXO de
+filtro (não só a remoção do step, o teste anterior) — `--since main` e
+`--scope cached` ambos tripam `TEST GUARD STEP MISSING` no caminho exato, em
+loop parametrizado. O contrato já existia (o regex exato); o teste que o
+prova para a forma filtrada não.
+
+**O par nos DOIS lados da rede (mutação IRMÃ, 2026-08-11)**: o pin original
+da classe de sufixo vivia SÓ no push net (guard-gates.yml). O regex é uma
+const COMPARTILHADA (o loop `missingStep` sobre guardNet + o `prGuardJob`
+do twin usam o MESMO `TEST_GUARD_STEP_RE`), então um sufixo no twin já
+triparia hoje pelo mesmo mecanismo — mas o `prGuardJob` aceita um `stepRe`
+PROPRIO por job (FUZZ_STEP_RE, ENCODING_STEP_RE, BENCHMARK_STEP_RE): um
+refactor futuro que desse ao fragile-guard um override tolerante a sufixo
+passaria no teste do push net (regex do push net intacto) e o twin aceitaria
+o filtro mapeado silenciosamente, matando a autoridade da 8.1 no lado PR.
+A mutação irmã fecha o par — `--since main` / `--scope cached` no twin
+(pr-check.yml, job fragile-guard) tripam `TEST GUARD STEP MISSING in
+.github/workflows/pr-check.yml` no caminho exato — o mesmo padrão das Provas
+16/19 (needs: nos dois lados) e do EOL ANCHOR no twin. A claim 11.47 no
+manifest agora registra a forma COMPLETA (push net OU twin).
+
+**Exit codes**: exit code 1 do guard = filtro no step test:guard (a classe
+desta avaliação, nos DOIS lados) OU remoção do step (a classe do teste
+anterior) — o mesmo sinal, o mesmo lock.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-guard-gates.test.ts --config vitest.config.unit.ts`
+(as mutações irmãs --since/--scope no push net E no twin + o REAL-REPO
+CONTRACT do guard-gates.yml real)
++ `scan-exit-claims.test.ts` (claim 11.47 registrada, forma completa) +
+`gates-proofs-ordering.test.ts` valida a monotonia 11.46 → 11.47 → 12; tsc
+0; eslint 0 erros; UTF-8 do doc OK.
+
+## 11.48 O paralelismo do vitest NÃO explica a divergência CI vs local — singleFork desliga o file-parallelism e `--maxWorkers` é no-op (avaliação 2026-08-11)
+
+**Pergunta**: o step test:guard ficou plano (20.9s) apesar do +14% de
+testes, mas o local quente subiu +29% (41.2s → 53.2s) — a divergência CI vs
+local sugeriria que o paralelismo do vitest (workers) é o que absorve o
+crescimento. Avaliar medir o test:guard com `--maxWorkers=1` vs default
+(CI/local) para quantificar o ganho do paralelismo e decidir se pinar
+`--maxWorkers` no test:guard reduziria a variância das medições futuras.
+
+**Medição (probe 2026-08-11, local Windows, node 22.23.1, vitest 3.1.1, 8
+CPUs, 270 testes / 13 suítes, warm)**:
+- default: **66.66s / 66.91s** (2 runs)
+- `--maxWorkers=1`: **64.12s / 62.14s** (2 runs)
+- `--maxWorkers=4`: **60.27s** (1 run)
+
+**O achado (a premissa INVERTIDA)**: o `vitest.config.unit.ts` já força
+`pool: "forks"` + `poolOptions: { forks: { singleFork: true } }` — o
+file-parallelism está **DESLIGADO por design** (a decisão de 2026-08 que
+serializa as suítes subprocess-heavy do guard). O argumento DECISIVO é o
+FATO DA CONFIG: com singleFork, o pool de forks é capado em 1, então
+`--maxWorkers` é **estruturalmente inerte** — a flag não tem o que limitar.
+A leitura honesta dos números precisa do caveat do confound: as 5 runs
+NÃO foram interleaved (default, default, mw=1, mw=1, mw=4) — a ordenação
+66.91 → 62.14 → 60.27 correlaciona com a posição na sessão (warmup/drift
+térmico), um confound que o A/B não-interleaved não separa do efeito de
+workers; por isso o veredito ancora no FATO DA CONFIG, não na banda. A
+hipótese do paralelismo está invertida: **não há file-parallelism para
+absorver crescimento** — a divergência CI (20.9s) vs local (53–66s) é
+hardware/plataforma + carga de sessão, não workers. O próprio spread desta
+medição (60.27s a 66.91s no MESMO ambiente) reforça o que a sec 8.1 já leu
+honestamente: o local é variância de carga; o CI é o step estável.
+
+**Veredito (RECUSADO — NÃO pinar `--maxWorkers` no test:guard)**: pinar o
+flag não reduziria a variância das medições (é no-op com singleFork) e
+adicionaria ruído ao contrato — um futuro leitor ajustando workers
+esperaria ganho de paralelismo que a config não tem. A metodologia de
+re-medição continua a mesma da sec 8.1: medir o step do run no CI (o ground
+truth estável, 20.9s flat) e tratar o local como indicador de carga, não
+como A/B de workers. Mudar o singleFork (para habilitar paralelismo de
+verdade) seria uma decisão SEPARADA, com o custo de serialização das
+suítes subprocess-heavy a re-medir — fora do escopo desta avaliação.
+
+**Re-validação**: `node --input-type=module -e "import { scanDocExitClaims } from './scripts/scan-exit-claims.mjs'; const d = scanDocExitClaims(); console.log('11.48 claims:', d.get('11.48') ? d.get('11.48').join(',') : 'NENHUMA (correto - secao sem claims de exit code)')"`
++ `gates-proofs-ordering.test.ts` valida a monotonia 11.47 → 11.48 → 11.49 → 12;
+UTF-8 do doc OK.
+
+## 11.49 A classe 'commit com HUSKY=0 ou --no-verify esconde claim nova' — ADOTADO o guard git-based do doc commitado (avaliação 2026-08-11)
+
+**O pedido**: o tripwire do scan-exit-claims roda no batch runner do
+pre-commit (8º guard, sec 11.42) contra a WORKING TREE — mas só quando o
+hook roda. Avaliar um guard git-based (no padrão do check-push-deletion) que
+rode o scan-exit-claims --check com EXIT_CLAIMS_DOC apontando o doc do HEAD
+vs HEAD~1 — fechando a classe 'commit feito com HUSKY=0 ou --no-verify
+esconde claim nova' no push net.
+
+**O furo confirmado (a classe é REAL)**: um commit com HUSKY=0 bypassa o
+batch do pre-commit inteiro. No push local, o Gate 3 mapeado
+(`pre-commit-tests.mjs --scope push`) mapeia docs/* → NENHUMA suite — o
+`scan-exit-claims.test.ts` (REAL-REPO CONTRACT lê o doc real) nunca roda
+num push docs-only; o ci.yml roda `test:run` (não `test:unit`) e o
+`guard-gates.yml` roda só o `test:guard` (13 suítes, sem scan-exit-claims,
+a Prova 35) — a claim sai da máquina e o CI pega SÓ DEPOIS do push (ci.yml
+na verdade inclui scripts tests via test:run? NÃO — o ci.yml roda `bun run
+test:run` que é o vitest default config, cujo include cobre `src/**` +
+`scripts/**` — MAS a 8.1/Prova 35 mediram o net de guard como `test:guard`
+13 suítes, e o check do pr-check roda `test:unit`; a classe vive no gap do
+push LOCAL docs-only, que nenhum gate local cobre).
+
+**O probe (2026-08-11) que calibrou o design**: (1) o mecanismo funciona —
+doc materializado + poison claim 11.99 injetada antes do `## 12.` → o CLI
+real sai **`claim na secao 11.99 nao esta no EXIT_CLAIMS`** com exit 1; (2)
+o CONSTRAINT do design — o pairing ingênuo 'doc git + manifest da working
+tree' false-positiva na direção STALE (o probe flagrou `entrada 11.47 sem
+claim no doc atual` com o doc de HEAD — a 11.47 é um registro da working
+tree, não do commit; um delta não-commitado adianta o manifest). Conclusão:
+o guard usa a direção ÚNICA `.unregistered` (claim no doc SEM entrada no
+manifest — a classe do pedido) e IGNORA stale/brokenPins/brokenChains
+(propriedades da working tree, cobertas pelo batch do pre-commit +
+test:unit).
+
+**O guard adotado** (`scripts/check-exit-claims-push.mjs`, wired no pre-push
+logo após o integrity): materializa o doc COMMITADO (`git show
+HEAD:docs/gates-proofs.md` — o estado exato que será empurrado, não a
+working tree) e roda o detector real na direção única. O base do push é o
+`--since` (o `PRE_PUSH_REMOTE_SHA` do hook, já derivado pelo
+check-push-deletion); all-zeros/ausente (primeiro push) → fallback HEAD~1
+quando existe. A distinção HEAD vs base é de MENSAGEM (claim introduzida
+neste push vs pre-existente), NÃO de pass/fail: um doc commitado sujo
+BLOQUEIA o push em qualquer caso (empurrar estado quebrado adiante é a
+classe; o fix é registrar a claim). Env override `CHECK_EXIT_CLAIMS_PUSH_DOC`
+(seam hermético dos testes, mesmo padrão do EXIT_CLAIMS_DOC).
+
+**Custo medido**: ~0.44s local (git show + scan) — acima do limiar <0.2s do
+batch-worthiness da 11.17, então o veredito 'pre-push NÃO batchado'
+permanece (o batch economizaria só o boot node). A 4ª entrada no
+`ALLOWED_NODE_GUARDS` do scan-prepush-batch foi a EDIÇÃO CONSCIENTE que a
+própria 11.17 exige (a lista é o pin estrutural — um 5º guard exige nova
+re-mediação). O DERIVATION PIN e o ALLOWED pin foram atualizados (3→4).
+
+**Exit codes do guard**: 0 = doc commitado limpo (ou apenas claims
+pre-existentes no base); 1 = claim(s) não-registrada(s) no doc COMMITADO
+(listadas com a seção exata + o aviso HUSKY=0/--no-verify); 2 = uso errado;
+3 = falha de infra (git show HEAD falhou). Registrada como claim 11.49
+(current, pin → `check-exit-claims-push.test.ts`).
+
+**Re-validação**: `npx vitest run scripts/__tests__/check-exit-claims-push.test.ts --config vitest.config.unit.ts`
+(hermético + REAL-REPO CONTRACT: o CLI real contra o doc real sai clean);
+`node scripts/check-exit-claims-push.mjs` no repo real → exit 0; o
+`scan-prepush-batch.test.ts` pina a 4ª entrada na lista.
+
+## 11.50 O ABS PIN do EXIT_CLAIMS agora pina o CONTEÚDO (avaliação 2026-08-11)
+
+**O pedido**: a lista ABS PIN de seções existia em DOIS lugares — o manifest
+`EXIT_CLAIMS` (o fato) e a lista hardcoded no teste (a projeção `.map(e =>
+e.section)` contra um array literal). Avaliar derivar a lista do próprio
+`EXIT_CLAIMS` no teste, no padrão dos fatos consumidos (TARGET_DIRS/fatos
+que os guards derivam da fonte viva) — o teste deve pinar o CONTENT, não
+uma cópia da lista que pode driftar.
+
+**A armadilha que a avaliação identificou (por que a derivação ingênua é
+REJEITADA)**: derivar a lista e compará-la CONTRA SI MESMA —
+`expect(EXIT_CLAIMS.map(e => e.section)).toEqual(EXIT_CLAIMS.map(e =>
+e.section))` — é uma TAUTOLOGIA: o assert passa sempre, independente do
+conteúdo, matando o growth contract (uma claim nova/removida falha ALTO
+sem o teste perceber). O padrão TARGET_DIRS funciona porque deriva de uma
+FONTE EXTERNA viva (os imports do runner, os diretórios reais); aqui a
+única fonte é o próprio manifest — derivar dele e comparar com ele não
+pina nada.
+
+**O veredito (ADOTADO com refinamento — o CONTENT PIN)**: em vez de pinar
+a lista de seções (uma projeção que driftava), o teste agora pina o
+CONTEÚDO: o snapshot `ABS_PIN_SNAPSHOT` com as 27 triplas
+`[section, kind, claim]` na ordem do manifest, e o assert deriva a tripla
+real `EXIT_CLAIMS.map(e => [e.section, e.kind, e.claim])` contra o snapshot
+(o mesmo padrão do ABSOLUTE PIN do manifest-registry — pina os fatos
+inteiros, não uma cópia derivada). A lista de seções deixa de existir como
+literal separado (é a projeção do snapshot, que pina o CONTENT inteiro).
+Uma claim nova, reescrita ou com kind trocado agora exige a edição
+consciente do snapshot — o growth contract aplicado ao conteúdo, não ao
+número.
+
+**A MUTATION que fecha o ciclo**: um manifest PATCHADO (claim 11.50 fake
+injetada no fim do array real) diverge do snapshot (28 ≠ 27) — provando
+que o pin lê o EXIT_CLAIMS VIVO (o `import` do módulo real), não uma cópia
+estática que passa por acaso. A sec 11.50 é deliberadamente claim-free (sem
+padrão `exit N`) para não precisar de entrada no manifest — o detector
+reporta NENHUMA claim nesta seção (o mesmo padrão da sec 11.48).
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts`
+(ABS PIN content + MUTATION hermética do manifest patchado);
+`node scripts/scan-exit-claims.mjs --check` no repo real → clean.
+
+## 11.51 A fronteira 11.x-only do detector é pinada como CONTRATO (avaliação 2026-08-11)
+
+**O pedido**: a sec 11.42 documenta a decisão RECUSADO de estender o detector
+às seções 8.x (Provas = registros de evento, não claims de comportamento) —
+mas só em prosa, com os números de uma medição pontual. Avaliar um teste de
+contrato que pince que NENHUMA seção 8.x tem claim detectada pelo detector
+11.x-only — travando a fronteira documentada contra um leitor que pense que
+há furo ("o detector ignora 8.x? isso é drift?").
+
+**A medição que calibrou o contrato (probe 2026-08-11)**: a região 8.x do
+doc real tem **80 citações exit-code-like nas seções 8.x** (85 contando a
+tabela de Provas — a nota da 11.42 diz 87, mas com a ressalva de método que
+o piso reflete: o número da 11.42 foi medido com contagem/estado diferentes
+(54 nas seções 8.2–8.28), e a divergência 54↔80 é exatamente por que pinar o
+COUNT como TETO seria errado — o valor varia com o método e cresce com cada
+Prova nova; só o piso do MEDIDO atual é estável). O detector
+`scanDocExitClaims` retorna **ZERO chaves 8.x** — o reset `^## \d` zera o
+escopo em qualquer header não-11.x, e `## 8.N` cai exatamente nessa classe.
+
+**O veredito (ADOTADO — o SCOPE FRONTIER)**: o novo describe no
+`scan-exit-claims.test.ts` pina a fronteira em TRÊS direções:
+1. **NEGATIVO real**: o detector nunca retorna chave `8.x` no doc real (com
+   sanity: ele ACHA as 11.x — a exclusão só é significativa porque há
+   11.x vistas, não é detector vazio que passa por acaso).
+2. **NÃO-VACUIDADE**: a região 8.x TEM citações exit-code-like (piso ≥ 80,
+   o valor MEDIDO no probe 2026-08-11 — contado com o MESMO regex do
+detector, importado do módulo, não uma cópia inline que pode driftar) —
+a exclusão é INTENCIONAL, não acidente de doc 8.x vazio.
+3. **MUTATION hermenêutica**: a MESMA linha sob `## 8.99` não é detectada e
+   sob `## 11.98` é — a fronteira é o HEADER, não o conteúdo; um leitor que
+   mova uma claim normativa para a 8.x (o caso da convenção do redirect)
+   vê o teste provar que ela escaparia POR ESCOPO, fechando o ciclo da
+   convenção documentada na 11.42.
+
+**Por que o count NÃO é pinado como teto (o design honesto)**: uma Prova
+nova (8.31+) adiciona citações exit-code sem falhar o teste — a taxa de
+manutenção por Prova é exatamente o custo que o RECUSADO da 11.42 rejeitou
+(razão 3: "taxa de manutenção por Prova nova"). O piso 80 (o MEDIDO atual) é
+o drift signal: adições só SOBEM o count (nunca churn), e só uma remoção em
+massa de citações 8.x abaixo do valor medido falha (o doc 8.x ficar vazio
+sem decisão). A sec 11.51 é deliberadamente claim-free (sem padrão `exit N`)
+para não precisar de entrada no manifest — o mesmo padrão das secs
+11.48/11.50; o detector reporta NENHUMA claim nesta seção.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts`
+(o describe SCOPE FRONTIER + a suite inteira);
+`node scripts/scan-exit-claims.mjs --check` no repo real → clean.
+
+## 11.52 A ASSIMETRIA de desenho do lock test:guard — o guard-gates nunca ganha o mecanismo de reversão do fuzz sem decisão registrada (avaliação 2026-08-11)
+
+**Pergunta**: o lock do test:guard é DURO (regex EXATO, sem trilha de doc —
+sec 11.47), mas o scan-fuzz-precommit tem trilha ADOTADO (o REVERSAL_RE da
+sec 11.11: um header 11.x com fuzz+ADOTADO/ALLOWED na mesma linha reverte o
+negativo). Avaliar um teste de contrato que pince a ASSIMETRIA de desenho —
+o guard-gates nunca ganha o mecanismo de reversão do fuzz sem seção 11.x
+datada declarando o test:guard ADOTADO — travando que alguém 'abrande' o
+regex exato sem decisão registrada. (O título da seção evita ADOTADO na
+mesma linha de test:guard de propósito: um header com os dois juntos casaria
+o regex da trilha e contaminaria o próprio contrato — a mesma disciplina do
+REVERSAL_RE do fuzz.)
+
+**Veredito (ADOTADO — o describe DESIGN ASYMMETRY no scan-guard-gates.test.ts)**: a
+assimetria é um FATO de desenho, agora consumido como função exportada pura
+(`hardLockAsymmetry(guardSrc, fuzzSrc, docText)` — recebe os sources + doc
+como strings, sem leitura de disco no runtime; o teste roda tudo em
+memória). O contrato pina a assimetria em 4 direções:
+
+1. **REAL-REPO NEGATIVE**: o scan-guard-gates.mjs NÃO declara `REVERSAL_RE`
+   (o lock duro se mantém) E a doc real NÃO tem a trilha test:guard+ADOTADO
+   → violated false — a assimetria existe hoje.
+2. **REAL-REPO non-vacuidade**: o scan-fuzz-precommit.mjs DECLARA
+   `REVERSAL_RE` — a trilha do irmão existe; a assimetria é REAL, não um
+   vácuo do detector (o detector não passa porque nada é detectado).
+3. **MUTATION (a classe)**: `REVERSAL_RE` injetado no source REAL do
+   guard-gates (o shape exato do irmão, antes do TEST_GUARD_STEP_RE) SEM
+   trilha de doc → violated true — abrandar o lock duro sem decisão
+   registrada é exatamente a classe que este contrato fecha. O pin
+   comportamental da 11.47 (sufixo → TEST GUARD STEP MISSING) NÃO pegaria
+   essa classe: quem adiciona um REVERSAL_RE mantém o regex do step exato
+   (as mutações 11.47 continuam verdes) enquanto converte o lock duro em
+   mole silenciosamente.
+4. **MUTATION com trilha**: a MESMA injeção + doc com `## 11.x ...
+   test:guard ... ADOTADO` datado → violated false — a decisão registrada
+   legitima o abrandamento (o mesmo mecanismo do REVERSAL_RE do fuzz: a
+   seção é o ato consciente, revisado como tal).
+
+**Por que contratar a ASSIMETRIA e não o comportamento**: a 11.47 já trava o
+comportamento (qualquer sufixo falha o regex). O que a 11.47 NÃO trava é a
+estrutura: o mecanismo de reversão em si. Um dev que 'consertasse' a
+assimetria adicionando um REVERSAL_RE ao guard-gates (para 'alinhar com o
+fuzz') passaria todos os testes existentes — só este contrato falha, exigindo
+a seção datada que torna o abrandamento uma decisão registrada e revisável.
+
+**Exit codes**: claim-free — o contrato é um teste vitest, não um CLI; a
+seção não registra claims de exit code no EXIT_CLAIMS (mesmo padrão da
+11.50/11.51).**Re-validação**: `npx vitest run scripts/__tests__/scan-guard-gates.test.ts --config vitest.config.unit.ts`
+(o describe DESIGN ASYMMETRY + a suite inteira) +
+`node scripts/scan-exit-claims.mjs --check` (claim-free, clean) +
+`gates-proofs-ordering.test.ts` valida a monotonia 11.51 → 11.52 → 12; UTF-8
+do doc OK.
+
+
+## 11.53 A premissa do pedido é FALSA — o ci.yml JÁ roda o DOC COVERAGE no push via test:run; step dedicado NÃO adotado, premissa agora PINADA (avaliação 2026-08-11)
+
+**O pedido**: "o guard 11.49 protege o pre-push local, mas o ci.yml roda
+test:run (não test:unit) no push — a claim que escapar do guard e do CI de
+PR só é pega pelo pr-check. Avaliar se o ci.yml deveria rodar o
+scan-exit-claims --check como step dedicado no push net (o mesmo papel do
+scan-curl-timeouts --ci), fechando o lado CI da classe."
+
+**O fato (a premissa é FALSA — probe 2026-08-11)**: o `test:run` do ci.yml
+é `vitest run` com o config DEFAULT (`vitest.config.ts`), cujo include é
+`["src/**/*.test.{ts,tsx}", "scripts/**/*.test.{ts,tsx}"]` — o
+`scan-exit-claims.test.ts` (DOC COVERAGE + REAL-REPO CONTRACT) RODA no push
+do ci.yml, lendo o doc REAL (`const DOC = path.join(ROOT, "docs",
+"gates-proofs.md")`). Prova direta: `npx vitest run
+scripts/__tests__/scan-exit-claims.test.ts` (sem `--config` = config
+default, o mesmo do test:run) → **18 testes verdes em 2.73s**, com o
+`doc -> manifest` (toda claim detectada tem entrada no manifest) e o
+`manifest -> doc` (toda entrada tem claim no doc) contra o doc real. Ou
+seja: uma claim commitada sem registro no EXIT_CLAIMS deixa o job `test`
+do ci.yml VERMELHO no push — a classe NÃO depende do pr-check. O gap que
+a 11.49 fechou (e a Prova 37 provou) é o LOCAL: o Gate 3 mapeado do
+pre-push mapeia docs/* → nenhuma suite, então o push LOCAL docs-only não
+rodava o DOC COVERAGE; o CI (ci.yml test:run) sempre pegou.
+
+**O veredito (NÃO ADOTAR o step dedicado)**: o `--check` dedicado seria
+REDUNDANTE — o mesmo detector (`checkExitClaims`, o CLI real e o teste
+vitest chamam a MESMA função) rodaria duas vezes no push (uma no DOC
+COVERAGE da suíte, outra no step), contra o mesmo doc commitado, sem
+cobertura nova. A premissa do pedido — "só é pega pelo pr-check" —
+confundiu o test:run (default config, cobre scripts/**) com o test:unit
+(só o config do pr-check); os DOIS cobrem a suíte. O padrão do
+scan-curl-timeouts --ci não se aplica aqui: aquele step existe porque o
+guard-gates.yml roda test:guard (13 suítes, sem scan-curl-timeouts.test.ts)
+— o scanner só teria o twin no test:unit do PR; aqui o ci.yml JÁ roda a
+suíte no push. Adotar o step seria pagar duplicação sem sinal novo.
+
+**O refinamento (ADOTADO — pinar a premissa)**: a cobertura do push do
+ci.yml depende de um fato NÃO-pinado até hoje: o include do config DEFAULT
+cobre `scripts/**/*.test.{ts,tsx}`. Se alguém estreitar o include do
+vitest.config.ts (remover scripts/**), o push do ci.yml PERDE o DOC
+COVERAGE silenciosamente e a premissa do pedido vira verdade. O describe
+DEFAULT CONFIG INCLUDE (sec 11.53, no scan-exit-claims.test.ts) pina: (1)
+REAL-REPO — o include do config default contém os dois globs (scripts/** e
+src/**); (2) REAL-REPO — o próprio arquivo da suíte casa com o glob (o DOC
+COVERAGE roda sob o config default); (3) MUTATION — config sem o glob
+scripts/** é detectado (a perda da cobertura falha alto, não some em
+silêncio). Mesmo padrão do unit-surface-contract (extrai os padrões do
+TEXTO do config, a fonte estável — importar o config in-process quebra o
+invariante do vite).
+
+**Exit codes**: claim-free — a seção não registra claims de exit code no
+EXIT_CLAIMS (mesmo padrão da 11.50/11.51/11.52); o pin é um teste vitest.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts
+--config vitest.config.unit.ts` (o describe DEFAULT CONFIG INCLUDE + a
+suite inteira) + `node scripts/scan-exit-claims.mjs --check` (claim-free,
+clean) + `gates-proofs-ordering.test.ts` valida a monotonia 11.52 → 11.53
+→ 12 + scan-guard-gates (o doc-trail regex da 11.52: o header da 11.53 não
+carrega test:guard + ADOTADO na mesma linha) + UTF-8 do doc OK.
+
+## 11.54 O comando de cura no caminho de erro da classe exit-claims (avaliação 2026-08-11)
+
+**Pedido**: o guard 11.49 lista as claims não-registradas mas não diz como
+curar — adicionar o comando de cura exato ao stdout do erro, no padrão do
+`--check-lock` da sec 8.5/8.6 (que já imprime `CURE: rm -rf node_modules &&
+bun install --frozen-lockfile`), medindo se o custo de doc no erro vale a
+usabilidade.
+
+**O veredito (ADOTADO — CURE compartilhada, custo medido)**: o padrão do
+`--check-lock` é claro e o custo de uma linha no erro é desprezível; o
+único risco seria a CURE driftar entre os DOIS pontos de erro da MESMA
+classe — o CLI do scan-exit-claims (stderr) e o guard do push
+check-exit-claims-push (stdout): o dev que recebe o erro do push precisa
+converter, o dev do CLI não. A regra dos 2 usos manda extrair:
+`EXIT_CLAIMS_CURE` exportada do scan-exit-claims.mjs (a fonte única — o
+fix nunca driftar) e consumida pelos dois pontos, com o texto exato
+(registrar no EXIT_CLAIMS + confirmar com o `--check`).
+
+**A medição (probe 2026-08-11, doc sintético poison com a claim 11.99)**:
+o CLI real (`node scripts/scan-exit-claims.mjs --check` com o override
+EXIT_CLAIMS_DOC) imprime a CURE no stderr — **1420 bytes** no caminho de
+erro completo; o guard real (`node scripts/check-exit-claims-push.mjs` com
+o override CHECK_EXIT_CLAIMS_PUSH_DOC) imprime a CURE no stdout — **381
+bytes** (o guard lista 1 claim + a CURE; o CLI lista a claim + a CURE + os
+avisos das outras classes).O custo marginal da CURE em si é 139 bytes (a string exata, medida 2026-08-11) por ponto — irrelevante para o conforto do terminal e pequeno mesmo no stderr do CLI. A usabilidade vale o custo: o dev do push sabe exatamente
+o que editar (o EXIT_CLAIMS do scan-exit-claims.mjs, sec 11.42) e como
+confirmar (o próprio `--check`).
+
+**O pin (hermético, nos dois pontos)**: o teste REAL-REPO CONTRACT do CLI
+(scan-exit-claims.test.ts, o caminho de erro com o doc sintético) agora
+exige a CURE no stderr; o teste REAL-REPO CONTRACT do guard
+(check-exit-claims-push.test.ts, o poison doc via CHECK_EXIT_CLAIMS_PUSH_DOC)
+exige a CURE no stdout. Se alguém remover a CURE de um dos pontos, o pin
+daquele lado falha alto — o fix compartilhado não pode sumir de metade da
+classe.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts
+scripts/__tests__/check-exit-claims-push.test.ts --config vitest.config.unit.ts`
+(os dois pins da CURE) + `node scripts/scan-exit-claims.mjs --check`
+(claim-free, clean — a 11.54 é claim-free por desenho: é uma avaliação do
+caminho de erro, não uma claim de exit code) + `node
+scripts/check-exit-claims-push.mjs` (o doc commitado real limpo) +
+`gates-proofs-ordering.test.ts` valida a monotonia 11.53 → 11.54 → 12 +
+scan-timeouts (os it() tocados são subprocess-heavy, timeouts já presentes)
++ UTF-8 do doc OK.
+
+## 11.55 O pointer de cura da classe stale no CLI do scan-exit-claims (avaliação 2026-08-11)
+
+**Pedido**: a CURE da sec 11.54 cobre só o bloco unregistered do CLI — a
+classe stale (entrada do manifest SEM claim detectada no doc: seção
+renumerada/removida) lista as entradas sem comando de cura próprio.
+Avaliar um pointer 'secao renumerada/removida - a CURE de registrar nao se
+aplica' no bloco stale, no mesmo padrão da 11.54.
+
+**O veredito (ADOTADO — pointer inline, sem const compartilhada)**: a CURE
+de registrar é ativamente ENGANOSA para a classe stale — a direção é
+OPOSTA: no unregistered a claim existe no doc e falta a entrada no
+manifest (a cura = registrar); no stale a entrada EXISTE e a claim sumiu
+do doc (seção renumerada/removida) — a cura = atualizar a seção na entrada
+ou removê-la. Um dev que recebesse a CURE de registrar no bloco stale
+faria a ação ERRADA (registraria uma claim que o detector acha que não
+existe mais). O pointer desambigua: 'atualize a secao no EXIT_CLAIMS ou
+remova a entrada'.
+
+**Por que NÃO é uma const compartilhada (a regra dos 2 usos)**: o stale tem
+UM único ponto de erro — o CLI do scan-exit-claims (o guard do push
+check-exit-claims-push é direction-unique `.unregistered` por desenho, sec
+11.49: o stale é ruído de delta na working tree). Sem 2º consumidor, a
+const não é extraída (o mesmo critério que deixou a CURE da 11.54
+compartilhada: DOIS pontos de erro da MESMA classe). O pointer é inline no
+bloco stale — um uso, sem drift possível.
+
+**O pin (hermético)**: o teste REAL-REPO CONTRACT do caminho de erro do
+CLI (scan-exit-claims.test.ts, doc sintético) usa um doc sintético com SÓ
+a seção 11.99 — o detector acha a claim 11.99 (unregistered) e TODAS as
+27 entradas do manifest viram stale (nenhuma das seções reais está no doc
+sintético). O teste agora exige o pointer no
+stderr: `stale nao tem CURE de registrar` — o bloco stale inteiro é
+pinado no MESMO run que o unregistered (os dois caminhos de erro do CLI
+num único doc sintético). Se alguém remover o pointer, o pin falha alto.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts
+scripts/__tests__/check-exit-claims-push.test.ts --config vitest.config.unit.ts`
+(o pin do pointer + o guard intocado) + `node scripts/scan-exit-claims.mjs
+--check` (claim-free, clean — a 11.55 é claim-free por desenho: avaliação
+do caminho de erro, não claim de exit code) + `gates-proofs-ordering.test.ts`
+valida a monotonia 11.54 → 11.55 → 12 + UTF-8 do doc OK.
+
+## 11.56 O contrato de forma dos CUREs: toda classe de erro com CURE compartilha a string entre todos os pontos de erro (avaliação 2026-08-11)
+
+**Pedido**: o repo agora tem 2 comandos de cura — o `--check-lock` da sec
+8.5/8.6 (`CURE: rm -rf node_modules && bun install --frozen-lockfile`) e o
+EXIT_CLAIMS_CURE da 11.54. Avaliar um contrato de forma que pince que
+TODA classe de erro com CURE tem a string compartilhada entre todos os
+pontos de erro — a regra dos 2 usos aplicada a todos os guards.
+
+**O inventário (probe 2026-08-11) — 3 classes de CURE, 3 formas**:
+1. **Integrity lock (sec 8.5/8.6)**: o literal `check-node-modules-integrity:
+   CURE: rm -rf node_modules && bun install --frozen-lockfile` vive no
+   check-node-modules-integrity.mjs. Invocado de DOIS lugares — o batch
+   runner (run-precommit-guards.mjs importa o `integrityMain`, L68) e o
+   .husky/pre-push (spawn, L74) — mas AMBOS executam o MESMO script: há 1
+   literal físico, compartilhado POR CONSTRUÇÃO (sem const, sem drift
+   possível). A regra dos 2 usos extrai const quando há 2+ GERADORES
+   físicos do texto (CLI + guard da 11.54), não 2 invocações do mesmo
+   gerador — o ACHADO da sondagem.
+2. **Exit-claims (sec 11.54)**: EXIT_CLAIMS_CURE const no
+   scan-exit-claims.mjs, consumida por REFERÊNCIA pelo guard
+   (check-exit-claims-push.mjs imprime `${EXIT_CLAIMS_CURE}` sem
+   re-escrever o texto) — 2 geradores físicos → const compartilhada. ✓
+3. **Stash do ci-proof-run (sec 11.44)**: a forma `CURE (sec 11.44): git
+   stash show -p ...` no AVISO do helper — 1 ponto de erro, inline.
+
+**O veredito (ADOTADO — contrato de forma test-only, OUT OF SHAPE)**: a
+regra JÁ vale hoje (nenhuma classe duplica o literal); faltava o PIN —
+nada impedia um dev de adicionar um 2º ponto de erro a uma classe e colar
+o literal em vez de importar a const (a classe de drift que a 11.54
+matou, reaberta). O scan-cures-contract.test.ts pina o invariante
+ESTRUTURAL: toda string CURE (nas formas `CURE:` e `CURE (...):` — o
+colon é o discriminador; o pointer da 11.55 `stale nao tem CURE de
+registrar` não casa, por design) aparece como literal em EXATAMENTE 1
+arquivo de scripts/*.mjs. Dois arquivos com o mesmo literal = duplicação =
+drift = falha; a forma correta para 2+ pontos é a const importada. O
+suite é test-only (sem manifest --print* nem CLI — o padrão OUT OF SHAPE
+do FRONTIERS da sec 11.40): forma pura sobre a superfície scripts/*.mjs,
+sem consumidor runtime.
+
+**O pin (4 direções)**: (1) INVARIANTE real — nenhum literal em 2+ arquivos
++ sanity de ≥3 classes; (2) INVENTÁRIO PINADO — as 3 classes atuais com
+seus literais e arquivos donos (uma 4ª classe ou literal movido quebra o
+REAL-REPO); (3) COMPARTILHADO POR REFERÊNCIA — o guard do push contém
+`EXIT_CLAIMS_CURE` e NÃO contém `"CURE:` (o literal não é re-escrito); (4)
+MUTATION hermético — o mesmo literal em 2 arquivos sintéticos é flagrado
+(com o controle: 1 arquivo = sem duplicação, a forma válida do
+single-generator como o integrity). O extrator só lê literais de string —
+a menção da CURE do integrity em comentário (o JSDoc do EXIT_CLAIMS_CURE
+cita `CURE: rm -rf...`) NÃO conta: o contrato é sobre onde o comando É
+IMPRESSO, não onde é documentado.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-cures-contract.test.ts
+--config vitest.config.unit.ts` (4/4 verde contra o repo real) +
+`node scripts/scan-exit-claims.mjs --check` (claim-free, clean — a 11.56 é
+claim-free por desenho: avaliação da forma dos CUREs, não claim de exit
+code) + `gates-proofs-ordering.test.ts` valida a monotonia 11.55 → 11.56 →
+12 + UTF-8 do doc OK.
+
+## 11.57 O batch runner do pre-commit SURFACE a CURE — o contrato da 11.56 já cobre o batch estruturalmente (avaliação 2026-08-11)
+
+**Pedido**: a Prova 38 confirmou a CURE no stdout do pre-push (o guard
+check-exit-claims-push). Mas o batch runner do pre-commit
+(run-precommit-guards.mjs) também roda o scan-exit-claims (o 8º guard da
+sec 11.42) — avaliar se o batch SURFACE a CURE na saída agregada ou a
+CONSOME silenciosamente, decidindo se o contrato da 11.56 deve cobrir o
+batch como ponto de erro.
+
+**O fato empírico (probe 2026-08-11) — o batch SURFACE, não consome**: com
+`EXIT_CLAIMS_DOC` apontando um doc poisonado (a claim fake 11.99 — o
+override que o batch herda dos guards, o mesmo padrão da sec 8.5/8.6), o
+batch falha (código de saída 1) e a saída AGREGADA contém a CURE na
+íntegra:
+```
+exit-claims: 1 claim(s) de exit code SEM registro no manifest (sec 11.42):
+  claim na secao 11.99 nao esta no EXIT_CLAIMS
+  CURE: registre a claim no EXIT_CLAIMS de scripts/scan-exit-claims.mjs (sec 11.42) e confirme com: node scripts/scan-exit-claims.mjs --check
+```
+O mecanismo: o batch importa o `main()` do scan-exit-claims e o chama NO
+MESMO processo — o `process.stderr.write` do guard flui direto para o
+stdout/stderr do hook (o batch não redireciona nem filtra a saída dos
+guards; ele só agrega os exit codes). A CURE chega ao dev no MESMO formato
+da Prova 38, pelo caminho do pre-commit.
+
+**Por que o contrato da 11.56 JÁ cobre o batch (sem mudança)**: o contrato
+pina o INVARIANTE 'todo literal CURE em EXATAMENTE 1 arquivo'. O batch tem
+**0 literais próprios** (grep `CURE:` = 0 em run-precommit-guards.mjs) — ele
+é um CONSUMIDOR POR INVOCAÇÃO do `main()` compartilhado, não um gerador do
+texto. Se alguém colar o literal CURE no batch (em vez de depender do
+main()), o scan-cures-contract.test.ts flagra a duplicação — a classe de
+drift da 11.56 fechada TAMBÉM para o batch, sem lista adicional. O
+veredito do pedido: o batch NÃO entra no contrato como ponto de erro — a
+decisão é documentar (esta seção), não estender o invariante.
+
+**A simetria completa dos pontos de erro (o mapa da CURE no repo)**:
+pre-push (guard check-exit-claims-push, stdout — Prova 38) + CLI manual
+(stderr — Prova 39) + batch pre-commit (stderr do main() compartilhado —
+esta prova). TODOS surfacem a MESMA string via a fonte única
+EXIT_CLAIMS_CURE (sec 11.54) ou o main() que a usa — nenhum ponto cola o
+literal. O contraste da Prova 39 (CLI = superfície completa CURE+stale;
+guard = só unregistered) vale também para o batch: ele roda o CLI
+completo, então surface CURE E stale pointer juntos (o probe acima mostrou
+as duas linhas no mesmo run do batch).
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-cures-contract.test.ts
+--config vitest.config.unit.ts` (4/4 — o batch sem literal não é flagrado)
++ o probe do batch com EXIT_CLAIMS_DOC (código de saída 1 + CURE na
+saída agregada) +
+`node scripts/scan-exit-claims.mjs --check` (claim-free, clean — a 11.57 é
+claim-free por desenho: avaliação da superfície dos CUREs, não claim de
+exit code) + `gates-proofs-ordering.test.ts` valida a monotonia 11.56 →
+11.57 → 12 + UTF-8 do doc OK.
+
 
 ## 12. Referências
 
