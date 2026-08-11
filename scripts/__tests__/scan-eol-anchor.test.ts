@@ -78,7 +78,7 @@ describe("scan-eol-anchor.mjs - parsing (unidade)", () => {
     expect(stderr).toContain("eol-anchor: string anchor with newline escape in mutate.mjs:1")
     expect(stderr).toContain("replaceEolAgnostic")
     expect(fs.existsSync(file)).toBe(true)
-  })
+  }, 60000)
 
   it("flagra replaceAll de string com a mesma classe", () => {
     const dir = createTempDir("eol-anchor-")
@@ -86,7 +86,7 @@ describe("scan-eol-anchor.mjs - parsing (unidade)", () => {
     const { status, stderr } = runCli({ root: dir })
     expect(status).toBe(1)
     expect(stderr).toContain("mutate.test.ts:1")
-  })
+  }, 60000)
 
   it("NAO flagra regex com o escape (a forma segura de casar EOL - fronteira do masking)", () => {
     const dir = createTempDir("eol-anchor-")
@@ -95,7 +95,7 @@ describe("scan-eol-anchor.mjs - parsing (unidade)", () => {
     const { status, stdout } = runCli({ root: dir })
     expect(status).toBe(0)
     expect(stdout).toContain("clean")
-  })
+  }, 60000)
 
   it("NAO flagra ancora de variavel (nao-literal) nem replaceEolAgnostic", () => {
     const dir = createTempDir("eol-anchor-")
@@ -108,7 +108,7 @@ describe("scan-eol-anchor.mjs - parsing (unidade)", () => {
     const { status, stdout } = runCli({ root: dir })
     expect(status).toBe(0)
     expect(stdout).toContain("clean")
-  })
+  }, 60000)
 })
 
 describe("scan-eol-anchor.mjs - CLI", () => {
@@ -134,7 +134,7 @@ describe("scan-eol-anchor.mjs - CLI", () => {
     const { status, stderr } = runCli({ root: dir })
     expect(status).toBe(1)
     expect(stderr).toContain("scripts/__tests__/new-mutation.test.ts:1")
-  })
+  }, 60000)
 
   it("MUTATION clean: replaceEolAgnostic no mesmo conteudo -> exit 0 (o idioma certo)", () => {
     const dir = createTempDir("eol-anchor-")
@@ -146,11 +146,11 @@ describe("scan-eol-anchor.mjs - CLI", () => {
     const { status, stdout } = runCli({ root: dir })
     expect(status).toBe(0)
     expect(stdout).toContain("clean")
-  })
+  }, 60000)
 
   it("USAGE: flag desconhecida -> exit 2 com usage no stderr", () => {
     const { status, stderr } = runCli({ root: process.cwd(), extraArgs: ["--bogus"] })
     expect(status).toBe(2)
     expect(stderr).toContain("usage: node scripts/scan-eol-anchor.mjs [--ci]")
-  })
+  }, 60000)
 })

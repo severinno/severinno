@@ -37,6 +37,7 @@
 | 19 | ci-proof-run — **`--only-jobs` EARLY-EXIT live no CI real** (Prova 20, sec 11.20; o poll termina no JOB, não no run) | O ciclo de prova esperar o run INTEIRO (9:12 na referência 31430040398, dominado pelo Security Headers 9:08 — job sem relação com o sinal) mesmo quando o sinal vive num job (check 2:47): ~9min por prova quando ~3.5min bastam — o furo que o `--only-jobs` (sec 11.20) fechou no código, agora com prova viva | `needs: check` no job `fragile-guard` do pr-check.yml REAL (branch scratch `ci-proof/only-jobs-live`) via **`ci-proof-run --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT'`** (o helper + a mutação conhecida da Prova 16, com `--no-verify` porque o pre-commit local bloqueia o commit da mutação) | Run [**31442006152**](https://github.com/severinno/severinno/actions/runs/31442006152) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock do ciclo: 207.28s (~3.5min)** medido com `time -p` (branch scratch → mutação → push → dispatch → poll do job → captura job-scoped → verify → revert); helper **exit 0**; job `check`: `× REAL-REPO CONTRACT ... → expected 1 to be +0` no log capturado (o sinal exato; integrity + workflow-contracts no mesmo run); conclusion=`failure` como esperado; revertido byte-identical (pr-check.yml md5 a2d3aba4... + o delta uncommitted `--only-jobs` restaurado do backup md5-identical) |
 | 20 | Guard do push net — **FUZZ JOB NEEDS + FUZZ STEP MISSING via CI real** (Prova 21, sec 8.16; `scan-guard-gates.mjs` rule 7, o lado CI da classe FUZZ — o par da Prova 17 fechado no pr-check real) | A classe FUZZ (needs: + step errado no job fuzz do pr-check.yml) ter prova só sintética — a Prova 17 provou a multi-violação AGREGADA local; faltava o lado CI: a MESMA injeção combinada num `workflow_dispatch` real, com o `Fuzz Tests: skipped` como prova viva do skip vector | `needs: check` + step `bun run fuzz:ci` trocado por `bun run lint` no job `fuzz` do pr-check.yml REAL (branch scratch `ci-proof/fuzz-needs-live`) via **`ci-proof-run --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT' --no-verify`** | Run [**31444762608**](https://github.com/severinno/severinno/actions/runs/31444762608) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock 206.76s (~3.5min)** com `time -p`; helper **exit 0**; job `check` (~2:51, 00:05:04→00:07:55) conclusion=`failure` com os DOIS sinais no log job-scoped: `guard-gates: FUZZ JOB NEEDS in .github/workflows/pr-check.yml (needs: check ...)` + `guard-gates: FUZZ STEP MISSING in .github/workflows/pr-check.yml (run: bun run fuzz:ci required ...)` + `scan-guard-gates.test.ts (30 tests | 1 failed)` (REAL-REPO CONTRACT); **`Fuzz Tests: skipped`** (00:07:55) — o `needs: check` fez o fuzz depender do check falho, o skip vector provado vivo; revertido byte-identical (11 arquivos do delta restaurados do backup md5-identical) |
 | 21 | Guard do push net — **multi-violação AGREGADA via CI real** (Prova 22, sec 8.17; `scan-guard-gates.mjs` rules 1-4, 6-9 — o lado CI da Prova 17, que era local) | A Prova 17 provou a multi-violação AGREGADA no CLI real LOCALMENTE (8 sinais num run, repo real, revert byte-identical); faltava o lado CI: a MESMA injeção agregada num `workflow_dispatch` real, com o job check (REAL-REPO CONTRACT) **E** o batch runner (run-precommit-guards) falhando com os mesmos sinais | A MESMA injecao da Prova 17 Run 1 (guard-gates.yml DELETADO + pr-check.yml sem utf8-check/fuzz/benchmark/fragile-guard + ci.yml sem utf8-check + package.json test:guard sem scan-push-full-suite) via **`ci-proof-run --branch ci-proof/aggr-live --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT' --no-verify`** (mutation script `scripts/prova22-mutate.mjs` TEMP, CRLF-safe + **self-delete** antes do `git add -A` — nunca entrou no commit scratch) | Run [**31446588931**](https://github.com/severinno/severinno/actions/runs/31446588931) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock 204.91s (~3.4min)** com `time -p`; helper **exit 0**; job `check` conclusion=`failure` com **88 linhas `guard-gates:` no log job-scoped** — os **8 sinais** da agregacao (WORKFLOW MISSING + TEST GUARD STEP MISSING + FRAGILE GUARD JOB MISSING + GUARD SUITE MISSING + FUZZ JOB MISSING + BENCHMARK JOB MISSING + ENCODING CALL SITE MISSING ×2 + ENCODING WORKFLOW MISSING) — e as DUAS suites vermelhas: `scan-guard-gates.test.ts (30 tests | 1 failed)` (REAL-REPO CONTRACT, 1115ms) **E** `run-precommit-guards.test.ts (7 tests | 7 failed)` (o batch runner — TODOS os 7 guards vermelhos, incluindo o REAL-REPO CONTRACT do batch); os GROWTH CONTRACTs do workflow-contracts também vermelhos (mesma raiz: guard-gates.yml sumiu); revertido byte-identical (13 arquivos do delta restaurados do backup md5 **OK 13/13**; mutation script self-deletado; `git status` = delta original intacto) |
+| 22 | Guard do veredito da 11.17 — **SEGUNDO NODE GUARD live** (`scan-prepush-batch.mjs`, o guard novo wired no batch do pre-commit) | O NEGATIVO INCONDICIONAL do REFINAMENTO da 11.17 (um 2º node guard no `.husky/pre-push` fora do `ALLOWED_NODE_GUARDS` falha MESMO com a nota ADOTADO — a LISTA é o pin estrutural, o espelho do HOOK_ALLOWLIST da 11.16) só tinha prova sintética (fixtures) | `node scripts/scan-new-guard.mjs` anexado ao `.husky/pre-push` REAL como linha 87 (backup md5 `74df8979...`) | **Local** — prova de hook REAL (o CLI + o batch runner + o REAL-REPO CONTRACT leem os arquivos reais; a rota sintética já está pinada pelos mutation tests) | ✅ CLI real: `SECOND NODE GUARD at .husky/pre-push:87: node scripts/scan-new-guard.mjs (... edit ALLOWED_NODE_GUARDS ...)` → **exit 1**; batch runner real (7º guard) **exit 1** com o mesmo sinal; vitest: **2 failed | 12 passed** — `DERIVATION PIN` (`expected [ 'check-push-deletion.mjs', …(3) ] to deeply equal [ 'check-push-deletion.mjs', …(2) ]`) + `REAL-REPO CONTRACT` (`expected 1 to be +0`); revertido byte-identical (md5 `74df8979...`) → CLI `clean` exit 0 + suíte 14/14 verde |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -337,31 +338,55 @@ Test Files  2 passed (2)
 | Post Cache (upload) | 10s | sempre roda |
 | **Total job** | **~45s** | (50s com fila/overhead; 5s a mais que a 1a medição — o crescimento deve-se ao cache mais lento + ~3s extras nos steps de vitest/scan-timeouts) |
 
-A re-medição confirma que a **conclusão não muda**: o custo REAL das suítes
-é **~7.8s de CI** (7s test:guard + 0.8s scan-timeouts) das 8 suítes atuais
-— o restante do job (~37s) continua sendo setup fixo que um filtro `paths:`
-não reduziria. A economia máxima teórica de um filtro é ~8s por push que
-toca a superfície — e o único push skipável sem perda seria um docs-only
-(que a superfície não cobre mesmo). O net incondicional mantém o BASELINE
-estruturalmente garantido de rodar em todo merge, com custo que multiplicou
-menos de 2x (4s → 7s) enquanto as suítes quadruplicaram (2 → 8).
+**Re-medição 2026-08-11** (breakdown por step do run
+[31453991361](https://github.com/severinno/severinno/actions/runs/31453991361) — prova viva com
+**13 suítes / 236 testes** — push temporário a `develop` do estado atual da thread
+(commit 6e347ce), mesmo método da Prova 7):
 
-Ground truth local (Windows, cache quente, 2026-08-10):
-`bun run test:guard` 25.7s (155 testes, cache vitest quente) +
-`node scripts/scan-timeouts.mjs --ci` 1.2s +
-`bun install --frozen-lockfile` 1.2s (warm).
+| Step | Tempo | Observação |
+|---|---|---|
+| Set up job | 1s | overhead fixo do runner |
+| checkout | 3s | sempre roda |
+| setup-bun | 2s | sempre roda |
+| Cache node_modules (restore) | 14s | sempre roda |
+| **Install deps** | ~1s | `bun install --frozen-lockfile` (cache hit → quase instantâneo) |
+| **Run guard vitest suites** | **20s** | `bun run test:guard` (236 testes, 13 suítes: fragile-range-guard + fuzz-mapped + golden-copy-utils + guard-gates-exclusivity + manifest-registry + run-all-fuzz + scan-batch-coverage + scan-prepush-batch + scan-fuzz-precommit + scan-guard-gates + scan-hook-parallel-race + scan-lint-staged-loader + scan-push-full-suite) |
+| **Scan subprocess-heavy tests** | ~1s | `node scripts/scan-timeouts.mjs --ci` |
+| **Scan gate-script curls** | <1s | `node scripts/scan-curl-timeouts.mjs --ci` |
+| **Scan string \n anchors** | <1s | `node scripts/scan-eol-anchor.mjs --ci` |
+| **Total job** | **~43s** | job 02:58:57 → 02:59:40 — o crescimento das suítes (7s → 20s) foi absorvido pelo cache mais rápido + install ~0; total estável vs a re-medição anterior |
 
-**Decisão (avaliada, 2026-08-09, re-avaliada 2026-08-10): o no-filter documentado
-continua correto.** Um filtro `paths:` por superfície de gate file teria que
-replicar a superfície derivada (`TARGET_DIRS` + gate files) num segundo
-lugar — um novo ponto de drift (a classe que o SPREAD CONTRACT elimina) —
-e um push tocando só uma árvore que o filtro esqueceu skiparia o net em
-silêncio: o risco de órfão que o workflow existe para fechar. Como o par
-custa ~8s de CI (vitest + scan-timeouts), a economia máxima teórica de um
-filtro é ~8s por push que toca a superfície — e o único push skipável sem
-perda seria um docs-only (que a superfície não cobre mesmo). O net
-incondicional mantém o BASELINE estruturalmente garantido de rodar em todo
-merge.
+A re-medição 2026-08-11 confirma que a **conclusão não muda**: o custo REAL
+das suítes subiu para **~22s de CI** (20s test:guard + ~2s dos 3 scanners)
+— as suítes cresceram 8 → 13 (+62%) e os testes 155 → 236 (+52%), e o
+custo do test:guard acompanhou (7s → 20s, ~2.9x) — mas o job continua
+dominado pelo setup fixo (~20s: checkout + setup-bun + cache + post) que um
+filtro `paths:` não reduziria, e o total por push ficou **estável** (~45s →
+~43s). A economia máxima teórica de um filtro é ~22s por push que toca só
+docs (o único push skipável sem perda) — e a superfície não cobre docs
+mesmo. O net incondicional mantém o BASELINE estruturalmente garantido de
+rodar em todo merge: o custo multiplicou ~3x (7s → 20s) enquanto as suítes
+cresceram +62% e os testes +52% — crescimento que um filtro por superfície
+derivada não conteria sem reintroduzir o ponto de drift que o SPREAD
+CONTRACT elimina.
+
+Ground truth local (Windows, cache quente, 2026-08-11):
+`bun run test:guard` 41.2s (236 testes, 13 suítes; 1º run frio 57.5s, 2º
+run warm 41.2s) + `node scripts/scan-timeouts.mjs --ci` 1.3s + `bun
+install --frozen-lockfile` ~1.2s (warm).
+
+**Decisão (avaliada, 2026-08-09, re-avaliada 2026-08-10 e 2026-08-11): o
+no-filter documentado continua correto.** Um filtro `paths:` por superfície
+de gate file teria que replicar a superfície derivada (`TARGET_DIRS` + gate
+files) num segundo lugar — um novo ponto de drift (a classe que o SPREAD
+CONTRACT elimina) — e um push tocando só uma árvore que o filtro esqueceu
+skiparia o net em silêncio: o risco de órfão que o workflow existe para
+fechar. Com o guard net custando ~22s de CI (20s test:guard + ~2s dos
+scanners), a economia máxima teórica de um filtro é ~22s por push que toca
+a superfície — e o único push skipável sem perda seria um docs-only (que a
+superfície não cobre mesmo). O net incondicional mantém o BASELINE
+estruturalmente garantido de rodar em todo merge; o crescimento das suítes
+(8 → 13) não mudou a equação: o total por push permaneceu estável (~43s).
 
 **Travado estruturalmente (2026-08-10):** o guard `scripts/scan-guard-gates.mjs`
 (pre-commit + `test:guard`/push net) falha se o guard-gates.yml ganhar um
@@ -1499,6 +1524,59 @@ guard-gates: TEST GUARD STEP MISSING in .github/workflows/guard-gates.yml (run: 
   violação (early-return) deixaria de listar as demais — a classe que esta
   prova (e o teste MUTATION COMBINADA da suíte) trava.
 
+### 8.14.1 CONTRATO DERIVADO da matriz de exclusividade (prova vitest, 2026-08-10)
+
+A sec 8.14 documentava as exclusividades em prosa — "rule 1 ⊥ rule 2 e rule
+4 ⊥ rule 5 mutuamente exclusivos por construção" — como a razão dos DOIS
+runs (deletar o arquivo = WORKFLOW MISSING; manter com paths = PATHS
+FILTER). Esta subseção transforma a prosa em **contrato DERIVADO**: a suíte
+`scripts/__tests__/guard-gates-exclusivity.test.ts` (15 testes, wired no
+`test:guard` — roda no push net e no twin PR) deriva a matriz do próprio
+código e valida a prosa contra ela.
+
+**Mecanismo** (a classe de drift que a suíte elimina): o guard foi
+refatorado para expor `emittedSignals(facts, ctx)` — a MESMA função de
+emissão que o `main()` do CLI consome (o CLI é byte-identical, pinado pelos
+30 testes de stdout do scan-guard-gates.test.ts). A suíte de exclusividade
+enumera o ESPAÇO ALCANÇÁVEL de resultados do scan (um modelo documentado
+das invariantes estruturais do scanGuardGates, ~112k estados — cada
+restrição citada ao código que espelha), roda `emittedSignals` em cada
+estado, computa co-ocorrência e deriva o conjunto EXCLUSIVO (pares que
+nunca co-emitem num único scan): **45 pares** pinados num SNAPSHOT (regra:
+regenere do modelo, nunca ajuste à mão para casar a doc).
+
+**Validações da prosa (sec 8.14)**:
+- rule 4 ⊥ rule 5: FRAGILE GUARD JOB MISSING ⊥ FRAGILE GUARD NEEDS —
+  DERIVADO e validado (needs implica present: o prGuardJob só seta needs
+  dentro do bloco do job).
+- rule 1 ⊥ rule 2 — REFINAMENTO honesto derivado: a exclusividade é
+  POR-ALVO, não global. A forma precisa (WORKFLOW MISSING@guard-gates.yml ⊥
+  PATHS FILTER — o scan de paths só roda se o arquivo existe) vale; a forma
+  global (WORKFLOW MISSING@pr-check.yml ⊥ PATHS FILTER) NÃO vale — deletar o
+  twin não remove o scan de paths do push net, os dois co-emitem num scan.
+  Anchors REAIS em fixtures de disco provam o modelo contra o scan real
+  (padrão hermético + REAL da rede).
+
+**Invariantes modelados (com a fonte no guard)**: missingWorkflow é o
+PRIMEIRO ausente na ordem do guardNet (push antes do twin); missingStep@push
+depende do step NO ARQUIVO (file-level) e não do job guard-gates existir (o
+fallback de stepPresent do prGuardJob é twin-only — a divergência de modelo
+corrigida nesta thread); needs/stepPresent só dentro de bloco de job
+presente; encodingBad carrega UM kind por rel (workflow/job/step/needs) —
+por isso as 4 signals de encoding são pairwise-exclusivas POR-REL mas
+coexistem across rels.
+
+**Fecho da classe**: qualquer rule change que altere UMA exclusividade (novo
+sinal, condição de emissão mudada, job renomeado) quebra o SNAPSHOT de 45
+pares — a matriz documentada deixa de ser prosa e vira pin testado, no
+padrão dos demais contratos derivados da rede.
+
+**Re-validação**: `NO_COLOR=1 npx vitest run
+scripts/__tests__/guard-gates-exclusivity.test.ts --config
+vitest.config.unit.ts` → 15/15; guard byte-identical: `npx vitest run
+scripts/__tests__/scan-guard-gates.test.ts --config vitest.config.unit.ts`
+→ 30/30.
+
 ## 8.15 Prova 19 — GUARD GATES JOB NEEDS live via push REAL a develop (o par da Prova 16 fechado no push net, 2026-08-10)
 
 - **Gate**: `scripts/scan-guard-gates.mjs` rule 5 — agora cobre os DOIS lados
@@ -1715,6 +1793,51 @@ guard-gates: FUZZ STEP MISSING in .github/workflows/pr-check.yml (run: bun
   par da classe multi-violação — um refactor futuro que faça o guard parar
   na PRIMEIRA violação (early-return) quebraria as DUAS (e o teste MUTATION
   COMBINADA da suíte), em vez de só a local.
+
+## 8.18 Prova 23 — SEGUNDO NODE GUARD live no pre-push real (o guard novo da 11.17, local, 2026-08-11)
+
+- **Gate**: `scripts/scan-prepush-batch.mjs` — o guard do veredito da 11.17
+  (pre-push NÃO batchado), wired no batch runner do pre-commit como 7º guard
+  (e no `test:guard`/push net via `scan-prepush-batch.test.ts`). A classe
+  protegida: o NEGATIVO INCONDICIONAL do REFINAMENTO — um node guard NOVO
+  no `.husky/pre-push` fora do `ALLOWED_NODE_GUARDS` (integrity +
+  check-push-deletion + run-mapped-fuzz — a taxonomia da 11.17) falha com o
+  caminho exato MESMO com a nota ADOTADO no gates-proofs.md (a nota
+  documenta, a lista pina — o espelho do HOOK_ALLOWLIST da 11.16). O
+  REFINAMENTO da 11.17 deixou de ser só teste sintético; esta prova exerce o
+  hook REAL.
+- **Injeção** (local, 2026-08-11): `node scripts/scan-new-guard.mjs` anexado
+  ao `.husky/pre-push` REAL como linha 87 (backup em `/tmp/prepush-backup.bak`;
+  md5 do original `74df8979c4098e5cb7328e9a3bb2b083`).
+- **Comandos**:
+
+```bash
+node scripts/scan-prepush-batch.mjs        # CLI real (esperado: exit 1)
+node scripts/run-precommit-guards.mjs      # batch runner real (o guard como 7o; esperado: exit 1)
+NO_COLOR=1 npx vitest run scripts/__tests__/scan-prepush-batch.test.ts --config vitest.config.unit.ts
+```
+
+- **Observado** (local, 2026-08-11):
+
+```
+CLI: prepush-batch: SECOND NODE GUARD at .husky/pre-push:87: node scripts/scan-new-guard.mjs (a 2nd cheap node guard makes the batch worth it - sec 11.17; edit ALLOWED_NODE_GUARDS to allow it - the ADOTADO note documents but does not bypass)
+CLI_EXIT=1
+BATCH_EXIT=1   (mesmo sinal via run-precommit-guards.mjs)
+```
+
+  Vitest: **2 failed | 12 passed** — exatamente os dois pins vivos que a
+  injeção deve quebrar: `DERIVATION PIN` (`expected [ 'check-push-deletion.mjs', …(3) ]
+  to deeply equal [ 'check-push-deletion.mjs', …(2) ]` — a lista derivada agora
+  tem 4 spawns) e `REAL-REPO CONTRACT` (`expected 1 to be +0` — o guard real
+  saiu 1). Os 12 testes sintéticos seguem verdes (fixtures isoladas).
+- **Reversão**: `cp` do backup de volta; md5 **byte-identical**
+  (`74df8979c4098e5cb7328e9a3bb2b083`); `git status --porcelain .husky/` vazio;
+  re-run → CLI `prepush-batch: clean` exit 0 + suíte 14/14 verde.
+- **Gap protegido**: um dev adicionar um 2º node guard (ex.: um guard novo
+  <0.2s) no `.husky/pre-push` sem editar o `ALLOWED_NODE_GUARDS` (mesmo com
+  uma seção `11.x` ADOTADO) quebra o guard REAL no pre-commit (via batch
+  runner), no `test:guard`/push net e no pre-push (via DERIVATION PIN) — a
+  re-medição consciente da 11.17 travada estruturalmente, não só na doc.
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -3229,11 +3352,26 @@ individual é o certo.
 como 7º guard — o scan-batch-coverage deriva a lista dos imports vivos, e
 os pins do DERIVATION PIN/order test acompanharam): um node guard novo no
 `.husky/pre-push` fora do conjunto pinado (integrity + check-push-deletion
-+ run-mapped-fuzz — a taxonomia da 11.17) falha com o caminho exato até
-uma seção numerada `11.x` com `pre-push` + `ADOTADO` + a re-medição datada
-reverter o veredito; o integrity continua pinado como spawn individual lá
-(positivo relaxado sob a nota). O veredito não vive mais só na doc —
-reverter a 11.17 exige EDItAR a rede estrutural, não só documentar.
++ run-mapped-fuzz — a taxonomia da 11.17) falha com o caminho exato; o
+integrity continua pinado como spawn individual lá (positivo relaxado sob
+a nota). O veredito não vive mais só na doc — reverter a 11.17 exige
+EDItAR a rede estrutural, não só documentar.
+
+**REFINAMENTO 2026-08-10 (a nota DOCUMENTA, a lista PINA — o espelho do
+HOOK_ALLOWLIST da 11.16)**: a 1ª versão deste lock deixava a nota ADOTADO
+SUPRIMIR o negativo (um guard novo + uma seção `11.x` com `pre-push` +
+`ADOTADO` passava sem tocar na lista) — um bypass em prosa: bastava uma
+seção de adoção não-relacionada com a palavra ADOTADO na linha do header
+para um 4º guard entrar sem editar o `ALLOWED_NODE_GUARDS`. A 2ª versão
+fechou o furo: o NEGATIVO é INCONDICIONAL — um guard fora da lista falha
+MESMO com a nota presente; um 4º guard legítimo (com nota ADOTADO)
+EXIGE editar o `ALLOWED_NODE_GUARDS` conscientemente (a mesma semântica
+da HOOK_ALLOWLIST: exceções vivem NA LISTA com rationale, nunca em regex
+de doc). A nota só relaxa o POSITIVO (o integrity pode ir para dentro do
+batch na adoção legítima). Testes: a MUTATION "NOTA SOZINHA NAO bypassa"
+prova o negativo (nota + guard novo SEM editar a lista → exit 1 com
+`edit ALLOWED_NODE_GUARDS`); o teste do seam `PREPUSH_ALLOWLIST_EXTRA`
+prova o positivo (a MESMA mutação com a lista editada → exit 0).
 
 **DERIVATION PIN (2026-08-10)**: a claim "exatamente UM node guard" agora
 é um teste: o `scan-prepush-batch.mjs` exporta `derivePrepushSpawns` (o
@@ -3245,6 +3383,22 @@ nunca hardcoded), o scan consome a MESMA derivação (fonte única) e o
 (o integrity). Um 2º guard no pre-push muda a lista derivada e o pin
 quebra antes de o scan precisar — o spread contract dos TARGET_DIRS
 aplicado aos node guards do pre-push.
+
+**REFINAMENTO 2026-08-11 (o sub-caminho 11.18 ganha positivo próprio)**: o
+DERIVATION PIN já pegava a REMOÇÃO do checker de deleção no CI (a lista
+derivada encolheria de 3 para 2 e o `toEqual` quebraria), mas sem sinal
+LOCAL no batch do pre-commit — um dev removendo o `check-push-deletion.mjs`
+do `.husky/pre-push` veria o hook perder o skip de deleção pura da 8.4
+(todo push de housekeeping volta a pagar ~74s) com o guard reportando
+"clean". O guard ganhou o positivo `DELETION SHORTCUT MISSING` (espelho do
+`INTEGRITY GUARD MISSING`): o atalho DEVE existir como spawn individual,
+relaxado sob a nota ADOTADO como o integrity (a adoção legítima move o
+checker para dentro do batch também). Testes: "DELETION SHORTCUT DELETADO"
+(remover o spawn → exit 1 com `DELETION SHORTCUT MISSING in .husky/pre-push`
++ sole-failure pin: 0 SECOND NODE GUARD / 0 INTEGRITY GUARD MISSING) +
+"DELETION DELETADO + NOTA" (→ exit 0, espelho do INTEGRITY DELETADO + NOTA)
++ o REAL-REPO CONTRACT agora pina os DOIS positivos vivos no hook real
+(integrity E checker de deleção presentes).
 
 ## 11.18 O sub-caminho de housekeeping de branches — deleção pura vs misto, o checker entra no batch? (medição 2026-08-10)
 
@@ -3266,6 +3420,7 @@ run frio de cada entrada é o boot do node + cold fs):
 | checker puro — stdin vazio (manual) | 84 / 87 / 87ms | ~0.08s | exit 1 = cadeia roda |
 | integrity (comparação, sec 11.17) | 171 / 163 / 160ms | ~0.16s | o node guard do caminho de código |
 | batch runner (7 guards em 1 boot, sec 11.13) | 188 / 170 / 170ms | ~0.17s | 7 guards ≈ 1 integrity: o boot é o piso |
+| **batch sintético checker+integrity (2 guards, 1 boot, DELEÇÃO PURA) — MEDIDO 2026-08-11** | 180 / 200 / 170ms | **~0.18s** (média das 3 runs; o 1º run não era frio — o sanity precedeu, spread é ruído; runs 2-3 = 200/170 → ~0.19s) | substitui a extrapolação: 2 guards ≈ 7 guards ≈ 1 integrity — o boot é o piso, confirmado por medição direta (sanity: checker exit 0 + integrity clean → batch exit 0) |
 | **caminho completo do hook — DELEÇÃO PURA** (stdin capture + awk + checker exit 0 + skip) | 231 / 215 / 208ms | **~0.21s** | o housekeeping de branches inteiro |
 | caminho completo do hook — MISTO (checker exit 1, ANTES da cadeia) | 214 / 206 / 201ms | ~0.20s | o checker é ~0.2s de um push de dezenas de segundos |
 
@@ -3277,16 +3432,20 @@ run frio de cada entrada é o boot do node + cold fs):
    Não há N boots para consolidar — há UM.
 
 2. **Batchar NÃO economiza aqui — e o argumento honesto é semântico, não
-   de custo.** Um batch checker+integrity (1 boot, ~0.07s) custaria
-   ~0.17-0.19s no caminho de deleção pura — igual ou LIGEIRAMENTE mais
-   barato que o ~0.21s atual (o boot é amortizado). O ponto não é
+   de custo.** O batch checker+integrity foi MEDIDO diretamente
+   (2026-08-11, batch sintético com a MESMA forma do run-precommit-guards:
+   1 boot, main()s importados, agregação worst-exit, stdin de deleção pura
+   pipado como no hook real): **180 / 200 / 170ms, ~0.18s warm** — no
+   caminho de deleção pura é LIGEIRAMENTE mais barato que o ~0.21s atual
+   (o boot é amortizado; a extrapolação anterior de ~0.17-0.19s, derivada
+   do batch de 7 guards, foi confirmada pelo número medido). O ponto não é
    wall-clock: o batch é um agregador worst-exit que roda TODOS os guards
    — não pode pular o integrity condicionalmente após a decisão de skip.
    Forçaria o integrity (scan real de ~0.09s sobre o boot) a rodar num
    push que carrega ZERO código — exatamente o desperdício que o atalho
    existe para evitar (o checker short-circuita o hook ANTES de qualquer
-   gate). Batchar trocaria uma economia de ~0.02-0.04s por rodar um scan
-   real em housekeeping vazio.
+   gate). Batchar trocaria uma economia de ~0.02-0.03s (0.21 → 0.18 medido)
+   por rodar um scan real em housekeeping vazio.
 
 3. **O misto é dominado pela cadeia.** O passo de detecção (~0.2s
    incluindo captura+awk; o checker puro ~0.08s) é ~0.4% de um push misto
@@ -3509,6 +3668,29 @@ helper).
   `git add -A` na branch scratch, então o delta foi varrido para o commit
   scratch e precisa de restauro pós-revert (detalhe documentado para o
   próximo ciclo com árvore suja).
+
+## 11.21 O front path do pre-push: o awk do remote sha movido para dentro do checker (medição 2026-08-11)
+
+**Pergunta**: o `.husky/pre-push` rodava `cat` + `printf|awk` + `printf|node` (3 subprocessos) no front path — o awk derivava o `PRE_PUSH_REMOTE_SHA` (base do `--since` do Gate 3) e o checker decidia a deleção pura. Avaliar mover o awk para dentro do `check-push-deletion.mjs` (1 spawn node no lugar de spawn node + subprocess awk), medindo o ganho no caminho de deleção pura e no misto.
+
+**A/B honesto** (2026-08-11, node 22.23.1, Git Bash, 3 runs cada, fiacao exata do hook — stdin sintético pipado; warm = runs 2-3):
+
+| Caminho | 3 runs | Média warm | Veredito |
+|---|---|---|---|
+| ANTIGO deleção pura (cat + awk + node) | 483 / 290 / 282ms | ~0.29s | — |
+| NOVO deleção pura (1 spawn node) | 165 / 169 / 174ms | **~0.17s** | — |
+| ANTIGO misto (cat + awk + node) | 289 / 283 / 279ms | ~0.28s | — |
+| NOVO misto (1 spawn node) | 197 / 171 / 170ms | **~0.17s** | — |
+
+**Decisão: ADOTADO.** O front path cai de 3 subprocessos (cat + printf|awk + printf|node) para **1 spawn node** — ~0.28s → ~0.17s warm (deleção pura E misto; o boot do node é o piso, a derivação em JS é <10ms). A derivação `deriveRemoteSha()` replica o awk byte-a-byte (a mesma regra `NR == 1 { first = $4 } $2 !~ /^0+$/ { real = $4 } END { print (real != "" ? real : first) }` em JS puro, validada contra 4 casos discriminantes no vitest — incluindo o push MISTO com deleção na 1ª linha, que o awk antigo acertava e um `NR == 1 { print $4 }` ingênuo erraria).
+
+**O novo contrato de saída do checker**: stdout = o remote sha APENAS (o hook captura como `PRE_PUSH_REMOTE_SHA` para o Gate 3 — mensagens no stdout virariam um remote sha multi-linha e quebrariam o `--since`); stderr = mensagens; exit 0 = deleção pura (skip), exit 1 = roda gates. O footgun do awk antigo (o `exit` no corpo do awk imprimindo DUAS linhas) some: o checker tem um único `stdout.write`.
+
+**Alterações**: `scripts/check-push-deletion.mjs` (novo `deriveRemoteSha()` exportado + main() escreve o sha no stdout e mensagens no stderr), `.husky/pre-push` (o bloco cat+awk substituído por `if PRE_PUSH_REMOTE_SHA="$(node scripts/check-push-deletion.mjs)"; then`), `scripts/__tests__/check-push-deletion.test.ts` (o describe que spawnava o awk virou pin puro de `deriveRemoteSha`; os asserts do CLI migraram stdout→stderr). O DERIVATION PIN do scan-prepush-batch (sec 11.17) continua passando: o spawn continua `node scripts/check-push-deletion.mjs` em linha não-comentário — só a frente mudou de 3 processos para 1.
+
+**Custo por push**: o front path é o custo fixo de TODO push (deleção, misto, normal) — economiza ~0.11s/push. Pequeno, mas é o único spawn de subprocesso removível do caminho quente do hook (o integrity e o fuzz mapeado são gates reais, não fundíveis).
+
+**Simulação viva pós-rewire** (2026-08-11, hook REAL, stdin sintético pipado): deleção pura → exit 0 com `[skip] pre-push: push de delecao pura` em **0.21s** (sem rodar a cadeia); misto (1 deleção + 1 ref real) → exit 0 com a cadeia RODANDO e passando (`[OK] pre-push: todos os gates passaram`, 0 `[skip]`) — o checker retorna exit 1 no misto e o hook corretamente roda os gates em vez de pular.
 
 ## 12. Referências
 

@@ -1,39 +1,47 @@
 set -euo pipefail
 
-# stdin do hook (single-read: o stream so pode ser lido UMA vez): capturamos
-# tudo de uma vez e derivamos dele (a) o remote sha da 1a linha para o Gate 3
-# e (b) a deteccao de push de DELECAO PURA. So quando o stdin NAO e um TTY
-# (ou seja, o git chamou o hook de verdade) - invocacao manual interativa
-# deixa vazio e o Gate 3 cai para staged + HEAD.
+# stdin do hook (single-read: o stream so pode ser lido UMA vez): o
+# check-push-deletion.mjs le o stdin UMA vez e dele deriva (a) o remote sha
+# da 1a linha NAO-delecao para o Gate 3 (stdout - o awk inline movido para
+# o checker, sec 11.21) e (b) a deteccao de push de DELECAO PURA (exit 0).
+# UM spawn node no lugar de cat + awk + node (3 subprocessos -> 1):
+# ~0.28s -> ~0.17s warm medido em delecao pura E misto (A/B honesto com a
+# fiacao exata do hook, 3 runs cada, sec 11.21). So
+# quando o stdin NAO e um TTY (ou seja, o git chamou o hook de verdade) -
+# invocacao manual interativa deixa vazio e o Gate 3 cai para staged + HEAD.
 if [ -t 0 ]; then
   PRE_PUSH_REMOTE_SHA=""
-  PRE_PUSH_STDIN=""
+  PRE_PUSH_PURE_DELETION=1
 else
-  PRE_PUSH_STDIN="$(cat)"
-  # Multi-ref pushes trazem uma linha por branch; usamos o remote sha da 1a
-  # linha NAO-delecao (local sha != all-zeros) - em push misto (delecao + ref
-  # real), a 1a linha pode ser a delecao e seu remote sha (tip do branch
-  # apagado) seria uma base errada para o range do Gate 3. Cai para a 1a
-  # linha se nao houver ref real (caso impossivel de alcancar aqui - delecao
-  # pura ja saiu acima - mas seguro).
-  # awk: guarda o $4 da 1a linha em `first`; qualquer linha NAO-delecao
-  # (local sha != all-zeros) seta `real`; no END imprime `real` se existir,
-  # senao `first`. SEM `exit` no corpo: exit dispararia o END e imprimiria
-  # DUAS linhas ($4 + first) - o comando substitution capturaria um remote
-  # sha multi-linha e quebraria o --since do Gate 3.
-  PRE_PUSH_REMOTE_SHA="$(printf '%s' "$PRE_PUSH_STDIN" | awk 'NR == 1 { first = $4 } $2 !~ /^0+$/ { real = $4 } END { print (real != "" ? real : first) }')"
+  # Multi-ref pushes trazem uma linha por branch; o checker usa o remote sha
+  # da 1a linha NAO-delecao (local sha != all-zeros) - em push misto
+  # (delecao + ref real), a 1a linha pode ser a delecao e seu remote sha
+  # (tip do branch apagado) seria uma base errada para o range do Gate 3.
+  # Cai para a 1a linha se nao houver ref real (caso impossivel de alcancar
+  # aqui - delecao pura ja sai como exit 0 - mas seguro). O stdout capturado
+  # e o sha APENAS (mensagens vao para o stderr do hook, nao para a
+  # substitution) - SEM o footgun do awk antigo de imprimir duas linhas e
+  # quebrar o --since do Gate 3.
+  # exit 0 do checker = TODAS as refs com local sha all-zeros (delecao
+  # pura) -> o atalho abaixo pula os gates; exit 1 = roda normal.
+  if PRE_PUSH_REMOTE_SHA="$(node scripts/check-push-deletion.mjs)"; then
+    PRE_PUSH_PURE_DELETION=0
+  else
+    PRE_PUSH_PURE_DELETION=1
+  fi
 fi
 export PRE_PUSH_REMOTE_SHA
 
 # ATALHO DE DELECAO PURA (medicao 2026-08, secao 8.4: ~74s por push): um push
 # que so apaga branches (`git push origin --delete x` / `:x`) nao transporta
-# NENHUM commit novo - rodar a cadeia inteira e testar nada.
-# check-push-deletion.mjs exit 0 quando TODAS as refs tem local sha
-# all-zeros; pulamos a cadeia com aviso (~74s -> ~0.4s medido, node boot - o
-# checker puro custa ~10ms, o caminho do hook ~0.4s). Push MISTO (delecao
-# + ref real na mesma chamada) roda os gates normal - carrega codigo. Stdin
-# vazio (invocacao manual) tambem roda normal.
-if [ -n "$PRE_PUSH_STDIN" ] && printf '%s' "$PRE_PUSH_STDIN" | node scripts/check-push-deletion.mjs; then
+# NENHUM commit novo - rodar a cadeia inteira e testar nada. O checker ja
+# decidiu no spawn acima (exit 0 = delecao pura, sec 11.21); aqui so o echo
+# + exit - 1 spawn node total (front path ~0.17s medido vs ~0.28s do
+# caminho cat+awk+node antigo, sec 11.21 - o run REAL completo do hook
+# mediu 0.21s no total). Push MISTO (delecao + ref real na mesma chamada)
+# roda os gates normal - carrega codigo. Stdin vazio (invocacao manual)
+# tambem roda normal.
+if [ "${PRE_PUSH_PURE_DELETION:-1}" = "0" ]; then
   echo "[skip] pre-push: push de delecao pura (sem commits novos) - gates pulados (housekeeping de branches, secao 8.4)"
   exit 0
 fi

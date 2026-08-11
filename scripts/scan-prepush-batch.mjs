@@ -15,11 +15,15 @@
  * vivia SO na doc; este guard TRAVA a condicao estruturalmente.
  *
  * CONTRATO BIDIRECIONAL (mesmo padrao do scan-fuzz-precommit da 11.11):
- * - NEGATIVO: um node guard NOVO spawnado no .husky/pre-push - qualquer
+ * - NEGATIVO (INCONDICIONAL - o espelho do HOOK_ALLOWLIST do pre-commit,
+ *   sec 11.16): um node guard NOVO spawnado no .husky/pre-push - qualquer
  *   `node scripts/X.mjs` FORA do conjunto pinado abaixo - falha com o
- *   caminho exato, A MENOS que o gates-proofs.md tenha uma secao numerada
- *   11.x declarando o pre-push batchado ADOTADO (a re-mediacao datada que
- *   reverteria o veredito - o padrao de reversao das outras secoes). O
+ *   caminho exato. A nota ADOTADO no gates-proofs.md DOCUMENTA a
+ *   re-mediacao mas NAO a implementa: um 4o guard legitimo (mesmo com a
+ *   nota) exige EDItAR o ALLOWED_NODE_GUARDS conscientemente - a LISTA e
+ *   o pin estrutural, excecoes vivem na lista com rationale (a HOOK_ALLOWLIST
+ *   do pre-commit), nunca em regex de doc. A nota so relaxa o POSITIVO
+ *   (integrity pode ir para dentro do batch na adocao legitima). O
  *   conjunto pinado (a taxonomia da 11.17, nao uma allowlist generica):
  *     - check-node-modules-integrity.mjs = o UNICO node guard legitimo
  *       (a checagem da 8.5 antes do fuzz, ~0.19s);
@@ -31,15 +35,27 @@
  *   Linhas de comentario sao ignoradas (o header do hook explica o POR QUE
  *   em prosa - mesmo padrao dos irmaos). NOTA do trade-off (mesmo do 11.7):
  *   o REVERSAL_RE casa QUALQUER header 11.x com pre-push+ADOTADO na mesma
- *   linha - uma secao futura de adocao nao-relacionada que use ADOTADO
- *   suprimiria o negativo sem reverter o veredito; a re-mediacao legitima
- *   DEVE dizer explicitamente o pre-push batchado.
+ *   linha - com o negativo agora INCONDICIONAL, o risco residual do match
+ *   amplo e so o POSITIVO (uma secao nao-relacionada com ADOTADO relaxaria
+ *   o integrity-missing sem reverter o veredito); a re-mediacao legitima
+ *   DEVE editar o ALLOWED_NODE_GUARDS E dizer explicitamente o pre-push
+ *   batchado.
+ *   Seam de teste (o padrao de env override dos irmaos):
+ *   PREPUSH_ALLOWLIST_EXTRA (comma-separated) estende o conjunto permitido
+ *   hermeticamente - simula a EDICAO CONSCIENTE da lista que um 4o guard
+ *   exigiria (o lado positivo do contrato); o CLI/hook real nunca seta.
  * - POSITIVO: o unico node guard legitimo (check-node-modules-integrity)
  *   DEVE existir como spawn INDIVIDUAL no .husky/pre-push (remover ou
  *   mover para um batch sem a nota = o pre-push perde a checagem da 8.5
- *   antes do fuzz gastar ~6-14s - falha 'INTEGRITY GUARD MISSING'). Sob a
- *   nota ADOTADO, o positivo e relaxado (a integracao legitima move o
- *   integrity para dentro do batch - a re-mediacao decidiu).
+ *   antes do fuzz gastar ~6-14s - falha 'INTEGRITY GUARD MISSING'). O
+ *   atalho de DELECAO PURA (check-push-deletion) TAMBEM DEVE existir
+ *   como spawn individual (2026-08-11, fechando o sub-caminho 11.18:
+ *   remover o checker = o hook perde o skip da 8.4 - cada push de
+ *   housekeeping volta a pagar ~74s - SEM sinal; o DERIVATION PIN pega no
+ *   CI mas o guard local deve sinalizar - falha 'DELETION SHORTCUT
+ *   MISSING'). Sob a nota ADOTADO, os positivos sao relaxados (a
+ *   integracao legitima move integrity E checker para dentro do batch -
+ *   a re-mediacao decidiu).
  *
  * DERIVATION PIN (o padrao do deriveBatchGuards do pre-commit aplicado ao
  * outro hook): a lista de node guards do .husky/pre-push e DERIVADA dos
@@ -77,6 +93,20 @@ export const ALLOWED_NODE_GUARDS = [
   "check-push-deletion.mjs", // atalho de housekeeping (delecao pura) - nao e um gate
   "run-mapped-fuzz.mjs", // invocacao vitest pesada, nao cabe no batch (sec 11.17)
 ]
+
+/**
+ * Test-only seam: PREPUSH_ALLOWLIST_EXTRA (comma-separated) extends the
+ * allowed set hermetically - the vitest suite simulates the CONSCIOUS list
+ * edit a 4th guard requires (the positive direction of the contract: guard
+ * novo + lista editada -> clean). The CLI/hook never sets it.
+ */
+export function allowedGuards() {
+  const extra = (process.env.PREPUSH_ALLOWLIST_EXTRA || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return ALLOWED_NODE_GUARDS.concat(extra)
+}
 
 /** A `node scripts/X.mjs` spawn in a hook line (the guard-shaped spawn). */
 const NODE_GUARD_RE = /node\s+scripts\/([A-Za-z0-9._-]+\.mjs)/
@@ -118,19 +148,21 @@ function isComment(line) {
 
 /**
  * Scan the pre-push node-guard placement. Returns { secondGuard,
- * integrityMissing } where secondGuard is [{ line, text, module }] of NEW
- * node guards in the pre-push (outside the pinned set, without the
- * reversal note) and integrityMissing is [{ text }] when the single
- * legitimate node guard (check-node-modules-integrity) is absent as an
- * individual spawn (and no reversal note re-mediates the layout). All
- * empty = clean. Exported for unit tests.
+ * integrityMissing, deletionShortcutMissing } where secondGuard is
+ * [{ line, text, module }] of NEW node guards in the pre-push (outside the
+ * pinned set, without the reversal note), integrityMissing is [{ text }]
+ * when the single legitimate node guard (check-node-modules-integrity) is
+ * absent as an individual spawn, and deletionShortcutMissing is [{ text }]
+ * when the pure-deletion shortcut (check-push-deletion) is absent (the
+ * 8.4/11.18 sub-path - removed without the note, the hook silently loses
+ * the housekeeping skip). All empty = clean. Exported for unit tests.
  */
 export function scanPrepushBatch(root = ROOT) {
   const prePushPath = path.join(root, PRE_PUSH)
   // Not scannable without the hook (minimal synthetic root) - clean, same
   // posture as scan-push-full-suite skipping missing files.
   if (!fs.existsSync(prePushPath)) {
-    return { secondGuard: [], integrityMissing: [] }
+    return { secondGuard: [], integrityMissing: [], deletionShortcutMissing: [] }
   }
 
   const reversalNote = (() => {
@@ -143,37 +175,57 @@ export function scanPrepushBatch(root = ROOT) {
   // viva dos spawns e a fonte unica, nunca uma lista hardcoded).
   const secondGuard = []
   let integrityPresent = false
+  let deletionShortcutPresent = false
+  const allowed = allowedGuards()
   for (const s of derivePrepushSpawns(fs.readFileSync(prePushPath, "utf8"))) {
     if (s.module === "check-node-modules-integrity.mjs") integrityPresent = true
-    if (ALLOWED_NODE_GUARDS.includes(s.module)) continue
-    if (!reversalNote) {
-      secondGuard.push({ line: s.line, text: s.text, module: s.module })
-    }
+    if (s.module === "check-push-deletion.mjs") deletionShortcutPresent = true
+    if (allowed.includes(s.module)) continue
+    // INCONDICIONAL: a nota ADOTADO documenta a re-mediacao mas NAO a
+    // implementa - um 4o guard legitimo exige editar o ALLOWED_NODE_GUARDS
+    // (o espelho do HOOK_ALLOWLIST do pre-commit, sec 11.16).
+    secondGuard.push({ line: s.line, text: s.text, module: s.module })
   }
 
-  // Sob a nota ADOTADO, o integrity pode ter ido para DENTRO do batch (a
-  // integracao legitima da re-mediacao) - o positivo e relaxado.
-  const integrityMissing = integrityPresent || reversalNote ? [] : [{ text: PRE_PUSH }]
+  // Positivos (2 usos - o helper da regra dos 2): sob a nota ADOTADO, o
+  // integrity pode ter ido para DENTRO do batch (a integracao legitima da
+  // re-mediacao) - o positivo e relaxado; o MESMO vale para o atalho de
+  // delecao pura (check-push-deletion, o sub-caminho 11.18): remover sem a
+  // nota = o hook perde o skip da 8.4 (todo push de housekeeping volta a
+  // pagar ~74s) sem sinal local - o DERIVATION PIN pega no CI, mas o guard
+  // no batch do pre-commit deve falhar aqui.
+  const missingPositive = (present) => (present || reversalNote ? [] : [{ text: PRE_PUSH }])
+  const integrityMissing = missingPositive(integrityPresent)
+  const deletionShortcutMissing = missingPositive(deletionShortcutPresent)
 
-  return { secondGuard, integrityMissing }
+  return { secondGuard, integrityMissing, deletionShortcutMissing }
 }
 
 export function main() {
-  const { secondGuard, integrityMissing } = scanPrepushBatch()
-  if (secondGuard.length === 0 && integrityMissing.length === 0) {
+  const { secondGuard, integrityMissing, deletionShortcutMissing } = scanPrepushBatch()
+  if (
+    secondGuard.length === 0 &&
+    integrityMissing.length === 0 &&
+    deletionShortcutMissing.length === 0
+  ) {
     console.log(
-      "prepush-batch: clean (single node guard in the pre-push - the 11.17 asymmetry locked)",
+      "prepush-batch: clean (single node guard + deletion shortcut in the pre-push - the 11.17 asymmetry locked)",
     )
     return 0
   }
   for (const o of secondGuard) {
     console.log(
-      `prepush-batch: SECOND NODE GUARD at ${PRE_PUSH}:${o.line}: ${o.text} (a 2nd cheap node guard makes the batch worth it - sec 11.17; add a dated section 11.x with ADOTADO to adopt it)`,
+      `prepush-batch: SECOND NODE GUARD at ${PRE_PUSH}:${o.line}: ${o.text} (a 2nd cheap node guard makes the batch worth it - sec 11.17; edit ALLOWED_NODE_GUARDS to allow it - the ADOTADO note documents but does not bypass)`,
     )
   }
   for (const m of integrityMissing) {
     console.log(
       `prepush-batch: INTEGRITY GUARD MISSING in ${m.text} (check-node-modules-integrity individual spawn required - the single pre-push node guard, sec 11.17)`,
+    )
+  }
+  for (const m of deletionShortcutMissing) {
+    console.log(
+      `prepush-batch: DELETION SHORTCUT MISSING in ${m.text} (check-push-deletion individual spawn required - the pure-deletion skip of sec 8.4/11.18; the ADOTADO note relaxes the positive like integrity)`,
     )
   }
   console.log(

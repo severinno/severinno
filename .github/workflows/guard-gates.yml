@@ -41,6 +41,15 @@
 # (Windows): test:guard 16.7s + scan-timeouts 1.6s + warm bun install
 # 3.4s. Filtering saves nothing meaningful; the unconditional net keeps
 # the BASELINE structurally guaranteed to run.
+#
+# RE-MEASURED (run 31453991361, 2026-08-11, sec 8.1 of gates-proofs.md):
+# test:guard grew to 13 suites / 236 tests and the step now takes 20s of
+# CI time (02:59:18 -> 02:59:38); the three scanner steps (timeouts +
+# curls + eol-anchor) add ~2s; job total stayed stable at ~43s because
+# fixed setup (checkout + setup-bun + cache + post) dominates and a paths
+# filter cannot reduce it. Local ground truth (Windows, warm): test:guard
+# 41.2s + scan-timeouts 1.3s. The no-filter decision is unchanged - sec
+# 8.1 recalibrated on the new numbers, conclusion intact.
 # =============================================================================
 
 name: Guard Gates

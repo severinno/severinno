@@ -109,8 +109,9 @@
  * file). Puro node, sem deps, <10ms.
  */
 import fs from "node:fs"
+import { createRequire } from "node:module"
 import path from "node:path"
-import { fileURLToPath, pathToFileURL } from "node:url"
+import { fileURLToPath } from "node:url"
 import { BENCHMARK_JOB, ENCODING_JOB, ENCODING_NET, FUZZ_JOB, GUARD_NET, GUARD_NET_JOB, GUARD_NET_PUSH_JOB } from "./workflow-contracts.mjs"
 
 const ROOT = path.resolve(process.env.GUARD_GATES_SCAN_ROOT || process.cwd())
@@ -345,17 +346,78 @@ export function scanGuardGates(root = ROOT, contract = defaultContract()) {
   return { missingWorkflow, pathsFilter, missingStep, missingSuite, prJob, pushNetJob, fuzzJob, encodingBad, benchmarkJob: benchmarkJobInfo }
 }
 
+/**
+ * The ORDERED list of signals a scan result emits - the SINGLE SOURCE OF
+ * TRUTH for what the guard reports (main() prints from this list; the
+ * exclusivity contract suite scripts/__tests__/guard-gates-exclusivity.test.ts
+ * derives the rule matrix from THIS function + a reachable-result generator,
+ * sec 8.14 - the test must NEVER re-implement these conditions, or the
+ * derived exclusivity matrix would drift from the CLI). Each entry carries
+ * { key, target, ...extra } where target is the workflow rel / package.json
+ * the signal points at. Exported for the contract suite.
+ */
+export function emittedSignals(f, ctx) {
+  const { prWorkflow, pushNet } = ctx
+  const out = []
+  if (f.missingWorkflow !== null) out.push({ key: "WORKFLOW MISSING", target: f.missingWorkflow })
+  for (const o of f.pathsFilter) out.push({ key: "PATHS FILTER", target: o.file, line: o.line, text: o.text })
+  if (f.missingStep !== null) out.push({ key: "TEST GUARD STEP MISSING", target: f.missingStep })
+  if (f.prJob !== null && !f.prJob.present) {
+    out.push({ key: "FRAGILE GUARD JOB MISSING", target: prWorkflow, jobLine: f.prJob.jobLine })
+  }
+  if (f.prJob !== null && f.prJob.needs !== null) {
+    out.push({ key: "FRAGILE GUARD NEEDS", target: prWorkflow, needs: f.prJob.needs })
+  }
+  if (f.pushNetJob !== null && !f.pushNetJob.present) {
+    out.push({ key: "GUARD GATES JOB MISSING", target: pushNet })
+  }
+  if (f.pushNetJob !== null && f.pushNetJob.needs !== null) {
+    out.push({ key: "GUARD GATES JOB NEEDS", target: pushNet, needs: f.pushNetJob.needs })
+  }
+  if (f.missingSuite !== null) out.push({ key: "GUARD SUITE MISSING", target: "package.json" })
+  if (f.fuzzJob !== null && !f.fuzzJob.present) out.push({ key: "FUZZ JOB MISSING", target: prWorkflow })
+  if (f.fuzzJob !== null && f.fuzzJob.needs !== null) {
+    out.push({ key: "FUZZ JOB NEEDS", target: prWorkflow, needs: f.fuzzJob.needs })
+  }
+  if (f.fuzzJob !== null && f.fuzzJob.present && !f.fuzzJob.stepPresent) {
+    out.push({ key: "FUZZ STEP MISSING", target: prWorkflow })
+  }
+  if (f.benchmarkJob !== null && !f.benchmarkJob.present) {
+    out.push({ key: "BENCHMARK JOB MISSING", target: prWorkflow })
+  }
+  if (f.benchmarkJob !== null && f.benchmarkJob.needs !== null) {
+    out.push({ key: "BENCHMARK JOB NEEDS", target: prWorkflow, needs: f.benchmarkJob.needs })
+  }
+  if (f.benchmarkJob !== null && f.benchmarkJob.present && !f.benchmarkJob.stepPresent) {
+    out.push({ key: "BENCHMARK STEP MISSING", target: prWorkflow })
+  }
+  for (const e of f.encodingBad) {
+    if (e.kind === "workflow") out.push({ key: "ENCODING WORKFLOW MISSING", target: e.rel })
+    else if (e.kind === "job") out.push({ key: "ENCODING CALL SITE MISSING", target: e.rel })
+    else if (e.kind === "step") out.push({ key: "ENCODING CALL SITE STEP MISSING", target: e.rel })
+    else out.push({ key: "ENCODING CALL SITE NEEDS", target: e.rel, needs: e.needs })
+  }
+  return out
+}
+
+const require = createRequire(import.meta.url)
+
 export async function main() {
   // WORKFLOW_CONTRACTS_MODULE override (the FRAGILE_MODULE pattern): point
   // the guard at a temp manifest copy to prove derivation. Default: the
   // static workflow-contracts import.
-  // pathToFileURL: on Windows a bare `import("C:\\...")` rejects with
-  // ERR_UNSUPPORTED_ESM_URL_SCHEME (the ESM loader only accepts file://
-  // URLs for absolute paths) - the same fix fragile-range-patterns.mjs
-  // applies to its entry-point guard. The temp manifest copies the GROWTH
-  // test writes live under os.tmpdir(), so this must resolve on Windows.
+  // Loaded via createRequire (require(esm), node >=22.12 - the repo runs
+  // 22.23.1, and the override tests spawn the CLI via process.execPath)
+  // INSTEAD of a dynamic import(): a computed-specifier `await import(...)`
+  // makes vite's SSR transform (vitest's in-process import path) inject the
+  // __vite__injectQuery client helper BEFORE the shebang (line 1) - a parse
+  // error for any suite importing this module in-process
+  // (guard-gates-exclusivity.test.ts). createRequire keeps the env override
+  // byte-identical (the temp manifest is a plain .mjs with static exports)
+  // with ZERO vite surface. path.resolve on an absolute path is a no-op but
+  // makes the relative-specifier case unambiguous.
   const mod = process.env.WORKFLOW_CONTRACTS_MODULE
-    ? await import(pathToFileURL(path.resolve(process.env.WORKFLOW_CONTRACTS_MODULE)).href)
+    ? require(path.resolve(process.env.WORKFLOW_CONTRACTS_MODULE))
     : null
   const contract = mod
     ? {
@@ -369,113 +431,84 @@ export async function main() {
     : defaultContract()
   const prWorkflow = contract.guardNet[contract.guardNet.length - 1]
   const pushNet = contract.guardNet[0]
-  const { missingWorkflow, pathsFilter, missingStep, missingSuite, prJob, pushNetJob, fuzzJob, encodingBad, benchmarkJob } = scanGuardGates(ROOT, contract)
-  const prBad = prJob !== null && (!prJob.present || prJob.needs !== null)
-  const pushNetBad = pushNetJob !== null && (!pushNetJob.present || pushNetJob.needs !== null)
-  // The fuzz:ci authority must be a standalone PR job (the check job may
-  // fail on pre-existing lint debt - the fuzz result must stay readable).
-  const fuzzBad = fuzzJob !== null && (!fuzzJob.present || fuzzJob.needs !== null || !fuzzJob.stepPresent)
-  const benchmarkBad = benchmarkJob !== null && (!benchmarkJob.present || benchmarkJob.needs !== null || !benchmarkJob.stepPresent)
-  if (
-    missingWorkflow === null &&
-    pathsFilter.length === 0 &&
-    missingStep === null &&
-    missingSuite === null &&
-    !prBad &&
-    !pushNetBad &&
-    !fuzzBad &&
-    !benchmarkBad &&
-    encodingBad.length === 0
-  ) {
+  const facts = scanGuardGates(ROOT, contract)
+  const sigs = emittedSignals(facts, { prWorkflow, pushNet })
+  if (sigs.length === 0) {
     console.log(
       "guard-gates: clean (workflow present, no paths filter, test:guard step in BOTH workflows, fragile-guard job present without needs:, guard-gates job present without needs:, scan-push-full-suite in test:guard, fuzz job standalone com fuzz:ci, benchmark job standalone, encoding call sites sem needs: - sec 8.4/11.11 premise locked)",
     )
     return 0
   }
-  if (missingWorkflow !== null) {
-    console.log(
-      `guard-gates: WORKFLOW MISSING - ${missingWorkflow} nao existe (a guard net, sec 8.4/11.11)`,
-    )
-  }
-  for (const o of pathsFilter) {
-    console.log(`guard-gates: PATHS FILTER in ${o.file}:${o.line}: ${o.text}`)
-  }
-  if (missingStep !== null) {
-    console.log(
-      `guard-gates: TEST GUARD STEP MISSING in ${missingStep} (run: bun run test:guard required - the guard net, sec 8.4/11.11)`,
-    )
-  }
-  if (prJob !== null && !prJob.present) {
-    console.log(
-      `guard-gates: FRAGILE GUARD JOB MISSING in ${prWorkflow}:${prJob.jobLine ?? "?"} (job ${contract.prJobKey}: required - o twin PR do push net, sec 8.4/11.11)`,
-    )
-  }
-  if (prJob !== null && prJob.needs !== null) {
-    console.log(
-      `guard-gates: FRAGILE GUARD NEEDS in ${prWorkflow} (${prJob.needs} - o job standalone nao pode depender de outro; um needs: cria o skip vector da classe que o job existe para fechar)`,
-    )
-  }
-  if (pushNetJob !== null && !pushNetJob.present) {
-    console.log(
-      `guard-gates: GUARD GATES JOB MISSING in ${pushNet} (job ${contract.pushNetJobKey}: required - o job standalone do push net, sec 8.4/11.11)`,
-    )
-  }
-  if (pushNetJob !== null && pushNetJob.needs !== null) {
-    console.log(
-      `guard-gates: GUARD GATES JOB NEEDS in ${pushNet} (${pushNetJob.needs} - o job standalone do push net nao pode depender de outro; um needs: para um job inexistente INVALIDA o workflow (guard-gates.yml tem UM job) e o BASELINE nem roda - Prova 19 fecha o par nos dois lados da rede)`,
-    )
-  }
-  if (missingSuite !== null) {
-    console.log(
-      "guard-gates: GUARD SUITE MISSING in package.json test:guard (scan-push-full-suite.test.ts required - the 8.4 REAL-REPO CONTRACT lock)",
-    )
-  }
-  if (fuzzJob !== null && !fuzzJob.present) {
-    console.log(
-      `guard-gates: FUZZ JOB MISSING in ${prWorkflow} (job ${FUZZ_JOB}: required - a autoridade fuzz:ci batchado, sec 11.11/11.12, standalone em qualquer PR)`,
-    )
-  }
-  if (fuzzJob !== null && fuzzJob.needs !== null) {
-    console.log(
-      `guard-gates: FUZZ JOB NEEDS in ${prWorkflow} (${fuzzJob.needs} - o job fuzz standalone nao pode depender de outro; um needs: tornaria o resultado do fuzz dependente do job check)`,
-    )
-  }
-  if (fuzzJob !== null && fuzzJob.present && !fuzzJob.stepPresent) {
-    console.log(
-      `guard-gates: FUZZ STEP MISSING in ${prWorkflow} (run: bun run fuzz:ci required - a autoridade fuzz:ci batchado, sec 11.11/11.12)`,
-    )
-  }
-  if (benchmarkJob !== null && !benchmarkJob.present) {
-    console.log(
-      `guard-gates: BENCHMARK JOB MISSING in ${prWorkflow} (job ${contract.benchmarkJob}: required - o gate geo do merge path, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
-    )
-  }
-  if (benchmarkJob !== null && benchmarkJob.needs !== null) {
-    console.log(
-      `guard-gates: BENCHMARK JOB NEEDS in ${prWorkflow} (${benchmarkJob.needs} - o job benchmark standalone nao pode depender de outro; um needs: tornaria o gate geo skippable por lint)`,
-    )
-  }
-  if (benchmarkJob !== null && benchmarkJob.present && !benchmarkJob.stepPresent) {
-    console.log(
-      `guard-gates: BENCHMARK STEP MISSING in ${prWorkflow} (node scripts/run-benchmark.mjs required - o gate geo do merge path, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
-    )
-  }
-  for (const e of encodingBad) {
-    if (e.kind === "workflow") {
+  for (const s of sigs) {
+    if (s.key === "WORKFLOW MISSING") {
       console.log(
-        `guard-gates: ENCODING WORKFLOW MISSING - ${e.rel} nao existe (o call site do gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
+        `guard-gates: WORKFLOW MISSING - ${s.target} nao existe (a guard net, sec 8.4/11.11)`,
       )
-    } else if (e.kind === "job") {
+    } else if (s.key === "PATHS FILTER") {
+      console.log(`guard-gates: PATHS FILTER in ${s.target}:${s.line}: ${s.text}`)
+    } else if (s.key === "TEST GUARD STEP MISSING") {
       console.log(
-        `guard-gates: ENCODING CALL SITE MISSING in ${e.rel} (job ${contract.encodingJob}: com uses: ./.github/workflows/utf8-check.yml required - o gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
+        `guard-gates: TEST GUARD STEP MISSING in ${s.target} (run: bun run test:guard required - the guard net, sec 8.4/11.11)`,
       )
-    } else if (e.kind === "step") {
+    } else if (s.key === "FRAGILE GUARD JOB MISSING") {
       console.log(
-        `guard-gates: ENCODING CALL SITE STEP MISSING in ${e.rel} (uses: ./.github/workflows/utf8-check.yml required - o call site do gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
+        `guard-gates: FRAGILE GUARD JOB MISSING in ${s.target}:${s.jobLine ?? "?"} (job ${contract.prJobKey}: required - o twin PR do push net, sec 8.4/11.11)`,
+      )
+    } else if (s.key === "FRAGILE GUARD NEEDS") {
+      console.log(
+        `guard-gates: FRAGILE GUARD NEEDS in ${s.target} (${s.needs} - o job standalone nao pode depender de outro; um needs: cria o skip vector da classe que o job existe para fechar)`,
+      )
+    } else if (s.key === "GUARD GATES JOB MISSING") {
+      console.log(
+        `guard-gates: GUARD GATES JOB MISSING in ${s.target} (job ${contract.pushNetJobKey}: required - o job standalone do push net, sec 8.4/11.11)`,
+      )
+    } else if (s.key === "GUARD GATES JOB NEEDS") {
+      console.log(
+        `guard-gates: GUARD GATES JOB NEEDS in ${s.target} (${s.needs} - o job standalone do push net nao pode depender de outro; um needs: para um job inexistente INVALIDA o workflow (guard-gates.yml tem UM job) e o BASELINE nem roda - Prova 19 fecha o par nos dois lados da rede)`,
+      )
+    } else if (s.key === "GUARD SUITE MISSING") {
+      console.log(
+        "guard-gates: GUARD SUITE MISSING in package.json test:guard (scan-push-full-suite.test.ts required - the 8.4 REAL-REPO CONTRACT lock)",
+      )
+    } else if (s.key === "FUZZ JOB MISSING") {
+      console.log(
+        `guard-gates: FUZZ JOB MISSING in ${s.target} (job ${FUZZ_JOB}: required - a autoridade fuzz:ci batchado, sec 11.11/11.12, standalone em qualquer PR)`,
+      )
+    } else if (s.key === "FUZZ JOB NEEDS") {
+      console.log(
+        `guard-gates: FUZZ JOB NEEDS in ${s.target} (${s.needs} - o job fuzz standalone nao pode depender de outro; um needs: tornaria o resultado do fuzz dependente do job check)`,
+      )
+    } else if (s.key === "FUZZ STEP MISSING") {
+      console.log(
+        `guard-gates: FUZZ STEP MISSING in ${s.target} (run: bun run fuzz:ci required - a autoridade fuzz:ci batchado, sec 11.11/11.12)`,
+      )
+    } else if (s.key === "BENCHMARK JOB MISSING") {
+      console.log(
+        `guard-gates: BENCHMARK JOB MISSING in ${s.target} (job ${contract.benchmarkJob}: required - o gate geo do merge path, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
+      )
+    } else if (s.key === "BENCHMARK JOB NEEDS") {
+      console.log(
+        `guard-gates: BENCHMARK JOB NEEDS in ${s.target} (${s.needs} - o job benchmark standalone nao pode depender de outro; um needs: tornaria o gate geo skippable por lint)`,
+      )
+    } else if (s.key === "BENCHMARK STEP MISSING") {
+      console.log(
+        `guard-gates: BENCHMARK STEP MISSING in ${s.target} (node scripts/run-benchmark.mjs required - o gate geo do merge path, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
+      )
+    } else if (s.key === "ENCODING WORKFLOW MISSING") {
+      console.log(
+        `guard-gates: ENCODING WORKFLOW MISSING - ${s.target} nao existe (o call site do gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
+      )
+    } else if (s.key === "ENCODING CALL SITE MISSING") {
+      console.log(
+        `guard-gates: ENCODING CALL SITE MISSING in ${s.target} (job ${contract.encodingJob}: com uses: ./.github/workflows/utf8-check.yml required - o gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
+      )
+    } else if (s.key === "ENCODING CALL SITE STEP MISSING") {
+      console.log(
+        `guard-gates: ENCODING CALL SITE STEP MISSING in ${s.target} (uses: ./.github/workflows/utf8-check.yml required - o call site do gate de encoding, sec scan-surfaces.md Type C - auditoria da rede 2026-08)`,
       )
     } else {
       console.log(
-        `guard-gates: ENCODING CALL SITE NEEDS in ${e.rel} (${e.needs} - o call site do gate de encoding nao pode depender de outro job; um needs: criaria o skip vector do lint sobre o gate de encoding)`,
+        `guard-gates: ENCODING CALL SITE NEEDS in ${s.target} (${s.needs} - o call site do gate de encoding nao pode depender de outro job; um needs: criaria o skip vector do lint sobre o gate de encoding)`,
       )
     }
   }

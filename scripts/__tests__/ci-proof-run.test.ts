@@ -42,6 +42,7 @@ function runCli(args: string[], extraEnv: Record<string, string> = {}) {
       env: {
         CI_PROOF_GIT: FAKE,
         CI_PROOF_GH: FAKE,
+        CI_PROOF_LOCAL_BATCH: FAKE, // --expect-local-block: o batch runner do pre-commit via o MESMO fixture (papel 'batch')
         CI_PROOF_FAKE_STATE: stateDir,
         CI_PROOF_POLL_MS: "50",
         ...extraEnv,
@@ -103,6 +104,23 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(o.error).toBeNull()
     expect(o.noVerify).toBe(true)
     expect(parseArgs(["--help"]).error).toContain("--no-verify")
+  })
+
+  it("parseArgs: --expect-local-block parseia e o usage lista a flag (a contraparte do --no-verify - 2026-08-11)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--no-verify", "--mutate", "echo m", "--expect-local-block"])
+    expect(o.error).toBeNull()
+    expect(o.expectLocalBlock).toBe(true)
+    expect(parseArgs(["--help"]).error).toContain("--expect-local-block")
+  })
+
+  it("parseArgs: --expect-local-block requer --no-verify (o check so prova o trip quando o hook sera bypassado)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--mutate", "echo m", "--expect-local-block"])
+    expect(o.error).toContain("--expect-local-block requer --no-verify")
+  })
+
+  it("parseArgs: --expect-local-block requer --mutate (o check roda contra a mutacao na working tree)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--no-verify", "--expect-local-block"])
+    expect(o.error).toContain("--expect-local-block requer --mutate")
   })
 
   it("parseArgs: --only-jobs parseia e o usage lista a flag (sec 11.20 - poll por job, nao pelo run)", () => {
@@ -172,6 +190,16 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     const mut = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: "touch dirty.ts", expect: null, expectLog: null, keep: false }, "main")
     expect(mut.join("\n")).toContain("touch dirty.ts")
     expect(mut.join("\n")).toContain('commit -m "ci-proof: ci-proof/x"')
+  })
+
+  it("planSteps: --expect-local-block adiciona o passo local-check ANTES do commit (o batch runner do pre-commit DEVE trip - exit != 0)", () => {
+    const withFlag = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: "touch dirty.ts", expect: null, expectLog: null, keep: false, noVerify: true, expectLocalBlock: true }, "main")
+    const joined = withFlag.join("\n")
+    expect(joined).toContain("local-check: node scripts/run-precommit-guards.mjs  (--expect-local-block: o batch runner do pre-commit DEVE trip")
+    expect(joined.indexOf("shell: touch dirty.ts")).toBeLessThan(joined.indexOf("local-check:"))
+    expect(joined.indexOf("local-check:")).toBeLessThan(joined.indexOf('git: add -A && commit'))
+    const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: "touch dirty.ts", expect: null, expectLog: null, keep: false }, "main")
+    expect(without.join("\n")).not.toContain("local-check:")
   })
 
   it("planSteps: --no-verify adiciona o passo HUSKY=0 (bypass do husky local)", () => {
@@ -384,6 +412,52 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(fs.existsSync(path.join(stateDir, "husky.log"))).toBe(false)
   }, 60000)
 
+  // ── FAKE-BIN E2E: --expect-local-block (a contraparte do --no-verify) ──
+  it("E2E --expect-local-block TRIP: o batch runner do pre-commit sai 1 (um gate REAL tripou) -> o ciclo prossegue com o --no-verify -> exit 0 (o bypass mascara um trip legitimo)", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-elb-trip", "--workflow", "pr-check.yml", "--no-verify", "--mutate", "echo mutation", "--expect-local-block"], {
+      CI_PROOF_FAKE_DIRTY: "1",
+      CI_PROOF_FAKE_LOCAL_BATCH_EXIT: "1",
+    })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain("--expect-local-block OK - o batch runner do pre-commit tripou (exit 1)")
+    expect(result.stdout).toContain("mutacao commitada em ci-proof/e2e-elb-trip")
+    // O local-check rodou ANTES do commit do ciclo (o batch via fake bins).
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("batch:")
+    expect(inv.indexOf("batch:")).toBeLessThan(inv.indexOf("git:add -A"))
+    expect(inv.indexOf("git:add -A")).toBeLessThan(inv.indexOf("git:commit"))
+    // O batch tambem herda o HUSKY=0 (o check local roda sob o MESMO env do
+    // ciclo - o wiring do --no-verify cobre o papel batch, nao so o git).
+    const huskyLog = path.join(stateDir, "husky.log")
+    expect(fs.existsSync(huskyLog)).toBe(true)
+    expect(fs.readFileSync(huskyLog, "utf8")).toContain("batch:")
+  }, 60000)
+
+  it("E2E --expect-local-block NO-TRIP: o batch runner sai 0 (nenhum gate violado) -> exit 3 com a nota de FALSO POSITIVO, SEM commit e SEM push (o --no-verify so deve mascarar um trip real)", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-elb-notrip", "--workflow", "pr-check.yml", "--no-verify", "--mutate", "echo mutation", "--expect-local-block"], {
+      CI_PROOF_FAKE_DIRTY: "1",
+      CI_PROOF_FAKE_LOCAL_BATCH_EXIT: "0", // default = clean tree
+    })
+    expect(result.status).toBe(3)
+    expect(allOutput(result)).toContain("--expect-local-block: o batch runner do pre-commit NAO tripou (exit 0")
+    expect(allOutput(result)).toContain("FALSO POSITIVO")
+    // O ciclo PAROU antes do commit: nenhum add/commit/push rodou.
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("batch:")
+    expect(inv).not.toContain("git:add -A")
+    expect(inv).not.toContain("git:commit")
+    expect(inv).not.toContain("git:push origin ci-proof/e2e-elb-notrip")
+  }, 60000)
+
+  it("E2E --expect-local-block sem --no-verify: usage error (exit 2) ANTES de qualquer spawn - o check so faz sentido com o bypass", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-elb-usage", "--workflow", "pr-check.yml", "--mutate", "echo m", "--expect-local-block"], {
+      CI_PROOF_FAKE_DIRTY: "1",
+    })
+    expect(result.status).toBe(2)
+    expect(allOutput(result)).toContain("--expect-local-block requer --no-verify")
+    expect(invocations(stateDir)).toEqual([])
+  }, 60000)
+
   // ── REAL-REPO CONTRACT: a cadeia do trip do hook local (Prova 16) ──────
   it("REAL-REPO CONTRACT (Prova 16 ACHADO): a mutacao de um gate file TRIPA o hook local - pre-commit roda o batch (run-precommit-guards) que importa scan-guard-gates (o guard de gate file); o bypass e o HUSKY=0 do --no-verify", () => {
     const preCommit = fs.readFileSync(path.resolve(process.cwd(), ".husky", "pre-commit"), "utf8")
@@ -396,8 +470,39 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     // ANTES do push - o ACHADO da Prova 16 (needs: check travou o commit).
     expect(batch).toContain('from "./scan-guard-gates.mjs"')
     // O bypass oficial (shim .husky/_/h) NAO e rastreado (husky regenera no
-    // install) - por isso o contrato pina o HUSKY=0 via env wiring no E2E
-    // acima (husky.log), nao o conteudo do shim.
+    // install) - o contrato pina o HUSKY=0 via env wiring no E2E acima
+    // (husky.log) E, quando o shim estiver presente, o conteudo do bypass
+    // (o teste REAL-REPO CONTRACT do shim abaixo fecha o elo GERADO).
+  }, 60000)
+
+  it("REAL-REPO CONTRACT (shim .husky/_/h GERADO, quando presente): o bypass [ \"${HUSKY-}\" = \"0\" ] && exit 0 existe no shim que o husky regenera no install - skip gracioso se ausente (o elo so vale em ambientes com husky instalado)", () => {
+    // O shim e regenerado pelo husky a cada install e NAO e git-tracked -
+    // por isso o contrato e CONDICIONAL: quando presente (ambiente local com
+    // husky instalado), o bypass DEVE estar la; quando ausente (ex.: CI sem
+    // husky), o elo nao existe para pinar e o env wiring do E2E (husky.log)
+    // ja cobre a semantica do HUSKY=0 em qualquer ambiente.
+    const shimPath = path.resolve(process.cwd(), ".husky", "_", "h")
+    if (!fs.existsSync(shimPath)) {
+      // Skip gracioso: nenhum ambiente local tem o shim para verificar.
+      return
+    }
+    const shim = fs.readFileSync(shimPath, "utf8")
+    expect(shim).toContain('[ "${HUSKY-}" = "0" ] && exit 0')
+    // O shim e um script shell (nao JS) - o bypass e uma condicao de saida
+    // ANTES de qualquer hook real rodar (o guard [ ! -f "$s" ] para hook
+    // ausente vem antes, mas o HUSKY=0 e o primeiro bypass de gate), o que
+    // o .husky/_/h do husky v15.x garante ao executar o binario.
+  }, 60000)
+
+  it("REAL-REPO CONTRACT (--expect-local-block): o runLocalBatch() spawna o MESMO runner do .husky/pre-commit (run-precommit-guards.mjs) - o check local e o hook real, nao um gate paralelo", () => {
+    const cli = fs.readFileSync(path.resolve(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+    const preCommit = fs.readFileSync(path.resolve(process.cwd(), ".husky", "pre-commit"), "utf8")
+    // O check local usa o MESMO binario do hook (a cadeia Prova 16 completa:
+    // pre-commit -> batch -> guards). O seam de teste e env-only
+    // (CI_PROOF_LOCAL_BATCH) - o default real e o runner do repo.
+    expect(preCommit).toContain("node scripts/run-precommit-guards.mjs")
+    expect(cli).toContain("run-precommit-guards.mjs")
+    expect(cli).toContain("CI_PROOF_LOCAL_BATCH")
   }, 60000)
 
   // ── FAKE-BIN E2E: --expect-log mismatch ────────────────────────────────

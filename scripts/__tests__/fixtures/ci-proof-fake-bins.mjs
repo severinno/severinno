@@ -35,6 +35,12 @@
  *                               (used when the job is completed).
  *   CI_PROOF_FAKE_DIRTY         "1" = git status --porcelain is dirty
  *                               (the --mutate commit path).
+ *   CI_PROOF_FAKE_LOCAL_BATCH_EXIT  the exit code of the pre-commit batch
+ *                               runner role ('batch' - the
+ *                               --expect-local-block check): 0 (default) =
+ *                               no gate violated = the check FAILS; 1 =
+ *                               a guard tripped = the --no-verify masks a
+ *                               real local block and the cycle proceeds.
  *
  * Puro node, sem deps, ASCII puro (o fixture vive sob scripts/__tests__/,
  * fora do MJS_GATE_PATTERNS glob de top-level, mas mantem o padrao).
@@ -84,6 +90,18 @@ function ok() {
 record()
 
 const state = loadState()
+
+if (kind === "batch") {
+  // --expect-local-block (2026-08-11): the pre-commit batch runner role.
+  // The CLI spawns it via CI_PROOF_LOCAL_BATCH -> `node <this-file> batch`
+  // and branches on the exit code: 0 = clean (no local gate violated -> the
+  // --no-verify would mask a FALSE POSITIVE -> the cycle fails); 1 = a
+  // guard tripped (the hook would REALLY block -> cycle proceeds). The
+  // default 0 mirrors the real runner on a clean tree.
+  const exit = Number(process.env.CI_PROOF_FAKE_LOCAL_BATCH_EXIT || 0)
+  out(`fake batch runner: exit ${exit}\n`)
+  process.exit(exit)
+}
 
 if (kind === "git") {
   if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") {

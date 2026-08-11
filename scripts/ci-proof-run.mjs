@@ -70,7 +70,11 @@
  * ASSIM - a branch scratch nunca fica no remote); 2 = usage (flag
  * faltando/invalida); 3 = falha de infra (gh ausente, dispatch 404 da
  * Prova 7, timeout de poll, ou o revert do sucesso nao completou - uma
- * branch scratch deixada no remote nao pode passar como exit 0).
+ * branch scratch deixada no remote nao pode passar como exit 0) OU o
+ * --expect-local-block nao observou o trip (o batch runner do pre-commit
+ * saiu 0 = a mutacao nao viola gate nenhum - o --no-verify mascararia um
+ * falso positivo; a arvore fica suja na branch scratch, limpe manualmente
+ * como na Prova 16).
  *
  * HERMETICIDADE (testes): os binarios git/gh sao spawnados via
  * CI_PROOF_GIT / CI_PROOF_GH (env overrides apontando para o fixture
@@ -90,6 +94,29 @@
  * .husky/_/h tem `[ "${HUSKY-}" = "0" ] && exit 0`) - o CI e a autoridade
  * da prova, nao o hook local. Apos o run, limpe a arvore manualmente (git
  * reset --hard + checkout da branch original + branch -D da scratch).
+ *
+ * --expect-local-block (2026-08-11, a contraparte do --no-verify): o
+ * --no-verify sozinho NAO valida que o bypass foi necessario - um dev pode
+ * usa-lo com uma mutacao que nao viola gate nenhum, e o ciclo iria ao CI
+ * mascarando um FALSO POSITIVO (o hook local nunca teria bloqueado). Esta
+ * flag roda o batch runner do pre-commit (run-precommit-guards.mjs - o
+ * MESMO runner que o .husky/pre-commit invoca, sec 11.13) contra a working
+ * tree da branch scratch ANTES do commit do ciclo: exit != 0 = o hook local
+ * REALMENTE bloquearia o commit - o --no-verify mascara um trip legitimo e
+ * o ciclo prossegue; exit 0 = nenhum gate violado - a flag falha com a
+ * nota (exit 3, sem commit/push) provando que o --no-verify so mascara um
+ * trip REAL, nunca um falso positivo. Requer --no-verify E --mutate (o
+ * check so faz sentido quando o hook sera bypassado num ciclo que commita).
+ * NOTA honesta (mesmo espirito da LIMITACAO RESIDUAL das outras camadas):
+ * um exit != 0 do batch prova que o hook local BLOQUEARIA o commit - nao
+ * necessariamente que a MUTACAO e a violadora (uma divergencia
+ * pre-existente, ex.: node_modules, tambem tripa o batch). Isso e fiel a
+ * semantica real do hook (ele bloquearia o commit por QUALQUER razao) -
+ * o claim da flag e "o bypass mascara um bloqueio real", nao "a mutacao
+ * viola um gate especifico".
+ * Hermeticidade: o runner e spawnado via CI_PROOF_LOCAL_BATCH (env override
+ * apontando para o fixture fake - o mesmo padrao cross-platform do
+ * CI_PROOF_GIT/CI_PROOF_GH, com o papel 'batch' como arg[2]).
  * ASCII puro (gate file). Puro node, sem deps.
  */
 import { spawnSync } from "node:child_process"
@@ -130,7 +157,7 @@ export function parseArgs(argv) {
   // SEMPRE retorna a shape completa com error: null no sucesso - o tipo
   // uniao `{...opts} | {error}` quebraria o acesso a propriedades nos
   // testes (TS2339) e o `if (opts.error)` do main() continua valido.
-  const out = { branch: null, workflow: null, mutate: null, expect: null, expectLog: null, timeout: null, keep: false, dryRun: false, noVerify: false, onlyJobs: null, error: null }
+  const out = { branch: null, workflow: null, mutate: null, expect: null, expectLog: null, timeout: null, keep: false, dryRun: false, noVerify: false, expectLocalBlock: false, onlyJobs: null, error: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--branch") { out.branch = argv[i + 1] ?? null; i++ }
@@ -147,11 +174,21 @@ export function parseArgs(argv) {
     else if (a === "--keep-branch") out.keep = true
     else if (a === "--dry-run") out.dryRun = true
     else if (a === "--no-verify") out.noVerify = true
-    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--dry-run]"; break }
+    else if (a === "--expect-local-block") out.expectLocalBlock = true
+    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"; break }
     else { out.error = `flag desconhecida: ${a}`; break }
   }
   if (!out.error && (!out.branch || !out.workflow)) {
-    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--dry-run]"
+    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--expect-local-block] [--dry-run]"
+  }
+  // --expect-local-block (2026-08-11): so faz sentido com o bypass (o check
+  // prova que o --no-verify mascara um trip REAL) E com --mutate (roda
+  // contra a working tree da mutacao ANTES do commit do ciclo).
+  if (!out.error && out.expectLocalBlock && !out.noVerify) {
+    out.error = "--expect-local-block requer --no-verify (o check so prova o trip quando o hook local sera bypassado no ciclo)"
+  }
+  if (!out.error && out.expectLocalBlock && !out.mutate) {
+    out.error = "--expect-local-block requer --mutate (o check roda contra a mutacao na working tree ANTES do commit)"
   }
   // Resolve o default calibrado (sec 11.20): SEMPRE retorna um numero - o
   // timeout nunca fica null (a shape completa promete timeout numerico). O
@@ -198,6 +235,9 @@ export function planSteps(opts, originalBranch) {
   ]
   if (opts.mutate) {
     steps.push(`shell: ${opts.mutate}  (a mutacao da prova, na branch scratch)`)
+    if (opts.expectLocalBlock) {
+      steps.push(`local-check: node scripts/run-precommit-guards.mjs  (--expect-local-block: o batch runner do pre-commit DEVE trip - exit != 0, ANTES do commit)`)
+    }
     steps.push(`git: add -A && commit -m "ci-proof: ${b}"`)
   } else {
     steps.push(`git: (sem --mutate - empurra a branch scratch como esta)`)
@@ -264,6 +304,25 @@ export function runBin(kind, args) {
 
 const git = (args) => runBin("git", args)
 const gh = (args) => runBin("gh", args)
+
+/**
+ * Run the pre-commit batch runner (run-precommit-guards.mjs - the SAME
+ * runner the .husky/pre-commit invokes, sec 11.13) against the current
+ * working tree. Used by --expect-local-block (2026-08-11): exit != 0 = the
+ * local hook would REALLY block the mutation - the --no-verify masks a real
+ * trip; exit 0 = no gate violated - the bypass would mask a false positive.
+ * Hermetic seam: CI_PROOF_LOCAL_BATCH points at the fake fixture (role
+ * 'batch' as arg[2], the same cross-platform pattern as CI_PROOF_GIT/GH);
+ * defaults to `node scripts/run-precommit-guards.mjs` in the repo.
+ */
+export function runLocalBatch() {
+  const fake = process.env.CI_PROOF_LOCAL_BATCH
+  const cmd = fake
+    ? [process.execPath, fake, "batch"]
+    : [process.execPath, path.resolve(process.cwd(), "scripts", "run-precommit-guards.mjs")]
+  const r = spawnSync(cmd[0], cmd.slice(1), { encoding: "utf8", env: process.env, cwd: process.cwd() })
+  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" }
+}
 
 function fail(code, msg) {
   console.error(`ci-proof-run: ${msg}`)
@@ -333,6 +392,26 @@ export async function main() {
     const st = git(["status", "--porcelain"])
     const dirty = (st.stdout ?? "").trim() !== ""
     if (dirty) {
+      // --expect-local-block (2026-08-11): ANTES do commit, roda o batch
+      // runner do pre-commit contra a working tree da mutacao (o MESMO
+      // runner que o .husky/pre-commit invoca, sec 11.13). exit != 0 = o
+      // hook local REALMENTE bloquearia - o --no-verify mascara um trip
+      // legitimo e o ciclo prossegue. exit 0 = nenhum gate violado - o
+      // bypass mascararia um FALSO POSITIVO: falha (exit 3) SEM commit/push
+      // (a arvore fica suja na branch scratch, limpe manualmente).
+      if (opts.expectLocalBlock) {
+        const lb = runLocalBatch()
+        if (lb.status === null) {
+          return fail(3, `--expect-local-block: batch runner do pre-commit nao encontrado (spawnSync ENOENT)`)
+        }
+        if (lb.status === 0) {
+          return fail(
+            3,
+            `--expect-local-block: o batch runner do pre-commit NAO tripou (exit 0: ${(lb.stdout || "").trim().split("\n")[0] || "clean"}) - a mutacao nao viola nenhum gate local; o --no-verify mascararia um FALSO POSITIVO, nao um trip real (Prova 16). Revise a mutacao - a arvore ficou suja na branch scratch (git reset --hard + checkout da branch original + branch -D)`,
+          )
+        }
+        console.log(`ci-proof-run: --expect-local-block OK - o batch runner do pre-commit tripou (exit ${lb.status}) - o --no-verify mascara um trip real`)
+      }
       git(["add", "-A"])
       const cm = git(["commit", "-m", `ci-proof: ${opts.branch}`])
       if (cm.status !== 0) return fail(3, `git commit falhou: ${cm.stderr.trim()}`)
