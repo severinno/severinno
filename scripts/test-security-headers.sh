@@ -75,7 +75,11 @@ fetch_headers() {
   local url="$1"
   # Usa GET em vez de HEAD para capturar headers reais (CDNs/proxies
   # podem retornar headers diferentes em HEAD requests).
-  curl -s -o /dev/null -D "$HEADERS_FILE" -w "%{http_code}" "$url" 2>/dev/null || echo "000"
+  # --max-time/--connect-timeout (2026-08, sec security-headers-gate): um
+  # curl SEM timeout deixava o job esperando minutos num connect stall
+  # (run 31430040398: HTTP 000000, tail de 9:08 em toda prova - o site
+  # responde em ~200ms quando saudavel; o stall era o curl sem bound).
+  curl -s -o /dev/null -D "$HEADERS_FILE" -w "%{http_code}" --max-time 20 --connect-timeout 10 "$url" 2>/dev/null || echo "000"
 }
 
 get_header() {
@@ -319,6 +323,7 @@ test_tls() {
 
   # Verificar TLS 1.2+ (sem ciphers especificos para compatibilidade com CI)
   tls_info=$(curl -sI --tlsv1.2 --tls-max 1.3 \
+    --max-time 20 --connect-timeout 10 \
     -o /dev/null -w "%{ssl_verify_result}" "$url" 2>/dev/null || echo "error")
 
   if [[ "$tls_info" != "error" ]]; then

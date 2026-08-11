@@ -31,7 +31,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { ENCODING_CI_NET, GUARD_PR_TWIN, GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writePRWorkflow, writePRWorkflowFuzzQuebrado, writePRWorkflowSemFuzz } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-guard-gates.mjs")
 
@@ -66,53 +66,6 @@ function writePkg(dir: string, testGuard = "vitest run scripts/__tests__/scan-pu
     dir,
     "package.json",
     JSON.stringify({ name: "synthetic", scripts: { "test:guard": testGuard } }, null, 2),
-  )
-}
-
-/** Write a synthetic pr-check.yml with the fragile-guard job (the PR twin).
- * The utf8-check call site (rule 8) AND the benchmark job (rule 9) are part
- * of the base - the sole-failure mutations that REPLACE this file wholesale
- * must keep both or the ENCODING CALL SITE MISSING / BENCHMARK JOB MISSING
- * lines would muddy the pin. */
-function writePRWorkflow(dir: string, extra = "") {
-  writeFile(
-    dir,
-    GUARD_PR_TWIN,
-    [
-      "name: PR Check",
-      "on:",
-      "  pull_request:",
-      "    branches: [main]",
-      "jobs:",
-      "  utf8-check:",
-      "    uses: ./.github/workflows/utf8-check.yml",
-      "  check:",
-      "    runs-on: ubuntu-latest",
-      "    steps:",
-      "      - name: Unit tests",
-      "        run: bun run test:unit",
-      "  fuzz:",
-      "    name: Fuzz Tests",
-      "    runs-on: ubuntu-latest",
-      "    steps:",
-      "      - name: Run fuzz tests",
-      "        run: bun run fuzz:ci > fuzz-results.json",
-      "  benchmark:",
-      "    name: Geo Benchmark",
-      "    runs-on: ubuntu-latest",
-      "    steps:",
-      "      - name: Run geo benchmark",
-      "        run: |",
-      "          node scripts/run-benchmark.mjs --type geo --json",
-      "  fragile-guard:",
-      "    name: Fragile Range Guard",
-      "    runs-on: ubuntu-latest",
-      "    steps:",
-      "      - uses: actions/checkout@v4",
-      "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
-      "        run: bun run test:guard",
-      "",
-    ].join("\n") + extra,
   )
 }
 
@@ -413,38 +366,10 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir)
     writeCIWorkflow(dir)
-    writeFile(
-      dir,
-      GUARD_PR_TWIN,
-      [
-        "name: PR Check",
-        "on:",
-        "  pull_request:",
-        "    branches: [main]",
-        "jobs:",
-        "  utf8-check:",
-        "    uses: ./.github/workflows/utf8-check.yml",
-        "  check:",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Unit tests",
-        "        run: bun run test:unit",
-        "  benchmark:",
-        "    name: Geo Benchmark",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run geo benchmark",
-        "        run: |",
-        "          node scripts/run-benchmark.mjs --type geo --json",
-        "  fragile-guard:",
-        "    name: Fragile Range Guard",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
-        "        run: bun run test:guard",
-        "",
-      ].join("\n"),
-    )
+    // SEM FUZZ: a shape compartilhada do golden-copy-utils (o mesmo shape do
+    // fixture 2 da MUTATION COMBINADA) - utf8-check + check + benchmark +
+    // fragile-guard, sem o job fuzz.
+    writePRWorkflowSemFuzz(dir)
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(1)
@@ -471,43 +396,10 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir)
     writeCIWorkflow(dir)
-    // A base writePRWorkflow JA tem o fuzz:ci step - um segundo bloco
-    // APPENDADO nao remove o step do primeiro (stepPresent ficaria true).
-    // A mutacao substitui o pr-check.yml inteiro: o fuzz job existe mas roda
-    // test:unit - a unica violacao e o step fuzz:ci ausente (sole-failure).
-    writeFile(
-      dir,
-      GUARD_PR_TWIN,
-      [
-        "name: PR Check",
-        "on:",
-        "  pull_request:",
-        "    branches: [main]",
-        "jobs:",
-        "  utf8-check:",
-        "    uses: ./.github/workflows/utf8-check.yml",
-        "  fuzz:",
-        "    name: Fuzz Tests",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run something else",
-        "        run: bun run test:unit",
-        "  benchmark:",
-        "    name: Geo Benchmark",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run geo benchmark",
-        "        run: |",
-        "          node scripts/run-benchmark.mjs --type geo --json",
-        "  fragile-guard:",
-        "    name: Fragile Range Guard",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
-        "        run: bun run test:guard",
-        "",
-      ].join("\n"),
-    )
+    // FUZZ QUEBRADO (omitCheck: a shape do FUZZ STEP MISSING): o job fuzz
+    // existe mas roda test:unit - a unica violacao e o step fuzz:ci ausente
+    // (sole-failure; sem o job check para nao mudar o pin).
+    writePRWorkflowFuzzQuebrado(dir, { omitCheck: true })
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(1)
@@ -538,45 +430,9 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const dir = createTempDir("guard-gates-")
     writeWorkflow(dir)
     writeCIWorkflow(dir)
-    writeFile(
-      dir,
-      GUARD_PR_TWIN,
-      [
-        "name: PR Check",
-        "on:",
-        "  pull_request:",
-        "    branches: [main]",
-        "jobs:",
-        "  utf8-check:",
-        "    uses: ./.github/workflows/utf8-check.yml",
-        "  check:",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Unit tests",
-        "        run: bun run test:unit",
-        "  fuzz:",
-        "    needs: check",
-        "    name: Fuzz Tests",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run something else",
-        "        run: bun run test:unit",
-        "  benchmark:",
-        "    name: Geo Benchmark",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run geo benchmark",
-        "        run: |",
-        "          node scripts/run-benchmark.mjs --type geo --json",
-        "  fragile-guard:",
-        "    name: Fragile Range Guard",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
-        "        run: bun run test:guard",
-        "",
-      ].join("\n"),
-    )
+    // FUZZ QUEBRADO com needs: check (a shape compartilhada do MUTATION
+    // COMBINADA fixture 1) - os DOIS furos juntos num unico stdout.
+    writePRWorkflowFuzzQuebrado(dir, { needs: "check" })
     writePkg(dir)
     const r = runGuard(dir)
     expect(r.status).toBe(1)
@@ -589,38 +445,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     const dir2 = createTempDir("guard-gates-")
     writeWorkflow(dir2)
     writeCIWorkflow(dir2)
-    writeFile(
-      dir2,
-      GUARD_PR_TWIN,
-      [
-        "name: PR Check",
-        "on:",
-        "  pull_request:",
-        "    branches: [main]",
-        "jobs:",
-        "  utf8-check:",
-        "    uses: ./.github/workflows/utf8-check.yml",
-        "  check:",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Unit tests",
-        "        run: bun run test:unit",
-        "  benchmark:",
-        "    name: Geo Benchmark",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run geo benchmark",
-        "        run: |",
-        "          node scripts/run-benchmark.mjs --type geo --json",
-        "  fragile-guard:",
-        "    name: Fragile Range Guard",
-        "    runs-on: ubuntu-latest",
-        "    steps:",
-        "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
-        "        run: bun run test:guard",
-        "",
-      ].join("\n"),
-    )
+    writePRWorkflowSemFuzz(dir2)
     writePkg(dir2)
     const r2 = runGuard(dir2)
     expect(r2.status).toBe(1)

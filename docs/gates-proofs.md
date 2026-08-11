@@ -33,6 +33,10 @@
 | 15 | Guard do push net — **FRAGILE GUARD NEEDS via CI real** (`scan-guard-gates.mjs` rule 5 + REAL-REPO CONTRACT no pr-check) | O `needs:` voltar no `fragile-guard` do pr-check.yml **no CI real** (o lado CI da Prova 15: a mesma injeção num `workflow_dispatch`, não só local) | `needs: check` no job `fragile-guard` do pr-check.yml REAL (branch scratch `ci-proof/guard-needs-ci`, 2af1c62) via **`ci-proof-run.mjs`** (o helper: ciclo prova-CI num comando) | Run [**31430040398**](https://github.com/severinno/severinno/actions/runs/31430040398) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ conclusion=`failure`; job `check` (step Unit tests): `× REAL-REPO CONTRACT ... → expected 1 to be +0` (scan-guard-gates **E** run-precommit-guards — DOIS guards vermelhos) + `+ guard-gates: FRAGILE GUARD NEEDS in .github/workflows/pr-check.yml (needs: check ...)` no log (5×); ACHADO: o **pre-commit hook local bloqueou o commit da mutação** na 1ª tentativa (rule 5 = tripla: hook + CLI + REAL-REPO CONTRACT) → re-run com `HUSKY=0` (CI = autoridade); revertido byte-identical |
 | 16 | Guard do push net — **multi-violação AGREGADA live** (`scan-guard-gates.mjs` rules 1-4, 6-9 no CLI real, repo REAL) | O CLI listar SÓ a primeira violação quando VÁRIAS regras estão quebradas ao mesmo tempo — o comportamento multi-violação como contrato (a Prova 15 provou rule 5; rules 1-4/6-9 só tinham prova sintética) | Run 1: guard-gates.yml DELETADO + pr-check.yml sem fragile-guard/fuzz/benchmark/utf8-check + ci.yml sem utf8-check + test:guard sem a suite (rules 1,3,4,6,7,8,9); Run 2: guard-gates.yml restaurado com `paths:` + sem o step test:guard (rules 2,3) | **Local** (prova de workflow REAL — o CLI + os arquivos reais, revert byte-identical via backup md5) | ✅ **Run 1**: exit 1 listando **8 sinais num único run** com os caminhos exatos (`WORKFLOW MISSING` guard-gates.yml, `TEST GUARD STEP MISSING` pr-check.yml, `FRAGILE GUARD JOB MISSING` pr-check.yml, `GUARD SUITE MISSING` package.json, `FUZZ JOB MISSING`, `BENCHMARK JOB MISSING`, `ENCODING CALL SITE MISSING` ci.yml + pr-check.yml); **Run 2**: exit 1 com `PATHS FILTER in guard-gates.yml:51` + `TEST GUARD STEP MISSING in guard-gates.yml` + as mesmas 6 do lado PR; revertido byte-identical (md5 + git diff vazio) |
 | 17 | Pre-push — **integrity ANTES do fuzz mapeado** (simulação de pre-push real com node_modules divergente, sec. 11.19) | Um node_modules divergente gastar ~6-14s de fuzz mapeado ANTES de o integrity falhar — a ORDEM do hook decidida nas secs. 11.17/11.18 | `node_modules/react` instalado em 19.2.99 vs locked 19.2.3 num repo sintético via `NODE_MODULES_ROOT` + stdin de push REAL (1 ref não-deleção) no hook `.husky/pre-push` completo | **Local** (hook REAL; repo real intocado — fixtures em /tmp via `cygpath -w`, a classe 8.5 é local) | ✅ exit 1 com `DIVERGENT react installed=19.2.99 locked=19.2.3` + CURE como **última** saída; `run-mapped-fuzz` **nunca invocado** (0 execuções; as 6 menções a fuzz no log são nomes de gate files no ASCII-OK do verify-encoding); wall-clock 6.45s sem os ~6-14s do fuzz; controle: root clean → `clean (react/react-dom match bun.lock: 19.2.3/19.2.3; 0 extraneous)` exit 0 |
+| 18 | Guard do push net — **GUARD GATES JOB NEEDS via push real** (`scan-guard-gates.mjs` rule 5, lado PUSH NET — o par da Prova 16 fechado no OUTRO lado da rede) | Um `needs:` voltar no job `guard-gates` do guard-gates.yml — pior que no PR: o guard-gates.yml tem UM único job, então um `needs: check` referencia job INEXISTENTE e o GitHub INVALIDA o workflow inteiro (o BASELINE nem chega a rodar — órfão total) | `needs: check` injetado no job `guard-gates` do guard-gates.yml REAL (branch scratch `ci-proof/guard-gates-needs`, 3742cfd sobre e1bd036 — o commit com a rule 5 estendida) + push REAL temporário a `develop` (o trigger `push: [main, develop]`; `main` dispararia deploy; `develop` é o caminho seguro da Prova 7) | Run [**31439238631**](https://github.com/severinno/severinno/actions/runs/31439238631) (Guard Gates, event `push`, branch `develop`) + Run [**31439239592**](https://github.com/severinno/severinno/actions/runs/31439239592) (CI/CD, event `push`, branch `develop`) | ✅ **Guard Gates**: failure em **0s** — `This run likely failed because of a workflow file issue` (o `needs: check` invalida o workflow no parse; o BASELINE não roda — a classe do órfão em dobro); **CI/CD (job Tests)**: `× REAL-REPO CONTRACT ... → expected 1 to be +0` (scan-guard-gates **E** run-precommit-guards REAL-REPO CONTRACT + GROWTH CONTRACTs — mesma raiz: o guard novo pega o `needs:` no arquivo real); **UTF-8 Check**: success (gate de encoding limpo, isolando a falha ao contrato); revertido byte-identical (md5 773542ee...) |
+| 19 | ci-proof-run — **`--only-jobs` EARLY-EXIT live no CI real** (Prova 20, sec 11.20; o poll termina no JOB, não no run) | O ciclo de prova esperar o run INTEIRO (9:12 na referência 31430040398, dominado pelo Security Headers 9:08 — job sem relação com o sinal) mesmo quando o sinal vive num job (check 2:47): ~9min por prova quando ~3.5min bastam — o furo que o `--only-jobs` (sec 11.20) fechou no código, agora com prova viva | `needs: check` no job `fragile-guard` do pr-check.yml REAL (branch scratch `ci-proof/only-jobs-live`) via **`ci-proof-run --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT'`** (o helper + a mutação conhecida da Prova 16, com `--no-verify` porque o pre-commit local bloqueia o commit da mutação) | Run [**31442006152**](https://github.com/severinno/severinno/actions/runs/31442006152) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock do ciclo: 207.28s (~3.5min)** medido com `time -p` (branch scratch → mutação → push → dispatch → poll do job → captura job-scoped → verify → revert); helper **exit 0**; job `check`: `× REAL-REPO CONTRACT ... → expected 1 to be +0` no log capturado (o sinal exato; integrity + workflow-contracts no mesmo run); conclusion=`failure` como esperado; revertido byte-identical (pr-check.yml md5 a2d3aba4... + o delta uncommitted `--only-jobs` restaurado do backup md5-identical) |
+| 20 | Guard do push net — **FUZZ JOB NEEDS + FUZZ STEP MISSING via CI real** (Prova 21, sec 8.16; `scan-guard-gates.mjs` rule 7, o lado CI da classe FUZZ — o par da Prova 17 fechado no pr-check real) | A classe FUZZ (needs: + step errado no job fuzz do pr-check.yml) ter prova só sintética — a Prova 17 provou a multi-violação AGREGADA local; faltava o lado CI: a MESMA injeção combinada num `workflow_dispatch` real, com o `Fuzz Tests: skipped` como prova viva do skip vector | `needs: check` + step `bun run fuzz:ci` trocado por `bun run lint` no job `fuzz` do pr-check.yml REAL (branch scratch `ci-proof/fuzz-needs-live`) via **`ci-proof-run --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT' --no-verify`** | Run [**31444762608**](https://github.com/severinno/severinno/actions/runs/31444762608) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock 206.76s (~3.5min)** com `time -p`; helper **exit 0**; job `check` (~2:51, 00:05:04→00:07:55) conclusion=`failure` com os DOIS sinais no log job-scoped: `guard-gates: FUZZ JOB NEEDS in .github/workflows/pr-check.yml (needs: check ...)` + `guard-gates: FUZZ STEP MISSING in .github/workflows/pr-check.yml (run: bun run fuzz:ci required ...)` + `scan-guard-gates.test.ts (30 tests | 1 failed)` (REAL-REPO CONTRACT); **`Fuzz Tests: skipped`** (00:07:55) — o `needs: check` fez o fuzz depender do check falho, o skip vector provado vivo; revertido byte-identical (11 arquivos do delta restaurados do backup md5-identical) |
+| 21 | Guard do push net — **multi-violação AGREGADA via CI real** (Prova 22, sec 8.17; `scan-guard-gates.mjs` rules 1-4, 6-9 — o lado CI da Prova 17, que era local) | A Prova 17 provou a multi-violação AGREGADA no CLI real LOCALMENTE (8 sinais num run, repo real, revert byte-identical); faltava o lado CI: a MESMA injeção agregada num `workflow_dispatch` real, com o job check (REAL-REPO CONTRACT) **E** o batch runner (run-precommit-guards) falhando com os mesmos sinais | A MESMA injecao da Prova 17 Run 1 (guard-gates.yml DELETADO + pr-check.yml sem utf8-check/fuzz/benchmark/fragile-guard + ci.yml sem utf8-check + package.json test:guard sem scan-push-full-suite) via **`ci-proof-run --branch ci-proof/aggr-live --only-jobs check --expect failure --expect-log 'REAL-REPO CONTRACT' --no-verify`** (mutation script `scripts/prova22-mutate.mjs` TEMP, CRLF-safe + **self-delete** antes do `git add -A` — nunca entrou no commit scratch) | Run [**31446588931**](https://github.com/severinno/severinno/actions/runs/31446588931) (`PR Check`, event `workflow_dispatch`, branch scratch) | ✅ **wall-clock 204.91s (~3.4min)** com `time -p`; helper **exit 0**; job `check` conclusion=`failure` com **88 linhas `guard-gates:` no log job-scoped** — os **8 sinais** da agregacao (WORKFLOW MISSING + TEST GUARD STEP MISSING + FRAGILE GUARD JOB MISSING + GUARD SUITE MISSING + FUZZ JOB MISSING + BENCHMARK JOB MISSING + ENCODING CALL SITE MISSING ×2 + ENCODING WORKFLOW MISSING) — e as DUAS suites vermelhas: `scan-guard-gates.test.ts (30 tests | 1 failed)` (REAL-REPO CONTRACT, 1115ms) **E** `run-precommit-guards.test.ts (7 tests | 7 failed)` (o batch runner — TODOS os 7 guards vermelhos, incluindo o REAL-REPO CONTRACT do batch); os GROWTH CONTRACTs do workflow-contracts também vermelhos (mesma raiz: guard-gates.yml sumiu); revertido byte-identical (13 arquivos do delta restaurados do backup md5 **OK 13/13**; mutation script self-deletado; `git status` = delta original intacto) |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -1494,6 +1498,223 @@ guard-gates: TEST GUARD STEP MISSING in .github/workflows/guard-gates.yml (run: 
 - **Gap protegido**: um futuro refactor que faça o guard parar na PRIMEIRA
   violação (early-return) deixaria de listar as demais — a classe que esta
   prova (e o teste MUTATION COMBINADA da suíte) trava.
+
+## 8.15 Prova 19 — GUARD GATES JOB NEEDS live via push REAL a develop (o par da Prova 16 fechado no push net, 2026-08-10)
+
+- **Gate**: `scripts/scan-guard-gates.mjs` rule 5 — agora cobre os DOIS lados
+  da rede (a extensão desta thread): o twin do PR (`fragile-guard` no
+  pr-check.yml, Prova 15/16) E o job `guard-gates` do próprio push net
+  (`guard-gates.yml`). O job key do push net é um fato do manifest
+  (`GUARD_NET_PUSH_JOB` em workflow-contracts.mjs, consumido pelo guard via
+  `pushNetJobKey`), e o guard emite `GUARD GATES JOB MISSING` / `GUARD GATES
+  JOB NEEDS` para o workflow do push.
+- **Por que o push net é pior que o PR**: o guard-gates.yml tem UM ÚNICO job
+  (`guard-gates`) — um `needs: check` referencia um job que NÃO EXISTE no
+  workflow, e o GitHub **invalida o workflow inteiro no parse** (a run nem
+  cria jobs). O BASELINE de 0 offenders fica órfão em DOBRO: o job não roda
+  por injeção direta E o workflow inteiro é descartado pelo GitHub. A
+  IMMUNITY a skip do push net (standalone, sem `needs:`) não é só
+  cosmética — é o que mantém o workflow parseável.
+- **Runs**: [31439238631](https://github.com/severinno/severinno/actions/runs/31439238631)
+  (workflow `Guard Gates`, event `push`, branch `develop`) +
+  [31439239592](https://github.com/severinno/severinno/actions/runs/31439239592)
+  (workflow `CI/CD`, event `push`, branch `develop`).
+- **Injeção** (2026-08-10): branch scratch `ci-proof/guard-gates-needs`
+  (3742cfd sobre e1bd036 — o commit com a rule 5 estendida, SEM a qual a
+  injeção passaria despercebida pelo contrato: o gap que esta prova fecha é
+  o guard ANTIGO não vendo o `needs:` do push net), com `needs: check`
+  injetado no job `guard-gates` do guard-gates.yml REAL (a mesma classe da
+  Prova 15/16, agora no workflow do push). Disparo: `git push --no-verify
+  origin HEAD:develop` — o trigger real do guard-gates.yml é `push:
+  branches: [main, develop]`; `main` dispararia o deploy.yml (risco alto,
+  Prova 7), `develop` não existe no remote e não tem deploy atrelado — o
+  caminho seguro documentado na seção 10.
+- **Observado**:
+
+  Run 31439238631 (Guard Gates) — failure em **0s**, sem nenhum job
+  executado:
+
+```
+X develop Guard Gates · 31439238631
+Triggered via push
+X This run likely failed because of a workflow file issue.
+```
+
+  Run 31439239592 (CI/CD, job Tests, step Unit tests — test:run, o
+  REAL-REPO CONTRACT roda em todo push):
+
+```
+× scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4/11.11)
+  > REAL-REPO CONTRACT: guard-gates.yml real sem paths filter + test:guard com
+    a suite + pr-check.yml com fragile-guard/fuzz/benchmark standalone + ...
+    → expected 1 to be +0 // Object.is equality
+× run-precommit-guards.mjs - batch runner dos 7 guards node (sec 11.13)
+  > REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 7 veredictos
+    clean na ORDEM do hook
+    → expected 1 to be +0
+× workflow-contracts GROWTH CONTRACT (5th GUARD_NET / 3rd ENCODING_NET)
+    → expected 1 to be +0
+```
+
+  Run 31439239455 (UTF-8 Check) — **success** (o gate de encoding ficou
+  limpo: a falha é isolada ao contrato do guard, não contaminação do
+  arquivo mutado).
+
+  Confirmação local pré-push (mesma mutação, no working tree):
+
+```
+guard-gates: GUARD GATES JOB NEEDS in .github/workflows/guard-gates.yml
+  (needs: check - o job standalone do push net nao pode depender de outro;
+  um needs: para um job inexistente INVALIDA o workflow (guard-gates.yml
+  tem UM job) e o BASELINE nem roda ...) → exit 1
+```
+
+- **O que isto prova**: (a) o guard NOVO vê o `needs:` do push net — o
+  REAL-REPO CONTRACT falha no CI real com o caminho exato
+  (`.github/workflows/guard-gates.yml`), fechando o par da Prova 16 nos
+  DOIS lados da rede; (b) a classe do órfão em dobro é real: o GitHub
+  invalida o workflow no parse (0s, `workflow file issue`), então um
+  `needs:` não só skiparia o BASELINE — o descartaria por completo; (c) a
+  extensão do guard (GUARD_NET_PUSH_JOB + `GUARD GATES JOB NEEDS`) é a
+  PRÉ-CONDIÇÃO da prova: sem ela, a injeção passaria despercebida (o guard
+  antigo só olhava o twin do PR) — o gap que a tarefa fechou antes de
+  provar.
+- **Reversão**: `git push --no-verify origin --delete develop` (remote de
+  volta ao estado original, sem branch develop) + `git checkout
+  freebuff/new-thread-thmsitz5qutoia` + `git branch -D
+  ci-proof/guard-gates-needs`; md5 do guard-gates.yml byte-identical
+  (`773542ee...` — o snapshot pré-prova), `git status` limpo.
+- **Gap protegido**: um `needs:` que volte no job `guard-gates` do push net
+  agora falha o guard (exit 1, `GUARD GATES JOB NEEDS`) no pre-commit
+  (batch runner) E no CI (REAL-REPO CONTRACT do test:unit/test:guard) — a
+  classe da invalidação silenciosa do workflow não pode mais entrar.
+
+## 8.16 Prova 21 — FUZZ JOB NEEDS + FUZZ STEP MISSING live via CI real (a classe FUZZ fechada no lado CI, 2026-08-11)
+
+- **Gate**: `scripts/scan-guard-gates.mjs` rule 7 (FUZZ JOB STANDALONE) — o
+  pr-check.yml DEVE ter o job `fuzz:` no nível raiz, SEM `needs:` e com o
+  step `run: bun run fuzz:ci` (a autoridade fuzz:ci batchada, sec 11.11/
+  11.12, standalone em qualquer PR). Sinais: `FUZZ JOB MISSING` /
+  `FUZZ JOB NEEDS` / `FUZZ STEP MISSING` com o caminho exato.
+- **Por que esta prova**: a Prova 17 (8.14) provou a multi-violação AGREGADA
+  localmente (CLI real, repo real); as Provas 15/16 provaram o lado CI da
+  classe FRAGILE GUARD NEEDS. A classe FUZZ (needs: + step errado no job
+  fuzz) tinha prova só sintética no lado CI — o furo que esta prova fecha
+  com a MESMA injeção combinada num `workflow_dispatch` real.
+- **Run**: [31444762608](https://github.com/severinno/severinno/actions/runs/31444762608)
+  (workflow `PR Check`, event `workflow_dispatch`, branch scratch
+  `ci-proof/fuzz-needs-live`).
+- **Injeção combinada** (2026-08-11): branch scratch `ci-proof/fuzz-needs-live`
+  criada via **`ci-proof-run.mjs`** com `--only-jobs check --expect failure
+  --expect-log 'REAL-REPO CONTRACT' --no-verify` (o helper + o early-exit da
+  Prova 20 + `--no-verify` porque o pre-commit local bloqueia o commit da
+  mutação — achado da Prova 16). A mutação (`prova21-mutate.mjs`, CRLF-safe):
+  `needs: check` injetado logo após a chave `  fuzz:` do pr-check.yml REAL +
+  o step `run: bun run fuzz:ci > fuzz-results.json` trocado por
+  `run: bun run lint` — as DUAS violações da rule 7 juntas, no arquivo real.
+  Confirmação local pré-helper (a mesma mutação no working tree):
+
+```
+guard-gates: FUZZ JOB NEEDS in .github/workflows/pr-check.yml (needs: check
+  - o job fuzz standalone nao pode depender de outro; um needs: tornaria o
+  resultado do fuzz dependente do job check)
+guard-gates: FUZZ STEP MISSING in .github/workflows/pr-check.yml (run: bun
+  run fuzz:ci required - a autoridade fuzz:ci batchado, sec 11.11/11.12)
+→ exit 1
+```
+
+- **Observado**: wall-clock do ciclo **206.76s (~3.5min)** medido com
+  `time -p` (branch scratch → mutação → push → dispatch → poll do job →
+  captura job-scoped → verify → revert); helper **exit 0**. Job `check`
+  (~2:51, 00:05:04 → 00:07:55) conclusion=`failure`, e o log job-scoped
+  (5580 linhas) contém os DOIS sinais com o caminho exato:
+  `guard-gates: FUZZ JOB NEEDS in .github/workflows/pr-check.yml` +
+  `guard-gates: FUZZ STEP MISSING in .github/workflows/pr-check.yml` +
+  `scan-guard-gates.test.ts (30 tests | 1 failed)` — o REAL-REPO CONTRACT
+  (o teste de 923ms que varre o arquivo real). **  `Fuzz Tests: skipped`**
+  (00:07:55, sem duração) — o `needs: check` fez o job fuzz depender do
+  check que falhou: o skip vector da classe provado VIVO no CI (a autoridade
+  fuzz:ci não rodou). Os jobs independentes (utf8-check, Docs Encoding, Geo
+  Benchmark) passaram — isolando a falha ao contrato FUZZ. O **Fragile Range
+  Guard também falhou** no mesmo run (00:04:58→00:05:55) — pela MESMA raiz:
+  ele roda o test:guard, que inclui o REAL-REPO CONTRACT (o mesmo guard que
+  o check; Prova 16/20 mostraram o par). Security Headers falhou rápido
+  (8s, dívida pré-existente de DNS documentada no security-headers-gate).
+- **O que isto prova**: (a) o REAL-REPO CONTRACT pega a injeção combinada
+  no CI real com os DOIS sinais + o caminho exato; (b) o skip vector é
+  observável: `Fuzz Tests: skipped` no próprio run — um `needs: check`
+  silenciosamente faz o fuzz:ci completo (a rede estocástica da 11.11)
+  deixar de rodar quando o check falha no lint, a classe que a rule 7
+  existe para matar; (c) o early-exit da Prova 20 segurou o ciclo em
+  ~3.5min (o sinal vive no job check, não no run inteiro).
+- **Reversão**: revert automático do helper (remote `ci-proof/fuzz-needs-live`
+  deletado + `git checkout freebuff/new-thread-thmsitz5qutoia` + branch
+  local deletado); o `git add -A` do helper varreu o delta uncommitted da
+  thread (11 arquivos: security-headers + curl-timeouts + --only-jobs) para
+  o commit scratch — restaurado do backup `/tmp` com md5 byte-identical em
+  TODOS os 11 (verificado OK 11/11). `git status` = o delta original intacto.
+- **Gap protegido**: um `needs:` OU um step fuzz:ci trocado que voltem ao
+  job fuzz do pr-check.yml agora falham o guard (exit 1, `FUZZ JOB NEEDS` /
+  `FUZZ STEP MISSING`) no pre-commit (batch runner) E no CI (REAL-REPO
+  CONTRACT do test:unit/test:guard + o job fragile-guard) — a classe do fuzz
+  silenciosamente skipado não pode mais entrar.
+
+## 8.17 Prova 22 — multi-violação AGREGADA live via CI real (run 31446588931, 2026-08-11)
+
+- **Por que esta prova**: a Prova 17 (8.14) provou a multi-violação AGREGADA
+  no CLI real LOCALMENTE (8 sinais num run, repo real, revert byte-identical)
+  — mas sem run de CI. Esta prova fecha o lado CI: a MESMA injeção agregada
+  num branch scratch + `workflow_dispatch` do pr-check, com o job check
+  (REAL-REPO CONTRACT) **E** o batch runner (run-precommit-guards) falhando
+  com os MESMOS sinais.
+- **A injeção** (`scripts/prova22-mutate.mjs`, TEMP, deletado após a prova) —
+  a MESMA da Prova 17 Run 1 (CRLF-safe, reescreve com LF): guard-gates.yml
+  DELETADO (rule 1); pr-check.yml reescrito SEM os jobs
+  utf8-check/fuzz/benchmark/fragile-guard (rules 3,4,7,9 + encoding call
+  site) mantendo o job check + `workflow_dispatch` no `on:` (o dispatch
+  resolve contra o DEFAULT branch e roda o ref scratch); ci.yml sem o job
+  utf8-check (rule 8, lado ci); package.json test:guard sem a suite
+  scan-push-full-suite (rule 6). **Self-delete antes do `git add -A` do
+  helper**: o script nunca entrou no commit scratch (a superfície de
+  executáveis classificaria um .mjs solto como não-classificado e poluiria o
+  sinal — o `git status` pós-prova confirma: zero resíduos).
+- **Comando**: `node scripts/ci-proof-run.mjs --branch ci-proof/aggr-live
+  --workflow .github/workflows/pr-check.yml --mutate 'node
+  scripts/prova22-mutate.mjs' --only-jobs check --expect failure
+  --expect-log 'REAL-REPO CONTRACT' --no-verify` — **wall-clock 204.91s
+  (~3.4min)** com `time -p`, helper **exit 0** (o early-exit da Prova 20
+  segurando o ciclo no job; o Security Headers segue rodando em background).
+- **O sinal (log job-scoped, 5978 linhas)**: job `check` conclusion=`failure`
+  com **88 linhas `guard-gates:`** — os **8 sinais** da agregação, cada um
+  com o caminho exato (WORKFLOW MISSING guard-gates.yml, TEST GUARD STEP
+  MISSING pr-check.yml, FRAGILE GUARD JOB MISSING, GUARD SUITE MISSING
+  package.json, FUZZ JOB MISSING, BENCHMARK JOB MISSING, ENCODING CALL SITE
+  MISSING ci.yml + pr-check.yml, ENCODING WORKFLOW MISSING). As DUAS suites
+  vermelhas no job:
+  - `scan-guard-gates.test.ts (30 tests | 1 failed)` — o **REAL-REPO
+    CONTRACT** (1115ms): o teste que roda o CLI real contra o repo real
+    esperava exit 0 e pegou o exit 1 da agregação.
+  - `run-precommit-guards.test.ts (7 tests | 7 failed)` — o **batch runner**
+    (480ms): TODOS os 7 guards vermelhos (AGREGACAO + ISOLAMENTO + o
+    REAL-REPO CONTRACT do batch) — a mesma raiz da agregação atingindo o
+    runner inteiro, não só o guard direto.
+  - Os **GROWTH CONTRACTs do workflow-contracts** também vermelhos (mesma
+    raiz: guard-gates.yml sumiu) — ruído esperado e isolável da agregação.
+- **ACHADO de método**: a Prova 17 local reescrevia os arquivos e revertia
+  via `git checkout`; no CI a mutação vai no commit scratch — o self-delete
+  do script de mutação é o que mantém o sinal LIMPO (sem resíduos de
+  tooling da prova no CI tree).
+- **Reversão**: revert automático do helper (remote `ci-proof/aggr-live`
+  deletado + `git checkout freebuff/new-thread-thmsitz5qutoia` + branch
+  local deletado); o `git add -A` do helper varreu o delta uncommitted da
+  thread (13 arquivos: fixture-extraction + security-headers + curl-timeouts)
+  para o commit scratch — restaurado do backup `/tmp/prova22-backup` com md5
+  byte-identical em TODOS os 13 (verificado OK 13/13). `git status` = o
+  delta original intacto; mutation script self-deletado (zero resíduos).
+- **Gap protegido**: a Prova 17 (local) + esta Prova 22 (CI real) formam o
+  par da classe multi-violação — um refactor futuro que faça o guard parar
+  na PRIMEIRA violação (early-return) quebraria as DUAS (e o teste MUTATION
+  COMBINADA da suíte), em vez de só a local.
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -3148,6 +3369,146 @@ fuzz mapeado antes de falhar — o integrity (o guard da classe 8.5) aborta o
 push no passo 4 com o caminho de cura exato, e o `run-mapped-fuzz` só roda
 com layout íntegro. Repo real intocado (fixtures em /tmp, removidas ao
 final; `git status` limpo).
+
+## 11.20 ci-proof-run — custo real do ciclo por prova e o lever `--only-jobs` (medição 2026-08-10)
+
+**A pergunta**: o ciclo ci-proof-run.mjs roda ~5-10min por prova (install +
+suíte completa do pr-check + fuzz + benchmark). Medir o custo real de ponta
+a ponta (run 31430040398 como referência) e avaliar se um modo `--only-jobs`
+ou um dispatch direcionado ao job `check` cortaria o custo sem perder o sinal.
+
+**A medição** (run 31430040398 — Prova 16, `PR Check` workflow_dispatch,
+2026-08-10, breakdown por job via API):
+
+| Job | Duração | Observação |
+|---|---|---|
+| utf8-check | 7s | o gate de encoding (rápido, sem deps) |
+| Docs Encoding (informational) | 9s | nunca bloqueia |
+| Fuzz Tests | 53s | batchado (11.12) |
+| Geo Benchmark | 48s | gate geo |
+| **check (o SINAL da prova)** | **2min47s** | `× REAL-REPO CONTRACT → expected 1 to be +0` — a prova já concluiu AQUI |
+| Fragile Range Guard | skipped | `needs: check` da injeção da Prova 16 (check falhou) |
+| **Security Headers** | **9min08s** | 🔴 **domina o run** — NENHUMA relação com guard proofs |
+| **Total do run** | **9min12s** | o poll do helper espera o run inteiro |
+
+**O achado central**: o sinal da prova (o job `check`) conclui em **2min47s**;
+os outros **~6.4min** do ciclo são esperar o **Security Headers (9min08s)** —
+um job que (a) não tem relação com o contrato sob prova, (b) falha por
+causas pré-existentes (docs/security-headers-gate-2026-08.md) e (c) nem
+rodou o sinal. O poll do helper (`gh run list ... até completed`) espera o
+run INTEIRO, então o custo por prova é ~9.2min quando o sinal estava pronto
+em ~2.8min.
+
+**Veredito: ADOTAR `--only-jobs` (helper puro) — o dispatch direcionado é
+REFUTADO.**
+
+1. **`--only-jobs <job>`** (implementado neste delta): o poll termina quando
+   o JOB alvo conclui (`gh run view <id> --json jobs` → break no
+   `status: completed` do job), a conclusão verificada passa a ser a do JOB
+   (não a do run — que pode nem ter terminado), e o log capturado é o do
+   JOB (`--job <jobId> --log`). Custo do ciclo cai de ~9.2min para
+   **~3min** (o check + overhead do poll) — **~3x mais rápido**, SEM
+   nenhuma mudança de workflow (o pr-check.yml fica intocado: zero
+   superfície de contrato tocada). O sinal não muda: o `--expect-log` casa
+   no log do job, exatamente as linhas que a prova pina.
+2. **Dispatch direcionado ao job `check`** (avaliado e REFUTADO): o GitHub
+   Actions não tem dispatch por job nativo — exigiria um input
+   `jobs:`/`check` no `workflow_dispatch` + `if:` em TODOS os jobs do
+   pr-check.yml (um arquivo PINADO por contrato — scan-guard-gates rules
+   1-9 + REAL-REPO CONTRACT). O ganho de wall-clock seria o mesmo do
+   `--only-jobs`, mas: (a) tocaria um gate file com contrato (risco de
+   drift/regressão que o `--only-jobs` não tem), (b) não economizaria os
+   CI-minutes do Security Headers (o job ainda existiria no PR normal — a
+   economia seria só no dispatch de prova, um caminho raro), e (c) o
+   `--only-jobs` alcança o MESMO ~3min sem tocar em nada. O custo real do
+   ciclo não é o CI billing (o run segue rodando Security Headers em
+   background mesmo após o helper retornar) — é o wall-clock do dev
+   esperando o sinal; é exatamente esse wall-clock que o `--only-jobs` corta.
+
+**Nota honesta de fronteira**: o `--only-jobs` NÃO cancela o run — o
+Security Headers (9:08) segue consumindo runner em background até o fim (o
+helper só não ESPERA por ele). Se o objetivo for também economizar
+CI-minutes (não só wall-clock), o caminho correto é tratar o
+security-headers como o problema próprio dele (ver docs/security-headers-gate-2026-08.md),
+não mascarar via input de dispatch.
+
+**Comando (o ciclo agora termina no job, não no run):**
+
+```bash
+node scripts/ci-proof-run.mjs --branch ci-proof/<nome> --workflow pr-check.yml \
+  --only-jobs check --expect failure --expect-log "REAL-REPO CONTRACT"
+# o poll termina quando o job 'check' conclui (~3min vs ~9.2min do run inteiro)
+# o nome casa com o DISPLAY name do job (name: ou o key quando não há name:)
+# ex.: --only-jobs check e --only-jobs "Fuzz Tests" funcionam; o key cru "fuzz" não
+```
+
+**Default de `--timeout` calibrado (2026-08-10)**: o poll do `--only-jobs`
+passou a usar **300s** como default (antes 900s do ciclo completo) — o job
+alvo nunca passou de ~3min nas provas 13-19 (check concluiu em 2:47 no run
+31430040398), então um default de 900s deixaria o poll esperar até 15min por
+um job que nunca conclui. Nota de precisão: o 2:47 medido é a duração do
+JOB (start→completed) — a janela real do poll inclui também fila/startup
+do runner antes do primeiro `completed` (no run 31430040398 a fila foi
+~4s, mas dias de fila cheia comem margem); 300s deixa ~2min de cabeça
+sobre o job + fila típica, e o `--timeout` explícito existe para casos
+patológicos de fila. A
+resolução vive numa função única (`resolveTimeout` em ci-proof-run.mjs,
+compartilhada por parseArgs e planSteps — regra dos 2 usos): sem
+`--only-jobs` o default continua 900s (o ciclo completo pode incluir jobs
+lentos — Security Headers 9:08), e um `--timeout` explícito SEMPRE vence o
+default calibrado. Travado no vitest (parseArgs: 300 com only-jobs / 900 sem
+/ explícito vence; planSteps: o plano renderiza o timeout resolvido, não um
+número pendente).
+
+**Travado estruturalmente**: o `--only-jobs` é pinado no vitest (5 testes
+novos no ci-proof-run.test.ts, suíte 31 testes): parseArgs (flag + usage),
+planSteps (poll/captura job-scoped), E2E EARLY-EXIT (run in_progress
+para sempre + job concluído → exit 0 no 1º poll do job — o coração do
+lever), E2E job não encontrado (run completou sem o job → exit 3 com a
+lista), E2E job in_progress até timeout (exit 3). O fixture fake-bins
+modela `run view --json jobs` e `run view --job <id> --log` — a semântica
+hermética, sem CI real.
+
+**Prova 20 — o EARLY-EXIT ao vivo no CI real (2026-08-10, run
+[31442006152](https://github.com/severinno/severinno/actions/runs/31442006152)):**
+a prova viva que faltava à sec 11.20 (o EARLY-EXIT estava travado só
+hermeticamente). Ciclo completo via `ci-proof-run --branch
+ci-proof/only-jobs-live --workflow .github/workflows/pr-check.yml --mutate
+'node <tmp>/prova20-mutate.mjs' --only-jobs check --expect failure
+--expect-log 'REAL-REPO CONTRACT' --no-verify`, com a mutação conhecida da
+Prova 16 (`needs: check` no job `fragile-guard` do pr-check.yml REAL — o
+skip vector que a rule 5 existe para fechar; `--no-verify` porque o
+pre-commit local bloqueia o commit da mutação, Prova 16 first-class no
+helper).
+
+- **Wall-clock medido com `time -p`: 207.28s (~3.5min)** para o ciclo
+  INTEIRO (criação da branch scratch → mutação → commit → push → dispatch
+  → poll → captura → verify → revert) — vs **9m12s** do run de referência
+  31430040398 (que esperava o run inteiro, dominado pelo Security Headers
+  9:08, job sem relação com o sinal). O lever corta ~2.7x o wall-clock da
+  prova.
+- **O sinal**: job `check` concluiu em **~3min** (started 23:21:14,
+  completed 23:24:16) com conclusion=`failure`; no log job-scoped capturado
+  (tmpdir, 5548 linhas): `× REAL-REPO CONTRACT ... → expected 1 to be +0`
+  (o pin do pr-check.yml real sem `needs:`) + os mesmos guards irmãos
+  (check-node-modules-integrity BASELINE + workflow-contracts LIVE
+  TREE/GROWTH CONTRACTs — mesma raiz: o guard novo pega o `needs:` no
+  arquivo real). O verify (`--expect failure` + `--expect-log
+  'REAL-REPO CONTRACT'`) casou → **helper exit 0**.
+- **A nota honesta da janela**: o run 31442006152 totalizou 3m07s porque o
+  Security Headers FALHOU RÁPIDO (7s, dívida pré-existente do gate de rede)
+  — o early-exit não foi exercitado contra um tail longo NESTE run. Mas o
+  contrato que ele prova é estrutural: o poll termina quando o JOB alvo
+  conclui (o run pode seguir in_progress), e a referência 31430040398 é a
+  prova do caso em que o tail longo existia (9:08 de Security Headers) — o
+  lever corta exatamente esse caso.
+- **Revert byte-identical**: pr-check.yml md5 `a2d3aba4...` restaurado,
+  branch scratch deletada (remote + local), de volta em
+  `freebuff/new-thread-thmsitz5qutoia`; o delta uncommitted `--only-jobs`
+  (4 arquivos) foi restaurado do backup (md5-identical) — o helper faz
+  `git add -A` na branch scratch, então o delta foi varrido para o commit
+  scratch e precisa de restauro pós-revert (detalhe documentado para o
+  próximo ciclo com árvore suja).
 
 ## 12. Referências
 

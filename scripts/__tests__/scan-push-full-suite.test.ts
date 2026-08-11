@@ -33,7 +33,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { cleanupTempDirs, createTempDir, replaceEolAgnostic, runSubprocess } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-push-full-suite.mjs")
 
@@ -179,7 +179,7 @@ describe("scan-push-full-suite.mjs - contratos de gate (fuzz:ci + encoding, sec 
   it("FUZZ GATE DELETADO: sem run-mapped-fuzz no .husky/pre-push -> exit 1 (assert positivo)", () => {
     const dir = createTempDir("push-suite-")
     writeCleanRepo(dir)
-    writeGuardFile(dir, ".husky/pre-push", CLEAN_PRE_PUSH.replace('node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"\n', ""))
+    writeGuardFile(dir, ".husky/pre-push", replaceEolAgnostic(CLEAN_PRE_PUSH, 'node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"\n', "", "pre-push fuzz line"))
     const r = runGuard(dir)
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("CONTRACT 'fuzz mapeado pre-push-only' MISSING in .husky/pre-push")
@@ -207,7 +207,7 @@ describe("scan-push-full-suite.mjs - contratos de gate (fuzz:ci + encoding, sec 
   it("ENCODING REMOVIDO: sem verify-encoding.sh no .husky/pre-commit -> exit 1 (assert positivo)", () => {
     const dir = createTempDir("push-suite-")
     writeCleanRepo(dir)
-    writeGuardFile(dir, ".husky/pre-commit", CLEAN_PRE_COMMIT.replace("bash scripts/verify-encoding.sh --dry-run --ci src/\n", ""))
+    writeGuardFile(dir, ".husky/pre-commit", replaceEolAgnostic(CLEAN_PRE_COMMIT, "bash scripts/verify-encoding.sh --dry-run --ci src/\n", "", "pre-commit encoding line"))
     const r = runGuard(dir)
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("CONTRACT 'encoding gate unico' MISSING in .husky/pre-commit")
@@ -249,7 +249,7 @@ describe("scan-push-full-suite.mjs - contratos de gate (fuzz:ci + encoding, sec 
     writeGuardFile(
       dir,
       ".husky/pre-commit",
-      CLEAN_PRE_COMMIT.replace("node scripts/run-precommit-guards.mjs\n", ""),
+      replaceEolAgnostic(CLEAN_PRE_COMMIT, "node scripts/run-precommit-guards.mjs\n", "", "pre-commit guards line"),
     )
     const r = runGuard(dir)
     expect(r.status).toBe(1)
@@ -362,7 +362,7 @@ describe("scan-push-full-suite.mjs - divisao commit/push (secao 11.11): pre-comm
     writeGuardFile(
       dir,
       "package.json",
-      CLEAN_PACKAGE_JSON.replace('    "pre-commit:test": "node scripts/pre-commit-tests.mjs",\n', ""),
+      replaceEolAgnostic(CLEAN_PACKAGE_JSON, '    "pre-commit:test": "node scripts/pre-commit-tests.mjs",\n', "", "package pre-commit:test line"),
     )
     writeGuardFile(dir, "scripts/run-mapped-fuzz.mjs", CLEAN_RUNNER)
     const r = runGuard(dir)
@@ -377,7 +377,7 @@ describe("scan-push-full-suite.mjs - divisao commit/push (secao 11.11): pre-comm
     writeCleanRepo(dir)
     writeGuardFile(dir, "package.json", CLEAN_PACKAGE_JSON)
     writeGuardFile(dir, "scripts/run-mapped-fuzz.mjs", CLEAN_RUNNER)
-    writeGuardFile(dir, ".husky/pre-commit", CLEAN_PRE_COMMIT.replace("bun run pre-commit:test\n", ""))
+    writeGuardFile(dir, ".husky/pre-commit", replaceEolAgnostic(CLEAN_PRE_COMMIT, "bun run pre-commit:test\n", "", "pre-commit pre-commit:test line"))
     const r = runGuard(dir)
     expect(r.status).toBe(1)
     expect(r.stdout).toContain(

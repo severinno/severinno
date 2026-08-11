@@ -30,7 +30,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { cleanupTempDirs, createTempDir, replaceEolAgnostic, runSubprocess } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-fuzz-precommit.mjs")
 
@@ -172,7 +172,7 @@ describe("scan-fuzz-precommit.mjs - fuzz pre-push-only (sec 11.11, padrao 11.7)"
   it("FUZZ GATE DELETADO: pre-push sem run-mapped-fuzz --since -> exit 1 com 'FUZZ GATE MISSING' (assert positivo)", () => {
     const dir = createTempDir("fuzz-precommit-")
     writeCleanRepo(dir)
-    writeFile(dir, ".husky/pre-push", CLEAN_PRE_PUSH.replace('node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"\n', ""))
+    writeFile(dir, ".husky/pre-push", replaceEolAgnostic(CLEAN_PRE_PUSH, 'node scripts/run-mapped-fuzz.mjs --since "${PRE_PUSH_REMOTE_SHA:-}"\n', "", "pre-push fuzz line"))
     const r = runGuard(dir)
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("FUZZ GATE MISSING in .husky/pre-push")

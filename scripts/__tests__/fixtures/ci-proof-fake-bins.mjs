@@ -22,6 +22,17 @@
  *                               (default 0 = completes on the 1st poll).
  *   CI_PROOF_FAKE_GH_CONCLUSION "success" (default) | "failure".
  *   CI_PROOF_FAKE_GH_LOG        the run log content for `gh run view --log`.
+ *   CI_PROOF_FAKE_GH_JOBS       "1" = the run has a jobs array (the
+ *                               --only-jobs path): `gh run view <id> --json
+ *                               jobs` returns one job named by
+ *                               CI_PROOF_FAKE_GH_JOB_NAME with status
+ *                               CI_PROOF_FAKE_GH_JOB_STATUS
+ *                               (in_progress | completed) and conclusion
+ *                               CI_PROOF_FAKE_GH_JOB_CONCLUSION.
+ *   CI_PROOF_FAKE_GH_JOB_NAME   the job name reported (default "check").
+ *   CI_PROOF_FAKE_GH_JOB_STATUS "in_progress" (default) | "completed".
+ *   CI_PROOF_FAKE_GH_JOB_CONCLUSION "success" (default) | "failure"
+ *                               (used when the job is completed).
  *   CI_PROOF_FAKE_DIRTY         "1" = git status --porcelain is dirty
  *                               (the --mutate commit path).
  *
@@ -149,6 +160,29 @@ if (kind === "gh") {
         url: done ? "https://github.com/severinno/severinno/actions/runs/777" : "https://github.com/severinno/severinno/actions/runs/777",
       }),
     )
+    ok()
+  }
+  if (args[0] === "run" && args[1] === "view" && args.includes("--json") && args.includes("jobs")) {
+    // --only-jobs poll: `gh run view <id> --json jobs`. The run may still
+    // be in_progress while the target job completed (the whole point of the
+    // lever) - the job status/conclusion are scripted independently.
+    const jobName = process.env.CI_PROOF_FAKE_GH_JOB_NAME ?? "check"
+    const jobStatus = process.env.CI_PROOF_FAKE_GH_JOB_STATUS ?? "in_progress"
+    const jobConclusion = process.env.CI_PROOF_FAKE_GH_JOB_CONCLUSION ?? "success"
+    const job = {
+      name: jobName,
+      status: jobStatus,
+      conclusion: jobStatus === "completed" ? jobConclusion : null,
+      databaseId: 42,
+    }
+    out(JSON.stringify({ jobs: process.env.CI_PROOF_FAKE_GH_JOBS === "1" ? [job] : [] }))
+    ok()
+  }
+  if (args[0] === "run" && args[1] === "view" && args.includes("--job") && args.includes("--log")) {
+    // --only-jobs capture: `gh run view <id> --job <jobId> --log`. Must be
+    // checked BEFORE the bare `--log` shape (the --job form also contains
+    // --log).
+    out(process.env.CI_PROOF_FAKE_GH_LOG ?? "fake job log line\n")
     ok()
   }
   if (args[0] === "run" && args[1] === "view" && args.includes("--log")) {

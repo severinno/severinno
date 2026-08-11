@@ -34,7 +34,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import { ALLOWED_NODE_GUARDS, derivePrepushSpawns } from "../scan-prepush-batch.mjs"
-import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { cleanupTempDirs, createTempDir, replaceEolAgnostic, runSubprocess } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "scan-prepush-batch.mjs")
 
@@ -151,7 +151,7 @@ describe("scan-prepush-batch.mjs - pre-push NAO batchado (sec 11.17, padrao 11.1
   it("INTEGRITY GUARD DELETADO: pre-push sem o spawn individual do integrity -> exit 1 com 'INTEGRITY GUARD MISSING' (assert positivo)", () => {
     const dir = createTempDir("prepush-batch-")
     writeCleanRepo(dir)
-    writeFile(dir, ".husky/pre-push", CLEAN_PRE_PUSH.replace("node scripts/check-node-modules-integrity.mjs\n", ""))
+    writeFile(dir, ".husky/pre-push", replaceEolAgnostic(CLEAN_PRE_PUSH, "node scripts/check-node-modules-integrity.mjs\n", "", "pre-push integrity line"))
     const r = runGuard(dir)
     expect(r.status).toBe(1)
     expect(r.stdout).toContain("INTEGRITY GUARD MISSING in .husky/pre-push")
@@ -161,7 +161,7 @@ describe("scan-prepush-batch.mjs - pre-push NAO batchado (sec 11.17, padrao 11.1
   it("INTEGRITY DELETADO + NOTA: sob a nota ADOTADO o integrity pode ter ido para DENTRO do batch -> exit 0 (positivo relaxado)", () => {
     const dir = createTempDir("prepush-batch-")
     writeCleanRepo(dir)
-    writeFile(dir, ".husky/pre-push", CLEAN_PRE_PUSH.replace("node scripts/check-node-modules-integrity.mjs\n", ""))
+    writeFile(dir, ".husky/pre-push", replaceEolAgnostic(CLEAN_PRE_PUSH, "node scripts/check-node-modules-integrity.mjs\n", "", "pre-push integrity line"))
     writeFile(
       dir,
       "docs/gates-proofs.md",

@@ -158,3 +158,72 @@ bash scripts/test-security-headers.sh --ci --url "https://severinno.com.br"
 # Gate contra o app local (esperado verde após DNS/ou interino)
 bash scripts/test-security-headers.sh --url "http://localhost:3000"
 ```
+
+## 8. Avaliação dos 3 levers (2026-08-10) — o tail de 9:08 era o curl SEM timeout
+
+> Contexto (sec 11.20 do gates-proofs.md): o job Security Headers dominava o
+> tail de TODA prova do ci-proof-run (9:08 no run 31430040398), falhando por
+> causas pré-existentes (o mismatch DNS/hosting da seção 3). A pergunta: o job
+> deveria ser **consertado** (headers reais do site), ganhar **timeout curto**,
+> ou rodar **só em PR** (não em workflow_dispatch de prova)?
+
+### 8.1 A medição que mudou o diagnóstico
+
+- O site responde **rápido** (130–270ms, HTTP 200, 3 runs em 2026-08-10) — o
+  tail NÃO era lentidão do host.
+- O log do run 31430040398 mostra **`Endpoint respondeu com HTTP 000000`** —
+  um **connect stall**: o curl do script estava SEM `--max-time`/`--connect-timeout`
+  (o script não tinha nenhum bound; a linha 78 do fetch_headers e a 321 do
+  TLS check eram `curl -s ...` puros). Um connect travado deixa o curl esperando
+  minutos até o timeout do TCP stack — em toda trigger (PR, merge_group,
+  workflow_dispatch de prova), o job queimava o tail inteiro.
+- No run da Prova 20 (31442006152) o mesmo job falhou em **7s** — porque o DNS
+  respondeu rápido e as asserções falharam de cara. As duas faces (9:08 stall,
+  7s fast-fail) são o MESMO problema de fundo: host errado + curl sem bound.
+
+### 8.2 Veredito por lever
+
+| Lever | Veredito | Justificativa |
+|---|---|---|
+| **Consertar os headers reais do site** | ✅ **Necessário, mas EXTERNO** | O DNS aponta para a Hostinger (seção 3) — o repo não pode consertar isso. É o fix de infraestrutura documentado na seção 6; o gate vai continuar vermelho até lá, e isso é **correto** (o domínio público realmente não serve os headers). |
+| **Timeout curto no script** | ✅ **ADOTADO** | O único lever 100% repo-side: `--max-time 20 --connect-timeout 10` nos 2 curls do `test-security-headers.sh` + 1 do `health-check.sh` (mesma classe). Bounds o custo do tail em TODA trigger — um stall agora falha em ~20s, não em 9min. |
+| **Rodar só em PR** | ❌ **RECUSADO** | Com o timeout aplicado, o custo por trigger já é ≤ ~30s; restringir o trigger não reduz mais nada e **perde o valor da prova**: o workflow_dispatch é exatamente o que as Provas 7-20 usam para exercitar gates reais. Além disso, um filtro de trigger no pr-check.yml seria um ponto de drift (a matriz ci-proof branch do scan-surfaces). |
+
+### 8.3 O lock estrutural (guard versionado)
+
+O fix de timeout é um ajuste pontual — nada impediria um curl novo SEM bound de
+voltar a um gate script e reintroduzir a classe de stall. O padrão da rede
+(scan-timeouts, scan-push-full-suite, ...) exige o guard versionado:
+
+- **`scripts/scan-curl-timeouts.mjs`** — falha com exit 1 se QUALQUER curl numa
+  invocação lógica de gate script de CI (os `.sh` DERIVADOS dos workflows — a
+  superfície viva, mesmo padrão SPREAD dos TARGET_DIRS) estiver sem `--max-time`.
+  Mascara strings/comentários bash (prosa que cita curl não false-positiva),
+  une continuações `\` (o `--max-time` do TLS check fica em linha de
+  continuação), e deriva a superfície de `.github/workflows/*.yml` (um script
+  novo citado por um workflow entra automaticamente — sem editar o guard).
+  `--connect-timeout` é recomendado mas não exigido — o `--max-time` bounds o
+  total, que é o que mata a classe.
+- **`scripts/__tests__/scan-curl-timeouts.test.ts`** — BASELINE (a superfície
+  real tem ZERO curls sem bound) + companion não-vazio + mutação CLI
+  (exit 1 com `file:line` exato; com `--max-time` → exit 0) + edges de masking
+  e continuação + edge de derivação (script não-citado fica fora por design).
+- **Wiring**: step `Scan gate-script curls for explicit timeouts` no
+  `guard-gates.yml` (push net) e no job `fragile-guard` do `pr-check.yml`
+  (twin PR) — o MESMO comando, mirror do scan-timeouts.
+
+> **Fronteira da superfície**: o guard cobre os curls dos **gate scripts .sh**
+> (os derivados dos workflows) — a classe real do 9:08, que vivia no script.
+> Curls **inline** num bloco `run:` de workflow ficam FORA da superfície por
+> design (seria outra superfície: o texto YAML dos workflows, não o script
+> que eles chamam). Se um dia um curl inline de rede externa entrar num job,
+> ele precisa do mesmo `--max-time` — a decisão de escanear a superfície
+> YAML é um guard irmão separado, não este.
+
+### 8.4 Estado final do job
+
+O job Security Headers segue rodando em toda trigger (PR, merge_group,
+workflow_dispatch) e segue **vermelho enquanto o DNS não apontar para o VPS** —
+mas agora falha em segundos, não em 9min. A correção real (DNS + headers) é
+rastreada na seção 6 e no HSTS-PRELOAD.md; o guard 8.3 garante que o custo de
+qualquer futuro curl de gate nunca volte a explodir.

@@ -36,7 +36,7 @@ HEALTH_DOCKER_PRUNE="${HEALTH_DOCKER_PRUNE:-0}"
 
 for i in $(seq 1 "$HEALTH_ATTEMPTS"); do
   sleep "$HEALTH_SLEEP"
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" 2>/dev/null || echo "000")
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 --connect-timeout 10 "$HEALTH_URL" 2>/dev/null || echo "000")
   if [ "$HTTP_CODE" = "$HEALTH_EXPECT_CODE" ]; then
     echo "Health check passed (HTTP $HTTP_CODE) after attempt $i/$HEALTH_ATTEMPTS"
     if [ "$HEALTH_DOCKER_PRUNE" = "1" ]; then

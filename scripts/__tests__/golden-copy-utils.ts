@@ -59,6 +59,147 @@ export const GUARD_PR_TWIN = GUARD_NET[GUARD_NET.length - 1]
  */
 export const ENCODING_CI_NET = ENCODING_NET.find((rel) => rel !== GUARD_PR_TWIN) ?? ENCODING_NET[0]
 
+/**
+ * RULE OF USES (EXTRACTED 2026-08): the synthetic pr-check.yml fixtures were
+ * duplicated INLINE in ~9 tests of scan-guard-gates.test.ts - the base
+ * writePRWorkflow (the clean PR twin) plus 4 full-file inline blocks for the
+ * FUZZ mutations (FUZZ JOB MISSING, FUZZ STEP MISSING and the two fixtures of
+ * the MUTATION COMBINADA test), each spelling out the same ~30-line YAML.
+ * Two repeated SHAPES crossed the rule-of-two threshold:
+ *   - SEM FUZZ (the fuzz job absent): the FUZZ JOB MISSING test AND the
+ *     MUTATION COMBINADA fixture 2 - byte-identical shapes, both asserting
+ *     'FUZZ JOB MISSING'.
+ *   - FUZZ QUEBRADO (fuzz present but broken): the FUZZ STEP MISSING test
+ *     (wrong step, no check job) AND the MUTATION COMBINADA fixture 1
+ *     (needs: check + wrong step, with check) - the two mutations of rule 7
+ *     that are NOT mutually exclusive (NEEDS + STEP report together).
+ * Extracted here so a 4th fixture (or a mutation touching only the fuzz
+ * job) builds on the shared blocks instead of a 4th inline copy. The
+ * single-use variants (fragile-guard missing/wrong-step, benchmark
+ * missing/wrong-step, encoding call-site missing) stay inline by the rule
+ * of uses - a 2nd use of one extracts it the same way.
+ *
+ * The five job blocks below mirror the REAL pr-check.yml shape the guard
+ * parses (utf8-check call site + check + fuzz + benchmark + fragile-guard,
+ * all standalone without needs:). The re-entry append pattern (a SECOND
+ * job block APPENDED via `extra`, e.g. fragile-guard needs:) is preserved
+ * by the `extra` param of writePRWorkflow - the parser reads the LAST block.
+ */
+
+const PR_CHECK_HEADER = [
+  "name: PR Check",
+  "on:",
+  "  pull_request:",
+  "    branches: [main]",
+  "jobs:",
+]
+
+const PR_JOB_UTF8 = ["  utf8-check:", "    uses: ./.github/workflows/utf8-check.yml"]
+
+const PR_JOB_CHECK = [
+  "  check:",
+  "    runs-on: ubuntu-latest",
+  "    steps:",
+  "      - name: Unit tests",
+  "        run: bun run test:unit",
+]
+
+const PR_JOB_FUZZ = [
+  "  fuzz:",
+  "    name: Fuzz Tests",
+  "    runs-on: ubuntu-latest",
+  "    steps:",
+  "      - name: Run fuzz tests",
+  "        run: bun run fuzz:ci > fuzz-results.json",
+]
+
+const PR_JOB_BENCHMARK = [
+  "  benchmark:",
+  "    name: Geo Benchmark",
+  "    runs-on: ubuntu-latest",
+  "    steps:",
+  "      - name: Run geo benchmark",
+  "        run: |",
+  "          node scripts/run-benchmark.mjs --type geo --json",
+]
+
+const PR_JOB_FRAGILE = [
+  "  fragile-guard:",
+  "    name: Fragile Range Guard",
+  "    runs-on: ubuntu-latest",
+  "    steps:",
+  "      - uses: actions/checkout@v4",
+  "      - name: Run guard vitest suites (fragile-range-guard + golden-copy-utils)",
+  "        run: bun run test:guard",
+]
+
+function writePRWorkflowFile(dir: string, jobs: string[], extra = ""): void {
+  const abs = path.join(dir, GUARD_PR_TWIN)
+  fs.mkdirSync(path.dirname(abs), { recursive: true })
+  fs.writeFileSync(abs, [...PR_CHECK_HEADER, ...jobs, ""].join("\n") + extra)
+}
+
+/**
+ * Write the CLEAN synthetic pr-check.yml (the PR twin): all five standalone
+ * jobs (utf8-check + check + fuzz + benchmark + fragile-guard). `extra`
+ * appends raw YAML lines - the re-entry append pattern for the needs:
+ * mutations (the parser reads the LAST job block). Moved here from
+ * scan-guard-gates.test.ts so the fixture family shares the job blocks.
+ */
+export function writePRWorkflow(dir: string, extra = ""): void {
+  writePRWorkflowFile(dir, [...PR_JOB_UTF8, ...PR_JOB_CHECK, ...PR_JOB_FUZZ, ...PR_JOB_BENCHMARK, ...PR_JOB_FRAGILE], extra)
+}
+
+/**
+ * Write the SEM-FUZZ pr-check.yml: the fuzz job ABSENT (utf8-check + check
+ * + benchmark + fragile-guard) - the 'FUZZ JOB MISSING' shape (rule 7),
+ * used by the FUZZ JOB MISSING test and the MUTATION COMBINADA fixture 2.
+ * `extra` exists for family symmetry with writePRWorkflow (both call sites
+ * today pass nothing) - a 2nd use of the append pattern extracts it.
+ */
+export function writePRWorkflowSemFuzz(dir: string, extra = ""): void {
+  writePRWorkflowFile(dir, [...PR_JOB_UTF8, ...PR_JOB_CHECK, ...PR_JOB_BENCHMARK, ...PR_JOB_FRAGILE], extra)
+}
+
+/** Options for the FUZZ-QUEBRADO shape (rule 7 mutations). */
+export interface PRWorkflowFuzzOpts {
+  /** Add `needs: <X>` to the fuzz job (the skip-vector mutation). */
+  needs?: string
+  /** Omit the `check` job (the FUZZ STEP MISSING shape keeps only the broken fuzz). */
+  omitCheck?: boolean
+}
+
+/**
+ * Write the FUZZ-QUEBRADO pr-check.yml: the fuzz job present but BROKEN - the
+ * fuzz:ci step replaced by `run: bun run test:unit` (the 'FUZZ STEP MISSING'
+ * mutation; the step NAME 'Run something else' is intentionally distinct
+ * from 'Run fuzz tests' so a future step-name assertion cannot misread),
+ * optionally with `needs: <X>` added (the 'FUZZ JOB NEEDS' mutation) and
+ * optionally WITHOUT the check job. Used by the FUZZ STEP MISSING test
+ * ({ omitCheck: true }) and the MUTATION COMBINADA fixture 1
+ * ({ needs: "check" }) - the two rule-7 mutations that are NOT mutually
+ * exclusive and must report together.
+ */
+export function writePRWorkflowFuzzQuebrado(dir: string, opts: PRWorkflowFuzzOpts = {}): void {
+  const fuzz = [
+    "  fuzz:",
+    ...(opts.needs ? [`    needs: ${opts.needs}`] : []),
+    "    name: Fuzz Tests",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - name: Run something else",
+    "        run: bun run test:unit",
+  ]
+  const jobs = [
+    ...PR_JOB_UTF8,
+    ...(opts.omitCheck ? [] : PR_JOB_CHECK),
+    ...fuzz,
+    ...PR_JOB_BENCHMARK,
+    ...PR_JOB_FRAGILE,
+  ]
+  writePRWorkflowFile(dir, jobs)
+}
+
 /** Canonical form for the divergence guards (content, not layout). */
 export function canonicalProgram(program: string): string {
   return program
@@ -72,6 +213,36 @@ export function canonicalProgram(program: string): string {
 /** CRLF → LF. Needed before piping a program/golden copy into bash -c. */
 export function normalizeCrlf(input: string): string {
   return input.replace(/\r\n/g, "\n")
+}
+
+/**
+ * PROVA 17 ACHADO (sec 8.14, 2026-08-10): ancoras de string com `\n`
+ * FALHAM SILENCIOSAMENTE em arquivos CRLF. No Windows, os gate files
+ * (.github/workflows/*.yml, .husky/*, package.json) sao CRLF no working
+ * tree (git autocrlf) - um `content.replace("...\n...", ...)` nao casa o
+ * `\r\n` e vira um no-op silencioso: a mutacao nao aplica, o teste passa
+ * falso, e o sinal da prova desaparece. A 1a tentativa da Prova 17
+ * falhou exatamente assim; o fix foi normalizar para LF antes de
+ * substituir. ESTE helper e o fix tornado contrato:
+ *
+ *   1. normaliza CRLF -> LF no conteudo ANTES de casar a ancora;
+ *   2. THROWS se a ancora nao for encontrada apos a normalizacao - o
+ *      no-op silencioso vira fail-loud com o label da chamada (a classe
+ *      que o scan-eol-anchor.mjs tambem trava, mas aqui no runtime).
+ *
+ * RULE OF USES (2026-08): os 8 sites de mutacao de gate file nos testes
+ * (scan-fuzz-precommit, scan-prepush-batch, scan-push-full-suite) usavam
+ * `.replace("...\n...", "")` cru em constantes LF sinteticas - o mesmo
+ * idioma que quebra em CRLF real. Refatorados para este helper (2+ usos,
+ * regra satisfeita): a normalizacao e no-op no conteudo LF, mas o throw
+ * no anchor-miss vira o silencio em erro claro se a constante driftar.
+ */
+export function replaceEolAgnostic(content: string, search: string, replacement: string, label: string): string {
+  const lf = normalizeCrlf(content)
+  if (!lf.includes(search)) {
+    throw new Error(`${label}: ancora ${JSON.stringify(search)} nao encontrada apos normalizacao CRLF->LF (Prova 17 ACHADO, sec 8.14) - a mutacao seria um no-op silencioso`)
+  }
+  return lf.replace(search, replacement)
 }
 
 export interface SpawnResult {

@@ -331,3 +331,29 @@ jobs:
       # in the check job.
       - name: Scan subprocess-heavy tests for explicit timeouts
         run: node scripts/scan-timeouts.mjs --ci
+
+      # scan-curl-timeouts — the versioned curl-timeout gate for CI gate
+      # scripts, MIRROR of the push-net step in guard-gates.yml (same
+      # command, single source of truth): every curl invocation in a gate
+      # script (the .sh files DERIVED from .github/workflows/*.yml) must
+      # carry an explicit --max-time — a stalled curl (HTTP 000000, no
+      # bound) hung the security-headers job for 9:08 in run 31430040398
+      # (sec 11.20 + docs/security-headers-gate-2026-08.md). Pure node, no
+      # bun deps. The vitest twin
+      # (scripts/__tests__/scan-curl-timeouts.test.ts, BASELINE over the
+      # derived surface) also runs inside test:unit in the check job.
+      - name: Scan gate-script curls for explicit timeouts
+        run: node scripts/scan-curl-timeouts.mjs --ci
+
+      # scan-eol-anchor — the versioned EOL-anchor gate, MIRROR of the
+      # push-net step in guard-gates.yml (same command, single source of
+      # truth): a raw `.replace("...\n...")` string anchor in the test/
+      # mutation surface silently no-ops on CRLF gate files (Windows
+      # autocrlf working tree) — the Prova 17 ACHADO, sec 8.14 of
+      # gates-proofs.md. The fix is the shared replaceEolAgnostic helper
+      # (CRLF->LF normalize + throw on anchor-miss); this guard fails if
+      # the raw idiom returns to the surface. Pure node, no bun deps. The
+      # vitest twin (scripts/__tests__/scan-eol-anchor.test.ts, BASELINE
+      # over the surface) also runs inside test:unit in the check job.
+      - name: Scan string \n anchors in the test/mutation surface
+        run: node scripts/scan-eol-anchor.mjs --ci

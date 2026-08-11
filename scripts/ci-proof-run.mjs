@@ -39,9 +39,19 @@
  *   6. gh workflow view <file> (o pre-check da Prova 7).
  *   7. gh workflow run <file> --ref <branch> (dispatch).
  *   8. poll: gh run list --workflow <file> --branch <branch> --limit 1 ate
- *      um run com status completed (timeout --timeout s, default 900).
- *   9. captura: gh run view <id> --log -> <os.tmpdir()>/ci-proof-<b>-<id>.log
- *      (o tmpdir mantem o repo limpo; o path e impresso).
+ *      um run com status completed (timeout --timeout s; default 900s, ou
+ *      300s com --only-jobs - o default calibrado do sec 11.20). Com *   --only-jobs <job>, o poll termina quando o JOB alvo conclui (o run
+ *      pode seguir em background rodando os demais jobs) - o sinal da
+ *      prova vive num job especifico (ex.: check), e esperar o run inteiro
+ *      queima minutos em jobs nao relacionados (medicao 2026-08-10, sec
+ *      11.20: run 31430040398 total 9:12 mas o check conclui em 2:47 -
+ *      Security Headers dominava o tail com 9:08). O nome casa com o
+ *      DISPLAY name do job (o name: ou o key quando nao ha name:) - ex.:
+ *      --only-jobs check e --only-jobs "Fuzz Tests" funcionam, mas o key
+ *      cru "fuzz" nao casaria com o display "Fuzz Tests".
+ *   9. captura: gh run view <id> --log (ou --job <jobId> --log com
+ *      --only-jobs) -> <os.tmpdir()>/ci-proof-<b>-<id>.log (o tmpdir
+ *      mantem o repo limpo; o path e impresso).
  *   10. verify: --expect <conclusion> (success/failure/...) + --expect-log
  *       <regex> (linha obrigatoria no log capturado). Nenhum = qualquer
  *       completed passa; --expect falha se a conclusion divergir;
@@ -90,7 +100,25 @@ import { fileURLToPath } from "node:url"
 import { CI_PROOF_NAMESPACE, DANGER_REFS } from "./workflow-contracts.mjs"
 
 const DEFAULT_TIMEOUT_S = 900
+// Default calibrado do --only-jobs (sec 11.20, medicao 2026-08-10): o sinal
+// da prova vive num job que nunca passou de ~3min nas provas 13-19 (o check
+// concluiu em 2:47 no run 31430040398) - um default de 900s deixaria um poll
+// de --only-jobs esperar ate 15min por um job que nunca conclui. 300s = ~1.8x
+// a margem do pior caso medido. Um --timeout explicito SEMPRE vence.
+const DEFAULT_ONLY_JOBS_TIMEOUT_S = 300
 const POLL_INTERVAL_MS = Number(process.env.CI_PROOF_POLL_MS || 10_000)
+
+/**
+ * Resolve o timeout efetivo do poll: um --timeout explicito vence; senao o
+ * default e calibrado pela forma do ciclo (sec 11.20) - 300s com --only-jobs
+ * (o job alvo nunca passou de ~3min nas provas 13-19), 900s para o ciclo
+ * completo. Pure (exported for tests - parseArgs e planSteps compartilham a
+ * MESMA resolucao, regra dos 2 usos).
+ */
+export function resolveTimeout(onlyJobs, explicitTimeout) {
+  if (explicitTimeout !== null && explicitTimeout !== undefined) return explicitTimeout
+  return onlyJobs ? DEFAULT_ONLY_JOBS_TIMEOUT_S : DEFAULT_TIMEOUT_S
+}
 
 /**
  * Parse CLI args. SEMPRE retorna a shape completa { branch, workflow,
@@ -102,7 +130,7 @@ export function parseArgs(argv) {
   // SEMPRE retorna a shape completa com error: null no sucesso - o tipo
   // uniao `{...opts} | {error}` quebraria o acesso a propriedades nos
   // testes (TS2339) e o `if (opts.error)` do main() continua valido.
-  const out = { branch: null, workflow: null, mutate: null, expect: null, expectLog: null, timeout: DEFAULT_TIMEOUT_S, keep: false, dryRun: false, noVerify: false, error: null }
+  const out = { branch: null, workflow: null, mutate: null, expect: null, expectLog: null, timeout: null, keep: false, dryRun: false, noVerify: false, onlyJobs: null, error: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--branch") { out.branch = argv[i + 1] ?? null; i++ }
@@ -110,16 +138,25 @@ export function parseArgs(argv) {
     else if (a === "--mutate") { out.mutate = argv[i + 1] ?? null; i++ }
     else if (a === "--expect") { out.expect = argv[i + 1] ?? null; i++ }
     else if (a === "--expect-log") { out.expectLog = argv[i + 1] ?? null; i++ }
+    // NOTA (pre-existente, intencional): `--timeout 0` cai no || e vira
+    // DEFAULT_TIMEOUT_S (900) - o 0 nao e respeitado. Quirk mantido (um
+    // timeout de 0s nao faz sentido); o resolveTimeout so ve numeros > 0
+    // ou null (default calibrado do sec 11.20).
     else if (a === "--timeout") { out.timeout = Number(argv[i + 1]) || DEFAULT_TIMEOUT_S; i++ }
+    else if (a === "--only-jobs") { out.onlyJobs = argv[i + 1] ?? null; i++ }
     else if (a === "--keep-branch") out.keep = true
     else if (a === "--dry-run") out.dryRun = true
     else if (a === "--no-verify") out.noVerify = true
-    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--keep-branch] [--no-verify] [--dry-run]"; break }
+    else if (a === "--help") { out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--dry-run]"; break }
     else { out.error = `flag desconhecida: ${a}`; break }
   }
   if (!out.error && (!out.branch || !out.workflow)) {
-    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--keep-branch] [--no-verify] [--dry-run]"
+    out.error = "usage: node scripts/ci-proof-run.mjs --branch ci-proof/<name> --workflow <file> [--mutate <cmd>] [--expect <conclusion>] [--expect-log <regex>] [--timeout <s>] [--only-jobs <job>] [--keep-branch] [--no-verify] [--dry-run]"
   }
+  // Resolve o default calibrado (sec 11.20): SEMPRE retorna um numero - o
+  // timeout nunca fica null (a shape completa promete timeout numerico). O
+  // --timeout explicito (parseado no loop) vence o default calibrado.
+  out.timeout = resolveTimeout(out.onlyJobs, out.timeout)
   return out
 }
 
@@ -151,6 +188,10 @@ export function isCiProofBranch(branch, namespace = CI_PROOF_NAMESPACE) {
  */
 export function planSteps(opts, originalBranch) {
   const b = opts.branch
+  // O timeout RENDERIZADO e o resolvido (o mesmo resolveTimeout do
+  // parseArgs - o plano e honesto sobre o default calibrado do sec 11.20
+  // mesmo quando o teste passa opts parcial sem timeout).
+  const timeoutS = resolveTimeout(opts.onlyJobs, opts.timeout)
   const steps = [
     `git: rev-parse --abbrev-ref HEAD (branch de retorno: ${originalBranch})`,
     `git: checkout -b ${b}  (cria a branch scratch de prova)`,
@@ -167,8 +208,17 @@ export function planSteps(opts, originalBranch) {
   steps.push(`git: push origin ${b}`)
   steps.push(`gh: workflow view ${opts.workflow}  (Prova 7: resolve contra o DEFAULT branch - 404 = undispatchable)`)
   steps.push(`gh: workflow run ${opts.workflow} --ref ${b}`)
-  steps.push(`gh: run list --workflow ${opts.workflow} --branch ${b} --limit 1  (poll, timeout ${opts.timeout}s)`)
-  steps.push(`gh: run view <id> --log > <tmp>/ci-proof-${b}-<id>.log`)
+  if (opts.onlyJobs) {
+    steps.push(`gh: run list --workflow ${opts.workflow} --branch ${b} --limit 1  (poll do JOB '${opts.onlyJobs}', timeout ${timeoutS}s - o ciclo termina quando o JOB conclui, nao o run)`)
+    steps.push(`gh: run view <id> --json jobs  (resolve o jobId do '${opts.onlyJobs}')`)
+  } else {
+    steps.push(`gh: run list --workflow ${opts.workflow} --branch ${b} --limit 1  (poll, timeout ${timeoutS}s)`)
+  }
+  if (opts.onlyJobs) {
+    steps.push(`gh: run view <id> --job <jobId> --log > <tmp>/ci-proof-${b}-<id>.log`)
+  } else {
+    steps.push(`gh: run view <id> --log > <tmp>/ci-proof-${b}-<id>.log`)
+  }
   steps.push(`verify: conclusion==${opts.expect ?? "qualquer completed"}${opts.expectLog ? `, log ~= /${opts.expectLog}/` : ""}`)
   if (!opts.keep) {
     steps.push(`git: push origin --delete ${b}`)
@@ -322,9 +372,17 @@ export async function main() {
   }
   console.log(`ci-proof-run: dispatched ${opts.workflow} on ${opts.branch}`)
 
-  // 8. Poll ate completed (ou timeout).
+  // 8. Poll ate completed (ou timeout). Com --only-jobs, o poll termina
+  // quando o JOB alvo conclui (o run pode seguir em background rodando os
+  // demais jobs) - o sinal da prova vive num job especifico, e esperar o
+  // run inteiro queima minutos em jobs nao relacionados (medicao 2026-08-10,
+  // sec 11.20: run 31430040398 total 9:12, check conclui em 2:47, Security
+  // Headers dominava o tail com 9:08). A conclusao verificada passa a ser
+  // a do JOB (nao a do run) - o run pode nem ter terminado quando o job
+  // alvo ja concluiu.
   const deadline = Date.now() + opts.timeout * 1000
   let runInfo = null
+  let onlyJobInfo = null // { id, conclusion } quando --only-jobs resolve o job
   while (Date.now() < deadline) {
     const list = gh(["run", "list", "--workflow", opts.workflow, "--branch", opts.branch, "--limit", "1", "--json", "databaseId,status,conclusion,url", "--jq", ".[0]"])
     const line = list.stdout.trim()
@@ -335,27 +393,75 @@ export async function main() {
         runInfo = null
       }
     }
-    if (runInfo && runInfo.status === "completed") break
+    if (runInfo) {
+      if (opts.onlyJobs) {
+        // Poll do JOB: gh run view <id> --json jobs -> o jobId do alvo e a
+        // sua conclusao. O run pode continuar in_progress - o que importa
+        // e o job terminar.
+        const jv = gh(["run", "view", String(runInfo.databaseId), "--json", "jobs"])
+        let jobs = []
+        if (jv.status === 0 && jv.stdout.trim()) {
+          try {
+            const parsed = JSON.parse(jv.stdout.trim())
+            jobs = parsed.jobs || []
+          } catch {
+            jobs = []
+          }
+        }
+        const target = jobs.find((j) => j.name === opts.onlyJobs)
+        if (target && target.status === "completed") {
+          onlyJobInfo = { id: target.databaseId, conclusion: target.conclusion }
+          break
+        }
+        if (runInfo.status === "completed" && !target) {
+          // O run completou sem o job alvo = nome errado (o poll nao pode
+          // ficar em loop ate o timeout com um nome que nunca casa).
+          if (!opts.keep) revert(opts.branch, originalBranch)
+          return fail(3, `job '${opts.onlyJobs}' nao encontrado no run #${runInfo.databaseId} (jobs: ${jobs.map((j) => j.name).join(", ") || "nenhum"})`)
+        }
+      } else if (runInfo.status === "completed") {
+        break
+      }
+    }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
   }
-  if (!runInfo || runInfo.status !== "completed") {
+  if (!runInfo) {
+    if (!opts.keep) revert(opts.branch, originalBranch)
+    return fail(3, `timeout apos ${opts.timeout}s - nenhum run encontrado para ${opts.workflow} em ${opts.branch}`)
+  }
+  if (opts.onlyJobs && !onlyJobInfo) {
+    if (!opts.keep) revert(opts.branch, originalBranch)
+    return fail(3, `timeout apos ${opts.timeout}s - job '${opts.onlyJobs}' nao completou no run #${runInfo.databaseId} para ${opts.workflow} em ${opts.branch}`)
+  }
+  if (!opts.onlyJobs && runInfo.status !== "completed") {
     if (!opts.keep) revert(opts.branch, originalBranch)
     return fail(3, `timeout apos ${opts.timeout}s - nenhum run completed para ${opts.workflow} em ${opts.branch}`)
   }
-  console.log(`ci-proof-run: run #${runInfo.databaseId} completed (${runInfo.conclusion}) - ${runInfo.url}`)
+  // A conclusao verificada: a do JOB quando --only-jobs (o run pode nem ter
+  // terminado); a do run caso contrario.
+  const observedConclusion = opts.onlyJobs ? onlyJobInfo.conclusion : runInfo.conclusion
+  console.log(
+    opts.onlyJobs
+      ? `ci-proof-run: run #${runInfo.databaseId} job '${opts.onlyJobs}' completed (${observedConclusion}) - ${runInfo.url}`
+      : `ci-proof-run: run #${runInfo.databaseId} completed (${observedConclusion}) - ${runInfo.url}`,
+  )
 
   // 9. Captura do log (tmpdir mantem o repo limpo). O nome do arquivo
   // SLUGIFICA o branch (o "/" do ci-proof/<nome> viraria um subdir
   // inexistente no tmpdir e o writeFileSync falharia com ENOENT em TODO
-  // run - o review pegou esse bug antes do 1o uso real).
+  // run - o review pegou esse bug antes do 1o uso real). Com --only-jobs,
+  // o log e o do JOB (`--job <jobId>`) - nao o run inteiro (que pode
+  // seguir rodando e cujo log misturaria jobs alheios ao sinal).
   const logSlug = opts.branch.replace(/[^A-Za-z0-9_.-]+/g, "-")
   const logPath = path.join(os.tmpdir(), `ci-proof-${logSlug}-${runInfo.databaseId}.log`)
-  const log = gh(["run", "view", String(runInfo.databaseId), "--log"])
+  const log = opts.onlyJobs
+    ? gh(["run", "view", String(runInfo.databaseId), "--job", String(onlyJobInfo.id), "--log"])
+    : gh(["run", "view", String(runInfo.databaseId), "--log"])
   fs.writeFileSync(logPath, log.stdout, "utf8")
   console.log(`ci-proof-run: log capturado em ${logPath} (${(log.stdout || "").split("\n").length} linhas)`)
 
-  // 10. Verify.
-  const check = verifyOutcome(runInfo.conclusion, opts.expect, log.stdout, opts.expectLog)
+  // 10. Verify (contra a conclusao do job quando --only-jobs).
+  const check = verifyOutcome(observedConclusion, opts.expect, log.stdout, opts.expectLog)
   console.log(`ci-proof-run: verify: ${check.message}`)
 
   // 11. Revert (a branch scratch NAO fica no remote - salvo --keep-branch).
@@ -364,8 +470,9 @@ export async function main() {
   // exit 0 - o docblock promete "esperado observado E revertido".
   const reverted = opts.keep ? true : revert(opts.branch, originalBranch)
 
-  // 12. Summary (para registrar no gates-proofs.md).
-  console.log(`ci-proof-run: DONE run=${runInfo.databaseId} url=${runInfo.url} conclusion=${runInfo.conclusion} log=${logPath}`)
+  // 12. Summary (para registrar no gates-proofs.md). A conclusao e a
+  // observada (do job quando --only-jobs - o run pode nao ter terminado).
+  console.log(`ci-proof-run: DONE run=${runInfo.databaseId} url=${runInfo.url} conclusion=${observedConclusion} log=${logPath}`)
   if (!check.ok) return 1
   return reverted ? 0 : 3
 }

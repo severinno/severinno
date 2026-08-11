@@ -105,6 +105,27 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(parseArgs(["--help"]).error).toContain("--no-verify")
   })
 
+  it("parseArgs: --only-jobs parseia e o usage lista a flag (sec 11.20 - poll por job, nao pelo run)", () => {
+    const o = parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--only-jobs", "check"])
+    expect(o.error).toBeNull()
+    expect(o.onlyJobs).toBe("check")
+    // Sem a flag, onlyJobs fica null (default).
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml"]).onlyJobs).toBeNull()
+    expect(parseArgs(["--help"]).error).toContain("--only-jobs")
+  })
+
+  it("parseArgs: default de --timeout calibrado (sec 11.20) - 300s com --only-jobs, 900s sem; --timeout explicito vence", () => {
+    // Sem --only-jobs, o default continua 900s (o ciclo completo pode
+    // incluir jobs lentos - Security Headers 9:08 no run 31430040398).
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml"]).timeout).toBe(900)
+    // Com --only-jobs e sem --timeout, o default cai para 300s (o job alvo
+    // nunca passou de ~3min nas provas 13-19 - check 2:47 no mesmo run).
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--only-jobs", "check"]).timeout).toBe(300)
+    // Um --timeout explicito SEMPRE vence o default calibrado.
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--only-jobs", "check", "--timeout", "60"]).timeout).toBe(60)
+    expect(parseArgs(["--branch", "ci-proof/x", "--workflow", "pr-check.yml", "--timeout", "120"]).timeout).toBe(120)
+  })
+
   // ── PURE: Type E namespace contract ────────────────────────────────────
   it("isCiProofBranch: aceita ci-proof/<nome> (o namespace deriva do manifest)", () => {
     expect(CI_PROOF_NAMESPACE).toBe("ci-proof")
@@ -160,6 +181,32 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(joined.indexOf("HUSKY=0")).toBeLessThan(joined.indexOf("push origin ci-proof/x"))
     const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false }, "main")
     expect(without.join("\n")).not.toContain("HUSKY=0")
+  })
+
+  it("planSteps: --only-jobs troca o poll do run pelo poll do JOB + captura --job (sec 11.20)", () => {
+    const withJob = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false, onlyJobs: "check" }, "main")
+    const joined = withJob.join("\n")
+    expect(joined).toContain("poll do JOB 'check'")
+    expect(joined).toContain("gh: run view <id> --json jobs  (resolve o jobId do 'check')")
+    expect(joined).toContain("gh: run view <id> --job <jobId> --log")
+    expect(joined).not.toContain("gh: run view <id> --log >")
+    // Sem a flag, o poll/captura continuam os do run inteiro (a ordem antiga
+    // preservada - os asserts de ciclo existentes nao quebram).
+    const without = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false }, "main")
+    const plain = without.join("\n")
+    expect(plain).toContain("poll, timeout")
+    expect(plain).toContain("gh: run view <id> --log >")
+    expect(plain).not.toContain("poll do JOB")
+  })
+
+  it("planSteps: o plano renderiza o timeout RESOLVIDO (300s com --only-jobs, 900s sem - o default calibrado do sec 11.20, nao um numero pendente)", () => {
+    const withJob = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false, onlyJobs: "check" }, "main")
+    expect(withJob.join("\n")).toContain("timeout 300s")
+    const plain = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false }, "main")
+    expect(plain.join("\n")).toContain("timeout 900s")
+    // Um --timeout explicito renderiza o valor explicitado, nao o default.
+    const explicit = planSteps({ branch: "ci-proof/x", workflow: "pr-check.yml", mutate: null, expect: null, expectLog: null, keep: false, onlyJobs: "check", timeout: 60 }, "main")
+    expect(explicit.join("\n")).toContain("timeout 60s")
   })
 
   // ── PURE: outcome check ────────────────────────────────────────────────
@@ -236,6 +283,75 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(inv).toContain("git:commit -m ci-proof: ci-proof/e2e-mut")
     expect(inv.indexOf("git:add -A")).toBeLessThan(inv.indexOf("git:commit"))
     expect(inv.indexOf("git:commit")).toBeLessThan(inv.indexOf("git:push origin ci-proof/e2e-mut"))
+  }, 60000)
+
+  // ── FAKE-BIN E2E: --only-jobs (sec 11.20 - poll por JOB, nao pelo run) ─
+  it("E2E --only-jobs: o poll termina quando o JOB alvo conclui (o run pode seguir in_progress) - captura via --job, verify contra a conclusao do JOB -> exit 0", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-onlyjobs", "--workflow", "pr-check.yml", "--only-jobs", "check", "--expect", "failure"], {
+      CI_PROOF_FAKE_GH_JOBS: "1",
+      CI_PROOF_FAKE_GH_JOB_NAME: "check",
+      CI_PROOF_FAKE_GH_JOB_STATUS: "completed",
+      CI_PROOF_FAKE_GH_JOB_CONCLUSION: "failure",
+      CI_PROOF_FAKE_GH_LOG: "real-repo contract line\n",
+    })
+    expect(result.status).toBe(0)
+    // A mensagem do ciclo identifica o JOB (nao o run) como o sinal.
+    expect(result.stdout).toContain("run #777 job 'check' completed (failure)")
+    expect(result.stdout).toContain("verify: conclusion=failure")
+    expect(result.stdout).toContain("DONE run=777 url=https://github.com/severinno/severinno/actions/runs/777 conclusion=failure")
+    expect(result.stdout).toContain("revertido")
+    // O ciclo agora consulta os jobs do run (poll por job) e captura o log
+    // do JOB (--job 42 --log) - nao o do run inteiro.
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("gh:run view 777 --json jobs")
+    expect(inv).toContain("gh:run view 777 --job 42 --log")
+    expect(inv).not.toContain("gh:run view 777 --log")
+    expect(inv.indexOf("gh:run view 777 --json jobs")).toBeLessThan(inv.indexOf("gh:run view 777 --job 42 --log"))
+  }, 60000)
+
+  it("E2E --only-jobs EARLY-EXIT: o run fica in_progress PARA SEMPRE (POLL=99999, o caso Security Headers do sec 11.20) mas o JOB alvo conclui -> exit 0 no 1o poll do job (o ciclo NAO espera o run inteiro - o coracao do lever)", () => {
+    const { result, stateDir } = runCli(["--branch", "ci-proof/e2e-oj-early", "--workflow", "pr-check.yml", "--only-jobs", "check", "--expect", "failure"], {
+      CI_PROOF_FAKE_GH_POLL: "99999", // run list NUNCA completa (Security Headers seguindo em background)
+      CI_PROOF_FAKE_GH_JOBS: "1",
+      CI_PROOF_FAKE_GH_JOB_NAME: "check",
+      CI_PROOF_FAKE_GH_JOB_STATUS: "completed", // o JOB alvo ja concluiu no 1o poll
+      CI_PROOF_FAKE_GH_JOB_CONCLUSION: "failure",
+    })
+    expect(result.status).toBe(0)
+    // O ciclo termina pelo JOB, nao pelo run - a mensagem identifica o
+    // job completed enquanto o run segue in_progress.
+    expect(result.stdout).toContain("run #777 job 'check' completed (failure)")
+    expect(result.stdout).toContain("DONE run=777 url=https://github.com/severinno/severinno/actions/runs/777 conclusion=failure")
+    expect(result.stdout).toContain("revertido")
+    // O poll consultou os jobs do run (a fonte do early-exit) - o run list
+    // nunca chegou a completed, mas o ciclo nao esperou por ele.
+    const inv = invJoined(stateDir)
+    expect(inv).toContain("gh:run view 777 --json jobs")
+    expect(inv).toContain("gh:run view 777 --job 42 --log")
+  }, 60000)
+
+  it("E2E --only-jobs: job alvo NAO existe no run (run completou sem ele) -> exit 3 com a lista de jobs, revert acontece", () => {
+    // CI_PROOF_FAKE_GH_JOBS nao setado = jobs vazio (o fixture responde
+    // { jobs: [] } ao poll) - o run completou (poll default 0) mas o job
+    // 'check' nunca aparece: a classe "nome de job errado" nao pode virar
+    // poll infinito ate o timeout.
+    const { result } = runCli(["--branch", "ci-proof/e2e-oj-missing", "--workflow", "pr-check.yml", "--only-jobs", "check", "--timeout", "5"], {
+      CI_PROOF_FAKE_GH_JOBS: "0",
+    })
+    expect(result.status).toBe(3)
+    expect(allOutput(result)).toContain("job 'check' nao encontrado no run #777")
+    expect(result.stdout).toContain("revertido")
+  }, 60000)
+
+  it("E2E --only-jobs: job alvo fica in_progress ate o timeout -> exit 3 (o poll nao mente sobre a conclusao do run)", () => {
+    const { result } = runCli(["--branch", "ci-proof/e2e-oj-timeout", "--workflow", "pr-check.yml", "--only-jobs", "check", "--timeout", "1"], {
+      CI_PROOF_FAKE_GH_JOBS: "1",
+      CI_PROOF_FAKE_GH_JOB_NAME: "check",
+      CI_PROOF_FAKE_GH_JOB_STATUS: "in_progress",
+    })
+    expect(result.status).toBe(3)
+    expect(allOutput(result)).toContain("job 'check' nao completou no run #777")
+    expect(result.stdout).toContain("revertido")
   }, 60000)
 
   // ── FAKE-BIN E2E: --no-verify (Prova 16 first-class) ───────────────────
