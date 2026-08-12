@@ -1,0 +1,1 @@
+**Re-validação ({{DATE}}, {{COUNT}} claims)**: re-rodou o CLI real no estado atual → `{{QUOTE}}` exit 0 (verbatim){{SUITE_CLAUSE}} — `--check` continua clean (0 unregistered + 0 stale): o par CURE+stale segue calibrado por claims novas, sem drift de seção. Registro de evento 8.x — sem entrada no EXIT_CLAIMS (fronteira da sec 11.51, detector 11.x-only por desenho).

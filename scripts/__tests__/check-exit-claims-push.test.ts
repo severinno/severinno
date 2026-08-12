@@ -29,12 +29,13 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { decideExitClaimsVerdict, isValidBase, parseSince, unregisteredOf } from "../check-exit-claims-push.mjs"
-import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { citedOf, decideExitClaimsVerdict, isValidBase, parseSince, unregisteredOf } from "../check-exit-claims-push.mjs"
+import { EXIT_CLAIMS } from "../scan-exit-claims.mjs"
+import { POISON_EXIT_CLAIMS_DOC, cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "check-exit-claims-push.mjs")
 
-/** Uma claim de exit code legitima (a 11.42, registrada) + a 11.99 fake. */
+/** Uma claim de exit code legitima (a 11.42, registrada). */
 const CLEAN_DOC = [
   "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
   "",
@@ -44,18 +45,25 @@ const CLEAN_DOC = [
   "",
 ].join("\n")
 
-const POISON_DOC = [
+const POISON_DOC = POISON_EXIT_CLAIMS_DOC
+
+/** Doc com a claim 11.42 registrada + uma secao 8.99 DESCALIBRADA (cita 25 com o manifest em 28) - o loop da sec 11.63. */
+const UNCALIBRATED_DOC = [
   "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
   "",
   "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
   "",
-  "## 11.99 Claim fake da prova",
+  "## 8.99 Prova X - controle sintetico",
   "",
-  "**Exit codes**: exit code 3 aqui.",
+  "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.",
   "",
   "## 12. Referências",
   "",
 ].join("\n")
+
+/** Doc com a 8.99 CALIBRADA no count atual do manifest (o pin vivo do count - muda de proposito a cada claim). */
+const CALIBRATED_DOC = UNCALIBRATED_DOC.replace("clean (25 claims)", `clean (${EXIT_CLAIMS.length} claims)`)
+
 
 describe("check-exit-claims-push.mjs - guard git-based do doc commitado (sec 11.49)", () => {
   afterEach(cleanupTempDirs)
@@ -155,6 +163,43 @@ describe("check-exit-claims-push.mjs - guard git-based do doc commitado (sec 11.
       env: { CHECK_EXIT_CLAIMS_PUSH_DOC: path.join(dir, "nao-existe.md") },
     })
     expect(r.status).toBe(3)
+  }, 60000)
+
+  it("citedOf: doc com secao 8.x DESCALIBRADA -> a violacao com a secao exata (o checkCitedCounts real da sec 11.62)", () => {
+    expect(citedOf(UNCALIBRATED_DOC)).toEqual([{ section: "8.99", counts: [25] }])
+  }, 60000)
+
+  it("citedOf: doc com a 8.99 calibrada no count atual -> [] (a recalibracao cobre)", () => {
+    expect(citedOf(CALIBRATED_DOC)).toEqual([])
+  }, 60000)
+
+  it("REAL-REPO CONTRACT do CLI (sec 11.63): CHECK_EXIT_CLAIMS_PUSH_DOC apontando o doc DESCALIBRADO (claim registrada, 8.x antiga) -> exit 1 com a SECAO EXATA e a CURE por secao (o loop registro+recalibracao fechado no push)", () => {
+    const dir = createTempDir("exit-claims-push-")
+    const docPath = path.join(dir, "uncalibrated.md")
+    fs.writeFileSync(docPath, UNCALIBRATED_DOC, "utf8")
+    const r = runSubprocess({
+      command: process.execPath,
+      args: [SCRIPT],
+      env: { CHECK_EXIT_CLAIMS_PUSH_DOC: docPath },
+    })
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("8.x com count de claims desatualizado")
+    expect(r.stdout).toContain("secao 8.99 cita [25]")
+    expect(r.stdout).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+    expect(r.stdout).toContain("sec 11.63")
+  }, 60000)
+
+  it("REAL-REPO CONTRACT do CLI (sec 11.63): doc com a 8.99 calibrada -> exit 0 (a dimensao da recalibracao passa com a secao coberta)", () => {
+    const dir = createTempDir("exit-claims-push-")
+    const docPath = path.join(dir, "calibrated.md")
+    fs.writeFileSync(docPath, CALIBRATED_DOC, "utf8")
+    const r = runSubprocess({
+      command: process.execPath,
+      args: [SCRIPT],
+      env: { CHECK_EXIT_CLAIMS_PUSH_DOC: docPath },
+    })
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("clean")
   }, 60000)
 
   it("REAL-REPO CONTRACT do CLI contra o doc REAL (sem override): o guard roda git show HEAD de verdade e o doc commitado esta limpo -> exit 0 (o pino vivo: um claim nao-registrada commitada quebraria este teste)", () => {

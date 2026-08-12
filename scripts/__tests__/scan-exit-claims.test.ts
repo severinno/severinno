@@ -40,7 +40,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { cleanupTempDirs, createTempDir, runSubprocess, writeModuleCopy, type ModulePatchOp } from "./golden-copy-utils"
-import { EXIT_CLAIMS, EXIT_CLAIM_RE, checkExitClaims, resolveChain, resolvePin, scanDocExitClaims } from "../scan-exit-claims.mjs"
+import { EXIT_CLAIMS, EXIT_CLAIM_RE, checkCitedCounts, checkExitClaims, resolveChain, resolvePin, scanCitedCounts, scanDocExitClaims } from "../scan-exit-claims.mjs"
 
 // O MESMO padrao do unit-surface-contract.test.ts: picomatch (o motor de
 // glob do vitest, transitivo garantido ao lado do vitest) para casar globs
@@ -105,6 +105,7 @@ const ABS_PIN_SNAPSHOT: Array<[string, string, string]> = [
   ["11.45", "current", "utf8-check.yml roda o gate consolidado verify-encoding.sh --ci src/ (o comando unico cujo layer 5 e o scan-non-ascii --report sobre scripts/*.mjs - a classe 'acento em gate .mjs' ja esta no CI): step interno regredido para check-utf8 puro -> exit code 1 do contrato; o gate real com byte nao-ASCII num .mjs -> exit code 1 (probe 2026-08-11)"],
   ["11.47", "current", "scan-guard-gates: um sufixo --since/--scope no step test:guard (push net guard-gates.yml OU twin pr-check.yml fragile-guard) -> exit code 1 do guard com 'TEST GUARD STEP MISSING' no caminho exato (o regex EXATO rejeita qualquer sufixo - o lock da recalibracao 8.1, sem trilha de doc)"],
   ["11.49", "current", "check-exit-claims-push (o guard git-based do doc commitado): doc commitado com claim nao-registrada -> exit code 1 com as secoes; doc commitado limpo (ou apenas claims pre-existentes no base) -> exit code 0; git show HEAD falhou -> exit code 3"],
+  ["11.58", "current", "hook-proof-run (o ciclo de prova de hook local num comando): esperado observado + revertido -> exit code 0; exit code divergiu (revert mesmo assim) -> exit code 1; usage errado -> exit code 2; infra (checkout/commit/doc ausente/revert incompleto) -> exit code 3"],
 ]
 
 afterEach(() => {
@@ -286,6 +287,80 @@ describe("scripts/scan-exit-claims.mjs - DEFAULT CONFIG INCLUDE (sec 11.53)", ()
     expect(mutated).not.toBe(src)
     const include = testLevelInclude(mutated)
     expect(include).not.toContain("scripts/**/*.test.{ts,tsx}")
+  })
+})
+
+describe("scripts/scan-exit-claims.mjs - 8.x COUNTS PIN (sec 11.62)", () => {
+  it("REAL-REPO: secao 8.x SEM re-validacao datada cita somente o count atual; a 8.34 e coberta pela re-validacao (o wrap 'clean (27\\nclaims)' pego no doc real)", () => {
+    const s = scanCitedCounts(DOC)
+    expect(s.length).toBeGreaterThanOrEqual(2)
+    const sec34 = s.find((x) => x.section === "8.34")
+    expect(sec34).toBeDefined()
+    expect(sec34.hasReval).toBe(true)
+    // o 27 e a citacao EMBRULHADA do controle historico (2 linhas fisicas -
+    // o wrap que o flatten por paragrafo resolve); o 28 e a re-validacao
+    // datada - ambos coexistem na secao coberta (registros de evento)
+    expect(sec34.counts).toEqual(expect.arrayContaining([27, 28]))
+    const sec35 = s.find((x) => x.section === "8.35")
+    expect(sec35).toBeDefined()
+    expect(sec35.hasReval).toBe(false)
+    // o pin do count ATUAL (28): a cada claim nova no EXIT_CLAIMS, este
+    // assert muda de proposito (o padrao do ABS PIN) - e a 8.35 passa a
+    // exigir uma re-validacao datada (node scripts/doc-revalidate.mjs --section 8.35)
+    expect(sec35.counts).toEqual([28])
+    expect(checkCitedCounts(DOC)).toEqual([])
+  })
+
+  it("MUTATION: secao 8.x sem re-validacao citando count antigo -> violacao (a classe da 27->28)", () => {
+    const dir = createTempDir("sec11-62-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.", "", "## 9. Outra secao", ""],
+      },
+    ])
+    expect(checkCitedCounts(docPath, 28)).toEqual([{ section: "8.99", counts: [25] }])
+  })
+
+  it("MUTATION: a re-validacao datada EXIME a secao (counts historicos sancionados, o mecanismo da 8.34)", () => {
+    const dir = createTempDir("sec11-62-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: [
+          "",
+          "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.",
+          "",
+          "**Re-validação (2026-08-11, 28 claims)**: re-validado no estado atual.",
+          "",
+          "## 9. Outra secao",
+          "",
+        ],
+      },
+    ])
+    expect(checkCitedCounts(docPath, 28)).toEqual([])
+  })
+
+  it("MUTATION: '**Re-validação**:' SEM data NAO exime (so o registro datado sanciona)", () => {
+    const dir = createTempDir("sec11-62-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.", "", "**Re-validação**: `npx vitest run ...`", "", "## 9. Outra secao", ""],
+      },
+    ])
+    expect(checkCitedCounts(docPath, 28)).toEqual([{ section: "8.99", counts: [25] }])
+  })
+
+  it("MUTATION: citacao EMBRULHADA em 2 linhas fisicas e pega (o caso real da 8.34)", () => {
+    const dir = createTempDir("sec11-62-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Controle pos-ciclo**: CLI `clean (25", "claims)` exit 0.", "", "## 9. Outra secao", ""],
+      },
+    ])
+    expect(checkCitedCounts(docPath, 28)).toEqual([{ section: "8.99", counts: [25] }])
   })
 })
 

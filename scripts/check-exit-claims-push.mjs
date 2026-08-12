@@ -45,16 +45,24 @@
  * batchado' permanece (o batch economizaria so o boot node; sec 11.49).
  *
  * Exit codes: 0 = doc commitado limpo (ou apenas claims pre-existentes);
- * 1 = claim(s) nao-registrada(s) no doc COMMITADO (listadas); 2 = uso
- * errado; 3 = falha de infra (git show HEAD falhou). Saida ASCII pura.
- * Puro node, sem deps.
+ * 1 = claim(s) nao-registrada(s) OU secao(oes) 8.x desatualizada(s) no doc
+ * COMMITADO (listadas); 2 = uso errado; 3 = falha de infra (git show HEAD
+ * falhou). Saida ASCII pura. Puro node, sem deps.
+ *
+ * RECALIBRACAO (sec 11.63): o MESMO doc commitado passa tambem pelo
+ * checkCitedCounts da sec 11.62 - uma claim nova REGISTRADA sem a
+ * re-validacao datada nas secoes 8.x afetadas bloqueia o push com a CURE
+ * por secao (node scripts/doc-revalidate.mjs --section 8.N). O escopo
+ * principal (a direcao unica .unregistered da sec 11.49) nao muda - esta
+ * e a SEGUNDA dimensao, a recalibracao. Custo desprezivel (o scan e ~ms
+ * sobre o doc ja materializado).
  */
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { checkExitClaims, EXIT_CLAIMS_CURE } from "./scan-exit-claims.mjs"
+import { checkCitedCounts, checkExitClaims, EXIT_CLAIMS, EXIT_CLAIMS_CURE } from "./scan-exit-claims.mjs"
 
 const DOC_REL = "docs/gates-proofs.md"
 const HEAD = "HEAD"
@@ -95,16 +103,31 @@ export function materializeDoc(ref) {
   }
 }
 
-/** Run the real detector against a doc string (temp file) -> .unregistered. */
-export function unregisteredOf(content) {
+/**
+ * O padrao temp-file compartilhado (regra dos 2 usos): escreve o doc numa
+ * string num temp file, roda o checker real e limpa - o seam que os dois
+ * guardas de dimensao usam (a sec 11.49 claims + a sec 11.63 recalibracao).
+ */
+function withTempDoc(content, checkFn) {
   const tmp = path.join(os.tmpdir(), `exit-claims-push-${process.pid}-${Math.random().toString(36).slice(2)}.md`)
   try {
     fs.writeFileSync(tmp, content, "utf8")
-    return checkExitClaims(tmp).unregistered
+    return checkFn(tmp)
   } finally {
     fs.rmSync(tmp, { force: true })
   }
 }
+
+/** Run the real detector against a doc string (temp file) -> .unregistered. */
+export const unregisteredOf = (content) => withTempDoc(content, (tmp) => checkExitClaims(tmp).unregistered)
+
+/**
+ * Run the real 8.x counts contract (sec 11.62) against a doc string (temp
+ * file) -> as violacoes (secoes 8.x sem re-validacao datada citando count
+ * != atual do EXIT_CLAIMS). O espelho do unregisteredOf para a dimensao
+ * da recalibracao (sec 11.63).
+ */
+export const citedOf = (content) => withTempDoc(content, (tmp) => checkCitedCounts(tmp))
 
 /**
  * A decisao pura do guard (exported for the hermetic vitest suite - a
@@ -163,6 +186,24 @@ export function main() {
   const v = decideExitClaimsVerdict({ headUnreg, baseUnreg, hasBase })
 
   if (v.ok) {
+    // Sec 11.63 - a SEGUNDA dimensao do MESMO doc commitado: a claim nova
+    // REGISTRADA no manifest sem a re-validacao datada nas secoes 8.x
+    // afetadas (o loop que a 28a claim da 11.58 quebrou: registro no commit
+    // dela, re-validacao da 8.34 num commit separado) sairia da maquina - o
+    // vitest pegaria so no CI/PR. O checkCitedCounts da sec 11.62 roda aqui
+    // e a CURE por secao e o doc-revalidate --section 8.N.
+    const citedV = citedOf(headDoc)
+    if (citedV.length > 0) {
+      console.log(
+        `exit-claims-push: ${citedV.length} secao(oes) 8.x com count de claims desatualizado no doc COMMITADO (${HEAD}) - sec 11.62/11.63:`,
+      )
+      for (const s of citedV) {
+        console.log(
+          `  secao ${s.section} cita ${JSON.stringify(s.counts)} com o EXIT_CLAIMS em ${EXIT_CLAIMS.length}: node scripts/doc-revalidate.mjs --section ${s.section} (a linha datada cobre os counts historicos da secao - sec 11.63)`,
+        )
+      }
+      return 1
+    }
     console.log(`exit-claims-push: ${v.message}${hasBase ? ` (base ${since ? `--since ${since}` : BASE_FALLBACK})` : " (sem base - primeiro push)"}`)
     return 0
   }

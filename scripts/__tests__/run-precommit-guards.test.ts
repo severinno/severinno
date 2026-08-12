@@ -1,13 +1,13 @@
 /**
- * run-precommit-guards.mjs - batch runner dos 6 guards node do pre-commit
+ * run-precommit-guards.mjs - batch runner dos 8 guards node do pre-commit
  * (2026-08, secao 11.13/11.16): uma UNICA invocacao node agrega os exit codes.
  *
  * Hermetic tests via the guards' OWN env overrides (PUSH_SUITE_SCAN_ROOT /
  * LINT_LOADER_SCAN_ROOT / GUARD_GATES_SCAN_ROOT / NODE_MODULES_ROOT /
- * FUZZ_PRECOMMIT_SCAN_ROOT / BATCH_COVERAGE_SCAN_ROOT - the same env-override
- * pattern as FRAGILE_SCAN_ROOT): each test points ONE override at a synthetic
- * temp repo that FAILS that guard, while the OTHER guards scan the REAL
- * repo (clean today) - proving:
+ * FUZZ_PRECOMMIT_SCAN_ROOT / BATCH_COVERAGE_SCAN_ROOT / EXIT_CLAIMS_DOC - the
+ * same env-override pattern as FRAGILE_SCAN_ROOT): each test points ONE
+ * override at a synthetic temp repo that FAILS that guard, while the OTHER
+ * guards scan the REAL repo (clean today) - proving:
  *   1. AGREGACAO (worst-exit): um guard falho -> batch exit 1.
  *   2. ISOLAMENTO: os outros guards RODAM MESMO ASSIM e reportam clean -
  *      uma falha nunca esconde as demais (a razao do batch sobre o hook
@@ -25,7 +25,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writeCIWorkflow, writeGuardGatesWorkflow, writePRWorkflow } from "./golden-copy-utils"
+import { GUARD_PUSH_NET, cleanupTempDirs, createTempDir, runSubprocess, writeCIWorkflow, writeGuardGatesWorkflow, writePRWorkflow, writePoisonExitClaimsDoc } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "run-precommit-guards.mjs")
 
@@ -235,5 +235,21 @@ describe("run-precommit-guards.mjs - batch runner dos 8 guards node (sec 11.13)"
     expect(r.stdout).toContain("push-suite: clean")
     expect(r.stdout).toContain("lint-staged-loader: clean")
     expect(r.stdout).toContain("guard-gates: clean")
+  }, 60000)
+
+  it("AGREGACAO + ISOLAMENTO + SURFACE da CURE (sec 11.57): EXIT_CLAIMS_DOC envenenado (o 8o guard exit-claims falha) -> batch exit 1 E a CURE aparece na saida AGREGADA (o batch NAO consome silenciosamente - a stderr do main() compartilhado flui direto, o mecanismo da sec 11.57), os outros 7 guards clean", () => {
+    const dir = createTempDir("run-guards-")
+    const poison = writePoisonExitClaimsDoc(dir)
+    const r = runBatch({ EXIT_CLAIMS_DOC: poison })
+    expect(r.status).toBe(1)
+    // O 8o guard falha com a claim fake (unregistered) e a CURE surface na
+    // saida agregada (stderr) - o pin da sec 11.57 'o batch SURFACE, nao consome'.
+    expect(r.stderr).toContain("claim na secao 11.99")
+    expect(r.stderr).toContain("CURE: registre a claim no EXIT_CLAIMS")
+    // ISOLAMENTO: os outros 7 guards rodaram e reportaram clean MESMO com o 8o falho.
+    expect(r.stdout).toContain("check-node-modules-integrity: clean")
+    expect(r.stdout).toContain("guard-gates: clean")
+    expect(r.stdout).toContain("prepush-batch: clean")
+    expect(r.stdout).toContain("batch-coverage: clean")
   }, 60000)
 })

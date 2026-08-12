@@ -251,6 +251,13 @@ export const EXIT_CLAIMS = [
     pin: { file: "scripts/__tests__/check-exit-claims-push.test.ts", marker: "11.49" },
     ref: "gates-proofs.md sec 11.49 (avaliacao 2026-08-11) - a classe 'commit com HUSKY=0/--no-verify esconde claim nova' fechada no push net (Gate 3 mapeia docs -> nada; direcao unica .unregistered - o stale e ruido de delta)",
   },
+  {
+    section: "11.58",
+    claim: "hook-proof-run (o ciclo de prova de hook local num comando): esperado observado + revertido -> exit code 0; exit code divergiu (revert mesmo assim) -> exit code 1; usage errado -> exit code 2; infra (checkout/commit/doc ausente/revert incompleto) -> exit code 3",
+    kind: "current",
+    pin: { file: "scripts/__tests__/hook-proof-run.test.ts", marker: "11.58" },
+    ref: "gates-proofs.md sec 11.58 (decisao 2026-08-11) - o espelho local do ci-proof-run: o ciclo manual das Provas 37/38 num comando",
+  },
 ]
 
 /** Exit codes que o contrato reconhece como claims (0-3, o padrao do repo).
@@ -301,6 +308,88 @@ export function scanDocExitClaims(docPath = DOC) {
     }
   }
   return claims
+}
+
+// ---------------------------------------------------------------------------
+// Sec 11.62 - o PIN dos counts citados nas 8.x: a UNICA leitura sancionada
+// das secoes de evento (a excecao a fronteira da sec 11.51). Coleta as
+// citacoes verbatim `clean (N claims` do CLI --check, PARAGRAFO a paragrafo
+// (linhas embrulhadas unidas - o caso real da sec 8.34, onde `clean (27` e
+// `claims)` estao em linhas fisicas distintas). NAO detecta exit-code
+// claims - o scanDocExitClaims segue 11.x-only (o SCOPE FRONTIER test da
+// sec 11.51 permanece intocado).
+// ---------------------------------------------------------------------------
+const REVAL_MARKER_RE = /^\*\*Re-valida[\u00e7c]\u00e3o (datada )?\(\d{4}-\d{2}-\d{2}/
+const CLEAN_COUNT_RE = /clean \((\d+) claims/g
+
+/**
+ * scanCitedCounts - varre as secoes 8.x e retorna por secao:
+ *   { section, hasReval, counts }
+ * hasReval = a secao tem um paragrafo marcado como re-validacao datada
+ * (`**Re-valida\u00e7\u00e3o (DATE` / `**Re-valida\u00e7\u00e3o datada (DATE`) -
+ * o registro sancionado que cobre os counts historicos da secao (sec 8.34).
+ * O marcador e setado MESMO sem citacoes no paragrafo (o sinal e o header).
+ */
+export function scanCitedCounts(docPath = DOC) {
+  const lines = fs.readFileSync(docPath, "utf8").split(/\r?\n/)
+  const sections = []
+  let cur = null
+  let para = []
+  let paraFirst = null
+  const flush = () => {
+    if (cur && para.length > 0) {
+      const isReval = !!(paraFirst && REVAL_MARKER_RE.test(paraFirst))
+      const counts = []
+      for (const m of para.join(" ").matchAll(CLEAN_COUNT_RE)) counts.push(Number(m[1]))
+      if (counts.length > 0 || isReval) {
+        const rec = sections.find((s) => s.section === cur)
+        if (rec) {
+          if (isReval) rec.hasReval = true
+          rec.counts.push(...counts)
+        } else {
+          sections.push({ section: cur, hasReval: isReval, counts })
+        }
+      }
+    }
+    para = []
+    paraFirst = null
+  }
+  for (const l of lines) {
+    const m8 = l.match(/^## 8\.(\d+)/)
+    if (m8) {
+      flush()
+      cur = `8.${m8[1]}`
+      continue
+    }
+    if (/^## \d/.test(l)) {
+      flush()
+      cur = null
+      continue
+    }
+    if (cur) {
+      if (l.trim() === "") flush()
+      else {
+        if (para.length === 0) paraFirst = l
+        para.push(l)
+      }
+    }
+  }
+  flush()
+  return sections
+}
+
+/**
+ * checkCitedCounts - o contrato da sec 11.62: toda secao 8.x que cita
+ * counts deve, ou citar somente o count ATUAL do manifest (default
+ * EXIT_CLAIMS.length), ou ter uma re-validacao datada (a excecao
+ * sancionada que cobre os counts historicos). Retorna as violacoes:
+ *   { section, counts }
+ */
+export function checkCitedCounts(docPath = DOC, current = EXIT_CLAIMS.length) {
+  return scanCitedCounts(docPath)
+    .filter((s) => !s.hasReval)
+    .filter((s) => s.counts.some((c) => c !== current))
+    .map((s) => ({ section: s.section, counts: s.counts }))
 }
 
 /** Resolve o pin de uma entrada do manifest (file real + marker no conteudo). */

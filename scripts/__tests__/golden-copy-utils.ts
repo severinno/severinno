@@ -421,6 +421,46 @@ export function canonicalProgram(program: string): string {
     .join("\n")
 }
 
+/**
+ * RULE OF USES (EXTRACTED 2026-08): o doc sintetico POISONADO do
+ * scan-exit-claims (a claim registrada 11.42 como base + a claim fake 11.99
+ * nao-registrada - o shape que derruba o CLI exit-claims E o guard do push
+ * com 'claim na secao 11.99') estava inline em DOIS lugares: o POISON_DOC
+ * const do check-exit-claims-push.test.ts (sec 11.49) e o
+ * writePoisonExitClaimsDoc local do run-precommit-guards.test.ts (sec 11.57
+ * - o teste novo do 8o guard no batch). 2 shapes repetidas -> extraido aqui
+ * para um 3o suite herdar o MESMO doc envenenado sem re-escrever o shape.
+ * O retorno de writePoisonExitClaimsDoc e o PATH do doc escrito (o seam
+ * EXIT_CLAIMS_DOC / CHECK_EXIT_CLAIMS_PUSH_DOC aponta para ele).
+ */
+export const POISON_EXIT_CLAIMS_DOC = [
+  "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
+  "",
+  "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
+  "",
+  "## 11.99 Claim fake da prova",
+  "",
+  "**Exit codes**: exit code 3 aqui.",
+  "",
+  "## 12. Referencias",
+  "",
+].join("\n")
+
+/**
+ * Escreve o doc envenenado em `<dir>/docs/gates-proofs.md` (o rel-path que
+ * o scan-exit-claims usa por default) e devolve o PATH - o seam dos testes
+ * que rodam o CLI real contra o doc sintetico. A claim fake 11.99 produz o
+ * bloco unregistered (CURE + stale noise - o stale de TODAS as outras
+ * entradas do manifest sem claim no doc sintetico e esperado e inofensivo
+ * nos asserts de presenca).
+ */
+export function writePoisonExitClaimsDoc(dir: string): string {
+  const abs = path.join(dir, "docs", "gates-proofs.md")
+  fs.mkdirSync(path.dirname(abs), { recursive: true })
+  fs.writeFileSync(abs, POISON_EXIT_CLAIMS_DOC, "utf8")
+  return abs
+}
+
 /** CRLF → LF. Needed before piping a program/golden copy into bash -c. */
 export function normalizeCrlf(input: string): string {
   return input.replace(/\r\n/g, "\n")
