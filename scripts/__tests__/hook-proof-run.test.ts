@@ -167,6 +167,14 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(parseArgs(["--branch", "ci-proof/lpr-x", "--bogus"]).error).toContain("desconhecida")
       expect(parseArgs(["--help"]).error).toContain("usage")
     }, 60000)
+
+    it("--cleanup-on-fail parseia (o fechamento do ACHADO da Prova 41, sec 11.69)", () => {
+      const o = parseArgs(["--branch", "ci-proof/lpr-x", "--cleanup-on-fail"])
+      expect(o.error).toBeNull()
+      expect(o.cleanupOnFail).toBe(true)
+      // default: false (a limpeza manual continua o comportamento padrao)
+      expect(parseArgs(["--branch", "ci-proof/lpr-x"]).cleanupOnFail).toBe(false)
+    }, 60000)
   })
 
   describe("injectDocClaim", () => {
@@ -303,6 +311,11 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       const joined = steps.join("\n")
       expect(joined).toContain("--mutate-doc-renumber 11.42 --to 11.98")
       expect(joined).toContain("commit -m \"hook-proof: ci-proof/lpr-x (mutacao)\"")
+    }, 60000)
+
+    it("--cleanup-on-fail aparece no plano (os fail paths de MUTACAO rodam o revertCycle - sec 11.69)", () => {
+      const steps = planSteps({ branch: "ci-proof/lpr-x", mutateDocClaim: "11.99", mutate: null, expectExit: 1, expectCure: false, expectLog: null, baseSha: null, hook: null, keep: false, cleanupOnFail: true }, "base")
+      expect(steps.join("\n")).toContain("cleanup-on-fail: os fail paths POS-scratch de infra")
     }, 60000)
   })
 
@@ -495,6 +508,59 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       // (sem commit da mutacao -> sem push simulado)
       const log = readInvocations(stateDir)
       expect(log).not.toContain("git:commit -m hook-proof: ci-proof/hpr-e2e (mutacao)")
+    }, 60000)
+
+    it("ACHADO Prova 41 FECHADO (sec 11.69): --mutate shell FALHA com --cleanup-on-fail -> exit 3 E o revertCycle roda (checkout base + branch -D no invocations.log - a scratch NAO fica e os untracked do byte-copy sao restaurados pelo ciclo)", () => {
+      const stateDir = createTempDir("hpr-e2e-")
+      const docDir = createTempDir("hpr-doc-")
+      const docPath = path.join(docDir, "gates-proofs.md")
+      fs.writeFileSync(docPath, SYNTH_DOC, "utf8")
+      // o --mutate "exit 1" e um comando shell que FALHA (status 1): o fail
+      // path de mutacao dispara - COM a flag, o revertCycle roda ANTES do
+      // fail(3) e a scratch nao fica (o ACHADO da Prova 41 fechado).
+      const r = runCli(
+        ["--branch", "ci-proof/hpr-mutfail", "--mutate", "exit 1", "--cleanup-on-fail", "--hook", FAKE_HOOK],
+        {
+          HOOK_PROOF_FAKE_STATE: stateDir,
+          HOOK_PROOF_FAKE_HOOK_OUTPUT: EXIT_CLAIMS_CURE,
+          HOOK_PROOF_FAKE_HOOK_EXIT: "1",
+          HOOK_PROOF_DOC: docPath,
+          HOOK_PROOF_FAKE_DIRTY: "1",
+        },
+      )
+      expect(r.status).toBe(3)
+      expect(r.stderr).toContain("--mutate falhou")
+      expect(r.stderr).toContain("cleanup-on-fail")
+      // o revertCycle RODOU mesmo no fail: checkout base + branch -D (a
+      // scratch nao fica - a limpeza que a Prova 41 precisava fazer a mao)
+      const log = readInvocations(stateDir)
+      expect(log).toContain("git:checkout base")
+      expect(log).toContain("git:branch -D ci-proof/hpr-mutfail")
+    }, 60000)
+
+    it("CONTRAPARTE (sec 11.69): --mutate shell FALHA SEM --cleanup-on-fail -> exit 3 COM a scratchLeftNote e SEM revertCycle (a classe aberta - a limpeza fica manual, o padrao antigo)", () => {
+      const stateDir = createTempDir("hpr-e2e-")
+      const docDir = createTempDir("hpr-doc-")
+      const docPath = path.join(docDir, "gates-proofs.md")
+      fs.writeFileSync(docPath, SYNTH_DOC, "utf8")
+      const r = runCli(
+        ["--branch", "ci-proof/hpr-mutfail", "--mutate", "exit 1", "--hook", FAKE_HOOK],
+        {
+          HOOK_PROOF_FAKE_STATE: stateDir,
+          HOOK_PROOF_FAKE_HOOK_OUTPUT: EXIT_CLAIMS_CURE,
+          HOOK_PROOF_FAKE_HOOK_EXIT: "1",
+          HOOK_PROOF_DOC: docPath,
+          HOOK_PROOF_FAKE_DIRTY: "1",
+        },
+      )
+      expect(r.status).toBe(3)
+      expect(r.stderr).toContain("--mutate falhou")
+      // SEM a flag: a nota de saida manual (a receita de limpeza) aparece
+      expect(r.stderr).toContain("branch scratch pode ter ficado")
+      // e o revertCycle NAO rodou (nenhum checkout base / branch -D apos o fail)
+      const log = readInvocations(stateDir)
+      expect(log).not.toContain("git:checkout base")
+      expect(log).not.toContain("git:branch -D ci-proof/hpr-mutfail")
     }, 60000)
 
     it("verify divergencia: hook exit 0 mas --expect-exit 1 -> exit 1 (revert MESMO ASSIM)", () => {

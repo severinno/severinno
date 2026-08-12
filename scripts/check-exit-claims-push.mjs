@@ -62,7 +62,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { checkCitedCounts, checkExitClaims, EXIT_CLAIMS, EXIT_CLAIMS_CURE } from "./scan-exit-claims.mjs"
+import { checkCitedCounts, checkDigestCounts, checkExitClaims, checkRevalCurrent, EXIT_CLAIMS, EXIT_CLAIMS_CURE } from "./scan-exit-claims.mjs"
 
 const DOC_REL = "docs/gates-proofs.md"
 const HEAD = "HEAD"
@@ -128,6 +128,24 @@ export const unregisteredOf = (content) => withTempDoc(content, (tmp) => checkEx
  * da recalibracao (sec 11.63).
  */
 export const citedOf = (content) => withTempDoc(content, (tmp) => checkCitedCounts(tmp))
+
+/**
+ * Run the real re-validacao contract (sec 11.66) against a doc string
+ * (temp file) -> as violacoes (secoes 8.x com reval datada citando count
+ * ANTIGO quando o EXIT_CLAIMS cresceu). A dimensao irma do citedOf: o
+ * checkCitedCounts da sec 11.62 EXIME secoes com reval - esta fecha o
+ * furo (uma claim nova sem re-validar a 8.x passaria pelo push).
+ */
+export const revalOf = (content) => withTempDoc(content, (tmp) => checkRevalCurrent(tmp))
+
+/**
+ * Run the real digest contract (sec 11.67) against a doc string (temp
+ * file) -> as violacoes (rows da TABELA ## 1 citando count != atual do
+ * EXIT_CLAIMS sem secao de origem coberta por re-validacao datada). O
+ * espelho do revalOf para a dimensao do digest (o ultimo ponto cego da
+ * superficie: o checkCitedCounts da sec 11.62 so varre as 8.x).
+ */
+export const digestOf = (content) => withTempDoc(content, (tmp) => checkDigestCounts(tmp))
 
 /**
  * A decisao pura do guard (exported for the hermetic vitest suite - a
@@ -201,6 +219,44 @@ export function main() {
         console.log(
           `  secao ${s.section} cita ${JSON.stringify(s.counts)} com o EXIT_CLAIMS em ${EXIT_CLAIMS.length}: node scripts/doc-revalidate.mjs --section ${s.section} (a linha datada cobre os counts historicos da secao - sec 11.63)`,
         )
+      }
+      return 1
+    }
+    // Sec 11.66 - o furo do 11.63: o checkCitedCounts EXIME secoes com
+    // reval datada, entao uma claim nova REGISTRADA com a reval citando o
+    // count antigo passaria pelo push. Esta dimensao fecha a classe: a
+    // reval precisa citar o count ATUAL (doc-revalidate --section 8.N).
+    const revalV = revalOf(headDoc)
+    if (revalV.length > 0) {
+      console.log(
+        `exit-claims-push: ${revalV.length} secao(oes) 8.x com re-validacao datada DESATUALIZADA no doc COMMITADO (${HEAD}) - sec 11.66:`,
+      )
+      for (const s of revalV) {
+        console.log(
+          `  secao ${s.section} com reval citando ${JSON.stringify(s.counts)} e o EXIT_CLAIMS em ${EXIT_CLAIMS.length}: node scripts/doc-revalidate.mjs --section ${s.section} (re-validar e a CURE - sec 11.61/11.66)`,
+        )
+      }
+      return 1
+    }
+    // Sec 11.67 - o ultimo ponto cego da superficie: a TABELA ## 1 (o
+    // digest das provas) tambem cita counts e o checkCitedCounts da sec
+    // 11.62 so varre as 8.x. Esta dimensao fecha a classe no push: uma
+    // row do digest citando count antigo sem secao de origem coberta.
+    const digestV = digestOf(headDoc)
+    if (digestV.length > 0) {
+      console.log(
+        `exit-claims-push: ${digestV.length} row(s) da TABELA ## 1 com count de claims desatualizado no doc COMMITADO (${HEAD}) - sec 11.67:`,
+      )
+      for (const d of digestV) {
+        if (d.section) {
+          console.log(
+            `  row ${d.row} cita ${JSON.stringify(d.counts)} com a secao de origem ${d.section} NAO coberta por re-validacao datada: node scripts/doc-revalidate.mjs --section ${d.section} (re-validar a secao de origem e a CURE - sec 11.61/11.67)`,
+          )
+        } else {
+          console.log(
+            `  row ${d.row} cita ${JSON.stringify(d.counts)} SEM referencia de secao de origem (sec 8.N): adicione a referencia na row - sec 11.67`,
+          )
+        }
       }
       return 1
     }

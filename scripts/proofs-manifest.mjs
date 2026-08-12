@@ -21,12 +21,24 @@
  *   - manifest -> doc (stale): toda entrada tem secao detectada no doc.
  *   - PIN REALITY: o module da classe existe (o padrao manifest-registry).
  *   - RUN REALITY: todo run nao-nulo aparece no texto do doc.
+ *   - WIRED SURFACE (2026-08-12): a direcao wired -> registry - o lado
+ *     inverso do growth contract. deriveWiredGuards() deriva a superficie
+ *     viva dos guards wired (spawns `node|bash scripts/` dos hooks +
+ *     imports do batch runner + steps `node scripts/scan-*.mjs --ci` dos
+ *     workflows do net) e checkWiredSurface() falha se um guard wired
+ *     nao tiver classe no PROOF_CLASSES nem entrada no WIRED_ALLOWLIST
+ *     (o padrao TARGET_DIRS aplicado ao registry - medido 2026-08-12:
+ *     18 wired = 11 classes + 7 allowlist). A direcao registry -> wired
+ *     NAO existe por desenho: classes helper (ci-proof-run, hook-proof-run,
+ *     doc-revalidate, run-all-fuzz) tem Prova mas nao sao guard de hook.
  *
  * OUT OF SHAPE (como scan-exit-claims/FRONTIERS, sec 11.40): SEM
  * superficie --print-* (CLI = --check), entao a LIVE TREE check do
  * manifest-registry nao o flagra. Roda via test:unit (o MESMO canal do
- * scan-exit-claims) - NAO no test:guard, cuja lista de 13 suites e pinada
- * pela Prova 35 (sec 8.30).
+ * scan-exit-claims) - NAO no test:guard, cuja lista e pinada pela Prova 35
+ * (sec 8.30; 13 suites NA EPOCA - hoje 14, com a doc-revalidate no HEAD
+ * desde o commit 1bb18de; a re-mediacao 2026-08-12 da sec 8.1 mediu 14
+ * suites / 297 testes no run 31559349720).
  *
  * Exit codes do CLI: 0 = clean (registry coberto pelo doc) - 1 =
  * violacoes listadas no stderr - 2 = uso errado.
@@ -39,6 +51,9 @@ import { fileURLToPath } from "node:url"
 
 /** DOC - o doc real, com override por env (o padrao EXIT_CLAIMS_DOC). */
 const DOC = process.env.PROOFS_DOC || path.join(process.cwd(), "docs", "gates-proofs.md")
+
+/** SCAN_ROOT - a raiz da superficie wired (hooks + batch + net), override por env. */
+const SCAN_ROOT = path.resolve(process.env.PROOFS_SCAN_ROOT || process.cwd())
 
 /**
  * PROOF_CLASSES - o registry: classe de guard -> provas vivas.
@@ -197,6 +212,14 @@ export const PROOF_CLASSES = [
     proofs: [
       { prova: 40, section: "8.35", run: null, what: "renumber CURE+0stale via helper" },
       { prova: 41, section: "8.36", run: null, what: "colisao de target fail-loud exit 3" },
+      { prova: 43, section: "8.38", run: null, what: "revert-fail apply exit 3 fail-loud (patch corrompido)" },
+    ],
+  },
+  {
+    class: "doc-revalidate",
+    module: "scripts/doc-revalidate.mjs",
+    proofs: [
+      { prova: 42, section: "8.37", run: null, what: "caminho de escrita real: upsert datado + idempotencia do mesmo dia (ACHADO: suite cmd quebrada no Windows)" },
     ],
   },
 ]
@@ -287,6 +310,110 @@ export function checkProofs(docPath = DOC) {
   return { unregistered, stale, brokenPins, brokenRuns }
 }
 
+/**
+ * WIRED_ALLOWLIST - as 7 excecoes deliberadas da direcao wired -> registry
+ * (2026-08-12, sec 11.60): guards wired na superficie viva SEM classe no
+ * PROOF_CLASSES porque NAO tem Prova viva dedicada - seus contratos vivem
+ * nas proprias suites (suite-pinned), nao em um evento de Prova. Um 8o
+ * guard wired exige: registrar a classe (com Prova viva) OU entrar AQUI
+ * com rationale - nunca silencio (o ABS PIN do teste pina esta lista).
+ *   - scan-lint-staged-loader.mjs: guard do batch (sec 11.7), contrato
+ *     pinado pela propria suite, sem Prova dedicada.
+ *   - scan-fuzz-precommit.mjs: guard do batch (sec 11.11), idem.
+ *   - scan-batch-coverage.mjs: guard do batch (sec 11.16), idem (o proprio
+ *     contrato de crescimento do batch).
+ *   - check-push-deletion.mjs: atalho de delecao pura do pre-push (sec
+ *     11.21), contrato pinado pela suite, sem Prova dedicada.
+ *   - scan-timeouts.mjs: step do net (sec 11.31), suite-pinned.
+ *   - scan-lucide-icons.mjs: guard de geracao (HOOK_ALLOWLIST da sec
+ *     11.16), sem Prova dedicada.
+ *   - check-docs-encoding.sh: auditoria informativa de docs (nunca
+ *     bloqueia), sem Prova dedicada.
+ */
+export const WIRED_ALLOWLIST = [
+  "check-docs-encoding.sh",
+  "check-push-deletion.mjs",
+  "scan-batch-coverage.mjs",
+  "scan-fuzz-precommit.mjs",
+  "scan-lint-staged-loader.mjs",
+  "scan-lucide-icons.mjs",
+  "scan-timeouts.mjs",
+]
+
+/** Spawns de guard nos hooks: `node|bash scripts/X.mjs|sh`. */
+const WIRED_SPAWN_RE = /(?:node|bash)\s+scripts\/([A-Za-z0-9._-]+\.(?:mjs|sh))/g
+
+/** Imports do batch runner: `import { main as X } from "./Y.mjs"`. */
+const WIRED_BATCH_IMPORT_RE = /^import\s+[^;]+?\s+from\s+"\.\/([A-Za-z0-9._-]+\.mjs)"/gm
+
+/** Steps de guard do net (guard-gates.yml + pr-check.yml): `node scripts/scan-*.mjs --ci`. */
+const WIRED_NET_STEP_RE = /node\s+scripts\/(scan-[A-Za-z0-9._-]+\.mjs)\s+--ci/g
+
+/** A camada de composicao (nao classes de guard): o runner do batch, o
+ * wrapper do pre-push e o mapper de testes. O runner do batch E recusrido
+ * (WIRED_BATCH_IMPORT_RE deriva os imports dele); pre-push-gates.sh e
+ * pre-commit-tests.mjs sao excluidos SEM recursao - os guards internos
+ * deles (check-js-budget registrado, o mapper) ficam fora da superficie
+ * derivada por desenho (a fronteira documentada na sec 11.60). */
+const WIRED_COMPOSITION = ["run-precommit-guards.mjs", "pre-push-gates.sh", "pre-commit-tests.mjs"]
+
+/** True quando a linha e comentario (prosa nao deriva). */
+function isWiredComment(line) {
+  return /^\s*#/.test(line)
+}
+
+/**
+ * deriveWiredGuards - a SUPERFICIE VIVA dos guards wired (o padrao
+ * TARGET_DIRS aplicado ao registry): os spawns `node|bash scripts/` dos
+ * hooks .husky/pre-commit e .husky/pre-push + os imports do batch runner
+ * run-precommit-guards.mjs + os steps `node scripts/scan-*.mjs --ci` dos
+ * workflows do net (guard-gates.yml + pr-check.yml). Comentarios nao
+ * derivam. A camada de composicao e excluida (os guards dela sao os
+ * imports/spawns derivados das fontes acima). Retorna lista unica e
+ * ordenada. Exportada para os testes.
+ */
+export function deriveWiredGuards(root = SCAN_ROOT) {
+  const wired = new Set()
+  for (const rel of [".husky/pre-commit", ".husky/pre-push"]) {
+    const p = path.join(root, rel)
+    if (!fs.existsSync(p)) continue
+    for (const line of fs.readFileSync(p, "utf8").split(/\r?\n/)) {
+      if (isWiredComment(line)) continue
+      for (const m of line.matchAll(WIRED_SPAWN_RE)) {
+        if (!WIRED_COMPOSITION.includes(m[1])) wired.add(m[1])
+      }
+    }
+  }
+  const runnerPath = path.join(root, "scripts", "run-precommit-guards.mjs")
+  if (fs.existsSync(runnerPath)) {
+    for (const m of fs.readFileSync(runnerPath, "utf8").matchAll(WIRED_BATCH_IMPORT_RE)) wired.add(m[1])
+  }
+  for (const rel of [".github/workflows/guard-gates.yml", ".github/workflows/pr-check.yml"]) {
+    const p = path.join(root, rel)
+    if (!fs.existsSync(p)) continue
+    // Comentarios nao derivam (os workflows sao prose-heavy e citam as
+    // formas de comando em prosa - o MESMO isWiredComment dos hooks).
+    for (const line of fs.readFileSync(p, "utf8").split(/\r?\n/)) {
+      if (isWiredComment(line)) continue
+      for (const m of line.matchAll(WIRED_NET_STEP_RE)) wired.add(m[1])
+    }
+  }
+  return [...wired].sort()
+}
+
+/**
+ * checkWiredSurface - o contrato wired -> registry: todo guard wired deve
+ * ter classe no PROOF_CLASSES (module basename) OU entrada no
+ * WIRED_ALLOWLIST. missing = os guards wired fora dos dois (a classe de
+ * crescimento inversa: um guard novo wired sem registro falha).
+ */
+export function checkWiredSurface(root = SCAN_ROOT) {
+  const wired = deriveWiredGuards(root)
+  const registered = new Set(PROOF_CLASSES.map((c) => path.basename(c.module)))
+  const missing = wired.filter((g) => !registered.has(g) && !WIRED_ALLOWLIST.includes(g))
+  return { wired, missing }
+}
+
 /** CLI: `node scripts/proofs-manifest.mjs [--check]` - exit 0/1/2. */
 export function main() {
   const args = process.argv.slice(2)
@@ -296,10 +423,17 @@ export function main() {
     return 2
   }
   const { unregistered, stale, brokenPins, brokenRuns } = checkProofs()
+  const { wired, missing: wiredMissing } = checkWiredSurface()
   const total = PROOF_CLASSES.reduce((n, c) => n + c.proofs.length, 0)
-  if (unregistered.length === 0 && stale.length === 0 && brokenPins.length === 0 && brokenRuns.length === 0) {
+  if (
+    unregistered.length === 0 &&
+    stale.length === 0 &&
+    brokenPins.length === 0 &&
+    brokenRuns.length === 0 &&
+    wiredMissing.length === 0
+  ) {
     process.stdout.write(
-      `proofs-manifest: clean (${PROOF_CLASSES.length} classes / ${total} provas registradas - sec 11.60)\n`,
+      `proofs-manifest: clean (${PROOF_CLASSES.length} classes / ${total} provas registradas; ${wired.length} guards wired cobertos - sec 11.60)\n`,
     )
     return 0
   }
@@ -320,6 +454,13 @@ export function main() {
   if (brokenRuns.length > 0) {
     process.stderr.write(`proofs-manifest: ${brokenRuns.length} run(s) ausente(s) no doc (RUN REALITY - sec 11.60):\n`)
     for (const r of brokenRuns) process.stderr.write(`  ${r}\n`)
+  }
+  if (wiredMissing.length > 0) {
+    process.stderr.write(`proofs-manifest: ${wiredMissing.length} guard(s) wired SEM classe no PROOF_CLASSES nem no WIRED_ALLOWLIST (sec 11.60):\n`)
+    for (const w of wiredMissing) process.stderr.write(`  ${w}\n`)
+    process.stderr.write(
+      "  registre a classe no PROOF_CLASSES (com uma Prova viva) OU adicione ao WIRED_ALLOWLIST com rationale (sec 11.60)\n",
+    )
   }
   return 1
 }

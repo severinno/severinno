@@ -29,7 +29,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
-import { citedOf, decideExitClaimsVerdict, isValidBase, parseSince, unregisteredOf } from "../check-exit-claims-push.mjs"
+import { citedOf, decideExitClaimsVerdict, digestOf, isValidBase, parseSince, revalOf, unregisteredOf } from "../check-exit-claims-push.mjs"
 import { EXIT_CLAIMS } from "../scan-exit-claims.mjs"
 import { POISON_EXIT_CLAIMS_DOC, cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 
@@ -200,6 +200,154 @@ describe("check-exit-claims-push.mjs - guard git-based do doc commitado (sec 11.
     })
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("clean")
+  }, 60000)
+
+  it("revalOf: doc com a 8.99 de reval datada citando count ANTIGO (27) com o manifest em 28 -> a violacao (o furo do 11.63: o checkCitedCounts exime secoes com reval - sec 11.66)", () => {
+    const stale = [
+      "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
+      "",
+      "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
+      "",
+      "## 8.99 Prova X - controle sintetico",
+      "",
+      "**Re-validação (2026-08-11, 27 claims)**: re-validado quando o manifest tinha 27.",
+      "",
+      "## 12. Referências",
+      "",
+    ].join("\n")
+    expect(revalOf(stale)).toEqual([{ section: "8.99", counts: [27] }])
+  }, 60000)
+
+  it("revalOf: reval citando o count atual -> [] (a re-validacao cobre - o mesmo doc CALIBRADO)", () => {
+    const current = CALIBRATED_DOC.replace(
+      "**Controle pos-ciclo**: CLI `clean (28 claims)` exit 0.",
+      "**Re-validação (2026-08-11, 28 claims)**: re-validado no estado atual.",
+    )
+    expect(revalOf(current)).toEqual([])
+  }, 60000)
+
+  it("REAL-REPO CONTRACT do CLI (sec 11.66): CHECK_EXIT_CLAIMS_PUSH_DOC com a 8.99 de reval stale (o checkCitedCounts NAO pega - exime por ter reval) -> o guard fecha o furo com exit 1 e a CURE doc-revalidate --section", () => {
+    const dir = createTempDir("exit-claims-push-")
+    const docPath = path.join(dir, "stale-reval.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
+        "",
+        "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
+        "",
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        "**Re-validação (2026-08-11, 27 claims)**: re-validado quando o manifest tinha 27.",
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    const r = runSubprocess({
+      command: process.execPath,
+      args: [SCRIPT],
+      env: { CHECK_EXIT_CLAIMS_PUSH_DOC: docPath },
+    })
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("re-validacao datada DESATUALIZADA")
+    expect(r.stdout).toContain("secao 8.99")
+    expect(r.stdout).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+    expect(r.stdout).toContain("sec 11.66")
+  }, 60000)
+
+  it("digestOf: doc com a row 99 da TABELA ## 1 citando count ANTIGO (25) com secao de origem 8.99 SEM reval -> a violacao com a row exata (o ultimo ponto cego da superficie - sec 11.67)", () => {
+    const dir = createTempDir("exit-claims-push-")
+    const docPath = path.join(dir, "digest-stale.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
+        "",
+        "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
+        "",
+        "## 1. Tabela resumo",
+        "",
+        "| # | Gate sob prova | Prova | Resultado |",
+        "|---|---|---|---|",
+        "| 99 | Guard X (Prova 99, sec 8.99) | `clean (25 claims)` |",
+        "",
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.",
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    expect(digestOf(fs.readFileSync(docPath, "utf8"))).toEqual([{ row: 99, section: "8.99", counts: [25] }])
+  }, 60000)
+
+  it("digestOf: doc com a row 99 citando o count ATUAL -> [] (o count certo nunca viola - o espelho do CALIBRATED_DOC)", () => {
+    const dir = createTempDir("exit-claims-push-")
+    const docPath = path.join(dir, "digest-clean.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
+        "",
+        "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
+        "",
+        "## 1. Tabela resumo",
+        "",
+        "| # | Gate sob prova | Prova | Resultado |",
+        "|---|---|---|---|",
+        `| 99 | Guard X (Prova 99, sec 8.99) | \`clean (${EXIT_CLAIMS.length} claims)\` |`,
+        "",
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        `**Controle pos-ciclo**: CLI \`clean (${EXIT_CLAIMS.length} claims)\` exit 0.`,
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    expect(digestOf(fs.readFileSync(docPath, "utf8"))).toEqual([])
+  }, 60000)
+
+  it("REAL-REPO CONTRACT do CLI (sec 11.67): CHECK_EXIT_CLAIMS_PUSH_DOC com a row 99 do digest descalibrada (o checkCitedCounts da 11.62 NAO ve a tabela - a 8.99 sem counts no corpo para a 11.63 nao mascarar a dimensao) -> o guard fecha o ultimo ponto cego com exit 1 e a CURE doc-revalidate --section", () => {
+    const dir = createTempDir("exit-claims-push-")
+    const docPath = path.join(dir, "digest-stale.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
+        "",
+        "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
+        "",
+        "## 1. Tabela resumo",
+        "",
+        "| # | Gate sob prova | Prova | Resultado |",
+        "|---|---|---|---|",
+        "| 99 | Guard X (Prova 99, sec 8.99) | `clean (25 claims)` |",
+        "",
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        "**Controle pos-ciclo**: a secao 8.99 NAO cita counts (so a row da tabela cita o 25 - a dimensao digest isolada).",
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    const r = runSubprocess({
+      command: process.execPath,
+      args: [SCRIPT],
+      env: { CHECK_EXIT_CLAIMS_PUSH_DOC: docPath },
+    })
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("TABELA ## 1")
+    expect(r.stdout).toContain("row 99")
+    expect(r.stdout).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+    expect(r.stdout).toContain("sec 11.67")
   }, 60000)
 
   it("REAL-REPO CONTRACT do CLI contra o doc REAL (sem override): o guard roda git show HEAD de verdade e o doc commitado esta limpo -> exit 0 (o pino vivo: um claim nao-registrada commitada quebraria este teste)", () => {

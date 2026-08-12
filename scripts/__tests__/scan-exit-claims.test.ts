@@ -40,7 +40,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { cleanupTempDirs, createTempDir, runSubprocess, writeModuleCopy, type ModulePatchOp } from "./golden-copy-utils"
-import { EXIT_CLAIMS, EXIT_CLAIM_RE, checkCitedCounts, checkExitClaims, resolveChain, resolvePin, scanCitedCounts, scanDocExitClaims } from "../scan-exit-claims.mjs"
+import { EXIT_CLAIMS, EXIT_CLAIM_RE, checkCitedCounts, checkDigestCounts, checkExitClaims, checkRevalCurrent, resolveChain, resolvePin, scanCitedCounts, scanDigestCounts, scanDocExitClaims, scanRevalCounts } from "../scan-exit-claims.mjs"
 
 // O MESMO padrao do unit-surface-contract.test.ts: picomatch (o motor de
 // glob do vitest, transitivo garantido ao lado do vitest) para casar globs
@@ -362,6 +362,203 @@ describe("scripts/scan-exit-claims.mjs - 8.x COUNTS PIN (sec 11.62)", () => {
     ])
     expect(checkCitedCounts(docPath, 28)).toEqual([{ section: "8.99", counts: [25] }])
   })
+
+  it("FRONTEIRA verbatim vs narrativa (sec 11.62): prosa natural citando count historico NAO e contract - o scanner so le o token verbatim `clean (N claims` do CLI; o MESMO numero em prosa nao gera record, em verbatim viola (a narrativa 'o manifest em 27 claims' da 8.34 e livre por desenho, nao drift)", () => {
+    // (a) prosa narrativa: 'o controle acima foi capturado com o manifest em
+    // 27 claims' - linguagem natural, SEM o token verbatim do stdout do CLI.
+    // O CLEAN_COUNT_RE NAO le: nenhum record e criado na secao (nem counts
+    // nem reval) e checkCitedCounts nao viola - a prosa historica e registro
+    // livre do evento, nunca contract (a varredura ampla achou a narrativa
+    // real na L2796 da reval da 8.34 - o leitor nao deve achar que e drift).
+    const dirProse = createTempDir("sec11-62-")
+    const prosePath = writeSyntheticDoc(dirProse, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: [
+          "",
+          "**Controle pos-ciclo**: o controle acima foi capturado com o manifest em 27 claims; a 28a entrou depois.",
+          "",
+          "## 9. Outra secao",
+          "",
+        ],
+      },
+    ])
+    expect(scanCitedCounts(prosePath).find((s) => s.section === "8.99")).toBeUndefined()
+    expect(checkCitedCounts(prosePath, 28)).toEqual([])
+    // (b) o CONTRAFACTUAL verbatim: o MESMO numero na forma exata do stdout
+    // do CLI (`clean (27 claims`) E contract - viola sem re-validacao. A
+    // fronteira e o FORMATO (o token do CLI), nao o numero citado.
+    const dirVerbatim = createTempDir("sec11-62-")
+    const verbatimPath = writeSyntheticDoc(dirVerbatim, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Controle pos-ciclo**: CLI `clean (27 claims)` exit 0.", "", "## 9. Outra secao", ""],
+      },
+    ])
+    expect(checkCitedCounts(verbatimPath, 28)).toEqual([{ section: "8.99", counts: [27] }])
+  })
+})
+
+describe("scripts/scan-exit-claims.mjs - 8.x REVAL CURRENT PIN (sec 11.66)", () => {
+  it("REAL-REPO: a secao de controle 8.34 tem reval datada citando o count ATUAL (28) - o par nao esta stale", () => {
+    const s = scanRevalCounts(DOC)
+    const sec34 = s.find((x) => x.section === "8.34")
+    expect(sec34).toBeDefined()
+    // o count ATUAL (28) citado na reval da 8.34 - o pin vivo: a cada claim
+    // nova no EXIT_CLAIMS, a 8.34 precisa ser re-validada (doc-revalidate)
+    expect(sec34!.counts).toContain(EXIT_CLAIMS.length)
+    expect(checkRevalCurrent(DOC)).toEqual([])
+  })
+
+  it("MUTATION: reval citando count ANTIGO com o manifest crescido -> violacao (a classe do esquecimento do doc-revalidate)", () => {
+    const dir = createTempDir("sec11-66-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Re-validação (2026-08-11, 27 claims)**: re-validado quando o manifest tinha 27.", "", "## 9. Outra secao", ""],
+      },
+    ])
+    // o manifest cresceu para 28 e a reval ficou citando 27 -> a secao precisa
+    // ser re-validada (o doc-revalidate cita o count NOVO)
+    expect(checkRevalCurrent(docPath, 28)).toEqual([{ section: "8.99", counts: [27] }])
+  })
+
+  it("MUTATION: reval citando o count ATUAL -> [] (a re-validacao cobre)", () => {
+    const dir = createTempDir("sec11-66-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Re-validação (2026-08-11, 28 claims)**: re-validado no estado atual.", "", "## 9. Outra secao", ""],
+      },
+    ])
+    expect(checkRevalCurrent(docPath, 28)).toEqual([])
+  })
+
+  it("MUTATION: a linha MANUAL 'datada' TAMBEM e contada (o prefixo opcional do marcador - o caso real da 8.34)", () => {
+    const dir = createTempDir("sec11-66-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Re-validação datada (2026-08-11, 27 claims)**: linha manual existente.", "", "## 9. Outra secao", ""],
+      },
+    ])
+    expect(checkRevalCurrent(docPath, 28)).toEqual([{ section: "8.99", counts: [27] }])
+  })
+
+  it("REAL-REPO CONTRACT do CLI (sec 11.66): EXIT_CLAIMS_DOC com a 8.99 de reval stale -> exit 1 com a secao exata e a CURE doc-revalidate --section (o guard roda no batch do pre-commit - o tripwire do esquecimento)", () => {
+    const dir = createTempDir("sec11-66-")
+    const docPath = writeSyntheticDoc(dir, [
+      { header: "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real", body: ["", "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).", ""] },
+      { header: "## 8.99 Prova X - controle sintetico", body: ["", "**Re-validação (2026-08-11, 27 claims)**: re-validado quando o manifest tinha 27.", ""] },
+      { header: "## 12. Referências", body: [""] },
+    ])
+    const res = runSubprocess({
+      command: process.execPath,
+      args: [path.join(ROOT, "scripts", "scan-exit-claims.mjs"), "--check"],
+      env: { EXIT_CLAIMS_DOC: docPath },
+    })
+    expect(res.status).toBe(1)
+    const stderr = res.stderr ?? ""
+    expect(stderr).toContain("re-validacao datada DESATUALIZADA")
+    expect(stderr).toContain("secao 8.99")
+    expect(stderr).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+  }, 60000)
+})
+
+describe("scripts/scan-exit-claims.mjs - DIGEST TABLE PIN (sec 11.67)", () => {
+  it("REAL-REPO: a TABELA ## 1 cita 2 counts (27 na row 38/sec 8.34 coberta por reval; 28 na row 39/sec 8.35 no count atual) e checkDigestCounts(DOC) e []", () => {
+    const d = scanDigestCounts(DOC)
+    const row38 = d.find((x) => x.row === 38)
+    expect(row38).toBeDefined()
+    // a row 38 (Prova 39) cita o 27 historico e referencia a secao de
+    // origem 8.34 - que TEM re-validacao datada (a cobertura sanciona)
+    expect(row38!.section).toBe("8.34")
+    expect(row38!.counts).toContain(27)
+    const row39 = d.find((x) => x.row === 39)
+    expect(row39).toBeDefined()
+    // a row 39 (Prova 40) cita o count ATUAL (28) - nunca viola, mesmo
+    // sem reval na origem 8.35
+    expect(row39!.section).toBe("8.35")
+    expect(row39!.counts).toContain(EXIT_CLAIMS.length)
+    expect(checkDigestCounts(DOC)).toEqual([])
+  })
+
+  it("MUTATION: row da tabela citando count ANTIGO com secao de origem SEM reval -> violacao (a classe do ponto cego fechado)", () => {
+    const dir = createTempDir("sec11-67-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 1. Tabela resumo",
+        body: ["", "| # | Gate sob prova | Prova | Resultado |", "|---|---|---|---|", "| 99 | Guard X (sec 8.99) | `clean (25 claims)` |", ""],
+      },
+      { header: "## 8.99 Prova X - controle sintetico", body: ["", "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.", ""] },
+      { header: "## 12. Referências", body: [""] },
+    ])
+    expect(checkDigestCounts(docPath, 28)).toEqual([{ row: 99, section: "8.99", counts: [25] }])
+  })
+
+  it("MUTATION: row citando count ANTIGO mas a secao de origem TEM reval datada -> [] (a cobertura sanciona o historico, o caso real da row 38)", () => {
+    const dir = createTempDir("sec11-67-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 1. Tabela resumo",
+        body: ["", "| # | Gate sob prova | Prova | Resultado |", "|---|---|---|---|", "| 99 | Guard X (sec 8.99) | `clean (25 claims)` |", ""],
+      },
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.", "", "**Re-validação (2026-08-11, 28 claims)**: re-validado no estado atual.", ""],
+      },
+      { header: "## 12. Referências", body: [""] },
+    ])
+    expect(checkDigestCounts(docPath, 28)).toEqual([])
+  })
+
+  it("MUTATION: row citando o count ATUAL -> [] mesmo sem reval (o count certo nunca viola)", () => {
+    const dir = createTempDir("sec11-67-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 1. Tabela resumo",
+        body: ["", "| # | Gate sob prova | Prova | Resultado |", "|---|---|---|---|", "| 99 | Guard X (sec 8.99) | `clean (28 claims)` |", ""],
+      },
+      { header: "## 8.99 Prova X - controle sintetico", body: ["", "**Controle pos-ciclo**: CLI `clean (28 claims)` exit 0.", ""] },
+      { header: "## 12. Referências", body: [""] },
+    ])
+    expect(checkDigestCounts(docPath, 28)).toEqual([])
+  })
+
+  it("MUTATION: row SEM referencia de secao de origem citando count antigo -> violacao fail-loud (section null - a origem nao e verificavel)", () => {
+    const dir = createTempDir("sec11-67-")
+    const docPath = writeSyntheticDoc(dir, [
+      {
+        header: "## 1. Tabela resumo",
+        body: ["", "| # | Gate sob prova | Prova | Resultado |", "|---|---|---|---|", "| 99 | Guard X sem referencia de secao | `clean (25 claims)` |", ""],
+      },
+      { header: "## 12. Referências", body: [""] },
+    ])
+    expect(checkDigestCounts(docPath, 28)).toEqual([{ row: 99, section: null, counts: [25] }])
+  })
+
+  it("REAL-REPO CONTRACT do CLI (sec 11.67): EXIT_CLAIMS_DOC com a row 99 do digest descalibrada -> exit 1 com a row exata e a CURE doc-revalidate --section (o guard roda no batch do pre-commit - o ultimo ponto cego da superficie)", () => {
+    const dir = createTempDir("sec11-67-")
+    const docPath = writeSyntheticDoc(dir, [
+      { header: "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real", body: ["", "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).", ""] },
+      {
+        header: "## 1. Tabela resumo",
+        body: ["", "| # | Gate sob prova | Prova | Resultado |", "|---|---|---|---|", "| 99 | Guard X (sec 8.99) | `clean (25 claims)` |", ""],
+      },
+      { header: "## 8.99 Prova X - controle sintetico", body: ["", "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.", ""] },
+      { header: "## 12. Referências", body: [""] },
+    ])
+    const res = runSubprocess({
+      command: process.execPath,
+      args: [path.join(ROOT, "scripts", "scan-exit-claims.mjs"), "--check"],
+      env: { EXIT_CLAIMS_DOC: docPath },
+    })
+    expect(res.status).toBe(1)
+    const stderr = res.stderr ?? ""
+    expect(stderr).toContain("TABELA ## 1")
+    expect(stderr).toContain("row 99")
+    expect(stderr).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+  }, 60000)
 })
 
 describe("scripts/scan-exit-claims.mjs - MUTATION (a classe real, sec 11.42)", () => {

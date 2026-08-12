@@ -55,6 +55,8 @@
 | 38 | Guard do push net — **o PAR CURE+stale no CLI real** (Prova 39, sec 8.34; `scan-exit-claims.mjs --check` contra a seção renumerada — a prova viva da sec 11.55, o pointer do stale no mesmo caminho de erro da CURE) | A sec 11.55 adicionou o pointer stale (a CURE de registrar é ENGANOSA para a classe stale — direção oposta) com pin hermético, mas sem prova viva: faltava confirmar que o CLI real, contra uma seção renumerada no doc COMMITADO, imprime o pointer stale JUNTO com a CURE — o dev vê os dois comandos no mesmo run | rename `## 11.42 ` → `## 11.98 ` no doc REAL (a seção 11.42 vira stale — entrada no EXIT_CLAIMS sem claim detectada — e a 11.98 vira unregistered — claim sem registro; **1 rename produz os DOIS sinais**, o par) COMMITADO via `HUSKY=0 git commit` (commit `befec6e` — o commit que esconde; scratch `ci-proof/stale-live` com o delta materializado `1bb6bbb`, o padrão da Prova 38) | **Local** — prova de CLI REAL (o mesmo detector que o batch do pre-commit e o test:unit rodam; a classe stale é CLI-only por design — o guard do push é direction-unique `.unregistered`, sec 11.49): `node scripts/scan-exit-claims.mjs --check` no scratch | ✅ CLI **exit 1** com o par completo: **`claim na secao 11.98` + `CURE: registre a claim no EXIT_CLAIMS...`** (bloco unregistered) **E** **`entrada 11.42 sem claim no doc atual` + `stale nao tem CURE de registrar - a secao foi renumerada/removida: atualize a secao no EXIT_CLAIMS ou remova a entrada (sec 11.42/11.55)`** (bloco stale) — as 4 linhas-chave, 1 ocorrência cada, no MESMO run; **o CONTRASTE**: o guard do push (`check-exit-claims-push.mjs`) no MESMO scratch lista SO o 11.98 (unregistered) e **0 menções a stale** — a divisão de trabalho da sec 11.49 (stale = ruído de delta, direction-unique) observada viva; revert byte-identical (STATUS IDENTICO + MD5 PRE=POS nos 5 arquivos, branch deletada, delta restaurado) + controle pós-ciclo: CLI `clean (27 claims)` exit 0 + 0 headers `## 11.98` reais |
 | 39 | Guard do push net — **o CONTRASTE CURE + 0 stale via `hook-proof-run --mutate-doc-renumber`** (Prova 40, sec 8.35; renumber `11.58` → `11.98` — a prova viva da sec 11.59, o irmão automatizado da Prova 39) | A sec 11.59 adicionou o `--mutate-doc-renumber` (o irmão do `--mutate-doc-claim` da 11.58) com pin hermético (a suite + o dry-run), mas sem prova viva no hook: faltava confirmar que o ciclo completo num comando (backup → scratch → renumber commitado via HUSKY=0 → push simulado no hook real → revert byte-identical) produz o MESMO contraste da Prova 39 — o hook falha com a CURE do unregistered + 0 menções a stale | `node scripts/hook-proof-run.mjs --branch ci-proof/renumber-live --mutate-doc-renumber 11.58 --to 11.98 --expect-cure --expect-log 'claim na secao 11.98'` (scratch `ci-proof/renumber-live` com o delta da thread materializado; **o ACHADO do pedido**: o pedido citou 11.59, mas a sec 11.59 é claim-free (sem entrada no EXIT_CLAIMS, corpo sem token `exit N`) — renumerar seção claim-free produz ZERO sinal (sem unregistered, sem CURE); a fonte claim-bearing é a 11.58 (a 28ª claim, `current`), cujo body tem `exit code 0/1/2/3` detectáveis | **Local** — prova de hook REAL via o helper (o push simulado via stdin, sem rede): `time node scripts/hook-proof-run.mjs ...` | ✅ helper **exit 0 em 13.9s real** — hook **exit 1** com **`claim na secao 11.98` + `CURE: registre a claim no EXIT_CLAIMS...`** (linhas 210-211 do log capturado) e **0 menções a stale** (o contraste da sec 11.49: guard direction-unique `.unregistered`); fuzz mapeado NÃO rodou (só o listing ASCII-OK do mjs-gate — o bloqueio veio antes, `set -euo pipefail`); revert byte-identical (git status 13 linhas = snapshot do delta da thread) + controle pós-ciclo: CLI `clean (28 claims)` exit 0 + 0 headers `## 11.98` reais |
 | 40 | Guard do renumber — **a COLISÃO de target fail-loud no repo REAL via `hook-proof-run`** (Prova 41, sec 8.36; renumber `11.58` → `11.42` — o 2º fail-loud da sec 11.59 com prova de pipeline) | A colisão de target (`to` já existente no doc) tinha E2E hermético (o teste da sec 11.59 + o irmão do no-op da 11.59) mas sem prova viva no repo REAL: faltava confirmar que o helper roda a mutação contra o doc real e o THROW vira exit 3 fail-loud com o caminho exato — fechando a classe com prova de pipeline, não só hermética | `node scripts/hook-proof-run.mjs --branch ci-proof/collision-live --mutate-doc-renumber 11.58 --to 11.42 --hook .husky/pre-push` (o doc REAL: a 11.42 existe — a colisão dispara o `toRe.test` da sec 11.59) | **Local** — prova de hook REAL via o helper (o doc real, o push simulado via stdin, sem rede) | ✅ helper **exit 3 fail-loud** — `renumberDocSection: secao '## 11.42 ' JA existe no doc (ou e a propria secao - no-op, sec 11.59) - a renumeracao criaria um header duplicado` com o `scratchLeftNote` (backup em tmp + a receita de limpeza); **o hook NUNCA rodou** (a mutação morre na etapa 4, antes do push simulado); **ACHADO do ciclo**: o fail(3) da mutação NÃO roda o revertCycle (por desenho — a scratch fica com a nota de limpeza), então o revert foi MANUAL no padrão do revertCycle: checkout da original + branch -D + `git apply delta.patch` + untracked restaurados do byte-copy (o `git add -A` do delta commit engoliu os 9 arquivos untracked da thread — a etapa que o revertCycle faz e o manual precisa lembrar) + doc do byte-copy → **byte-identical (md5 do doc OK + git status 17 linhas = snapshot, de volta em `freebuff/new-thread-thmsitz5qutoia`)** |
+| 41 | doc-revalidate — **o caminho de ESCRITA real: upsert datado + idempotência do mesmo dia** (Prova 42, sec 8.37; `node scripts/doc-revalidate.mjs --doc <backup> --section 8.34` — o primeiro caminho de escrita REAL exercitado, contra um backup byte-identical do doc) | O helper tinha só prova hermética (funções puras + E2Es com fakes) + o REAL-REPO CONTRACT do `--dry-run` (que valida mas NADA escreve): o upsert datado e a idempotência por data nunca tinham tocado um doc real de verdade | `node scripts/doc-revalidate.mjs --doc /tmp/drv-proof-*.md --section 8.34` (backup byte-identical do doc real; CLI real do scan-exit-claims via EXIT_CLAIMS_DOC + a suite hermética do par) | **Local** — backup do doc real em /tmp, helper REAL (CLI + suite), doc da thread intocado (md5 pré=pós) | ✅ run 1 **upsertou** a linha automática `**Re-validação (2026-08-11, 28 claims)**` no fim da 8.34 (a linha manual `datada` INTACTA — prefixos diferentes, sec 11.61); **run 2 do MESMO dia idempotente** (1 auto line, REPLACE, a secão não cresceu); doc real **byte-identical (md5 OK)** + backup removido; **ACHADO**: o caminho da SUITE quebrava no Windows — o `DEFAULT_SUITE_CMD` usava o prefixo POSIX `NO_COLOR=1 ` que o cmd.exe rejeita (`'NO_COLOR' não é reconhecido`) — corrigido (NO_COLOR via env no spawn, nunca prefixo shell) |
+| 42 | hook-proof-run — **o REVERT-FAIL no repo REAL: patch corrompido injetado → exit 3 fail-loud com o backup apontado** (Prova 43, sec 8.38; `--mutate` corrompe o `delta.patch` do backup do PRÓPRIO ciclo — o apply do revert falha) | O revertCycle tem 4 fail paths (checkout, branch -D, apply, status divergente) mas NENHUM tinha prova viva — só síntese (o fake-bins hermético nunca falha o apply): faltava confirmar o exit 3 fail-loud com o `- backup em <dir>` no repo real | `node scripts/hook-proof-run.mjs --branch ci-proof/revert-proof --mutate "node -e 'corrompe o delta.patch do hook-proof-* mais novo no tmpdir'" --expect-exit 0` (o mutate roda na etapa 4, APÓS o backup e ANTES do revert — o seam de injeção; hook real exit 0) | **Local** — ciclo real via o helper (delta real commitado no scratch + patch corrompido + hook real via stdin, sem rede) | ✅ helper **exit 3 fail-loud** — `git apply delta.patch falhou: error: No valid patches in input (allow with "--allow-empty") - backup em C:\...\hook-proof-JY7L0i` + scratchLeftNote; **ACHADO do ciclo**: o revert-fail roda DEPOIS do `branch -D` — a scratch já foi deletada com o commit do delta dentro (reflog `7074dab`) e o apply falhou → o working tree voltou LIMPO sem o delta; recuperado via safety diff externo (`git apply /tmp/prova43-safety.diff`) → **byte-identical (git status 12 linhas = snapshot, de volta em `freebuff/new-thread-thmsitz5qutoia`)** |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -325,7 +327,7 @@ Test Files  2 passed (2)
   push net dispara de verdade e o par completo fica verde, provando que o
   BASELINE de 0 offenders nunca fica órfão de execução.
 
-## 8.1 Custo por push (medição 2026-08-09, re-medido 2026-08-10) — por que o no-filter continua
+## 8.1 Custo por push (medição 2026-08-09, re-medido 2026-08-10/11/12) — por que o no-filter continua
 
 **Primeira medição** (breakdown por step do run 31336318902 — Prova 7, 2 suítes, 66 testes):
 
@@ -433,18 +435,61 @@ de carga, não um A/B limpo do +14% de testes; a CI absorveu o mesmo
 crescimento com step plano 20→20.9s pelo paralelismo multi-runner, a
 leitura honesta).
 
-**Decisão (avaliada, 2026-08-09, re-avaliada 2026-08-10 e 2026-08-11): o
+**Re-medição 2026-08-12** (breakdown por step do run
+[31559349720](https://github.com/severinno/severinno/actions/runs/31559349720) — prova viva com
+**14 suítes / 297 testes** — dispatch do guard-gates.yml via ci-proof-run
+numa branch scratch `ci-proof/guard-remed3` (ciclo do helper 113s),
+estado commitado do HEAD 1bb18de, mesmo método das re-medições anteriores):
+
+| Step | Tempo | Observação |
+|---|---|---|
+| Set up job | 2s | overhead fixo do runner |
+| checkout | 4s | sempre roda |
+| setup-bun | 1s | sempre roda |
+| Cache node_modules (restore) | 16s | sempre roda |
+| **Install deps** | **13s** | `bun install --frozen-lockfile` (miss de cache do runner NESTE run — a variância do setup fixo, não das suítes) |
+| **Run guard vitest suites** | **19s** | `bun run test:guard` (297 testes, 14 suítes) |
+| **Scan subprocess-heavy tests** | ~1s | `node scripts/scan-timeouts.mjs --ci` |
+| **Scan gate-script curls** | <1s | `node scripts/scan-curl-timeouts.mjs --ci` |
+| **Scan string \n anchors** | <1s | `node scripts/scan-eol-anchor.mjs --ci` |
+| Post Cache (upload) | 9s | sempre roda |
+| **Total job** | **~65s** | job 03:12:37 → 03:13:42 — a variância vs ~57s da re-medição (2) é 100% do setup fixo (cache 9.6→16s + install 9.8→13s), NÃO das suítes (que CAÍRAM 20.9→19s) |
+
+**A premissa do pedido invertida (medido)**: o hook-proof-run (44 testes,
+sec 11.58/11.69) NÃO entrou no test:guard — `grep hook-proof-run
+package.json` = 0 (é suíte de contrato via test:unit, rodada nos guards de
+pre-commit/push, não no push net). O crescimento real do test:guard foi a
+14ª suíte (doc-revalidate, commitada no HEAD 1bb18de): 13 → 14 suítes e
+269 → 297 testes (+28, +10%). O step test:guard ficou **plano/leve
+queda**: 20.9s → 19s (−1.9s para +28 testes) — o paralelismo do vitest
+absorveu o crescimento sem custo marginal, o MESMO padrão da re-medição
+(2) (20 → 20.9s para +33 testes). A variância do TOTAL (~65s vs ~57s) é
+100% do setup fixo (cache restore 16s + install 13s neste run), a classe
+que um filtro `paths:` não reduziria. **O no-filter continua calibrado —
+agora mais forte: o custo das suítes nem subiu (caiu), e o guard novo que
+o pedido citava nem toca o push net.**
+
+Ground truth local 2026-08-12 (Windows, cache quente, working tree com o
+delta da thread): `bun run test:guard` **51.93s** (304 testes, 14 suítes —
++7 vs o commitado porque o doc-revalidate.test.ts não-commitado tem testes
+novos) — abaixo do 53.2s de 13/269 da re-medição (2), mesma leitura: o
+paralelismo do vitest absorve o crescimento de testes sem custo marginal.
+
+**Decisão (avaliada, 2026-08-09, re-avaliada 2026-08-10, 2026-08-11 e
+2026-08-12): o
 no-filter documentado continua correto.** Um filtro `paths:` por superfície
 de gate file teria que replicar a superfície derivada (`TARGET_DIRS` + gate
 files) num segundo lugar — um novo ponto de drift (a classe que o SPREAD
 CONTRACT elimina) — e um push tocando só uma árvore que o filtro esqueceu
 skiparia o net em silêncio: o risco de órfão que o workflow existe para
-fechar. Com o guard net custando ~22s de CI (20s test:guard + ~2s dos
-scanners), a economia máxima teórica de um filtro é ~22s por push que toca
+fechar. Com o guard net custando ~21s de CI (19s test:guard + ~2s dos
+scanners), a economia máxima teórica de um filtro é ~21s por push que toca
 a superfície — e o único push skipável sem perda seria um docs-only (que a
 superfície não cobre mesmo). O net incondicional mantém o BASELINE
 estruturalmente garantido de rodar em todo merge; o crescimento das suítes
-(8 → 13) não mudou a equação: o total por push permaneceu estável (~43s).
+(8 → 14) não mudou a equação: o total por push permaneceu estável na
+faixa ~43-65s — a variância é 100% do setup fixo (cache + install), não
+das suítes (que ficaram planas ou caíram: 20 → 20.9 → 19s).
 
 **Travado estruturalmente (2026-08-10):** o guard `scripts/scan-guard-gates.mjs`
 (pre-commit + `test:guard`/push net) falha se o guard-gates.yml ganhar um
@@ -2904,6 +2949,123 @@ registrada).
 Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no
 EXIT_CLAIMS; registrada no PROOF_CLASSES (sec 11.60, classe
 hook-proof-run, Prova 41).
+
+
+## 8.37 Prova 42 — o caminho de ESCRITA real do doc-revalidate: upsert datado + idempotência do mesmo dia (2026-08-11)
+
+**O pedido**: o doc-revalidate tinha prova hermética (funções puras + os
+E2Es com fakes via `DOC_REVALIDATE_CLI_CMD`/`DOC_REVALIDATE_SUITE_CMD`) e o
+REAL-REPO CONTRACT do `--dry-run --no-suite` — que valida CLI + count mas
+NADA escreve. O caminho de escrita — o upsert datado da linha gerada na
+seção alvo + a idempotência por data do re-run do mesmo dia — nunca tinha
+sido exercitado contra um doc real de verdade (o helper tocando disco).
+
+**A prova (executada no repo real)**: backup byte-identical do
+`gates-proofs.md` em `/tmp/drv-proof-*.md` + 2 runs do helper REAL (CLI
+real do scan-exit-claims via `EXIT_CLAIMS_DOC` apontando o backup + a
+suite hermética do par) contra a sec 8.34:
+
+1. **Run 1 (upsert)**: `node scripts/doc-revalidate.mjs --doc <backup>
+   --section 8.34` → exit 0 com `linha 2026-08-11 (28 claims) upsertada`.
+   A linha automática `**Re-validação (2026-08-11, 28 claims)**`
+   (marcador SEM o 'datada') foi inserida no FIM do conteúdo da 8.34,
+   DEPOIS da linha manual `**Re-validação datada (...)**` — que ficou
+   INTACTA (1 linha; os prefixos diferentes garantem a não-colisão, o
+   desenho da sec 11.61). O conteúdo da linha: o quote verbatim do CLI
+   (`clean (28 claims registradas em 25 current + 1 superseded + 2
+   measurement - sec 11.42)`) + a cláusula da suite (`26/26 verde` — o
+   total real da suite do par).
+2. **Run 2 (mesmo dia, idempotência)**: re-run com o MESMO `--date` →
+   exit 0, a linha automática REPLACE (1 auto line, a seção não cresceu)
+   e a manual segue intacta — o mesmo par que o teste hermético pina,
+   agora com o CLI real + a suite real tocando um doc real.
+3. **Controle pós-ciclo**: md5 do doc da thread pré=pós
+   (`c34a4d173c5d87de44f38a399855175b`) — byte-identical (o `--doc`
+   apontava o backup; o doc do repo nunca foi tocado) — + backup removido.
+
+**O ACHADO (o que a prova viva pegou que a hermética não podia)**: o
+caminho da SUITE do helper quebrava no Windows — o `DEFAULT_SUITE_CMD`
+era `NO_COLOR=1 npx vitest run ...`, o prefixo POSIX de env que o
+`cmd.exe` (o shell padrão do `spawnSync` no Windows) rejeita com
+`'NO_COLOR' não é reconhecido como um comando interno ou externo`. O
+caminho real da suite nunca tinha sido exercitado: os E2Es herméticos
+usam fakes via env e o REAL-REPO CONTRACT roda `--no-suite`. Corrigido
+nesta prova: `NO_COLOR` vai no ENV do spawn (`runCmd(suiteCmd, {
+NO_COLOR: "1" })`), nunca como prefixo shell — cross-platform por
+construção, o mesmo tratamento do HOOK_PROOF_GIT do hook-proof-run.
+
+Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no
+EXIT_CLAIMS; registrada no PROOF_CLASSES (sec 11.60, classe
+doc-revalidate — a classe NOVA do registry — Prova 42).
+
+
+## 8.38 Prova 43 — o REVERT-FAIL do hook-proof-run no repo REAL: patch corrompido injetado → exit 3 fail-loud com o backup apontado (2026-08-12)
+
+**O que foi provado**: o 4º fail path do `revertCycle` (a etapa 8 do ciclo do
+`hook-proof-run`, sec 11.58 — os outros 3 são checkout, branch -D e status
+divergente) — o **apply-fail** — com o delta REAL da thread (12 arquivos do
+WIRED SURFACE) e um patch corrompido INJETADO via `--mutate` (o seam de
+mutação da etapa 4, que roda APÓS o backup e ANTES do revert): o
+`git apply delta.patch` falha e o ciclo sai **exit 3 fail-loud com o caminho
+do backup apontado na mensagem**.
+
+**O ciclo** (o padrão das Provas 37-41: backup + scratch ci-proof/* + delta
+commitado via HUSKY=0 + mutação + push SIMULADO via stdin + revert):
+
+```bash
+node scripts/hook-proof-run.mjs --branch ci-proof/revert-proof --mutate "node -e \"const fs=require('fs'),os=require('os'),path=require('path');const t=os.tmpdir();const ds=fs.readdirSync(t).filter(d=>d.startsWith('hook-proof-')).map(d=>path.join(t,d)).sort((a,b)=>fs.statSync(b).mtimeMs-fs.statSync(a).mtimeMs);const dir=ds[0];fs.writeFileSync(path.join(dir,'delta.patch'),'CORRUPTED PATCH not a diff');console.log('corrupted:'+dir)\"" --expect-exit 0
+```
+
+O `--mutate` roda um one-liner node (acima, o comando EXATO da prova) que
+localiza o backup dir do PRÓPRIO ciclo (o `hook-proof-*` mais novo no
+`os.tmpdir()` — 290 dirs no ambiente, mas o do ciclo atual é sempre o mais
+recente) e SOBRESCREVE o `delta.patch` com `CORRUPTED PATCH not a diff` — o
+backup deixa de ser um patch válido. O hook REAL rodou **exit 0** (o delta é
+verde — a rede de guards passa) e o revert então encontra o patch corrompido.
+
+**Por que o apply é o membro REPRESENTATIVO da classe (o framing
+"agregada")**: os 4 fail paths do `revertCycle` (checkout, branch -D, apply,
+status divergente) NÃO são todos injetáveis de forma determinística num repo
+real — o checkout de uma branch existente e o `branch -D` de uma scratch
+recém-criada não falham naturalmente, e o status divergente exigiria
+interferência externa concorrente. O apply é o único membro com um seam de
+injeção limpo (o `--mutate` na etapa 4, que roda APÓS o backup e ANTES do
+revert — o mesmo padrão de fronteira das secs 11.30/11.36). Os outros 3
+continuam cobertos por síntese (o guard de forma da sec 11.65 pina a
+`scratchLeftNote` em TODOS os fail paths POS-scratch, incluindo os 4 do
+revert).
+
+**O sinal observado** (stdout/stderr do helper):
+
+```
+hook-proof-run: hook exit 0 - log em C:\Users\X\AppData\Local\Temp\hook-proof-JY7L0i\hook.log (269 linhas)
+hook-proof-run: verify: hook exit 0
+hook-proof-run: git apply delta.patch falhou: error: No valid patches in input (allow with "--allow-empty") - backup em C:\Users\X\AppData\Local\Temp\hook-proof-JY7L0i - a branch scratch pode ter ficado: git checkout freebuff/new-thread-thmsitz5qutoia && git branch -D ci-proof/revert-proof (backup do delta em C:\Users\X\AppData\Local\Temp\hook-proof-JY7L0i)
+```
+
+**exit 3 fail-loud confirmado** (o `CYCLE_EXIT=3` do processo) com o backup
+apontado DUAS vezes na mensagem (no fail do apply E na scratchLeftNote).
+
+**O ACHADO do ciclo (a honestidade do revert-fail)**: o `revertCycle` roda o
+`git branch -D <scratch>` ANTES do `git apply` — então quando o apply falha,
+a scratch JÁ FOI deletada com o commit do delta dentro (o reflog mostra
+`7074dab commit: hook-proof: ci-proof/revert-proof (delta)`) e o working tree
+volta LIMPO **sem o delta** (o status pós-ciclo tinha 0 linhas vs 12 do
+snapshot). A scratchLeftNote diz "git checkout <orig> && git branch -D
+<branch>" — mas o checkout já voltou e o branch -D já rodou: a nota é
+GENÉRICA (o mesmo template dos fail paths de infra) e não descreve o estado
+real deste fail path. A recuperação real do delta é o **reflog do commit
+órfão** (`git cherry-pick 7074dab` / `git fsck`) ou um **safety diff externo**
+— nesta prova, o delta foi restaurado via `git apply /tmp/prova43-safety.diff`
+(2046 linhas salvas ANTES do ciclo) → **byte-identical (git status 12 linhas
+= snapshot, de volta em `freebuff/new-thread-thmsitz5qutoia`)**. O backup
+apontado NÃO é a fonte de recuperação do delta (o delta.patch dele é o
+corrompido) — só os untracked + doc + status-before (que nesta prova estavam
+vazios/intactos).
+
+Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no
+EXIT_CLAIMS; registrada no PROOF_CLASSES (sec 11.60, classe hook-proof-run —
+Prova 43).
 
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
@@ -7222,16 +7384,40 @@ MESMO canal do scan-exit-claims), NÃO no test:guard cuja lista de 13
 suítes é pinada pela Prova 35 (sec 8.30). Claim-free por desenho: decisão
 de registry, não claim de exit code — o mesmo padrão da 11.56/11.57/11.59.
 
+**O lado inverso do growth contract (2026-08-12) — a direção wired →
+registry**: o DOC COVERAGE original cobre doc → manifest (Prova nova no
+doc sem registro falha). O INVERSO — um guard WIRED na superfície viva
+sem classe no registry — vivia só em prosa. `deriveWiredGuards()` deriva
+a lista de guards wired da superfície REAL (spawns `node|bash scripts/`
+dos hooks .husky/pre-commit e .husky/pre-push + os imports do batch
+runner run-precommit-guards.mjs + os steps `node scripts/scan-*.mjs --ci`
+dos workflows do net guard-gates.yml/pr-check.yml — o padrão TARGET_DIRS
+aplicado ao registry, comentários não derivam, a camada de composição é
+excluída) e `checkWiredSurface()` falha se um guard wired não tiver
+classe no PROOF_CLASSES nem entrada no WIRED_ALLOWLIST. Medido
+2026-08-12: **18 guards wired = 11 classes registradas + 7 no
+WIRED_ALLOWLIST** (as exceções deliberadas, suite-pinned, sem Prova
+dedicada: scan-timeouts, scan-lint-staged-loader, scan-fuzz-precommit,
+scan-batch-coverage, check-push-deletion, scan-lucide-icons e
+check-docs-encoding — um 8º guard wired exige registrar a classe com uma
+Prova viva OU entrar na allowlist com rationale, nunca silêncio). A
+direção registry → wired NÃO existe por desenho: classes helper
+(ci-proof-run, hook-proof-run, doc-revalidate, run-all-fuzz) têm Prova mas
+não são guard de hook.
+
 **O pin**: scripts/__tests__/proofs-manifest.test.ts — o ABS_PIN_SNAPSHOT
-da projeção (39 entradas) + shape + PIN REALITY + RUN REALITY + DOC
-COVERAGE bidirecional + CONSULTATION (a Prova 39 e o ciclo das Provas
-37/38 já registrados — o caso do pedido) + MUTATION + REAL-REPO CLI.
+da projeção (42 entradas) + shape + PIN REALITY + RUN REALITY + DOC
+COVERAGE bidirecional + WIRED SURFACE (ABS PIN da allowlist + a derivada
+real de 18 + missing = [] + MUTATIONs do hook sintético) + CONSULTATION
+(a Prova 39 e o ciclo das Provas 37/38 já registrados — o caso do pedido)
++ MUTATION + REAL-REPO CLI.
 
 **Re-validação**: `npx vitest run
 scripts/__tests__/proofs-manifest.test.ts --config vitest.config.unit.ts`
-+ `node scripts/proofs-manifest.mjs --check` (clean, 17 classes / 39
-provas) + `gates-proofs-ordering.test.ts` valida a monotonia 11.59 → 11.60
-→ 12 + UTF-8/ASCII do doc e do gate file OK.
++ `node scripts/proofs-manifest.mjs --check` (clean, 19 classes / 43
+provas / 18 guards wired cobertos) + `gates-proofs-ordering.test.ts`
+valida a monotonia 11.59 → 11.60 → 12 + UTF-8/ASCII do doc e do gate
+file OK.
 
 ## 11.61 ADOTADO — scripts/doc-revalidate.mjs: a re-validação datada das 8.x num comando (avaliação 2026-08-11)
 
@@ -7249,6 +7435,37 @@ O `--date` default é a data **LOCAL** (não UTC — o nit do reviewer: `toISOSt
 
 **O pin**: `parseCliCount` (count + breakdown verbatim; saída de falha → null), `buildRevalidateLine` (com o template real do disco — o TEMPLATE PIN dos 5 placeholders, sem placeholder estranho), `upsertRevalidateLine` (append no fim do conteúdo da seção, idempotência por data, CRLF preservado, seção ausente → THROW) + E2E do CLI real (insert → re-run mesmo dia = 1 linha; dry-run = doc intacta; guard 8.x = código 2 de saída; CLI/suite falhos = código 1 de saída; `--date` inválido = código 2 de saída) + REAL-REPO (`--dry-run --no-suite` no doc real, o count atual 28 pinado — o BASELINE do `--check`). A suite `doc-revalidate.test.ts` entrou no `test:guard` (a 14ª; a tabela da sec 8.1 segue registrando o job com as suites do registro datado — a re-medição é avaliação separada). A linha gerada é um registro de evento 8.x — sem entrada no EXIT_CLAIMS (a fronteira da sec 11.51); esta sec 11.61 é claim-free por desenho, o count do manifest permanece 28.
 
+**O recipe de re-uso (re-validação de uma 8.x em 30s, medido 2026-08-11)**: o ciclo que o dev roda a cada claim nova registrada:
+
+1. **Conferência (nada escrito, ~0.4s)** — o dry-run rápido só com o CLI, para ver a linha que SERÁ gerada e o count atual:
+   ```bash
+   node scripts/doc-revalidate.mjs --dry-run --no-suite
+   # → doc-revalidate (dry-run): secao 8.34 de .../docs/gates-proofs.md
+   #   **Re-validação (2026-08-11, 28 claims)**: re-rodou o CLI real no estado atual → `clean (28 claims ...)` código 0 (verbatim) ...
+   #
+   # (o quote acima é PARAFRASEADO de propósito: a linha real carrega o
+   # token inglês 'exit' + o número, seguro só nas 8.x - o literal criaria
+   # uma claim nesta 11.x, o detector da sec 11.51 flagra)
+   ```
+   (sem o `--no-suite`, o dry-run também roda a suite hermética do par — o caminho completo de validação, ~40s; o `--no-suite` é o atalho de conferência)
+2. **Run real (CLI + suite + upsert)** — grava a linha datada na seção alvo (default `8.34`; outra seção: `--section 8.35`):
+   ```bash
+   node scripts/doc-revalidate.mjs --section 8.34
+   # → doc-revalidate: linha 2026-08-11 (28 claims) upsertada em '## 8.34 ' de .../docs/gates-proofs.md
+   ```
+   O CLI real valida o MESMO doc do `--doc` (default: o real) e a suite hermética do par precisa passar — qualquer falha é fail-loud (código 1 de saída) com NADA escrito.
+3. **Re-run idempotente (mesmo dia)** — rodar o comando 2 de novo NO MESMO dia: REPLACE da entrada automática (nunca duplicata), a linha manual `datada` segue intacta. Datas diferentes coexistem (o registro histórico fica).
+4. **Prova/ensaio em backup (opcional)** — para não tocar o doc real, aponte um backup:
+   ```bash
+   cp docs/gates-proofs.md /tmp/backup.md
+   node scripts/doc-revalidate.mjs --doc /tmp/backup.md --section 8.34   # upserta no backup
+   grep -c '^\*\*Re-validação (' /tmp/backup.md                          # >= 1: o upsert aconteceu (qualquer data - o --date default e a data local)
+   git diff --stat docs/gates-proofs.md                                   # intocado: só o backup mudou
+   rm /tmp/backup.md
+   ```
+   O controle pós-ciclo é o mesmo da Prova 42 (sec 8.37): `node scripts/scan-exit-claims.mjs --check` → clean + o diff do doc (só a linha datada nova).
+
+
 ## 11.62 ADOTADO — o PIN dos counts citados nas 8.x: o contrato `checkCitedCounts` (avaliação 2026-08-11)
 
 O count `clean (N claims)` citado nos controles pós-ciclo das seções 8.x pode driftar do manifest — a Prova 39 provou (o controle da sec 8.34 citava 27 quando o EXIT_CLAIMS já tinha 28). O fechamento foi a re-validação datada (sec 8.34/11.61) — nunca reescrever história. O contrato `checkCitedCounts` torna a classe estrutural: **toda seção 8.x que cita counts deve, ou citar somente o count atual do manifest, ou ter uma re-validação datada** (`**Re-validação (DATE, ...)**` / `**Re-validação datada (DATE, ...)**`) — o registro sancionado que cobre os counts históricos da seção.
@@ -7259,7 +7476,9 @@ O count `clean (N claims)` citado nos controles pós-ciclo das seções 8.x pode
 
 **O loop helper+contrato**: uma claim nova no EXIT_CLAIMS faz o `checkCitedCounts` falhar nas seções 8.x sem re-validação que citam o count antigo (hoje: a 8.35, 28→29) — o fechamento é `node scripts/doc-revalidate.mjs --section 8.35` (a linha datada cobre a seção). O contrato e o helper formam o ciclo: drift → falha → re-validação → coberto.
 
-**O pin**: `scanCitedCounts` (por seção: `{section, hasReval, counts}`, paragraph-flattened — o marcador datado seta `hasReval` mesmo sem citações no parágrafo) + `checkCitedCounts` (violações = seções sem re-validação citando count ≠ atual, default `EXIT_CLAIMS.length`). Testes: REAL-REPO (a 8.34 com `hasReval` + os counts `[27, 28]` — o wrap provado no doc real; a 8.35 sem re-validação com `[28]`, o pin do count atual — muda de propósito a cada claim; `checkCitedCounts(DOC)` → `[]`) + 4 MUTATIONs herméticas (drift sem re-validação → violação; re-validação datada EXIME; `**Re-validação**:` sem data NÃO exime; citação embrulhada pega). O count do manifest permanece 28 — a 11.62 é claim-free por desenho (sem tokens de código de saída, a fronteira da sec 11.51/11.42).
+**O pin**: `scanCitedCounts` (por seção: `{section, hasReval, counts}`, paragraph-flattened — o marcador datado seta `hasReval` mesmo sem citações no parágrafo) + `checkCitedCounts` (violações = seções sem re-validação citando count ≠ atual, default `EXIT_CLAIMS.length`). Testes: REAL-REPO (a 8.34 com `hasReval` + os counts `[27, 28]` — o wrap provado no doc real; a 8.35 sem re-validação com `[28]`, o pin do count atual — muda de propósito a cada claim; `checkCitedCounts(DOC)` → `[]`) + 4 MUTATIONs herméticas (drift sem re-validação → violação; re-validação datada EXIME; `**Re-validação**:` sem data NÃO exime; citação embrulhada pega) + a FRONTEIRA verbatim vs narrativa (o par prosa-livre/verbatim). O count do manifest permanece 28 — a 11.62 é claim-free por desenho (sem tokens de código de saída, a fronteira da sec 11.51/11.42).
+
+**Fronteira verbatim vs narrativa (a varredura ampla 2026-08-11)**: o scanner desta seção lê UM único token — a citação verbatim do stdout do CLI, `clean (N claims` (o `CLEAN_COUNT_RE`) — em qualquer parágrafo da seção 8.x. Prosa narrativa que cita counts históricos em linguagem natural (ex.: a re-validação da 8.34 narrando que o controle 'foi capturado com o manifest em 27 claims' — L2796) NÃO casa o token e é LIVRE por desenho: registro histórico do evento, não contract. Um leitor nunca deve tratar essa prosa como drift — só a forma verbatim do CLI é verificada. O pin da fronteira é o par na suite: a prosa não gera record no `scanCitedCounts` e o MESMO número na forma `clean (27 claims` viola sem re-validação. Se uma re-validação futura precisar narrar um count antigo, escreva em prosa natural; se precisar citá-lo como contract, use a forma exata do CLI.
 
 ## 11.63 ADOTADO — o guard do push exige a recalibração das 8.x: o loop registro+recalibração fechado no push (avaliação 2026-08-11)
 
@@ -7388,6 +7607,192 @@ scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/scan-timeouts.test.ts
 forma) + `node scripts/scan-exit-claims.mjs --check` (clean) +
 `gates-proofs-ordering.test.ts` valida a monotonia 11.64 → 11.65 → 12 +
 UTF-8 do doc + ASCII do gate file OK.
+
+
+## 11.66 ADOTADO — o TRIPWIRE do esquecimento do doc-revalidate: a re-validação datada das 8.x precisa citar o count ATUAL do EXIT_CLAIMS (avaliação 2026-08-11)
+
+**O pedido**: a re-validação manual da sec 8.34 virou helper (sec 11.61),
+mas nada impede o dev de esquecer de rodá-lo quando o EXIT_CLAIMS ganha
+claim nova. A avaliação pede um guard barato (padrão tripwire) que falhe
+no pre-commit quando o manifest crescer e a 8.34 não tiver re-validação
+datada com o count novo.
+
+**O gap medido (o que motivou o ADOTADO)**: o `checkCitedCounts` da sec
+11.62 EXIME seções com re-validação datada (counts históricos sancionados
+— o mecanismo da 8.34) — mas essa exceção NUNCA fica stale. Probe
+2026-08-11: com o manifest em 28 e a reval da 8.34 citando 28,
+`checkCitedCounts(doc, 29) = []` — uma claim nova (29ª) registrada SEM
+re-validar a 8.34 não é flagrada por NENHUMA das redes: nem no pre-commit
+(o batch roda só o `exitClaimsMain`, que não vê a dimensão 8.x), NEM no
+push (o `checkCitedCounts` do 11.63 exime por ter reval — um furo real do
+loop registro+recalibração fechado na 11.63). A classe: 'o esquecimento
+silencioso do doc-revalidate'.
+
+**A decisão (ADOTADO — barato, scan puro do doc já materializado, ~ms)**:
+novas funções `scanRevalCounts` (por seção 8.x, os counts citados nas
+linhas de re-validação datada — `**Re-validação (DATE, N claims)**` e a
+manual `datada`) e `checkRevalCurrent` (a reval precisa citar o count
+ATUAL do manifest, default `EXIT_CLAIMS.length`) no `scan-exit-claims.mjs`
++ 2 pontos de wiring:
+1. **Pre-commit** — `exitClaimsMain()` (o CLI `--check`) ganha a dimensão:
+   reval stale → código 1 de saída com a CURE por seção. O batch runner
+do pre-commit já chama o `exitClaimsMain` (8º guard) → o tripwire roda
+sem novo guard no hook.
+2. **Push** — `check-exit-claims-push.mjs` ganha o `revalOf` (o espelho do
+   `citedOf`): fecha o furo do 11.63 — uma claim nova com a reval citando
+   o count antigo NÃO passa mais pelo push (o `--no-verify`/`HUSKY=0`
+   não esconde a classe).
+
+**A CURE (o caminho de cura, o mesmo da 11.63)**: `node
+scripts/doc-revalidate.mjs --section 8.34` — o helper da sec 11.61
+re-gera a linha datada com o count novo (idempotente por data, o recipe
+da 11.61). Para outra seção 8.x: `--section 8.N`.
+
+**O pin (4 testes novos)**: describe `8.x REVAL CURRENT PIN` no
+`scan-exit-claims.test.ts` (REAL-REPO: a reval da 8.34 cita o count atual
+28 — o pin vivo que muda de propósito a cada claim; MUTATION: reval
+citando 27 com manifest 28 → violação; reval no count atual → limpo; a
+linha manual `datada` TAMBÉM é contada — o prefixo opcional do marcador;
+REAL-REPO CONTRACT do CLI com `EXIT_CLAIMS_DOC` → código 1 com a seção
+exata e a CURE) + `revalOf` no `check-exit-claims-push.test.ts` (puro +
+REAL-REPO CONTRACT: o furo do 11.63 fechado — a reval stale derruba o
+push com código 1 de saída) + teste de batch no `run-precommit-guards.test.ts` (o
+exit-claims surface a dimensão no stderr agregado, os outros 7 guards
+clean — o mesmo padrão do teste da sec 11.57).
+
+Esta sec 11.66 é claim-free por desenho (fronteira da sec 11.51; o guard
+não muda o contrato de exit do CLI — só adiciona uma dimensão de falha à
+classe que a 11.42 já pina com 'violações listadas') — sem entrada no
+EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/check-exit-claims-push.test.ts
+scripts/__tests__/run-precommit-guards.test.ts --config vitest.config.unit.ts`
++ `node scripts/scan-exit-claims.mjs --check` (clean) +
+`gates-proofs-ordering.test.ts` valida a monotonia 11.65 → 11.66 → 12 +
+UTF-8 do doc + ASCII dos gate files OK.
+
+## 11.67 ADOTADO — o PIN dos counts citados na TABELA ## 1: o contrato `checkDigestCounts` (avaliação 2026-08-11)
+
+**A avaliação**: a varredura provou que a 8.34 e a 8.35 são as únicas
+seções 8.x com counts citados, mas a tabela resumo (`## 1`) TAMBÉM cita
+counts históricos verbatim — a row 38 (Prova 39, origem sec 8.34) cita
+`clean (27 claims` e a row 39 (Prova 40, origem sec 8.35) cita `clean
+(28 claims`. O `checkCitedCounts` da sec 11.62 só varre as seções 8.x — a
+tabela era o ÚLTIMO ponto cego da superfície: uma claim nova registrada
+no EXIT_CLAIMS deixaria o digest citando o count antigo para sempre, sem
+contrato pegando (nem no pre-commit — o batch roda só o `exitClaimsMain`
+— nem no push — o 11.63 não vê a tabela).
+
+**A regra (espelha a 11.62 com a ORIGEM)**: `checkDigestCounts` só flagra
+uma row da tabela se (a) algum count citado DIVERGE do count atual do
+manifest E (b) a seção de ORIGEM da row (a primeira referência `sec 8.N`
+no texto da row — a convenção "(Prova N, sec 8.M;" do título) NÃO está
+coberta por re-validação datada (o mesmo sancionamento da 11.62). Uma row
+com count divergente SEM referência de seção de origem é fail-loud (a
+origem não é verificável — `section: null`). O count ATUAL citado nunca
+viola, mesmo sem reval na origem.
+
+**A calibração (o doc real)**: `checkDigestCounts(DOC)` → `[]` — a row 38
+cita o 27 histórico e a origem 8.34 TEM reval datada (28) → coberta; a
+row 39 cita o count atual (28) → nunca viola. O contrato nasce calibrado
+no número certo, sem falso-positivo.
+
+**A CURE (o mesmo caminho da 11.63/11.66)**: `node
+scripts/doc-revalidate.mjs --section 8.N` — re-validar a seção de ORIGEM
+da row (a linha datada cobre os counts históricos). Para a row sem
+referência de origem: adicionar a referência `sec 8.N` na row (a
+cobertura passa a ser verificável).
+
+**O pin (10 testes novos)**: describe `DIGEST TABLE PIN` no
+`scan-exit-claims.test.ts` (REAL-REPO: as rows 38/39 com as origens
+8.34/8.35 e os counts [27]/[28]; `checkDigestCounts(DOC)` → `[]` — o pin
+vivo do par; MUTATION: row citando count antigo com origem SEM reval →
+violação `{row, section, counts}`; a reval datada na origem EXIME; o
+count atual nunca viola; row sem referência de seção → fail-loud
+`section: null`; REAL-REPO CONTRACT do CLI com `EXIT_CLAIMS_DOC` →
+código 1 de saída com a row exata e a CURE) + `digestOf` no
+`check-exit-claims-push.test.ts` (puro: violação com a row exata;
+count atual → limpo; REAL-REPO CONTRACT: o guard do push fecha o ponto
+cego com a CURE doc-revalidate --section) + teste de batch no
+`run-precommit-guards.test.ts` (o exit-claims surface a dimensão no
+stderr agregado, os outros 7 guards clean — o mesmo padrão da sec 11.57).
+
+Esta sec 11.67 é claim-free por desenho (fronteira da sec 11.51; a
+leitura do digest não é claim de exit-code — é count de evento, o mesmo
+papel da 11.62) — sem entrada no EXIT_CLAIMS, o count do manifest
+permanece 28.
+
+**Re-validação**: `npx vitest run
+scripts/__tests__/scan-exit-claims.test.ts
+scripts/__tests__/check-exit-claims-push.test.ts
+scripts/__tests__/run-precommit-guards.test.ts --config
+vitest.config.unit.ts` + `node scripts/scan-exit-claims.mjs --check`
+(clean) + `node scripts/check-exit-claims-push.mjs` (clean) +
+`gates-proofs-ordering.test.ts` valida a monotonia 11.66 → 11.67 → 12 +
+UTF-8 do doc + ASCII dos gate files OK.
+
+## 11.68 ADOTADO — o `--sweep` read-only do doc-revalidate: a varredura das seções 8.x que precisam de re-validação (avaliação 2026-08-11)
+
+**A avaliação**: o sweep manual (rodar os scans + documentar) vivia fora de
+comando — o próximo dev re-derivava o ciclo. O `doc-revalidate` já tinha o
+caminho de ESCRITA (sec 11.61) mas não o de LEITURA da lista completa: o
+contrato de counts (11.62/11.66/11.67) tem 3 dimensões e cada uma precisa
+ser rodada para saber QUAIS seções exigem re-validação hoje.
+
+**A regra**: `node scripts/doc-revalidate.mjs --sweep [--doc <path>]` roda as
+3 dimensões REAIS do contrato de counts como funções puras importadas do
+`scan-exit-claims.mjs` (sem subprocesso, ~ms) — `checkCitedCounts` (11.62:
+seção sem re-validação datada citando count ≠ atual), `checkRevalCurrent`
+(11.66: reval datada citando count antigo) e `checkDigestCounts` (11.67:
+rows da tabela ## 1 com count ≠ atual e origem descoberta) — e imprime a
+lista com a CURE por seção (`node scripts/doc-revalidate.mjs --section
+8.N`), no padrão `--check` dos guards: **código 0 de saída = limpo**
+(nenhuma seção precisa) / **código 1 de saída = violações listadas**. O
+modo é read-only como o `--dry-run`: NADA é escrito. `--sweep` NÃO combina com
+`--section/--date/--dry-run/--no-suite` (fail-loud no usage — a varredura
+cobre TODAS as seções; a combinação é contraditória).
+
+**A calibração (o doc real)**: `--sweep` no doc real → código 0 de saída
+`clean` — as 3 dimensões verificam o doc atual (a 8.34 coberta pela reval
+datada, a 8.35 no count atual, o digest calibrado) — o pino vivo: uma
+claim nova registrada SEM a re-validação correspondente quebraria este
+teste.
+
+**O pin (6 testes novos)**: describe `SWEEP read-only` no
+`doc-revalidate.test.ts` (REAL-REPO CONTRACT do CLI: `--sweep` no doc real
+→ código 0 de saída clean; 3 MUTATIONs — seção 8.99 citando count antigo
+sem reval → código 1 de saída com a seção exata + a CURE + `sec 11.62`;
+reval datada citando count antigo → código 1 de saída com a CURE + `sec
+11.66`; row 99 da tabela com origem descoberta → código 1 de saída com a
+row exata + a CURE + `sec 11.67`; row SEM referência de origem → o
+fail-loud `SEM referencia` do branch section:null) + 2 parseArgs
+(`--sweep` reconhecida; a combinação com
+`--section/--date/--dry-run/--no-suite` falha no usage).
+
+Esta sec 11.68 é claim-free por desenho (fronteira da sec 11.51; o sweep
+não muda o contrato de exit do CLI — reusa as dimensões já pinadas das
+11.62/11.66/11.67) — sem entrada no EXIT_CLAIMS, o count do manifest
+permanece 28.
+
+**Re-validação**: `npx vitest run
+scripts/__tests__/doc-revalidate.test.ts
+scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts`
++ `node scripts/doc-revalidate.mjs --sweep` (clean) +
+`gates-proofs-ordering.test.ts` valida a monotonia 11.67 → 11.68 → 12 +
+UTF-8 do doc + ASCII dos gate files OK.
+
+## 11.69 hook-proof-run --cleanup-on-fail: o ACHADO da Prova 41 fechado estruturalmente (ADOTADO 2026-08-11)
+
+**O ACHADO (Prova 41, sec 8.36)**: o fail(3) da MUTACAO do hook-proof-run NAO roda o revertCycle — a scratch fica (com a scratchLeftNote da receita manual) e a limpeza manual precisa LEMBRAR de restaurar os untracked do byte-copy (a etapa que o `git add -A` do commit do delta engole) + o doc do byte-copy + o checkout original + branch -D. O ciclo manual da Prova 41 re-derivou isso linha a linha (9 untracked no caso da prova).
+
+**A decisao (ADOTADO — barato, reusa o revertCycle exportado)**: a flag `--cleanup-on-fail` faz os 6 fail paths POS-scratch de infra (delta commit, doc ausente do claim/renumber, renumber THROW, --mutate shell fail, mutation commit — todos os fail(3) pos-scratch da cadeia de mutacao) rodarem o revertCycle ANTES do fail — a scratch NAO fica e as etapas do byte-copy (untracked restaurados + doc do byte-copy + status identico ao snapshot) sao feitas pelo MESMO codigo do revert normal (a fonte unica da restauracao, nunca uma copia manual). O revert-fail (o revertCycle ja rodou e falhou) NAO e retentado pela flag — o retry seria circular; a nota de saida continua. Um revertCycle que falha no cleanup-on-fail e reportado JUNTO com a nota (o usuario pode ter ficado na scratch — a receita nunca pode faltar, o espirito da sec 11.65).
+
+**O pin (4 testes novos no hook-proof-run.test.ts)**: parseArgs (a flag parseia, default false) + planSteps (o plano cita a flag) + o par E2E contrafactual do caminho do hook: --mutate shell FALHA com --cleanup-on-fail -> codigo 3 de saida E o revertCycle rodou (checkout base + branch -D no invocations.log — a scratch nao fica); a MESMA mutacao SEM a flag -> codigo 3 de saida COM a scratchLeftNote e SEM revertCycle (a classe aberta, limpeza manual). O guard de forma da sec 11.65 permanece intocado (a scratchLeftNote continua literal em todo fail(3) POS — o ternary mantem o token).
+
+Esta sec 11.69 e claim-free por desenho (a flag NAO muda o contrato de codigos de saida 0-3 da sec 11.58 — so o ESTADO pos-fail muda) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + ASCII do .mjs + UTF-8 do doc + ordering 11.68 → 11.69 → 12 monotono.
 
 
 ## 12. Referências

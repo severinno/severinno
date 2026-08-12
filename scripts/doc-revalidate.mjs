@@ -26,16 +26,26 @@
  * USO (bash/git-bash, como o hook-proof-run):
  *   node scripts/doc-revalidate.mjs [--doc <path>] [--section 8.34]
  *     [--date YYYY-MM-DD] [--dry-run] [--no-suite]
+ *   node scripts/doc-revalidate.mjs --sweep [--doc <path>]
  *   --dry-run: valida tudo (CLI + suite) e so IMPRIME a linha (nada escrito).
  *   --no-suite: pula a suite (so o CLI) - o caminho rapido do dry-run.
  *   --date YYYY-MM-DD (default: hoje, data LOCAL - o UTC rolaria 1 dia e
  *     quebraria a convencao de datas locais das secoes 8.x, sec 11.61).
+ *   --sweep: a VARREDURA read-only das secoes 8.x que precisam de
+ *     re-validacao (sec 11.68) - roda as 3 dimensoes reais do contrato de
+ *     counts (11.62 checkCitedCounts, 11.66 checkRevalCurrent, 11.67
+ *     checkDigestCounts) e imprime a lista com a CURE por secao, o padrao
+ *     --check dos guards (exit 0 limpo / exit 1 com a lista). Nada escrito.
+ *     NAO combina com --section/--date/--dry-run/--no-suite (a varredura
+ *     cobre TODAS as secoes - fail-loud no usage).
  *
  * HERMETICIDADE (testes): os comandos spawnados sao via shell com override
  * por env, o mesmo seam do HOOK_PROOF_GIT do hook-proof-run:
  *   DOC_REVALIDATE_CLI_CMD    default: node scripts/scan-exit-claims.mjs --check
- *   DOC_REVALIDATE_SUITE_CMD  default: NO_COLOR=1 npx vitest run
+ *   DOC_REVALIDATE_SUITE_CMD  default: npx vitest run
  *     scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts
+ *     (NO_COLOR via env no spawn - nunca prefixo shell: o `NO_COLOR=1 cmd`
+ *     POSIX quebra no cmd.exe, ACHADO da Prova 42)
  * O doc validado e SEMPRE o --doc (passado ao CLI via EXIT_CLAIMS_DOC).
  * Puro node, sem deps, ASCII puro (MJS_GATE_PATTERNS = scripts/*.mjs).
  */
@@ -43,19 +53,24 @@ import fs from "node:fs"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
+import { EXIT_CLAIMS, checkCitedCounts, checkDigestCounts, checkRevalCurrent } from "./scan-exit-claims.mjs"
 
 const DEFAULT_DOC = path.join(process.cwd(), "docs", "gates-proofs.md")
 const DEFAULT_SECTION = "8.34"
-const DEFAULT_CLI_CMD = "node scripts/scan-exit-claims.mjs --check"
-const DEFAULT_SUITE_CMD =
-  "NO_COLOR=1 npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts"
+// Exported (o pin do Windows, sec 8.37): o teste de forma pina que NENHUM
+// default de comando spawnado tem prefixo de env shell (`VAR=valor cmd` -
+// a classe que o cmd.exe rejeita, ACHADO da Prova 42).
+export const DEFAULT_CLI_CMD = "node scripts/scan-exit-claims.mjs --check"
+export const DEFAULT_SUITE_CMD =
+  "npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts"
 const SUITE_TOTAL_RE = /Tests\s+(\d+)\s+passed/
 // O marcador da entrada AUTOMATICA: '**Re-valida\u00e7\u00e3o (DATE,' - sem o
 // 'datada' da linha manual (que nunca colide com a idempotencia por data).
 const MARKER_PREFIX = "**Re-valida\u00e7\u00e3o ("
 
 const TEMPLATE_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "doc-revalidate-line.txt")
-const USAGE = "usage: node scripts/doc-revalidate.mjs [--doc <path>] [--section 8.34] [--date YYYY-MM-DD] [--dry-run] [--no-suite]"
+const USAGE =
+  "usage: node scripts/doc-revalidate.mjs [--doc <path>] [--section 8.34] [--date YYYY-MM-DD] [--dry-run] [--no-suite] | --sweep"
 
 /**
  * parseCliCount - extrai count + breakdown do stdout clean do CLI.
@@ -138,8 +153,10 @@ export function parseArgs(argv) {
     date: null,
     dryRun: false,
     noSuite: false,
+    sweep: false,
     error: null,
   }
+  const seen = new Set()
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--doc") {
@@ -153,12 +170,22 @@ export function parseArgs(argv) {
       i++
     } else if (a === "--dry-run") out.dryRun = true
     else if (a === "--no-suite") out.noSuite = true
+    else if (a === "--sweep") out.sweep = true
     else if (a === "--help") {
       out.error = USAGE
       break
     } else {
       out.error = `flag desconhecida: ${a}`
       break
+    }
+    seen.add(a)
+  }
+  if (out.sweep) {
+    for (const f of ["--section", "--date", "--dry-run", "--no-suite"]) {
+      if (seen.has(f)) {
+        out.error = `--sweep nao combina com ${f} (a varredura cobre TODAS as secoes 8.x - sec 11.68)`
+        break
+      }
     }
   }
   if (!out.date) out.date = todayLocal()
@@ -189,22 +216,68 @@ function fail(code, msg) {
 }
 
 /**
+ * sweepMain - a varredura read-only da sec 11.68: roda as 3 dimensoes
+ * REAIS do contrato de counts (11.62 checkCitedCounts, 11.66
+ * checkRevalCurrent, 11.67 checkDigestCounts) contra o doc (o --doc ou o
+ * default) e imprime a lista das secoes que precisam de re-validacao com
+ * a CURE por secao - o padrao --check dos guards. Exit 0 = limpo
+ * (nenhuma secao precisa); Exit 1 = violacoes listadas. Nada escrito.
+ */
+function sweepMain(docPath) {
+  const cited = checkCitedCounts(docPath)
+  const reval = checkRevalCurrent(docPath)
+  const digest = checkDigestCounts(docPath)
+  const lines = []
+  for (const s of cited) {
+    lines.push(
+      `  secao ${s.section} sem re-validacao datada citando ${JSON.stringify(s.counts)}: node scripts/doc-revalidate.mjs --section ${s.section} (sec 11.62)`,
+    )
+  }
+  for (const s of reval) {
+    lines.push(
+      `  secao ${s.section} com reval citando ${JSON.stringify(s.counts)} e o EXIT_CLAIMS em ${EXIT_CLAIMS.length}: node scripts/doc-revalidate.mjs --section ${s.section} (sec 11.66)`,
+    )
+  }
+  for (const d of digest) {
+    if (d.section) {
+      lines.push(
+        `  row ${d.row} da tabela citando ${JSON.stringify(d.counts)} com origem ${d.section} descoberta: node scripts/doc-revalidate.mjs --section ${d.section} (sec 11.67)`,
+      )
+    } else {
+      lines.push(
+        `  row ${d.row} da tabela citando ${JSON.stringify(d.counts)} SEM referencia de secao de origem: adicione a referencia sec 8.N na row (sec 11.67)`,
+      )
+    }
+  }
+  if (lines.length === 0) {
+    console.log(`doc-revalidate --sweep: clean (nenhuma secao 8.x precisa de re-validacao - sec 11.68)`)
+    return 0
+  }
+  console.log(`doc-revalidate --sweep: ${lines.length} violacao(oes) de re-validacao em ${docPath} (sec 11.68):`)
+  for (const l of lines) console.log(l)
+  return 1
+}
+
+/**
  * Main flow. Retorna o exit code (o entry-point guard seta process.exitCode).
- * Exit 2 = usage (flag desconhecida / --section fora de 8.x / --date invalido).
- * Exit 1 = falha de execucao (CLI ou suite nao verdes / doc ausente / count
- * nao-parseado). Exit 0 = linha upsertada (ou dry-run impressa).
+ * Exit 2 = usage (flag desconhecida / --section fora de 8.x / --date invalido /
+ * --sweep mal-combinado). Exit 1 = falha de execucao (CLI ou suite nao verdes /
+ * doc ausente / count nao-parseado) ou --sweep com violacoes. Exit 0 = linha
+ * upsertada (ou dry-run impressa) ou --sweep limpo.
  */
 export function main(argv = process.argv.slice(2)) {
   const opts = parseArgs(argv)
   if (opts.error) return fail(2, opts.error)
+  const docPath = path.resolve(opts.doc)
+  if (!fs.existsSync(docPath)) return fail(1, `doc nao encontrado: ${docPath}`)
+  // Sec 11.68 - a varredura (--sweep): read-only, sem CLI/suite/upsert.
+  if (opts.sweep) return sweepMain(docPath)
   if (!/^8\.\d+$/.test(opts.section)) {
     return fail(
       2,
       `--section deve ser 8.x (a linha gerada cita o codigo de saida 0 e so e segura em secoes 8.x - a fronteira do detector 11.x-only da sec 11.51): recebido '${opts.section}'`,
     )
   }
-  const docPath = path.resolve(opts.doc)
-  if (!fs.existsSync(docPath)) return fail(1, `doc nao encontrado: ${docPath}`)
 
   // 1. CLI real do scan-exit-claims (valida o MESMO doc do --doc).
   const cliCmd = process.env.DOC_REVALIDATE_CLI_CMD || DEFAULT_CLI_CMD
@@ -221,7 +294,11 @@ export function main(argv = process.argv.slice(2)) {
   let suiteTotal = null
   if (!opts.noSuite) {
     const suiteCmd = process.env.DOC_REVALIDATE_SUITE_CMD || DEFAULT_SUITE_CMD
-    const suite = runCmd(suiteCmd, {})
+    // NO_COLOR vai no ENV (extraEnv), nao no prefixo shell: o default
+    // POSIX `NO_COLOR=1 cmd` quebra no cmd.exe (ACHADO da Prova 42 - o
+    // caminho real da suite nunca tinha sido exercitado; os E2Es usam
+    // fakes e o REAL-REPO CONTRACT roda --no-suite).
+    const suite = runCmd(suiteCmd, { NO_COLOR: "1" })
     if (suite.status !== 0) {
       return fail(1, `suite hermetica falhou (status ${suite.status}): ${(suite.stderr || "").slice(-500)}`)
     }

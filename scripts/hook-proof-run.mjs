@@ -66,6 +66,15 @@
  * infra (git checkout -b falhou, commit falhou, doc ausente para
  * --mutate-doc-claim, hook nao executou, revert incompleto).
  *
+ * --cleanup-on-fail (sec 11.69): os fail paths POS-scratch de infra (delta
+ * commit, doc ausente, renumber THROW, --mutate shell fail, mutation commit -
+ * todos os fail(3) pos-scratch da cadeia de mutacao) rodam o revertCycle
+ * ANTES do fail(3) - a scratch NAO fica e os untracked do byte-copy sao
+ * restaurados (o ACHADO da Prova 41, sec 8.36, fechado estruturalmente). Sem
+ * a flag, o fail deixa a scratch com a scratchLeftNote (a receita manual).
+ * NAO conflita com --keep-branch (o keep so vale no sucesso - o
+ * cleanup-on-fail so vale no fail).
+ *
  * HERMETICIDADE (testes): os binarios git sao spawnados via HOOK_PROOF_GIT
  * (env override apontando para o fixture hook-proof-fake-bins.mjs, invocado
  * via process.execPath - o mesmo padrao cross-platform do CI_PROOF_GIT); o
@@ -105,6 +114,7 @@ export function parseArgs(argv) {
     baseSha: null,
     hook: null,
     keep: false,
+    cleanupOnFail: false,
     dryRun: false,
     error: null,
   }
@@ -125,6 +135,7 @@ export function parseArgs(argv) {
     else if (a === "--base-sha") { out.baseSha = argv[i + 1] ?? null; i++ }
     else if (a === "--hook") { out.hook = argv[i + 1] ?? null; i++ }
     else if (a === "--keep-branch") out.keep = true
+    else if (a === "--cleanup-on-fail") out.cleanupOnFail = true
     else if (a === "--dry-run") out.dryRun = true
     else if (a === "--help") { out.error = USAGE; break }
     else { out.error = `flag desconhecida: ${a}`; break }
@@ -182,7 +193,7 @@ export function isManualDocRenameCmd(cmd) {
   return /\bsed\b/.test(cmd) && /## /.test(cmd) && /gates-proofs\.md/.test(cmd)
 }
 
-const USAGE = "usage: node scripts/hook-proof-run.mjs --branch ci-proof/<name> [--mutate-doc-claim <sec> | --mutate-doc-renumber <sec> --to <nova> | --mutate <cmd>] [--expect-cure] [--expect-exit <n>] [--expect-log <regex>] [--base-sha <sha>] [--hook <path>] [--keep-branch] [--dry-run]"
+const USAGE = "usage: node scripts/hook-proof-run.mjs --branch ci-proof/<name> [--mutate-doc-claim <sec> | --mutate-doc-renumber <sec> --to <nova> | --mutate <cmd>] [--expect-cure] [--expect-exit <n>] [--expect-log <regex>] [--base-sha <sha>] [--hook <path>] [--keep-branch] [--cleanup-on-fail] [--dry-run]"
 
 /**
  * injectDocClaim - a mutacao pura do --mutate-doc-claim (exported for tests):
@@ -294,6 +305,9 @@ export function planSteps(opts, originalBranch) {
   } else {
     steps.push("git: (--keep-branch: scratch mantida para inspecao)")
   }
+  if (opts.cleanupOnFail) {
+    steps.push("cleanup-on-fail: os fail paths POS-scratch de infra rodam o revertCycle (a scratch nao fica - sec 11.69)")
+  }
   return steps
 }
 
@@ -333,6 +347,23 @@ function fail(code, msg) {
 // fail paths de infra (commit/mutate/doc) nao chegam ao revert.
 const scratchLeftNote = (originalBranch, branch, backupDir) =>
   ` - a branch scratch pode ter ficado: git checkout ${originalBranch} && git branch -D ${branch} (backup do delta em ${backupDir})`
+
+/**
+ * cleanupOnFailSuffix - o sufixo dos fail paths de MUTACAO POS-scratch com
+ * --cleanup-on-fail (sec 11.69): roda o revertCycle ANTES do fail(3) - a
+ * scratch NAO fica e as etapas do byte-copy (untracked restaurados + doc do
+ * byte-copy + status identico ao snapshot) sao feitas pelo MESMO codigo do
+ * revert normal (a fonte unica da restauracao, nunca uma copia manual - o
+ * ACHADO da Prova 41, sec 8.36: a limpeza manual precisava LEMBRAR de
+ * restaurar os untracked). Um revertCycle que falha e reportado JUNTO com a
+ * nota de saida (o usuario pode ter ficado na scratch - a receita nunca pode
+ * faltar, o espirito da sec 11.65).
+ */
+function cleanupOnFailSuffix(originalBranch, branch, backupDir, docPath) {
+  const rv = revertCycle(branch, originalBranch, backupDir, docPath)
+  if (rv.ok) return ` | cleanup-on-fail: ${rv.message}`
+  return ` | cleanup-on-fail FALHOU: ${rv.message}${scratchLeftNote(originalBranch, branch, backupDir)}`
+}
 
 /**
  * revertCycle - o revert byte-identical (Prova 38): checkout da original +
@@ -430,27 +461,27 @@ export function main() {
   if ((stDelta.stdout ?? "").trim() !== "") {
     git(["add", "-A"])
     const cm1 = git(["commit", "-m", `hook-proof: ${opts.branch} (delta)`])
-    if (cm1.status !== 0) return fail(3, `git commit do delta falhou: ${cm1.stderr.trim()}${scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+    if (cm1.status !== 0) return fail(3, `git commit do delta falhou: ${cm1.stderr.trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
   }
 
   // 4. MUTACAO (--mutate-doc-claim | --mutate) + commit HUSKY=0 (SO quando a
   // mutacao alterou a arvore - uma mutacao no-op nao pode falhar o ciclo).
   if (opts.mutateDocClaim) {
-    if (!fs.existsSync(docPath)) return fail(3, `doc nao encontrado: ${docPath} (--mutate-doc-claim precisa do gates-proofs.md)${scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+    if (!fs.existsSync(docPath)) return fail(3, `doc nao encontrado: ${docPath} (--mutate-doc-claim precisa do gates-proofs.md)${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     const doc = fs.readFileSync(docPath, "utf8")
     fs.writeFileSync(docPath, injectDocClaim(doc, opts.mutateDocClaim), "utf8")
   } else if (opts.mutateDocRenumber) {
-    if (!fs.existsSync(docPath)) return fail(3, `doc nao encontrado: ${docPath} (--mutate-doc-renumber precisa do gates-proofs.md)${scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+    if (!fs.existsSync(docPath)) return fail(3, `doc nao encontrado: ${docPath} (--mutate-doc-renumber precisa do gates-proofs.md)${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     const doc = fs.readFileSync(docPath, "utf8")
     try {
       fs.writeFileSync(docPath, renumberDocSection(doc, opts.mutateDocRenumber, opts.to), "utf8")
     } catch (e) {
-      return fail(3, `${e.message}${scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+      return fail(3, `${e.message}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     }
   } else if (opts.mutate) {
     const m = spawnSync(opts.mutate, { shell: true, encoding: "utf8", cwd: process.cwd() })
     if (m.status !== 0) {
-      return fail(3, `--mutate falhou (exit ${m.status}): ${(m.stderr ?? m.stdout ?? "").trim()}${scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+      return fail(3, `--mutate falhou (exit ${m.status}): ${(m.stderr ?? m.stdout ?? "").trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     }
   }
   if (opts.mutateDocClaim || opts.mutateDocRenumber || opts.mutate) {
@@ -458,7 +489,7 @@ export function main() {
     if ((stMut.stdout ?? "").trim() !== "") {
       git(["add", "-A"])
       const cm2 = git(["commit", "-m", `hook-proof: ${opts.branch} (mutacao)`])
-      if (cm2.status !== 0) return fail(3, `git commit da mutacao falhou: ${cm2.stderr.trim()}${scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+      if (cm2.status !== 0) return fail(3, `git commit da mutacao falhou: ${cm2.stderr.trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     } else {
       console.log("hook-proof-run: a mutacao nao alterou a arvore - sem commit da mutacao")
     }

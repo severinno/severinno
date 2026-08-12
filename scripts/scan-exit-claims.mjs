@@ -392,6 +392,123 @@ export function checkCitedCounts(docPath = DOC, current = EXIT_CLAIMS.length) {
     .map((s) => ({ section: s.section, counts: s.counts }))
 }
 
+// ---------------------------------------------------------------------------
+// Sec 11.66 - o TRIPWIRE do esquecimento da re-validacao: quando o
+// EXIT_CLAIMS cresce (claim nova registrada), a secao de controle 8.x com
+// re-validacao datada precisa ser RE-validada (o doc-revalidate cita o
+// count NOVO). O checkCitedCounts da sec 11.62 EXIME secoes com reval
+// (counts historicos sancionados) - o gap medido 2026-08-11: com o
+// manifest em 29, a reval da 8.34 citando 28 nao era flagrada nem no
+// pre-commit (o batch roda so o exitClaimsMain) nem no push (o 11.63
+// exime). Este guard fecha a classe: a reval deve citar o count ATUAL.
+// ---------------------------------------------------------------------------
+const REVAL_COUNT_RE = /^\*\*Re-valida[\u00e7c]\u00e3o (datada )?\(\d{4}-\d{2}-\d{2}, (\d+) claims\)/
+
+/**
+ * scanRevalCounts - por secao 8.x, os counts citados nas linhas de
+ * re-validacao datada (o `N` de `**Re-valida\u00e7\u00e3o (DATE, N claims)**` -
+ * as linhas geradas pelo doc-revalidate E as manuais `datada`). So as
+ * linhas MARCADAS (o header do paragrafo), nao as citacoes soltas.
+ */
+export function scanRevalCounts(docPath = DOC) {
+  const lines = fs.readFileSync(docPath, "utf8").split(/\r?\n/)
+  const sections = []
+  let cur = null
+  for (const l of lines) {
+    const m8 = l.match(/^## 8\.(\d+)/)
+    if (m8) {
+      cur = `8.${m8[1]}`
+      continue
+    }
+    if (/^## \d/.test(l)) {
+      cur = null
+      continue
+    }
+    if (cur) {
+      const m = l.match(REVAL_COUNT_RE)
+      if (m) {
+        const rec = sections.find((s) => s.section === cur)
+        const n = Number(m[2])
+        if (rec) rec.counts.push(n)
+        else sections.push({ section: cur, counts: [n] })
+      }
+    }
+  }
+  return sections
+}
+
+/**
+ * checkRevalCurrent - o contrato da sec 11.66: toda secao 8.x com
+ * re-validacao datada deve citar o count ATUAL do manifest (default
+ * EXIT_CLAIMS.length). Quando o manifest cresce e a reval fica citando o
+ * count antigo, a secao precisa ser re-validada (o doc-revalidate).
+ * Retorna as violacoes: { section, counts }.
+ */
+export function checkRevalCurrent(docPath = DOC, current = EXIT_CLAIMS.length) {
+  return scanRevalCounts(docPath)
+    .filter((s) => !s.counts.includes(current))
+    .map((s) => ({ section: s.section, counts: s.counts }))
+}
+
+// ---------------------------------------------------------------------------
+// Sec 11.67 - o PIN dos counts citados na TABELA ## 1 (o digest): a tabela
+// resumo das provas TAMBEM cita counts historicos verbatim (`clean (N
+// claims`) e o checkCitedCounts da sec 11.62 so varre as secoes 8.x - a
+// tabela era o ultimo ponto cego da superficie (uma claim nova registrada
+// deixaria o digest citando o count antigo para sempre, sem contrato). A
+// regra espelha a 11.62 com a ORIGEM: so flagra a row se algum count
+// DIVERGE do count atual E a secao de origem (a primeira `sec 8.N`
+// referenciada na row - a convencao "(Prova N, sec 8.M;" no titulo) NAO
+// esta coberta por re-validacao datada (o mesmo sancionamento da 11.62).
+// Uma row sem referencia `sec 8.N` e fail-loud (a origem nao e
+// verificavel). NAO detecta exit-code claims (o scanDocExitClaims segue
+// 11.x-only, sec 11.51 - a tabela e leitura de counts, nao de claims).
+// ---------------------------------------------------------------------------
+const DIGEST_SECTION_RE = /sec 8\.(\d+)/
+
+/**
+ * scanDigestCounts - varre a TABELA ## 1 (o digest das provas) e retorna
+ * por row: { row, section, counts }. row = o numero da linha da tabela;
+ * section = a primeira referencia `sec 8.N` da row (a secao de origem da
+ * prova); counts = as citacoes verbatim `clean (N claims` da row.
+ */
+export function scanDigestCounts(docPath = DOC) {
+  const lines = fs.readFileSync(docPath, "utf8").split(/\r?\n/)
+  const rows = []
+  let inDigest = false
+  for (const l of lines) {
+    if (/^## 1\./.test(l)) {
+      inDigest = true
+      continue
+    }
+    if (inDigest && /^## \d/.test(l)) inDigest = false
+    if (!inDigest) continue
+    const mRow = l.match(/^\|\s*(\d+)\s*\|/)
+    if (!mRow) continue
+    const counts = []
+    for (const m of l.matchAll(CLEAN_COUNT_RE)) counts.push(Number(m[1]))
+    if (counts.length === 0) continue
+    const mSec = l.match(DIGEST_SECTION_RE)
+    rows.push({ row: Number(mRow[1]), section: mSec ? `8.${mSec[1]}` : null, counts })
+  }
+  return rows
+}
+
+/**
+ * checkDigestCounts - o contrato da sec 11.67: toda row da TABELA ## 1 que
+ * cita counts deve, ou citar somente o count ATUAL, ou ter a secao de
+ * origem coberta por re-validacao datada (o sancionamento da 11.62). Uma
+ * row sem referencia `sec 8.N` e fail-loud (a origem nao e verificavel).
+ * Retorna as violacoes: { row, section, counts }.
+ */
+export function checkDigestCounts(docPath = DOC, current = EXIT_CLAIMS.length) {
+  const covered = new Set(scanCitedCounts(docPath).filter((s) => s.hasReval).map((s) => s.section))
+  return scanDigestCounts(docPath)
+    .filter((r) => r.counts.some((c) => c !== current))
+    .filter((r) => !r.section || !covered.has(r.section))
+    .map((r) => ({ row: r.row, section: r.section, counts: r.counts }))
+}
+
 /** Resolve o pin de uma entrada do manifest (file real + marker no conteudo). */
 export function resolvePin(pin) {
   if (!pin) return null
@@ -452,12 +569,44 @@ export function main() {
     return 2
   }
   const { unregistered, stale, brokenPins, brokenChains } = checkExitClaims()
+  // Sec 11.66 - a dimensao da re-validacao: quando o EXIT_CLAIMS cresceu e
+  // a secao de controle 8.x com reval segue citando o count antigo, o
+  // pre-commit falha com a CURE (doc-revalidate --section 8.N). Barato
+  // (scan puro do doc ja materializado pelo checkExitClaims).
+  const revalStale = checkRevalCurrent()
+  // Sec 11.67 - a dimensao do DIGEST (a TABELA ## 1): counts citados fora
+  // das 8.x divergindo do atual sem secao de origem coberta. Barato (scan
+  // puro do doc ja materializado pelo checkExitClaims).
+  const digestStale = checkDigestCounts()
   const total = EXIT_CLAIMS.length
-  if (unregistered.length === 0 && stale.length === 0 && brokenPins.length === 0 && brokenChains.length === 0) {
+  if (
+    unregistered.length === 0 &&
+    stale.length === 0 &&
+    brokenPins.length === 0 &&
+    brokenChains.length === 0 &&
+    revalStale.length === 0 &&
+    digestStale.length === 0
+  ) {
     process.stdout.write(
       `exit-claims: clean (${total} claims registradas em ${EXIT_CLAIMS.filter((e) => e.kind === "current").length} current + ${EXIT_CLAIMS.filter((e) => e.kind === "superseded").length} superseded + ${EXIT_CLAIMS.filter((e) => e.kind === "measurement").length} measurement - sec 11.42)\n`,
     )
     return 0
+  }
+  if (revalStale.length > 0) {
+    process.stderr.write(`exit-claims: ${revalStale.length} secao(oes) 8.x com re-validacao datada DESATUALIZADA (o EXIT_CLAIMS cresceu e a reval cita o count antigo - sec 11.66):\n`)
+    for (const s of revalStale) {
+      process.stderr.write(`  secao ${s.section} com reval citando ${JSON.stringify(s.counts)} e o EXIT_CLAIMS em ${total}: node scripts/doc-revalidate.mjs --section ${s.section} (re-validar e a CURE - sec 11.61/11.66)\n`)
+    }
+  }
+  if (digestStale.length > 0) {
+    process.stderr.write(`exit-claims: ${digestStale.length} row(s) da TABELA ## 1 com count de claims desatualizado (o digest - sec 11.67):\n`)
+    for (const d of digestStale) {
+      if (d.section) {
+        process.stderr.write(`  row ${d.row} cita ${JSON.stringify(d.counts)} com a secao de origem ${d.section} NAO coberta por re-validacao datada: node scripts/doc-revalidate.mjs --section ${d.section} (re-validar a secao de origem e a CURE - sec 11.61/11.67)\n`)
+      } else {
+        process.stderr.write(`  row ${d.row} cita ${JSON.stringify(d.counts)} SEM referencia de secao de origem (sec 8.N): adicione a referencia na row para a cobertura ser verificavel - sec 11.67\n`)
+      }
+    }
   }
   if (unregistered.length > 0) {
     process.stderr.write(`exit-claims: ${unregistered.length} claim(s) de exit code SEM registro no manifest (sec 11.42):\n`)

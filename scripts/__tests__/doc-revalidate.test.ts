@@ -12,6 +12,8 @@
  * placeholders), o ciclo E2E com bins falsos (DOC_REVALIDATE_CLI_CMD /
  * DOC_REVALIDATE_SUITE_CMD -> fakes no temp dir, o seam do HOOK_PROOF_GIT)
  * e o REAL-REPO CONTRACT do --dry-run --no-suite (o count atual pinado).
+ * O fake suite pina o fix do Windows (ACHADO da Prova 42, sec 8.37): falha
+ * se NO_COLOR nao vier via env no spawn (nunca prefixo shell).
  *
  * HERMETICIDADE: nenhum CLI/suite REAL roda no caminho E2E - o CLI spawna
  * os fakes via os mesmos seams por env herdados pelo spawnSync. O doc do
@@ -27,7 +29,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
-import { buildRevalidateLine, parseArgs, parseCliCount, upsertRevalidateLine } from "../doc-revalidate.mjs"
+import { buildRevalidateLine, DEFAULT_CLI_CMD, DEFAULT_SUITE_CMD, parseArgs, parseCliCount, upsertRevalidateLine } from "../doc-revalidate.mjs"
 import { cleanupTempDirs, createTempDir } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "doc-revalidate.mjs")
@@ -63,6 +65,17 @@ function runCli(args: string[], env: Record<string, string> = {}): { status: num
 
 afterEach(() => {
   cleanupTempDirs()
+})
+
+describe("scripts/doc-revalidate.mjs - default cmds prefix-free (o fix do Windows, sec 8.37)", () => {
+  it("SHAPE GUARD: nenhum default de comando spawnado comeca com prefixo de env shell ('VAR=valor cmd' - a classe que o cmd.exe rejeita, ACHADO da Prova 42)", () => {
+    // o prefixo POSIX `NO_COLOR=1 cmd` quebra no Windows (cmd.exe) - o
+    // fix moveu NO_COLOR para o env do spawn; este teste pina que o
+    // default NUNCA volta a ter o prefixo (o E2E so cobre o override path)
+    for (const cmd of [DEFAULT_CLI_CMD, DEFAULT_SUITE_CMD]) {
+      expect(cmd).not.toMatch(/^[A-Z_]+=/) // sem `VAR=...` no inicio
+    }
+  })
 })
 
 describe("scripts/doc-revalidate.mjs - parseCliCount (sec 11.61)", () => {
@@ -107,6 +120,20 @@ describe("scripts/doc-revalidate.mjs - parseArgs (sec 11.61)", () => {
 
   it("--date invalido -> error", () => {
     expect(parseArgs(["--date", "11/08/2026"]).error).toContain("YYYY-MM-DD")
+  })
+
+  it("--sweep: flag reconhecida (a varredura read-only das secoes 8.x - sec 11.68)", () => {
+    const o = parseArgs(["--sweep"])
+    expect(o.sweep).toBe(true)
+    expect(o.doc).toBe(path.resolve(process.cwd(), "docs", "gates-proofs.md"))
+    expect(o.error).toBeNull()
+  })
+
+  it("--sweep NAO combina com --section/--date/--dry-run/--no-suite (fail-loud no usage - a varredura cobre TODAS as secoes)", () => {
+    expect(parseArgs(["--sweep", "--section", "8.35"]).error).toContain("nao combina")
+    expect(parseArgs(["--sweep", "--dry-run"]).error).toContain("nao combina")
+    expect(parseArgs(["--sweep", "--no-suite"]).error).toContain("nao combina")
+    expect(parseArgs(["--sweep", "--date", "2026-08-11"]).error).toContain("nao combina")
   })
 })
 
@@ -209,7 +236,7 @@ describe("scripts/doc-revalidate.mjs - E2E hermetico (fakes via env)", () => {
       fakeSuite,
       opts.suiteFail
         ? 'process.stderr.write("fake-suite: falhou de proposito\\n"); process.exit(1)'
-        : 'console.log(" Tests  5 passed (5)")',
+        : 'if (process.env.NO_COLOR !== "1") { process.stderr.write("fake-suite: NO_COLOR nao veio via env (o fix do Windows, ACHADO da Prova 42/sec 8.37)\\n"); process.exit(1) } console.log(" Tests  5 passed (5)")',
       "utf8",
     )
     return {
@@ -301,5 +328,92 @@ describe("scripts/doc-revalidate.mjs - REAL-REPO CONTRACT (sec 11.61)", () => {
     // assert muda de proposito (o mesmo padrao do ABS PIN)
     expect(r.stdout).toContain("clean (28 claims")
     expect(r.stdout).toContain("**Re-validação (")
+  }, 60000)
+})
+
+describe("scripts/doc-revalidate.mjs - SWEEP read-only (sec 11.68)", () => {
+  it("REAL-REPO CONTRACT do CLI: --sweep no doc real -> exit 0 'clean' (as 3 dimensoes do contrato de counts verificam o doc real: checkCitedCounts + checkRevalCurrent + checkDigestCounts = [] - o pino vivo)", () => {
+    const r = runCli(["--sweep"])
+    expect(r.status).toBe(0)
+    expect(r.stdout).toContain("--sweep: clean")
+    expect(r.stdout).toContain("nenhuma secao 8.x precisa de re-validacao")
+  }, 120000)
+
+  it("MUTATION: doc com a secao 8.99 citando count ANTIGO sem re-validacao datada (11.62) -> exit 1 com a secao exata e a CURE doc-revalidate --section", () => {
+    const dir = createTempDir("drv-sweep-")
+    const docPath = path.join(dir, "gates-proofs.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.",
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    const r = runCli(["--sweep", "--doc", docPath])
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("secao 8.99")
+    expect(r.stdout).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+    expect(r.stdout).toContain("sec 11.62")
+  }, 60000)
+
+  it("MUTATION: doc com a reval datada citando count ANTIGO (11.66) -> exit 1 com a secao exata e a CURE doc-revalidate --section", () => {
+    const dir = createTempDir("drv-sweep-")
+    const docPath = path.join(dir, "gates-proofs.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        "**Re-validação (2026-08-11, 27 claims)**: re-validado quando o manifest tinha 27.",
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    const r = runCli(["--sweep", "--doc", docPath])
+    expect(r.status).toBe(1)
+    expect(r.stdout).toContain("secao 8.99")
+    expect(r.stdout).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+    expect(r.stdout).toContain("sec 11.66")
+  }, 60000)
+
+  it("MUTATION: doc com a row 99 (origem 8.99 sem reval) + a row 100 SEM origem (o branch section:null) (11.67) -> exit 1 com as 2 rows exatas: a CURE doc-revalidate --section E o fail-loud 'SEM referencia de secao de origem'", () => {
+    const dir = createTempDir("drv-sweep-")
+    const docPath = path.join(dir, "gates-proofs.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 1. Tabela resumo",
+        "",
+        "| # | Gate sob prova | Prova | Resultado |",
+        "|---|---|---|---|",
+        "| 99 | Guard X (Prova 99, sec 8.99) | `clean (25 claims)` |",
+        "| 100 | Guard Y (Prova 100) | `clean (26 claims)` |",
+        "",
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        "**Controle pos-ciclo**: sem counts no corpo (so as rows da tabela citam).",
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    const r = runCli(["--sweep", "--doc", docPath])
+    expect(r.status).toBe(1)
+    // row 99: o branch WITH-origin (origem 8.99 descoberta) -> a CURE doc-revalidate --section
+    expect(r.stdout).toContain("row 99")
+    expect(r.stdout).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+    expect(r.stdout).toContain("sec 11.67")
+    // row 100: o branch section:null (row SEM referencia sec 8.N de origem) ->
+    // fail-loud 'SEM referencia de secao de origem' (o pin do nit do reviewer, sec 11.68)
+    expect(r.stdout).toContain("row 100")
+    expect(r.stdout).toContain("SEM referencia de secao de origem")
   }, 60000)
 })

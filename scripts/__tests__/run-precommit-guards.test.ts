@@ -252,4 +252,81 @@ describe("run-precommit-guards.mjs - batch runner dos 8 guards node (sec 11.13)"
     expect(r.stdout).toContain("prepush-batch: clean")
     expect(r.stdout).toContain("batch-coverage: clean")
   }, 60000)
+
+  it("AGREGACAO + SURFACE da dimensao REVAL (sec 11.66): EXIT_CLAIMS_DOC com uma 8.x de reval datada citando count ANTIGO (o esquecimento do doc-revalidate quando o EXIT_CLAIMS cresce) -> batch exit 1 com a CURE doc-revalidate --section na saida agregada, os outros 7 guards clean", () => {
+    const dir = createTempDir("run-guards-")
+    const docPath = path.join(dir, "stale-reval.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
+        "",
+        "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
+        "",
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        "**Re-validação (2026-08-11, 27 claims)**: re-validado quando o manifest tinha 27.",
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    const r = runBatch({ EXIT_CLAIMS_DOC: docPath })
+    expect(r.status).toBe(1)
+    // O exit-claims (8o guard) surface a dimensao nova da sec 11.66 no stderr
+    // agregado - o tripwire do esquecimento do doc-revalidate no pre-commit.
+    expect(r.stderr).toContain("re-validacao datada DESATUALIZADA")
+    expect(r.stderr).toContain("secao 8.99")
+    expect(r.stderr).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+    // ISOLAMENTO: os outros guards rodaram e reportaram clean MESMO com o 8o falho.
+    expect(r.stdout).toContain("check-node-modules-integrity: clean")
+    expect(r.stdout).toContain("guard-gates: clean")
+    expect(r.stdout).toContain("prepush-batch: clean")
+  }, 60000)
+
+  it("AGREGACAO + SURFACE da dimensao DIGEST (sec 11.67): EXIT_CLAIMS_DOC com a row 99 da TABELA ## 1 citando count ANTIGO (o checkCitedCounts da 11.62 nao ve a tabela - o ultimo ponto cego) -> batch exit 1 com a CURE doc-revalidate --section na saida agregada, os outros 7 guards clean", () => {
+    const dir = createTempDir("run-guards-")
+    const docPath = path.join(dir, "digest-stale.md")
+    fs.writeFileSync(
+      docPath,
+      [
+        "## 11.42 o CLI scan-exit-claims sai exit code 0 no doc real",
+        "",
+        "**Exit codes**: exit code 0 (doc coberto) / exit code 1 (violacoes listadas).",
+        "",
+        "## 1. Tabela resumo",
+        "",
+        "| # | Gate sob prova | Prova | Resultado |",
+        "|---|---|---|---|",
+        "| 99 | Guard X (Prova 99, sec 8.99) | `clean (25 claims)` |",
+        "",
+        "## 8.99 Prova X - controle sintetico",
+        "",
+        "**Controle pos-ciclo**: CLI `clean (25 claims)` exit 0.",
+        "",
+        "## 12. Referências",
+        "",
+      ].join("\n"),
+      "utf8",
+    )
+    // NOTA (sec 11.67): o corpo da 8.99 citando counts e inofensivo AQUI -
+    // o batch roda o exitClaimsMain, que NAO executa o checkCitedCounts da
+    // sec 11.62 (essa dimensao e do guard do push). Se este doc fosse usado
+    // no teste do push, o count no corpo mascararia a dimensao digest - por
+    // isso o doc do push test isola (sem counts no corpo).
+    const r = runBatch({ EXIT_CLAIMS_DOC: docPath })
+    expect(r.status).toBe(1)
+    // O exit-claims (8o guard) surface a dimensao nova da sec 11.67 no
+    // stderr agregado - o guard do digest no pre-commit (via o main()
+    // compartilhado que o batch roda).
+    expect(r.stderr).toContain("TABELA ## 1")
+    expect(r.stderr).toContain("row 99")
+    expect(r.stderr).toContain("node scripts/doc-revalidate.mjs --section 8.99")
+    // ISOLAMENTO: os outros guards rodaram e reportaram clean MESMO com o 8o falho.
+    expect(r.stdout).toContain("check-node-modules-integrity: clean")
+    expect(r.stdout).toContain("guard-gates: clean")
+    expect(r.stdout).toContain("prepush-batch: clean")
+    expect(r.stdout).toContain("batch-coverage: clean")
+  }, 60000)
 })
