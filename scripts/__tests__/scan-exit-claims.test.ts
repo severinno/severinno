@@ -399,6 +399,54 @@ describe("scripts/scan-exit-claims.mjs - 8.x COUNTS PIN (sec 11.62)", () => {
   })
 })
 
+describe("scripts/scan-exit-claims.mjs - RE-MEDICAO COUNTS FRONTIER (sec 11.74)", () => {
+  it("REAL-REPO: os counts de testes/suites das re-mediacoes da 8.1 ('14 suites / 304 testes') NAO geram record no scanCitedCounts - sao registro de evento run-pinned (run number + commit no bloco), nao claims do CLI; o detector so le o token verbatim 'clean (N claims' (o token class e a fronteira, nao o numero)", () => {
+    const s = scanCitedCounts(DOC)
+    expect(s.find((x) => x.section === "8.1")).toBeUndefined()
+    // a doc REAL cita os counts (a prova de que a ausencia de record e o
+    // TOKEN CLASS, nao a ausencia de citacao)
+    const doc = fs.readFileSync(DOC, "utf8")
+    expect(doc).toMatch(/\d+ testes/)
+    // e o current truth e DERIVED (package.json test:guard, a fonte unica
+    // pinada pela 8.4 REAL-REPO CONTRACT + sec 11.73), nunca doc-citado -
+    // o doc so REGISTRA o que cada run mediu
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
+    expect(pkg.scripts["test:guard"]).toContain("scan-push-full-suite.test.ts")
+  })
+
+  it("MUTATION: prosa de re-mediacao com counts de testes/suites NAO viola (registro historico imutavel); o MESMO numero no token verbatim do CLI na MESMA secao viola - a fronteira e o FORMATO, o contrafactual da 11.62 aplicado a classe de medidas", () => {
+    // (a) prosa de re-mediacao: 'o run 31587061757 mediu 14 suites / 304
+    // testes no HEAD e50a186' - linguagem natural de registro de evento,
+    // SEM o token verbatim do stdout do CLI. Nenhum record e criado e
+    // checkCitedCounts nao viola (a classe das re-mediacoes da 8.1).
+    const dirProse = createTempDir("sec11-74-")
+    const prosePath = writeSyntheticDoc(dirProse, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: [
+          "",
+          "**Re-mediacao (5)**: o run 31587061757 mediu 14 suites / 304 testes no HEAD e50a186.",
+          "",
+          "## 9. Outra secao",
+          "",
+        ],
+      },
+    ])
+    expect(scanCitedCounts(prosePath).find((s) => s.section === "8.99")).toBeUndefined()
+    expect(checkCitedCounts(prosePath, 28)).toEqual([])
+    // (b) o CONTRAFACTUAL verbatim: o MESMO tipo de secao com o token do
+    // stdout do CLI (clean (27 claims) E contract - viola sem re-validacao.
+    const dirVerbatim = createTempDir("sec11-74-")
+    const verbatimPath = writeSyntheticDoc(dirVerbatim, [
+      {
+        header: "## 8.99 Prova X - controle sintetico",
+        body: ["", "**Controle pos-ciclo**: CLI `clean (27 claims)` exit 0.", "", "## 9. Outra secao", ""],
+      },
+    ])
+    expect(checkCitedCounts(verbatimPath, 28)).toEqual([{ section: "8.99", counts: [27] }])
+  })
+})
+
 describe("scripts/scan-exit-claims.mjs - 8.x REVAL CURRENT PIN (sec 11.66)", () => {
   it("REAL-REPO: a secao de controle 8.34 tem reval datada citando o count ATUAL (28) - o par nao esta stale", () => {
     const s = scanRevalCounts(DOC)

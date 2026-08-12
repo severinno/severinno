@@ -57,6 +57,10 @@
 | 40 | Guard do renumber — **a COLISÃO de target fail-loud no repo REAL via `hook-proof-run`** (Prova 41, sec 8.36; renumber `11.58` → `11.42` — o 2º fail-loud da sec 11.59 com prova de pipeline) | A colisão de target (`to` já existente no doc) tinha E2E hermético (o teste da sec 11.59 + o irmão do no-op da 11.59) mas sem prova viva no repo REAL: faltava confirmar que o helper roda a mutação contra o doc real e o THROW vira exit 3 fail-loud com o caminho exato — fechando a classe com prova de pipeline, não só hermética | `node scripts/hook-proof-run.mjs --branch ci-proof/collision-live --mutate-doc-renumber 11.58 --to 11.42 --hook .husky/pre-push` (o doc REAL: a 11.42 existe — a colisão dispara o `toRe.test` da sec 11.59) | **Local** — prova de hook REAL via o helper (o doc real, o push simulado via stdin, sem rede) | ✅ helper **exit 3 fail-loud** — `renumberDocSection: secao '## 11.42 ' JA existe no doc (ou e a propria secao - no-op, sec 11.59) - a renumeracao criaria um header duplicado` com o `scratchLeftNote` (backup em tmp + a receita de limpeza); **o hook NUNCA rodou** (a mutação morre na etapa 4, antes do push simulado); **ACHADO do ciclo**: o fail(3) da mutação NÃO roda o revertCycle (por desenho — a scratch fica com a nota de limpeza), então o revert foi MANUAL no padrão do revertCycle: checkout da original + branch -D + `git apply delta.patch` + untracked restaurados do byte-copy (o `git add -A` do delta commit engoliu os 9 arquivos untracked da thread — a etapa que o revertCycle faz e o manual precisa lembrar) + doc do byte-copy → **byte-identical (md5 do doc OK + git status 17 linhas = snapshot, de volta em `freebuff/new-thread-thmsitz5qutoia`)** |
 | 41 | doc-revalidate — **o caminho de ESCRITA real: upsert datado + idempotência do mesmo dia** (Prova 42, sec 8.37; `node scripts/doc-revalidate.mjs --doc <backup> --section 8.34` — o primeiro caminho de escrita REAL exercitado, contra um backup byte-identical do doc) | O helper tinha só prova hermética (funções puras + E2Es com fakes) + o REAL-REPO CONTRACT do `--dry-run` (que valida mas NADA escreve): o upsert datado e a idempotência por data nunca tinham tocado um doc real de verdade | `node scripts/doc-revalidate.mjs --doc /tmp/drv-proof-*.md --section 8.34` (backup byte-identical do doc real; CLI real do scan-exit-claims via EXIT_CLAIMS_DOC + a suite hermética do par) | **Local** — backup do doc real em /tmp, helper REAL (CLI + suite), doc da thread intocado (md5 pré=pós) | ✅ run 1 **upsertou** a linha automática `**Re-validação (2026-08-11, 28 claims)**` no fim da 8.34 (a linha manual `datada` INTACTA — prefixos diferentes, sec 11.61); **run 2 do MESMO dia idempotente** (1 auto line, REPLACE, a secão não cresceu); doc real **byte-identical (md5 OK)** + backup removido; **ACHADO**: o caminho da SUITE quebrava no Windows — o `DEFAULT_SUITE_CMD` usava o prefixo POSIX `NO_COLOR=1 ` que o cmd.exe rejeita (`'NO_COLOR' não é reconhecido`) — corrigido (NO_COLOR via env no spawn, nunca prefixo shell) |
 | 42 | hook-proof-run — **o REVERT-FAIL no repo REAL: patch corrompido injetado → exit 3 fail-loud com o backup apontado** (Prova 43, sec 8.38; `--mutate` corrompe o `delta.patch` do backup do PRÓPRIO ciclo — o apply do revert falha) | O revertCycle tem 4 fail paths (checkout, branch -D, apply, status divergente) mas NENHUM tinha prova viva — só síntese (o fake-bins hermético nunca falha o apply): faltava confirmar o exit 3 fail-loud com o `- backup em <dir>` no repo real | `node scripts/hook-proof-run.mjs --branch ci-proof/revert-proof --mutate "node -e 'corrompe o delta.patch do hook-proof-* mais novo no tmpdir'" --expect-exit 0` (o mutate roda na etapa 4, APÓS o backup e ANTES do revert — o seam de injeção; hook real exit 0) | **Local** — ciclo real via o helper (delta real commitado no scratch + patch corrompido + hook real via stdin, sem rede) | ✅ helper **exit 3 fail-loud** — `git apply delta.patch falhou: error: No valid patches in input (allow with "--allow-empty") - backup em C:\...\hook-proof-JY7L0i` + scratchLeftNote; **ACHADO do ciclo**: o revert-fail roda DEPOIS do `branch -D` — a scratch já foi deletada com o commit do delta dentro (reflog `7074dab`) e o apply falhou → o working tree voltou LIMPO sem o delta; recuperado via safety diff externo (`git apply /tmp/prova43-safety.diff`) → **byte-identical (git status 12 linhas = snapshot, de volta em `freebuff/new-thread-thmsitz5qutoia`)** |
+| 43 | hook-proof-run — **a prova viva do guard da 11.72: docblock `3 = falha de` removido no helper REAL → a suite falha com o caminho exato** (Prova 44, sec 8.39) | O guard da sec 11.72 (o contrato PROOF_HELPERS — as 3 partes do fail-loud por helper de prova) tinha prova hermética (MUTATIONs sobre cópias em tmp) mas sem prova viva no repo REAL: faltava confirmar que a suite le o docblock do ARQUIVO real e falha quando o `3 = falha de` some do `Exit codes:` | `cp scripts/hook-proof-run.mjs /tmp/prova44-hpr.bak && sed -i '68s/3 = falha de/X = falha de/' scripts/hook-proof-run.mjs && npx vitest run scripts/__tests__/proof-helpers-contract.test.ts --config vitest.config.unit.ts && mv /tmp/prova44-hpr.bak scripts/hook-proof-run.mjs` (a suite real contra o arquivo real mutado) | **Local** — mutacao do arquivo real + suite real, sem rede | ✅ suite **exit 1** — `hook-proof-run.mjs: o docblock deve documentar os exit codes 0-3` (o caminho exato do guard da 11.72, a parte (a) do EXIT_CODES_RE); restore byte-identical → suite verde de novo |
+| 44 | scan-guard-gates — **a prova viva dos guards 11.73/11.82: hook-proof-run.test.ts ADICIONADO ao test:guard do package.json real → a suite falha com os 6 testes exatos** (Prova 45, sec 8.40) | Os pins da sec 11.73 (a divisão test:guard vs test:unit — o hook-proof-run NÃO pode entrar na lista curada) e da sec 11.82 (o ABS PIN das 14 suites) tinham prova hermética + REAL-REPO CONTRACT, mas sem prova viva: faltava confirmar que a suite lê o package.json REAL e falha quando a 15ª suite entra no test:guard — o cenário exato da MUTATION da 11.73 | `cp package.json /tmp/prova45-pkg.bak && node -e "...adicionar ' scripts/__tests__/hook-proof-run.test.ts' apos o doc-revalidate.test.ts no test:guard..." && npx vitest run scripts/__tests__/scan-guard-gates.test.ts --config vitest.config.unit.ts && mv /tmp/prova45-pkg.bak package.json` (a suite real contra o package.json real mutado) | **Local** — mutacao do package.json real + suite real, sem rede | ✅ suite **exit 1** — **6 testes falham** (REAL-REPO CONTRACT 11.73 + MUTATION 11.73 + REAL-REPO CONTRACT 11.82 + as 3 MUTATIONs 11.82 — 47 passam, 6 falham, todos no `scripts/__tests__/scan-guard-gates.test.ts`); restore byte-identical → suite verde de novo (53/53) |
+| 45 | hook-proof-run — **o STATUS-DIVERGENTE ao vivo: flip do `.gitignore` no `--mutate` → stray.tmp sobrevive ao revert → git status diverge → exit 3 com a CURE do snapshot** (Prova 46, sec 8.41) | O stage `status` do `revertLeftNote` (sec 11.75) só tinha prova sintética (a matriz) — o apply-fail teve a Prova 43 ao vivo, o status nunca falhou no repo REAL: faltava a CURE do snapshot (`PASSou` + `status-before.txt` + reflog fallback) como comportamento de pipeline | `node scripts/hook-proof-run.mjs --branch ci-proof/hpr-statusdiv3 --mutate "touch stray.tmp && echo stray.tmp >> .gitignore" --expect-exit 0` (o FLIP: o `git add -A` do commit de mutação ignora o arquivo — um `touch` cru seria varrido e REMOVIDO pelo checkout do revert; o ACHADO do mecanismo veio do probe empírico) | **Local** — ciclo real via o helper (delta real commitado no scratch + flip injetado + hook real via stdin, sem rede) | ✅ helper **exit 3 fail-loud** — `git status divergiu do snapshot pre-ciclo` + a CURE do snapshot na mesma linha (o delta do ciclo JA esta na arvore + `status-before.txt` + reflog/cherry-pick fallback + safety diff externo); `rm stray.tmp` + git status byte-identical (17 linhas = snapshot, de volta em `freebuff/new-thread-thmsitz5qutoia`) |
+| 46 | hook-proof-run — **o SAFETY-DIFF ao vivo: --mutate corrompe o delta.patch do backup → exit 3 com a CURE citando o safety diff → `git apply <sd>` recupera o delta TRACKED byte-identical** (Prova 47, sec 8.42) | A fronteira da 11.77 (o revertCycle usa o backup; o safety diff é recuperação manual) vivia em prosa + teste hermético — faltava o pipeline real: o CLI apontando o safety diff NA CURE e o `git apply <path>` restaurando o delta de verdade | `node scripts/hook-proof-run.mjs --branch ci-proof/sd-live-proof --safety-diff <sd> --mutate "node -e \"const fs=require('fs'),os=require('os'),p=require('path');const d=fs.readdirSync(os.tmpdir()).filter(x=>x.startsWith('hook-proof-')).map(x=>({x,m:fs.statSync(p.join(os.tmpdir(),x)).mtimeMs})).sort((a,b)=>b.m-a.m)[0].x;fs.writeFileSync(p.join(os.tmpdir(),d,'delta.patch'),'corrompido')\"" --expect-exit 0` + `git apply <sd>` (a recuperação manual da 11.77) | **Local** — ciclo real via o helper (delta real de 17 linhas + safety diff externo + corrupção injetada + hook real via stdin, sem rede) | ✅ helper **exit 3 fail-loud** com a CURE 2-NÍVEIS citando `git apply <sd>`; `git apply <sd>` → diff sha256 byte-identical ao pré-ciclo (ca04632…); **ACHADO**: o safety diff recupera o TRACKED, mas os 5 untracked sumiram da árvore pós-revert — restaurados do `backup/untracked/` (a classe que o `--safety-backup` da 11.89 fecha); hook exit 1 por byte não-ASCII no DELTA PENDENTE da PRÓPRIA thread (`guard-remeasure.mjs:67` — a classe do mjs-gate), CORRIGIDO nesta registração |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -418,8 +422,11 @@ roda via test:unit (config padrão), não no push net. O push net segue com
 +14%)**, vindo das suítes do test:guard modificadas na thread
 (scan-guard-gates regras 10/11, scan-batch-coverage DERIVATION PIN 7→8,
 run-all-fuzz, etc.). O step test:guard ficou **plano**: 20.9s vs 20s
-(+0.9s para +33 testes) — o +14% foi absorvido pelo paralelismo do
-vitest sem custo marginal mensurável. A variância do TOTAL (~57s vs ~43s)
+(+0.9s para +33 testes) — o +14% foi absorvido sem custo marginal
+mensurável (a leitura "pelo paralelismo do vitest" está SUPERSEDED: sec
+11.48 + re-medição (5) — `singleFork: true` desliga o file-parallelism,
+a planura foi absorção de testes baratos; ver a Calibração CI-vs-local
+abaixo). A variância do TOTAL (~57s vs ~43s)
 é 100% do setup fixo (install 9.8s vs ~1s — miss de cache do runner), a
 classe que um filtro `paths:` não reduziria. **O no-filter continua
 calibrado — agora mais forte**: o 8º guard nem toca o push net (é
@@ -432,8 +439,10 @@ run warm 53.2s) + `node scripts/scan-timeouts.mjs --ci` ~1.3s + `bun
 install --frozen-lockfile` ~1.2s (warm). O local quente subiu 41.2s →
 53.2s (+29% — as duas medições são de sessões DIFERENTES com variância
 de carga, não um A/B limpo do +14% de testes; a CI absorveu o mesmo
-crescimento com step plano 20→20.9s pelo paralelismo multi-runner, a
-leitura honesta).
+crescimento com step plano 20→20.9s — a leitura "pelo paralelismo
+multi-runner" está SUPERSEDED: o `singleFork: true` desliga o
+file-parallelism (sec 11.48 + re-medição (5)), a planura foi absorção de
+testes baratos, não workers; ver a Calibração CI-vs-local abaixo).
 
 **Re-medição 2026-08-12** (breakdown por step do run
 [31559349720](https://github.com/severinno/severinno/actions/runs/31559349720) — prova viva com
@@ -455,25 +464,183 @@ estado commitado do HEAD 1bb18de, mesmo método das re-medições anteriores):
 | Post Cache (upload) | 9s | sempre roda |
 | **Total job** | **~65s** | job 03:12:37 → 03:13:42 — a variância vs ~57s da re-medição (2) é 100% do setup fixo (cache 9.6→16s + install 9.8→13s), NÃO das suítes (que CAÍRAM 20.9→19s) |
 
+**Re-medição 2026-08-12 (4)** (breakdown por step do run
+[31585318096](https://github.com/severinno/severinno/actions/runs/31585318096) — prova viva com
+**14 suítes / 304 testes** — dispatch do guard-gates.yml via ci-proof-run
+numa branch scratch `ci-proof/guard-remetric-4` (ciclo com
+`--stash-uncommitted`, mesmo método das re-medições anteriores), estado
+commitado do HEAD e50a186 — os +7 testes que a re-medição (3) viu no
+working tree (doc-revalidate.test.ts) agora estão COMMITADOS: 297 → 304.
+O hook-proof-run segue FORA do test:guard (`grep hook-proof-run
+package.json` = 0 — é suíte de contrato via test:unit): medido 57 testes
+commitados (64 com o delta da thread), não 48).
+
+| Step | Tempo | Observação |
+|---|---|---|
+| Set up job | 1.2s | overhead fixo do runner |
+| checkout | 3.5s | sempre roda |
+| setup-bun | 1.8s | sempre roda |
+| Cache node_modules (restore) | 12.2s | sempre roda |
+| **Install deps** | **10.1s** | `bun install --frozen-lockfile` (miss de cache do runner NESTE run — a variância do setup fixo, não das suítes) |
+| **Run guard vitest suites** | **22.2s** | `bun run test:guard` (304 testes, 14 suítes) |
+| **Scan subprocess-heavy tests** | 0.7s | `node scripts/scan-timeouts.mjs --ci` |
+| **Scan gate-script curls** | 0.1s | `node scripts/scan-curl-timeouts.mjs --ci` |
+| **Scan string \n anchors** | 0.3s | `node scripts/scan-eol-anchor.mjs --ci` |
+| Post Cache (upload) | 9.6s | sempre roda |
+| **Total job** | **62s** | job 09:58:23 → 09:59:25 UTC — o setup fixo (1.2+3.5+1.8+12.2+10.1+9.6 = 38.4s) domina o total; o conteúdo guard = 23.3s (22.2 + 0.7 + 0.1 + 0.3) |
+
+**A leitura honesta (a 1ª subida desde a re-medição (2))**: o step
+test:guard SUBIU: 19s → 22.2s para +7 testes (+2.4% de carga, +17% de
+step) — a série 20 → 20.9 → 19 → 22.2s quebra o padrão plano/queda das
+re-medições 2-3. O custo absoluto (~22s) segue DENTRO da faixa de variância observada
+do runner (banda 19-22.2s das re-medições 2-4; a variance de cache
+commitada do workflow é 16.7-53.2s local) e o TOTAL (62s) é dominado pelo
+setup fixo (38.4s) — a classe que um filtro `paths:` não reduziria. **O
+no-filter continua calibrado, com o ALERTA de monitoramento**: se a
+próxima re-medição confirmar a subida (e não variance), a decisão deve
+ser re-aberta (a leitura original "o paralelismo estará saturando nos
+workers" está SUPERSEDED: não há workers para saturar — `singleFork:
+true`, sec 11.48 + re-medição (5); o alerta vigora pela banda, não pela
+saturação).
+
+Ground truth local 2026-08-12 (4) (Windows, cache quente, estado
+COMMITADO do HEAD e50a186 — o delta da thread não toca suítes do
+test:guard): `bun run test:guard` = 14 suítes / 304 testes, exit 0 — o
+count do CI (#31585318096) bate exatamente com o commitado.
+
+**Re-medição 2026-08-12 (5) — o paralelismo do vitest sob a lupa:
+`--maxWorkers=1` vs default** (breakdown por step do run
+[31587061757](https://github.com/severinno/severinno/actions/runs/31587061757) — prova viva com
+**14 suítes / 304 testes (301 passam / 3 FALHAM — o trip do contrato, ver
+abaixo)** — dispatch do guard-gates.yml via ci-proof-run numa branch
+scratch `ci-proof/maxworkers-1`, com a MUTAÇÃO `bun run test:guard
+--maxWorkers=1` no step, `--expect failure`, mesmo estado commitado do
+HEAD e50a186):
+
+| Step | Tempo | Observação |
+|---|---|---|
+| Set up job | 1.4s | overhead fixo do runner |
+| checkout | 3.4s | sempre roda |
+| setup-bun | 1.8s | sempre roda |
+| Cache node_modules (restore) | 11.2s | sempre roda |
+| **Install deps** | **8.2s** | `bun install --frozen-lockfile` (cache HIT neste run) |
+| **Run guard vitest suites** | **23.5s** | `bun run test:guard --maxWorkers=1` (304 testes — 3 falham pelo trip do contrato) |
+| Post Run checkout | 0.2s | sempre roda |
+| **Total job** | **~50s** | job 10:21:44 → 10:22:34 UTC — NÃO comparável ao 62s da re-medição (4): o step test:guard FALHOU (3 trips de contrato) e o GitHub encerrou o job — os scanners (~1.1s) e o Post Cache (upload, ~9.6s na re-medição (4)) NUNCA rodaram. O gap ~12s é a truncagem (o cache hit responde por só ~3s: 11.2+8.2 vs 12.2+10.1). O A/B do STEP (23.5 vs 22.2s) não é afetado — o step rodou até o fim — e é a base da decisão. |
+
+**O A/B medido (o número que o pedido pedia)**:
+
+| Modo | Local (Windows, warm, 3 runs, working tree com o delta da thread — nenhum arquivo do delta está nas 14 suítes do test:guard) | CI (ubuntu, step test:guard, estado commitado do HEAD e50a186) |
+|---|---|---|
+| default (`singleFork: true` no config) | 57.4 / 53.3 / 53.4s (média **54.7s**) | **22.2s** (run 31585318096, re-medição (4)) |
+| `--maxWorkers=1` | 54.5 / 50.1 / 48.1s (média **50.9s**) | **23.5s** (run 31587061757, este bloco) |
+| `VITEST_MAX_FORKS=1` (env no step, `run:` intacto) | — (não re-medido — o A/B local da (5) já cobre a paridade) | **22.5s SUCCESS** (run 31595541005, re-medição (6) — o lado POSITIVO) |
+
+**O ACHADO estrutural (a premissa do pedido estava invertida)**: o
+`vitest.config.unit.ts` pina `pool: "forks"` + `singleFork: true` — o
+test:guard JÁ roda num fork único; `--maxWorkers` é **no-op estrutural**.
+O A/B confirma em ambas as pontas: local 54.7 vs 50.9s (ranges
+sobrepostos, zero sinal — a diferença é ruído de sessão, o `--maxWorkers=1`
+foi até MAIS rápido na média) e CI 23.5 vs 22.2s (dentro da banda
+19-23.5s das re-medições 2-5). A narrativa "o paralelismo do vitest absorve
+o crescimento" (re-medição (3) e o comentário do guard-gates.yml) está
+**ERRADA**: não há paralelismo de arquivos no test:guard (singleFork). A
+planura observada (20.9 → 19s com +28 testes) foi **absorção de testes
+baratos** (fs/regex asserts), não workers.
+
+**O trip do contrato (prova viva da barreira de pinar)**: pinar
+`--maxWorkers` no step quebraria o regex EXATO
+`/^\s+run:\s+bun run test:guard\s*$/m` do REAL-REPO CONTRACT
+(scan-guard-gates.test.ts) + LIVE TREE (workflow-contracts.test.ts) — e o
+run #31587061757 PROVOU ao vivo: **3 testes de contrato falharam**
+(scan-guard-gates + guard-gates-exclusivity + o 3º file) com o sufixo no
+`run:`.
+
+**A decisão — RECUSADO o pin do `--maxWorkers`**: (1) é no-op estrutural
+(o `singleFork: true` do config já é o pin de worker — o flag não muda o
+pool); (2) o CI mede 23.5 vs 22.2s — dentro da banda de variância, ganho
+zero; (3) pinar exigiria um REVERSAL consciente do regex exato para
+benefício zero; (4) a variância da sec 8.1 (banda 19-23.5s) é
+runner-side (cache/install/hardware), não de workers — o lever de
+variância NÃO é o `--maxWorkers`. O pin REAL de worker já existe no
+config (`singleFork: true`), e ele é a fonte da planura — não o flag.
+
 **A premissa do pedido invertida (medido)**: o hook-proof-run (44 testes,
 sec 11.58/11.69) NÃO entrou no test:guard — `grep hook-proof-run
 package.json` = 0 (é suíte de contrato via test:unit, rodada nos guards de
 pre-commit/push, não no push net). O crescimento real do test:guard foi a
 14ª suíte (doc-revalidate, commitada no HEAD 1bb18de): 13 → 14 suítes e
 269 → 297 testes (+28, +10%). O step test:guard ficou **plano/leve
-queda**: 20.9s → 19s (−1.9s para +28 testes) — o paralelismo do vitest
-absorveu o crescimento sem custo marginal, o MESMO padrão da re-medição
-(2) (20 → 20.9s para +33 testes). A variância do TOTAL (~65s vs ~57s) é
+queda**: 20.9s → 19s (−1.9s para +28 testes) — a planura (o
+"paralelismo do vitest absorveu" está SUPERSEDED: sec 11.48 + re-medição
+(5) — absorção de testes baratos, não workers) segue o MESMO padrão da
+re-medição (2) (20 → 20.9s para +33 testes). A variância do TOTAL (~65s vs ~57s) é
 100% do setup fixo (cache restore 16s + install 13s neste run), a classe
 que um filtro `paths:` não reduziria. **O no-filter continua calibrado —
-agora mais forte: o custo das suítes nem subiu (caiu), e o guard novo que
-o pedido citava nem toca o push net.**
+na re-medição (3): o custo das suítes nem subiu (caiu), e o guard novo que
+o pedido citava nem toca o push net (a re-medição (4) acima mostra a 1ª
+subida — ver o ALERTA de monitoramento).**
 
 Ground truth local 2026-08-12 (Windows, cache quente, working tree com o
 delta da thread): `bun run test:guard` **51.93s** (304 testes, 14 suítes —
 +7 vs o commitado porque o doc-revalidate.test.ts não-commitado tem testes
-novos) — abaixo do 53.2s de 13/269 da re-medição (2), mesma leitura: o
-paralelismo do vitest absorve o crescimento de testes sem custo marginal.
+novos) — abaixo do 53.2s de 13/269 da re-medição (2) — a leitura "o
+paralelismo do vitest absorve o crescimento" está SUPERSEDED (sec 11.48
++ re-medição (5): `singleFork: true`, sem file-parallelism; a planura
+foi absorção de testes baratos, não workers — ver a Calibração abaixo).
+
+**Re-medição 2026-08-12 (6) — o lado POSITIVO do no-op do `--maxWorkers`:
+workers forçado via env de step → SUCCESS limpo com a MESMA duração**
+(run
+[31595541005](https://github.com/severinno/severinno/actions/runs/31595541005)
+— dispatch do guard-gates.yml via ci-proof-run numa branch scratch
+`ci-proof/maxworkers-env`, `--expect success`, mesmo estado commitado do
+HEAD e50a186):
+
+- **A lacuna que a (5) deixou**: a re-medição (5) provou o no-op do
+  `--maxWorkers` com um run de CI, mas o run FALHOU POR DESIGN (o sufixo
+  `--maxWorkers=1` no `run:` tripou o regex EXATO do REAL-REPO CONTRACT —
+  3 testes de contrato falharam). O lado POSITIVO faltava: forçar o env de
+  workers SEM mutar o `run:` e confirmar SUCCESS + mesma duração.
+- **A mutação contract-safe**: `env: VITEST_MAX_FORKS: 1` adicionado ao
+  step test:guard do guard-gates.yml (o `run: bun run test:guard` INTACTO —
+  o regex `/^\s+run:\s+bun run test:guard\s*$/m` das secs 8.4/11.47
+  continua casando; pré-verificado localmente ANTES do ciclo: 72/72 testes
+  de contrato verdes + CLI scan-guard-gates clean com a mutação aplicada).
+  `VITEST_MAX_FORKS` é o env do pool FORKS (o pool ativo do `singleFork`);
+  `VITEST_MAX_THREADS` não se aplicaria (pool threads não usado — o env
+  errado provaria o no-op pelo motivo errado, o honesto é o var do pool).
+- **O resultado**: job **success** — step test:guard **22.5s** (início
+  12:15:34.49Z → fim 12:15:56.96Z; vitest reporta Duration 21.87s), 14
+  suítes / **304 testes**, 0 warning-lines do step (o único `##[warning]`
+  do log é a deprecação do Node 20 no `Complete job` — infra do runner,
+  não do step).**Dentro da banda 19-23.5s das re-medições 2-6, idêntico
+ao default 22.2s da (4)** — o env de workers forçado NÃO mudou nada.
+- **O no-op fechado nos DOIS lados**: a (5) provou que `--maxWorkers=1`
+  não muda a duração (run falho por trip de contrato — o sinal foi o
+  tempo, não o exit); a (6) prova que forçar o env de workers tampouco
+  muda (run SUCCESS limpo). O veredito da 11.48 (singleFork = o pin de
+  worker, flag/env inertes) agora tem a contraparte viva positiva.
+
+**Calibração CI-vs-local (2026-08-12) — o fato calibrado**: para a MESMA
+lista (14 suítes / 304 testes), o local Windows quente mede ~50-55s e o
+step do CI mede **19-23.5s** (re-medições 2-6: 20 → 20.9 → 19 → 22.2 →
+23.5 → 22.5s — a (6) entrou na mesma banda com SUCCESS). A divergência (~2.5-3x) NÃO é paralelismo — o `singleFork: true`
+do vitest.config.unit.ts desliga o file-parallelism e o `--maxWorkers` é
+no-op estrutural (sec 11.48 + re-medição (5): CI A/B 22.2 vs 23.5s,
+mesma banda). A divergência é hardware/plataforma (ubuntu runner vs local
+Windows) + variância de carga de sessão (o local variou 41.2 → 53.2 →
+51.93s em sessões DIFERENTES para a MESMA carga). **A regra de ouro**:
+para decisões de CUSTO, medir SEMPRE no CI (o step de um run real — o
+controle estável da banda 19-23.5s); o local é paridade/sanidade (counts
+e exit code), NUNCA a baseline de custo. **Por que NÃO há teste de "lista
+idêntica nos dois lados" (avaliado)**: o step do workflow roda `bun run
+test:guard` (o script do package.json, a fonte única) — a lista NÃO tem
+segundo lugar para driftar; o regex EXATO da 8.4 (REAL-REPO CONTRACT) +
+a sec 11.73 já pinam a composição. Um teste de identidade de listas seria
+uma tautologia (assertar que uma fonte única é igual a si mesma) — a
+cobertura estrutural da lista (a fonte única + os pins citados) já
+existe.
 
 **Decisão (avaliada, 2026-08-09, re-avaliada 2026-08-10, 2026-08-11 e
 2026-08-12): o
@@ -482,14 +649,16 @@ de gate file teria que replicar a superfície derivada (`TARGET_DIRS` + gate
 files) num segundo lugar — um novo ponto de drift (a classe que o SPREAD
 CONTRACT elimina) — e um push tocando só uma árvore que o filtro esqueceu
 skiparia o net em silêncio: o risco de órfão que o workflow existe para
-fechar. Com o guard net custando ~21s de CI (19s test:guard + ~2s dos
-scanners), a economia máxima teórica de um filtro é ~21s por push que toca
-a superfície — e o único push skipável sem perda seria um docs-only (que a
-superfície não cobre mesmo). O net incondicional mantém o BASELINE
-estruturalmente garantido de rodar em todo merge; o crescimento das suítes
-(8 → 14) não mudou a equação: o total por push permaneceu estável na
-faixa ~43-65s — a variância é 100% do setup fixo (cache + install), não
-das suítes (que ficaram planas ou caíram: 20 → 20.9 → 19s).
+fechar. Com o guard net custando ~23s de CI (22.2s test:guard + ~1s dos
+scanners, re-medição (4)), a economia máxima teórica de um filtro é ~23s
+por push que toca a superfície — e o único push skipável sem perda seria
+um docs-only (que a superfície não cobre mesmo). O net incondicional
+mantém o BASELINE estruturalmente garantido de rodar em todo merge; o
+crescimento das suítes (8 → 14) não mudou a equação: o total por push
+permaneceu estável na faixa ~43-65s — a variância é 100% do setup fixo
+(cache + install), não das suítes (que ficaram na faixa 19-22.2s: 20 →
+20.9 → 19 → 22.2s — a re-medição (4) mostra a 1ª subida, ver o ALERTA de
+monitoramento).
 
 **Travado estruturalmente (2026-08-10):** o guard `scripts/scan-guard-gates.mjs`
 (pre-commit + `test:guard`/push net) falha se o guard-gates.yml ganhar um
@@ -3066,6 +3235,202 @@ vazios/intactos).
 Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no
 EXIT_CLAIMS; registrada no PROOF_CLASSES (sec 11.60, classe hook-proof-run —
 Prova 43).
+
+## 8.39 Prova 44 — o guard da 11.72 ao vivo: docblock `3 = falha de` removido
+no hook-proof-run REAL → a suite falha com o caminho exato (2026-08-12)
+
+**O que foi provado**: o guard da sec 11.72 (o contrato PROOF_HELPERS — as 3
+partes do fail-loud por helper de prova: docblock `Exit codes:` cobrindo 0..3
+em ordem, nota de limpeza LeftNote, E2E do caminho) tinha prova hermetica
+(MUTATIONs sobre copias em tmp) mas sem prova viva: faltava confirmar que a
+suite da 11.72 le o docblock do ARQUIVO REAL (nao uma copia) e falha quando o
+`3 = falha de` some da linha 68 do `Exit codes:` — o mesmo padrao da Prova 43
+(mutacao real + suite real + restore byte-identical).
+
+**O ciclo** (o padrao das Provas 37-43: backup + mutacao + suite + restore):
+
+```bash
+cp scripts/hook-proof-run.mjs /tmp/prova44-hpr.bak        # backup byte-identical
+sed -i '68s/3 = falha de/X = falha de/' scripts/hook-proof-run.mjs   # mutacao
+NO_COLOR=1 npx vitest run scripts/__tests__/proof-helpers-contract.test.ts --config vitest.config.unit.ts
+mv /tmp/prova44-hpr.bak scripts/hook-proof-run.mjs        # restore
+```
+
+**O sinal observado** (o assert da parte (a) da 11.72):
+
+```
+hook-proof-run.mjs: o docblock deve documentar os exit codes 0-3
+```
+
+**suite exit 1 confirmado** — o `EXIT_CODES_RE` da 11.72 nao encontra mais a
+sequencia `3 = falha de` no docblock real e a parte (a) falha com o caminho
+exato do helper (o path:line aponta o arquivo mutado, nao um resumo); o
+restore byte-identical devolveu a suite ao verde (md5 pre=pos do arquivo +
+git status limpo).
+
+Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no
+EXIT_CLAIMS; registrada no PROOF_CLASSES (sec 11.60, classe hook-proof-run —
+Prova 44).
+
+## 8.40 Prova 45 — os guards 11.73/11.82 ao vivo: hook-proof-run.test.ts
+ADICIONADO ao test:guard do package.json REAL → a suite falha com os 6
+testes exatos (2026-08-12)
+
+**O que foi provado**: os pins da sec 11.73 (a divisão de trabalho test:guard
+vs test:unit — o hook-proof-run.test.ts NÃO pode entrar na lista curada do
+push net) e da sec 11.82 (o ABS PIN das 14 suites, derivado e pinado no
+scan-guard-gates.test.ts) tinham prova hermética (MUTATIONs sobre cópias em
+tmp) + REAL-REPO CONTRACT (a suite lê o package.json real e asserta o estado
+limpo), mas sem prova VIVA: faltava confirmar que a suite falha quando o
+package.json REAL ganha a 15ª suite — o cenário exato que a MUTATION da
+11.73 injeta sinteticamente, agora no arquivo real.
+
+**O ciclo (o mesmo padrão da Prova 44 — o pin é de SUITE, então o veículo é
+a suite contra o arquivo real mutado, não um ciclo git/hook)**:
+
+1. **Backup byte-identical**: `cp package.json /tmp/prova45-pkg.bak` (sha256
+   confirmado pre=pos).
+2. **Mutação**: `node -e` inserindo ` scripts/__tests__/hook-proof-run.test.ts`
+   após o `doc-revalidate.test.ts` no script test:guard (o MESMO replace da
+   MUTATION da 11.73, no arquivo real) — confirmado: 15 suites, carries
+   hook-proof-run = true.
+3. **A suite real contra o arquivo real mutado**: `npx vitest run
+   scripts/__tests__/scan-guard-gates.test.ts --config vitest.config.unit.ts`.
+4. **Restore byte-identical**: `mv /tmp/prova45-pkg.bak package.json`
+   (sha256 volta ao original; git diff package.json = 0) + suite verde de
+   novo.
+
+**O sinal observado (exit 1, 6 testes falham / 47 passam)**: a mutação
+derrubou EXATAMENTE os pins que leem o package.json real — o `REAL-REPO
+CONTRACT (sec 11.73)` (o `testGuardCarriesSuite(tg, "hook-proof-run.test.ts")`
+deixa de ser false), a `MUTATION (sec 11.73)` (a mesma asserção no tg real),
+o `REAL-REPO CONTRACT (sec 11.82)` (a derivada tem 15, o ABS PIN tem 14) e
+as 3 MUTATIONs da 11.82 — todos com o caminho exato no stdout do vitest
+(`scripts/__tests__/scan-guard-gates.test.ts > ... > REAL-REPO CONTRACT
+(sec 11.73): o hook-proof-run NAO esta no test:guard...`). O resto da suite
+(47 testes — os MUTATIONs herméticos de workflow/paths/needs e o CLI
+sintético) não foi afetado: o pin é preciso no alvo.
+
+**O veredito**: o guard 11.73/11.82 é um guard de SUITE (o push net roda o
+test:guard no CI, e o scan-guard-gates.test.ts roda DENTRO dele — a suite
+que se auto-protege). O falso-negativo da classe (adicionar a 15ª suite)
+falha no repo real com o caminho exato — a divisão de trabalho é
+estrutural, não só sintética. O restore devolveu o estado byte-identical
+(git status limpo, package.json sem resíduos).
+
+Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no
+EXIT_CLAIMS; registrada no PROOF_CLASSES (sec 11.60, classe scan-guard-gates
+— Prova 45).
+
+
+## 8.41 Prova 46 — o status-divergente do revert-fail ao vivo: o flip do
+.gitignore faz o untracked sobreviver ao revert → git status diverge → exit
+3 com a CURE do snapshot (2026-08-12)
+
+**Pedido**: o stage `status` do `revertLeftNote` (a CURE stage-aware da sec
+11.75) só tinha prova sintética (a matriz de stages no teste — apply-fail e
+status-fail → CURE; checkout/branchD → receita genérica). O apply-fail teve
+a Prova 43 ao vivo (sec 8.38 — patch corrompido, exit 3 com o backup
+apontado), mas o status-divergente nunca falhou no repo REAL: faltava
+confirmar que o CLI imprime a CURE do snapshot (`PASSou` + `status-before.txt`
++ reflog como fallback) quando o revert morre na comparação do status —
+fechando o par de stages pos-branch-D com prova de pipeline.
+
+**O desenho da prova — o ACHADO do mecanismo (probe empírico)**: injetar um
+arquivo extra pós-revert via `--mutate` NÃO é trivial: um `--mutate "touch
+stray.tmp"` cru é varrido pelo `git add -A` do commit de mutação (etapa 4 do
+ciclo) e o `git checkout <orig>` do revert o REMOVE (o arquivo virou tracked
+no scratch commit — probe empírico: após o checkout, `ls` não mostra o
+arquivo). O FLIP do `.gitignore` resolve: `--mutate "touch stray.tmp && echo
+stray.tmp >> .gitignore"` — o `git add -A` do commit de mutação IGNORA o
+arquivo (o próprio mutate o colocou no .gitignore), então o stray.tmp nunca
+entra no scratch commit; o revert restaura o .gitignore do branch original
+(sem a linha) mas o stray.tmp fica no working tree como UNTRACKED → o `git
+status --porcelain` pós-revert tem `?? stray.tmp` a mais vs o snapshot → a
+comparação diverge → stage `status`. Probe empírico confirmou: com o flip, o
+arquivo sobrevive ao checkout (`?? stray2.tmp` no status pós-checkout).
+
+**O ciclo executado** (repo real, 3 runs — o 1º provou o mecanismo, o 2º foi
+contaminado pelo stray.tmp do 1º, o 3º limpo com a captura do exit):
+`node scripts/hook-proof-run.mjs --branch ci-proof/hpr-statusdiv3 --mutate
+"touch stray.tmp && echo stray.tmp >> .gitignore" --expect-exit 0` → o
+mutate roda na etapa 4 (após o backup, antes do revert — o seam de injeção);
+hook real exit 1 (o push simulado bloqueou por outro gate — irrelevante para
+a prova: o revert-fail vem ANTES do verify no main). **A fronteira do método
+(confirmada pelo run 2, que saiu exit 1 em vez de 3)**: a divergência só
+dispara quando o stray.tmp NÃO está no snapshot pre-ciclo — no run 2 o
+arquivo deixado pelo run 1 foi capturado no backup (o status-before.txt já
+tinha a linha `?? stray.tmp`) e o pós-revert bateu com o snapshot, revertendo
+limpo; o run 3 (com o stray removido antes) é o que prova a classe. O
+`rm stray.tmp` entre runs não é só limpeza — é a PRE-CONDIÇÃO da injeção.
+
+**O sinal observado** — helper **exit 3 fail-loud**: `git status divergiu do
+snapshot pre-ciclo - backup em C:\...\hook-proof-MJFGhc` + a CURE do snapshot
+na MESMA linha: `o apply do delta PASSou (o delta do ciclo JA esta na arvore
+- o revert so falhou na comparacao do git status vs o snapshot): compare
+'git status --porcelain' com <backup>/status-before.txt e reconcilie a
+divergencia; se o delta faltar, recupere do reflog ('git reflog' + 'git
+cherry-pick <sha>') ou do safety diff externo (backup em <dir>)`. A CURE
+imprimida é EXATAMENTE a matriz sintética do teste — o CLI real confirma o
+pin comportamental.
+
+**O cleanup e a restauração**: o revert-fail deixa o stray.tmp no working
+tree (o untracked que causou a divergência — ele NÃO está no backup, o
+revert só restaura o que copiou); `rm stray.tmp` + `git status --porcelain`
+byte-identical vs o snapshot pre-ciclo (17 linhas idênticas após os 3
+ciclos, de volta em `freebuff/new-thread-thmsitz5qutoia`). O delta da thread
+foi preservado (o apply do revert rodou antes do status check falhar).
+
+**O veredito**: o status-divergente é alcançável ao vivo via o flip do
+.gitignore — a classe 'arquivo extra pós-revert' precisa do arquivo
+ignorado no momento do commit de mutação (o ACHADO do mecanismo, agora
+documentado). O CLI real imprime a CURE do snapshot com o caminho do
+status-before.txt e o reflog como fallback — o par pos-branch-D do
+revertLeftNote (apply = Prova 43, status = Prova 46) está fechado com prova
+de pipeline nos dois lados.
+
+Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no
+EXIT_CLAIMS; registrada no PROOF_CLASSES (sec 11.60, classe hook-proof-run
+— Prova 46).
+
+
+## 8.42 Prova 47 — o SAFETY-DIFF ao vivo: o --mutate corrompe o delta.patch do backup → exit 3 com a CURE 2-NÍVEIS citando `git apply <sd>`; a recuperação manual restaura o TRACKED byte-identical, mas os untracked dependem do backup (2026-08-12)
+
+**Pedido**: a fronteira da sec 11.77 (o revertCycle aplica o delta.patch do
+backup; o safety diff é recuperação MANUAL citada na CURE) vivia em prosa +
+teste hermético. O apply-fail teve a Prova 43 ao vivo (sec 8.38 — patch
+corrompido, exit 3 com o backup apontado), mas o safety diff nunca foi
+provado no pipeline real: faltava confirmar que o CLI aponta o safety diff
+NA CURE e que o `git apply <path>` recupera o delta byte-identical — a
+receita manual da 11.77 como comportamento observado.
+
+**O ciclo executado** (repo real, delta da thread de 17 linhas):
+`node scripts/hook-proof-run.mjs --branch ci-proof/sd-live-proof --safety-diff
+<sd> --mutate "node -e \"const fs=require('fs'),os=require('os'),p=require('path');const d=fs.readdirSync(os.tmpdir()).filter(x=>x.startsWith('hook-proof-')).map(x=>({x,m:fs.statSync(p.join(os.tmpdir(),x)).mtimeMs})).sort((a,b)=>b.m-a.m)[0].x;fs.writeFileSync(p.join(os.tmpdir(),d,'delta.patch'),'corrompido')\"" --expect-exit 0` —
+o safety diff é salvo ANTES da mutação (cópia intacta, o padrão do fato
+consumido da 11.84); a mutação corrompe SÓ o delta.patch do backup (o one-liner mira o backup MAIS RECENTE do tmpdir — o mkdtemp cria um dir novo por ciclo, então o mais recente é o do PRÓPRIO ciclo); o revert
+do fim do ciclo falha no apply (patch inválido) → exit 3 fail-loud com a
+CURE 2-NÍVEIS da 11.75 citando `git apply <sd>` como 1º nível.
+
+**A recuperação manual confirmada**: `git apply <sd>` → o diff sha256 é
+byte-identical ao pré-ciclo (ca04632…) — o delta TRACKED da thread voltou.
+**O ACHADO (a fronteira honesta da 11.77, agora medida)**: o safety diff
+recupera o TRACKED, mas os 5 untracked da thread SUMIRAM da árvore pós-revert
+— restaurados manualmente do `backup/untracked/` (a classe exata que o
+`--safety-backup` da sec 11.89 fecha: o diff é o patch do rastreado, o
+espelho é o ciclo completo). **Side finding**: o hook do ciclo saiu exit 1
+por um byte não-ASCII em `scripts/guard-remeasure.mjs:67` — o byte vivia no DELTA PENDENTE da PRÓPRIA thread (guard-remeasure.mjs é arquivo novo não-commitado desta thread, a classe do mjs-gate)
+("re-medições") — a classe do verify-encoding/utf8-check, flagrada pelo ASCII
+guard do pre-push, sem relação com o safety diff; CORRIGIDO nesta registração (o byte virou ASCII — 0 bytes não-ASCII no arquivo).
+
+**O veredito**: a fronteira da 11.77 é comportamento de pipeline confirmado
+— o CLI aponta o safety diff na CURE, a receita manual restaura o rastreado,
+e a lacuna medida (untracked fora do diff) é a motivação viva do
+`--safety-backup` da 11.89.
+
+Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no
+EXIT_CLAIMS; registrada no PROOF_CLASSES (sec 11.60, classe hook-proof-run
+— Prova 47).
 
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
@@ -7793,6 +8158,908 @@ UTF-8 do doc + ASCII dos gate files OK.
 Esta sec 11.69 e claim-free por desenho (a flag NAO muda o contrato de codigos de saida 0-3 da sec 11.58 — so o ESTADO pos-fail muda) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
 
 **Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + ASCII do .mjs + UTF-8 do doc + ordering 11.68 → 11.69 → 12 monotono.
+
+
+## 11.70 ADOTADO — o guard de forma do `stashLeftNote`: todo fail path pos-stash do ci-proof-run termina com a nota (ou com o revert que a torna desnecessaria) (avaliação 2026-08-12)
+
+**Pedido**: o guard de forma da sec 11.65 deriva os fail sites do
+hook-proof-run.mjs e pina que todo fail-loud pos-scratch termina com a
+`scratchLeftNote`. O MESMO invariante existe no ci-proof-run.mjs — o
+`stashLeftNote` da sec 11.41 (o aviso "o delta nao-commitado segue no stash
+(git stash pop para restaurar)"). Avaliar um guard irmao que pince que todo
+fail path pos-scratch do ci-proof-run termina com a nota, fechando a classe
+nos DOIS helpers de prova.
+
+**O veredito (ADOTADO — o guard irmao, no padrao da sec 11.65, com a
+fronteira HONESTA do ci-proof-run)**: no hook-proof-run a fronteira e o
+checkout -b (a scratch nasce ali e a nota de saida protege o usuario que
+fica nela). No ci-proof-run o STASH precede o checkout (etapa 3 antes da
+etapa 4) — a nota protege o DELTA no stash, nao a scratch. A fronteira do
+guard irmao e o inicio da ETAPA 4 (a linha `// 4. Cria/entra na branch
+scratch.` — o fim do guard da arvore suja). NAO pode ser o `stashedDelta =
+true` (que fica DENTRO do if do stash, ANTES do else-fail da arvore suja):
+aquele fail e semanticamente PRE — o stash NUNCA foi tomado no caminho do
+else (a nota seria ruido) — mas cairia depois da ancora no source e o
+guard o exigiria a toa (o off-by-branch que o vitest pegou na 1a rodada):
+
+- **PRE-stash** (parse, namespace, rev-parse, stash-push-fail, tree-dirty):
+  o delta NUNCA esteve no stash — a nota NAO deve aparecer (seria ruido; o
+  stash-push-fail INCLUSIVE: o stash falhou, nao ha delta a restaurar).
+- **POS-stash pre-revert** (checkout, checkout -b, mutate, self-delete,
+  local-block x2, commit, push): todo fail(3) infra que NAO chamou o
+  revert antes DEVE terminar com a nota CONDICIONAL
+  `${stashedDelta ? stashLeftNote : ""}` — a condicao e a honestidade do
+  shape: a nota so vale quando o stash foi tomado (arvore suja +
+  --stash-uncommitted); uma nota incondicional mentiria num ciclo de
+  arvore limpa.
+- **A excecao revert-first** (gh view ENOENT/view, gh run, job nao
+  encontrado, timeouts x3): esses fail paths chamam `revert()` ANTES do
+  fail — o revert faz o `git stash pop <ref>` (secs 11.41/11.44) e o delta
+  JA foi restaurado — a nota NAO deve aparecer (seria ruido). O par fecha
+  a classe dos DOIS lados: sem nota onde o delta esta seguro, com nota
+  onde ele segue preso.
+
+**O pin (4 testes novos no ci-proof-run.test.ts, o espelho da sec 11.65)**:
+derivacao dos fail sites do SOURCE real (a linha do `return fail(` + o span
+das 5 linhas seguintes, cobrindo os fail paths MULTI-LINHA — self-delete e
+local-block poem a mensagem nas linhas seguintes e um filtro em linha unica
+nao as pegaria), a fronteira por ancora (o comentario `// 4. Cria/entra na
+branch scratch.` — ausente = o guard fica cego e THROW), o split PRE/POS
+com a excecao revert-first (o revert nas 8 linhas acima do site), e o par
+MUTATION: remover a nota do push-fail -> 1 offender (a classe nao volta);
+adicionar a nota ao rev-parse-fail (PRE) -> 1 offender (a nota so e
+legitima pos-stash).
+
+Esta sec 11.70 e claim-free por desenho (o guard de forma NAO muda o
+contrato de codigos de saida 0-3 da sec 11.41 — so pina a FORMA da
+mensagem de erro) — sem entrada no EXIT_CLAIMS, o count do manifest
+permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + ASCII do .mjs + UTF-8 do doc + ordering 11.69 → 11.70 → 12 monotono.
+
+
+## 11.71 ADOTADO — o envelope do revertCycle cobre os 4 fail paths internos: a receita e do chamador, nunca duplicada (avaliação 2026-08-12)
+
+**Pedido**: o fix da 11.65 anexou a `scratchLeftNote` no revert-fail
+EXTERNO, mas o `revertCycle` tem 4 fail paths internos (checkout, branch
+-D, apply, status divergente) que citam so o backup — avaliar se cada fail
+interno deveria citar a receita completa ou se a nota no fail(3) externo
+basta (o envelope cobre).
+
+**O veredito (ADOTADO — o envelope basta, e a nota é FONTE ÚNICA)**:
+
+- **Os 2 pontos de conversão cobrem todo `{ ok: false }`**: o revert-fail
+  (a linha ~529, pinada pelo guard 11.65) e o `cleanupOnFailSuffix` (a
+  linha ~365, o caminho `--cleanup-on-fail` da 11.69) anexam AMBOS o
+  `scratchLeftNote` ao message do revertCycle. Nenhum fail do revertCycle
+  chega ao usuário sem a receita — o envelope cobre.
+- **Duplicar a receita nos internos seria pior**: criaria 4 cópias do
+  template + citação dupla nos envelopes (o interno citaria E o envelope
+  repetiria). A fonte única é o `scratchLeftNote`, anexado só na conversão.
+- **Os internos estão corretamente escopados**: reportam a causa específica
+  (qual passo git falhou + stderr) + o backup — e o backup é a informação
+  ACIONÁVEL (o ACHADO da Prova 43, sec 8.38: o branch -D roda ANTES do
+  apply, então a receita genérica do template pode nem casar o estado real
+  — o que salva é o backup apontado, que os internos já citam).
+
+**O residual honesto (o que o guard fecha)**: o acoplamento envelope é
+convenção, não contrato — o `revertCycle` é exportado e um 3º call site
+futuro poderia engolir o `{ ok: false }` sem a nota (a classe do fail
+silencioso, o espírito da 11.65). O guard 11.65 deriva `return fail(` — os
+`return { ok: false` internos e o envelope do `cleanupOnFailSuffix` ficam
+fora dele. O guard de forma da 11.71 (no padrão TARGET_DIRS/fatos
+consumidos) deriva os CALL SITES do `revertCycle` do source real (excluída
+a definição) e pina:
+
+- os 4 fail paths internos citam `backup em` mas NUNCA a `scratchLeftNote`
+  (a receita é do envelope — a decisão travada contra um refactor que
+  mova a nota para dentro);
+- TODO call site (pinned count = 2: o cleanupOnFailSuffix em ~363 e o
+  revert normal em ~522, com o fail em ~529) tem a nota dentro do bloco de
+  conversão — um 3º chamador exige edição consciente (com envelope =
+  atualiza o count; sem envelope = o guard falha).
+
+**O pin (3 testes novos no hook-proof-run.test.ts)**: internos (4+ sites
+com backup e sem nota) + call sites (count exato 2 + envelope em cada) + a
+MUTATION do `cleanupOnFailSuffix` (remover a nota do envelope → 1 offender
+em 363 — o ponto de conversão que o guard 11.65 não alcançava).
+
+Esta sec 11.71 é claim-free por desenho (o guard de forma NÃO muda o
+contrato de códigos de saída — só pina a FORMA da mensagem de erro) — sem
+entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + ASCII do .ts + UTF-8 do doc + ordering 11.70 → 11.71 → 12 monotono.
+
+
+## 11.72 ADOTADO — o guard dos guards de prova: TODO helper (hook-proof-run + ci-proof-run) tem as 3 partes do contrato de fail-loud (avaliação 2026-08-12)
+
+> **Nota (2026-08-12, sec 11.79)**: a FONTE do manifest `PROOF_HELPERS`
+> foi invertida — a lista hardcoded virou derivação do package.json (todos
+> os scripts `*-proof:run`) com pin no CONTENT derivado. Esta sec 11.72
+> permanece como a casa das 3 partes do contrato de fail-loud.
+
+**Pedido**: o guard de forma da 11.65 (scratchLeftNote do hook-proof-run) e
+o da 11.70 (stashLeftNote do ci-proof-run) derivam cada um do source do
+SEU helper, e o ABS PIN do proofs-manifest deriva do manifest — mas nada
+pina que TODO helper de prova tem as 3 partes do contrato de fail-loud:
+(1) exit codes documentados, (2) nota de limpeza definida, (3) E2E do
+caminho. Avaliar um teste de forma que pince as 3 partes para os DOIS
+helpers — o guard dos guards de prova.
+
+**O veredito (ADOTADO — uma suite de contrato dedicada, sec 11.72)**: a
+medição confirmou que os 2 helpers têm as 3 partes HOJE:
+
+1. **Exit codes documentados**: ambos os docblocks têm a seção `Exit
+   codes: 0 = ... 1 = ... 2 = ... 3 = ...` (hook-proof-run.mjs:~63,
+   ci-proof-run.mjs:~120) — o contrato de saída nunca vive só no código.
+2. **Nota de limpeza definida**: `scratchLeftNote` (hook, a 11.65) e
+   `stashLeftNote` (ci, a 11.70) — as notas que os guards de forma
+   consomem (a classe do fail silencioso).
+3. **E2E do caminho**: as duas suítes têm E2Es herméticos que rodam o CLI
+   REAL com bins fake (HOOK_PROOF_GIT / CI_PROOF_GIT+GH) e asserem exit
+   nao-zero (hook: 8 asserts `.toBe(1|2|3)`; ci: 21 asserts via
+   `result.status` — o caminho do fail-loud exercitado, não só descrito em
+   prosa).
+
+**O pin (5 testes na nova suite `proof-helpers-contract.test.ts`, no
+padrão TARGET_DIRS/fatos consumidos)**: o manifesto `PROOF_HELPERS` (a
+lista é o pin do escopo: adicionar um 3º helper exige entrar aqui) + as 3
+partes assertadas para cada entrada (docblock 0-3 via regex /s, nota
+`\w+LeftNote = (`|`"`, seam de bins fake + assert de exit nao-zero) + o
+lado inverso do crescimento (o padrão do WIRED SURFACE da 11.60): os
+helpers wired no package.json (os scripts `*-proof:run` — hoje
+ci-proof:run + hook-proof:run) DEVEM estar no manifesto, com igualdade
+nos dois sentidos — um helper novo wired sem entrar na lista falha, e uma
+entrada do manifesto sem as 3 partes (ou sem os arquivos) também. As 3
+MUTATIONs provam a sensibilidade: remover a nota do ci → flagra; remover o
+`3 = falha` do docblock do hook → flagra; remover o seam de bins fake do
+ci.test.ts → flagra.
+
+Esta sec 11.72 é claim-free por desenho (o guard de forma NÃO muda o
+contrato de códigos de saída — só pina que ele está documentado nas 3
+partes) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28. A
+nova suite roda via test:unit (o glob `scripts/**/*.test.ts` do
+vitest.config.unit.ts — o MESMO canal dos helpers que ela pina); o
+test:guard (14 suítes curadas) não muda.
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/ci-proof-run.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + ASCII da nova suite + UTF-8 do doc + ordering 11.71 → 11.72 → 12 monotono.
+
+## 11.73 ADOTADO — a divisão de trabalho travada: o hook-proof-run NÃO entra no test:guard (o push net é a superfície curada; a suite de contrato roda via test:unit) (avaliação 2026-08-12)
+
+**Pedido**: a re-medição (3) da sec 8.1 inverteu a premissa do pedido: o
+hook-proof-run (44 testes) NÃO está no test:guard — é suite de contrato
+que roda via test:unit. Criar um teste de contrato (padrão
+scan-guard-gates) que pince que o `hook-proof-run.test.ts` NÃO está na
+lista do test:guard do package.json — travando a divisão de trabalho
+test:guard (push net) vs test:unit (suítes de contrato) contra regressão
+futura.
+
+**O veredito (ADOTADO — pin no REAL-REPO CONTRACT do
+scan-guard-gates.test.ts)**: a divisão de trabalho já é a premissa
+documentada da sec 8.1 (as re-medições 2-5 medem o custo do test:guard
+como "o push net" e citam `grep hook-proof-run package.json` = 0), mas
+nada a travava ESTRUTURALMENTE — um refactor que adicionasse o
+hook-proof-run ao test:guard faria a suite rodar DUAS vezes (no push net
+E no test:unit), inflando o custo do step da sec 8.1 sem gate benefit, e
+nenhum teste falharia.
+
+**O pin (2 testes no scan-guard-gates.test.ts, o padrão do REAL-REPO
+CONTRACT da 8.4)**: a suite que já lê o package.json REAL (e roda ela
+mesma DENTRO do test:guard — o pin nasce na superfície que protege)
+passa a assertar que o test:guard NÃO contém `hook-proof-run.test.ts`
+nem `ci-proof-run.test.ts` (o detector extraído como função pura
+`testGuardCarriesSuite` — o shape dos fatos consumidos) + o lado
+POSITIVO da divisão: a suite é coberta pelo canal do test:unit (o glob
+`scripts/**/*.test.{ts,tsx}` do vitest.config.unit.ts + o script
+test:unit sem file args) — a divisão é completa, nunca um teste solto. A
+MUTATION prova a sensibilidade: adicionar o hook-proof-run ao test:guard
+sintético flips o MESMO detector de false → true (a regressão que o pin
+trava — não uma tautologia).
+
+**Por que no scan-guard-gates e não numa suite nova**: o guard da 8.4 já
+é o guard do push net E vive no próprio test:guard — um refactor que
+adicione o hook-proof-run ao test:guard falha essa suite no push net (CI)
+sem fiação nova; e o mesmo bloco já pina o positivo (scan-push-full-suite
+PRESENTE no test:guard), fechando os dois lados da lista num só lugar.
+
+Esta sec 11.73 é claim-free por desenho (o pin é de composição da lista,
+não de código de saída — nenhum exit code muda) — sem entrada no
+EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-guard-gates.test.ts scripts/__tests__/workflow-contracts.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/doc-revalidate.test.ts --config vitest.config.unit.ts` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + ASCII do teste + UTF-8 do doc + ordering 11.72 → 11.73 → 12 monotono.
+
+## 11.74 ADOTADO — os counts de testes/suítes das re-medições da 8.1 são REGISTROS DE EVENTO, não claims: RECUSADO estender o checkCitedCounts a eles (avaliação 2026-08-12)
+
+**Pedido**: a sec 8.1 agora tem 5 medições com counts citados
+(66→155→236→269→297 testes; 8→13→14 suítes). Avaliar estender o
+checkCitedCounts (sec 11.62) para cobrir os counts de testes/suítes das
+re-medições — ou documentar por que são registros de evento históricos.
+
+**O veredito (RECUSADO estender — os counts são registros de evento
+run-pinned, e o detector já tem a fronteira certa)**: a medição no doc
+REAL é decisiva: `scanCitedCounts` NÃO gera record para a sec 8.1 (só
+8.34/8.35/8.36/8.37 têm records — os counts de CLAIMS). A razão é o
+TOKEN CLASS: o CLEAN_COUNT_RE lê só o verbatim `clean (N claims` do
+stdout do CLI; os counts de testes/suítes ("14 suítes / 304 testes") são
+OUTRA classe — medidas de run, não claim de estado.
+
+**Por que estender seria WRONG (3 leituras)**:
+
+1. **Cada re-medição é um snapshot run-pinned**: o bloco cita run number +
+   data + commit (ex.: re-medição (4) = run 31585318096, HEAD e50a186,
+   14 suítes / 304 testes). Os counts LEGITIMAMENTE diferem entre
+   re-medições (66→155→236→269→297) porque cada um descreve o estado
+   NAQUELE run/commit. Um checker que comparasse com o count atual
+   flagraria a re-medição (1) como drift — mas 66 testes ERA a verdade do
+   run 31406545988. Registro de evento é imutável por design.
+2. **O current truth é DERIVED, nunca doc-citado**: a composição do
+   test:guard vive no package.json (single source of truth), pinada pela
+   8.4 REAL-REPO CONTRACT (scan-guard-gates) + sec 11.73 (hook-proof-run
+   fora do test:guard). O doc só REGISTRA o que cada run mediu — não é a
+   autoridade do estado atual.
+3. **A fronteira de formato já existe**: o teste FRONTEIRA da 11.62
+   (verbatim vs narrativa) pina que prosa natural citando count histórico
+   NÃO é contract — os counts de re-medições são a MESMA classe da
+   narrativa (prosa histórica), não do token do CLI.
+
+**O pin (2 testes na suite scan-exit-claims.test.ts, describe sec
+11.74)**: o REAL-REPO prova que a sec 8.1 com 5 re-medições citando
+counts NÃO gera record (o detector é claims-token-only) + o current truth
+é derived (package.json test:guard com scan-push-full-suite); a MUTATION
+prova o contrafactual: prosa de re-medição com counts de testes/suítes
+NÃO viola, o MESMO número no token verbatim do CLI viola — a fronteira é
+o FORMATO, não o número (o mesmo shape do FRONTEIRA da 11.62 aplicado à
+classe de medidas).
+
+Esta sec 11.74 é claim-free por desenho (a decisão é de token class, não
+de código de saída — nenhum exit code citado) — sem entrada no
+EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/scan-guard-gates.test.ts scripts/__tests__/workflow-contracts.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/doc-revalidate.test.ts --config vitest.config.unit.ts` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + UTF-8 do doc + ordering 11.73 → 11.74 → 12 monotono.
+
+
+## 11.75 ADOTADO — a CURE stage-aware do revert-fail: a scratchLeftNote aponta a recuperação real (reflog + cherry-pick) quando o branch -D JÁ rodou — refinado 2026-08-12 com a CURE em DOIS NÍVEIS do apply-fail (avaliação 2026-08-12)
+
+**Pedido**: o ACHADO da Prova 43 (sec 8.38): a `scratchLeftNote` do
+revert-fail orienta `git checkout <orig> && git branch -D <branch>` — mas o
+`branch -D` JÁ rodou (o `revertCycle` deleta a scratch ANTES do apply) e o
+delta fica preso no reflog (commit órfão `7074dab`). A receita genérica
+não descreve o estado real: o checkout já voltou (o revert passou por ele)
+e o `branch -D` falharia ("no such branch"). Avaliar refinar a mensagem do
+revert-fail para apontar a recuperação real (`git cherry-pick` do reflog /
+safety diff), no padrão da CURE da sec 11.54.
+
+**O veredito (ADOTADO — a nota vira stage-aware, a CURE no erro)**: a
+`scratchLeftNote` continua certa para os fail paths onde a scratch AINDA
+existe (checkout-fail e branch-D-fail — o `branch -D` não rodou), mas para
+os fail paths POS-branch-D (apply-fail e status-divergente) a scratch JÁ
+foi deletada com o commit do delta dentro. O `revertCycle` passa a retornar
+o `stage` do fail (`checkout` | `branchD` | `apply` | `status` — o fato
+consumido) e a nova função exportada `revertLeftNote(stage, ...)` despacha
+por stage: apply-fail → a CURE em DOIS NÍVEIS (o refinamento abaixo);
+status-fail → a CURE própria do snapshot; checkout/branchD → a
+scratchLeftNote original. Os 2 pontos de conversão (o revert-fail do main e
+o `cleanupOnFailSuffix`) usam a MESMA função — a fonte única da receita, o
+padrão da sec 11.54 (nunca duas versões da receita). O guard de forma da
+11.65 e o envelope da 11.71 passam a aceitar a família `LeftNote`
+(`scratchLeftNote` | `revertLeftNote`) — a classe do fail silencioso
+continua fechada com o novo membro.
+
+**O refinamento (2026-08-12) — a hierarquia da CURE do apply-fail**: o
+backup do ciclo guarda o `delta.patch` — a fonte PRIMÁRIA do delta quando
+ÍNTEGRO. A CURE original (só reflog) subestimava o caminho do dia a dia:
+na grande maioria dos casos o patch do backup é válido e `git apply
+<backup>/delta.patch` restaura o delta direto — o reflog/cherry-pick só é
+necessário quando o patch é INVÁLIDO (corrompido — o ACHADO da Prova 43
+foi com o patch corrompido de propósito). A CURE do apply-fail vira
+hierárquica em DOIS NÍVEIS: (1) `git apply <backup>/delta.patch` (a receita
+do dia a dia, a fonte primária quando o patch está íntegro); (2) SÓ quando
+o apply falhar de novo (patch inválido/corrompido — a classe da Prova 43):
+`git reflog` (procurar `hook-proof: <branch> (delta)`) + `git cherry-pick
+<sha>`, ou o safety diff externo (o caminho que a própria Prova 43 usou:
+`git apply /tmp/prova43-safety.diff` — com `--safety-diff`). O status-fail
+é semanticamente DIFERENTE do apply-fail: no status-divergente o apply do
+ciclo PASSOU (o delta JÁ está na árvore) — re-aplicar o patch falharia
+("already applied"); a CURE própria compara o `git status --porcelain` com
+o snapshot `<backup>/status-before.txt` e reconcilia a divergência, com o
+reflog como fallback se o delta faltar. A divisão apply/status em branches
+separados é intencional (o par pos-branch-D agora tem CUREs próprias, não
+a MESMA — a hierarquia apply-first não faz sentido onde o delta já foi
+aplicado).
+
+**O pin (suite hook-proof-run.test.ts, describe sec 11.75)**: a matriz dos
+4 stages — apply-fail → a CURE em 2 NÍVEIS (`git apply <backup>/delta.patch`
+ANTES do `reflog` — a ORDEM hierárquica é pinada por índice, o nível 1 é a
+fonte primária) e NÃO a receita genérica; status-fail → a CURE do snapshot
+(`PASSou` + `status-before.txt` + reflog como fallback) e NÃO a receita
+genérica; checkout-fail e branchD-fail → a receita genérica (`git checkout
+base && git branch -D ci-proof/lpr-x`) e NÃO o `cherry-pick`. A MUTATION
+estrutural pina o despacho SPLIT: apagar o branch do `status` é flagrado —
+o status-fail cairia na CURE do apply (a hierarquia apply-first que não se
+aplica a ele, a classe da Prova 43 reabrindo no stage que a prova não
+cobriu ao vivo, só por síntese).
+
+Esta sec 11.75 é claim-free por desenho (a decisão é de conteúdo da
+mensagem de erro, não de código de saída — nenhum exit code citado) — sem
+entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/doc-revalidate.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + UTF-8 do doc + ASCII do .mjs + ordering 11.74 → 11.75 → 12 monotono.
+
+
+## 11.76 ADOTADO — o seam hermético do revert-fail apply: knob HOOK_PROOF_FAKE_FAIL_APPLY no fixture + E2E do fail(3) com backup e CURE (avaliação 2026-08-12)
+
+**Pedido**: o fixture `hook-proof-fake-bins.mjs` nunca falha o `git apply`
+— os 4 fail paths do `revertCycle` seguem sem E2E hermético
+COMPORTAMENTAL (só o guard de forma da 11.65 deriva os fail sites do
+source; a Prova 43, sec 8.38, foi a única prova viva do apply-fail —
+injetando um patch corrompido no backup real). Avaliar um knob
+`HOOK_PROOF_FAKE_FAIL_APPLY` no fixture + um teste E2E provando o fail(3)
+com o backup apontado no caminho hermético, fechando a classe nos dois
+lados (vivo + hermético).
+
+**O veredito (ADOTADO — o seam que faltava)**: o fixture ganhou o knob
+`HOOK_PROOF_FAKE_FAIL_APPLY=1` (o `git apply` fake responde falha (status
+1) + stderr `No valid patches in input` — o mesmo sinal da Prova 43). O E2E novo roda o
+ciclo hermético completo com a árvore SUJA (o `delta.patch` do backup é
+não-vazio → o apply realmente roda), o hook passando (o sinal de sucesso
+do verify — a falha é do revert, não do verify) e o apply fake falhando:
+**o fail(3) fail-loud** com o backup apontado no stderr E a **CURE
+stage-aware da sec 11.75** (o
+apply-fail é POS-branch-D → `reflog` + `cherry-pick`, NÃO a receita
+genérica `git checkout <orig> && git branch -D <branch>` que descreveria um
+estado que não existe mais). O invocations.log prova a ORDEM do revert
+(checkout base → branch -D → apply falhou) — o estado exato que a CURE do
+reflog descreve (a scratch deletada com o commit do delta dentro).
+
+**A classe fechada nos dois lados**: a Prova 43 (vivo) provou o apply-fail
+no repo REAL com patch corrompido; o E2E novo (hermético) prova o MESMO
+caminho via knob sem tocar git real — a classe do revert-fail apply agora
+tem os 2 lados (o padrão das Provas 16/19 para o needs:, aplicado ao fail
+path). Os outros 3 fail paths (checkout, branch -D, status divergente)
+continuam cobertos por síntese (a matriz da sec 11.75 + o guard de forma
+da 11.65) — o apply é o único com seam de injeção limpo (o knob substitui
+o `--mutate` da Prova 43, agora sem precisar corromper arquivo nenhum).
+
+Esta sec 11.76 é claim-free por desenho (a decisão é de teste hermético,
+não de código de saída — nenhum exit code citado) — sem entrada no
+EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/doc-revalidate.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + UTF-8 do doc + ASCII do .mjs e do fixture + ordering 11.75 → 11.76 → 12 monotono.
+
+
+## 11.77 ADOTADO — o --safety-diff: o delta salvo FORA do backup ANTES do ciclo, e a CURE do revert-fail o cita (avaliação 2026-08-12)
+
+**Pedido**: a Prova 43 (sec 8.38) recuperou o delta via safety diff
+EXTERNO (`git apply /tmp/prova43-safety.diff`) porque o backup apontado na
+mensagem carregava o `delta.patch` CORROMPIDO (a própria mutação da prova
+corrompeu o patch do backup — o backup apontado NÃO era a fonte de
+recuperação do delta, só os untracked + doc + status-before). Avaliar um
+`--safety-diff <path>` no hook-proof-run: o helper salva o diff ANTES do
+ciclo num path externo e o recipe de recuperação do revert-fail o cita —
+travando a classe de perda de delta contra a próxima prova.
+
+**O veredito (ADOTADO — o seam temporal, não um arquivo a mais no
+backup)**: o `--safety-diff <path>` grava o MESMO `git diff` (a etapa 2 do
+backup) num path EXTERNO ao backupDir, ANTES de qualquer mutação — a
+cópia que sobrevive à corrupção do `delta.patch` do backup (a classe da
+Prova 43). A CURE do revert-fail (o `revertLeftNote` stage-aware da sec
+11.75) ganhou o 5º parâmetro: quando o path foi salvo, o apply-fail/status
+citam `git apply <path>` (o comando exato, o padrão da CURE da sec 11.54);
+sem a flag, a CURE permanece genérica (`safety diff externo` — o opcional
+honesto, a fronteira da sec 11.75 intacta). O path é resolvido para
+absoluto na gravação (o recipe cita o caminho usável mesmo se o cwd mudar).
+
+**A implementação (2 arquivos)**: `scripts/hook-proof-run.mjs` (flag no
+parseArgs + USAGE + a gravação na etapa 2 do backup + o 5º param do
+`revertLeftNote` propagado pelos 2 pontos de conversão — o revert-fail do
+main e o `cleanupOnFailSuffix` — + a linha opcional no plano do --dry-run) e
+`scripts/__tests__/hook-proof-run.test.ts` (describe sec 11.77: o parse da
+flag, a matriz do `revertLeftNote` com/sem path — apply/status citam o
+`git apply <path>` e NÃO a forma genérica; checkout mantém a receita
+genérica — e o E2E com `--safety-diff` + `HOOK_PROOF_FAKE_FAIL_APPLY=1`:
+o arquivo externo salvo com o conteúdo do diff ANTES do ciclo + a CURE
+citando o caminho absoluto no fail(3)).
+
+**A fronteira (o que NÃO mudou)**: a CURE genérica (reflog + cherry-pick +
+safety diff externo) continua sendo o comportamento SEM a flag — o
+`--safety-diff` só torna a receita ESPECÍFICA quando o path foi salvo. O
+revertCycle NÃO usa o safety diff (ele usa o `delta.patch` do backup — o
+caminho normal); o safety diff é a RECUPERAÇÃO manual do fail, nunca o
+caminho automático do revert.
+
+Esta sec 11.77 é claim-free por desenho (a decisão é de arquitetura de
+recuperação, não de código de saída — nenhum exit code citado) — sem
+entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/doc-revalidate.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + UTF-8 do doc + ASCII do .mjs + ordering 11.76 → 11.77 → 12 monotono.
+
+
+## 11.78 ADOTADO — o espelho da 11.72 para a classe de GUARDS wired: as 3 partes por guard (avaliação 2026-08-12)
+
+**Pedido**: a sec 11.72 pina as 3 partes do contrato de fail-loud nos
+helpers de prova (hook-proof-run + ci-proof-run), mas os node guards wired
+nos hooks (.husky/pre-commit, .husky/pre-push) e no registry PROOF_CLASSES
+não têm contrato de forma análogo — a parte 1 (entrada no manifest) vive no
+checkWiredSurface da sec 11.60, mas as partes 2 (suite no test:guard ou
+test:unit) e 3 (nota na sec 11.x) vivem só em prosa. Avaliar um teste que
+derive os guards wired dos hooks reais (spawns de node) e pince que cada um
+tem: entrada no proofs-manifest, suite no test:guard ou test:unit, e nota
+na secao 11.x — o espelho da 11.72 para a classe de guards.
+
+**O veredito (ADOTADO — o guard dos guards wired)**: nova
+`scripts/__tests__/wired-guards-contract.test.ts` (test:unit, o canal das
+suítes de contrato — NÃO no test:guard, cuja lista é pinada pela Prova 35
+/sec 8.30). O teste deriva a superfície wired REAL (`deriveWiredGuards` — os
+spawns `node|bash scripts/` dos hooks + imports do batch runner + steps
+`--ci` dos workflows do net; 18 guards hoje, medido 2026-08-12) e pina as 3
+partes por guard:
+  1. ENTRADA no proofs-manifest: o basename está no PROOF_CLASSES (module)
+     ou no WIRED_ALLOWLIST (a parte 1 da sec 11.60 reafirmada por guard);
+  2. SUITE: o `<stem>.test.ts` existe em scripts/__tests__ E é coberto pelo
+     include do test:unit (o glob `scripts/**` do vitest.config.unit.ts,
+     derivado no teste do arquivo de config real) OU está na lista explícita
+     do test:guard do package.json — a divisão de trabalho test:guard (push
+     net) vs test:unit (suítes de contrato) da sec 8.1;
+  3. NOTA na sec 11.x: o stem (basename sem extensão) aparece no corpo de
+     pelo menos uma seção `## 11.N` do doc real — a fonte da nota é o STEM,
+     não o basename completo (a doc cita `check-docs-encoding` sem o `.sh`
+     nas secs 11.8/11.19/11.60 — o probe por basename completo acusaria
+     falso negativo; o probe por stem: os 18 wired têm nota).
+
+**O ACHADO da 1a rodada (o contrato flagrou a convenção)**: 2 dos 18
+wired NÃO seguem a convenção `<stem>.test.ts` — o `GUARD_SUITE_MAP` do
+teste as mapeia: `run-mapped-fuzz.mjs` → `fuzz-mapped.test.ts` (o contrato
+do runner vive na suite do fuzz mapeado, sec 11.11 — o nome não deriva do
+stem) e `scan-lucide-icons.mjs` → `scan-batch-coverage.test.ts` (guard de
+geração sem suite própria — o pin do HOOK_ALLOWLIST da sec 11.16 vive no
+teste do batch). Os demais 16 seguem a derivação `<stem>.test.ts` (o
+fallback). Um guard novo com suite fora da convenção exige entrar no mapa
+(o mesmo padrão do PROOF_HELPERS da sec 11.72).
+
+**O snapshot da divisão (o pin da parte 2)**: as suites dos 8 guards de
+push-net/runner estão na lista explícita do test:guard (run-mapped-fuzz,
+scan-batch-coverage, scan-fuzz-precommit, scan-guard-gates,
+scan-lint-staged-loader, scan-lucide-icons, scan-prepush-batch,
+scan-push-full-suite — run-mapped-fuzz e scan-lucide-icons via o mapa);
+as demais 10 são cobertas
+pelo glob do test:unit (todas existem em scripts/__tests__). Editar a
+divisão exige editar o snapshot conscientemente.
+
+**Os MUTATIONs** (a classe é real): um guard fake num hook sintético → as
+3 partes faltam (o crescimento inverso da sec 11.60 aplicado às 3 partes);
+o stem removido de TODAS as seções 11.x do doc → a parte 3 flagra o guard
+com o nome exato; um suite dir vazio → a parte 2 flagra todos.
+
+**A fronteira (o que NÃO é pinado)**: a nota é por STEM — o corpo de
+qualquer seção 11.x, não uma seção específica nem o basename completo (a
+doc cita os guards sem extensão em prosa). A parte 1 é o checkWiredSurface
+da 11.60 reafirmado per-guard (a mesma classe, agora como parte do contrato
+de forma — não uma segunda fonte de verdade).
+
+Esta sec 11.78 é claim-free por desenho (decisão de forma de contrato, não
+de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS,
+o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/proofs-manifest.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/doc-revalidate.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + UTF-8 do doc + ordering 11.77 → 11.78 → 12 monotono.
+
+
+## 11.79 ADOTADO — o PROOF_HELPERS DERIVADO: o manifest nasce do package.json (todos os *-proof:run), pin no CONTENT (avaliação 2026-08-12)
+
+**Pedido**: o manifest PROOF_HELPERS da sec 11.72 era um pin EXPLÍCITO
+(lista hardcoded — adicionar um 3º helper exigia entrar na lista
+manualmente), com o lado inverso do crescimento (helpers wired no
+package.json DEVEM estar no manifesto) verificado por igualdade nos dois
+sentidos. A derivação dos wired (deriveWiredGuards, sec 11.60/11.78)
+provou o padrão da fonte única: a superfície REAL deriva o que o contrato
+pina. Avaliar inverter a derivação: o manifesto gerado a partir do
+package.json (todos os scripts `*-proof:run`) em vez de lista hardcoded,
+com o pin no CONTENT derivado — o padrão do TARGET_DIRS consumido.
+
+**O veredito (ADOTADO — a fonte única)**: o `proof-helpers-contract.test.ts`
+da sec 11.72 agora DERIVA o manifest: `deriveProofHelpers(pkg)` lê o
+package.json (todos os scripts `*-proof:run` → `{ script, mjs, ts, note }`),
+a suite por convenção `<stem>.test.ts` e a nota pelo PRIMEIRO const
+`\w+LeftNote` do source do helper (`stashLeftNote` do ci na linha 612,
+`scratchLeftNote` do hook na 358 — o `revertLeftNote` da 11.75 é function
+declaration e NÃO casa o regex). O pin saiu da LISTA e foi para o CONTENT:
+`PROOF_HELPERS_PIN` — a projeção `[script, mjs, ts, note]` da derivada, no
+padrão do ABS_PIN_SNAPSHOT da sec 11.50. O lado inverso do crescimento
+MORREU por construção: todo script `*-proof:run` do package.json entra na
+derivada automaticamente e é checado pelas 3 partes — não há lista para
+esquecer de editar (o guard das 3 partes da 11.72 permanece, agora sobre a
+derivada).
+
+**O contrato (6 testes)**: a DERIVADA == PROOF_HELPERS_PIN (2 helpers hoje:
+ci-proof:run → ci-proof-run.mjs → ci-proof-run.test.ts → stashLeftNote;
+hook-proof:run → hook-proof-run.mjs → hook-proof-run.test.ts →
+scratchLeftNote — adicionar um 3º script ou renomear uma nota exige editar
+o snapshot conscientemente); todo helper da derivada tem as 3 partes
+(docblock 0-3, nota \w+LeftNote, E2E com bins fake + assert de exit
+nao-zero); a MUTATION da FONTE (um `fake-proof:run` num package.json
+sintético → a derivada cresce para 3 → a projeção diverge do PIN — o
+growth contract aplicado à derivada); as 3 MUTATIONs originais da 11.72
+(remover a nota do ci, remover o `3 = falha` do docblock do hook, remover
+o seam de bins fake do ci.test.ts) permanecem intactas.
+
+**A fronteira (o que NÃO mudou)**: a sec 11.72 continua sendo a casa das 3
+partes do contrato de fail-loud — a 11.79 só inverteu a FONTE do manifest
+(lista hardcoded → derivação do package.json) e o local do pin (a lista →
+o CONTENT derivado). O deriveWiredGuards da 11.60/11.78 segue separado:
+ele deriva os guards de HOOK, não os helpers de prova — os dois contratos
+continuam com fontes distintas e explícitas.
+
+Esta sec 11.79 é claim-free por desenho (decisão de forma de contrato, não
+de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS,
+o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/proofs-manifest.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/doc-revalidate.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + UTF-8 do doc + ordering 11.78 → 11.79 → 12 monotono.
+
+## 11.80 ADOTADO — a nota datada do singleFork no config + o pin da PRESENÇA da nota no unit-surface-contract (avaliação 2026-08-12)
+
+**Pedido**: a re-medição (5) provou que o `singleFork: true` do
+`vitest.config.unit.ts` é a fonte da planura do test:guard, mas o config
+não tinha nota explicando o PORQUÊ da serialização — um leitor de boa-fé
+poderia "consertar" o singleFork achando que há paralelismo perdido.
+Adicionar um comentário datado junto ao `poolOptions` explicando a decisão
+(determinismo + a planura medida da sec 8.1) e avaliar se o
+unit-surface-contract deve pinar a presença da nota.
+
+**A implementação (2 arquivos)**:
+
+1. `vitest.config.unit.ts` — comentário datado `SERIALIZED POOL (2026-08,
+   sec 8.1 + sec 11.48)` acima do `poolOptions`: o singleFork é INTENCIONAL
+   e cita as DUAS razões da decisão — (a) DETERMINISMO: a superfície
+test:unit/test:guard é de suítes de CONTRATO que leem o repo REAL (scan-*,
+golden copies, manifests); o fork único serializa o I/O de subprocessos
+(no interleaving); (b) a PLANURA MEDIDA (sec 8.1 re-medição (5): test:guard
+20.9 → 19s com +28 testes) foi absorção de TESTES BARATOS, não workers —
+`--maxWorkers` é no-op estrutural (sec 11.48). Termina com a instrução
+anti-correção: `DO NOT "parallelize" this pool without re-measuring`.
+
+2. `scripts/__tests__/unit-surface-contract.test.ts` — o pin da PRESENÇA:
+a suite (que já lê o TEXTO do config como fonte estável — o mesmo padrão
+do exclude block, que importar o config em processo quebraria o invariant
+do TextEncoder) ganha a seção 6 "pool serialization note":
+`poolNotePresent()` exige a nota datada (`sec 8.1` + `2026-08` + `DO NOT
+"parallelize"`) junto ao bloco `singleFork: true` + 2 MUTATIONs (nota
+removida → pin falha; `singleFork: false` → pin falha).
+
+**Veredito (ADOTADO — sim, o unit-surface-contract deve pinar)**: a suite já
+e o contrato do TEXTO do config; a nota do pool e mais um fato da superficie
+test:unit, no MESMO domicilio — um 2o suite espalharia o contrato do config
+por dois arquivos. O pin fecha a classe "leitor conserta o singleFork e
+remove a nota junto" com falha loud no momento do commit — sem depender de
+re-medição futura para o drift aparecer.
+
+**Re-validação**: `npx vitest run scripts/__tests__/unit-surface-contract.test.ts` + `npx tsc --noEmit` + UTF-8/ASCII do config e da suite + ordering 11.79 → 11.80 → 12 monotono.
+
+Esta sec 11.80 é claim-free por desenho (decisão de forma de contrato, não
+de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS,
+o count do manifest permanece 28.
+
+## 11.81 ADOTADO — o guard-remeasure: a re-medição da sec 8.1 em 1 comando
+(dispatch do guard-gates + extração do step + veredito da banda) (avaliação
+2026-08-12)
+
+**Pedido**: a variância da sec 8.1 (banda 19-23.5s do step test:guard) é
+runner-side, mas a receita de re-medição continua MANUAL — dispatch do
+guard-gates via ci-proof-run + abrir o log capturado no tmpdir + extrair os
+timestamps do step "Run guard vitest suites" + comparar com a banda +
+escrever o veredito na doc (a re-medição (6) foi o último ciclo a pagar
+esse custo, sec 8.1). Automatizar o ciclo num helper no padrão do
+doc-revalidate (sec 11.61) — a re-medição (6) em 1 comando.
+
+**A implementação (3 arquivos)**:
+
+1. `scripts/guard-remeasure.mjs` (novo, gate ASCII puro, sem deps): o
+   ciclo completo — (1) spawn do ci-proof-run (o helper de prova-CI
+   existente, sec 11.20) com `--only-jobs "Guard Gates (fragile-range +
+   golden-copy)" --expect success` (o DONE line `DONE run=...
+   conclusion=success log=<path>` entrega o path do log do job no tmpdir);
+   (2) `stepSpan()` — a extração PURA do span wall-clock do step: a 1a
+   linha do step (o `##[group]` com timestamp) até a 1a linha do PRÓXIMO
+   step (o delimitador de fim) — o MESMO número que a tabela da sec 8.1
+   reporta (a re-medição (6): 22.47s); (3) `bandVerdict()` contra o
+   `GUARD_BAND` (o fato calibrado { min: 19, max: 23.5 }, exported e
+   PINADO por teste no LITERAL — recalibrar a banda exige editar o const
+   E o teste; a doc é o TERCEIRO lugar (claim-free em prosa, sec 8.1));
+   (4) o veredito do no-filter: dentro da banda = sucesso
+   "no-filter continua calibrado" (o padrão --check dos guards); fora =
+   o ALERTA de reabertura da decisão, com falha (a regra da sec 8.1). Os
+   exit codes do helper vivem no docblock do .mjs e nos E2Es herméticos —
+   esta sec 11.81 segue claim-free (a fronteira da sec 11.51).
+   Flags: `--branch ci-proof/remeasure-<data>` (default), `--band
+   "min-max"` (override), `--timeout/--keep-branch/--stash-uncommitted/--clean`
+   repassados ao ci-proof-run (o `--clean` adiciona
+   `--expect-success-implies-clean`, sec 11.43 — a limpeza vira contrato,
+   não leitura manual), `--log <path>` (extração read-only de um log JÁ
+   capturado, sem dispatch), `--dry-run` (plano sem executar).
+2. `scripts/__tests__/fixtures/guard-remeasure-fake-cmd.mjs` (novo): o
+   fake do subprocesso do ci-proof-run (GUARD_REMEASURE_CIPROOF_CMD — o
+   mesmo padrão do DOC_REVALIDATE_CLI_CMD da sec 8.37/11.61): imprime o
+   DONE line apontando para um log que o teste escreve — a extração REAL
+   roda sobre ele.
+3. `scripts/__tests__/guard-remeasure.test.ts` (novo, test:unit — a suite
+   é de contrato, não faz parte do test:guard): as funções puras
+   (parseLogTs com o BOM do `##[group]`, stepSpan com o log sintético da
+   re-medição (6) = 22.47s, extractTestCounts ANSI-stripped, bandVerdict
+   dentro/fora/abaixo, parseDoneLine, buildCiproveCmd, parseArgs) + os E2Es
+   herméticos com o fake cmd (dentro da banda = sucesso calibrado, fora =
+   ALERTA falho, conclusion=failure = falho, `--log` read-only,
+   `--dry-run`).
+
+**Veredito (ADOTADO — sim, o helper vale o custo)**: a re-medição é uma
+operação de MONITORAMENTO recorrente (a sec 8.1 manda re-medir quando o
+custo das suítes muda — 5 re-medições em 2 dias); o ciclo manual de 4
+passos tinha exatamente a classe de erro que o repo combate (esquecer um
+passo, extrair o timestamp errado, comparar com a banda desatualizada). O
+helper transforma o ciclo num comando determinístico: o mesmo ci-proof-run
++ a extração pura pinada por teste + o veredito contra a banda exportada e
+pinhada. A receita da próxima re-medição é:
+
+```bash
+node scripts/guard-remeasure.mjs --stash-uncommitted
+# dentro da banda 19-23.5s: veredito 'no-filter continua calibrado';
+# fora: veredito 'ALERTA ... reabrir a decisao da sec 8.1' (falha)
+```
+
+**Re-validação**: `npx vitest run scripts/__tests__/guard-remeasure.test.ts scripts/__tests__/ci-proof-run.test.ts scripts/__tests__/doc-revalidate.test.ts scripts/__tests__/proofs-manifest.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + CLIs clean (28 claims / manifest) + UTF-8/ASCII dos 3 arquivos + ordering 11.80 → 11.81 → 12 monotono.
+
+Esta sec 11.81 é claim-free por desenho (decisão de forma de contrato, não
+de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS,
+o count do manifest permanece 28.
+
+## 11.82 ADOTADO — o lado POSITIVO da divisão: o ABS PIN da superfície do
+push net (a lista COMPLETA das 14 suites do test:guard derivada e pinada)
+(avaliação 2026-08-12)
+
+**Pedido**: a sec 11.73 trava a AUSÊNCIA dos helpers de prova no test:guard
+(o negativo: hook-proof-run/ci-proof-run fora da lista), mas a lista curada
+de 14 suites em si segue derivada SÓ do package.json sem pin — um refactor
+que adicionasse uma 15a suite (de contrato ou legítima), removesse uma
+curada ou reordenasse a lista passaria sem nenhum teste falhar. Avaliar um
+teste de forma que derive a lista completa do test:guard e a pince (o ABS
+PIN da superfície do push net), fechando o lado positivo do mesmo contrato
+de divisão.
+
+**O veredito (ADOTADO — o ABS PIN no scan-guard-gates.test.ts, a suite que
+já lê o package.json REAL e roda DENTRO do test:guard)**: a divisão da
+11.73 tem dois lados — o negativo (nada de contrato ENTRA) estava pinado,
+o positivo (a lista curada em si É o que a sec 8.1 mede) não. O pin:
+`deriveTestGuardSuites(tg)` extrai os nomes das suites do script test:guard
+EM ORDEM (a projeção do que o step realmente roda) e o
+`TEST_GUARD_ABS_PIN` pina as 14 suites na ordem curada — o padrão do
+ABS_PIN_SNAPSHOT da sec 11.50 aplicado à superfície do push net.
+
+**Os 4 testes (REAL-REPO CONTRACT + 3 MUTATIONs, todos com timeout
+explícito — o padrão da suite)**: (1) a derivada do package.json REAL bate
+EXATAMENTE com o ABS PIN (14 suites, na ordem — o refactor que adicione/
+remova/reordene quebra AQUI, na suite que roda dentro do próprio
+test:guard); (2) MUTATION adicionando o hook-proof-run (a 15a suite da
+11.73) → a derivada diverge (15 ≠ 14 — o crescimento NUNCA é silencioso,
+e o negativo da 11.73 vira ESTRUTURAL por construção, não só detector
+isolado); (3) MUTATION removendo uma suite curada (o scan-push-full-suite
+da 8.4/11.11) → diverge (a lista não encolhe sem edição consciente do pin
+— o GUARD SUITE MISSING do CLI pega essa remoção específica, o ABS PIN
+pega QUALQUER remoção); (4) MUTATION reordenando as duas últimas → diverge
+(a ORDEM faz parte do pin — é uma projeção em sequência, não um set).
+
+**A relação com a sec 11.74**: os counts citados nas re-medições da 8.1
+seguem registros de evento (RECUSADO no checkCitedCounts) — este pin não
+é sobre prosa histórica, é sobre a LISTA VIVA: o dia em que o test:guard
+ganhar/perder/reordenar uma suite, o ABS PIN quebra AQUI e a re-medição
+seguinte da sec 8.1 recalibra a banda com o count novo. O pin trava a
+superfície que a 11.74 deixou deliberadamente livre (a prosa), sem colidir
+com a decisão — os dois convivem: prosa = evento, lista = contrato.
+
+Esta sec 11.82 é claim-free por desenho (decisão de forma de contrato, não
+de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS,
+o count do manifest permanece 28.
+
+## 11.83 ADOTADO — a PRESENÇA das suites de contrato no glob do test:unit:
+o irmão da 11.73 no OUTRO lado da divisão (o positivo do canal local)
+(avaliação 2026-08-12)
+
+**Pedido**: a sec 11.73 trava a divisão no test:guard (o push net — o
+hook-proof-run/ci-proof-run NÃO entram na lista curada de 14) e a 11.82
+pina o ABS PIN daquela lista. Mas o MESMO conceito de superfície curada
+existe no test:unit glob — o canal que os guards de pre-commit/pre-push
+rodam localmente (os hooks spawnam o test:unit via o glob `scripts/**` do
+vitest.config.unit.ts). Nada pina que as suites de contrato (os helpers de
+prova + os contratos dos guards) estão PRESENTES nesse canal: um refactor
+que adicionasse um exclude para uma delas, ou estreitasse o glob de
+scripts, faria a suite de contrato sumir silenciosamente de TODO guard
+local — sem nenhum teste falhar (a divisão da 11.73 só pina o lado do push
+net, não o canal local). Avaliar um contrato irmão que pince a PRESENÇA no
+glob — fechando o par nos dois lados da divisão.
+
+**O veredito (ADOTADO — o pin no unit-surface-contract.test.ts, a suite que
+já lê o TEXTO do vitest.config.unit.ts como fonte estável)**: a 11.73 é o
+negativo (nada de contrato no test:guard); este contrato é o POSITIVO do
+outro lado (toda suite de contrato no test:unit). A implementação (1
+arquivo + doc):
+
+1. `unitIncludePatterns()` — o extrator do bloco `include:` do TEXTO do
+   config (o irmão do `unitExcludePatterns` da sec 11.80 — o config é lido
+   como texto, nunca importado: o import quebraria o invariant do
+   TextEncoder);
+2. `survivesUnitSurface(rel, include, exclude)` — a função pura que
+   computa a PRESENÇA de fato: o caminho casa ALGUM include E nenhum
+   exclude (o mesmo motor picomatch da sec 11.80, agora aplicado ao glob
+   de scripts);
+3. `TEST_UNIT_CONTRACT_PIN` — a projeção snapshot (o padrão do ABS PIN da
+   sec 11.82) das 11 suites de contrato: os 3 helpers de prova
+   (hook-proof-run, ci-proof-run, guard-remeasure) + os contratos dos
+   guards (proof-helpers-contract, wired-guards-contract, proofs-manifest,
+   scan-exit-claims, check-exit-claims-push, scan-cures-contract,
+   unit-surface-contract, gates-proofs-ordering) — adicionar uma nova suite
+   de contrato exige editar a lista conscientemente;
+4. os 3 testes: (1) REAL-REPO — TODAS as suites do pin sobrevivem
+   include+exclude (a premissa base, o glob `scripts/**` presente no
+   include, re-derivado do texto — o que a 11.73 pina no package.json, aqui
+   no config); (2) MUTATION — um exclude novo para o hook-proof-run derruba
+   a suite do canal (a classe: silenciar uma suite de contrato local); (3)
+   MUTATION — remover o glob scripts do include derruba TODAS (a classe: o
+   glob do canal nunca encolhe).
+
+**A relação com a 11.73/11.82**: a 11.73 trava o lado do push net (o que
+NÃO entra no test:guard), a 11.82 pina a lista curada dele, esta sec trava
+o lado local (o que DEVE estar no test:unit) — o par fica completo nos
+dois lados da divisão: o mesmo conceito de superfície curada, pinado de
+ambos os lados. A divisão não é só "não poluir o push net" — é também "o
+canal local nunca perde uma suite de contrato".
+
+Esta sec 11.83 é claim-free por desenho (decisão de forma de contrato, não
+de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS,
+o count do manifest permanece 28.
+
+
+## 11.84 ADOTADO — o guard de forma do FATO CONSUMIDO: todo uso do
+revertLeftNote recebe o stage do retorno do revertCycle (.stage), nunca um
+literal que travaria o dispatch (avaliação 2026-08-12)
+
+**Pedido**: a sec 11.71 deriva os call sites do `revertCycle` e pina o
+envelope `LeftNote` (todo chamador anexa uma nota de saída), mas nada pina
+que TODO uso do `revertLeftNote` recebe o stage do RETORNO do `revertCycle`
+(`rv.stage` / `reverted.stage` — o fato consumido). Um uso com o stage
+HARDCODED (ex.: `revertLeftNote("apply", ...)` no `cleanupOnFailSuffix`)
+passaria nos guards existentes — o envelope da 11.71 só exige uma nota
+`LeftNote`, não que o stage seja o do retorno — e TRAVARIA o dispatch
+stage-aware da sec 11.75 (o status-fail receberia a CURE do apply, a classe
+da Prova 46 reabrindo no stage errado). Avaliar um teste de forma que derive
+os usos da função e prove que todos passam o stage derivado.
+
+**O veredito (ADOTADO — o guard do fato consumido)**: o guard mora na
+suite hook-proof-run.test.ts (describe sec 11.84), no padrão da 11.65/11.71
+(a derivação dos fatos consumidos do source): `useSites(src)` extrai toda
+linha com `revertLeftNote(` excluindo a definição (`export function`), e o
+pin `stageFromReturn` exige que o 1º argumento seja `(rv|reverted).stage,`
+— a propriedade .stage do retorno do `revertCycle`, NUNCA um literal de
+string. Os 2 usos reais (o `cleanupOnFailSuffix` com `rv.stage` e o
+revert-fail do main com `reverted.stage`) são pinados um a um, e as 2
+MUTATIONs provam a sensibilidade: hardcodar `"apply"` no cleanup ou
+`"status"` no revert-fail do main → 1 offender com o caminho exato — o
+dispatch stage-aware não pode travar por um literal. A classe fechada: o
+stage é SEMPRE um fato consumido do retorno, nunca uma constante.
+
+Esta sec 11.84 é claim-free por desenho (decisão de forma de contrato, não
+de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS,
+o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + UTF-8 do doc + ASCII do .mjs + ordering 11.83 → 11.84 → 12 monotono.
+
+## 11.85 ADOTADO — os knobs irmãos do revertCycle: os 4 fail paths fechados com E2E hermético (a matriz da 11.76 completa)
+
+**O pedido**: o knob HOOK_PROOF_FAKE_FAIL_APPLY (sec 11.76) fechou o apply-fail com E2E hermético, mas os outros 3 fail paths do revertCycle (checkout, branch -D, status divergente) seguiam só por síntese (a matriz de stages da 11.75). A pergunta: knobs irmãos (FAIL_CHECKOUT / FAIL_BRANCH_D / FAIL_STATUS) + E2Es na mesma matriz da 11.76, fechando os 4 fail paths com comportamento hermético — ou documentar por que o apply é o único com seam de injeção limpo.
+
+**O veredito**: ADOTADO — os 4 fail paths TÊM seams de injeção limpos no fixture, e os 3 knobs irmãos foram adicionados ao hook-proof-fake-bins.mjs: FAIL_CHECKOUT (o `git checkout <orig>` do REVERT falha — o `checkout -b` da scratch NÃO é afetado, só o simples), FAIL_BRANCH_D (o `git branch -D` do REVERT falha) e FAIL_STATUS (o `git status --porcelain` do REVERT diverge do snapshot). O knob do status é o mais sutil: o `git status` roda DUAS vezes no ciclo — o backup (antes do checkout do revert, snapshot normal) e o revert (depois). O knob usa o sinal de estado `state.reverting` (setado pelo checkout do revert) para divergir SÓ na segunda chamada, deixando o snapshot do backup íntegro — sem o sinal, o knob contaminaria o próprio snapshot e o fail nunca dispararia no stage certo.
+
+**Os 3 E2Es novos (a forma da 11.76)**:
+- CHECKOUT → fail-loud com `git checkout base falhou` + backup apontado + a receita GENERICA (`git checkout base && git branch -D ...` — a scratch AINDA existe, o branch -D nunca rodou) e SEM o reflog (a scratch não foi deletada com o delta dentro — o contraste exato com o apply-fail). Ordem no invocations.log: checkout base rodou (e falhou), branch -D NUNCA, apply NUNCA.
+- BRANCH_D → fail-loud com `git branch -D ... falhou` + backup + a receita GENERICA (a scratch ainda existe) e SEM o reflog; ordem: checkout base → branch -D (falhou), apply NUNCA.
+- STATUS → fail-loud com `git status divergiu do snapshot pre-ciclo` + backup + a CURE do SNAPSHOT (`PASSou` + `status-before.txt` — o apply do delta JÁ passou, o delta está na árvore) e SEM a receita generica (o branch -D já rodou); ordem: checkout base → branch -D → apply (o delta estava na árvore) → status divergiu.
+
+**A classe fechada**: a matriz de stages da 11.75 agora tem comportamento hermético nos 4 fail paths (não só síntese + as provas vivas 43/46 do apply/status): cada stage recebe a CURE que descreve o estado REAL do repo — scratch existente (checkout/branch -D), scratch deletada com o delta órfão no reflog (apply), delta já aplicado na árvore (status).
+
+Esta sec 11.85 é claim-free por desenho (decisão de forma de contrato, não de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + `node scripts/proofs-manifest.mjs --check` (clean 46 provas) + UTF-8 do doc + ASCII do fixture + ordering 11.84 → 11.85 → 12 monotono.
+
+## 11.86 ADOTADO — o PAR vivo/hermético do apply-fail: o stderr do knob = o stderr real da Prova 43 (a equivalência vira contrato)
+
+**O pedido**: a Prova 43 (viva, sec 8.38) e o E2E da 11.76 (hermético) provam o MESMO apply-fail, mas o registro vivo foi citado sem re-validar contra o novo knob — nada garantia que o fake reproduz o erro REAL do git: uma mensagem aproximada no fixture passaria nos asserts genéricos da 11.76 (`git apply delta.patch falhou` + `backup em` + `reflog`). O pedido: um teste que prove a equivalência — o stderr do fake com o knob = o stderr real da Prova 43 (mesma mensagem `No valid patches` + backup + CURE), travando o par vivo/hermético como o mesmo comportamento.
+
+**O veredito**: ADOTADO — a equivalência vira contrato em 2 camadas:
+1. **A 3-via do texto (REAL-REPO doc read)**: a mensagem `error: No valid patches in input (allow with "--allow-empty")` existe VERBATIM no registro vivo da sec 8.38 E no fixture — o knob copiou o erro do git real, não uma aproximação. Se o git real mudar a mensagem (ou alguém "melhorar" o texto do fixture), o par quebra em vez de driftar silenciosamente.
+2. **O núcleo no stderr hermético (E2E)**: o ciclo com o knob produz o MESMO núcleo do stderr vivo — `git apply delta.patch falhou: error: No valid patches in input (allow with "--allow-empty") - backup em <dir>` — o prefixo do revertCycle + a mensagem do git real verbatim + o backup apontado (o path em si varia por ambiente e fica fora do pin).
+
+**A fronteira honesta (a classe SUPERSEDED)**: o SUFIXO do stderr (a CURE) evoluiu APÓS a Prova 43 — o registro vivo (sec 8.38) mostra a receita genérica pré-11.75 (`a branch scratch pode ter ficado: git checkout ... && git branch -D ...`) e o comportamento atual é a CURE 2-NÍVEIS da sec 11.75 (reflog + cherry-pick). O teste pina o NÚCLEO ESTÁVEL (o erro do git + o backup — o que a equivalência vivo/hermético significa) e pina a CURE atual (2-NÍVEIS) como o comportamento de hoje; a Prova 43 segue como registro de EVENTO histórico (a classe das secs 8.x, não claim de comportamento atual — a fronteira da 11.51).
+
+Esta sec 11.86 é claim-free por desenho (decisão de forma de contrato, não de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + `node scripts/proofs-manifest.mjs --check` (clean 46 provas) + UTF-8 do doc + ASCII do fixture + ordering 11.85 → 11.86 → 12 monotono.
+
+## 11.87 ADOTADO — o PAR de conversão fechado: o cleanupOnFailSuffix FALHA no revert com a CURE do reflog no MESMO canal do revert-fail do main
+
+**O pedido**: o revert-fail do main() e o cleanupOnFailSuffix (sec 11.69 — o sufixo dos fail paths de MUTAÇÃO com --cleanup-on-fail) usam a MESMA revertLeftNote stage-aware, mas o cleanup só tinha prova sintética (a matriz da 11.75) — o E2E da 11.69 provou o caminho de SUCESSO do revert dentro do cleanup (rv.ok → `cleanup-on-fail: revertido`), nunca o caminho de FALHA (rv.ok false → `cleanup-on-fail FALHOU` + revertLeftNote). Com o knob HOOK_PROOF_FAKE_FAIL_APPLY (11.76/11.85), o par de conversão pode ser fechado hermeticamente.
+
+**O veredito**: ADOTADO — o E2E novo prova o canal de falha do cleanup: `--cleanup-on-fail` + `--mutate` com comando que falha (o fail path de mutação dispara o cleanupOnFailSuffix) + `HOOK_PROOF_FAKE_FAIL_APPLY=1` (o revertCycle DENTRO do cleanup falha no apply). O sufixo vira `cleanup-on-fail FALHOU: git apply delta.patch falhou: <mensagem do git real> - backup em <dir>` + `revertLeftNote(rv.stage=apply)` — a CURE 2-NÍVEIS do reflog — no MESMO canal e com o MESMO shape de mensagem do revert-fail do main (a sec 11.76): checkout base → branch -D → apply falhou no invocations.log.
+
+**O par fechado**: os DOIS pontos de conversão do `{ ok: false }` do revertCycle (o revert-fail do main, sec 11.65/11.75, e o cleanupOnFailSuffix, sec 11.69) agora têm E2E hermético com a MESMA CURE stage-aware e a MESMA assinatura de mensagem — a 11.84 pina a origem do stage por forma (todo uso recebe `rv.stage`/`reverted.stage`), a 11.87 pina o comportamento do 2º ponto de conversão no mesmo canal.
+
+Esta sec 11.87 é claim-free por desenho (decisão de forma de contrato, não de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + `node scripts/proofs-manifest.mjs --check` (clean 46 provas) + UTF-8 do doc + ASCII do fixture + ordering 11.86 → 11.87 → 12 monotono.
+
+## 11.88 ADOTADO — o REVERT AUTO-CURATIVO: --apply-safety-diff-on-fail tenta o safety diff automaticamente no apply-fail (a Prova 43 vira comportamento do ciclo)
+
+**O pedido**: o revertCycle usa SÓ o delta.patch do backup no apply — o safety diff da 11.77 é recuperação MANUAL no fail (a CURE cita o caminho e o usuário aplica à mão; a classe da Prova 43, sec 8.38, era 100% manual). O pedido: um --apply-safety-diff-on-fail que, no apply-fail do revertCycle, tente o safety diff AUTOMATICAMENTE antes de falhar — o revert vira auto-curável, com o teste hermético do knob provando o fallback.
+
+**O veredito**: ADOTADO — a flag transforma a recuperação da Prova 43 em comportamento do ciclo:
+1. **A flag (parseArgs)**: `--apply-safety-diff-on-fail` (default false — a recuperação manual continua o padrão). O par flag + `--safety-diff <path>`: a flag sozinha é inerte (o revertCycle não tem o path para tentar).
+2. **O revertCycle auto-curativo**: no apply-fail do delta.patch, se `applySafetyDiffOnFail && safetyDiff`, o revert tenta `git apply <safetyDiff>` ANTES do fail. Se o safety diff SUCCEDE, o ciclo completa (untracked + doc do byte-copy + status identico — o revert byte-identical normal) e o ciclo sai em SUCESSO (o sinal muda de 'perda de delta' para 'ciclo normal'). Se o safety diff TAMBÉM falha, a mensagem cita as DUAS falhas + backup (a auto-cura NÃO mascara a perda real de patch). Os DOIS call sites do revertCycle (o revert-fail do main e o cleanupOnFailSuffix) recebem a flag do opts (o padrão do fato consumido da sec 11.84).
+3. **O knob hermético da auto-cura**: `HOOK_PROOF_FAKE_FAIL_APPLY_DELTA_ONLY` — só o apply do delta.patch do backup falha (o fixture distingue pelo SUFIXO do path: o delta.patch vive no backupDir, o safety diff é um path externo arbitrário) — o seam que permite provar o fallback SEM o FAIL_APPLY genérico.
+
+**Os 2 E2Es herméticos (na forma da 11.77)**:
+- AUTO-CURA: `--apply-safety-diff-on-fail` + `FAIL_APPLY_DELTA_ONLY=1` → o patch do backup FALHA e o safety diff é aplicado AUTOMATICAMENTE → ciclo completo em SUCESSO; invocations.log mostra checkout base → branch -D → apply do delta.patch (falhou) → apply do safety diff (sucedeu) — o 2º apply é o do path EXTERNO resolvido; doc restaurado do byte-copy (o fallback NÃO interrompe a restauração).
+- CONTRAPARTE: `FAIL_APPLY=1` (o safety diff TAMBÉM falha) → fail-loud com `git apply delta.patch falhou` + `E o safety diff <path> tambem falhou` + backup apontado + a CURE stage-aware da 11.75 (reflog/cherry-pick) — quando a auto-cura não resolve, o usuário ainda tem a receita.
+
+**A fronteira honesta**: a auto-cura é um FALLBACK, não um substituto do backup — o delta.patch do backup continua a fonte primária; o safety diff só entra quando o patch do backup falha E a flag foi pedida explicitamente. A classe da Prova 43 (patch corrompido de propósito) continua coberta: com a flag, o ciclo se auto-cura (sucesso); sem a flag, o comportamento antigo (fail-loud + CURE manual) é preservado.
+
+Esta sec 11.88 é claim-free por desenho (decisão de forma de contrato, não de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + `node scripts/proofs-manifest.mjs --check` (clean 46 provas) + UTF-8 do doc + ASCII do fixture e do .mjs + ordering 11.87 → 11.88 → 12 monotono.
+
+## 11.89 ADOTADO — o SAFETY-BACKUP: --safety-backup <dir> espelha o backup INTEIRO num path externo (o safety do ciclo completo, não só do diff)
+
+**O pedido**: o --safety-diff (11.77) salva SÓ o diff — mas os untracked (que a Prova 43, sec 8.38, também citou como parte da recuperação: os arquivos não-rastreados do byte-copy) e o status-before continuam só no backupDir do tmpdir. Se o tmpdir não sobreviver (ou o backupDir for perdido), a recuperação do ciclo completo perde untracked + status. O pedido: um --safety-backup <dir> que espelhe o backup inteiro (delta.patch + untracked + status-before) num path externo — o safety do ciclo completo, não só do diff, fechando a classe de perda total do delta.
+
+**O veredito**: ADOTADO — a flag espelha o backup INTEIRO num path externo ao tmpdir:
+1. **A flag (parseArgs)**: `--safety-backup <dir>` (default null — o espelho é opt-in; o backup vive só no tmpdir). Independe do --safety-diff (as 3 flags de safety coexistem: diff + auto-cura da 11.88 + backup inteiro). O dir é resolvido UMA vez (o padrão do fato consumido da sec 11.84 — o path absoluto citado na mensagem).
+2. **O espelho**: APÓS o backup completo da etapa 2 (delta.patch + untracked/ + status-before.txt + doc-before.md) e ANTES de qualquer mutação — a cópia do estado PRE-mutação: mkdirSync recursive no dir + walk recursivo copiando o backupDir inteiro. Fail-loud no dir não-gravável (o MESMO padrão do safety-diff, sec 11.77: o ENOENT/EEXIST cru fora do contrato de exit code vira fail(3) com a mensagem `safety backup nao gravavel em <dir>`).
+3. **A relação com as irmãs**: o --safety-diff (11.77) cobre SÓ o diff (o patch que o revert precisa); o --apply-safety-diff-on-fail (11.88) automatiza a aplicação desse diff; o --safety-backup (11.89) cobre o ciclo COMPLETO (diff + untracked + status + doc) — a recuperação manual da classe de perda total não depende do tmpdir sobreviver.
+
+**Os 2 E2Es herméticos (na forma da 11.77/11.88)**:
+- ESPELHO: `--safety-backup <dir>` → os 3 artefatos do backup (delta.patch com o conteúdo do diff + status-before.txt com o snapshot + doc-before.md com o byte-copy do doc) espelhados byte-identical no dir EXTERNO; o ciclo completa em SUCESSO (DONE) e o doc é restaurado do byte-copy (o espelho NÃO interfere no revert).
+- CONTRAPARTE fail-loud: `--safety-backup` num dir cujo pai não existe → fail-loud com `safety backup nao gravavel` (o try/catch converte o ENOENT em contrato, não deixa cru).
+
+**A fronteira honesta**: o espelho é uma CÓPIA do backup no momento do backup (PRE-mutação) — a recuperação manual a partir dele restaura o estado exato do início do ciclo; não é um mecanismo de auto-cura (essa é a 11.88, do diff) nem uma fonte de verdade alternativa durante o ciclo — é o safety do ciclo completo para a classe de perda total do delta. **O boundary da prova**: o untracked/ é espelhado POR DESENHO (o walk do espelho é recursivo sobre o backupDir inteiro), mas os E2Es herméticos só pinam os 3 artefatos determinísticos (delta.patch + status-before + doc-before) — o fixture hermético não produz untracked sem poluir a working tree (o loop de cópia do backup pula fontes inexistentes); o espelhamento de untracked fica coberto pelo walk genérico, não por assert E2E.
+
+Esta sec 11.89 é claim-free por desenho (decisão de forma de contrato, não de código de saída — nenhum exit code citado) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + `node scripts/proofs-manifest.mjs --check` (clean 46 provas) + UTF-8 do doc + ASCII do .mjs e do fixture + ordering 11.88 → 11.89 → 12 monotono.
+
+
+## 11.90 ADOTADO — o guard de forma do GUARD_SUITE_MAP: a suite mapeada DEVE existir E o mapa NAO pode ter entrada orfa (o mapa das excecoes fechado nos dois sentidos)
+
+**O pedido**: o GUARD_SUITE_MAP (sec 11.78 — as 2 excecoes da convencao `<stem>.test.ts` medidas em 2026-08-12: `run-mapped-fuzz.mjs` → `fuzz-mapped.test.ts` e `scan-lucide-icons.mjs` → `scan-batch-coverage.test.ts`) nasceu porque 2 guards wired quebram a convencao, mas NENHUM guard pina o mapa em si: a suite mapeada podia apontar pro vazio (uma suite renomeada/removida do fs deixava o mapa com pin morto), um guard destituido dos hooks podia deixar a entrada orfa (o mapa so existe para guards wired), e uma suite mapeada podia nao pertencer a nenhum guard wired (crescimento do mapa em vao). O pedido: fechar o crescimento nos DOIS sentidos — a suite mapeada DEVE existir E o mapa NAO pode ter entrada orfa.
+
+**O veredito**: ADOTADO — o guard `mapContractViolations` (no wired-guards-contract.test.ts, a suite da sec 11.78) deriva as violacoes do mapa real em 2 direcoes, por entrada:
+1. **direcao A (entrada → suite)**: (1) o guard do mapa precisa estar wired HOJE (um guard destituido dos hooks deixa a entrada orfa — o mapa so existe para guards wired) E (2) a suite mapeada precisa EXISTIR em scripts/__tests__ (a suite existe no fs — o pin nunca aponta pro vazio; o MUTATION do suite dir vazio prova que TODA entrada flagra quando a suite some).
+2. **direcao B (suite → entrada)**: a suite mapeada precisa ser a suite RESOLVIDA de pelo menos UM guard wired (o conjunto-fato `resolvedSuites` deriva `suiteOf(g)` do wired atual — a suite que nenhum guard wired resolve e orfa; o MUTATION com mapa mutado apontando para `fragile-range-guard.test.ts` — suite REAL que existe no fs mas nenhum guard wired resolve — prova a direcao B isolada, sem `suite mapeada inexistente` nem `guard nao wired`).
+
+**A estrutura**: `mapContractViolations({ map?, wired, suiteDir? })` — puro, com injecao de mapa (o MUTATION passa copia mutada), wired (o MUTATION filtra um guard) e suiteDir (o MUTATION do dir vazio) — o padrao de injecao da sec 11.78. O ABS PIN do mapa (as 2 entradas exatas) trava a lista: adicionar um 3o guard de suite fora da convencao exige editar o pin conscientemente (o mesmo padrao do PROOF_HELPERS da 11.72 e do WIRED ALLOWLIST da 11.60).
+
+**A fronteira honesta**: o guard pina o MAPA (as excecoes da convencao) — nao pina a convencao em si (o fallback `<stem>.test.ts` continua sendo a regra dos 16 guards, derivada em `suiteOf`) nem a cobertura das suites (a parte 2 da sec 11.78 — test:guard vs test:unit — segue separada). O guard fecha o crescimento do mapa nos dois sentidos: uma suite que some flagra a direcao A, uma suite que nenhum guard wired resolve flagra a direcao B, um guard destituido flagra as duas. **Um detalhe honesto da relacao A/B**: no mapa REAL, a direcao B nunca dispara sozinha sem a A (um guard wired resolve a PRÓPRIA suite mapeada — `suiteOf(guard)` = a entrada do mapa, entao a suite sempre pertence ao conjunto resolvido); a B so dispara independente sob um mapa MUTADO — exatamente o que o MUTATION da direcao B isolada prova — o que a torna um cinto-e-suspensorio pedido explicitamente (a classe 'suite orfa' fica provada como mecanismo, mesmo que no estado real seja consequencia da A).
+
+Esta sec 11.90 é claim-free por desenho (decisao de forma de contrato, nao de codigo de saida — nenhum exit code citado) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validacao**: `npx vitest run scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + `node scripts/proofs-manifest.mjs --check` (clean 47 provas) + UTF-8 do doc + ASCII do test + ordering 11.89 → 11.90 → 12 monotono.
+
+
+## 11.91 ADOTADO — a assimetria registry -> wired pinada: toda classe cujo module e guard de hook REAL esta na derivacao wired; os helpers NAO (a fronteira documentada travada nos dois lados)
+
+**O pedido**: a sec 11.78 pina `wired -> registry` (todo guard wired tem entrada no PROOF_CLASSES ou WIRED_ALLOWLIST — o checkWiredSurface da sec 11.60). O INVERSO (`registry -> wired`) e excluido por desenho — documentado no header do manifest: classes helper (ci-proof-run, hook-proof-run, doc-revalidate, run-all-fuzz) tem Prova mas NAO sao guard de hook (o check-js-budget e a excecao de COMPOSICAO: guard real dentro do pre-commit-tests.mjs, fora da superficie derivada sem recursao). Mas a fronteira vivia SO em prosa: nada travava que um guard REAL sumisse da derivacao (regex quebrado) nem que um helper virasse wired por engano.
+
+**O veredito**: ADOTADO — o guard `asymmetryViolations` (no proofs-manifest.test.ts, a suite da sec 11.60) pina a assimetria nos DOIS lados:
+1. **O positivo (registry -> wired para guards REAIS)**: toda classe cujo module e script (.mjs/.sh) E referenciado nas fontes wired (hooks + batch runner + net, linhas NAO-comentadas) DEVE estar em `deriveWiredGuards()` — o MUTATION prova com `./scripts/scan-guard-gates.mjs` (o form fora do WIRED_SPAWN_RE: referenciado nas fontes mas a derivacao nao pega → flagra `referenciado nas fontes wired mas NAO derivado`).
+2. **O negativo (helpers fora)**: toda classe SEM referencia real nas fontes NAO pode estar na derivacao — e a LISTA da exclusao e DERIVADA das fontes (o padrao TARGET_DIRS consumido: `excludedHelperClasses()` = script modules sem referencia), pinada por conteudo: as 5 classes (`check-js-budget.mjs` da composicao + as 4 helpers `ci-proof-run`, `hook-proof-run`, `doc-revalidate`, `run-all-fuzz`) — editar a fronteira exige editar o pin. O MUTATION negativo prova o comportamento: spawnar um helper num hook sintetico (`node scripts/ci-proof-run.mjs`) faz a derivacao o PEGAR e a classe sumir da exclusao — a fronteira so e rompida por edicao consciente do hook, nunca por shape.
+
+**A fronteira honesta**: o guard pina a RELACAO registry↔wired — nao pina o conteudo dos hooks em si (a derivacao segue sendo a fonte dos guards reais) nem a lista de helpers por shape (a exclusao e derivada das fontes, nao hardcoded — se um helper for spawnado de verdade, ele DEIXA de ser helper e vira wired, que e exatamente o comportamento correto). As classes estruturais (workflow yml, hook file, suite de teste) ficam fora por shape (.mjs/.sh — o filtro do script module). **Um detalhe honesto da relacao positivo/negativo**: a direcao NEGATIVA (derivado sem referencia nas fontes) nunca dispara em estados reais — o deriveWiredGuards SO adiciona modulos encontrados nas fontes varridas (spawns/imports/steps, com comentarios filtrados), entao todo basename derivado esta NECESSARIAMENTE no texto nao-comentado; ela e um cinto-e-suspensorio simetrico que so dispara sob condicoes sinteticas — o MUTATION positivo prova o lado REAL (a derivacao perdendo um guard referenciado por forma de spawn), o negativo prova o mecanismo do lado do helper.
+
+Esta sec 11.91 é claim-free por desenho (decisao de forma de contrato, nao de codigo de saida — nenhum exit code citado) — sem entrada no EXIT_CLAIMS, o count do manifest permanece 28.
+
+**Re-validacao**: `npx vitest run scripts/__tests__/proofs-manifest.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 28 claims) + `node scripts/proofs-manifest.mjs --check` (clean 47 provas) + UTF-8 do doc + ASCII do test + ordering 11.90 → 11.91 → 12 monotono.
 
 
 ## 12. Referências

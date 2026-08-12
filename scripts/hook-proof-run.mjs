@@ -22,7 +22,18 @@
  *   1. parse + validacao: --branch (ci-proof/*, o MESMO namespace Type E do
  *      ci-proof-run - isCiProofBranch importado, nao re-derivado).
  *   2. backup (o padrao Prova 38): git diff > <tmp>/delta.patch + untracked
- *      copiados + git status --porcelain snapshot + byte-copy do doc.
+ *      copiados + git status --porcelain snapshot + byte-copy do doc. O
+ *      --safety-diff <path> (sec 11.77) grava o MESMO diff num path EXTERNO
+ *      ao backup ANTES de qualquer mutacao - a copia que sobrevive a
+ *      corrupcao do delta.patch do backup (a classe da Prova 43, sec 8.38).
+ *      O --apply-safety-diff-on-fail (sec 11.88) torna o REVERT auto-curativo:
+ *      no apply-fail do revertCycle, se o safety diff foi salvo, o revert
+ *      tenta o safety diff AUTOMATICAMENTE antes do fail - a recuperacao da
+ *      Prova 43 (100% manual) vira comportamento do ciclo. O
+ *      --safety-backup <dir> (sec 11.89) espelha o BACKUP INTEIRO (delta.patch
+ *      + untracked/ + status-before.txt + doc-before.md) num path EXTERNO ao
+ *      tmpdir - o safety do ciclo completo, nao so do diff: a recuperacao da
+ *      classe de perda total nao depende do tmpdir sobreviver.
  *   3. scratch: git checkout -b <branch>; delta materializado (git add -A +
  *      commit com HUSKY=0 - SO quando a arvore tem delta: uma arvore limpa e
  *      um input legitimo - o helper prova o estado COMMITADO como esta, e um
@@ -113,6 +124,9 @@ export function parseArgs(argv) {
     expectLog: null,
     baseSha: null,
     hook: null,
+    safetyDiff: null,
+    applySafetyDiffOnFail: false,
+    safetyBackup: null,
     keep: false,
     cleanupOnFail: false,
     dryRun: false,
@@ -134,6 +148,9 @@ export function parseArgs(argv) {
     else if (a === "--expect-log") { out.expectLog = argv[i + 1] ?? null; i++ }
     else if (a === "--base-sha") { out.baseSha = argv[i + 1] ?? null; i++ }
     else if (a === "--hook") { out.hook = argv[i + 1] ?? null; i++ }
+    else if (a === "--safety-diff") { out.safetyDiff = argv[i + 1] ?? null; i++ }
+    else if (a === "--apply-safety-diff-on-fail") out.applySafetyDiffOnFail = true
+    else if (a === "--safety-backup") { out.safetyBackup = argv[i + 1] ?? null; i++ }
     else if (a === "--keep-branch") out.keep = true
     else if (a === "--cleanup-on-fail") out.cleanupOnFail = true
     else if (a === "--dry-run") out.dryRun = true
@@ -193,7 +210,7 @@ export function isManualDocRenameCmd(cmd) {
   return /\bsed\b/.test(cmd) && /## /.test(cmd) && /gates-proofs\.md/.test(cmd)
 }
 
-const USAGE = "usage: node scripts/hook-proof-run.mjs --branch ci-proof/<name> [--mutate-doc-claim <sec> | --mutate-doc-renumber <sec> --to <nova> | --mutate <cmd>] [--expect-cure] [--expect-exit <n>] [--expect-log <regex>] [--base-sha <sha>] [--hook <path>] [--keep-branch] [--cleanup-on-fail] [--dry-run]"
+const USAGE = "usage: node scripts/hook-proof-run.mjs --branch ci-proof/<name> [--mutate-doc-claim <sec> | --mutate-doc-renumber <sec> --to <nova> | --mutate <cmd>] [--expect-cure] [--expect-exit <n>] [--expect-log <regex>] [--base-sha <sha>] [--hook <path>] [--safety-diff <path>] [--apply-safety-diff-on-fail] [--safety-backup <dir>] [--keep-branch] [--cleanup-on-fail] [--dry-run]"
 
 /**
  * injectDocClaim - a mutacao pura do --mutate-doc-claim (exported for tests):
@@ -280,9 +297,20 @@ export function planSteps(opts, originalBranch) {
   const steps = [
     `git: rev-parse --abbrev-ref HEAD (branch de retorno: ${originalBranch})`,
     "backup: git diff > <tmp>/delta.patch + untracked copiados + git status --porcelain snapshot + byte-copy do doc (Prova 38)",
+  ]
+  if (opts.safetyDiff) {
+    steps.push(`safety-diff: git diff > ${opts.safetyDiff}  (o MESMO diff num path EXTERNO ao backup - sobrevive a corrupcao do delta.patch, sec 11.77)`)
+  }
+  if (opts.applySafetyDiffOnFail) {
+    steps.push("apply-safety-diff-on-fail: no apply-fail do revert, o safety diff e tentado AUTOMATICAMENTE antes do fail (o revert auto-curativo, sec 11.88)")
+  }
+  if (opts.safetyBackup) {
+    steps.push(`safety-backup: espelha o BACKUP INTEIRO (delta.patch + untracked + status-before + doc-before) em ${opts.safetyBackup}  (o safety do ciclo completo - a recuperacao nao depende do tmpdir, sec 11.89)`)
+  }
+  steps.push(
     `git: checkout -b ${b}  (cria a branch scratch de prova)`,
     `git: add -A && HUSKY=0 commit -m "hook-proof: ${b} (delta)"  (delta materializado - so quando a arvore tem delta)`,
-  ]
+  )
   if (opts.mutateDocClaim) {
     steps.push(`mutacao: --mutate-doc-claim ${opts.mutateDocClaim} (claim fake injetada ANTES do '## 12.' no ${DOC_REL})`)
   } else if (opts.mutateDocRenumber) {
@@ -348,6 +376,41 @@ function fail(code, msg) {
 const scratchLeftNote = (originalBranch, branch, backupDir) =>
   ` - a branch scratch pode ter ficado: git checkout ${originalBranch} && git branch -D ${branch} (backup do delta em ${backupDir})`
 
+// A CURE stage-aware do revert-fail (sec 11.75, o ACHADO da Prova 43, sec
+// 8.38): o revertCycle roda o branch -D ANTES do apply - quando o apply (ou
+// o status) falha, a scratch JA foi deletada com o commit do delta dentro
+// (orfao no reflog) e a receita generica do scratchLeftNote ("git checkout
+// <orig> && git branch -D <branch>") descreve um estado que NAO existe mais:
+// o checkout ja voltou e o branch -D falharia ("no such branch"). A
+// recuperacao do apply-fail e em 2 NIVEIS (o refinamento 2026-08-12): (1)
+// 'git apply <backup>/delta.patch' - o patch do backup e a fonte PRIMARIA
+// quando integro (a receita do dia a dia); (2) SO quando o patch for
+// INVALIDO (corrompido - a classe da Prova 43): o reflog do commit orfao
+// (git reflog + git cherry-pick <sha>) ou o safety diff externo - o padrao
+// da CURE da sec 11.54 (o comando exato no erro, a fonte unica consumida
+// pelos 2 pontos de conversao). O status-fail e DIFERENTE (o apply do ciclo
+// PASSou - o delta JA esta na arvore): a CURE reconcilia o git status com o
+// snapshot do backup, com o reflog como fallback. Para os fail paths onde a
+// scratch AINDA existe (checkout-fail e branch-D-fail - o branch -D nao
+// rodou), a receita generica continua valida: a funcao despacha pelo stage
+// do revert.
+export function revertLeftNote(stage, originalBranch, branch, backupDir, safetyDiff) {
+  // O --safety-diff (sec 11.77): quando o path externo foi salvo, a CURE
+  // cita o comando exato (git apply <path>) - a fonte que sobrevive a
+  // corrupcao do delta.patch do backup (a classe da Prova 43). Sem o
+  // path, a CURE permanece generica (o reflog/cherry-pick). Hoisted acima
+  // dos branches (regra dos 2 usos - o apply E o status citam o mesmo
+  // sufixo do safety diff).
+  const sd = safetyDiff ? `: git apply ${safetyDiff}` : " externo"
+  if (stage === "apply") {
+    return ` - o branch -D JA rodou (a scratch ${branch} foi deletada com o commit do delta dentro, orfao no reflog): recupere em 2 NIVEIS - (1) 'git apply ${backupDir}/delta.patch' (o patch do backup e a fonte PRIMARIA quando integro - a receita do dia a dia); (2) SO quando o patch for INVALIDO (corrompido - a classe da Prova 43): 'git reflog' (procure 'hook-proof: ${branch} (delta)') + 'git cherry-pick <sha>' ou aplique o safety diff${sd} (backup em ${backupDir})`
+  }
+  if (stage === "status") {
+    return ` - o apply do delta PASSou (o delta do ciclo JA esta na arvore - o revert so falhou na comparacao do git status vs o snapshot): compare 'git status --porcelain' com ${backupDir}/status-before.txt e reconcilie a divergencia; se o delta faltar, recupere do reflog ('git reflog' + 'git cherry-pick <sha>') ou do safety diff${sd} (backup em ${backupDir})`
+  }
+  return scratchLeftNote(originalBranch, branch, backupDir)
+}
+
 /**
  * cleanupOnFailSuffix - o sufixo dos fail paths de MUTACAO POS-scratch com
  * --cleanup-on-fail (sec 11.69): roda o revertCycle ANTES do fail(3) - a
@@ -359,10 +422,10 @@ const scratchLeftNote = (originalBranch, branch, backupDir) =>
  * nota de saida (o usuario pode ter ficado na scratch - a receita nunca pode
  * faltar, o espirito da sec 11.65).
  */
-function cleanupOnFailSuffix(originalBranch, branch, backupDir, docPath) {
-  const rv = revertCycle(branch, originalBranch, backupDir, docPath)
+function cleanupOnFailSuffix(originalBranch, branch, backupDir, docPath, safetyDiff, applySafetyDiffOnFail) {
+  const rv = revertCycle(branch, originalBranch, backupDir, docPath, safetyDiff, applySafetyDiffOnFail)
   if (rv.ok) return ` | cleanup-on-fail: ${rv.message}`
-  return ` | cleanup-on-fail FALHOU: ${rv.message}${scratchLeftNote(originalBranch, branch, backupDir)}`
+  return ` | cleanup-on-fail FALHOU: ${rv.message}${revertLeftNote(rv.stage, originalBranch, branch, backupDir, safetyDiff)}`
 }
 
 /**
@@ -373,15 +436,30 @@ function cleanupOnFailSuffix(originalBranch, branch, backupDir, docPath) {
  * snapshot. Retorna { ok, message } - o revert PARTICIPA do exit code do
  * sucesso (uma scratch deixada nao passa como exit 0).
  */
-export function revertCycle(branch, originalBranch, backupDir, docPath) {
+export function revertCycle(branch, originalBranch, backupDir, docPath, safetyDiff = null, applySafetyDiffOnFail = false) {
   const co = git(["checkout", originalBranch])
-  if (co.status !== 0) return { ok: false, message: `git checkout ${originalBranch} falhou: ${co.stderr.trim()} - backup em ${backupDir}` }
+  if (co.status !== 0) return { ok: false, stage: "checkout", message: `git checkout ${originalBranch} falhou: ${co.stderr.trim()} - backup em ${backupDir}` }
   const bd = git(["branch", "-D", branch])
-  if (bd.status !== 0) return { ok: false, message: `git branch -D ${branch} falhou: ${bd.stderr.trim()} - backup em ${backupDir}` }
+  if (bd.status !== 0) return { ok: false, stage: "branchD", message: `git branch -D ${branch} falhou: ${bd.stderr.trim()} - backup em ${backupDir}` }
   const patchPath = path.join(backupDir, "delta.patch")
   if (fs.readFileSync(patchPath, "utf8").trim() !== "") {
     const ap = git(["apply", patchPath])
-    if (ap.status !== 0) return { ok: false, message: `git apply delta.patch falhou: ${ap.stderr.trim()} - backup em ${backupDir}` }
+    if (ap.status !== 0) {
+      // --apply-safety-diff-on-fail (sec 11.88): o revert vira AUTO-CURATIVO -
+      // se o safety diff foi salvo, tenta-o ANTES de falhar (a classe da
+      // Prova 43, sec 8.38, era 100% manual: a CURE citava o caminho e o
+      // usuario aplicava a mao). O exit code do CICLO passa a refletir a
+      // auto-cura: com o safety diff valido, o revert completa e o ciclo
+      // sai exit 0 (o sinal muda de 'perda de delta' para 'ciclo normal').
+      if (applySafetyDiffOnFail && safetyDiff) {
+        const sd = git(["apply", safetyDiff])
+        if (sd.status !== 0) {
+          return { ok: false, stage: "apply", message: `git apply delta.patch falhou: ${ap.stderr.trim()} E o safety diff ${safetyDiff} tambem falhou: ${sd.stderr.trim()} - backup em ${backupDir}` }
+        }
+      } else {
+        return { ok: false, stage: "apply", message: `git apply delta.patch falhou: ${ap.stderr.trim()} - backup em ${backupDir}` }
+      }
+    }
   }
   // untracked restaurados (byte-copy do backup).
   const untDir = path.join(backupDir, "untracked")
@@ -403,7 +481,7 @@ export function revertCycle(branch, originalBranch, backupDir, docPath) {
   const st = git(["status", "--porcelain"])
   const before = fs.readFileSync(path.join(backupDir, "status-before.txt"), "utf8")
   if ((st.stdout ?? "") !== before) {
-    return { ok: false, message: `git status divergiu do snapshot pre-ciclo - backup em ${backupDir}` }
+    return { ok: false, stage: "status", message: `git status divergiu do snapshot pre-ciclo - backup em ${backupDir}` }
   }
   return { ok: true, message: `revertido (${originalBranch}, scratch deletada, status identico)` }
 }
@@ -431,11 +509,31 @@ export function main() {
   const docPath = process.env.HOOK_PROOF_DOC || path.join(process.cwd(), DOC_REL)
   const hookPath = opts.hook ? path.resolve(process.cwd(), opts.hook) : path.resolve(process.cwd(), DEFAULT_HOOK)
   const backupDir = fs.mkdtempSync(path.join(os.tmpdir(), "hook-proof-"))
+  // --safety-diff (sec 11.77): o path resolvido UMA vez - a gravacao E a
+  // CURE citam o MESMO caminho absoluto (o recipe vale mesmo se o cwd mudar
+  // entre a gravacao e a recuperacao - o fix do reviewer, sec 11.77).
+  const safetyDiff = opts.safetyDiff ? path.resolve(opts.safetyDiff) : null
+  // --safety-backup (sec 11.89): o dir resolvido UMA vez (o MESMO padrao do
+  // safety-diff - o espelho e citado na mensagem com o caminho absoluto).
+  const safetyBackup = opts.safetyBackup ? path.resolve(opts.safetyBackup) : null
 
   // 2. BACKUP (o padrao Prova 38 - o delta NAO-COMMITADO da working tree).
   const patch = git(["diff"])
   if (patch.status !== 0) return fail(3, `git diff falhou: ${patch.stderr.trim()}`)
   fs.writeFileSync(path.join(backupDir, "delta.patch"), patch.stdout, "utf8")
+  // --safety-diff (sec 11.77): o MESMO diff gravado num path EXTERNO ao
+  // backup, ANTES de qualquer mutacao - a copia que sobrevive a corrupcao
+  // do delta.patch do backup (o ACHADO da Prova 43, sec 8.38: a mutacao
+  // corrompeu o patch do backup e a recuperacao so via safety diff externo).
+  // Fail-loud no path nao-gravavel (o dir pai inexistente lancaria ENOENT
+  // fora do contrato de exit code - o fix do reviewer, sec 11.77).
+  if (safetyDiff) {
+    try {
+      fs.writeFileSync(safetyDiff, patch.stdout, "utf8")
+    } catch (e) {
+      return fail(3, `safety diff nao gravavel em ${safetyDiff}: ${e.message}`)
+    }
+  }
   const untracked = git(["ls-files", "--others", "--exclude-standard"])
   if (untracked.status !== 0) return fail(3, `git ls-files falhou: ${untracked.stderr.trim()}`)
   const untDir = path.join(backupDir, "untracked")
@@ -449,6 +547,43 @@ export function main() {
   const st = git(["status", "--porcelain"])
   fs.writeFileSync(path.join(backupDir, "status-before.txt"), st.stdout ?? "", "utf8")
   if (fs.existsSync(docPath)) fs.copyFileSync(docPath, path.join(backupDir, "doc-before.md"))
+  // --safety-backup (sec 11.89): o espelho EXTERNO do backup INTEIRO
+  // (delta.patch + untracked/ + status-before.txt + doc-before.md) num path
+  // fora do tmpdir. O safety-diff (11.77) cobre SO o diff; este cobre o
+  // ciclo completo: a recuperacao manual da classe de perda total nao
+  // depende do tmpdir sobreviver. Fail-loud no dir nao-gravavel (o MESMO
+  // padrao do safety-diff, sec 11.77 - o ENOENT/EEXIST cru fora do contrato
+  // de exit code). O espelho roda APOS o backup completo (a etapa 2 inteira)
+  // e ANTES de qualquer mutacao (a copia do estado PRE-mutacao).
+  if (safetyBackup) {
+    try {
+      // O contrato do espelho (sec 11.89): o PAI do dir deve EXISTIR - o
+      // MESMO do safety-diff (sec 11.77: o writeFileSync nao cria parents a
+      // deriva; o ENOENT/EEXIST cru vira fail(3) no contrato). mkdirSync
+      // NAO-recursivo so cria o dir FOLHA: ENOENT se o pai falta (o fail-loud
+      // do teste 'dir pai inexistente'); se um ARQUIVO ocupa o path, o
+      // existsSync pula o mkdir e o walk (copyFileSync em path.join(file,
+      // name)) lanca ENOTDIR - os dois viram fail(3) no try/catch. Um mkdir
+      // recursive criaria os pais em silencio e o fail-loud nunca dispararia
+      // (o vitest pegou ao vivo).
+      if (!fs.existsSync(safetyBackup)) fs.mkdirSync(safetyBackup)
+      const walk = (srcDir, dstDir) => {
+        for (const e of fs.readdirSync(srcDir, { withFileTypes: true })) {
+          const s = path.join(srcDir, e.name)
+          const d = path.join(dstDir, e.name)
+          if (e.isDirectory()) {
+            fs.mkdirSync(d, { recursive: true })
+            walk(s, d)
+          } else {
+            fs.copyFileSync(s, d)
+          }
+        }
+      }
+      walk(backupDir, safetyBackup)
+    } catch (e) {
+      return fail(3, `safety backup nao gravavel em ${safetyBackup}: ${e.message}`)
+    }
+  }
 
   // 3. SCRATCH + delta materializado (HUSKY=0 - o commit do estado verde
   // local, igual ao ciclo manual das Provas 37/38). SO quando a arvore tem
@@ -461,27 +596,27 @@ export function main() {
   if ((stDelta.stdout ?? "").trim() !== "") {
     git(["add", "-A"])
     const cm1 = git(["commit", "-m", `hook-proof: ${opts.branch} (delta)`])
-    if (cm1.status !== 0) return fail(3, `git commit do delta falhou: ${cm1.stderr.trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+    if (cm1.status !== 0) return fail(3, `git commit do delta falhou: ${cm1.stderr.trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
   }
 
   // 4. MUTACAO (--mutate-doc-claim | --mutate) + commit HUSKY=0 (SO quando a
   // mutacao alterou a arvore - uma mutacao no-op nao pode falhar o ciclo).
   if (opts.mutateDocClaim) {
-    if (!fs.existsSync(docPath)) return fail(3, `doc nao encontrado: ${docPath} (--mutate-doc-claim precisa do gates-proofs.md)${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+    if (!fs.existsSync(docPath)) return fail(3, `doc nao encontrado: ${docPath} (--mutate-doc-claim precisa do gates-proofs.md)${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     const doc = fs.readFileSync(docPath, "utf8")
     fs.writeFileSync(docPath, injectDocClaim(doc, opts.mutateDocClaim), "utf8")
   } else if (opts.mutateDocRenumber) {
-    if (!fs.existsSync(docPath)) return fail(3, `doc nao encontrado: ${docPath} (--mutate-doc-renumber precisa do gates-proofs.md)${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+    if (!fs.existsSync(docPath)) return fail(3, `doc nao encontrado: ${docPath} (--mutate-doc-renumber precisa do gates-proofs.md)${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     const doc = fs.readFileSync(docPath, "utf8")
     try {
       fs.writeFileSync(docPath, renumberDocSection(doc, opts.mutateDocRenumber, opts.to), "utf8")
     } catch (e) {
-      return fail(3, `${e.message}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+      return fail(3, `${e.message}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     }
   } else if (opts.mutate) {
     const m = spawnSync(opts.mutate, { shell: true, encoding: "utf8", cwd: process.cwd() })
     if (m.status !== 0) {
-      return fail(3, `--mutate falhou (exit ${m.status}): ${(m.stderr ?? m.stdout ?? "").trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+      return fail(3, `--mutate falhou (exit ${m.status}): ${(m.stderr ?? m.stdout ?? "").trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     }
   }
   if (opts.mutateDocClaim || opts.mutateDocRenumber || opts.mutate) {
@@ -489,7 +624,7 @@ export function main() {
     if ((stMut.stdout ?? "").trim() !== "") {
       git(["add", "-A"])
       const cm2 = git(["commit", "-m", `hook-proof: ${opts.branch} (mutacao)`])
-      if (cm2.status !== 0) return fail(3, `git commit da mutacao falhou: ${cm2.stderr.trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+      if (cm2.status !== 0) return fail(3, `git commit da mutacao falhou: ${cm2.stderr.trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     } else {
       console.log("hook-proof-run: a mutacao nao alterou a arvore - sem commit da mutacao")
     }
@@ -519,14 +654,16 @@ export function main() {
 
   // 8. REVERT (a scratch NAO fica - salvo --keep-branch). O resultado do
   // revert PARTICIPA do exit code do sucesso.
-  const reverted = opts.keep ? { ok: true } : revertCycle(opts.branch, originalBranch, backupDir, docPath)
-  // O revert-fail e um fail path POS-scratch (sec 11.65): o revertCycle pode
-  // ter falhado ANTES de completar a limpeza (checkout/branch -D/apply) - o
-  // usuario pode ter ficado na scratch OU com a arvore parcial. A nota de
-  // limpeza e obrigatoria aqui tambem (o reverted.message cita o backup mas
-  // nao a receita de saida - o mesmo espirito dos demais fail paths pos-
-  // scratch: o silencio seria a classe do fail silencioso).
-  if (!reverted.ok) return fail(3, `${reverted.message}${scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+  const reverted = opts.keep ? { ok: true } : revertCycle(opts.branch, originalBranch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail)
+  // O revert-fail e um fail path POS-scratch (sec 11.65 + 11.75): o
+  // revertCycle pode ter falhado ANTES de completar a limpeza (checkout /
+  // branch -D / apply / status) - o usuario pode ter ficado na scratch OU
+// com a arvore parcial. A nota de saida e stage-aware (revertLeftNote): a
+// scratch pode TER ficado (checkout/branch-D fail - a receita generica) ou
+// ja pode ter sido DELETADA com o delta orfao no reflog (apply fail - a
+// CURE em 2 niveis, sec 11.75; status fail - a CURE do snapshot - o ACHADO
+// da Prova 43). O silencio seria a classe do fail silencioso.
+  if (!reverted.ok) return fail(3, `${reverted.message}${revertLeftNote(reverted.stage, originalBranch, opts.branch, backupDir, safetyDiff)}`)
 
   // 9. SUMMARY.
   if (!check.ok) return fail(1, check.message)

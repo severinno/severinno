@@ -1098,4 +1098,118 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
     expect(r.stdout).toContain("PLAN (dry-run)")
     expect(r.stdout).toContain("ci-proof/real")
   }, 60000)
+
+  describe("stashLeftNote - o guard de forma do fail silencioso (sec 11.70)", () => {
+    // Deriva os fail sites do SOURCE do helper (o padrao dos TARGET_DIRS /
+    // fatos consumidos, o mesmo da sec 11.65): toda `return fail(` com a
+    // linha. A FRONTEIRA NAO e o checkout -b (como na 11.65): no
+    // ci-proof-run o STASH precede o checkout (etapa 3 antes da etapa 4) -
+    // a nota protege o DELTA no stash, nao a scratch. A ancora e o inicio
+    // da ETAPA 4 (o comentario `// 4. Cria/entra na branch scratch.`): a
+    // fronteira depois do guard da arvore suja completar. NAO pode ser o
+    // `stashedDelta = true` (que fica DENTRO do if, ANTES do else-fail da
+    // arvore suja em ~622) - aquele fail e semanticamente PRE (o stash
+    // NUNCA foi tomado no caminho do else; a nota seria ruido), mas cairia
+    // depois da ancora no source e o guard o exigiria a toa (o vitest
+    // pegou esse off-by-branch na 1a rodada). ANTES da ancora o delta
+    // NUNCA esta no stash (a nota seria ruido - o stash falhou ou nem foi
+    // tentado); DEPOIS dela, todo fail path que deixa o stash por
+    // restaurar DEVE terminar com a nota. A excecao honesta (sec 11.41, o
+    // "ANTES do primeiro revert"): os fail paths que chamam revert()
+    // primeiro (o revert faz o `git stash pop <ref>`, sec 11.44) NAO
+    // precisam da nota - o delta ja foi restaurado pelo proprio revert.
+    const STASH_ANCHOR = "// 4. Cria/entra na branch scratch."
+    const REVERT_NEEDLE = "if (!opts.keep) revert(opts.branch, originalBranch, stashedDelta)"
+
+    function failSites(src: string) {
+      const lines = src.split("\n")
+      return lines
+        .map((l, i) => ({ line: i + 1, text: l }))
+        .filter((s) => /return fail\(/.test(s.text))
+    }
+
+    // O span do site: a linha do `return fail(` + as 5 seguintes (os fail
+    // paths MULTI-LINHA - ex.: self-delete e local-block - poem a mensagem
+    // nas linhas seguintes; a nota termina a mensagem, dentro do span).
+    function span(site: { line: number }, lines: string[]): string {
+      return lines.slice(site.line - 1, site.line + 5).join("\n")
+    }
+
+    function frontier(src: string) {
+      const lines = src.split("\n")
+      const anchorIdx = lines.findIndex((l) => l.includes(STASH_ANCHOR))
+      if (anchorIdx < 0) throw new Error(`fronteira do ciclo de scratch (${STASH_ANCHOR}) nao encontrada no source - o guard de forma ficou cego`)
+      const anchorLine = anchorIdx + 1
+      const all = failSites(src)
+      return { pre: all.filter((s) => s.line <= anchorLine), pos: all.filter((s) => s.line > anchorLine), lines }
+    }
+
+    // Infra = exit code 3 (o span normaliza o multi-linha `return fail(\n 3,`
+    // - o filtro da 11.65 em linha unica nao pegaria o self-delete/local-block).
+    const posInfra = (pos: { line: number; text: string }[], lines: string[]) => pos.filter((s) => /fail\(\s*3/.test(span(s, lines)))
+
+    // Revert-first: o revert do ciclo (o pop do stash) nas 8 linhas acima do
+    // site - a maior distancia e a do gh-view-fail (o revert a 6 linhas de
+    // distancia, sec 11.41). Um fail com o revert antes NAO pode citar a nota.
+    const isRevertFirst = (site: { line: number }, lines: string[]) =>
+      lines.slice(Math.max(0, site.line - 9), site.line - 1).join("\n").includes(REVERT_NEEDLE)
+
+    it("todo fail path de infra POS-stash SEM revert antes (exit code 3) termina com a nota CONDICIONAL (o usuario nunca fica com o delta no stash sem a receita de restauro)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const { pos, lines } = frontier(src)
+      const infra = posInfra(pos, lines)
+      // 15 fail(3) pos-stash: 8 pre-revert (com a nota) + 7 revert-first (sem)
+      expect(infra.length).toBeGreaterThanOrEqual(15)
+      const preRevert = infra.filter((s) => !isRevertFirst(s, lines))
+      expect(preRevert.length).toBeGreaterThanOrEqual(8)
+      for (const s of preRevert) {
+        // A nota e CONDICIONAL (stashedDelta ? stashLeftNote) - a honestidade
+        // do shape: a nota so vale quando o stash foi tomado (arvore suja +
+        // --stash-uncommitted); uma nota incondicional mentiria num ciclo de
+        // arvore limpa. Pina a forma condicional, nao so o token da nota.
+        expect(span(s, lines), `linha ${s.line} (pos-stash, infra, sem revert antes) deve terminar com a nota condicional`).toContain("stashedDelta ? stashLeftNote")
+      }
+      // O contraponto (sec 11.41, o "ANTES do primeiro revert"): os fail
+      // paths que ja chamaram o revert (o stash foi popped - o delta
+      // restaurado) NAO podem citar a nota - seria ruido.
+      const revertFirst = infra.filter((s) => isRevertFirst(s, lines))
+      expect(revertFirst.length).toBeGreaterThanOrEqual(7)
+      for (const s of revertFirst) {
+        expect(span(s, lines), `linha ${s.line} (pos-stash, revert antes) nao deve citar a nota - o revert ja restaurou o delta`).not.toContain("stashLeftNote")
+      }
+    }, 60000)
+
+    it("nenhum fail path PRE-stash tem a stashLeftNote (o delta nunca esteve no stash - a nota seria ruido; o stash-push-fail INCLUSIVE)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const { pre, lines } = frontier(src)
+      expect(pre.length).toBeGreaterThanOrEqual(5)
+      for (const s of pre) {
+        expect(span(s, lines), `linha ${s.line} (pre-stash) nao deve ter a stashLeftNote`).not.toContain("stashLeftNote")
+      }
+    }, 60000)
+
+    it("MUTATION: remover a nota do push-fail -> o guard de forma flagra a linha (a classe do fail silencioso nao volta)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      // o push-fail (um fail pos-stash pre-revert): remove a interpolacao da
+      // nota condicional. O mutante e o 1o pre-revert sem a nota.
+      const mutated = src.replace("`git push origin ${opts.branch} falhou: ${push.stderr.trim()}${stashedDelta ? stashLeftNote : \"\"}`", "`git push origin ${opts.branch} falhou: ${push.stderr.trim()}`")
+      expect(mutated).not.toBe(src)
+      const { pos, lines } = frontier(mutated)
+      const offenders = posInfra(pos, lines).filter((s) => !isRevertFirst(s, lines) && !span(s, lines).includes("stashedDelta ? stashLeftNote"))
+      expect(offenders.length).toBe(1)
+      expect(offenders[0].text).toContain("git push origin")
+    }, 60000)
+
+    it("MUTATION: adicionar a nota num fail PRE-stash -> o guard de forma flagra (a nota so e legitima pos-stash)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      // o rev-parse-fail (pre-stash): anexa a nota a um fail onde o delta
+      // nunca esteve no stash - o guard PRE a flagra.
+      const mutated = src.replace("`git rev-parse falhou: ${head.stderr.trim()}`", "`git rev-parse falhou: ${head.stderr.trim()}${stashedDelta ? stashLeftNote : \"\"}`")
+      expect(mutated).not.toBe(src)
+      const { pre, lines } = frontier(mutated)
+      const offenders = pre.filter((s) => span(s, lines).includes("stashLeftNote"))
+      expect(offenders.length).toBe(1)
+      expect(offenders[0].text).toContain("git rev-parse")
+    }, 60000)
+  })
 })

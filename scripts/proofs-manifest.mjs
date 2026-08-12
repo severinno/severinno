@@ -147,6 +147,7 @@ export const PROOF_CLASSES = [
       { prova: 24, section: "8.19", run: "31461526068", what: "agregacao lado PUSH NET" },
       { prova: 28, section: "8.23", run: "31488081528", what: "rule 11 DANGLING NEEDS (inconclusiva)" },
       { prova: 36, section: "8.31", run: "31533234250", what: "sufixo --since no test:guard" },
+      { prova: 45, section: "8.40", run: null, what: "11.73/11.82 ao vivo: hook-proof-run.test.ts no test:guard real -> suite falha com o caminho exato" },
     ],
   },
   {
@@ -213,6 +214,9 @@ export const PROOF_CLASSES = [
       { prova: 40, section: "8.35", run: null, what: "renumber CURE+0stale via helper" },
       { prova: 41, section: "8.36", run: null, what: "colisao de target fail-loud exit 3" },
       { prova: 43, section: "8.38", run: null, what: "revert-fail apply exit 3 fail-loud (patch corrompido)" },
+      { prova: 44, section: "8.39", run: null, what: "MUTATION do guard 11.72 ao vivo: docblock 3=falha removido no hook-proof-run real (suite falha com o path)" },
+      { prova: 46, section: "8.41", run: null, what: "status-divergente ao vivo: mutate com o flip do .gitignore -> stray.tmp sobrevive ao revert -> git status diverge -> exit 3 com a CURE do snapshot" },
+      { prova: 47, section: "8.42", run: null, what: "safety-diff ao vivo: mutate corrompe o delta.patch do backup -> exit 3 com a CURE citando o safety diff; git apply <sd> recupera o delta TRACKED byte-identical, untracked restaurados do backup/untracked (a classe que o --safety-backup da 11.89 fecha)" },
     ],
   },
   {

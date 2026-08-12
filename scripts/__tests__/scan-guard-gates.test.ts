@@ -25,6 +25,14 @@
  * scan-push-full-suite suite from test:guard, that test fails in CI (it
  * runs under test:unit AND test:guard / the guard-gates push net).
  *
+ * The division of labor (sec 11.73) is pinned in the same block: the
+ * test:guard script (the push-net surface, the curated 14 suites) must NOT
+ * carry the CONTRACT suites - hook-proof-run.test.ts (and its peers) run
+ * via the test:unit glob, not in the push net. A refactor that adds one to
+ * test:guard inflates the sec 8.1 step cost for zero gate benefit (the
+ * suite would run TWICE) - this pin makes that regression fail here, in
+ * the very suite that lives inside test:guard.
+ *
  * Subprocess-heavy (every test spawns the CLI via runSubprocess) -> an
  * EXPLICIT timeout on every it() (the scan-timeouts guard requires it).
  */
@@ -40,6 +48,55 @@ function writeFile(dir: string, rel: string, content: string) {
   fs.mkdirSync(path.join(dir, path.dirname(rel)), { recursive: true })
   fs.writeFileSync(path.join(dir, rel), content)
 }
+
+/**
+ * The division-of-labor detector (sec 11.73): the test:guard script must
+ * NOT carry the contract suites (the push-net surface vs the test:unit
+ * glob - the re-mediacao (3) premise of sec 8.1, now structural).
+ * Extracted as a pure function so the REAL-REPO CONTRACT and the MUTATION
+ * share the SAME detector (the fact-consumed pattern).
+ */
+function testGuardCarriesSuite(tg: string, suite: string): boolean {
+  return tg.includes(suite)
+}
+
+/**
+ * The test:guard suite-list derivation (sec 11.82): extracts the suite
+ * FILENAMES from the test:guard script text IN ORDER - the positive side
+ * of the division-of-labor contract (what the step ACTUALLY runs). Pure
+ * function so the REAL-REPO CONTRACT and the MUTATIONs share the SAME
+ * derivation (the fact-consumed pattern).
+ */
+function deriveTestGuardSuites(tg: string): string[] {
+  return [...tg.matchAll(/scripts\/__tests__\/([a-z0-9-]+\.test\.ts)/g)].map((m) => m[1])
+}
+
+/**
+ * The ABS PIN of the push-net surface (sec 11.82): the curated 14-suite
+ * list IN ORDER (the order the script runs them). NOT derived - pinned: a
+ * refactor that adds a 15th suite (contract OR legit), removes a curated
+ * one, or reorders the list breaks this pin loudly (the ABS_PIN_SNAPSHOT
+ * pattern of sec 11.50 applied to the division contract). The negative
+ * side of sec 11.73 (proof helpers OUT) becomes STRUCTURAL by
+ * construction: hook-proof-run/ci-proof-run are not in this list, so any
+ * attempt to add them diverges.
+ */
+const TEST_GUARD_ABS_PIN = [
+  "fragile-range-guard.test.ts",
+  "fuzz-mapped.test.ts",
+  "golden-copy-utils.test.ts",
+  "guard-gates-exclusivity.test.ts",
+  "manifest-registry.test.ts",
+  "run-all-fuzz.test.ts",
+  "scan-batch-coverage.test.ts",
+  "scan-prepush-batch.test.ts",
+  "scan-fuzz-precommit.test.ts",
+  "scan-guard-gates.test.ts",
+  "scan-hook-parallel-race.test.ts",
+  "scan-lint-staged-loader.test.ts",
+  "scan-push-full-suite.test.ts",
+  "doc-revalidate.test.ts",
+]
 
 /** Write a synthetic package.json whose test:guard keeps the 8.4 suite. */
 function writePkg(dir: string, testGuard = "vitest run scripts/__tests__/scan-push-full-suite.test.ts --config vitest.config.unit.ts") {
@@ -1141,6 +1198,92 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     for (const needs of ["lint", "typecheck", "utf8-check", "quality-gate", "test", "build", "budget"]) {
       expect(ciJobKeys).toContain(needs)
     }
+  }, 60000)
+
+  it("REAL-REPO CONTRACT (sec 11.73): o hook-proof-run NAO esta no test:guard - a divisao test:guard (push net) vs test:unit (suites de contrato) travada (a premissa da re-mediacao (3) da sec 8.1 agora e estrutural)", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
+    const tg = pkg.scripts["test:guard"]
+    // The division of labor (sec 8.1 re-mediacao (3)): test:guard = the
+    // push-net surface (14 curated suites, the cost sec 8.1 measures); the
+    // proof-helper suites (hook-proof-run, ci-proof-run) are CONTRACT
+    // suites that run via test:unit - never in the push net.
+    expect(testGuardCarriesSuite(tg, "hook-proof-run.test.ts")).toBe(false)
+    expect(testGuardCarriesSuite(tg, "ci-proof-run.test.ts")).toBe(false)
+    // The positive side of the division: the contract suite IS covered by
+    // the test:unit glob channel (the include + the no-args run) - the
+    // division is complete, never a dropped test.
+    const unitConfig = fs.readFileSync(path.join(process.cwd(), "vitest.config.unit.ts"), "utf8")
+    expect(unitConfig).toContain('"scripts/**/*.test.{ts,tsx}"')
+    expect(pkg.scripts["test:unit"]).toContain("vitest run --config vitest.config.unit.ts")
+  }, 60000)
+
+  it("MUTATION (sec 11.73): adicionar hook-proof-run.test.ts ao test:guard sintetico -> o detector flips false -> true (a divisao nunca e quebrada sem edicao consciente)", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
+    const tg = pkg.scripts["test:guard"]
+    // A mutacao ancora no doc-revalidate.test.ts (uma suite do test:guard
+    // REAL) - o acoplamento e DELIBERADO: se o doc-revalidate sair da lista
+    // um dia, o replace vira no-op e o `not.toBe` falha alto, forcando
+    // edicao consciente desta MUTATION (o padrao dos ABS PIN mutations).
+    const mutated = tg.replace(
+      "scripts/__tests__/doc-revalidate.test.ts",
+      "scripts/__tests__/doc-revalidate.test.ts scripts/__tests__/hook-proof-run.test.ts",
+    )
+    expect(mutated).not.toBe(tg)
+    // The SAME detector the REAL-REPO CONTRACT above uses must now flip:
+    // the pin is sensitive in the regression direction, not a tautology.
+    expect(testGuardCarriesSuite(tg, "hook-proof-run.test.ts")).toBe(false)
+    expect(testGuardCarriesSuite(mutated, "hook-proof-run.test.ts")).toBe(true)
+  }, 60000)
+
+  it("REAL-REPO CONTRACT (sec 11.82): a lista COMPLETA do test:guard deriva do package.json e bate EXATAMENTE com o ABS PIN - 14 suites na ordem curada (o lado POSITIVO da divisao: um refactor que adicione/remova/reordene a lista quebra AQUI, na suite que roda dentro do proprio test:guard)", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
+    const derived = deriveTestGuardSuites(pkg.scripts["test:guard"])
+    expect(derived).toEqual(TEST_GUARD_ABS_PIN)
+    expect(derived).toHaveLength(14)
+  }, 60000)
+
+  it("MUTATION (sec 11.82): adicionar uma 15a suite (o hook-proof-run da 11.73) ao test:guard real sintetico -> a derivada diverge do ABS PIN (o crescimento NUNCA e silencioso - o negativo da 11.73 vira estrutural por construcao)", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
+    const tg = pkg.scripts["test:guard"]
+    // O MESMO replace da MUTATION da 11.73 (ancorado no doc-revalidate, uma
+    // suite REAL da lista) - agora a 15a suite quebra o PIN DA LISTA
+    // INTEIRA, nao so o detector isolado da 11.73.
+    const mutated = tg.replace(
+      "scripts/__tests__/doc-revalidate.test.ts",
+      "scripts/__tests__/doc-revalidate.test.ts scripts/__tests__/hook-proof-run.test.ts",
+    )
+    expect(mutated).not.toBe(tg)
+    expect(deriveTestGuardSuites(mutated)).toHaveLength(15)
+    expect(deriveTestGuardSuites(mutated)).not.toEqual(TEST_GUARD_ABS_PIN)
+  }, 60000)
+
+  it("MUTATION (sec 11.82): REMOVER uma suite curada do test:guard real -> a derivada diverge (a lista nao encolhe sem edicao consciente do pin)", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
+    const tg = pkg.scripts["test:guard"]
+    // Remove o scan-push-full-suite (a suite da 8.4/11.11) da lista - o
+    // GUARD SUITE MISSING do CLI ja pega a remocao dessa suite especifica,
+    // mas o ABS PIN pega QUALQUER remocao (a lista inteira e o pin).
+    const mutated = tg.replace(
+      "scripts/__tests__/scan-push-full-suite.test.ts ",
+      "",
+    )
+    expect(mutated).not.toBe(tg)
+    expect(deriveTestGuardSuites(mutated)).toHaveLength(13)
+    expect(deriveTestGuardSuites(mutated)).not.toEqual(TEST_GUARD_ABS_PIN)
+  }, 60000)
+
+  it("MUTATION (sec 11.82): REORDENAR duas suites curadas -> a derivada diverge (a ORDEM faz parte do pin - o ABS PIN e uma projecao em sequencia, nao um set)", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
+    const tg = pkg.scripts["test:guard"]
+    // Troca a ordem das duas ultimas (scan-push-full-suite <-> doc-revalidate)
+    // - a MESMA lista, so reordenada: a projecao diverge do pin na ordem.
+    const mutated = tg.replace(
+      "scripts/__tests__/scan-push-full-suite.test.ts scripts/__tests__/doc-revalidate.test.ts",
+      "scripts/__tests__/doc-revalidate.test.ts scripts/__tests__/scan-push-full-suite.test.ts",
+    )
+    expect(mutated).not.toBe(tg)
+    expect(deriveTestGuardSuites(mutated)).toHaveLength(14)
+    expect(deriveTestGuardSuites(mutated)).not.toEqual(TEST_GUARD_ABS_PIN)
   }, 60000)
 })
 

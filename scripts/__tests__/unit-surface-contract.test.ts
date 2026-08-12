@@ -86,6 +86,28 @@ function unitExcludePatterns(): string[] {
   return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1])
 }
 
+/** Extract the include: array string literals from the unit config TEXT. */
+function unitIncludePatterns(): string[] {
+  const src = fs.readFileSync(UNIT_CONFIG, "utf8")
+  const m = src.match(/include:\s*\[([\s\S]*?)\],/)
+  if (!m) {
+    throw new Error(
+      "unit-surface: include: block not found in vitest.config.unit.ts - update this extractor",
+    )
+  }
+  return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1])
+}
+
+/**
+ * True when a repo-root-relative test path survives BOTH the include globs
+ * (at least one matches) AND the exclude patterns (none matches) - the
+ * actual membership vitest computes for test:unit. The base of the sec
+ * 11.83 presence pin.
+ */
+function survivesUnitSurface(rel: string, include: string[], exclude: string[]): boolean {
+  return include.some((p) => picomatch(p)(rel)) && !exclude.some((p) => picomatch(p)(rel))
+}
+
 /**
  * Recursive walk of src/components INCLUDING __tests__/ dirs (unlike the
  * shared filesInDir, whose SKIP_DIRS excludes them) - the surface vitest's
@@ -233,3 +255,119 @@ describe("unit surface - import order (self-containment)", () => {
     expect(compIdx).toBeGreaterThan(mockIdx)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 6. The pool serialization note (singleFork) - WHY test:unit is serialized
+// ---------------------------------------------------------------------------
+
+/**
+ * True when the config carries the dated singleFork rationale note (sec
+ * 8.1 re-mediacao (5) + sec 11.48 no-op probe). The note is the guard
+ * against a reader "fixing" the serialized pool believing parallelism is
+ * lost - removing it must break a test, not silently drift.
+ */
+function poolNotePresent(src: string): boolean {
+  const m = src.match(/\/\/ SERIALIZED POOL[\s\S]*?singleFork: true\s*}\s*},/)
+  if (!m) return false
+  return (
+    m[0].includes("sec 8.1") &&
+    m[0].includes("2026-08") &&
+    m[0].includes('DO NOT "parallelize"')
+  )
+}
+
+describe("unit surface - pool serialization note (singleFork)", () => {
+  const CONFIG = fs.readFileSync(UNIT_CONFIG, "utf8")
+
+  it("REAL-REPO: the config declares the serialized pool AND the dated note", () => {
+    expect(CONFIG).toContain('pool: "forks"')
+    expect(CONFIG).toContain("singleFork: true")
+    expect(poolNotePresent(CONFIG)).toBe(true)
+  })
+
+  it("MUTATION: stripping the rationale note fails the pin (drift is loud)", () => {
+    const noNote = CONFIG.replace(/\/\/ SERIALIZED POOL[\s\S]*?pool: "forks",/, 'pool: "forks",')
+    expect(poolNotePresent(noNote)).toBe(false)
+  })
+
+  it("MUTATION: removing singleFork fails the pin (parallelism cannot return silently)", () => {
+    // the literal appears TWICE (the note's backticked mention + the real
+    // pool block) - target the BLOCK uniquely so the mutation hits the
+    // decision, not the prose
+    const noFork = CONFIG.replace("singleFork: true } },", "singleFork: false } },")
+    expect(poolNotePresent(noFork)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 7. The PRESENCE of the contract suites in the test:unit glob (sec 11.83 -
+//    the positive of 11.73 on the OTHER side of the division)
+// ---------------------------------------------------------------------------
+
+/**
+ * The contract suites that MUST run in test:unit (sec 11.83): the proof
+ * helpers (hook-proof-run, ci-proof-run, guard-remeasure) and their guard
+ * contracts (proof-helpers-contract, wired-guards-contract, proofs-manifest,
+ * scan-exit-claims, check-exit-claims-push, scan-cures-contract,
+ * unit-surface-contract, gates-proofs-ordering). The sec 11.73 negative pins
+ * they are NOT in test:guard (the curated 14); this pin closes the pair -
+ * they MUST be PRESENT in the test:unit glob channel (the local guard
+ * channel the pre-commit/pre-push hooks run). A refactor that adds an
+ * exclude for one of them, or narrows the scripts glob, silently drops the
+ * contract suite from every local guard run - this pin fails LOUDLY there.
+ * The list is a projection snapshot (the ABS PIN pattern): adding a new
+ * contract suite must edit this list consciously.
+ */
+const TEST_UNIT_CONTRACT_PIN = [
+  "scripts/__tests__/check-exit-claims-push.test.ts",
+  "scripts/__tests__/ci-proof-run.test.ts",
+  "scripts/__tests__/gates-proofs-ordering.test.ts",
+  "scripts/__tests__/guard-remeasure.test.ts",
+  "scripts/__tests__/hook-proof-run.test.ts",
+  "scripts/__tests__/proof-helpers-contract.test.ts",
+  "scripts/__tests__/proofs-manifest.test.ts",
+  "scripts/__tests__/scan-cures-contract.test.ts",
+  "scripts/__tests__/scan-exit-claims.test.ts",
+  "scripts/__tests__/unit-surface-contract.test.ts",
+  "scripts/__tests__/wired-guards-contract.test.ts",
+]
+
+describe("unit surface - contract-suite PRESENCE in the test:unit glob (sec 11.83, the positive of 11.73)", () => {
+  it("REAL-REPO: TODAS as suites de contrato do pin estao PRESENTES na superficie test:unit (o include casa + nenhum exclude derruba - o canal local dos guards)", () => {
+    const include = unitIncludePatterns()
+    const exclude = unitExcludePatterns()
+    // A premissa base: o glob de scripts existe no include (a parte que o
+    // scan-guard-gates ja pina na 11.73, aqui re-derivada do TEXTO do config).
+    expect(include).toContain("scripts/**/*.test.{ts,tsx}")
+    // O pin de PRESENCA: cada suite de contrato sobrevive include + exclude -
+    // a derivacao de fato do que vitest roda em test:unit (o mesmo motor
+    // picomatch da secao 2, aplicado ao glob de scripts agora).
+    for (const suite of TEST_UNIT_CONTRACT_PIN) {
+      expect(survivesUnitSurface(suite, include, exclude), suite).toBe(true)
+    }
+    // A PRESENCA LITERAL: o arquivo da suite EXISTE no repo (o pin e sobre
+    // uma suite que roda, nao sobre um padrao que casaria um caminho
+    // inexistente - uma entrada stale do pin (suite deletada/renomeada)
+    // falha aqui, nao so o glob).
+    for (const suite of TEST_UNIT_CONTRACT_PIN) {
+      expect(fs.existsSync(path.join(ROOT, suite)), `${suite}: arquivo ausente no repo`).toBe(true)
+    }
+  })
+
+  it("MUTATION: um exclude novo para uma suite de contrato DERRUBA a suite do canal -> o pin falha (a classe: adicionar um exclude que silencia uma suite de contrato local)", () => {
+    const include = unitIncludePatterns()
+    const exclude = [...unitExcludePatterns(), "scripts/__tests__/hook-proof-run.test.ts"]
+    expect(
+      survivesUnitSurface("scripts/__tests__/hook-proof-run.test.ts", include, exclude),
+    ).toBe(false)
+  })
+
+  it("MUTATION: estreitar o glob de scripts (remover o include scripts) DERRUBA TODAS as suites de contrato -> o pin falha (a classe: o glob do canal nunca encolhe)", () => {
+    const include = unitIncludePatterns().filter((p) => !p.includes("scripts"))
+    const exclude = unitExcludePatterns()
+    for (const suite of TEST_UNIT_CONTRACT_PIN) {
+      expect(survivesUnitSurface(suite, include, exclude), suite).toBe(false)
+    }
+  })
+})
+

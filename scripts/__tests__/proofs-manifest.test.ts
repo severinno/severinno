@@ -78,6 +78,7 @@ const ABS_PIN_SNAPSHOT: Array<[string, number, string, string]> = [
   ["scan-guard-gates", 24, "8.19", "31461526068"],
   ["scan-guard-gates", 28, "8.23", "31488081528"],
   ["scan-guard-gates", 36, "8.31", "31533234250"],
+  ["scan-guard-gates", 45, "8.40", "local"],
   ["check-exit-claims-push", 37, "8.32", "local"],
   ["check-exit-claims-push", 38, "8.33", "local"],
   ["prepush-order", 18, "11.19", "local"],
@@ -96,6 +97,9 @@ const ABS_PIN_SNAPSHOT: Array<[string, number, string, string]> = [
   ["hook-proof-run", 40, "8.35", "local"],
   ["hook-proof-run", 41, "8.36", "local"],
   ["hook-proof-run", 43, "8.38", "local"],
+  ["hook-proof-run", 44, "8.39", "local"],
+  ["hook-proof-run", 46, "8.41", "local"],
+  ["hook-proof-run", 47, "8.42", "local"],
   ["doc-revalidate", 42, "8.37", "local"],
 ]
 
@@ -118,9 +122,9 @@ afterEach(() => {
 describe("scripts/proofs-manifest.mjs - ABS PIN e SHAPE (sec 11.60)", () => {
   it("ABS PIN (content): a projecao [class, prova, section, run] do PROOF_CLASSES pinada pelo snapshot - editar o registry exige editar o snapshot conscientemente", () => {
     expect(PROJECTION).toEqual(ABS_PIN_SNAPSHOT)
-    // sanity: 19 classes / 43 provas registradas (o numero do CLI clean).
+    // sanity: 19 classes / 47 provas registradas (o numero do CLI clean).
     expect(new Set(PROOF_CLASSES.map((c) => c.class)).size).toBe(19)
-    expect(PROJECTION).toHaveLength(43)
+    expect(PROJECTION).toHaveLength(47)
   })
 
   it("MANIFEST SHAPE: class/module/proofs presentes, run null ou string, prova numerico, section presente", () => {
@@ -157,9 +161,9 @@ describe("scripts/proofs-manifest.mjs - DOC COVERAGE bidirecional (sec 11.60)", 
   it("doc -> manifest: toda Prova detectada no doc REAL tem entrada no registry (nenhuma unregistered)", () => {
     const { unregistered } = checkProofs()
     expect(unregistered).toEqual([])
-    // sanity: o detector acha as 43 provas reais (a Prova 20 via a linha da
+    // sanity: o detector acha as 47 provas reais (a Prova 20 via a linha da
     // tabela `(Prova 20, sec 11.20)` - a secao 11.20 nao tem 'Prova N' no titulo).
-    expect(scanProvaSections(DOC).size).toBe(43)
+    expect(scanProvaSections(DOC).size).toBe(47)
   })
 
   it("manifest -> doc: toda entrada do registry tem secao detectada no doc REAL (entrada stale = drift)", () => {
@@ -221,7 +225,7 @@ describe("scripts/proofs-manifest.mjs - MUTATION (a classe real, sec 11.60)", ()
     // JOB...)` - o round-1 fix foi exatamente este greedy. Pinar a forma
     // real (nao a sintetica com ')' ) trava o fix contra regressao.
     const docPath = writeSyntheticDoc(dir, [
-      { header: "## 11.20 ci-proof-run — custo real do ciclo", body: ["| 19 | ci-proof-run — **`--only-jobs` EARLY-EXIT live** (Prova 20, sec 11.20; o poll termina no JOB, não no run) | Run [**31442006152**](https://github.com/severinno/severinno/actions/runs/31442006152) |"] },
+      { header: "## 11.20 ci-proof-run - custo real do ciclo", body: ["| 19 | ci-proof-run - **`--only-jobs` EARLY-EXIT live** (Prova 20, sec 11.20; o poll termina no JOB, nao no run) | Run [**31442006152**](https://github.com/severinno/severinno/actions/runs/31442006152) |"] },
     ])
     const sections = scanProvaSections(docPath)
     expect(sections.get("11.20")).toBe(20)
@@ -251,7 +255,7 @@ describe("scripts/proofs-manifest.mjs - MUTATION (a classe real, sec 11.60)", ()
       {
         anchor: "  },\n]\n",
         replace: () => "  },\n" + ENTRY_FAKE + "]\n",
-        onMissing: "ABS PIN MUTATION: fechamento do PROOF_CLASSES (entrada + colchete) nao encontrado no modulo real — atualize o harness",
+        onMissing: "ABS PIN MUTATION: fechamento do PROOF_CLASSES (entrada + colchete) nao encontrado no modulo real - atualize o harness",
       },
     ]
     const modPath = writeModuleCopy(dir, path.join(ROOT, "scripts", "proofs-manifest.mjs"), ops)
@@ -324,6 +328,103 @@ describe("scripts/proofs-manifest.mjs - WIRED SURFACE: o lado inverso do growth 
   })
 })
 
+describe("scripts/proofs-manifest.mjs - a ASSIMETRIA registry -> wired: guard real deriva, helper nao (sec 11.91)", () => {
+  // A fronteira documentada no header do manifest (sec 11.60): a direcao
+  // registry -> wired NAO existe por desenho - classes helper (ci-proof-run,
+  // hook-proof-run, doc-revalidate, run-all-fuzz) tem Prova mas NAO sao
+  // guard de hook (check-js-budget e a excecao de COMPOSICAO: guard real
+  // dentro do pre-commit-tests.mjs, fora da superficie derivada sem
+  // recursao). Este guard pina a fronteira nos DOIS lados: toda classe cujo
+  // module e guard de hook REAL (referencia NAO-comentada nas fontes wired)
+  // ESTA na derivacao; os helpers NAO estao - e a lista da exclusao e
+  // DERIVADA das fontes (o padrao TARGET_DIRS consumido) e pinada por
+  // conteudo (editar a fronteira exige edicao consciente).
+
+  /** As fontes wired (hooks + batch runner + net), so linhas nao-comentadas. */
+  function wiredSourcesRealText(root = ROOT): string {
+    const files = [
+      ".husky/pre-commit",
+      ".husky/pre-push",
+      "scripts/run-precommit-guards.mjs",
+      ".github/workflows/guard-gates.yml",
+      ".github/workflows/pr-check.yml",
+    ]
+    return files
+      .filter((f) => fs.existsSync(path.join(root, f)))
+      .map((f) =>
+        fs
+          .readFileSync(path.join(root, f), "utf8")
+          .split(/\r?\n/)
+          .filter((l) => !/^\s*#/.test(l))
+          .join("\n"),
+      )
+      .join("\n")
+  }
+
+  /** As classes excluidas da derivacao (script modules SEM referencia real). */
+  function excludedHelperClasses(root = ROOT): string[] {
+    const realText = wiredSourcesRealText(root)
+    return PROOF_CLASSES.map((c) => path.basename(c.module))
+      .filter((base) => /\.(mjs|sh)$/.test(base))
+      .filter((base) => !realText.includes(base))
+      .sort()
+  }
+
+  /**
+   * As violacoes da assimetria: [module, lado] para cada classe cujo module
+   * e script (.mjs/.sh) que quebra a fronteira - referenciada nas fontes
+   * wired mas NAO derivada (o positivo) ou derivada SEM referencia (o
+   * negativo). As classes estruturais (yml/hook/suite) ficam fora por shape.
+   */
+  function asymmetryViolations(root = ROOT): Array<[string, string]> {
+    const wired = new Set(deriveWiredGuards(root))
+    const realText = wiredSourcesRealText(root)
+    const viol: Array<[string, string]> = []
+    for (const c of PROOF_CLASSES) {
+      const base = path.basename(c.module)
+      if (!/\.(mjs|sh)$/.test(base)) continue
+      const referenced = realText.includes(base)
+      if (referenced && !wired.has(base)) viol.push([base, "referenciado nas fontes wired mas NAO derivado"])
+      if (!referenced && wired.has(base)) viol.push([base, "derivado wired mas SEM referencia nas fontes"])
+    }
+    return viol
+  }
+
+  it("REAL-REPO: a assimetria vale - toda classe com referencia REAL nas fontes wired esta na derivacao (zero violacoes nos dois lados)", () => {
+    expect(asymmetryViolations()).toEqual([])
+  }, 60000)
+
+  it("o ABS PIN da exclusao DERIVADA: as 5 classes helper/composicao fora da derivacao (as 4 helpers do header + o check-js-budget da composicao) - editar a fronteira exige edicao consciente", () => {
+    expect(excludedHelperClasses()).toEqual([
+      "check-js-budget.mjs",
+      "ci-proof-run.mjs",
+      "doc-revalidate.mjs",
+      "hook-proof-run.mjs",
+      "run-all-fuzz.mjs",
+    ])
+    const wired = new Set(deriveWiredGuards())
+    for (const e of excludedHelperClasses()) expect(wired.has(e)).toBe(false)
+  }, 60000)
+
+  it("MUTATION (positivo): uma classe referenciada nas fontes wired num form que o regex da derivacao NAO pega (./scripts/ fora do WIRED_SPAWN_RE) -> flagra 'referenciado mas NAO derivado' (o guard pina o lado positivo da assimetria)", () => {
+    const dir = createTempDir("proofs-asym-")
+    fs.mkdirSync(path.join(dir, ".husky"), { recursive: true })
+    fs.writeFileSync(path.join(dir, ".husky", "pre-commit"), "./scripts/scan-guard-gates.mjs\n")
+    const viol = asymmetryViolations(dir)
+    expect(viol).toHaveLength(1)
+    expect(viol[0]).toEqual(["scan-guard-gates.mjs", "referenciado nas fontes wired mas NAO derivado"])
+  }, 60000)
+
+  it("MUTATION (negativo): um helper spawnado num hook sintetico (node scripts/ci-proof-run.mjs) -> a derivacao o pega E a classe some da exclusao (a fronteira so e rompida por edicao consciente do hook, nunca por shape)", () => {
+    const dir = createTempDir("proofs-asym-")
+    fs.mkdirSync(path.join(dir, ".husky"), { recursive: true })
+    fs.writeFileSync(path.join(dir, ".husky", "pre-commit"), "node scripts/ci-proof-run.mjs\n")
+    const wired = deriveWiredGuards(dir)
+    expect(wired).toContain("ci-proof-run.mjs")
+    expect(excludedHelperClasses(dir)).not.toContain("ci-proof-run.mjs")
+  }, 60000)
+})
+
 describe("scripts/proofs-manifest.mjs - REAL-REPO CONTRACT do CLI (sec 11.60)", () => {
   // HERMETICO contra o shell do dev: se PROOFS_DOC estiver setado no
   // ambiente, o exit-0 real falharia confusamente. O env do subprocesso
@@ -346,7 +447,7 @@ describe("scripts/proofs-manifest.mjs - REAL-REPO CONTRACT do CLI (sec 11.60)", 
     const stdout = res.stdout ?? ""
     expect(stdout).toContain("proofs-manifest: clean")
     expect(stdout).toContain("19 classes")
-    expect(stdout).toContain("43 provas")
+    expect(stdout).toContain("47 provas")
   }, 60000)
 
   it("CLI exit 1 REAL: PROOFS_DOC aponta o doc sintetico com Prova 99 (a 40 e real desde a sec 8.35) -> exit 1 com a secao listada no stderr (o CLI real le o doc via override)", () => {

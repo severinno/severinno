@@ -22,6 +22,35 @@
  *   HOOK_PROOF_FAKE_OLD_SHA   the sha `rev-parse HEAD~1` reports (default
  *                              "fake-old-sha").
  *   HOOK_PROOF_FAKE_PATCH     the git diff content (default "fake patch").
+ *   HOOK_PROOF_FAKE_FAIL_APPLY "1" = `git apply` FALHA (exit 1 + stderr) - o
+ *                              seam hermetico do revert-fail apply (sec
+ *                              11.76: a classe da Prova 43 que so tinha prova
+ *                              viva ao vivo - agora E2E hermetico).
+ *   HOOK_PROOF_FAKE_FAIL_APPLY_DELTA_ONLY "1" = so o `git apply` do
+ *                              delta.patch do BACKUP FALHA - o apply do
+ *                              safety diff (o fallback da sec 11.88) SUCCEDE.
+ *                              O seam hermetico da AUTO-CURA: com
+ *                              --apply-safety-diff-on-fail, o revertCycle
+ *                              falha no patch do backup e tenta o safety diff
+ *                              automaticamente - o ciclo completa (exit 0).
+ *   HOOK_PROOF_FAKE_FAIL_CHECKOUT "1" = o `git checkout <orig>` do REVERT
+ *                              FALHA (exit 1 + stderr) - o fail path
+ *                              checkout (sec 11.85: a scratch AINDA existe,
+ *                              o branch -D nunca roda). O checkout -b da
+ *                              scratch NAO e afetado (so o simples).
+ *   HOOK_PROOF_FAKE_FAIL_BRANCH_D "1" = o `git branch -D` do REVERT FALHA
+ *                              (exit 1 + stderr) - o fail path branchD (sec
+ *                              11.85: a scratch AINDA existe, o apply nunca
+ *                              roda).
+ *   HOOK_PROOF_FAKE_FAIL_STATUS "1" = o `git status --porcelain` do REVERT
+ *                              diverge do snapshot (sec 11.85: o fail path
+ *                              status - o apply PASSou e o delta ja esta na
+ *                              arvore). O status do BACKUP roda antes do
+ *                              checkout do revert (state.reverting ainda
+ *                              falso -> snapshot normal) e o status do
+ *                              revert roda depois (state.reverting true ->
+ *                              linha extra " M stray.ts") - o sinal de
+ *                              estado distingue as DUAS chamadas de status.
  *
  * The hook itself is NOT this fixture - the CLI spawns `bash <hook>` with the
  * refs payload on stdin; the tests point --hook at hook-proof-fake-hook.sh
@@ -91,6 +120,15 @@ if (kind === "git") {
     ok()
   }
   if (args[0] === "status") {
+    // O knob FAIL_STATUS (sec 11.85): APOS o checkout do revert
+    // (state.reverting - o status do backup roda antes e o snapshot fica
+    // normal), o status reporta um arquivo extra - o git status pos-revert
+    // diverge do snapshot e o revert morre no stage status (o apply do
+    // delta JA passou - o delta esta na arvore).
+    if (process.env.HOOK_PROOF_FAKE_FAIL_STATUS === "1" && state.reverting) {
+      out(" M stray.ts\n")
+      ok()
+    }
     out(process.env.HOOK_PROOF_FAKE_DIRTY === "1" ? " M mutated.ts\n" : "")
     ok()
   }
@@ -101,7 +139,19 @@ if (kind === "git") {
     ok()
   }
   if (args[0] === "checkout") {
+    // O checkout SIMPLES do REVERT (o -b da scratch e tratado acima): o knob
+    // FAIL_CHECKOUT e o seam hermetico do fail path checkout (sec 11.85 - a
+    // scratch AINDA existe porque o branch -D nunca roda). No fluxo normal,
+    // este checkout seta state.reverting = true - o sinal que o knob
+    // FAIL_STATUS usa para o status do REVERT divergir do snapshot (o status
+    // do backup roda ANTES deste checkout, com o sinal ainda falso -> o
+    // snapshot fica normal; o status do revert roda depois -> diverge).
+    if (process.env.HOOK_PROOF_FAKE_FAIL_CHECKOUT === "1") {
+      process.stderr.write(`fatal: branch '${args[1]}' not found\n`)
+      process.exit(1)
+    }
     state.currentBranch = args[1]
+    state.reverting = true
     saveState(state)
     ok()
   }
@@ -114,11 +164,31 @@ if (kind === "git") {
     ok()
   }
   if (args[0] === "branch" && args[1] === "-D") {
+    // O knob FAIL_BRANCH_D (sec 11.85): o fail path branchD do revert - a
+    // scratch AINDA existe (o branch -D falhou sem deletar) -> a receita
+    // generica do scratchLeftNote, nao o reflog.
+    if (process.env.HOOK_PROOF_FAKE_FAIL_BRANCH_D === "1") {
+      process.stderr.write(`error: branch '${args[2]}' not found.\n`)
+      process.exit(1)
+    }
     delete state.branches[`refs/heads/${args[2]}`]
     saveState(state)
     ok()
   }
   if (args[0] === "apply") {
+    if (process.env.HOOK_PROOF_FAKE_FAIL_APPLY === "1") {
+      process.stderr.write('error: No valid patches in input (allow with "--allow-empty")\n')
+      process.exit(1)
+    }
+    // FAIL_APPLY_DELTA_ONLY (sec 11.88): so o apply do delta.patch do backup
+    // falha (args[1] e o path do patch) - o apply do safety diff (o fallback
+    // auto-curativo) passa. O fixture distingue pelo SUFIXO do path: o
+    // delta.patch vive no backupDir (termina em 'delta.patch'), o safety diff
+    // e um path EXTERNO arbitrario.
+    if (process.env.HOOK_PROOF_FAKE_FAIL_APPLY_DELTA_ONLY === "1" && args[1] && args[1].endsWith("delta.patch")) {
+      process.stderr.write('error: No valid patches in input (allow with "--allow-empty")\n')
+      process.exit(1)
+    }
     ok()
   }
   process.stderr.write(`fake git: shape nao esperado: ${args.join(" ")}\n`)

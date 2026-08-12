@@ -48,6 +48,15 @@ export default defineConfig({
     // DEFAULT vitest.config.ts keeps the 5000ms implicit default for
     // ad-hoc `bun run test` - the safety net is a CI-run property.
     testTimeout: 30000,
+    // SERIALIZED POOL (2026-08, sec 8.1 + sec 11.48): `singleFork: true` is
+    // INTENTIONAL. The test:unit/test:guard surface is CONTRACT suites that
+    // read the REAL repo files (scan-*, golden copies, manifests); a single
+    // fork serializes their subprocess I/O for DETERMINISM (no interleaving).
+    // The sec 8.1 re-mediacao (5) MEASURED the flatness (test:guard 20.9 ->
+    // 19s with +28 tests): cheap-test absorption, NOT workers - --maxWorkers
+    // is a structural no-op here (sec 11.48 probed it). DO NOT "parallelize"
+    // this pool without re-measuring the serialization cost of the contract
+    // suites. Pinned by scripts/__tests__/unit-surface-contract.test.ts.
     pool: "forks",
     poolOptions: { forks: { singleFork: true } },
   },
