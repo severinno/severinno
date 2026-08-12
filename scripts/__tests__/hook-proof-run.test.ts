@@ -1495,6 +1495,92 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(offenders.length).toBe(1)
       expect(offenders[0].text).toContain('revertLeftNote("status",')
     }, 60000)
+
+    // O 5o argumento da chamada: o safetyDiff VARIAVEL - o path resolvido
+    // UMA vez na sec 11.77 (`const safetyDiff = opts.safetyDiff ?
+    // path.resolve(opts.safetyDiff) : null`) e passado aos MESMOS 2 pontos
+    // de conversao. Um uso com literal hardcoded (ex.:
+    // revertLeftNote(..., "/tmp/sd.patch", ...)) ou com uma SEGUNDA
+    // resolucao (path.resolve(...) no call site) criaria o drift que a
+    // 11.77 travou so por comentario: a CURE citaria um path DIFERENTE do
+    // que a gravacao usou (o resolved-once da sec 11.77 vira fato
+    // consumido, o padrao da 11.84).
+    const safetyDiffFromVar = (s: { text: string }) => {
+      const m = s.text.match(/revertLeftNote\(([^)]*)\)/)
+      if (!m) return false
+      const args = m[1].split(",").map((a) => a.trim())
+      return args[4] === "safetyDiff"
+    }
+
+    it("os 2 usos do revertLeftNote passam o safetyDiff VARIAVEL (o 5o arg - o path resolvido UMA vez na sec 11.77), nunca um literal nem uma segunda resolucao", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const sites = useSites(src)
+      expect(sites.length).toBe(2)
+      for (const s of sites) {
+        expect(safetyDiffFromVar(s), `linha ${s.line} (uso do revertLeftNote) deve passar o safetyDiff VARIAVEL - nao um literal nem path.resolve (o resolved-once da sec 11.77)`).toBe(true)
+      }
+    }, 60000)
+
+    it("MUTATION: hardcodar o safetyDiff do cleanupOnFailSuffix (safetyDiff -> literal) -> o guard flagra (a CURE citaria um path que a gravacao nao usou)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const mutated = src.replace("revertLeftNote(rv.stage, originalBranch, branch, backupDir, safetyDiff,", 'revertLeftNote(rv.stage, originalBranch, branch, backupDir, "/tmp/literal.diff",')
+      expect(mutated).not.toBe(src)
+      const offenders = useSites(mutated).filter((s) => !safetyDiffFromVar(s))
+      expect(offenders.length).toBe(1)
+      expect(offenders[0].text).toContain('"/tmp/literal.diff"')
+    }, 60000)
+
+    it("MUTATION: resolver o safetyDiff DE NOVO no revert-fail do main (safetyDiff -> path.resolve(opts.safetyDiff)) -> o guard flagra (a segunda resolucao e o drift da 11.77)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const mutated = src.replace("revertLeftNote(reverted.stage, originalBranch, opts.branch, backupDir, safetyDiff,", "revertLeftNote(reverted.stage, originalBranch, opts.branch, backupDir, path.resolve(opts.safetyDiff),")
+      expect(mutated).not.toBe(src)
+      const offenders = useSites(mutated).filter((s) => !safetyDiffFromVar(s))
+      expect(offenders.length).toBe(1)
+      expect(offenders[0].text).toContain("path.resolve(opts.safetyDiff)")
+    }, 60000)
+
+    // O 4o argumento da chamada: o backupDir VARIAVEL - o path criado UMA
+    // vez pelo backup step (`const backupDir =
+    // fs.mkdtempSync(path.join(os.tmpdir(), "hook-proof-"))`, linha 621) e
+    // citado na CURE (revertLeftNote: 'backup em <backupDir>', 'git apply
+    // <backupDir>/delta.patch'). Um uso com literal hardcoded (ex.:
+    // revertLeftNote(..., "/tmp/backup", ...)) ou com uma SEGUNDA criacao
+    // (fs.mkdtempSync(...) no call site) citaria um backup DIFERENTE do
+    // que o ciclo criou - a CURE apontaria para um path vazio ou errado (o
+    // backup-criado-uma-vez vira fato consumido, o padrao da 11.84/11.100).
+    const backupDirFromVar = (s: { text: string }) => {
+      const m = s.text.match(/revertLeftNote\(([^)]*)\)/)
+      if (!m) return false
+      const args = m[1].split(",").map((a) => a.trim())
+      return args[3] === "backupDir"
+    }
+
+    it("os 2 usos do revertLeftNote passam o backupDir VARIAVEL (o 4o arg - o path criado UMA vez pelo backup step da linha 621), nunca um literal nem uma segunda criacao", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const sites = useSites(src)
+      expect(sites.length).toBe(2)
+      for (const s of sites) {
+        expect(backupDirFromVar(s), `linha ${s.line} (uso do revertLeftNote) deve passar o backupDir VARIAVEL - nao um literal nem fs.mkdtempSync (o backup-criado-uma-vez do backup step)`).toBe(true)
+      }
+    }, 60000)
+
+    it("MUTATION: hardcodar o backupDir do cleanupOnFailSuffix (backupDir -> literal) -> o guard flagra (a CURE citaria um backup que o ciclo nao criou)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const mutated = src.replace("revertLeftNote(rv.stage, originalBranch, branch, backupDir,", 'revertLeftNote(rv.stage, originalBranch, branch, "/tmp/literal-backup",')
+      expect(mutated).not.toBe(src)
+      const offenders = useSites(mutated).filter((s) => !backupDirFromVar(s))
+      expect(offenders.length).toBe(1)
+      expect(offenders[0].text).toContain('"/tmp/literal-backup"')
+    }, 60000)
+
+    it("MUTATION: criar o backupDir DE NOVO no revert-fail do main (backupDir -> fs.mkdtempSync(...)) -> o guard flagra (a segunda criacao e o drift do path citado)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const mutated = src.replace("revertLeftNote(reverted.stage, originalBranch, opts.branch, backupDir,", 'revertLeftNote(reverted.stage, originalBranch, opts.branch, fs.mkdtempSync(path.join(os.tmpdir(), "hook-proof-")),')
+      expect(mutated).not.toBe(src)
+      const offenders = useSites(mutated).filter((s) => !backupDirFromVar(s))
+      expect(offenders.length).toBe(1)
+      expect(offenders[0].text).toContain("fs.mkdtempSync")
+    }, 60000)
   })
 
   describe("--safety-diff - o delta salvo FORA do backup (sec 11.77)", () => {

@@ -64,6 +64,7 @@
 | 47 | ci-proof-run — **o guard da 11.72 ao vivo no LADO ci: docblock `Exit codes:` mutado no ci-proof-run.mjs real → a suite da 11.72 falha com o path exato** (Prova 48, sec 8.43) | A Prova 44 (sec 8.39) provou o guard da 11.72 no hook-proof-run; o IRMÃO ci-proof-run do mesmo contrato (as 3 partes do fail-loud) seguia só com prova hermética — faltava confirmar que a suite lê o ci-proof-run.mjs REAL e falha quando o docblock perde o `3 =` | `cp scripts/ci-proof-run.mjs /tmp/prova48-cipr.bak && sed -i 's/3 = falha de/X = falha de/' scripts/ci-proof-run.mjs && npx vitest run scripts/__tests__/proof-helpers-contract.test.ts --config vitest.config.unit.ts` (o MESMO alvo do MUTATION hermético, a única ocorrência de `3 = ` no arquivo) | **Local** — mutação do source real + suite real, sem rede | ✅ suite **exit 1** — **1 teste falha** (`todo helper da DERIVADA tem as 3 partes`) com a mensagem exata `ci-proof-run.mjs: o docblock deve documentar os exit codes 0-3`; revert → sha1 `4bed5df4ac21` byte-identical, 0 ocorrências de `X = falha de` | | A fronteira da 11.77 (o revertCycle usa o backup; o safety diff é recuperação manual) vivia em prosa + teste hermético — faltava o pipeline real: o CLI apontando o safety diff NA CURE e o `git apply <path>` restaurando o delta de verdade | `node scripts/hook-proof-run.mjs --branch ci-proof/sd-live-proof --safety-diff <sd> --mutate "node -e \"const fs=require('fs'),os=require('os'),p=require('path');const d=fs.readdirSync(os.tmpdir()).filter(x=>x.startsWith('hook-proof-')).map(x=>({x,m:fs.statSync(p.join(os.tmpdir(),x)).mtimeMs})).sort((a,b)=>b.m-a.m)[0].x;fs.writeFileSync(p.join(os.tmpdir(),d,'delta.patch'),'corrompido')\"" --expect-exit 0` + `git apply <sd>` (a recuperação manual da 11.77) | **Local** — ciclo real via o helper (delta real de 17 linhas + safety diff externo + corrupção injetada + hook real via stdin, sem rede) | ✅ helper **exit 3 fail-loud** com a CURE 2-NÍVEIS citando `git apply <sd>`; `git apply <sd>` → diff sha256 byte-identical ao pré-ciclo (ca04632…); **ACHADO**: o safety diff recupera o TRACKED, mas os 5 untracked sumiram da árvore pós-revert — restaurados do `backup/untracked/` (a classe que o `--safety-backup` da 11.89 fecha); hook exit 1 por byte não-ASCII no DELTA PENDENTE da PRÓPRIA thread (`guard-remeasure.mjs:67` — a classe do mjs-gate), CORRIGIDO nesta registração |
 | 48 | scan-unit-config — **a nota SERIALIZED POOL removida do config real → a suite da 11.80 falha com o path exato** (Prova 49, sec 8.44) | O pin da nota do singleFork (sec 11.80 poolNotePresent) e o pin da citação da planura (sec 11.95) tinham prova hermética (MUTATIONs sobre strings do config), mas sem prova viva — faltava confirmar que a suite da 11.80 lê o vitest.config.unit.ts REAL e falha quando a nota SOME (o cenário que o 10º guard do batch, scan-unit-config da sec 11.96, protege no pre-commit) | `cp vitest.config.unit.ts /tmp/prova49-vitest.bak && node -e "...remover do índice de '// SERIALIZED POOL' até a linha 'Pinned by scripts/__tests__/unit-surface-contract.test.ts.'..." && npx vitest run scripts/__tests__/unit-surface-contract.test.ts --config vitest.config.unit.ts` (a remoção do bloco = o MESMO alvo do MUTATION da 11.80, com o singleFork: true real intacto) | **Local** — mutação do config real + suite real, sem rede | ✅ suite **exit 1** — **4 testes falham** (REAL-REPO 11.80 + REAL-REPO 11.95 + 2 MUTATIONs da 11.95 em cascata) com o path `scripts/__tests__/unit-surface-contract.test.ts`; CLI `scan-unit-config: 1 violacao` com `vitest.config.unit.ts: o bloco '// SERIALIZED POOL' da nota (sec 11.80) ausente` + CURE; revert → sha1 `508929d5` byte-identical, CLI clean exit 0 |
 | 49 | hook-proof-run — **revert-fail apply ao vivo com delta.patch do backup INTEGRO (sem knob): poison commit no branch original -> apply-fail exit 3; `git apply <backup>/delta.patch` (nivel 1) recupera byte-identical** (Prova 50, sec 8.45) | A CURE em 2 níveis da sec 11.75 (o nível 1 = `git apply <backup>/delta.patch` quando o patch é íntegro) só tinha pin hermético + a Prova 47 provou o caminho do patch CORROMPIDO (o nível 2) — faltava o pipeline real do nível 1: um revert-fail de apply com o delta.patch do backup INTEGRO (a injeção por conflito de árvore real, sem o knob hermético) e a recuperação via `git apply` | `node scripts/hook-proof-run.mjs --branch ci-proof/* --safety-diff /tmp/prova50-safety.diff --mutate ...` (a mutação commitou o poison `df9792d` na branch original — `scan-exit-claims.mjs` reduzido a `// POISON-L1`, um dos 16 arquivos do delta.patch) + recuperação: `git reset --hard 373bd74` + `git apply /tmp/hook-proof-RsCDqA/delta.patch` | **Local** — ciclo real via o helper (hook real passou via stdin; o revert falhou no apply com o patch íntegro; a recuperação nível 1 executada nesta continuação) | ✅ `git apply <backup>/delta.patch` → `APPLY_L1_OK`; `git status --porcelain` == snapshot (21 linhas = 16 M + 5 untracked); `git diff` sha256 == safety diff (`44c23838…`) — o delta recuperado byte-identical |
+| 50 | hook-proof-run — **prova viva do irmao CI do status-divergente (sec 11.98): ciclo hook-proof-run --mutate-untracked no guard-gates real, run 31642157987 - exit 3 + CURE do snapshot no log do job** (Prova 51, sec 8.46) | o sinal do status-divergente (exit 3 + CURE do snapshot) so tinha prova LOCAL (Prova 46) - faltava o irmao CI | step inserido no guard-gates.yml logo apos o checkout (antes do setup-bun): `node scripts/hook-proof-run.mjs --branch ci-proof/hpr-statusdiv-ci51 --mutate-untracked stray.tmp` | **CI real** — dispatch do guard-gates no branch ci-proof/hpr-status-ci, run 31642157987 | ✅ job **failure** — `hook-proof-run: git status divergiu do snapshot pre-ciclo` + CURE com `status-before.txt` no log + `##[error]Process completed with exit code 3.` — o MESMO sinal da Prova 46 observado no pipeline |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -3500,6 +3501,62 @@ Registro de evento 8.x (fronteira de escopo da sec 11.51) — sem entrada no EXI
 **Controle pos-ciclo**: `git status --porcelain` == `status-before.txt` (21 linhas = 16 M + 5 untracked, `STATUS_IDENTICAL`); `git diff` sha256 == safety diff sha256 (`44c23838…`); manifest CLI `clean (20 classes / 50 provas registradas; 20 guards wired)`; a suite do contrato passou como gate do registro (49→50).
 
 **Registro de evento**: Prova 50 (classe hook-proof-run, sec 8.45, local, sem rede).
+
+## 8.46 Prova 51 — prova viva do irmao CI do status-divergente (sec 11.98): ciclo hook-proof-run --mutate-untracked no guard-gates real, run 31642157987 - exit 3 + CURE do snapshot no log do job (2026-08-12, run 31642157987)
+
+**O pedido**: a Prova 46 (sec 8.41) provou o status-divergente LOCALMENTE (o push
+simulado via stdin no hook real). Faltava o irmao CI: um dispatch do guard-gates
+com um ciclo hook-proof-run --mutate-untracked num branch scratch, confirmando
+que o MESMO sinal (exit 3 + CURE do snapshot) aparece no log do job - fechando
+o par local+CI da classe.
+
+**O veredito**: ADOTADO - o sinal do status-divergente foi observado no pipeline
+real com o MESMO exit 3 + CURE do snapshot da Prova 46: o ciclo rodou dentro
+do job Guard Gates e o revert morreu na comparacao do git status vs o
+snapshot, imprimindo `status-before.txt` + a receita de recuperacao.
+
+**A execucao** (2 dispatches - o 1o revelou um ACHADO de metodo):
+- 1o dispatch (run 31641914777): a mutacao ANEXAVA o step ao FIM do
+  guard-gates.yml (apos o scan-eol-anchor), mas o job morreu no setup-bun com
+  "socket hang up" (flakiness de rede do runner) ANTES de chegar ao step - o
+  run falhou por INFRA, nao pelo sinal. ACHADO do metodo: um step de prova
+  anexado ao fim fica refem dos steps anteriores (setup-bun/install) - a prova
+  nao pode depender do caminho de download do bun.
+- Fix do metodo: a mutacao passou a INSERIR o step logo apos o checkout (antes
+  do setup-bun), tornando a prova independente do caminho do bun. O ciclo
+  `node scripts/hook-proof-run.mjs --branch ci-proof/hpr-statusdiv-ci51
+  --mutate-untracked stray.tmp` rodou no CI: backup + scratch + flip (touch
+  stray.tmp + echo >> .gitignore, commit HUSKY=0) + push simulado via stdin no
+  hook real + revert -> o git status pos-revert diverge do snapshot (o
+  stray.tmp sobreviveu, o .gitignore restaurado nao o ignora) -> exit 3 +
+  CURE.
+- 2o dispatch (run 31642157987): o step falhou com `##[error]Process
+  completed with exit code 3.` e a CURE completa no log do job:
+  `hook-proof-run: git status divergiu do snapshot pre-ciclo - o apply do
+  delta PASSou ... compare 'git status --porcelain' com
+  /tmp/hook-proof-*/status-before.txt e reconcilie a divergencia; se o delta
+  faltar, recupere do reflog ('git reflog' + 'git cherry-pick <sha>') ou do
+  safety diff externo`. O hook real saiu 1 (a cadeia do pre-push local falhou
+  por outro gate) - irrelevante, como a Prova 46 documentou: o revert-fail vem
+  ANTES do verify no main.
+
+**A fronteira honesta**: o poll do ci-proof-run casou o run STALE do 1o
+  dispatch (o mesmo nome de branch scratch foi recriado e o `gh run list
+  --limit 1` pegou o run velho) - o log capturado pelo helper era do run
+  31641914777 (falha de infra). O sinal do run NOVO (31642157987) foi
+  confirmado manualmente via `gh run view 31642157987 --log`. A CURA para a
+  proxima prova: um nome de branch scratch FRESCO por dispatch (nunca
+  recriar o mesmo nome) evita o poll casar o run stale. A prova nao cobriu
+  a flakiness do setup-bun (classe infra, nao da classe status-divergente)
+  - so a tornou irrelevante ao inserir o step antes do install.
+
+**Controle pos-ciclo**: branch scratch revertida (remote deletado, de volta em
+freebuff/new-thread-thmsitz5qutoia, local deletado). Re-validacao pos-registro:
+vitest das suites tocadas + `node scripts/proofs-manifest.mjs --check` +
+`node scripts/scan-exit-claims.mjs --check` + tsc + UTF-8/ASCII + ordering
+todos verdes.
+
+**Registro de evento**: Prova 51 (classe hook-proof-run, sec 8.46, run 31642157987).
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -9373,6 +9430,92 @@ codigos de saida da sec 11.58 - o revert ja nao deletava; a decisao so o pina)
 - sem entrada no EXIT_CLAIMS, o count do manifest permanece 29.
 
 **Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc + ASCII do .mjs + ordering 11.98 → 11.99 → 12 monotono.
+
+## 11.100 A borda do safetyDiff como fato consumido: todo uso do revertLeftNote passa a VARIAVEL (o path resolvido UMA vez), nunca um literal nem uma segunda resolucao
+
+**Classe**: o guard de forma da sec 11.84 pina o stage como fato consumido
+(o retorno do revertCycle), mas o safetyDiff - o path resolvido UMA vez na
+sec 11.77 (`const safetyDiff = opts.safetyDiff ? path.resolve(opts.safetyDiff)
+: null`, linha 625 do hook-proof-run.mjs) - era passado aos mesmos 2 pontos
+de conversao (o revert-fail do main, linha 792, e o cleanupOnFailSuffix,
+linha 538) sem pin. Um uso futuro com literal hardcoded (ex.:
+`revertLeftNote(..., "/tmp/sd.patch", ...)`) ou com uma SEGUNDA resolucao
+(`path.resolve(...)` no call site) criaria o drift que a sec 11.77 travou so
+por comentario: a CURE citaria um path DIFERENTE do que a gravacao usou.
+
+**Veredito: ADOTADO** - o resolved-once da sec 11.77 vira fato consumido no
+mesmo padrao do stage (sec 11.84): o guard de forma da 11.84 ganha a
+segunda dimensao que prove que os 2 usos do revertLeftNote passam o
+safetyDiff VARIAVEL (o 5o argumento da chamada), com 2 MUTATIONs
+hermeticas:
+1. hardcodar o safetyDiff do cleanupOnFailSuffix (literal) -> o guard
+   flagra com o literal no offender (a CURE citaria um path que a gravacao
+   nao usou);
+2. resolver o safetyDiff DE NOVO no revert-fail do main
+   (`path.resolve(opts.safetyDiff)`) -> o guard flagra com a segunda
+   resolucao no offender (o drift da 11.77).
+
+**A fronteira**: o pin cobre o ARGUMENTO (a variavel), nao a semantica do
+path em si - um dev que mude o valor resolvido na linha 625 continua livre
+(o lugar UNICO de resolucao e a decisao da sec 11.77); o que o guard trava
+e a CLASSE de divergencia: mais de uma resolucao ou um literal no call
+site. A resolucao unica e o contrato; o valor resolvido e decisao.
+
+Esta sec 11.100 e claim-free por desenho (nenhum codigo de saida novo - o
+guard estende a forma, nao o contrato de exit da sec 11.58) - sem entrada
+no EXIT_CLAIMS, o count do manifest permanece 29.
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts
+scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/scan-exit-claims.test.ts
+scripts/__tests__/gates-proofs-ordering.test.ts --config
+vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.99 -> 11.100 -> 12 monotono (a comparacao e
+por tupla [11, 100] > [11, 99]).
+
+## 11.101 O trio de fatos consumidos fechado: todo uso do revertLeftNote passa o backupDir VARIAVEL (o path criado UMA vez pelo backup step), nunca um literal nem uma segunda criacao
+
+**Classe**: o guard de forma das secs 11.84/11.100 pina o stage e o
+safetyDiff como fatos consumidos nos 2 usos do revertLeftNote (o
+revert-fail do main, linha 792, e o cleanupOnFailSuffix, linha 538), mas o
+terceiro argumento consumido - o backupDir (o path criado UMA vez pelo
+backup step: `const backupDir = fs.mkdtempSync(path.join(os.tmpdir(),
+"hook-proof-"))`, linha 621) e citado na CURE (revertLeftNote: 'backup em
+<backupDir>', 'git apply <backupDir>/delta.patch') - era passado aos
+mesmos 2 pontos de conversao sem pin. Um uso futuro com literal hardcoded
+(ex.: `revertLeftNote(..., "/tmp/backup", ...)`) ou com uma SEGUNDA
+criacao (`fs.mkdtempSync(...)` no call site) citaria um backup DIFERENTE
+do que o ciclo criou - a CURE apontaria para um path vazio ou errado
+(prova da classe: o backup que a CURE cita precisa ser exatamente o do
+ciclo).
+
+**Veredito: ADOTADO** - o backup-criado-uma-vez vira fato consumido no
+mesmo padrao do stage (sec 11.84) e do safetyDiff (sec 11.100): o guard de
+forma da 11.84 ganha a terceira dimensao que prova que os 2 usos do
+revertLeftNote passam o backupDir VARIAVEL (o 4o argumento da chamada),
+com 2 MUTATIONs hermeticas:
+1. hardcodar o backupDir do cleanupOnFailSuffix (literal) -> o guard
+   flagra com o literal no offender (a CURE citaria um backup que o ciclo
+   nao criou);
+2. criar o backupDir DE NOVO no revert-fail do main
+   (`fs.mkdtempSync(...)`) -> o guard flagra com a segunda criacao no
+   offender (o drift do path citado).
+
+**A fronteira**: o pin cobre o ARGUMENTO (a variavel), nao a semantica do
+path em si - um dev que mude o prefixo do mkdtempSync na linha 621
+continua livre (o lugar UNICO de criacao e a decisao do backup step); o
+que o guard trava e a CLASSE de divergencia: mais de uma criacao ou um
+literal no call site. A criacao unica e o contrato; o prefixo gerado e
+decisao. Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts
+scripts/__tests__/scan-exit-claims.test.ts
+scripts/__tests__/gates-proofs-ordering.test.ts --config
+vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.100 -> 11.101 -> 12 monotono (a comparacao e
+por tupla [11, 101] > [11, 100]).
 
 ## 12. Referências
 

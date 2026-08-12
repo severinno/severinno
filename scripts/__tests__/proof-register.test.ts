@@ -378,9 +378,10 @@ describe("proof-register - REAL-REPO CONTRACT (dry-run on the real files, nothin
     // Exemplo nao-colidente com o registro real: a Prova 49/sec 8.44 JA
     // existem (o scan-unit-config graduou com a Prova 49) e a Prova 50/sec
     // 8.45 agora e REAL (o revert-fail apply com patch integro, registrada
-    // em 2026-08-12) - o dry-run usaria 51/8.46 para nao esbarrar no
-    // "Prova N ja existe".
-    code = main(["--class", "hook-proof-run", "--prova", "51", "--section", "8.46", "--what", "o registro de prova local num comando", "--dry-run", "--no-suite"])
+    // em 2026-08-12) e a Prova 51/sec 8.46 e REAL desde 2026-08-12 (o
+    // irmao CI do status-divergente, run 31642157987) - o dry-run usaria
+    // 52/8.47 para nao esbarrar no "Prova N ja existe".
+    code = main(["--class", "hook-proof-run", "--prova", "52", "--section", "8.47", "--what", "o registro de prova local num comando", "--dry-run", "--no-suite"])
     } finally {
       console.log = origLog
       delete process.env.PROOF_REGISTER_MANIFEST
@@ -389,7 +390,7 @@ describe("proof-register - REAL-REPO CONTRACT (dry-run on the real files, nothin
     }
     expect(code).toBe(0)
     const joined = out.join("\n")
-    expect(joined).toContain("classe hook-proof-run / Prova 51 / secao 8.46")
+    expect(joined).toContain("classe hook-proof-run / Prova 52 / secao 8.47")
     expect(joined).toContain("provas")
     expect(joined).toContain("NADA FOI ESCRITO (dry-run)")
     const after = [fs.readFileSync(REAL_MANIFEST, "utf8"), fs.readFileSync(REAL_TEST, "utf8"), fs.readFileSync(REAL_DOC, "utf8")]

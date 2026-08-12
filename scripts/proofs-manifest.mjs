@@ -222,6 +222,7 @@ export const PROOF_CLASSES = [
       { prova: 46, section: "8.41", run: null, what: "status-divergente ao vivo: mutate com o flip do .gitignore -> stray.tmp sobrevive ao revert -> git status diverge -> exit 3 com a CURE do snapshot" },
       { prova: 47, section: "8.42", run: null, what: "safety-diff ao vivo: mutate corrompe o delta.patch do backup -> exit 3 com a CURE citando o safety diff; git apply <sd> recupera o delta TRACKED byte-identical, untracked restaurados do backup/untracked (a classe que o --safety-backup da 11.89 fecha)" },
       { prova: 50, section: "8.45", run: null, what: "revert-fail apply ao vivo com delta.patch do backup INTEGRO (sem knob): poison commit no branch original -> apply-fail exit 3; 'git apply <backup>/delta.patch' (nivel 1) recupera byte-identical" },
+      { prova: 51, section: "8.46", run: "31642157987", what: "prova viva do irmao CI do status-divergente (sec 11.98): ciclo hook-proof-run --mutate-untracked no guard-gates real, run 31642157987 - exit 3 + CURE do snapshot no log do job" },
     ],
   },
   {

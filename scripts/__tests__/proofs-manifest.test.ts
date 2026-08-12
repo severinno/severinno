@@ -102,6 +102,7 @@ const ABS_PIN_SNAPSHOT: Array<[string, number, string, string]> = [
   ["hook-proof-run", 46, "8.41", "local"],
   ["hook-proof-run", 47, "8.42", "local"],
   ["hook-proof-run", 50, "8.45", "local"],
+  ["hook-proof-run", 51, "8.46", "31642157987"],
   ["doc-revalidate", 42, "8.37", "local"],
   ["scan-unit-config", 49, "8.44", "local"],
 ]
@@ -125,9 +126,9 @@ afterEach(() => {
 describe("scripts/proofs-manifest.mjs - ABS PIN e SHAPE (sec 11.60)", () => {
   it("ABS PIN (content): a projecao [class, prova, section, run] do PROOF_CLASSES pinada pelo snapshot - editar o registry exige editar o snapshot conscientemente", () => {
     expect(PROJECTION).toEqual(ABS_PIN_SNAPSHOT)
-    // sanity: 20 classes / 50 provas registradas (o numero do CLI clean).
+    // sanity: 20 classes / 51 provas registradas (o numero do CLI clean).
     expect(new Set(PROOF_CLASSES.map((c) => c.class)).size).toBe(20)
-    expect(PROJECTION).toHaveLength(50)
+    expect(PROJECTION).toHaveLength(51)
   })
 
   it("MANIFEST SHAPE: class/module/proofs presentes, run null ou string, prova numerico, section presente", () => {
@@ -166,7 +167,7 @@ describe("scripts/proofs-manifest.mjs - DOC COVERAGE bidirecional (sec 11.60)", 
     expect(unregistered).toEqual([])
     // sanity: o detector acha as 50 provas reais (a Prova 20 via a linha da
     // tabela `(Prova 20, sec 11.20)` - a secao 11.20 nao tem 'Prova N' no titulo).
-    expect(scanProvaSections(DOC).size).toBe(50)
+    expect(scanProvaSections(DOC).size).toBe(51)
   })
 
   it("manifest -> doc: toda entrada do registry tem secao detectada no doc REAL (entrada stale = drift)", () => {
@@ -451,7 +452,7 @@ describe("scripts/proofs-manifest.mjs - REAL-REPO CONTRACT do CLI (sec 11.60)", 
     const stdout = res.stdout ?? ""
     expect(stdout).toContain("proofs-manifest: clean")
     expect(stdout).toContain("20 classes")
-    expect(stdout).toContain("50 provas")
+    expect(stdout).toContain("51 provas")
   }, 60000)
 
   it("CLI exit 1 REAL: PROOFS_DOC aponta o doc sintetico com Prova 99 (a 40 e real desde a sec 8.35) -> exit 1 com a secao listada no stderr (o CLI real le o doc via override)", () => {
