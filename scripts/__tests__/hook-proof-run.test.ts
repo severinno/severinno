@@ -23,7 +23,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import { EXIT_CLAIMS_CURE } from "../scan-exit-claims.mjs"
-import { injectDocClaim, isManualDocRenameCmd, parseArgs, planSteps, renumberDocSection, revertLeftNote, verifyLocalHook } from "../hook-proof-run.mjs"
+import { injectDocClaim, isManualDocRenameCmd, parseArgs, patchAppliesClean, planSteps, renumberDocSection, revertLeftNote, untrackedFlip, verifyLocalHook } from "../hook-proof-run.mjs"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "hook-proof-run.mjs")
@@ -128,11 +128,27 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(o.to).toBe("11.98")
     }, 60000)
 
-    it("as 3 mutacoes sao mutuamente exclusivas (claim | renumber | shell - uma mutacao por ciclo)", () => {
+    it("as 4 mutacoes sao mutuamente exclusivas (claim | renumber | untracked | shell - uma mutacao por ciclo)", () => {
       const a = parseArgs(["--branch", "ci-proof/lpr-x", "--mutate-doc-claim", "11.99", "--mutate-doc-renumber", "11.42", "--to", "11.98"])
       expect(a.error).toContain("mutuamente exclusivos")
       const b = parseArgs(["--branch", "ci-proof/lpr-x", "--mutate-doc-renumber", "11.42", "--to", "11.98", "--mutate", "touch x"])
       expect(b.error).toContain("mutuamente exclusivos")
+      const c = parseArgs(["--branch", "ci-proof/lpr-x", "--mutate-untracked", "stray.tmp", "--mutate", "touch x"])
+      expect(c.error).toContain("mutuamente exclusivos")
+      const d = parseArgs(["--branch", "ci-proof/lpr-x", "--mutate-doc-claim", "11.99", "--mutate-untracked", "stray.tmp"])
+      expect(d.error).toContain("mutuamente exclusivos")
+    }, 60000)
+
+    it("--mutate-untracked <file> parseia (o flip da Prova 46 embutido - sec 11.98)", () => {
+      const o = parseArgs(["--branch", "ci-proof/lpr-x", "--mutate-untracked", "stray.tmp"])
+      expect(o.error).toBeNull()
+      expect(o.mutateUntracked).toBe("stray.tmp")
+    }, 60000)
+
+    it("--mutate-untracked com separador de path -> erro no parse (o flip e um untracked NA RAIZ - sec 11.98)", () => {
+      expect(parseArgs(["--branch", "ci-proof/lpr-x", "--mutate-untracked", "sub/stray.tmp"]).error).toContain("nome de arquivo SIMPLES")
+      expect(parseArgs(["--branch", "ci-proof/lpr-x", "--mutate-untracked", "sub\\stray.tmp"]).error).toContain("nome de arquivo SIMPLES")
+      expect(parseArgs(["--branch", "ci-proof/lpr-x", "--mutate-untracked", "stray.tmp"]).error).toBeNull()
     }, 60000)
 
     it("--to sem --mutate-doc-renumber -> erro; --mutate-doc-renumber sem --to -> erro (o target da renumeracao)", () => {
@@ -361,6 +377,70 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       // sem a flag, o passo nao aparece (o espelho e opt-in)
       const noFlag = planSteps({ branch: "ci-proof/lpr-x", mutateDocClaim: null, mutate: null, expectExit: 1, expectCure: false, expectLog: null, baseSha: null, hook: null, keep: false, safetyBackup: null }, "base")
       expect(noFlag.join("\n")).not.toContain("safety-backup:")
+    }, 60000)
+
+    it("--mutate-untracked aparece no plano com o flip da Prova 46 (sec 11.98)", () => {
+      const steps = planSteps({ branch: "ci-proof/lpr-x", mutateDocClaim: null, mutate: null, mutateUntracked: "stray.tmp", expectExit: 1, expectCure: false, expectLog: null, baseSha: null, hook: null, keep: false }, "base")
+      expect(steps.join("\n")).toContain("--mutate-untracked stray.tmp")
+      expect(steps.join("\n")).toContain("sec 11.98")
+      expect(steps.join("\n")).toContain("touch + echo >> .gitignore")
+    }, 60000)
+  })
+
+  describe("untrackedFlip - o flip da Prova 46 embutido (sec 11.98)", () => {
+    it("cria o arquivo vazio + anexa a linha no .gitignore (o touch + o echo >> do flip)", () => {
+      const root = createTempDir("hpr-flip-")
+      const gi = untrackedFlip("stray.tmp", root)
+      // o touch: arquivo criado vazio na raiz
+      expect(fs.existsSync(path.join(root, "stray.tmp"))).toBe(true)
+      expect(fs.readFileSync(path.join(root, "stray.tmp"), "utf8")).toBe("")
+      // o echo >>: a linha do .gitignore
+      expect(gi).toBe(path.join(root, ".gitignore"))
+      expect(fs.readFileSync(gi, "utf8")).toBe("stray.tmp\n")
+    }, 60000)
+
+    it("anexa ao .gitignore EXISTENTE preservando a ultima linha (a nova linha termina em newline - o append honesto)", () => {
+      const root = createTempDir("hpr-flip-")
+      fs.writeFileSync(path.join(root, ".gitignore"), "node_modules/\n", "utf8")
+      const gi = untrackedFlip("stray.tmp", root)
+      expect(fs.readFileSync(gi, "utf8")).toBe("node_modules/\nstray.tmp\n")
+    }, 60000)
+
+    it("anexa ao .gitignore EXISTENTE SEM newline final -> o separator \\n e inserido ANTES da linha nova (o 3o branch do append honesto - a linha nao gruda na ultima)", () => {
+      const root = createTempDir("hpr-flip-")
+      fs.writeFileSync(path.join(root, ".gitignore"), "node_modules", "utf8")
+      const gi = untrackedFlip("stray.tmp", root)
+      expect(fs.readFileSync(gi, "utf8")).toBe("node_modules\nstray.tmp\n")
+    }, 60000)
+  })
+
+  describe("CONTRACT (sec 11.99): o revert-fail nunca apaga untracked nao-backupeados (a fronteira como decisao)", () => {
+    it("FORM GUARD: o corpo do revertCycle NAO contem primitiva de delecao (o revert so RESTAURA o que copiou no backup - nunca rm/unlink/clean)", () => {
+      // A fronteira da sec 11.99: o revertCycle so copia PARA a arvore o que
+      // o backup guardou (untracked/ do byte-copy, doc-before.md, delta.patch)
+      // e NUNCA deleta - um untracked nao-backupeado pode ser DADO DO USUARIO
+      // (o revert nao distingue o stray do flip de um arquivo criado durante
+      // o ciclo) e a delecao automatica seria a classe do `git clean` sem
+      // freio. O stray SOBREVIVE POR DESENHO (o sinal da classe Prova 46).
+      // Este guard pina o invarian estruturalmente: um dev que adicione um
+      // rmSync/unlinkSync/removeSync/git clean/git rm ao revert TRIPA a suite
+      // na hora (o padrao do guard de forma da sec 11.65 aplicado ao
+      // invarian de nao-delecao).
+      const src = fs.readFileSync(SCRIPT, "utf8")
+      const start = src.indexOf("export function revertCycle")
+      const end = src.indexOf("export function main", start)
+      // FAIL-LOUD (reviewer, sec 11.99): os marcadores do slice DEVEM
+      // existir - se um refactor renomear/remover o revertCycle (ou o main),
+      // o indexOf retorna -1 e o slice viraria ~1 char que nunca casa os
+      // regex abaixo: o guard passaria VACUO (verde silencioso - a classe
+      // Prova 17 ACHADO, sec 8.14, que esta secao existe para prevenir).
+      expect(start).toBeGreaterThanOrEqual(0) // 'export function revertCycle' presente
+      expect(end).toBeGreaterThan(start) // 'export function main' apos o revertCycle
+      const body = src.slice(start, end)
+      // primitivas de delecao do fs
+      expect(body).not.toMatch(/(rmSync|unlinkSync|removeSync|rmdirSync)/)
+      // git clean / git rm como invocacao (o git e chamado como git(["..."]))
+      expect(body).not.toMatch(/git\(\s*\[?\s*["'](clean|rm)/)
     }, 60000)
   })
 
@@ -615,11 +695,14 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       fs.writeFileSync(docPath, SYNTH_DOC, "utf8")
       // o revert-fail do main() E o cleanupOnFailSuffix (sec 11.69) usam a
       // MESMA revertLeftNote - mas o cleanup so tinha prova sintetica. Com o
-      // knob FAIL_APPLY + --cleanup-on-fail + --mutate "exit 1": o fail de
-      // mutacao dispara o cleanupOnFailSuffix, o revertCycle DENTRO dele roda
-      // e o apply FALHA -> o sufixo vira 'cleanup-on-fail FALHOU' com a
-      // revertLeftNote(rv.stage=apply) - a 2-NIVEIS do reflog - no MESMO
-      // canal do revert-fail do main (o par de conversao fechado).
+      // knob FAIL_APPLY + FAIL_APPLY_CHECK (a classe do patch CORROMPIDO: o
+      // apply falha E o --check da decisao verificada tambem - o reflog e a
+      // CURE) + --cleanup-on-fail + --mutate "exit 1": o fail de mutacao
+      // dispara o cleanupOnFailSuffix, o revertCycle DENTRO dele roda e o
+      // apply FALHA -> o sufixo vira 'cleanup-on-fail FALHOU' com a
+      // revertLeftNote(rv.stage=apply) - a CURE do REFLOG (a decisao
+      // verificada da sec 11.75) - no MESMO canal do revert-fail do main
+      // (o par de conversao fechado).
       const r = runCli(
         ["--branch", "ci-proof/hpr-cofapply", "--mutate", "exit 1", "--cleanup-on-fail", "--hook", FAKE_HOOK],
         {
@@ -629,6 +712,7 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
           HOOK_PROOF_DOC: docPath,
           HOOK_PROOF_FAKE_DIRTY: "1",
           HOOK_PROOF_FAKE_FAIL_APPLY: "1",
+          HOOK_PROOF_FAKE_FAIL_APPLY_CHECK: "1",
         },
       )
       expect(r.status).toBe(3)
@@ -641,8 +725,9 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(r.stderr).toContain("git apply delta.patch falhou")
       // o backup apontado (a informacao acionavel do fail interno)
       expect(r.stderr).toContain("backup em")
-      // a CURE stage-aware NO MESMO canal do revert-fail do main: a 2-NIVEIS
-      // do reflog (pos-branch-D - a scratch foi deletada com o delta dentro)
+      // a CURE stage-aware NO MESMO canal do revert-fail do main: a DECISAO
+      // VERIFICADA da sec 11.75 (o --check falhou -> a CURE do reflog - a
+      // scratch foi deletada com o delta dentro)
       expect(r.stderr).toContain("reflog")
       expect(r.stderr).toContain("cherry-pick")
       expect(r.stderr).not.toContain("git checkout base && git branch -D ci-proof/hpr-cofapply")
@@ -725,9 +810,12 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       const docPath = path.join(docDir, "gates-proofs.md")
       fs.writeFileSync(docPath, SYNTH_DOC, "utf8")
       // arvore SUJA (o delta.patch do backup e nao-vazio -> o apply RODA) +
-      // o knob que faz o git apply FALHAR - o seam hermetico do fail path
-      // que a Prova 43 (sec 8.38) so conseguiu provar ao vivo (o fake-bins
-      // nunca falhava o apply). O hook passa (exit 0) - a falha e do revert.
+      // o knob que faz o git apply FALHAR + o FAIL_APPLY_CHECK (a classe do
+      // patch CORROMPIDO da Prova 43: o apply falha E o --check da decisao
+      // verificada da sec 11.75 tambem -> a CURE do reflog) - o seam
+      // hermetico do fail path que a Prova 43 (sec 8.38) so conseguiu
+      // provar ao vivo (o fake-bins nunca falhava o apply). O hook passa
+      // (exit 0) - a falha e do revert.
       const r = runCli(
         ["--branch", "ci-proof/hpr-applyfail", "--mutate-doc-claim", "11.99", "--expect-exit", "0", "--hook", FAKE_HOOK],
         {
@@ -737,6 +825,7 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
           HOOK_PROOF_DOC: docPath,
           HOOK_PROOF_FAKE_DIRTY: "1",
           HOOK_PROOF_FAKE_FAIL_APPLY: "1",
+          HOOK_PROOF_FAKE_FAIL_APPLY_CHECK: "1",
         },
       )
       // o revert-fail e o fail(3) da cadeia: exit 3 fail-loud
@@ -746,8 +835,10 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       // o backup apontado (a informacao acionavel do fail interno)
       expect(r.stderr).toContain("backup em")
       // a CURE stage-aware (sec 11.75): o apply-fail e POS-branch-D -> o
-      // reflog + cherry-pick, NAO a receita generica (git checkout <orig> &&
-      // git branch -D) que descreveria um estado que nao existe mais
+      // --check da decisao verificada FALHOU (FAIL_APPLY_CHECK=1 - o patch
+      // corrompido da classe Prova 43) -> a CURE do reflog + cherry-pick,
+      // NAO a receita generica (git checkout <orig> && git branch -D) que
+      // descreveria um estado que nao existe mais
       expect(r.stderr).toContain("reflog")
       expect(r.stderr).toContain("cherry-pick")
       expect(r.stderr).not.toContain("git checkout base && git branch -D ci-proof/hpr-applyfail")
@@ -761,6 +852,39 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(idxCo).toBeGreaterThanOrEqual(0)
       expect(idxBd).toBeGreaterThan(idxCo)
       expect(idxAp).toBeGreaterThan(idxBd)
+    }, 60000)
+
+    it("revert-fail APPLY hermetico com o patch INTEGRO (FAIL_APPLY=1 SEM o FAIL_APPLY_CHECK): o --check da decisao verificada PASSA -> a CURE cita SO o nivel 1 ('git apply <backup>/delta.patch' + APLICA LIMPO), sem reflog - o par da sec 11.75 nos DOIS lados do dispatch", () => {
+      const stateDir = createTempDir("hpr-e2e-")
+      const docDir = createTempDir("hpr-doc-")
+      const docPath = path.join(docDir, "gates-proofs.md")
+      fs.writeFileSync(docPath, SYNTH_DOC, "utf8")
+      // o knob FAIL_APPLY SEM o FAIL_APPLY_CHECK: o apply real do revert
+      // FALHA (o seam), mas o --check da decisao verificada (sec 11.75)
+      // PASSA (o patch do backup APLICA LIMPO na arvore atual) -> a CURE
+      // cita SO o nivel 1, nao o reflog (o nivel 2 que o --check provou
+      // desnecessario). O contraste com o E2E do reflog acima (que roda
+      // com o FAIL_APPLY_CHECK=1 - a classe do patch corrompido).
+      const r = runCli(
+        ["--branch", "ci-proof/hpr-l1v", "--mutate-doc-claim", "11.99", "--expect-exit", "0", "--hook", FAKE_HOOK],
+        {
+          HOOK_PROOF_FAKE_STATE: stateDir,
+          HOOK_PROOF_FAKE_HOOK_OUTPUT: "fake hook out",
+          HOOK_PROOF_FAKE_HOOK_EXIT: "0",
+          HOOK_PROOF_DOC: docPath,
+          HOOK_PROOF_FAKE_DIRTY: "1",
+          HOOK_PROOF_FAKE_FAIL_APPLY: "1",
+        },
+      )
+      expect(r.status).toBe(3)
+      // a causa exata do revertCycle (o mensage interno do apply-fail)
+      expect(r.stderr).toContain("git apply delta.patch falhou")
+      // a DECISAO VERIFICADA: o --check passou -> a CURE cita SO o nivel 1
+      // (APLICA LIMPO + o path do delta.patch) e NAO o reflog/cherry-pick
+      expect(r.stderr).toContain("APLICA LIMPO")
+      expect(r.stderr).toContain("delta.patch")
+      expect(r.stderr).not.toContain("reflog")
+      expect(r.stderr).not.toContain("cherry-pick")
     }, 60000)
 
     it("revert-fail CHECKOUT hermetico (sec 11.85): HOOK_PROOF_FAKE_FAIL_CHECKOUT=1 -> exit 3 com o backup apontado + a receita GENERICA (a scratch AINDA existe - o branch -D nunca rodou)", () => {
@@ -873,6 +997,57 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(idxCo).toBeGreaterThanOrEqual(0)
       expect(idxBd).toBeGreaterThan(idxCo)
       expect(idxAp).toBeGreaterThan(idxBd)
+      // O PIN do veredito da sec 11.97 (o envelope unico basta): o doc do
+      // byte-copy foi restaurado ANTES do check de status no revertCycle
+      // (o copyFileSync do doc-before.md precede o git status --porcelain) -
+      // um status-fail tem o doc JA de volta (a CURE do snapshot nao precisa
+      // citar o byte-copy: o doc NAO e a divergencia). Este assert pina a
+      // ORDEM estrutural: a mutacao do --mutate-doc-claim escreveu o doc
+      // (docPath != SYNTH_DOC apos a mutacao), o revert restaurou do
+      // byte-copy (docPath == SYNTH_DOC) e SO ENTao o status divergiu.
+      expect(fs.readFileSync(docPath, "utf8")).toBe(SYNTH_DOC)
+    }, 60000)
+
+    it("E2E (sec 11.98): --mutate-untracked stray.tmp com HOOK_PROOF_MUTATE_ROOT (o seam hermetico) + FAIL_STATUS=1 -> exit 3 com a CURE do snapshot E o flip rodou de verdade no root do seam", () => {
+      const stateDir = createTempDir("hpr-e2e-")
+      const docDir = createTempDir("hpr-doc-")
+      const flipRoot = createTempDir("hpr-fliproot-")
+      const docPath = path.join(docDir, "gates-proofs.md")
+      fs.writeFileSync(docPath, SYNTH_DOC, "utf8")
+      // o flip roda NO ROOT DO SEAM (HOOK_PROOF_MUTATE_ROOT) - o .gitignore
+      // do repo REAL nunca e tocado em teste (o mesmo padrao do
+      // HOOK_PROOF_DOC). O FAIL_STATUS modela o EFEITO do flip (o stray
+      // sobrevive ao revert -> o git status diverge do snapshot -> o
+      // status-fail com a CURE do snapshot - o mecanismo da Prova 46).
+      const r = runCli(
+        ["--branch", "ci-proof/hpr-flip", "--mutate-untracked", "stray.tmp", "--expect-exit", "0", "--hook", FAKE_HOOK],
+        {
+          HOOK_PROOF_FAKE_STATE: stateDir,
+          HOOK_PROOF_FAKE_HOOK_OUTPUT: "fake hook out",
+          HOOK_PROOF_FAKE_HOOK_EXIT: "0",
+          HOOK_PROOF_DOC: docPath,
+          HOOK_PROOF_FAKE_DIRTY: "1",
+          HOOK_PROOF_FAKE_FAIL_STATUS: "1",
+          HOOK_PROOF_MUTATE_ROOT: flipRoot,
+        },
+      )
+      expect(r.status).toBe(3)
+      // o flip RODOU no root do seam: o arquivo vazio + a linha do .gitignore
+      expect(fs.existsSync(path.join(flipRoot, "stray.tmp"))).toBe(true)
+      expect(fs.readFileSync(path.join(flipRoot, "stray.tmp"), "utf8")).toBe("")
+      expect(fs.readFileSync(path.join(flipRoot, ".gitignore"), "utf8")).toBe("stray.tmp\n")
+      // a classe status-divergente: exit 3 com a CURE do snapshot (o
+      // mecanismo da Prova 46 preservado pela flag dedicada)
+      expect(r.stderr).toContain("git status divergiu do snapshot pre-ciclo")
+      expect(r.stderr).toContain("PASSou")
+      expect(r.stderr).toContain("status-before.txt")
+      // a FRONTEIRA (sec 11.99): o revert-fail NAO apaga o stray - o arquivo
+      // SOBREVIVE (assert acima) E a CURE NAO instrui deletar (a
+      // reconciliacao e MANUAL via status-before.txt - o helper nunca
+      // emite um rm/git clean: um untracked nao-backupeado pode ser dado
+      // do usuario e a delecao automatica seria destrutiva)
+      expect(r.stderr).not.toMatch(/\brm\b/)
+      expect(r.stderr).not.toContain("git clean")
     }, 60000)
   })
 
@@ -902,7 +1077,7 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(fixture, "o fixture deve copiar a mensagem do git real verbatim - nao uma aproximacao").toContain(GIT_APPLY_ERR)
     }, 60000)
 
-    it("E2E: o stderr hermetico com o knob contem o MESMO nucleo do stderr vivo - 'git apply delta.patch falhou: <mensagem real> - backup em <dir>' (a CURE atual e a 2-NIVEIS da 11.75)", () => {
+    it("E2E: o stderr hermetico com o knob contem o MESMO nucleo do stderr vivo - 'git apply delta.patch falhou: <mensagem real> - backup em <dir>' (a CURE atual e a DECISAO VERIFICADA da 11.75 - o sufixo e comportamento atual, o nucleo e o estavel)", () => {
       const stateDir = createTempDir("hpr-e2e-")
       const docDir = createTempDir("hpr-doc-")
       const docPath = path.join(docDir, "gates-proofs.md")
@@ -916,6 +1091,10 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
           HOOK_PROOF_DOC: docPath,
           HOOK_PROOF_FAKE_DIRTY: "1",
           HOOK_PROOF_FAKE_FAIL_APPLY: "1",
+          // o FAIL_APPLY_CHECK: a classe do patch CORROMPIDO (Prova 43) - o
+          // --check da decisao verificada FALHA tambem -> a CURE do reflog
+          // (sem o knob, o --check passaria e a CURE citaria SO o nivel 1)
+          HOOK_PROOF_FAKE_FAIL_APPLY_CHECK: "1",
         },
       )
       expect(r.status).toBe(3)
@@ -924,10 +1103,12 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       // a Prova 43 (sec 8.38) observou ao vivo (sem o path do backup, que
       // varia por ambiente - o nucleo e o que a equivalencia significa).
       expect(r.stderr).toContain(`git apply delta.patch falhou: ${GIT_APPLY_ERR} - backup em `)
-      // a CURE atual (pos-11.75): a 2-NIVEIS do reflog - o registro vivo da
-      // Prova 43 mostra a receita generica PRE-11.75 (a classe SUPERSEDED:
-      // o nucleo e o estavel; o sufixo e comportamento atual ja pinado pela
-      // 11.76 e refinado pela 11.75).
+      // a CURE atual (pos-11.75): a DECISAO VERIFICADA - com o
+      // FAIL_APPLY_CHECK=1 (o patch corrompido da classe Prova 43, o --check
+      // falha) a CURE cita SO o reflog - o registro vivo da Prova 43 mostra
+      // a receita generica PRE-11.75 (a classe SUPERSEDED: o nucleo e o
+      // estavel; o sufixo e comportamento atual pinado pela 11.76 e
+      // refinado pela 11.75).
       expect(r.stderr).toContain("reflog")
       expect(r.stderr).toContain("cherry-pick")
     }, 60000)
@@ -1033,7 +1214,9 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
       // o revert-fail (o fix da sec 11.65 + a CURE stage-aware da 11.75):
       // remove a interpolacao da nota.
-      const mutated = src.replace("${reverted.message}${revertLeftNote(reverted.stage, originalBranch, opts.branch, backupDir, safetyDiff)}", "${reverted.message}")
+      // a assinatura ATUAL do revertLeftNote inclui o patchApplies (a
+      // DECISAO VERIFICADA da sec 11.75 - o --check no momento da nota).
+      const mutated = src.replace("${reverted.message}${revertLeftNote(reverted.stage, originalBranch, opts.branch, backupDir, safetyDiff, patchApplies)}", "${reverted.message}")
       expect(mutated).not.toBe(src)
       const pos = posInfra(frontier(mutated).pos)
       const offenders = pos.filter((s) => !s.text.includes("LeftNote"))
@@ -1111,7 +1294,7 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
 
     it("MUTATION: remover a nota do envelope do cleanupOnFailSuffix -> o guard flagra (o call site de 363 engoliria o fail sem receita)", () => {
       const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
-      const mutated = src.replace("return ` | cleanup-on-fail FALHOU: ${rv.message}${revertLeftNote(rv.stage, originalBranch, branch, backupDir, safetyDiff)}`", "return ` | cleanup-on-fail FALHOU: ${rv.message}`")
+      const mutated = src.replace("return ` | cleanup-on-fail FALHOU: ${rv.message}${revertLeftNote(rv.stage, originalBranch, branch, backupDir, safetyDiff, patchApplies)}`", "return ` | cleanup-on-fail FALHOU: ${rv.message}`")
       expect(mutated).not.toBe(src)
       const lines = mutated.split("\n")
       const offenders = callSites(mutated).filter((s) => !envelope(s, lines).includes("LeftNote"))
@@ -1135,23 +1318,48 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
     // despacha pelo stage: apply/status -> o reflog + cherry-pick (a
     // recuperacao real); checkout/branchD -> a receita generica (a scratch
     // AINDA existe - o branch -D nao rodou).
-    it("apply-fail -> a CURE em 2 NIVEIS: PRIMEIRO o git apply do patch do backup (a receita do dia a dia, a fonte primaria quando integro) e SO como fallback o reflog (quando o patch e invalido - a classe da Prova 43)", () => {
-      const n = revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk")
+    it("apply-fail com o patch APLICANDO LIMPO (patchApplies=true - o --check decidiu) -> SO o nivel 1: 'git apply <backup>/delta.patch' (a decisao verificada da sec 11.75 - sem reflog, sem cherry-pick)", () => {
+      // O refinamento 2026-08-12 (sec 11.75): a hierarquia em 2 NIVEIS em
+      // texto ("o usuario decide se o patch esta integro") vira DECISAO
+      // VERIFICADA - o call site roda 'git apply --check' no momento da
+      // nota e passa o resultado. patchApplies=true -> a CURE cita SO o
+      // nivel 1 (a receita do dia a dia, verificada).
+      const n = revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk", null, true)
       expect(n).toContain("branch -D JA rodou")
-      expect(n).toContain("2 NIVEIS")
-      // nivel 1: o patch do backup (a fonte PRIMARIA do delta quando integro)
+      expect(n).toContain("APLICA LIMPO")
       expect(n).toContain("git apply /tmp/bk/delta.patch")
-      // a ORDEM e pinada: o nivel 1 (patch do backup) vem ANTES do comando
-      // do nivel 2 (o 'git reflog' com aspas - o 'reflog' nu do intro
-      // 'orfao no reflog' aparece antes e quebraria o pin por prefixo)
-      expect(n.indexOf("git apply /tmp/bk/delta.patch")).toBeLessThan(n.indexOf("'git reflog'"))
-      // nivel 2: o reflog + cherry-pick (SO quando o patch for invalido)
+      // o nivel 1 NAO cita o reflog/cherry-pick (a decisao e verificada -
+      // nao e uma hierarquia onde o usuario tenta o 1o e cai no 2o)
+      expect(n).not.toContain("cherry-pick")
+      expect(n).not.toContain("'git reflog'")
+      expect(n).not.toContain("git checkout base && git branch -D ci-proof/lpr-x")
+    }, 60000)
+
+    it("apply-fail com o patch NAO aplicando (patchApplies=false - o --check decidiu) -> SO o reflog/cherry-pick (a classe das Provas 43/50 - corrompido ou a arvore conflita)", () => {
+      // O outro lado da decisao verificada: o --check falhou -> a CURE cita
+      // SO o reflog (o commit orfao) + cherry-pick - sem o nivel 1 que o
+      // --check ja provou que NAO aplica (a classe da Prova 43, patch
+      // corrompido, e da Prova 50, a arvore com blocker).
+      const n = revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk", null, false)
+      expect(n).toContain("branch -D JA rodou")
+      expect(n).toContain("NAO aplica")
       expect(n).toContain("reflog")
       expect(n).toContain("cherry-pick")
       expect(n).toContain("hook-proof: ci-proof/lpr-x (delta)")
-      // a receita generica (checkout + branch -D) NAO pode aparecer - o
-      // checkout ja voltou e o branch -D falharia ("no such branch")
+      expect(n).not.toContain("APLICA LIMPO")
       expect(n).not.toContain("git checkout base && git branch -D ci-proof/lpr-x")
+    }, 60000)
+
+    it("apply-fail SEM o patchApplies (null - o call site esqueceu o --check) -> THROW fail-loud (a decisao verificada nao decide de olho - o ACHADO Prova 17)", () => {
+      // O nit do reviewer (sec 11.75, refinamento 2): apply+null e uma
+      // violacao de contrato do call site (o --check so NAO roda quando o
+      // stage nao e apply) - sem o guard, o falsy cairia SILENCIOSAMENTE no
+      // reflog (a CURE errada: o usuario julgaria um patch integro como
+      // corrompido). O guard THROW pina que a DECISAO VERIFICADA nunca
+      // decide de olho - o MESMO espirito do Prova 17 ACHADO (sec 8.14).
+      expect(() => revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk")).toThrow(/patchApplies/)
+      // o null explicito tambem (o default e o null implicito)
+      expect(() => revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk", null, null)).toThrow(/patchApplies/)
     }, 60000)
 
     it("status-fail -> a CURE do SNAPSHOT (o apply do delta JA PASSou - o delta esta na arvore; a divergencia e do git status vs o status-before.txt, NAO do patch - a hierarquia apply-first nao se aplica)", () => {
@@ -1196,6 +1404,42 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       const mutated = src.replace(STATUS_BRANCH, 'if (stage === "apply") {')
       expect(mutated).not.toBe(src)
       expect(mutated).not.toContain(STATUS_BRANCH)
+    }, 60000)
+  })
+
+  describe("patchAppliesClean - o VERIFICADOR da CURE do apply-fail (sec 11.75)", () => {
+    // A decisao verificada (sec 11.75): o call site roda 'git apply --check
+    // <backup>/delta.patch' no MOMENTO da nota (1 spawn git no fail path) e
+    // a CURE cita SO o nivel aplicavel. Este teste pina o VERIFICADOR em si
+    // contra o fixture: default (sem knob) o --check passa -> true (o patch
+    // APLICA LIMPO -> a CURE cita SO o nivel 1); com FAIL_APPLY_CHECK=1 o
+    // --check falha -> false (corrompido/conflito -> a CURE cita SO o
+    // reflog). O fixture NAO le o patch (so responde a shape) - o backupDir
+    // e um path arbitrario de teste.
+    it("default (sem knob): 'git apply --check' passa -> true (o patch aplica limpo - a CURE cita SO o nivel 1)", () => {
+      const stateDir = createTempDir("hpr-pac-")
+      process.env.HOOK_PROOF_GIT = FAKE_BINS
+      process.env.HOOK_PROOF_FAKE_STATE = stateDir
+      try {
+        expect(patchAppliesClean("/tmp/bk")).toBe(true)
+      } finally {
+        delete process.env.HOOK_PROOF_GIT
+        delete process.env.HOOK_PROOF_FAKE_STATE
+      }
+    }, 60000)
+
+    it("FAIL_APPLY_CHECK=1: o --check FALHA -> false (o patch corrompido/conflito - a CURE cita SO o reflog)", () => {
+      const stateDir = createTempDir("hpr-pac-")
+      process.env.HOOK_PROOF_GIT = FAKE_BINS
+      process.env.HOOK_PROOF_FAKE_STATE = stateDir
+      process.env.HOOK_PROOF_FAKE_FAIL_APPLY_CHECK = "1"
+      try {
+        expect(patchAppliesClean("/tmp/bk")).toBe(false)
+      } finally {
+        delete process.env.HOOK_PROOF_GIT
+        delete process.env.HOOK_PROOF_FAKE_STATE
+        delete process.env.HOOK_PROOF_FAKE_FAIL_APPLY_CHECK
+      }
     }, 60000)
   })
 
@@ -1268,12 +1512,22 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(parseArgs(["--branch", "ci-proof/lpr-x"]).safetyDiff).toBeNull()
     }, 60000)
 
-    it("revertLeftNote com safetyDiff: o apply-fail cita o git apply <path> (a copia externa sobrevive ao backup corrompido)", () => {
-      const n = revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk", "/tmp/sd.patch")
+    it("revertLeftNote com safetyDiff: o apply-fail com o patch NAO aplicando (patchApplies=false) cita o git apply <path> (a copia externa sobrevive ao backup corrompido - o sufixo do branch do reflog)", () => {
+      // O safety diff vive no branch do REFLOG (o patch NAO aplica - a
+      // classe da Prova 43): o sufixo cita o path externo que sobrevive a
+      // corrupcao do delta.patch do backup.
+      const n = revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk", "/tmp/sd.patch", false)
       expect(n).toContain("git apply /tmp/sd.patch")
       // a forma generica ("safety diff externo") NAO aparece - a CURE e
       // especifica quando o path foi salvo
       expect(n).not.toContain("safety diff externo")
+    }, 60000)
+
+    it("revertLeftNote com safetyDiff: o apply-fail com o patch APLICANDO LIMPO (patchApplies=true) NAO cita o safety diff (o nivel 1 verificado nao precisa do fallback externo)", () => {
+      const n = revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk", "/tmp/sd.patch", true)
+      expect(n).toContain("APLICA LIMPO")
+      expect(n).toContain("git apply /tmp/bk/delta.patch")
+      expect(n).not.toContain("git apply /tmp/sd.patch")
     }, 60000)
 
     it("revertLeftNote com safetyDiff: o status-fail tambem cita o path (o par pos-branch-D compartilha a CURE)", () => {
@@ -1281,11 +1535,9 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       expect(n).toContain("git apply /tmp/sd.patch")
     }, 60000)
 
-    it("revertLeftNote SEM safetyDiff: a CURE cita o patch do BACKUP no nivel 1 (sempre - a fonte primaria) mas NAO o path externo do safety diff (so quando a flag foi usada - o opcional honesto)", () => {
-      const n = revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk")
+    it("revertLeftNote SEM safetyDiff, patch NAO aplicando (patchApplies=false): a CURE cita a forma GENERICA do safety diff (o externo) mas NAO o path externo (so quando a flag foi usada - o opcional honesto)", () => {
+      const n = revertLeftNote("apply", "base", "ci-proof/lpr-x", "/tmp/bk", null, false)
       expect(n).toContain("safety diff externo")
-      // o nivel 1 cita o patch do backup (a fonte primaria, sempre presente)
-      expect(n).toContain("git apply /tmp/bk/delta.patch")
       // o path EXTERNO do safety diff NAO aparece sem a flag
       expect(n).not.toContain("git apply /tmp/sd.patch")
     }, 60000)
@@ -1321,6 +1573,10 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
           HOOK_PROOF_DOC: docPath,
           HOOK_PROOF_FAKE_DIRTY: "1",
           HOOK_PROOF_FAKE_FAIL_APPLY: "1",
+          // o FAIL_APPLY_CHECK: a classe do patch CORROMPIDO (Prova 43) - o
+          // --check falha -> a CURE do reflog citando o safety diff (sem o
+          // knob, o --check passaria e a CURE citaria SO o nivel 1)
+          HOOK_PROOF_FAKE_FAIL_APPLY_CHECK: "1",
           HOOK_PROOF_FAKE_PATCH: "the safety diff content\n",
         },
       )
@@ -1435,6 +1691,10 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
           HOOK_PROOF_DOC: docPath,
           HOOK_PROOF_FAKE_DIRTY: "1",
           HOOK_PROOF_FAKE_FAIL_APPLY: "1",
+          // o FAIL_APPLY_CHECK: a classe do patch CORROMPIDO (Prova 43) - o
+          // --check falha -> a CURE do reflog (sem o knob, o --check passaria
+          // e a CURE citaria SO o nivel 1 - o auto-cura e a classe corrompida)
+          HOOK_PROOF_FAKE_FAIL_APPLY_CHECK: "1",
           HOOK_PROOF_FAKE_PATCH: "the safety diff content\n",
         },
       )

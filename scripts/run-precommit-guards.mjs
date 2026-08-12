@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * run-precommit-guards.mjs - batch runner dos 8 guards node do pre-commit
- * (2026-08, secao 11.13/11.16): uma UNICA invocacao node em vez de 8 spawns.
+ * run-precommit-guards.mjs - batch runner dos 10 guards node do pre-commit
+ * (2026-08, secao 11.13/11.16): uma UNICA invocacao node em vez de 10 spawns.
  *
  * WHY: o boot do node (~0.14s) dominava cada guard isolado (0.14-0.63s
  * medido); os spawns sequenciais do hook custavam ~0.54-0.81s por commit.
- * Este runner importa os 8 guards no MESMO processo (1 boot) e roda os scans
+ * Este runner importa os 10 guards no MESMO processo (1 boot) e roda os scans
  * em sequencia, agregando os exit codes: medido ~0.22-0.26s - ~2.7x mais
  * rapido que o sequencial e mais deterministico que o paralelo (saida
  * ORDENADA, sem interleave de stdout num hook set -euo pipefail; o paralelo
@@ -46,10 +46,31 @@
  *      de rodar a suite (test:unit no CI). O batch roda incondicional
  *      (invariante do repo: guards baratos nao ganham condicao) - o
  *      incremento medido e ~15-25ms (boot compartilhado).
+ *   9. scan-proof-helpers.mjs             (sec 11.93, 2026-08-12 - o 9o
+ *      guard): o CONTRATO de fail-loud dos helpers de prova (sec 11.72)
+ *      executado no batch - a suite da 11.72 so rodava via test:unit (no
+ *      CI/push), entao a edicao acidental do bloco 'Exit codes:' do
+ *      docblock de um helper (hook-proof-run/ci-proof-run) passava o
+ *      commit local e so falhava no push. As Provas 44/48 provaram o
+ *      contrato ao vivo; este guard o executa NO PRE-COMMIT (o mesmo
+ *      padrao do tripwire do exit-claims). Roda INCONDICIONAL (a
+ *      invariante da sec 11.42 supersede a premisa da condicao por
+ *      arquivo do pedido: guards baratos nao ganham condicao; ~15-25ms de
+ *      fs + regex, boot compartilhado).
+ *  10. scan-unit-config.mjs               (sec 11.96, 2026-08-12 - o 10o
+ *      guard): o CONTRATO da nota SERIALIZED POOL do vitest.config.unit.ts
+ *      (sec 11.80 poolNotePresent + sec 11.95 a citacao da planura vs a
+ *      sec 8.1) executado no batch - a suite da 11.80/11.95 so rodava via
+ *      test:unit (no CI/push), entao editar o config (reescrever a
+ *      justificativa, remover a nota, dessincronizar a citacao) passava o
+ *      commit local e so falharia no push. Roda INCONDICIONAL (a mesma
+ *      invariante - ~10-20ms de fs + regex, boot compartilhado); as 4
+ *      funcoes extratoras vivem NO GUARD (a fonte unica que a suite da
+ *      sec 11.80/11.95 importa, a regra dos 2 usos).
  * O scan-guard-gates main() e ASYNC (override WORKFLOW_CONTRACTS_MODULE via
  * import dinamico) - o runner o aguarda antes de agregar.
  *
- * Exit: 0 = todos os 8 limpos; 1 = pelo menos um falhou (worst-exit - os
+ * Exit: 0 = todos os 10 limpos; 1 = pelo menos um falhou (worst-exit - os
  * exit codes dos guards sao 0/1 puros, entao o agregado e o OR logico).
  * Env overrides dos guards sao herdados (PUSH_SUITE_SCAN_ROOT,
  * LINT_LOADER_SCAN_ROOT, GUARD_GATES_SCAN_ROOT, NODE_MODULES_ROOT) - os
@@ -73,14 +94,16 @@ import { main as fuzzPrecommitMain } from "./scan-fuzz-precommit.mjs"
 import { main as batchCoverageMain } from "./scan-batch-coverage.mjs"
 import { main as prepushBatchMain } from "./scan-prepush-batch.mjs"
 import { main as exitClaimsMain } from "./scan-exit-claims.mjs"
+import { main as proofHelpersMain } from "./scan-proof-helpers.mjs"
+import { main as unitConfigMain } from "./scan-unit-config.mjs"
 
 /**
- * Run the 5 guards in hook order and aggregate the exit codes. Every guard
+ * Run the 10 guards in hook order and aggregate the exit codes. Every guard
  * ALWAYS runs (worst-exit reporting: one failure does not hide the others -
  * the reason the batch exists over the old `set -e`-short-circuit hook).
  * Returns the aggregated exit code (0 | 1). Not exported: the test suite
  * exercises the CLI entry point (the real wiring), never an in-process
- * call - an in-process import would run the 5 guards against the real repo
+ * call - an in-process import would run the 10 guards against the real repo
  * AND mutate process.exitCode as a side effect.
  */
 async function runPrecommitGuards() {
@@ -93,6 +116,8 @@ async function runPrecommitGuards() {
     batchCoverageMain(),
     prepushBatchMain(),
     exitClaimsMain(),
+    proofHelpersMain(),
+    unitConfigMain(),
   ]
   const worst = codes.some((c) => c !== 0) ? 1 : 0
   process.exitCode = worst

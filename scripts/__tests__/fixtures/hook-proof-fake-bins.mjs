@@ -26,6 +26,18 @@
  *                              seam hermetico do revert-fail apply (sec
  *                              11.76: a classe da Prova 43 que so tinha prova
  *                              viva ao vivo - agora E2E hermetico).
+ *   HOOK_PROOF_FAKE_FAIL_APPLY_CHECK "1" = `git apply --check` (o
+ *                              VERIFICADOR da CURE do apply-fail, sec 11.75 -
+ *                              a decisao verificada no momento da nota) FALHA
+ *                              (exit 1 + stderr): o patch do backup NAO
+ *                              aplica na arvore atual (corrompido ou conflito
+ *                              - a classe das Provas 43/50) -> a CURE cita SO
+ *                              o reflog. Default (sem o knob): o check PASSA
+ *                              -> a CURE cita SO o nivel 1 (o patch aplica
+ *                              limpo). O FAIL_APPLY NAO afeta o --check: o
+ *                              apply real pode falhar e o check passar (o
+ *                              patch integro - a classe da Prova 50
+ *                              invertida: o revert falha por outro motivo).
  *   HOOK_PROOF_FAKE_FAIL_APPLY_DELTA_ONLY "1" = so o `git apply` do
  *                              delta.patch do BACKUP FALHA - o apply do
  *                              safety diff (o fallback da sec 11.88) SUCCEDE.
@@ -173,6 +185,20 @@ if (kind === "git") {
     }
     delete state.branches[`refs/heads/${args[2]}`]
     saveState(state)
+    ok()
+  }
+  if (args[0] === "apply" && args[1] === "--check") {
+    // O VERIFICADOR da CURE (sec 11.75): o call site roda 'git apply
+    // --check <backup>/delta.patch' no momento da nota - o dry-run que
+    // decide se a CURE cita o nivel 1 (check passa - o patch aplica
+    // limpo) ou o reflog (check falha - corrompido/conflito). O knob
+    // FAIL_APPLY_CHECK e o seam: default passa, knob falha. O FAIL_APPLY
+    // (o seam do apply REAL do revertCycle) NAO se aplica aqui - sao
+    // invocacoes distintas com semantica distinta.
+    if (process.env.HOOK_PROOF_FAKE_FAIL_APPLY_CHECK === "1") {
+      process.stderr.write('error: patch does not apply (check)\n')
+      process.exit(1)
+    }
     ok()
   }
   if (args[0] === "apply") {

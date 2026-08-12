@@ -1,6 +1,6 @@
 /**
  * proof-helpers-contract.test.ts - o guard dos guards de prova (sec 11.72,
- * manifest DERIVADO desde a sec 11.79).
+ * manifest DERIVADO desde a sec 11.79; FONTE UNICA desde a sec 11.93).
  *
  * WHY: o guard de forma da 11.65 (scratchLeftNote do hook-proof-run) e o da
  * 11.70 (stashLeftNote do ci-proof-run) derivam cada um do source do SEU
@@ -24,37 +24,28 @@
  * => o guard falha; adicionar um 3o helper (novo script) ou renomear uma
  * nota no source => a projecao diverge do PIN.
  *
+ * A sec 11.93 fechou o ultimo elo: o contrato 11.72 agora e executado NO
+ * BATCH do pre-commit (scan-proof-helpers.mjs, o 9o guard - a suite so
+ * rodava via test:unit, no CI/push; a edicao acidental do bloco 'Exit
+ * codes:' passava o commit local). A DERIVADA e os REGEXES das 3 partes
+ * vivem no guard (a fonte unica da regra dos 2 usos) - esta suite os
+ * IMPORTa de scripts/scan-proof-helpers.mjs, nunca os redefine: um guard e
+ * a suite nao podem driftar (o mesmo padrao do EXIT_CLAIMS importado pelo
+ * scan-exit-claims.test.ts).
+ *
  * Nao e subprocess-heavy (leitura de fs + regex puros) - timeouts explicitos
  * por convencao da suite.
  */
 import { describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
+import { deriveProofHelpers } from "../scan-proof-helpers.mjs"
+import { runSubprocess } from "./golden-copy-utils"
 
 const SCRIPTS = path.join(process.cwd(), "scripts")
 const read = (p: string) => fs.readFileSync(path.join(SCRIPTS, p), "utf8")
 const readTest = (p: string) => fs.readFileSync(path.join(SCRIPTS, "__tests__", p), "utf8")
 const readPkg = () => fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")
-
-/**
- * O manifesto dos helpers DERIVADO do package.json (sec 11.79): cada script
- * `*-proof:run` vira { script, mjs, ts, note } - script (o nome no
- * package.json), mjs (o runner), ts (a suite por convencao <stem>.test.ts)
- * e note (o PRIMEIRO const `\w+LeftNote = (` do source do helper - a nota
- * que os guards 11.65/11.70 consomem; o revertLeftNote da 11.75 e function
- * declaration, nao casa o regex). NAO ha lista hardcoded: a derivada E o
- * manifest (o padrao TARGET_DIRS/fatos consumidos - a fonte unica).
- */
-function deriveProofHelpers(pkg: string): Array<{ script: string; mjs: string; ts: string; note: string }> {
-  return [...pkg.matchAll(/"([a-z0-9-]+-proof:run)"\s*:\s*"node scripts\/([a-z0-9_.-]+\.mjs)"/g)]
-    .map((m) => {
-      const mjs = m[2]
-      const ts = mjs.replace(/\.mjs$/, ".test.ts")
-      const note = read(mjs).match(/(\w+LeftNote)\s*=\s*(\(|")/)?.[1] ?? ""
-      return { script: m[1], mjs, ts, note }
-    })
-    .sort((a, b) => a.mjs.localeCompare(b.mjs))
-}
 
 /**
  * O ABS PIN do CONTENT derivado (sec 11.79): a projecao [script, mjs, ts,
@@ -69,18 +60,11 @@ const PROOF_HELPERS_PIN: Array<[string, string, string, string]> = [
   ["hook-proof:run", "hook-proof-run.mjs", "hook-proof-run.test.ts", "scratchLeftNote"],
 ]
 
-// As 3 partes do contrato de fail-loud (sec 11.72):
-// 1. Exit codes documentados: o docblock "Exit codes:" cobre 0, 1, 2 e 3 na
-//    ordem (o shape dos dois helpers: "0 = ...; 1 = ...; 2 = ...; 3 = ..." -
-//    os codigos podem continuar em linhas seguintes, dai o [\s\S]).
-const EXIT_CODES_RE = /Exit codes?:?\s*0\s*=[\s\S]*?1\s*=[\s\S]*?2\s*=[\s\S]*?3\s*=/
-// 2. Nota de limpeza definida: o const do LeftNote (arrow com params ou string).
-const NOTE_DEF_RE = /\w+LeftNote\s*=\s*(\(|")/
-// 3. E2E do caminho: a suite tem o seam de bins fake (o env override) E um
-//    assert de exit nao-zero num subprocess (o fail-loud exercitado pelo
-//    CLI real - `r.status` no hook, `result.status` no ci).
-const FAKE_BIN_RE = /(CI_PROOF_GIT|HOOK_PROOF_GIT)\s*:/
-const FAIL_EXIT_RE = /\.status\)\.toBe\([123]/
+// As 3 partes do contrato de fail-loud (sec 11.72): os regexes EXIT_CODES_RE /
+// NOTE_DEF_RE / FAKE_BIN_RE / FAIL_EXIT_RE vivem no scan-proof-helpers.mjs (o
+// 9o guard, sec 11.93) e sao IMPORTADOS abaixo - a fonte unica: o guard e a
+// suite nunca driftam (a mesma filosofia do EXIT_CLAIMS importado).
+import { EXIT_CODES_RE, FAKE_BIN_RE, FAIL_EXIT_RE, NOTE_DEF_RE } from "../scan-proof-helpers.mjs"
 
 function assertThreeParts(h: { mjs: string; ts: string; note: string }) {
   const src = read(h.mjs)
@@ -135,5 +119,17 @@ describe("proof-helpers-contract - as 3 partes do fail-loud em TODO helper de pr
     const mutated = suite.replace("CI_PROOF_GIT: FAKE", "CI_PROOF_GIT_OFF: FAKE")
     expect(mutated).not.toBe(suite)
     expect(FAKE_BIN_RE.test(mutated)).toBe(false)
+  }, 60000)
+
+  it("REAL-REPO CONTRACT do CLI (sec 11.93, o padrao do scan-exit-claims): node scripts/scan-proof-helpers.mjs --check no repo real -> exit 0 com os 2 helpers - o 9o guard verde no estado atual (o contrato 11.72 executado no batch nao e so hermetica)", () => {
+    const res = runSubprocess({
+      command: process.execPath,
+      args: [path.join(process.cwd(), "scripts", "scan-proof-helpers.mjs"), "--check"],
+    })
+    expect(res.status).toBe(0)
+    const stdout = res.stdout ?? ""
+    expect(stdout).toContain("clean")
+    expect(stdout).toContain("2 helpers")
+    expect(stdout).toContain("sec 11.72/11.93")
   }, 60000)
 })

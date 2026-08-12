@@ -62,7 +62,7 @@ const DEFAULT_SECTION = "8.34"
 // a classe que o cmd.exe rejeita, ACHADO da Prova 42).
 export const DEFAULT_CLI_CMD = "node scripts/scan-exit-claims.mjs --check"
 export const DEFAULT_SUITE_CMD =
-  "npx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts"
+  "bunx vitest run scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts"
 const SUITE_TOTAL_RE = /Tests\s+(\d+)\s+passed/
 // O marcador da entrada AUTOMATICA: '**Re-valida\u00e7\u00e3o (DATE,' - sem o
 // 'datada' da linha manual (que nunca colide com a idempotencia por data).
@@ -142,6 +142,19 @@ export function upsertRevalidateLine(doc, section, date, line) {
   }
   let insertAt = end
   while (insertAt > start && lines[insertAt - 1].trim() === "") insertAt--
+  // A linha de re-validacao precisa iniciar NOVO PARAGRAFO: o scanCitedCounts
+  // da sec 11.62 detecta hasReval pelo PRIMEIRO token do paragrafo
+  // (REVAL_MARKER_RE). Se a ultima linha de conteudo da secao NAO for vazia
+  // (o conteudo abuta o proximo header, sem blank final - o ACHADO da sec
+  // 11.93, 8.36/8.37), insere um blank separador ANTES da linha: a versao
+  // antiga fundia a linha ao paragrafo anterior e o proprio contrato a
+  // rejeitava (o CURE gerava linha que o contrato nao reconhecia; corrigido
+  // manualmente na doc). Quando a secao ja termina em blank, o walk-back
+  // acima o deixa como separador (o mesmo layout de antes).
+  if (insertAt > start && lines[insertAt - 1].trim() !== "") {
+    lines.splice(insertAt, 0, "")
+    insertAt++
+  }
   lines.splice(insertAt, 0, line)
   return lines.join(eol)
 }

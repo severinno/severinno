@@ -1,0 +1,13 @@
+## {{SECTION}} Prova {{PROVA}} — {{WHAT}} ({{DATE}}{{RUN_CLAUSE}})
+
+**O pedido**: <!-- NARRATIVA MANUAL: a avaliacao pedida (o que o guard/prova deveria provar) -->
+
+**O veredito**: <!-- NARRATIVA MANUAL: ADOTADO / RECUSADO e o por que (o probe + a decisao) -->
+
+**A execucao**: <!-- NARRATIVA MANUAL: o ciclo real (backup + scratch + mutacao + confirmacao + revert), os comandos exatos, o que passou / o que falhou -->
+
+**A fronteira honesta**: <!-- NARRATIVA MANUAL: o que a prova NAO cobriu (a residual / o custo recusado) -->
+
+**Controle pos-ciclo**: <!-- NARRATIVA MANUAL: a re-validacao (CLI + suite) com o resultado exato -->
+
+**Registro de evento**: Prova {{PROVA}} (classe {{CLASS}}, sec {{SECTION}}{{RUN_CLAUSE}}).

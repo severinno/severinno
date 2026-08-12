@@ -11,7 +11,7 @@
  *
  * O guard deriva os guards wired da superficie REAL (deriveWiredGuards - os
  * spawns `node|bash scripts/` dos hooks + imports do batch runner + steps
- * `--ci` dos workflows do net; 18 wired hoje, medido 2026-08-12) e pina as
+ * `--ci` dos workflows do net; 20 wired hoje, medido 2026-08-12) e pina as
  * 3 partes para CADA um:
  *   1. ENTRADA no proofs-manifest: o basename esta no PROOF_CLASSES (module)
  *      ou no WIRED_ALLOWLIST (a parte 1 da sec 11.60 reafirmada por guard);
@@ -23,7 +23,7 @@
  *   3. NOTA na sec 11.x: o stem (basename sem extensao) aparece no corpo de
  *      pelo menos uma secao `## 11.N` do doc real (a fonte da nota e o
  *      stem, nao o basename completo - a doc cita `check-docs-encoding`
- *      sem o `.sh`; medido 2026-08-12: os 18 wired tem nota por stem).
+ *      sem o `.sh`; medido 2026-08-12: os 20 wired tem nota por stem).
  *
  * O lado inverso do crescimento (o padrao do WIRED SURFACE da sec 11.60):
  * um guard wired NOVO nos hooks sem as 3 partes falha - os MUTATIONs provam
@@ -55,26 +55,50 @@ function guardStem(g: string): string {
 }
 
 /**
- * GUARD_SUITE_MAP - as excecoes da convencao `<stem>.test.ts` (medidas
- * 2026-08-12 pela 1a rodada do contrato, que FLAGROU os 2 guards fora da
- * convencao):
- *   - run-mapped-fuzz.mjs: o contrato do runner do fuzz mapeado vive em
- *     fuzz-mapped.test.ts (sec 11.11) - o nome da suite NAO deriva do stem;
- *   - scan-lucide-icons.mjs: guard de geracao (HOOK_ALLOWLIST, sec 11.16),
- *     sem suite propria - o pin do contrato vive no scan-batch-coverage.test.ts
- *     (o teste do ALLOWLIST do batch).
- * Os demais 16 guards seguem a derivacao `<stem>.test.ts` (o fallback).
- * Adicionar um guard wired com suite fora da convencao exige entrar AQUI
- * (o mapa e o pin - o mesmo padrao do PROOF_HELPERS da sec 11.72).
+ * A INVERSAO da 11.79 aplicada ao mapa (sec 11.92): as CHAVES sao DERIVADAS
+ * do fs (os guards wired cuja suite convencional `<stem>.test.ts` NAO existe
+ * em scripts/__tests__ - a convencao quebrada, medida via derivedMapKeys,
+ * nunca uma lista). Os VALORES seguem um pin SEMANTICO explicito: o fs prova
+ * QUEM quebra a convencao, mas nao ONDE o contrato mora (o content-scan e
+ * ambiguo - run-mapped-fuzz e referenciado por 9 suites, scan-lucide-icons
+ * por 3, medido 2026-08-12):
+ *   - run-mapped-fuzz.mjs -> fuzz-mapped.test.ts (sec 11.11);
+ *   - scan-lucide-icons.mjs -> scan-batch-coverage.test.ts (sec 11.16).
+ *   - scan-proof-helpers.mjs -> proof-helpers-contract.test.ts (sec 11.93,
+ *     a 3a excecao, 2026-08-12): o 9o guard do batch roda o contrato 11.72
+ *     no pre-commit, e a suite onde o contrato mora e a proof-helpers-
+ *     contract.test.ts (a suite da sec 11.72 que importa a fonte unica do
+ *     guard) - NAO um scan-proof-helpers.test.ts convencional.
+ *   - scan-unit-config.mjs -> unit-surface-contract.test.ts (sec 11.96, a
+ *     4a excecao, 2026-08-12): o 10o guard do batch roda o contrato da
+ *     nota do config (sec 11.80/11.95), e a suite onde o contrato mora e a
+ *     unit-surface-contract.test.ts (a suite da sec 11.80/11.95 que
+ *     importa a fonte unica dos extratores do guard) - NAO um
+ *     scan-unit-config.test.ts convencional.
+ * Um 5o guard wired com suite fora da convencao ENTRA em derivedMapKeys
+ * automaticamente e a direcao D do mapContractViolations flagra a falta de
+ * entrada (a lista nao existe para esquecer de editar - o padrao 11.79).
  */
-const GUARD_SUITE_MAP: Record<string, string> = {
+const GUARD_SUITE_VALUES: Record<string, string> = {
   "run-mapped-fuzz.mjs": "fuzz-mapped.test.ts",
   "scan-lucide-icons.mjs": "scan-batch-coverage.test.ts",
+  "scan-proof-helpers.mjs": "proof-helpers-contract.test.ts",
+  "scan-unit-config.mjs": "unit-surface-contract.test.ts",
 }
 
-/** A suite do guard: o mapa de excecoes ou a derivacao `<stem>.test.ts`. */
+/**
+ * As CHAVES do mapa DERIVADAS do fs (sec 11.92): os guards wired cuja suite
+ * convencional `<stem>.test.ts` NAO existe em scripts/__tests__. Mede contra
+ * o fs REAL sempre (a derivacao e um fato do repo, nao uma injecao - o
+ * suiteDir dos MUTATIONs testa a EXISTENCIA das suites, nao a derivacao).
+ */
+function derivedMapKeys(wired: string[]): string[] {
+  return wired.filter((g) => !fs.existsSync(path.join(TESTS, `${guardStem(g)}.test.ts`))).sort()
+}
+
+/** A suite do guard: os valores do mapa ou a derivacao `<stem>.test.ts`. */
 function suiteOf(g: string): string {
-  return GUARD_SUITE_MAP[g] ?? `${guardStem(g)}.test.ts`
+  return GUARD_SUITE_VALUES[g] ?? `${guardStem(g)}.test.ts`
 }
 
 /** Os basenames registrados: modules do PROOF_CLASSES + WIRED_ALLOWLIST. */
@@ -182,9 +206,10 @@ function contractViolations(opts: { wired: string[]; docText: string; suiteDir?:
 }
 
 /**
- * O guard de forma do GUARD_SUITE_MAP (sec 11.90): o mapa das excecoes da
- * convencao `<stem>.test.ts` fechado nos DOIS sentidos - a suite mapeada DEVE
- * existir E o mapa NAO pode ter entrada orfa. Para CADA entrada do mapa:
+ * O guard de forma do mapa das excecoes da convencao `<stem>.test.ts`
+ * (sec 11.90 + a INVERSAO das chaves da sec 11.92). As direcoes da 11.90
+ * fecham o mapa nos dois sentidos - a suite mapeada DEVE existir E o mapa
+ * NAO pode ter entrada orfa. Para CADA entrada do mapa:
  *   A. entrada -> suite: (1) o guard do mapa precisa estar wired HOJE (uma
  *      entrada de guard destituido dos hooks e orfa - o mapa so existe para
  *      guards wired, sec 11.78) E (2) a suite mapeada precisa EXISTIR em
@@ -194,36 +219,60 @@ function contractViolations(opts: { wired: string[]; docText: string; suiteDir?:
  *   B. suite -> entrada: a suite mapeada precisa ser a suite resolvida de
  *      pelo menos UM guard wired (uma suite que nenhum guard wired resolve e
  *      orfa - o mapa nao pode apontar para suite de ninguem).
- * Retorna [guard, partes faltantes] por entrada violada. Com injecao de
- * map (o MUTATION da direcao B passa um mapa mutado), wired (o MUTATION
- * filtra um guard) e suiteDir (o MUTATION do dir vazio).
+ * As direcoes da sec 11.92 (a inversao da 11.79 nas CHAVES): o fs e a fonte
+ * da lista de excecoes, nao um pin hardcoded. Para CADA guard wired:
+ *   C. chave derivada -> entrada: todo guard wired cuja suite convencional
+ *      `<stem>.test.ts` NAO existe em scripts/__tests__ (derivedMapKeys)
+ *      DEVE ter entrada no mapa (a convencao quebrada medida no fs precisa
+ *      da suite onde o contrato mora - um 3o exception que nascer nos hooks
+ *      sem entrada falha);
+ *   D. entrada -> chave derivada: toda entrada cujo guard TEM a suite
+ *      convencional existente e DESNECESSARIA (se `<stem>.test.ts` existe,
+ *      o fallback resolve - a excecao morreu e a entrada e orfa por excesso,
+ *      o espelho do ABANDONO da excecao).
+ * Retorna [guard, partes faltantes] por violacao. Com injecao de values (o
+ * MUTATION da direcao B passa um mapa mutado), wired (o MUTATION filtra um
+ * guard) e suiteDir (o MUTATION do dir vazio - a existencia das suites
+ * mapeadas; as chaves derivadas SEMPRE medem o fs real).
  */
 function mapContractViolations(opts: {
-  map?: Record<string, string>
+  values?: Record<string, string>
   wired: string[]
   suiteDir?: string
 }): Array<[string, string[]]> {
-  const map = opts.map ?? GUARD_SUITE_MAP
+  const values = opts.values ?? GUARD_SUITE_VALUES
   const wiredSet = new Set(opts.wired)
   const suitesDir = opts.suiteDir ?? TESTS
   // As suites que os guards wired RESOLVEM hoje (mapa + fallback) - o
   // conjunto-fato da direcao B: a suite mapeada precisa pertencer a ele.
   const resolvedSuites = new Set(opts.wired.map((g) => suiteOf(g)))
   const viol: Array<[string, string[]]> = []
-  for (const [guard, suite] of Object.entries(map)) {
+  for (const [guard, suite] of Object.entries(values)) {
     const missing: string[] = []
     if (!wiredSet.has(guard)) missing.push("guard nao wired (entrada orfa)")
     if (!fs.existsSync(path.join(suitesDir, suite))) missing.push("suite mapeada inexistente")
     if (!resolvedSuites.has(suite)) missing.push("suite orfa (nenhum guard wired resolve)")
     if (missing.length) viol.push([guard, missing])
   }
+  // Sec 11.92: a convencao quebrada medida no fs (derivedMapKeys) precisa
+  // de entrada (C) e a entrada com a suite convencional existente e
+  // desnecessaria (D) - a lista de excecoes e derivada, nao editada.
+  const derived = derivedMapKeys(opts.wired)
+  for (const g of derived) {
+    if (!(g in values)) viol.push([g, ["convencao quebrada sem entrada no mapa"]])
+  }
+  for (const [guard] of Object.entries(values)) {
+    if (fs.existsSync(path.join(TESTS, `${guardStem(guard)}.test.ts`))) {
+      viol.push([guard, ["entrada desnecessaria (a suite convencional existe)"]])
+    }
+  }
   return viol
 }
 
 describe("wired-guards-contract - as 3 partes em TODO guard wired (sec 11.78)", () => {
-  it("REAL-REPO: os 18 guards wired derivados dos hooks reais tem as 3 partes - entrada no manifest, suite no test:guard/test:unit e nota na sec 11.x", () => {
+  it("REAL-REPO: os 20 guards wired derivados dos hooks reais tem as 3 partes - entrada no manifest, suite no test:guard/test:unit e nota na sec 11.x", () => {
     const wired = deriveWiredGuards()
-    expect(new Set(wired).size).toBe(18)
+    expect(new Set(wired).size).toBe(20)
     const docText = fs.readFileSync(DOC, "utf8")
     expect(contractViolations({ wired, docText })).toEqual([])
   }, 60000)
@@ -253,16 +302,17 @@ describe("wired-guards-contract - as 3 partes em TODO guard wired (sec 11.78)", 
     }
   }, 60000)
 
-  it("MUTATION (partes 1+2+3): um guard fake num hook sintetico -> todas as 3 partes faltam (o crescimento inverso: um guard wired novo sem as 3 partes falha)", () => {
+  it("MUTATION (partes 1+2+3): um guard fake num hook sintetico -> todas as 3 partes faltam (o crescimento inverso: um guard wired novo sem as 3 partes falha; o stem fake-guard-abc e GARANTIDAMENTE ausente do doc real - a parte 3 exige que a nota nao exista, e o stem usado no MUTATION nao pode colidir com a prosa da sec 11.92)", () => {
     const dir = createTempDir("wgc-fake-")
     fs.mkdirSync(path.join(dir, ".husky"), { recursive: true })
-    fs.writeFileSync(path.join(dir, ".husky", "pre-commit"), "node scripts/fake-guard.mjs\n")
+    fs.writeFileSync(path.join(dir, ".husky", "pre-commit"), "node scripts/fake-guard-abc.mjs\n")
     const wired = deriveWiredGuards(dir)
-    expect(wired).toEqual(["fake-guard.mjs"])
+    expect(wired).toEqual(["fake-guard-abc.mjs"])
     const docText = fs.readFileSync(DOC, "utf8")
+    expect(docText.includes("fake-guard-abc")).toBe(false)
     const viol = contractViolations({ wired, docText })
     expect(viol).toHaveLength(1)
-    expect(viol[0][0]).toBe("fake-guard.mjs")
+    expect(viol[0][0]).toBe("fake-guard-abc.mjs")
     expect(viol[0][1].sort()).toEqual(["entrada no proofs-manifest", "nota na sec 11.x", "suite no test:guard/test:unit"])
   }, 60000)
 
@@ -287,14 +337,21 @@ describe("wired-guards-contract - as 3 partes em TODO guard wired (sec 11.78)", 
   }, 60000)
 })
 
-describe("o GUARD_SUITE_MAP fechado nos dois sentidos - suite existe + sem entrada orfa (sec 11.90)", () => {
+describe("o mapa das excecoes da convencao fechado - suite existe + sem entrada orfa (sec 11.90) e as CHAVES derivadas do fs (sec 11.92)", () => {
   it("REAL-REPO: as 2 excecoes do mapa - a suite mapeada EXISTE e pertence a um guard wired (nenhuma violacao nos dois sentidos)", () => {
     const wired = deriveWiredGuards()
     expect(mapContractViolations({ wired })).toEqual([])
   }, 60000)
 
-  it("o ABS PIN do mapa: as 2 entradas exatas (run-mapped-fuzz + scan-lucide-icons) - editar a lista exige edicao consciente", () => {
-    expect(Object.keys(GUARD_SUITE_MAP).sort()).toEqual(["run-mapped-fuzz.mjs", "scan-lucide-icons.mjs"])
+  it("o ABS PIN da INVERSAO (sec 11.92): as chaves do mapa == as chaves DERIVADAS do fs (derivedMapKeys = os 4 guards wired sem suite convencional, incl. o scan-unit-config da sec 11.96) - a lista de excecoes nasce do fs real, nao de uma copia editada a mao", () => {
+    const derived = derivedMapKeys(deriveWiredGuards())
+    expect(derived).toEqual([
+      "run-mapped-fuzz.mjs",
+      "scan-lucide-icons.mjs",
+      "scan-proof-helpers.mjs",
+      "scan-unit-config.mjs",
+    ])
+    expect(Object.keys(GUARD_SUITE_VALUES).sort()).toEqual(derived)
   }, 60000)
 
   it("MUTATION (direcao A, guard destituido): um guard do mapa removido do wired -> a entrada vira orfa (guard nao wired) E a suite sai do conjunto resolvido (suite orfa)", () => {
@@ -307,11 +364,11 @@ describe("o GUARD_SUITE_MAP fechado nos dois sentidos - suite existe + sem entra
     expect(viol[0][1].sort()).toEqual(["guard nao wired (entrada orfa)", "suite orfa (nenhum guard wired resolve)"])
   }, 60000)
 
-  it("MUTATION (direcao A, suite inexistente): um suite dir vazio -> toda suite mapeada flagra 'suite mapeada inexistente' (o mapa nunca aponta pro vazio)", () => {
+  it("MUTATION (direcao A, suite inexistente): um suite dir vazio -> toda suite mapeada flagra 'suite mapeada inexistente' (o mapa nunca aponta pro vazio; as chaves derivadas medem o fs REAL, nao o dir injetado)", () => {
     const dir = createTempDir("wgc-map-")
     const wired = deriveWiredGuards()
     const viol = mapContractViolations({ wired, suiteDir: dir })
-    expect(viol.length).toBe(Object.keys(GUARD_SUITE_MAP).length)
+    expect(viol.length).toBe(Object.keys(GUARD_SUITE_VALUES).length)
     for (const [, missing] of viol) expect(missing).toContain("suite mapeada inexistente")
   }, 60000)
 
@@ -320,12 +377,36 @@ describe("o GUARD_SUITE_MAP fechado nos dois sentidos - suite existe + sem entra
     // (uma suite REAL que EXISTE no fs mas nenhum guard wired resolve - o
     // run-mapped-fuzz segue wired e a suite existe, entao so a direcao B
     // flagra).
-    const mutated = { ...GUARD_SUITE_MAP, "run-mapped-fuzz.mjs": "fragile-range-guard.test.ts" }
+    const mutated = { ...GUARD_SUITE_VALUES, "run-mapped-fuzz.mjs": "fragile-range-guard.test.ts" }
     const wired = deriveWiredGuards()
     expect(fs.existsSync(path.join(TESTS, "fragile-range-guard.test.ts"))).toBe(true)
-    const viol = mapContractViolations({ map: mutated, wired })
+    const viol = mapContractViolations({ values: mutated, wired })
     expect(viol).toHaveLength(1)
     expect(viol[0][0]).toBe("run-mapped-fuzz.mjs")
     expect(viol[0][1]).toEqual(["suite orfa (nenhum guard wired resolve)"])
+  }, 60000)
+
+  it("MUTATION (direcao C, sec 11.92): um 3o guard wired com suite FORA da convencao (sem suite convencional no fs) e SEM entrada no mapa -> flagra 'convencao quebrada sem entrada no mapa' (a lista de excecoes e DERIVADA do fs - o guard novo nasce na derivada sozinho)", () => {
+    // fake-guard.mjs e seguro AQUI (ao contrario do fake-guard-abc da parte
+    // 3): o mapContractViolations NAO checa a nota por stem - so as
+    // direcoes do mapa - entao a mencao do stem na prosa da sec 11.92 nao
+    // interfere (o mesmo stem no contractViolations flagraria a parte 3
+    // como satisfeita - o caso que exigiu o fake-guard-abc).
+    const wired = [...deriveWiredGuards(), "fake-guard.mjs"]
+    expect(fs.existsSync(path.join(TESTS, "fake-guard.test.ts"))).toBe(false)
+    const viol = mapContractViolations({ wired })
+    expect(viol).toHaveLength(1)
+    expect(viol[0][0]).toBe("fake-guard.mjs")
+    expect(viol[0][1]).toEqual(["convencao quebrada sem entrada no mapa"])
+  }, 60000)
+
+  it("MUTATION (direcao D, sec 11.92): uma entrada cujo guard TEM a suite convencional existente no fs -> flagra 'entrada desnecessaria (a suite convencional existe)' (o espelho do ABANDONO da excecao - se <stem>.test.ts nasceu, o fallback resolve e a entrada morreu)", () => {
+    const wired = deriveWiredGuards()
+    const withDead = { ...GUARD_SUITE_VALUES, "scan-batch-coverage.mjs": "scan-batch-coverage.test.ts" }
+    expect(fs.existsSync(path.join(TESTS, "scan-batch-coverage.test.ts"))).toBe(true)
+    const viol = mapContractViolations({ values: withDead, wired })
+    expect(viol).toHaveLength(1)
+    expect(viol[0][0]).toBe("scan-batch-coverage.mjs")
+    expect(viol[0][1]).toEqual(["entrada desnecessaria (a suite convencional existe)"])
   }, 60000)
 })

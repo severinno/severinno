@@ -52,9 +52,11 @@ export default defineConfig({
     // INTENTIONAL. The test:unit/test:guard surface is CONTRACT suites that
     // read the REAL repo files (scan-*, golden copies, manifests); a single
     // fork serializes their subprocess I/O for DETERMINISM (no interleaving).
-    // The sec 8.1 re-mediacao (5) MEASURED the flatness (test:guard 20.9 ->
-    // 19s with +28 tests): cheap-test absorption, NOT workers - --maxWorkers
-    // is a structural no-op here (sec 11.48 probed it). DO NOT "parallelize"
+    // The sec 8.1 re-mediacoes (2)-(6) MEASURED the guard band (test:guard 19-23.5s, series 20 -> 20.9 -> 19 -> 22.2 -> 23.5 -> 22.5s as the suites grew 236 -> 304):
+    // cheap-test absorption into the runner variance band, NOT workers -
+    // --maxWorkers is a structural no-op here (sec 11.48 + re-mediacao (5)
+    // probed it; sec 8.1's alert: a sustained rise re-opens the decision).
+    // DO NOT "parallelize"
     // this pool without re-measuring the serialization cost of the contract
     // suites. Pinned by scripts/__tests__/unit-surface-contract.test.ts.
     pool: "forks",

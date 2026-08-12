@@ -1,10 +1,11 @@
 /**
- * run-precommit-guards.mjs - batch runner dos 8 guards node do pre-commit
+ * run-precommit-guards.mjs - batch runner dos 10 guards node do pre-commit
  * (2026-08, secao 11.13/11.16): uma UNICA invocacao node agrega os exit codes.
  *
  * Hermetic tests via the guards' OWN env overrides (PUSH_SUITE_SCAN_ROOT /
  * LINT_LOADER_SCAN_ROOT / GUARD_GATES_SCAN_ROOT / NODE_MODULES_ROOT /
- * FUZZ_PRECOMMIT_SCAN_ROOT / BATCH_COVERAGE_SCAN_ROOT / EXIT_CLAIMS_DOC - the
+ * FUZZ_PRECOMMIT_SCAN_ROOT / BATCH_COVERAGE_SCAN_ROOT / EXIT_CLAIMS_DOC /
+ * PROOF_HELPERS_ROOT - the
  * same env-override pattern as FRAGILE_SCAN_ROOT): each test points ONE
  * override at a synthetic temp repo that FAILS that guard, while the OTHER
  * guards scan the REAL repo (clean today) - proving:
@@ -14,10 +15,12 @@
  *      antigo com `set -e`, que parava no 1o erro e escondia o resto).
  *   3. ORDER (determinismo): a saida segue a ordem do hook (integrity,
  *      push-suite, lint-loader, guard-gates, fuzz-precommit,
- *      batch-coverage, prepush-batch, exit-claims) - nunca interleaved, a
+ *      batch-coverage, prepush-batch, exit-claims, proof-helpers,
+ *      unit-config) - nunca
+ *      interleaved, a
  *      vantagem do batch sobre o paralelo.
  * O REAL-REPO CONTRACT test roda o batch SEM env override (repo real limpo)
- * e asserta exit 0 + os 8 veredictos clean - o lock de regressao.
+ * e asserta exit 0 + os 10 veredictos clean - o lock de regressao.
  *
  * Subprocess-heavy (todo teste spawna o CLI via runSubprocess) -> timeout
  * EXPLICITO em todo it() (o scan-timeouts guard exige).
@@ -110,6 +113,44 @@ function writeBadGuardNet(dir: string) {
   writeCIWorkflow(dir)
 }
 
+/**
+ * A synthetic root that FAILS scan-proof-helpers (o 9o guard, sec 11.93):
+ * o hook-proof-run.mjs com o docblock 'Exit codes:' MUTADO (o `3 = falha
+ * de` vira `X = falha de` - o MESMO alvo que as Provas 44/48 usaram ao
+ * vivo) + a suite e a nota INTACTAS. O pin sole-failure: so a parte 1 do
+ * contrato 11.72 viola (EXIT_CODES_RE) - a 11.93 e claim-bearing (exit
+ * code 0/1/2 no corpo da secao, registrada no EXIT_CLAIMS 28->29).
+ */
+function writeBrokenProofHelper(dir: string) {
+  fs.mkdirSync(path.join(dir, "scripts", "__tests__"), { recursive: true })
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({
+      name: "synthetic",
+      scripts: { "hook-proof:run": "node scripts/hook-proof-run.mjs" },
+    }),
+  )
+  fs.writeFileSync(
+    path.join(dir, "scripts", "hook-proof-run.mjs"),
+    [
+      "#!/usr/bin/env node",
+      "/**",
+      " * Exit codes: 0 = ok; 1 = divergiu; 2 = usage; X = falha de infra.",
+      " */",
+      "const scratchLeftNote = (msg) => msg",
+      "",
+    ].join("\n"),
+  )
+  fs.writeFileSync(
+    path.join(dir, "scripts", "__tests__", "hook-proof-run.test.ts"),
+    [
+      'const FAKE = { HOOK_PROOF_GIT: "fake" }',
+      "expect(r.status).toBe(1)",
+      "",
+    ].join("\n"),
+  )
+}
+
 /** A synthetic root that FAILS scan-fuzz-precommit: --scope cached no .husky/pre-commit sem nota. */
 function writeCachedFuzzInPrecommit(dir: string) {
   fs.mkdirSync(path.join(dir, ".husky"), { recursive: true })
@@ -123,7 +164,7 @@ function writeCachedFuzzInPrecommit(dir: string) {
   )
 }
 
-describe("run-precommit-guards.mjs - batch runner dos 8 guards node (sec 11.13)", () => {
+describe("run-precommit-guards.mjs - batch runner dos 10 guards node (sec 11.13)", () => {
   afterEach(cleanupTempDirs)
 
   it("AGREGACAO + ISOLAMENTO: guard fora do batch (sintetico) -> exit 1, os outros guards clean", () => {
@@ -148,13 +189,13 @@ describe("run-precommit-guards.mjs - batch runner dos 8 guards node (sec 11.13)"
     expect(r.stdout).toContain("fuzz-precommit: clean")
   }, 60000)
 
-  it("REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 8 veredictos clean na ORDEM do hook", () => {
+  it("REAL-REPO CONTRACT: sem env override -> exit 0, TODOS os 10 veredictos clean na ORDEM do hook", () => {
     const r = runBatch()
     expect(r.status).toBe(0)
     // Determinismo: a ordem do hook (integrity, push-suite, lint-loader,
     // guard-gates, fuzz-precommit, batch-coverage, prepush-batch,
-    // exit-claims) - nunca interleaved (a vantagem do batch sobre o
-    // paralelo).
+    // exit-claims, proof-helpers, unit-config) - nunca interleaved (a
+    // vantagem do batch sobre o paralelo).
     const cleanIdx = [
       "check-node-modules-integrity: clean",
       "push-suite: clean",
@@ -164,6 +205,8 @@ describe("run-precommit-guards.mjs - batch runner dos 8 guards node (sec 11.13)"
       "batch-coverage: clean",
       "prepush-batch: clean",
       "exit-claims: clean",
+      "proof-helpers: clean",
+      "unit-config: clean",
     ].map((v) => r.stdout.indexOf(v))
     expect(cleanIdx.every((i) => i >= 0)).toBe(true)
     expect(cleanIdx[0]).toBeLessThan(cleanIdx[1])
@@ -173,6 +216,8 @@ describe("run-precommit-guards.mjs - batch runner dos 8 guards node (sec 11.13)"
     expect(cleanIdx[4]).toBeLessThan(cleanIdx[5])
     expect(cleanIdx[5]).toBeLessThan(cleanIdx[6])
     expect(cleanIdx[6]).toBeLessThan(cleanIdx[7])
+    expect(cleanIdx[7]).toBeLessThan(cleanIdx[8])
+    expect(cleanIdx[8]).toBeLessThan(cleanIdx[9])
   }, 60000)
 
   it("AGREGACAO + ISOLAMENTO: push-suite falha (sintetico) -> exit 1, os outros 3 rodam e reportam clean", () => {
@@ -283,6 +328,59 @@ describe("run-precommit-guards.mjs - batch runner dos 8 guards node (sec 11.13)"
     expect(r.stdout).toContain("check-node-modules-integrity: clean")
     expect(r.stdout).toContain("guard-gates: clean")
     expect(r.stdout).toContain("prepush-batch: clean")
+  }, 60000)
+
+  /**
+   * A synthetic root that FAILS scan-unit-config (o 10o guard, sec 11.96):
+   * um vitest.config.unit.ts SEM o bloco '// SERIALIZED POOL' (a nota do
+   * singleFork removida - o MESMO alvo que a sec 11.80 pina). O pin
+   * sole-failure: so a checagem poolNotePresent viola (a citacao da sec
+   * 11.95 nem roda - short-circuit sem a nota).
+   */
+  function writeConfigWithoutNote(dir: string) {
+    fs.mkdirSync(path.join(dir, "docs"), { recursive: true })
+    fs.writeFileSync(
+      path.join(dir, "vitest.config.unit.ts"),
+      [
+        "import { defineConfig } from \"vitest/config\"",
+        "export default defineConfig({ test: { pool: \"forks\", poolOptions: { forks: { singleFork: true } } } })",
+        "",
+      ].join("\n"),
+    )
+    fs.writeFileSync(path.join(dir, "docs", "gates-proofs.md"), "## 8.1 dummy\n## 8.2 dummy\n")
+  }
+
+  it("AGREGACAO + ISOLAMENTO + o 10o guard (sec 11.96): config sem a nota SERIALIZED POOL (UNIT_CONFIG_SCAN_ROOT sintetico) -> exit 1 com o caminho exato, os outros 9 guards clean (a edicao do vitest.config.unit.ts bloqueada ANTES do commit, o padrao do tripwire do exit-claims)", () => {
+    const dir = createTempDir("run-guards-")
+    writeConfigWithoutNote(dir)
+    const r = runBatch({ UNIT_CONFIG_SCAN_ROOT: dir })
+    expect(r.status).toBe(1)
+    // O 10o guard falha com a violacao da checagem poolNotePresent (a nota
+    // do singleFork removida) - a mensagem exata com o caminho.
+    expect(r.stderr).toContain("unit-config: 1 violacao")
+    expect(r.stderr).toContain("vitest.config.unit.ts: o bloco '// SERIALIZED POOL' da nota (sec 11.80) ausente")
+    // ISOLAMENTO: os outros 9 guards rodaram e reportaram clean MESMO com o 10o falho.
+    expect(r.stdout).toContain("check-node-modules-integrity: clean")
+    expect(r.stdout).toContain("guard-gates: clean")
+    expect(r.stdout).toContain("prepush-batch: clean")
+    expect(r.stdout).toContain("exit-claims: clean")
+    expect(r.stdout).toContain("proof-helpers: clean")
+  }, 60000)
+
+  it("AGREGACAO + ISOLAMENTO + o 9o guard (sec 11.93): helper de prova com o docblock 'Exit codes:' mutado (PROOF_HELPERS_ROOT sintetico) -> exit 1 com o caminho exato, os outros 9 guards clean (a edicao acidental do bloco 'Exit codes:' bloqueada ANTES do commit, o padrao do tripwire do exit-claims)", () => {
+    const dir = createTempDir("run-guards-")
+    writeBrokenProofHelper(dir)
+    const r = runBatch({ PROOF_HELPERS_ROOT: dir })
+    expect(r.status).toBe(1)
+    // O 9o guard falha com a violacao da parte 1 do contrato 11.72 (o
+    // docblock sem os exit codes 0-3) - a mensagem exata com o caminho.
+    expect(r.stderr).toContain("proof-helpers: 1 violacao")
+    expect(r.stderr).toContain("hook-proof-run.mjs: o docblock deve documentar os exit codes 0-3")
+    // ISOLAMENTO: os outros 9 guards rodaram e reportaram clean MESMO com o 9o falho.
+    expect(r.stdout).toContain("check-node-modules-integrity: clean")
+    expect(r.stdout).toContain("guard-gates: clean")
+    expect(r.stdout).toContain("prepush-batch: clean")
+    expect(r.stdout).toContain("exit-claims: clean")
   }, 60000)
 
   it("AGREGACAO + SURFACE da dimensao DIGEST (sec 11.67): EXIT_CLAIMS_DOC com a row 99 da TABELA ## 1 citando count ANTIGO (o checkCitedCounts da 11.62 nao ve a tabela - o ultimo ponto cego) -> batch exit 1 com a CURE doc-revalidate --section na saida agregada, os outros 7 guards clean", () => {

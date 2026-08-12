@@ -26,7 +26,7 @@
  * runs under test:unit AND test:guard / the guard-gates push net).
  *
  * The division of labor (sec 11.73) is pinned in the same block: the
- * test:guard script (the push-net surface, the curated 14 suites) must NOT
+ * test:guard script (the push-net surface, the curated 15 suites) must NOT
  * carry the CONTRACT suites - hook-proof-run.test.ts (and its peers) run
  * via the test:unit glob, not in the push net. A refactor that adds one to
  * test:guard inflates the sec 8.1 step cost for zero gate benefit (the
@@ -96,6 +96,7 @@ const TEST_GUARD_ABS_PIN = [
   "scan-lint-staged-loader.test.ts",
   "scan-push-full-suite.test.ts",
   "doc-revalidate.test.ts",
+  "proof-register.test.ts",
 ]
 
 /** Write a synthetic package.json whose test:guard keeps the 8.4 suite. */
@@ -1235,25 +1236,25 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
     expect(testGuardCarriesSuite(mutated, "hook-proof-run.test.ts")).toBe(true)
   }, 60000)
 
-  it("REAL-REPO CONTRACT (sec 11.82): a lista COMPLETA do test:guard deriva do package.json e bate EXATAMENTE com o ABS PIN - 14 suites na ordem curada (o lado POSITIVO da divisao: um refactor que adicione/remova/reordene a lista quebra AQUI, na suite que roda dentro do proprio test:guard)", () => {
+  it("REAL-REPO CONTRACT (sec 11.82): a lista COMPLETA do test:guard deriva do package.json e bate EXATAMENTE com o ABS PIN - 15 suites na ordem curada (o lado POSITIVO da divisao: um refactor que adicione/remova/reordene a lista quebra AQUI, na suite que roda dentro do proprio test:guard)", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
     const derived = deriveTestGuardSuites(pkg.scripts["test:guard"])
     expect(derived).toEqual(TEST_GUARD_ABS_PIN)
-    expect(derived).toHaveLength(14)
+    expect(derived).toHaveLength(15)
   }, 60000)
 
-  it("MUTATION (sec 11.82): adicionar uma 15a suite (o hook-proof-run da 11.73) ao test:guard real sintetico -> a derivada diverge do ABS PIN (o crescimento NUNCA e silencioso - o negativo da 11.73 vira estrutural por construcao)", () => {
+  it("MUTATION (sec 11.82): adicionar uma 16a suite (o hook-proof-run da 11.73) ao test:guard real sintetico -> a derivada diverge do ABS PIN (o crescimento NUNCA e silencioso - o negativo da 11.73 vira estrutural por construcao)", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"))
     const tg = pkg.scripts["test:guard"]
     // O MESMO replace da MUTATION da 11.73 (ancorado no doc-revalidate, uma
-    // suite REAL da lista) - agora a 15a suite quebra o PIN DA LISTA
+    // suite REAL da lista) - agora a 16a suite quebra o PIN DA LISTA
     // INTEIRA, nao so o detector isolado da 11.73.
     const mutated = tg.replace(
       "scripts/__tests__/doc-revalidate.test.ts",
       "scripts/__tests__/doc-revalidate.test.ts scripts/__tests__/hook-proof-run.test.ts",
     )
     expect(mutated).not.toBe(tg)
-    expect(deriveTestGuardSuites(mutated)).toHaveLength(15)
+    expect(deriveTestGuardSuites(mutated)).toHaveLength(16)
     expect(deriveTestGuardSuites(mutated)).not.toEqual(TEST_GUARD_ABS_PIN)
   }, 60000)
 
@@ -1268,7 +1269,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
       "",
     )
     expect(mutated).not.toBe(tg)
-    expect(deriveTestGuardSuites(mutated)).toHaveLength(13)
+    expect(deriveTestGuardSuites(mutated)).toHaveLength(14)
     expect(deriveTestGuardSuites(mutated)).not.toEqual(TEST_GUARD_ABS_PIN)
   }, 60000)
 
@@ -1282,7 +1283,7 @@ describe("scan-guard-gates.mjs - push net guard-gates.yml incondicional (sec 8.4
       "scripts/__tests__/doc-revalidate.test.ts scripts/__tests__/scan-push-full-suite.test.ts",
     )
     expect(mutated).not.toBe(tg)
-    expect(deriveTestGuardSuites(mutated)).toHaveLength(14)
+    expect(deriveTestGuardSuites(mutated)).toHaveLength(15)
     expect(deriveTestGuardSuites(mutated)).not.toEqual(TEST_GUARD_ABS_PIN)
   }, 60000)
 })

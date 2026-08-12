@@ -28,7 +28,10 @@
  *     workflows do net) e checkWiredSurface() falha se um guard wired
  *     nao tiver classe no PROOF_CLASSES nem entrada no WIRED_ALLOWLIST
  *     (o padrao TARGET_DIRS aplicado ao registry - medido 2026-08-12:
- *     18 wired = 11 classes + 7 allowlist). A direcao registry -> wired
+ *     20 wired = 12 classes + 8 allowlist: o scan-proof-helpers da sec
+ *     11.93 entrou no allowlist em 2026-08-12 e o scan-unit-config (sec
+ *     11.96) GRADUOU do allowlist para classe com a Prova 49 (sec 8.44 -
+ *     a prova viva da nota SERIALIZED POOL removida do config real). A direcao registry -> wired
  *     NAO existe por desenho: classes helper (ci-proof-run, hook-proof-run,
  *     doc-revalidate, run-all-fuzz) tem Prova mas nao sao guard de hook.
  *
@@ -171,6 +174,7 @@ export const PROOF_CLASSES = [
     proofs: [
       { prova: 20, section: "11.20", run: "31442006152", what: "--only-jobs EARLY-EXIT" },
       { prova: 32, section: "8.27", run: "31511149307", what: "--stash-uncommitted positivo" },
+      { prova: 48, section: "8.43", run: null, what: "MUTATION do guard 11.72 ao vivo: docblock Exit codes mutado no ci-proof-run real (suite falha com o path exato - o irmao da Prova 44 no lado ci)" },
     ],
   },
   {
@@ -217,6 +221,7 @@ export const PROOF_CLASSES = [
       { prova: 44, section: "8.39", run: null, what: "MUTATION do guard 11.72 ao vivo: docblock 3=falha removido no hook-proof-run real (suite falha com o path)" },
       { prova: 46, section: "8.41", run: null, what: "status-divergente ao vivo: mutate com o flip do .gitignore -> stray.tmp sobrevive ao revert -> git status diverge -> exit 3 com a CURE do snapshot" },
       { prova: 47, section: "8.42", run: null, what: "safety-diff ao vivo: mutate corrompe o delta.patch do backup -> exit 3 com a CURE citando o safety diff; git apply <sd> recupera o delta TRACKED byte-identical, untracked restaurados do backup/untracked (a classe que o --safety-backup da 11.89 fecha)" },
+      { prova: 50, section: "8.45", run: null, what: "revert-fail apply ao vivo com delta.patch do backup INTEGRO (sem knob): poison commit no branch original -> apply-fail exit 3; 'git apply <backup>/delta.patch' (nivel 1) recupera byte-identical" },
     ],
   },
   {
@@ -224,6 +229,13 @@ export const PROOF_CLASSES = [
     module: "scripts/doc-revalidate.mjs",
     proofs: [
       { prova: 42, section: "8.37", run: null, what: "caminho de escrita real: upsert datado + idempotencia do mesmo dia (ACHADO: suite cmd quebrada no Windows)" },
+    ],
+  },
+  {
+    class: "scan-unit-config",
+    module: "scripts/scan-unit-config.mjs",
+    proofs: [
+      { prova: 49, section: "8.44", run: null, what: "nota SERIALIZED POOL removida do config real -> suite 11.80/11.95 falha com o path (graduacao do allowlist para classe)" },
     ],
   },
 ]
@@ -315,11 +327,11 @@ export function checkProofs(docPath = DOC) {
 }
 
 /**
- * WIRED_ALLOWLIST - as 7 excecoes deliberadas da direcao wired -> registry
+ * WIRED_ALLOWLIST - as 8 excecoes deliberadas da direcao wired -> registry
  * (2026-08-12, sec 11.60): guards wired na superficie viva SEM classe no
  * PROOF_CLASSES porque NAO tem Prova viva dedicada - seus contratos vivem
- * nas proprias suites (suite-pinned), nao em um evento de Prova. Um 8o
- * guard wired exige: registrar a classe (com Prova viva) OU entrar AQUI
+ * nas proprias suites (suite-pinned), nao em um evento de Prova. Um guard
+ * wired novo exige: registrar a classe (com Prova viva) OU entrar AQUI
  * com rationale - nunca silencio (o ABS PIN do teste pina esta lista).
  *   - scan-lint-staged-loader.mjs: guard do batch (sec 11.7), contrato
  *     pinado pela propria suite, sem Prova dedicada.
@@ -333,6 +345,15 @@ export function checkProofs(docPath = DOC) {
  *     11.16), sem Prova dedicada.
  *   - check-docs-encoding.sh: auditoria informativa de docs (nunca
  *     bloqueia), sem Prova dedicada.
+ *   - scan-proof-helpers.mjs: o 9o guard do batch (sec 11.93) - o
+ *     CONTRATO de fail-loud dos helpers de prova (sec 11.72) executado
+ *     no pre-commit; o contrato e pinado pela propria suite
+ *     (proof-helpers-contract.test.ts, a fonte unica dos regexes/derivada
+ *     da 11.79), sem Prova dedicada - o padrao do scan-batch-coverage.
+ *   - O scan-unit-config GRADUOU do allowlist para CLASSE no PROOF_CLASSES
+ *     com a Prova 49 (sec 8.44, a prova viva: nota SERIALIZED POOL removida
+ *     do vitest.config.unit.ts real -> a suite da 11.80/11.95 falha com o
+ *     path exato) - o allowlist so mantem guard SEM Prova dedicada.
  */
 export const WIRED_ALLOWLIST = [
   "check-docs-encoding.sh",
@@ -341,6 +362,7 @@ export const WIRED_ALLOWLIST = [
   "scan-fuzz-precommit.mjs",
   "scan-lint-staged-loader.mjs",
   "scan-lucide-icons.mjs",
+  "scan-proof-helpers.mjs",
   "scan-timeouts.mjs",
 ]
 

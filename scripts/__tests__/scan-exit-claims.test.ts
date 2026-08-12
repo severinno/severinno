@@ -106,6 +106,7 @@ const ABS_PIN_SNAPSHOT: Array<[string, string, string]> = [
   ["11.47", "current", "scan-guard-gates: um sufixo --since/--scope no step test:guard (push net guard-gates.yml OU twin pr-check.yml fragile-guard) -> exit code 1 do guard com 'TEST GUARD STEP MISSING' no caminho exato (o regex EXATO rejeita qualquer sufixo - o lock da recalibracao 8.1, sem trilha de doc)"],
   ["11.49", "current", "check-exit-claims-push (o guard git-based do doc commitado): doc commitado com claim nao-registrada -> exit code 1 com as secoes; doc commitado limpo (ou apenas claims pre-existentes no base) -> exit code 0; git show HEAD falhou -> exit code 3"],
   ["11.58", "current", "hook-proof-run (o ciclo de prova de hook local num comando): esperado observado + revertido -> exit code 0; exit code divergiu (revert mesmo assim) -> exit code 1; usage errado -> exit code 2; infra (checkout/commit/doc ausente/revert incompleto) -> exit code 3"],
+  ["11.93", "current", "scan-proof-helpers (o 9o guard do batch, sec 11.93): o contrato 11.72 roda no pre-commit - todos os helpers com as 3 partes -> exit code 0; violacao no bloco 'Exit codes:' de um helper -> exit code 1 com o caminho; usage errado -> exit code 2"],
 ]
 
 afterEach(() => {
@@ -291,7 +292,7 @@ describe("scripts/scan-exit-claims.mjs - DEFAULT CONFIG INCLUDE (sec 11.53)", ()
 })
 
 describe("scripts/scan-exit-claims.mjs - 8.x COUNTS PIN (sec 11.62)", () => {
-  it("REAL-REPO: secao 8.x SEM re-validacao datada cita somente o count atual; a 8.34 e coberta pela re-validacao (o wrap 'clean (27\\nclaims)' pego no doc real)", () => {
+  it("REAL-REPO: secao 8.x SEM re-validacao datada cita somente o count atual; 8.34/8.35/8.36/8.37 sao cobertas pela re-validacao (o wrap 'clean (27\\nclaims)' pego no doc real)", () => {
     const s = scanCitedCounts(DOC)
     expect(s.length).toBeGreaterThanOrEqual(2)
     const sec34 = s.find((x) => x.section === "8.34")
@@ -299,15 +300,19 @@ describe("scripts/scan-exit-claims.mjs - 8.x COUNTS PIN (sec 11.62)", () => {
     expect(sec34.hasReval).toBe(true)
     // o 27 e a citacao EMBRULHADA do controle historico (2 linhas fisicas -
     // o wrap que o flatten por paragrafo resolve); o 28 e a re-validacao
-    // datada - ambos coexistem na secao coberta (registros de evento)
-    expect(sec34.counts).toEqual(expect.arrayContaining([27, 28]))
+    // datada - ambos coexistem na secao coberta (registros de evento); o
+    // 29 e a re-validacao da 29a claim (sec 11.93, 2026-08-12)
+    expect(sec34.counts).toEqual(expect.arrayContaining([27, 28, 29]))
     const sec35 = s.find((x) => x.section === "8.35")
     expect(sec35).toBeDefined()
-    expect(sec35.hasReval).toBe(false)
-    // o pin do count ATUAL (28): a cada claim nova no EXIT_CLAIMS, este
-    // assert muda de proposito (o padrao do ABS PIN) - e a 8.35 passa a
-    // exigir uma re-validacao datada (node scripts/doc-revalidate.mjs --section 8.35)
-    expect(sec35.counts).toEqual([28])
+    // o pin do count da 8.35: a cada claim nova no EXIT_CLAIMS, as secoes
+    // que citam counts precisam ser re-validadas (o padrao do ABS PIN) - a
+    // 29a (sec 11.93) exigiu re-validacao datada da 8.34 e da 8.35
+    // (doc-revalidate, sec 11.66) e a 8.36/8.37 seguiram o MESMO caminho
+    // (citavam 28 sem reval -> violacao na 29a claim -> re-validacao
+    // datada 2026-08-12 - o sweep da sec 11.68)
+    expect(sec35.hasReval).toBe(true)
+    expect(sec35.counts).toEqual(expect.arrayContaining([28, 29]))
     expect(checkCitedCounts(DOC)).toEqual([])
   })
 
@@ -514,7 +519,7 @@ describe("scripts/scan-exit-claims.mjs - 8.x REVAL CURRENT PIN (sec 11.66)", () 
 })
 
 describe("scripts/scan-exit-claims.mjs - DIGEST TABLE PIN (sec 11.67)", () => {
-  it("REAL-REPO: a TABELA ## 1 cita 2 counts (27 na row 38/sec 8.34 coberta por reval; 28 na row 39/sec 8.35 no count atual) e checkDigestCounts(DOC) e []", () => {
+  it("REAL-REPO: a TABELA ## 1 cita 2 counts (27 na row 38/sec 8.34 coberta por reval; 28 na row 39/sec 8.35 coberta pela reval da 8.35 desde a 29a claim) e checkDigestCounts(DOC) e []", () => {
     const d = scanDigestCounts(DOC)
     const row38 = d.find((x) => x.row === 38)
     expect(row38).toBeDefined()
@@ -524,10 +529,13 @@ describe("scripts/scan-exit-claims.mjs - DIGEST TABLE PIN (sec 11.67)", () => {
     expect(row38!.counts).toContain(27)
     const row39 = d.find((x) => x.row === 39)
     expect(row39).toBeDefined()
-    // a row 39 (Prova 40) cita o count ATUAL (28) - nunca viola, mesmo
-    // sem reval na origem 8.35
+    // a row 39 (Prova 40) citava o count ATUAL quando o manifest tinha 28;
+    // a 29a claim (sec 11.93) invertou a premissa: o 28 virou historico e
+    // a re-validacao datada da 8.35 (2026-08-12, 29 claims) passou a
+    // cobri-lo - o MESMO mecanismo da row 38 (a cobertura sanciona o
+    // historico, sec 11.67)
     expect(row39!.section).toBe("8.35")
-    expect(row39!.counts).toContain(EXIT_CLAIMS.length)
+    expect(row39!.counts).toContain(28)
     expect(checkDigestCounts(DOC)).toEqual([])
   })
 

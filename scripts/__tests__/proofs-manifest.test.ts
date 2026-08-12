@@ -84,6 +84,7 @@ const ABS_PIN_SNAPSHOT: Array<[string, number, string, string]> = [
   ["prepush-order", 18, "11.19", "local"],
   ["ci-proof-run", 20, "11.20", "31442006152"],
   ["ci-proof-run", 32, "8.27", "31511149307"],
+  ["ci-proof-run", 48, "8.43", "local"],
   ["scan-prepush-batch", 23, "8.18", "local"],
   ["scan-eol-anchor", 25, "8.20", "31480438465"],
   ["scan-curl-timeouts", 26, "8.21", "31485163704"],
@@ -100,7 +101,9 @@ const ABS_PIN_SNAPSHOT: Array<[string, number, string, string]> = [
   ["hook-proof-run", 44, "8.39", "local"],
   ["hook-proof-run", 46, "8.41", "local"],
   ["hook-proof-run", 47, "8.42", "local"],
+  ["hook-proof-run", 50, "8.45", "local"],
   ["doc-revalidate", 42, "8.37", "local"],
+  ["scan-unit-config", 49, "8.44", "local"],
 ]
 
 /** Doc sintetico: apenas os headers passados (para MUTATIONs). */
@@ -122,9 +125,9 @@ afterEach(() => {
 describe("scripts/proofs-manifest.mjs - ABS PIN e SHAPE (sec 11.60)", () => {
   it("ABS PIN (content): a projecao [class, prova, section, run] do PROOF_CLASSES pinada pelo snapshot - editar o registry exige editar o snapshot conscientemente", () => {
     expect(PROJECTION).toEqual(ABS_PIN_SNAPSHOT)
-    // sanity: 19 classes / 47 provas registradas (o numero do CLI clean).
-    expect(new Set(PROOF_CLASSES.map((c) => c.class)).size).toBe(19)
-    expect(PROJECTION).toHaveLength(47)
+    // sanity: 20 classes / 50 provas registradas (o numero do CLI clean).
+    expect(new Set(PROOF_CLASSES.map((c) => c.class)).size).toBe(20)
+    expect(PROJECTION).toHaveLength(50)
   })
 
   it("MANIFEST SHAPE: class/module/proofs presentes, run null ou string, prova numerico, section presente", () => {
@@ -161,9 +164,9 @@ describe("scripts/proofs-manifest.mjs - DOC COVERAGE bidirecional (sec 11.60)", 
   it("doc -> manifest: toda Prova detectada no doc REAL tem entrada no registry (nenhuma unregistered)", () => {
     const { unregistered } = checkProofs()
     expect(unregistered).toEqual([])
-    // sanity: o detector acha as 47 provas reais (a Prova 20 via a linha da
+    // sanity: o detector acha as 50 provas reais (a Prova 20 via a linha da
     // tabela `(Prova 20, sec 11.20)` - a secao 11.20 nao tem 'Prova N' no titulo).
-    expect(scanProvaSections(DOC).size).toBe(47)
+    expect(scanProvaSections(DOC).size).toBe(50)
   })
 
   it("manifest -> doc: toda entrada do registry tem secao detectada no doc REAL (entrada stale = drift)", () => {
@@ -194,7 +197,7 @@ describe("scripts/proofs-manifest.mjs - CONSULTATION (o caso do pedido, sec 11.6
 
   it("toda classe de guard do repo tem pelo menos 1 prova viva registrada (nenhuma classe orfa no registry)", () => {
     const classes = PROOF_CLASSES.map((c) => c.class)
-    expect(classes.length).toBe(19)
+    expect(classes.length).toBe(20)
     // As classes centrais da rede de guards estao presentes (sanity das
     // principais - o ABS PIN cobre a lista completa).
     for (const key of ["scan-guard-gates", "scan-curl-timeouts", "verify-encoding", "scan-exit-claims", "check-exit-claims-push"]) {
@@ -281,7 +284,7 @@ describe("scripts/proofs-manifest.mjs - MUTATION (a classe real, sec 11.60)", ()
 })
 
 describe("scripts/proofs-manifest.mjs - WIRED SURFACE: o lado inverso do growth contract (sec 11.60)", () => {
-  it("WIRED ALLOWLIST ABS PIN: as 7 excecoes deliberadas (wired sem Prova dedicada, contratos suite-pinned) - editar a lista exige editar o pin", () => {
+  it("WIRED ALLOWLIST ABS PIN: as 8 excecoes deliberadas (wired sem Prova dedicada, contratos suite-pinned) - editar a lista exige editar o pin (o scan-unit-config GRADUOU para classe com a Prova 49, sec 8.44)", () => {
     expect(WIRED_ALLOWLIST).toEqual([
       "check-docs-encoding.sh",
       "check-push-deletion.mjs",
@@ -289,18 +292,19 @@ describe("scripts/proofs-manifest.mjs - WIRED SURFACE: o lado inverso do growth 
       "scan-fuzz-precommit.mjs",
       "scan-lint-staged-loader.mjs",
       "scan-lucide-icons.mjs",
+      "scan-proof-helpers.mjs",
       "scan-timeouts.mjs",
     ])
   })
 
-  it("deriveWiredGuards: a superficie viva do repo real deriva os 18 guards wired (hooks + batch imports + steps do net) - sanity da derivacao", () => {
+  it("deriveWiredGuards: a superficie viva do repo real deriva os 20 guards wired (hooks + batch imports + steps do net) - sanity da derivacao", () => {
     const wired = deriveWiredGuards()
-    expect(new Set(wired).size).toBe(18)
-    // Os 11 registrados (classes do PROOF_CLASSES) estao na derivacao.
-    for (const g of ["verify-encoding.sh", "check-next-types.mjs", "check-node-modules-integrity.mjs", "scan-push-full-suite.mjs", "scan-guard-gates.mjs", "scan-prepush-batch.mjs", "scan-exit-claims.mjs", "check-exit-claims-push.mjs", "run-mapped-fuzz.mjs", "scan-curl-timeouts.mjs", "scan-eol-anchor.mjs"]) {
+    expect(new Set(wired).size).toBe(20)
+    // Os 12 registrados (classes do PROOF_CLASSES) estao na derivacao.
+    for (const g of ["verify-encoding.sh", "check-next-types.mjs", "check-node-modules-integrity.mjs", "scan-push-full-suite.mjs", "scan-guard-gates.mjs", "scan-prepush-batch.mjs", "scan-exit-claims.mjs", "check-exit-claims-push.mjs", "run-mapped-fuzz.mjs", "scan-curl-timeouts.mjs", "scan-eol-anchor.mjs", "scan-unit-config.mjs"]) {
       expect(wired).toContain(g)
     }
-    // As 7 allowlisted estao na derivacao (wired de verdade, so sem Prova).
+    // As 8 allowlisted estao na derivacao (wired de verdade, so sem Prova).
     for (const g of WIRED_ALLOWLIST) {
       expect(wired).toContain(g)
     }
@@ -446,8 +450,8 @@ describe("scripts/proofs-manifest.mjs - REAL-REPO CONTRACT do CLI (sec 11.60)", 
     expect(res.status).toBe(0)
     const stdout = res.stdout ?? ""
     expect(stdout).toContain("proofs-manifest: clean")
-    expect(stdout).toContain("19 classes")
-    expect(stdout).toContain("47 provas")
+    expect(stdout).toContain("20 classes")
+    expect(stdout).toContain("50 provas")
   }, 60000)
 
   it("CLI exit 1 REAL: PROOFS_DOC aponta o doc sintetico com Prova 99 (a 40 e real desde a sec 8.35) -> exit 1 com a secao listada no stderr (o CLI real le o doc via override)", () => {

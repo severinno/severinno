@@ -30,6 +30,7 @@ import os from "node:os"
 import path from "node:path"
 import { spawnSync } from "node:child_process"
 import { buildRevalidateLine, DEFAULT_CLI_CMD, DEFAULT_SUITE_CMD, parseArgs, parseCliCount, upsertRevalidateLine } from "../doc-revalidate.mjs"
+import { scanCitedCounts } from "../scan-exit-claims.mjs"
 import { cleanupTempDirs, createTempDir } from "./golden-copy-utils"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "doc-revalidate.mjs")
@@ -217,6 +218,43 @@ describe("scripts/doc-revalidate.mjs - upsertRevalidateLine (sec 11.61)", () => 
     // sem \n solto (toda quebra e \r\n)
     expect(next.replace(/\r\n/g, "")).not.toContain("\n")
   })
+
+  it("MUTATION (o ACHADO da sec 11.93): secao cujo conteudo ABUTA o proximo header (sem blank final) -> a linha upsertada inicia NOVO PARAGRAFO (blank separador antes) e o scanCitedCounts da sec 11.62 detecta hasReval - o CURE nunca mais gera linha que o proprio contrato rejeita", () => {
+    const abutting = [
+      "## 8.99 Prova X - controle sintetico",
+      "",
+      "Alguma prosa do controle.",
+      "**Controle pos-ciclo**: CLI `clean (28 claims)` exit 0.",
+      "## 8.100 Prova Y - outra secao",
+      "",
+      "Prosa.",
+      "",
+    ].join("\n")
+    const next = upsertRevalidateLine(abutting, "8.99", DATE, line)
+    const lines = next.split("\n")
+    const idx = lines.findIndex((l: string) => l.startsWith("**Re-validação (2026-08-11, 30 claims)"))
+    expect(idx).toBeGreaterThan(0)
+    // a linha NAO se fundiu ao paragrafo anterior: um blank a precede (o
+    // separador - idx-1) e o header 8.100 segue DIRETO (o caso abutting nao
+    // tem blank pos-linha: o fix so garante o separador INICIAL do paragrafo,
+    // o unico que o REVAL_MARKER_RE do scanCitedCounts exige)
+    expect(lines[idx - 1]).toBe("")
+    expect(lines[idx - 2]).toBe("**Controle pos-ciclo**: CLI `clean (28 claims)` exit 0.")
+    expect(lines[idx + 1]).toBe("## 8.100 Prova Y - outra secao")
+    // o consumidor real do contrato (sec 11.62) reconhece a re-validacao:
+    // o scanCitedCounts detecta hasReval na secao - a linha upsertada pelo
+    // CURE satisfaz o proprio contrato (o par fechado hermeticamente). O
+    // count vem do CONTROLE (28 - a linha de reval minimal desta suite nao
+    // carrega o token verbatim `clean (N claims`, so o count e o do
+    // controle; o que importa aqui e o hasReval)
+    const dir = createTempDir("drv-abut-")
+    const docPath = path.join(dir, "gates-proofs.md")
+    fs.writeFileSync(docPath, next, "utf8")
+    const rec = scanCitedCounts(docPath).find((s) => s.section === "8.99")
+    expect(rec).toBeDefined()
+    expect(rec!.hasReval).toBe(true)
+    expect(rec!.counts).toContain(28)
+  })
 })
 
 describe("scripts/doc-revalidate.mjs - E2E hermetico (fakes via env)", () => {
@@ -324,9 +362,10 @@ describe("scripts/doc-revalidate.mjs - REAL-REPO CONTRACT (sec 11.61)", () => {
     const r = runCli(["--dry-run", "--no-suite"])
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("dry-run")
-    // o pin do count ATUAL (28): a cada claim nova no EXIT_CLAIMS, este
-    // assert muda de proposito (o mesmo padrao do ABS PIN)
-    expect(r.stdout).toContain("clean (28 claims")
+    // o pin do count ATUAL (29): a cada claim nova no EXIT_CLAIMS, este
+    // assert muda de proposito (o mesmo padrao do ABS PIN) - a 29a (sec
+    // 11.93, 2026-08-12) exigiu a atualizacao deste pin
+    expect(r.stdout).toContain("clean (29 claims")
     expect(r.stdout).toContain("**Re-validação (")
   }, 60000)
 })

@@ -47,12 +47,20 @@ import fs from "node:fs"
 import path from "node:path"
 import { createRequire } from "node:module"
 import { collectTestFiles } from "../pre-commit-tests.mjs"
+import {
+  poolNotePresent,
+  sec81Text,
+  docCalibration,
+  noteCalibration,
+  calibrationMatches,
+} from "../scan-unit-config.mjs"
 
 const require = createRequire(import.meta.url)
 const picomatch = require("picomatch")
 
 const ROOT = process.cwd()
 const UNIT_CONFIG = path.join(ROOT, "vitest.config.unit.ts")
+const DOC = path.join(ROOT, "docs", "gates-proofs.md")
 const COMPONENTS_DIR = path.join(ROOT, "src", "components")
 
 /** The deterministic vitrine suites that MUST run in test:unit today. */
@@ -260,21 +268,10 @@ describe("unit surface - import order (self-containment)", () => {
 // 6. The pool serialization note (singleFork) - WHY test:unit is serialized
 // ---------------------------------------------------------------------------
 
-/**
- * True when the config carries the dated singleFork rationale note (sec
- * 8.1 re-mediacao (5) + sec 11.48 no-op probe). The note is the guard
- * against a reader "fixing" the serialized pool believing parallelism is
- * lost - removing it must break a test, not silently drift.
- */
-function poolNotePresent(src: string): boolean {
-  const m = src.match(/\/\/ SERIALIZED POOL[\s\S]*?singleFork: true\s*}\s*},/)
-  if (!m) return false
-  return (
-    m[0].includes("sec 8.1") &&
-    m[0].includes("2026-08") &&
-    m[0].includes('DO NOT "parallelize"')
-  )
-}
+// O poolNotePresent vive NO GUARD (scripts/scan-unit-config.mjs, sec 11.96) -
+// a fonte unica: o 10o guard do batch roda a MESMA checagem no pre-commit e
+// esta suite a importa (a regra dos 2 usos - nunca redefine o que o guard
+// executa, o padrao do EXIT_CLAIMS/scan-proof-helpers).
 
 describe("unit surface - pool serialization note (singleFork)", () => {
   const CONFIG = fs.readFileSync(UNIT_CONFIG, "utf8")
@@ -300,6 +297,43 @@ describe("unit surface - pool serialization note (singleFork)", () => {
 })
 
 // ---------------------------------------------------------------------------
+// 6b. The config note's flatness citation vs the sec 8.1 current calibration
+//     (sec 11.95 - the measured fact cited OUTSIDE the doc)
+// ---------------------------------------------------------------------------
+
+// Os extratores (sec81Text/docCalibration/noteCalibration/calibrationMatches)
+// vivem NO GUARD (scripts/scan-unit-config.mjs, sec 11.96) - a fonte unica
+// que o 10o guard do batch roda no pre-commit; esta suite os importa (a
+// regra dos 2 usos). O sec81Text aqui recebe o TEXTO do doc (a versao do
+// guard le do disco no CLI) - a mesma funcao, dois pontos de entrada.
+
+describe("unit surface - config note citation vs sec 8.1 (sec 11.95, the measured fact cited outside the doc)", () => {
+  const CONFIG = fs.readFileSync(UNIT_CONFIG, "utf8")
+  const DOC_TEXT = fs.readFileSync(DOC, "utf8")
+
+  it("REAL-REPO: the note's flatness citation (band + series) equals the sec 8.1 canonical current calibration", () => {
+    expect(calibrationMatches(noteCalibration(CONFIG), docCalibration(sec81Text(DOC_TEXT)))).toBe(true)
+  })
+
+  it("MUTATION: editing the note's cited endpoint fails the pin (the note cannot cite a stale measurement)", () => {
+    const mutated = CONFIG.replace("22.5s as the suites grew", "99.9s as the suites grew")
+    expect(calibrationMatches(noteCalibration(mutated), docCalibration(sec81Text(DOC_TEXT)))).toBe(false)
+  })
+
+  it("MUTATION: a recalibrated doc (new series endpoint) fails the pin (the note must track the latest re-mediation)", () => {
+    // A serie da doc quebra de linha apos o '22.2 ->' - o target usa o par
+    // CONTIGUO '23.5 \u2192 22.5' (na mesma linha fisica da doc).
+    const fake = sec81Text(DOC_TEXT).replace("23.5 \u2192 22.5", "23.5 \u2192 24.5")
+    expect(calibrationMatches(noteCalibration(CONFIG), docCalibration(fake))).toBe(false)
+  })
+
+  it("MUTATION: stripping the citation from the note fails fail-loud (the extractor throws)", () => {
+    const stripped = CONFIG.replace(/\(test:guard 19-23\.5s, series [^)]*\)/, "(the measured band)")
+    expect(() => noteCalibration(stripped)).toThrow(/flatness citation not found/)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 7. The PRESENCE of the contract suites in the test:unit glob (sec 11.83 -
 //    the positive of 11.73 on the OTHER side of the division)
 // ---------------------------------------------------------------------------
@@ -310,7 +344,7 @@ describe("unit surface - pool serialization note (singleFork)", () => {
  * contracts (proof-helpers-contract, wired-guards-contract, proofs-manifest,
  * scan-exit-claims, check-exit-claims-push, scan-cures-contract,
  * unit-surface-contract, gates-proofs-ordering). The sec 11.73 negative pins
- * they are NOT in test:guard (the curated 14); this pin closes the pair -
+ * they are NOT in test:guard (the curated 15); this pin closes the pair -
  * they MUST be PRESENT in the test:unit glob channel (the local guard
  * channel the pre-commit/pre-push hooks run). A refactor that adds an
  * exclude for one of them, or narrows the scripts glob, silently drops the

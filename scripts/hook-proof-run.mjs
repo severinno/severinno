@@ -43,7 +43,10 @@
  *      <sec> --to <nova> renomeia o header da secao (o shape da Prova 39 -
  *      a classe stale: uma entrada do manifest sem claim no doc, sec 11.55),
  *      OU --mutate <cmd> roda um shell cmd generico (todos mutuamente
- *      exclusivos). Commit com HUSKY=0 (a mutacao viola um gate local de
+ *      exclusivos), OU --mutate-untracked <file> embute o FLIP da Prova 46
+ *      (sec 11.98: touch <file> + echo <file> >> .gitignore - a classe
+ *      status-divergente do revert em 1 comando, sem re-derivar o ACHADO
+ *      via --mutate shell). Commit com HUSKY=0 (a mutacao viola um gate local de
  *      proposito - o bypass oficial do husky) - SO quando a mutacao alterou
  *      a arvore (uma mutacao no-op nao pode falhar o ciclo).
  *
@@ -92,8 +95,10 @@
  * hook e spawnado via --hook (nos testes, o fixture hook-proof-fake-hook.sh
  * que ecoa uma saida roteirizada + exit code via env HOOK_PROOF_FAKE_HOOK_*);
  * o doc do --mutate-doc-claim e sobrescrito por HOOK_PROOF_DOC (o seam
- * hermetico - nunca toca o doc real em teste). --dry-run imprime o plano sem
- * executar NADA.
+ * hermetico - nunca toca o doc real em teste); o root do --mutate-untracked
+ * e sobrescrito por HOOK_PROOF_MUTATE_ROOT (o seam hermetico do flip da sec
+ * 11.98 - nunca toca o .gitignore real do repo em teste). --dry-run imprime
+ * o plano sem executar NADA.
  * ASCII puro (gate file). Puro node, sem deps.
  */
 import { spawnSync } from "node:child_process"
@@ -118,6 +123,7 @@ export function parseArgs(argv) {
     mutate: null,
     mutateDocClaim: null,
     mutateDocRenumber: null,
+    mutateUntracked: null,
     to: null,
     expectCure: false,
     expectExit: 1,
@@ -138,6 +144,7 @@ export function parseArgs(argv) {
     else if (a === "--mutate") { out.mutate = argv[i + 1] ?? null; i++ }
     else if (a === "--mutate-doc-claim") { out.mutateDocClaim = argv[i + 1] ?? null; i++ }
     else if (a === "--mutate-doc-renumber") { out.mutateDocRenumber = argv[i + 1] ?? null; i++ }
+    else if (a === "--mutate-untracked") { out.mutateUntracked = argv[i + 1] ?? null; i++ }
     else if (a === "--to") { out.to = argv[i + 1] ?? null; i++ }
     else if (a === "--expect-cure") out.expectCure = true
     // NOTE (reviewer, sec 11.58): `Number(x) || 1` mapearia --expect-exit 0 ->
@@ -158,11 +165,21 @@ export function parseArgs(argv) {
     else { out.error = `flag desconhecida: ${a}`; break }
   }
   if (!out.error && !out.branch) out.error = USAGE
-  // As 3 mutacoes sao mutuamente exclusivas (uma mutacao por ciclo - o par
+  // As 4 mutacoes sao mutuamente exclusivas (uma mutacao por ciclo - o par
   // de flags define a MESMA etapa 4 do fluxo). --to so faz sentido com o
   // --mutate-doc-renumber (o target da renumeracao).
-  if (!out.error && [out.mutateDocClaim, out.mutateDocRenumber, out.mutate].filter(Boolean).length > 1) {
-    out.error = "--mutate-doc-claim, --mutate-doc-renumber e --mutate sao mutuamente exclusivos (uma mutacao por ciclo)"
+  if (!out.error && [out.mutateDocClaim, out.mutateDocRenumber, out.mutate, out.mutateUntracked].filter(Boolean).length > 1) {
+    out.error = "--mutate-doc-claim, --mutate-doc-renumber, --mutate-untracked e --mutate sao mutuamente exclusivos (uma mutacao por ciclo)"
+  }
+  // Shape do --mutate-untracked (sec 11.98): um nome de arquivo SIMPLES, sem
+  // separadores de path - o flip e um untracked NA RAIZ do repo (o mecanismo
+  // da Prova 46: `git add -A` ignora o arquivo porque o .gitignore ganhou a
+  // linha, e o checkout do revert NAO remove arquivo ignorado - o stray
+  // sobrevive ao revert e o git status diverge do snapshot). Um file com
+  // path (ex.: 'sub/x.tmp') criaria dirs aninhados fora da shape do flip -
+  // fail-loud no parse (o mesmo espirito do shape do --to, sec 11.59).
+  if (!out.error && out.mutateUntracked && /[\\/]/.test(out.mutateUntracked)) {
+    out.error = `--mutate-untracked '${out.mutateUntracked}' deve ser um nome de arquivo SIMPLES (sem separadores de path) - o flip e um untracked na raiz do repo`
   }
   if (!out.error && out.to && !out.mutateDocRenumber) {
     out.error = "--to so faz sentido com --mutate-doc-renumber <sec>"
@@ -210,7 +227,7 @@ export function isManualDocRenameCmd(cmd) {
   return /\bsed\b/.test(cmd) && /## /.test(cmd) && /gates-proofs\.md/.test(cmd)
 }
 
-const USAGE = "usage: node scripts/hook-proof-run.mjs --branch ci-proof/<name> [--mutate-doc-claim <sec> | --mutate-doc-renumber <sec> --to <nova> | --mutate <cmd>] [--expect-cure] [--expect-exit <n>] [--expect-log <regex>] [--base-sha <sha>] [--hook <path>] [--safety-diff <path>] [--apply-safety-diff-on-fail] [--safety-backup <dir>] [--keep-branch] [--cleanup-on-fail] [--dry-run]"
+const USAGE = "usage: node scripts/hook-proof-run.mjs --branch ci-proof/<name> [--mutate-doc-claim <sec> | --mutate-doc-renumber <sec> --to <nova> | --mutate-untracked <file> | --mutate <cmd>] [--expect-cure] [--expect-exit <n>] [--expect-log <regex>] [--base-sha <sha>] [--hook <path>] [--safety-diff <path>] [--apply-safety-diff-on-fail] [--safety-backup <dir>] [--keep-branch] [--cleanup-on-fail] [--dry-run]"
 
 /**
  * injectDocClaim - a mutacao pura do --mutate-doc-claim (exported for tests):
@@ -259,6 +276,29 @@ export function renumberDocSection(doc, sec, to) {
     throw new Error(`renumberDocSection: secao '## ${to} ' JA existe no doc (ou e a propria secao - no-op, sec 11.59) - a renumeracao criaria um header duplicado`)
   }
   return doc.replace(re, `## ${to} `)
+}
+
+/**
+ * untrackedFlip - a mutacao pura do --mutate-untracked (exported for tests):
+ * o FLIP da Prova 46 (sec 8.41) em 1 comando - `touch <file>` + `echo <file>
+ * >> .gitignore` na raiz do repo. O MECANISMO (o ACHADO da Prova 46): o
+ * `git add -A` do commit de mutacao IGNORA o arquivo (o .gitignore acabou de
+ * ganhar a linha) - o arquivo nao entra no commit; o checkout do revert (que
+ * restaura o .gitignore ao estado base, sem a linha do flip) NAO remove
+ * arquivo ignorado - o stray SOBREVIVE ao revert como untracked VISIVEL e o
+ * git status pos-revert diverge do snapshot -> o status-fail do revertCycle
+ * (a classe da Prova 46, o --expect-exit 0 do ciclo com exit 3 e a CURE do
+ * snapshot). O <file> e validado no parse (nome SIMPLES, sem separadores) -
+ * a funcao recebe o valor ja validado. Retorna o caminho absoluto do
+ * .gitignore tocado (o teste pode conferir a linha).
+ */
+export function untrackedFlip(file, rootDir) {
+  fs.writeFileSync(path.join(rootDir, file), "", "utf8")
+  const gi = path.join(rootDir, ".gitignore")
+  const cur = fs.existsSync(gi) ? fs.readFileSync(gi, "utf8") : ""
+  const line = cur === "" || cur.endsWith("\n") ? `${file}\n` : `\n${file}\n`
+  fs.writeFileSync(gi, cur + line, "utf8")
+  return gi
 }
 
 /**
@@ -315,6 +355,8 @@ export function planSteps(opts, originalBranch) {
     steps.push(`mutacao: --mutate-doc-claim ${opts.mutateDocClaim} (claim fake injetada ANTES do '## 12.' no ${DOC_REL})`)
   } else if (opts.mutateDocRenumber) {
     steps.push(`mutacao: --mutate-doc-renumber ${opts.mutateDocRenumber} --to ${opts.to} (header renumerado no ${DOC_REL} - a classe stale da Prova 39)`)
+  } else if (opts.mutateUntracked) {
+    steps.push(`mutacao: --mutate-untracked ${opts.mutateUntracked} (o flip da Prova 46: touch + echo >> .gitignore - o stray sobrevive ao revert e o status diverge, sec 11.98)`)
   } else if (opts.mutate) {
     steps.push(`mutacao: shell: ${opts.mutate}`)
   } else {
@@ -382,19 +424,57 @@ const scratchLeftNote = (originalBranch, branch, backupDir) =>
 // (orfao no reflog) e a receita generica do scratchLeftNote ("git checkout
 // <orig> && git branch -D <branch>") descreve um estado que NAO existe mais:
 // o checkout ja voltou e o branch -D falharia ("no such branch"). A
-// recuperacao do apply-fail e em 2 NIVEIS (o refinamento 2026-08-12): (1)
-// 'git apply <backup>/delta.patch' - o patch do backup e a fonte PRIMARIA
-// quando integro (a receita do dia a dia); (2) SO quando o patch for
-// INVALIDO (corrompido - a classe da Prova 43): o reflog do commit orfao
-// (git reflog + git cherry-pick <sha>) ou o safety diff externo - o padrao
-// da CURE da sec 11.54 (o comando exato no erro, a fonte unica consumida
-// pelos 2 pontos de conversao). O status-fail e DIFERENTE (o apply do ciclo
-// PASSou - o delta JA esta na arvore): a CURE reconcilia o git status com o
-// snapshot do backup, com o reflog como fallback. Para os fail paths onde a
-// scratch AINDA existe (checkout-fail e branch-D-fail - o branch -D nao
-// rodou), a receita generica continua valida: a funcao despacha pelo stage
-// do revert.
-export function revertLeftNote(stage, originalBranch, branch, backupDir, safetyDiff) {
+// recuperacao do apply-fail vira DECISAO VERIFICADA (o refinamento
+// 2026-08-12): o call site roda 'git apply --check <backup>/delta.patch' no
+// momento da nota (patchAppliesClean - 1 spawn git no fail path) e a CURE
+// cita SO o nivel aplicavel: patch aplica limpo -> SO o nivel 1 ('git apply
+// <backup>/delta.patch', a receita do dia a dia - a fonte PRIMARIA quando
+// integro); patch NAO aplica (corrompido OU a arvore conflita - as classes
+// das Provas 43/50) -> SO o reflog do commit orfao (git reflog + git
+// cherry-pick <sha>) ou o safety diff externo - o padrao da CURE da sec
+// 11.54 (o comando exato no erro, a fonte unica consumida pelos 2 pontos de
+// conversao). A hierarquia em texto ("o usuario decide se o patch esta
+// integro") some: o --check decide. O status-fail e DIFERENTE (o apply do
+// ciclo PASSou - o delta JA esta na arvore): a CURE reconcilia o git status
+// com o snapshot do backup, com o reflog como fallback. Para os fail paths
+// onde a scratch AINDA existe (checkout-fail e branch-D-fail - o branch -D
+// nao rodou), a receita generica continua valida: a funcao despacha pelo
+// stage do revert.
+
+/**
+ * patchAppliesClean - o VERIFICADOR da CURE do apply-fail (sec 11.75): roda
+ * 'git apply --check <backup>/delta.patch' (o dry-run do git - NAO escreve
+ * nada) no momento da nota e retorna true quando o patch aplica limpo na
+ * arvore ATUAL. O custo: 1 spawn git no fail path (o revert-fail e raro - a
+ * classe do usuario julgar o patch de olho vira decisao verificada). A
+ * fronteira honesta: o --check valida contra a arvore do MOMENTO - um patch
+ * INTEGRO contra uma arvore com blocker (a classe da Prova 50, o poison
+ * commit) FALHA o check e cai no reflog (a recuperacao garantida - o
+ * cherry-pick do commit orfao nao depende da arvore); limpar o blocker e
+ * re-tentar o apply e o caminho manual alternativo.
+ */
+export function patchAppliesClean(backupDir) {
+  const r = git(["apply", "--check", path.join(backupDir, "delta.patch")])
+  return r.status === 0
+}
+
+/**
+ * revertLeftNote - a CURE stage-aware do revert-fail (sec 11.75): despacha
+ * pelo stage do fail do revertCycle. apply-fail -> a DECISAO VERIFICADA
+ * (o patchApplies do call site - patchAppliesClean, o --check no momento da
+ * nota: true -> SO o nivel 1; false -> SO o reflog). status-fail -> a CURE
+ * do snapshot. checkout/branchD -> a receita generica (a scratch ainda
+ * existe).
+ * @param {string} stage
+ * @param {string} originalBranch
+ * @param {string} branch
+ * @param {string} backupDir
+ * @param {string|null} [safetyDiff] - o path do safety diff (sec 11.77),
+ *   opcional - sem ele a CURE permanece generica (reflog/cherry-pick).
+ * @param {boolean|null} [patchApplies] - null quando o stage nao e apply
+ *   (o call site so consulta o --check no apply-fail).
+ */
+export function revertLeftNote(stage, originalBranch, branch, backupDir, safetyDiff, patchApplies = null) {
   // O --safety-diff (sec 11.77): quando o path externo foi salvo, a CURE
   // cita o comando exato (git apply <path>) - a fonte que sobrevive a
   // corrupcao do delta.patch do backup (a classe da Prova 43). Sem o
@@ -403,7 +483,33 @@ export function revertLeftNote(stage, originalBranch, branch, backupDir, safetyD
   // sufixo do safety diff).
   const sd = safetyDiff ? `: git apply ${safetyDiff}` : " externo"
   if (stage === "apply") {
-    return ` - o branch -D JA rodou (a scratch ${branch} foi deletada com o commit do delta dentro, orfao no reflog): recupere em 2 NIVEIS - (1) 'git apply ${backupDir}/delta.patch' (o patch do backup e a fonte PRIMARIA quando integro - a receita do dia a dia); (2) SO quando o patch for INVALIDO (corrompido - a classe da Prova 43): 'git reflog' (procure 'hook-proof: ${branch} (delta)') + 'git cherry-pick <sha>' ou aplique o safety diff${sd} (backup em ${backupDir})`
+    // FAIL-LOUD (o ACHADO Prova 17, sec 8.14): o stage apply SEM o
+    // patchApplies e uma violacao de contrato do call site - o --check so
+    // NAO roda quando o stage nao e apply, entao apply+null significa que
+    // o call site esqueceu de consultar o patchAppliesClean. A CURE nao
+    // pode decidir "de olho" (a classe que a DECISAO VERIFICADA eliminou):
+    // THROW com a receita, em vez de cair silenciosamente no reflog (a
+    // CURE errada - o usuario julgaria um patch integro como corrompido).
+    // Os 2 call sites guardam corretamente (stage === "apply" ?
+    // patchAppliesClean : null); o throw e o seguro contra um 3o call
+    // site futuro que esqueca o guard. NOTE (reviewer, sec 11.75): um hit
+    // aqui e ERRO DE PROGRAMACAO - o throw escapa do template do fail(3)
+    // como excecao nao-tratada (exit 1 + stack trace, NAO o fail(3) do
+    // contrato). Intencional: a classe de seguranca defesa-only nao pode
+    // falhar silenciosamente na CURE errada - um crash visivel e o
+    // fail-loud honesto para um caminho que nao deve existir.
+    if (patchApplies === null) {
+      throw new Error("revertLeftNote: stage 'apply' sem o patchApplies (o --check da decisao verificada, sec 11.75) - o call site deve consultar o patchAppliesClean antes da nota")
+    }
+    // A DECISAO VERIFICADA (sec 11.75): o patchApplies veio do call site
+    // (patchAppliesClean - o --check no momento da nota). true -> SO o
+    // nivel 1 (a receita do dia a dia, verificada); false -> SO o reflog
+    // (a classe das Provas 43/50 - corrompido ou a arvore conflita). A
+    // hierarquia em texto some - o --check decide qual citar.
+    if (patchApplies) {
+      return ` - o branch -D JA rodou (a scratch ${branch} foi deletada com o commit do delta dentro): o patch do backup APLICA LIMPO na arvore atual (verificado via 'git apply --check ${backupDir}/delta.patch'): rode 'git apply ${backupDir}/delta.patch' - o nivel 1 da CURE, a receita do dia a dia (backup em ${backupDir})`
+    }
+    return ` - o branch -D JA rodou (a scratch ${branch} foi deletada com o commit do delta dentro, orfao no reflog): o patch do backup NAO aplica na arvore atual (verificado via 'git apply --check ${backupDir}/delta.patch' - corrompido ou a arvore conflita, as classes das Provas 43/50): recupere do reflog ('git reflog' procure 'hook-proof: ${branch} (delta)') + 'git cherry-pick <sha>' ou aplique o safety diff${sd} (backup em ${backupDir})`
   }
   if (stage === "status") {
     return ` - o apply do delta PASSou (o delta do ciclo JA esta na arvore - o revert so falhou na comparacao do git status vs o snapshot): compare 'git status --porcelain' com ${backupDir}/status-before.txt e reconcilie a divergencia; se o delta faltar, recupere do reflog ('git reflog' + 'git cherry-pick <sha>') ou do safety diff${sd} (backup em ${backupDir})`
@@ -425,7 +531,11 @@ export function revertLeftNote(stage, originalBranch, branch, backupDir, safetyD
 function cleanupOnFailSuffix(originalBranch, branch, backupDir, docPath, safetyDiff, applySafetyDiffOnFail) {
   const rv = revertCycle(branch, originalBranch, backupDir, docPath, safetyDiff, applySafetyDiffOnFail)
   if (rv.ok) return ` | cleanup-on-fail: ${rv.message}`
-  return ` | cleanup-on-fail FALHOU: ${rv.message}${revertLeftNote(rv.stage, originalBranch, branch, backupDir, safetyDiff)}`
+  // A DECISAO VERIFICADA (sec 11.75): so o stage apply consulta o --check
+  // (o status ja tem o delta aplicado e o re-check falharia "already
+  // applied"; checkout/branchD a scratch ainda existe - a receita generica).
+  const patchApplies = rv.stage === "apply" ? patchAppliesClean(backupDir) : null
+  return ` | cleanup-on-fail FALHOU: ${rv.message}${revertLeftNote(rv.stage, originalBranch, branch, backupDir, safetyDiff, patchApplies)}`
 }
 
 /**
@@ -618,8 +728,19 @@ export function main() {
     if (m.status !== 0) {
       return fail(3, `--mutate falhou (exit ${m.status}): ${(m.stderr ?? m.stdout ?? "").trim()}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
     }
+  } else if (opts.mutateUntracked) {
+    // O flip da Prova 46 (sec 11.98) no root hermetico (HOOK_PROOF_MUTATE_ROOT
+    // - o seam dos testes, o MESMO padrao do HOOK_PROOF_DOC: nunca toca o
+    // repo real em teste; default = cwd). O arquivo e escrito vazio (o
+    // `touch`) e a linha do .gitignore e anexada (o `echo >>`).
+    const root = process.env.HOOK_PROOF_MUTATE_ROOT || process.cwd()
+    try {
+      untrackedFlip(opts.mutateUntracked, root)
+    } catch (e) {
+      return fail(3, `--mutate-untracked falhou: ${e.message}${opts.cleanupOnFail ? cleanupOnFailSuffix(originalBranch, opts.branch, backupDir, docPath, safetyDiff, opts.applySafetyDiffOnFail) : scratchLeftNote(originalBranch, opts.branch, backupDir)}`)
+    }
   }
-  if (opts.mutateDocClaim || opts.mutateDocRenumber || opts.mutate) {
+  if (opts.mutateDocClaim || opts.mutateDocRenumber || opts.mutateUntracked || opts.mutate) {
     const stMut = git(["status", "--porcelain"])
     if ((stMut.stdout ?? "").trim() !== "") {
       git(["add", "-A"])
@@ -663,7 +784,13 @@ export function main() {
 // ja pode ter sido DELETADA com o delta orfao no reflog (apply fail - a
 // CURE em 2 niveis, sec 11.75; status fail - a CURE do snapshot - o ACHADO
 // da Prova 43). O silencio seria a classe do fail silencioso.
-  if (!reverted.ok) return fail(3, `${reverted.message}${revertLeftNote(reverted.stage, originalBranch, opts.branch, backupDir, safetyDiff)}`)
+  if (!reverted.ok) {
+    // A DECISAO VERIFICADA (sec 11.75): so o stage apply consulta o --check
+    // (o status ja tem o delta aplicado e o re-check falharia "already
+    // applied"; checkout/branchD a scratch ainda existe - a receita generica).
+    const patchApplies = reverted.stage === "apply" ? patchAppliesClean(backupDir) : null
+    return fail(3, `${reverted.message}${revertLeftNote(reverted.stage, originalBranch, opts.branch, backupDir, safetyDiff, patchApplies)}`)
+  }
 
   // 9. SUMMARY.
   if (!check.ok) return fail(1, check.message)

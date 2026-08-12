@@ -258,6 +258,13 @@ export const EXIT_CLAIMS = [
     pin: { file: "scripts/__tests__/hook-proof-run.test.ts", marker: "11.58" },
     ref: "gates-proofs.md sec 11.58 (decisao 2026-08-11) - o espelho local do ci-proof-run: o ciclo manual das Provas 37/38 num comando",
   },
+  {
+    section: "11.93",
+    claim: "scan-proof-helpers (o 9o guard do batch, sec 11.93): o contrato 11.72 roda no pre-commit - todos os helpers com as 3 partes -> exit code 0; violacao no bloco 'Exit codes:' de um helper -> exit code 1 com o caminho; usage errado -> exit code 2",
+    kind: "current",
+    pin: { file: "scripts/__tests__/run-precommit-guards.test.ts", marker: "11.93" },
+    ref: "gates-proofs.md sec 11.93 (decisao 2026-08-12) - a 29a claim: o guard novo do contrato 11.72 (o pedido 'quando os helpers mudarem' supersedido pela invariante da 11.42: guard barato roda incondicional)",
+  },
 ]
 
 /** Exit codes que o contrato reconhece como claims (0-3, o padrao do repo).
