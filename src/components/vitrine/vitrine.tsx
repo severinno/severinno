@@ -25,29 +25,33 @@ import { useGeoStore } from "@/store/geo"
 import { useUIStore } from "@/store/ui"
 import { fetchCategories, fetchFavorites, fetchProviders, type Category } from "@/lib/api"
 
+import dynamic from "next/dynamic"
+
 import Topbar from "./topbar"
 import Hero from "./hero"
 import SocialProofTicker from "./social-proof-ticker"
 import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
 import HowItWorks from "./how-it-works"
-import QuickQuoteCalculator from "./quick-quote-calculator"
 import PartnersTrust from "./partners-trust"
-import Testimonials from "./testimonials"
-import FAQ from "./faq"
-import WhySeverinno from "./why-severinno"
-import CtaBanner from "./cta-banner"
 import ProviderSpotlight from "./provider-spotlight"
 import { RecentlyViewed } from "./recently-viewed"
 import NearbyProviders from "./nearby-providers"
 import ProviderSpotlightGeo from "./provider-spotlight-geo"
 import CompareBar from "./compare-bar"
-import CompareModal from "./compare-modal"
 import BackToTop from "./back-to-top"
 import Footer from "../shared/footer"
-import AIChatWidget from "../shared/ai-chat-widget"
 import CookieConsent from "../shared/cookie-consent"
 import { DEFAULT_FILTERS, type FiltersState } from "./filters"
+
+// Below-the-fold dynamic imports for bundle optimization & instant hydration
+const QuickQuoteCalculator = dynamic(() => import("./quick-quote-calculator"), { ssr: true })
+const Testimonials = dynamic(() => import("./testimonials"), { ssr: true })
+const FAQ = dynamic(() => import("./faq"), { ssr: true })
+const WhySeverinno = dynamic(() => import("./why-severinno"), { ssr: true })
+const CtaBanner = dynamic(() => import("./cta-banner"), { ssr: true })
+const CompareModal = dynamic(() => import("./compare-modal"), { ssr: false })
+const AIChatWidget = dynamic(() => import("../shared/ai-chat-widget"), { ssr: false })
 
 const RESULTS_ANCHOR_ID = "vitrine-resultados"
 const PAGE_LIMIT = 9

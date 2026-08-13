@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="168" height="20" viewBox="0 0 168 20" role="img" aria-label="coverage: 44% (54/123)">
-  <title>coverage: 44% (54/123)</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="20" viewBox="0 0 168 20" role="img" aria-label="coverage: 50% (61/123)">
+  <title>coverage: 50% (61/123)</title>
   <defs>
     <linearGradient id="b" x2="0" y2="100%">
       <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
@@ -7,11 +7,11 @@
     </linearGradient>
   </defs>
   <rect width="168" height="20" rx="3" fill="#555"/>
-  <rect x="70" width="98" height="20" rx="3" fill="#cb2431"/>
-  <rect x="70" width="4" height="20" fill="#cb2431"/>
+  <rect x="70" width="98" height="20" rx="3" fill="#bfa100"/>
+  <rect x="70" width="4" height="20" fill="#bfa100"/>
   <rect width="168" height="20" fill="url(#b)"/>
   <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11">
     <text x="35" y="14">coverage</text>
-    <text x="119" y="14">44% (54/123)</text>
+    <text x="119" y="14">50% (61/123)</text>
   </g>
 </svg>
