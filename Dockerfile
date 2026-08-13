@@ -27,6 +27,7 @@ COPY . .
 
 # Skip type-check in build (already done in CI); Prisma generate is required.
 ENV SKIP_TYPESCRIPT_CHECK=true
+ENV BUILD_STANDALONE=true
 RUN bun run db:generate && \
     bun run build
 
@@ -62,4 +63,4 @@ EXPOSE 3000
 # Run the Next.js standalone server directly.
 # Docker sends SIGTERM to PID 1; Node.js 22 handles it gracefully.
 # For advanced graceful shutdown, wrap with a process manager (e.g., PM2).
-CMD ["node", ".next/standalone/server.js"]
+CMD ["node", "server.js"]
