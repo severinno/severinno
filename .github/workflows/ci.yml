@@ -76,7 +76,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgis/postgis:16-3.4-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -97,6 +97,7 @@ jobs:
           bun-version: latest
 
       - run: bun install --frozen-lockfile
+      - run: bun run db:generate
       - run: bun run test:run
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
@@ -135,6 +136,7 @@ jobs:
       - run: bun run build
         env:
           SKIP_TYPESCRIPT_CHECK: "true"
+          BUILD_STANDALONE: "true"
 
       # Archive the standalone build for deployment
       - uses: actions/upload-artifact@v4

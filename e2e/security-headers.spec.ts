@@ -312,7 +312,7 @@ test.describe("Security Headers — API (/api/health)", () => {
 test.describe("Security Headers — Página de Login (/login)", () => {
   let headers: Record<string, string>
 
-  test.beforeAll(async ({ page }) => {
+  test.beforeEach(async ({ page }) => {
     const result = await getResponseViaPage(page, "/login")
     headers = result.headers
   })

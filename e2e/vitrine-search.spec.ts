@@ -19,16 +19,18 @@ const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000"
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 async function waitForResults(page: import("@playwright/test").Page) {
-  // Wait for either provider cards or the empty state to render
+  // Wait for either provider cards, header count or empty state to render
   await page.waitForFunction(
     () => {
       const grid = document.querySelector('[aria-label="Resultados da busca"]')
       if (!grid) return false
-      // At least one card or the empty state message
+      // At least one card, header, or the empty state message
       return (
         grid.querySelector("[data-provider-id]") !== null ||
         grid.textContent?.includes("Nenhum prestador") ||
-        grid.textContent?.includes("prestador encontrado")
+        grid.textContent?.includes("prestador encontrado") ||
+        grid.textContent?.includes("Exibindo") ||
+        grid.textContent?.includes("Filtros")
       )
     },
     { timeout: 15_000 },
