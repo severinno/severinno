@@ -27,7 +27,10 @@ import {
   Bell,
   CreditCard,
   Database,
+  Globe,
+  Layers,
   LayoutDashboard,
+  Map,
   Network,
   Users,
   HardHat,
@@ -41,43 +44,86 @@ import {
   ClipboardCheck,
   CalendarClock,
   Webhook,
+  Shield,
   ShieldAlert,
 } from "lucide-react"
 
-import {
-  DashboardShell,
-  type NavItem,
-  type Breadcrumb,
-} from "@/components/shared/dashboard-shell"
+import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell"
 import { useAuthStore, useViewStore } from "@/store"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 
-import { AdminDashboard } from "./admin-dashboard"
-import { AdminTaxonomy } from "./admin-taxonomy"
-import { AdminUsers } from "./admin-users"
-import { AdminProviders } from "./admin-providers"
-import { AdminServices } from "./admin-services"
-import { AdminBookings } from "./admin-bookings"
-import { AdminFinanceDashboard } from "./admin-finance"
-import { AdminSettlements } from "./admin-settlements"
-import { AdminSettings } from "./admin-settings"
-import { AdminErrorTrends } from "./admin-errors"
-import { AdminHealthDashboard } from "./admin-health"
-import { AdminPerformanceDashboard } from "./admin-performance"
-import { AdminPushNotifications } from "./admin-push"
-import { AdminPushRecurring } from "./admin-push-recurring"
-import { AdminPushHistory } from "./admin-push-history"
-import { AdminPushMetrics } from "./admin-push-metrics"
-import { AdminProjectStatus } from "./admin-project-status"
-import { AdminPushAudit } from "./admin-push-audit"
-import { AdminWebhookAudit } from "./admin-webhook-audit"
-import { AdminGatewayDashboard } from "./admin-gateway-dashboard"
-import { AdminPgBouncer } from "./admin-pgbouncer"
+import dynamic from "next/dynamic"
+
+// ---------------------------------------------------------------------------
+// Lazy-loaded Admin Sub-Views (Code-Split per Tab)
+// ---------------------------------------------------------------------------
+
+const AdminDashboard = dynamic(() => import("./admin-dashboard").then((m) => m.AdminDashboard))
+const AdminTaxonomy = dynamic(() => import("./admin-taxonomy").then((m) => m.AdminTaxonomy))
+const AdminUsers = dynamic(() => import("./admin-users").then((m) => m.AdminUsers))
+const AdminProviders = dynamic(() => import("./admin-providers").then((m) => m.AdminProviders))
+const AdminServices = dynamic(() => import("./admin-services").then((m) => m.AdminServices))
+const AdminBookings = dynamic(() => import("./admin-bookings").then((m) => m.AdminBookings))
+const AdminFinanceDashboard = dynamic(() =>
+  import("./admin-finance").then((m) => m.AdminFinanceDashboard),
+)
+const AdminSettlements = dynamic(() =>
+  import("./admin-settlements").then((m) => m.AdminSettlements),
+)
+const AdminSettings = dynamic(() => import("./admin-settings").then((m) => m.AdminSettings))
+const AdminErrorTrends = dynamic(() => import("./admin-errors").then((m) => m.AdminErrorTrends))
+const AdminHealthDashboard = dynamic(() =>
+  import("./admin-health").then((m) => m.AdminHealthDashboard),
+)
+const AdminPerformanceDashboard = dynamic(() =>
+  import("./admin-performance").then((m) => m.AdminPerformanceDashboard),
+)
+const AdminPushNotifications = dynamic(() =>
+  import("./admin-push").then((m) => m.AdminPushNotifications),
+)
+const AdminPushRecurring = dynamic(() =>
+  import("./admin-push-recurring").then((m) => m.AdminPushRecurring),
+)
+const AdminPushHistory = dynamic(() =>
+  import("./admin-push-history").then((m) => m.AdminPushHistory),
+)
+const AdminPushMetrics = dynamic(() =>
+  import("./admin-push-metrics").then((m) => m.AdminPushMetrics),
+)
+const AdminProjectStatus = dynamic(() =>
+  import("./admin-project-status").then((m) => m.AdminProjectStatus),
+)
+const AdminPushAudit = dynamic(() => import("./admin-push-audit").then((m) => m.AdminPushAudit))
+const AdminWebhookAudit = dynamic(() =>
+  import("./admin-webhook-audit").then((m) => m.AdminWebhookAudit),
+)
+const AdminGatewayDashboard = dynamic(() =>
+  import("./admin-gateway-dashboard").then((m) => m.AdminGatewayDashboard),
+)
+const AdminPgBouncer = dynamic(() => import("./admin-pgbouncer").then((m) => m.AdminPgBouncer))
+const AdminGeoMetricsDashboard = dynamic(() =>
+  import("./admin-geo-metrics-dashboard").then((m) => m.AdminGeoMetricsDashboard),
+)
+const AdminCoverageMap = dynamic(() =>
+  import("./admin-coverage-map").then((m) => m.AdminCoverageMap),
+)
+const AdminBenchmarkDashboard = dynamic(() =>
+  import("./admin-benchmark-dashboard").then((m) => m.AdminBenchmarkDashboard),
+)
+const AdminBenchmarkEvolution = dynamic(() =>
+  import("./admin-benchmark-evolution").then((m) => m.AdminBenchmarkEvolution),
+)
+const AdminGeoCacheDashboard = dynamic(() =>
+  import("./admin-geo-cache-dashboard").then((m) => m.AdminGeoCacheDashboard),
+)
+const AdminRedisDiagnosticsDashboard = dynamic(() =>
+  import("./admin-redis-diagnostics").then((m) => m.AdminRedisDiagnosticsDashboard),
+)
+const AdminGeoRateLimitStatus = dynamic(() =>
+  import("./admin-geo-rate-limit-status").then((m) => m.AdminGeoRateLimitStatus),
+)
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -164,6 +210,41 @@ const NAV_ITEMS: NavItem[] = [
     icon: CreditCard,
   },
   {
+    view: "admin.coverage",
+    label: "Cobertura",
+    icon: Map,
+  },
+  {
+    view: "admin.redis-diagnostics",
+    label: "Redis",
+    icon: Database,
+  },
+  {
+    view: "admin.geo-rate-limit-status",
+    label: "Rate Limit Geo",
+    icon: Shield,
+  },
+  {
+    view: "admin.geo-cache",
+    label: "Cache Geo",
+    icon: Layers,
+  },
+  {
+    view: "admin.geo-metrics",
+    label: "Geo Metrics",
+    icon: Globe,
+  },
+  {
+    view: "admin.benchmarks",
+    label: "Benchmarks",
+    icon: BarChart3,
+  },
+  {
+    view: "admin.benchmark-evolution",
+    label: "Evolução Geo",
+    icon: Activity,
+  },
+  {
     view: "admin.performance",
     label: "Performance",
     icon: Activity,
@@ -190,10 +271,7 @@ const NAV_ITEMS: NavItem[] = [
   },
 ]
 
-const VIEW_META: Record<
-  string,
-  { title: string; subtitle?: string; breadcrumbs: Breadcrumb[] }
-> = {
+const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs: Breadcrumb[] }> = {
   "admin.dashboard": {
     title: "Visão geral",
     subtitle: "Indicadores principais e atividade recente do marketplace.",
@@ -201,8 +279,7 @@ const VIEW_META: Record<
   },
   "admin.taxonomy": {
     title: "Taxonomia de categorias",
-    subtitle:
-      "Gerencie a árvore de categorias em 3 níveis (pai → filha → subcategoria).",
+    subtitle: "Gerencie a árvore de categorias em 3 níveis (pai → filha → subcategoria).",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Taxonomia" }],
   },
   "admin.users": {
@@ -222,146 +299,133 @@ const VIEW_META: Record<
   },
   "admin.finance": {
     title: "Financeiro",
-    subtitle:
-      "Resumo de transações, faturamento mensal e extrato por período.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Financeiro" },
-    ],
+    subtitle: "Resumo de transações, faturamento mensal e extrato por período.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Financeiro" }],
   },
   "admin.settlements": {
     title: "Repasses",
-    subtitle:
-      "Períodos de repasse automáticos — gere, finalize e marque como pago.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Repasses" },
-    ],
+    subtitle: "Períodos de repasse automáticos — gere, finalize e marque como pago.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Repasses" }],
   },
   "admin.bookings": {
     title: "Agendamentos",
     subtitle: "Supervisão de todos os agendamentos (somente leitura).",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Agendamentos" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Agendamentos" }],
   },
   "admin.settings": {
     title: "Configurações",
-    subtitle:
-      "Editor dinâmico de configurações (chave/valor). Equivalente runtime de um .env.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Configurações" },
-    ],
+    subtitle: "Editor dinâmico de configurações (chave/valor). Equivalente runtime de um .env.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Configurações" }],
   },
   "admin.push-recurring": {
     title: "Push Recorrente",
     subtitle:
       "Agende notificações push automáticas que disparam todo dia, semana ou mês — ideais para campanhas periódicas.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Push Recorrente" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Push Recorrente" }],
   },
   "admin.push-metrics": {
     title: "Métricas de Push",
     subtitle:
       "Delivery rate, click rate, bounce rate, ações, timeline e indicadores de saúde do sistema de push notifications.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Push Metrics" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Push Metrics" }],
   },
   "admin.push-history": {
     title: "Histórico de Push",
     subtitle:
       "Todas as notificações push enviadas com status de entrega, destinatário e deep link.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Push Log" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Push Log" }],
   },
   "admin.push-audit": {
     title: "Auditoria — Push",
     subtitle:
       "Log completo de auditoria: quem enviou/agendou, quando, para quantos destinatários e resultado final da operação.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Auditoria" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Auditoria" }],
   },
   "admin.webhook-audit": {
     title: "Log de Webhooks",
     subtitle:
       "Histórico de execuções de regras de webhook de eventos: quando cada regra foi executada, quantos usuários notificou e quais erros ocorreram.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Webhooks" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Webhooks" }],
   },
   "admin.push": {
     title: "Notificações Push",
-    subtitle:
-      "Envie notificações push manualmente para usuários específicos com push ativo.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Notificações Push" },
-    ],
+    subtitle: "Envie notificações push manualmente para usuários específicos com push ativo.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Notificações Push" }],
   },
   "admin.project-status": {
     title: "Status do Projeto",
     subtitle:
       "Análise completa de 7 camadas — notas, descobertas e ações pendentes para lançamento em produção.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Status do Projeto" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Status do Projeto" }],
   },
   "admin.gateway": {
     title: "Gateway de Pagamento",
+    subtitle: "Métricas agregadas do Lytex — receita, volume de transações e taxa de conversão.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Gateway" }],
+  },
+  "admin.coverage": {
+    title: "Mapa de Cobertura",
     subtitle:
-      "Métricas agregadas do Lytex — receita, volume de transações e taxa de conversão.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Gateway" },
-    ],
+      "Grelha de calor mostrando a sobreposição dos raios de atendimento de todos os prestadores.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Cobertura" }],
+  },
+  "admin.geo-cache": {
+    title: "Diagnóstico do Cache Geo",
+    subtitle:
+      "Hit/miss ratio do Redis, top queries mais frequentes, heatmap de uso por endpoint e TTL das chaves de cache.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Cache Geo" }],
+  },
+  "admin.redis-diagnostics": {
+    title: "Diagnóstico do Redis",
+    subtitle:
+      "Hit/miss ratio, nós do cluster, distribuição de slots, chaves por nó e cache em memória.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Redis" }],
+  },
+  "admin.geo-rate-limit-status": {
+    title: "Status do Rate Limiter Geo",
+    subtitle:
+      "IPs mais ativos, hits/misses, capacidade restante e estado Redis vs in-memory para os endpoints de geolocalização.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Rate Limit Geo" }],
+  },
+  "admin.geo-metrics": {
+    title: "Métricas de Geolocalização",
+    subtitle: "Latência P50/P95/P99 dos serviços de geocoding (Nominatim, ViaCEP) e PostGIS.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Geo Metrics" }],
+  },
+  "admin.benchmarks": {
+    title: "Monitoramento de Benchmarks",
+    subtitle:
+      "Comparação contínua de desempenho dos benchmarks de geolocalização com detecção automática de regressões.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Benchmarks" }],
+  },
+  "admin.benchmark-evolution": {
+    title: "Evolução dos Benchmarks Geo",
+    subtitle:
+      "Visualização temporal dos 6 benchmarks de geolocalização ao longo de todas as execuções.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Evolução Geo" }],
   },
   "admin.performance": {
     title: "Performance",
     subtitle:
       "Métricas de tempo de resposta, banco de dados, chamadas externas e saúde do sistema.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Performance" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Performance" }],
   },
   "admin.pgbouncer": {
     title: "PgBouncer — Pool de Conexões",
     subtitle:
       "Monitoramento em tempo real do pooler de conexões PostgreSQL: estado do pool, métricas de queries e configuração.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "PgBouncer" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "PgBouncer" }],
   },
   "admin.errors": {
     title: "Monitoramento de Erros",
-    subtitle:
-      "Tendências de erro por endpoint, usuário e versão. Top erros e timeline.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Erros" },
-    ],
+    subtitle: "Tendências de erro por endpoint, usuário e versão. Top erros e timeline.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Erros" }],
   },
   "admin.health": {
     title: "Saúde do Sistema",
     subtitle:
       "Monitoramento em tempo real de todos os serviços: banco, Redis, RabbitMQ, workers, cache e métricas do processo.",
-    breadcrumbs: [
-      { label: "Painel do Administrador" },
-      { label: "Saúde" },
-    ],
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Saúde" }],
   },
 }
 
@@ -424,9 +488,9 @@ export function AdminPanel() {
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
             <ShieldAlert className="size-10 text-amber-500" />
             <h2 className="text-lg font-semibold">Acesso restrito</h2>
-            <p className="text-sm text-muted-foreground">
-              Esta área é exclusiva de administradores. Faça login com uma
-              conta ADMIN para continuar.
+            <p className="text-muted-foreground text-sm">
+              Esta área é exclusiva de administradores. Faça login com uma conta ADMIN para
+              continuar.
             </p>
             <Button onClick={() => navigate("vitrine")}>Voltar à vitrine</Button>
           </CardContent>
@@ -466,13 +530,7 @@ export function AdminPanel() {
   )
 }
 
-function AdminView({
-  view,
-  onNavigate,
-}: {
-  view: string
-  onNavigate: (view: string) => void
-}) {
+function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: string) => void }) {
   switch (view) {
     case "admin.dashboard":
       return <AdminDashboard onNavigate={onNavigate} />
@@ -506,6 +564,20 @@ function AdminView({
       return <AdminProjectStatus />
     case "admin.gateway":
       return <AdminGatewayDashboard />
+    case "admin.coverage":
+      return <AdminCoverageMap />
+    case "admin.redis-diagnostics":
+      return <AdminRedisDiagnosticsDashboard />
+    case "admin.geo-rate-limit-status":
+      return <AdminGeoRateLimitStatus />
+    case "admin.geo-cache":
+      return <AdminGeoCacheDashboard />
+    case "admin.geo-metrics":
+      return <AdminGeoMetricsDashboard />
+    case "admin.benchmarks":
+      return <AdminBenchmarkDashboard />
+    case "admin.benchmark-evolution":
+      return <AdminBenchmarkEvolution />
     case "admin.performance":
       return <AdminPerformanceDashboard />
     case "admin.pgbouncer":
